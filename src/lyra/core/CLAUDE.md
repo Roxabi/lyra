@@ -23,7 +23,7 @@ Outbound (platform) ←──────────────── Outbound
 
 ## Non-obvious placement decisions
 
-**`pool_manager.py` and `message_pipeline.py` are in `hub/`** — both import `Hub` at runtime; placing them in `pool/` would create a circular import.
+**`pool_manager.py` and `pipeline_types.py` are in `hub/`** — both import `Hub` at runtime; placing them in `pool/` would create a circular import. `message_pipeline.py` is a backward-compatibility shim that re-exports from `pipeline_types.py`.
 
 **`builtin_commands.py` and `workspace_commands.py` are flat in `core/`** — not in `commands/`. The `commands/` subdir is routing infra only; built-in handlers live at the `core/` level.
 
@@ -60,10 +60,10 @@ Reads are synchronous (from cache). Writes are async (SQLite). Cache updated ato
 
 ```python
 # Top-level re-exports
-from lyra.core import Hub, Pool, MessagePipeline, RoutingKey
+from lyra.core import Hub, Pool, RoutingKey
 
 # Subpackage re-exports
-from lyra.core.hub import Hub, MessagePipeline, OutboundDispatcher
+from lyra.core.hub import Hub, MiddlewarePipeline, OutboundDispatcher
 from lyra.core.pool import Pool, PoolProcessor
 from lyra.core.stores import AgentStore, AuthStore, SqliteStore, AgentStoreProtocol
 from lyra.core.commands import CommandRouter, CommandLoader

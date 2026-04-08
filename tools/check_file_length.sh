@@ -11,7 +11,7 @@ FAIL=0
 # Files exempt from the limit (tracked for future refactoring).
 EXEMPT=(
     "src/lyra/core/cli_protocol.py"         # 494 lines — #396 refactor backlog
-    "src/lyra/core/hub/message_pipeline.py" # 450 lines — #396 refactor backlog
+    "src/lyra/core/hub/middleware_submit.py" # 327 lines — path extraction refactor (#626)
     "src/lyra/core/stores/agent_store.py"   # 449 lines — #396 refactor backlog
     "src/lyra/cli_agent_crud.py"            # 441 lines — #396 refactor backlog
     "src/lyra/core/pool/pool_processor.py"  # 406 lines — #396 refactor backlog

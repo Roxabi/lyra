@@ -223,3 +223,17 @@ def test_generic_error_reply_is_user_facing_string() -> None:
     from lyra.core.message import GENERIC_ERROR_REPLY
 
     assert GENERIC_ERROR_REPLY == "Something went wrong. Please try again."
+
+
+# ---------------------------------------------------------------------------
+# API contract assertions
+# ---------------------------------------------------------------------------
+
+
+def test_hub_has_no_pairing_gate_drop() -> None:
+    """Hub._pairing_gate_drop must not exist — auth is resolved at adapter level."""
+    from lyra.core.hub import Hub
+
+    assert not hasattr(
+        Hub, "_pairing_gate_drop"
+    ), "Hub._pairing_gate_drop must be removed — auth is resolved at adapter level"

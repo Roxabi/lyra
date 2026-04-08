@@ -14,21 +14,21 @@ from ..message import (
     Platform,
 )
 from ..pool import Pool
-from .message_pipeline import (
-    _DROP,
-    _SESSION_FALLTHROUGH_MSG,
+from .middleware import Next, PipelineContext
+from .pipeline_events import MessageDropped, PoolSubmitted
+from .pipeline_types import (
+    DROP,
+    SESSION_FALLTHROUGH_MSG,
     Action,
     PipelineResult,
     ResumeStatus,
 )
-from .middleware import Next, PipelineContext
-from .pipeline_events import MessageDropped, PoolSubmitted
 
 log = logging.getLogger(__name__)
 
 
 class SubmitToPoolMiddleware:
-    """Stage 6 (terminal): validate adapter, circuit breaker, submit."""
+    """Stage 9 (index 9, terminal): validate adapter, circuit breaker, submit."""
 
     async def __call__(
         self,
@@ -65,7 +65,7 @@ class SubmitToPoolMiddleware:
                     reason="no_adapter",
                 )
             )
-            return _DROP
+            return DROP
 
         if await ctx.hub.circuit_breaker_drop(msg):
             ctx.trace("outbound", "circuit_open", action=Action.DROP.value)
@@ -76,13 +76,13 @@ class SubmitToPoolMiddleware:
                     reason="circuit_open",
                 )
             )
-            return _DROP
+            return DROP
 
         pool = ctx.pool
         # Register session persistence callback once.
         _update_fn = msg.platform_meta.get("_session_update_fn")
-        if _update_fn is not None and pool._observer._session_update_fn is None:
-            pool._observer.register_session_update_fn(_update_fn)
+        if callable(_update_fn) and pool._observer._session_update_fn is None:
+            pool._observer.register_session_update_fn(_update_fn)  # type: ignore[arg-type]
 
         try:
             status = await self._resolve_context(msg, pool, pool.pool_id, ctx)
@@ -114,7 +114,7 @@ class SubmitToPoolMiddleware:
 
         return PipelineResult(action=Action.SUBMIT_TO_POOL, pool=pool)
 
-    async def _resolve_context(  # noqa: C901
+    async def _resolve_context(
         self,
         msg: InboundMessage,
         pool: Pool,
@@ -134,128 +134,176 @@ class SubmitToPoolMiddleware:
             SKIPPED  — no resume was attempted (pool busy, group chat,
                        first use, no TurnStore, …). Silent and expected.
         """
-        hub = ctx.hub
-        path2_attempted = False
+        result = await self._resume_path1(msg, pool, pool_id, ctx)
+        if result is not None:
+            return result
 
-        # Path 1: reply-to-resume via MessageIndex (#341).
-        if msg.reply_to_id is not None and hub._message_index is None:
-            log.debug("reply-to-resume: no MessageIndex configured — skipping")
-        if msg.reply_to_id is not None and hub._message_index is not None:
-            session_id = await hub._message_index.resolve(pool_id, str(msg.reply_to_id))
-            if session_id is not None:
-                if not pool.is_idle:
-                    pool._pending_session_id = session_id  # was: log + skip
-                    log.info(
-                        "reply-to-resume: pool %r busy — queued session %r",
-                        pool_id,
-                        session_id,
-                    )
-                    return ResumeStatus.SKIPPED
-                else:
-                    log.info(
-                        "reply-to-resume: resuming session %r for pool %r",
-                        session_id,
-                        pool_id,
-                    )
-                    accepted = await pool.resume_session(session_id)
-                    if accepted and hub._turn_store is not None:
-                        await hub._turn_store.increment_resume_count(session_id)
-                    return ResumeStatus.RESUMED
+        path2_result, path2_attempted = await self._resume_path2(
+            msg, pool, pool_id, ctx
+        )
+        if path2_result is not None:
+            return path2_result
 
-        # Path 2: thread-session-resume.
-        thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
-        if thread_session_id is not None:
-            # Scope-validate: session must belong to this pool (#525).
-            if hub._turn_store is not None:
-                session_pool = await hub._turn_store.get_session_pool_id(
-                    thread_session_id
-                )
-                if session_pool is None or session_pool != pool_id:
-                    log.warning(
-                        "thread-session-resume: scope mismatch for %r — "
-                        "expected pool %r, got %r — skipping",
-                        thread_session_id,
-                        pool_id,
-                        session_pool,
-                    )
-                    return ResumeStatus.SKIPPED
-            else:
-                # No TurnStore → cannot validate scope → safe default: skip.
-                log.debug(
-                    "thread-session-resume: no TurnStore — skipping %r",
-                    thread_session_id,
-                )
-                return ResumeStatus.SKIPPED
-            if not pool.is_idle:
-                log.info(
-                    "thread-session-resume: pool %r busy — skipping %r",
-                    pool_id,
-                    thread_session_id,
-                )
-                return ResumeStatus.SKIPPED
-            if thread_session_id == pool.session_id:
-                log.debug(
-                    "thread-session-resume: pool %r already on session %r — skipping",
-                    pool_id,
-                    thread_session_id,
-                )
-                return ResumeStatus.SKIPPED
-            log.info(
-                "thread-session-resume: resuming %r for pool %r",
-                thread_session_id,
-                pool_id,
-            )
-            path2_attempted = True
-            accepted = await pool.resume_session(thread_session_id)
-            if accepted:
-                await hub._turn_store.increment_resume_count(thread_session_id)
-                return ResumeStatus.RESUMED
-            log.info(
-                "thread-session-resume: session %r not accepted"
-                " — falling through to Path 3",
-                thread_session_id,
-            )
-
-        # Path 3: last-active-session.
-        if pool.is_idle and hub._turn_store is not None:
-            last_sid = await hub._turn_store.get_last_session(pool_id)
-            if last_sid is None:
-                log.debug(
-                    "last-session-resume: no prior session for pool %r",
-                    pool_id,
-                )
-            elif last_sid == pool.session_id:
-                _agent = hub.agent_registry.get(pool.agent_name)
-                _alive = (
-                    _agent.is_backend_alive(pool.pool_id)
-                    if _agent is not None
-                    else True
-                )
-                if _alive:
-                    log.debug(
-                        "last-session-resume: pool %r already on session %r",
-                        pool_id,
-                        last_sid,
-                    )
-                    return ResumeStatus.SKIPPED
-                log.warning(
-                    "last-session-resume: pool %r session %r matches"
-                    " but backend is dead — skipping guard",
-                    pool_id,
-                    last_sid,
-                )
-            else:
-                log.info(
-                    "last-session-resume: resuming %r for pool %r",
-                    last_sid,
-                    pool_id,
-                )
-                accepted = await pool.resume_session(last_sid)
-                if accepted:
-                    await hub._turn_store.increment_resume_count(last_sid)
-                return ResumeStatus.RESUMED
+        result = await self._resume_path3(msg, pool, pool_id, ctx)
+        if result is not None:
+            return result
 
         return ResumeStatus.FRESH if path2_attempted else ResumeStatus.SKIPPED
+
+    async def _resume_path1(
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        pool_id: str,
+        ctx: PipelineContext,
+    ) -> ResumeStatus | None:
+        """Path 1: reply-to-resume via MessageIndex (#341). None = not applicable."""
+        hub = ctx.hub
+        if msg.reply_to_id is None:
+            return None
+        if hub._message_index is None:
+            log.debug("reply-to-resume: no MessageIndex configured — skipping")
+            return None
+        session_id = await hub._message_index.resolve(pool_id, str(msg.reply_to_id))
+        if session_id is None:
+            return None
+        if not pool.is_idle:
+            pool._pending_session_id = session_id  # was: log + skip
+            log.info(
+                "reply-to-resume: pool %r busy — queued session %r",
+                pool_id,
+                session_id,
+            )
+            return ResumeStatus.SKIPPED
+        log.info(
+            "reply-to-resume: resuming session %r for pool %r",
+            session_id,
+            pool_id,
+        )
+        accepted = await pool.resume_session(session_id)
+        if accepted and hub._turn_store is not None:
+            # Direct call (not via pool._on_resume_fn) — _on_resume_fn only fires
+            # for deferred (busy-pool) resumes in pool_processor. Paths are
+            # mutually exclusive; #396 tracks moving this into Pool.resume_session.
+            await hub._turn_store.increment_resume_count(session_id)
+        return ResumeStatus.RESUMED
+
+    async def _resume_path2(
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        pool_id: str,
+        ctx: PipelineContext,
+    ) -> tuple[ResumeStatus | None, bool]:
+        """Path 2: thread-session-resume. Returns (status|None, attempted)."""
+        hub = ctx.hub
+        thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
+        if thread_session_id is None:
+            return None, False
+
+        # Scope-validate: session must belong to this pool (#525).
+        if hub._turn_store is None:
+            # No TurnStore → cannot validate scope → safe default: skip.
+            log.debug(
+                "thread-session-resume: no TurnStore — skipping %r",
+                thread_session_id,
+            )
+            return ResumeStatus.SKIPPED, False
+
+        session_pool = await hub._turn_store.get_session_pool_id(thread_session_id)
+        if session_pool is None or session_pool != pool_id:
+            log.warning(
+                "thread-session-resume: scope mismatch for %r — "
+                "expected pool %r, got %r — skipping",
+                thread_session_id,
+                pool_id,
+                session_pool,
+            )
+            return ResumeStatus.SKIPPED, False
+
+        if not pool.is_idle:
+            log.info(
+                "thread-session-resume: pool %r busy — skipping %r",
+                pool_id,
+                thread_session_id,
+            )
+            return ResumeStatus.SKIPPED, False
+
+        if thread_session_id == pool.session_id:
+            log.debug(
+                "thread-session-resume: pool %r already on session %r — skipping",
+                pool_id,
+                thread_session_id,
+            )
+            return ResumeStatus.SKIPPED, False
+
+        log.info(
+            "thread-session-resume: resuming %r for pool %r",
+            thread_session_id,
+            pool_id,
+        )
+        accepted = await pool.resume_session(thread_session_id)
+        if accepted:
+            # Direct call — see Path 1 comment; #396 tracks structural fix.
+            await hub._turn_store.increment_resume_count(thread_session_id)
+            return ResumeStatus.RESUMED, True
+        log.info(
+            "thread-session-resume: session %r not accepted"
+            " — falling through to Path 3",
+            thread_session_id,
+        )
+        return None, True
+
+    async def _resume_path3(
+        self,
+        msg: InboundMessage,
+        pool: Pool,
+        pool_id: str,
+        ctx: PipelineContext,
+    ) -> ResumeStatus | None:
+        """Path 3: last-active-session from TurnStore. None = not applicable."""
+        hub = ctx.hub
+        if not pool.is_idle or hub._turn_store is None:
+            return None
+
+        last_sid = await hub._turn_store.get_last_session(pool_id)
+        if last_sid is None:
+            log.debug(
+                "last-session-resume: no prior session for pool %r",
+                pool_id,
+            )
+            return None
+
+        if last_sid == pool.session_id:
+            _agent = hub.agent_registry.get(pool.agent_name)
+            _alive = (
+                _agent.is_backend_alive(pool.pool_id) if _agent is not None else True
+            )
+            if _alive:
+                log.debug(
+                    "last-session-resume: pool %r already on session %r",
+                    pool_id,
+                    last_sid,
+                )
+                return ResumeStatus.SKIPPED
+            log.warning(
+                "last-session-resume: pool %r session %r matches"
+                " but backend is dead — skipping guard",
+                pool_id,
+                last_sid,
+            )
+            return None
+
+        log.info(
+            "last-session-resume: resuming %r for pool %r",
+            last_sid,
+            pool_id,
+        )
+        accepted = await pool.resume_session(last_sid)
+        if accepted:
+            # Direct call — see Path 1 comment; #396 tracks structural fix.
+            await hub._turn_store.increment_resume_count(last_sid)
+        return ResumeStatus.RESUMED
 
     async def _notify_session_fallthrough(
         self, msg: InboundMessage, ctx: PipelineContext
@@ -279,6 +327,6 @@ class SubmitToPoolMiddleware:
             msg.platform,
             adapter,
             msg,
-            _SESSION_FALLTHROUGH_MSG,
+            SESSION_FALLTHROUGH_MSG,
             circuit=circuit,
         )

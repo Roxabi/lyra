@@ -87,7 +87,8 @@ def _setup_logging(log_config: LoggingConfig | None = None) -> None:
     root = logging.getLogger()
     if root.handlers:
         return  # already configured — avoid duplicate handlers
-    root.setLevel(logging.INFO)
+    level = getattr(logging, log_config.level.upper(), logging.INFO)
+    root.setLevel(level)
     root.addFilter(trace_filter)
     root.addHandler(file_handler)
     root.addHandler(console_handler)

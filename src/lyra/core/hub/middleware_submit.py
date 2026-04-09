@@ -160,27 +160,45 @@ class SubmitToPoolMiddleware:
         """Path 1: reply-to-resume via MessageIndex (#341). None = not applicable."""
         hub = ctx.hub
         if msg.reply_to_id is None:
+            log.debug(
+                "reply-to-resume[path1]: skip — reply_to_id=None"
+                " (msg_id=%s modality=%s)",
+                msg.id,
+                msg.modality,
+            )
             return None
         if hub._message_index is None:
-            log.debug("reply-to-resume: no MessageIndex configured — skipping")
+            log.debug("reply-to-resume[path1]: skip — no MessageIndex configured")
             return None
         session_id = await hub._message_index.resolve(pool_id, str(msg.reply_to_id))
+        log.debug(
+            "reply-to-resume[path1]: reply_to_id=%r → session_id=%r (pool=%s)",
+            msg.reply_to_id,
+            session_id,
+            pool_id,
+        )
         if session_id is None:
             return None
         if not pool.is_idle:
             pool._pending_session_id = session_id  # was: log + skip
             log.info(
-                "reply-to-resume: pool %r busy — queued session %r",
+                "reply-to-resume[path1]: pool %r busy — queued session %r",
                 pool_id,
                 session_id,
             )
             return ResumeStatus.SKIPPED
         log.info(
-            "reply-to-resume: resuming session %r for pool %r",
+            "reply-to-resume[path1]: resuming session %r for pool %r",
             session_id,
             pool_id,
         )
-        await pool.resume_session(session_id)
+        accepted = await pool.resume_session(session_id)
+        log.debug(
+            "reply-to-resume[path1]: resume_session accepted=%s (session=%r pool=%s)",
+            accepted,
+            session_id,
+            pool_id,
+        )
         return ResumeStatus.RESUMED
 
     async def _resume_path2(

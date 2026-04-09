@@ -210,13 +210,17 @@ class CliPoolWorkerMixin:
             _persist = getattr(self, "_persist_cli_session", None)
             if _persist is not None:
                 _persist(pool_id, entry.session_id)
-        elif not preserve_session:
-            # Explicit reset (/clear, /folder) — discard any stale scheduled resume.
-            self._resume_session_ids.pop(pool_id, None)
             log.debug(
                 "[pool:%s] preserving session %s for auto-resume",
                 pool_id,
                 entry.session_id,
+            )
+        elif not preserve_session:
+            # Explicit reset (/clear, /folder) — discard any stale scheduled resume.
+            self._resume_session_ids.pop(pool_id, None)
+            log.debug(
+                "[pool:%s] discarded stale resume session (explicit reset)",
+                pool_id,
             )
 
     def _sync_evict_entry(self, pool_id: str, *, preserve_session: bool = True) -> None:

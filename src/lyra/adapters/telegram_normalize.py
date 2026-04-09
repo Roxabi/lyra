@@ -237,6 +237,10 @@ def normalize_audio(
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
     message_id = getattr(raw, "message_id", None)
+    reply_to_message = getattr(raw, "reply_to_message", None)
+    reply_to_id = (
+        str(reply_to_message.message_id) if reply_to_message is not None else None
+    )
     platform_meta, routing = _build_routing(
         adapter, chat_id, topic_id, message_id, scope_id, is_group
     )
@@ -255,6 +259,7 @@ def normalize_audio(
         timestamp=timestamp,
         platform_meta=platform_meta,
         routing=routing,
+        reply_to_id=reply_to_id,
         modality="voice",
         audio=AudioPayload(
             audio_bytes=audio_bytes,

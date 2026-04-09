@@ -112,7 +112,7 @@ class SubmitToPoolMiddleware:
         if status == ResumeStatus.FRESH:
             await self._notify_session_fallthrough(msg, ctx)
 
-        return PipelineResult(action=Action.SUBMIT_TO_POOL, pool=pool)
+        return PipelineResult(action=Action.SUBMIT_TO_POOL, pool=pool, msg=msg)
 
     async def _resolve_context(
         self,

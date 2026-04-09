@@ -191,10 +191,14 @@ class CliPoolWorkerMixin:
     def _maybe_preserve_session(
         self, pool_id: str, entry: _ProcessEntry, *, preserve_session: bool
     ) -> None:
-        """Write session_id to _resume_session_ids if both conditions hold.
+        """Write or clear _resume_session_ids based on preserve_session.
 
         Shared by _kill and _sync_evict_entry — single definition of the
         preservation contract so both callers stay in sync automatically.
+
+        When preserve_session=False (reset/clear/folder), any previously
+        scheduled resume for this pool is discarded so the next spawn starts
+        fresh.
 
         Note: the session file existence check was removed (#415) because
         stream-json mode does not flush .jsonl while the subprocess is alive,
@@ -206,6 +210,9 @@ class CliPoolWorkerMixin:
             _persist = getattr(self, "_persist_cli_session", None)
             if _persist is not None:
                 _persist(pool_id, entry.session_id)
+        elif not preserve_session:
+            # Explicit reset (/clear, /folder) — discard any stale scheduled resume.
+            self._resume_session_ids.pop(pool_id, None)
             log.debug(
                 "[pool:%s] preserving session %s for auto-resume",
                 pool_id,

@@ -351,7 +351,7 @@ class Hub(HubOutboundMixin):
                     msg.id,
                 )
         elif result.action == Action.SUBMIT_TO_POOL and result.pool:
-            result.pool.submit(msg)
+            result.pool.submit(result.msg if result.msg is not None else msg)
 
     async def run(self) -> None:
         """Hub bus consumer loop. Runs until cancelled."""

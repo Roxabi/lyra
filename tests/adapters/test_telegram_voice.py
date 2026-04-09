@@ -28,8 +28,14 @@ def _make_voice_msg(  # noqa: PLR0913 — test factory with optional overrides
     chat_type: str = "private",
     topic_id: int | None = None,
     message_id: int | None = 55,
+    reply_to_message_id: int | None = None,
 ) -> SimpleNamespace:
     """Build a minimal aiogram-like voice message stub."""
+    reply_to_message = (
+        SimpleNamespace(message_id=reply_to_message_id)
+        if reply_to_message_id is not None
+        else None
+    )
     return SimpleNamespace(
         chat=SimpleNamespace(id=chat_id, type=chat_type),
         from_user=SimpleNamespace(id=user_id, full_name="Alice", is_bot=False),
@@ -38,6 +44,7 @@ def _make_voice_msg(  # noqa: PLR0913 — test factory with optional overrides
         date=datetime.now(timezone.utc),
         message_thread_id=topic_id,
         message_id=message_id,
+        reply_to_message=reply_to_message,
     )
 
 
@@ -324,3 +331,33 @@ def test_normalize_audio_video_note_fields() -> None:
     assert result.audio.duration_ms == 5000
     assert result.audio.file_id == "VN123"
     assert result.trust == "user"
+
+
+def test_normalize_audio_reply_to_id() -> None:
+    """Voice message replying to another message carries reply_to_id (#341)."""
+    from lyra.core.message import InboundMessage
+    from lyra.core.trust import TrustLevel
+
+    adapter, _ = _make_adapter()
+    msg = _make_voice_msg(reply_to_message_id=99)
+
+    result = adapter.normalize_audio(
+        msg, b"data", "audio/ogg", trust_level=TrustLevel.TRUSTED
+    )
+    assert isinstance(result, InboundMessage)
+    assert result.reply_to_id == "99"
+
+
+def test_normalize_audio_no_reply_has_no_reply_to_id() -> None:
+    """Voice message not replying to anything → reply_to_id is None."""
+    from lyra.core.message import InboundMessage
+    from lyra.core.trust import TrustLevel
+
+    adapter, _ = _make_adapter()
+    msg = _make_voice_msg()  # reply_to_message_id defaults to None
+
+    result = adapter.normalize_audio(
+        msg, b"data", "audio/ogg", trust_level=TrustLevel.TRUSTED
+    )
+    assert isinstance(result, InboundMessage)
+    assert result.reply_to_id is None

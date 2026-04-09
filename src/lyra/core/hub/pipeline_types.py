@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..message import Response
+    from ..message import InboundMessage, Response
     from ..pool import Pool
 
 # Type alias for the optional trace hook.
@@ -55,6 +55,8 @@ class PipelineResult:
     action: Action
     response: Response | None = None
     pool: Pool | None = None
+    # Final message after middleware mutations (e.g. STT transcript injection).
+    msg: InboundMessage | None = None
 
 
 DROP = PipelineResult(action=Action.DROP)

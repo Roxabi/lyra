@@ -172,34 +172,29 @@ deploy:
 REMOTE_SCTL := ~/projects/lyra/deploy/supervisor/supervisorctl.sh
 
 # make remote [service] [action]
-#   Services: lyra, hub, telegram, discord (default: all lyra programs)
-#   Actions:  reload, start, stop, status, logs, errors (default: status)
+#   service: lyra or empty → all lyra_* programs | <shortname> → lyra_<shortname>
+#   action:  reload | start | stop | status (default) | logs | errors | update
+#   Single SSH call — service/action disambiguation happens on the remote.
 remote:
 	$(require_machine1)
-	@SVC="$(word 1,$(_LYRA_CMD))"; \
-	ACTION="$(word 2,$(_LYRA_CMD))"; \
-	SCTL="$(REMOTE_SCTL)"; \
-	case "$$SVC" in \
-	  lyra)     PROGS="lyra_hub lyra_telegram lyra_discord" ;; \
-	  hub)      PROGS="lyra_hub" ;; \
-	  telegram) PROGS="lyra_telegram" ;; \
-	  discord)  PROGS="lyra_discord" ;; \
-	  stt)      PROGS="lyra_stt" ;; \
-	  tts)      PROGS="lyra_tts" ;; \
-	  reload|start|stop|status|update|logs|errors|"") \
-	    ACTION="$$SVC"; PROGS="lyra_hub lyra_telegram lyra_discord" ;; \
-	  *) echo "Unknown service: $$SVC"; exit 1 ;; \
-	esac; \
+	@ssh $(DEPLOY_HOST) '\
+	SVC="$(word 1,$(_LYRA_CMD))"; ACTION="$(word 2,$(_LYRA_CMD))"; \
+	SCTL=$(REMOTE_SCTL); \
+	CONF=$(DEPLOY_DIR)/deploy/supervisor/conf.d; \
+	rdisc() { grep -rh "^\[program:lyra_" "$$CONF" | tr -d "[]" | cut -d: -f2 | tr "\n" " "; }; \
+	if   [ -z "$$SVC" ] || [ "$$SVC" = lyra ]; then PROGS=$$(rdisc); FIRST=lyra_hub; \
+	elif [ -f "$$CONF/lyra_$$SVC.conf" ];       then PROGS="lyra_$$SVC"; FIRST="$$PROGS"; \
+	else ACTION="$$SVC"; PROGS=$$(rdisc); FIRST=lyra_hub; fi; \
 	case "$${ACTION:-status}" in \
-	  reload)  ssh $(DEPLOY_HOST) "$$SCTL restart $$PROGS" ;; \
-	  start)   ssh $(DEPLOY_HOST) "$$SCTL start $$PROGS" ;; \
-	  stop)    ssh $(DEPLOY_HOST) "$$SCTL stop $$PROGS" ;; \
-	  status)  ssh $(DEPLOY_HOST) "$$SCTL status $$PROGS" ;; \
-	  update)  ssh $(DEPLOY_HOST) "$$SCTL reread && $$SCTL update" ;; \
-	  logs)    FIRST=$${PROGS%% *}; ssh $(DEPLOY_HOST) "$$SCTL tail -f $$FIRST" ;; \
-	  errors)  FIRST=$${PROGS%% *}; ssh $(DEPLOY_HOST) "$$SCTL tail -f $$FIRST stderr" ;; \
-	  *) echo "Unknown action: $$ACTION"; exit 1 ;; \
-	esac
+	  reload)  $$SCTL restart $$PROGS ;; \
+	  start)   $$SCTL start $$PROGS ;; \
+	  stop)    $$SCTL stop $$PROGS ;; \
+	  status)  $$SCTL status $$PROGS ;; \
+	  update)  $$SCTL reread && $$SCTL update ;; \
+	  logs)    $$SCTL tail -f $$FIRST ;; \
+	  errors)  $$SCTL tail -f $$FIRST stderr ;; \
+	  *)       echo "Unknown action: $$ACTION"; exit 1 ;; \
+	esac'
 
 # ── Dev tools ────────────────────────────────────────────────────────────────
 

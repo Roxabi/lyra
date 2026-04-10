@@ -2,6 +2,10 @@
 
 RED phase — these tests will fail until S3 implementation lands.
 Source: src/lyra/llm/drivers/cli.py
+
+Note: AsyncMock accepts arbitrary kwargs silently, which can hide signature
+mismatches. We rely on pyright (strict mode) to catch these. If a test passes
+but CI fails on signature changes, the mock may need spec_set enforcement.
 """
 
 from __future__ import annotations

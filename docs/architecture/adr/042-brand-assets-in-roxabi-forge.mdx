@@ -1,0 +1,115 @@
+---
+title: "ADR-042: Brand Assets Belong in ~/.roxabi/forge, Not in Repos"
+description: Brand assets are removed from all project repos and live exclusively in ~/.roxabi/forge/{project}/brand/, synced via Google Drive. Supersedes ADR-034.
+---
+
+## Status
+
+Accepted — supersedes ADR-034
+
+## Context
+
+ADR-034 (2026-03) proposed a manifest-driven `brand/` pipeline inside the lyra repo: `exploration/`, `selected/`, `docs/`, `manifest.json`. The structure was accepted but never fully executed. The directory stayed flatter than prescribed, and over the following weeks the actual workflow diverged from the ADR's assumptions in a consistent direction:
+
+- Exploration artifacts (galleries, concept PNGs, benchmark scripts) gravitated to `~/.roxabi/forge/lyra/brand/` — the natural home for AI generation sessions, synced to Google Drive via `make forge sync`.
+- A small curated subset stayed in the repo: `BRAND-BOOK.md`, `BRAND-IDENTITY.md`, `forge.yml`, four SVGs, two avatar PNGs, one prompt directory, and two utility scripts.
+- The forge brand-book loader acquired multiple discovery paths (`--brand-book PATH` → repo `brand/` → `~/.roxabi/forge/…`) with precedence rules to paper over the split.
+
+The result was a **split brain**: two locations, unclear authority, and symlinks that inverted the natural direction of the workflow (repo → forge, when the actual flow is forge → everywhere). ADR-034's core assumption — that brand stays in the repo — conflicted with the emerging reality.
+
+The same drift was visible in two other projects. Both `roxabi-plugins` and `roxabi-site` had `brand/` directories that were similarly thin in the repo and rich in `~/.roxabi/forge/`.
+
+### Why brand and code do not belong in the same repo
+
+Code and brand iterate on different cadences and through different workflows. Code changes move through git PRs, CI, and deploy pipelines. Brand work is visual-first and AI-generation-driven: run a batch, open a gallery, pick a winner, repeat. Mixing them in one repo creates noise in both directions — brand PRs are meaningless diffs of binary files; `git status` during brand sessions is always dirty.
+
+Beyond cadence, there is a cross-project lineage concern. The `forge.yml` brand-book format supports an `extends:` key for inheriting a shared brand base across projects (`lyra`, future `voicecli`). A shared brand lineage naturally belongs outside any single repo.
+
+Finally, `~/.roxabi/forge/` already has a sync layer (`make forge sync` via Google Drive) and is the established home for all exploration artifacts. Pulling brand into that layer — rather than keeping a partial mirror in each repo — follows the path of least resistance for the actual workflow.
+
+---
+
+## Decision
+
+**Brand assets no longer live in project repos.** The canonical location for all brand-related files is `~/.roxabi/forge/{project}/brand/`.
+
+This applies to all three projects that currently have a `brand/` directory: `lyra`, `roxabi-plugins`, `roxabi-site`.
+
+### Boundary definition
+
+| Location | What lives there |
+|----------|-----------------|
+| `{repo}/` | Code, `artifacts/` (frames/specs/plans/analyses), `docs/` (ADRs, architecture, user docs) |
+| `~/.roxabi/forge/{project}/brand/` | `forge.yml`, `BRAND-BOOK.md`, `BRAND-IDENTITY.md`, logo/mark SVGs, avatar PNGs, AI generation prompts (`.md`), one-time generation/conversion scripts (`.py`), galleries, concepts, manifests — everything brand-related |
+
+No `brand/` directory exists in any project repo after migration.
+
+### Brand-book loader simplification
+
+With a single canonical location, the forge brand-book loader discovery order becomes:
+
+1. `--brand-book PATH` (explicit override)
+2. `~/.roxabi/forge/{project}/brand/forge.yml`
+3. `~/.roxabi/forge/{project}/brand/BRAND-BOOK.md`
+4. Track B (no brand book — safe degraded mode)
+
+The repo fallback paths are dropped entirely.
+
+### Sync and versioning
+
+`~/.roxabi/forge/` is synced via `make forge sync` (Google Drive). Brand assets on both machines (`roxabitower`, `roxabituwer`) are kept in sync through this mechanism. Nothing in the production runtime path reads from `~/.roxabi/forge/` — it is a design-time resource only.
+
+---
+
+## Tradeoffs
+
+**Loss of git history for brand.** There is no `git blame` on brand changes after migration. Recovery relies on Google Drive file history or manual backup. Three recent brand commits in lyra (`39db826`, `6bd0a37`, `a80771b`) become orphaned history in the repo — documented here for posterity.
+
+**Fresh machine bootstrap.** A new clone of `lyra` will have no brand book until the user runs `make forge sync`. Forge skills invoked before sync run in Track B (no brand). This is acceptable: the set of machines is small and known, and sync is idempotent.
+
+**PR review of brand changes moves out-of-band.** Brand iterations are reviewed through forge gallery deploys (`make forge deploy`), not through GitHub PRs. This is an acceptable loss because brand work is visual-first; code-review tooling adds no value here.
+
+**Google Drive is a single point of failure.** Mitigated by local caches on both machines and by the fact that the production lyra runtime never reads from `~/.roxabi/forge/`.
+
+**Cross-repo references become stale.** Historical artifacts and ADRs that reference `brand/` paths (issues #419 and its children, ADR-033, ADR-034) will be incorrect after migration. We accept this and do not rewrite history — they remain as pre-migration records.
+
+---
+
+## Consequences
+
+### Positive
+
+- `git status` in each project is pure code signal — no binary noise, no dirty tree during brand sessions
+- Single source of truth for each project's brand at a predictable, consistent path
+- Brand-book loader reduces from multi-path precedence logic to a simple ordered search in one directory
+- Cross-project brand inheritance via `forge.yml` `extends:` becomes natural (no repo boundary to cross)
+- No git-LFS or binary bloat in any project repo
+
+### Negative
+
+- Loss of git-based brand history (see tradeoffs above)
+- Fresh-clone bootstrap requires a `make forge sync` before brand-dependent tools work
+- Brand change review is out-of-band (gallery deploys rather than PRs)
+
+### Neutral
+
+- ADR-034 is superseded by this ADR
+- The forge brand-book loader docs in `roxabi-plugins` are updated separately to drop repo paths from Discovery
+- `CLAUDE.md` files in affected projects are updated to point to `~/.roxabi/forge/{project}/brand/` as the canonical brand location
+- `brand/concepts/` gitignore rules in lyra's `.gitignore` become dead and are removed
+- Artifacts and ADRs that referenced old `brand/` paths are left as historical records; their paths reflect the pre-migration state
+
+---
+
+## Migration Record
+
+The following steps were executed as part of this ADR's landing commit:
+
+1. **lyra** — moved `brand/forge.yml`, `BRAND-BOOK.md`, `BRAND-IDENTITY.md`, 4 SVGs, `avatar/`, `prompts/`, `scripts/` to `~/.roxabi/forge/lyra/brand/`. Avatar PNGs were already present in `~/.roxabi/forge/lyra/brand/concepts/avatar-final/` with identical md5 checksums — deleted from repo only. Repo `brand/` directory deleted.
+2. **roxabi-plugins** — moved `brand/forge.yml` to `~/.roxabi/forge/roxabi-plugins/brand/forge.yml`. Repo `brand/` directory deleted.
+3. **roxabi-site** — moved `brand/BRAND-BOOK.md` to `~/.roxabi/forge/roxabi-site/brand/BRAND-BOOK.md`. Repo `brand/` directory deleted.
+4. **Self-references updated** — `forge.yml` internal paths, `BRAND-BOOK.md:342`, `docs/architecture/comfyui-puliid-setup.md:149,153,202`.
+5. **`.gitignore` in lyra** — removed dead `brand/concepts/**/*.{png,jpg,jpeg,webp,gif}` rules.
+6. **ADR-034** — marked Superseded by ADR-042 in its Status section.
+7. **Forge brand-book loader docs** in `roxabi-plugins` updated to drop repo paths from Discovery.
+8. **`CLAUDE.md` files** in affected projects updated to point to the new canonical location.

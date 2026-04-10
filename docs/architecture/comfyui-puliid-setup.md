@@ -146,11 +146,11 @@ ComfyUI expects different key names than HF diffusers:
 - `x_embedder` → `img_in`
 - `*.linear.weight` → `*.lin.weight` (modulation layers)
 
-Run the conversion script (tracked at `brand/scripts/convert_flux2_klein_hf_to_comfy.py`):
+Run the conversion script (tracked at `~/.roxabi/forge/lyra/brand/scripts/convert_flux2_klein_hf_to_comfy.py`, per ADR-042):
 
 ```bash
 cd ~/ComfyUI
-cp ~/projects/lyra/brand/scripts/convert_flux2_klein_hf_to_comfy.py .
+cp ~/.roxabi/forge/lyra/brand/scripts/convert_flux2_klein_hf_to_comfy.py .
 venv/bin/python convert_flux2_klein_hf_to_comfy.py
 # Output: models/diffusion_models/flux2-klein-4b-comfy.safetensors (~7.2 GB)
 # Takes ~5 min. Runs once only.
@@ -199,7 +199,7 @@ wget "https://huggingface.co/Fayens/Pulid-Flux2/resolve/main/pulid_flux2_klein_v
 
 ```bash
 cd ~/ComfyUI
-cp ~/projects/lyra/brand/scripts/smoke_test_421.py .
+cp ~/.roxabi/forge/lyra/brand/scripts/smoke_test_421.py .
 venv/bin/python smoke_test_421.py
 ```
 

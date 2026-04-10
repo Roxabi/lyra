@@ -1,0 +1,96 @@
+# ADR-001: Hub-and-Spoke Supervisor Pattern
+
+## Status
+
+Accepted
+
+## Context
+
+We manage multiple daemon processes across several projects (lyra, voiceCLI, imageCLI, forge, idna, litellm). These need to run on two machines with different operational profiles:
+
+| Machine | Role | Uptime | Supervisor Behavior |
+|---------|------|--------|---------------------|
+| ROXABITOWER (local) | Dev + AI workloads | On-demand | Lazy startup via `make` targets |
+| roxabituwer (prod) | Always-on hub | 24/7 | Auto-start via systemd on boot |
+
+Previously, we had two supervisor setups in lyra:
+- `lyra/supervisor/` — configs + scripts (used via symlinks)
+- `lyra/deploy/supervisor/` — standalone supervisord for prod
+
+This caused confusion and duplicate supervisord processes running simultaneously.
+
+## Decision
+
+Adopt a **hub-and-spoke supervisor pattern** with clear separation:
+
+### Local (ROXABITOWER)
+
+```
+~/projects/                          # Hub supervisor
+├── supervisord.conf                 # Main supervisor config
+├── conf.d/
+│   ├── lyra_hub.conf → lyra/deploy/supervisor/conf.d/lyra_hub.conf
+│   ├── lyra_telegram.conf → ...
+│   ├── voicecli_tts.conf → voiceCLI/supervisor/conf.d/...
+│   ├── forge.conf → roxabi-plugins/...
+│   └── litellm.conf → ~/.litellm/supervisor/litellm.conf
+└── scripts/
+    ├── start.sh                     # Start supervisord
+    └── supervisorctl.sh             # Control wrapper
+
+Each project registers itself via:
+  - conf.d/<project>.mk   → Makefile delegation
+  - conf.d/<program>.conf → symlink to project's config
+```
+
+### Production (roxabituwer)
+
+```
+~/projects/lyra/deploy/supervisor/   # Standalone supervisor
+├── supervisord.conf
+├── conf.d/
+│   ├── lyra_hub.conf
+│   ├── lyra_telegram.conf
+│   └── ...
+├── scripts/
+│   ├── run_hub.sh
+│   └── run_adapter.sh
+├── start.sh                         # Started by systemd
+└── supervisorctl.sh
+
+~/.config/systemd/user/lyra.service  # Systemd unit
+  ExecStart=%h/projects/lyra/deploy/supervisor/start.sh --all
+```
+
+### Key Principles
+
+1. **Configs live in project repos** — Each project owns its `supervisor/conf.d/*.conf` files, version-controlled
+2. **Hub aggregates via symlinks** — Local `~/projects/conf.d/` symlinks to project configs
+3. **Prod runs standalone** — Production uses `lyra/deploy/supervisor/` directly, managed by systemd
+4. **Cross-project services** — Services like litellm live in `~/.<service>/supervisor/`, symlinked to hub
+
+## Consequences
+
+### Positive
+
+- **Single supervisord process** locally (no duplicates)
+- **Clear ownership** — each project owns its configs
+- **Lazy startup** — `make lyra` auto-starts supervisor if needed
+- **Systemd integration** — prod auto-starts on boot via linger
+
+### Negative
+
+- **2ndBrain runs separate supervisor** — knowledge_bot has `autostart=true` in its own supervisord (acceptable for isolation)
+- **litellm config not versioned** — lives in `~/.litellm/`, not in a repo (acceptable for infrastructure-only service)
+
+### Mitigations
+
+- 2ndBrain isolation is intentional — knowledge_bot has different lifecycle requirements
+- litellm can be moved to a repo later if needed
+
+## Implementation
+
+- Consolidated `lyra/supervisor/` into `lyra/deploy/supervisor/` (2026-04-10)
+- Updated hub symlinks in `~/projects/conf.d/`
+- Fixed orphaned `scripts/supervisorctl.sh` with stale paths
+- Verified prod systemd unit `lyra.service` is active and managing supervisord

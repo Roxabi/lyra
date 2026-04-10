@@ -201,8 +201,6 @@ remote:
 nats-setup:
 	@bash deploy/nats/setup.sh
 
-nats-install: nats-setup  ## deprecated alias
-
 nats-deploy:              ## run NATS setup on prod, then reload supervisor conf
 	$(require_machine1)
 	@echo "Running NATS setup on $(DEPLOY_HOST)..."

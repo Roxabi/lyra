@@ -32,7 +32,7 @@ from lyra.stt import is_whisper_noise
 _AGENTS_DIR = Path(__file__).resolve().parent
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable
+    from collections.abc import AsyncIterator
 
     from lyra.core.cli_pool import CliPool
     from lyra.core.render_events import RenderEvent
@@ -187,8 +187,6 @@ class SimpleAgent(AgentBase):
         self,
         msg: InboundMessage,
         pool: Pool,
-        *,
-        on_intermediate: "Callable[[str], Awaitable[None]] | None" = None,
     ) -> "Response | AsyncIterator[RenderEvent]":
         self._maybe_reload()
 
@@ -266,15 +264,11 @@ class SimpleAgent(AgentBase):
             )
             return processor.process(stream_iter)
 
-        # Use injected callback only if show_intermediate is enabled
-        cb = on_intermediate if self.config.show_intermediate else None
-
         result = await self._provider.complete(
             pool.pool_id,
             text,
             model_cfg,
             pool._system_prompt or self.config.system_prompt,
-            on_intermediate=cb,
         )
 
         if not result.ok:

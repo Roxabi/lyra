@@ -52,35 +52,11 @@ class TTSConfig(BaseModel):
     language: str | None = None  # LYRA_TTS_LANGUAGE env var
 
 
-def _deprecated(old_var: str, new_var: str) -> str | None:
-    val = os.environ.get(old_var)
-    if val is not None:
-        import warnings
-        warnings.warn(
-            f"{old_var} is deprecated; use {new_var} instead",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-    return val
-
-
 def load_tts_config() -> TTSConfig:
     return TTSConfig(
-        engine=(
-            os.environ.get("LYRA_TTS_ENGINE")
-            or _deprecated("TTS_ENGINE", "LYRA_TTS_ENGINE")
-            or None
-        ),
-        voice=(
-            os.environ.get("LYRA_TTS_VOICE")
-            or _deprecated("TTS_VOICE", "LYRA_TTS_VOICE")
-            or None
-        ),
-        language=(
-            os.environ.get("LYRA_TTS_LANGUAGE")
-            or _deprecated("TTS_LANGUAGE", "LYRA_TTS_LANGUAGE")
-            or None
-        ),
+        engine=os.environ.get("LYRA_TTS_ENGINE"),
+        voice=os.environ.get("LYRA_TTS_VOICE"),
+        language=os.environ.get("LYRA_TTS_LANGUAGE"),
     )
 
 

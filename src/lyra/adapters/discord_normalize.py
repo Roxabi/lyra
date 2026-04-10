@@ -114,7 +114,6 @@ def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing con
         text_raw=raw.content,
         attachments=attachments,
         timestamp=timestamp,
-        trust="user",
         trust_level=trust_level,
         is_admin=is_admin,
         roles=roles,

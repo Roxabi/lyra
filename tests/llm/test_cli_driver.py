@@ -60,7 +60,7 @@ class TestClaudeCliDriverComplete:
 
         # Assert
         pool.send.assert_awaited_once_with(
-            "my-pool", "hello", model_cfg, "be helpful", on_intermediate=None
+            "my-pool", "hello", model_cfg, "be helpful"
         )
 
     async def test_complete_translates_success(self) -> None:
@@ -139,7 +139,7 @@ class TestClaudeCliDriverComplete:
 
         # Assert — pool still called correctly (messages kwarg silently ignored)
         pool.send.assert_awaited_once_with(
-            "my-pool", "hello", model_cfg, "", on_intermediate=None
+            "my-pool", "hello", model_cfg, ""
         )
         assert result.ok is True
 

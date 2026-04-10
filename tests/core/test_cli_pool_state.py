@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from lyra.core.agent_config import ModelConfig
 from lyra.core.cli_pool import CliPool, _ProcessEntry
-from lyra.core.cli_protocol import CliResult, read_until_result
+from lyra.core.cli_protocol import CliResult
 
 from .conftest_cli_pool import (
     _PATCH_TARGET,
@@ -19,55 +16,8 @@ from .conftest_cli_pool import (
     DEFAULT_MODEL,
     INIT_LINE,
     RESULT_LINE,
-    _ndjson,
     make_fake_proc,
 )
-
-# ---------------------------------------------------------------------------
-# T5 — on_intermediate exception does not propagate
-# ---------------------------------------------------------------------------
-
-
-class TestOnIntermediateException:
-    """Exception in on_intermediate is swallowed; result still returned (T5)."""
-
-    async def test_on_intermediate_exception_does_not_propagate(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Exception in on_intermediate is caught; CliResult is still returned ok."""
-        # Intermediates are buffered: the callback fires when flushing the
-        # *previous* pending turn on arrival of a new one, so we need at
-        # least 3 assistant turns for the flush to happen.
-        second_assistant = _ndjson(
-            {
-                "type": "assistant",
-                "message": {"content": [{"type": "text", "text": "Second turn"}]},
-            }
-        )
-        third_assistant = _ndjson(
-            {
-                "type": "assistant",
-                "message": {"content": [{"type": "text", "text": "Third turn"}]},
-            }
-        )
-        proc = make_fake_proc(
-            [INIT_LINE, ASSISTANT_LINE, second_assistant, third_assistant, RESULT_LINE]
-        )
-
-        async def _raising_cb(text: str) -> None:
-            raise RuntimeError("callback exploded")
-
-        entry = _ProcessEntry(proc=proc, pool_id="pool-cb", model_config=DEFAULT_MODEL)
-        with caplog.at_level(logging.WARNING, logger="lyra.core.cli_protocol"):
-            result = await read_until_result(
-                entry, pool_id="pool-cb", on_intermediate=_raising_cb
-            )
-
-        # Result must still be returned successfully
-        assert result.ok
-        # The exception must have been logged at WARNING level
-        assert any("on_intermediate" in r.message.lower() for r in caplog.records)
-
 
 # ---------------------------------------------------------------------------
 # TestCliPoolSpawnCwd

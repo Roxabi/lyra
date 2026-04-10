@@ -116,4 +116,3 @@ The unified single-process mode (`lyra start` → `_bootstrap_unified`) runs hub
 ## Gotchas
 
 <!-- Add project-specific gotchas here -->
-

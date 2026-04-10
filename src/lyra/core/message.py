@@ -93,9 +93,6 @@ class InboundMessage:
     locale: str | None = None
     # Whisper-detected spoken language (e.g. "fr") — distinct from locale
     language: str | None = None
-    # Deprecated: use trust_level (TrustLevel) for authorization.
-    # Removal tracked separately.
-    trust: Literal["user", "system"] = "user"
     platform_meta: dict = field(default_factory=dict)
     routing: RoutingContext | None = None
     command: CommandContext | None = None

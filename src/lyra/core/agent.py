@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable
+    from collections.abc import AsyncIterator
 
     from lyra.stt import STTProtocol
     from lyra.tts import TtsProtocol
@@ -252,6 +252,4 @@ class AgentBase(ABC, SessionManager):
         self,
         msg: InboundMessage,
         pool: Pool,
-        *,
-        on_intermediate: "Callable[[str], Awaitable[None]] | None" = None,
     ) -> "Response | AsyncIterator[RenderEvent]": ...

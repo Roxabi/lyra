@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -186,8 +186,6 @@ class CliPool(CliPoolWorkerMixin):
         message: str,
         model_config: ModelConfig,
         system_prompt: str = "",
-        *,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> CliResult:
         """Send a message to the persistent process for this pool.
 
@@ -236,7 +234,6 @@ class CliPool(CliPoolWorkerMixin):
                         entry,
                         message,
                         pool_id,
-                        on_intermediate=on_intermediate,
                         default_timeout=self._default_timeout,
                         opts=self._protocol_opts,
                     )

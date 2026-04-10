@@ -50,24 +50,8 @@ class STTConfig(BaseModel):
     language_fallback: str | None = None
 
 
-def _deprecated(old_var: str, new_var: str) -> str | None:
-    val = os.environ.get(old_var)
-    if val is not None:
-        import warnings
-        warnings.warn(
-            f"{old_var} is deprecated; use {new_var} instead",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-    return val
-
-
 def load_stt_config() -> STTConfig:
-    model_size = (
-        os.environ.get("LYRA_STT_MODEL")
-        or _deprecated("STT_MODEL_SIZE", "LYRA_STT_MODEL")
-        or "large-v3-turbo"
-    )
+    model_size = os.environ.get("LYRA_STT_MODEL") or "large-v3-turbo"
     return STTConfig(model_size=model_size)
 
 

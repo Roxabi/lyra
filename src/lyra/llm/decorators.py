@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 
 from lyra.core.agent_config import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker
@@ -41,7 +41,6 @@ class RetryDecorator:
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> LlmResult:
         total_attempts = self._max_retries + 1
         result: LlmResult | None = None
@@ -52,7 +51,6 @@ class RetryDecorator:
                 model_cfg,
                 system_prompt,
                 messages=messages,
-                on_intermediate=on_intermediate,
             )
             if result.ok:
                 return result
@@ -122,7 +120,6 @@ class CircuitBreakerDecorator:
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> LlmResult:
         if self._cb.is_open():
             status = self._cb.get_status()
@@ -139,7 +136,6 @@ class CircuitBreakerDecorator:
             model_cfg,
             system_prompt,
             messages=messages,
-            on_intermediate=on_intermediate,
         )
         if result.ok:
             self._cb.record_success()  # no-op when CLOSED; intentional

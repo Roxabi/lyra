@@ -12,7 +12,7 @@ import logging
 import re
 import time
 from collections import deque
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -207,7 +207,6 @@ class SmartRoutingDecorator:
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
         msg: InboundMessage | None = None,
     ) -> LlmResult:
         if not self._config.enabled:
@@ -217,7 +216,6 @@ class SmartRoutingDecorator:
                 model_cfg,
                 system_prompt,
                 messages=messages,
-                on_intermediate=on_intermediate,
             )
 
         # Classify and route
@@ -259,7 +257,6 @@ class SmartRoutingDecorator:
             routed_cfg,
             system_prompt,
             messages=messages,
-            on_intermediate=on_intermediate,
         )
 
         # Record decision

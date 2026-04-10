@@ -161,7 +161,6 @@ class Pool:
         self._cancel_on_new_message = value
 
     # Session callback registration (Law of Demeter compliance)
-
     def has_session_update_fn(self) -> bool:
         """Check whether a session persistence callback is registered."""
         return self._observer.has_session_update_fn()
@@ -172,6 +171,7 @@ class Pool:
         reset_fn: Callable[[], Awaitable[None]] | None = None,
         resume_fn: Callable[[str], Awaitable[bool]] | None = None,
         workspace_fn: Callable[[Path], Awaitable[None]] | None = None,
+        update_fn: Callable[[InboundMessage, str, str], Awaitable[None]] | None = None,
     ) -> None:
         """Wire session callbacks. Each is registered only if not already set."""
         if reset_fn is not None and self._session_reset_fn is None:
@@ -180,6 +180,8 @@ class Pool:
             self._session_resume_fn = resume_fn
         if workspace_fn is not None and self._switch_workspace_fn is None:
             self._switch_workspace_fn = workspace_fn
+        if update_fn is not None and not self._observer.has_session_update_fn():
+            self._observer.register_session_update_fn(update_fn)
 
     @property
     def last_active(self) -> float:

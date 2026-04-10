@@ -285,7 +285,7 @@ Never: anthropomorphism that implies awareness Lyra does not have, possessivenes
 | Forge Floor | `#18181f` | Surface elevated 1 — cards, panels |
 | Steel | `#2a2a35` | Borders, dividers |
 | Forge Orange | `#e85d04` | Primary accent — actions, highlights, glow |
-| Steel Gray | `#6b7280` | Muted text, secondary labels |
+| Steel Gray | `#6b7280` | Dim metadata, tertiary labels — maps to `--text-dim` on doc surfaces |
 | Spark White | `#fafafa` | Body text, node centres, wordmark |
 | Ember | `#f97316` | Secondary accent — glow softening |
 | Deep Iron | `#1f2937` | Alternative surface |
@@ -314,6 +314,7 @@ Documentation surfaces and technical diagrams may use additional semantic colour
 
 | Token | Hex | Role |
 |-------|-----|------|
+| Mist | `#9ca3af` | Intermediate text emphasis — subtitles, label rows (doc surfaces only); maps to `--text-muted` |
 | Teal | `#06b6d4` | Status: built / active, architecture nodes |
 | Green | `#10b981` | Status: success, built-in badges |
 | Amber | `#f59e0b` | Status: phase 2 / warning |
@@ -326,6 +327,24 @@ Documentation surfaces and technical diagrams may use additional semantic colour
 Syntax highlighting colours (used in code blocks only) are exempt from this table — they follow standard editor themes.
 
 Do not use utility colours in marketing, landing, or brand surfaces. In documentation, utility colours must not compete with Forge Orange for visual hierarchy.
+
+### Text Hierarchy (Documentation surfaces)
+
+Documentation surfaces (split-file guides, charts, galleries, epics) use a three-tier text hierarchy keyed to the CSS custom properties in `aesthetics/lyra.css`. The tiers are **ordered by emphasis, not by aesthetic preference** — body copy must always land on Spark White, never on a dimmer tier.
+
+| Tier | CSS token | Dark hex | Light hex | Role |
+|------|-----------|----------|-----------|------|
+| 1 — Body | `--text` | Spark White `#fafafa` | `#1c1917` | All running prose, card body, list items, table cells. **Default for any text the reader is meant to read.** |
+| 2 — Emphasis | `--text-muted` | Mist `#9ca3af` | `#57534e` | Subtitles, section subtitles, label rows above a value, muted captions under a heading. Intermediate emphasis only — never used for body copy. |
+| 3 — Metadata | `--text-dim` | Steel Gray `#6b7280` | `#78716c` | Timestamps, file paths, row indices, table captions, chip labels — peripheral metadata the reader scans but does not read in full. |
+
+**Rules:**
+- Body text always uses Tier 1 (`--text`). Using Tier 2 for body copy fails readability on Obsidian and violates `deliver_must_match` rules in `brand/forge.yml`.
+- Tier 2 (`--text-muted`) is reserved for subtitle/label rows that sit *next to* Tier 1 body copy. If a block has no Tier 1 text nearby, Tier 2 is the wrong choice — lift it to Tier 1.
+- Tier 3 (`--text-dim`) is scan-only. Never apply it to a sentence the reader needs to read.
+- Marketing and landing surfaces do not use Tiers 2 or 3 — the marketing voice is declarative and runs entirely on Tier 1.
+
+This convention is enforced at the Deliver phase of every forge skill (see `plugins/forge/skills/*/SKILL.md § Deliver`).
 
 ### Typography
 

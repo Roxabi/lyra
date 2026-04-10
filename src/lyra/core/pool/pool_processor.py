@@ -276,12 +276,6 @@ class PoolProcessor:
         if _ensure_fn is not None:
             await _ensure_fn(pool)  # S3 — cache system prompt
 
-        async def _intermediate_cb(turn_text: str) -> None:
-            await self._safe_dispatch(
-                msg,
-                Response(content=f"⏳ {turn_text}", intermediate=True),
-            )
-
         # Processor pre-hook: enrich message before LLM (B1 — issue #363).
         # pool.append gets the original so history shows the real command;
         # agent.process gets the enriched version so the LLM sees scraped content.
@@ -318,7 +312,7 @@ class PoolProcessor:
                         await self._safe_dispatch(msg, Response(content=_error_reply))
                         return
 
-        result = agent.process(msg, pool, on_intermediate=_intermediate_cb)
+        result = agent.process(msg, pool)
         if not isinstance(result, collections.abc.AsyncIterator):  # pyright: ignore[reportUnnecessaryIsInstance]
             # Regular coroutine — await to get the actual result
             try:

@@ -64,13 +64,11 @@ async def send_and_read(  # noqa: PLR0913 — protocol fn: positional args map 1
     message: str,
     pool_id: str,
     *,
-    on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     default_timeout: float = 300,
     opts: CliProtocolOptions = CliProtocolOptions(),
 ) -> CliResult:
     """Write *message* to *entry*'s stdin as NDJSON, then read until a result.
 
-    ``on_intermediate`` fires for each assistant turn before the final result.
     ``default_timeout`` is retried up to ``opts.max_idle_retries`` times.
     """
     from .cli_pool import _ProcessEntry  # local import to avoid circularity
@@ -96,7 +94,6 @@ async def send_and_read(  # noqa: PLR0913 — protocol fn: positional args map 1
     return await read_until_result(
         entry,
         pool_id=pool_id,
-        on_intermediate=on_intermediate,
         default_timeout=default_timeout,
         opts=opts,
     )
@@ -106,13 +103,11 @@ async def read_until_result(  # noqa: C901, PLR0915
     entry: object,
     *,
     pool_id: str,
-    on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     default_timeout: float = 300,
     opts: CliProtocolOptions = CliProtocolOptions(),
 ) -> CliResult:
     """Read stdout lines from *entry*'s process until a ``result`` event arrives.
 
-    ``on_intermediate`` fires for each intermediate assistant turn.
     Raises no exceptions — returns ``CliResult(error=...)`` on failure.
     """
     from .cli_pool import _ProcessEntry  # local import to avoid circularity
@@ -126,9 +121,6 @@ async def read_until_result(  # noqa: C901, PLR0915
     idle_retries = 0
     session_id: str | None = None
     result_parts: list[str] = []  # accumulate text across all assistant events
-    assistant_turn_count = 0
-    # Buffer current turn; previous turn sent as ⏳ intermediate
-    pending_intermediate: str | None = None
 
     try:
         while True:
@@ -185,39 +177,13 @@ async def read_until_result(  # noqa: C901, PLR0915
                 blocks = data.get("message", {}).get("content", [])
                 texts = [b["text"] for b in blocks if b.get("type") == "text"]
                 result_parts.extend(texts)
-                assistant_turn_count += 1
-                if on_intermediate and texts and assistant_turn_count >= 2:
-                    # Flush the *previous* buffered turn as ⏳ before
-                    # buffering the current one.
-                    if pending_intermediate is not None:
-                        try:
-                            await asyncio.wait_for(
-                                on_intermediate(pending_intermediate),
-                                timeout=opts.intermediate_timeout,
-                            )
-                        except asyncio.TimeoutError:
-                            log.warning(
-                                "[pool:%s] on_intermediate callback timed"
-                                " out (>5s) — dropping",
-                                pool_id,
-                            )
-                        except Exception:
-                            log.warning(
-                                "[pool:%s] on_intermediate callback failed",
-                                pool_id,
-                                exc_info=True,
-                            )
-                    pending_intermediate = "\n\n".join(texts)
 
             if msg_type == "result":
                 if not session_id:
                     session_id = data.get("session_id", "")
                 if session_id:
                     entry.update_session_id(session_id)
-                if pending_intermediate is not None:
-                    result_text = pending_intermediate
-                else:
-                    result_text = data.get("result") or "\n\n".join(result_parts)
+                result_text = data.get("result") or "\n\n".join(result_parts)
                 # CLI puts detailed errors in errors[] (e.g. "No conversation found")
                 errors = data.get("errors", [])
                 error_detail = errors[0] if errors else ""
@@ -263,7 +229,6 @@ class StreamingIterator:
         *,
         pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
         default_timeout: float = 300,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
         opts: CliProtocolOptions = CliProtocolOptions(),
     ) -> None:
         from .cli_pool import _ProcessEntry
@@ -279,12 +244,6 @@ class StreamingIterator:
         self._pending: deque[LlmEvent] = deque()
         self.session_id: str | None = None
         self.error: str | None = None
-        if on_intermediate is not None:
-            log.warning(
-                "[pool:%s] StreamingIterator: on_intermediate is deprecated and has"
-                " no effect — use the LlmEvent iterator instead",
-                pool_id,
-            )
 
     def __aiter__(self) -> "StreamingIterator":
         return self
@@ -452,14 +411,12 @@ async def send_and_read_stream(  # noqa: PLR0913 — protocol fn: positional arg
     *,
     pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
     default_timeout: float = 300,
-    on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     opts: CliProtocolOptions = CliProtocolOptions(),
 ) -> StreamingIterator:
     """Write *message* to stdin and return a StreamingIterator[LlmEvent].
 
     The iterator exposes ``session_id`` (None until parsed from the stream).
     Call ``aclose()`` to kill the subprocess on cancellation.
-    ``on_intermediate`` is deprecated — accepted but has no effect.
     """
     from .cli_pool import _ProcessEntry
 
@@ -469,7 +426,6 @@ async def send_and_read_stream(  # noqa: PLR0913 — protocol fn: positional arg
         it = StreamingIterator(
             entry,
             pool_id,
-            on_intermediate=on_intermediate,
             opts=opts,
         )
         it._done = True
@@ -491,7 +447,6 @@ async def send_and_read_stream(  # noqa: PLR0913 — protocol fn: positional arg
             entry,
             pool_id,
             pool_reset_fn=pool_reset_fn,
-            on_intermediate=on_intermediate,
             opts=opts,
         )
         await it._cleanup()
@@ -502,6 +457,5 @@ async def send_and_read_stream(  # noqa: PLR0913 — protocol fn: positional arg
         pool_id,
         pool_reset_fn=pool_reset_fn,
         default_timeout=default_timeout,
-        on_intermediate=on_intermediate,
         opts=opts,
     )

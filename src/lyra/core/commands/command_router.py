@@ -227,8 +227,11 @@ class CommandRouter:
             Prefer ``@register`` from ``lyra.core.processor_registry`` for new commands.
             Processor commands land in conversation history and support
             follow-up questions.
-            Session commands will be removed once all callers are migrated.
             See ADR-031 (docs/architecture/adr/031-*.mdx).
+
+        **Exception:** ``/add-vault`` is the ONLY session command allowed to remain
+        on the deprecated API because it performs a direct vault write without LLM
+        involvement — processor commands are for pre/post hooks around LLM calls.
 
         *name* must not include the leading slash (e.g. ``"vault-add"``).
         Raises ``ValueError`` if the name clashes with a builtin or plugin command.

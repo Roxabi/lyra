@@ -315,32 +315,8 @@ class TestSendAndReadStream:
         # Assert — reset_fn wired through correctly
         pool_reset_fn.assert_awaited_once()
 
-    async def test_on_intermediate_accepted_but_deprecated(self) -> None:
-        # Arrange — on_intermediate still accepted for backward compat but is deprecated
-        proc = make_fake_proc(
-            [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
-        )
-        entry = make_entry(proc)
-        received: list[str] = []
-
-        async def on_intermediate(text: str) -> None:
-            received.append(text)
-
-        # Act
-        it = await send_and_read_stream(
-            entry, "hello", DEFAULT_POOL_ID, on_intermediate=on_intermediate
-        )
-        events = [ev async for ev in it]
-
-        # Assert — callback NOT fired (deprecated); events still yielded correctly
-        assert received == []
-        assert events == [
-            TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
-        ]
-
-    async def test_on_intermediate_none_yields_events_normally(self) -> None:
-        # Arrange — no on_intermediate; iterator must work normally
+    async def test_streaming_yields_events_normally(self) -> None:
+        # Arrange — iterator yields LlmEvents from the stream
         proc = make_fake_proc(
             [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
         )

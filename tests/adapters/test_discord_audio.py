@@ -79,7 +79,7 @@ def test_normalize_audio_attachment_fields() -> None:
     assert result.user_id == "dc:user:42"
     assert result.platform == "discord"
     assert result.bot_id == "main"
-    assert result.trust == "user"
+    assert result.trust_level == TrustLevel.TRUSTED
     # Audio payload checks
     assert isinstance(result.audio, AudioPayload)
     assert result.audio.mime_type == "audio/ogg"

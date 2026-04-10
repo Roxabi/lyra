@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from lyra.core.agent_config import ModelConfig
@@ -51,7 +51,7 @@ class ClaudeCliDriver:
         """Delegate liveness check to CliPool."""
         return self._pool.is_alive(pool_id)
 
-    async def complete(  # noqa: PLR0913
+    async def complete(
         self,
         pool_id: str,
         text: str,
@@ -59,11 +59,8 @@ class ClaudeCliDriver:
         system_prompt: str,
         *,
         messages: list[dict] | None = None,  # ignored — CliPool manages history
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> LlmResult:
-        cli_result = await self._pool.send(
-            pool_id, text, model_cfg, system_prompt, on_intermediate=on_intermediate
-        )
+        cli_result = await self._pool.send(pool_id, text, model_cfg, system_prompt)
         return LlmResult(
             result=cli_result.result,
             session_id=cli_result.session_id,

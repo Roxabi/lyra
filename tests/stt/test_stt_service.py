@@ -43,7 +43,7 @@ def test_load_stt_config_defaults(monkeypatch):
 
 
 def test_load_stt_config_from_env(monkeypatch):
-    monkeypatch.setenv("STT_MODEL_SIZE", "medium")
+    monkeypatch.setenv("LYRA_STT_MODEL", "medium")
     cfg = load_stt_config()
     assert cfg.model_size == "medium"
 

@@ -25,9 +25,9 @@ palette:
     bg:         '#0a0a0f'   # Obsidian — near-absolute dark, page background
     surface:    '#18181f'   # Forge Floor — elevated panels, cards
     border:     '#2a2a35'   # Steel — borders, dividers
-    text:       '#fafafa'   # Spark White — body text, wordmark
-    text-muted: '#9ca3af'   # body copy in dark mode
-    text-dim:   '#6b7280'   # Steel Gray — muted text, secondary labels
+    text:       '#fafafa'   # Spark White — BODY TEXT (per BRAND-BOOK § 6), wordmark, node centres
+    text-muted: '#9ca3af'   # intermediate emphasis only — subtitles, label rows. NOT body copy.
+    text-dim:   '#6b7280'   # Steel Gray — metadata, secondary labels (per BRAND-BOOK § 6)
     accent:     '#e85d04'   # Forge Orange — brand signal (one per composition)
     accent-dim: '#7c2d0e'   # Ember damped — hover/pressed states
   light:
@@ -85,7 +85,7 @@ deliver_must_match:
   - 'accent color is Forge Orange (#e85d04 dark / #c2410c light)'
   - 'hero uses .hero.left-border variant'
   - 'section labels use .section-label.dot prefix'
-  - 'body copy color is var(--text-muted), not var(--text-dim)'
+  - 'body copy color is var(--text) — Spark White #fafafa per BRAND-BOOK § 6; never var(--text-muted) or var(--text-dim) which are dim and fail readability on Obsidian'
   - 'Mermaid diagrams wrapped in .diagram-shell with zoom controls'
   - 'no emoji in section headers'
   - 'no ASCII art in <pre class="arch"> blocks'

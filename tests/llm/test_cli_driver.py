@@ -184,7 +184,7 @@ class TestClaudeCliDriverStream:
 
         # Assert — pool.send_streaming called with correct args
         pool.send_streaming.assert_awaited_once_with(
-            "my-pool", "hello", model_cfg, "be helpful", on_intermediate=None
+            "my-pool", "hello", model_cfg, "be helpful"
         )
         assert it is fake_iterator
 

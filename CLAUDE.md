@@ -108,7 +108,7 @@ Lyra runs as three separate supervisor processes on Machine 1:
 | `lyra_telegram` | `lyra adapter telegram` | `_bootstrap_adapter_standalone()` |
 | `lyra_discord` | `lyra adapter discord` | `_bootstrap_adapter_standalone()` |
 
-Scripts: `run_hub.sh` and `run_adapter.sh` in `supervisor/scripts/` (lyra's own supervisord, managed via `lyra.service`).
+Scripts: `run_hub.sh` and `run_adapter.sh` in `deploy/supervisor/scripts/` (lyra's own supervisord, managed via `lyra.service`).
 NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub) · `lyra.outbound.<platform>.<bot_id>` (hub→adapter).
 
 The unified single-process mode (`lyra start` → `_bootstrap_unified`) runs hub + adapters in one process with NATS. Auto-starts embedded nats-server when NATS_URL is not set.

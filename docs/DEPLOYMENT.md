@@ -14,7 +14,7 @@ Machine 1 (roxabituwer, 192.168.1.16)
 │       ├── lyra_hub      ← hub process (NatsBus, pool, LLM, memory)
 │       ├── lyra_telegram ← Telegram adapter (thin NATS client)
 │       └── lyra_discord  ← Discord adapter (thin NATS client)
-├── program configs: ~/projects/lyra/supervisor/conf.d/
+├── program configs: ~/projects/lyra/deploy/supervisor/conf.d/
 │   ├── lyra_hub.conf
 │   ├── lyra_telegram.conf
 │   └── lyra_discord.conf

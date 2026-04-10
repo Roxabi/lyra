@@ -88,18 +88,9 @@ def create_health_app(hub: Hub) -> FastAPI:
 
         # Reaper fields only present when a CLI pool is configured
         if hub.cli_pool is not None:
-            result["reaper_alive"] = (
-                hub.cli_pool._reaper_task is not None
-                and not hub.cli_pool._reaper_task.done()
-            )
-            result["reaper_last_sweep_age"] = (
-                round(
-                    time.monotonic() - hub.cli_pool._last_sweep_at,
-                    1,
-                )
-                if hub.cli_pool._last_sweep_at is not None
-                else None
-            )
+            status = hub.cli_pool.get_reaper_status()
+            result["reaper_alive"] = status["alive"]
+            result["reaper_last_sweep_age"] = status["last_sweep_age"]
         return result
 
     @app.get("/config")

@@ -81,7 +81,7 @@ class SubmitToPoolMiddleware:
         pool = ctx.pool
         # Register session persistence callback once.
         _update_fn = msg.platform_meta.get("_session_update_fn")
-        if callable(_update_fn) and pool._observer._session_update_fn is None:
+        if callable(_update_fn) and not pool.has_session_update_fn():
             pool._observer.register_session_update_fn(_update_fn)  # type: ignore[arg-type]
 
         try:

@@ -85,6 +85,4 @@ class ClaudeCliDriver:
         Yields TextLlmEvent for text chunks, ToolUseLlmEvent when the LLM
         calls a tool, and a terminal ResultLlmEvent at end of turn.
         """
-        return await self._pool.send_streaming(
-            pool_id, text, model_cfg, system_prompt, on_intermediate=None
-        )
+        return await self._pool.send_streaming(pool_id, text, model_cfg, system_prompt)

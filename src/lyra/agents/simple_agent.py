@@ -153,14 +153,11 @@ class SimpleAgent(AgentBase):
         """Register session reset/switch callbacks on the pool."""
         _cli_pool = self._cli_pool  # narrow once; stable capture for lambdas
         if _cli_pool is not None:
-            if pool._session_reset_fn is None:
-                _pool_id = pool.pool_id
-                pool._session_reset_fn = lambda: _cli_pool.reset(_pool_id)
-            if pool._switch_workspace_fn is None:
-                _pool_id = pool.pool_id
-                pool._switch_workspace_fn = (
-                    lambda cwd: _cli_pool.switch_cwd(_pool_id, cwd)
-                )
+            _pool_id = pool.pool_id
+            pool.register_session_callbacks(
+                reset_fn=lambda: _cli_pool.reset(_pool_id),
+                workspace_fn=lambda cwd: _cli_pool.switch_cwd(_pool_id, cwd),
+            )
 
     def _maybe_register_resume(self, pool: Pool) -> None:
         """Register session resume callback on the pool.
@@ -170,10 +167,10 @@ class SimpleAgent(AgentBase):
         _maybe_register_reset.
         """
         _cli_pool = self._cli_pool  # narrow once; stable capture for lambda
-        if _cli_pool is not None and pool._session_resume_fn is None:
+        if _cli_pool is not None:
             _pool_id = pool.pool_id
-            pool._session_resume_fn = (
-                lambda sid: _cli_pool.resume_and_reset(_pool_id, sid)
+            pool.register_session_callbacks(
+                resume_fn=lambda sid: _cli_pool.resume_and_reset(_pool_id, sid),
             )
 
     def configure_pool(self, pool: Pool) -> None:

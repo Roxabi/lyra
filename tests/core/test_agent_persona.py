@@ -1,185 +1,77 @@
-"""Tests for persona config, load_persona, compose_system_prompt, and agent+persona
-integration.
+"""Tests for persona system prompt composition.
 
-The TOML agent loading path (load_agent_config) was removed in #346.
-Tests that tested the agent TOML + persona integration have been removed.
-Persona dataclasses live in persona.py (not agent_config.py).
+TOML-based persona loading was removed in #346 cleanup.
+Persona data now lives inline in persona_json DB column.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from lyra.core.persona import (
-    ExpertiseConfig,
-    IdentityConfig,
-    PersonaConfig,
-    PersonalityConfig,
-    VoiceConfig,
-    compose_system_prompt,
-    load_persona,
-)
+from lyra.core.persona import compose_system_prompt_from_json
 
 
-class TestPersonaConfig:
-    def test_frozen(self) -> None:
-        identity = IdentityConfig(name="TestBot")
-        persona = PersonaConfig(identity=identity)
-        with pytest.raises(AttributeError):
-            setattr(persona, "identity", IdentityConfig(name="Other"))
+class TestComposeSystemPromptFromJson:
+    def test_empty_returns_empty(self) -> None:
+        assert compose_system_prompt_from_json({}) == ""
 
-    def test_all_fields_accessible(self) -> None:
-        identity = IdentityConfig(
-            name="TestBot",
-            tagline="a test bot",
-            creator="Tester",
-            role="assistant",
-            goal="Help testing",
+    def test_identity_only(self) -> None:
+        result = compose_system_prompt_from_json(
+            {"identity": {"display_name": "TestBot"}}
         )
-        personality = PersonalityConfig(
-            traits=("smart", "direct"),
-            communication_style="concise",
-            tone="professional",
-            humor="dry",
+        assert "You are TestBot." in result
+        assert "Voice messages" in result  # always appended
+
+    def test_full_persona(self) -> None:
+        result = compose_system_prompt_from_json(
+            {
+                "identity": {
+                    "display_name": "Lyra",
+                    "tagline": "a personal AI assistant",
+                    "creator": "Roxabi",
+                    "goal": "Be helpful.",
+                },
+                "personality": {
+                    "traits": ["direct", "precise"],
+                    "style": "concise",
+                    "tone": "professional",
+                    "humor": "dry",
+                },
+                "expertise": {
+                    "areas": ["Python", "testing"],
+                    "instructions": ["Be thorough.", "Respond in English."],
+                },
+            }
         )
-        expertise = ExpertiseConfig(
-            areas=("Python", "testing"),
-            instructions=("Be thorough.",),
-        )
-        voice = VoiceConfig(
-            speaking_style="clear",
-            pace="moderate",
-            warmth="warm",
-        )
-        persona = PersonaConfig(
-            identity=identity,
-            personality=personality,
-            expertise=expertise,
-            voice=voice,
-        )
-        assert persona.identity.name == "TestBot"
-        assert persona.identity.tagline == "a test bot"
-        assert persona.personality.traits == ("smart", "direct")
-        assert persona.expertise.areas == ("Python", "testing")
-        assert persona.voice.speaking_style == "clear"
-        assert persona.voice.pace == "moderate"
-        assert persona.voice.warmth == "warm"
-
-    def test_defaults(self) -> None:
-        identity = IdentityConfig(name="Minimal")
-        persona = PersonaConfig(identity=identity)
-        assert persona.personality.traits == ()
-        assert persona.expertise.areas == ()
-        assert persona.voice.speaking_style == ""
-
-
-class TestLoadPersona:
-    def test_valid_load(self, tmp_path: Path) -> None:
-        toml_content = """\
-[identity]
-name = "TestBot"
-tagline = "a test bot"
-creator = "Tester"
-
-[personality]
-traits = ["direct", "precise"]
-
-[expertise]
-areas = ["Python", "testing"]
-instructions = ["Be thorough."]
-
-[voice]
-speaking_style = "clear"
-pace = "moderate"
-warmth = "warm"
-"""
-        (tmp_path / "testbot.persona.toml").write_text(toml_content)
-        persona = load_persona("testbot", personas_dir=tmp_path)
-        assert persona.identity.name == "TestBot"
-        assert persona.identity.tagline == "a test bot"
-        assert persona.personality.traits == ("direct", "precise")
-        assert persona.expertise.areas == ("Python", "testing")
-        assert persona.voice.speaking_style == "clear"
-
-    def test_missing_file(self, tmp_path: Path) -> None:
-        with pytest.raises(FileNotFoundError, match="Persona config not found"):
-            load_persona("nonexistent", personas_dir=tmp_path)
-
-    def test_missing_name(self, tmp_path: Path) -> None:
-        toml_content = """\
-[identity]
-tagline = "no name here"
-"""
-        (tmp_path / "noname.persona.toml").write_text(toml_content)
-        with pytest.raises(ValueError, match="missing required \\[identity\\].name"):
-            load_persona("noname", personas_dir=tmp_path)
-
-    @pytest.mark.parametrize(
-        "bad_name", ["../etc/passwd", "a b c", "foo/bar", "hello!"]
-    )
-    def test_invalid_name_rejected(self, tmp_path: Path, bad_name: str) -> None:
-        with pytest.raises(ValueError, match="only \\[a-zA-Z0-9_-\\] allowed"):
-            load_persona(bad_name, personas_dir=tmp_path)
-
-
-class TestComposeSystemPrompt:
-    def _make_persona(self) -> PersonaConfig:
-        return PersonaConfig(
-            identity=IdentityConfig(
-                name="Lyra",
-                tagline="a personal AI assistant",
-                creator="Roxabi",
-                goal="Be direct and precise.",
-            ),
-            personality=PersonalityConfig(
-                traits=("direct", "precise"),
-                communication_style="concise",
-                tone="professional",
-            ),
-            expertise=ExpertiseConfig(
-                areas=("Python", "testing"),
-                instructions=("Respond in English.", "Be thorough."),
-            ),
-        )
-
-    def test_contains_all_fields(self) -> None:
-        persona = self._make_persona()
-        result = compose_system_prompt(persona)
-        assert "Lyra" in result
-        assert "Roxabi" in result
-        assert "Be direct and precise." in result
+        assert "You are Lyra" in result
+        assert "a personal AI assistant" in result
+        assert "created by Roxabi" in result
+        assert "Be helpful." in result
         assert "direct" in result
         assert "precise" in result
         assert "Python" in result
-        assert "testing" in result
-        assert "Respond in English." in result
         assert "Be thorough." in result
 
-    def test_natural_prose(self) -> None:
-        persona = self._make_persona()
-        result = compose_system_prompt(persona)
-        assert result.startswith("You are")
-        assert "Name:" not in result
-        assert "Traits:" not in result
+    def test_voice_transcript_instruction_appended(self) -> None:
+        result = compose_system_prompt_from_json(
+            {"identity": {"display_name": "Bot"}}
+        )
+        assert "Voice messages" in result
+        assert "voice_transcript" in result
 
     def test_size_guard(self) -> None:
-        persona = PersonaConfig(
-            identity=IdentityConfig(name="BigBot"),
-            expertise=ExpertiseConfig(
-                instructions=tuple(["x" * 1000] * 100),
-            ),
-        )
+        huge_instructions = ["x" * 1000] * 100
         with pytest.raises(ValueError, match="exceeds.*KB"):
-            compose_system_prompt(persona)
+            compose_system_prompt_from_json(
+                {
+                    "identity": {"display_name": "BigBot"},
+                    "expertise": {"instructions": huge_instructions},
+                }
+            )
 
-
-def test_lyra_default_persona_has_turn_closure_instruction() -> None:
-    """Composed system prompt includes turn-closure instruction (#373)."""
-    fixture_dir = Path(__file__).parent.parent / "fixtures" / "personas"
-    persona = load_persona("lyra_default", personas_dir=fixture_dir)
-    prompt = compose_system_prompt(persona)
-    assert "close the turn" in prompt, (
-        f"Turn-closure instruction missing from composed prompt.\nGot:\n{prompt}"
-    )
+    def test_missing_sections_handled(self) -> None:
+        result = compose_system_prompt_from_json(
+            {"identity": {"display_name": "MinimalBot"}}
+        )
+        assert "You are MinimalBot." in result
+        # Should not crash, just omit missing sections

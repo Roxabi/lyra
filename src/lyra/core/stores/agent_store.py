@@ -20,7 +20,6 @@ from ..agent_schema import (
     _CREATE_AGENTS,
     _CREATE_BOT_AGENT_MAP,
     _MIGRATE_AGENTS,
-    _REBUILD_346_DROP_OLD_COLUMNS,
     _SELECT_AGENTS,
     _UPSERT_AGENT,
 )
@@ -71,10 +70,6 @@ class AgentStore(SqliteStore):
                     if "duplicate column" not in str(exc).lower():
                         raise
             await db.commit()
-            # #343 — data migration: populate new columns from old
-            await self._populate_343(db)
-            # #346 — table rebuild: drop old columns
-            await self._rebuild_346(db)
             await self._warm_cache()
         except Exception:
             log.exception("AgentStore.connect() setup failed; closing connection")
@@ -107,107 +102,6 @@ class AgentStore(SqliteStore):
                         log.warning(
                             "corrupt settings_json for (%s, %s)", platform, bot_id
                         )
-
-    async def _populate_343(self, db: aiosqlite.Connection) -> None:
-        """One-time data migration (#343).
-
-        Populate persona_json and fallback_language from old columns.
-        Idempotent — each column is only written when NULL.
-        Skips gracefully if old columns have already been dropped (#346).
-        """
-        # Check if old columns still exist
-        cols = set()
-        async with db.execute("PRAGMA table_info(agents)") as cur:
-            async for row in cur:
-                cols.add(row[1])
-        if "persona" not in cols:
-            return  # already rebuilt by _rebuild_346
-
-        from ..persona import load_persona
-
-        async with db.execute(
-            "SELECT name, persona, tts_json, stt_json, i18n_language "
-            "FROM agents WHERE persona_json IS NULL"
-        ) as cur:
-            rows = list(await cur.fetchall())
-        if not rows:
-            return
-        migrated = 0
-        for name, persona_name, _tts_raw, _stt_raw, i18n_lang in rows:
-            sets: list[str] = []
-            vals: list[str | None] = []
-
-            # Persona: load file → serialize to JSON (includes all fields)
-            persona_json_val: str | None = None
-            if persona_name:
-                try:
-                    pc = load_persona(persona_name)
-                    persona_json_val = json.dumps(
-                        {
-                            "identity": {
-                                "display_name": pc.identity.name,
-                                "tagline": pc.identity.tagline,
-                                "creator": pc.identity.creator,
-                                "role": pc.identity.role,
-                                "goal": pc.identity.goal,
-                            },
-                            "personality": {
-                                "traits": list(pc.personality.traits),
-                                "style": pc.personality.communication_style,
-                                "tone": pc.personality.tone,
-                                "humor": pc.personality.humor,
-                            },
-                            "expertise": {
-                                "areas": list(pc.expertise.areas),
-                                "instructions": list(pc.expertise.instructions),
-                            },
-                        }
-                    )
-                except Exception:
-                    log.warning(
-                        "_populate_343: persona %r for agent %r "
-                        "not found — using minimal fallback",
-                        persona_name,
-                        name,
-                    )
-                    persona_json_val = json.dumps({"identity": {"display_name": name}})
-            sets.append("persona_json=COALESCE(persona_json, ?)")
-            vals.append(persona_json_val)
-
-            # fallback_language
-            fallback = i18n_lang or "en"
-            sets.append("fallback_language=?")
-            vals.append(fallback)
-
-            vals.append(name)  # WHERE clause
-            await db.execute(
-                f"UPDATE agents SET {', '.join(sets)} WHERE name=?",
-                tuple(vals),
-            )
-            migrated += 1
-        await db.commit()
-        log.info("_populate_343: migrated %d agent(s)", migrated)
-
-    async def _rebuild_346(self, db: aiosqlite.Connection) -> None:
-        """Table rebuild (#346): drop deprecated columns.
-
-        Merges tts_json + stt_json → voice_json, then rebuilds the table without
-        the four deprecated columns. Idempotent — checks for tts_json presence.
-        """
-        cols = set()
-        async with db.execute("PRAGMA table_info(agents)") as cur:
-            async for row in cur:
-                cols.add(row[1])
-        # Check tts_json (not persona) — DBs created after #343 never had persona column
-        if "tts_json" not in cols:
-            return  # already rebuilt
-
-        log.info(
-            "_rebuild_346: dropping old columns (tts_json, stt_json, i18n_language)"
-        )
-        await db.executescript(_REBUILD_346_DROP_OLD_COLUMNS)
-        await db.commit()
-        log.info("_rebuild_346: table rebuild complete")
 
     async def close(self) -> None:
         """Close the database connection and clear caches."""

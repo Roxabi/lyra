@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.telegram import _ALLOW_ALL
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
 

@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.telegram import _ALLOW_ALL
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.render_events import TextRenderEvent
 from lyra.core.trust import TrustLevel
 

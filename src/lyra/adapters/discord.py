@@ -36,13 +36,7 @@ from lyra.adapters.discord_voice_commands import (
     handle_voice_command as _handle_voice_command_impl,
     register_voice_app_commands as _register_voice_app_commands,
 )
-from lyra.core.auth import (  # noqa: F401
-    _ALLOW_ALL as _ALLOW_ALL,
-    _DENY_ALL as _DENY_ALL,
-    AuthMiddleware as AuthMiddleware,
-)
-
-from lyra.core.authenticator import Authenticator
+from lyra.core.authenticator import _DENY_ALL, Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.guard import BlockedGuard, GuardChain
 from lyra.core.trust import TrustLevel

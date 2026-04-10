@@ -15,7 +15,8 @@ import httpx
 import pytest
 
 from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+from lyra.adapters.telegram import TelegramAdapter
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.message import InboundMessage
 from lyra.core.trust import TrustLevel

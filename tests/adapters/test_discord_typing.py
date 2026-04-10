@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.adapters.discord import _ALLOW_ALL
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import OutboundMessage
 from lyra.core.render_events import TextRenderEvent
 

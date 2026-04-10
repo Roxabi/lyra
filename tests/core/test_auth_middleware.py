@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lyra.core.auth import AuthMiddleware
+from lyra.core.authenticator import Authenticator as AuthMiddleware
 from lyra.core.stores.auth_store import AuthStore
 from lyra.core.trust import TrustLevel
 

@@ -284,7 +284,7 @@ class TestTelegramAdapterRenderAudio:
     """
 
     def _make_adapter(self) -> TelegramAdapter:
-        from lyra.adapters.telegram import _ALLOW_ALL
+        from lyra.core.authenticator import _ALLOW_ALL
 
         adapter = TelegramAdapter(
             bot_id="main",

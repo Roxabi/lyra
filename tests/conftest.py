@@ -17,7 +17,7 @@ import lyra.bootstrap.bootstrap_wiring as wiring_mod
 import lyra.bootstrap.unified as unified_mod
 from lyra.core.agent import Agent
 from lyra.core.agent_config import ModelConfig
-from lyra.core.auth import AuthMiddleware
+from lyra.core.authenticator import Authenticator as AuthMiddleware
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
 from lyra.nats import _version_check as _vc_mod

@@ -9,8 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
+from lyra.adapters.discord import DiscordAdapter
 from lyra.core.audio_payload import AudioPayload
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import InboundMessage
 
 

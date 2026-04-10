@@ -32,7 +32,8 @@ from .conftest import _RC_DC, _RC_TG, make_routing_inbound
 
 class TestTelegramNormalizeRouting:
     def test_routing_populated(self) -> None:
-        from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.authenticator import _ALLOW_ALL
 
         adapter = TelegramAdapter(
             bot_id="main",
@@ -66,7 +67,8 @@ class TestTelegramNormalizeRouting:
         assert msg.routing.reply_to_message_id == "999"
 
     def test_routing_with_topic(self) -> None:
-        from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.authenticator import _ALLOW_ALL
 
         adapter = TelegramAdapter(
             bot_id="main",
@@ -98,7 +100,8 @@ class TestTelegramNormalizeRouting:
 
     def test_routing_platform_meta_is_copy(self) -> None:
         """RoutingContext.platform_meta must not alias InboundMessage.platform_meta."""
-        from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.authenticator import _ALLOW_ALL
 
         adapter = TelegramAdapter(
             bot_id="main",
@@ -136,7 +139,8 @@ class TestTelegramNormalizeRouting:
 
 class TestDiscordNormalizeRouting:
     def test_routing_populated(self) -> None:
-        from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.authenticator import _ALLOW_ALL
 
         adapter = DiscordAdapter.__new__(DiscordAdapter)
         adapter._bot_id = "main"

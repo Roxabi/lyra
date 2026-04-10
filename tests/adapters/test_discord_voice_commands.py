@@ -8,12 +8,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
+from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.discord_voice import (
     VoiceAlreadyActiveError,
     VoiceDependencyError,
     VoiceMode,
 )
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import OutboundAudioChunk
 from lyra.core.trust import TrustLevel
 

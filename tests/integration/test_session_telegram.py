@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.telegram import _ALLOW_ALL
+from lyra.core.authenticator import _ALLOW_ALL
 
 pytestmark = pytest.mark.asyncio
 

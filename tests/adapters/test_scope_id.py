@@ -19,8 +19,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
-from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
+from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram_normalize import _make_scope_id
+from lyra.core.authenticator import _ALLOW_ALL
 
 # ---------------------------------------------------------------------------
 # Discord — two users in same guild channel

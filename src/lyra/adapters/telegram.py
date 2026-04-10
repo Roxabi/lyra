@@ -38,13 +38,7 @@ from lyra.adapters.telegram_outbound import (
     build_streaming_callbacks as _build_streaming_callbacks,
     send as _send_impl,
 )
-from lyra.core.auth import (  # noqa: F401
-    _ALLOW_ALL as _ALLOW_ALL,
-    _DENY_ALL as _DENY_ALL,
-    AuthMiddleware as AuthMiddleware,
-)
-
-from lyra.core.authenticator import Authenticator
+from lyra.core.authenticator import _DENY_ALL, Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.guard import BlockedGuard, GuardChain
 from lyra.core.trust import TrustLevel

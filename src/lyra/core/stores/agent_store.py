@@ -192,18 +192,18 @@ class AgentStore(SqliteStore):
         """Table rebuild (#346): drop deprecated columns.
 
         Merges tts_json + stt_json → voice_json, then rebuilds the table without
-        the four deprecated columns. Idempotent — checks for old column presence.
+        the four deprecated columns. Idempotent — checks for tts_json presence.
         """
         cols = set()
         async with db.execute("PRAGMA table_info(agents)") as cur:
             async for row in cur:
                 cols.add(row[1])
-        if "persona" not in cols:
+        # Check tts_json (not persona) — DBs created after #343 never had persona column
+        if "tts_json" not in cols:
             return  # already rebuilt
 
         log.info(
-            "_rebuild_346: dropping old columns"
-            " (persona, tts_json, stt_json, i18n_language)"
+            "_rebuild_346: dropping old columns (tts_json, stt_json, i18n_language)"
         )
         await db.executescript(_REBUILD_346_DROP_OLD_COLUMNS)
         await db.commit()

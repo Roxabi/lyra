@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS agent_runtime_state (
 """
 
 # Column list shared by SELECT and INSERT to keep them in sync.
-# 24 columns after #346 cleanup (dropped: persona, tts_json, stt_json, i18n_language).
+# 24 columns after #346 cleanup (dropped: tts_json, stt_json, i18n_language).
 _AGENT_COLUMNS = (
     "name, backend, model, max_turns, tools_json, "
     "show_intermediate, smart_routing_json, plugins_json, "
@@ -131,13 +131,13 @@ _UPSERT_AGENT = (
 
 
 # ---------------------------------------------------------------------------
-# #346 — Table rebuild: drop old columns (persona, tts_json, stt_json, i18n_language)
+# #346 — Table rebuild: drop old columns (tts_json, stt_json, i18n_language)
 # ---------------------------------------------------------------------------
 # Executed as a multi-step migration in AgentStore.connect().  The migration
 # first merges tts_json + stt_json → voice_json, then rebuilds the table
-# without the four deprecated columns.
+# without the three deprecated columns.
 #
-# Detection: if column "persona" exists in pragma_table_info, rebuild is needed.
+# Detection: if column "tts_json" exists in pragma_table_info, rebuild is needed.
 # After rebuild, the column is gone and the check short-circuits on next startup.
 
 _REBUILD_346_DROP_OLD_COLUMNS = """

@@ -2,6 +2,10 @@
 
 RED phase — these tests will fail until S3 implementation lands.
 Source: src/lyra/llm/drivers/cli.py
+
+Note: AsyncMock accepts arbitrary kwargs silently, which can hide signature
+mismatches. We rely on pyright (strict mode) to catch these. If a test passes
+but CI fails on signature changes, the mock may need spec_set enforcement.
 """
 
 from __future__ import annotations
@@ -184,7 +188,7 @@ class TestClaudeCliDriverStream:
 
         # Assert — pool.send_streaming called with correct args
         pool.send_streaming.assert_awaited_once_with(
-            "my-pool", "hello", model_cfg, "be helpful", on_intermediate=None
+            "my-pool", "hello", model_cfg, "be helpful"
         )
         assert it is fake_iterator
 

@@ -62,6 +62,10 @@ class PoolObserver:
         """Wire the session persistence callback."""
         self._session_update_fn = fn
 
+    def has_session_update_fn(self) -> bool:
+        """Check whether a session persistence callback is registered."""
+        return self._session_update_fn is not None
+
     def reset_session_persisted(self) -> None:
         """Reset the persisted flag so the next turn triggers persistence again."""
         self._session_persisted = False

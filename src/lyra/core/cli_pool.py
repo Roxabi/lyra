@@ -123,6 +123,24 @@ class CliPool(CliPoolWorkerMixin):
         self._reaper_task = asyncio.create_task(self._idle_reaper())
         log.info("CliPool started (idle_ttl=%ds)", self._idle_ttl)
 
+    def get_reaper_status(self) -> dict[str, bool | float | None]:
+        """Return reaper task status for health monitoring.
+
+        Returns a dict with:
+            - alive: whether the reaper task is running
+            - last_sweep_age: seconds since last sweep, or None
+        """
+        return {
+            "alive": (
+                self._reaper_task is not None and not self._reaper_task.done()
+            ),
+            "last_sweep_age": (
+                round(time.monotonic() - self._last_sweep_at, 1)
+                if self._last_sweep_at is not None
+                else None
+            ),
+        }
+
     async def drain(self, timeout: float = 60.0) -> None:
         """Wait for all in-flight turns to complete before stopping.
 
@@ -266,8 +284,6 @@ class CliPool(CliPoolWorkerMixin):
         message: str,
         model_config: ModelConfig,
         system_prompt: str = "",
-        *,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> StreamingIterator:
         """Send a message and return a streaming iterator for text_delta chunks.
 
@@ -318,7 +334,6 @@ class CliPool(CliPoolWorkerMixin):
                     pool_id,
                     pool_reset_fn=_reset,
                     default_timeout=self._default_timeout,
-                    on_intermediate=on_intermediate,
                     opts=self._protocol_opts,
                 )
 

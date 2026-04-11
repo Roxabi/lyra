@@ -13,7 +13,7 @@ See `docs/ARCHITECTURE.md` for full context.
 - **Project:** Lyra
 - **Before work:** Use `/dev #N` as the single entry point — it determines tier (S / F-lite / F-full) and drives the full lifecycle
 - **Decisions:** → see global patterns (@~/.claude/shared/global-patterns.md)
-- **Never** commit without asking, push without request, or use `--force`/`--hard`/`--amend`
+- **Never** use `--force`/`--hard`/`--amend`
 - **Always** use appropriate skill even without slash command
 
 ## Key files

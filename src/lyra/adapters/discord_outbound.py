@@ -163,7 +163,8 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
     from lyra.adapters._shared import send_with_retry
     from lyra.adapters._shared_streaming import PlatformCallbacks
 
-    if original_msg.platform != "discord":
+    meta = _validate_inbound(original_msg, "build_streaming_callbacks")
+    if meta is None:
 
         async def _bad_placeholder():
             raise ValueError("not a discord message")
@@ -184,10 +185,9 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
             placeholder_text="\u2026",
         )
 
-    channel_id: int | None = original_msg.platform_meta.get("channel_id")
-    thread_id: int | None = original_msg.platform_meta.get("thread_id")
-    send_to_id: int = thread_id if thread_id is not None else channel_id  # type: ignore[assignment]
-    reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
+    channel_id, thread_id, message_id = meta
+    send_to_id: int = thread_id if thread_id is not None else channel_id
+    reply_msg_id: int | None = message_id
     should_reply = reply_msg_id is not None and thread_id is None
     _placeholder_text = adapter._msg("stream_placeholder", "\u2026")
 

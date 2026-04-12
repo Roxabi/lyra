@@ -173,6 +173,7 @@ async def render_audio_stream(
     inbound: InboundMessage,
 ) -> None:
     """Buffer streamed audio chunks and send as a single Discord file attachment."""
+    # Guard: short-circuit before consuming chunks (render_audio re-validates).
     meta = _validate_inbound(inbound, "render_audio_stream")
     if meta is None:
         return

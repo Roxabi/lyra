@@ -10,10 +10,12 @@ Extracted from :class:`NatsOutboundListener` so the listener stays under the
 repo-wide 300-line cap and so chunk-level protocol details are isolated from
 the subscription lifecycle.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 if TYPE_CHECKING:
@@ -86,10 +88,51 @@ async def decode_stream_events(
 
 
 def remember_terminated(listener: Any, stream_id: str) -> None:
-    """Record a terminated stream_id on the listener, bounding the set."""
+    """Record a terminated stream_id on the listener with FIFO eviction.
+
+    ``_terminated_streams`` is an ``OrderedDict[stream_id, monotonic_ts]``:
+    - Eviction on cap: ``popitem(last=False)`` drops the oldest insertion.
+    - Timestamp lets the TTL reaper evict entries that outlive the cache.
+
+    Re-tombstoning a known stream_id (idempotent call) refreshes both the
+    timestamp *and* the insertion order so FIFO eviction reflects recency.
+    """
+    listener._terminated_streams.pop(stream_id, None)
     if len(listener._terminated_streams) >= _MAX_TERMINATED_STREAMS:
-        listener._terminated_streams.pop()
-    listener._terminated_streams.add(stream_id)
+        listener._terminated_streams.popitem(last=False)
+    listener._terminated_streams[stream_id] = time.monotonic()
+
+
+def reap_tombstones(listener: Any, ttl_seconds: float) -> None:
+    """Evict tombstones older than *ttl_seconds* from the listener (#570)."""
+    now = time.monotonic()
+    stale = [
+        sid
+        for sid, ts in list(listener._terminated_streams.items())
+        if now - ts > ttl_seconds
+    ]
+    for sid in stale:
+        listener._terminated_streams.pop(sid, None)
+
+
+async def run_reaper_loop(listener: Any) -> None:
+    """Periodic reaper: reap cache entries and tombstones at TTL_SECONDS.
+
+    Transient exceptions are logged and swallowed so the reaper survives
+    partial-teardown races and library hiccups; ``CancelledError``
+    propagates so ``stop()`` can cleanly cancel the task.
+    """
+    from lyra.adapters._inbound_cache import REAPER_INTERVAL_SECONDS, TTL_SECONDS
+
+    while True:
+        await asyncio.sleep(REAPER_INTERVAL_SECONDS)
+        try:
+            listener._cache._reap()
+            reap_tombstones(listener, TTL_SECONDS)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("run_reaper_loop: transient failure, continuing")
 
 
 def handle_stream_error(listener: Any, data: dict) -> None:

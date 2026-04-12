@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from typing import Any
 
 import uvicorn
 
@@ -32,8 +33,13 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     cli_pool: CliPool | None,
     _stop: asyncio.Event | None,
     proxies: list[NatsChannelProxy] | None = None,
+    nc: Any | None = None,
 ) -> None:
-    """Start all buses/dispatchers/adapters, wait for stop, then tear down."""
+    """Start all buses/dispatchers/adapters, wait for stop, then tear down.
+
+    When *nc* is provided (unified mode with NATS), it is forwarded to the
+    health endpoint so ``/health/detail`` can surface NATS reachability.
+    """
     await hub.inbound_bus.start()
     for d in tg_dispatchers:
         await d.start()
@@ -41,7 +47,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
         await d.start()
 
     health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
-    health_app = create_health_app(hub)
+    health_app = create_health_app(hub, nc=nc)
     health_config = uvicorn.Config(
         health_app, host="127.0.0.1", port=health_port, log_level="warning"
     )

@@ -2,6 +2,7 @@
 
 Mocks nats.connect so no real NATS server is required.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,13 +22,12 @@ class TestNatsConnect:
         seed_content = "SUAIBKIBKIB123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         seed_file = tmp_path / "nkey.seed"
         seed_file.write_text(seed_content)
+        seed_file.chmod(0o600)
         monkeypatch.setenv("NATS_NKEY_SEED_PATH", str(seed_file))
 
         mock_nc = AsyncMock()
         mock_conn = AsyncMock(return_value=mock_nc)
-        with patch(
-            "lyra.nats.connect.nats.connect", new=mock_conn
-        ) as mock_connect:
+        with patch("lyra.nats.connect.nats.connect", new=mock_conn) as mock_connect:
             # Act
             result = await nats_connect("nats://localhost:4222")
 
@@ -40,18 +40,14 @@ class TestNatsConnect:
             assert "reconnected_cb" in call_kwargs
             assert result is mock_nc
 
-    async def test_connect_without_seed(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_connect_without_seed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """nats.connect called without nkeys_seed_str when env var absent."""
         # Arrange
         monkeypatch.delenv("NATS_NKEY_SEED_PATH", raising=False)
 
         mock_nc = AsyncMock()
         mock_conn = AsyncMock(return_value=mock_nc)
-        with patch(
-            "lyra.nats.connect.nats.connect", new=mock_conn
-        ) as mock_connect:
+        with patch("lyra.nats.connect.nats.connect", new=mock_conn) as mock_connect:
             # Act
             result = await nats_connect("nats://localhost:4222")
 
@@ -109,8 +105,23 @@ class TestNatsConnect:
         # Arrange
         seed_file = tmp_path / "nkey.seed"
         seed_file.write_text("   \n  ")
+        seed_file.chmod(0o600)
         monkeypatch.setenv("NATS_NKEY_SEED_PATH", str(seed_file))
 
         # Act / Assert
         with pytest.raises(SystemExit, match="is empty"):
+            await nats_connect("nats://localhost:4222")
+
+    async def test_connect_world_readable_seed_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SystemExit when seed file permissions are not 0o600."""
+        # Arrange
+        seed_file = tmp_path / "nkey.seed"
+        seed_file.write_text("SU-valid-seed")
+        seed_file.chmod(0o644)
+        monkeypatch.setenv("NATS_NKEY_SEED_PATH", str(seed_file))
+
+        # Act / Assert
+        with pytest.raises(SystemExit, match="unsafe permissions"):
             await nats_connect("nats://localhost:4222")

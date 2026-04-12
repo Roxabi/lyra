@@ -28,15 +28,16 @@ def _read_nkey_seed() -> str | None:
     path = Path(path_str)
     try:
         if not path.is_file():
+            sys.exit(f"NATS_NKEY_SEED_PATH={path_str!r} is not a file")
+        mode = path.stat().st_mode & 0o777
+        if mode != 0o600:
             sys.exit(
-                f"NATS_NKEY_SEED_PATH={path_str!r} is not a file"
+                f"NATS_NKEY_SEED_PATH={path_str!r} has unsafe permissions"
+                f" {oct(mode)} (expected 0o600)"
             )
         seed = path.read_text().strip()
     except OSError as exc:
-        sys.exit(
-            f"NATS_NKEY_SEED_PATH={path_str!r} is unreadable:"
-            f" {exc.strerror}"
-        )
+        sys.exit(f"NATS_NKEY_SEED_PATH={path_str!r} is unreadable: {exc.strerror}")
     if not seed:
         sys.exit(f"NATS_NKEY_SEED_PATH={path_str!r} is empty")
     return seed

@@ -23,59 +23,35 @@ from lyra.core.tool_recap_format import format_tool_lines
 log = logging.getLogger(__name__)
 
 
+async def _prepend(
+    first: RenderEvent, rest: AsyncIterator[RenderEvent]
+) -> AsyncIterator[RenderEvent]:
+    """Yield *first*, then all items from *rest*."""
+    yield first
+    async for ev in rest:
+        yield ev
+
+
 @dataclass
 class PlatformCallbacks:
     """Injectable platform callbacks for StreamingSession.
 
-    Each field is a callable that performs a platform-specific operation.
     Callbacks may raise; StreamingSession catches and handles exceptions
     internally except for stream errors which are re-raised from ``run()``.
+    See adapters/CLAUDE.md for full field documentation.
     """
 
     send_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
-    """Send the placeholder message. Returns (placeholder_obj, reply_message_id)."""
-
     edit_placeholder_text: Callable[[Any, str], Awaitable[None]]
-    """Edit the placeholder content with intermediate or final text."""
-
     edit_placeholder_tool: Callable[[Any, ToolSummaryRenderEvent, str], Awaitable[None]]
-    """Edit the placeholder with a tool summary event and display text."""
-
     send_message: Callable[[str], Awaitable[int | None]]
-    """Send a new message (tool-event turns).
-    Returns message ID."""
-
     send_fallback: Callable[[str], Awaitable[int | None]]
-    """Send fallback content when placeholder creation fails.
-
-    The callback is responsible for platform-specific rendering (e.g.
-    MarkdownV2 escaping on Telegram). Returns message ID or None.
-    """
-
     chunk_text: Callable[[str], list[str]]
-    """Split text into platform-appropriate chunks."""
-
     start_typing: Callable[[], None]
-    """Start the platform typing indicator."""
-
     cancel_typing: Callable[[], None]
-    """Cancel the platform typing indicator."""
-
     get_msg: Callable[[str, str], str]
-    """Look up a localised message by key with fallback.
-    Adapters inject their ``_msg``."""
-
     placeholder_text: str
-    """Fallback text when no events arrive (e.g. ``"…"``).
-    Used by ``_drain_fallback``."""
-
     guard_tool_on_intermediate: bool = True
-    """When True, suppress tool-summary edits if intermediate text is already visible.
-
-    Discord sets True (tool summary would erase visible text);
-    Telegram sets False (tool summary is combined with
-    intermediate text via ``IntermediateTextState.display``).
-    """
 
 
 class StreamingSession:
@@ -265,16 +241,41 @@ class StreamingSession:
     async def run(self, events: AsyncIterator[RenderEvent]) -> None:
         """Run the full streaming lifecycle.
 
-        Raises the stream error (if any) after delivering the error message,
-        so callers (OutboundDispatcher) can record a circuit breaker failure.
+        Defers the placeholder until the first event arrives so that
+        backend failures never leave an orphaned "…".  Re-raises
+        stream errors after delivering the error message.
         """
-        result = await self._send_placeholder()
-        if result is None:
+        # Peek: empty stream → fallback, no placeholder.
+        first_event: RenderEvent | None = None
+        peek_error: Exception | None = None
+        try:
+            first_event = await events.__anext__()
+        except StopAsyncIteration:
+            pass
+        except Exception as exc:
+            peek_error = exc
+
+        if first_event is None and peek_error is None:
             await self._drain_fallback(events)
             self._handle_typing_tail()
             return
+        if peek_error is not None:
+            self._st.stream_error = peek_error
+            result = await self._send_placeholder()
+            if result is not None:
+                await self._deliver_final(result[0])
+            self._handle_typing_tail()
+            raise peek_error
+
+        assert first_event is not None  # narrowed above
+        result = await self._send_placeholder()
+        full = _prepend(first_event, events)
+        if result is None:
+            await self._drain_fallback(full)
+            self._handle_typing_tail()
+            return
         placeholder_obj, _ = result
-        await self._run_event_loop(events, placeholder_obj)
+        await self._run_event_loop(full, placeholder_obj)
         await self._deliver_final(placeholder_obj)
         self._handle_typing_tail()
         if self._st.stream_error is not None:

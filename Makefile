@@ -90,7 +90,7 @@ QUADLET_DIR      := $(HOME)/.config/containers/systemd
 
 register:
 	@echo "Registering lyra with supervisor hub..."
-	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord lyra-stt lyra-tts monitor
+	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord lyra-stt lyra-tts monitor remote deploy
 	$(call hub-link-conf,lyra_hub,deploy/supervisor/conf.d/lyra_hub.conf)
 	$(call hub-link-conf,lyra_telegram,deploy/supervisor/conf.d/lyra_telegram.conf)
 	$(call hub-link-conf,lyra_discord,deploy/supervisor/conf.d/lyra_discord.conf)

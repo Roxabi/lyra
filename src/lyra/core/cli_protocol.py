@@ -196,6 +196,18 @@ async def read_until_result(  # noqa: C901, PLR0915
 
                 if data.get("is_error", False):
                     subtype = data.get("subtype", "")
+                    if subtype == "success" and result_text:
+                        # CLI returns is_error=True + subtype="success"
+                        # when a tool call failed but the model recovered.
+                        log.info(
+                            "[pool:%s] is_error=True but subtype=success"
+                            " — treating as success",
+                            pool_id,
+                        )
+                        return CliResult(
+                            result=result_text,
+                            session_id=session_id or "",
+                        )
                     if subtype == "error_max_turns" and result_text:
                         return CliResult(
                             result=result_text,
@@ -360,19 +372,31 @@ class StreamingIterator:
                     self.session_id = sid
                     entry.update_session_id(sid)
                 is_error = data.get("is_error", False)
-                if is_error:
+                subtype = data.get("subtype", "")
+                # CLI returns is_error=True + subtype="success" when a tool
+                # call failed but the model recovered and produced a valid
+                # answer.  The text was already streamed — don't mark it as
+                # an error or the adapter will prefix it with ❌.
+                if is_error and subtype == "success":
+                    log.info(
+                        "[pool:%s] streaming result is_error=True but"
+                        " subtype=success — treating as success",
+                        self._pool_id,
+                    )
+                    is_error = False
+                elif is_error:
                     errors = data.get("errors", [])
                     self.error = (
                         errors[0]
                         if errors
                         else data.get("result")
-                        or data.get("subtype")
+                        or subtype
                         or "Unknown streaming error"
                     )
                     log.warning(
                         "[pool:%s] streaming result is_error=True subtype=%s",
                         self._pool_id,
-                        data.get("subtype", ""),
+                        subtype,
                     )
                 log.info(
                     "[pool:%s] streaming result: %dms",

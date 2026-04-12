@@ -24,7 +24,7 @@ from .command_parser import CommandContext
 
 if TYPE_CHECKING:
     from lyra.core.runtime_config import RuntimeConfigHolder
-    from lyra.llm.smart_routing import SmartRoutingDecorator
+    from lyra.core.smart_routing_protocol import SmartRoutingProtocol
 
     from ..circuit_breaker import CircuitRegistry
     from ..messages import MessageManager
@@ -98,7 +98,7 @@ class CommandRouter:
         msg_manager: "MessageManager | None" = None,
         runtime_config_holder: "RuntimeConfigHolder | None" = None,
         runtime_config_path: Path | None = None,
-        smart_routing_decorator: "SmartRoutingDecorator | None" = None,
+        smart_routing_decorator: "SmartRoutingProtocol | None" = None,
         on_debounce_change: Callable[[int], None] | None = None,
         on_cancel_change: Callable[[bool], None] | None = None,
         workspaces: dict[str, Path] | None = None,

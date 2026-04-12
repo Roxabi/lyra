@@ -21,6 +21,16 @@ Outbound (platform) ←──────────────── Outbound
 | `pool/` | Pool primitives — lifecycle, per-message processing, session observation |
 | `commands/` | Internal command routing infra (NOT plugin commands) |
 
+## Domain event types
+
+`events.py` defines `LlmEvent` (`TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent`) —
+the streaming protocol shared between `llm/` drivers and `core/stream_processor`.
+Placed here (not in `llm/`) so `llm → core` stays unidirectional. See
+`src/lyra/llm/CLAUDE.md` for the event field reference.
+
+`render_events.py` defines the platform-agnostic render events that
+`StreamProcessor` emits downstream to adapters.
+
 ## Non-obvious placement decisions
 
 **`pool_manager.py` and `pipeline_types.py` are in `hub/`** — both import `Hub` at runtime; placing them in `pool/` would create a circular import. `message_pipeline.py` is a backward-compatibility shim that re-exports from `pipeline_types.py`.

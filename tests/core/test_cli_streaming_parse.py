@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from lyra.core.cli_protocol import StreamingIterator
-from lyra.llm.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 from .conftest import (
     ASSISTANT_INTERMEDIATE_LINE,

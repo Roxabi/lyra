@@ -12,7 +12,7 @@ import pytest
 from lyra.core.agent_config import ModelConfig
 from lyra.core.cli_pool import CliPool, _ProcessEntry
 from lyra.core.cli_protocol import StreamingIterator
-from lyra.llm.events import ResultLlmEvent, TextLlmEvent
+from lyra.core.events import ResultLlmEvent, TextLlmEvent
 
 from .conftest_cli_pool import (
     _PATCH_TARGET,

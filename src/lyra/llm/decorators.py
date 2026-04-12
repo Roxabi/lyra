@@ -8,8 +8,8 @@ from collections.abc import AsyncIterator
 
 from lyra.core.agent_config import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker
+from lyra.core.events import LlmEvent
 from lyra.llm.base import LlmProvider, LlmResult
-from lyra.llm.events import LlmEvent
 
 log = logging.getLogger(__name__)
 

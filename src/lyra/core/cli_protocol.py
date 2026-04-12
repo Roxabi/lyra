@@ -18,9 +18,8 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from lyra.llm.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
-
 from .agent_config import ModelConfig
+from .events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 log = logging.getLogger(__name__)
 

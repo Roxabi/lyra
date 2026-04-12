@@ -4,6 +4,10 @@ These frozen dataclasses represent the raw events emitted by LLM drivers during
 streaming. They form the input side of the LLM → StreamProcessor → RenderEvent
 pipeline.
 
+They live in ``core/`` rather than ``llm/`` because the type system is a
+domain-level contract consumed by both sides of the pipeline — keeping it here
+lets ``llm/`` depend on ``core/`` unidirectionally (enforced by ``import-linter``).
+
 No framework imports (aiogram, discord, anthropic) are permitted in this module.
 
 Immutability contract

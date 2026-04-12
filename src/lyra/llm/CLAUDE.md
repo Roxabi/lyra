@@ -26,12 +26,13 @@ the Protocol base until all drivers implement it.
 
 ## Drivers
 
-Two concrete drivers in `drivers/`:
+Three concrete drivers in `drivers/`:
 
 | Driver | Backend | `capabilities["streaming"]` | `capabilities["auth"]` |
 |--------|---------|---------------------------|----------------------|
 | `AnthropicSdkDriver` | Anthropic Messages API (HTTP) | `False` — buffers full response | `"api_key"` |
 | `ClaudeCliDriver` | Claude Code subprocess (`CliPool`) | `True` — native NDJSON stream | `"oauth_only"` |
+| `NatsLlmDriver` | Remote LLM worker over NATS request-reply | `True` — ephemeral inbox streaming | `"nats"` |
 
 
 ## Decorator stack

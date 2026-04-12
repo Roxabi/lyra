@@ -54,6 +54,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
     """Wire hub + adapters in one process with NATS (embedded or external)."""
     nc, embedded, _ = await ensure_nats(os.environ.get("NATS_URL"))
     _acquire_lockfile()
+    nats_llm_driver = None
     try:
         inbound_bus_cfg = _load_inbound_bus_config(raw_config)
         inbound_bus: NatsBus[InboundMessage] = NatsBus(
@@ -158,6 +159,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 await pm.connect()
                 set_pairing_manager(pm)
 
+            from lyra.bootstrap.llm_overlay import init_nats_llm
             from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
 
             stt_service = init_nats_stt(nc)
@@ -166,6 +168,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             tts_service = init_nats_tts(nc)
             if tts_service is not None:
                 await tts_service.start()
+            nats_llm_driver = await init_nats_llm(nc)
             cli_pool_cfg = _load_cli_pool_config(raw_config)
             hub_cfg = _load_hub_config(raw_config)
             pool_cfg = _load_pool_config(raw_config)
@@ -230,6 +233,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 tts_service,
                 agent_store=stores.agent,
                 llm_cfg=llm_cfg,
+                nats_llm_driver=nats_llm_driver,
             )
             for ag in all_agents.values():
                 hub.register_agent(ag)
@@ -275,6 +279,8 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             )
 
     finally:
+        if nats_llm_driver is not None:
+            await nats_llm_driver.stop()
         try:
             await nc.close()
             log.info("NATS connection closed.")

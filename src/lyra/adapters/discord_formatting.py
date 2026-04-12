@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
@@ -9,7 +10,9 @@ import discord
 from tabulate import tabulate
 
 from lyra.adapters._shared import AUDIO_MIME_TYPES, chunk_text
-from lyra.core.message import Attachment
+from lyra.core.message import Attachment, InboundMessage, Platform
+
+log = logging.getLogger("lyra.adapters.discord")
 
 _TABLE_RE = re.compile(
     r"(?m)"
@@ -98,3 +101,25 @@ def render_buttons(buttons: list[Any]) -> discord.ui.View | None:
     for b in buttons:
         view.add_item(discord.ui.Button(label=b.text, custom_id=b.callback_data))
     return view
+
+
+def _validate_inbound(
+    inbound: InboundMessage, caller: str
+) -> tuple[int, int | None, int | None] | None:
+    """Validate platform is Discord and extract (channel_id, thread_id, message_id).
+
+    Returns None on validation failure (logs error).
+    Mirrors telegram_formatting._validate_inbound().
+    """
+    if inbound.platform != Platform.DISCORD.value:
+        log.error("%s called with non-discord message id=%s", caller, inbound.id)
+        return None
+    channel_id: int | None = inbound.platform_meta.get("channel_id")
+    if channel_id is None:
+        log.error(
+            "%s: platform_meta missing 'channel_id' for msg id=%s", caller, inbound.id
+        )
+        return None
+    thread_id: int | None = inbound.platform_meta.get("thread_id")
+    message_id: int | None = inbound.platform_meta.get("message_id")
+    return channel_id, thread_id, message_id

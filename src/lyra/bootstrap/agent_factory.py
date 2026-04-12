@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import TYPE_CHECKING
 
 # Re-exported for backward compatibility (tests import these from agent_factory)
 from lyra.bootstrap.bot_agent_map import resolve_bot_agent_map  # noqa: F401
@@ -19,6 +20,9 @@ from lyra.llm.registry import ProviderRegistry
 from lyra.llm.smart_routing import SmartRoutingDecorator
 from lyra.stt import STTProtocol
 from lyra.tts import TtsProtocol
+
+if TYPE_CHECKING:
+    from lyra.llm.drivers.nats_driver import NatsLlmDriver
 
 log = logging.getLogger(__name__)
 
@@ -41,20 +45,16 @@ def _build_shared_base_providers(
     circuit_registry: CircuitRegistry,
     cli_pool: CliPool | None,
     llm_cfg: LlmConfig,
+    *,
+    nats_llm_driver: "NatsLlmDriver | None" = None,
 ) -> dict[str, LlmProvider]:
-    """Build shared driver instances that are safe to reuse across all agents.
+    """Build shared driver instances reusable across all agents.
 
-    Returns a mapping of backend name to base LlmProvider (without per-agent
-    decorators).  The returned providers are:
-
-    - ``"claude-cli"``  — ``ClaudeCliDriver`` wrapping the shared ``CliPool``
-    - ``"anthropic-sdk"`` — ``CircuitBreakerDecorator`` -> ``RetryDecorator``
-      -> ``AnthropicSdkDriver`` (no ``SmartRoutingDecorator``; that is
-      per-agent and layered on top by ``_build_per_agent_registry``).
-
-    Callers that need smart-routing must wrap the returned provider in a
-    ``SmartRoutingDecorator`` before registering it in the per-agent
-    ``ProviderRegistry``.
+    Returns ``{backend: base LlmProvider}`` without per-agent decorators:
+    ``claude-cli`` (ClaudeCliDriver), ``anthropic-sdk`` (CircuitBreaker ->
+    Retry -> AnthropicSdkDriver), ``nats`` (NatsLlmDriver — only when
+    ``nats_llm_driver`` is provided). Callers layer ``SmartRoutingDecorator``
+    on top inside ``_build_per_agent_registry``.
     """
     from lyra.llm.decorators import CircuitBreakerDecorator, RetryDecorator
 
@@ -88,6 +88,10 @@ def _build_shared_base_providers(
         else:
             providers["anthropic-sdk"] = retry
         log.info("Shared base: built anthropic-sdk driver (decorated)")
+
+    if nats_llm_driver is not None:
+        providers["nats"] = nats_llm_driver
+        log.info("Shared base: registered nats LLM driver")
 
     return providers
 
@@ -183,12 +187,19 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
             smart_routing_decorator=smart_routing_decorator,
             agent_store=agent_store,
         )
-    if backend in ("claude-cli", "ollama"):
-        if cli_pool is None:
-            raise RuntimeError(f"CliPool required for {backend} backend")
-        if provider_registry is not None:
+    if backend in ("claude-cli", "ollama", "nats"):
+        if backend == "nats":
+            if provider_registry is None:
+                raise ValueError(
+                    "backend='nats' requires a ProviderRegistry with 'nats'"
+                    " registered. Is NATS_URL set?"
+                )
+            provider = provider_registry.get("nats")
+        elif provider_registry is not None:
             provider = provider_registry.get("claude-cli")
         else:
+            if cli_pool is None:
+                raise RuntimeError(f"CliPool required for {backend} backend")
             from lyra.llm.drivers.cli import ClaudeCliDriver
 
             provider = ClaudeCliDriver(cli_pool)
@@ -216,6 +227,7 @@ def _resolve_agents(  # noqa: PLR0913
     tts_service: TtsProtocol | None = None,
     agent_store: AgentStore | None = None,
     llm_cfg: LlmConfig | None = None,
+    nats_llm_driver: "NatsLlmDriver | None" = None,
 ) -> dict[str, AgentBase]:
     """Create all uniquely named agents referenced by bot configs.
 
@@ -227,11 +239,18 @@ def _resolve_agents(  # noqa: PLR0913
 
     Accepts pre-loaded agent configs to avoid duplicate I/O.
     Returns a dict mapping agent_name to AgentBase instance.
+
+    ``nats_llm_driver`` — if provided (NATS_URL is set), registers the shared
+    ``NatsLlmDriver`` instance as the ``"nats"`` backend.  Must already be
+    started (``await driver.start()``) before agents are created.
     """
     # Build shared driver instances once — AnthropicSdkDriver, RetryDecorator,
     # CircuitBreakerDecorator and ClaudeCliDriver are stateless across agents.
     shared_providers = _build_shared_base_providers(
-        circuit_registry, cli_pool, llm_cfg or LlmConfig()
+        circuit_registry,
+        cli_pool,
+        llm_cfg or LlmConfig(),
+        nats_llm_driver=nats_llm_driver,
     )
 
     agents: dict[str, AgentBase] = {}

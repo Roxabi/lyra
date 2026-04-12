@@ -32,6 +32,7 @@ from lyra.bootstrap.lifecycle_helpers import (
     teardown_buses,
     teardown_dispatchers,
 )
+from lyra.bootstrap.llm_overlay import init_nats_llm
 from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent
@@ -273,6 +274,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         tts_service = init_nats_tts(nc)
         if tts_service is not None:
             await tts_service.start()
+        nats_llm_driver = await init_nats_llm(nc)
 
         cli_pool_cfg = _load_cli_pool_config(raw_config)
         hub_cfg = _load_hub_config(raw_config)
@@ -336,6 +338,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             tts_service,
             agent_store=stores.agent,
             llm_cfg=llm_cfg,
+            nats_llm_driver=nats_llm_driver,
         )
         for ag in all_agents.values():
             hub.register_agent(ag)
@@ -499,6 +502,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             if active_ids:
                 await hub.notify_shutdown_inflight(active_ids)
             await cli_pool.stop()
+        if nats_llm_driver is not None:
+            await nats_llm_driver.stop()
         await hub.shutdown()
 
     # Close NATS connection after stores context exits

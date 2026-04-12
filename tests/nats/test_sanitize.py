@@ -133,6 +133,42 @@ class TestSanitizePlatformMeta:
         # Assert — no debug records emitted
         assert caplog.records == []
 
+    def test_oversized_string_value_truncated(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Oversized string values are truncated to MAX_META_VALUE_LEN + warning."""
+        from lyra.nats._sanitize import MAX_META_VALUE_LEN
+
+        # Arrange — an allowlisted key with a > cap value
+        meta = {"thread_session_id": "x" * (MAX_META_VALUE_LEN + 100)}
+
+        # Act
+        with caplog.at_level(logging.WARNING, logger="lyra.nats._sanitize"):
+            result = sanitize_platform_meta(meta)
+
+        # Assert — truncated, not rejected; warning emitted
+        assert len(result["thread_session_id"]) == MAX_META_VALUE_LEN
+        assert result["thread_session_id"] == "x" * MAX_META_VALUE_LEN
+        assert any("truncated" in r.getMessage() for r in caplog.records)
+
+    def test_non_scalar_value_coerced_to_str(self) -> None:
+        """Values that are not str/int/bool are coerced via str()."""
+        # Arrange — list is not a scalar
+        meta = {"thread_session_id": [1, 2, 3]}
+
+        # Act
+        result = sanitize_platform_meta(meta)
+
+        # Assert — coerced to string
+        assert result["thread_session_id"] == "[1, 2, 3]"
+
+    def test_int_and_bool_pass_through_unchanged(self) -> None:
+        """int and bool values pass through without coercion."""
+        meta = {"chat_id": 42, "is_group": True}
+        result = sanitize_platform_meta(meta)
+        assert result["chat_id"] == 42
+        assert result["is_group"] is True
+
     def test_allowlist_values_preserved_exactly(self) -> None:
         """Values of allowlisted keys are returned verbatim."""
         # Arrange

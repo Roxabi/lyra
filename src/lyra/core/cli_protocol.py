@@ -498,13 +498,31 @@ class StreamingIterator:
                 # call failed but the model recovered and produced a valid
                 # answer.  The text was already streamed — don't mark it as
                 # an error or the adapter will prefix it with ❌.
-                if is_error and subtype == "success":
+                #
+                # However, if result text is empty (e.g. auth failure
+                # returning an empty success), keep is_error=True so
+                # the adapter surfaces the error instead of leaving
+                # the "…" placeholder stuck.
+                result_text = data.get("result", "")
+                if is_error and subtype == "success" and result_text:
                     log.info(
                         "[pool:%s] streaming result is_error=True but"
                         " subtype=success — treating as success",
                         self._pool_id,
                     )
                     is_error = False
+                elif is_error and subtype == "success":
+                    errors = data.get("errors", [])
+                    self.error = (
+                        errors[0]
+                        if errors
+                        else "Backend returned empty response"
+                    )
+                    log.warning(
+                        "[pool:%s] streaming result is_error=True"
+                        " subtype=success but empty result",
+                        self._pool_id,
+                    )
                 elif is_error:
                     errors = data.get("errors", [])
                     self.error = (

@@ -10,8 +10,8 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from lyra.core.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from lyra.llm.base import LlmResult
-from lyra.llm.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS

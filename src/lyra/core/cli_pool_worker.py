@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import tempfile
 import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
@@ -17,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .agent_config import ModelConfig
+from .cli_protocol import _read_stderr_snippet, build_cmd
 
 log = logging.getLogger(__name__)
 
@@ -97,44 +97,7 @@ class CliPoolWorkerMixin:
         session_id: str | None = None,
         system_prompt: str = "",
     ) -> tuple[list[str], str | None]:
-        cmd = [
-            "claude",
-            "--input-format",
-            "stream-json",
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--model",
-            model_config.model,
-            # max_turns=None means unlimited — omit the flag, let claude CLI decide.
-            # max_turns=0 is treated as None (DB sentinel); any positive int is passed.
-            *(
-                [
-                    "--max-turns",
-                    str(model_config.max_turns),
-                ]
-                if model_config.max_turns
-                else []
-            ),
-        ]
-        if model_config.streaming:
-            cmd.append("--include-partial-messages")
-        if model_config.skip_permissions:
-            cmd.append("--dangerously-skip-permissions")
-        if model_config.tools:
-            cmd.extend(["--allowedTools", ",".join(model_config.tools)])
-        prompt_file: str | None = None
-        if system_prompt:
-            fd, prompt_file = tempfile.mkstemp(suffix=".txt", prefix="lyra-prompt-")
-            try:
-                os.write(fd, system_prompt.encode("utf-8"))
-            finally:
-                os.close(fd)
-            os.chmod(prompt_file, 0o600)
-            cmd.extend(["--system-prompt-file", prompt_file])
-        if session_id:
-            cmd.extend(["--resume", session_id])
-        return cmd, prompt_file
+        return build_cmd(model_config, session_id, system_prompt)
 
     async def _spawn(
         self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
@@ -169,6 +132,26 @@ class CliPoolWorkerMixin:
             )
         except Exception as exc:
             log.error("[pool:%s] failed to spawn: %s", pool_id, exc)
+            if prompt_file:
+                Path(prompt_file).unlink(missing_ok=True)
+            return None
+
+        # Early liveness check: if the process dies within 100ms (e.g. auth
+        # failure, missing binary, bad flags), capture stderr and fail fast
+        # instead of returning an entry that will produce "stdout EOF".
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=0.1)
+        except asyncio.TimeoutError:
+            pass  # still alive — expected happy path
+        else:
+            # Process already exited
+            stderr_snippet = await _read_stderr_snippet(proc)
+            log.error(
+                "[pool:%s] process exited immediately (rc=%d): %s",
+                pool_id,
+                proc.returncode or -1,
+                stderr_snippet or "(no stderr)",
+            )
             if prompt_file:
                 Path(prompt_file).unlink(missing_ok=True)
             return None

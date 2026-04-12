@@ -131,6 +131,19 @@ class StreamProcessor:
                 yield self._emit_snapshot(is_complete=True)
             if self._pending_text:
                 yield TextRenderEvent(text=self._pending_text, is_final=False)
+            elif not self._has_any_tool_events():
+                # No text, no tools, no result — backend died before producing
+                # anything (e.g. auth failure, crash).  Emit an error event so
+                # the adapter replaces the "…" placeholder instead of leaving
+                # it stuck forever.
+                _upstream_error = getattr(events, "error", None)
+                yield TextRenderEvent(
+                    text=str(_upstream_error) if _upstream_error else (
+                        "Something went wrong. Please try again."
+                    ),
+                    is_final=True,
+                    is_error=True,
+                )
 
     async def _handle_tool_event(
         self, event: ToolUseLlmEvent

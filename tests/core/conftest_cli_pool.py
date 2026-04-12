@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
@@ -28,10 +29,21 @@ def make_fake_proc(stdout_lines: list[bytes]) -> MagicMock:
     proc.stdout = MagicMock()
     proc.stdout.readline = AsyncMock(side_effect=lines_with_eof)
 
-    # termination
-    proc.terminate = MagicMock()
-    proc.wait = AsyncMock(return_value=0)
-    proc.kill = MagicMock()
+    # stderr: empty by default
+    proc.stderr = MagicMock()
+    proc.stderr.read = AsyncMock(return_value=b"")
+
+    # termination: wait() blocks forever for alive processes (the spawn
+    # early-liveness check uses wait_for with a short timeout — it must
+    # timeout for alive procs, not return immediately).
+    async def _wait() -> int:
+        if proc.returncode is None:
+            await asyncio.sleep(3600)  # block — will be cancelled by wait_for
+        return proc.returncode or 0
+
+    proc.terminate = MagicMock(side_effect=lambda: setattr(proc, "returncode", 0))
+    proc.wait = _wait
+    proc.kill = MagicMock(side_effect=lambda: setattr(proc, "returncode", -9))
 
     return proc
 

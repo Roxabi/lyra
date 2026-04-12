@@ -612,15 +612,19 @@ class TestStreamProcessor:
         assert text_events[0].is_error is False
 
     async def test_empty_stream(self) -> None:
-        """Empty event stream yields no events."""
+        """Empty event stream emits a terminal error event (backend died)."""
         # Arrange
         processor = StreamProcessor(cfg())
 
         # Act
         result = await collect(processor.process(async_events()))
 
-        # Assert
-        assert result == []
+        # Assert — backend produced nothing: emit an error so the "…"
+        # placeholder is replaced instead of staying stuck.
+        assert len(result) == 1
+        assert isinstance(result[0], TextRenderEvent)
+        assert result[0].is_error is True
+        assert result[0].is_final is True
 
     async def test_no_result_event(self) -> None:
         """Stream truncated without ResultLlmEvent flushes pending state."""

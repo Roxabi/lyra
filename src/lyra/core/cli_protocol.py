@@ -1,8 +1,9 @@
 """NDJSON protocol layer for the Claude CLI subprocess.
 
 Pure I/O protocol concerns: payload serialisation, event parsing, timeout
-handling, and the result state machine.  No pool state is held here — all
-pool-specific context is passed as explicit arguments.
+handling, command construction, and the result state machine.  No pool
+state is held here — all pool-specific context is passed as explicit
+arguments.
 """
 
 from __future__ import annotations
@@ -10,14 +11,90 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
+import tempfile
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from lyra.llm.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
+from .agent_config import ModelConfig
+
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Subprocess helpers
+# ---------------------------------------------------------------------------
+
+
+async def _read_stderr_snippet(
+    proc: asyncio.subprocess.Process, limit: int = 512
+) -> str:
+    """Read up to *limit* bytes from proc.stderr without blocking.
+
+    Returns a stripped string, or "" if nothing is available.
+    """
+    if proc.stderr is None:
+        return ""
+    try:
+        raw = await asyncio.wait_for(
+            proc.stderr.read(limit), timeout=0.5
+        )
+        return raw.decode(errors="replace").strip()
+    except (asyncio.TimeoutError, Exception):
+        return ""
+
+
+def build_cmd(
+    model_config: ModelConfig,
+    session_id: str | None = None,
+    system_prompt: str = "",
+) -> tuple[list[str], str | None]:
+    """Build the ``claude`` CLI command list from *model_config*.
+
+    Returns ``(cmd, prompt_file)`` where *prompt_file* is a temp path
+    that the caller must clean up, or ``None`` when no system prompt
+    was written.
+    """
+    cmd = [
+        "claude",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        model_config.model,
+        # max_turns=None → unlimited; 0 is DB sentinel for None.
+        *(
+            ["--max-turns", str(model_config.max_turns)]
+            if model_config.max_turns
+            else []
+        ),
+    ]
+    if model_config.streaming:
+        cmd.append("--include-partial-messages")
+    if model_config.skip_permissions:
+        cmd.append("--dangerously-skip-permissions")
+    if model_config.tools:
+        cmd.extend(["--allowedTools", ",".join(model_config.tools)])
+    prompt_file: str | None = None
+    if system_prompt:
+        fd, prompt_file = tempfile.mkstemp(
+            suffix=".txt", prefix="lyra-prompt-"
+        )
+        try:
+            os.write(fd, system_prompt.encode("utf-8"))
+        finally:
+            os.close(fd)
+        os.chmod(prompt_file, 0o600)
+        cmd.extend(["--system-prompt-file", prompt_file])
+    if session_id:
+        cmd.extend(["--resume", session_id])
+    return cmd, prompt_file
 
 # Validate Claude session IDs (strict UUID format).
 SESSION_ID_RE = re.compile(
@@ -131,8 +208,20 @@ async def read_until_result(  # noqa: C901, PLR0915
             except asyncio.TimeoutError:
                 # No output for idle_timeout seconds — process may be stuck.
                 if not entry.is_alive():
-                    log.warning("[pool:%s] process died during idle wait", pool_id)
-                    return CliResult(error="Process terminated unexpectedly")
+                    stderr_hint = await _read_stderr_snippet(proc)
+                    detail = f": {stderr_hint}" if stderr_hint else ""
+                    log.warning(
+                        "[pool:%s] process died during idle wait (rc=%s)%s",
+                        pool_id,
+                        proc.returncode,
+                        detail,
+                    )
+                    return CliResult(
+                        error=(
+                            f"Process terminated unexpectedly"
+                            f" (rc={proc.returncode}){detail}"
+                        ),
+                    )
                 idle_retries += 1
                 if idle_retries >= opts.max_idle_retries:
                     total_wait = idle_timeout * opts.max_idle_retries
@@ -153,8 +242,20 @@ async def read_until_result(  # noqa: C901, PLR0915
                 continue
 
             if not raw:
-                log.warning("[pool:%s] stdout EOF (process died)", pool_id)
-                return CliResult(error="Process terminated unexpectedly")
+                stderr_hint = await _read_stderr_snippet(proc)
+                detail = f": {stderr_hint}" if stderr_hint else ""
+                log.warning(
+                    "[pool:%s] stdout EOF (process died, rc=%s)%s",
+                    pool_id,
+                    proc.returncode,
+                    detail,
+                )
+                return CliResult(
+                    error=(
+                        f"Process terminated unexpectedly"
+                        f" (rc={proc.returncode}){detail}"
+                    ),
+                )
 
             idle_retries = 0  # got data — reset timeout counter
             line = raw.decode().strip()
@@ -284,9 +385,18 @@ class StreamingIterator:
                 )
             except asyncio.TimeoutError:
                 if not entry.is_alive():
+                    stderr_hint = await _read_stderr_snippet(proc)
+                    detail = f": {stderr_hint}" if stderr_hint else ""
                     log.warning(
-                        "[pool:%s] process died during streaming idle wait",
+                        "[pool:%s] process died during streaming idle wait"
+                        " (rc=%s)%s",
                         self._pool_id,
+                        proc.returncode,
+                        detail,
+                    )
+                    self.error = (
+                        f"Process terminated unexpectedly"
+                        f" (rc={proc.returncode}){detail}"
                     )
                     self._done = True
                     raise StopAsyncIteration
@@ -304,7 +414,18 @@ class StreamingIterator:
                 continue
 
             if not raw:
-                log.warning("[pool:%s] stdout EOF during streaming", self._pool_id)
+                stderr_hint = await _read_stderr_snippet(proc)
+                detail = f": {stderr_hint}" if stderr_hint else ""
+                log.warning(
+                    "[pool:%s] stdout EOF during streaming (rc=%s)%s",
+                    self._pool_id,
+                    proc.returncode,
+                    detail,
+                )
+                self.error = (
+                    f"Process terminated unexpectedly"
+                    f" (rc={proc.returncode}){detail}"
+                )
                 self._done = True
                 raise StopAsyncIteration
 

@@ -95,9 +95,6 @@ class TestNatsConnect:
         with pytest.raises(SystemExit, match="unreadable"):
             await nats_connect("nats://localhost:4222")
 
-        # Cleanup
-        seed_file.chmod(0o644)
-
     async def test_connect_empty_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -33,7 +33,8 @@ def _probe_nats(nc: Any | None) -> str | None:
         return "unreachable"
     try:
         return "ok" if bool(nc.is_connected) else "unreachable"
-    except Exception:
+    except Exception as exc:
+        log.debug("_probe_nats: unexpected exception from nc.is_connected: %s", exc)
         return "unreachable"
 
 

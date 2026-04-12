@@ -112,13 +112,23 @@ def reap_tombstones(listener: Any, ttl_seconds: float) -> None:
 
 
 async def run_reaper_loop(listener: Any) -> None:
-    """Periodic reaper: reap cache entries and tombstones at TTL_SECONDS."""
+    """Periodic reaper: reap cache entries and tombstones at TTL_SECONDS.
+
+    Transient exceptions are logged and swallowed so the reaper survives
+    partial-teardown races and library hiccups; ``CancelledError``
+    propagates so ``stop()`` can cleanly cancel the task.
+    """
     from lyra.adapters._inbound_cache import REAPER_INTERVAL_SECONDS, TTL_SECONDS
 
     while True:
         await asyncio.sleep(REAPER_INTERVAL_SECONDS)
-        listener._cache._reap()
-        reap_tombstones(listener, TTL_SECONDS)
+        try:
+            listener._cache._reap()
+            reap_tombstones(listener, TTL_SECONDS)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("run_reaper_loop: transient failure, continuing")
 
 
 def handle_stream_error(listener: Any, data: dict) -> None:

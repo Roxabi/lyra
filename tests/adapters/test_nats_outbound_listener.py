@@ -992,8 +992,7 @@ async def test_remember_terminated_evicts_oldest_first() -> None:
     assert len(listener._terminated_streams) == _MAX_TERMINATED_STREAMS
 
 
-@pytest.mark.asyncio
-async def test_reap_tombstones_evicts_stale_entries() -> None:
+def test_reap_tombstones_evicts_stale_entries() -> None:
     """#570: reaper removes tombstones older than TTL_SECONDS."""
     import time
 

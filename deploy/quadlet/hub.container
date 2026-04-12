@@ -6,9 +6,16 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
+# Image digest pinning for localhost/lyra:latest tracks on a follow-up issue
+# (CI tag-by-SHA strategy). Upstream registry images (e.g. nats.container)
+# are pinned by digest directly.
 Image=localhost/lyra:latest
 ContainerName=lyra-hub
 Network=lyra.network
+# Hardening — defense in depth (see issue #652).
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
 EnvironmentFile=%h/projects/lyra/.env.hub
 # .env.hub contains only hub-scoped vars (ANTHROPIC_API_KEY, LYRA_HEALTH_SECRET,
 # LYRA_LOG_DIR, ROXABI_VAULT_DIR). Adapter tokens (Telegram, Discord, TTS/STT)
@@ -26,6 +33,8 @@ Exec=lyra hub
 [Service]
 Restart=on-failure
 RestartSec=5
+# Cap at 2 full cores — prevents a runaway worker from starving hub + NATS.
+CPUQuota=200%
 
 [Install]
 WantedBy=default.target

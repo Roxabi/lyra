@@ -79,6 +79,66 @@ class TestStreamingIteratorError:
         # Assert
         assert it.error == "rate_limit_error"
 
+    async def test_subtype_success_with_streamed_text_downgrades_to_success(
+        self,
+    ) -> None:
+        """is_error=True + subtype=success is a recovered-tool case — but only
+        when text was actually streamed via text_delta events.
+        """
+        # Arrange — CLI streamed real text before signalling recovered error
+        recovered_result = _ndjson(
+            {
+                "type": "result",
+                "session_id": "abc-123",
+                "result": "Hello",
+                "is_error": True,
+                "subtype": "success",
+                "duration_ms": 1200,
+            }
+        )
+        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE, recovered_result])
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert — downgraded to success, no error set
+        assert it.error is None
+        assert events[0] == TextLlmEvent(text="Hello")
+        assert events[-1] == ResultLlmEvent(
+            is_error=False, duration_ms=1200, cost_usd=None
+        )
+
+    async def test_subtype_success_without_streamed_text_stays_error(self) -> None:
+        """is_error=True + subtype=success with result text but no text_delta
+        events is a fast-fail (auth error, crash) — must stay flagged as error
+        so the adapter surfaces it instead of leaving "…" stuck.
+        """
+        # Arrange — 21ms result with text in result field but no text_delta
+        fast_fail_result = _ndjson(
+            {
+                "type": "result",
+                "session_id": "abc-123",
+                "result": "Please run /login",
+                "is_error": True,
+                "subtype": "success",
+                "duration_ms": 21,
+            }
+        )
+        proc = make_fake_proc([INIT_LINE, fast_fail_result])
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert — flagged as error, result text surfaced via it.error
+        assert it.error == "Please run /login"
+        assert events == [
+            ResultLlmEvent(is_error=True, duration_ms=21, cost_usd=None)
+        ]
+
 
 # ---------------------------------------------------------------------------
 # TestStreamingIteratorCleanup

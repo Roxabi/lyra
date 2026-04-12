@@ -354,6 +354,7 @@ class StreamingIterator:
         self._max_idle_retries = opts.max_idle_retries
         self._idle_retries = 0
         self._done = False
+        self._had_text_delta = False
         self._pending: deque[LlmEvent] = deque()
         self.session_id: str | None = None
         self.error: str | None = None
@@ -485,6 +486,7 @@ class StreamingIterator:
                     if delta.get("type") == "text_delta":
                         text = delta.get("text", "")
                         if text:
+                            self._had_text_delta = True
                             return TextLlmEvent(text=text)
 
             elif msg_type == "result":
@@ -494,35 +496,22 @@ class StreamingIterator:
                     entry.update_session_id(sid)
                 is_error = data.get("is_error", False)
                 subtype = data.get("subtype", "")
-                # CLI returns is_error=True + subtype="success" when a tool
-                # call failed but the model recovered and produced a valid
-                # answer.  The text was already streamed — don't mark it as
-                # an error or the adapter will prefix it with ❌.
-                #
-                # However, if result text is empty (e.g. auth failure
-                # returning an empty success), keep is_error=True so
-                # the adapter surfaces the error instead of leaving
-                # the "…" placeholder stuck.
-                result_text = data.get("result", "")
-                if is_error and subtype == "success" and result_text:
+                # Classify based on observed stream, not self-reported flags.
+                # CLI reports is_error=True + subtype="success" both when:
+                #   (a) a tool call failed but the model recovered and
+                #       streamed a valid answer via text_delta events, and
+                #   (b) the CLI exited early (auth failure, crash) and
+                #       emitted the error text only in the result field.
+                # Only (a) should downgrade to success — and the signal for
+                # that is whether any text was actually streamed.
+                if is_error and subtype == "success" and self._had_text_delta:
                     log.info(
                         "[pool:%s] streaming result is_error=True but"
-                        " subtype=success — treating as success",
+                        " subtype=success with streamed text — treating"
+                        " as success",
                         self._pool_id,
                     )
                     is_error = False
-                elif is_error and subtype == "success":
-                    errors = data.get("errors", [])
-                    self.error = (
-                        errors[0]
-                        if errors
-                        else "Backend returned empty response"
-                    )
-                    log.warning(
-                        "[pool:%s] streaming result is_error=True"
-                        " subtype=success but empty result",
-                        self._pool_id,
-                    )
                 elif is_error:
                     errors = data.get("errors", [])
                     self.error = (
@@ -533,9 +522,14 @@ class StreamingIterator:
                         or "Unknown streaming error"
                     )
                     log.warning(
-                        "[pool:%s] streaming result is_error=True subtype=%s",
+                        "[pool:%s] streaming result is_error=True"
+                        " subtype=%s had_text_delta=%s duration_ms=%d"
+                        " result=%r",
                         self._pool_id,
                         subtype,
+                        self._had_text_delta,
+                        data.get("duration_ms", 0),
+                        (data.get("result") or "")[:200],
                     )
                 log.info(
                     "[pool:%s] streaming result: %dms",

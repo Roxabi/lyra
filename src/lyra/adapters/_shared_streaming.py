@@ -209,27 +209,39 @@ class StreamingSession:
     async def _deliver_final(
         self, placeholder_obj: Any,
     ) -> None:
-        """Deliver the final message after the event loop."""
+        """Deliver the final message after the event loop.
+
+        Terminal invariant: the placeholder must never be left as a bare
+        "…".  If no text was produced and no stream error was raised, edit
+        it to a generic error so the user always sees a final state.
+        """
         display_text = self._st.build_display_text(self._cb.get_msg)
-        if display_text is not None:
-            chunks = (
-                self._cb.chunk_text(display_text)
-                if display_text
-                else []
-            )
+        chunks = (
+            self._cb.chunk_text(display_text)
+            if display_text
+            else []
+        )
+        if chunks:
             if self._st.had_tool_events:
                 await self._deliver_tool_chunks(chunks)
-            elif chunks:
-                await self._deliver_text_chunks(
-                    placeholder_obj, chunks,
-                )
-        elif self._st.stream_error is not None:
-            try:
-                await self._cb.edit_placeholder_text(
-                    placeholder_obj, GENERIC_ERROR_REPLY,
-                )
-            except Exception as edit_exc:
-                log.debug("Error edit skipped: %s", edit_exc)
+            else:
+                await self._deliver_text_chunks(placeholder_obj, chunks)
+            return
+
+        # No deliverable content — surface an error rather than leaving "…".
+        log.warning(
+            "streaming turn ended with no display text"
+            " (final_text=%r stream_error=%r had_tool_events=%s)",
+            self._st.final_text,
+            self._st.stream_error,
+            self._st.had_tool_events,
+        )
+        try:
+            await self._cb.edit_placeholder_text(
+                placeholder_obj, GENERIC_ERROR_REPLY,
+            )
+        except Exception as edit_exc:
+            log.debug("Error edit skipped: %s", edit_exc)
 
     def _handle_typing_tail(self) -> None:
         """Start or cancel typing based on whether the turn is intermediate."""

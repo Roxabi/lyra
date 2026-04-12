@@ -147,6 +147,24 @@ async def test_stream_error_outbound_not_mutated():
     assert outbound.metadata["reply_message_id"] == 42
 
 
+async def test_empty_final_text_surfaces_generic_error():
+    """Terminal invariant: if a final event arrives with empty text and
+    no stream_error, the placeholder must still be edited to GENERIC_ERROR_REPLY
+    rather than left as "…".  Guards against upstream misclassifications
+    (e.g. a recovered-tool downgrade with no streamed text).
+    """
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+
+    session = StreamingSession(cb, outbound=None)
+    await session.run(_events(TextRenderEvent("", is_final=True)))
+
+    cb.edit_placeholder_text.assert_called_once_with(
+        placeholder_obj, GENERIC_ERROR_REPLY,
+    )
+
+
 async def test_error_turn_text_prepended():
     """is_error=True final text gets ❌ prefix via build_display_text."""
     cb = _make_callbacks()

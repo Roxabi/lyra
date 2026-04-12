@@ -282,6 +282,98 @@ class TestHealthEndpoint:
 
 
 # ---------------------------------------------------------------------------
+# T1b — NATS health probe (#449)
+# ---------------------------------------------------------------------------
+
+
+class TestNatsHealthProbe:
+    """#449: /health/detail surfaces NATS status only when NATS is configured."""
+
+    @pytest.fixture(autouse=True)
+    def set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import lyra.bootstrap.health as health_mod
+
+        monkeypatch.setattr(health_mod, "_read_secret", lambda name: HEALTH_SECRET)
+
+    async def test_nats_field_absent_when_url_unset(
+        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No NATS_URL → no `nats` and no `status` keys in the response."""
+        monkeypatch.delenv("NATS_URL", raising=False)
+        from lyra.bootstrap.health import create_health_app
+
+        app = create_health_app(hub)  # nc omitted — mirrors unified mode
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
+
+        data = resp.json()
+        assert "nats" not in data
+        assert "status" not in data
+        assert data["ok"] is True
+
+    async def test_nats_ok_when_url_set_and_connected(
+        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """NATS_URL set + nc.is_connected → `nats: ok` and `status: ok`."""
+        from unittest.mock import MagicMock
+
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+
+        nc = MagicMock()
+        nc.is_connected = True
+
+        from lyra.bootstrap.health import create_health_app
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
+
+        data = resp.json()
+        assert data["nats"] == "ok"
+        assert data["status"] == "ok"
+
+    async def test_nats_unreachable_when_url_set_and_disconnected(
+        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """NATS_URL set + nc disconnected → `nats: unreachable` + degraded."""
+        from unittest.mock import MagicMock
+
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+
+        nc = MagicMock()
+        nc.is_connected = False
+
+        from lyra.bootstrap.health import create_health_app
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
+
+        data = resp.json()
+        assert data["nats"] == "unreachable"
+        assert data["status"] == "degraded"
+
+    async def test_nats_unreachable_when_nc_none_but_url_set(
+        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """NATS_URL set but nc=None (caller didn't wire it) → unreachable."""
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+        from lyra.bootstrap.health import create_health_app
+
+        app = create_health_app(hub)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health/detail", headers=AUTH_HEADERS)
+
+        data = resp.json()
+        assert data["nats"] == "unreachable"
+        assert data["status"] == "degraded"
+
+
+# ---------------------------------------------------------------------------
 # T2 — Hub tracks _last_processed_at and _start_time
 # ---------------------------------------------------------------------------
 

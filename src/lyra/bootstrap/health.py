@@ -7,12 +7,34 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
 
 from lyra.core.hub import Hub
 
 log = logging.getLogger(__name__)
+
+
+def _probe_nats(nc: Any | None) -> str | None:
+    """Return NATS status string when NATS is configured, else ``None``.
+
+    NATS is considered configured when ``NATS_URL`` is present in the
+    environment (mirrors the bootstrap startup check). When configured:
+    - ``nc`` connected  → ``"ok"``
+    - ``nc`` disconnected / absent → ``"unreachable"``
+
+    When ``NATS_URL`` is not set the ``nats`` field is omitted from health
+    responses entirely (no log noise, no degradation). See #449.
+    """
+    if not os.environ.get("NATS_URL"):
+        return None
+    if nc is None:
+        return "unreachable"
+    try:
+        return "ok" if bool(nc.is_connected) else "unreachable"
+    except Exception:
+        return "unreachable"
 
 
 def _read_secret(name: str) -> str:
@@ -30,11 +52,18 @@ def _read_secret(name: str) -> str:
         return ""
 
 
-def create_health_app(hub: Hub) -> FastAPI:
+def create_health_app(  # noqa: C901 — optional sections (nats/reaper/circuits)
+    hub: Hub, nc: Any | None = None
+) -> FastAPI:
     """Create a root FastAPI app with /health endpoint for hub monitoring.
 
     This is the top-level HTTP app — adapter sub-apps can be mounted on it.
     The /health endpoint exposes hub-level health without requiring adapter auth.
+
+    When *nc* is provided (three-process NATS mode), ``/health/detail``
+    surfaces NATS reachability under the ``nats`` key and an overall
+    ``status`` of ``ok``/``degraded``. When ``NATS_URL`` is unset both
+    fields are omitted.
     """
     app = FastAPI(title="Lyra Hub")
 
@@ -75,7 +104,7 @@ def create_health_app(hub: Hub) -> FastAPI:
             for (platform, _bot_id), dispatcher in hub.outbound_dispatchers.items()
         }
 
-        result = {
+        result: dict[str, Any] = {
             "ok": True,
             "queue_size": hub.inbound_bus.staging_qsize(),
             "queues": {"inbound": inbound, "outbound": outbound},
@@ -86,11 +115,16 @@ def create_health_app(hub: Hub) -> FastAPI:
             "buses": hub.inbound_bus.subscription_count,
         }
 
+        nats_status = _probe_nats(nc)
+        if nats_status is not None:
+            result["nats"] = nats_status
+            result["status"] = "degraded" if nats_status == "unreachable" else "ok"
+
         # Reaper fields only present when a CLI pool is configured
         if hub.cli_pool is not None:
-            status = hub.cli_pool.get_reaper_status()
-            result["reaper_alive"] = status["alive"]
-            result["reaper_last_sweep_age"] = status["last_sweep_age"]
+            reaper_status = hub.cli_pool.get_reaper_status()
+            result["reaper_alive"] = reaper_status["alive"]
+            result["reaper_last_sweep_age"] = reaper_status["last_sweep_age"]
         return result
 
     @app.get("/config")

@@ -78,10 +78,12 @@ def _hub_callback(ctx: typer.Context) -> None:
 
 
 def _run_hub() -> None:
-    from lyra.bootstrap.config import _load_raw_config
+    from lyra.__main__ import _setup_logging
+    from lyra.bootstrap.config import _load_logging_config, _load_raw_config
     from lyra.bootstrap.hub_standalone import _bootstrap_hub_standalone
 
     raw_config = _load_raw_config()
+    _setup_logging(_load_logging_config(raw_config))
     asyncio.run(_bootstrap_hub_standalone(raw_config))
 
 
@@ -123,10 +125,12 @@ def _adapter_tts() -> None:
 
 
 def _run_adapter(platform: str) -> None:
+    from lyra.__main__ import _setup_logging
     from lyra.bootstrap.adapter_standalone import _bootstrap_adapter_standalone
-    from lyra.bootstrap.config import _load_raw_config
+    from lyra.bootstrap.config import _load_logging_config, _load_raw_config
 
     raw_config = _load_raw_config()
+    _setup_logging(_load_logging_config(raw_config))
     asyncio.run(_bootstrap_adapter_standalone(raw_config, platform))
 
 

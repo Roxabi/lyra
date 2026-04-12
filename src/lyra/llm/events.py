@@ -47,11 +47,17 @@ class ResultLlmEvent:
 
     ``cost_usd`` is always ``None`` for ``ClaudeCliDriver`` (not present in
     NDJSON result envelope).
+
+    ``error_text`` carries the backend-reported error message when
+    ``is_error=True`` (e.g. ``"Not logged in · Please run /login"`` from the
+    CLI's ``result`` field). Consumers surface it to the user when no other
+    text was streamed; ``None`` or empty on success.
     """
 
     is_error: bool
     duration_ms: int
     cost_usd: float | None = None
+    error_text: str | None = None
 
 
 # Union type exported for type annotations and ``isinstance`` checks.

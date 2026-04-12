@@ -541,6 +541,7 @@ class StreamingIterator:
                     is_error=is_error,
                     duration_ms=data.get("duration_ms", 0),
                     cost_usd=None,
+                    error_text=self.error if is_error else None,
                 )
 
     async def _cleanup(self) -> None:

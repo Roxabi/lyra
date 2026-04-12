@@ -84,7 +84,7 @@ class StreamProcessor:
     # Public interface
     # ------------------------------------------------------------------
 
-    async def process(
+    async def process(  # noqa: C901 — event-type dispatch + terminal fallbacks
         self, events: AsyncIterator[LlmEvent]
     ) -> AsyncGenerator[RenderEvent, None]:
         """Process an async stream of ``LlmEvent`` objects.
@@ -119,8 +119,16 @@ class StreamProcessor:
                 _result_received = True
                 if self._has_any_tool_events():
                     yield self._emit_snapshot(is_complete=True)
+                # On error with no streamed text, fall back to backend's
+                # reported error so the adapter surfaces something
+                # actionable instead of a bare "❌".
+                final_text = self._pending_text or (
+                    event.error_text
+                    if event.is_error and event.error_text
+                    else ""
+                )
                 yield TextRenderEvent(
-                    text=self._pending_text,
+                    text=final_text,
                     is_final=True,
                     is_error=event.is_error,  # #392: propagate error state
                 )

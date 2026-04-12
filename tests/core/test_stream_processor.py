@@ -611,6 +611,51 @@ class TestStreamProcessor:
         assert len(text_events) == 1
         assert text_events[0].is_error is False
 
+    async def test_error_text_surfaces_when_no_streamed_text(self) -> None:
+        """ResultLlmEvent(is_error=True, error_text=...) with no streamed text
+        → TextRenderEvent carries error_text so adapter can surface it.
+        """
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=15,
+                error_text="Not logged in · Please run /login",
+            ),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+
+        # Assert
+        assert len(text_events) == 1
+        assert text_events[0].text == "Not logged in · Please run /login"
+        assert text_events[0].is_error is True
+        assert text_events[0].is_final is True
+
+    async def test_streamed_text_preferred_over_error_text(self) -> None:
+        """When text was streamed, prefer it over error_text (recovered tool)."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            TextLlmEvent(text="recovered output"),
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=100,
+                error_text="should be ignored",
+            ),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+
+        # Assert
+        assert len(text_events) == 1
+        assert text_events[0].text == "recovered output"
+
     async def test_empty_stream(self) -> None:
         """Empty event stream emits a terminal error event (backend died)."""
         # Arrange

@@ -40,7 +40,14 @@ class TestStreamingIteratorError:
         chunks = [chunk async for chunk in it]
 
         # Assert
-        assert chunks == [ResultLlmEvent(is_error=True, duration_ms=50, cost_usd=None)]
+        assert chunks == [
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=50,
+                cost_usd=None,
+                error_text="Something went wrong",
+            )
+        ]
         assert it.error == "Something went wrong"
 
     async def test_error_none_on_success(self) -> None:
@@ -133,10 +140,17 @@ class TestStreamingIteratorError:
         it = StreamingIterator(entry, DEFAULT_POOL_ID)
         events = [ev async for ev in it]
 
-        # Assert — flagged as error, result text surfaced via it.error
+        # Assert — flagged as error, result text surfaced via it.error AND
+        # propagated through the result event so downstream consumers can
+        # render it without needing to peek at iterator attributes.
         assert it.error == "Please run /login"
         assert events == [
-            ResultLlmEvent(is_error=True, duration_ms=21, cost_usd=None)
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=21,
+                cost_usd=None,
+                error_text="Please run /login",
+            )
         ]
 
 

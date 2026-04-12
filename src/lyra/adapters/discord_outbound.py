@@ -13,15 +13,19 @@ from lyra.adapters._shared import (
     DISCORD_MAX_LENGTH,
     format_tool_summary_header,
 )
-from lyra.adapters.discord_formatting import render_buttons, render_text
+from lyra.adapters.discord_formatting import (
+    _validate_inbound,
+    render_buttons,
+    render_text,
+)
 from lyra.core.message import (
     InboundMessage,
     OutboundMessage,
-    Platform,
 )
 from lyra.core.render_events import ToolSummaryRenderEvent
 
 if TYPE_CHECKING:
+    from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.discord import DiscordAdapter
 
 log = logging.getLogger("lyra.adapters.discord")
@@ -88,24 +92,16 @@ async def _discord_typing_worker(  # noqa: C901 — retry + error branches
         )
 
 
-
 async def send(  # noqa: C901 — attachment loop adds branches
     adapter: "DiscordAdapter",
     original_msg: InboundMessage,
     outbound: OutboundMessage,
 ) -> None:
     """Send response back to Discord."""
-    if original_msg.platform != Platform.DISCORD.value:
-        log.error(
-            "send() called with non-discord message id=%s",
-            original_msg.id,
-        )
+    meta = _validate_inbound(original_msg, "send")
+    if meta is None:
         return
-
-    channel_id: int | None = original_msg.platform_meta.get("channel_id")
-    if channel_id is None:
-        raise ValueError("platform_meta missing required key 'channel_id' for send()")
-    thread_id: int | None = original_msg.platform_meta.get("thread_id")
+    channel_id, thread_id, message_id = meta
     send_to_id: int = thread_id if thread_id is not None else channel_id
     messageable = await adapter._resolve_channel(send_to_id)
 
@@ -115,7 +111,7 @@ async def send(  # noqa: C901 — attachment loop adds branches
     last_idx = len(chunks) - 1
 
     # Skip reply-to in threads — thread context makes it redundant.
-    reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
+    reply_msg_id: int | None = message_id
     should_reply = reply_msg_id is not None and thread_id is None
     for i, chunk in enumerate(chunks):
         chunk_view = view if (i == last_idx and view is not None) else None
@@ -151,3 +147,110 @@ def _build_tool_embed(event: ToolSummaryRenderEvent) -> "discord.Embed":
     color = discord.Color.green() if event.is_complete else discord.Color.blue()
     description = "\n".join(format_tool_lines(event)) or "\u200b"
     return discord.Embed(title=title, description=description, color=color)
+
+
+def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
+    adapter: "DiscordAdapter",
+    original_msg: InboundMessage,
+    outbound: OutboundMessage | None,
+) -> "PlatformCallbacks":
+    """Build PlatformCallbacks for StreamingSession from a DiscordAdapter context.
+
+    Extracted from DiscordAdapter._make_streaming_callbacks to keep discord.py
+    under the 300-line file-length limit, matching the Telegram pattern in
+    telegram_outbound.build_streaming_callbacks().
+    """
+    from lyra.adapters._shared import send_with_retry
+    from lyra.adapters._shared_streaming import PlatformCallbacks
+
+    if original_msg.platform != "discord":
+
+        async def _bad_placeholder():
+            raise ValueError("not a discord message")
+
+        async def _noop(text=""):
+            return None
+
+        return PlatformCallbacks(
+            send_placeholder=_bad_placeholder,
+            edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
+            edit_placeholder_tool=lambda ph, ev, h: asyncio.sleep(0),
+            send_message=_noop,
+            send_fallback=_noop,
+            chunk_text=lambda t: [t],
+            start_typing=lambda: None,
+            cancel_typing=lambda: None,
+            get_msg=lambda key, fallback: fallback,
+            placeholder_text="\u2026",
+        )
+
+    channel_id: int | None = original_msg.platform_meta.get("channel_id")
+    thread_id: int | None = original_msg.platform_meta.get("thread_id")
+    send_to_id: int = thread_id if thread_id is not None else channel_id  # type: ignore[assignment]
+    reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
+    should_reply = reply_msg_id is not None and thread_id is None
+    _placeholder_text = adapter._msg("stream_placeholder", "\u2026")
+
+    async def _send_placeholder():
+        messageable = await adapter._resolve_channel(send_to_id)
+        if should_reply:
+            msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
+            placeholder = await msg_obj.reply(_placeholder_text)
+        else:
+            placeholder = await messageable.send(_placeholder_text)
+        return placeholder, placeholder.id
+
+    async def _edit_placeholder_text(ph, text):
+        display = text[-DISCORD_MAX_LENGTH:]
+        await send_with_retry(
+            lambda d=display: ph.edit(content=d, embed=None),
+            label="Intermediate text edit",
+        )
+
+    async def _edit_placeholder_tool(ph, event, header: str = ""):
+        embed = _build_tool_embed(event)
+        await send_with_retry(
+            lambda e=embed: ph.edit(content="", embed=e),
+            label="Tool summary embed",
+        )
+
+    async def _send_message(text: str) -> int | None:
+        messageable = await adapter._resolve_channel(send_to_id)
+        chunks = render_text(text, DISCORD_MAX_LENGTH)
+        last_id = None
+        for i, chunk in enumerate(chunks):
+            is_last = i == len(chunks) - 1
+            if is_last:
+                try:
+                    sent = await messageable.send(chunk)
+                    last_id = sent.id
+                except Exception:
+                    log.exception("Failed to send final text chunk")
+            else:
+                await send_with_retry(
+                    lambda c=chunk: messageable.send(c),
+                    label="Final text chunk",
+                )
+        return last_id
+
+    async def _send_fallback(text: str) -> int | None:
+        fallback_outbound = (
+            OutboundMessage.from_text(text)
+            if text
+            else OutboundMessage.from_text(_placeholder_text)
+        )
+        await send(adapter, original_msg, fallback_outbound)
+        return fallback_outbound.metadata.get("reply_message_id")
+
+    return PlatformCallbacks(
+        send_placeholder=_send_placeholder,
+        edit_placeholder_text=_edit_placeholder_text,
+        edit_placeholder_tool=_edit_placeholder_tool,
+        send_message=_send_message,
+        send_fallback=_send_fallback,
+        chunk_text=lambda text: render_text(text, DISCORD_MAX_LENGTH),
+        start_typing=lambda: adapter._start_typing(send_to_id),
+        cancel_typing=lambda: adapter._cancel_typing(send_to_id),
+        get_msg=adapter._msg,
+        placeholder_text=_placeholder_text,
+    )

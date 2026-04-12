@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
-from lyra.adapters._shared import ATTACHMENT_EXTS_BASE, TypingTaskManager, resolve_msg
+from lyra.adapters._shared import TypingTaskManager, resolve_msg
 from lyra.adapters.discord_config import (  # noqa: F401
     DiscordConfig as DiscordConfig,
     load_discord_config as load_discord_config,
@@ -28,6 +28,7 @@ from lyra.adapters.discord_normalize import normalize as _normalize_impl
 from lyra.adapters._base_outbound import OutboundAdapterBase
 from lyra.adapters.discord_outbound import (
     _discord_typing_worker,
+    build_streaming_callbacks as _build_streaming_callbacks,
     send as _send_impl,
 )
 from lyra.adapters.discord_threads import restore_hot_threads
@@ -49,9 +50,6 @@ from lyra.core.message import (
 )
 from lyra.core.messages import MessageManager
 from lyra.core.stores.thread_store import ThreadStore
-
-# Discord: same base extensions, no platform-specific additions needed.
-_ATTACHMENT_EXTS = ATTACHMENT_EXTS_BASE
 
 log = logging.getLogger(__name__)
 
@@ -283,129 +281,24 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         """Send response back to Discord."""
         await _send_impl(self, original_msg, outbound)
 
-    def _make_streaming_callbacks(  # noqa: C901 — streaming callbacks: one closure per platform op
+    def _make_streaming_callbacks(
         self,
         original_msg: InboundMessage,
         outbound: OutboundMessage | None,
     ) -> "PlatformCallbacks":
         """Build platform-specific callbacks for StreamingSession."""
-        from lyra.adapters._shared import DISCORD_MAX_LENGTH, send_with_retry
-        from lyra.adapters._shared_streaming import PlatformCallbacks
-        from lyra.adapters.discord_formatting import render_text
-        from lyra.adapters.discord_outbound import _build_tool_embed
-
-        if original_msg.platform != "discord":
-            async def _bad_placeholder():
-                raise ValueError("not a discord message")
-            async def _noop(text=""):
-                return None
-            return PlatformCallbacks(
-                send_placeholder=_bad_placeholder,
-                edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
-                edit_placeholder_tool=lambda ph, ev, h: asyncio.sleep(0),
-                send_message=_noop,
-                send_fallback=_noop,
-                chunk_text=lambda t: [t],
-                start_typing=lambda: None,
-                cancel_typing=lambda: None,
-                get_msg=lambda key, fallback: fallback,
-                placeholder_text="\u2026",
-            )
-
-        channel_id: int | None = original_msg.platform_meta.get("channel_id")
-        thread_id: int | None = original_msg.platform_meta.get("thread_id")
-        send_to_id: int = thread_id if thread_id is not None else channel_id  # type: ignore[assignment]
-        reply_msg_id: int | None = original_msg.platform_meta.get("message_id")
-        should_reply = reply_msg_id is not None and thread_id is None
-        _placeholder_text = self._msg("stream_placeholder", "\u2026")
-
-        async def _send_placeholder():
-            messageable = await self._resolve_channel(send_to_id)
-            if should_reply:
-                msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
-                placeholder = await msg_obj.reply(_placeholder_text)
-            else:
-                placeholder = await messageable.send(_placeholder_text)
-            return placeholder, placeholder.id
-
-        async def _edit_placeholder_text(ph, text):
-            display = text[-DISCORD_MAX_LENGTH:]
-            await send_with_retry(
-                lambda d=display: ph.edit(content=d, embed=None),
-                label="Intermediate text edit",
-            )
-
-        async def _edit_placeholder_tool(ph, event, header: str = ""):
-            embed = _build_tool_embed(event)
-            await send_with_retry(
-                lambda e=embed: ph.edit(content="", embed=e),
-                label="Tool summary embed",
-            )
-
-        async def _send_message(text: str) -> int | None:
-            messageable = await self._resolve_channel(send_to_id)
-            chunks = render_text(text, DISCORD_MAX_LENGTH)
-            last_id = None
-            for i, chunk in enumerate(chunks):
-                is_last = i == len(chunks) - 1
-                if is_last:
-                    try:
-                        sent = await messageable.send(chunk)
-                        last_id = sent.id
-                    except Exception:
-                        log.exception("Failed to send final text chunk")
-                else:
-                    await send_with_retry(
-                        lambda c=chunk: messageable.send(c),
-                        label="Final text chunk",
-                    )
-            return last_id
-
-        async def _send_fallback(text: str) -> int | None:
-            fallback_outbound = (
-                OutboundMessage.from_text(text) if text
-                else OutboundMessage.from_text(_placeholder_text)
-            )
-            from lyra.adapters.discord_outbound import (
-                send as _discord_send,  # late: avoids circular import
-            )
-            await _discord_send(self, original_msg, fallback_outbound)
-            return fallback_outbound.metadata.get("reply_message_id")
-
-        return PlatformCallbacks(
-            send_placeholder=_send_placeholder,
-            edit_placeholder_text=_edit_placeholder_text,
-            edit_placeholder_tool=_edit_placeholder_tool,
-            send_message=_send_message,
-            send_fallback=_send_fallback,
-            chunk_text=lambda text: render_text(text, DISCORD_MAX_LENGTH),
-            start_typing=lambda: self._start_typing(send_to_id),
-            cancel_typing=lambda: self._cancel_typing(send_to_id),
-            get_msg=self._msg,
-            placeholder_text=_placeholder_text,
-        )
+        return _build_streaming_callbacks(self, original_msg, outbound)
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Discord voice message."""
-        await discord_audio_outbound.render_audio(
-            msg,
-            inbound,
-            bot_id=self._bot_id,
-            resolve_channel=self._resolve_channel,
-            http=self.http,
-        )
+        await discord_audio_outbound.render_audio(self, msg, inbound)
         self._cancel_typing_for(inbound)
 
     async def render_attachment(
         self, msg: OutboundAttachment, inbound: InboundMessage
     ) -> None:
         """Send an OutboundAttachment envelope as a Discord file attachment."""
-        await discord_audio_outbound.render_attachment(
-            msg,
-            inbound,
-            resolve_channel=self._resolve_channel,
-            attachment_exts=_ATTACHMENT_EXTS,
-        )
+        await discord_audio_outbound.render_attachment(self, msg, inbound)
         self._cancel_typing_for(inbound)
 
     async def render_audio_stream(
@@ -414,9 +307,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         inbound: InboundMessage,
     ) -> None:
         """Buffer streamed audio chunks and send as a single Discord file attachment."""
-        await discord_audio_outbound.render_audio_stream(
-            chunks, inbound, self.render_audio
-        )
+        await discord_audio_outbound.render_audio_stream(self, chunks, inbound)
         self._cancel_typing_for(inbound)
 
     async def render_voice_stream(
@@ -425,7 +316,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         inbound: InboundMessage,
     ) -> None:
         """Route TTS stream to the active Discord voice session for this guild."""
-        await discord_audio_outbound.render_voice_stream(chunks, inbound, self._vsm)
+        await discord_audio_outbound.render_voice_stream(self, chunks, inbound)
         self._cancel_typing_for(inbound)
 
     async def _resolve_channel(self, channel_id: int) -> discord.abc.Messageable:

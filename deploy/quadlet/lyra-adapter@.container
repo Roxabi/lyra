@@ -22,6 +22,8 @@ Environment=NATS_URL=nats://lyra-nats:4222
 Volume=lyra-nkey-%i-adapter.volume:/run/secrets/%i-adapter.seed:ro,z
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/%i-adapter.seed
 Volume=lyra-data.volume:/home/lyra/.lyra:ro,z
+Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
+Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
 Volume=lyra-config.volume:/app/config.toml:ro,z
 Exec=lyra adapter %i
 

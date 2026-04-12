@@ -1,10 +1,4 @@
-"""NatsLlmDriver — LlmProvider over NATS request-reply.
-
-Dispatches LLM requests as JSON to a remote worker. ``complete()`` uses
-``nc.request()``; ``stream()`` uses an ephemeral inbox. ``is_alive()`` is
-True when NATS is connected and a worker heartbeat (``lyra.llm.health.*``)
-arrived within ``HB_TTL``. Heartbeat pattern mirrors ``NatsTtsClient``.
-"""
+"""NatsLlmDriver — LlmProvider over NATS request-reply (complete + stream)."""
 
 from __future__ import annotations
 
@@ -27,16 +21,19 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Module-level aliases kept for backward compatibility (tests may import these).
 SUBJECT_REQUEST = "lyra.llm.request"
 HB_SUBJECT_PATTERN = "lyra.llm.health.*"
 HB_TTL = 30.0  # worker considered alive if last heartbeat is within this window
 
 
 class NatsLlmDriver:
-    """LlmProvider dispatching inference to a NATS worker. Instantiate once
-    per hub; call ``await driver.start()`` after ``nc.is_connected`` and
-    ``await driver.stop()`` on shutdown.
-    """
+    """LlmProvider dispatching inference to a NATS worker."""
+
+    SUBJECT_REQUEST: str = "lyra.llm.request"
+    HB_SUBJECT_PATTERN: str = "lyra.llm.health.*"
+    #: Worker considered alive if last heartbeat is within this window.
+    HB_TTL: float = 30.0
 
     capabilities: dict[str, Any] = {"streaming": True, "auth": "nats"}
 
@@ -50,9 +47,9 @@ class NatsLlmDriver:
         """Subscribe to heartbeat subject. Idempotent."""
         if self._hb_sub is None:
             self._hb_sub = await self._nc.subscribe(
-                HB_SUBJECT_PATTERN, cb=self._on_heartbeat
+                self.HB_SUBJECT_PATTERN, cb=self._on_heartbeat
             )
-            log.debug("NatsLlmDriver: subscribed to %s", HB_SUBJECT_PATTERN)
+            log.debug("NatsLlmDriver: subscribed to %s", self.HB_SUBJECT_PATTERN)
 
     async def stop(self) -> None:
         """Unsubscribe from heartbeat subject. Idempotent."""
@@ -81,17 +78,15 @@ class NatsLlmDriver:
         now = time.monotonic()
         # Evict workers whose last heartbeat was more than TTL*2 ago.
         self._worker_freshness = {
-            k: v for k, v in self._worker_freshness.items() if now - v <= HB_TTL * 2
+            k: v
+            for k, v in self._worker_freshness.items()
+            if now - v <= self.HB_TTL * 2
         }
-        return any(now - ts <= HB_TTL for ts in self._worker_freshness.values())
+        return any(now - ts <= self.HB_TTL for ts in self._worker_freshness.values())
 
     def is_alive(self, pool_id: str) -> bool:  # noqa: ARG002 — pool_id unused (driver is stateless per-pool)
         """Return True when NATS is connected and at least one worker is fresh."""
         return self._nc.is_connected and self._any_worker_alive()
-
-    # ------------------------------------------------------------------
-    # complete() — non-streaming request-reply
-    # ------------------------------------------------------------------
 
     async def complete(  # noqa: PLR0913
         self,
@@ -102,24 +97,13 @@ class NatsLlmDriver:
         *,
         messages: list[dict] | None = None,
     ) -> LlmResult:
-        """Dispatch a single-turn completion over NATS request-reply.
-
-        Serialises the request as JSON, calls ``nc.request()``, parses the
-        reply into ``LlmResult``.
-
-        Timeout or transport errors are returned as ``LlmResult(error=...,
-        retryable=True)`` — the decorator stack (RetryDecorator,
-        CircuitBreakerDecorator) handles retry / circuit-open logic; raising
-        here would bypass them.
-        """
+        """Dispatch a single-turn completion over NATS request-reply."""
         request_id = str(uuid4())
         payload_dict: dict[str, Any] = {
             "request_id": request_id,
             "pool_id": pool_id,
             "text": text,
-            "model_cfg": model_cfg.model_dump()
-            if hasattr(model_cfg, "model_dump")
-            else dict(model_cfg),
+            "model_cfg": model_cfg.model_dump(),
             "system_prompt": system_prompt,
             "messages": messages or [],
             "stream": False,
@@ -128,9 +112,8 @@ class NatsLlmDriver:
 
         try:
             reply = await self._nc.request(
-                SUBJECT_REQUEST, payload, timeout=self._timeout
+                self.SUBJECT_REQUEST, payload, timeout=self._timeout
             )
-            data: dict = json.loads(reply.data)
         except TimeoutError:
             log.warning(
                 "nats_llm: complete() timeout after %.0fs [pool:%s]",
@@ -153,6 +136,15 @@ class NatsLlmDriver:
                 retryable=True,
             )
 
+        try:
+            data: dict = json.loads(reply.data)
+        except json.JSONDecodeError:
+            log.warning(
+                "nats_llm: complete() invalid JSON from worker [pool:%s]",
+                pool_id,
+            )
+            return LlmResult(error="Invalid JSON from worker", retryable=True)
+
         error = data.get("error", "")
         retryable = bool(data.get("retryable", True))
         if error:
@@ -170,10 +162,6 @@ class NatsLlmDriver:
             error="",
             retryable=True,
         )
-
-    # ------------------------------------------------------------------
-    # stream() — streaming via ephemeral inbox
-    # ------------------------------------------------------------------
 
     async def stream(  # noqa: PLR0913
         self,
@@ -223,9 +211,7 @@ class NatsLlmDriver:
             "request_id": request_id,
             "pool_id": pool_id,
             "text": text,
-            "model_cfg": model_cfg.model_dump()
-            if hasattr(model_cfg, "model_dump")
-            else dict(model_cfg),
+            "model_cfg": model_cfg.model_dump(),
             "system_prompt": system_prompt,
             "messages": messages or [],
             "stream": True,
@@ -233,7 +219,7 @@ class NatsLlmDriver:
         payload = json.dumps(payload_dict, ensure_ascii=False).encode("utf-8")
 
         try:
-            await self._nc.publish(SUBJECT_REQUEST, payload, reply=inbox)
+            await self._nc.publish(self.SUBJECT_REQUEST, payload, reply=inbox)
 
             while True:
                 try:
@@ -280,6 +266,12 @@ class NatsLlmDriver:
                     # Emit a result sentinel if the worker sets done=true on a
                     # non-result chunk (defensive — spec requires a result chunk).
                     if event_type != "result":
+                        log.warning(
+                            "nats_llm: worker sent done=True on event_type=%r"
+                            " without result chunk [pool:%s]",
+                            event_type,
+                            pool_id,
+                        )
                         yield ResultLlmEvent(is_error=False, duration_ms=0)
                     return
 

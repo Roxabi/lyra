@@ -62,7 +62,6 @@ def make_chunk_msg(chunk: dict) -> MagicMock:
 
 
 class TestCompleteHappyPath:
-    @pytest.mark.asyncio
     async def test_returns_llm_result_with_text(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -97,7 +96,6 @@ class TestCompleteHappyPath:
         assert payload["pool_id"] == "pool:1"
         assert payload["text"] == "hi"
 
-    @pytest.mark.asyncio
     async def test_payload_includes_model_cfg_as_dict(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -116,7 +114,6 @@ class TestCompleteHappyPath:
         assert isinstance(payload["model_cfg"], dict)
         assert payload["model_cfg"]["model"] == "qwen2.5-14b"
 
-    @pytest.mark.asyncio
     async def test_passes_messages_list(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -141,7 +138,6 @@ class TestCompleteHappyPath:
 
 
 class TestCompleteTimeout:
-    @pytest.mark.asyncio
     async def test_timeout_returns_error_result_retryable(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -157,7 +153,6 @@ class TestCompleteTimeout:
         assert result.retryable is True
         assert "timeout" in result.error.lower()
 
-    @pytest.mark.asyncio
     async def test_transport_error_returns_retryable_error(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -180,7 +175,6 @@ class TestCompleteTimeout:
 
 
 class TestCompleteWorkerError:
-    @pytest.mark.asyncio
     async def test_worker_error_non_retryable_preserved(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -203,7 +197,6 @@ class TestCompleteWorkerError:
         assert result.retryable is False
         assert "quota" in result.error
 
-    @pytest.mark.asyncio
     async def test_worker_error_retryable_true_preserved(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -227,7 +220,6 @@ class TestCompleteWorkerError:
 
 
 class TestStreamHappyPath:
-    @pytest.mark.asyncio
     async def test_yields_text_tool_result_events_in_order(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -293,7 +285,6 @@ class TestStreamHappyPath:
         assert events[2].is_error is False
         assert events[2].duration_ms == 500
 
-    @pytest.mark.asyncio
     async def test_stream_request_has_stream_true(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -349,7 +340,6 @@ class TestStreamHappyPath:
 
 
 class TestStreamCancellation:
-    @pytest.mark.asyncio
     async def test_unsubscribe_called_on_cancellation(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -430,7 +420,6 @@ class TestIsAliveAfterHeartbeat:
         # Act / Assert
         assert driver.is_alive("pool:1") is True
 
-    @pytest.mark.asyncio
     async def test_is_alive_true_after_processing_heartbeat_msg(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -444,7 +433,6 @@ class TestIsAliveAfterHeartbeat:
         # Assert
         assert driver.is_alive("pool:1") is True
 
-    @pytest.mark.asyncio
     async def test_heartbeat_missing_worker_id_ignored(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -516,7 +504,6 @@ class TestIsAliveStaleHeartbeat:
 
 
 class TestLifecycle:
-    @pytest.mark.asyncio
     async def test_start_subscribes_to_heartbeat_pattern(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -531,7 +518,6 @@ class TestLifecycle:
         subject = nc.subscribe.call_args.args[0]
         assert subject == "lyra.llm.health.*"
 
-    @pytest.mark.asyncio
     async def test_start_is_idempotent(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -545,7 +531,6 @@ class TestLifecycle:
         # Assert — subscribed only once
         assert nc.subscribe.await_count == 1
 
-    @pytest.mark.asyncio
     async def test_stop_unsubscribes(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -562,7 +547,6 @@ class TestLifecycle:
         sub_mock.unsubscribe.assert_awaited_once()
         assert driver._hb_sub is None
 
-    @pytest.mark.asyncio
     async def test_stop_without_start_is_noop(self) -> None:
         # Arrange
         nc = AsyncMock()
@@ -571,3 +555,144 @@ class TestLifecycle:
 
         # Act / Assert — must not raise
         await driver.stop()
+
+
+# ---------------------------------------------------------------------------
+# 9. stream() inbox timeout yields error ResultLlmEvent
+# ---------------------------------------------------------------------------
+
+
+class TestStreamInboxTimeout:
+    async def test_stream_inbox_timeout_yields_error_result(self) -> None:
+        # Arrange — very short timeout so wait_for expires immediately
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.new_inbox = MagicMock(return_value="_INBOX.test.timeout")
+
+        sub_mock = AsyncMock()
+
+        async def fake_subscribe(subject, cb=None):
+            return sub_mock
+
+        nc.subscribe = AsyncMock(side_effect=fake_subscribe)
+        nc.publish = AsyncMock()
+
+        driver = make_driver(nc, timeout=0.01)
+
+        # Act — nothing published into the queue, so wait_for raises TimeoutError
+        events = []
+        gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
+        async for ev in gen:
+            events.append(ev)
+
+        # Assert — exactly one error ResultLlmEvent
+        assert len(events) == 1
+        assert isinstance(events[0], ResultLlmEvent)
+        assert events[0].is_error is True
+        assert events[0].duration_ms == 0
+
+        # Assert inbox subscription was cleaned up
+        sub_mock.unsubscribe.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# 10. Defensive streaming branches
+# ---------------------------------------------------------------------------
+
+
+class TestStreamDefensiveBranches:
+    async def test_stream_unknown_event_type_silently_skipped(self) -> None:
+        # Arrange — "ping" chunk followed by result chunk
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.new_inbox = MagicMock(return_value="_INBOX.test.unknown")
+
+        chunks = [
+            {"event_type": "ping", "done": False},
+            {"event_type": "result", "is_error": False, "duration_ms": 0, "done": True},
+        ]
+
+        captured_cb: Any = None
+
+        async def fake_subscribe(subject, cb=None):
+            nonlocal captured_cb
+            captured_cb = cb
+            return AsyncMock()
+
+        nc.subscribe = AsyncMock(side_effect=fake_subscribe)
+        nc.publish = AsyncMock()
+
+        driver = make_driver(nc)
+
+        async def collect() -> list:
+            events: list = []
+            gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
+            task = asyncio.create_task(_drain(gen, events))
+            await asyncio.sleep(0)
+            for chunk in chunks:
+                await captured_cb(make_chunk_msg(chunk))
+            await task
+            return events
+
+        async def _drain(gen, events):
+            async for ev in gen:
+                events.append(ev)
+
+        events = await collect()
+
+        # Assert — only the ResultLlmEvent (ping silently skipped)
+        assert events == [ResultLlmEvent(is_error=False, duration_ms=0)]
+
+    async def test_stream_done_true_on_non_result_emits_synthetic_result(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Arrange — text chunk with done=True (no result chunk)
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.new_inbox = MagicMock(return_value="_INBOX.test.synth")
+
+        chunks = [
+            {"event_type": "text", "text": "hi", "done": True},
+        ]
+
+        captured_cb: Any = None
+
+        async def fake_subscribe(subject, cb=None):
+            nonlocal captured_cb
+            captured_cb = cb
+            return AsyncMock()
+
+        nc.subscribe = AsyncMock(side_effect=fake_subscribe)
+        nc.publish = AsyncMock()
+
+        driver = make_driver(nc)
+
+        async def collect() -> list:
+            events: list = []
+            gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
+            task = asyncio.create_task(_drain(gen, events))
+            await asyncio.sleep(0)
+            for chunk in chunks:
+                await captured_cb(make_chunk_msg(chunk))
+            await task
+            return events
+
+        async def _drain(gen, events):
+            async for ev in gen:
+                events.append(ev)
+
+        with caplog.at_level("WARNING", logger="lyra.llm.drivers.nats_driver"):
+            events = await collect()
+
+        # Assert events: TextLlmEvent then synthetic ResultLlmEvent
+        assert events == [
+            TextLlmEvent(text="hi"),
+            ResultLlmEvent(is_error=False, duration_ms=0),
+        ]
+
+        # Assert warning was emitted for the done=True on non-result chunk
+        assert any(
+            "done=True" in record.message and "event_type" in record.message
+            for record in caplog.records
+            if record.levelname == "WARNING"
+        )

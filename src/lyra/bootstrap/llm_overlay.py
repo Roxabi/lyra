@@ -6,6 +6,8 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+from lyra.nats.connect import scrub_nats_url
+
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
 
@@ -30,5 +32,8 @@ async def init_nats_llm(nc: "NATS | None") -> "NatsLlmDriver | None":
 
     driver = NatsLlmDriver(nc=nc)
     await driver.start()
-    log.info("NatsLlmDriver: initialised (NATS_URL=%s)", os.environ.get("NATS_URL"))
+    log.info(
+        "NatsLlmDriver: initialised (NATS_URL=%s)",
+        scrub_nats_url(os.environ.get("NATS_URL", "")),
+    )
     return driver

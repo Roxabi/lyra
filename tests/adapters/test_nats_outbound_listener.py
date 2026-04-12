@@ -1,6 +1,8 @@
 """Tests for NatsOutboundListener — NATS-to-adapter dispatch."""
+
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from datetime import datetime, timezone
@@ -26,7 +28,10 @@ def _make_tg_msg(msg_id: str = "msg-1") -> InboundMessage:
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
         platform_meta={
-            "chat_id": 42, "message_id": 10, "topic_id": None, "is_group": False
+            "chat_id": 42,
+            "message_id": 10,
+            "topic_id": None,
+            "is_group": False,
         },
         trust_level=TrustLevel.TRUSTED,
     )
@@ -225,7 +230,10 @@ def test_cache_inbound_drops_when_full(caplog) -> None:
     nc = AsyncMock()
     adapter = AsyncMock()
     listener = NatsOutboundListener(
-        nc, Platform.TELEGRAM, "main", adapter,
+        nc,
+        Platform.TELEGRAM,
+        "main",
+        adapter,
     )
 
     # Fill cache to the limit using distinct fake entries
@@ -261,7 +269,10 @@ async def test_stream_drops_when_at_max_streams(caplog) -> None:
     nc = AsyncMock()
     adapter = AsyncMock()
     listener = NatsOutboundListener(
-        nc, Platform.TELEGRAM, "main", adapter,
+        nc,
+        Platform.TELEGRAM,
+        "main",
+        adapter,
     )
 
     # Fill stream_tasks to the limit with mock tasks
@@ -283,9 +294,7 @@ async def test_stream_drops_when_at_max_streams(caplog) -> None:
 
     assert new_stream_id not in listener._stream_tasks
     assert new_stream_id not in listener._stream_queues
-    assert any(
-        "_stream_tasks full" in r.message for r in caplog.records
-    )
+    assert any("_stream_tasks full" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -333,9 +342,7 @@ async def test_existing_stream_receives_chunks_at_capacity(caplog) -> None:
     # Chunk must have been enqueued for the existing stream
     assert listener._stream_queues[existing_id].qsize() >= 1
     # No warning about capacity — existing stream is allowed
-    assert not any(
-        "_stream_tasks full" in r.message for r in caplog.records
-    )
+    assert not any("_stream_tasks full" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -352,7 +359,10 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
     nc = AsyncMock()
     adapter = AsyncMock()
     listener = NatsOutboundListener(
-        nc, Platform.TELEGRAM, "main", adapter,
+        nc,
+        Platform.TELEGRAM,
+        "main",
+        adapter,
     )
 
     stale_id = "stale-stream"
@@ -362,15 +372,14 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
     fresh_msg = _make_tg_msg(fresh_id)
 
     listener._cache._msgs[stale_id] = stale_msg
-    listener._cache._ts[stale_id] = (
-        time.monotonic() - (TTL_SECONDS + 1)
-    )
+    listener._cache._ts[stale_id] = time.monotonic() - (TTL_SECONDS + 1)
 
     listener._cache._msgs[fresh_id] = fresh_msg
     listener._cache._ts[fresh_id] = time.monotonic()
 
     # Wire up _stream_outbound and a mock task for the stale entry
     from lyra.core.message import OutboundMessage
+
     listener._stream_outbound[stale_id] = OutboundMessage(
         content=["x"], buttons=[], metadata={}
     )
@@ -399,9 +408,7 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
 
     assert stale_id not in listener._cache
     assert fresh_id in listener._cache
-    assert any(
-        "evicting stale" in r.message for r in caplog.records
-    )
+    assert any("evicting stale" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -413,7 +420,10 @@ async def test_start_subscribes_with_queue_group() -> None:
     nc = AsyncMock()
     adapter = AsyncMock()
     listener = NatsOutboundListener(
-        nc, Platform.TELEGRAM, "main", adapter,
+        nc,
+        Platform.TELEGRAM,
+        "main",
+        adapter,
         queue_group="adapter-outbound-telegram-main",
     )
 
@@ -745,21 +755,25 @@ async def test_version_mismatch_counter_flows_from_listener() -> None:
     q: asyncio.Queue[dict] = asyncio.Queue()
 
     # Chunk 1: v2 payload → should be dropped, counter incremented
-    await q.put({
-        "stream_id": stream_id,
-        "seq": 0,
-        "event_type": "text",
-        "payload": {"schema_version": 2, "text": "bad", "is_final": False},
-        "done": False,
-    })
+    await q.put(
+        {
+            "stream_id": stream_id,
+            "seq": 0,
+            "event_type": "text",
+            "payload": {"schema_version": 2, "text": "bad", "is_final": False},
+            "done": False,
+        }
+    )
     # Chunk 2: v1 payload → should decode and be yielded; is_final=True → terminal
-    await q.put({
-        "stream_id": stream_id,
-        "seq": 1,
-        "event_type": "text",
-        "payload": {"schema_version": 1, "text": "good", "is_final": True},
-        "done": True,
-    })
+    await q.put(
+        {
+            "stream_id": stream_id,
+            "seq": 1,
+            "event_type": "text",
+            "payload": {"schema_version": 1, "text": "good", "is_final": True},
+            "done": True,
+        }
+    )
 
     # Act — drain the generator using the listener's own counter dict
     yielded: list[object] = []
@@ -865,8 +879,7 @@ async def test_stream_cache_miss_bad_embedded_original_msg_warns_and_drains(
         for r in caplog.records
     )
     assert any(
-        "drained" in r.message and r.levelno == logging.WARNING
-        for r in caplog.records
+        "drained" in r.message and r.levelno == logging.WARNING for r in caplog.records
     )
 
 
@@ -946,9 +959,168 @@ async def test_stream_both_missing_warns_and_drains(caplog) -> None:
     # Assert — send_streaming never called; warning fired
     adapter.send_streaming.assert_not_called()
     assert any(
-        "drained" in r.message and r.levelno == logging.WARNING
-        for r in caplog.records
+        "drained" in r.message and r.levelno == logging.WARNING for r in caplog.records
     )
+
+
+def test_remember_terminated_evicts_oldest_first(monkeypatch) -> None:
+    """#569: FIFO eviction drops the oldest tombstone across the full sequence."""
+    from lyra.adapters import nats_stream_decoder as nsd
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats_stream_decoder import remember_terminated
+
+    # Shrink the cap so the FIFO property is verified against a tiny sequence.
+    monkeypatch.setattr(nsd, "_MAX_TERMINATED_STREAMS", 3)
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    # Insert in known order: A, B, C (fills cap).
+    remember_terminated(listener, "A")
+    remember_terminated(listener, "B")
+    remember_terminated(listener, "C")
+    assert list(listener._terminated_streams.keys()) == ["A", "B", "C"]
+
+    # Insert D → A (oldest) evicted; order is now B, C, D.
+    remember_terminated(listener, "D")
+    assert list(listener._terminated_streams.keys()) == ["B", "C", "D"]
+
+    # Re-tombstone B → B moves to most-recent position; order now C, D, B.
+    remember_terminated(listener, "B")
+    assert list(listener._terminated_streams.keys()) == ["C", "D", "B"]
+
+    # Insert E → C (now oldest) evicted.
+    remember_terminated(listener, "E")
+    assert list(listener._terminated_streams.keys()) == ["D", "B", "E"]
+
+
+def test_reap_tombstones_evicts_stale_entries(monkeypatch) -> None:
+    """#570: reaper removes tombstones older than TTL_SECONDS.
+
+    Uses a frozen monotonic clock so the stale/fresh boundary can't drift
+    under CI load.
+    """
+    from lyra.adapters import nats_stream_decoder as nsd
+    from lyra.adapters._inbound_cache import TTL_SECONDS
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats_stream_decoder import reap_tombstones
+
+    frozen = 1_000_000.0
+    monkeypatch.setattr(nsd.time, "monotonic", lambda: frozen)
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    stale_id = "tombstone-stale"
+    fresh_id = "tombstone-fresh"
+    listener._terminated_streams[stale_id] = frozen - (TTL_SECONDS + 1)
+    listener._terminated_streams[fresh_id] = frozen
+
+    reap_tombstones(listener, TTL_SECONDS)
+
+    assert stale_id not in listener._terminated_streams
+    assert fresh_id in listener._terminated_streams
+
+
+@pytest.mark.asyncio
+async def test_run_reaper_loop_wires_into_start_and_evicts_stale(monkeypatch) -> None:
+    """Wiring test: start() launches run_reaper_loop, which clears stale tombstones.
+
+    Patches asyncio.sleep in the decoder module to yield once then raise
+    CancelledError so the loop executes exactly one iteration before the
+    task is torn down — no real timers involved.
+    """
+    import asyncio
+
+    from lyra.adapters import nats_stream_decoder as nsd
+    from lyra.adapters._inbound_cache import TTL_SECONDS
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    frozen = 2_000_000.0
+    monkeypatch.setattr(nsd.time, "monotonic", lambda: frozen)
+
+    call_count = 0
+
+    async def _sleep_once(_interval):
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            raise asyncio.CancelledError
+        # first call: yield once so the loop body gets to run
+        return None
+
+    monkeypatch.setattr(nsd.asyncio, "sleep", _sleep_once)
+
+    mock_sub = AsyncMock()
+    nc = AsyncMock()
+    nc.subscribe = AsyncMock(return_value=mock_sub)
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    # Seed a stale tombstone.
+    stale_id = "wired-stale"
+    listener._terminated_streams[stale_id] = frozen - (TTL_SECONDS + 1)
+
+    await listener.start()
+    # Allow the reaper task to run one iteration, then cancel propagates.
+    assert listener._reaper_task is not None
+    with contextlib.suppress(asyncio.CancelledError):
+        await listener._reaper_task
+
+    assert stale_id not in listener._terminated_streams
+
+
+@pytest.mark.asyncio
+async def test_run_reaper_loop_survives_transient_exception(monkeypatch) -> None:
+    """run_reaper_loop catches exceptions from reap calls and keeps running.
+
+    Behavioural assertion: if the except clause did not catch, the task
+    would die after the first raise and call_count would never reach 2.
+    Reaching call 2 proves the exception was swallowed and the loop
+    continued to the next sleep.
+    """
+    import asyncio
+
+    from lyra.adapters import nats_stream_decoder as nsd
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    call_count = 0
+
+    async def _sleep_controlled(_interval):
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            raise asyncio.CancelledError
+        return None
+
+    monkeypatch.setattr(nsd.asyncio, "sleep", _sleep_controlled)
+
+    mock_sub = AsyncMock()
+    nc = AsyncMock()
+    nc.subscribe = AsyncMock(return_value=mock_sub)
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    # Make reap_tombstones raise on first iteration.
+    raise_once = [True]
+
+    def _boom(*_args, **_kwargs):
+        if raise_once[0]:
+            raise_once[0] = False
+            raise RuntimeError("transient")
+
+    monkeypatch.setattr(nsd, "reap_tombstones", _boom)
+
+    await listener.start()
+    assert listener._reaper_task is not None
+    with contextlib.suppress(asyncio.CancelledError):
+        await listener._reaper_task
+
+    # Body ran once (raised), loop swallowed it, hit sleep again → cancelled.
+    assert call_count >= 2
+    assert raise_once == [False]  # _boom was actually called
 
 
 @pytest.mark.asyncio

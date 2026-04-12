@@ -52,6 +52,7 @@ from lyra.nats.readiness import start_readiness_responder
 
 log = logging.getLogger(__name__)
 
+
 def _lockfile() -> Path:
     """Resolve the hub lockfile path from LYRA_VAULT_DIR at call time."""
     return (
@@ -106,9 +107,7 @@ def _acquire_lockfile() -> None:
     atexit.register(_release_lockfile)
 
 
-async def _notify_startup(
-    active_proxies: list[str], health_port: int
-) -> None:
+async def _notify_startup(active_proxies: list[str], health_port: int) -> None:
     """Send a Telegram notification on hub startup (best-effort)."""
     token = os.environ.get("TELEGRAM_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
@@ -438,14 +437,12 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         for d in dispatchers:
             await d.start()
 
-        readiness_sub = await start_readiness_responder(
-            nc, [hub.inbound_bus]
-        )
+        readiness_sub = await start_readiness_responder(nc, [hub.inbound_bus])
 
         import uvicorn
 
         health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
-        health_app = create_health_app(hub)
+        health_app = create_health_app(hub, nc=nc)
         health_config = uvicorn.Config(
             health_app, host="127.0.0.1", port=health_port, log_level="warning"
         )
@@ -471,10 +468,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
                 asyncio.create_task(_audit_consumer.run(), name="audit-consumer")
             )
 
-        active = (
-            [f"telegram:{c.bot_id}" for c, _ in tg_bot_auths]
-            + [f"discord:{c.bot_id}" for c, _ in dc_bot_auths]
-        )
+        active = [f"telegram:{c.bot_id}" for c, _ in tg_bot_auths] + [
+            f"discord:{c.bot_id}" for c, _ in dc_bot_auths
+        ]
         log.info(
             "Hub standalone started — NATS proxies: %s, health on :%d.",
             ", ".join(active) if active else "none",

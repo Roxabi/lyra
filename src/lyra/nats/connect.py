@@ -20,23 +20,45 @@ def _read_nkey_seed() -> str | None:
     """Read nkey seed from file path in NATS_NKEY_SEED_PATH env var.
 
     Returns None if env var is unset (dev mode).
-    Exits with clear error if path is not a file, unreadable, or empty.
+    Exits with clear error if path is not a regular file, unreadable, empty,
+    or has unsafe permissions (any group/world access bit).
+
+    Security (TOCTOU): the path is opened once with ``O_NOFOLLOW`` (symlinks
+    rejected) and ``os.fstat`` inspects the live file descriptor so the
+    permission check and the read operate on the same inode. A parent-
+    directory writer cannot swap the path between stat and read.
     """
+    import errno
+    import stat as _stat
+
     path_str = os.environ.get("NATS_NKEY_SEED_PATH")
     if not path_str:
         return None
-    path = Path(path_str)
+    fd = -1
     try:
-        if not path.is_file():
+        fd = os.open(path_str, os.O_RDONLY | os.O_NOFOLLOW)
+        st = os.fstat(fd)
+        if not _stat.S_ISREG(st.st_mode):
+            sys.exit(f"NATS_NKEY_SEED_PATH={path_str!r} is not a file")
+        mode = st.st_mode & 0o777
+        # Reject any group/world access (0o077) — owner-only reads are safe
+        # whether they're 0o600 (rw) or 0o400 (r-only).
+        if mode & 0o077:
             sys.exit(
-                f"NATS_NKEY_SEED_PATH={path_str!r} is not a file"
+                f"NATS_NKEY_SEED_PATH={path_str!r} has unsafe permissions"
+                f" {oct(mode)} (group/world access forbidden; use 0o600 or 0o400)"
             )
-        seed = path.read_text().strip()
+        with os.fdopen(fd, "r") as fh:
+            fd = -1  # fdopen takes ownership; prevent double-close below
+            seed = fh.read().strip()
     except OSError as exc:
-        sys.exit(
-            f"NATS_NKEY_SEED_PATH={path_str!r} is unreadable:"
-            f" {exc.strerror}"
-        )
+        if fd != -1:
+            os.close(fd)
+        if exc.errno in (errno.ENOENT, errno.ELOOP):
+            # Missing path, or a symlink rejected by O_NOFOLLOW.
+            sys.exit(f"NATS_NKEY_SEED_PATH={path_str!r} is not a file")
+        strerror = exc.strerror or str(exc)
+        sys.exit(f"NATS_NKEY_SEED_PATH={path_str!r} is unreadable: {strerror}")
     if not seed:
         sys.exit(f"NATS_NKEY_SEED_PATH={path_str!r} is empty")
     return seed

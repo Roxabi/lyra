@@ -1,18 +1,21 @@
 """NatsOutboundListener — NATS outbound subject → adapter dispatch."""
+
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import json
 import logging
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 
-from lyra.adapters._inbound_cache import InboundCache, run_reaper
+from lyra.adapters._inbound_cache import InboundCache
 from lyra.adapters.nats_stream_decoder import (
     decode_stream_events,
+    run_reaper_loop,
 )
 from lyra.adapters.nats_stream_decoder import (
     handle_stream_error as _handle_stream_error_impl,
@@ -64,7 +67,8 @@ class NatsOutboundListener:
         self._stream_original_msgs: dict[str, dict] = {}
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
         self._reaper_task: asyncio.Task[None] | None = None
-        self._terminated_streams: set[str] = set()
+        # OrderedDict[stream_id, ts]: FIFO eviction + TTL reaping. See #569, #570.
+        self._terminated_streams: OrderedDict[str, float] = OrderedDict()
         self._version_mismatch_drops: dict[str, int] = {}
 
     def cache_inbound(self, msg: InboundMessage) -> None:
@@ -76,18 +80,20 @@ class NatsOutboundListener:
         return self._version_mismatch_drops.get(envelope_name, 0)
 
     def _check_outbound_version(self, payload: dict, envelope_name: str) -> bool:
-        return check_schema_version(payload, envelope_name=envelope_name,
+        return check_schema_version(
+            payload,
+            envelope_name=envelope_name,
             expected=SCHEMA_VERSION_OUTBOUND_MESSAGE,
-            subject=self._subject, counter=self._version_mismatch_drops)
+            subject=self._subject,
+            counter=self._version_mismatch_drops,
+        )
 
     async def start(self) -> None:
         """Subscribe to the outbound NATS subject."""
         self._sub = await self._nc.subscribe(
             self._subject, queue=self._queue_group, cb=self._handle
         )
-        self._reaper_task = asyncio.create_task(
-            run_reaper(self._cache)
-        )
+        self._reaper_task = asyncio.create_task(run_reaper_loop(self))
 
     async def stop(self) -> None:
         """Unsubscribe from NATS."""
@@ -163,9 +169,7 @@ class NatsOutboundListener:
         except Exception:
             log.warning("NatsOutboundListener: failed to deserialize attachment")
             return
-        await self._adapter.render_attachment(
-            attachment, original_msg
-        )
+        await self._adapter.render_attachment(attachment, original_msg)
         self._cache.pop(stream_id)
 
     async def _handle_audio(self, data: dict) -> None:
@@ -194,8 +198,12 @@ class NatsOutboundListener:
         if not self._check_outbound_version(outbound_data, "OutboundMessage"):
             return
         if len(self._stream_outbound) >= _MAX_STREAMS:
-            log.warning("NatsOutboundListener: _stream_outbound full"
-                " (%d entries), dropping stream_id=%r", _MAX_STREAMS, stream_id)
+            log.warning(
+                "NatsOutboundListener: _stream_outbound full"
+                " (%d entries), dropping stream_id=%r",
+                _MAX_STREAMS,
+                stream_id,
+            )
             return
         try:
             self._stream_outbound[stream_id] = _deserialize_dict(
@@ -218,26 +226,33 @@ class NatsOutboundListener:
             return
         if stream_id in self._terminated_streams:
             log.warning(
-                "NatsOutboundListener: chunk rejected for terminated"
-                " stream_id=%r",
+                "NatsOutboundListener: chunk rejected for terminated stream_id=%r",
                 stream_id,
             )
             return
         at_limit = len(self._stream_tasks) >= _MAX_STREAMS
         if stream_id not in self._stream_tasks and at_limit:
-            log.warning("NatsOutboundListener: _stream_tasks full"
-                " (%d streams), dropping stream_id=%r", _MAX_STREAMS, stream_id)
+            log.warning(
+                "NatsOutboundListener: _stream_tasks full"
+                " (%d streams), dropping stream_id=%r",
+                _MAX_STREAMS,
+                stream_id,
+            )
             return
         q = self._stream_queues.setdefault(
-            stream_id, asyncio.Queue(maxsize=_MAX_QUEUE_SIZE),
+            stream_id,
+            asyncio.Queue(maxsize=_MAX_QUEUE_SIZE),
         )
         if stream_id in self._cache:
             self._cache.touch(stream_id)
         try:
             q.put_nowait(data)
         except asyncio.QueueFull:
-            log.warning("NatsOutboundListener: stream queue full"
-                " for stream_id=%r, dropping chunk", stream_id)
+            log.warning(
+                "NatsOutboundListener: stream queue full"
+                " for stream_id=%r, dropping chunk",
+                stream_id,
+            )
             return
         if stream_id not in self._stream_tasks:
             self._stream_tasks[stream_id] = asyncio.create_task(
@@ -255,13 +270,15 @@ class NatsOutboundListener:
                 except Exception:
                     log.warning(
                         "NatsOutboundListener: bad embedded original_msg"
-                        " for stream_id=%r", stream_id,
+                        " for stream_id=%r",
+                        stream_id,
                     )
                 else:
                     log.debug(
                         "NatsOutboundListener: cache miss, recovered"
                         " original_msg from embedded payload"
-                        " for stream_id=%r", stream_id,
+                        " for stream_id=%r",
+                        stream_id,
                     )
         if original_msg is None:
             drained = 0
@@ -296,5 +313,5 @@ class NatsOutboundListener:
             self._cache.pop(stream_id)
             self._stream_tasks.pop(stream_id, None)
             self._stream_queues.pop(stream_id, None)
-            self._terminated_streams.discard(stream_id)
+            self._terminated_streams.pop(stream_id, None)
             self._stream_original_msgs.pop(stream_id, None)

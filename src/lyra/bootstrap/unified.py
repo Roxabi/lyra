@@ -64,15 +64,11 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             staging_maxsize=inbound_bus_cfg.staging_maxsize,
             queue_group=HUB_INBOUND,
         )
-        vault_dir = Path(
-            os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
-        )
+        vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
         vault_dir.mkdir(parents=True, exist_ok=True)
 
         async with open_stores(vault_dir) as stores:
-            mi_cfg = MessageIndexConfig(
-                **raw_config.get("message_index", {})
-            )
+            mi_cfg = MessageIndexConfig(**raw_config.get("message_index", {}))
             pruned = await stores.message_index.cleanup_older_than(
                 mi_cfg.retention_days
             )
@@ -91,14 +87,10 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 synthetic = {"auth": {"discord": entry}}
                 await stores.auth.seed_from_config(synthetic, "discord")
 
-            circuit_registry, admin_user_ids = _load_circuit_config(
-                raw_config
-            )
+            circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
 
             try:
-                tg_multi_cfg, dc_multi_cfg = load_multibot_config(
-                    raw_config
-                )
+                tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
             except ValueError as exc:
                 sys.exit(str(exc))
 
@@ -147,9 +139,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             first_agent_name = next(iter(sorted(agent_configs)))
             first_agent_config = agent_configs[first_agent_name]
 
-            msg_manager = _load_messages(
-                language=first_agent_config.i18n_language
-            )
+            msg_manager = _load_messages(language=first_agent_config.i18n_language)
 
             pairing_config = _load_pairing_config(raw_config)
             if pairing_config.enabled and not admin_user_ids:
@@ -185,9 +175,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             llm_cfg = _load_llm_config(raw_config)
             debouncer_cfg = _load_debouncer_config(raw_config)
             event_bus_cfg = _load_event_bus_config(raw_config)
-            event_bus = PipelineEventBus(
-                maxsize=event_bus_cfg.queue_maxsize
-            )
+            event_bus = PipelineEventBus(maxsize=event_bus_cfg.queue_maxsize)
 
             hub = Hub(
                 circuit_registry=circuit_registry,
@@ -287,6 +275,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 pm,
                 cli_pool,
                 _stop,
+                nc=nc,
             )
 
     finally:

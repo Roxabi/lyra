@@ -6,13 +6,13 @@ import ast
 from pathlib import Path
 from typing import AsyncIterator
 
+from lyra.core.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from lyra.core.render_events import (
     TextRenderEvent,
     ToolSummaryRenderEvent,
 )
 from lyra.core.stream_processor import StreamProcessor
 from lyra.core.tool_display_config import ToolDisplayConfig
-from lyra.llm.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 # ---------------------------------------------------------------------------
 # Helpers

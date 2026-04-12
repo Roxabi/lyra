@@ -46,9 +46,11 @@ The stack is assembled in `bootstrap/` during startup — not in `llm/`.
 `SmartRoutingDecorator` (`smart_routing.py`) selects a cheaper model for trivial
 messages and upgrades to a more capable model for complex ones.
 
-## LlmEvent types (`events.py`)
+## LlmEvent types (defined in `core/events.py`)
 
-Events emitted by streaming drivers:
+Events emitted by streaming drivers. The types live in `lyra.core.events` so
+that `core/` can consume them without importing `llm/` — preserving the
+unidirectional `llm → core` dependency (enforced by `import-linter`).
 
 | Event | Purpose |
 |-------|---------|
@@ -59,7 +61,9 @@ Events emitted by streaming drivers:
 `LlmEvent = TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent` — use this union type
 for annotations. All event classes are `frozen=True` — never mutate after construction.
 
-`cost_usd` is always `None` for `ClaudeCliDriver` (not present in its NDJSON output).
+Import from either `lyra.core.events` (canonical) or `lyra.llm` (re-export for
+legacy call sites). `cost_usd` is always `None` for `ClaudeCliDriver` (not present
+in its NDJSON output).
 
 ## SmartRouting (`smart_routing.py`)
 
@@ -85,7 +89,7 @@ Backends are registered by name: `"claude-cli"`, `"anthropic-sdk"`.
 - `LlmResult.error` is a non-empty string on failure. Always check `.ok` first.
 - `retryable=False` means the caller must NOT retry (e.g. quota exhausted, bad key).
   Default is `True` (transient failures are retriable).
-- No framework imports (aiogram, discord, anthropic) in `events.py`.
+- No framework imports (aiogram, discord, anthropic) in `core/events.py`.
 - `on_intermediate` in `complete()` is accepted for protocol compliance but ignored
   by drivers that buffer the full response — this is intentional.
 

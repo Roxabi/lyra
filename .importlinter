@@ -1,0 +1,13 @@
+[importlinter]
+root_package = lyra
+
+[importlinter:contract:clean-architecture-layers]
+name = Clean architecture layers (core ← llm/nats ← adapters ← bootstrap)
+type = layers
+layers =
+    lyra.bootstrap
+    lyra.adapters
+    lyra.nats
+    lyra.llm
+    lyra.core
+ignore_imports =

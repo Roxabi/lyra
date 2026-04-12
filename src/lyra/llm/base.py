@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from lyra.core.agent_config import ModelConfig
-from lyra.llm.events import LlmEvent
+from lyra.core.events import LlmEvent
 
 
 @dataclass

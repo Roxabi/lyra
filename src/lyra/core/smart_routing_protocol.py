@@ -10,9 +10,9 @@ abstractly without importing from ``llm/`` — preserving the unidirectional
 
 from __future__ import annotations
 
-from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from lyra.core.agent_config import Complexity
 
@@ -29,11 +29,17 @@ class RoutingDecision:
     message_preview: str
 
 
+@runtime_checkable
 class SmartRoutingProtocol(Protocol):
-    """Structural type for the smart-routing decorator as seen from ``core/``."""
+    """Structural type for the smart-routing decorator as seen from ``core/``.
+
+    ``history`` is typed as ``Sequence`` (not ``deque``) so callers can only
+    iterate / index — they must not rely on append/pop semantics of the
+    concrete container.
+    """
 
     @property
-    def history(self) -> deque[RoutingDecision]: ...
+    def history(self) -> Sequence[RoutingDecision]: ...
 
 
 __all__ = ["RoutingDecision", "SmartRoutingProtocol"]

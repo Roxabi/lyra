@@ -23,16 +23,16 @@ jobs:
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v7
 
       - name: Install dependencies
-        run: uv sync --frozen --all-extras
-
-      - name: Lint
-        run: uv run ruff check .
+        run: uv sync --frozen --all-extras --group dev
 
       - name: Check file length
         run: bash tools/check_file_length.sh
 
       - name: Enforce import layers
         run: uv run lint-imports
+
+      - name: Lint
+        run: uv run ruff check .
 
       - name: Typecheck
         run: uv run pyright

@@ -61,9 +61,10 @@ unidirectional `llm → core` dependency (enforced by `import-linter`).
 `LlmEvent = TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent` — use this union type
 for annotations. All event classes are `frozen=True` — never mutate after construction.
 
-Import from either `lyra.core.events` (canonical) or `lyra.llm` (re-export for
-legacy call sites). `cost_usd` is always `None` for `ClaudeCliDriver` (not present
-in its NDJSON output).
+Import canonically from `lyra.core.events`. The `lyra.llm` package does **not**
+re-export these types — doing so would make the canonical location invisible to
+tooling (`import-linter` checks statements, not re-exports). `cost_usd` is always
+`None` for `ClaudeCliDriver` (not present in its NDJSON output).
 
 ## SmartRouting (`smart_routing.py`)
 

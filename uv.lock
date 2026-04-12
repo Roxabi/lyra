@@ -1174,7 +1174,7 @@ provides-extras = ["voice"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "import-linter", specifier = ">=2.0" },
+    { name = "import-linter", specifier = ">=2.0,<3" },
     { name = "pip-audit", specifier = ">=2.10.0" },
     { name = "pip-licenses", specifier = ">=5.5.1" },
     { name = "pre-commit", specifier = ">=4.5.1" },

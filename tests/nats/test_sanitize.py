@@ -136,38 +136,58 @@ class TestSanitizePlatformMeta:
     def test_oversized_string_value_truncated(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Oversized string values are truncated to MAX_META_VALUE_LEN + warning."""
+        """Oversized string values are truncated with a DEBUG log."""
+        import logging as _logging
+
         from lyra.nats._sanitize import MAX_META_VALUE_LEN
 
         # Arrange — an allowlisted key with a > cap value
         meta = {"thread_session_id": "x" * (MAX_META_VALUE_LEN + 100)}
 
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.nats._sanitize"):
+        with caplog.at_level(logging.DEBUG, logger="lyra.nats._sanitize"):
             result = sanitize_platform_meta(meta)
 
-        # Assert — truncated, not rejected; warning emitted
+        # Assert — truncated, not rejected; DEBUG on lyra.nats._sanitize only
         assert len(result["thread_session_id"]) == MAX_META_VALUE_LEN
         assert result["thread_session_id"] == "x" * MAX_META_VALUE_LEN
-        assert any("truncated" in r.getMessage() for r in caplog.records)
+        assert any(
+            "truncated" in r.getMessage()
+            and r.name == "lyra.nats._sanitize"
+            and r.levelno == _logging.DEBUG
+            for r in caplog.records
+        )
 
-    def test_non_scalar_value_coerced_to_str(self) -> None:
-        """Values that are not str/int/bool are coerced via str()."""
-        # Arrange — list is not a scalar
-        meta = {"thread_session_id": [1, 2, 3]}
+    def test_non_scalar_value_dropped(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Values that are not str/int/bool are dropped (not coerced)."""
+        # Arrange — list is not a scalar; dict likewise
+        meta = {"thread_session_id": [1, 2, 3], "chat_id": 42}
 
         # Act
-        result = sanitize_platform_meta(meta)
+        with caplog.at_level(logging.DEBUG, logger="lyra.nats._sanitize"):
+            result = sanitize_platform_meta(meta)
 
-        # Assert — coerced to string
-        assert result["thread_session_id"] == "[1, 2, 3]"
+        # Assert — non-scalar key dropped, scalar preserved, DEBUG emitted
+        assert "thread_session_id" not in result
+        assert result["chat_id"] == 42
+        assert any("dropped non-scalar" in r.getMessage() for r in caplog.records)
+
+    def test_non_scalar_clean_short_list_is_silent_on_scalars(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Scalars with short values emit no log records — no spurious warnings."""
+        meta = {"chat_id": 42, "is_group": True}
+        with caplog.at_level(logging.DEBUG, logger="lyra.nats._sanitize"):
+            sanitize_platform_meta(meta)
+        assert caplog.records == []
 
     def test_int_and_bool_pass_through_unchanged(self) -> None:
-        """int and bool values pass through without coercion."""
-        meta = {"chat_id": 42, "is_group": True}
+        """int, True, and False values pass through without coercion."""
+        meta = {"chat_id": 42, "is_group": True, "topic_id": False}
         result = sanitize_platform_meta(meta)
         assert result["chat_id"] == 42
         assert result["is_group"] is True
+        assert result["topic_id"] is False
 
     def test_allowlist_values_preserved_exactly(self) -> None:
         """Values of allowlisted keys are returned verbatim."""

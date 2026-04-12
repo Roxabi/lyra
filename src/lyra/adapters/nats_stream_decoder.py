@@ -93,7 +93,11 @@ def remember_terminated(listener: Any, stream_id: str) -> None:
     ``_terminated_streams`` is an ``OrderedDict[stream_id, monotonic_ts]``:
     - Eviction on cap: ``popitem(last=False)`` drops the oldest insertion.
     - Timestamp lets the TTL reaper evict entries that outlive the cache.
+
+    Re-tombstoning a known stream_id (idempotent call) refreshes both the
+    timestamp *and* the insertion order so FIFO eviction reflects recency.
     """
+    listener._terminated_streams.pop(stream_id, None)
     if len(listener._terminated_streams) >= _MAX_TERMINATED_STREAMS:
         listener._terminated_streams.popitem(last=False)
     listener._terminated_streams[stream_id] = time.monotonic()

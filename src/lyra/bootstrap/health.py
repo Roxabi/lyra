@@ -76,7 +76,12 @@ def create_health_app(  # noqa: C901 — optional sections (nats/reaper/circuits
     async def health_detail(authorization: str = Header(default="")) -> dict:
         health_secret = _read_secret("health_secret")
         expected = f"Bearer {health_secret}"
-        if not health_secret or not hmac.compare_digest(authorization, expected):
+        # Encode both sides to bytes: hmac.compare_digest requires matching
+        # types; passing mixed str/bytes raises TypeError (becomes a 500)
+        # rather than the intended 401. Fix guards against future type drift.
+        if not health_secret or not hmac.compare_digest(
+            authorization.encode("utf-8"), expected.encode("utf-8")
+        ):
             raise HTTPException(status_code=401, detail="unauthorized")
 
         uptime_s = time.monotonic() - hub._start_time

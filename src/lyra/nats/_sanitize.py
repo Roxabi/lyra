@@ -28,54 +28,49 @@ PLATFORM_META_ALLOWLIST: frozenset[str] = frozenset(
 MAX_META_VALUE_LEN = 256
 
 
-def _coerce_value(val: Any) -> Any:
-    """Coerce platform_meta values to safe types and cap length.
-
-    str/int/bool pass through (str truncated to MAX_META_VALUE_LEN).
-    Everything else is coerced via str() and then truncated.
-    """
-    if isinstance(val, bool) or isinstance(val, int):
-        return val
-    if isinstance(val, str):
-        if len(val) > MAX_META_VALUE_LEN:
-            log.warning(
-                "platform_meta: truncated oversized string value (len=%d, max=%d)",
-                len(val),
-                MAX_META_VALUE_LEN,
-            )
-            return val[:MAX_META_VALUE_LEN]
-        return val
-    coerced = str(val)
-    if len(coerced) > MAX_META_VALUE_LEN:
-        log.warning(
-            "platform_meta: truncated oversized coerced value (len=%d, max=%d)",
-            len(coerced),
+def _cap_value(val: str | int | bool) -> str | int | bool:
+    """Cap string values at MAX_META_VALUE_LEN; pass scalars through."""
+    if isinstance(val, str) and len(val) > MAX_META_VALUE_LEN:
+        log.debug(
+            "platform_meta: truncated oversized string value (len=%d, max=%d)",
+            len(val),
             MAX_META_VALUE_LEN,
         )
-        coerced = coerced[:MAX_META_VALUE_LEN]
-    return coerced
+        return val[:MAX_META_VALUE_LEN]
+    return val
 
 
 def sanitize_platform_meta(meta: dict[str, Any]) -> dict[str, Any]:
-    """Filter platform_meta to allowlisted keys only, and cap/coerce values.
+    """Filter platform_meta to allowlisted keys and safe scalar values.
 
     Strips:
     - Keys not in PLATFORM_META_ALLOWLIST
     - Keys with leading underscore (internal-only, e.g. _session_update_fn)
+    - Values that are not scalar (``str | int | bool``) — avoids the
+      ``str({deep dict})`` memory-amplification path since the only
+      legitimate platform_meta values are primitives.
 
     Value validation on surviving keys:
-    - str longer than MAX_META_VALUE_LEN → truncated
-    - Non-(str|int|bool) → coerced via str() and capped
+    - str longer than MAX_META_VALUE_LEN → truncated (logged at DEBUG)
 
-    Stripped keys are logged at DEBUG level (key names only, not values).
+    Stripped keys and dropped values are logged at DEBUG (key names only,
+    never value content — avoids log-amplification from crafted messages).
     """
     stripped = [
         k for k in meta if k not in PLATFORM_META_ALLOWLIST or k.startswith("_")
     ]
     if stripped:
         log.debug("platform_meta: stripped keys %s", stripped)
-    return {
-        k: _coerce_value(v)
-        for k, v in meta.items()
-        if k in PLATFORM_META_ALLOWLIST and not k.startswith("_")
-    }
+    result: dict[str, Any] = {}
+    for k, v in meta.items():
+        if k not in PLATFORM_META_ALLOWLIST or k.startswith("_"):
+            continue
+        if not isinstance(v, (str, int, bool)):
+            log.debug(
+                "platform_meta: dropped non-scalar value for key %r (type=%s)",
+                k,
+                type(v).__name__,
+            )
+            continue
+        result[k] = _cap_value(v)
+    return result

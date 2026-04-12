@@ -372,6 +372,43 @@ class TestNatsHealthProbe:
         assert data["nats"] == "unreachable"
         assert data["status"] == "degraded"
 
+    async def test_nats_unreachable_when_is_connected_raises(
+        self,
+        hub: Hub,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """#449 edge: `nc.is_connected` raising → unreachable + DEBUG log."""
+        import logging as _logging
+        from unittest.mock import MagicMock, PropertyMock
+
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+
+        nc = MagicMock()
+        # PropertyMock models the real @property semantics on nats-py client.
+        type(nc).is_connected = PropertyMock(side_effect=RuntimeError("boom"))
+
+        from lyra.bootstrap.health import create_health_app
+
+        app = create_health_app(hub, nc=nc)
+        transport = ASGITransport(app=app)
+
+        with caplog.at_level(_logging.DEBUG, logger="lyra.bootstrap.health"):
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                resp = await client.get("/health/detail", headers=AUTH_HEADERS)
+
+        data = resp.json()
+        assert data["nats"] == "unreachable"
+        assert data["status"] == "degraded"
+        assert any(
+            "_probe_nats" in r.getMessage()
+            and r.name == "lyra.bootstrap.health"
+            and r.levelno == _logging.DEBUG
+            for r in caplog.records
+        )
+
 
 # ---------------------------------------------------------------------------
 # T2 — Hub tracks _last_processed_at and _start_time

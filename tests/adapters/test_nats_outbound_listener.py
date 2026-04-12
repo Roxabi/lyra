@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from datetime import datetime, timezone
@@ -962,43 +963,51 @@ async def test_stream_both_missing_warns_and_drains(caplog) -> None:
     )
 
 
-@pytest.mark.asyncio
-async def test_remember_terminated_evicts_oldest_first() -> None:
-    """#569: FIFO eviction — oldest tombstone is evicted when the cap is reached."""
+def test_remember_terminated_evicts_oldest_first(monkeypatch) -> None:
+    """#569: FIFO eviction drops the oldest tombstone across the full sequence."""
+    from lyra.adapters import nats_stream_decoder as nsd
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.adapters.nats_stream_decoder import (
-        _MAX_TERMINATED_STREAMS,
-        remember_terminated,
-    )
+    from lyra.adapters.nats_stream_decoder import remember_terminated
+
+    # Shrink the cap so the FIFO property is verified against a tiny sequence.
+    monkeypatch.setattr(nsd, "_MAX_TERMINATED_STREAMS", 3)
 
     nc = AsyncMock()
     adapter = AsyncMock()
     listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
 
-    # Fill the tombstone set to cap, in order.
-    for i in range(_MAX_TERMINATED_STREAMS):
-        remember_terminated(listener, f"stream-{i}")
+    # Insert in known order: A, B, C (fills cap).
+    remember_terminated(listener, "A")
+    remember_terminated(listener, "B")
+    remember_terminated(listener, "C")
+    assert list(listener._terminated_streams.keys()) == ["A", "B", "C"]
 
-    assert len(listener._terminated_streams) == _MAX_TERMINATED_STREAMS
-    assert "stream-0" in listener._terminated_streams
+    # Insert D → A (oldest) evicted; order is now B, C, D.
+    remember_terminated(listener, "D")
+    assert list(listener._terminated_streams.keys()) == ["B", "C", "D"]
 
-    # Trigger an eviction by adding one more.
-    remember_terminated(listener, "stream-new")
+    # Re-tombstone B → B moves to most-recent position; order now C, D, B.
+    remember_terminated(listener, "B")
+    assert list(listener._terminated_streams.keys()) == ["C", "D", "B"]
 
-    # Oldest (stream-0) must be gone; newer (stream-1) retained; new one present.
-    assert "stream-0" not in listener._terminated_streams
-    assert "stream-1" in listener._terminated_streams
-    assert "stream-new" in listener._terminated_streams
-    assert len(listener._terminated_streams) == _MAX_TERMINATED_STREAMS
+    # Insert E → C (now oldest) evicted.
+    remember_terminated(listener, "E")
+    assert list(listener._terminated_streams.keys()) == ["D", "B", "E"]
 
 
-def test_reap_tombstones_evicts_stale_entries() -> None:
-    """#570: reaper removes tombstones older than TTL_SECONDS."""
-    import time
+def test_reap_tombstones_evicts_stale_entries(monkeypatch) -> None:
+    """#570: reaper removes tombstones older than TTL_SECONDS.
 
+    Uses a frozen monotonic clock so the stale/fresh boundary can't drift
+    under CI load.
+    """
+    from lyra.adapters import nats_stream_decoder as nsd
     from lyra.adapters._inbound_cache import TTL_SECONDS
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
     from lyra.adapters.nats_stream_decoder import reap_tombstones
+
+    frozen = 1_000_000.0
+    monkeypatch.setattr(nsd.time, "monotonic", lambda: frozen)
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -1006,14 +1015,112 @@ def test_reap_tombstones_evicts_stale_entries() -> None:
 
     stale_id = "tombstone-stale"
     fresh_id = "tombstone-fresh"
-    now = time.monotonic()
-    listener._terminated_streams[stale_id] = now - (TTL_SECONDS + 1)
-    listener._terminated_streams[fresh_id] = now
+    listener._terminated_streams[stale_id] = frozen - (TTL_SECONDS + 1)
+    listener._terminated_streams[fresh_id] = frozen
 
     reap_tombstones(listener, TTL_SECONDS)
 
     assert stale_id not in listener._terminated_streams
     assert fresh_id in listener._terminated_streams
+
+
+@pytest.mark.asyncio
+async def test_run_reaper_loop_wires_into_start_and_evicts_stale(monkeypatch) -> None:
+    """Wiring test: start() launches run_reaper_loop, which clears stale tombstones.
+
+    Patches asyncio.sleep in the decoder module to yield once then raise
+    CancelledError so the loop executes exactly one iteration before the
+    task is torn down — no real timers involved.
+    """
+    import asyncio
+
+    from lyra.adapters import nats_stream_decoder as nsd
+    from lyra.adapters._inbound_cache import TTL_SECONDS
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    frozen = 2_000_000.0
+    monkeypatch.setattr(nsd.time, "monotonic", lambda: frozen)
+
+    call_count = 0
+
+    async def _sleep_once(_interval):
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            raise asyncio.CancelledError
+        # first call: yield once so the loop body gets to run
+        return None
+
+    monkeypatch.setattr(nsd.asyncio, "sleep", _sleep_once)
+
+    mock_sub = AsyncMock()
+    nc = AsyncMock()
+    nc.subscribe = AsyncMock(return_value=mock_sub)
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    # Seed a stale tombstone.
+    stale_id = "wired-stale"
+    listener._terminated_streams[stale_id] = frozen - (TTL_SECONDS + 1)
+
+    await listener.start()
+    # Allow the reaper task to run one iteration, then cancel propagates.
+    assert listener._reaper_task is not None
+    with contextlib.suppress(asyncio.CancelledError):
+        await listener._reaper_task
+
+    assert stale_id not in listener._terminated_streams
+
+
+@pytest.mark.asyncio
+async def test_run_reaper_loop_survives_transient_exception(monkeypatch) -> None:
+    """run_reaper_loop catches exceptions from reap calls and keeps running.
+
+    Behavioural assertion: if the except clause did not catch, the task
+    would die after the first raise and call_count would never reach 2.
+    Reaching call 2 proves the exception was swallowed and the loop
+    continued to the next sleep.
+    """
+    import asyncio
+
+    from lyra.adapters import nats_stream_decoder as nsd
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+
+    call_count = 0
+
+    async def _sleep_controlled(_interval):
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            raise asyncio.CancelledError
+        return None
+
+    monkeypatch.setattr(nsd.asyncio, "sleep", _sleep_controlled)
+
+    mock_sub = AsyncMock()
+    nc = AsyncMock()
+    nc.subscribe = AsyncMock(return_value=mock_sub)
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    # Make reap_tombstones raise on first iteration.
+    raise_once = [True]
+
+    def _boom(*_args, **_kwargs):
+        if raise_once[0]:
+            raise_once[0] = False
+            raise RuntimeError("transient")
+
+    monkeypatch.setattr(nsd, "reap_tombstones", _boom)
+
+    await listener.start()
+    assert listener._reaper_task is not None
+    with contextlib.suppress(asyncio.CancelledError):
+        await listener._reaper_task
+
+    # Body ran once (raised), loop swallowed it, hit sleep again → cancelled.
+    assert call_count >= 2
+    assert raise_once == [False]  # _boom was actually called
 
 
 @pytest.mark.asyncio

@@ -50,11 +50,11 @@ class ModelConfig(BaseModel):
              that project's CLAUDE.md and has access to its files.
     base_url: override the backend API base URL.
              e.g. "http://localhost:11434/v1" for Ollama local, None for cloud
-             defaults. Used by litellm and anthropic-sdk backends.
-    api_key: backend API key override. Resolved via secrets store at runtime;
+             defaults. Used by litellm (future).
+    api_key: backend API key override. Used by litellm (future);
              None = use env var (FIREWORKS_API_KEY, ANTHROPIC_API_KEY, etc.).
-             Intentionally excluded from __eq__ and __hash__ — it is a
-             credential, not part of model identity.
+             Intentionally excluded from __eq__, __hash__, model_dump, and
+             repr — it is a credential, not part of model identity.
 
     This will evolve into an intelligent model selection system.
     """
@@ -73,6 +73,18 @@ class ModelConfig(BaseModel):
     streaming: bool = False
     base_url: str | None = None
     api_key: str | None = Field(default=None, exclude=True, repr=False)
+
+    @field_validator("base_url")
+    @classmethod
+    def _validate_base_url_scheme(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        from urllib.parse import urlparse
+
+        scheme = urlparse(v).scheme.lower()
+        if scheme not in {"http", "https"}:
+            raise ValueError(f"base_url must use http or https scheme, got {scheme!r}")
+        return v
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ModelConfig):

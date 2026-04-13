@@ -22,6 +22,27 @@ class TestModelConfig:
         assert cfg.model == "claude-opus-4-6"
         assert cfg.max_turns is None  # None = unlimited (default)
         assert cfg.tools == ()
+        assert cfg.base_url is None
+        assert cfg.api_key is None
+
+    def test_backend_litellm_accepted(self) -> None:
+        cfg = ModelConfig(backend="litellm")
+        assert cfg.backend == "litellm"
+
+    def test_valid_backends_contains_litellm(self) -> None:
+        from lyra.core.agent_config import _VALID_BACKENDS
+
+        assert "litellm" in _VALID_BACKENDS
+
+    def test_base_url_invalid_scheme_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ModelConfig(base_url="file:///etc/passwd")
+        with pytest.raises(ValidationError):
+            ModelConfig(base_url="gopher://example.com")
+
+    def test_base_url_http_and_https_accepted(self) -> None:
+        assert ModelConfig(base_url="http://localhost:11434/v1").base_url
+        assert ModelConfig(base_url="https://api.example.com").base_url
 
     def test_tools_field_is_tuple(self) -> None:
         cfg = ModelConfig(tools=("Read", "Grep"))
@@ -126,3 +147,20 @@ class TestModelConfig:
         a = ModelConfig(api_key=None)
         b = ModelConfig(api_key="sk-any")
         assert hash(a) == hash(b)
+
+    def test_api_key_excluded_from_model_dump(self) -> None:
+        """api_key must never leak into serialized payloads (NATS, DB, logs)."""
+        cfg = ModelConfig(api_key="sk-secret")
+        dumped = cfg.model_dump()
+        assert "api_key" not in dumped
+
+    def test_api_key_excluded_from_repr(self) -> None:
+        """repr must not leak the credential in log/debug output."""
+        cfg = ModelConfig(api_key="sk-secret")
+        assert "sk-secret" not in repr(cfg)
+
+    def test_api_key_roundtrip_does_not_restore_value(self) -> None:
+        """model_dump → model_validate does not round-trip api_key by design."""
+        cfg = ModelConfig(api_key="sk-secret")
+        restored = ModelConfig.model_validate(cfg.model_dump())
+        assert restored.api_key is None

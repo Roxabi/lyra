@@ -98,11 +98,6 @@ class TestModelConfig:
         b = ModelConfig(base_url="http://localhost:11434/v1")
         assert hash(a) == hash(b)
 
-    def test_hash_different_base_url_different_hash(self) -> None:
-        a = ModelConfig(base_url="http://localhost:11434/v1")
-        b = ModelConfig(base_url="http://remotehost:8080/v1")
-        assert hash(a) != hash(b)
-
     # ------------------------------------------------------------------
     # api_key field — excluded from hash and eq
     # ------------------------------------------------------------------

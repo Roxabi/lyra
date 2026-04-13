@@ -4,7 +4,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from .commands.command_router import CommandConfig
 
@@ -72,9 +72,7 @@ class ModelConfig(BaseModel):
     skip_permissions: bool = False
     streaming: bool = False
     base_url: str | None = None
-    # e.g. "http://localhost:11434/v1" for Ollama local, None for cloud defaults
-    api_key: str | None = None
-    # resolved via secrets store at runtime; None = use env var (FIREWORKS_API_KEY etc.)
+    api_key: str | None = Field(default=None, exclude=True, repr=False)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ModelConfig):

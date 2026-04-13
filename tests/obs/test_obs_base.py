@@ -6,7 +6,6 @@ import pytest
 
 from lyra.obs import NoOpObsProvider, ObservabilityProvider, ObsSpan, ObsTrace
 
-
 # ---------------------------------------------------------------------------
 # Protocol compliance
 # ---------------------------------------------------------------------------

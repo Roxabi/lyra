@@ -18,9 +18,7 @@ class NoOpObsProvider:
     def end_trace(self, trace: ObsTrace, *, error: str | None = None) -> None:
         pass
 
-    def start_span(
-        self, trace: ObsTrace, name: str, **kwargs: Any
-    ) -> ObsSpan:
+    def start_span(self, trace: ObsTrace, name: str, **kwargs: Any) -> ObsSpan:
         return ObsSpan(span_id="noop", trace_id=trace.trace_id, name=name)
 
     def end_span(self, span: ObsSpan, *, error: str | None = None) -> None:

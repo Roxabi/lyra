@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
 from .commands.command_router import CommandConfig
 
-_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama", "anthropic-sdk"})
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama", "anthropic-sdk", "litellm"})
 _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
 
 _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
@@ -34,8 +34,8 @@ _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
 class ModelConfig(BaseModel):
     """Per-agent model configuration.
 
-    backend: execution backend — "claude-cli" (Claude Code subscription)
-             or "ollama" (local, future).
+    backend: execution backend — "claude-cli" (Claude Code subscription),
+             "ollama" (local, future), or "litellm" (unified LLM proxy).
     model:   model identifier passed to the backend CLI.
     max_turns: max agentic turns per conversation turn.
              None (or 0 in DB) means unlimited — the backend imposes no cap.
@@ -46,6 +46,13 @@ class ModelConfig(BaseModel):
              None → defaults to the Lyra project root.
              Useful to point a dedicated agent at another project so it reads
              that project's CLAUDE.md and has access to its files.
+    base_url: override the backend API base URL.
+             e.g. "http://localhost:11434/v1" for Ollama local, None for cloud
+             defaults. Used by litellm and anthropic-sdk backends.
+    api_key: backend API key override. Resolved via secrets store at runtime;
+             None = use env var (FIREWORKS_API_KEY, ANTHROPIC_API_KEY, etc.).
+             Intentionally excluded from __eq__ and __hash__ — it is a
+             credential, not part of model identity.
 
     This will evolve into an intelligent model selection system.
     """
@@ -62,6 +69,10 @@ class ModelConfig(BaseModel):
     cwd: Path | None = None
     skip_permissions: bool = False
     streaming: bool = False
+    base_url: str | None = None
+    # e.g. "http://localhost:11434/v1" for Ollama local, None for cloud defaults
+    api_key: str | None = None
+    # resolved via secrets store at runtime; None = use env var (FIREWORKS_API_KEY etc.)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ModelConfig):
@@ -73,7 +84,9 @@ class ModelConfig(BaseModel):
             and self.tools == other.tools
             and self.skip_permissions == other.skip_permissions
             and self.streaming == other.streaming
+            and self.base_url == other.base_url
             # cwd excluded — spawn-routing config, not model identity
+            # api_key excluded — credential, not model identity
         )
 
     def __hash__(self) -> int:
@@ -85,7 +98,9 @@ class ModelConfig(BaseModel):
                 self.tools,
                 self.skip_permissions,
                 self.streaming,
+                self.base_url,
                 # cwd intentionally excluded
+                # api_key intentionally excluded — credential, not model identity
             )
         )
 

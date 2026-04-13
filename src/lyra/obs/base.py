@@ -6,18 +6,20 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 
-@dataclass
+@dataclass(frozen=True)
 class ObsTrace:
     trace_id: str
     session_id: str
+    name: str
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ObsSpan:
     span_id: str
     trace_id: str
     name: str
+    parent_span_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -29,11 +31,22 @@ class ObservabilityProvider(Protocol):
         self, trace_id: str, session_id: str, name: str, **kwargs: Any
     ) -> ObsTrace: ...
 
-    def end_trace(self, trace: ObsTrace, *, error: str | None = None) -> None: ...
+    def end_trace(
+        self, trace: ObsTrace, *, error: BaseException | None = None
+    ) -> None: ...
 
-    def start_span(self, trace: ObsTrace, name: str, **kwargs: Any) -> ObsSpan: ...
+    def start_span(
+        self,
+        trace: ObsTrace,
+        name: str,
+        *,
+        parent_span_id: str | None = None,
+        **kwargs: Any,
+    ) -> ObsSpan: ...
 
-    def end_span(self, span: ObsSpan, *, error: str | None = None) -> None: ...
+    def end_span(
+        self, span: ObsSpan, *, error: BaseException | None = None
+    ) -> None: ...
 
     def record_generation(
         self,
@@ -51,7 +64,7 @@ class ObservabilityProvider(Protocol):
         span: ObsSpan,
         name: str,
         *,
-        input: Any = None,
-        output: Any = None,
+        input_data: Any = None,
+        output_data: Any = None,
         **kwargs: Any,
     ) -> None: ...

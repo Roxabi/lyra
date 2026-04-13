@@ -22,14 +22,17 @@ def test_noop_implements_protocol() -> None:
 
 
 def test_obs_trace_fields() -> None:
-    trace = ObsTrace(trace_id="t-1", session_id="s-1")
+    trace = ObsTrace(trace_id="t-1", session_id="s-1", name="my-trace")
     assert trace.trace_id == "t-1"
     assert trace.session_id == "s-1"
+    assert trace.name == "my-trace"
     assert trace.metadata == {}
 
 
 def test_obs_trace_with_metadata() -> None:
-    trace = ObsTrace(trace_id="t-2", session_id="s-2", metadata={"key": "val"})
+    trace = ObsTrace(
+        trace_id="t-2", session_id="s-2", name="meta-trace", metadata={"key": "val"}
+    )
     assert trace.metadata == {"key": "val"}
 
 
@@ -74,6 +77,7 @@ def test_start_trace_returns_obs_trace(trace: ObsTrace) -> None:
     assert isinstance(trace, ObsTrace)
     assert trace.trace_id == "t-1"
     assert trace.session_id == "s-1"
+    assert trace.name == "test-trace"
 
 
 def test_end_trace_no_error(provider: NoOpObsProvider, trace: ObsTrace) -> None:
@@ -81,7 +85,9 @@ def test_end_trace_no_error(provider: NoOpObsProvider, trace: ObsTrace) -> None:
 
 
 def test_end_trace_with_error(provider: NoOpObsProvider, trace: ObsTrace) -> None:
-    provider.end_trace(trace, error="something went wrong")  # must not raise
+    provider.end_trace(
+        trace, error=ValueError("something went wrong")
+    )  # must not raise
 
 
 def test_start_span_returns_obs_span(span: ObsSpan) -> None:
@@ -95,7 +101,7 @@ def test_end_span_no_error(provider: NoOpObsProvider, span: ObsSpan) -> None:
 
 
 def test_end_span_with_error(provider: NoOpObsProvider, span: ObsSpan) -> None:
-    provider.end_span(span, error="span error")  # must not raise
+    provider.end_span(span, error=ValueError("span error"))  # must not raise
 
 
 def test_record_generation(provider: NoOpObsProvider, span: ObsSpan) -> None:
@@ -129,8 +135,8 @@ def test_record_event_with_io(provider: NoOpObsProvider, span: ObsSpan) -> None:
     provider.record_event(
         span,
         "tool_call",
-        input={"arg": "value"},
-        output={"result": 42},
+        input_data={"arg": "value"},
+        output_data={"result": 42},
     )  # must not raise
 
 

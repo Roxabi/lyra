@@ -249,6 +249,65 @@ Harness never writes to:
 
 Any worker in the `harness-workers` queue group can serve any `pool_id` at any time. There is no affinity, no sticky routing, and no warm-up requirement. Workers are interchangeable.
 
+## Observability
+
+The harness is the critical instrumentation point for the agentic loop. Without harness-level observability, LLM `Generation` records (from the LiteLLM OTel callback) appear isolated with no parent span, no tool-call context, and no end-to-end latency. Harness must expose the agentic structure as spans and events so backends (Langfuse, Phoenix, Jaeger) can reconstruct the turn.
+
+### Observability Model
+
+| Concept | Maps to | Emitted by |
+|---|---|---|
+| User turn (one `HarnessRequest`) | `Trace` | Hub (root); `trace_id` propagated on `HarnessRequest` |
+| Harness agentic-loop iteration | `Span` (child of Trace) | Harness (`HarnessLoop.run`) |
+| LLM inference call | `Generation` (child of Span) | LiteLLM OTel callback (automatic once enabled) |
+| Tool execution (Read/Write/Edit/Bash/Grep) | `Event` (child of Span) | Harness (`ToolExecutor.run`) |
+| Pool identity | `session_id` | `pool_id` from `HarnessRequest` copied onto Trace and Span |
+
+### Wire-Format Extension
+
+One optional field is added to the top-level `HarnessRequest` envelope:
+
+```json
+{
+  "schema_version": 1,
+  "request_id":   "<uuid4>",
+  "trace_id":     "<str | null>",
+  "pool_id":      "...",
+  "session_id":   "...",
+  "message":      "...",
+  "history":      [...],
+  "agent_config": {...}
+}
+```
+
+#### Field decision
+
+| Field | Decision | Rationale |
+|---|---|---|
+| `trace_id` | Optional string | Hub-provided root trace id. Harness attaches all spans/generations/events as children. `null` means no root -- harness still emits spans but they have no parent (useful for synthetic/CLI-triggered requests). |
+
+### Provider Wiring
+
+- `HarnessAdapterStandalone.__init__(obs: ObservabilityProvider = NoOpObsProvider())` -- dependency-injected; default NoOp so tests and dev require no backend.
+- `HarnessLoop` receives `obs` from the adapter and calls `obs.start_span(trace_id, name="harness.iteration", attributes={"turn": n, "pool_id": pool_id, "session_id": session_id})` at the top of each iteration; `obs.end_span(span)` on completion or error.
+- `ToolExecutor.run()` records `obs.record_event(span, name="tool.{name}", input=..., output=..., error=...)` per tool call.
+- LiteLLM OTel callback is enabled at driver init: `litellm.callbacks = ["otel"]`. Each LLM call inside a span automatically emits a `Generation` under the current span; harness does not call `record_generation` explicitly.
+
+### Span Attributes (Minimum Set)
+
+| Attribute | Source | Notes |
+|---|---|---|
+| `pool_id` | `HarnessRequest.pool_id` | Tags for session grouping |
+| `session_id` | `HarnessRequest.session_id` | Duplicated for backend compat (Langfuse uses `session_id`) |
+| `agent.name` | `agent_config.name` | Filter traces by agent |
+| `agent.model` | `agent_config.model` | Filter by provider/model |
+| `turn` | loop counter | Iteration index inside the turn |
+| `request_id` | `HarnessRequest.request_id` | Correlate with hub logs |
+
+### Failure Mode
+
+Observability-provider errors are swallowed by the harness -- a failing obs call must never abort the agentic loop. `NoOpObsProvider` is used if none is configured. Errors inside the real provider are logged at `warning` level and dropped.
+
 ## Hub Fallback
 
 The hub-side `NatsHarnessClient` follows the same circuit-breaker + heartbeat-liveness pattern as `NatsTtsClient`:
@@ -306,6 +365,9 @@ The fallback is transparent to the user. A `log.warning` is emitted at each fall
 12. A unit test covers the fallback path (mock `NatsHarnessClient` raises `HarnessUnavailableError`).
 13. A unit test covers the agentic loop with a mock LLM driver emitting one tool call followed by a final text response.
 14. No SQLite store, JetStream KV, or persistent state is written by the harness process.
+15. `HarnessAdapterStandalone` accepts an optional `ObservabilityProvider` in its constructor; default is `NoOpObsProvider`.
+16. A `trace_id` present on `HarnessRequest` is propagated as the parent of every span/event emitted during that request; `trace_id=null` causes spans to be emitted without a parent.
+17. A unit test covers loop execution with a mock `ObservabilityProvider` that records start/end/event calls, asserting the expected sequence for a one-tool one-response turn.
 
 ## Open Questions
 

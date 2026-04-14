@@ -10,11 +10,14 @@ These tests verify the post-migration shape of stt_adapter_standalone.py:
 Tests 1, 2, and 4 are RED before migration (they fail against current source).
 Tests 3 and 5 pass both before and after migration (signature and helper unchanged).
 """
+
 from __future__ import annotations
 
+import base64
 import inspect
+import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -95,6 +98,84 @@ def test_stt_adapter_standalone_class_exists() -> None:
     assert issubclass(SttAdapterStandalone, NatsAdapterBase), (
         "SttAdapterStandalone must subclass NatsAdapterBase"
     )
+
+
+class TestSttAdapterReplyContractVersion:
+    """Behavioural: handle() replies emit contract_version (ADR-044)."""
+
+    def _make_adapter(self, transcribe_result=None, transcribe_raises=None):
+        """Build SttAdapterStandalone with a stubbed STTService.transcribe."""
+        from lyra.bootstrap.stt_adapter_standalone import SttAdapterStandalone
+        from lyra.stt import STTConfig
+
+        mock_cfg = STTConfig(model_size="large-v3-turbo")
+        mock_stt_service = MagicMock()
+        if transcribe_raises is not None:
+            mock_stt_service.transcribe = AsyncMock(side_effect=transcribe_raises)
+        else:
+            mock_stt_service.transcribe = AsyncMock(return_value=transcribe_result)
+
+        with (
+            patch(
+                "lyra.bootstrap.stt_adapter_standalone.load_stt_config",
+                return_value=mock_cfg,
+            ),
+            patch(
+                "lyra.bootstrap.stt_adapter_standalone.STTService",
+                return_value=mock_stt_service,
+            ),
+        ):
+            adapter = SttAdapterStandalone(raw_config={})
+        return adapter
+
+    async def _call_handle(self, adapter, payload: dict) -> dict:
+        """Run adapter.handle(); capture and return the decoded reply payload."""
+        captured = {}
+
+        async def capture_reply(msg, data: bytes) -> None:
+            captured["payload"] = json.loads(data)
+
+        adapter.reply = capture_reply  # type: ignore[method-assign]
+        mock_msg = MagicMock()
+        mock_msg.reply = "_INBOX.test"
+        await adapter.handle(mock_msg, payload)
+        return captured["payload"]
+
+    @pytest.mark.asyncio
+    async def test_success_reply_emits_contract_version(self) -> None:
+        """A successful transcription reply stamps contract_version='1'."""
+        from lyra.stt import TranscriptionResult
+
+        adapter = self._make_adapter(
+            transcribe_result=TranscriptionResult(
+                text="hello", language="en", duration_seconds=1.0
+            )
+        )
+        reply = await self._call_handle(
+            adapter,
+            {
+                "request_id": "rid-1",
+                "audio_b64": base64.b64encode(b"\x00" * 8).decode(),
+                "mime_type": "audio/ogg",
+            },
+        )
+        assert reply["ok"] is True
+        assert reply["contract_version"] == "1"
+
+    @pytest.mark.asyncio
+    async def test_error_reply_emits_contract_version(self) -> None:
+        """An error reply (transcription failed) also stamps contract_version='1'."""
+        adapter = self._make_adapter(transcribe_raises=RuntimeError("engine down"))
+        reply = await self._call_handle(
+            adapter,
+            {
+                "request_id": "rid-2",
+                "audio_b64": base64.b64encode(b"\x00" * 8).decode(),
+                "mime_type": "audio/ogg",
+            },
+        )
+        assert reply["ok"] is False
+        assert reply["contract_version"] == "1"
 
 
 def test_mime_to_ext_still_accessible() -> None:
@@ -193,6 +274,14 @@ class TestSttHeartbeatPayload:
             f"active_requests must start at 0, got {payload['active_requests']}"
         )
 
+    def test_heartbeat_payload_includes_contract_version(self) -> None:
+        """heartbeat_payload() includes 'contract_version' per ADR-044."""
+        adapter = self._make_adapter()
+        payload = adapter.heartbeat_payload()
+        assert payload.get("contract_version") == "1", (
+            "heartbeat_payload() must include contract_version='1' (ADR-044)"
+        )
+
     def test_heartbeat_payload_includes_base_fields(self) -> None:
         """heartbeat_payload() includes base fields: worker_id, service, ts, etc."""
         adapter = self._make_adapter()
@@ -206,8 +295,7 @@ class TestSttHeartbeatPayload:
         """_get_vram_info() returns (0, 0) when pynvml is unavailable."""
         adapter = self._make_adapter()
         with patch(
-            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone"
-            "._get_vram_info",
+            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone._get_vram_info",
             return_value=(0, 0),
         ):
             payload = adapter.heartbeat_payload()
@@ -218,8 +306,7 @@ class TestSttHeartbeatPayload:
         """_get_vram_info() returns real MB values when pynvml succeeds."""
         adapter = self._make_adapter()
         with patch(
-            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone"
-            "._get_vram_info",
+            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone._get_vram_info",
             return_value=(4096, 10240),
         ):
             payload = adapter.heartbeat_payload()

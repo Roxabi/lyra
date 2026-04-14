@@ -1,4 +1,5 @@
 """NatsTtsClient — hub-side NATS request-reply client for TTS."""
+
 from __future__ import annotations
 
 import base64
@@ -11,6 +12,7 @@ from uuid import uuid4
 from nats.aio.client import Client as NATS
 
 from lyra.nats._tts_constants import _TTS_CONFIG_FIELDS
+from lyra.nats.adapter_base import CONTRACT_VERSION
 from lyra.nats.circuit_breaker import NatsCircuitBreaker
 from lyra.tts import SynthesisResult, TtsUnavailableError
 
@@ -36,9 +38,7 @@ class NatsTtsClient:
     async def start(self) -> None:
         """Subscribe to heartbeat subject. Called once after nc is connected."""
         if self._hb_sub is None:
-            self._hb_sub = await self._nc.subscribe(
-                _HB_SUBJECT, cb=self._on_heartbeat
-            )
+            self._hb_sub = await self._nc.subscribe(_HB_SUBJECT, cb=self._on_heartbeat)
 
     async def _on_heartbeat(self, msg) -> None:
         try:
@@ -70,8 +70,7 @@ class NatsTtsClient:
         except Exception as exc:
             if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
                 log.error(
-                    "TTS payload too large (%.0f KB)"
-                    " — check NATS max_payload",
+                    "TTS payload too large (%.0f KB) — check NATS max_payload",
                     payload_kb,
                 )
                 self._cb.record_failure()
@@ -94,14 +93,13 @@ class NatsTtsClient:
         fallback_language: str | None = None,
     ) -> SynthesisResult:
         if not self._any_worker_alive():
-            raise TtsUnavailableError(
-                "TTS: no live worker (heartbeat stale >15s)"
-            )
+            raise TtsUnavailableError("TTS: no live worker (heartbeat stale >15s)")
         if self._cb.is_open():
             raise TtsUnavailableError(
                 "TTS circuit open — adapter temporarily unavailable"
             )
         request: dict = {
+            "contract_version": CONTRACT_VERSION,
             "request_id": str(uuid4()),
             "text": text,
             "language": language,

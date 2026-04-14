@@ -4,6 +4,7 @@ Runs as a separate supervisor process (lyra_tts). Subscribes to
 lyra.voice.tts.request, synthesizes speech via voicecli, responds to
 the reply-to inbox. The hub never imports voicecli — this process does.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 
 from lyra.nats import NatsAdapterBase
 from lyra.nats._tts_constants import _AGENT_TTS_FIELDS
+from lyra.nats.adapter_base import CONTRACT_VERSION
 from lyra.nats.queue_groups import TTS_WORKERS
 from lyra.tts import SynthesisResult, TTSService, load_tts_config
 
@@ -31,6 +33,7 @@ class _NatsTtsConfig:
     TTSService._build_generate_kwargs uses getattr(agent_tts, field, None) so any
     object with matching attributes works. This avoids importing the hub-layer type.
     """
+
     engine: str | None = None
     voice: str | None = None
     language: str | None = None
@@ -50,7 +53,10 @@ class _NatsTtsConfig:
 class TtsAdapterStandalone(NatsAdapterBase):
     def __init__(self, raw_config: dict) -> None:
         super().__init__(
-            SUBJECT, TTS_WORKERS, "TtsRequest", 1,
+            SUBJECT,
+            TTS_WORKERS,
+            "TtsRequest",
+            1,
             heartbeat_subject="lyra.voice.tts.heartbeat",
             heartbeat_interval=5.0,
         )
@@ -66,6 +72,7 @@ class TtsAdapterStandalone(NatsAdapterBase):
         """Return (used_mb, total_mb). Both 0 if pynvml is unavailable."""
         try:
             import pynvml  # noqa: PLC0415  # type: ignore[import-untyped]
+
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
@@ -76,12 +83,14 @@ class TtsAdapterStandalone(NatsAdapterBase):
     def heartbeat_payload(self) -> dict:
         base = super().heartbeat_payload()
         vram_used, vram_total = self._get_vram_info()
-        base.update({
-            "model_loaded": self._tts_cfg.engine or "default",
-            "vram_used_mb": vram_used,
-            "vram_total_mb": vram_total,
-            "active_requests": self._active_count,
-        })
+        base.update(
+            {
+                "model_loaded": self._tts_cfg.engine or "default",
+                "vram_used_mb": vram_used,
+                "vram_total_mb": vram_total,
+                "active_requests": self._active_count,
+            }
+        )
         return base
 
     async def handle(self, msg, payload: dict) -> None:
@@ -114,6 +123,7 @@ class TtsAdapterStandalone(NatsAdapterBase):
                 )
 
                 response = {
+                    "contract_version": CONTRACT_VERSION,
                     "request_id": request_id,
                     "ok": True,
                     "audio_b64": base64.b64encode(result.audio_bytes).decode("ascii"),
@@ -128,6 +138,7 @@ class TtsAdapterStandalone(NatsAdapterBase):
                     data.get("request_id", "?"),
                 )
                 response = {
+                    "contract_version": CONTRACT_VERSION,
                     "request_id": data.get("request_id", "unknown"),
                     "ok": False,
                     "error": "synthesis_failed",

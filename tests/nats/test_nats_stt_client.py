@@ -136,9 +136,7 @@ class TestCircuitBreaker:
     async def test_failure_records_on_max_payload(self, tmp_path: Path) -> None:
         # Arrange
         mock_nc = AsyncMock()
-        mock_nc.request = AsyncMock(
-            side_effect=Exception("NATS: max_payload exceeded")
-        )
+        mock_nc.request = AsyncMock(side_effect=Exception("NATS: max_payload exceeded"))
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
         wav_file = tmp_path / "test.wav"
@@ -153,12 +151,15 @@ class TestCircuitBreaker:
     async def test_success_clears_failures(self, tmp_path: Path) -> None:
         # Arrange — pre-inject 2 failures
         mock_nc = AsyncMock()
-        success_payload = json.dumps({
-            "ok": True,
-            "text": "hello",
-            "language": "en",
-            "duration_seconds": 1.0,
-        }).encode()
+        success_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "ok": True,
+                "text": "hello",
+                "language": "en",
+                "duration_seconds": 1.0,
+            }
+        ).encode()
         fake_reply = MagicMock()
         fake_reply.data = success_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -171,6 +172,67 @@ class TestCircuitBreaker:
         result = await client.transcribe(wav_file)
         # Assert
         assert result.text == "hello"
+        assert client._cb._failures == 0
+
+
+class TestContractVersion:
+    """Tests for the `contract_version` additive field (ADR-044)."""
+
+    @pytest.mark.asyncio
+    async def test_request_payload_emits_contract_version(self, tmp_path: Path) -> None:
+        """NatsSttClient.transcribe() stamps contract_version='1' on the request."""
+        mock_nc = AsyncMock()
+        success_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "ok": True,
+                "text": "hi",
+                "language": "en",
+                "duration_seconds": 1.0,
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = success_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+
+        await client.transcribe(wav_file)
+
+        payload_bytes = mock_nc.request.call_args.args[1]
+        request_dict = json.loads(payload_bytes)
+        assert request_dict["contract_version"] == "1"
+
+    @pytest.mark.asyncio
+    async def test_reply_with_unknown_contract_version_is_tolerated(
+        self, tmp_path: Path
+    ) -> None:
+        """Hub ignores unknown contract_version values on reply (defensive read)."""
+        mock_nc = AsyncMock()
+        # Reply carries a version the hub has never seen — must be silently accepted.
+        reply_payload = json.dumps(
+            {
+                "contract_version": "999",
+                "ok": True,
+                "text": "future",
+                "language": "en",
+                "duration_seconds": 0.5,
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = reply_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+
+        result = await client.transcribe(wav_file)
+
+        assert result.text == "future"
+        assert result.language == "en"
         assert client._cb._failures == 0
 
 
@@ -227,12 +289,15 @@ class TestSttClientFreshness:
     async def test_fresh_worker_proceeds_to_request(self, tmp_path: Path) -> None:
         """transcribe() proceeds past freshness gate when a worker is fresh (<15s)."""
         mock_nc = AsyncMock()
-        success_payload = json.dumps({
-            "ok": True,
-            "text": "hello world",
-            "language": "en",
-            "duration_seconds": 1.0,
-        }).encode()
+        success_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "ok": True,
+                "text": "hello world",
+                "language": "en",
+                "duration_seconds": 1.0,
+            }
+        ).encode()
         fake_reply = MagicMock()
         fake_reply.data = success_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -260,12 +325,15 @@ class TestSttClientFreshness:
     async def test_heartbeat_resumes_reenables_worker(self, tmp_path: Path) -> None:
         """After stale, a new heartbeat re-enables the worker immediately."""
         mock_nc = AsyncMock()
-        success_payload = json.dumps({
-            "ok": True,
-            "text": "resumed",
-            "language": "en",
-            "duration_seconds": 1.0,
-        }).encode()
+        success_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "ok": True,
+                "text": "resumed",
+                "language": "en",
+                "duration_seconds": 1.0,
+            }
+        ).encode()
         fake_reply = MagicMock()
         fake_reply.data = success_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -326,7 +394,7 @@ class TestTranscribeResponseParsing:
     async def test_ok_false_raises_unavailable(self, tmp_path: Path) -> None:
         # Arrange
         mock_nc = AsyncMock()
-        error_payload = json.dumps({"ok": False}).encode()
+        error_payload = json.dumps({"contract_version": "1", "ok": False}).encode()
         fake_reply = MagicMock()
         fake_reply.data = error_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -343,12 +411,15 @@ class TestTranscribeResponseParsing:
     async def test_noise_transcript_raises_noise_error(self, tmp_path: Path) -> None:
         # Arrange — Whisper returns a known noise token
         mock_nc = AsyncMock()
-        noise_payload = json.dumps({
-            "ok": True,
-            "text": "[music]",
-            "language": "en",
-            "duration_seconds": 0.5,
-        }).encode()
+        noise_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "ok": True,
+                "text": "[music]",
+                "language": "en",
+                "duration_seconds": 0.5,
+            }
+        ).encode()
         fake_reply = MagicMock()
         fake_reply.data = noise_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)

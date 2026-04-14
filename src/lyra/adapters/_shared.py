@@ -27,6 +27,7 @@ from lyra.adapters._shared_audio import (
     buffer_audio_chunks,
     mime_to_ext,
 )
+from lyra.adapters.nats_stream_decoder import StreamChunkTimeout
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.message import (
     GENERIC_ERROR_REPLY,
@@ -355,6 +356,48 @@ class IntermediateTextState:
         return self._text or self._tool_summary
 
 
+_ERR_TIMEOUT_FALLBACK = (
+    "\u23f1\ufe0f The backend took longer than 120 s to respond. Please try again."
+)
+_ERR_NO_FINAL_FALLBACK = (
+    "\u26a0\ufe0f Response ended without a final message"
+    " (tool events only). Please try again."
+)
+
+
+def classify_stream_error(
+    stream_error: Exception | None,
+    *,
+    had_tool_events: bool,
+    final_text: str | None,
+    msg_fn: Callable[[str, str], str],
+) -> str | None:
+    """Return a descriptive error string for terminal error states.
+
+    Returns ``None`` when there is no error and a final text is present
+    (caller renders ``final_text`` normally).  Returns a user-facing string
+    for every error branch so callers never fall through to a bare
+    GENERIC_ERROR_REPLY silently.
+
+    Args:
+        stream_error:    Exception captured by the stream loop, or ``None``.
+        had_tool_events: Whether tool events were seen before the error.
+        final_text:      Final text captured from the stream, or ``None``.
+        msg_fn:          ``get_msg(key, fallback)`` callback for i18n.
+    """
+    if stream_error is not None:
+        if isinstance(stream_error, StreamChunkTimeout):
+            return msg_fn("error_timeout", _ERR_TIMEOUT_FALLBACK)
+        return msg_fn(
+            "error_stream",
+            f"\u26a0\ufe0f Streaming error:"
+            f" {type(stream_error).__name__}: {stream_error}. Please try again.",
+        )
+    if final_text is None and had_tool_events:
+        return msg_fn("error_no_final", _ERR_NO_FINAL_FALLBACK)
+    return None
+
+
 @dataclass
 class StreamState:
     """Mutable event-loop state for send_streaming().
@@ -395,11 +438,18 @@ class StreamState:
     def build_display_text(self, msg_fn: Callable[[str, str], str]) -> str | None:
         """Assemble display text with error prefix and interrupt notice.
 
-        Returns ``None`` when no final text was received — callers handle the
-        error-only case (``elif stream_error``) separately.
+        Returns ``None`` when no final text was received and no classified error
+        applies — callers then fall through to ``_deliver_final``'s error branch.
+        Returns a descriptive error string for timeout, stream error, or tool-only
+        turns so the user always sees a meaningful message.
         """
         if self.final_text is None:
-            return None
+            return classify_stream_error(
+                self.stream_error,
+                had_tool_events=self.had_tool_events,
+                final_text=None,
+                msg_fn=msg_fn,
+            )
         display = ("❌ " + self.final_text) if self.is_error_turn else self.final_text
         if self.stream_error is not None:
             if display:

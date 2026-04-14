@@ -1,5 +1,8 @@
 [errors.en]
 generic           = "Something went wrong. Please try again."
+error_timeout     = "⏱️ The backend took longer than 120 s to respond. Please try again."
+error_stream      = "⚠️ Streaming error: {kind}: {detail}. Please try again."
+error_no_final    = "⚠️ Response ended without a final message (tool events only). Please try again."
 unavailable       = "Lyra is currently unavailable. Please try again in {retry_secs}s."
 unknown_command   = "Unknown command: {command_name}. Type /help for available commands."
 help_header       = "Available commands:"

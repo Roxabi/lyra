@@ -24,6 +24,12 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _CHUNK_TIMEOUT_SECONDS = 120.0
+
+
+class StreamChunkTimeout(TimeoutError):
+    """Raised when the outbound chunk queue was idle past _CHUNK_TIMEOUT_SECONDS."""
+
+
 _MAX_TERMINATED_STREAMS = 500
 
 
@@ -62,7 +68,10 @@ async def decode_stream_events(
                 " stream_id=%r (120s)",
                 stream_id,
             )
-            break
+            raise StreamChunkTimeout(
+                f"no chunk received for {_CHUNK_TIMEOUT_SECONDS:.0f}s"
+                f" (stream_id={stream_id!r})"
+            )
         seq = chunk.get("seq")
         if seq is not None and seq != expected_seq:
             log.warning(

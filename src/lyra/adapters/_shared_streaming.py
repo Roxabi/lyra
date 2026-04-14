@@ -15,7 +15,11 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from lyra.adapters._shared import STREAMING_EDIT_INTERVAL, StreamState
+from lyra.adapters._shared import (
+    STREAMING_EDIT_INTERVAL,
+    StreamState,
+    classify_stream_error,
+)
 from lyra.core.message import GENERIC_ERROR_REPLY, OutboundMessage
 from lyra.core.render_events import RenderEvent, TextRenderEvent, ToolSummaryRenderEvent
 from lyra.core.tool_recap_format import format_tool_lines
@@ -94,9 +98,7 @@ class StreamingSession:
             log.exception("Failed to send placeholder — falling back to non-streaming")
             return None
 
-    async def _drain_fallback(
-        self, events: AsyncIterator[RenderEvent]
-    ) -> None:
+    async def _drain_fallback(self, events: AsyncIterator[RenderEvent]) -> None:
         """Drain remaining events, accumulate text, send via fallback callback."""
         parts: list[str] = []
         async for event in events:
@@ -176,7 +178,8 @@ class StreamingSession:
             log.exception("Stream interrupted")
 
     async def _deliver_tool_chunks(
-        self, final_chunks: list[str],
+        self,
+        final_chunks: list[str],
     ) -> None:
         """Send final text as new messages (tool-using turns)."""
         last_msg_id: int | None = None
@@ -186,17 +189,18 @@ class StreamingSession:
             except Exception:
                 log.exception("Failed to send final text chunk")
         if self._outbound is not None and last_msg_id is not None:
-            self._outbound.metadata["reply_message_id"] = (
-                last_msg_id
-            )
+            self._outbound.metadata["reply_message_id"] = last_msg_id
 
     async def _deliver_text_chunks(
-        self, placeholder_obj: Any, final_chunks: list[str],
+        self,
+        placeholder_obj: Any,
+        final_chunks: list[str],
     ) -> None:
         """Edit placeholder with first chunk, send overflow."""
         try:
             await self._cb.edit_placeholder_text(
-                placeholder_obj, final_chunks[0],
+                placeholder_obj,
+                final_chunks[0],
             )
         except Exception:
             log.exception("Final edit failed")
@@ -207,7 +211,8 @@ class StreamingSession:
                 log.exception("Failed to send overflow chunk")
 
     async def _deliver_final(
-        self, placeholder_obj: Any,
+        self,
+        placeholder_obj: Any,
     ) -> None:
         """Deliver the final message after the event loop.
 
@@ -216,11 +221,7 @@ class StreamingSession:
         it to a generic error so the user always sees a final state.
         """
         display_text = self._st.build_display_text(self._cb.get_msg)
-        chunks = (
-            self._cb.chunk_text(display_text)
-            if display_text
-            else []
-        )
+        chunks = self._cb.chunk_text(display_text) if display_text else []
         if chunks:
             if self._st.had_tool_events:
                 await self._deliver_tool_chunks(chunks)
@@ -228,7 +229,7 @@ class StreamingSession:
                 await self._deliver_text_chunks(placeholder_obj, chunks)
             return
 
-        # No deliverable content — surface an error rather than leaving "…".
+        # No deliverable content — surface a descriptive error rather than "…".
         log.warning(
             "streaming turn ended with no display text"
             " (final_text=%r stream_error=%r had_tool_events=%s)",
@@ -236,10 +237,14 @@ class StreamingSession:
             self._st.stream_error,
             self._st.had_tool_events,
         )
+        error_text = classify_stream_error(
+            self._st.stream_error,
+            had_tool_events=self._st.had_tool_events,
+            final_text=self._st.final_text,
+            msg_fn=self._cb.get_msg,
+        ) or GENERIC_ERROR_REPLY
         try:
-            await self._cb.edit_placeholder_text(
-                placeholder_obj, GENERIC_ERROR_REPLY,
-            )
+            await self._cb.edit_placeholder_text(placeholder_obj, error_text)
         except Exception as edit_exc:
             log.debug("Error edit skipped: %s", edit_exc)
 

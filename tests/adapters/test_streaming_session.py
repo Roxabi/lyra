@@ -7,12 +7,14 @@ All tests use mock PlatformCallbacks — no platform SDK imports required.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lyra.adapters._shared_streaming import PlatformCallbacks, StreamingSession
+from lyra.adapters.nats_stream_decoder import StreamChunkTimeout, decode_stream_events
 from lyra.core.message import GENERIC_ERROR_REPLY, OutboundMessage
 from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
 
@@ -115,8 +117,7 @@ async def test_tool_then_text_turn_outbound_none():
 
 
 async def test_stream_error_no_text():
-    """When the event iterator raises, edit placeholder
-    with generic error and re-raise."""
+    """When the event iterator raises, edit placeholder with descriptive error."""
     cb = _make_callbacks()
     placeholder_obj = object()
     cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
@@ -125,10 +126,11 @@ async def test_stream_error_no_text():
     with pytest.raises(RuntimeError, match="boom"):
         await session.run(_error_events())
 
-    # Error text should be written to the placeholder
-    cb.edit_placeholder_text.assert_called_once_with(
-        placeholder_obj, GENERIC_ERROR_REPLY,
-    )
+    # Error text should be a descriptive streaming error (not the bare generic reply)
+    args = cb.edit_placeholder_text.call_args[0]
+    assert args[0] is placeholder_obj
+    assert "RuntimeError" in args[1]
+    assert "boom" in args[1]
 
 
 async def test_stream_error_outbound_not_mutated():
@@ -182,7 +184,7 @@ async def test_error_turn_text_prepended():
 
 
 async def test_partial_text_then_stream_error():
-    """Partial text + stream error appends [response interrupted] suffix."""
+    """Partial text + stream error: no final text → descriptive error message."""
     cb = _make_callbacks()
     placeholder_obj = object()
     cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
@@ -191,8 +193,11 @@ async def test_partial_text_then_stream_error():
     with pytest.raises(RuntimeError, match="mid-stream"):
         await session.run(_partial_then_error())
 
-    # No final text arrived — error branch should fire with generic error
-    cb.edit_placeholder_text.assert_called_with(placeholder_obj, GENERIC_ERROR_REPLY)
+    # No final text arrived — descriptive error (RuntimeError name + message) shown
+    args = cb.edit_placeholder_text.call_args[0]
+    assert args[0] is placeholder_obj
+    assert "RuntimeError" in args[1]
+    assert "mid-stream" in args[1]
 
 
 # ---------------------------------------------------------------------------
@@ -437,3 +442,52 @@ async def test_get_msg_default_fallback():
     # but the callback is still wired correctly)
     # Verify no crash and edit happened
     cb.edit_placeholder_text.assert_called_once_with(placeholder_obj, "hello")
+
+
+# ---------------------------------------------------------------------------
+# Tests — StreamChunkTimeout (decode_stream_events timeout path)
+# ---------------------------------------------------------------------------
+
+
+async def test_decode_stream_events_timeout_raises_stream_chunk_timeout():
+    """Chunk queue idle past timeout → StreamChunkTimeout raised (not silent break)."""
+    q: asyncio.Queue[dict] = asyncio.Queue()
+    gen = decode_stream_events("test-stream-id", q)
+
+    # Patch _CHUNK_TIMEOUT_SECONDS to 0.01s so the test doesn't wait 120s
+    import lyra.adapters.nats_stream_decoder as _mod
+
+    original = _mod._CHUNK_TIMEOUT_SECONDS
+    _mod._CHUNK_TIMEOUT_SECONDS = 0.01
+    try:
+        with pytest.raises(StreamChunkTimeout, match="no chunk received"):
+            async for _ in gen:
+                pass
+    finally:
+        _mod._CHUNK_TIMEOUT_SECONDS = original
+
+
+async def test_stream_chunk_timeout_is_subclass_of_timeout_error():
+    """StreamChunkTimeout is a TimeoutError subclass for isinstance checks."""
+    exc = StreamChunkTimeout("test")
+    assert isinstance(exc, TimeoutError)
+    assert isinstance(exc, StreamChunkTimeout)
+
+
+async def test_streaming_session_timeout_shows_timeout_message():
+    """StreamChunkTimeout from event iterator → timeout-specific message shown."""
+    cb = _make_callbacks()
+    placeholder_obj = object()
+    cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
+
+    async def _timeout_events():
+        raise StreamChunkTimeout("no chunk received for 120s (stream_id='test')")
+        yield  # make it an async generator  # noqa: RET503
+
+    session = StreamingSession(cb, outbound=None)
+    with pytest.raises(StreamChunkTimeout):
+        await session.run(_timeout_events())
+
+    args = cb.edit_placeholder_text.call_args[0]
+    assert args[0] is placeholder_obj
+    assert "120 s" in args[1]

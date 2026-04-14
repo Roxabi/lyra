@@ -30,13 +30,21 @@ log = logging.getLogger(__name__)
 _TITLE_RE = re.compile(r"^Title:\s*(.+)$", re.MULTILINE)
 _TAGS_RE = re.compile(r"^Tags:\s*(.+)$", re.MULTILINE)
 
+# Prose-formatted sibling of the JSON schema in
+# roxabi-plugins/plugins/web-intel/scripts/enricher.py (ENRICHMENT_PROMPT).
+# Same five fields (title, tags, summary, key_points, reply) so Discord replies
+# and intel.roxabi.dev modals stay aligned — but streamed as readable markdown
+# because Discord sees each chunk as it's generated.
 _INSTRUCTION = (
-    "Please extract the following from the web content below and then provide "
-    "a helpful summary for the user.\n\n"
-    "Format the FIRST paragraph of your response as:\n"
-    "Title: <title>\n"
-    "Tags: <3-5 comma-separated tags>\n\n"
-    "Then write a clear, concise summary."
+    "Please extract and summarise the web content below for the user.\n\n"
+    "Format your response EXACTLY as:\n\n"
+    "Title: <real page title, no site suffix>\n"
+    "Tags: <3-5 comma-separated short noun phrases>\n\n"
+    "<a helpful 2-5 sentence paragraph for the reader; light markdown is fine>\n\n"
+    "**Key points**\n"
+    "- <short factual bullet under 150 chars>\n"
+    "- <short factual bullet under 150 chars>\n"
+    "- <optional, up to 5 bullets total>"
 )
 
 

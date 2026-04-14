@@ -75,7 +75,7 @@ class TestCircuitBreaker:
     async def test_ok_false_raises_unavailable(self) -> None:
         # Arrange
         mock_nc = AsyncMock()
-        error_payload = json.dumps({"ok": False}).encode()
+        error_payload = json.dumps({"contract_version": "1", "ok": False}).encode()
         fake_reply = MagicMock()
         fake_reply.data = error_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -92,6 +92,7 @@ class TestCircuitBreaker:
         mock_nc = AsyncMock()
         success_payload = json.dumps(
             {
+                "contract_version": "1",
                 "ok": True,
                 "audio_b64": base64.b64encode(b"fake").decode(),
                 "mime_type": "audio/ogg",
@@ -125,6 +126,7 @@ class TestCircuitBreaker:
         mock_nc = AsyncMock()
         success_payload = json.dumps(
             {
+                "contract_version": "1",
                 "ok": True,
                 "audio_b64": base64.b64encode(b"fake").decode(),
                 "mime_type": "audio/ogg",
@@ -152,6 +154,7 @@ class TestContractVersion:
         mock_nc = AsyncMock()
         success_payload = json.dumps(
             {
+                "contract_version": "1",
                 "ok": True,
                 "audio_b64": base64.b64encode(b"hi").decode(),
                 "mime_type": "audio/ogg",
@@ -247,6 +250,7 @@ class TestTtsClientFreshness:
         mock_response = MagicMock()
         mock_response.data = json.dumps(
             {
+                "contract_version": "1",
                 "ok": True,
                 "audio_b64": base64.b64encode(b"audio").decode(),
                 "mime_type": "audio/ogg",
@@ -276,6 +280,7 @@ class TestTtsClientFreshness:
         mock_response = MagicMock()
         mock_response.data = json.dumps(
             {
+                "contract_version": "1",
                 "ok": True,
                 "audio_b64": base64.b64encode(b"audio").decode(),
                 "mime_type": "audio/ogg",

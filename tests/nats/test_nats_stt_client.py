@@ -153,6 +153,7 @@ class TestCircuitBreaker:
         mock_nc = AsyncMock()
         success_payload = json.dumps(
             {
+                "contract_version": "1",
                 "ok": True,
                 "text": "hello",
                 "language": "en",
@@ -183,6 +184,7 @@ class TestContractVersion:
         mock_nc = AsyncMock()
         success_payload = json.dumps(
             {
+                "contract_version": "1",
                 "ok": True,
                 "text": "hi",
                 "language": "en",
@@ -289,6 +291,7 @@ class TestSttClientFreshness:
         mock_nc = AsyncMock()
         success_payload = json.dumps(
             {
+                "contract_version": "1",
                 "ok": True,
                 "text": "hello world",
                 "language": "en",
@@ -324,6 +327,7 @@ class TestSttClientFreshness:
         mock_nc = AsyncMock()
         success_payload = json.dumps(
             {
+                "contract_version": "1",
                 "ok": True,
                 "text": "resumed",
                 "language": "en",
@@ -390,7 +394,7 @@ class TestTranscribeResponseParsing:
     async def test_ok_false_raises_unavailable(self, tmp_path: Path) -> None:
         # Arrange
         mock_nc = AsyncMock()
-        error_payload = json.dumps({"ok": False}).encode()
+        error_payload = json.dumps({"contract_version": "1", "ok": False}).encode()
         fake_reply = MagicMock()
         fake_reply.data = error_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -409,6 +413,7 @@ class TestTranscribeResponseParsing:
         mock_nc = AsyncMock()
         noise_payload = json.dumps(
             {
+                "contract_version": "1",
                 "ok": True,
                 "text": "[music]",
                 "language": "en",

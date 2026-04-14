@@ -191,7 +191,7 @@ A heartbeat with a missing `worker_id` is dropped with a warning log and does no
 
 **Why one `contract_version` field and not a handshake.** A handshake would require the hub and the satellite to negotiate on connect, which is exactly the kind of implicit coupling the NATS migration is trying to remove. An additive string makes the contract self-describing on the wire without any state on either side. When we need a breaking change, we ship a new ADR (and likely a new subject); we don't re-negotiate versions over the wire.
 
-**Why "1" as a string, not 1 as an integer.** String comparison works in every language we might bind to later, and `"1.1"` / `"1.2"` remain trivially orderable. Mixing numeric and string values in the same field name after a bump is not a road we want to leave open.
+**Why "1" as a string, not 1 as an integer.** String comparison works in every language we might bind to later, and mixing numeric and string values in the same field name after a bump is not a road we want to leave open. Future major bumps (`"2"`, `"3"`) ship with a new ADR; intermediate minor bumps (`"1.1"`, `"1.2"`) are not defined.
 
 ## Consequences
 

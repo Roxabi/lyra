@@ -171,8 +171,6 @@ class TestTtsAdapterReplyContractVersion:
 class TestTtsHeartbeatPayload:
     def _make_adapter(self):
         """Build TtsAdapterStandalone with mocked TTSService to avoid loading engine."""
-        from unittest.mock import MagicMock, patch
-
         from lyra.tts import TTSConfig
 
         mock_tts_service = MagicMock()
@@ -194,16 +192,19 @@ class TestTtsHeartbeatPayload:
 
         return adapter
 
-    def test_heartbeat_subject_is_tts_subject(self):
+    def test_heartbeat_subject_is_tts_subject(self) -> None:
+        """TtsAdapterStandalone passes heartbeat_subject='lyra.voice.tts.heartbeat'."""
         adapter = self._make_adapter()
         assert adapter._heartbeat_subject == "lyra.voice.tts.heartbeat"
 
-    def test_heartbeat_payload_includes_model_loaded(self):
+    def test_heartbeat_payload_includes_model_loaded(self) -> None:
+        """heartbeat_payload() includes 'model_loaded' key."""
         adapter = self._make_adapter()
         payload = adapter.heartbeat_payload()
         assert "model_loaded" in payload
 
-    def test_heartbeat_payload_includes_vram_fields(self):
+    def test_heartbeat_payload_includes_vram_fields(self) -> None:
+        """heartbeat_payload() includes 'vram_used_mb' and 'vram_total_mb' as int."""
         adapter = self._make_adapter()
         payload = adapter.heartbeat_payload()
         assert "vram_used_mb" in payload
@@ -211,7 +212,8 @@ class TestTtsHeartbeatPayload:
         assert isinstance(payload["vram_used_mb"], int)
         assert isinstance(payload["vram_total_mb"], int)
 
-    def test_heartbeat_payload_includes_active_requests(self):
+    def test_heartbeat_payload_includes_active_requests(self) -> None:
+        """heartbeat_payload() includes 'active_requests' starting at 0."""
         adapter = self._make_adapter()
         payload = adapter.heartbeat_payload()
         assert "active_requests" in payload
@@ -225,7 +227,8 @@ class TestTtsHeartbeatPayload:
             "heartbeat_payload() must include contract_version='1' (ADR-044)"
         )
 
-    def test_heartbeat_payload_includes_base_fields(self):
+    def test_heartbeat_payload_includes_base_fields(self) -> None:
+        """heartbeat_payload() includes base fields: worker_id, service, ts, etc."""
         adapter = self._make_adapter()
         payload = adapter.heartbeat_payload()
         for field in ("worker_id", "service", "host", "subject", "queue_group", "ts"):

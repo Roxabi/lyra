@@ -1,0 +1,110 @@
+---
+title: "ADR-043: roxabi-autodeploy — per-project deploy manifests + generic runner"
+description: Replace hardcoded lyra/scripts/deploy.sh with per-project auto-deploy.yml manifests and a generic Python runner in a new roxabi-ops repo.
+---
+
+## Status
+
+Proposed
+
+## Context
+
+Production (`roxabituwer`) runs a 60s systemd timer invoking `lyra/scripts/deploy.sh`. The script hardcodes repo paths, branch names, program names, and restart sequences for lyra and voiceCLI. Adding a new auto-deployed project requires editing this file in the lyra repo — the wrong place. Two known bugs compound the problem:
+
+- **M16**: `timeout 30 git fetch 2>&1 | tee` swallows the `timeout` exit code (124); deploy proceeds with a stale ref when fetch times out.
+- **M8**: Two supervisor `conf.d/` trees (`supervisor/conf.d/` and `deploy/supervisor/conf.d/`) risk silent drift.
+
+The NATS evolution path (M1: `lyra_cli` + `lyra_llm`; M2: `lyra_harness`; M3: zero-downtime rolling hub deploy) adds 3+ new supervisor programs and eventual Quadlet units. Each addition today means editing `deploy.sh`.
+
+## Options Considered
+
+### Option A: Extend deploy.sh per-project, keep it in lyra
+
+- **Pros:** No new repo; no migration; familiar bash
+- **Cons:** Perpetuates the exact coupling being eliminated; bash is the wrong language for gates, rollback guards, and trigger deduplication; M16 fix requires careful bash plumbing; zero isolation between per-project concerns
+
+### Option B: Per-project auto-deploy.yml manifests + Python runner in new roxabi-ops repo
+
+- **Pros:** Each project owns its deploy behavior; runner is testable and typed; fixes M16 structurally (Python subprocess with explicit returncode); forward-compatible with M1–M3 via `gate:` and `type: systemd/quadlet`; zero central edit when adding a new project
+- **Cons:** New repo cost (GH repo, CI, venv); migration requires parallel-run period through P3
+
+### Option C: Adopt an existing tool (Ansible, ArgoCD-lite, Fabric)
+
+- **Pros:** Proven tooling; community support
+- **Cons:** Overkill for a single-machine personal stack; adds external dependency and conceptual surface area that dwarfs the actual problem; Ansible's model (playbooks, inventory, idempotent tasks) doesn't map cleanly to a 60s pull-and-restart loop with supervisor gates
+
+## Decision
+
+**Option B accepted.** Per-project `deploy/auto-deploy.yml` manifests discovered by a generic Python runner at `~/projects/roxabi-ops/bin/autodeploy`. The runner replaces `lyra-deploy.timer` with `roxabi-autodeploy.timer`.
+
+**Manifest shape (schema: 1):**
+
+```yaml
+schema: 1
+branch: staging
+pre_restart:
+  - sh: "uv sync --all-extras --frozen"
+    timeout: 60
+  - sh: "uv run pytest --tb=short -q"
+    timeout: 120
+    on_fail: rollback
+services:
+  - name: lyra_hub
+    type: supervisor
+    gate:
+      kind: state
+      value: RUNNING
+      stabilize: 2s
+      timeout: 60
+  - name: lyra_telegram
+  - name: lyra_discord
+triggers:
+  - in: ~/projects/lyra
+    sh: "uv sync --all-extras --upgrade-package voicecli"
+    restart: [lyra_hub, lyra_telegram, lyra_discord]
+```
+
+Minimal manifest (pull-only): `schema: 1` + `branch: staging`. Missing manifest = not auto-deployed (explicit opt-in).
+
+**Two-phase ordering:**
+
+1. All pulls + pre_restart steps across all repos (failures are isolated per repo).
+2. All restarts in declared service order, gates honored. Triggers are late-enqueued after the originating repo's services are healthy; trigger-enqueued services run in declared order with their gates, deduplicated except when a trigger follows a venv re-sync (deduplication must not suppress a post-sync restart).
+
+**M16 fix:** `subprocess.run(["timeout", "30", "git", "fetch", ...], stdout=log_fh, stderr=log_fh)` — streaming directly to the log file handle, with explicit `returncode != 0` check. No `capture_output=True` on long-running subprocesses (would buffer output in RAM and hide progress). Applied to every git, uv, and pytest invocation.
+
+**Runner rollback policy:** `reset_hard` is a runner-level default, not a per-project manifest field. Manifests declare `on_fail:` per step only. The runner owns the rollback strategy.
+
+**`gate:` extension stub for M3:** Schema v1 includes `strategy: sequential` (default, no-op) on service entries. Schema v2 adds `strategy: rolling` for M3's two-hub zero-downtime deploy. This prevents a breaking manifest change when M3 lands.
+
+**Self-deploy (roxabi-ops updates itself):** Runner detects that `roxabi-ops` updated during the current cycle, finishes the cycle cleanly, exits. Systemd `Type=oneshot` picks up the new binary on the next timer tick. Runner never calls `systemctl daemon-reload`. `roxabi-ops`'s own manifest uses `on_fail: abort` (not `rollback`) so a bad ops commit fails visibly — rollback would silently reset the ops venv and hide the broken publish.
+
+**Unmanaged services:** Services with `managed: false` are monitored (for gate checks and verify) but never restarted by the runner. Use for Quadlet NATS (`Restart=always`) and any service the runner must observe but not control.
+
+**Concurrent-cycle protection:** Timer unit uses `Persistent=false`. Systemd `oneshot` semantics prevent re-entry while the unit is active. Verify `RemainAfterExit=no` to ensure the unit clears on exit so the next tick fires normally.
+
+**Dry-run mode:** `autodeploy --dry-run` prints the full cycle plan (repos to pull, steps to run, services to restart, triggers to fire) without executing. Required for P1→P3 migration validation.
+
+## Consequences
+
+### Positive
+
+- Adding a new auto-deployed project requires only adding `deploy/auto-deploy.yml` in that project's repo — zero runner edits.
+- M16 (stale ref on fetch timeout) is structurally eliminated; Python subprocess returncode is unambiguous.
+- M8 (two supervisor conf.d trees) is addressed by making the manifest authoritative for service names; conf.d drift is caught at runtime with a clear error.
+- `roxabi-ops` becomes the natural home for future cross-project ops tooling: SQLite backup timer (devops C2), health probes (C10/C11).
+- M1–M3 NATS evolution absorbed without runner changes: new programs added to lyra manifest; `strategy: rolling` reserved in schema.
+
+### Negative
+
+- New repo and migration cost; parallel-run period (P1–P3) requires maintaining both `deploy.sh` and the new runner.
+- Partial restart queue failure semantics must be explicitly specified: if service N fails its gate, services N+1..end are aborted and left in pre-restart state.
+- Trigger deduplication rule is subtle: a trigger-enqueued restart of an already-restarted service must not be dropped when the trigger follows a venv re-sync.
+- Blacklist semantics must be explicit: the stored SHA is the **remote** SHA (`origin/<branch>` at time of failed pull), not the pre-pull local HEAD. A bad commit is skipped until a new one lands upstream; the local HEAD is the rollback target, not the marker.
+
+### Neutral
+
+- `lyra-deploy.timer` renamed to `roxabi-autodeploy.timer` at P3 cutover; old timer and `deploy.sh` remain available as fallback through P3.
+- Per-repo sub-logs deferred; single cycle log at `~/.local/state/roxabi/autodeploy/deploy.log`.
+- Pytest-on-prod retained as-is; moving test gates to CI is a separate follow-on issue.
+- Heartbeat emitted every cycle regardless of updates (`cycle=ok updated=[] restarted=[] duration=Xs`) for ops visibility.

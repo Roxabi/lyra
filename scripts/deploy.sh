@@ -82,10 +82,24 @@ if [ -d "$VOICE_DIR/.git" ]; then
     fi
 fi
 
+# ── Check roxabi-* repos (pull only — no tests, no service restart) ──────────
+
+for repo in "$HOME/projects"/roxabi-*; do
+    [ -d "$repo/.git" ] || continue
+    cd "$repo"
+    BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    timeout 30 git fetch origin "$BRANCH" 2>&1 | tee -a "$LOG_FILE" || continue
+    RX_LOCAL=$(git rev-parse HEAD)
+    RX_REMOTE=$(git rev-parse "origin/$BRANCH")
+    if [ "$RX_LOCAL" != "$RX_REMOTE" ]; then
+        log "$(basename "$repo"): new version $RX_LOCAL -> $RX_REMOTE ($BRANCH)"
+        timeout 30 git pull --ff-only origin "$BRANCH" 2>&1 | tee -a "$LOG_FILE"
+    fi
+done
+
 # ── Restart changed services ─────────────────────────────────────────────────
 
 if [ "$LYRA_UPDATED" = false ] && [ "$VOICE_UPDATED" = false ]; then
-    log "All repos up to date."
     exit 0
 fi
 

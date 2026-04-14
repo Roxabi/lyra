@@ -4,6 +4,7 @@ Subclass this and implement ``handle(msg)`` to build a NATS queue-subscriber
 adapter with built-in envelope validation, hub readiness waiting, graceful
 drain/close shutdown, and a ``health()`` introspection method.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,12 +26,24 @@ from lyra.nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
 
+# ADR-044 — single source of truth for the voice NATS contract version. All
+# producer sites (hub clients + satellite adapters) stamp this on outgoing
+# payloads. Consumers ignore unknown values. Bumping requires a new ADR.
+CONTRACT_VERSION = "1"
+
 
 class NatsAdapterBase(ABC):
     def __init__(  # noqa: PLR0913
-        self, subject, queue_group, envelope_name, schema_version,
-        timeout=30.0, drain_timeout=30.0,
-        *, heartbeat_subject: str | None = None, heartbeat_interval: float = 5.0,
+        self,
+        subject,
+        queue_group,
+        envelope_name,
+        schema_version,
+        timeout=30.0,
+        drain_timeout=30.0,
+        *,
+        heartbeat_subject: str | None = None,
+        heartbeat_interval: float = 5.0,
     ):
         validate_nats_token(subject, kind="subject")
         validate_nats_token(queue_group, kind="queue_group")
@@ -94,6 +107,7 @@ class NatsAdapterBase(ABC):
         """Base heartbeat payload. Subclasses override to add service fields."""
         uptime = time.monotonic() - self._started_at if self._started_at else 0.0
         return {
+            "contract_version": CONTRACT_VERSION,
             "worker_id": self._worker_id,
             "service": self.queue_group,
             "host": socket.gethostname(),

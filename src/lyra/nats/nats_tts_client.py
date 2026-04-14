@@ -12,6 +12,7 @@ from uuid import uuid4
 from nats.aio.client import Client as NATS
 
 from lyra.nats._tts_constants import _TTS_CONFIG_FIELDS
+from lyra.nats.adapter_base import CONTRACT_VERSION
 from lyra.nats.circuit_breaker import NatsCircuitBreaker
 from lyra.tts import SynthesisResult, TtsUnavailableError
 
@@ -98,7 +99,7 @@ class NatsTtsClient:
                 "TTS circuit open — adapter temporarily unavailable"
             )
         request: dict = {
-            "contract_version": "1",
+            "contract_version": CONTRACT_VERSION,
             "request_id": str(uuid4()),
             "text": text,
             "language": language,

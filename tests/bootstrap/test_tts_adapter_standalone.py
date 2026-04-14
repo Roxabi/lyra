@@ -13,8 +13,9 @@ Test 3 passes both before and after migration (signature is unchanged).
 from __future__ import annotations
 
 import inspect
+import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -97,21 +98,74 @@ def test_tts_adapter_standalone_class_exists() -> None:
     )
 
 
-def test_tts_adapter_replies_carry_contract_version() -> None:
-    """Success and error reply dicts must emit contract_version='1' (ADR-044).
+class TestTtsAdapterReplyContractVersion:
+    """Behavioural: handle() replies emit contract_version (ADR-044)."""
 
-    Verified at the source level: every `response = {` literal in
-    tts_adapter_standalone.py must set `"contract_version": "1"`.
-    """
-    import re
+    def _make_adapter(self, synth_result=None, synth_raises=None):
+        """Build TtsAdapterStandalone with a stubbed TTSService.synthesize."""
+        from lyra.bootstrap.tts_adapter_standalone import TtsAdapterStandalone
+        from lyra.tts import TTSConfig
 
-    source = _SOURCE.read_text()
-    response_blocks = re.findall(r"response = \{[^}]*\}", source, flags=re.DOTALL)
-    assert response_blocks, "expected at least one `response = { ... }` block"
-    for block in response_blocks:
-        assert '"contract_version": "1"' in block, (
-            f"response block missing contract_version='1': {block!r}"
+        mock_tts_service = MagicMock()
+        if synth_raises is not None:
+            mock_tts_service.synthesize = AsyncMock(side_effect=synth_raises)
+        else:
+            mock_tts_service.synthesize = AsyncMock(return_value=synth_result)
+
+        with (
+            patch(
+                "lyra.bootstrap.tts_adapter_standalone.load_tts_config",
+                return_value=TTSConfig(engine="chatterbox"),
+            ),
+            patch(
+                "lyra.bootstrap.tts_adapter_standalone.TTSService",
+                return_value=mock_tts_service,
+            ),
+        ):
+            adapter = TtsAdapterStandalone({})
+        return adapter
+
+    async def _call_handle(self, adapter, payload: dict) -> dict:
+        """Run adapter.handle(); capture and return the decoded reply payload."""
+        captured = {}
+
+        async def capture_reply(msg, data: bytes) -> None:
+            captured["payload"] = json.loads(data)
+
+        adapter.reply = capture_reply  # type: ignore[method-assign]
+        mock_msg = MagicMock()
+        mock_msg.reply = "_INBOX.test"
+        await adapter.handle(mock_msg, payload)
+        return captured["payload"]
+
+    @pytest.mark.asyncio
+    async def test_success_reply_emits_contract_version(self) -> None:
+        """A successful synthesis reply stamps contract_version='1'."""
+        from lyra.tts import SynthesisResult
+
+        adapter = self._make_adapter(
+            synth_result=SynthesisResult(
+                audio_bytes=b"audio",
+                mime_type="audio/ogg",
+                duration_ms=420,
+                waveform_b64=None,
+            )
         )
+        reply = await self._call_handle(
+            adapter, {"request_id": "rid-1", "text": "hello"}
+        )
+        assert reply["ok"] is True
+        assert reply["contract_version"] == "1"
+
+    @pytest.mark.asyncio
+    async def test_error_reply_emits_contract_version(self) -> None:
+        """An error reply (synthesis failed) also stamps contract_version='1'."""
+        adapter = self._make_adapter(synth_raises=RuntimeError("engine down"))
+        reply = await self._call_handle(
+            adapter, {"request_id": "rid-2", "text": "hello"}
+        )
+        assert reply["ok"] is False
+        assert reply["contract_version"] == "1"
 
 
 class TestTtsHeartbeatPayload:

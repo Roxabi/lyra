@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 
 from lyra.nats import NatsAdapterBase
+from lyra.nats.adapter_base import CONTRACT_VERSION
 from lyra.nats.queue_groups import STT_WORKERS
 from lyra.stt import STTService, TranscriptionResult, load_stt_config
 
@@ -59,7 +60,6 @@ class SttAdapterStandalone(NatsAdapterBase):
         vram_used, vram_total = self._get_vram_info()
         base.update(
             {
-                "contract_version": "1",
                 "model_loaded": self._base_stt_cfg.model_size,
                 "vram_used_mb": vram_used,
                 "vram_total_mb": vram_total,
@@ -100,7 +100,7 @@ class SttAdapterStandalone(NatsAdapterBase):
                     tmp_path = Path(tmp_path_str)
                     result: TranscriptionResult = await svc.transcribe(tmp_path)
                     response = {
-                        "contract_version": "1",
+                        "contract_version": CONTRACT_VERSION,
                         "request_id": request_id,
                         "ok": True,
                         "text": result.text,
@@ -116,7 +116,7 @@ class SttAdapterStandalone(NatsAdapterBase):
                     data.get("request_id", "?"),
                 )
                 response = {
-                    "contract_version": "1",
+                    "contract_version": CONTRACT_VERSION,
                     "request_id": data.get("request_id", "unknown"),
                     "ok": False,
                     "error": "transcription_failed",

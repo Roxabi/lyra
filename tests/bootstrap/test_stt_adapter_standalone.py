@@ -13,9 +13,11 @@ Tests 3 and 5 pass both before and after migration (signature and helper unchang
 
 from __future__ import annotations
 
+import base64
 import inspect
+import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -98,21 +100,82 @@ def test_stt_adapter_standalone_class_exists() -> None:
     )
 
 
-def test_stt_adapter_replies_carry_contract_version() -> None:
-    """Success and error reply dicts must emit contract_version='1' (ADR-044).
+class TestSttAdapterReplyContractVersion:
+    """Behavioural: handle() replies emit contract_version (ADR-044)."""
 
-    Verified at the source level: every `response = {` literal in
-    stt_adapter_standalone.py must set `"contract_version": "1"`.
-    """
-    import re
+    def _make_adapter(self, transcribe_result=None, transcribe_raises=None):
+        """Build SttAdapterStandalone with a stubbed STTService.transcribe."""
+        from lyra.bootstrap.stt_adapter_standalone import SttAdapterStandalone
+        from lyra.stt import STTConfig
 
-    source = _SOURCE.read_text()
-    response_blocks = re.findall(r"response = \{[^}]*\}", source, flags=re.DOTALL)
-    assert response_blocks, "expected at least one `response = { ... }` block"
-    for block in response_blocks:
-        assert '"contract_version": "1"' in block, (
-            f"response block missing contract_version='1': {block!r}"
+        mock_cfg = STTConfig(model_size="large-v3-turbo")
+        mock_stt_service = MagicMock()
+        if transcribe_raises is not None:
+            mock_stt_service.transcribe = AsyncMock(side_effect=transcribe_raises)
+        else:
+            mock_stt_service.transcribe = AsyncMock(return_value=transcribe_result)
+
+        with (
+            patch(
+                "lyra.bootstrap.stt_adapter_standalone.load_stt_config",
+                return_value=mock_cfg,
+            ),
+            patch(
+                "lyra.bootstrap.stt_adapter_standalone.STTService",
+                return_value=mock_stt_service,
+            ),
+        ):
+            adapter = SttAdapterStandalone(raw_config={})
+        return adapter
+
+    async def _call_handle(self, adapter, payload: dict) -> dict:
+        """Run adapter.handle(); capture and return the decoded reply payload."""
+        captured = {}
+
+        async def capture_reply(msg, data: bytes) -> None:
+            captured["payload"] = json.loads(data)
+
+        adapter.reply = capture_reply  # type: ignore[method-assign]
+        mock_msg = MagicMock()
+        mock_msg.reply = "_INBOX.test"
+        await adapter.handle(mock_msg, payload)
+        return captured["payload"]
+
+    @pytest.mark.asyncio
+    async def test_success_reply_emits_contract_version(self) -> None:
+        """A successful transcription reply stamps contract_version='1'."""
+        from lyra.stt import TranscriptionResult
+
+        adapter = self._make_adapter(
+            transcribe_result=TranscriptionResult(
+                text="hello", language="en", duration_seconds=1.0
+            )
         )
+        reply = await self._call_handle(
+            adapter,
+            {
+                "request_id": "rid-1",
+                "audio_b64": base64.b64encode(b"\x00" * 8).decode(),
+                "mime_type": "audio/ogg",
+            },
+        )
+        assert reply["ok"] is True
+        assert reply["contract_version"] == "1"
+
+    @pytest.mark.asyncio
+    async def test_error_reply_emits_contract_version(self) -> None:
+        """An error reply (transcription failed) also stamps contract_version='1'."""
+        adapter = self._make_adapter(transcribe_raises=RuntimeError("engine down"))
+        reply = await self._call_handle(
+            adapter,
+            {
+                "request_id": "rid-2",
+                "audio_b64": base64.b64encode(b"\x00" * 8).decode(),
+                "mime_type": "audio/ogg",
+            },
+        )
+        assert reply["ok"] is False
+        assert reply["contract_version"] == "1"
 
 
 def test_mime_to_ext_still_accessible() -> None:

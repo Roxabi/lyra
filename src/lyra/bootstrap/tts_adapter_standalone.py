@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 from lyra.nats import NatsAdapterBase
 from lyra.nats._tts_constants import _AGENT_TTS_FIELDS
+from lyra.nats.adapter_base import CONTRACT_VERSION
 from lyra.nats.queue_groups import TTS_WORKERS
 from lyra.tts import SynthesisResult, TTSService, load_tts_config
 
@@ -84,7 +85,6 @@ class TtsAdapterStandalone(NatsAdapterBase):
         vram_used, vram_total = self._get_vram_info()
         base.update(
             {
-                "contract_version": "1",
                 "model_loaded": self._tts_cfg.engine or "default",
                 "vram_used_mb": vram_used,
                 "vram_total_mb": vram_total,
@@ -123,7 +123,7 @@ class TtsAdapterStandalone(NatsAdapterBase):
                 )
 
                 response = {
-                    "contract_version": "1",
+                    "contract_version": CONTRACT_VERSION,
                     "request_id": request_id,
                     "ok": True,
                     "audio_b64": base64.b64encode(result.audio_bytes).decode("ascii"),
@@ -138,7 +138,7 @@ class TtsAdapterStandalone(NatsAdapterBase):
                     data.get("request_id", "?"),
                 )
                 response = {
-                    "contract_version": "1",
+                    "contract_version": CONTRACT_VERSION,
                     "request_id": data.get("request_id", "unknown"),
                     "ok": False,
                     "error": "synthesis_failed",

@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from nats.aio.client import Client as NATS
 
+from lyra.nats.adapter_base import CONTRACT_VERSION
 from lyra.nats.circuit_breaker import NatsCircuitBreaker
 from lyra.stt import (
     STTNoiseError,
@@ -118,7 +119,7 @@ class NatsSttClient:
         audio_bytes = await asyncio.to_thread(resolved.read_bytes)
         mime = _mime_from_suffix(resolved.suffix)
         request = {
-            "contract_version": "1",
+            "contract_version": CONTRACT_VERSION,
             "request_id": str(uuid4()),
             "audio_b64": base64.b64encode(audio_bytes).decode("ascii"),
             "mime_type": mime,

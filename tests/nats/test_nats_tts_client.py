@@ -143,6 +143,58 @@ class TestCircuitBreaker:
         assert client._cb._failures == 0
 
 
+class TestContractVersion:
+    """Tests for the `contract_version` additive field (ADR-044)."""
+
+    @pytest.mark.asyncio
+    async def test_request_payload_emits_contract_version(self) -> None:
+        """NatsTtsClient.synthesize() stamps contract_version='1' on the request."""
+        mock_nc = AsyncMock()
+        success_payload = json.dumps(
+            {
+                "ok": True,
+                "audio_b64": base64.b64encode(b"hi").decode(),
+                "mime_type": "audio/ogg",
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = success_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+
+        await client.synthesize("hello")
+
+        payload_bytes = mock_nc.request.call_args.args[1]
+        request_dict = json.loads(payload_bytes)
+        assert request_dict["contract_version"] == "1"
+
+    @pytest.mark.asyncio
+    async def test_reply_with_unknown_contract_version_is_tolerated(self) -> None:
+        """Hub ignores unknown contract_version values on reply (defensive read)."""
+        mock_nc = AsyncMock()
+        # Reply carries a version the hub has never seen — must be silently accepted.
+        reply_payload = json.dumps(
+            {
+                "contract_version": "999",
+                "ok": True,
+                "audio_b64": base64.b64encode(b"future").decode(),
+                "mime_type": "audio/ogg",
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = reply_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+
+        result = await client.synthesize("hello")
+
+        assert result.audio_bytes == b"future"
+        assert result.mime_type == "audio/ogg"
+        assert client._cb._failures == 0
+
+
 class TestTtsClientStart:
     """Tests for NatsTtsClient.start() lifecycle."""
 

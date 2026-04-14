@@ -62,9 +62,7 @@ class TestCircuitBreaker:
     async def test_failure_records_on_max_payload(self) -> None:
         # Arrange
         mock_nc = AsyncMock()
-        mock_nc.request = AsyncMock(
-            side_effect=Exception("NATS: max_payload exceeded")
-        )
+        mock_nc.request = AsyncMock(side_effect=Exception("NATS: max_payload exceeded"))
         client = NatsTtsClient(nc=mock_nc)
         _inject_fresh_worker(client)
         # Act
@@ -92,11 +90,13 @@ class TestCircuitBreaker:
     async def test_agent_tts_fields_forwarded_in_request(self) -> None:
         # Arrange — agent_tts with engine + speed set
         mock_nc = AsyncMock()
-        success_payload = json.dumps({
-            "ok": True,
-            "audio_b64": base64.b64encode(b"fake").decode(),
-            "mime_type": "audio/ogg",
-        }).encode()
+        success_payload = json.dumps(
+            {
+                "ok": True,
+                "audio_b64": base64.b64encode(b"fake").decode(),
+                "mime_type": "audio/ogg",
+            }
+        ).encode()
         fake_reply = MagicMock()
         fake_reply.data = success_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -113,6 +113,8 @@ class TestCircuitBreaker:
         request_dict = json.loads(payload_bytes)
         assert request_dict["engine"] == "chatterbox"
         assert request_dict["speed"] == "1.2"
+        # contract_version is always stamped (ADR-044)
+        assert request_dict["contract_version"] == "1"
         # All unset fields (None) must be absent from the NATS payload
         none_fields = [f for f in _TTS_CONFIG_FIELDS if f not in ("engine", "speed")]
         assert all(f not in request_dict for f in none_fields)
@@ -121,11 +123,13 @@ class TestCircuitBreaker:
     async def test_success_clears_failures(self) -> None:
         # Arrange — pre-inject 2 failures
         mock_nc = AsyncMock()
-        success_payload = json.dumps({
-            "ok": True,
-            "audio_b64": base64.b64encode(b"fake").decode(),
-            "mime_type": "audio/ogg",
-        }).encode()
+        success_payload = json.dumps(
+            {
+                "ok": True,
+                "audio_b64": base64.b64encode(b"fake").decode(),
+                "mime_type": "audio/ogg",
+            }
+        ).encode()
         fake_reply = MagicMock()
         fake_reply.data = success_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -189,11 +193,13 @@ class TestTtsClientFreshness:
         """synthesize() proceeds past freshness gate when a worker is fresh (<15s)."""
         mock_nc = AsyncMock()
         mock_response = MagicMock()
-        mock_response.data = json.dumps({
-            "ok": True,
-            "audio_b64": base64.b64encode(b"audio").decode(),
-            "mime_type": "audio/ogg",
-        }).encode()
+        mock_response.data = json.dumps(
+            {
+                "ok": True,
+                "audio_b64": base64.b64encode(b"audio").decode(),
+                "mime_type": "audio/ogg",
+            }
+        ).encode()
         mock_nc.request = AsyncMock(return_value=mock_response)
         client = NatsTtsClient(nc=mock_nc)
         client._worker_freshness["worker-1"] = time.monotonic() - 5.0
@@ -216,11 +222,13 @@ class TestTtsClientFreshness:
         """After stale, a new heartbeat re-enables the worker immediately."""
         mock_nc = AsyncMock()
         mock_response = MagicMock()
-        mock_response.data = json.dumps({
-            "ok": True,
-            "audio_b64": base64.b64encode(b"audio").decode(),
-            "mime_type": "audio/ogg",
-        }).encode()
+        mock_response.data = json.dumps(
+            {
+                "ok": True,
+                "audio_b64": base64.b64encode(b"audio").decode(),
+                "mime_type": "audio/ogg",
+            }
+        ).encode()
         mock_nc.request = AsyncMock(return_value=mock_response)
         client = NatsTtsClient(nc=mock_nc)
         # First: stale

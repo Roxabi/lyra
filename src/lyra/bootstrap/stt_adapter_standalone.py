@@ -4,6 +4,7 @@ Runs as a separate supervisor process (lyra_stt). Subscribes to
 lyra.voice.stt.request, transcribes audio via voicecli, responds to
 the reply-to inbox. The hub never imports voicecli — this process does.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +28,10 @@ SUBJECT = "lyra.voice.stt.request"
 class SttAdapterStandalone(NatsAdapterBase):
     def __init__(self, raw_config: dict) -> None:
         super().__init__(
-            SUBJECT, STT_WORKERS, "SttRequest", 1,
+            SUBJECT,
+            STT_WORKERS,
+            "SttRequest",
+            1,
             heartbeat_subject="lyra.voice.stt.heartbeat",
             heartbeat_interval=5.0,
         )
@@ -42,6 +46,7 @@ class SttAdapterStandalone(NatsAdapterBase):
         """Return (used_mb, total_mb). Both 0 if pynvml is unavailable."""
         try:
             import pynvml  # noqa: PLC0415  # type: ignore[import-untyped]
+
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
@@ -52,12 +57,15 @@ class SttAdapterStandalone(NatsAdapterBase):
     def heartbeat_payload(self) -> dict:
         base = super().heartbeat_payload()
         vram_used, vram_total = self._get_vram_info()
-        base.update({
-            "model_loaded": self._base_stt_cfg.model_size,
-            "vram_used_mb": vram_used,
-            "vram_total_mb": vram_total,
-            "active_requests": self._active_count,
-        })
+        base.update(
+            {
+                "contract_version": "1",
+                "model_loaded": self._base_stt_cfg.model_size,
+                "vram_used_mb": vram_used,
+                "vram_total_mb": vram_total,
+                "active_requests": self._active_count,
+            }
+        )
         return base
 
     async def handle(self, msg, payload: dict) -> None:
@@ -92,6 +100,7 @@ class SttAdapterStandalone(NatsAdapterBase):
                     tmp_path = Path(tmp_path_str)
                     result: TranscriptionResult = await svc.transcribe(tmp_path)
                     response = {
+                        "contract_version": "1",
                         "request_id": request_id,
                         "ok": True,
                         "text": result.text,
@@ -107,6 +116,7 @@ class SttAdapterStandalone(NatsAdapterBase):
                     data.get("request_id", "?"),
                 )
                 response = {
+                    "contract_version": "1",
                     "request_id": data.get("request_id", "unknown"),
                     "ok": False,
                     "error": "transcription_failed",

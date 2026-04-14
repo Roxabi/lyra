@@ -10,6 +10,7 @@ These tests verify the post-migration shape of stt_adapter_standalone.py:
 Tests 1, 2, and 4 are RED before migration (they fail against current source).
 Tests 3 and 5 pass both before and after migration (signature and helper unchanged).
 """
+
 from __future__ import annotations
 
 import inspect
@@ -95,6 +96,23 @@ def test_stt_adapter_standalone_class_exists() -> None:
     assert issubclass(SttAdapterStandalone, NatsAdapterBase), (
         "SttAdapterStandalone must subclass NatsAdapterBase"
     )
+
+
+def test_stt_adapter_replies_carry_contract_version() -> None:
+    """Success and error reply dicts must emit contract_version='1' (ADR-044).
+
+    Verified at the source level: every `response = {` literal in
+    stt_adapter_standalone.py must set `"contract_version": "1"`.
+    """
+    import re
+
+    source = _SOURCE.read_text()
+    response_blocks = re.findall(r"response = \{[^}]*\}", source, flags=re.DOTALL)
+    assert response_blocks, "expected at least one `response = { ... }` block"
+    for block in response_blocks:
+        assert '"contract_version": "1"' in block, (
+            f"response block missing contract_version='1': {block!r}"
+        )
 
 
 def test_mime_to_ext_still_accessible() -> None:
@@ -193,6 +211,14 @@ class TestSttHeartbeatPayload:
             f"active_requests must start at 0, got {payload['active_requests']}"
         )
 
+    def test_heartbeat_payload_includes_contract_version(self) -> None:
+        """heartbeat_payload() includes 'contract_version' per ADR-044."""
+        adapter = self._make_adapter()
+        payload = adapter.heartbeat_payload()
+        assert payload.get("contract_version") == "1", (
+            "heartbeat_payload() must include contract_version='1' (ADR-044)"
+        )
+
     def test_heartbeat_payload_includes_base_fields(self) -> None:
         """heartbeat_payload() includes base fields: worker_id, service, ts, etc."""
         adapter = self._make_adapter()
@@ -206,8 +232,7 @@ class TestSttHeartbeatPayload:
         """_get_vram_info() returns (0, 0) when pynvml is unavailable."""
         adapter = self._make_adapter()
         with patch(
-            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone"
-            "._get_vram_info",
+            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone._get_vram_info",
             return_value=(0, 0),
         ):
             payload = adapter.heartbeat_payload()
@@ -218,8 +243,7 @@ class TestSttHeartbeatPayload:
         """_get_vram_info() returns real MB values when pynvml succeeds."""
         adapter = self._make_adapter()
         with patch(
-            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone"
-            "._get_vram_info",
+            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone._get_vram_info",
             return_value=(4096, 10240),
         ):
             payload = adapter.heartbeat_payload()

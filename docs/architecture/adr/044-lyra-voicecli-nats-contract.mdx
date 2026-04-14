@@ -1,0 +1,229 @@
+---
+title: "ADR-044: lyra ↔ voicecli NATS voice contract (STT + TTS)"
+description: Freeze the request/reply and heartbeat payloads exchanged between lyra (hub) and voicecli (satellite) over NATS, including the contract_version additive field for forward compatibility.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Lyra currently invokes voiceCLI for STT and TTS via two parallel code paths:
+
+1. **In-process** — `STTService` / `TTSService` import `voicecli` directly inside the hub venv.
+2. **NATS request-reply** — `NatsSttClient` / `NatsTtsClient` send JSON payloads to `lyra.voice.{stt,tts}.request`; `stt_adapter_standalone.py` / `tts_adapter_standalone.py` consume them inside a satellite process that owns the voicecli import.
+
+The NATS path lets voiceCLI run on a different host, with its own venv, GPU and lifecycle — a hard requirement on `roxabituwer`, where the hub and the voice workers will live in separate containers/processes (see #658). The in-process path must eventually be removed (slice S4 of #658), but slices S1–S3 run both side-by-side so that the production cutover is reversible.
+
+For the two sides to diverge safely, the wire contract has to be explicit — what fields land on each subject, which are required, which are optional, and how each side evolves without breaking the other. So far it has lived only in the hub source code. This ADR freezes it.
+
+It also introduces a single additive field — `contract_version: "1"` — carried on every producer-emitted payload. This field exists to make future field additions or deprecations detectable on the wire, without dragging version handshakes or schema negotiation into the current code paths.
+
+## Decision
+
+### Subjects
+
+| Subject | Direction | Producer | Consumer | Purpose |
+|---|---|---|---|---|
+| `lyra.voice.stt.request` | request-reply | `NatsSttClient.transcribe` (hub) | `SttAdapterStandalone.handle` (satellite) | Transcribe audio to text |
+| `lyra.voice.tts.request` | request-reply | `NatsTtsClient.synthesize` (hub) | `TtsAdapterStandalone.handle` (satellite) | Synthesize speech from text |
+| `lyra.voice.stt.heartbeat` | fire-and-forget | `SttAdapterStandalone` (satellite) | `NatsSttClient._on_heartbeat` (hub) | Liveness + capacity |
+| `lyra.voice.tts.heartbeat` | fire-and-forget | `TtsAdapterStandalone` (satellite) | `NatsTtsClient._on_heartbeat` (hub) | Liveness + capacity |
+
+Queue groups (load balancing across satellite replicas): `STT_WORKERS` for STT, `TTS_WORKERS` for TTS. Replies use the NATS request-reply inbox; no dedicated reply subject.
+
+### Payload encoding
+
+UTF-8 JSON. Binary audio is base64-encoded in-payload (no sidecar stream). NATS `max_payload` is the hard ceiling; requests that exceed it fail fast with `STTUnavailableError("STT request payload too large")` / `TtsUnavailableError("TTS request payload too large")` on the hub side.
+
+### `contract_version` — additive, one-way
+
+Every payload listed below carries `contract_version: "1"` as a top-level string field.
+
+- **Producers (hub or satellite) MUST emit it** on every outgoing request, reply, and heartbeat.
+- **Consumers MUST ignore unknown values.** A consumer reading a payload uses `.get("contract_version")` (or simply does not read it at all); it MUST NOT reject or error on any value. `"1"`, `"2"`, `"whatever"`, or missing — all are accepted.
+- The field is **additive**, not a handshake. A `"2"` sender and a `"1"` reader continue to work as long as no other field has been removed or reinterpreted between versions. When an incompatible change is needed, it ships as a new subject (or a new ADR), not a bumped version.
+- The goal is **observability** — logs and metrics on both sides can filter by version, and operators can diagnose mismatches on the wire without guessing.
+
+### Request — `lyra.voice.stt.request`
+
+```json
+{
+  "contract_version": "1",
+  "request_id": "b6d5a3a0-7e70-4e3a-ae93-3a9f1c2b7c5e",
+  "audio_b64": "T2dnUwACAAAA...",
+  "mime_type": "audio/ogg",
+  "model": "large-v3-turbo",
+  "language_detection_threshold": 0.5,
+  "language_detection_segments": 3,
+  "language_fallback": "en"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|:---:|---|
+| `contract_version` | string | ✓ | Always `"1"` for this ADR |
+| `request_id` | string (uuid4) | ✓ | Echoed back in the reply |
+| `audio_b64` | string (base64) | ✓ | Raw audio bytes |
+| `mime_type` | string | ✓ | `audio/ogg`, `audio/mpeg`, `audio/wav`, `audio/mp4`, `audio/webm`, `audio/flac`; unknown → treated as `audio/ogg` |
+| `model` | string | ✓ | Whisper model name (e.g. `large-v3-turbo`) |
+| `language_detection_threshold` | number \| null | — | Overrides STT config if non-null |
+| `language_detection_segments` | integer \| null | — | Overrides STT config if non-null |
+| `language_fallback` | string \| null | — | ISO-639-1 code; fallback when detection confidence is below threshold |
+
+### Reply — `lyra.voice.stt.request` (success)
+
+```json
+{
+  "contract_version": "1",
+  "request_id": "b6d5a3a0-7e70-4e3a-ae93-3a9f1c2b7c5e",
+  "ok": true,
+  "text": "bonjour tout le monde",
+  "language": "fr",
+  "duration_seconds": 1.42
+}
+```
+
+### Reply — `lyra.voice.stt.request` (error)
+
+```json
+{
+  "contract_version": "1",
+  "request_id": "b6d5a3a0-7e70-4e3a-ae93-3a9f1c2b7c5e",
+  "ok": false,
+  "error": "transcription_failed"
+}
+```
+
+Error codes are short snake_case tokens. The hub raises `STTUnavailableError` on `ok: false` regardless of the specific `error` value — the token is for logs, not for control flow.
+
+### Request — `lyra.voice.tts.request`
+
+```json
+{
+  "contract_version": "1",
+  "request_id": "2f77f4fa-58c2-4d35-8c9e-2e7c3f9c8f1e",
+  "text": "hello world",
+  "language": "en",
+  "voice": "alice",
+  "fallback_language": "en",
+  "chunked": true,
+  "engine": "chatterbox",
+  "speed": 1.0
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|:---:|---|
+| `contract_version` | string | ✓ | Always `"1"` |
+| `request_id` | string (uuid4) | ✓ | Echoed back |
+| `text` | string | ✓ | UTF-8 text to synthesize |
+| `language` | string \| null | — | ISO-639-1 code; caller override |
+| `voice` | string \| null | — | Engine-specific voice id; caller override |
+| `fallback_language` | string \| null | — | Used when `language` is ambiguous |
+| `chunked` | boolean | — | Enables multi-segment synthesis; default `true` |
+| _agent TTS fields_ | various \| null | — | `engine`, `accent`, `personality`, `speed`, `emotion`, `exaggeration`, `cfg_weight`, `segment_gap`, `crossfade`, `chunk_size`, `default_language`, `languages` — forwarded verbatim when set; omitted when null. See `_TTS_CONFIG_FIELDS` / `_AGENT_TTS_FIELDS` for the authoritative list. |
+
+### Reply — `lyra.voice.tts.request` (success)
+
+```json
+{
+  "contract_version": "1",
+  "request_id": "2f77f4fa-58c2-4d35-8c9e-2e7c3f9c8f1e",
+  "ok": true,
+  "audio_b64": "T2dnUwACAAAA...",
+  "mime_type": "audio/ogg",
+  "duration_ms": 1420,
+  "waveform_b64": null
+}
+```
+
+`mime_type` defaults to `audio/ogg` on the hub side if absent. `duration_ms` and `waveform_b64` are both optional/nullable; renderers must handle nulls.
+
+### Reply — `lyra.voice.tts.request` (error)
+
+```json
+{
+  "contract_version": "1",
+  "request_id": "2f77f4fa-58c2-4d35-8c9e-2e7c3f9c8f1e",
+  "ok": false,
+  "error": "synthesis_failed"
+}
+```
+
+### Heartbeats — `lyra.voice.{stt,tts}.heartbeat`
+
+```json
+{
+  "contract_version": "1",
+  "worker_id": "stt-roxabituwer-1712934123",
+  "service": "stt_workers",
+  "host": "roxabituwer",
+  "subject": "lyra.voice.stt.request",
+  "queue_group": "stt_workers",
+  "ts": 1712934198.123,
+  "model_loaded": "large-v3-turbo",
+  "vram_used_mb": 4128,
+  "vram_total_mb": 10240,
+  "active_requests": 0
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|:---:|---|
+| `contract_version` | string | ✓ | Always `"1"` |
+| `worker_id` | string | ✓ | Unique per process; hub indexes freshness by this key |
+| `service`, `queue_group`, `subject`, `host`, `ts` | string/number | ✓ | Populated by `NatsAdapterBase.heartbeat_payload` |
+| `model_loaded` | string | — | Active model/engine name |
+| `vram_used_mb`, `vram_total_mb` | integer | — | `0` when pynvml is unavailable |
+| `active_requests` | integer | — | In-flight count for capacity signalling |
+
+**Cadence.** Satellites emit a heartbeat every **5 s**. The hub marks a worker alive if a heartbeat landed within the last **15 s** (`_HB_TTL`); older entries are pruned after `2 × _HB_TTL`. No worker alive → `STTUnavailableError("STT: no live worker (heartbeat stale >15s)")` / `TtsUnavailableError` before any request is dispatched.
+
+A heartbeat with a missing `worker_id` is dropped with a warning log and does not update freshness.
+
+## Rationale
+
+**Why NATS at all.** Voice workloads are GPU-bound and need a different venv than the hub. Making them a request-reply service over NATS lets them run on a different host (or even a different OS) without the hub importing their dependencies. It also gives us load balancing (queue groups), liveness tracking (heartbeats), and zero-downtime worker replacement — all for free on the messaging layer.
+
+**Why these subjects.** `lyra.voice.<service>.<verb>` follows the project-wide NATS naming convention (ADR-035): subjects encode the namespace (`lyra`), the capability (`voice`), the service (`stt`/`tts`), and the verb (`request`/`heartbeat`). Flat, predictable, greppable.
+
+**Why one `contract_version` field and not a handshake.** A handshake would require the hub and the satellite to negotiate on connect, which is exactly the kind of implicit coupling the NATS migration is trying to remove. An additive string makes the contract self-describing on the wire without any state on either side. When we need a breaking change, we ship a new ADR (and likely a new subject); we don't re-negotiate versions over the wire.
+
+**Why "1" as a string, not 1 as an integer.** String comparison works in every language we might bind to later, and `"1.1"` / `"1.2"` remain trivially orderable. Mixing numeric and string values in the same field name after a bump is not a road we want to leave open.
+
+## Consequences
+
+### Positive
+
+- The lyra↔voicecli contract is frozen and greppable. Any payload change is visible as an ADR change.
+- `contract_version` gives operators and log aggregators a cheap way to filter by wire version without reading each payload.
+- Adding a field on either side no longer requires a coordinated release — producers simply add it; consumers ignore it until they care.
+
+### Negative
+
+- Every producer path has to remember to stamp `contract_version`. A missing field is only caught by tests or by a downstream grep; there is no runtime enforcement.
+- The hub still carries the in-process `STTService` / `TTSService` path through S3. Until S4 deletes them, the contract has two implementations (NATS and direct) that must stay behavioural-equivalent.
+
+### Neutral
+
+- `contract_version` is one string on every voice payload. The wire overhead is negligible.
+- Schema enforcement remains in tests and in the adapter base's `check_schema_version`; this ADR does not introduce a runtime validator.
+
+## Relation to other ADRs
+
+- **ADR-035** — NATS subject naming convention. `lyra.voice.*` follows the `<namespace>.<capability>.<service>.<verb>` shape.
+- **ADR-039** — STT/TTS NATS adapter decoupling. Establishes the satellite-bootstrap pattern; ADR-044 freezes its on-the-wire payload.
+- **ADR-040** — NATS messaging architecture review. Baseline for subjects, queue groups, and replies.
+
+## References
+
+- Spec: [`artifacts/specs/658-voicecli-nats-decouple-spec.mdx`](../../../artifacts/specs/658-voicecli-nats-decouple-spec.mdx) — parent decoupling work (S1–S5)
+- Issue: [#658](https://github.com/Roxabi/lyra/issues/658), slice S1 [#688](https://github.com/Roxabi/lyra/issues/688)
+- Code:
+  - `src/lyra/nats/nats_stt_client.py` — hub STT client
+  - `src/lyra/nats/nats_tts_client.py` — hub TTS client
+  - `src/lyra/bootstrap/stt_adapter_standalone.py` — STT satellite
+  - `src/lyra/bootstrap/tts_adapter_standalone.py` — TTS satellite
+  - `src/lyra/nats/adapter_base.py` — `NatsAdapterBase.heartbeat_payload` base fields

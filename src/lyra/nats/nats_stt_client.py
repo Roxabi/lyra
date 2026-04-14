@@ -87,9 +87,7 @@ class NatsSttClient:
     async def start(self) -> None:
         """Subscribe to heartbeat subject. Called once after nc is connected."""
         if self._hb_sub is None:
-            self._hb_sub = await self._nc.subscribe(
-                _HB_SUBJECT, cb=self._on_heartbeat
-            )
+            self._hb_sub = await self._nc.subscribe(_HB_SUBJECT, cb=self._on_heartbeat)
 
     async def _on_heartbeat(self, msg) -> None:
         try:
@@ -111,9 +109,7 @@ class NatsSttClient:
 
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
         if not self._any_worker_alive():
-            raise STTUnavailableError(
-                "STT: no live worker (heartbeat stale >15s)"
-            )
+            raise STTUnavailableError("STT: no live worker (heartbeat stale >15s)")
         if self._cb.is_open():
             raise STTUnavailableError(
                 "STT circuit open — adapter temporarily unavailable"
@@ -122,6 +118,7 @@ class NatsSttClient:
         audio_bytes = await asyncio.to_thread(resolved.read_bytes)
         mime = _mime_from_suffix(resolved.suffix)
         request = {
+            "contract_version": "1",
             "request_id": str(uuid4()),
             "audio_b64": base64.b64encode(audio_bytes).decode("ascii"),
             "mime_type": mime,

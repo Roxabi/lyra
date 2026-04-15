@@ -51,11 +51,15 @@ SUB_ALLOW[telegram-adapter]='"lyra.outbound.telegram.>"'
 PUB_ALLOW[discord-adapter]='"lyra.inbound.discord.>","lyra.system.ready"'
 SUB_ALLOW[discord-adapter]='"lyra.outbound.discord.>"'
 
-PUB_ALLOW[tts-adapter]='"lyra.voice.tts.heartbeat"'
-SUB_ALLOW[tts-adapter]='"lyra.voice.tts.request"'
+# tts-adapter / stt-adapter: lyra-side voice satellites (retired in #690 cutover).
+# Readiness probe via nc.request('lyra.system.ready') needs pub on system.ready
+# + sub on _INBOX.*.* for reply. Uppercase + lowercase forms included because
+# nats-py historically emits lowercase inboxes and NATS subjects are case-sensitive.
+PUB_ALLOW[tts-adapter]='"lyra.voice.tts.heartbeat","lyra.system.ready"'
+SUB_ALLOW[tts-adapter]='"lyra.voice.tts.request","_INBOX.>","_inbox.>"'
 
-PUB_ALLOW[stt-adapter]='"lyra.voice.stt.heartbeat"'
-SUB_ALLOW[stt-adapter]='"lyra.voice.stt.request"'
+PUB_ALLOW[stt-adapter]='"lyra.voice.stt.heartbeat","lyra.system.ready"'
+SUB_ALLOW[stt-adapter]='"lyra.voice.stt.request","_INBOX.>","_inbox.>"'
 
 # voice-tts: voicecli nats-serve worker on Machine 1 (#689)
 # NB: voicecli.nats.base.AdapterBase subscribes to heartbeat_subject

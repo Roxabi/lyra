@@ -7,7 +7,7 @@
 #   (a) 7 identity blocks exist (one per user in IDENTITIES)
 #   (b) each identity's publish allow-list equals its matrix row (set equality)
 #   (c) each identity's subscribe allow-list equals its matrix row (set equality)
-#   (d) allow_responses: true present on every user (7 occurrences)
+#   (d) allow_responses: true present on every user (9 occurrences)
 #   (e) no 'plugin' reference anywhere in output
 #   (f) no over-privilege: no identity has unexpected extra subjects
 #   (g) default_permissions { deny: [">"] } present (defense-in-depth)
@@ -39,16 +39,20 @@ EXPECTED_PUB[telegram-adapter]='lyra.inbound.telegram.> lyra.system.ready'
 EXPECTED_SUB[telegram-adapter]='lyra.outbound.telegram.>'
 EXPECTED_PUB[discord-adapter]='lyra.inbound.discord.> lyra.system.ready'
 EXPECTED_SUB[discord-adapter]='lyra.outbound.discord.>'
-EXPECTED_PUB[tts-adapter]='lyra.voice.tts.heartbeat'
-EXPECTED_SUB[tts-adapter]='lyra.voice.tts.request'
-EXPECTED_PUB[stt-adapter]='lyra.voice.stt.heartbeat'
-EXPECTED_SUB[stt-adapter]='lyra.voice.stt.request'
+EXPECTED_PUB[tts-adapter]='lyra.voice.tts.heartbeat lyra.system.ready'
+EXPECTED_SUB[tts-adapter]='lyra.voice.tts.request _INBOX.> _inbox.>'
+EXPECTED_PUB[stt-adapter]='lyra.voice.stt.heartbeat lyra.system.ready'
+EXPECTED_SUB[stt-adapter]='lyra.voice.stt.request _INBOX.> _inbox.>'
+EXPECTED_PUB[voice-tts]='lyra.voice.tts.heartbeat _INBOX.>'
+EXPECTED_SUB[voice-tts]='lyra.voice.tts.request lyra.voice.tts.heartbeat'
+EXPECTED_PUB[voice-stt]='lyra.voice.stt.heartbeat _INBOX.>'
+EXPECTED_SUB[voice-stt]='lyra.voice.stt.request lyra.voice.stt.heartbeat'
 EXPECTED_PUB[llm-worker]='lyra.llm.health.*'
 EXPECTED_SUB[llm-worker]='lyra.llm.request'
 EXPECTED_PUB[monitor]='lyra.monitor.>'
 EXPECTED_SUB[monitor]='lyra.monitor.>'
 
-IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter llm-worker monitor)
+IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor)
 
 # ── extract_block: print the user{} block for a given identity name ────────────
 # B9: the closing-brace condition records `entry_depth` when the identity's
@@ -106,11 +110,11 @@ assert_allow_list_equals() {
   fi
 }
 
-# ── (a) 7 identity comment labels ──────────────────────────────────────────────
-count=$(grep -cE '^[[:space:]]+#[[:space:]]+(hub|telegram-adapter|discord-adapter|tts-adapter|stt-adapter|llm-worker|monitor)$' "$OUT" || true)
-[ "$count" -eq 7 ] \
-  || { echo "FAIL (a): expected 7 identity blocks, got ${count}"; exit 1; }
-echo "PASS (a): 7 identity blocks found"
+# ── (a) 9 identity comment labels ──────────────────────────────────────────────
+count=$(grep -cE '^[[:space:]]+#[[:space:]]+(hub|telegram-adapter|discord-adapter|tts-adapter|stt-adapter|voice-tts|voice-stt|llm-worker|monitor)$' "$OUT" || true)
+[ "$count" -eq 9 ] \
+  || { echo "FAIL (a): expected 9 identity blocks, got ${count}"; exit 1; }
+echo "PASS (a): 9 identity blocks found"
 
 # ── (b) + (c) + (f) set-equality publish and subscribe for all 7 identities ───
 for name in "${IDENTITIES[@]}"; do
@@ -119,15 +123,15 @@ for name in "${IDENTITIES[@]}"; do
   assert_allow_list_equals "$block" "publish"   "${EXPECTED_PUB[$name]}" "$name"
   assert_allow_list_equals "$block" "subscribe" "${EXPECTED_SUB[$name]}" "$name"
 done
-echo "PASS (b): publish allow-lists match matrix (set equality, 7 identities)"
-echo "PASS (c): subscribe allow-lists match matrix (set equality, 7 identities)"
+echo "PASS (b): publish allow-lists match matrix (set equality, 9 identities)"
+echo "PASS (c): subscribe allow-lists match matrix (set equality, 9 identities)"
 echo "PASS (f): no over-privilege detected"
 
-# ── (d) allow_responses: true present on every user (7 occurrences) ───────────
+# ── (d) allow_responses: true present on every user (9 occurrences) ───────────
 ar_count=$(grep -c 'allow_responses: true' "$OUT" || true)
-[ "$ar_count" -eq 7 ] \
-  || { echo "FAIL (d): expected 7 allow_responses: true lines, got ${ar_count}"; exit 1; }
-echo "PASS (d): allow_responses: true appears 7 times"
+[ "$ar_count" -eq 9 ] \
+  || { echo "FAIL (d): expected 9 allow_responses: true lines, got ${ar_count}"; exit 1; }
+echo "PASS (d): allow_responses: true appears 9 times"
 
 # ── (e) the word 'plugin' must not appear anywhere in the generated conf ──────
 if grep -qi 'plugin' "$OUT"; then

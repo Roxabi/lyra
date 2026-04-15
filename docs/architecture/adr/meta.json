@@ -42,6 +42,7 @@
     "040-nats-messaging-architecture-review",
     "043-roxabi-autodeploy-per-project-manifests",
     "044-lyra-voicecli-nats-contract",
-    "045-roxabi-nats-sdk-uv-workspace-extraction"
+    "045-roxabi-nats-sdk-uv-workspace-extraction",
+    "046-nkey-provisioning-declarative-authconf"
   ]
 }

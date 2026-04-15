@@ -41,6 +41,25 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _derive_label_fields(labels: list[str], label_prefix: str) -> dict:
+    """Derive lane_label/standalone/defer from a labels list.
+
+    Keeps gh.json consumers (build, audit) from re-scanning labels each time
+    and lets the Untriaged section render without a pre-populated layout entry.
+    """
+    lane_prefix = f"{label_prefix}lane/"
+    lane_label: str | None = None
+    for lbl in labels:
+        if lbl.startswith(lane_prefix):
+            lane_label = lbl[len(lane_prefix) :]
+            break
+    return {
+        "lane_label": lane_label,
+        "standalone": f"{label_prefix}standalone" in labels,
+        "defer": f"{label_prefix}defer" in labels,
+    }
+
+
 def _iter_lane_refs(lane: dict):
     """Yield all IssueRef dicts from a lane (order, par_groups, bands)."""
     for ref in lane.get("order", []):
@@ -308,6 +327,7 @@ def run_fetch(
                 "title": title,
                 "state": state,
                 "labels": labels,
+                **_derive_label_fields(labels, label_prefix),
                 "blocked_by": [],
                 "blocking": [],
             }

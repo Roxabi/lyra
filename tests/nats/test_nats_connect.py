@@ -223,15 +223,14 @@ class TestBuildTlsContext:
             _build_tls_context()
 
     def test_dangling_symlink_rejected(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        valid_ca_pem: str,
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """SystemExit when NATS_CA_CERT is a symlink whose target is gone
         (O_NOFOLLOW guard, ENOENT branch)."""
+        # Target content is irrelevant — os.open never reads it because
+        # ENOENT fires on symlink resolution.
         target = tmp_path / "ca.pem"
-        target.write_text(valid_ca_pem)
+        target.write_text("placeholder")
         link = tmp_path / "ca-link.pem"
         link.symlink_to(target)
         target.unlink()  # leave the symlink dangling

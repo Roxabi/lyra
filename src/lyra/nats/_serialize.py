@@ -7,6 +7,7 @@ Handles encoding/decoding of Lyra dataclasses to/from UTF-8 JSON bytes:
 - callables stripped from dict fields (platform_meta)
 - nested dataclasses serialized recursively
 """
+
 from __future__ import annotations
 
 import base64
@@ -174,12 +175,8 @@ def _decode_union(value: Any, args: tuple[Any, ...]) -> Any:
         return None
     non_none = [a for a in args if a is not type(None)]
     # bytes: detect "b64:" prefix
-    if (
-        bytes in non_none
-        and isinstance(value, str)
-        and value.startswith(_B64_PREFIX)
-    ):
-        return base64.b64decode(value[len(_B64_PREFIX):])
+    if bytes in non_none and isinstance(value, str) and value.startswith(_B64_PREFIX):
+        return base64.b64decode(value[len(_B64_PREFIX) :])
     # Single non-None candidate: decode as that type
     if len(non_none) == 1:
         return _decode(value, non_none[0])
@@ -220,7 +217,7 @@ def _decode_concrete(value: Any, target_type: Any) -> Any:
     # ── bytes ─────────────────────────────────────────────────────────────────
     if target_type is bytes:
         if isinstance(value, str) and value.startswith(_B64_PREFIX):
-            return base64.b64decode(value[len(_B64_PREFIX):])
+            return base64.b64decode(value[len(_B64_PREFIX) :])
         if isinstance(value, bytes):
             return value
         raise ValueError(

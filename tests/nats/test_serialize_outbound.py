@@ -3,6 +3,7 @@
 Verifies that serialize() → deserialize() produces structurally equivalent
 objects for all types published by NatsChannelProxy over NATS.
 """
+
 from __future__ import annotations
 
 import json

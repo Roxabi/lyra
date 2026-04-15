@@ -103,6 +103,9 @@ class NatsAdapterBase(ABC):
             await self.handle(msg, payload)
 
     def _validate_envelope(self, payload: dict) -> bool:
+        # Sequential short-circuit: each check logs and counts its own drop, so
+        # we stop at the first failure to avoid duplicate lines for a doubly-
+        # malformed payload. Add any future checks here in priority order.
         if not check_schema_version(
             payload,
             envelope_name=self.envelope_name,

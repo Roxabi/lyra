@@ -5,6 +5,7 @@ Covers:
 - Lockfile lifecycle (acquire / release / stale PID / live PID block)
 - Health endpoint basic response (no NATS required)
 """
+
 from __future__ import annotations
 
 import os
@@ -394,7 +395,5 @@ def _test_config() -> dict:
         "admin": {"user_ids": ["test_admin"]},
         "telegram": {"bots": [{"bot_id": "test_bot", "agent": "test_agent"}]},
         "discord": {"bots": []},
-        "auth": {
-            "telegram_bots": [{"bot_id": "test_bot", "owner_id": "test_admin"}]
-        },
+        "auth": {"telegram_bots": [{"bot_id": "test_bot", "owner_id": "test_admin"}]},
     }

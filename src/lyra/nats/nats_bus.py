@@ -239,8 +239,7 @@ class NatsBus(Generic[T]):
     # ------------------------------------------------------------------
 
     async def _make_handler(self, platform: Platform, bot_id: str) -> None:
-        """Create NATS subscription for *(platform, bot_id)* and register the handler.
-        """
+        """Create NATS subscription for *(platform, bot_id)* and wire the handler."""
         subject = f"{self._subject_prefix}.{platform.value}.{bot_id}"
 
         async def handler(msg: Msg) -> None:

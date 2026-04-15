@@ -510,6 +510,36 @@ class TestCheckContractVersion:
         assert result is False
         assert counter == {"InboundMessage:contract": 1}
 
+    @pytest.mark.parametrize(
+        "lenient_string",
+        ["+1", "1_000", " 1", "1 ", "\u0661", "0x1", "01"],
+        ids=[
+            "plus_sign",
+            "underscore_sep",
+            "lead_ws",
+            "trail_ws",
+            "unicode_digit",
+            "hex_prefix",
+            "zero_padded",
+        ],
+    )
+    def test_lenient_int_forms_drop(self, lenient_string: str) -> None:
+        """Strings that ``int()`` accepts but ADR-044 wire spec rejects → dropped."""
+        # Arrange
+        counter: dict[str, int] = {}
+
+        # Act
+        result = check_contract_version(
+            {"contract_version": lenient_string},
+            envelope_name="InboundMessage",
+            expected="1",
+            counter=counter,
+        )
+
+        # Assert — plain decimal only; `+1`, `1_000`, unicode digits, ws must drop
+        assert result is False
+        assert counter == {"InboundMessage:contract": 1}
+
     def test_null_value_drops(self) -> None:
         """Explicit null contract_version → dropped (no legacy-compat fallback)."""
         # Arrange
@@ -528,22 +558,28 @@ class TestCheckContractVersion:
         assert counter == {"InboundMessage:contract": 1}
 
     @pytest.mark.parametrize("bad_version", ["0", "-1"])
-    def test_out_of_range_drops(self, bad_version: str) -> None:
-        """Parsed int <= 0 → dropped."""
+    def test_out_of_range_drops(
+        self, bad_version: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Parsed int <= 0 → dropped, counter++, log.error."""
         # Arrange
         counter: dict[str, int] = {}
 
         # Act
-        result = check_contract_version(
-            {"contract_version": bad_version},
-            envelope_name="InboundMessage",
-            expected="1",
-            counter=counter,
-        )
+        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+            result = check_contract_version(
+                {"contract_version": bad_version},
+                envelope_name="InboundMessage",
+                expected="1",
+                counter=counter,
+            )
 
         # Assert
         assert result is False
         assert counter == {"InboundMessage:contract": 1}
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 1
+        assert "NATS contract version mismatch" in error_records[0].getMessage()
 
     def test_int_payload_drops(self) -> None:
         """Bare int contract_version is asymmetric with wire spec → dropped."""

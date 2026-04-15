@@ -3,6 +3,7 @@
 Uses unittest.mock.AsyncMock for the NATS client so no real NATS server is
 needed. Each test verifies subject routing and envelope structure independently.
 """
+
 from __future__ import annotations
 
 import json
@@ -90,9 +91,7 @@ def test_normalize_raises() -> None:
 def test_normalize_audio_raises() -> None:
     """normalize_audio() raises NotImplementedError — proxy does not handle inbound."""
     proxy = NatsChannelProxy(nc=_make_nc(), platform=Platform.TELEGRAM, bot_id="main")
-    with pytest.raises(
-        NotImplementedError, match="does not normalize audio messages"
-    ):
+    with pytest.raises(NotImplementedError, match="does not normalize audio messages"):
         proxy.normalize_audio({}, b"bytes", "audio/ogg", trust_level=TrustLevel.TRUSTED)
 
 
@@ -483,6 +482,7 @@ async def test_send_streaming_uses_single_subject() -> None:
 def test_is_terminal_stream_error():
     """stream_error event type is always terminal regardless of done flag."""
     from lyra.nats.render_event_codec import NatsRenderEventCodec
+
     assert NatsRenderEventCodec.is_terminal("stream_error", True) is True
     assert NatsRenderEventCodec.is_terminal("stream_error", False) is True
 

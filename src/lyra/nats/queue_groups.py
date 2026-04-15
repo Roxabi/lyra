@@ -4,6 +4,7 @@ Queue groups enforce load balancing within a role during rolling restarts so
 that no message is delivered twice to the same logical consumer. Each constant
 or helper defines exactly one role → name mapping.
 """
+
 from __future__ import annotations
 
 #: Hub-side inbound text message subscription (``NatsBus``).

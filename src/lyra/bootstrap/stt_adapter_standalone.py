@@ -35,7 +35,6 @@ class SttAdapterStandalone(NatsAdapterBase):
             1,
             heartbeat_subject="lyra.voice.stt.heartbeat",
             heartbeat_interval=5.0,
-            per_worker_routing=True,
         )
         self._active_count: int = 0
         self._base_stt_cfg = load_stt_config()
@@ -43,6 +42,9 @@ class SttAdapterStandalone(NatsAdapterBase):
         log.info(
             "stt_adapter: STTService ready (model=%s)", self._base_stt_cfg.model_size
         )
+
+    def _extra_subjects(self) -> list[str]:
+        return [f"{self.subject}.{self._worker_id}"]
 
     def _get_vram_info(self) -> tuple[int, int]:
         """Return (used_mb, total_mb). Both 0 if pynvml is unavailable."""

@@ -11,7 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 from uuid import uuid4
 
 from nats.aio.client import Client as NATS
@@ -72,7 +72,7 @@ class NatsTtsClient:
             )
             data = await self._fallback(payload, payload_kb)
         except Exception as exc:
-            data = self._map_nats_exception(exc, payload_kb)
+            self._raise_nats_failure(exc, payload_kb)
         if not data.get("ok"):
             self._cb.record_failure()
             raise TtsUnavailableError("TTS synthesis failed")
@@ -87,10 +87,10 @@ class NatsTtsClient:
             self._cb.record_failure()
             raise TtsUnavailableError("TTS adapter timeout") from exc
         except Exception as exc:
-            return self._map_nats_exception(exc, payload_kb)
+            self._raise_nats_failure(exc, payload_kb)
 
-    def _map_nats_exception(self, exc: Exception, payload_kb: float) -> dict:
-        """Convert a NATS request exception to TtsUnavailableError; never returns."""
+    def _raise_nats_failure(self, exc: Exception, payload_kb: float) -> NoReturn:
+        """Convert a NATS request exception to TtsUnavailableError."""
         if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
             log.error(
                 "TTS payload too large (%.0f KB) — check NATS max_payload",
@@ -148,14 +148,3 @@ class NatsTtsClient:
             duration_ms=data.get("duration_ms"),
             waveform_b64=data.get("waveform_b64"),
         )
-
-    # Backwards-compat shim for callers/tests still reading ``_worker_freshness``.
-    @property
-    def _worker_freshness(self) -> dict[str, float]:
-        return {
-            w.worker_id: w.last_heartbeat
-            for w in self._registry._workers.values()
-        }
-
-    def _any_worker_alive(self) -> bool:
-        return self._registry.any_alive()

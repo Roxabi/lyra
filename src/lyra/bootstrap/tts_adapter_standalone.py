@@ -59,7 +59,6 @@ class TtsAdapterStandalone(NatsAdapterBase):
             1,
             heartbeat_subject="lyra.voice.tts.heartbeat",
             heartbeat_interval=5.0,
-            per_worker_routing=True,
         )
         self._active_count: int = 0
         tts_cfg = load_tts_config()
@@ -68,6 +67,9 @@ class TtsAdapterStandalone(NatsAdapterBase):
         log.info(
             "tts_adapter: TTSService ready (engine=%s)", tts_cfg.engine or "default"
         )
+
+    def _extra_subjects(self) -> list[str]:
+        return [f"{self.subject}.{self._worker_id}"]
 
     def _get_vram_info(self) -> tuple[int, int]:
         """Return (used_mb, total_mb). Both 0 if pynvml is unavailable."""

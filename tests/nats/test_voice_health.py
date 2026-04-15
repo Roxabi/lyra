@@ -9,6 +9,7 @@ import pytest
 from lyra.nats.voice_health import (
     DEFAULT_ACTIVE_WEIGHT,
     DEFAULT_VRAM_WEIGHT,
+    MAX_WORKERS,
     VoiceWorkerRegistry,
     WorkerStats,
 )
@@ -37,6 +38,27 @@ class TestRecordHeartbeat:
         reg.record_heartbeat({"worker_id": ""})
         reg.record_heartbeat({"worker_id": None})  # type: ignore[dict-item]
         assert reg.alive_workers() == []
+
+    def test_invalid_worker_id_rejected(self) -> None:
+        """Subject-injection guard: wildcard / space chars rejected at ingress."""
+        reg = VoiceWorkerRegistry()
+        for bad_id in ("*.evil", "foo.>", "has space", "pipe|bad", ">"):
+            reg.record_heartbeat({"worker_id": bad_id})
+        assert reg.alive_workers() == []
+
+    def test_cap_drops_new_ids_at_max(self) -> None:
+        """Hard cap drops new worker ids past ``MAX_WORKERS``; existing ones update."""
+        reg = VoiceWorkerRegistry()
+        for i in range(MAX_WORKERS):
+            reg.record_heartbeat({"worker_id": f"w-{i}"})
+        assert len(reg.alive_workers()) == MAX_WORKERS
+        # New id past cap is dropped.
+        reg.record_heartbeat({"worker_id": "overflow"})
+        assert "overflow" not in {w.worker_id for w in reg.alive_workers()}
+        # Existing id still updates.
+        reg.record_heartbeat({"worker_id": "w-0", "active_requests": 42})
+        w0 = next(w for w in reg.alive_workers() if w.worker_id == "w-0")
+        assert w0.active_requests == 42
 
     def test_coerces_numeric_fields(self) -> None:
         reg = VoiceWorkerRegistry()
@@ -144,9 +166,7 @@ class TestSelection:
 
     def test_pick_lowest_vram_pct_when_tied_active(self) -> None:
         reg = VoiceWorkerRegistry()
-        reg.record_heartbeat(
-            _hb("heavy", vram_used_mb=12000, vram_total_mb=16000)
-        )
+        reg.record_heartbeat(_hb("heavy", vram_used_mb=12000, vram_total_mb=16000))
         reg.record_heartbeat(_hb("light", vram_used_mb=2000, vram_total_mb=16000))
         pick = reg.pick_least_loaded()
         assert pick is not None and pick.worker_id == "light"

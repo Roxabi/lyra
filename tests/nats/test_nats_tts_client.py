@@ -34,9 +34,7 @@ def _inject_fresh_worker(
     )
 
 
-def _seed_worker_with_age(
-    client: NatsTtsClient, worker_id: str, age_s: float
-) -> None:
+def _seed_worker_with_age(client: NatsTtsClient, worker_id: str, age_s: float) -> None:
     """Insert a worker whose last_heartbeat is ``age_s`` seconds ago."""
     client._registry._workers[worker_id] = WorkerStats(
         worker_id=worker_id,
@@ -322,37 +320,8 @@ class TestTtsClientFreshness:
         result = await client.synthesize("hello")
         assert result.audio_bytes == b"audio"
 
-    def test_any_worker_alive_true_within_ttl(self) -> None:
-        """_any_worker_alive() returns True when a worker has a recent timestamp."""
-        mock_nc = MagicMock()
-        client = NatsTtsClient(nc=mock_nc)
-        _seed_worker_with_age(client, "worker-1", 5.0)
-        assert client._any_worker_alive() is True
-
-    def test_any_worker_alive_false_when_stale(self) -> None:
-        """_any_worker_alive() returns False when all workers are >15s stale."""
-        mock_nc = MagicMock()
-        client = NatsTtsClient(nc=mock_nc)
-        _seed_worker_with_age(client, "worker-1", 20.0)
-        assert client._any_worker_alive() is False
-
-    def test_any_worker_alive_true_with_mixed_freshness(self) -> None:
-        """_any_worker_alive() returns True when at least one worker is fresh."""
-        mock_nc = MagicMock()
-        client = NatsTtsClient(nc=mock_nc)
-        _seed_worker_with_age(client, "stale-worker", 20.0)
-        _seed_worker_with_age(client, "fresh-worker", 5.0)
-        assert client._any_worker_alive() is True
-
-    def test_stale_entries_pruned_in_any_worker_alive(self) -> None:
-        """_any_worker_alive() evicts entries older than TTL*2."""
-        mock_nc = MagicMock()
-        client = NatsTtsClient(nc=mock_nc)
-        _seed_worker_with_age(client, "ancient", 35.0)  # > 15*2
-        _seed_worker_with_age(client, "fresh", 5.0)
-        client._any_worker_alive()
-        assert "ancient" not in client._worker_freshness
-        assert "fresh" in client._worker_freshness
+    # NOTE: registry-level aliveness / pruning semantics are covered by
+    # ``tests/nats/test_voice_health.py`` — no need to duplicate here.
 
 
 class TestTtsLoadAwareRouting:
@@ -396,6 +365,39 @@ class TestTtsLoadAwareRouting:
         await client.synthesize("hi")
         subject = mock_nc.request.call_args.args[0]
         assert subject == "lyra.voice.tts.request.tts-light"
+
+    @pytest.mark.asyncio
+    async def test_active_requests_dominate_vram(self) -> None:
+        """A busy worker (active_requests>0) loses to an idle higher-VRAM worker."""
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(return_value=self._ok_reply())
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(
+            client,
+            "tts-busy",
+            vram_used_mb=2000,
+            vram_total_mb=16384,
+            active_requests=2,
+        )
+        _inject_fresh_worker(
+            client,
+            "tts-idle-but-fuller",
+            vram_used_mb=8000,
+            vram_total_mb=16384,
+            active_requests=0,
+        )
+        await client.synthesize("hi")
+        subject = mock_nc.request.call_args.args[0]
+        assert subject == "lyra.voice.tts.request.tts-idle-but-fuller"
+
+    @pytest.mark.asyncio
+    async def test_empty_registry_raises_without_request(self) -> None:
+        """Empty registry → immediate TtsUnavailableError, no NATS request attempted."""
+        mock_nc = AsyncMock()
+        client = NatsTtsClient(nc=mock_nc)
+        with pytest.raises(TtsUnavailableError, match="no live worker"):
+            await client.synthesize("hi")
+        mock_nc.request.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_fallback_to_queue_group_on_timeout(self) -> None:

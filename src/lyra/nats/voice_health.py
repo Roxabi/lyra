@@ -12,12 +12,20 @@ the ``active_requests`` term.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
+
+from roxabi_nats._validate import validate_nats_token
+
+log = logging.getLogger(__name__)
 
 DEFAULT_HB_TTL = 15.0
 DEFAULT_ACTIVE_WEIGHT = 100.0
 DEFAULT_VRAM_WEIGHT = 50.0
+# Hard cap on registry size. A compromised/buggy publisher flooding unique
+# worker_id values would otherwise grow the dict until the next prune read.
+MAX_WORKERS = 64
 
 
 @dataclass
@@ -54,10 +62,31 @@ class VoiceWorkerRegistry:
     def record_heartbeat(self, payload: dict) -> None:
         """Upsert a worker entry from a heartbeat payload.
 
-        Silently ignores payloads without a ``worker_id`` — the caller logs.
+        Drops payloads missing a ``worker_id``, containing a value that is not
+        a valid NATS subject token, or when the registry has already reached
+        its hard cap of new worker ids.
         """
         worker_id = payload.get("worker_id")
         if not isinstance(worker_id, str) or not worker_id:
+            return
+        # worker_id flows into NATS subjects (``<SUBJECT>.<worker_id>``) — reject
+        # wildcards (``*``, ``>``), spaces, and other injection-prone characters.
+        try:
+            validate_nats_token(worker_id, kind="worker_id")
+        except ValueError:
+            log.warning(
+                "voice_health: rejecting heartbeat with invalid worker_id=%r",
+                worker_id,
+            )
+            return
+        # Hard cap — existing workers are always updated, but a flood of new
+        # ids past the cap is dropped (not silently, one log per incident).
+        if worker_id not in self._workers and len(self._workers) >= MAX_WORKERS:
+            log.warning(
+                "voice_health: registry full (%d workers); dropping new id=%r",
+                MAX_WORKERS,
+                worker_id,
+            )
             return
         self._workers[worker_id] = WorkerStats(
             worker_id=worker_id,
@@ -71,9 +100,7 @@ class VoiceWorkerRegistry:
         now = time.monotonic()
         horizon = self._hb_ttl * 2
         self._workers = {
-            k: v
-            for k, v in self._workers.items()
-            if now - v.last_heartbeat <= horizon
+            k: v for k, v in self._workers.items() if now - v.last_heartbeat <= horizon
         }
 
     def alive_workers(self) -> list[WorkerStats]:
@@ -87,9 +114,7 @@ class VoiceWorkerRegistry:
         return bool(self.alive_workers())
 
     def score(self, w: WorkerStats) -> float:
-        vram_pct = (
-            (w.vram_used_mb / w.vram_total_mb) if w.vram_total_mb > 0 else 0.0
-        )
+        vram_pct = (w.vram_used_mb / w.vram_total_mb) if w.vram_total_mb > 0 else 0.0
         return w.active_requests * self._active_weight + vram_pct * self._vram_weight
 
     def pick_least_loaded(self) -> WorkerStats | None:

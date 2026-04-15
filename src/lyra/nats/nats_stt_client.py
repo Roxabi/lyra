@@ -14,6 +14,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import NoReturn
 from uuid import uuid4
 
 from nats.aio.client import Client as NATS
@@ -166,7 +167,7 @@ class NatsSttClient:
                 self._timeout,
             )
         except Exception as exc:
-            return self._map_nats_exception(exc, payload_kb)
+            self._raise_nats_failure(exc, payload_kb)
         # Fallback: queue group (round-robin among alive workers).
         try:
             reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
@@ -176,10 +177,10 @@ class NatsSttClient:
             self._cb.record_failure()
             raise STTUnavailableError("STT adapter timeout") from exc
         except Exception as exc:
-            return self._map_nats_exception(exc, payload_kb)
+            self._raise_nats_failure(exc, payload_kb)
 
-    def _map_nats_exception(self, exc: Exception, payload_kb: float) -> dict:
-        """Convert a NATS request exception to STTUnavailableError; never returns."""
+    def _raise_nats_failure(self, exc: Exception, payload_kb: float) -> NoReturn:
+        """Convert a NATS request exception to STTUnavailableError."""
         if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
             log.error(
                 "STT payload too large (%.0f KB) — check NATS max_payload",
@@ -190,17 +191,6 @@ class NatsSttClient:
         log.warning("STT adapter unreachable: %s: %s", type(exc).__name__, exc)
         self._cb.record_failure()
         raise STTUnavailableError("STT adapter unreachable") from exc
-
-    # Backwards-compat shim for callers/tests still reading ``_worker_freshness``.
-    @property
-    def _worker_freshness(self) -> dict[str, float]:
-        return {
-            w.worker_id: w.last_heartbeat
-            for w in self._registry._workers.values()
-        }
-
-    def _any_worker_alive(self) -> bool:
-        return self._registry.any_alive()
 
 
 def _mime_from_suffix(suffix: str) -> str:

@@ -8,11 +8,12 @@
 #                             tts-adapter, stt-adapter, llm-worker, monitor
 #
 # Usage: sudo ./deploy/nats/gen-nkeys.sh
-#        sudo ./deploy/nats/gen-nkeys.sh --fix-perms      # re-apply permissions without regenerating
-#        sudo ./deploy/nats/gen-nkeys.sh --show           # print existing public keys
-#        sudo ./deploy/nats/gen-nkeys.sh --regenerate     # atomic backup + wipe + regenerate
-#        sudo ./deploy/nats/gen-nkeys.sh --regenerate --yes  # non-interactive regenerate
-#             ./deploy/nats/gen-nkeys.sh --template-only  # write auth.conf skeleton to stdout (no root needed)
+#        sudo ./deploy/nats/gen-nkeys.sh --fix-perms        # re-apply permissions without regenerating
+#        sudo ./deploy/nats/gen-nkeys.sh --show             # print existing public keys
+#        sudo ./deploy/nats/gen-nkeys.sh --regenerate       # atomic backup + wipe + regenerate (rotates keys)
+#        sudo ./deploy/nats/gen-nkeys.sh --regenerate --yes # non-interactive regenerate
+#        sudo ./deploy/nats/gen-nkeys.sh --regen-authconf   # re-render auth.conf from EXISTING seeds (no key rotation)
+#             ./deploy/nats/gen-nkeys.sh --template-only    # write auth.conf skeleton to stdout (no root needed)
 #
 # Idempotent — skips if auth.conf already exists. Delete auth.conf + seeds dir to regenerate.
 # Override seeds location: SEEDS_DIR=/custom/path sudo ./gen-nkeys.sh
@@ -95,15 +96,17 @@ SHOW_ONLY=false
 FIX_PERMS=false
 TEMPLATE_ONLY=false
 REGENERATE=false
+REGEN_AUTHCONF=false
 AUTO_YES=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --show)          SHOW_ONLY=true;    shift ;;
-    --fix-perms)     FIX_PERMS=true;    shift ;;
-    --template-only) TEMPLATE_ONLY=true; shift ;;
-    --regenerate)    REGENERATE=true;   shift ;;
-    --yes)           AUTO_YES=true;     shift ;;
+    --show)            SHOW_ONLY=true;      shift ;;
+    --fix-perms)       FIX_PERMS=true;      shift ;;
+    --template-only)   TEMPLATE_ONLY=true;  shift ;;
+    --regenerate)      REGENERATE=true;     shift ;;
+    --regen-authconf)  REGEN_AUTHCONF=true; shift ;;
+    --yes)             AUTO_YES=true;       shift ;;
     *) error "Unknown option: $1" ;;
   esac
 done
@@ -189,6 +192,77 @@ apply_permissions() {
 if [ "${FIX_PERMS}" = true ]; then
   [ -d "${SEEDS_DIR}" ] || error "${SEEDS_DIR} does not exist — run without --fix-perms first"
   apply_permissions
+  exit 0
+fi
+
+# ── regen-authconf mode: re-render auth.conf from existing seeds ──────────────
+# Purpose: upgrade a live auth.conf to the current IDENTITIES + ACL matrix
+# without rotating keys. Used when the script's ACL model has evolved
+# (e.g. #714 added per-role ACLs, #689 added voice-{stt,tts} roles) but seeds
+# on disk are still valid.
+#
+# Differs from --regenerate: no seed wipe, no key rotation — existing services
+# keep working, only the auth.conf content changes.
+if [ "${REGEN_AUTHCONF}" = true ]; then
+  [ -d "${SEEDS_DIR}" ] || error "${SEEDS_DIR} does not exist — run without flags first to seed keys"
+
+  # Need nk to derive pubkeys from existing seeds
+  NK_BIN=$(command -v nk || echo "")
+  [ -n "${NK_BIN}" ] || error "nk not found — run without flags first (it will install nk)"
+
+  # Verify all seeds exist; collect pubkeys
+  declare -A EXISTING_PUBKEYS
+  missing=()
+  for name in "${IDENTITIES[@]}"; do
+    seed_file="${SEEDS_DIR}/${name}.seed"
+    if [ ! -f "${seed_file}" ]; then
+      missing+=("${name}")
+      continue
+    fi
+    pubkey=$("${NK_BIN}" -inkey "${seed_file}" -pubout 2>/dev/null) \
+      || error "Failed to derive pubkey from ${seed_file}"
+    EXISTING_PUBKEYS[$name]="${pubkey}"
+  done
+
+  if [ ${#missing[@]} -gt 0 ]; then
+    error "Missing seeds for: ${missing[*]} — run --regenerate to create all, or generate individually with nk"
+  fi
+
+  # Backup current auth.conf if present
+  if [ -f "${AUTH_CONF}" ]; then
+    BACKUP_AUTH="${AUTH_CONF}.bak.$(date +%Y%m%d-%H%M%S)"
+    cp -a "${AUTH_CONF}" "${BACKUP_AUTH}"
+    chmod 0640 "${BACKUP_AUTH}"
+    info "Backed up auth.conf → ${BACKUP_AUTH}"
+  fi
+
+  # Render new auth.conf to temp, install atomically
+  TMP_AUTH=$(mktemp)
+  trap 'rm -f "${TMP_AUTH}"' EXIT
+  render_auth_conf EXISTING_PUBKEYS > "${TMP_AUTH}"
+
+  # Validate with nats-server -t if available
+  if command -v nats-server &>/dev/null && [ -f /etc/nats/nats.conf ]; then
+    # Temporarily stage: copy to AUTH_CONF location for include-path resolution,
+    # keep backup as safety net.
+    install -m 0640 -o root -g nats "${TMP_AUTH}" "${AUTH_CONF}"
+    if ! nats-server -t -c /etc/nats/nats.conf >/dev/null 2>&1; then
+      if [ -n "${BACKUP_AUTH:-}" ] && [ -f "${BACKUP_AUTH}" ]; then
+        cp -a "${BACKUP_AUTH}" "${AUTH_CONF}"
+        error "nats-server config validation failed — restored backup. Inspect ${TMP_AUTH} for issues."
+      else
+        rm -f "${AUTH_CONF}"
+        error "nats-server config validation failed — no backup to restore. Re-run --regenerate if needed."
+      fi
+    fi
+    info "nats-server config validation OK."
+  else
+    install -m 0640 -o root -g nats "${TMP_AUTH}" "${AUTH_CONF}"
+    warn "nats-server not found or /etc/nats/nats.conf missing — skipped config validation."
+  fi
+
+  info "auth.conf re-rendered from ${#IDENTITIES[@]} existing seeds."
+  info "Next: sudo systemctl reload nats.service"
   exit 0
 fi
 

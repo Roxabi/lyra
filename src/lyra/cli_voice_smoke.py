@@ -1,11 +1,6 @@
 """lyra voice-smoke — TTS→STT round-trip smoke test over NATS.
 
-Verifies that both voicecli nats-serve workers (TTS and STT) are answering.
-No voicecli import — communicates exclusively via NATS subjects.
-
-Exit codes:
-    0 — PASS: TTS produced audio bytes, STT transcribed with a plausible result
-    1 — FAIL: connection error, timeout, assertion failure, or transcript mismatch
+Exit 0 = PASS, 1 = FAIL. No voicecli import — NATS-only.
 """
 
 from __future__ import annotations
@@ -16,28 +11,25 @@ import json
 import os
 from uuid import uuid4
 
+import nats.errors
 import typer
 from nats.aio.client import Client as NATS
 
 from lyra.nats.connect import nats_connect  # noqa: F401 — module-level for patching
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 
 _SMOKE_TEXT = "Voice cutover smoke test one two three"
 _SMOKE_KEYWORDS = {"voice", "cutover", "smoke", "one", "two", "three"}
 
 _TTS_SUBJECT = "lyra.voice.tts.request"
 _STT_SUBJECT = "lyra.voice.stt.request"
+_TTS_HEARTBEAT = "lyra.voice.tts.heartbeat"
+_STT_HEARTBEAT = "lyra.voice.stt.heartbeat"
+_VOICECLI_WORKER_PREFIX = "voicecli-"
 _CONTRACT_VERSION = "1"
 
 _DEFAULT_NATS_URL = "nats://localhost:4222"
 _DEFAULT_TIMEOUT = 30.0
-
-# ---------------------------------------------------------------------------
-# Typer app
-# ---------------------------------------------------------------------------
+_DEFAULT_HEARTBEAT_WAIT = 15.0
 
 voice_smoke_app = typer.Typer(
     name="voice-smoke",
@@ -61,11 +53,30 @@ def voice_smoke(
         "-t",
         help="Per-request timeout in seconds.",
     ),
+    require_voicecli_worker: bool = typer.Option(  # noqa: B008
+        False,
+        "--require-voicecli-worker",
+        help=(
+            "Before round-trip, subscribe to heartbeats and require a worker_id "
+            f"prefixed {_VOICECLI_WORKER_PREFIX!r} for BOTH STT and TTS. Fails if only "
+            "lyra_stt/lyra_tts satellites are answering (silent-cutover guard)."
+        ),
+    ),
+    heartbeat_wait: float = typer.Option(  # noqa: B008
+        _DEFAULT_HEARTBEAT_WAIT,
+        "--heartbeat-wait",
+        help=(
+            "Seconds to wait for voicecli-prefixed heartbeats when "
+            "--require-voicecli-worker is set."
+        ),
+    ),
 ) -> None:
     """Run a TTS→STT round-trip smoke test to verify voicecli NATS workers are up."""
     resolved_url = nats_url or os.environ.get("NATS_URL", _DEFAULT_NATS_URL)
     try:
-        asyncio.run(_run_smoke(resolved_url, timeout))
+        asyncio.run(
+            _run_smoke(resolved_url, timeout, require_voicecli_worker, heartbeat_wait)
+        )
     except SystemExit:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -78,7 +89,12 @@ def voice_smoke(
 # ---------------------------------------------------------------------------
 
 
-async def _run_smoke(nats_url: str, timeout: float) -> None:
+async def _run_smoke(
+    nats_url: str,
+    timeout: float,
+    require_voicecli_worker: bool = False,
+    heartbeat_wait: float = _DEFAULT_HEARTBEAT_WAIT,
+) -> None:
     """Execute the round-trip and exit with 0 (pass) or 1 (fail)."""
     try:
         nc = await nats_connect(nats_url)
@@ -87,6 +103,8 @@ async def _run_smoke(nats_url: str, timeout: float) -> None:
         raise typer.Exit(1)
 
     try:
+        if require_voicecli_worker:
+            await _require_voicecli_heartbeats(nc, heartbeat_wait)
         audio_bytes, mime_type = await _step_tts(nc, timeout)
         transcript = await _step_stt(nc, audio_bytes, mime_type, timeout)
         _assert_transcript(transcript)
@@ -94,6 +112,66 @@ async def _run_smoke(nats_url: str, timeout: float) -> None:
         typer.echo("PASS")
     finally:
         await nc.drain()
+        await nc.close()
+
+
+async def _require_voicecli_heartbeats(nc: NATS, wait_seconds: float) -> None:
+    """Subscribe to voice heartbeats and require voicecli-prefixed worker_id for both.
+
+    Fails fast if only lyra_stt/lyra_tts satellites are emitting heartbeats —
+    the silent-cutover failure mode where ACL misconfiguration leaves voicecli
+    connected but non-responsive while lyra satellites keep the smoke green.
+    """
+    typer.echo(
+        f"[0/2] Waiting for voicecli heartbeats (≤ {wait_seconds:.0f}s)...",
+        nl=False,
+    )
+    seen: dict[str, str] = {}
+
+    async def on_tts(msg: object) -> None:
+        worker_id = _extract_worker_id(getattr(msg, "data", b""))
+        if worker_id and worker_id.startswith(_VOICECLI_WORKER_PREFIX):
+            seen["tts"] = worker_id
+
+    async def on_stt(msg: object) -> None:
+        worker_id = _extract_worker_id(getattr(msg, "data", b""))
+        if worker_id and worker_id.startswith(_VOICECLI_WORKER_PREFIX):
+            seen["stt"] = worker_id
+
+    sub_tts = await nc.subscribe(_TTS_HEARTBEAT, cb=on_tts)
+    sub_stt = await nc.subscribe(_STT_HEARTBEAT, cb=on_stt)
+    try:
+        deadline = asyncio.get_event_loop().time() + wait_seconds
+        while asyncio.get_event_loop().time() < deadline:
+            if "tts" in seen and "stt" in seen:
+                break
+            await asyncio.sleep(0.25)
+    finally:
+        await sub_tts.unsubscribe()
+        await sub_stt.unsubscribe()
+
+    missing = [side for side in ("tts", "stt") if side not in seen]
+    if missing:
+        typer.echo("")
+        typer.echo(
+            f"FAIL: no voicecli-prefixed heartbeat on {missing} within "
+            f"{wait_seconds:.0f}s — only lyra satellites are answering "
+            f"(observed: {seen or 'none'}). Cutover may be silently incomplete.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    typer.echo(f" ok (tts={seen['tts']}, stt={seen['stt']})")
+
+
+def _extract_worker_id(raw: bytes) -> str | None:
+    """Best-effort parse of a heartbeat payload — returns None on any decode failure."""
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    worker_id = data.get("worker_id") if isinstance(data, dict) else None
+    return worker_id if isinstance(worker_id, str) else None
 
 
 async def _step_tts(nc: NATS, timeout: float) -> tuple[bytes, str]:
@@ -113,10 +191,8 @@ async def _step_tts(nc: NATS, timeout: float) -> tuple[bytes, str]:
     ).encode("utf-8")
 
     try:
-        reply = await asyncio.wait_for(
-            nc.request(_TTS_SUBJECT, payload), timeout=timeout
-        )
-    except TimeoutError:
+        reply = await nc.request(_TTS_SUBJECT, payload, timeout=timeout)
+    except (nats.errors.TimeoutError, TimeoutError):
         typer.echo("")
         typer.echo(
             f"FAIL: TTS request timed out after {timeout:.0f}s (is lyra_tts running?)",
@@ -162,10 +238,8 @@ async def _step_stt(
     ).encode("utf-8")
 
     try:
-        reply = await asyncio.wait_for(
-            nc.request(_STT_SUBJECT, payload), timeout=timeout
-        )
-    except TimeoutError:
+        reply = await nc.request(_STT_SUBJECT, payload, timeout=timeout)
+    except (nats.errors.TimeoutError, TimeoutError):
         typer.echo("")
         typer.echo(
             f"FAIL: STT request timed out after {timeout:.0f}s (is lyra_stt running?)",

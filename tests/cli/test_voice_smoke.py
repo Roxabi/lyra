@@ -50,8 +50,16 @@ def _stt_ok_response(text: str = "one two three") -> dict:
     }
 
 
-def _make_nc_mock(tts_response: dict, stt_response: dict) -> AsyncMock:
-    """Return a mock NATS client returning given responses in order."""
+def _make_nc_mock(
+    tts_response: dict,
+    stt_response: dict,
+    heartbeat_workers: dict[str, str] | None = None,
+) -> AsyncMock:
+    """Return a mock NATS client returning given responses in order.
+
+    heartbeat_workers: optional {"tts": "voicecli-...", "stt": "voicecli-..."}
+    dispatch to subscribe callbacks immediately when --require-voicecli-worker is set.
+    """
     nc = AsyncMock()
     nc.request = AsyncMock(
         side_effect=[
@@ -60,15 +68,32 @@ def _make_nc_mock(tts_response: dict, stt_response: dict) -> AsyncMock:
         ]
     )
     nc.drain = AsyncMock()
+    nc.close = AsyncMock()
+
+    async def subscribe(subject: str, cb=None, **_kwargs):
+        sub = AsyncMock()
+        sub.unsubscribe = AsyncMock()
+        if heartbeat_workers and cb is not None:
+            side = "tts" if "tts" in subject else "stt"
+            if side in heartbeat_workers:
+                payload = json.dumps({"worker_id": heartbeat_workers[side]}).encode()
+                await cb(SimpleNamespace(data=payload))
+        return sub
+
+    nc.subscribe = AsyncMock(side_effect=subscribe)
     return nc
 
 
 @pytest.fixture(autouse=True)
 def restore_event_loop():
-    """Restore a fresh event loop after each test (CLI calls asyncio.run internally)."""
+    """Restore a fresh event loop after each test (CLI calls asyncio.run internally).
+
+    Note: the old loop is already closed by asyncio.run() before we get here.
+    We only need to install a fresh one so asyncio.get_event_loop() works for
+    any code that peeks at the current loop between tests.
+    """
     yield
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    asyncio.set_event_loop(asyncio.new_event_loop())
 
 
 # ---------------------------------------------------------------------------
@@ -326,3 +351,205 @@ class TestVoiceSmokeHelp:
 
         assert result.exit_code == 0
         assert "smoke" in result.output.lower() or "TTS" in result.output
+
+
+# ---------------------------------------------------------------------------
+# --require-voicecli-worker flag
+# ---------------------------------------------------------------------------
+
+
+class TestRequireVoicecliWorker:
+    """--require-voicecli-worker asserts voicecli-prefixed worker_id on heartbeats."""
+
+    def test_passes_when_both_voicecli_heartbeats_seen(self) -> None:
+        """Both heartbeats from voicecli-* workers → exit 0 + round-trip succeeds."""
+        nc = _make_nc_mock(
+            _tts_ok_response(),
+            _stt_ok_response(),
+            heartbeat_workers={
+                "tts": "voicecli-host-1234",
+                "stt": "voicecli-host-5678",
+            },
+        )
+        with _patch_nats(nc):
+            result = runner.invoke(
+                lyra_app,
+                ["voice-smoke", "--require-voicecli-worker", "--heartbeat-wait", "1"],
+            )
+        assert result.exit_code == 0
+        assert "voicecli-host-1234" in result.output
+        assert "voicecli-host-5678" in result.output
+
+    def test_fails_when_no_heartbeats_seen(self) -> None:
+        """No voicecli heartbeats within the wait window → exit 1, no round-trip."""
+        nc = _make_nc_mock(
+            _tts_ok_response(),
+            _stt_ok_response(),
+            heartbeat_workers=None,
+        )
+        with _patch_nats(nc):
+            result = runner.invoke(
+                lyra_app,
+                ["voice-smoke", "--require-voicecli-worker", "--heartbeat-wait", "0.5"],
+            )
+        assert result.exit_code == 1
+        assert "no voicecli-prefixed heartbeat" in result.output
+
+    def test_fails_when_only_tts_heartbeat_seen(self) -> None:
+        """Missing STT voicecli heartbeat → exit 1 (silent-cutover failure mode)."""
+        nc = _make_nc_mock(
+            _tts_ok_response(),
+            _stt_ok_response(),
+            heartbeat_workers={"tts": "voicecli-host-tts"},
+        )
+        with _patch_nats(nc):
+            result = runner.invoke(
+                lyra_app,
+                ["voice-smoke", "--require-voicecli-worker", "--heartbeat-wait", "0.5"],
+            )
+        assert result.exit_code == 1
+        assert "['stt']" in result.output or "stt" in result.output
+
+    def test_fails_when_only_lyra_satellite_heartbeat_seen(self) -> None:
+        """Non-voicecli-prefixed worker_id (lyra satellite) doesn't count."""
+        # Simulate lyra_stt emitting a heartbeat with worker_id=lyra-stt-pid123.
+        nc = AsyncMock()
+        nc.drain = AsyncMock()
+        nc.close = AsyncMock()
+
+        async def subscribe(subject: str, cb=None, **_kwargs):
+            sub = AsyncMock()
+            sub.unsubscribe = AsyncMock()
+            if cb is not None:
+                # lyra-prefixed worker_id — not voicecli-.
+                payload = json.dumps({"worker_id": "lyra-stt-pid123"}).encode()
+                await cb(SimpleNamespace(data=payload))
+            return sub
+
+        nc.subscribe = AsyncMock(side_effect=subscribe)
+
+        with _patch_nats(nc):
+            result = runner.invoke(
+                lyra_app,
+                ["voice-smoke", "--require-voicecli-worker", "--heartbeat-wait", "0.5"],
+            )
+        assert result.exit_code == 1
+        assert "no voicecli-prefixed heartbeat" in result.output
+
+    def test_skipped_when_flag_not_set(self) -> None:
+        """Without --require-voicecli-worker, no subscribe happens."""
+        nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response())
+        with _patch_nats(nc):
+            result = runner.invoke(lyra_app, ["voice-smoke"])
+        assert result.exit_code == 0
+        # subscribe is not called on the default path.
+        nc.subscribe.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Generic exception and malformed JSON branches (coverage gaps)
+# ---------------------------------------------------------------------------
+
+
+class TestGenericExceptionBranches:
+    """Exercise the `except Exception` fallbacks and malformed-JSON `_parse_reply`."""
+
+    def test_tts_generic_exception_exits_one(self) -> None:
+        """nc.request raising a non-timeout error on TTS → exit 1."""
+        nc = AsyncMock()
+        nc.drain = AsyncMock()
+        nc.close = AsyncMock()
+        nc.request = AsyncMock(side_effect=RuntimeError("boom"))
+        with _patch_nats(nc):
+            result = runner.invoke(lyra_app, ["voice-smoke"])
+        assert result.exit_code == 1
+        assert "TTS request error" in result.output
+        assert "boom" in result.output
+
+    def test_stt_generic_exception_exits_one(self) -> None:
+        """TTS succeeds, STT nc.request raises non-timeout → exit 1."""
+        nc = AsyncMock()
+        nc.drain = AsyncMock()
+        nc.close = AsyncMock()
+        nc.request = AsyncMock(
+            side_effect=[
+                _nats_reply(_tts_ok_response()),
+                RuntimeError("stt-crash"),
+            ]
+        )
+        with _patch_nats(nc):
+            result = runner.invoke(lyra_app, ["voice-smoke"])
+        assert result.exit_code == 1
+        assert "STT request error" in result.output
+        assert "stt-crash" in result.output
+
+    def test_tts_malformed_json_reply_exits_one(self) -> None:
+        """TTS reply is not valid JSON → exit 1 with parse error message."""
+        nc = AsyncMock()
+        nc.drain = AsyncMock()
+        nc.close = AsyncMock()
+        nc.request = AsyncMock(return_value=SimpleNamespace(data=b"not-json"))
+        with _patch_nats(nc):
+            result = runner.invoke(lyra_app, ["voice-smoke"])
+        assert result.exit_code == 1
+        assert "TTS response is not valid JSON" in result.output
+
+    def test_stt_malformed_json_reply_exits_one(self) -> None:
+        """TTS ok, STT reply is not valid JSON → exit 1 with parse error message."""
+        nc = AsyncMock()
+        nc.drain = AsyncMock()
+        nc.close = AsyncMock()
+        nc.request = AsyncMock(
+            side_effect=[
+                _nats_reply(_tts_ok_response()),
+                SimpleNamespace(data=b"<garbage>"),
+            ]
+        )
+        with _patch_nats(nc):
+            result = runner.invoke(lyra_app, ["voice-smoke"])
+        assert result.exit_code == 1
+        assert "STT response is not valid JSON" in result.output
+
+
+# ---------------------------------------------------------------------------
+# NATS_URL env-var fallback and ok=False detail propagation
+# ---------------------------------------------------------------------------
+
+
+class TestNatsUrlEnvFallback:
+    def test_uses_nats_url_env_when_flag_absent(self, monkeypatch) -> None:
+        """No --nats-url, NATS_URL env set → that URL is passed to nats_connect."""
+        monkeypatch.setenv("NATS_URL", "nats://envhost:4222")
+        nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response())
+        connect_mock = AsyncMock(return_value=nc)
+        with patch("lyra.cli_voice_smoke.nats_connect", new=connect_mock):
+            result = runner.invoke(lyra_app, ["voice-smoke"])
+        assert result.exit_code == 0
+        # First positional arg to nats_connect is the URL.
+        connect_mock.assert_awaited_once()
+        assert connect_mock.await_args is not None
+        assert connect_mock.await_args.args[0] == "nats://envhost:4222"
+
+
+class TestOkFalseErrorDetailPropagation:
+    def test_tts_ok_false_propagates_error_field(self) -> None:
+        """TTS ok=False → error field detail appears in stderr output."""
+        nc = _make_nc_mock(
+            {"ok": False, "error": "TTS worker crashed"},
+            _stt_ok_response(),
+        )
+        with _patch_nats(nc):
+            result = runner.invoke(lyra_app, ["voice-smoke"])
+        assert result.exit_code == 1
+        assert "TTS worker crashed" in result.output
+
+    def test_stt_ok_false_propagates_error_field(self) -> None:
+        """STT ok=False → error field detail appears in stderr output."""
+        nc = _make_nc_mock(
+            _tts_ok_response(),
+            {"ok": False, "error": "whisper OOM"},
+        )
+        with _patch_nats(nc):
+            result = runner.invoke(lyra_app, ["voice-smoke"])
+        assert result.exit_code == 1
+        assert "whisper OOM" in result.output

@@ -8,11 +8,12 @@
 #                             tts-adapter, stt-adapter, llm-worker, monitor
 #
 # Usage: sudo ./deploy/nats/gen-nkeys.sh
-#        sudo ./deploy/nats/gen-nkeys.sh --fix-perms      # re-apply permissions without regenerating
-#        sudo ./deploy/nats/gen-nkeys.sh --show           # print existing public keys
-#        sudo ./deploy/nats/gen-nkeys.sh --regenerate     # atomic backup + wipe + regenerate
-#        sudo ./deploy/nats/gen-nkeys.sh --regenerate --yes  # non-interactive regenerate
-#             ./deploy/nats/gen-nkeys.sh --template-only  # write auth.conf skeleton to stdout (no root needed)
+#        sudo ./deploy/nats/gen-nkeys.sh --fix-perms        # re-apply permissions without regenerating
+#        sudo ./deploy/nats/gen-nkeys.sh --show             # print existing public keys
+#        sudo ./deploy/nats/gen-nkeys.sh --regenerate       # atomic backup + wipe + regenerate (rotates keys)
+#        sudo ./deploy/nats/gen-nkeys.sh --regenerate --yes # non-interactive regenerate
+#        sudo ./deploy/nats/gen-nkeys.sh --regen-authconf   # re-render auth.conf from EXISTING seeds (no key rotation)
+#             ./deploy/nats/gen-nkeys.sh --template-only    # write auth.conf skeleton to stdout (no root needed)
 #
 # Idempotent — skips if auth.conf already exists. Delete auth.conf + seeds dir to regenerate.
 # Override seeds location: SEEDS_DIR=/custom/path sudo ./gen-nkeys.sh
@@ -50,19 +51,25 @@ SUB_ALLOW[telegram-adapter]='"lyra.outbound.telegram.>"'
 PUB_ALLOW[discord-adapter]='"lyra.inbound.discord.>","lyra.system.ready"'
 SUB_ALLOW[discord-adapter]='"lyra.outbound.discord.>"'
 
-PUB_ALLOW[tts-adapter]='"lyra.voice.tts.heartbeat"'
-SUB_ALLOW[tts-adapter]='"lyra.voice.tts.request"'
+# tts-adapter / stt-adapter: lyra-side voice satellites (retired in #690 cutover).
+# Readiness probe via nc.request('lyra.system.ready') needs pub on system.ready
+# + sub on _INBOX.*.* for reply. Uppercase + lowercase forms included because
+# nats-py historically emits lowercase inboxes and NATS subjects are case-sensitive.
+PUB_ALLOW[tts-adapter]='"lyra.voice.tts.heartbeat","lyra.system.ready"'
+SUB_ALLOW[tts-adapter]='"lyra.voice.tts.request","_INBOX.>","_inbox.>"'
 
-PUB_ALLOW[stt-adapter]='"lyra.voice.stt.heartbeat"'
-SUB_ALLOW[stt-adapter]='"lyra.voice.stt.request"'
+PUB_ALLOW[stt-adapter]='"lyra.voice.stt.heartbeat","lyra.system.ready"'
+SUB_ALLOW[stt-adapter]='"lyra.voice.stt.request","_INBOX.>","_inbox.>"'
 
 # voice-tts: voicecli nats-serve worker on Machine 1 (#689)
+# NB: voicecli.nats.base.AdapterBase subscribes to heartbeat_subject
+#     (no-op callback) in addition to publishing — ACL must allow both.
 PUB_ALLOW[voice-tts]='"lyra.voice.tts.heartbeat","_INBOX.>"'
-SUB_ALLOW[voice-tts]='"lyra.voice.tts.request"'
+SUB_ALLOW[voice-tts]='"lyra.voice.tts.request","lyra.voice.tts.heartbeat"'
 
 # voice-stt: voicecli nats-serve worker on Machine 1 (#689)
 PUB_ALLOW[voice-stt]='"lyra.voice.stt.heartbeat","_INBOX.>"'
-SUB_ALLOW[voice-stt]='"lyra.voice.stt.request"'
+SUB_ALLOW[voice-stt]='"lyra.voice.stt.request","lyra.voice.stt.heartbeat"'
 
 PUB_ALLOW[llm-worker]='"lyra.llm.health.*"'
 SUB_ALLOW[llm-worker]='"lyra.llm.request"'
@@ -95,15 +102,17 @@ SHOW_ONLY=false
 FIX_PERMS=false
 TEMPLATE_ONLY=false
 REGENERATE=false
+REGEN_AUTHCONF=false
 AUTO_YES=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --show)          SHOW_ONLY=true;    shift ;;
-    --fix-perms)     FIX_PERMS=true;    shift ;;
-    --template-only) TEMPLATE_ONLY=true; shift ;;
-    --regenerate)    REGENERATE=true;   shift ;;
-    --yes)           AUTO_YES=true;     shift ;;
+    --show)            SHOW_ONLY=true;      shift ;;
+    --fix-perms)       FIX_PERMS=true;      shift ;;
+    --template-only)   TEMPLATE_ONLY=true;  shift ;;
+    --regenerate)      REGENERATE=true;     shift ;;
+    --regen-authconf)  REGEN_AUTHCONF=true; shift ;;
+    --yes)             AUTO_YES=true;       shift ;;
     *) error "Unknown option: $1" ;;
   esac
 done
@@ -185,10 +194,99 @@ apply_permissions() {
   info "Permissions applied for LYRA_USER=${LYRA_USER}, SEEDS_DIR=${SEEDS_DIR}"
 }
 
+# ── generate_nkey (defined early so --regen-authconf can call it) ─────────────
+# Writes a fresh user nkey seed to ${SEEDS_DIR}/${name}.seed and echoes its
+# public key. Relies on NK_BIN + LYRA_USER being set (both resolved at the
+# top of the file or by ensure_nk). Used by default mode (all seeds) and
+# --regen-authconf (only missing seeds).
+generate_nkey() {
+  local name="$1"
+  local seed_file="${SEEDS_DIR}/${name}.seed"
+  local tmp_seed
+  tmp_seed=$(mktemp)
+  trap 'rm -f "${tmp_seed}"' RETURN
+
+  "${NK_BIN}" -gen user > "${tmp_seed}"
+  local pubkey
+  pubkey=$("${NK_BIN}" -inkey "${tmp_seed}" -pubout) \
+    || error "Failed to derive public key for ${name} — is the nk binary valid?"
+
+  install -m 0600 -o "${LYRA_USER}" -g "${LYRA_USER}" "${tmp_seed}" "${seed_file}"
+  echo "${pubkey}"
+}
+
 # ── fix-perms mode ─────────────────────────────────────────────────────────────
 if [ "${FIX_PERMS}" = true ]; then
   [ -d "${SEEDS_DIR}" ] || error "${SEEDS_DIR} does not exist — run without --fix-perms first"
   apply_permissions
+  exit 0
+fi
+
+# ── regen-authconf mode: re-render auth.conf from existing seeds ──────────────
+# Purpose: upgrade a live auth.conf to the current IDENTITIES + ACL matrix
+# without rotating keys. Used when the script's ACL model has evolved
+# (e.g. #714 added per-role ACLs, #689 added voice-{stt,tts} roles) but seeds
+# on disk are still valid.
+#
+# Differs from --regenerate: no seed wipe, no key rotation — existing services
+# keep working, only the auth.conf content changes.
+if [ "${REGEN_AUTHCONF}" = true ]; then
+  [ -d "${SEEDS_DIR}" ] || error "${SEEDS_DIR} does not exist — run without flags first to seed keys"
+
+  # Need nk to derive pubkeys from existing seeds
+  NK_BIN=$(command -v nk || echo "")
+  [ -n "${NK_BIN}" ] || error "nk not found — run without flags first (it will install nk)"
+
+  # Collect pubkeys — derive from existing seeds or create missing ones
+  declare -A EXISTING_PUBKEYS
+  for name in "${IDENTITIES[@]}"; do
+    seed_file="${SEEDS_DIR}/${name}.seed"
+    if [ -f "${seed_file}" ]; then
+      pubkey=$("${NK_BIN}" -inkey "${seed_file}" -pubout 2>/dev/null) \
+        || error "Failed to derive pubkey from ${seed_file}"
+      info "Derived pubkey from existing seed: ${name}"
+      EXISTING_PUBKEYS[$name]="${pubkey}"
+    else
+      info "Created missing seed: ${name}"
+      EXISTING_PUBKEYS[$name]=$(generate_nkey "${name}")
+    fi
+  done
+
+  # Backup current auth.conf if present
+  if [ -f "${AUTH_CONF}" ]; then
+    BACKUP_AUTH="${AUTH_CONF}.bak.$(date +%Y%m%d-%H%M%S)"
+    cp -a "${AUTH_CONF}" "${BACKUP_AUTH}"
+    chmod 0640 "${BACKUP_AUTH}"
+    info "Backed up auth.conf → ${BACKUP_AUTH}"
+  fi
+
+  # Render new auth.conf to temp, install atomically
+  TMP_AUTH=$(mktemp)
+  trap 'rm -f "${TMP_AUTH}"' EXIT
+  render_auth_conf EXISTING_PUBKEYS > "${TMP_AUTH}"
+
+  # Validate with nats-server -t if available
+  if command -v nats-server &>/dev/null && [ -f /etc/nats/nats.conf ]; then
+    # Temporarily stage: copy to AUTH_CONF location for include-path resolution,
+    # keep backup as safety net.
+    install -m 0640 -o root -g nats "${TMP_AUTH}" "${AUTH_CONF}"
+    if ! nats-server -t -c /etc/nats/nats.conf >/dev/null 2>&1; then
+      if [ -n "${BACKUP_AUTH:-}" ] && [ -f "${BACKUP_AUTH}" ]; then
+        cp -a "${BACKUP_AUTH}" "${AUTH_CONF}"
+        error "nats-server config validation failed — restored backup. Inspect ${TMP_AUTH} for issues."
+      else
+        rm -f "${AUTH_CONF}"
+        error "nats-server config validation failed — no backup to restore. Re-run --regenerate if needed."
+      fi
+    fi
+    info "nats-server config validation OK."
+  else
+    install -m 0640 -o root -g nats "${TMP_AUTH}" "${AUTH_CONF}"
+    warn "nats-server not found or /etc/nats/nats.conf missing — skipped config validation."
+  fi
+
+  info "auth.conf re-rendered from ${#IDENTITIES[@]} existing seeds."
+  info "Next: sudo systemctl reload nats.service"
   exit 0
 fi
 
@@ -357,23 +455,7 @@ mkdir -p "${AUTH_DIR}"
 chown root:nats "${AUTH_DIR}"
 chmod 750 "${AUTH_DIR}"
 
-# ── generate nkey pairs (T1.5: extended to 7) ─────────────────────────────────
-
-generate_nkey() {
-  local name="$1"
-  local seed_file="${SEEDS_DIR}/${name}.seed"
-  local tmp_seed
-  tmp_seed=$(mktemp)
-  trap 'rm -f "${tmp_seed}"' RETURN
-
-  "${NK_BIN}" -gen user > "${tmp_seed}"
-  local pubkey
-  pubkey=$("${NK_BIN}" -inkey "${tmp_seed}" -pubout) \
-    || error "Failed to derive public key for ${name} — is the nk binary valid?"
-
-  install -m 0600 -o "${LYRA_USER}" -g "${LYRA_USER}" "${tmp_seed}" "${seed_file}"
-  echo "${pubkey}"
-}
+# ── generate nkey pairs (T1.5: extended to 7; generate_nkey defined earlier) ──
 
 info "Generating nkey pairs in ${SEEDS_DIR}/ ..."
 HUB_PUB=$(generate_nkey "hub")

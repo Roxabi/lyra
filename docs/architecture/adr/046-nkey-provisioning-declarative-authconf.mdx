@@ -1,0 +1,131 @@
+---
+title: "ADR-046: nkey provisioning is declarative — auth.conf is a pure function of IDENTITIES × seed dir"
+description: Establish that auth.conf must always be derived from a single IDENTITIES manifest and the on-disk seed directory, never constructed or patched incrementally, and that a --regen-authconf mode in gen-nkeys.sh is the correct mechanism for closing drift without seed rotation.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+The #714 per-role ACL rework updated `gen-nkeys.sh` to emit per-identity `permissions` blocks (publish/subscribe matrices, `allow_responses: true`). It also documented a rollout runbook requiring `--regenerate` (full seed rotation + auth.conf rewrite).
+
+By April 2026 (7+ days post-#714 merge) Machine 1 (`roxabituwer`) had drifted into the following state:
+
+- **Live auth.conf** — old minimal format (`{ nkey: "..." }` per user, no `permissions` blocks), 5 identities: hub, llm-worker, monitor, tts-adapter, stt-adapter.
+- **Seeds on disk** — 7 seeds present: hub, llm-worker, monitor, tts-adapter, stt-adapter, voice-tts, voice-stt (voice-* were manually created during #689 work).
+- **Seeds missing** — telegram-adapter, discord-adapter (never generated; the old provisioning pre-dated these roles).
+- **Expected per spec** — 9 identities for the combined #714 + #689 state (hub, telegram-adapter, discord-adapter, tts-adapter, stt-adapter, llm-worker, monitor, voice-tts, voice-stt).
+- **Silent auth degradation** — `lyra_telegram` and `lyra_discord` supervisor envs pointed to `telegram-adapter.seed` / `discord-adapter.seed` which did not exist; Python fell back to `.env` which contained `NATS_NKEY_SEED_PATH=hub.seed`; both adapters authenticated as hub. This was invisible at runtime because auth.conf had no permissions blocks — all authenticated identities could publish and subscribe to anything.
+- **voicecli workers** — `voicecli_tts` / `voicecli_stt` ran with voice-{tts,stt}.seed whose public keys were absent from auth.conf; those processes were likely in NATS auth-retry loops and functionally disconnected despite supervisor reporting RUNNING.
+
+Root cause: the provisioning model was **additive and imperative**. Each ticket added identities by extending a shell script. auth.conf was never re-rendered after #714's ACL matrix was introduced. There was no mechanism to close the gap between the IDENTITIES manifest in gen-nkeys.sh and the live auth.conf without either full seed rotation (destructive, requiring every service credential to be reissued) or a manual sed/append (fragile, not idempotent).
+
+This drift class — manifest defines N identities, live auth.conf has M < N identities, M identities lack permissions blocks — is structural, not accidental. It will recur whenever a new identity is introduced without a matching auth.conf re-render path.
+
+## Options Considered
+
+### Option A: --regenerate only (full seed rotation)
+
+Keep the existing `--regenerate` flag as the sole remediation path. Whenever auth.conf drifts, the operator rotates all seeds, re-provisions every service with new credentials, reloads NATS, and restarts everything.
+
+- **Pros:** Simple code path — one flag does everything. No partial state possible after the run.
+- **Cons:** Destroys all existing seeds. Requires simultaneous credential update across every running service (hub, adapters, voicecli workers). On a 24/7 machine this is a coordinated maintenance window. Cannot be used to add a single identity without disrupting all others. Overkill for drift that is purely a render gap, not a seed compromise.
+
+### Option B: --regen-authconf mode (re-render without seed rotation) — recommended
+
+Add a `--regen-authconf` mode that:
+1. Reads the IDENTITIES manifest embedded in gen-nkeys.sh.
+2. For each identity, reads the existing `.seed` file from `~/.lyra/nkeys/` (if present) and extracts its public key via `nk -inkey`.
+3. For each identity with a missing seed, auto-creates a new seed + writes the pubkey.
+4. Renders auth.conf from scratch using the full IDENTITIES × permissions matrix.
+5. Never touches existing seeds.
+
+auth.conf is therefore always a **pure function** of two inputs: the IDENTITIES manifest (in-script constant) and the seed directory (on-disk state). The mode is idempotent — running it twice produces identical output.
+
+- **Pros:** Non-destructive. Running services keep their seeds and credentials. Can close drift (missing identities, missing permissions blocks) without a maintenance window. Idempotent — safe to re-run after any spec change. Makes the relationship between manifest and auth.conf explicit and mechanical.
+- **Cons:** Adds a second flag to gen-nkeys.sh (complexity). If a seed file is present but its public key no longer matches a live process (e.g., the seed was rotated manually outside the script), the re-rendered auth.conf will still be consistent with the file — the inconsistency is in the deployment, not in the render. This is the operator's responsibility to detect, not the script's.
+
+### Option C: External config management (Ansible / Terraform)
+
+Replace gen-nkeys.sh with a declarative provisioning tool that manages seeds and auth.conf as resources.
+
+- **Pros:** Full idempotency, drift detection, and remediation in a standard tool.
+- **Cons:** Disproportionate for a single-machine, single-operator setup. Introduces a new dependency (Ansible or similar) into a Python-native stack. Lyra's deployment model (supervisord + systemd, no orchestrator) does not justify this overhead at current scale.
+
+## Decision
+
+**Option B — --regen-authconf mode in gen-nkeys.sh, combined with the following invariants:**
+
+### Invariant 1 — auth.conf is a pure render
+
+auth.conf MUST always be the output of rendering the IDENTITIES manifest against the seed directory. It MUST NOT be constructed by appending, patching, or diffing against an existing auth.conf. Every render produces the complete file; partial renders are not permitted.
+
+### Invariant 2 — IDENTITIES is the single source of truth
+
+The IDENTITIES constant in gen-nkeys.sh (or its successor) is the authoritative list of nkey identities for the deployment. Adding a new process that connects to NATS requires adding it to IDENTITIES first. A process not in IDENTITIES cannot be granted a valid auth.conf entry.
+
+### Invariant 3 — Missing seeds are auto-created, never silently skipped
+
+When `--regen-authconf` encounters an identity in IDENTITIES whose seed file does not exist, it creates the seed, writes it to `~/.lyra/nkeys/<identity>.seed`, and includes the new pubkey in the rendered auth.conf. It MUST NOT skip the identity, emit a partial auth.conf, or require a separate `--create-missing` flag.
+
+### Invariant 4 — Supervisor env points to identity-specific seed, no fallback
+
+Each supervisor program's environment MUST reference its own seed file (`<identity>.seed`). The `.env` fallback to `hub.seed` is a configuration error, not a feature. The supervisor conf is the authoritative source of which NATS identity a process uses. If the seed file is absent at process start, the process MUST fail fast (exit non-zero) rather than silently degrade to a different identity.
+
+### Invariant 5 — Drift is detectable before harm
+
+A `lyra ops verify` CLI command (or equivalent script) MUST be able to: (a) parse IDENTITIES from gen-nkeys.sh, (b) check which seeds exist on disk, (c) parse the live auth.conf, and (d) report any gap between the three — missing seeds, extra auth.conf entries, entries without permissions blocks. This check runs in CI and as a pre-deploy gate.
+
+### Rollout for the current drift
+
+1. Run `gen-nkeys.sh --regen-authconf` on Machine 1. Auto-creates telegram-adapter + discord-adapter seeds; renders auth.conf with all 9 identities × full permissions matrix.
+2. `sudo systemctl reload nats.service` — applies new auth.conf in place, no connection drop.
+3. Update supervisor envs to point each adapter to its own seed (fix the hub.seed fallback).
+4. Restart adapters in order: telegram, discord, tts, stt, hub.
+5. Run `scripts/check-nats-acls.sh --since @{reload-timestamp}` — zero `Permissions Violation` lines is the pass signal.
+6. Verify voicecli workers reconnect (heartbeats appear on `lyra.voice.*.heartbeat`).
+
+### Lane sequencing
+
+The auth remediation (Invariants 1–4 + rollout above) MUST complete before Lane G (#689) continues past T6. The voice-{tts,stt} seeds and their auth.conf entries are already present after step 1; the remaining Lane G tasks (ACL verification, staged cutover, smoke tests) can proceed immediately after the reload.
+
+Lane B (containerize, #727/#728) remains independent — it does not need to land before Lane G continues on bare-metal supervisord.
+
+## Consequences
+
+### Positive
+
+- auth.conf drift is closable without a maintenance window or seed rotation.
+- The rendering is deterministic and auditable — given IDENTITIES + seed dir, the expected auth.conf is computable offline.
+- New identities added to IDENTITIES are automatically included in the next `--regen-authconf` run, including auto-created seeds.
+- The "authenticate as hub via .env fallback" silent security hole is structurally eliminated by Invariant 4 — it is a misconfiguration that the supervisor conf must not allow.
+- `lyra ops verify` (Invariant 5) closes the detection gap — the current drift would have been caught before any process was started.
+
+### Negative
+
+- gen-nkeys.sh grows a second mode. The script's cognitive surface area increases.
+- Invariant 4 (fail-fast on missing seed) will surface misconfigurations that currently pass silently. Any deployment that relied on the hub.seed fallback will break on restart — intentionally.
+- `lyra ops verify` is a new deliverable that does not exist yet; until it is implemented, drift remains manually detectable only.
+
+### Neutral
+
+- The telegram/discord "authenticate as hub" issue is closed as part of the current cutover (step 3 above), not deferred to a separate issue. Discovery attribution: found during #689 Lane G T6 execution, April 2026.
+- The `--regenerate` flag remains available for credential rotation (seed compromise, periodic rotation policy). It is not deprecated by this ADR.
+- This ADR does not address the Lane B (containerize) sequencing question — that lane's auth provisioning follows the same invariants but targets Quadlet-mounted secret volumes rather than bare-metal `~/.lyra/nkeys/`.
+
+## Relation to other ADRs
+
+- **ADR-035** — NATS subject naming convention. IDENTITIES in gen-nkeys.sh must align with the subject catalogue defined there.
+- **ADR-039** — STT/TTS NATS adapter decoupling. Establishes lyra_stt / lyra_tts as new supervisor programs; Invariant 2 requires their identities (stt-adapter, tts-adapter) to be in IDENTITIES.
+- **ADR-041** — Supervisor pattern. Invariant 4 (fail-fast on missing seed) must be implemented in the supervisor launch scripts, not in the Python process itself.
+- **ADR-044** — lyra ↔ voicecli NATS voice contract. voice-tts and voice-stt are the voicecli-side identities; they are distinct from tts-adapter / stt-adapter (lyra-side). Both sets must appear in IDENTITIES.
+- **ADR-045** — roxabi-nats SDK extraction. Plugin identities provisioned via the SDK will need their own IDENTITIES entries; this ADR's invariants apply to that provisioning as well.
+
+## References
+
+- Spec: [`artifacts/specs/706-per-role-nkeys-acls-spec.mdx`](../../../artifacts/specs/706-per-role-nkeys-acls-spec.mdx)
+- Issue: [#714](https://github.com/Roxabi/lyra/issues/714) (per-role ACLs), [#689](https://github.com/Roxabi/lyra/issues/689) (Lane G voicecli cutover)
+- Script: `deploy/nats/gen-nkeys.sh`
+- Planned: `scripts/check-nats-acls.sh`, `lyra ops verify` CLI command

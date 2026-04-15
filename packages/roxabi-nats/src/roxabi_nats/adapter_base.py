@@ -52,6 +52,7 @@ class NatsAdapterBase(ABC):
         *,
         heartbeat_subject: str | None = None,
         heartbeat_interval: float = 5.0,
+        per_worker_routing: bool = False,
     ):
         validate_nats_token(subject, kind="subject")
         validate_nats_token(queue_group, kind="queue_group")
@@ -68,12 +69,17 @@ class NatsAdapterBase(ABC):
         self._heartbeat_interval = heartbeat_interval
         self._worker_id = f"{queue_group}-{socket.gethostname()}-{os.getpid()}"
         self._heartbeat_task: asyncio.Task | None = None
+        self._per_worker_routing = per_worker_routing
 
     async def run(self, nats_url: str, stop: asyncio.Event | None = None) -> None:
         nc = await nats_connect(nats_url)
         self._nc = nc
         await self._wait_ready()
         await nc.subscribe(self.subject, queue=self.queue_group, cb=self._dispatch)
+        if self._per_worker_routing:
+            await nc.subscribe(
+                f"{self.subject}.{self._worker_id}", cb=self._dispatch
+            )
         if self._heartbeat_subject:
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         if stop is None:

@@ -1,16 +1,22 @@
-"""NatsTtsClient — hub-side NATS request-reply client for TTS."""
+"""NatsTtsClient — hub-side NATS request-reply client for TTS.
+
+Maintains a ``VoiceWorkerRegistry`` populated from heartbeats, and routes each
+synthesis to the least-loaded worker via its per-worker subject
+``lyra.voice.tts.request.{worker_id}``. Falls back once to the queue-group
+subject (``lyra.voice.tts.request``) if the targeted worker times out.
+"""
 
 from __future__ import annotations
 
 import base64
 import json
 import logging
-import time
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from nats.aio.client import Client as NATS
 
+from lyra.nats.voice_health import VoiceWorkerRegistry
 from lyra.tts import SynthesisResult, TtsUnavailableError
 from roxabi_nats._tts_constants import _TTS_CONFIG_FIELDS
 from roxabi_nats.adapter_base import CONTRACT_VERSION
@@ -22,7 +28,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _HB_SUBJECT = "lyra.voice.tts.heartbeat"
-_HB_TTL = 15.0
 
 
 class NatsTtsClient:
@@ -32,7 +37,7 @@ class NatsTtsClient:
         self._nc = nc
         self._timeout = timeout
         self._cb = NatsCircuitBreaker()
-        self._worker_freshness: dict[str, float] = {}
+        self._registry = VoiceWorkerRegistry()
         self._hb_sub = None  # set by start
 
     async def start(self) -> None:
@@ -43,45 +48,59 @@ class NatsTtsClient:
     async def _on_heartbeat(self, msg) -> None:
         try:
             data = json.loads(msg.data)
-            worker_id = data.get("worker_id")
-            if not worker_id:
-                log.warning("tts_client: heartbeat missing worker_id, ignoring")
-                return
-            self._worker_freshness[worker_id] = time.monotonic()
         except Exception:
             log.debug("tts_client: heartbeat parse error", exc_info=True)
+            return
+        if not data.get("worker_id"):
+            log.warning("tts_client: heartbeat missing worker_id, ignoring")
+            return
+        self._registry.record_heartbeat(data)
 
-    def _any_worker_alive(self) -> bool:
-        now = time.monotonic()
-        self._worker_freshness = {
-            k: v for k, v in self._worker_freshness.items() if now - v <= _HB_TTL * 2
-        }
-        return any(now - ts <= _HB_TTL for ts in self._worker_freshness.values())
+    async def _send(self, payload: bytes, worker_id: str) -> dict:
+        """Send payload to the per-worker subject, falling back once to queue group."""
+        payload_kb = len(payload) / 1024
+        target = f"{self.SUBJECT}.{worker_id}"
+        try:
+            reply = await self._nc.request(target, payload, timeout=self._timeout)
+            data = json.loads(reply.data)
+        except TimeoutError:
+            log.warning(
+                "TTS: preferred worker %s timed out after %.0fs;"
+                " falling back to queue group",
+                worker_id,
+                self._timeout,
+            )
+            data = await self._fallback(payload, payload_kb)
+        except Exception as exc:
+            data = self._map_nats_exception(exc, payload_kb)
+        if not data.get("ok"):
+            self._cb.record_failure()
+            raise TtsUnavailableError("TTS synthesis failed")
+        return data
 
-    async def _send(self, payload: bytes, payload_kb: float) -> dict:
-        """Send payload to TTS subject and return parsed response dict."""
+    async def _fallback(self, payload: bytes, payload_kb: float) -> dict:
         try:
             reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
-            data = json.loads(reply.data)
+            return json.loads(reply.data)
         except TimeoutError as exc:
             log.warning("TTS adapter timeout after %.0fs", self._timeout)
             self._cb.record_failure()
             raise TtsUnavailableError("TTS adapter timeout") from exc
         except Exception as exc:
-            if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
-                log.error(
-                    "TTS payload too large (%.0f KB) — check NATS max_payload",
-                    payload_kb,
-                )
-                self._cb.record_failure()
-                raise TtsUnavailableError("TTS request payload too large") from exc
-            log.warning("TTS adapter unreachable: %s: %s", type(exc).__name__, exc)
+            return self._map_nats_exception(exc, payload_kb)
+
+    def _map_nats_exception(self, exc: Exception, payload_kb: float) -> dict:
+        """Convert a NATS request exception to TtsUnavailableError; never returns."""
+        if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
+            log.error(
+                "TTS payload too large (%.0f KB) — check NATS max_payload",
+                payload_kb,
+            )
             self._cb.record_failure()
-            raise TtsUnavailableError("TTS adapter unreachable") from exc
-        if not data.get("ok"):
-            self._cb.record_failure()
-            raise TtsUnavailableError("TTS synthesis failed")
-        return data
+            raise TtsUnavailableError("TTS request payload too large") from exc
+        log.warning("TTS adapter unreachable: %s: %s", type(exc).__name__, exc)
+        self._cb.record_failure()
+        raise TtsUnavailableError("TTS adapter unreachable") from exc
 
     async def synthesize(
         self,
@@ -92,7 +111,8 @@ class NatsTtsClient:
         voice: str | None = None,
         fallback_language: str | None = None,
     ) -> SynthesisResult:
-        if not self._any_worker_alive():
+        preferred = self._registry.pick_least_loaded()
+        if preferred is None:
             raise TtsUnavailableError("TTS: no live worker (heartbeat stale >15s)")
         if self._cb.is_open():
             raise TtsUnavailableError(
@@ -119,7 +139,7 @@ class NatsTtsClient:
             if voice is None and getattr(agent_tts, "voice", None) is not None:
                 request["voice"] = agent_tts.voice
         payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
-        data = await self._send(payload, len(payload) / 1024)
+        data = await self._send(payload, preferred.worker_id)
         audio_bytes = base64.b64decode(data["audio_b64"])
         self._cb.record_success()
         return SynthesisResult(
@@ -128,3 +148,14 @@ class NatsTtsClient:
             duration_ms=data.get("duration_ms"),
             waveform_b64=data.get("waveform_b64"),
         )
+
+    # Backwards-compat shim for callers/tests still reading ``_worker_freshness``.
+    @property
+    def _worker_freshness(self) -> dict[str, float]:
+        return {
+            w.worker_id: w.last_heartbeat
+            for w in self._registry._workers.values()
+        }
+
+    def _any_worker_alive(self) -> bool:
+        return self._registry.any_alive()

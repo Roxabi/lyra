@@ -35,6 +35,7 @@ class SttAdapterStandalone(NatsAdapterBase):
             1,
             heartbeat_subject="lyra.voice.stt.heartbeat",
             heartbeat_interval=5.0,
+            per_worker_routing=True,
         )
         self._active_count: int = 0
         self._base_stt_cfg = load_stt_config()

@@ -1,4 +1,10 @@
-"""NatsSttClient — hub-side NATS request-reply client for STT."""
+"""NatsSttClient — hub-side NATS request-reply client for STT.
+
+Maintains a ``VoiceWorkerRegistry`` populated from heartbeats, and routes each
+transcription to the least-loaded worker via its per-worker subject
+``lyra.voice.stt.request.{worker_id}``. Falls back once to the queue-group
+subject (``lyra.voice.stt.request``) if the targeted worker times out.
+"""
 
 from __future__ import annotations
 
@@ -7,12 +13,12 @@ import base64
 import json
 import logging
 import os
-import time
 from pathlib import Path
 from uuid import uuid4
 
 from nats.aio.client import Client as NATS
 
+from lyra.nats.voice_health import VoiceWorkerRegistry
 from lyra.stt import (
     STTNoiseError,
     STTUnavailableError,
@@ -29,7 +35,6 @@ _STT_TIMEOUT_MIN = 1.0
 _STT_TIMEOUT_MAX = 300.0
 
 _HB_SUBJECT = "lyra.voice.stt.heartbeat"
-_HB_TTL = 15.0
 
 
 def _parse_stt_timeout(timeout: float | None) -> float:
@@ -82,7 +87,7 @@ class NatsSttClient:
         self._detection_segments = language_detection_segments
         self._detection_fallback = language_fallback
         self._cb = NatsCircuitBreaker()
-        self._worker_freshness: dict[str, float] = {}
+        self._registry = VoiceWorkerRegistry()
         self._hb_sub = None  # set by start
 
     async def start(self) -> None:
@@ -93,23 +98,17 @@ class NatsSttClient:
     async def _on_heartbeat(self, msg) -> None:
         try:
             data = json.loads(msg.data)
-            worker_id = data.get("worker_id")
-            if not worker_id:
-                log.warning("stt_client: heartbeat missing worker_id, ignoring")
-                return
-            self._worker_freshness[worker_id] = time.monotonic()
         except Exception:
             log.debug("stt_client: heartbeat parse error", exc_info=True)
-
-    def _any_worker_alive(self) -> bool:
-        now = time.monotonic()
-        self._worker_freshness = {
-            k: v for k, v in self._worker_freshness.items() if now - v <= _HB_TTL * 2
-        }
-        return any(now - ts <= _HB_TTL for ts in self._worker_freshness.values())
+            return
+        if not data.get("worker_id"):
+            log.warning("stt_client: heartbeat missing worker_id, ignoring")
+            return
+        self._registry.record_heartbeat(data)
 
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
-        if not self._any_worker_alive():
+        preferred = self._registry.pick_least_loaded()
+        if preferred is None:
             raise STTUnavailableError("STT: no live worker (heartbeat stale >15s)")
         if self._cb.is_open():
             raise STTUnavailableError(
@@ -129,25 +128,7 @@ class NatsSttClient:
             "language_fallback": self._detection_fallback,
         }
         payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
-        payload_kb = len(payload) / 1024
-        try:
-            reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
-            data = json.loads(reply.data)
-        except TimeoutError as exc:
-            log.warning("STT adapter timeout after %.0fs", self._timeout)
-            self._cb.record_failure()
-            raise STTUnavailableError("STT adapter timeout") from exc
-        except Exception as exc:
-            if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
-                log.error(
-                    "STT payload too large (%.0f KB) — check NATS max_payload",
-                    payload_kb,
-                )
-                self._cb.record_failure()
-                raise STTUnavailableError("STT request payload too large") from exc
-            log.warning("STT adapter unreachable: %s: %s", type(exc).__name__, exc)
-            self._cb.record_failure()
-            raise STTUnavailableError("STT adapter unreachable") from exc
+        data = await self._request_with_fallback(payload, preferred.worker_id)
         if not data.get("ok"):
             self._cb.record_failure()
             raise STTUnavailableError("STT transcription failed")
@@ -165,6 +146,61 @@ class NatsSttClient:
             )
             raise STTNoiseError(f"Noise transcript: {result.text!r}")
         return result
+
+    async def _request_with_fallback(self, payload: bytes, worker_id: str) -> dict:
+        """Send to per-worker subject; on timeout, fall back once to queue group.
+
+        Raises ``STTUnavailableError`` on final failure (after fallback), wrapping
+        the originating exception. Circuit-breaker failures are recorded here.
+        """
+        payload_kb = len(payload) / 1024
+        target = f"{self.SUBJECT}.{worker_id}"
+        try:
+            reply = await self._nc.request(target, payload, timeout=self._timeout)
+            return json.loads(reply.data)
+        except TimeoutError:
+            log.warning(
+                "STT: preferred worker %s timed out after %.0fs;"
+                " falling back to queue group",
+                worker_id,
+                self._timeout,
+            )
+        except Exception as exc:
+            return self._map_nats_exception(exc, payload_kb)
+        # Fallback: queue group (round-robin among alive workers).
+        try:
+            reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
+            return json.loads(reply.data)
+        except TimeoutError as exc:
+            log.warning("STT adapter timeout after %.0fs", self._timeout)
+            self._cb.record_failure()
+            raise STTUnavailableError("STT adapter timeout") from exc
+        except Exception as exc:
+            return self._map_nats_exception(exc, payload_kb)
+
+    def _map_nats_exception(self, exc: Exception, payload_kb: float) -> dict:
+        """Convert a NATS request exception to STTUnavailableError; never returns."""
+        if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
+            log.error(
+                "STT payload too large (%.0f KB) — check NATS max_payload",
+                payload_kb,
+            )
+            self._cb.record_failure()
+            raise STTUnavailableError("STT request payload too large") from exc
+        log.warning("STT adapter unreachable: %s: %s", type(exc).__name__, exc)
+        self._cb.record_failure()
+        raise STTUnavailableError("STT adapter unreachable") from exc
+
+    # Backwards-compat shim for callers/tests still reading ``_worker_freshness``.
+    @property
+    def _worker_freshness(self) -> dict[str, float]:
+        return {
+            w.worker_id: w.last_heartbeat
+            for w in self._registry._workers.values()
+        }
+
+    def _any_worker_alive(self) -> bool:
+        return self._registry.any_alive()
 
 
 def _mime_from_suffix(suffix: str) -> str:

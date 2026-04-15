@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.nats.nats_stt_client import NatsSttClient
+from lyra.nats.voice_health import WorkerStats
 from lyra.stt import STTNoiseError, STTUnavailableError
 
 
@@ -82,9 +83,33 @@ class TestTimeoutResolution:
         assert client._timeout == 15.0
 
 
-def _inject_fresh_worker(client: NatsSttClient) -> None:
-    """Seed _worker_freshness with a fresh timestamp so freshness gate passes."""
-    client._worker_freshness["test-worker"] = time.monotonic()
+def _inject_fresh_worker(
+    client: NatsSttClient,
+    worker_id: str = "test-worker",
+    *,
+    vram_used_mb: int = 0,
+    vram_total_mb: int = 0,
+    active_requests: int = 0,
+) -> None:
+    """Seed the registry with a fresh worker so routing + freshness gate pass."""
+    client._registry.record_heartbeat(
+        {
+            "worker_id": worker_id,
+            "vram_used_mb": vram_used_mb,
+            "vram_total_mb": vram_total_mb,
+            "active_requests": active_requests,
+        }
+    )
+
+
+def _seed_worker_with_age(
+    client: NatsSttClient, worker_id: str, age_s: float
+) -> None:
+    """Insert a worker whose last_heartbeat is ``age_s`` seconds ago."""
+    client._registry._workers[worker_id] = WorkerStats(
+        worker_id=worker_id,
+        last_heartbeat=time.monotonic() - age_s,
+    )
 
 
 class TestCircuitBreaker:
@@ -278,7 +303,7 @@ class TestSttClientFreshness:
         """transcribe() raises STTUnavailableError when last heartbeat was >15s ago."""
         mock_nc = AsyncMock()
         client = NatsSttClient(nc=mock_nc)
-        client._worker_freshness["worker-1"] = time.monotonic() - 20.0
+        _seed_worker_with_age(client, "worker-1", 20.0)
         wav_file = tmp_path / "test.wav"
         wav_file.write_bytes(b"\x00" * 64)
         with pytest.raises(STTUnavailableError, match="no live worker"):
@@ -302,7 +327,7 @@ class TestSttClientFreshness:
         fake_reply.data = success_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
-        client._worker_freshness["worker-1"] = time.monotonic() - 5.0
+        _seed_worker_with_age(client, "worker-1", 5.0)
         wav_file = tmp_path / "test.wav"
         wav_file.write_bytes(b"\x00" * 64)
         result = await client.transcribe(wav_file)
@@ -339,13 +364,13 @@ class TestSttClientFreshness:
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
         # First: stale
-        client._worker_freshness["worker-1"] = time.monotonic() - 20.0
+        _seed_worker_with_age(client, "worker-1", 20.0)
         wav_file = tmp_path / "test.wav"
         wav_file.write_bytes(b"\x00" * 64)
         with pytest.raises(STTUnavailableError, match="no live worker"):
             await client.transcribe(wav_file)
         # Simulate fresh heartbeat arrives
-        client._worker_freshness["worker-1"] = time.monotonic()
+        _seed_worker_with_age(client, "worker-1", 0.0)
         result = await client.transcribe(wav_file)
         assert result.text == "resumed"
 
@@ -353,30 +378,30 @@ class TestSttClientFreshness:
         """_any_worker_alive() returns True when a worker has a recent timestamp."""
         mock_nc = MagicMock()
         client = NatsSttClient(nc=mock_nc)
-        client._worker_freshness["worker-1"] = time.monotonic() - 5.0
+        _seed_worker_with_age(client, "worker-1", 5.0)
         assert client._any_worker_alive() is True
 
     def test_any_worker_alive_false_when_stale(self) -> None:
         """_any_worker_alive() returns False when all workers are >15s stale."""
         mock_nc = MagicMock()
         client = NatsSttClient(nc=mock_nc)
-        client._worker_freshness["worker-1"] = time.monotonic() - 20.0
+        _seed_worker_with_age(client, "worker-1", 20.0)
         assert client._any_worker_alive() is False
 
     def test_any_worker_alive_true_with_mixed_freshness(self) -> None:
         """_any_worker_alive() returns True when at least one worker is fresh."""
         mock_nc = MagicMock()
         client = NatsSttClient(nc=mock_nc)
-        client._worker_freshness["stale-worker"] = time.monotonic() - 20.0
-        client._worker_freshness["fresh-worker"] = time.monotonic() - 5.0
+        _seed_worker_with_age(client, "stale-worker", 20.0)
+        _seed_worker_with_age(client, "fresh-worker", 5.0)
         assert client._any_worker_alive() is True
 
     def test_stale_entries_pruned_in_any_worker_alive(self) -> None:
         """_any_worker_alive() evicts entries older than TTL*2."""
         mock_nc = MagicMock()
         client = NatsSttClient(nc=mock_nc)
-        client._worker_freshness["ancient"] = time.monotonic() - 35.0  # > 15*2
-        client._worker_freshness["fresh"] = time.monotonic() - 5.0
+        _seed_worker_with_age(client, "ancient", 35.0)  # > 15*2
+        _seed_worker_with_age(client, "fresh", 5.0)
         client._any_worker_alive()
         assert "ancient" not in client._worker_freshness
         assert "fresh" in client._worker_freshness
@@ -432,3 +457,123 @@ class TestTranscribeResponseParsing:
             await client.transcribe(wav_file)
         # Noise is NOT a CB failure — record_success() runs before the noise check
         assert client._cb._failures == 0
+
+
+class TestLoadAwareRouting:
+    """Tests for load-aware routing added in #603."""
+
+    @staticmethod
+    def _ok_reply() -> MagicMock:
+        payload = json.dumps(
+            {
+                "contract_version": "1",
+                "ok": True,
+                "text": "hi",
+                "language": "en",
+                "duration_seconds": 0.1,
+            }
+        ).encode()
+        reply = MagicMock()
+        reply.data = payload
+        return reply
+
+    @pytest.mark.asyncio
+    async def test_single_worker_targets_per_worker_subject(
+        self, tmp_path: Path
+    ) -> None:
+        """With one worker alive, transcribe() targets ``<SUBJECT>.<worker_id>``."""
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(return_value=self._ok_reply())
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client, "stt-tower-01")
+        wav = tmp_path / "a.wav"
+        wav.write_bytes(b"\x00" * 16)
+        await client.transcribe(wav)
+        subject = mock_nc.request.call_args.args[0]
+        assert subject == "lyra.voice.stt.request.stt-tower-01"
+
+    @pytest.mark.asyncio
+    async def test_picks_least_loaded_by_score(self, tmp_path: Path) -> None:
+        """Two workers: heavy VRAM one is skipped, light one receives the request."""
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(return_value=self._ok_reply())
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(
+            client, "stt-heavy", vram_used_mb=12000, vram_total_mb=16384
+        )
+        _inject_fresh_worker(
+            client, "stt-light", vram_used_mb=2400, vram_total_mb=16384
+        )
+        wav = tmp_path / "a.wav"
+        wav.write_bytes(b"\x00" * 16)
+        await client.transcribe(wav)
+        subject = mock_nc.request.call_args.args[0]
+        assert subject == "lyra.voice.stt.request.stt-light"
+
+    @pytest.mark.asyncio
+    async def test_active_requests_dominate_vram(self, tmp_path: Path) -> None:
+        """A busy worker (active_requests>0) loses to an idle higher-VRAM worker."""
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(return_value=self._ok_reply())
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(
+            client,
+            "stt-busy",
+            vram_used_mb=2000,
+            vram_total_mb=16384,
+            active_requests=2,
+        )
+        _inject_fresh_worker(
+            client,
+            "stt-idle-but-fuller",
+            vram_used_mb=8000,
+            vram_total_mb=16384,
+            active_requests=0,
+        )
+        wav = tmp_path / "a.wav"
+        wav.write_bytes(b"\x00" * 16)
+        await client.transcribe(wav)
+        subject = mock_nc.request.call_args.args[0]
+        assert subject == "lyra.voice.stt.request.stt-idle-but-fuller"
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_queue_group_on_timeout(self, tmp_path: Path) -> None:
+        """Per-worker timeout falls back once to the queue-group subject."""
+        mock_nc = AsyncMock()
+        call_subjects: list[str] = []
+
+        async def request_mock(subject: str, payload: bytes, timeout: float):
+            call_subjects.append(subject)
+            if len(call_subjects) == 1:
+                raise TimeoutError
+            return self._ok_reply()
+
+        mock_nc.request = AsyncMock(side_effect=request_mock)
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client, "stt-tower-01")
+        wav = tmp_path / "a.wav"
+        wav.write_bytes(b"\x00" * 16)
+        result = await client.transcribe(wav)
+        assert result.text == "hi"
+        assert call_subjects == [
+            "lyra.voice.stt.request.stt-tower-01",
+            "lyra.voice.stt.request",
+        ]
+        # First timeout should not trip the CB (fallback succeeded).
+        assert client._cb._failures == 0
+
+    @pytest.mark.asyncio
+    async def test_fallback_timeout_raises_and_records_failure(
+        self, tmp_path: Path
+    ) -> None:
+        """If both preferred AND queue-group timeout, raise + record failure once."""
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(side_effect=TimeoutError())
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client, "stt-tower-01")
+        wav = tmp_path / "a.wav"
+        wav.write_bytes(b"\x00" * 16)
+        with pytest.raises(STTUnavailableError, match="timeout"):
+            await client.transcribe(wav)
+        assert mock_nc.request.await_count == 2
+        assert client._cb._failures == 1

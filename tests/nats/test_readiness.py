@@ -295,9 +295,7 @@ class TestWaitForHubUnexpectedError:
         assert result is False
 
         # Assert — log.exception emitted at ERROR level
-        error_records = [
-            r for r in caplog.records if r.levelno >= logging.ERROR
-        ]
+        error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
         assert error_records, (
             "Expected at least one ERROR log from wait_for_hub on unexpected "
             f"error; captured records: {caplog.records}"

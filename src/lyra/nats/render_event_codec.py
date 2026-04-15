@@ -4,6 +4,7 @@ Both NatsChannelProxy (hub, encodes) and NatsOutboundListener (adapter, decodes)
 import from this single class.  Adding a new RenderEvent subtype requires one
 change here — there is no way to silently drop it on the other side.
 """
+
 from __future__ import annotations
 
 import json

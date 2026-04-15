@@ -615,9 +615,7 @@ class TestPublishOnlyMode:
         with pytest.raises(RuntimeError, match="already-started"):
             await bus.start()
 
-    async def test_publish_only_register_after_start_raises(
-        self, nc: NATS
-    ) -> None:
+    async def test_publish_only_register_after_start_raises(self, nc: NATS) -> None:
         """register() after start() on a publish-only bus raises (f2 regression).
 
         Without the _started flag, the _subscriptions-based guard would be
@@ -650,7 +648,10 @@ class TestPublishOnlyInvariants:
 
         nc = MagicMock()
         bus = NatsBus(
-            nc=nc, bot_id="main", item_type=InboundMessage, publish_only=True,
+            nc=nc,
+            bot_id="main",
+            item_type=InboundMessage,
+            publish_only=True,
         )
         bus.register(Platform.TELEGRAM)
         await bus.start()

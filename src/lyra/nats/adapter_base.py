@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from nats.aio.client import Client as NATS
 
 from lyra.nats._validate import validate_nats_token
-from lyra.nats._version_check import check_schema_version
+from lyra.nats._version_check import check_contract_version, check_schema_version
 from lyra.nats.connect import nats_connect
 from lyra.nats.readiness import wait_for_hub
 
@@ -30,6 +30,14 @@ log = logging.getLogger(__name__)
 # producer sites (hub clients + satellite adapters) stamp this on outgoing
 # payloads. Consumers ignore unknown values. Bumping requires a new ADR.
 CONTRACT_VERSION = "1"
+
+# Import-time validation: a typo in CONTRACT_VERSION must crash at load, not
+# drop every inbound envelope at runtime.  check_contract_version relies on
+# ``int(expected)`` succeeding — this assert is the single gate that guarantees
+# that invariant for every call site.
+assert CONTRACT_VERSION.isdigit() and int(CONTRACT_VERSION) > 0, (  # noqa: S101
+    f"CONTRACT_VERSION must be a positive decimal string, got {CONTRACT_VERSION!r}"
+)
 
 
 class NatsAdapterBase(ABC):
@@ -95,10 +103,21 @@ class NatsAdapterBase(ABC):
             await self.handle(msg, payload)
 
     def _validate_envelope(self, payload: dict) -> bool:
-        return check_schema_version(
+        # Sequential short-circuit: each check logs and counts its own drop, so
+        # we stop at the first failure to avoid duplicate lines for a doubly-
+        # malformed payload. Add any future checks here in priority order.
+        if not check_schema_version(
             payload,
             envelope_name=self.envelope_name,
             expected=self.schema_version,
+            subject=self.subject,
+            counter=self._drop_count,
+        ):
+            return False
+        return check_contract_version(
+            payload,
+            envelope_name=self.envelope_name,
+            expected=CONTRACT_VERSION,
             subject=self.subject,
             counter=self._drop_count,
         )

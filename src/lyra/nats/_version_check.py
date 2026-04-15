@@ -18,12 +18,35 @@ drop — rate limiting only affects log volume, not telemetry.  The limiter is
 module-level state intentionally (log volume is a process-wide concern, unlike
 the counter which needs per-instance isolation for correctness).
 """
+
 from __future__ import annotations
 
 import logging
+import re
 import time
+from dataclasses import dataclass
+
+# ADR-044 wire format: contract_version is a plain decimal numeric string.
+# Reject ``_`` separators, leading ``+``/``-``, unicode digits, whitespace —
+# anything ``int()`` would accept that is not an exact plain-decimal literal.
+_CONTRACT_VERSION_RE = re.compile(r"[1-9][0-9]*")
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _DropContext:
+    """Caller-side context for a drop site — keeps ``_drop``'s arity bounded.
+
+    ``envelope_name`` is the per-envelope key shared with counter/log. ``subject``
+    is the NATS subject the payload arrived on (log-only). ``counter`` is the
+    caller-owned drop tally (``None`` skips counting).
+    """
+
+    envelope_name: str
+    subject: str | None
+    counter: dict[str, int] | None
+
 
 # Module-level rate-limit state: envelope_name → monotonic timestamp of last log.
 # Shared across all NatsBus/NatsOutboundListener instances in the process; that
@@ -70,55 +93,123 @@ def check_schema_version(
         every drop.  Pass ``None`` to skip counting.
     """
     raw = payload.get("schema_version", 1)
+    ctx = _DropContext(envelope_name=envelope_name, subject=subject, counter=counter)
 
     # Non-int (including None, str, float) → drop.  ``bool`` is a subclass of
     # ``int`` in Python but we treat it as malformed since JSON ``true``/``false``
     # is never a valid version value.
     if not isinstance(raw, int) or isinstance(raw, bool):
-        _drop(envelope_name, raw, expected, subject, counter)
+        _drop(ctx, raw, expected, kind="schema")
         return False
 
     # Out-of-range integer → drop.
     if raw <= 0:
-        _drop(envelope_name, raw, expected, subject, counter)
+        _drop(ctx, raw, expected, kind="schema")
         return False
 
     # Forward-compat violation → drop.
     if raw > expected:
-        _drop(envelope_name, raw, expected, subject, counter)
+        _drop(ctx, raw, expected, kind="schema")
         return False
 
     # 1 <= raw <= expected → accept.
     return True
 
 
-def _drop(
+def check_contract_version(
+    payload: dict,
+    *,
     envelope_name: str,
-    raw_version: object,
-    expected: int,
-    subject: str | None,
-    counter: dict[str, int] | None,
-) -> None:
-    """Record a dropped message: increment counter, emit rate-limited ERROR log."""
-    # Counter increments unconditionally — rate limiting is log-only.
-    if counter is not None:
-        counter[envelope_name] = counter.get(envelope_name, 0) + 1
+    expected: str,
+    subject: str | None = None,
+    counter: dict[str, int] | None = None,
+) -> bool:
+    """Return True if payload's ``contract_version`` is acceptable for this receiver.
 
-    # Rate-limited ERROR log: first drop per envelope fires immediately; repeats
-    # within _LOG_INTERVAL_S are silent (but still counted).  After the interval
-    # elapses, the next drop fires a fresh ERROR log.
+    Mirrors :func:`check_schema_version` but validates the ADR-044 wire-format
+    ``contract_version`` field (a numeric string such as ``"1"``).  Rejects
+    envelopes whose contract_version (parsed as int) is strictly greater than
+    the receiver's compiled-in ``CONTRACT_VERSION`` — an outdated hub must not
+    silently process payloads written against a newer contract.
+
+    Rules
+    -----
+    - Missing field → treated as ``"1"`` (legacy backwards compat).
+    - Non-str value (int, None, float, bool, list, ...) → dropped.
+    - String that doesn't parse as an int → dropped.
+    - Parsed int <= 0 → dropped.
+    - Parsed int > parsed expected → dropped (forward-compat violation).
+    - Parsed int in [1, expected] → accepted.
+
+    Parameters
+    ----------
+    expected:
+        The hub's ``CONTRACT_VERSION`` constant (a numeric string).  Must parse
+        as a positive int — caller is responsible (see the module-level assert
+        in ``adapter_base.py``).
+    """
+    raw = payload.get("contract_version", "1")
+    ctx = _DropContext(envelope_name=envelope_name, subject=subject, counter=counter)
+
+    # Wire format (ADR-044) stamps contract_version as a numeric string. Reject
+    # anything else — including bare int — to keep the validator symmetric with
+    # producer behavior and prevent silent lenience from masking wire drift.
+    if not isinstance(raw, str):
+        _drop(ctx, raw, expected, kind="contract")
+        return False
+
+    # Strict plain-decimal match — ``int()`` alone would accept ``"+1"``,
+    # ``"1_000"``, unicode digits, and leading/trailing whitespace, all of which
+    # are out of the ADR-044 wire spec.
+    if _CONTRACT_VERSION_RE.fullmatch(raw) is None:
+        _drop(ctx, raw, expected, kind="contract")
+        return False
+
+    payload_v = int(raw)
+    expected_v = int(expected)  # asserted parseable at module load in adapter_base
+
+    if payload_v > expected_v:
+        _drop(ctx, raw, expected, kind="contract")
+        return False
+
+    return True
+
+
+def _drop(
+    ctx: _DropContext,
+    raw_version: object,
+    expected: int | str,
+    *,
+    kind: str,
+) -> None:
+    """Record a dropped message: increment counter, emit rate-limited ERROR log.
+
+    Both counter and rate-limit state are keyed on ``f"{envelope_name}:{kind}"``
+    so schema and contract drops stay independent — a flood of one kind does
+    not silence logs or skew telemetry for the other.
+    """
+    key = f"{ctx.envelope_name}:{kind}"
+
+    # Counter increments unconditionally — rate limiting is log-only.
+    if ctx.counter is not None:
+        ctx.counter[key] = ctx.counter.get(key, 0) + 1
+
+    # Rate-limited ERROR log: first drop per (envelope, kind) fires immediately;
+    # repeats within _LOG_INTERVAL_S are silent (but still counted).  After the
+    # interval elapses, the next drop fires a fresh ERROR log.
     now = time.monotonic()
-    last = _last_log_ts.get(envelope_name, 0.0)
+    last = _last_log_ts.get(key, 0.0)
     if now - last < _LOG_INTERVAL_S:
         return
-    _last_log_ts[envelope_name] = now
+    _last_log_ts[key] = now
     log.error(
-        "NATS schema version mismatch — dropping message: envelope=%s "
-        "payload_version=%r expected=%d subject=%s",
-        envelope_name,
+        "NATS %s version mismatch — dropping message: envelope=%s "
+        "payload_version=%r expected=%r subject=%s",
+        kind,
+        ctx.envelope_name,
         raw_version,
         expected,
-        subject or "<unknown>",
+        ctx.subject or "<unknown>",
     )
 
 

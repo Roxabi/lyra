@@ -5,6 +5,7 @@ nats-server binary must be in PATH (installed via ``make nats-install``,
 or available as a system package). Tests that depend on the ``nc``
 fixture are automatically skipped when nats-server is not found.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -21,10 +22,7 @@ from nats.aio.client import Client as NATS
 _nats_server_available = shutil.which("nats-server") is not None
 requires_nats_server = pytest.mark.skipif(
     not _nats_server_available,
-    reason=(
-        "nats-server not found in PATH"
-        " — install via 'make nats-install'"
-    ),
+    reason=("nats-server not found in PATH — install via 'make nats-install'"),
 )
 
 

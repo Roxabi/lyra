@@ -237,8 +237,8 @@ class TestMultiBotBackwardCompat:
         """register() with and without bot_id can coexist."""
         # Arrange
         bus = _make_bus(nc, bot_id="default")
-        bus.register(Platform.TELEGRAM)               # uses "default"
-        bus.register(Platform.TELEGRAM, bot_id="alt") # explicit
+        bus.register(Platform.TELEGRAM)  # uses "default"
+        bus.register(Platform.TELEGRAM, bot_id="alt")  # explicit
 
         await bus.start()
         try:

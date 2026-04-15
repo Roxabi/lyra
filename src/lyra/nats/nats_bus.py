@@ -226,16 +226,20 @@ class NatsBus(Generic[T]):
         return len(self._subscriptions)
 
     def version_mismatch_count(self, envelope_name: str) -> int:
-        """Cumulative drops for *envelope_name* (schema version mismatches)."""
-        return self._version_mismatch_drops.get(envelope_name, 0)
+        """Cumulative drops for *envelope_name* — summed across all check kinds."""
+        prefix = f"{envelope_name}:"
+        return sum(
+            count
+            for key, count in self._version_mismatch_drops.items()
+            if key.startswith(prefix)
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     async def _make_handler(self, platform: Platform, bot_id: str) -> None:
-        """Create NATS subscription for *(platform, bot_id)* and register the handler.
-        """
+        """Create NATS subscription for *(platform, bot_id)* and wire the handler."""
         subject = f"{self._subject_prefix}.{platform.value}.{bot_id}"
 
         async def handler(msg: Msg) -> None:

@@ -1,9 +1,10 @@
 """Shared validation helpers for NATS identifiers (subjects, queue groups, ids)."""
+
 from __future__ import annotations
 
 import re
 
-_NATS_IDENT = re.compile(r'[A-Za-z0-9_.\-]+')
+_NATS_IDENT = re.compile(r"[A-Za-z0-9_.\-]+")
 
 
 def validate_nats_token(value: str, *, kind: str, allow_empty: bool = False) -> None:

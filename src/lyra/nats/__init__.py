@@ -19,6 +19,7 @@ Usage::
     ...
     await bus.stop()
 """
+
 from .adapter_base import NatsAdapterBase
 from .connect import nats_connect
 from .nats_bus import NatsBus

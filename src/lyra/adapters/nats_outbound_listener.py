@@ -76,8 +76,13 @@ class NatsOutboundListener:
         self._cache.put(msg)
 
     def version_mismatch_count(self, envelope_name: str) -> int:
-        """Cumulative drops for *envelope_name* (schema version mismatches)."""
-        return self._version_mismatch_drops.get(envelope_name, 0)
+        """Cumulative drops for *envelope_name* — summed across all check kinds."""
+        prefix = f"{envelope_name}:"
+        return sum(
+            count
+            for key, count in self._version_mismatch_drops.items()
+            if key.startswith(prefix)
+        )
 
     def _check_outbound_version(self, payload: dict, envelope_name: str) -> bool:
         return check_schema_version(

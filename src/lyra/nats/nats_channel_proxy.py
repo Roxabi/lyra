@@ -3,6 +3,7 @@
 Publishes outbound messages to NATS subjects instead of calling platform SDKs.
 Used by the standalone Hub process to dispatch responses to remote adapters.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,12 +29,12 @@ from lyra.nats.render_event_codec import NatsRenderEventCodec
 
 log = logging.getLogger(__name__)
 
-_NATS_UNSAFE = re.compile(r'[.*> ]')
+_NATS_UNSAFE = re.compile(r"[.*> ]")
 
 
 def _safe_subject_token(value: str) -> str:
     """Sanitize a value for use as a NATS subject token."""
-    return _NATS_UNSAFE.sub('_', value)
+    return _NATS_UNSAFE.sub("_", value)
 
 
 class NatsChannelProxy:
@@ -47,7 +48,7 @@ class NatsChannelProxy:
 
     def __init__(self, nc: NATS, platform: Platform, bot_id: str) -> None:
         """Store nc, platform, bot_id. No I/O."""
-        if not re.fullmatch(r'[A-Za-z0-9_-]+', bot_id):
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", bot_id):
             raise ValueError(
                 f"Invalid bot_id for NATS subject: {bot_id!r} — "
                 "must match [A-Za-z0-9_-]+"
@@ -74,9 +75,7 @@ class NatsChannelProxy:
         *,
         trust_level: TrustLevel,
     ) -> InboundMessage:
-        raise NotImplementedError(
-            "NatsChannelProxy does not normalize audio messages"
-        )
+        raise NotImplementedError("NatsChannelProxy does not normalize audio messages")
 
     # ------------------------------------------------------------------
     # Outbound dispatch
@@ -202,8 +201,7 @@ class NatsChannelProxy:
                 )
             except Exception:
                 log.warning(
-                    "NatsChannelProxy: failed to publish stream_error"
-                    " for stream_id=%r",
+                    "NatsChannelProxy: failed to publish stream_error for stream_id=%r",
                     stream_id,
                 )
 

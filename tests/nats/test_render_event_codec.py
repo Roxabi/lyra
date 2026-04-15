@@ -8,6 +8,7 @@ MT-13 covers:
 - text branch: match, legacy (no field), mismatch
 - tool_summary branch: match, landmine mismatch (malformed files), counter isolation
 """
+
 from __future__ import annotations
 
 import logging
@@ -81,7 +82,7 @@ class TestRenderEventCodecVersionCheck:
         # Assert — dropped
         assert result is None
         # Assert — counter incremented for this envelope
-        assert counter == {"TextRenderEvent": 1}
+        assert counter == {"TextRenderEvent:schema": 1}
         # Assert — exactly one ERROR log with expected substring
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
@@ -146,7 +147,7 @@ class TestRenderEventCodecVersionCheck:
 
         # Assert — dropped without raising
         assert result is None
-        assert counter == {"ToolSummaryRenderEvent": 1}
+        assert counter == {"ToolSummaryRenderEvent:schema": 1}
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
         assert "NATS schema version mismatch" in error_records[0].getMessage()
@@ -180,5 +181,5 @@ class TestRenderEventCodecVersionCheck:
         )
 
         # Assert — counts are independent
-        assert c1 == {"TextRenderEvent": 2}
-        assert c2 == {"TextRenderEvent": 1}
+        assert c1 == {"TextRenderEvent:schema": 2}
+        assert c2 == {"TextRenderEvent:schema": 1}

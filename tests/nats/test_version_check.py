@@ -1,4 +1,4 @@
-"""Unit tests for the check_schema_version helper (issue #530).
+"""Unit tests for the check_schema_version + check_contract_version helpers.
 
 Covers all rules described in _version_check.py:
 - Missing field → v1 (legacy backwards compat)
@@ -8,6 +8,8 @@ Covers all rules described in _version_check.py:
 - Non-int values (string, None, zero, negative) → dropped
 - Counter isolation between independent callers
 - Log-flood rate limiting across repeated drops
+- Kind-keyed counter + rate-limit state — schema and contract drops are
+  independent (#707 follow-up).
 """
 
 from __future__ import annotations
@@ -98,8 +100,8 @@ class TestCheckSchemaVersion:
 
         # Assert — return value
         assert result is False
-        # Assert — counter incremented
-        assert counter == {"InboundMessage": 1}
+        # Assert — counter incremented under the kind-keyed name
+        assert counter == {"InboundMessage:schema": 1}
         # Assert — exactly one ERROR log with the expected substring
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
@@ -121,7 +123,7 @@ class TestCheckSchemaVersion:
 
         # Assert
         assert result is False
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:schema": 1}
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
         assert "NATS schema version mismatch" in error_records[0].getMessage()
@@ -142,7 +144,7 @@ class TestCheckSchemaVersion:
 
         # Assert
         assert result is False
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:schema": 1}
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
 
@@ -165,7 +167,7 @@ class TestCheckSchemaVersion:
 
         # Assert
         assert result is False
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:schema": 1}
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
         assert "NATS schema version mismatch" in error_records[0].getMessage()
@@ -193,10 +195,10 @@ class TestCheckSchemaVersion:
         )
 
         # Assert — each dict holds only its own key, not the other's
-        assert counter_a == {"EnvelopeA": 1}
-        assert counter_b == {"EnvelopeB": 1}
-        assert "EnvelopeB" not in counter_a
-        assert "EnvelopeA" not in counter_b
+        assert counter_a == {"EnvelopeA:schema": 1}
+        assert counter_b == {"EnvelopeB:schema": 1}
+        assert "EnvelopeB:schema" not in counter_a
+        assert "EnvelopeA:schema" not in counter_b
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +207,7 @@ class TestCheckSchemaVersion:
 
 
 class TestLogRateLimit:
-    """Verify that drop logs are rate-limited per envelope name."""
+    """Verify that drop logs are rate-limited per (envelope, kind)."""
 
     def test_first_drop_logs_at_error(self, caplog: pytest.LogCaptureFixture) -> None:
         """First drop for an envelope fires a single log.error line."""
@@ -222,7 +224,7 @@ class TestLogRateLimit:
             )
 
         # Assert
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:schema": 1}
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
         assert "NATS schema version mismatch" in error_records[0].getMessage()
@@ -245,7 +247,7 @@ class TestLogRateLimit:
                 )
 
         # Assert — counter still increments on every drop (rate limit is log-only)
-        assert counter == {"InboundMessage": 3}
+        assert counter == {"InboundMessage:schema": 3}
         # Assert — exactly one ERROR log fired, not three
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
@@ -328,7 +330,7 @@ class TestLogRateLimit:
             )
 
         # Assert
-        assert counter == {"InboundMessage": 5}
+        assert counter == {"InboundMessage:schema": 5}
 
     def test_boolean_value_drops(self, caplog: pytest.LogCaptureFixture) -> None:
         """JSON true/false → dropped (bool is int subclass but invalid)."""
@@ -345,9 +347,68 @@ class TestLogRateLimit:
             )
 
         # Assert — True is technically isinstance(_, int) but we treat bool as malformed
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:schema": 1}
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
+
+    def test_contract_drops_are_rate_limited(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Repeat contract drops within _LOG_INTERVAL_S log once, count all."""
+        # Arrange
+        counter: dict[str, int] = {}
+
+        # Act — three contract-mismatch drops in quick succession
+        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+            for _ in range(3):
+                check_contract_version(
+                    {"contract_version": "2"},
+                    envelope_name="InboundMessage",
+                    expected="1",
+                    counter=counter,
+                )
+
+        # Assert — counter tallies all 3 under the contract key
+        assert counter == {"InboundMessage:contract": 3}
+        # Assert — only the first drop fired an ERROR log
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 1
+        assert "NATS contract version mismatch" in error_records[0].getMessage()
+
+    def test_schema_and_contract_rate_limits_are_independent(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A contract-drop flood does not silence schema ERROR logs (#707 follow-up)."""
+        # Arrange
+        counter: dict[str, int] = {}
+
+        # Act — first a contract drop (sets contract rate-limit window), then a
+        # schema drop on the same envelope within the interval.
+        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+            check_contract_version(
+                {"contract_version": "2"},
+                envelope_name="InboundMessage",
+                expected="1",
+                counter=counter,
+            )
+            check_schema_version(
+                {"schema_version": 2},
+                envelope_name="InboundMessage",
+                expected=1,
+                counter=counter,
+            )
+
+        # Assert — both kinds counted separately
+        assert counter == {
+            "InboundMessage:contract": 1,
+            "InboundMessage:schema": 1,
+        }
+        # Assert — both drops fired ERROR logs (independent rate-limit windows)
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 2
+        messages = [r.getMessage() for r in error_records]
+        assert any("contract version mismatch" in m for m in messages)
+        assert any("schema version mismatch" in m for m in messages)
 
 
 # ---------------------------------------------------------------------------
@@ -362,19 +423,24 @@ class TestCheckContractVersion:
 
     def test_absent_field_treated_as_v1(self) -> None:
         """Missing contract_version key is treated as "1" (legacy compat)."""
+        # Arrange
         counter: dict[str, int] = {}
 
+        # Act
         result = check_contract_version(
             {}, envelope_name="A", expected="1", counter=counter
         )
 
+        # Assert
         assert result is True
         assert counter == {}
 
     def test_exact_match_accepts(self) -> None:
         """Payload contract_version == expected → accepted."""
+        # Arrange
         counter: dict[str, int] = {}
 
+        # Act
         result = check_contract_version(
             {"contract_version": "1"},
             envelope_name="A",
@@ -382,13 +448,16 @@ class TestCheckContractVersion:
             counter=counter,
         )
 
+        # Assert
         assert result is True
         assert counter == {}
 
     def test_receiver_newer_accepts(self) -> None:
         """Payload contract_version < expected → accepted (receiver upgraded first)."""
+        # Arrange
         counter: dict[str, int] = {}
 
+        # Act
         result = check_contract_version(
             {"contract_version": "1"},
             envelope_name="A",
@@ -396,20 +465,7 @@ class TestCheckContractVersion:
             counter=counter,
         )
 
-        assert result is True
-        assert counter == {}
-
-    def test_int_payload_accepts(self) -> None:
-        """Payload contract_version given as int (not str) is still accepted."""
-        counter: dict[str, int] = {}
-
-        result = check_contract_version(
-            {"contract_version": 1},
-            envelope_name="A",
-            expected="1",
-            counter=counter,
-        )
-
+        # Assert
         assert result is True
         assert counter == {}
 
@@ -417,8 +473,10 @@ class TestCheckContractVersion:
 
     def test_receiver_older_drops(self, caplog: pytest.LogCaptureFixture) -> None:
         """Payload contract_version > expected → dropped, counter++, log.error."""
+        # Arrange
         counter: dict[str, int] = {}
 
+        # Act
         with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
             result = check_contract_version(
                 {"contract_version": "2"},
@@ -427,16 +485,19 @@ class TestCheckContractVersion:
                 counter=counter,
             )
 
+        # Assert
         assert result is False
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:contract": 1}
         error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(error_records) == 1
         assert "NATS contract version mismatch" in error_records[0].getMessage()
 
     def test_non_numeric_string_drops(self, caplog: pytest.LogCaptureFixture) -> None:
         """Non-numeric contract_version string → dropped."""
+        # Arrange
         counter: dict[str, int] = {}
 
+        # Act
         with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
             result = check_contract_version(
                 {"contract_version": "v1"},
@@ -445,13 +506,16 @@ class TestCheckContractVersion:
                 counter=counter,
             )
 
+        # Assert
         assert result is False
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:contract": 1}
 
     def test_null_value_drops(self) -> None:
         """Explicit null contract_version → dropped (no legacy-compat fallback)."""
+        # Arrange
         counter: dict[str, int] = {}
 
+        # Act
         result = check_contract_version(
             {"contract_version": None},
             envelope_name="InboundMessage",
@@ -459,14 +523,17 @@ class TestCheckContractVersion:
             counter=counter,
         )
 
+        # Assert
         assert result is False
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:contract": 1}
 
-    @pytest.mark.parametrize("bad_version", [0, -1, "0", "-1"])
-    def test_out_of_range_drops(self, bad_version: int | str) -> None:
+    @pytest.mark.parametrize("bad_version", ["0", "-1"])
+    def test_out_of_range_drops(self, bad_version: str) -> None:
         """Parsed int <= 0 → dropped."""
+        # Arrange
         counter: dict[str, int] = {}
 
+        # Act
         result = check_contract_version(
             {"contract_version": bad_version},
             envelope_name="InboundMessage",
@@ -474,13 +541,33 @@ class TestCheckContractVersion:
             counter=counter,
         )
 
+        # Assert
         assert result is False
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:contract": 1}
+
+    def test_int_payload_drops(self) -> None:
+        """Bare int contract_version is asymmetric with wire spec → dropped."""
+        # Arrange
+        counter: dict[str, int] = {}
+
+        # Act
+        result = check_contract_version(
+            {"contract_version": 1},
+            envelope_name="InboundMessage",
+            expected="1",
+            counter=counter,
+        )
+
+        # Assert — producers always stamp strings (ADR-044); bare int is malformed
+        assert result is False
+        assert counter == {"InboundMessage:contract": 1}
 
     def test_boolean_value_drops(self) -> None:
         """JSON true/false → dropped (bool is int subclass but invalid)."""
+        # Arrange
         counter: dict[str, int] = {}
 
+        # Act
         result = check_contract_version(
             {"contract_version": True},
             envelope_name="InboundMessage",
@@ -488,13 +575,16 @@ class TestCheckContractVersion:
             counter=counter,
         )
 
+        # Assert
         assert result is False
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:contract": 1}
 
     def test_float_value_drops(self) -> None:
         """Float contract_version → dropped."""
+        # Arrange
         counter: dict[str, int] = {}
 
+        # Act
         result = check_contract_version(
             {"contract_version": 1.5},
             envelope_name="InboundMessage",
@@ -502,28 +592,17 @@ class TestCheckContractVersion:
             counter=counter,
         )
 
+        # Assert
         assert result is False
-        assert counter == {"InboundMessage": 1}
-
-    def test_malformed_hub_expected_drops(self) -> None:
-        """Non-parseable hub expected value → defensive drop, never silent accept."""
-        counter: dict[str, int] = {}
-
-        result = check_contract_version(
-            {"contract_version": "1"},
-            envelope_name="InboundMessage",
-            expected="not-a-number",
-            counter=counter,
-        )
-
-        assert result is False
-        assert counter == {"InboundMessage": 1}
+        assert counter == {"InboundMessage:contract": 1}
 
     def test_counter_isolation(self) -> None:
         """Two separate counter dicts accumulate only their own drops."""
+        # Arrange
         counter_a: dict[str, int] = {}
         counter_b: dict[str, int] = {}
 
+        # Act
         check_contract_version(
             {"contract_version": "2"},
             envelope_name="EnvelopeA",
@@ -537,5 +616,6 @@ class TestCheckContractVersion:
             counter=counter_b,
         )
 
-        assert counter_a == {"EnvelopeA": 1}
-        assert counter_b == {"EnvelopeB": 1}
+        # Assert
+        assert counter_a == {"EnvelopeA:contract": 1}
+        assert counter_b == {"EnvelopeB:contract": 1}

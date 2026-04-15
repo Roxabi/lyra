@@ -112,7 +112,7 @@ def check_contract_version(
     Rules
     -----
     - Missing field → treated as ``"1"`` (legacy backwards compat).
-    - Non-str/non-int value (None, float, bool, list, ...) → dropped.
+    - Non-str value (int, None, float, bool, list, ...) → dropped.
     - String that doesn't parse as an int → dropped.
     - Parsed int <= 0 → dropped.
     - Parsed int > parsed expected → dropped (forward-compat violation).
@@ -121,34 +121,26 @@ def check_contract_version(
     Parameters
     ----------
     expected:
-        The hub's ``CONTRACT_VERSION`` constant (a numeric string).
+        The hub's ``CONTRACT_VERSION`` constant (a numeric string).  Must parse
+        as a positive int — caller is responsible (see the module-level assert
+        in ``adapter_base.py``).
     """
     raw = payload.get("contract_version", "1")
 
-    # bool is an int subclass in Python, but JSON true/false is never a valid
-    # contract_version — treat as malformed.
-    if isinstance(raw, bool):
-        _drop(envelope_name, raw, expected, subject, counter, kind="contract")
-        return False
-
-    if isinstance(raw, int):
-        payload_v = raw
-    elif isinstance(raw, str):
-        try:
-            payload_v = int(raw)
-        except ValueError:
-            _drop(envelope_name, raw, expected, subject, counter, kind="contract")
-            return False
-    else:
+    # Wire format (ADR-044) stamps contract_version as a numeric string. Reject
+    # anything else — including bare int — to keep the validator symmetric with
+    # producer behavior and prevent silent lenience from masking wire drift.
+    if not isinstance(raw, str):
         _drop(envelope_name, raw, expected, subject, counter, kind="contract")
         return False
 
     try:
-        expected_v = int(expected)
-    except (TypeError, ValueError):
-        # Defensive: a malformed hub constant should not silently accept payloads.
+        payload_v = int(raw)
+    except ValueError:
         _drop(envelope_name, raw, expected, subject, counter, kind="contract")
         return False
+
+    expected_v = int(expected)  # asserted parseable at module load in adapter_base
 
     if payload_v <= 0:
         _drop(envelope_name, raw, expected, subject, counter, kind="contract")
@@ -170,19 +162,26 @@ def _drop(  # noqa: PLR0913
     *,
     kind: str = "schema",
 ) -> None:
-    """Record a dropped message: increment counter, emit rate-limited ERROR log."""
+    """Record a dropped message: increment counter, emit rate-limited ERROR log.
+
+    Both counter and rate-limit state are keyed on ``f"{envelope_name}:{kind}"``
+    so schema and contract drops stay independent — a flood of one kind does
+    not silence logs or skew telemetry for the other.
+    """
+    key = f"{envelope_name}:{kind}"
+
     # Counter increments unconditionally — rate limiting is log-only.
     if counter is not None:
-        counter[envelope_name] = counter.get(envelope_name, 0) + 1
+        counter[key] = counter.get(key, 0) + 1
 
-    # Rate-limited ERROR log: first drop per envelope fires immediately; repeats
-    # within _LOG_INTERVAL_S are silent (but still counted).  After the interval
-    # elapses, the next drop fires a fresh ERROR log.
+    # Rate-limited ERROR log: first drop per (envelope, kind) fires immediately;
+    # repeats within _LOG_INTERVAL_S are silent (but still counted).  After the
+    # interval elapses, the next drop fires a fresh ERROR log.
     now = time.monotonic()
-    last = _last_log_ts.get(envelope_name, 0.0)
+    last = _last_log_ts.get(key, 0.0)
     if now - last < _LOG_INTERVAL_S:
         return
-    _last_log_ts[envelope_name] = now
+    _last_log_ts[key] = now
     log.error(
         "NATS %s version mismatch — dropping message: envelope=%s "
         "payload_version=%r expected=%r subject=%s",

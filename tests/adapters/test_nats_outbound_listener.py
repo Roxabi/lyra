@@ -628,7 +628,7 @@ async def test_send_version_mismatch_drops_and_increments_counter() -> None:
     await listener._handle(_make_nats_msg(envelope))
 
     adapter.send.assert_not_called()
-    assert listener._version_mismatch_drops == {"OutboundMessage": 1}
+    assert listener._version_mismatch_drops == {"OutboundMessage:schema": 1}
 
 
 @pytest.mark.asyncio
@@ -657,7 +657,7 @@ async def test_stream_start_version_mismatch_drops_and_increments_counter() -> N
     await listener._handle(_make_nats_msg(envelope))
 
     assert msg.id not in listener._stream_outbound
-    assert listener._version_mismatch_drops == {"OutboundMessage": 1}
+    assert listener._version_mismatch_drops == {"OutboundMessage:schema": 1}
 
 
 @pytest.mark.asyncio
@@ -689,7 +689,7 @@ async def test_attachment_version_mismatch_drops_and_increments_counter() -> Non
     await listener._handle(_make_nats_msg(envelope))
 
     adapter.render_attachment.assert_not_called()
-    assert listener._version_mismatch_drops == {"OutboundAttachment": 1}
+    assert listener._version_mismatch_drops == {"OutboundAttachment:schema": 1}
 
 
 @pytest.mark.asyncio

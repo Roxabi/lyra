@@ -31,6 +31,14 @@ log = logging.getLogger(__name__)
 # payloads. Consumers ignore unknown values. Bumping requires a new ADR.
 CONTRACT_VERSION = "1"
 
+# Import-time validation: a typo in CONTRACT_VERSION must crash at load, not
+# drop every inbound envelope at runtime.  check_contract_version relies on
+# ``int(expected)`` succeeding — this assert is the single gate that guarantees
+# that invariant for every call site.
+assert CONTRACT_VERSION.isdigit() and int(CONTRACT_VERSION) > 0, (  # noqa: S101
+    f"CONTRACT_VERSION must be a positive decimal string, got {CONTRACT_VERSION!r}"
+)
+
 
 class NatsAdapterBase(ABC):
     def __init__(  # noqa: PLR0913

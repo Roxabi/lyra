@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "dep-graph layout.json schema",
+  "type": "object",
+  "required": ["meta", "lanes", "standalone", "overrides", "extra_deps", "cross_deps"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["title", "date", "repo", "label_prefix"],
+      "additionalProperties": true,
+      "properties": {
+        "title":        { "type": "string" },
+        "date":         { "type": "string" },
+        "repo":         { "type": "string", "description": "e.g. Roxabi/lyra" },
+        "label_prefix": { "type": "string", "description": "e.g. graph:" },
+        "issue":        { "type": "integer" },
+        "category":     { "type": "string" },
+        "cat_label":    { "type": "string" },
+        "color":        { "type": "string" }
+      }
+    },
+    "lanes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "color", "order"],
+        "additionalProperties": false,
+        "properties": {
+          "code":       { "type": "string" },
+          "name":       { "type": "string" },
+          "color":      { "type": "string" },
+          "epic": {
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "required": ["issue", "label", "tag"],
+                "additionalProperties": false,
+                "properties": {
+                  "issue": { "type": "integer" },
+                  "label": { "type": "string" },
+                  "tag":   { "type": "string" },
+                  "defer": { "type": "boolean" }
+                }
+              }
+            ]
+          },
+          "order":      { "type": "array", "items": { "type": "integer" } },
+          "par_groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "integer" }
+            }
+          },
+          "bands": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["before", "text"],
+              "additionalProperties": false,
+              "properties": {
+                "before": { "type": "integer" },
+                "text":   { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "standalone": {
+      "type": "object",
+      "required": ["order"],
+      "additionalProperties": false,
+      "properties": {
+        "order": { "type": "array", "items": { "type": "integer" } }
+      }
+    },
+    "overrides": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "title":          { "type": "string" },
+          "size":           { "type": "string" },
+          "status":         { "type": "string", "enum": ["done","ready","blocked","defer"] },
+          "anchor":         { "type": "string" },
+          "anchor_after":   { "type": "string" },
+          "extra_deps_ext": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "extra_deps": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "extra_blocked_by": {
+          "type": "object",
+          "additionalProperties": { "type": "array", "items": { "type": "integer" } }
+        },
+        "extra_blocking": {
+          "type": "object",
+          "additionalProperties": { "type": "array", "items": { "type": "integer" } }
+        }
+      }
+    },
+    "cross_deps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string" },
+          "text": { "type": "string" }
+        }
+      }
+    },
+    "title_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pattern", "replacement"],
+        "additionalProperties": false,
+        "properties": {
+          "pattern":     { "type": "string" },
+          "replacement": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dep-graph"
+version = "0.1.0"
+description = "GitHub-driven dependency graph generator for Lyra"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+validate = ["jsonschema>=4.0"]
+
+[project.scripts]
+dep-graph = "dep_graph.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dep_graph"]

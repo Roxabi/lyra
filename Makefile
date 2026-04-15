@@ -15,7 +15,7 @@ endif
 # Sub-command parsing for multi-word targets (remote, monitor, deploy).
 # These are NOT in HUB_SERVICES because their sub-commands can collide
 # with real target names (e.g. `make remote telegram reload`).
-_LYRA_MULTI := monitor deploy remote
+_LYRA_MULTI := monitor deploy remote dep-graph
 ifneq (,$(filter $(_LYRA_MULTI),$(firstword $(MAKECMDGOALS))))
   _LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
   _IS_LYRA_SUBCMD := true
@@ -228,3 +228,29 @@ typecheck:
 
 format:
 	uv run ruff format .
+
+# ── Dep graph ────────────────────────────────────────────────────────────────
+# Multi-action target — see _LYRA_MULTI list at top of file.
+# Sub-actions: fetch | build | audit | validate | open | (empty = full rebuild)
+
+DEP_GRAPH_DIR := scripts/dep-graph
+DEP_GRAPH_OUT := $(HOME)/.roxabi/forge/lyra/visuals/lyra-v2-dependency-graph.html
+
+define dep_graph_run
+	cd $(DEP_GRAPH_DIR) && uv run --project $(PWD) python -m dep_graph.cli $(1)
+endef
+
+.PHONY: dep-graph
+
+dep-graph:
+	@case "$(_LYRA_CMD)" in \
+		fetch)    $(call dep_graph_run,fetch) ;; \
+		build)    $(call dep_graph_run,build) ;; \
+		audit)    $(call dep_graph_run,audit) ;; \
+		validate) $(call dep_graph_run,validate) ;; \
+		open)     xdg-open $(DEP_GRAPH_OUT) 2>/dev/null || open $(DEP_GRAPH_OUT) 2>/dev/null || echo "Open $(DEP_GRAPH_OUT) manually" ;; \
+		""|all)   $(call dep_graph_run,fetch) && $(call dep_graph_run,build) ;; \
+		*)        echo "Unknown action: $(_LYRA_CMD)"; \
+		          echo "Use: fetch | build | audit | validate | open | (empty for full rebuild)"; \
+		          exit 1 ;; \
+	esac

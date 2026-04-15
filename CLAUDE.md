@@ -28,6 +28,7 @@ See `docs/ARCHITECTURE.md` for full context.
 | `deploy/provision.sh` | Machine 1 post-install provisioning script |
 | `deploy/quadlet/` | Podman Quadlet units (`.container`, `.volume`, `.network`) — systemd-integrated containers; `lyra-nats-auth.volume` for NATS public auth.conf |
 | `deploy/nats/nats-container.conf` | NATS config for container deployment (no TLS, 0.0.0.0 bind) |
+| `scripts/dep-graph/` | GitHub-driven dep-graph generator (`dep_graph/` package + `layout.schema.json`). Run via `make dep-graph [fetch\|build\|audit\|validate\|open]`. Artifacts (layout.json, gh.json cache, HTML output) live in `~/.roxabi/forge/lyra/visuals/`. Precursor to roxabi-dashboard. |
 
 ## Local infrastructure
 

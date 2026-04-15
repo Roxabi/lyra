@@ -188,6 +188,27 @@ apply_permissions() {
   info "Permissions applied for LYRA_USER=${LYRA_USER}, SEEDS_DIR=${SEEDS_DIR}"
 }
 
+# ── generate_nkey (defined early so --regen-authconf can call it) ─────────────
+# Writes a fresh user nkey seed to ${SEEDS_DIR}/${name}.seed and echoes its
+# public key. Relies on NK_BIN + LYRA_USER being set (both resolved at the
+# top of the file or by ensure_nk). Used by default mode (all seeds) and
+# --regen-authconf (only missing seeds).
+generate_nkey() {
+  local name="$1"
+  local seed_file="${SEEDS_DIR}/${name}.seed"
+  local tmp_seed
+  tmp_seed=$(mktemp)
+  trap 'rm -f "${tmp_seed}"' RETURN
+
+  "${NK_BIN}" -gen user > "${tmp_seed}"
+  local pubkey
+  pubkey=$("${NK_BIN}" -inkey "${tmp_seed}" -pubout) \
+    || error "Failed to derive public key for ${name} — is the nk binary valid?"
+
+  install -m 0600 -o "${LYRA_USER}" -g "${LYRA_USER}" "${tmp_seed}" "${seed_file}"
+  echo "${pubkey}"
+}
+
 # ── fix-perms mode ─────────────────────────────────────────────────────────────
 if [ "${FIX_PERMS}" = true ]; then
   [ -d "${SEEDS_DIR}" ] || error "${SEEDS_DIR} does not exist — run without --fix-perms first"
@@ -428,23 +449,7 @@ mkdir -p "${AUTH_DIR}"
 chown root:nats "${AUTH_DIR}"
 chmod 750 "${AUTH_DIR}"
 
-# ── generate nkey pairs (T1.5: extended to 7) ─────────────────────────────────
-
-generate_nkey() {
-  local name="$1"
-  local seed_file="${SEEDS_DIR}/${name}.seed"
-  local tmp_seed
-  tmp_seed=$(mktemp)
-  trap 'rm -f "${tmp_seed}"' RETURN
-
-  "${NK_BIN}" -gen user > "${tmp_seed}"
-  local pubkey
-  pubkey=$("${NK_BIN}" -inkey "${tmp_seed}" -pubout) \
-    || error "Failed to derive public key for ${name} — is the nk binary valid?"
-
-  install -m 0600 -o "${LYRA_USER}" -g "${LYRA_USER}" "${tmp_seed}" "${seed_file}"
-  echo "${pubkey}"
-}
+# ── generate nkey pairs (T1.5: extended to 7; generate_nkey defined earlier) ──
 
 info "Generating nkey pairs in ${SEEDS_DIR}/ ..."
 HUB_PUB=$(generate_nkey "hub")

@@ -233,11 +233,11 @@ format:
 # Multi-action target — see _LYRA_MULTI list at top of file.
 # Sub-actions: fetch | build | audit | validate | open | (empty = full rebuild)
 
-DEP_GRAPH_DIR := scripts/dep-graph
+DEP_GRAPH_DIR := $(HOME)/projects/lyra/scripts/dep-graph
 DEP_GRAPH_OUT := $(HOME)/.roxabi/forge/lyra/visuals/lyra-v2-dependency-graph.html
 
 define dep_graph_run
-	cd $(DEP_GRAPH_DIR) && uv run --project $(PWD) python -m dep_graph.cli $(1)
+	cd $(DEP_GRAPH_DIR) && uv run --project $(HOME)/projects/lyra python -m dep_graph.cli $(1)
 endef
 
 .PHONY: dep-graph

@@ -6,7 +6,6 @@ import logging
 import os
 import ssl
 import sys
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
@@ -71,14 +70,43 @@ def _build_tls_context() -> ssl.SSLContext | None:
     """Build a TLS context from NATS_CA_CERT env var.
 
     Returns None if env var is unset (plain TCP / dev mode).
+    Exits with clear error if path is not a regular file, unreadable, or empty.
+
+    Security (TOCTOU): the path is opened once with ``O_NOFOLLOW`` (symlinks
+    rejected) and ``os.fstat`` inspects the live file descriptor so the
+    is-file check and the read operate on the same inode. Cert data is
+    loaded via ``cadata=`` so ssl never re-opens the path. CA certs are not
+    secret, so no file-mode restriction is imposed.
     """
+    import errno
+    import stat as _stat
+
     ca_path_str = os.environ.get("NATS_CA_CERT")
     if not ca_path_str:
         return None
-    ca_path = Path(ca_path_str)
-    if not ca_path.is_file():
-        sys.exit(f"NATS_CA_CERT={ca_path_str!r} is not a file")
-    ctx = ssl.create_default_context(cafile=str(ca_path))
+    fd = -1
+    try:
+        fd = os.open(ca_path_str, os.O_RDONLY | os.O_NOFOLLOW)
+        st = os.fstat(fd)
+        if not _stat.S_ISREG(st.st_mode):
+            sys.exit(f"NATS_CA_CERT={ca_path_str!r} is not a file")
+        with os.fdopen(fd, "r") as fh:
+            fd = -1  # fdopen takes ownership; prevent double-close below
+            ca_data = fh.read()
+    except OSError as exc:
+        if fd != -1:
+            os.close(fd)
+        if exc.errno in (errno.ENOENT, errno.ELOOP):
+            # Missing path, or a symlink rejected by O_NOFOLLOW.
+            sys.exit(f"NATS_CA_CERT={ca_path_str!r} is not a file")
+        strerror = exc.strerror or str(exc)
+        sys.exit(f"NATS_CA_CERT={ca_path_str!r} is unreadable: {strerror}")
+    if not ca_data.strip():
+        sys.exit(f"NATS_CA_CERT={ca_path_str!r} is empty")
+    try:
+        ctx = ssl.create_default_context(cadata=ca_data)
+    except ssl.SSLError as exc:
+        sys.exit(f"NATS_CA_CERT={ca_path_str!r} is not a valid PEM bundle: {exc}")
     return ctx
 
 

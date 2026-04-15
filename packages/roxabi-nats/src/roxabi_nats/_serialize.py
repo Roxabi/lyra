@@ -29,8 +29,13 @@ _hints_cache: dict[type, dict[str, Any]] = {}
 _TYPE_CHECKING_IMPORTS: list[tuple[str, str]] = []
 
 
-def register_type_checking_import(module_path: str, type_name: str) -> None:
+def _register_type_checking_import(module_path: str, type_name: str) -> None:
     """Register a TYPE_CHECKING-only type for runtime hint resolution.
+
+    Hub-internal wiring. NOT public API — external SDK consumers must not
+    import this helper. Lyra (as the workspace host) is the only permitted
+    caller. See issue #729 for the planned refactor to a per-adapter
+    explicit init param that removes the global mutable registry.
 
     Some dataclasses reference types imported only under ``TYPE_CHECKING``
     (to avoid runtime circular imports). At deserialization time those names
@@ -120,7 +125,7 @@ def _get_hints(dc_type: type) -> dict[str, Any]:
     globalns: dict[str, Any] = dict(vars(module)) if module is not None else {}
 
     # Supplement with TYPE_CHECKING-only types not present at runtime.
-    # The registry is populated by consumers via register_type_checking_import();
+    # The registry is populated by consumers via _register_type_checking_import();
     # the SDK itself knows no domain types.
     localns: dict[str, Any] = {}
     for module_path, type_name in _TYPE_CHECKING_IMPORTS:

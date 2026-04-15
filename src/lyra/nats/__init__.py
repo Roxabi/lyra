@@ -5,17 +5,19 @@ version checks, sanitizers, serializer) now live in the roxabi_nats
 package — see docs/architecture/adr/045-*.mdx.
 """
 
-from roxabi_nats import register_type_checking_import
+# Hub-internal wiring: roxabi_nats._serialize exposes an internal registry
+# for TYPE_CHECKING-only type hints that must be resolved at deserialization
+# time. Lyra, as the workspace host, is the only permitted caller of this
+# private helper — external SDK consumers must not import from _-prefixed
+# submodules. Tracked for refactor in issue #729 (per-adapter explicit init
+# param, replacing the global mutable registry).
+from roxabi_nats._serialize import _register_type_checking_import
 
 from .nats_bus import NatsBus
 from .nats_channel_proxy import NatsChannelProxy
 from .render_event_codec import NatsRenderEventCodec
 
-# Register lyra-specific TYPE_CHECKING imports with the SDK serializer.
-# CommandContext is referenced under TYPE_CHECKING in lyra dataclasses so
-# roxabi_nats' serializer can rehydrate it when needed. The SDK has no
-# domain knowledge — registration happens here once, at import time.
-register_type_checking_import("lyra.core.commands.command_parser", "CommandContext")
+_register_type_checking_import("lyra.core.commands.command_parser", "CommandContext")
 
 __all__ = [
     "NatsBus",

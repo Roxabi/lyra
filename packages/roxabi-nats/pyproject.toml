@@ -8,7 +8,9 @@ requires-python = ">=3.12"
 authors = [{ name = "Roxabi SAS", email = "mickael@bouly.io" }]
 dependencies = [
     "nats-py>=2.6",
-    "nkeys>=0.1",
+    # nkeys 0.1.0 predates API used by connect.py's seed auth path;
+    # 0.2.0 is the first tested, stable version.
+    "nkeys>=0.2.0",
 ]
 
 [project.urls]

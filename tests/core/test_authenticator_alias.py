@@ -181,9 +181,7 @@ class TestAdminCascades:
 
 class TestNoAliasStoreBackwardCompat:
     @pytest.mark.asyncio
-    async def test_no_alias_store_backward_compat(
-        self, auth_store: AuthStore
-    ) -> None:
+    async def test_no_alias_store_backward_compat(self, auth_store: AuthStore) -> None:
         """Authenticator without alias_store resolves user_id directly."""
         await auth_store.upsert(
             identity_key="tg:user:1",
@@ -198,9 +196,7 @@ class TestNoAliasStoreBackwardCompat:
         assert identity.is_admin is True
 
     @pytest.mark.asyncio
-    async def test_no_alias_store_unknown_user(
-        self, auth_store: AuthStore
-    ) -> None:
+    async def test_no_alias_store_unknown_user(self, auth_store: AuthStore) -> None:
         """Without alias_store, unknown users fall back to default trust."""
         auth = make_auth(auth_store, alias_store=None)
         identity = auth.resolve("dc:user:99")

@@ -143,12 +143,14 @@ Until a trigger fires, colocation with ADR-044 is strictly more valuable than Py
 
 ### Pre-requisites
 
-| Issue | Blocker? | Reason |
-|---|---|---|
-| #705 | Yes | `queue_groups.py:9` imports `Platform` from `lyra.core.message` — must be decoupled before extraction |
-| #706 | Yes | Per-role NATS nkeys + subject ACLs — without them, plugins installing the SDK inherit the hub nkey and can publish to `lyra.inbound.*` |
-| #707 | No | `contract_version` inbound validation (follow-up, non-blocking) |
-| #708 | No | `O_NOFOLLOW` on `NATS_CA_CERT` path (follow-up, non-blocking) |
+| Issue | Blocker? | Status | Reason |
+|---|---|---|---|
+| #705 | Yes | Done | `queue_groups.py:9` imports `Platform` from `lyra.core.message` — must be decoupled before extraction |
+| #706 | Yes | Done | Per-role NATS nkeys + subject ACLs — without them, plugins installing the SDK inherit the hub nkey and can publish to `lyra.inbound.*` |
+| #707 | No | — | `contract_version` inbound validation (follow-up, non-blocking) |
+| #708 | No | — | `O_NOFOLLOW` on `NATS_CA_CERT` path (follow-up, non-blocking) |
+
+Both blocking prerequisites are resolved; the `roxabi-nats/v0.1.0` tag is unblocked at merge time.
 
 ### Extraction PR checklist
 
@@ -177,6 +179,11 @@ Until a trigger fires, colocation with ADR-044 is strictly more valuable than Py
 - `uv` caches git sources by resolved commit SHA; branch-pinned consumers need explicit `uv lock --upgrade-package roxabi-nats` to pick up changes. This is usually correct behavior but occasionally surprising.
 - The committed `uv.lock` must include the workspace member before prod deploys — a slip here breaks `uv sync --frozen` on `roxabituwer`.
 - Adds one more coordinate (package version) to the release mental model alongside `contract_version` and lyra's own version.
+
+### Known design debt
+
+- **`_register_type_checking_import` global registry** — `_serialize.py` maintains `_TYPE_CHECKING_IMPORTS` as a process-global mutable list populated at lyra startup. This solves the TYPE_CHECKING-hint-resolution problem but imposes implicit global state on the SDK. The helper is kept hub-internal (underscore prefix, not in `__all__`) until a per-adapter explicit init param replaces it. Tracked in issue #729.
+- **Public vs private submodule asymmetry** — lyra (as workspace host) imports `roxabi_nats._serialize`, `_sanitize`, etc. directly; external consumers are restricted to `__all__`. Python's underscore convention is social, not enforced — the contract is maintained via README and ADR documentation, not runtime guard.
 
 ### Neutral
 

@@ -234,6 +234,6 @@ def test_hub_has_no_pairing_gate_drop() -> None:
     """Hub._pairing_gate_drop must not exist — auth is resolved at adapter level."""
     from lyra.core.hub import Hub
 
-    assert not hasattr(
-        Hub, "_pairing_gate_drop"
-    ), "Hub._pairing_gate_drop must be removed — auth is resolved at adapter level"
+    assert not hasattr(Hub, "_pairing_gate_drop"), (
+        "Hub._pairing_gate_drop must be removed — auth is resolved at adapter level"
+    )

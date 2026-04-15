@@ -36,8 +36,12 @@ def _make_msg(
         text="",
         text_raw="",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={"chat_id": 42, "topic_id": None, "message_id": None,
-            "is_group": False},
+        platform_meta={
+            "chat_id": 42,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        },
         trust_level=TrustLevel.TRUSTED,
         is_admin=is_admin,
     )
@@ -117,9 +121,7 @@ class TestLinkComplete:
             )
             pool = _make_pool(store)
             # Complete from discord
-            msg = _make_msg(
-                user_id="dc:user:2", platform="discord", is_admin=True
-            )
+            msg = _make_msg(user_id="dc:user:2", platform="discord", is_admin=True)
             response = await cmd_link(msg, pool, [code])
             assert "linked" in response.content.lower()
 
@@ -141,9 +143,7 @@ class TestLinkComplete:
             )
             pool = _make_pool(store)
             # Complete from the *same* platform
-            msg = _make_msg(
-                user_id="tg:user:2", platform="telegram", is_admin=True
-            )
+            msg = _make_msg(user_id="tg:user:2", platform="telegram", is_admin=True)
             response = await cmd_link(msg, pool, [code])
             assert "different platform" in response.content.lower()
         finally:
@@ -156,9 +156,7 @@ class TestLinkComplete:
         await store.connect()
         try:
             pool = _make_pool(store)
-            msg = _make_msg(
-                user_id="dc:user:2", platform="discord", is_admin=True
-            )
+            msg = _make_msg(user_id="dc:user:2", platform="discord", is_admin=True)
             response = await cmd_link(msg, pool, ["BADCOD"])
             result = response.content.lower()
             assert "invalid" in result or "expired" in result

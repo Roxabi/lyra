@@ -1,4 +1,5 @@
-"""Integration test — Telegram adapter injects thread_session_id into inbound message.
+"""Integration test — Telegram adapter injects thread_session_id
+into inbound message.
 """
 
 from __future__ import annotations

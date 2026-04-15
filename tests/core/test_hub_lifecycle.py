@@ -141,9 +141,7 @@ class TestHubMemoryFields:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -164,9 +162,7 @@ class TestHubMemoryFields:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 

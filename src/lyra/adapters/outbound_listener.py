@@ -5,6 +5,7 @@ cached listener. NatsOutboundListener satisfies this protocol structurally
 (no inheritance required). Keeps adapter code transport-agnostic at the
 type level.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol

@@ -410,4 +410,3 @@ class HubOutboundMixin:
                 _ant_cb = self.circuit_registry.get("anthropic")
                 if _ant_cb is not None:
                     _ant_cb.record_failure()
-

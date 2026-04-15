@@ -48,8 +48,10 @@ class EmbeddedNats:
 
         self.process = await asyncio.create_subprocess_exec(
             binary,
-            "-a", "127.0.0.1",
-            "-p", str(self.port),
+            "-a",
+            "127.0.0.1",
+            "-p",
+            str(self.port),
             "--no_auth",
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
@@ -151,8 +153,8 @@ async def ensure_nats(
 
     Returns ``(nc, embedded_or_none, nats_url)``.
     """
-    from lyra.nats import nats_connect
-    from lyra.nats.connect import scrub_nats_url
+    from roxabi_nats import nats_connect
+    from roxabi_nats.connect import scrub_nats_url
 
     embedded: EmbeddedNats | None = None
     nats_url = nats_url_env

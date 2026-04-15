@@ -135,9 +135,7 @@ class TestResolveAgentTTS:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -235,9 +233,7 @@ class TestDispatchResponseAgentTTSE2E:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 

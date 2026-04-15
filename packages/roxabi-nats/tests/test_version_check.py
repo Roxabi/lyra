@@ -18,8 +18,8 @@ import logging
 
 import pytest
 
-from lyra.nats import _version_check
-from lyra.nats._version_check import check_contract_version, check_schema_version
+from roxabi_nats import _version_check
+from roxabi_nats._version_check import check_contract_version, check_schema_version
 
 # Rate-limit state is reset before every test via an autouse fixture in
 # tests/conftest.py — no per-file reset needed here.
@@ -90,7 +90,7 @@ class TestCheckSchemaVersion:
         counter: dict[str, int] = {}
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             result = check_schema_version(
                 {"schema_version": 2},
                 envelope_name="InboundMessage",
@@ -113,7 +113,7 @@ class TestCheckSchemaVersion:
         counter: dict[str, int] = {}
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             result = check_schema_version(
                 {"schema_version": "1"},
                 envelope_name="InboundMessage",
@@ -134,7 +134,7 @@ class TestCheckSchemaVersion:
         counter: dict[str, int] = {}
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             result = check_schema_version(
                 {"schema_version": None},
                 envelope_name="InboundMessage",
@@ -157,7 +157,7 @@ class TestCheckSchemaVersion:
         counter: dict[str, int] = {}
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             result = check_schema_version(
                 {"schema_version": bad_version},
                 envelope_name="InboundMessage",
@@ -215,7 +215,7 @@ class TestLogRateLimit:
         counter: dict[str, int] = {}
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             check_schema_version(
                 {"schema_version": 2},
                 envelope_name="InboundMessage",
@@ -237,7 +237,7 @@ class TestLogRateLimit:
         counter: dict[str, int] = {}
 
         # Act — three drops in quick succession (well under _LOG_INTERVAL_S)
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             for _ in range(3):
                 check_schema_version(
                     {"schema_version": 2},
@@ -267,7 +267,7 @@ class TestLogRateLimit:
         monkeypatch.setattr(_version_check.time, "monotonic", fake_monotonic)
 
         # Act — first drop at t=1000, second drop at t=1000+interval+1
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             check_schema_version(
                 {"schema_version": 2},
                 envelope_name="InboundMessage",
@@ -290,7 +290,7 @@ class TestLogRateLimit:
         """One envelope's rate-limited silence does not suppress another's first log."""
         # Arrange
         # Act — drop EnvelopeA twice, then EnvelopeB once
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             check_schema_version(
                 {"schema_version": 2},
                 envelope_name="EnvelopeA",
@@ -338,7 +338,7 @@ class TestLogRateLimit:
         counter: dict[str, int] = {}
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             check_schema_version(
                 {"schema_version": True},
                 envelope_name="InboundMessage",
@@ -359,7 +359,7 @@ class TestLogRateLimit:
         counter: dict[str, int] = {}
 
         # Act — three contract-mismatch drops in quick succession
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             for _ in range(3):
                 check_contract_version(
                     {"contract_version": "2"},
@@ -384,7 +384,7 @@ class TestLogRateLimit:
 
         # Act — first a contract drop (sets contract rate-limit window), then a
         # schema drop on the same envelope within the interval.
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             check_contract_version(
                 {"contract_version": "2"},
                 envelope_name="InboundMessage",
@@ -477,7 +477,7 @@ class TestCheckContractVersion:
         counter: dict[str, int] = {}
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             result = check_contract_version(
                 {"contract_version": "2"},
                 envelope_name="InboundMessage",
@@ -498,7 +498,7 @@ class TestCheckContractVersion:
         counter: dict[str, int] = {}
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             result = check_contract_version(
                 {"contract_version": "v1"},
                 envelope_name="InboundMessage",
@@ -566,7 +566,7 @@ class TestCheckContractVersion:
         counter: dict[str, int] = {}
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats._version_check"):
             result = check_contract_version(
                 {"contract_version": bad_version},
                 envelope_name="InboundMessage",

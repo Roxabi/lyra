@@ -1,5 +1,6 @@
 {
   "allowlist": [
+    "roxabi-nats",
     "lyra",
     "aiohttp",
     "fastembed",

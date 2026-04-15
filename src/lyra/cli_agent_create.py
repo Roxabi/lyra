@@ -20,6 +20,8 @@ def _user_agents_dir() -> Path:
         Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))).resolve()
         / "agents"
     )
+
+
 _SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent / "agents"
 AGENTS_DIR = _SYSTEM_AGENTS_DIR
 

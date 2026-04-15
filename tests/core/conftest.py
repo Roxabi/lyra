@@ -109,9 +109,7 @@ class MockAdapter:
     ) -> None:
         pass
 
-    async def render_audio(
-        self, msg: OutboundAudio, inbound: InboundMessage
-    ) -> None:
+    async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         pass
 
     async def render_audio_stream(

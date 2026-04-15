@@ -229,6 +229,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
         async def _capture_next(msg: InboundMessage, _ctx: PipelineContext) -> Any:
             next_called.append(True)
             from lyra.core.hub.message_pipeline import _DROP
+
             return _DROP
 
         # Must not raise even though stt is None
@@ -262,6 +263,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
         async def _capture_next(msg: InboundMessage, _ctx: PipelineContext) -> Any:
             next_called.append(True)
             from lyra.core.hub.message_pipeline import _DROP
+
             return _DROP
 
         # Must not raise on timeout

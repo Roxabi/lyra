@@ -74,9 +74,7 @@ class TestSearchProcessorPre:
         # Assert
         assert "asyncio" in enriched.text
         assert "Found: article about asyncio" in enriched.text
-        cast(Any, tools.vault).search.assert_called_once_with(
-            "asyncio", timeout=25.0
-        )
+        cast(Any, tools.vault).search.assert_called_once_with("asyncio", timeout=25.0)
         assert enriched.processor_enriched is True
 
     async def test_empty_results_produces_no_results_message(self) -> None:

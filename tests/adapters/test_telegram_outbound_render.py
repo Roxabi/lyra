@@ -183,13 +183,16 @@ async def test_telegram_fallback_sets_reply_message_id() -> None:
     sent_mock.message_id = 77
     adapter.bot = AsyncMock()
     # Make send_message raise to trigger fallback
-    adapter.bot.send_message = AsyncMock(side_effect=[Exception("placeholder failed"), sent_mock])  # noqa: E501
+    adapter.bot.send_message = AsyncMock(
+        side_effect=[Exception("placeholder failed"), sent_mock]
+    )  # noqa: E501
 
     original_msg = _make_telegram_message()
     outbound = OutboundMessage.from_text("")
 
     async def _events():
         from lyra.core.render_events import TextRenderEvent
+
         yield TextRenderEvent(text="hello", is_final=True)
 
     await adapter.send_streaming(original_msg, _events(), outbound=outbound)

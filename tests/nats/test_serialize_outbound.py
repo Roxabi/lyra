@@ -22,7 +22,7 @@ from lyra.core.render_events import (
     ToolSummaryRenderEvent,
 )
 from lyra.core.trust import TrustLevel
-from lyra.nats._serialize import deserialize, serialize
+from roxabi_nats._serialize import deserialize, serialize
 
 # ---------------------------------------------------------------------------
 # OutboundMessage round-trip

@@ -6,6 +6,7 @@ On cache miss (TTL expiry, restart, eviction) the cache falls back to
 reconstructing the message from an embedded ``original_msg`` dict in the
 envelope — this prevents silent message drops.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +14,7 @@ import logging
 import time
 
 from lyra.core.message import InboundMessage
-from lyra.nats._serialize import deserialize_dict
+from roxabi_nats._serialize import deserialize_dict
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +43,8 @@ class InboundCache:
             self._ts.pop(oldest, None)
             log.warning(
                 "InboundCache full (%d), evicted %r",
-                MAX_SIZE, oldest,
+                MAX_SIZE,
+                oldest,
             )
         self._msgs[msg.id] = msg
         self._ts[msg.id] = time.monotonic()
@@ -89,13 +91,15 @@ class InboundCache:
                     msg = deserialize_dict(raw, InboundMessage)
                 except Exception:
                     log.warning(
-                        "InboundCache: bad embedded original_msg"
-                        " for %s stream_id=%r", kind, stream_id,
+                        "InboundCache: bad embedded original_msg for %s stream_id=%r",
+                        kind,
+                        stream_id,
                     )
             if msg is None:
                 log.warning(
                     "InboundCache: unknown stream_id=%r for %s",
-                    stream_id, kind,
+                    stream_id,
+                    kind,
                 )
                 return None
         return stream_id, msg
@@ -105,10 +109,7 @@ class InboundCache:
     def _reap(self) -> list[str]:
         """Evict entries past TTL.  Returns evicted stream_ids."""
         now = time.monotonic()
-        stale = [
-            sid for sid, ts in list(self._ts.items())
-            if now - ts > TTL_SECONDS
-        ]
+        stale = [sid for sid, ts in list(self._ts.items()) if now - ts > TTL_SECONDS]
         for sid in stale:
             log.warning(
                 "InboundCache: evicting stale stream_id=%r",

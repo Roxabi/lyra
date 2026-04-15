@@ -34,6 +34,7 @@ def _make_ogg_converter(ogg_bytes: bytes = b"fakeoggdata") -> AsyncMock:
     converter.convert_wav_to_ogg = AsyncMock(side_effect=_fake_convert)
     return converter
 
+
 # ---------------------------------------------------------------------------
 # TTSService.synthesize() — delegates to voiceCLI
 # ---------------------------------------------------------------------------

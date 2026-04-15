@@ -51,14 +51,21 @@ _MIME_TO_EXT: dict[str, str] = {
 
 
 def _build_stt_reply(
-    msg: InboundMessage, *, reply: bool = True,
+    msg: InboundMessage,
+    *,
+    reply: bool = True,
 ) -> InboundMessage:
     """Construct synthetic reply envelope for STT error/echo dispatch."""
     meta = dict(msg.platform_meta)
     if not reply:
         meta.pop("message_id", None)
     return dataclasses.replace(
-        msg, text="", text_raw="", audio=None, modality="text", platform_meta=meta,
+        msg,
+        text="",
+        text_raw="",
+        audio=None,
+        modality="text",
+        platform_meta=meta,
     )
 
 
@@ -119,7 +126,9 @@ class SttMiddleware:
             return path
 
         tmp_path_str = await asyncio.to_thread(
-            _write_temp, msg.audio.audio_bytes, suffix,
+            _write_temp,
+            msg.audio.audio_bytes,
+            suffix,
         )
         tmp_path = Path(tmp_path_str)
 

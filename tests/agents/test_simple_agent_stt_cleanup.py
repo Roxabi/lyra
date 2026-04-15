@@ -87,4 +87,3 @@ class TestSimpleAgentAudioBranch:
         assert not Path(tmp_path).exists()
         assert isinstance(response, Response)
         assert response.metadata.get("error") is True
-

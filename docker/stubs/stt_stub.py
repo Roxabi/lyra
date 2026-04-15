@@ -8,6 +8,7 @@ Subscribes to:
 Publishes:
   lyra.voice.stt.heartbeat         (every 5s)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,16 +19,16 @@ import time
 
 import nats
 
-NATS_URL       = os.getenv("NATS_URL", "nats://localhost:4222")
-WORKER_ID      = os.getenv("STT_STUB_WORKER_ID", "stt-stub-01")
-VRAM_USED      = int(os.getenv("STT_STUB_VRAM_USED_MB", "2400"))
-VRAM_TOTAL     = int(os.getenv("STT_STUB_VRAM_TOTAL_MB", "16384"))
-TRANSCRIPT     = os.getenv("STT_STUB_TRANSCRIPT", "hello from stub")
-HB_INTERVAL    = float(os.getenv("STT_STUB_HB_INTERVAL", "5"))
+NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
+WORKER_ID = os.getenv("STT_STUB_WORKER_ID", "stt-stub-01")
+VRAM_USED = int(os.getenv("STT_STUB_VRAM_USED_MB", "2400"))
+VRAM_TOTAL = int(os.getenv("STT_STUB_VRAM_TOTAL_MB", "16384"))
+TRANSCRIPT = os.getenv("STT_STUB_TRANSCRIPT", "hello from stub")
+HB_INTERVAL = float(os.getenv("STT_STUB_HB_INTERVAL", "5"))
 
 _active = 0
-_start  = time.monotonic()
-_stop   = asyncio.Event()
+_start = time.monotonic()
+_stop = asyncio.Event()
 
 
 async def handle_request(msg: nats.aio.client.Msg) -> None:

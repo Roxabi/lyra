@@ -17,9 +17,11 @@ dependencies = [
     "uvicorn[standard]>=0.44.0",
     "httpx[asyncio]>=0.28",
     "python-dotenv>=1.2.2",
-    # NATS transport (NatsBus — issue #455, Slice C of #445)
-    "nats-py>=2.6",
-    "nkeys>=0.1",
+    # NATS transport (NatsBus — issue #455, Slice C of #445).
+    # Do NOT add nats-py or nkeys here — they arrive transitively via
+    # roxabi-nats (packages/roxabi-nats/pyproject.toml is the canonical
+    # source). See issue #731.
+    "roxabi-nats",
     # Agent backends
     "anthropic>=0.49",
     "typer>=0.24.1",
@@ -61,12 +63,17 @@ override-dependencies = [
     "onnx>=1.20",
     "pynacl>=1.6.2",  # CVE-2025-69277 — discord.py 2.7.1 pins <1.6 but 1.6.x is API-compatible (discord.py master confirmed)
     "aiohttp>=3.13.4",  # CVE-2026-34520 + 9 others fixed in 3.13.4 (transitive via aiogram); drop-in, no API changes
+    "pygments>=2.20.0",  # CVE-2026-4539 ReDoS fixed in 2.20.0 (dev-only, transitive via rich/pytest)
 ]
 
 [tool.uv.extra-build-dependencies]
 pkuseg = ["numpy"]
 
+[tool.uv.workspace]
+members = ["packages/roxabi-nats"]
+
 [tool.uv.sources]
+roxabi-nats = { workspace = true }
 roxabi-vault = { git = "https://github.com/Roxabi/roxabi-vault.git", branch = "staging" }
 voicecli = { git = "https://github.com/Roxabi/voiceCLI.git", branch = "staging" }
 
@@ -75,8 +82,8 @@ packages = ["src/lyra"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
-addopts = "--cov=lyra --cov-report=term-missing --cov-report=xml --cov-fail-under=50"
+testpaths = ["tests", "packages/roxabi-nats/tests"]
+addopts = "--import-mode=importlib --cov=lyra --cov=roxabi_nats --cov-report=term-missing --cov-report=xml --cov-fail-under=50"
 
 [tool.coverage.run]
 branch = true
@@ -88,7 +95,7 @@ show_missing = true
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["src", "tests"]
+include = ["src", "tests", "packages/roxabi-nats/src"]
 exclude = ["tests/dep_graph"]
 venvPath = "."
 venv = ".venv"
@@ -118,6 +125,7 @@ reportUnknownLambdaType = "none"
 reportMissingTypeArgument = "none"
 
 [tool.ruff]
+src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests"]
 exclude = [".claude/worktrees", "deploy"]
 
 [tool.ruff.lint]

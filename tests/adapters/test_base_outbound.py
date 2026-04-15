@@ -3,6 +3,7 @@
 RED-phase tests: the module under test (lyra.adapters._base_outbound) does not
 exist yet. All tests are expected to fail with ImportError until V3 is implemented.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -24,7 +25,9 @@ from tests.adapters.conftest import make_tg_msg
 class ConcreteAdapter(OutboundAdapterBase):
     """Minimal concrete subclass that implements all abstract methods."""
 
-    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:  # noqa: E501
+    async def send(
+        self, original_msg: InboundMessage, outbound: OutboundMessage
+    ) -> None:  # noqa: E501
         pass
 
     def _make_streaming_callbacks(
@@ -46,7 +49,9 @@ class TestableAdapter(OutboundAdapterBase):
     must not crash.
     """
 
-    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:  # noqa: E501
+    async def send(
+        self, original_msg: InboundMessage, outbound: OutboundMessage
+    ) -> None:  # noqa: E501
         pass
 
     def _make_streaming_callbacks(

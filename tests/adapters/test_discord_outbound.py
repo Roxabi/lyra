@@ -414,13 +414,16 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
     sent_mock.id = 88
     mock_channel = AsyncMock()
     # First call (send placeholder) raises; second call (fallback send) succeeds
-    mock_channel.send = AsyncMock(side_effect=[Exception("placeholder failed"), sent_mock])  # noqa: E501
+    mock_channel.send = AsyncMock(
+        side_effect=[Exception("placeholder failed"), sent_mock]
+    )  # noqa: E501
     adapter._resolve_channel = AsyncMock(return_value=mock_channel)
 
     outbound = OutboundMessage.from_text("")
 
     async def _events():
         from lyra.core.render_events import TextRenderEvent
+
         yield TextRenderEvent(text="hello", is_final=True)
 
     await adapter.send_streaming(original_msg, _events(), outbound=outbound)

@@ -59,9 +59,7 @@ class TestClaudeCliDriverComplete:
         )
 
         # Assert
-        pool.send.assert_awaited_once_with(
-            "my-pool", "hello", model_cfg, "be helpful"
-        )
+        pool.send.assert_awaited_once_with("my-pool", "hello", model_cfg, "be helpful")
 
     async def test_complete_translates_success(self) -> None:
         """CliResult(result='hi', session_id='s1') → LlmResult(result='hi', ok=True)."""
@@ -138,9 +136,7 @@ class TestClaudeCliDriverComplete:
         )
 
         # Assert — pool still called correctly (messages kwarg silently ignored)
-        pool.send.assert_awaited_once_with(
-            "my-pool", "hello", model_cfg, ""
-        )
+        pool.send.assert_awaited_once_with("my-pool", "hello", model_cfg, "")
         assert result.ok is True
 
 

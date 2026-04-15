@@ -43,12 +43,12 @@ from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 from lyra.core.message import InboundMessage, Platform
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
-from lyra.nats import nats_connect
-from lyra.nats.connect import scrub_nats_url
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 from lyra.nats.queue_groups import HUB_INBOUND
-from lyra.nats.readiness import start_readiness_responder
+from roxabi_nats import nats_connect
+from roxabi_nats.connect import scrub_nats_url
+from roxabi_nats.readiness import start_readiness_responder
 
 log = logging.getLogger(__name__)
 

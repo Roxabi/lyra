@@ -1,35 +1,26 @@
-"""lyra.nats — NATS transport backends for Lyra.
+"""lyra.nats — hub-coupled NATS transport modules.
 
-Provides ``NatsBus[T]`` — a concrete implementation of the ``Bus[T]`` Protocol
-backed by NATS pub-sub for Hub ↔ Adapter IPC across separate OS processes.
-
-``LocalBus`` remains the default for single-machine / dev-mode operation.
-``NatsBus`` is injected via DI when Hub runs in distributed mode (Slice C of #445).
-
-Usage::
-
-    import nats
-    from lyra.nats import NatsBus
-    from lyra.core.message import InboundMessage, Platform
-
-    nc = await nats.connect("nats://127.0.0.1:4222")
-    bus: Bus[InboundMessage] = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
-    bus.register(Platform.TELEGRAM)
-    await bus.start()
-    ...
-    await bus.stop()
+Transport primitives (NatsAdapterBase, nats_connect, circuit breaker,
+version checks, sanitizers, serializer) now live in the roxabi_nats
+package — see docs/architecture/adr/045-*.mdx.
 """
 
-from .adapter_base import NatsAdapterBase
-from .connect import nats_connect
+# Hub-internal wiring: roxabi_nats._serialize exposes an internal registry
+# for TYPE_CHECKING-only type hints that must be resolved at deserialization
+# time. Lyra, as the workspace host, is the only permitted caller of this
+# private helper — external SDK consumers must not import from _-prefixed
+# submodules. Tracked for refactor in issue #729 (per-adapter explicit init
+# param, replacing the global mutable registry).
+from roxabi_nats._serialize import _register_type_checking_import
+
 from .nats_bus import NatsBus
 from .nats_channel_proxy import NatsChannelProxy
 from .render_event_codec import NatsRenderEventCodec
 
+_register_type_checking_import("lyra.core.commands.command_parser", "CommandContext")
+
 __all__ = [
-    "NatsAdapterBase",
     "NatsBus",
     "NatsChannelProxy",
     "NatsRenderEventCodec",
-    "nats_connect",
 ]

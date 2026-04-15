@@ -28,9 +28,9 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
-from lyra.nats._serialize import deserialize_dict as _deserialize_dict
-from lyra.nats._validate import validate_nats_token
-from lyra.nats._version_check import check_schema_version
+from roxabi_nats._serialize import deserialize_dict as _deserialize_dict
+from roxabi_nats._validate import validate_nats_token
+from roxabi_nats._version_check import check_schema_version
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter

@@ -16,18 +16,19 @@ import asyncio
 import json
 import logging
 
-import nats
 import pytest
 from nats.aio.client import Client as NATS
 
-from lyra.nats.readiness import (
+import nats
+from roxabi_nats.readiness import (
     PROBE_INTERVAL_S,
     PROBE_TIMEOUT_S,
     READINESS_SUBJECT,
     start_readiness_responder,
     wait_for_hub,
 )
-from tests.nats.conftest import requires_nats_server
+
+from .conftest import requires_nats_server
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -175,7 +176,7 @@ class TestReadinessTimeout:
     ) -> None:
         """wait_for_hub emits a WARNING-level log entry when it times out."""
         # Arrange — no responder; capture WARNING+ logs from the readiness module
-        with caplog.at_level(logging.WARNING, logger="lyra.nats.readiness"):
+        with caplog.at_level(logging.WARNING, logger="roxabi_nats.readiness"):
             # Act
             result = await wait_for_hub(nc, timeout=0.5)
 
@@ -287,7 +288,7 @@ class TestWaitForHubUnexpectedError:
             ) -> None:
                 raise RuntimeError("synthetic transport fault")
 
-        with caplog.at_level(logging.ERROR, logger="lyra.nats.readiness"):
+        with caplog.at_level(logging.ERROR, logger="roxabi_nats.readiness"):
             # Act — short timeout so the test is fast
             result = await wait_for_hub(BrokenNats(), timeout=0.6)  # type: ignore[arg-type]
 

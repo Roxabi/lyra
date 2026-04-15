@@ -216,12 +216,11 @@ class TestStandaloneHubPipeline:
         import asyncio
 
         import nats as nats_lib
-
         from lyra.core.hub import Hub
         from lyra.core.message import InboundMessage, Platform
         from lyra.core.trust import TrustLevel
-        from lyra.nats._serialize import serialize
         from lyra.nats.nats_bus import NatsBus
+        from roxabi_nats._serialize import serialize
 
         # Arrange — separate NATS connection for the Hub (mirrors production)
         hub_nc = await nats_lib.connect(nats_server_url)
@@ -299,14 +298,13 @@ class TestStandaloneHubPipeline:
         from unittest.mock import MagicMock
 
         import nats as nats_lib
-
         from lyra.core.authenticator import Authenticator
         from lyra.core.hub import Hub
         from lyra.core.identity import Identity
         from lyra.core.message import InboundMessage, Platform
         from lyra.core.trust import TrustLevel
-        from lyra.nats._serialize import serialize
         from lyra.nats.nats_bus import NatsBus
+        from roxabi_nats._serialize import serialize
 
         # Arrange — Hub with NatsBus and a mock Authenticator
         hub_nc = await nats_lib.connect(nats_server_url)

@@ -129,9 +129,7 @@ class TurnStore(SqliteStore):
         async with db.execute("PRAGMA table_info(pool_sessions)") as cur:
             cols = {row[1] for row in await cur.fetchall()}
         if "cli_session_id" not in cols:
-            await db.execute(
-                "ALTER TABLE pool_sessions ADD COLUMN cli_session_id TEXT"
-            )
+            await db.execute("ALTER TABLE pool_sessions ADD COLUMN cli_session_id TEXT")
             await db.commit()
         # Gate backfill: skip if pool_sessions already has rows
         async with db.execute("SELECT 1 FROM pool_sessions LIMIT 1") as cur:
@@ -278,9 +276,7 @@ class TurnStore(SqliteStore):
             )
             await db.commit()
         except Exception:
-            log.exception(
-                "TurnStore.set_cli_session failed (session=%s)", session_id
-            )
+            log.exception("TurnStore.set_cli_session failed (session=%s)", session_id)
 
     async def get_cli_session(self, session_id: str) -> str | None:
         """Return the CLI session ID for a Lyra session, or None."""
@@ -293,9 +289,7 @@ class TurnStore(SqliteStore):
                 row = await cur.fetchone()
                 return row[0] if row else None
         except Exception:
-            log.exception(
-                "TurnStore.get_cli_session failed (session=%s)", session_id
-            )
+            log.exception("TurnStore.get_cli_session failed (session=%s)", session_id)
             return None
 
     async def get_cli_session_by_pool(self, pool_id: str) -> str | None:
@@ -326,9 +320,7 @@ class TurnStore(SqliteStore):
                 row = await cur.fetchone()
             return row[0] if row else None
         except Exception:
-            log.exception(
-                "TurnStore.get_cli_session_by_pool failed (pool=%s)", pool_id
-            )
+            log.exception("TurnStore.get_cli_session_by_pool failed (pool=%s)", pool_id)
             return None
 
     async def _backfill_sessions(self, db) -> None:

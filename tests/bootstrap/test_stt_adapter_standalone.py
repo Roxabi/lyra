@@ -85,7 +85,7 @@ def test_stt_adapter_standalone_class_exists() -> None:
     RED gate: the class does not exist in current source — ImportError expected
     before migration.
     """
-    from lyra.nats import NatsAdapterBase
+    from roxabi_nats import NatsAdapterBase
 
     try:
         from lyra.bootstrap.stt_adapter_standalone import SttAdapterStandalone

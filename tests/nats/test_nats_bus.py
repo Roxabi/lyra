@@ -23,8 +23,8 @@ from lyra.core.message import (
     Platform,
 )
 from lyra.core.trust import TrustLevel
-from lyra.nats._serialize import deserialize, serialize
 from lyra.nats.nats_bus import NatsBus
+from roxabi_nats._serialize import deserialize, serialize
 from tests.nats.conftest import requires_nats_server
 
 # ---------------------------------------------------------------------------

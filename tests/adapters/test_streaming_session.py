@@ -163,7 +163,8 @@ async def test_empty_final_text_surfaces_generic_error():
     await session.run(_events(TextRenderEvent("", is_final=True)))
 
     cb.edit_placeholder_text.assert_called_once_with(
-        placeholder_obj, GENERIC_ERROR_REPLY,
+        placeholder_obj,
+        GENERIC_ERROR_REPLY,
     )
 
 
@@ -411,9 +412,7 @@ async def test_get_msg_used_for_display_text():
     cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
     cb.get_msg = MagicMock(
         side_effect=lambda key, fallback: (
-            " [interrompu]"
-            if key == "stream_interrupted"
-            else fallback
+            " [interrompu]" if key == "stream_interrupted" else fallback
         ),
     )
 
@@ -425,7 +424,8 @@ async def test_get_msg_used_for_display_text():
     cb.get_msg.assert_called()
     # The final text should include the localised interrupt suffix
     cb.edit_placeholder_text.assert_called_with(
-        placeholder_obj, "partial answer [interrompu]",
+        placeholder_obj,
+        "partial answer [interrompu]",
     )
 
 

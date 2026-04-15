@@ -20,19 +20,20 @@ from lyra.core.agent_config import ModelConfig
 from lyra.core.authenticator import Authenticator as AuthMiddleware
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
-from lyra.nats import _version_check as _vc_mod
+from roxabi_nats import _version_check as _vc_mod
 
 
 @pytest.fixture(autouse=True)
 def _reset_version_check_log_state() -> None:
     """Clear the module-level log rate-limit state before every test.
 
-    ``lyra.nats._version_check`` holds a process-wide dict of last-log
+    ``roxabi_nats._version_check`` holds a process-wide dict of last-log
     timestamps so repeat drops within 60 s are silent.  Tests that assert on
     ``log.error`` firing would be flaky across test ordering without this
     reset, since one test's logged drop would silence another's.
     """
     _vc_mod._reset_log_state()
+
 
 # ---------------------------------------------------------------------------
 # Health endpoint shared constants
@@ -131,9 +132,7 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_nats_bus = MagicMock()
     fake_nats_bus.start = AsyncMock()
     fake_nats_bus.stop = AsyncMock()
-    monkeypatch.setattr(
-        unified_mod, "NatsBus", lambda **kw: fake_nats_bus
-    )
+    monkeypatch.setattr(unified_mod, "NatsBus", lambda **kw: fake_nats_bus)
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
 

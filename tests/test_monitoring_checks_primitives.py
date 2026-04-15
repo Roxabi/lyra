@@ -159,5 +159,3 @@ class TestCheckDisk:
 
         result = check_disk("/", 1)
         assert result.passed is False
-
-

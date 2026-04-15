@@ -128,4 +128,3 @@ class TestSimpleAgentAudioBranch:
         assert "couldn't transcribe" in response.content.lower()
         assert response.metadata.get("error") is True
         cli_pool.complete.assert_not_called()
-

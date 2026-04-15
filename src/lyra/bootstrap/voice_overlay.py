@@ -19,6 +19,7 @@ def _deprecated_env(old_var: str, new_var: str) -> str | None:
     val = os.environ.get(old_var)
     if val is not None:
         import warnings
+
         warnings.warn(
             f"{old_var} is deprecated; use {new_var} instead",
             DeprecationWarning,

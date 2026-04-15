@@ -13,14 +13,14 @@ from uuid import uuid4
 
 from nats.aio.client import Client as NATS
 
-from lyra.nats.adapter_base import CONTRACT_VERSION
-from lyra.nats.circuit_breaker import NatsCircuitBreaker
 from lyra.stt import (
     STTNoiseError,
     STTUnavailableError,
     TranscriptionResult,
     is_whisper_noise,
 )
+from roxabi_nats.adapter_base import CONTRACT_VERSION
+from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 log = logging.getLogger(__name__)
 

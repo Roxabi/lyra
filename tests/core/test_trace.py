@@ -61,16 +61,26 @@ class TestTraceIdFilter:
     def test_filter_always_returns_true(self) -> None:
         f = TraceIdFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="hello", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
         assert f.filter(record) is True
 
     def test_filter_sets_trace_id_from_contextvar(self) -> None:
         f = TraceIdFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="hello", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
 
         def _inner():
@@ -84,8 +94,13 @@ class TestTraceIdFilter:
     def test_filter_sets_pool_id_from_contextvar(self) -> None:
         f = TraceIdFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="hello", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
 
         def _inner():
@@ -100,8 +115,13 @@ class TestTraceIdFilter:
         """When no contextvar is set, attributes are empty string."""
         f = TraceIdFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="hello", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
 
         ctx = copy_context()

@@ -104,7 +104,7 @@ class TestMultiBotRegistration:
 
         # We need a publisher that knows about each bot_id; publish directly via nc
         # to bypass NatsBus.put() which only uses the first matching registration.
-        import lyra.nats._serialize as _s
+        import roxabi_nats._serialize as _s
 
         try:
             # Act — publish to both subjects independently

@@ -16,7 +16,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "httpx[asyncio]>=0.28",
-    "python-dotenv>=1.0",
+    "python-dotenv>=1.2.2",
     # NATS transport (NatsBus — issue #455, Slice C of #445)
     "nats-py>=2.6",
     "nkeys>=0.1",

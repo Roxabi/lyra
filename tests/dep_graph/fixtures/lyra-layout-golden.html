@@ -44,7 +44,8 @@
   --text-dim:    #6b7280;
   --accent:      #e85d04;
   --accent-hi:   #f97316;
-  --lane-a:      #22c55e;
+  --lane-a1:     #22c55e;
+  --lane-a2:     #6366f1;
   --lane-b:      #3b82f6;
   --lane-c1:     #a855f7;
   --lane-c2:     #d946ef;
@@ -179,7 +180,8 @@ h1 span { color: var(--accent); }
   margin-top: 2px;
   font-weight: 500;
 }
-.lane[data-lane="a"]     > .lane-head { border-top-color: var(--lane-a); }
+.lane[data-lane="a1"]    > .lane-head { border-top-color: var(--lane-a1); }
+.lane[data-lane="a2"]    > .lane-head { border-top-color: var(--lane-a2); }
 .lane[data-lane="b"]     > .lane-head { border-top-color: var(--lane-b); }
 .lane[data-lane="c1"]    > .lane-head { border-top-color: var(--lane-c1); }
 .lane[data-lane="c2"]    > .lane-head { border-top-color: var(--lane-c2); }
@@ -440,7 +442,7 @@ footer a { color: var(--accent); text-decoration: none; }
 <header>
   <div>
     <h1>Lyra <span>v2</span> — Dependency Graph</h1>
-    <div class="subtitle">11 lanes · 1 card per row · <strong>←</strong> = blocked by · <strong>→</strong> = unblocks · <span class="ext" style="color:var(--dep-ext);font-family:monospace;font-weight:600;">X:#N</span> = cross-lane</div>
+    <div class="subtitle">12 lanes · 1 card per row · <strong>←</strong> = blocked by · <strong>→</strong> = unblocks · <span class="ext" style="color:var(--dep-ext);font-family:monospace;font-weight:600;">X:#N</span> = cross-lane</div>
   </div>
   <div class="legend">
     <span class="pill"><span class="dot done"></span> done</span>
@@ -448,25 +450,41 @@ footer a { color: var(--accent); text-decoration: none; }
     <span class="pill"><span class="dot blocked"></span> blocked</span>
     <span class="pill"><span class="dot defer"></span> deferred</span>
     <span class="pill" style="background: var(--accent); color: #fff; border-color: var(--accent);">epic</span>
-    <span class="pill"><span style="color: var(--dep-ext); font-weight: 700;">B:#609</span> = cross-lane ref</span>
+    <span class="pill"><span style="color: var(--dep-ext); font-weight: 700;">B:#727</span> = cross-lane ref</span>
   </div>
 </header>
 
 <div class="lanes">
 
-  <div class="lane" data-lane="a">
-    <div class="lane-head"><span class="code">A</span><span class="name">NATS maturity</span></div>
-    <div class="ms-band">M0 tail ∥</div>
-    <div class="par">
-      <div class="card ready" id="card-roxabi-lyra-568"><div class="top"><span class="num">#568</span><span class="size">XS</span></div><div class="title">audio_bus probe</div><div class="deps"><span class="none">no deps</span></div></div>
-      <div class="card ready" id="card-roxabi-lyra-572"><div class="top"><span class="num">#572</span><span class="size">XS</span></div><div class="title">queue test</div><div class="deps"><span class="none">no deps</span></div></div>
-      <div class="card blocked" id="card-roxabi-lyra-576"><div class="top"><span class="num">#576</span><span class="size">XS</span></div><div class="title">nkey rotation docs</div><div class="deps"><span class="ext">←?:#562</span></div></div>
+  <div class="lane" data-lane="a1">
+    <div class="lane-head"><span class="code">A1</span><span class="name">NATS maturity</span></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#726 · NATS maturity</span><span class="tag">M0→M1</span></div>
+      <div class="ms-band">M0 tail ∥</div>
+      <div class="par">
+        <div class="card ready" id="card-roxabi-lyra-568"><div class="top"><span class="num">#568</span><span class="size">XS</span></div><div class="title">audio_bus probe</div><div class="deps"><span class="none">no deps</span></div></div>
+        <div class="card ready" id="card-roxabi-lyra-572"><div class="top"><span class="num">#572</span><span class="size">XS</span></div><div class="title">queue test</div><div class="deps"><span class="none">no deps</span></div></div>
+        <div class="card ready" id="card-roxabi-lyra-576"><div class="top"><span class="num">#576</span><span class="size">XS</span></div><div class="title">nkey rotation docs</div><div class="deps">→#660 →#662 →#687</div></div>
+      </div>
+      <div class="ms-band">M1 ∥</div>
+      <div class="par">
+        <div class="card blocked" id="card-roxabi-lyra-660"><div class="top"><span class="num">#660</span><span class="size">M</span></div><div class="title">JS audit (DP)</div><div class="deps">←#576</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-662"><div class="top"><span class="num">#662</span><span class="size">M</span></div><div class="title">reaper refactor</div><div class="deps">←#576</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-687"><div class="top"><span class="num">#687</span><span class="size">S</span></div><div class="title">keepalive guard</div><div class="deps">←#576</div></div>
+      </div>
     </div>
-    <div class="ms-band">M1 ∥</div>
-    <div class="par">
-      <div class="card ready" id="card-roxabi-lyra-660"><div class="top"><span class="num">#660</span><span class="size">M</span></div><div class="title">JS audit (DP)</div><div class="deps"><span class="none">no deps</span></div></div>
-      <div class="card ready" id="card-roxabi-lyra-662"><div class="top"><span class="num">#662</span><span class="size">M</span></div><div class="title">reaper refactor</div><div class="deps"><span class="none">no deps</span></div></div>
-      <div class="card ready" id="card-roxabi-lyra-687"><div class="top"><span class="num">#687</span><span class="size">S</span></div><div class="title">keepalive guard</div><div class="deps"><span class="none">no deps</span></div></div>
+  </div>
+
+  <div class="lane" data-lane="a2">
+    <div class="lane-head"><span class="code">A2</span><span class="name">roxabi-nats SDK</span></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#734 · roxabi-nats SDK</span><span class="tag">SDK</span></div>
+      <div class="par">
+        <div class="card ready" id="card-roxabi-lyra-730"><div class="top"><span class="num">#730</span></div><div class="title">lightweight per-package tag script for uv workspace monorepo</div><div class="deps"><span class="none">no deps</span></div></div>
+        <div class="card ready" id="card-roxabi-lyra-731"><div class="top"><span class="num">#731</span></div><div class="title">guard against re-adding transitive NATS deps to root pyproject.toml</div><div class="deps"><span class="none">no deps</span></div></div>
+      </div>
+      <div class="ms-band">v0.2.0 cut</div>
+      <div class="card ready" id="card-roxabi-lyra-729"><div class="top"><span class="num">#729</span></div><div class="title">replace global type-checking registry with explicit per-adapter init param</div><div class="deps"><span class="none">no deps</span></div></div>
     </div>
   </div>
 
@@ -478,17 +496,18 @@ footer a { color: var(--accent); text-decoration: none; }
         <div class="card done" id="card-roxabi-lyra-606"><div class="top"><span class="num">#606</span></div><div class="title">Dockerfile</div><div class="deps">→#607</div></div>
         <div class="card done" id="card-roxabi-lyra-612"><div class="top"><span class="num">#612</span></div><div class="title">paths/env</div><div class="deps">→#607</div></div>
       </div>
-      <div class="card done" id="card-roxabi-lyra-607"><div class="top"><span class="num">#607</span></div><div class="title">nats + hub QL</div><div class="deps">←#606 ←#612 →#608 →#609</div></div>
+      <div class="card done" id="card-roxabi-lyra-607"><div class="top"><span class="num">#607</span></div><div class="title">nats + hub QL</div><div class="deps">←#612 ←#606 →#608</div></div>
+      <div class="card done" id="card-roxabi-lyra-608"><div class="top"><span class="num">#608</span></div><div class="title">tg + disc QL</div><div class="deps">←#607 →#727</div></div>
+      <div class="card ready" id="card-roxabi-lyra-727"><div class="top"><span class="num">#727</span><span class="size">next</span></div><div class="title">podman bootstrap</div><div class="deps">←#608 →#610 →#728 <span class="ext">→D:#670</span></div></div>
+      <div class="card blocked" id="card-roxabi-lyra-610" data-anchor="m1-gate"><div class="top"><span class="num">#610</span></div><div class="title">Makefile Podman</div><div class="deps">←#727 →#611 →#728</div></div>
       <div class="par">
-        <div class="card done" id="card-roxabi-lyra-608"><div class="top"><span class="num">#608</span></div><div class="title">tg + disc QL</div><div class="deps">←#607</div></div>
-        <div class="card ready" id="card-roxabi-lyra-609" data-anchor="m1-gate"><div class="top"><span class="num">#609</span><span class="size">next</span></div><div class="title">stt+tts QL</div><div class="deps">→#610 <span class="ext">→D:#670</span></div></div>
+        <div class="card blocked" id="card-roxabi-lyra-611"><div class="top"><span class="num">#611</span><span class="size">flag day</span></div><div class="title">supervisord cutover</div><div class="deps">←#610</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-728"><div class="top"><span class="num">#728</span><span class="size">F</span></div><div class="title">voicecli QL + GPU</div><div class="deps">←#727 ←#610 →#657 →#661 <span class="ext">←G:#691</span></div></div>
       </div>
-      <div class="card blocked" id="card-roxabi-lyra-610"><div class="top"><span class="num">#610</span></div><div class="title">Makefile Podman</div><div class="deps">←#609 →#611 →#657</div></div>
       <div class="par">
-        <div class="card blocked" id="card-roxabi-lyra-611"><div class="top"><span class="num">#611</span><span class="size">flag day</span></div><div class="title">supervisord cutover</div><div class="deps">←#610 <span class="ext">→H:#701</span></div></div>
-        <div class="card blocked" id="card-roxabi-lyra-657"><div class="top"><span class="num">#657</span></div><div class="title">SHA tags</div><div class="deps">←#610 →#661</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-657"><div class="top"><span class="num">#657</span></div><div class="title">SHA tags</div><div class="deps">←#728</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-661"><div class="top"><span class="num">#661</span></div><div class="title">digest bumps</div><div class="deps">←#728</div></div>
       </div>
-      <div class="card blocked" id="card-roxabi-lyra-661"><div class="top"><span class="num">#661</span></div><div class="title">digest bumps</div><div class="deps">←#657</div></div>
     </div>
   </div>
 
@@ -497,7 +516,7 @@ footer a { color: var(--accent); text-decoration: none; }
     <div class="epic-wrap">
       <div class="epic-banner"><span>#663 · LiteLLM</span><span class="tag">M2</span></div>
       <div class="card done" id="card-roxabi-lyra-674"><div class="top"><span class="num">#674</span></div><div class="title">ModelConfig ext</div><div class="deps">→#665</div></div>
-      <div class="card ready" id="card-roxabi-lyra-665"><div class="top"><span class="num">#665</span></div><div class="title">LiteLLMDriver</div><div class="deps">←#674 →#666 <span class="ext">→D:#671</span></div></div>
+      <div class="card ready" id="card-roxabi-lyra-665"><div class="top"><span class="num">#665</span></div><div class="title">LiteLLMDriver</div><div class="deps">←#674 →#666</div></div>
       <div class="card blocked" id="card-roxabi-lyra-666"><div class="top"><span class="num">#666</span></div><div class="title">drop Anthropic</div><div class="deps">←#665</div></div>
     </div>
   </div>
@@ -507,16 +526,16 @@ footer a { color: var(--accent); text-decoration: none; }
     <div class="epic-wrap">
       <div class="epic-banner"><span>#633 · harness</span><span class="tag">M2</span></div>
       <div class="par">
-        <div class="card done" id="card-roxabi-lyra-634"><div class="top"><span class="num">#634</span></div><div class="title">harness spec</div><div class="deps">→#635 →#636 →#637</div></div>
-        <div class="card defer" id="card-roxabi-lyra-521"><div class="top"><span class="num">#521</span><span class="size">prereq</span></div><div class="title">JS obj store</div><div class="deps">→#635</div></div>
+        <div class="card done" id="card-roxabi-lyra-634"><div class="top"><span class="num">#634</span></div><div class="title">harness spec</div><div class="deps"><span class="none">no deps</span></div></div>
+        <div class="card ready" id="card-roxabi-lyra-521"><div class="top"><span class="num">#521</span><span class="size">prereq</span></div><div class="title">JS obj store</div><div class="deps">→#635 →#636</div></div>
       </div>
       <div class="par">
-        <div class="card blocked" id="card-roxabi-lyra-635"><div class="top"><span class="num">#635</span></div><div class="title">hub history[]</div><div class="deps">←#521 ←#634</div></div>
-        <div class="card ready" id="card-roxabi-lyra-636"><div class="top"><span class="num">#636</span></div><div class="title">NatsHarnessClient</div><div class="deps">←#634 →#637</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-635"><div class="top"><span class="num">#635</span></div><div class="title">hub history[]</div><div class="deps">←#521</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-636"><div class="top"><span class="num">#636</span></div><div class="title">NatsHarnessClient</div><div class="deps">←#521 →#637</div></div>
       </div>
-      <div class="card blocked" id="card-roxabi-lyra-637"><div class="top"><span class="num">#637</span></div><div class="title">harness_adapter</div><div class="deps">←#634 ←#636 →#638 →#639 <span class="ext">→D:#672</span></div></div>
+      <div class="card blocked" id="card-roxabi-lyra-637"><div class="top"><span class="num">#637</span></div><div class="title">harness_adapter</div><div class="deps">←#636 →#638</div></div>
       <div class="card blocked" id="card-roxabi-lyra-638"><div class="top"><span class="num">#638</span></div><div class="title">supervisor wiring</div><div class="deps">←#637 →#639</div></div>
-      <div class="card blocked" id="card-roxabi-lyra-639"><div class="top"><span class="num">#639</span></div><div class="title">integration test</div><div class="deps">←#637 ←#638</div></div>
+      <div class="card blocked" id="card-roxabi-lyra-639"><div class="top"><span class="num">#639</span></div><div class="title">integration test</div><div class="deps">←#638</div></div>
     </div>
   </div>
 
@@ -525,10 +544,10 @@ footer a { color: var(--accent); text-decoration: none; }
     <div class="epic-wrap">
       <div class="epic-banner"><span>#628 · lyra_cli</span><span class="tag">M2</span></div>
       <div class="par">
-        <div class="card ready" id="card-roxabi-lyra-629"><div class="top"><span class="num">#629</span></div><div class="title">NatsCliClient</div><div class="deps">→#631</div></div>
+        <div class="card ready" id="card-roxabi-lyra-629"><div class="top"><span class="num">#629</span></div><div class="title">NatsCliClient</div><div class="deps"><span class="none">no deps</span></div></div>
         <div class="card ready" id="card-roxabi-lyra-630"><div class="top"><span class="num">#630</span></div><div class="title">cli_adapter</div><div class="deps">→#631</div></div>
       </div>
-      <div class="card blocked" id="card-roxabi-lyra-631"><div class="top"><span class="num">#631</span></div><div class="title">supervisor wiring</div><div class="deps">←#629 ←#630 →#632</div></div>
+      <div class="card blocked" id="card-roxabi-lyra-631"><div class="top"><span class="num">#631</span></div><div class="title">supervisor wiring</div><div class="deps">←#630 →#632</div></div>
       <div class="card blocked" id="card-roxabi-lyra-632"><div class="top"><span class="num">#632</span></div><div class="title">integration test</div><div class="deps">←#631</div></div>
     </div>
   </div>
@@ -538,13 +557,14 @@ footer a { color: var(--accent); text-decoration: none; }
     <div class="epic-wrap">
       <div class="epic-banner"><span>#667 · OTel pipeline</span><span class="tag">M3</span></div>
       <div class="card done" id="card-roxabi-lyra-673"><div class="top"><span class="num">#673</span></div><div class="title">ObsProvider+NoOp</div><div class="deps">→#669</div></div>
-      <div class="card ready" id="card-roxabi-lyra-669"><div class="top"><span class="num">#669</span></div><div class="title">OTelObsProvider</div><div class="deps">←#673</div></div>
-      <div class="card blocked" id="card-roxabi-lyra-671"><div class="top"><span class="num">#671</span></div><div class="title">LiteLLM→OTel</div><div class="deps"><span class="ext">←C1:#665</span></div></div>
+      <div class="card ready" id="card-roxabi-lyra-669"><div class="top"><span class="num">#669</span></div><div class="title">OTelObsProvider</div><div class="deps">←#673 →#671</div></div>
+      <div class="card blocked" id="card-roxabi-lyra-671"><div class="top"><span class="num">#671</span></div><div class="title">LiteLLM→OTel</div><div class="deps">←#669 →#670 →#672</div></div>
+      <div class="spacer" aria-hidden="true"></div>
       <div class="spacer" aria-hidden="true"></div>
       <div class="spacer" aria-hidden="true"></div>
       <div class="par">
-        <div class="card blocked" id="card-roxabi-lyra-670" data-anchor-after="m1-gate"><div class="top"><span class="num">#670</span></div><div class="title">Langfuse QL</div><div class="deps"><span class="ext">←B:#609</span></div></div>
-        <div class="card blocked" id="card-roxabi-lyra-672"><div class="top"><span class="num">#672</span></div><div class="title">harness→OTel</div><div class="deps"><span class="ext">←C2:#637</span></div></div>
+        <div class="card blocked" id="card-roxabi-lyra-670" data-anchor-after="m1-gate"><div class="top"><span class="num">#670</span></div><div class="title">Langfuse QL</div><div class="deps">←#671</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-672"><div class="top"><span class="num">#672</span></div><div class="title">harness→OTel</div><div class="deps">←#671</div></div>
       </div>
     </div>
   </div>
@@ -553,24 +573,29 @@ footer a { color: var(--accent); text-decoration: none; }
     <div class="lane-head"><span class="code">E</span><span class="name">Hub stateless</span></div>
     <div class="epic-wrap defer">
       <div class="epic-banner"><span>#640 · hub sheds Pool</span><span class="tag">M4 · deferred</span></div>
-      <div class="card defer" id="card-roxabi-lyra-641"><div class="top"><span class="num">#641</span></div><div class="title">Redis sessions</div><div class="deps">→#642 <span class="ext">←D live</span></div></div>
-      <div class="card defer" id="card-roxabi-lyra-642"><div class="top"><span class="num">#642</span></div><div class="title">hub sheds Pool</div><div class="deps">←#641</div></div>
+      <div class="card ready" id="card-roxabi-lyra-641"><div class="top"><span class="num">#641</span></div><div class="title">Redis sessions</div><div class="deps">→#642 <span class="ext">←D live</span></div></div>
+      <div class="card blocked" id="card-roxabi-lyra-642"><div class="top"><span class="num">#642</span></div><div class="title">hub sheds Pool</div><div class="deps">←#641</div></div>
     </div>
   </div>
 
   <div class="lane" data-lane="f">
     <div class="lane-head"><span class="code">F</span><span class="name">Plugins</span></div>
-    <div class="card ready" id="card-roxabi-lyra-644"><div class="top"><span class="num">#644</span><span class="size">M5</span></div><div class="title">entry-points pip</div><div class="deps">→#645</div></div>
-    <div class="card blocked" id="card-roxabi-lyra-645"><div class="top"><span class="num">#645</span></div><div class="title">PLUGIN.json</div><div class="deps">←#644</div></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#725 · Plugin Layer</span><span class="tag">M5</span></div>
+      <div class="card ready" id="card-roxabi-lyra-644"><div class="top"><span class="num">#644</span><span class="size">M5</span></div><div class="title">entry-points pip</div><div class="deps">→#645</div></div>
+      <div class="card blocked" id="card-roxabi-lyra-645"><div class="top"><span class="num">#645</span></div><div class="title">PLUGIN.json</div><div class="deps">←#644</div></div>
+    </div>
   </div>
 
   <div class="lane" data-lane="g">
     <div class="lane-head"><span class="code">G</span><span class="name">Voice</span></div>
-    <div class="card ready" id="card-roxabi-lyra-658"><div class="top"><span class="num">#658</span></div><div class="title">decouple voicecli</div><div class="deps">→#603</div></div>
-    <div class="card blocked" id="card-roxabi-lyra-603"><div class="top"><span class="num">#603</span></div><div class="title">load-aware route</div><div class="deps">←#658</div></div>
-    <div class="card blocked" id="card-roxabi-lyra-689"><div class="top"><span class="num">#689</span></div><div class="title">S3 · Machine-1 cutover</div><div class="deps">→#690 <span class="ext">←?:#688</span></div></div>
-    <div class="card blocked" id="card-roxabi-lyra-690"><div class="top"><span class="num">#690</span></div><div class="title">S4 · delete lyra-side voice satellites</div><div class="deps">←#689 →#691</div></div>
-    <div class="card blocked" id="card-roxabi-lyra-691"><div class="top"><span class="num">#691</span></div><div class="title">S5 · drop voicecli from pyproject</div><div class="deps">←#690</div></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#658 · voice decouple</span><span class="tag">M1</span></div>
+      <div class="card done" id="card-roxabi-lyra-603"><div class="top"><span class="num">#603</span></div><div class="title">load-aware route</div><div class="deps">→#689</div></div>
+      <div class="card done" id="card-roxabi-lyra-689"><div class="top"><span class="num">#689</span></div><div class="title">S3 · Machine-1 cutover</div><div class="deps">←#603 →#690</div></div>
+      <div class="card ready" id="card-roxabi-lyra-690"><div class="top"><span class="num">#690</span></div><div class="title">S4 · delete lyra-side voice satellites</div><div class="deps">←#689 →#691</div></div>
+      <div class="card blocked" id="card-roxabi-lyra-691"><div class="top"><span class="num">#691</span></div><div class="title">S5 · drop voicecli from pyproject</div><div class="deps">←#690 <span class="ext">→B:#728</span></div></div>
+    </div>
   </div>
 
   <div class="lane" data-lane="h">
@@ -580,17 +605,17 @@ footer a { color: var(--accent); text-decoration: none; }
       <div class="ms-band">M0 tail ∥</div>
       <div class="par">
         <div class="card ready" id="card-roxabi-lyra-695"><div class="top"><span class="num">#695</span></div><div class="title">fail fast on git fetch timeout (check returncode)</div><div class="deps"><span class="none">no deps</span></div></div>
-        <div class="card ready" id="card-roxabi-lyra-696"><div class="top"><span class="num">#696</span></div><div class="title">FAIL_FILE per-SHA pruning</div><div class="deps"><span class="none">no deps</span></div></div>
+        <div class="card ready" id="card-roxabi-lyra-696"><div class="top"><span class="num">#696</span></div><div class="title">FAIL_FILE per-SHA pruning</div><div class="deps">→#694</div></div>
       </div>
-      <div class="card ready" id="card-roxabi-lyra-694"><div class="top"><span class="num">#694</span></div><div class="title">promote ADR-043 Accepted</div><div class="deps">→#697</div></div>
-      <div class="card blocked" id="card-roxabi-lyra-697"><div class="top"><span class="num">#697</span><span class="size">F-lite</span></div><div class="title">roxabi-ops repo · scaffold autodeploy</div><div class="deps">←#694 →#698 →#699 →#700 →#701</div></div>
+      <div class="card blocked" id="card-roxabi-lyra-694"><div class="top"><span class="num">#694</span></div><div class="title">promote ADR-043 Accepted</div><div class="deps">←#696 →#697</div></div>
+      <div class="card blocked" id="card-roxabi-lyra-697"><div class="top"><span class="num">#697</span><span class="size">F-lite</span></div><div class="title">roxabi-ops repo · scaffold autodeploy</div><div class="deps">←#694 →#698 →#699 →#700</div></div>
       <div class="par">
-        <div class="card blocked" id="card-roxabi-lyra-698"><div class="top"><span class="num">#698</span></div><div class="title">lyra/deploy/auto-deploy.yml</div><div class="deps">←#697 →#701 →#702</div></div>
-        <div class="card blocked" id="card-roxabi-lyra-699"><div class="top"><span class="num">#699</span></div><div class="title">voiceCLI repo · deploy/auto-deploy.yml</div><div class="deps">←#697 →#702</div></div>
-        <div class="card blocked" id="card-roxabi-lyra-700"><div class="top"><span class="num">#700</span></div><div class="title">roxabi-* repos · pull-only auto-deploy.yml manifests</div><div class="deps">←#697 →#702</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-698"><div class="top"><span class="num">#698</span></div><div class="title">lyra/deploy/auto-deploy.yml</div><div class="deps">←#697</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-699"><div class="top"><span class="num">#699</span></div><div class="title">voiceCLI repo · deploy/auto-deploy.yml</div><div class="deps">←#697</div></div>
+        <div class="card blocked" id="card-roxabi-lyra-700"><div class="top"><span class="num">#700</span></div><div class="title">roxabi-* repos · pull-only auto-deploy.yml manifests</div><div class="deps">←#697 →#701</div></div>
       </div>
-      <div class="card blocked" id="card-roxabi-lyra-701"><div class="top"><span class="num">#701</span><span class="size">F-lite</span></div><div class="title">roxabi-ops repo · migrate lyra.service</div><div class="deps">←#697 ←#698 →#702 <span class="ext">←B:#611</span></div></div>
-      <div class="card blocked" id="card-roxabi-lyra-702"><div class="top"><span class="num">#702</span></div><div class="title">cutover</div><div class="deps">←#698 ←#699 ←#700 ←#701</div></div>
+      <div class="card blocked" id="card-roxabi-lyra-701"><div class="top"><span class="num">#701</span><span class="size">F-lite</span></div><div class="title">roxabi-ops repo · migrate lyra.service</div><div class="deps">←#700 →#702</div></div>
+      <div class="card blocked" id="card-roxabi-lyra-702"><div class="top"><span class="num">#702</span></div><div class="title">cutover</div><div class="deps">←#701</div></div>
     </div>
   </div>
 
@@ -598,7 +623,8 @@ footer a { color: var(--accent); text-decoration: none; }
     <div class="lane-head"><span class="code">I</span><span class="name">Vault ingest</span></div>
     <div class="epic-wrap">
       <div class="epic-banner"><span>#704 · vault+intel NATS bus</span><span class="tag">M2</span></div>
-      <div class="card ready" id="card-roxabi-lyra-703"><div class="top"><span class="num">#703</span></div><div class="title">architecture: route vault writes through NATS (decouple #links from synchronous vault)</div><div class="deps"><span class="ext">→?:#24</span></div></div>
+      <div class="card ready" id="card-roxabi-lyra-703"><div class="top"><span class="num">#703</span></div><div class="title">architecture: route vault writes through NATS (decouple #links from synchronous vault)</div><div class="deps"><span class="ext">→Roxabi/roxabi-vault#24</span></div></div>
+      <div class="card blocked" id="card-roxabi-roxabi-vault-24"><div class="top"><span class="num">#24</span><span class="rbadge" data-repo-badge title="Roxabi/roxabi-vault">roxabi-vault</span></div><div class="title">feature: NATS subscriber mode</div><div class="deps"><span class="ext">←Roxabi/lyra#703</span></div></div>
     </div>
   </div>
 
@@ -617,13 +643,16 @@ footer a { color: var(--accent); text-decoration: none; }
     <div class="card ready"><div class="top"><span class="num">#601</span><span class="size">refac</span></div><div class="title">resume_count unify</div><div class="deps"><span class="none">no deps</span></div></div>
     <div class="card ready"><div class="top"><span class="num">#653</span><span class="size">refac</span></div><div class="title">stores relocation</div><div class="deps"><span class="none">no deps</span></div></div>
     <div class="card blocked"><div class="top"><span class="num">#643</span><span class="size">refac · 50%</span></div><div class="title">codec tail</div><div class="deps"><span class="none">no deps</span></div></div>
+    <div class="card done"><div class="top"><span class="num">#709</span></div><div class="title">multi-repo support</div><div class="deps"><span class="none">no deps</span></div></div>
+    <div class="card ready"><div class="top"><span class="num">#720</span></div><div class="title">deferred polish from #709 review</div><div class="deps"><span class="none">no deps</span></div></div>
   </div>
 </div>
 
 <div class="cross-deps">
   <h3>Cross-lane critical path (to M3 observability live)</h3>
   <ul>
-    <li><span class="kind">M3 gate</span>B:#609 → D:#670 — Langfuse needs containerization</li>
+    <li><span class="kind">M3 gate</span>B:#727 → D:#670 — Langfuse needs podman runtime</li>
+    <li><span class="kind">cross-lane</span>G:#691 → B:#728 — voicecli nats-serve verified before container cutover</li>
     <li><span class="kind">M3 gate</span>C1:#665 → D:#671 — LiteLLM OTel callback</li>
     <li><span class="kind">M3 gate</span>C2:#637 → D:#672 — harness OTel wiring</li>
     <li><span class="kind">M2 gate</span>#521 + #634 → C2:#635 — JetStream obj store prereq</li>

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Lyra — v2 Dependency Graph",
+    "title": "Lyra \u2014 v2 Dependency Graph",
     "date": "2026-04-15",
     "issue": {
       "repo": "Roxabi/lyra",
@@ -11,28 +11,29 @@
     "cat_label": "Plan",
     "color": "amber",
     "repos": [
-      "Roxabi/lyra"
+      "Roxabi/lyra",
+      "Roxabi/roxabi-vault"
     ]
   },
   "title_rules": [
     {
       "pattern": "^(feat|fix|chore|docs|refactor|test|ci|perf|style|epic)(\\([^)]+\\))?\\s+\\[([^\\]]+)\\]\\s*:\\s*",
-      "replacement": "$3 · "
+      "replacement": "$3 \u00b7 "
     },
     {
       "pattern": "^(feat|fix|chore|docs|refactor|test|ci|perf|style|epic)(\\([^)]+\\))?\\[([^\\]]+)\\]\\s*:\\s*",
-      "replacement": "$3 · "
+      "replacement": "$3 \u00b7 "
     },
     {
       "pattern": "^(feat|fix|chore|docs|refactor|test|ci|perf|style|epic)(\\([^)]+\\))?\\s*:\\s*",
       "replacement": ""
     },
     {
-      "pattern": "^M\\d+\\s*[—\\-]\\s*",
+      "pattern": "^M\\d+\\s*[\u2014\\-]\\s*",
       "replacement": ""
     },
     {
-      "pattern": "\\s*[—\\-]\\s+.+$",
+      "pattern": "\\s*[\u2014\\-]\\s+.+$",
       "replacement": ""
     },
     {
@@ -42,10 +43,14 @@
   ],
   "lanes": [
     {
-      "code": "a",
+      "code": "a1",
       "name": "NATS maturity",
-      "color": "a",
-      "epic": null,
+      "color": "a1",
+      "epic": {
+        "issue": 726,
+        "label": "NATS maturity",
+        "tag": "M0\u2192M1"
+      },
       "order": [
         {
           "repo": "Roxabi/lyra",
@@ -108,14 +113,59 @@
             "repo": "Roxabi/lyra",
             "issue": 568
           },
-          "text": "M0 tail ∥"
+          "text": "M0 tail \u2225"
         },
         {
           "before": {
             "repo": "Roxabi/lyra",
             "issue": 660
           },
-          "text": "M1 ∥"
+          "text": "M1 \u2225"
+        }
+      ]
+    },
+    {
+      "code": "a2",
+      "name": "roxabi-nats SDK",
+      "color": "a2",
+      "epic": {
+        "issue": 734,
+        "label": "roxabi-nats SDK",
+        "tag": "SDK"
+      },
+      "order": [
+        {
+          "repo": "Roxabi/lyra",
+          "issue": 730
+        },
+        {
+          "repo": "Roxabi/lyra",
+          "issue": 731
+        },
+        {
+          "repo": "Roxabi/lyra",
+          "issue": 729
+        }
+      ],
+      "par_groups": {
+        "g0": [
+          {
+            "repo": "Roxabi/lyra",
+            "issue": 730
+          },
+          {
+            "repo": "Roxabi/lyra",
+            "issue": 731
+          }
+        ]
+      },
+      "bands": [
+        {
+          "before": {
+            "repo": "Roxabi/lyra",
+            "issue": 729
+          },
+          "text": "v0.2.0 cut"
         }
       ]
     },
@@ -147,7 +197,7 @@
         },
         {
           "repo": "Roxabi/lyra",
-          "issue": 609
+          "issue": 727
         },
         {
           "repo": "Roxabi/lyra",
@@ -156,6 +206,10 @@
         {
           "repo": "Roxabi/lyra",
           "issue": 611
+        },
+        {
+          "repo": "Roxabi/lyra",
+          "issue": 728
         },
         {
           "repo": "Roxabi/lyra",
@@ -180,21 +234,21 @@
         "b1": [
           {
             "repo": "Roxabi/lyra",
-            "issue": 608
+            "issue": 611
           },
           {
             "repo": "Roxabi/lyra",
-            "issue": 609
+            "issue": 728
           }
         ],
         "b2": [
           {
             "repo": "Roxabi/lyra",
-            "issue": 611
+            "issue": 657
           },
           {
             "repo": "Roxabi/lyra",
-            "issue": 657
+            "issue": 661
           }
         ]
       },
@@ -382,7 +436,7 @@
       "epic": {
         "issue": 640,
         "label": "hub sheds Pool",
-        "tag": "M4 · deferred",
+        "tag": "M4 \u00b7 deferred",
         "defer": true
       },
       "order": [
@@ -402,7 +456,11 @@
       "code": "f",
       "name": "Plugins",
       "color": "f",
-      "epic": null,
+      "epic": {
+        "issue": 725,
+        "label": "Plugin Layer",
+        "tag": "M5"
+      },
       "order": [
         {
           "repo": "Roxabi/lyra",
@@ -420,12 +478,12 @@
       "code": "g",
       "name": "Voice",
       "color": "g",
-      "epic": null,
+      "epic": {
+        "issue": 658,
+        "label": "voice decouple",
+        "tag": "M1"
+      },
       "order": [
-        {
-          "repo": "Roxabi/lyra",
-          "issue": 658
-        },
         {
           "repo": "Roxabi/lyra",
           "issue": 603
@@ -525,7 +583,7 @@
             "repo": "Roxabi/lyra",
             "issue": 695
           },
-          "text": "M0 tail ∥"
+          "text": "M0 tail \u2225"
         }
       ]
     },
@@ -542,6 +600,10 @@
         {
           "repo": "Roxabi/lyra",
           "issue": 703
+        },
+        {
+          "repo": "Roxabi/roxabi-vault",
+          "issue": 24
         }
       ],
       "par_groups": {},
@@ -573,6 +635,14 @@
       {
         "repo": "Roxabi/lyra",
         "issue": 643
+      },
+      {
+        "repo": "Roxabi/lyra",
+        "issue": 709
+      },
+      {
+        "repo": "Roxabi/lyra",
+        "issue": 720
       }
     ]
   },
@@ -609,13 +679,17 @@
     "Roxabi/lyra#608": {
       "title": "tg + disc QL"
     },
-    "Roxabi/lyra#609": {
-      "size": "next",
-      "title": "stt+tts QL",
+    "Roxabi/lyra#610": {
+      "title": "Makefile Podman",
       "anchor": "m1-gate"
     },
-    "Roxabi/lyra#610": {
-      "title": "Makefile Podman"
+    "Roxabi/lyra#727": {
+      "size": "next",
+      "title": "podman bootstrap"
+    },
+    "Roxabi/lyra#728": {
+      "size": "F",
+      "title": "voicecli QL + GPU"
     },
     "Roxabi/lyra#611": {
       "size": "flag day",
@@ -661,14 +735,14 @@
     "Roxabi/lyra#641": {
       "title": "Redis sessions",
       "extra_deps_ext": [
-        "←D live"
+        "\u2190D live"
       ]
     },
     "Roxabi/lyra#642": {
       "title": "hub sheds Pool"
     },
     "Roxabi/lyra#643": {
-      "size": "refac · 50%",
+      "size": "refac \u00b7 50%",
       "title": "codec tail",
       "status": "blocked"
     },
@@ -680,7 +754,7 @@
       "title": "PLUGIN.json"
     },
     "Roxabi/lyra#646": {
-      "size": "F · docs first",
+      "size": "F \u00b7 docs first",
       "title": "agents.yml gen"
     },
     "Roxabi/lyra#653": {
@@ -718,10 +792,10 @@
       "anchor_after": "m1-gate"
     },
     "Roxabi/lyra#671": {
-      "title": "LiteLLM→OTel"
+      "title": "LiteLLM\u2192OTel"
     },
     "Roxabi/lyra#672": {
-      "title": "harness→OTel"
+      "title": "harness\u2192OTel"
     },
     "Roxabi/lyra#673": {
       "title": "ObsProvider+NoOp"
@@ -742,6 +816,12 @@
     "Roxabi/lyra#521": {
       "size": "prereq",
       "title": "JS obj store"
+    },
+    "Roxabi/lyra#725": {
+      "title": "Plugin Layer"
+    },
+    "Roxabi/lyra#726": {
+      "title": "NATS maturity"
     }
   },
   "extra_deps": {
@@ -752,6 +832,16 @@
       ],
       "Roxabi/lyra#608": [
         "Roxabi/lyra#607"
+      ],
+      "Roxabi/lyra#727": [
+        "Roxabi/lyra#608"
+      ],
+      "Roxabi/lyra#610": [
+        "Roxabi/lyra#727"
+      ],
+      "Roxabi/lyra#728": [
+        "Roxabi/lyra#727",
+        "Roxabi/lyra#691"
       ],
       "Roxabi/lyra#665": [
         "Roxabi/lyra#674"
@@ -768,8 +858,18 @@
         "Roxabi/lyra#607"
       ],
       "Roxabi/lyra#607": [
-        "Roxabi/lyra#608",
-        "Roxabi/lyra#609"
+        "Roxabi/lyra#608"
+      ],
+      "Roxabi/lyra#608": [
+        "Roxabi/lyra#727"
+      ],
+      "Roxabi/lyra#727": [
+        "Roxabi/lyra#610",
+        "Roxabi/lyra#728",
+        "Roxabi/lyra#670"
+      ],
+      "Roxabi/lyra#691": [
+        "Roxabi/lyra#728"
       ],
       "Roxabi/lyra#673": [
         "Roxabi/lyra#669"
@@ -782,35 +882,39 @@
   "cross_deps": [
     {
       "kind": "M3 gate",
-      "text": "B:#609 → D:#670 — Langfuse needs containerization"
+      "text": "B:#727 \u2192 D:#670 \u2014 Langfuse needs podman runtime"
+    },
+    {
+      "kind": "cross-lane",
+      "text": "G:#691 \u2192 B:#728 \u2014 voicecli nats-serve verified before container cutover"
     },
     {
       "kind": "M3 gate",
-      "text": "C1:#665 → D:#671 — LiteLLM OTel callback"
+      "text": "C1:#665 \u2192 D:#671 \u2014 LiteLLM OTel callback"
     },
     {
       "kind": "M3 gate",
-      "text": "C2:#637 → D:#672 — harness OTel wiring"
+      "text": "C2:#637 \u2192 D:#672 \u2014 harness OTel wiring"
     },
     {
       "kind": "M2 gate",
-      "text": "#521 + #634 → C2:#635 — JetStream obj store prereq"
+      "text": "#521 + #634 \u2192 C2:#635 \u2014 JetStream obj store prereq"
     },
     {
       "kind": "M4 gate",
-      "text": "C2:#637 → E:#641 — harness ships before hub sheds Pool"
+      "text": "C2:#637 \u2192 E:#641 \u2014 harness ships before hub sheds Pool"
     },
     {
       "kind": "M4 gate",
-      "text": "D live → E:#641 — traces needed for stateless debug"
+      "text": "D live \u2192 E:#641 \u2014 traces needed for stateless debug"
     },
     {
       "kind": "independent",
-      "text": "#658 → #603 — voicecli contract before routing"
+      "text": "#658 \u2192 #603 \u2014 voicecli contract before routing"
     },
     {
       "kind": "cross-repo",
-      "text": "I:#703 → roxabi-vault#24 — NATS subscriber depends on architecture"
+      "text": "I:#703 \u2192 roxabi-vault#24 \u2014 NATS subscriber depends on architecture"
     }
   ]
 }

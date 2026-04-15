@@ -742,7 +742,8 @@ CSS_BASE = """\
   --text-dim:    #6b7280;
   --accent:      #e85d04;
   --accent-hi:   #f97316;
-  --lane-a:      #22c55e;
+  --lane-a1:     #22c55e;
+  --lane-a2:     #6366f1;
   --lane-b:      #3b82f6;
   --lane-c1:     #a855f7;
   --lane-c2:     #d946ef;
@@ -790,7 +791,7 @@ body {
   line-height: 1.4;
 }
 header {
-  max-width: 1750px;
+  max-width: 100%;
   margin: 0 auto 18px;
   display: flex;
   justify-content: space-between;
@@ -840,7 +841,7 @@ h1 span { color: var(--accent); }
 
 /* Flex-column lanes layout */
 .lanes {
-  max-width: 1750px;
+  max-width: 100%;
   margin: 0 auto;
   display: flex;
   gap: 8px;
@@ -877,7 +878,8 @@ h1 span { color: var(--accent); }
   margin-top: 2px;
   font-weight: 500;
 }
-.lane[data-lane="a"]     > .lane-head { border-top-color: var(--lane-a); }
+.lane[data-lane="a1"]    > .lane-head { border-top-color: var(--lane-a1); }
+.lane[data-lane="a2"]    > .lane-head { border-top-color: var(--lane-a2); }
 .lane[data-lane="b"]     > .lane-head { border-top-color: var(--lane-b); }
 .lane[data-lane="c1"]    > .lane-head { border-top-color: var(--lane-c1); }
 .lane[data-lane="c2"]    > .lane-head { border-top-color: var(--lane-c2); }
@@ -1041,7 +1043,7 @@ h1 span { color: var(--accent); }
 }
 
 .standalone {
-  max-width: 1750px;
+  max-width: 100%;
   margin: 10px auto 0;
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -1075,7 +1077,7 @@ h1 span { color: var(--accent); }
 }
 
 .cross-deps {
-  max-width: 1750px;
+  max-width: 100%;
   margin: 18px auto 0;
   padding: 14px 18px;
   background: var(--bg-panel);
@@ -1122,7 +1124,7 @@ h1 span { color: var(--accent); }
 }
 
 footer {
-  max-width: 1750px;
+  max-width: 100%;
   margin: 16px auto 0;
   text-align: center;
   font-size: 11px;
@@ -1293,7 +1295,7 @@ def build_html(layout: dict, gh_issues: dict) -> str:
     legend_xref = (
         '<span class="pill">'
         '<span style="color: var(--dep-ext); font-weight: 700;">'
-        "B:#609</span> = cross-lane ref</span>"
+        "B:#727</span> = cross-lane ref</span>"
     )
 
     return f"""<!DOCTYPE html>

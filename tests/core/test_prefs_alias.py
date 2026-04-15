@@ -78,9 +78,7 @@ class TestPrefsAliasVisibility:
         assert "tg:user:1" not in user_ids_with_pref
 
     @pytest.mark.asyncio
-    async def test_no_alias_returns_own_prefs(
-        self, prefs_store: PrefsStore
-    ) -> None:
+    async def test_no_alias_returns_own_prefs(self, prefs_store: PrefsStore) -> None:
         """Without alias_store, get_prefs works normally for the requesting ID."""
         await prefs_store.set_pref("tg:user:1", "tts_language", "de")
         prefs = await prefs_store.get_prefs("tg:user:1")

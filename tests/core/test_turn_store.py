@@ -445,9 +445,7 @@ class TestPoolSessions:
 
         assert after > before
 
-    async def test_get_last_session_returns_most_recent(
-        self, store: TurnStore
-    ) -> None:
+    async def test_get_last_session_returns_most_recent(self, store: TurnStore) -> None:
         """get_last_session returns the most recently started session, not first."""
         # Arrange — register two sessions with a measurable time gap
         await store.start_session("sess-first", "pool:order")

@@ -8,6 +8,7 @@ Subscribes to:
 Publishes:
   lyra.voice.tts.heartbeat         (every 5s)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,10 +20,10 @@ import time
 
 import nats
 
-NATS_URL    = os.getenv("NATS_URL", "nats://localhost:4222")
-WORKER_ID   = os.getenv("TTS_STUB_WORKER_ID", "tts-stub-01")
-VRAM_USED   = int(os.getenv("TTS_STUB_VRAM_USED_MB", "4800"))
-VRAM_TOTAL  = int(os.getenv("TTS_STUB_VRAM_TOTAL_MB", "16384"))
+NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
+WORKER_ID = os.getenv("TTS_STUB_WORKER_ID", "tts-stub-01")
+VRAM_USED = int(os.getenv("TTS_STUB_VRAM_USED_MB", "4800"))
+VRAM_TOTAL = int(os.getenv("TTS_STUB_VRAM_TOTAL_MB", "16384"))
 HB_INTERVAL = float(os.getenv("TTS_STUB_HB_INTERVAL", "5"))
 
 # Minimal valid WAV: 44-byte header + 1 sample of silence
@@ -34,8 +35,8 @@ _SILENT_WAV = (
 _SILENT_WAV_B64 = base64.b64encode(_SILENT_WAV).decode()
 
 _active = 0
-_start  = time.monotonic()
-_stop   = asyncio.Event()
+_start = time.monotonic()
+_stop = asyncio.Event()
 
 
 async def handle_request(msg: nats.aio.client.Msg) -> None:

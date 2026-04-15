@@ -24,8 +24,8 @@ from lyra.core.message import (
 )
 from lyra.core.render_events import RenderEvent
 from lyra.core.trust import TrustLevel
-from lyra.nats._serialize import serialize
 from lyra.nats.render_event_codec import NatsRenderEventCodec
+from roxabi_nats._serialize import serialize
 
 log = logging.getLogger(__name__)
 

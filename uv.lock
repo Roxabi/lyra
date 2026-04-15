@@ -8,6 +8,10 @@ resolution-markers = [
 ]
 
 [manifest]
+members = [
+    "lyra",
+    "roxabi-nats",
+]
 overrides = [
     { name = "aiohttp", specifier = ">=3.13.4" },
     { name = "ml-dtypes", specifier = ">=0.5" },
@@ -1150,6 +1154,7 @@ dependencies = [
     { name = "nkeys" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "roxabi-nats" },
     { name = "roxabi-vault" },
     { name = "tabulate" },
     { name = "telegramify-markdown" },
@@ -1190,6 +1195,7 @@ requires-dist = [
     { name = "nkeys", specifier = ">=0.1" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "roxabi-nats", editable = "packages/roxabi-nats" },
     { name = "roxabi-vault", git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging" },
     { name = "tabulate", specifier = ">=0.9" },
     { name = "telegramify-markdown", specifier = ">=1.1.0" },
@@ -2255,6 +2261,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b3/c6/f3b320c27991c46f43ee9d856302c70dc2d0fb2dba4842ff739d5f46b393/rich-14.3.3.tar.gz", hash = "sha256:b8daa0b9e4eef54dd8cf7c86c03713f53241884e814f4e2f5fb342fe520f639b", size = 230582, upload-time = "2026-02-19T17:23:12.474Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/14/25/b208c5683343959b670dc001595f2f3737e051da617f66c31f7c4fa93abc/rich-14.3.3-py3-none-any.whl", hash = "sha256:793431c1f8619afa7d3b52b2cdec859562b950ea0d4b6b505397612db8d5362d", size = 310458, upload-time = "2026-02-19T17:23:13.732Z" },
+]
+
+[[package]]
+name = "roxabi-nats"
+version = "0.1.0"
+source = { editable = "packages/roxabi-nats" }
+dependencies = [
+    { name = "nats-py" },
+    { name = "nkeys" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "nats-py", specifier = ">=2.6" },
+    { name = "nkeys", specifier = ">=0.1" },
 ]
 
 [[package]]

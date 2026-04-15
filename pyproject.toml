@@ -18,6 +18,7 @@ dependencies = [
     "httpx[asyncio]>=0.28",
     "python-dotenv>=1.2.2",
     # NATS transport (NatsBus — issue #455, Slice C of #445)
+    "roxabi-nats",
     "nats-py>=2.6",
     "nkeys>=0.1",
     # Agent backends
@@ -66,7 +67,11 @@ override-dependencies = [
 [tool.uv.extra-build-dependencies]
 pkuseg = ["numpy"]
 
+[tool.uv.workspace]
+members = ["packages/roxabi-nats"]
+
 [tool.uv.sources]
+roxabi-nats = { workspace = true }
 roxabi-vault = { git = "https://github.com/Roxabi/roxabi-vault.git", branch = "staging" }
 voicecli = { git = "https://github.com/Roxabi/voiceCLI.git", branch = "staging" }
 
@@ -76,6 +81,7 @@ packages = ["src/lyra"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+norecursedirs = ["packages"]
 addopts = "--cov=lyra --cov-report=term-missing --cov-report=xml --cov-fail-under=50"
 
 [tool.coverage.run]
@@ -88,7 +94,7 @@ show_missing = true
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["src", "tests"]
+include = ["src", "tests", "packages/roxabi-nats/src"]
 exclude = ["tests/dep_graph"]
 venvPath = "."
 venv = ".venv"
@@ -118,6 +124,7 @@ reportUnknownLambdaType = "none"
 reportMissingTypeArgument = "none"
 
 [tool.ruff]
+src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests"]
 exclude = [".claude/worktrees", "deploy"]
 
 [tool.ruff.lint]

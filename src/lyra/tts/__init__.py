@@ -269,7 +269,7 @@ class TTSService:
 
         Returns OGG/Opus audio with duration_ms and waveform_b64 populated.
         """
-        from voicecli import generate_async
+        from voicecli import generate_async  # type: ignore[import-missing]
 
         # voicecli rejects newlines — collapse to spaces before synthesis.
         text = " ".join(text.splitlines())

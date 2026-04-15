@@ -24,9 +24,7 @@ def _create_auth_db(path: Path) -> None:
     conn.execute(
         "CREATE TABLE bot_agent_map (platform TEXT, bot_id TEXT, agent_name TEXT)"
     )
-    conn.execute(
-        "CREATE TABLE agent_runtime_state (agent_name TEXT PRIMARY KEY)"
-    )
+    conn.execute("CREATE TABLE agent_runtime_state (agent_name TEXT PRIMARY KEY)")
     conn.execute("CREATE TABLE bot_secrets (bot_id TEXT PRIMARY KEY)")
     conn.execute(
         "CREATE TABLE user_prefs"
@@ -92,9 +90,7 @@ class TestHasSentinel:
         # Arrange — table exists but has no rows (partial crash scenario)
         path = tmp_path / "partial.db"
         conn = sqlite3.connect(str(path))
-        conn.execute(
-            "CREATE TABLE _migration_complete (migrated_at TEXT NOT NULL)"
-        )
+        conn.execute("CREATE TABLE _migration_complete (migrated_at TEXT NOT NULL)")
         conn.commit()
         conn.close()
         # Act
@@ -128,9 +124,7 @@ class TestAtomicTableCopy:
         agents = conn.execute("SELECT name FROM agents").fetchall()
         assert len(agents) == 1
         assert agents[0][0] == "test-agent"
-        sentinel = conn.execute(
-            "SELECT 1 FROM _migration_complete LIMIT 1"
-        ).fetchone()
+        sentinel = conn.execute("SELECT 1 FROM _migration_complete LIMIT 1").fetchone()
         assert sentinel is not None
         conn.close()
 
@@ -264,9 +258,7 @@ class TestEnsureDiscordDb:
         # Arrange — auth.db with discord_threads table, discord.db absent
         _create_auth_db(tmp_path / "auth.db")
         conn = sqlite3.connect(str(tmp_path / "auth.db"))
-        conn.execute(
-            "INSERT INTO discord_threads VALUES ('thread-1', 'main')"
-        )
+        conn.execute("INSERT INTO discord_threads VALUES ('thread-1', 'main')")
         conn.commit()
         conn.close()
         discord_path = tmp_path / "discord.db"

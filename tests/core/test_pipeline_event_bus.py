@@ -113,9 +113,9 @@ class TestPipelineEventBus:
         with caplog.at_level(logging.WARNING):
             bus.emit(_make_event())
             bus.emit(_make_event())  # triggers warning
-        assert any(
-            "queue full" in r.message for r in caplog.records
-        ), f"Expected queue full warning, got: {[r.message for r in caplog.records]}"
+        assert any("queue full" in r.message for r in caplog.records), (
+            f"Expected queue full warning, got: {[r.message for r in caplog.records]}"
+        )
 
     def test_queue_full_warning_rate_limited(
         self, caplog: pytest.LogCaptureFixture
@@ -128,9 +128,7 @@ class TestPipelineEventBus:
             # Emit 5 more — all dropped, but only 1 warning
             for _ in range(5):
                 bus.emit(_make_event())
-        warn_count = sum(
-            1 for r in caplog.records if "queue full" in r.message
-        )
+        warn_count = sum(1 for r in caplog.records if "queue full" in r.message)
         assert warn_count == 1
 
     def test_external_subscriber(self) -> None:
@@ -173,9 +171,7 @@ class TestPipelineEventBus:
 
 
 class TestAuditConsumer:
-    async def test_logs_structured_json(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_logs_structured_json(self, caplog: pytest.LogCaptureFixture) -> None:
         bus = PipelineEventBus()
         q = bus.subscribe()
         consumer = AuditConsumer(q)
@@ -325,9 +321,7 @@ class TestMiddlewarePipelineEmission:
         q = bus.subscribe()
         hub = _make_hub()
 
-        pipeline = MiddlewarePipeline(
-            [_DropMiddleware()], hub, event_bus=bus
-        )
+        pipeline = MiddlewarePipeline([_DropMiddleware()], hub, event_bus=bus)
         msg = make_inbound_message(platform="telegram")
         await pipeline.process(msg)
 
@@ -345,9 +339,7 @@ class TestMiddlewarePipelineEmission:
         q = bus.subscribe()
         hub = _make_hub()
 
-        pipeline = MiddlewarePipeline(
-            [_DropMiddleware()], hub, event_bus=bus
-        )
+        pipeline = MiddlewarePipeline([_DropMiddleware()], hub, event_bus=bus)
         msg = make_inbound_message(platform="telegram")
         await pipeline.process(msg)
 
@@ -363,9 +355,7 @@ class TestMiddlewarePipelineEmission:
     async def test_no_events_when_bus_is_none(self) -> None:
         """Pipeline with event_bus=None emits nothing — no errors."""
         hub = _make_hub()
-        pipeline = MiddlewarePipeline(
-            [_PassthroughMiddleware()], hub, event_bus=None
-        )
+        pipeline = MiddlewarePipeline([_PassthroughMiddleware()], hub, event_bus=None)
         msg = make_inbound_message(platform="telegram")
         result = await pipeline.process(msg)
         assert result.action == Action.DROP  # end of chain

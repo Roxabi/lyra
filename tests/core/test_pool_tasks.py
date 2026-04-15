@@ -329,5 +329,3 @@ class TestPoolExceptionHandling:
         ][1]
         content = second_call_response.content
         assert "good" in content.lower() or content != ""
-
-

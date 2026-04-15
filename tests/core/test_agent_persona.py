@@ -53,9 +53,7 @@ class TestComposeSystemPromptFromJson:
         assert "Be thorough." in result
 
     def test_voice_transcript_instruction_appended(self) -> None:
-        result = compose_system_prompt_from_json(
-            {"identity": {"display_name": "Bot"}}
-        )
+        result = compose_system_prompt_from_json({"identity": {"display_name": "Bot"}})
         assert "Voice messages" in result
         assert "voice_transcript" in result
 

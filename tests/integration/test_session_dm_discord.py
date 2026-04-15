@@ -1,4 +1,5 @@
-"""Integration test — Discord DM handler injects thread_session_id into inbound message.
+"""Integration test — Discord DM handler injects thread_session_id
+into inbound message.
 """
 
 from __future__ import annotations

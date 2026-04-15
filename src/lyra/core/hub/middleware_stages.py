@@ -65,8 +65,12 @@ class ValidatePlatformMiddleware:
                 msg.platform,
                 msg.id,
             )
-            ctx.trace("inbound", "platform_invalid",
-                      platform=msg.platform, action=Action.DROP.value)
+            ctx.trace(
+                "inbound",
+                "platform_invalid",
+                platform=msg.platform,
+                action=Action.DROP.value,
+            )
             ctx.emit(
                 MessageDropped(
                     msg_id=msg.id, stage=type(self).__name__, reason="unknown_platform"
@@ -214,9 +218,12 @@ class CreatePoolMiddleware:
         )
         ctx.pool = pool
         pool_id_token = TraceContext.set_pool_id(ctx.binding.pool_id)
-        ctx.trace("pool", "agent_selected",
+        ctx.trace(
+            "pool",
+            "agent_selected",
             agent=ctx.binding.agent_name,
-            pool_id=ctx.binding.pool_id)
+            pool_id=ctx.binding.pool_id,
+        )
 
         ctx.router = getattr(ctx.agent, "command_router", None)
 

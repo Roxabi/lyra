@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from lyra.nats.circuit_breaker import NatsCircuitBreaker
+from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 
 class TestNatsCircuitBreaker:
@@ -58,7 +58,7 @@ class TestNatsCircuitBreaker:
         assert cb.is_open() is True
         # Act — monkeypatch monotonic so the timeout window has passed
         monkeypatch.setattr(
-            "lyra.nats.circuit_breaker.time.monotonic",
+            "roxabi_nats.circuit_breaker.time.monotonic",
             lambda: cb._open_until + 1.0,
         )
         # Assert — circuit is half-open (treated as closed — probe allowed)
@@ -74,7 +74,7 @@ class TestNatsCircuitBreaker:
         cb.record_failure()
         open_until_before = cb._open_until
         monkeypatch.setattr(
-            "lyra.nats.circuit_breaker.time.monotonic",
+            "roxabi_nats.circuit_breaker.time.monotonic",
             lambda: open_until_before + 1.0,
         )
         assert cb.is_open() is False  # half-open

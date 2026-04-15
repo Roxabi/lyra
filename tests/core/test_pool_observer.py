@@ -275,9 +275,7 @@ class TestLogTurnAsyncErrorPath:
                 content="hello",
             )
 
-        assert any(
-            "turn_store write failed" in r.message for r in caplog.records
-        )
+        assert any("turn_store write failed" in r.message for r in caplog.records)
 
 
 class TestSessionUpdateAsyncErrorPath:
@@ -298,9 +296,7 @@ class TestSessionUpdateAsyncErrorPath:
             # Act — must not raise
             await obs.session_update_async(msg)
 
-        assert any(
-            "session_update failed" in r.message for r in caplog.records
-        )
+        assert any("session_update failed" in r.message for r in caplog.records)
 
 
 class TestAppendErrorPath:
@@ -321,9 +317,7 @@ class TestAppendErrorPath:
             # Act — must not raise
             await obs.append(msg, session_id=_SESSION_ID)
 
-        assert any(
-            "turn_logger failed" in r.message for r in caplog.records
-        )
+        assert any("turn_logger failed" in r.message for r in caplog.records)
 
 
 class TestIndexTurnAsyncErrorPath:
@@ -343,6 +337,4 @@ class TestIndexTurnAsyncErrorPath:
             # Act — must not raise
             await obs.index_turn_async("msg-42", session_id=_SESSION_ID, role="user")
 
-        assert any(
-            "message_index upsert failed" in r.message for r in caplog.records
-        )
+        assert any("message_index upsert failed" in r.message for r in caplog.records)

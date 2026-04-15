@@ -20,7 +20,7 @@ import pytest
 from lyra.core.hub.message_pipeline import ResumeStatus
 from lyra.core.hub.middleware import PipelineContext
 from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
-from lyra.nats._sanitize import PLATFORM_META_ALLOWLIST, sanitize_platform_meta
+from roxabi_nats._sanitize import PLATFORM_META_ALLOWLIST, sanitize_platform_meta
 from tests.core.conftest import _make_hub, make_inbound_message
 
 # ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ class TestSanitizePlatformMeta:
         meta = {"chat_id": 1, "evil_key": "x", "_internal": "y"}
 
         # Act
-        with caplog.at_level(logging.DEBUG, logger="lyra.nats._sanitize"):
+        with caplog.at_level(logging.DEBUG, logger="roxabi_nats._sanitize"):
             sanitize_platform_meta(meta)
 
         # Assert — at least one debug record mentions the stripped keys
@@ -127,7 +127,7 @@ class TestSanitizePlatformMeta:
         meta = {"chat_id": 1, "is_group": False}
 
         # Act
-        with caplog.at_level(logging.DEBUG, logger="lyra.nats._sanitize"):
+        with caplog.at_level(logging.DEBUG, logger="roxabi_nats._sanitize"):
             sanitize_platform_meta(meta)
 
         # Assert — no debug records emitted
@@ -139,13 +139,13 @@ class TestSanitizePlatformMeta:
         """Oversized string values are truncated with a DEBUG log."""
         import logging as _logging
 
-        from lyra.nats._sanitize import MAX_META_VALUE_LEN
+        from roxabi_nats._sanitize import MAX_META_VALUE_LEN
 
         # Arrange — an allowlisted key with a > cap value
         meta = {"thread_session_id": "x" * (MAX_META_VALUE_LEN + 100)}
 
         # Act
-        with caplog.at_level(logging.DEBUG, logger="lyra.nats._sanitize"):
+        with caplog.at_level(logging.DEBUG, logger="roxabi_nats._sanitize"):
             result = sanitize_platform_meta(meta)
 
         # Assert — truncated, not rejected; DEBUG on lyra.nats._sanitize only
@@ -153,7 +153,7 @@ class TestSanitizePlatformMeta:
         assert result["thread_session_id"] == "x" * MAX_META_VALUE_LEN
         assert any(
             "truncated" in r.getMessage()
-            and r.name == "lyra.nats._sanitize"
+            and r.name == "roxabi_nats._sanitize"
             and r.levelno == _logging.DEBUG
             for r in caplog.records
         )
@@ -164,7 +164,7 @@ class TestSanitizePlatformMeta:
         meta = {"thread_session_id": [1, 2, 3], "chat_id": 42}
 
         # Act
-        with caplog.at_level(logging.DEBUG, logger="lyra.nats._sanitize"):
+        with caplog.at_level(logging.DEBUG, logger="roxabi_nats._sanitize"):
             result = sanitize_platform_meta(meta)
 
         # Assert — non-scalar key dropped, scalar preserved, DEBUG emitted
@@ -177,7 +177,7 @@ class TestSanitizePlatformMeta:
     ) -> None:
         """Scalars with short values emit no log records — no spurious warnings."""
         meta = {"chat_id": 42, "is_group": True}
-        with caplog.at_level(logging.DEBUG, logger="lyra.nats._sanitize"):
+        with caplog.at_level(logging.DEBUG, logger="roxabi_nats._sanitize"):
             sanitize_platform_meta(meta)
         assert caplog.records == []
 
@@ -221,7 +221,7 @@ class TestNatsBusSanitization:
         """NatsBus handler strips unknown keys via dataclasses.replace."""
         from lyra.core.message import InboundMessage, Platform
         from lyra.core.trust import TrustLevel
-        from lyra.nats._serialize import deserialize, serialize
+        from roxabi_nats._serialize import deserialize, serialize
 
         msg = InboundMessage(
             id="msg-1",

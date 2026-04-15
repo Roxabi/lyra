@@ -136,9 +136,13 @@ async def test_transcribe_accepts_valid_extensions(tmp_path, ext):
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
     f = tmp_path / f"audio{ext}"
     f.write_bytes(b"\x00")
-    with patch.object(svc, "_transcribe_sync", return_value=TranscriptionResult(
-        text="ok", language="en", duration_seconds=0.0
-    )):
+    with patch.object(
+        svc,
+        "_transcribe_sync",
+        return_value=TranscriptionResult(
+            text="ok", language="en", duration_seconds=0.0
+        ),
+    ):
         result = await svc.transcribe(f)
         assert result.text == "ok"
 
@@ -149,9 +153,13 @@ async def test_transcribe_accepts_string_path(tmp_path):
     svc = STTService(STTConfig(model_size="large-v3-turbo"))
     f = tmp_path / "voice.ogg"
     f.write_bytes(b"\x00")
-    with patch.object(svc, "_transcribe_sync", return_value=TranscriptionResult(
-        text="ok", language="en", duration_seconds=0.0
-    )):
+    with patch.object(
+        svc,
+        "_transcribe_sync",
+        return_value=TranscriptionResult(
+            text="ok", language="en", duration_seconds=0.0
+        ),
+    ):
         result = await svc.transcribe(str(f))
         assert result.text == "ok"
 

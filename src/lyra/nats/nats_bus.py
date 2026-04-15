@@ -46,10 +46,10 @@ from lyra.core.message import (
     InboundMessage,
     Platform,
 )
-from lyra.nats._sanitize import sanitize_platform_meta
-from lyra.nats._serialize import deserialize_dict, serialize
-from lyra.nats._validate import validate_nats_token
-from lyra.nats._version_check import check_schema_version
+from roxabi_nats._sanitize import sanitize_platform_meta
+from roxabi_nats._serialize import deserialize_dict, serialize
+from roxabi_nats._validate import validate_nats_token
+from roxabi_nats._version_check import check_schema_version
 
 log = logging.getLogger(__name__)
 

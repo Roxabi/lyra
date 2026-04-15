@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from lyra.nats.connect import _build_tls_context, nats_connect
+from roxabi_nats.connect import _build_tls_context, nats_connect
 
 
 @pytest.fixture(scope="session")
@@ -57,7 +57,7 @@ class TestNatsConnect:
 
         mock_nc = AsyncMock()
         mock_conn = AsyncMock(return_value=mock_nc)
-        with patch("lyra.nats.connect.nats.connect", new=mock_conn) as mock_connect:
+        with patch("roxabi_nats.connect.nats.connect", new=mock_conn) as mock_connect:
             # Act
             result = await nats_connect("nats://localhost:4222")
 
@@ -77,7 +77,7 @@ class TestNatsConnect:
 
         mock_nc = AsyncMock()
         mock_conn = AsyncMock(return_value=mock_nc)
-        with patch("lyra.nats.connect.nats.connect", new=mock_conn) as mock_connect:
+        with patch("roxabi_nats.connect.nats.connect", new=mock_conn) as mock_connect:
             # Act
             result = await nats_connect("nats://localhost:4222")
 

@@ -142,5 +142,6 @@ def test_schema_version_constants_exist_and_equal_one() -> None:
         SCHEMA_VERSION_INBOUND_MESSAGE,
         SCHEMA_VERSION_OUTBOUND_MESSAGE,
     )
+
     assert SCHEMA_VERSION_INBOUND_MESSAGE == 1
     assert SCHEMA_VERSION_OUTBOUND_MESSAGE == 1

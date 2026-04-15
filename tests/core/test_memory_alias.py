@@ -72,9 +72,7 @@ class TestSessionRecallAliases:
         assert "cross-platform session" in result
 
     @pytest.mark.asyncio
-    async def test_session_recall_empty_without_alias(
-        self, mm: MemoryManager
-    ) -> None:
+    async def test_session_recall_empty_without_alias(self, mm: MemoryManager) -> None:
         """Without alias, recall as dc:user:2 doesn't find tg:user:1's session."""
         snap = _make_snap(user_id="tg:user:1")
         await mm.upsert_session(snap, "summary of tg session")
@@ -139,9 +137,7 @@ class TestConceptRecallAcrossNamespaces:
         assert "cross-platform identity lib" in result
 
     @pytest.mark.asyncio
-    async def test_concept_not_found_without_alias(
-        self, mm: MemoryManager
-    ) -> None:
+    async def test_concept_not_found_without_alias(self, mm: MemoryManager) -> None:
         """Without alias, concept stored under tg:user:1 is not found for dc:user:2."""
         snap = _make_snap(user_id="tg:user:1")
         await mm.upsert_concept(

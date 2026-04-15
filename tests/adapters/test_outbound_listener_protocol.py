@@ -13,6 +13,7 @@ Runs at three levels:
    guard against rename/removal and positional-arg drift that a loose type
    checker might miss.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -50,7 +51,12 @@ def _make_voice_message() -> InboundMessage:
         text="",
         text_raw="",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={"chat_id": 42, "topic_id": None, "message_id": None, "is_group": False},  # noqa: E501
+        platform_meta={
+            "chat_id": 42,
+            "topic_id": None,
+            "message_id": None,
+            "is_group": False,
+        },  # noqa: E501
         trust_level=TrustLevel.TRUSTED,
         modality="voice",
         audio=AudioPayload(
@@ -69,9 +75,7 @@ def test_nats_listener_satisfies_outbound_listener_protocol() -> None:
     the cache_inbound exercise guard against signature drift that a loose
     type-checker configuration might miss.
     """
-    listener = NatsOutboundListener(
-        AsyncMock(), Platform.TELEGRAM, "main", AsyncMock()
-    )
+    listener = NatsOutboundListener(AsyncMock(), Platform.TELEGRAM, "main", AsyncMock())
     # Static structural conformance — mypy/pyright verify this assignment.
     proto: OutboundListener = listener
     assert proto is listener

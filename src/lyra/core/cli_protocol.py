@@ -39,9 +39,7 @@ async def _read_stderr_snippet(
     if proc.stderr is None:
         return ""
     try:
-        raw = await asyncio.wait_for(
-            proc.stderr.read(limit), timeout=0.5
-        )
+        raw = await asyncio.wait_for(proc.stderr.read(limit), timeout=0.5)
         return raw.decode(errors="replace").strip()
     except (asyncio.TimeoutError, Exception):
         return ""
@@ -82,9 +80,7 @@ def build_cmd(
         cmd.extend(["--allowedTools", ",".join(model_config.tools)])
     prompt_file: str | None = None
     if system_prompt:
-        fd, prompt_file = tempfile.mkstemp(
-            suffix=".txt", prefix="lyra-prompt-"
-        )
+        fd, prompt_file = tempfile.mkstemp(suffix=".txt", prefix="lyra-prompt-")
         try:
             os.write(fd, system_prompt.encode("utf-8"))
         finally:
@@ -94,6 +90,7 @@ def build_cmd(
     if session_id:
         cmd.extend(["--resume", session_id])
     return cmd, prompt_file
+
 
 # Validate Claude session IDs (strict UUID format).
 SESSION_ID_RE = re.compile(
@@ -388,8 +385,7 @@ class StreamingIterator:
                     stderr_hint = await _read_stderr_snippet(proc)
                     detail = f": {stderr_hint}" if stderr_hint else ""
                     log.warning(
-                        "[pool:%s] process died during streaming idle wait"
-                        " (rc=%s)%s",
+                        "[pool:%s] process died during streaming idle wait (rc=%s)%s",
                         self._pool_id,
                         proc.returncode,
                         detail,
@@ -423,8 +419,7 @@ class StreamingIterator:
                     detail,
                 )
                 self.error = (
-                    f"Process terminated unexpectedly"
-                    f" (rc={proc.returncode}){detail}"
+                    f"Process terminated unexpectedly (rc={proc.returncode}){detail}"
                 )
                 self._done = True
                 raise StopAsyncIteration
@@ -516,9 +511,7 @@ class StreamingIterator:
                     self.error = (
                         errors[0]
                         if errors
-                        else data.get("result")
-                        or subtype
-                        or "Unknown streaming error"
+                        else data.get("result") or subtype or "Unknown streaming error"
                     )
                     log.warning(
                         "[pool:%s] streaming result is_error=True"

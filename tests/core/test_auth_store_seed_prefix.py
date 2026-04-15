@@ -138,9 +138,7 @@ class TestCleanupBareIds:
         store = AuthStore(db_path=db_path)
         await store.connect()
         try:
-            raw = {
-                "auth": {"telegram": {"owner_users": ["789"], "trusted_users": []}}
-            }
+            raw = {"auth": {"telegram": {"owner_users": ["789"], "trusted_users": []}}}
             await store.seed_from_config(raw, "telegram")
 
             # Reconnect to trigger _cleanup_bare_ids

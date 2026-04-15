@@ -131,9 +131,7 @@ class CliPool(CliPoolWorkerMixin):
             - last_sweep_age: seconds since last sweep, or None
         """
         return {
-            "alive": (
-                self._reaper_task is not None and not self._reaper_task.done()
-            ),
+            "alive": (self._reaper_task is not None and not self._reaper_task.done()),
             "last_sweep_age": (
                 round(time.monotonic() - self._last_sweep_at, 1)
                 if self._last_sweep_at is not None

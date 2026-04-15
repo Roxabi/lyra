@@ -67,9 +67,7 @@ class TestSupervisorctlManagerControl:
 
     @pytest.mark.asyncio
     async def test_file_not_found_raises(self):
-        with patch(
-            "asyncio.create_subprocess_exec", side_effect=FileNotFoundError
-        ):
+        with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
             with pytest.raises(ServiceControlFailed) as exc_info:
                 await SupervisorctlManager().control("status", None)
             assert exc_info.value.reason == "not_available"

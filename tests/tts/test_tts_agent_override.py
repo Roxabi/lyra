@@ -31,6 +31,7 @@ def _make_ogg_converter(ogg_bytes: bytes = b"fakeogg") -> AsyncMock:
     converter.convert_wav_to_ogg = AsyncMock(side_effect=_fake_convert)
     return converter
 
+
 # ---------------------------------------------------------------------------
 # AgentTTSConfig — new fields (exaggeration, cfg_weight)
 # ---------------------------------------------------------------------------
@@ -132,7 +133,9 @@ async def test_synthesize_agent_tts_merge_order():
 
     converter = _make_ogg_converter()
     cfg = TTSConfig(
-        engine="global", voice="global_v", language="English",
+        engine="global",
+        voice="global_v",
+        language="English",
     )
     svc = TTSService(cfg, converter=converter)
 

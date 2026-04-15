@@ -76,9 +76,7 @@ class PoolManager:
                     task = asyncio.create_task(agent.flush_session(pool, "idle"))
                     self._hub._memory_tasks.add(task)
 
-                    def _on_flush_done(
-                        t: asyncio.Task, _pid: str = pid
-                    ) -> None:
+                    def _on_flush_done(t: asyncio.Task, _pid: str = pid) -> None:
                         self._hub._memory_tasks.discard(t)
                         if not t.cancelled() and t.exception():
                             log.error(

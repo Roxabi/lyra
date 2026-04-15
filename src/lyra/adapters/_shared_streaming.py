@@ -237,12 +237,15 @@ class StreamingSession:
             self._st.stream_error,
             self._st.had_tool_events,
         )
-        error_text = classify_stream_error(
-            self._st.stream_error,
-            had_tool_events=self._st.had_tool_events,
-            final_text=self._st.final_text,
-            msg_fn=self._cb.get_msg,
-        ) or GENERIC_ERROR_REPLY
+        error_text = (
+            classify_stream_error(
+                self._st.stream_error,
+                had_tool_events=self._st.had_tool_events,
+                final_text=self._st.final_text,
+                msg_fn=self._cb.get_msg,
+            )
+            or GENERIC_ERROR_REPLY
+        )
         try:
             await self._cb.edit_placeholder_text(placeholder_obj, error_text)
         except Exception as edit_exc:

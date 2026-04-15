@@ -41,8 +41,10 @@ def make_tools(vault_side_effect=None) -> SessionTools:
 
 def make_msg(text: str = "hello") -> InboundMessage:
     cmd = CommandContext(
-        prefix="/", name="add-vault",
-        args=text, raw=f"/add-vault {text}",
+        prefix="/",
+        name="add-vault",
+        args=text,
+        raw=f"/add-vault {text}",
     )
     return InboundMessage(
         id="msg-1",
@@ -70,7 +72,11 @@ def _call(tools: SessionTools) -> list:
 
 async def _run(msg, tools, args):
     return await cmd_add_vault(
-        msg, _DUMMY_DRIVER, tools, args, 30.0,
+        msg,
+        _DUMMY_DRIVER,
+        tools,
+        args,
+        30.0,
     )
 
 
@@ -83,7 +89,9 @@ class TestAddVaultHappyPath:
     async def test_saves_note_to_vault(self) -> None:
         tools = make_tools()
         resp = await _run(
-            make_msg("Buy milk"), tools, ["Buy", "milk"],
+            make_msg("Buy milk"),
+            tools,
+            ["Buy", "milk"],
         )
         cast(Any, tools.vault).add.assert_called_once()
         assert "saved" in resp.content.lower()
@@ -113,7 +121,9 @@ class TestAddVaultHappyPath:
         calls = _call(tools)
 
         await _run(
-            make_msg("Short note"), tools, ["Short", "note"],
+            make_msg("Short note"),
+            tools,
+            ["Short", "note"],
         )
 
         (_, _, _, body), _ = calls[0]
@@ -145,7 +155,9 @@ class TestAddVaultMissingContent:
     async def test_whitespace_args_returns_usage(self) -> None:
         tools = make_tools()
         resp = await _run(
-            make_msg(""), tools, ["  ", "  "],
+            make_msg(""),
+            tools,
+            ["  ", "  "],
         )
         assert "Usage:" in resp.content
         cast(Any, tools.vault).add.assert_not_called()
@@ -163,7 +175,9 @@ class TestAddVaultTruncation:
         oversized = "B" * (_MAX_CONTENT_CHARS + 500)
 
         await _run(
-            make_msg(oversized), tools, [oversized],
+            make_msg(oversized),
+            tools,
+            [oversized],
         )
 
         (_, _, _, body), _ = calls[0]
@@ -183,7 +197,9 @@ class TestAddVaultFailures:
             vault_side_effect=VaultWriteFailed("not_available"),
         )
         resp = await _run(
-            make_msg("Note"), tools, ["Note"],
+            make_msg("Note"),
+            tools,
+            ["Note"],
         )
         assert "not available" in resp.content.lower()
         assert "NOT saved" in resp.content
@@ -193,6 +209,8 @@ class TestAddVaultFailures:
             vault_side_effect=VaultWriteFailed("subprocess_error"),
         )
         resp = await _run(
-            make_msg("Note"), tools, ["Note"],
+            make_msg("Note"),
+            tools,
+            ["Note"],
         )
         assert "NOT saved" in resp.content

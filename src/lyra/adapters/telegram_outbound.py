@@ -172,6 +172,7 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
 
     meta = _validate_inbound(original_msg, "send_streaming")
     if meta is None:
+
         async def _noop_placeholder() -> tuple[None, None]:
             raise ValueError("invalid inbound message")
 
@@ -266,4 +267,3 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         get_msg=adapter._msg,
         placeholder_text=_placeholder_text,
     )
-

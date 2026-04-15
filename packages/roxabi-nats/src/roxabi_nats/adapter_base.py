@@ -19,10 +19,10 @@ from abc import ABC, abstractmethod
 
 from nats.aio.client import Client as NATS
 
-from lyra.nats._validate import validate_nats_token
-from lyra.nats._version_check import check_contract_version, check_schema_version
-from lyra.nats.connect import nats_connect
-from lyra.nats.readiness import wait_for_hub
+from roxabi_nats._validate import validate_nats_token
+from roxabi_nats._version_check import check_contract_version, check_schema_version
+from roxabi_nats.connect import nats_connect
+from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
 

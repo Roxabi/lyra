@@ -11,10 +11,10 @@ from uuid import uuid4
 
 from nats.aio.client import Client as NATS
 
-from lyra.nats._tts_constants import _TTS_CONFIG_FIELDS
-from lyra.nats.adapter_base import CONTRACT_VERSION
-from lyra.nats.circuit_breaker import NatsCircuitBreaker
 from lyra.tts import SynthesisResult, TtsUnavailableError
+from roxabi_nats._tts_constants import _TTS_CONFIG_FIELDS
+from roxabi_nats.adapter_base import CONTRACT_VERSION
+from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 if TYPE_CHECKING:
     from lyra.core.agent_config import AgentTTSConfig

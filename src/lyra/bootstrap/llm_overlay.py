@@ -6,7 +6,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from lyra.nats.connect import scrub_nats_url
+from roxabi_nats.connect import scrub_nats_url
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS

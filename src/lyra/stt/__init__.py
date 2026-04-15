@@ -90,9 +90,14 @@ class STTService:
 
     def _transcribe_sync(self, path: str) -> TranscriptionResult:
         try:
-            from voicecli.config import load_vocab, vocab_to_prompt
-            from voicecli.stt_daemon import SOCKET_PATH
-            from voicecli.transcribe import transcribe as _transcribe
+            from voicecli.config import (  # type: ignore[import-missing]
+                load_vocab,
+                vocab_to_prompt,
+            )
+            from voicecli.stt_daemon import SOCKET_PATH  # type: ignore[import-missing]
+            from voicecli.transcribe import (  # type: ignore[import-missing]
+                transcribe as _transcribe,
+            )
 
             self._sync_daemon_state(SOCKET_PATH)
             initial_prompt = vocab_to_prompt(load_vocab())

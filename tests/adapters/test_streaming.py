@@ -597,9 +597,7 @@ class TestDiscordIntermediateText:
         await adapter.send_streaming(msg, long_intermediate())
 
         content_edits = [
-            c
-            for c in placeholder.edit.call_args_list
-            if c.kwargs.get("content")
+            c for c in placeholder.edit.call_args_list if c.kwargs.get("content")
         ]
         assert len(content_edits) >= 1
         assert len(content_edits[0].kwargs["content"]) <= DISCORD_MAX_LENGTH

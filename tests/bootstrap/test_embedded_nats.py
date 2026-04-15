@@ -90,9 +90,7 @@ class TestEmbeddedNatsWaitReady:
         en.process.pid = 12345
         en.process.returncode = 1
         en.process.stderr = AsyncMock()
-        en.process.stderr.read = AsyncMock(
-            return_value=b"address already in use"
-        )
+        en.process.stderr.read = AsyncMock(return_value=b"address already in use")
 
         with pytest.raises(RuntimeError, match="address already in use"):
             await en.wait_ready(timeout=0.2)
@@ -143,10 +141,12 @@ class TestEmbeddedNatsStop:
         with patch("lyra.bootstrap.embedded_nats.atexit.unregister"):
             # After kill, switch to fast wait
             original_kill = mock_proc.kill
+
             def kill_and_switch():
                 original_kill()
                 mock_proc.wait = fast_wait
                 mock_proc.returncode = -9
+
             mock_proc.kill = kill_and_switch
             await en.stop()
 

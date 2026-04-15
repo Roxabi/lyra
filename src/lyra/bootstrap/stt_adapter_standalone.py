@@ -16,10 +16,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-from lyra.nats import NatsAdapterBase
-from lyra.nats.adapter_base import CONTRACT_VERSION
 from lyra.nats.queue_groups import STT_WORKERS
 from lyra.stt import STTService, TranscriptionResult, load_stt_config
+from roxabi_nats import NatsAdapterBase
+from roxabi_nats.adapter_base import CONTRACT_VERSION
 
 log = logging.getLogger(__name__)
 

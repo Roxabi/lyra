@@ -171,12 +171,8 @@ def test_telegram_two_users_same_topic_same_scope_id() -> None:
 
     RED: topic scoping also calls user_scoped → different scope_ids per user.
     """
-    sid_a = _make_scope_id(
-        chat_id=300, topic_id=5, user_id="tg:user:u1", is_group=True
-    )
-    sid_b = _make_scope_id(
-        chat_id=300, topic_id=5, user_id="tg:user:u2", is_group=True
-    )
+    sid_a = _make_scope_id(chat_id=300, topic_id=5, user_id="tg:user:u1", is_group=True)
+    sid_b = _make_scope_id(chat_id=300, topic_id=5, user_id="tg:user:u2", is_group=True)
 
     # RED: fails because user_scoped() appends different user ids
     assert sid_a == sid_b, (
@@ -195,9 +191,7 @@ def test_telegram_private_scope_id_is_chat_only() -> None:
         chat_id=100, topic_id=None, user_id="tg:user:42", is_group=False
     )
 
-    assert sid == "chat:100", (
-        f"Private chat scope_id should be 'chat:100', got {sid!r}"
-    )
+    assert sid == "chat:100", f"Private chat scope_id should be 'chat:100', got {sid!r}"
 
 
 def test_telegram_different_groups_different_scope_id() -> None:

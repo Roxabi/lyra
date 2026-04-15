@@ -32,6 +32,9 @@ EXEMPT=(
     "src/lyra/bootstrap/unified.py"         # 304 lines — #396 refactor backlog
     "src/lyra/core/stores/turn_store.py"    # 325 lines — #396 refactor backlog
     "src/lyra/adapters/nats_outbound_listener.py" # 317 lines — #396 refactor backlog
+    "src/lyra/bootstrap/adapter_standalone.py"    # 310 lines — #721 import rewrites + ruff
+    "src/lyra/core/hub/middleware_stages.py"      # 307 lines — #721 import rewrites + ruff
+    "src/lyra/adapters/_shared_streaming.py"      # 302 lines — #721 import rewrites + ruff
 )
 
 is_exempt() {

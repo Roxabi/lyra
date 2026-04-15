@@ -91,12 +91,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         not _is_dm and not _is_thread and message.channel.id in adapter._watch_channels
     )
 
-    _should_process = (
-        _is_dm
-        or _is_mention
-        or _in_owned_thread
-        or _is_watch_channel
-    )
+    _should_process = _is_dm or _is_mention or _in_owned_thread or _is_watch_channel
     if not _should_process:
         return
 
@@ -155,9 +150,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                 adapter._thread_store,
                 thread_id=message.channel.id,
                 bot_id=adapter._bot_id,
-                channel_id=getattr(
-                    message.channel, "parent_id", message.channel.id
-                ),
+                channel_id=getattr(message.channel, "parent_id", message.channel.id),
                 guild_id=getattr(message.guild, "id", None),
             )
 
@@ -201,6 +194,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     if _is_dm and adapter._turn_store is not None:
         from lyra.core.hub.hub_protocol import RoutingKey
         from lyra.core.message import Platform
+
         _pool_id = RoutingKey(
             Platform.DISCORD, adapter._bot_id, f"channel:{message.channel.id}"
         ).to_pool_id()

@@ -12,7 +12,7 @@ import pytest
 
 from lyra.core.message import InboundMessage, Platform
 from lyra.core.trust import TrustLevel
-from lyra.nats._serialize import serialize
+from roxabi_nats._serialize import serialize
 
 
 def _make_tg_msg(msg_id: str = "msg-1") -> InboundMessage:

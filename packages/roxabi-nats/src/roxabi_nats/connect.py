@@ -9,8 +9,9 @@ import sys
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
-import nats
 from nats.aio.client import Client as NATS
+
+import nats
 
 log = logging.getLogger(__name__)
 

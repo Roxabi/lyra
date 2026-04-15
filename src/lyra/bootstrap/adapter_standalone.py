@@ -1,4 +1,5 @@
 """Standalone adapter bootstrap — NATS-connected adapter without local Hub."""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,10 +12,10 @@ from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 from lyra.core.bus import Bus
 from lyra.core.message import InboundMessage, Platform
 from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
-from lyra.nats import nats_connect
-from lyra.nats.connect import scrub_nats_url
 from lyra.nats.queue_groups import adapter_outbound
-from lyra.nats.readiness import wait_for_hub
+from roxabi_nats import nats_connect
+from roxabi_nats.connect import scrub_nats_url
+from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
 
@@ -100,7 +101,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 token, webhook_secret = tg_creds[bot_id]
 
                 inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
-                    nc=nc, bot_id=bot_id, item_type=InboundMessage, publish_only=True,
+                    nc=nc,
+                    bot_id=bot_id,
+                    item_type=InboundMessage,
+                    publish_only=True,
                 )
                 inbound_bus.register(platform_enum)
                 await inbound_bus.start()
@@ -115,7 +119,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 await adapter.resolve_identity()
 
                 listener = NatsOutboundListener(
-                    nc, platform_enum, bot_id, adapter,
+                    nc,
+                    platform_enum,
+                    bot_id,
+                    adapter,
                     queue_group=adapter_outbound(platform_enum.value, bot_id),
                 )
                 adapter._outbound_listener = listener
@@ -133,6 +140,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             stop = _stop if _stop is not None else asyncio.Event()
             if _stop is None:
                 import signal
+
                 loop = asyncio.get_running_loop()
                 for sig in (signal.SIGTERM, signal.SIGINT):
                     loop.add_signal_handler(sig, stop.set)
@@ -234,7 +242,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 token = dc_creds[bot_id]
 
                 inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
-                    nc=nc, bot_id=bot_id, item_type=InboundMessage, publish_only=True,
+                    nc=nc,
+                    bot_id=bot_id,
+                    item_type=InboundMessage,
+                    publish_only=True,
                 )
                 inbound_bus_dc.register(platform_enum)
                 await inbound_bus_dc.start()
@@ -250,7 +261,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 )
 
                 listener_dc = NatsOutboundListener(
-                    nc, platform_enum, bot_id, adapter_dc,
+                    nc,
+                    platform_enum,
+                    bot_id,
+                    adapter_dc,
                     queue_group=adapter_outbound(platform_enum.value, bot_id),
                 )
                 adapter_dc._outbound_listener = listener_dc
@@ -268,6 +282,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             stop_dc = _stop if _stop is not None else asyncio.Event()
             if _stop is None:
                 import signal
+
                 loop = asyncio.get_running_loop()
                 for sig in (signal.SIGTERM, signal.SIGINT):
                     loop.add_signal_handler(sig, stop_dc.set)

@@ -14,9 +14,10 @@ import subprocess
 import time
 from collections.abc import AsyncGenerator, Generator
 
-import nats
 import pytest
 from nats.aio.client import Client as NATS
+
+import nats
 
 # Skip marker applied automatically to any test that depends on nats-server.
 _nats_server_available = shutil.which("nats-server") is not None

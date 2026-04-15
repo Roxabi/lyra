@@ -276,9 +276,7 @@ class TestPersistThreadSessionEviction:
         from lyra.adapters.discord_threads import persist_thread_session
 
         # Arrange — cache pre-filled to the limit (500 entries)
-        cache: dict[str, tuple[str, str]] = {
-            str(i): ("s", "p") for i in range(500)
-        }
+        cache: dict[str, tuple[str, str]] = {str(i): ("s", "p") for i in range(500)}
 
         mock_store = MagicMock()
         mock_store.update_session = AsyncMock()

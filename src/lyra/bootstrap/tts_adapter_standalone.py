@@ -15,11 +15,11 @@ import os
 import sys
 from dataclasses import dataclass
 
-from lyra.nats import NatsAdapterBase
-from lyra.nats._tts_constants import _AGENT_TTS_FIELDS
-from lyra.nats.adapter_base import CONTRACT_VERSION
 from lyra.nats.queue_groups import TTS_WORKERS
 from lyra.tts import SynthesisResult, TTSService, load_tts_config
+from roxabi_nats import NatsAdapterBase
+from roxabi_nats._tts_constants import _AGENT_TTS_FIELDS
+from roxabi_nats.adapter_base import CONTRACT_VERSION
 
 log = logging.getLogger(__name__)
 

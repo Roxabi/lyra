@@ -73,6 +73,7 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
     if adapter._turn_store is not None:
         from lyra.core.hub.hub_protocol import RoutingKey
         from lyra.core.message import Platform
+
         _pool_id = RoutingKey(
             Platform.TELEGRAM, adapter._bot_id, hub_msg.scope_id
         ).to_pool_id()

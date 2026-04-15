@@ -18,8 +18,8 @@ from lyra.core.render_events import (
     TextRenderEvent,
     ToolSummaryRenderEvent,
 )
-from lyra.nats._serialize import deserialize, serialize
-from lyra.nats._version_check import check_schema_version
+from roxabi_nats._serialize import deserialize, serialize
+from roxabi_nats._version_check import check_schema_version
 
 
 class NatsRenderEventCodec:

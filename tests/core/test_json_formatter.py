@@ -40,9 +40,7 @@ class TestJsonFormatter:
 
     def test_allowlist_fields_present(self) -> None:
         fmt = JsonFormatter()
-        record = self._make_record(
-            trace_id="abc-123", pool_id="tg:main:chat:1"
-        )
+        record = self._make_record(trace_id="abc-123", pool_id="tg:main:chat:1")
         obj = json.loads(fmt.format(record))
         assert obj["level"] == "INFO"
         assert obj["logger"] == "lyra.core.hub"
@@ -91,6 +89,7 @@ class TestJsonFormatter:
             raise ValueError("boom")
         except ValueError:
             import sys
+
             exc_info = sys.exc_info()
 
         record = logging.LogRecord(
@@ -122,6 +121,7 @@ class TestJsonFormatter:
             raise RuntimeError("multi\nline\nerror")
         except RuntimeError:
             import sys
+
             exc_info = sys.exc_info()
 
         record = logging.LogRecord(
@@ -184,9 +184,7 @@ class TestJsonFormatter:
 class TestSetupLogging:
     """Tests for _setup_logging wiring (#270)."""
 
-    def test_json_file_true_uses_json_formatter(
-        self, tmp_path, monkeypatch
-    ) -> None:
+    def test_json_file_true_uses_json_formatter(self, tmp_path, monkeypatch) -> None:
         monkeypatch.setattr("lyra.__main__.Path.home", lambda: tmp_path)
         import lyra.__main__ as main_mod
 
@@ -197,16 +195,15 @@ class TestSetupLogging:
         try:
             main_mod._setup_logging(LoggingConfig(json_file=True))
             file_handler = next(
-                h for h in root.handlers
+                h
+                for h in root.handlers
                 if isinstance(h, logging.handlers.RotatingFileHandler)
             )
             assert isinstance(file_handler.formatter, JsonFormatter)
         finally:
             root.handlers[:] = original_handlers
 
-    def test_json_file_false_uses_plain_formatter(
-        self, tmp_path, monkeypatch
-    ) -> None:
+    def test_json_file_false_uses_plain_formatter(self, tmp_path, monkeypatch) -> None:
         monkeypatch.setattr("lyra.__main__.Path.home", lambda: tmp_path)
         import lyra.__main__ as main_mod
 
@@ -216,7 +213,8 @@ class TestSetupLogging:
         try:
             main_mod._setup_logging(LoggingConfig(json_file=False))
             file_handler = next(
-                h for h in root.handlers
+                h
+                for h in root.handlers
                 if isinstance(h, logging.handlers.RotatingFileHandler)
             )
             assert not isinstance(file_handler.formatter, JsonFormatter)

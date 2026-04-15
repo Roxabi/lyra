@@ -36,8 +36,7 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
     load_dotenv()
     if not os.environ.get("LYRA_HEALTH_SECRET"):
         log.warning(
-            "LYRA_HEALTH_SECRET is not set -- /health returns minimal"
-            " response only"
+            "LYRA_HEALTH_SECRET is not set -- /health returns minimal response only"
         )
     raw_config = _load_raw_config()
 

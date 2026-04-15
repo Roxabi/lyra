@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.nats.adapter_base import NatsAdapterBase  # ImportError expected (RED)
+from roxabi_nats.adapter_base import NatsAdapterBase  # ImportError expected (RED)
 
 # ---------------------------------------------------------------------------
 # Concrete subclass used across all test classes
@@ -522,11 +522,11 @@ class TestRun:
 
         with (
             patch(
-                "lyra.nats.adapter_base.nats_connect",
+                "roxabi_nats.adapter_base.nats_connect",
                 new=AsyncMock(return_value=mock_nc),
             ),
             patch(
-                "lyra.nats.adapter_base.wait_for_hub",
+                "roxabi_nats.adapter_base.wait_for_hub",
                 new=AsyncMock(return_value=True),
             ) as mock_wait,
         ):
@@ -552,11 +552,11 @@ class TestRun:
 
         with (
             patch(
-                "lyra.nats.adapter_base.nats_connect",
+                "roxabi_nats.adapter_base.nats_connect",
                 new=AsyncMock(return_value=mock_nc),
             ),
             patch(
-                "lyra.nats.adapter_base.wait_for_hub",
+                "roxabi_nats.adapter_base.wait_for_hub",
                 new=AsyncMock(return_value=True),
             ),
         ):
@@ -586,11 +586,11 @@ class TestRun:
 
         with (
             patch(
-                "lyra.nats.adapter_base.nats_connect",
+                "roxabi_nats.adapter_base.nats_connect",
                 new=AsyncMock(return_value=mock_nc),
             ),
             patch(
-                "lyra.nats.adapter_base.wait_for_hub",
+                "roxabi_nats.adapter_base.wait_for_hub",
                 new=AsyncMock(return_value=True),
             ),
             patch("asyncio.get_running_loop") as mock_get_loop,
@@ -634,11 +634,11 @@ class TestRun:
 
         with (
             patch(
-                "lyra.nats.adapter_base.nats_connect",
+                "roxabi_nats.adapter_base.nats_connect",
                 new=AsyncMock(return_value=mock_nc),
             ),
             patch(
-                "lyra.nats.adapter_base.wait_for_hub",
+                "roxabi_nats.adapter_base.wait_for_hub",
                 new=AsyncMock(return_value=True),
             ),
             patch("asyncio.get_running_loop", return_value=mock_loop),
@@ -670,11 +670,11 @@ class TestRun:
 
         with (
             patch(
-                "lyra.nats.adapter_base.nats_connect",
+                "roxabi_nats.adapter_base.nats_connect",
                 new=AsyncMock(return_value=mock_nc),
             ),
             patch(
-                "lyra.nats.adapter_base.wait_for_hub",
+                "roxabi_nats.adapter_base.wait_for_hub",
                 new=AsyncMock(return_value=True),
             ),
         ):
@@ -701,11 +701,11 @@ class TestRun:
 
         with (
             patch(
-                "lyra.nats.adapter_base.nats_connect",
+                "roxabi_nats.adapter_base.nats_connect",
                 new=AsyncMock(return_value=mock_nc),
             ),
             patch(
-                "lyra.nats.adapter_base.wait_for_hub",
+                "roxabi_nats.adapter_base.wait_for_hub",
                 new=AsyncMock(return_value=True),
             ),
         ):
@@ -925,7 +925,7 @@ class TestHeartbeatLoop:
         mock_nc.publish = AsyncMock(side_effect=_failing_publish)
 
         # Act — must not raise despite publish error on first call
-        with patch("lyra.nats.adapter_base.log") as mock_log:
+        with patch("roxabi_nats.adapter_base.log") as mock_log:
             await adapter._heartbeat_loop()
 
         # Assert — warning logged, loop continued to second call
@@ -1104,11 +1104,11 @@ class TestHeartbeatRun:
 
         with (
             patch(
-                "lyra.nats.adapter_base.nats_connect",
+                "roxabi_nats.adapter_base.nats_connect",
                 new=AsyncMock(return_value=mock_nc),
             ),
             patch(
-                "lyra.nats.adapter_base.wait_for_hub",
+                "roxabi_nats.adapter_base.wait_for_hub",
                 new=AsyncMock(return_value=True),
             ),
         ):
@@ -1134,11 +1134,11 @@ class TestHeartbeatRun:
 
         with (
             patch(
-                "lyra.nats.adapter_base.nats_connect",
+                "roxabi_nats.adapter_base.nats_connect",
                 new=AsyncMock(return_value=mock_nc),
             ),
             patch(
-                "lyra.nats.adapter_base.wait_for_hub",
+                "roxabi_nats.adapter_base.wait_for_hub",
                 new=AsyncMock(return_value=True),
             ),
         ):

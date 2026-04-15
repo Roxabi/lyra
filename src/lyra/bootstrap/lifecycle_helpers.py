@@ -1,4 +1,5 @@
 """Shared lifecycle helpers for multibot and standalone Hub bootstrap."""
+
 from __future__ import annotations
 
 import asyncio

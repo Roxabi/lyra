@@ -13,6 +13,36 @@ Complete guide to set up Machine 1 (Ubuntu Server 24.04 LTS) as the Lyra hub fro
 
 ---
 
+## Choose your install path
+
+Three ways to run lyra — pick the one that matches your goal.
+
+| Tier | Goal | Setup |
+|------|------|-------|
+| **1. Library** | Import `lyra` in your own code | `uv add "lyra @ git+https://github.com/Roxabi/lyra.git@staging"` — nothing else |
+| **2. Standalone** | Run lyra on one machine (dev or personal use) | See **Tier 2** below — 5 commands, no supervisord, no separate NATS server |
+| **3. Full production** | 24/7 hub with adapters, auto-deploy, monitoring | Continue to **Step 1** below — this guide covers Machine 1 hub setup |
+
+---
+
+## Tier 2 — Standalone (unified mode)
+
+For single-machine dev or personal use. `lyra start` runs hub + adapters in one process and auto-starts an embedded nats-server when `NATS_URL` is unset.
+
+```bash
+git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
+cd ~/projects/lyra && uv sync
+cp .env.example .env         # tokens go via `lyra bot add` (see Step 8)
+lyra agent init              # seed agents DB from bundled TOML
+lyra start                   # hub + telegram + discord in one process
+```
+
+No supervisord. No systemd. No `make deploy`. Stop with `Ctrl+C`. For bot token setup see **Step 8 — Configure**.
+
+Move to Tier 3 (split processes, auto-deploy timer, health monitoring, embedded NATS replaced by a system service) only when you actually need 24/7 uptime. Tier 3 is what this guide covers from **Step 1** onward.
+
+---
+
 ## Step 1 — Create bootable USB (on Machine 2)
 
 Download the ISO and flash it with Rufus (Windows) or dd (Linux):

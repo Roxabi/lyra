@@ -162,9 +162,13 @@ fi
 
 # ── regenerate mode: atomic backup + wipe (T1.7) ──────────────────────────────
 if [ "${REGENERATE}" = true ]; then
-  if [ "${AUTO_YES}" = false ] && [ -t 0 ]; then
-    read -r -p "This will wipe ~/.lyra/nkeys/ and /etc/nats/nkeys/auth.conf (backups will be created). Continue? [y/N] " reply
-    [[ "${reply}" =~ ^[Yy]$ ]] || { warn "Aborted."; exit 0; }
+  if [ "${AUTO_YES}" = false ]; then
+    if [ -t 0 ]; then
+      read -r -p "This will wipe ~/.lyra/nkeys/ and /etc/nats/nkeys/auth.conf (backups will be created). Continue? [y/N] " reply
+      [[ "${reply}" =~ ^[Yy]$ ]] || { warn "Aborted."; exit 0; }
+    else
+      error "stdin is not a TTY — pass --yes to confirm non-interactive wipe"
+    fi
   fi
 
   epoch=$(date +%s)
@@ -264,7 +268,7 @@ import sys, json; print(json.load(sys.stdin).get('tag_name','v0.4.6').lstrip('v'
   if curl -fsSL --connect-timeout 5 "${sha_url}" -o "${tmpdir}/SHA256SUMS" 2>/dev/null; then
     (cd "$(dirname "${nk_bin}")" \
       && grep -F "$(basename "${url}")" "${tmpdir}/SHA256SUMS" | sha256sum --check) \
-      || warn "SHA-256 check failed — verify manually before trusting this binary"
+      || error "SHA-256 check failed for ${url} — aborting before installing nk binary"
   else
     warn "SHA256SUMS not available for this release — skipping integrity check"
   fi

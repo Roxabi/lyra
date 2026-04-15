@@ -58,12 +58,14 @@ PUB_ALLOW[stt-adapter]='"lyra.voice.stt.heartbeat"'
 SUB_ALLOW[stt-adapter]='"lyra.voice.stt.request"'
 
 # voice-tts: voicecli nats-serve worker on Machine 1 (#689)
+# NB: voicecli.nats.base.AdapterBase subscribes to heartbeat_subject
+#     (no-op callback) in addition to publishing — ACL must allow both.
 PUB_ALLOW[voice-tts]='"lyra.voice.tts.heartbeat","_INBOX.>"'
-SUB_ALLOW[voice-tts]='"lyra.voice.tts.request"'
+SUB_ALLOW[voice-tts]='"lyra.voice.tts.request","lyra.voice.tts.heartbeat"'
 
 # voice-stt: voicecli nats-serve worker on Machine 1 (#689)
 PUB_ALLOW[voice-stt]='"lyra.voice.stt.heartbeat","_INBOX.>"'
-SUB_ALLOW[voice-stt]='"lyra.voice.stt.request"'
+SUB_ALLOW[voice-stt]='"lyra.voice.stt.request","lyra.voice.stt.heartbeat"'
 
 PUB_ALLOW[llm-worker]='"lyra.llm.health.*"'
 SUB_ALLOW[llm-worker]='"lyra.llm.request"'

@@ -130,12 +130,22 @@ def search_labeled_issues(
     return {(repo, n) for n in nums}
 
 
+def _derive_size_from_labels(labels: list[str]) -> str | None:
+    """Extract size string from size:* label, e.g. 'size:S' -> 'S'."""
+    for lbl in labels:
+        if lbl.startswith("size:"):
+            return lbl[5:]
+    return None
+
+
 def fetch_issue_meta(
     issue_num: int, repo: str, label_prefix: str
-) -> tuple[int, str, str, list[str]]:
-    """Fetch title, state, labels for one issue via REST.
+) -> tuple[int, str, str, list[str], str | None, str | None]:
+    """Fetch title, state, labels, milestone, size for one issue via REST.
 
-    Returns (issue_num, title, state, label_names).
+    Returns (issue_num, title, state, label_names, milestone_title, size).
+    milestone_title is the GH milestone name (e.g. "M0", "M1") or None.
+    size is derived from a size:* label (e.g. "S", "F-lite") or None.
     """
     endpoint = f"repos/{repo}/issues/{issue_num}"
     try:
@@ -150,36 +160,43 @@ def fetch_issue_meta(
             f"  WARN #{issue_num} meta: timed out",
             file=sys.stderr,
         )
-        return (issue_num, "", "open", [])
+        return (issue_num, "", "open", [], None, None)
     if result.returncode != 0:
         print(
             f"  WARN #{issue_num} meta: {result.stderr.strip()}",
             file=sys.stderr,
         )
-        return (issue_num, "", "open", [])
+        return (issue_num, "", "open", [], None, None)
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
         print(f"  WARN #{issue_num}: non-JSON response", file=sys.stderr)
-        return (issue_num, "", "open", [])
+        return (issue_num, "", "open", [], None, None)
 
     if not isinstance(data, dict):
         print(
             f"  WARN #{issue_num}: unexpected meta shape",
             file=sys.stderr,
         )
-        return (issue_num, "", "open", [])
+        return (issue_num, "", "open", [], None, None)
 
     raw_labels = data.get("labels", [])
     label_names: list[str] = (
-        [lbl["name"] for lbl in raw_labels]
-        if isinstance(raw_labels, list)
-        else []
+        [lbl["name"] for lbl in raw_labels] if isinstance(raw_labels, list) else []
     )
     title: str = data.get("title", "")
     state: str = data.get("state", data.get("State", "open"))
 
-    return (issue_num, title, state, label_names)
+    # Milestone: read from GH API milestone object
+    raw_milestone = data.get("milestone")
+    milestone_title: str | None = None
+    if isinstance(raw_milestone, dict):
+        milestone_title = raw_milestone.get("title") or None
+
+    # Size: derived from size:* label
+    size: str | None = _derive_size_from_labels(label_names)
+
+    return (issue_num, title, state, label_names, milestone_title, size)
 
 
 def _check_dep_shape(payload: list) -> None:
@@ -217,9 +234,7 @@ def fetch_dep_list(
     Returns (issue_num, direction, list_of_IssueRef_dicts).
     Each IssueRef has shape: {repo: str, issue: int}.
     """
-    endpoint = (
-        f"repos/{repo}/issues/{issue_num}/dependencies/{direction}"
-    )
+    endpoint = f"repos/{repo}/issues/{issue_num}/dependencies/{direction}"
     try:
         result = subprocess.run(
             ["gh", "api", endpoint],
@@ -288,9 +303,7 @@ def _discover_from_layout(
     return discovered
 
 
-def run_fetch(
-    layout_path: Path, cache_path: Path, *, verbose: bool = False
-) -> int:
+def run_fetch(layout_path: Path, cache_path: Path, *, verbose: bool = False) -> int:
     """Main fetch logic. Returns exit code."""
     check_gh()
 
@@ -305,9 +318,7 @@ def run_fetch(
     meta = layout["meta"]
     repos: list[str] = meta["repos"]
     label_prefix: str = meta.get("label_prefix", "graph:")
-    lane_codes: list[str] = [
-        lane["code"] for lane in layout.get("lanes", [])
-    ]
+    lane_codes: list[str] = [lane["code"] for lane in layout.get("lanes", [])]
 
     discovered = _discover_from_layout(layout, repos, label_prefix, lane_codes)
 
@@ -319,9 +330,9 @@ def run_fetch(
         }
         for f in as_completed(meta_fut):
             repo_key, n = meta_fut[f]
-            _, title, state, labels = f.result()
+            _, title, state, labels, milestone, size = f.result()
             key = f"{repo_key}#{n}"
-            issues[key] = {
+            entry: dict = {
                 "repo": repo_key,
                 "number": n,
                 "title": title,
@@ -331,13 +342,22 @@ def run_fetch(
                 "blocked_by": [],
                 "blocking": [],
             }
+            # milestone: GH milestone title (e.g. "M0", "M1") — used for band derivation
+            if milestone is not None:
+                entry["milestone"] = milestone
+            # size: derived from size:* label — used for card rendering
+            if size is not None:
+                entry["size"] = size
+            issues[key] = entry
 
         dep_fut: dict = {}
         for r, n in discovered:
             for direction in ("blocked_by", "blocking"):
-                dep_fut[
-                    pool.submit(fetch_dep_list, n, direction, r)
-                ] = (r, n, direction)
+                dep_fut[pool.submit(fetch_dep_list, n, direction, r)] = (
+                    r,
+                    n,
+                    direction,
+                )
         for f in as_completed(dep_fut):
             repo_key, n, direction = dep_fut[f]
             _, _, refs = f.result()

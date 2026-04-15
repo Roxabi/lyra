@@ -2,9 +2,14 @@
 
 Reports:
   1. Labeled issues not in any lane order[] (untriaged).
+     When a lane has no explicit order[] (auto-derived mode), all issues with
+     matching lane_label are considered placed — no untriaged drift for that lane.
   2. Issues in order[] missing their GH lane label.
+     Only checked for lanes with explicit order[].
   3. graph:defer label vs defer field in gh.json.
   4. graph:standalone label vs standalone.order[].
+     When standalone.order[] is empty/absent, all gh:standalone issues are
+     considered placed (auto-derived).
 
 Exit 0 if no drift; exit 1 otherwise.
 """
@@ -30,7 +35,7 @@ def _lane_label_from_entry(entry: dict, label_prefix: str) -> str | None:
     lane_prefix = f"{label_prefix}lane/"
     for lbl in entry.get("labels", []):
         if isinstance(lbl, str) and lbl.startswith(lane_prefix):
-            return lbl[len(lane_prefix):]
+            return lbl[len(lane_prefix) :]
     return None
 
 
@@ -129,9 +134,7 @@ def _check_label_mismatches(
     return bool(missing_label)
 
 
-def _collect_gh_deferred(
-    gh_issues: dict, label_prefix: str
-) -> set[tuple[str, int]]:
+def _collect_gh_deferred(gh_issues: dict, label_prefix: str) -> set[tuple[str, int]]:
     """Collect (repo, issue) tuples flagged defer in gh.json."""
     result: set[tuple[str, int]] = set()
     for key, e in gh_issues.items():
@@ -158,7 +161,11 @@ def _collect_layout_deferred(layout: dict) -> set[tuple[str, int]]:
 
 
 def _collect_layout_ref_set(layout: dict) -> set[tuple[str, int]]:
-    """Collect all (repo, issue) tuples from lane order[]."""
+    """Collect all (repo, issue) tuples from lane order[].
+
+    Only includes lanes with explicit order[]. Auto-derived lanes (no order key)
+    are not included here; _build_layout_sets handles those separately.
+    """
     result: set[tuple[str, int]] = set()
     for lane in layout.get("lanes", []):
         for ref in lane.get("order", []):
@@ -171,14 +178,23 @@ def _check_defer(
     gh_issues: dict,
     layout: dict,
     label_prefix: str,
+    auto_placed: set[tuple[str, int]] | None = None,
 ) -> bool:
-    """Report defer label drift. Returns drift_found."""
+    """Report defer label drift. Returns drift_found.
+
+    In auto-derive mode, GH defer labels drive card status directly —
+    issues in auto-derived lanes with graph:defer labels are correct by
+    definition (no layout sync needed).  auto_placed carries all such
+    auto-lane issues so they are excluded from the "only_in_gh" bucket.
+    """
     defer_lbl = f"{label_prefix}defer"
     gh_deferred = _collect_gh_deferred(gh_issues, label_prefix)
     layout_deferred = _collect_layout_deferred(layout)
     layout_ref_set = _collect_layout_ref_set(layout)
+    # Auto-derived lanes: defer is GH-driven, no layout representation needed
+    already_ok = layout_ref_set | (auto_placed or set())
 
-    only_in_gh = gh_deferred - layout_deferred - layout_ref_set
+    only_in_gh = gh_deferred - layout_deferred - already_ok
     only_in_layout = layout_deferred - gh_deferred
     if only_in_gh or only_in_layout:
         print(f"{defer_lbl} label vs layout defer field:")
@@ -199,8 +215,18 @@ def _check_standalone(
     layout: dict,
     label_prefix: str,
 ) -> bool:
-    """Report standalone label drift. Returns drift_found."""
+    """Report standalone label drift. Returns drift_found.
+
+    When standalone.order[] is absent/empty, auto-derive mode is active:
+    all gh:standalone issues are considered placed — no drift for that direction.
+    """
     standalone_lbl = f"{label_prefix}standalone"
+    auto_mode = not bool(layout.get("standalone", {}).get("order"))
+
+    if auto_mode:
+        print(f"{standalone_lbl} label vs standalone.order[]:  (auto-derived, skipped)")
+        print()
+        return False
 
     # gh_standalone: set of (repo, issue) tuples where standalone flag is set
     gh_standalone: set[tuple[str, int]] = set()
@@ -241,13 +267,27 @@ def _check_standalone(
 
 def _build_layout_sets(
     layout: dict,
-) -> tuple[dict[tuple[str, int], str], set[tuple[str, int]], set[tuple[str, int]]]:
-    """Return (layout_lane_of, standalone_set, epic_set) from parsed layout."""
+    gh_issues: dict | None = None,
+) -> tuple[
+    dict[tuple[str, int], str], set[tuple[str, int]], set[tuple[str, int]], set[str]
+]:
+    """Return (layout_lane_of, standalone_set, epic_set, auto_lane_codes).
+
+    layout_lane_of: explicit order[] members only.
+    auto_lane_codes: set of lane codes that have NO explicit order[] (auto-derived).
+    When gh_issues is provided, auto-derived lanes contribute all their labeled
+    issues to the "placed" set via auto_lane_codes.
+    """
     layout_lane_of: dict[tuple[str, int], str] = {}
+    auto_lane_codes: set[str] = set()
     for lane in layout.get("lanes", []):
-        for ref in lane.get("order", []):
-            if isinstance(ref, dict):
-                layout_lane_of[(ref["repo"], ref["issue"])] = lane["code"]
+        code = lane["code"]
+        if "order" not in lane:
+            auto_lane_codes.add(code)
+        else:
+            for ref in lane.get("order", []):
+                if isinstance(ref, dict):
+                    layout_lane_of[(ref["repo"], ref["issue"])] = code
 
     standalone_set: set[tuple[str, int]] = set()
     for ref in layout.get("standalone", {}).get("order", []):
@@ -262,7 +302,83 @@ def _build_layout_sets(
             if epic_repo:
                 epic_set.add((epic_repo, epic["issue"]))
 
-    return layout_lane_of, standalone_set, epic_set
+    return layout_lane_of, standalone_set, epic_set, auto_lane_codes
+
+
+def _collect_auto_placed(
+    gh_issues: dict,
+    auto_lane_codes: set[str],
+    standalone_set: set[tuple[str, int]],
+    layout: dict,
+    label_prefix: str,
+) -> tuple[set[tuple[str, int]], set[tuple[str, int]]]:
+    """Return (auto_placed, updated_standalone_set) for auto-derived lanes/standalone.
+
+    auto_placed: issues in lanes that have no explicit order[] (GH-label driven).
+    standalone_set: extended with gh:standalone issues when layout.standalone is empty.
+    """
+    auto_placed: set[tuple[str, int]] = set()
+    if auto_lane_codes:
+        for key, entry in gh_issues.items():
+            if not entry:
+                continue
+            ll = _lane_label_from_entry(entry, label_prefix)
+            if ll in auto_lane_codes:
+                try:
+                    repo, n = parse_key(key)
+                    auto_placed.add((repo, n))
+                except ValueError:
+                    pass
+
+    standalone_auto = not bool(layout.get("standalone", {}).get("order"))
+    if standalone_auto:
+        updated: set[tuple[str, int]] = set(standalone_set)
+        for key, entry in gh_issues.items():
+            if entry and _is_standalone(entry, label_prefix):
+                try:
+                    repo, n = parse_key(key)
+                    updated.add((repo, n))
+                except ValueError:
+                    pass
+        return auto_placed, updated
+
+    return auto_placed, standalone_set
+
+
+def _check_placement(
+    layout_lane_of: dict[tuple[str, int], str],
+    labeled: set[tuple[str, int]],
+    all_placed: set[tuple[str, int]],
+    gh_issues: dict,
+    label_prefix: str,
+) -> bool:
+    """Check untriaged and label-mismatch drift. Returns drift_found."""
+    drift_found = _check_untriaged(labeled, all_placed, gh_issues, label_prefix)
+    if layout_lane_of:
+        return drift_found | _check_label_mismatches(
+            layout_lane_of, gh_issues, label_prefix
+        )
+    print(
+        "In order[] but wrong/missing GH label:  (all lanes auto-derived, skipped)"
+    )
+    print()
+    return drift_found
+
+
+def _check_meta(
+    gh_issues: dict,
+    layout: dict,
+    label_prefix: str,
+    auto_placed: set[tuple[str, int]],
+) -> bool:
+    """Check defer and standalone drift. Returns drift_found."""
+    drift_found = _check_defer(
+        gh_issues, layout, label_prefix, auto_placed=auto_placed
+    )
+    drift_found |= _check_standalone(gh_issues, layout, label_prefix)
+    return drift_found
+
+
 
 
 def run_audit(layout_path: Path, cache_path: Path, *, verbose: bool = False) -> int:
@@ -281,24 +397,29 @@ def run_audit(layout_path: Path, cache_path: Path, *, verbose: bool = False) -> 
     for repo in repos:
         labeled |= search_labeled_issues(repo, label_prefix, lane_codes)
 
-    layout_lane_of, standalone_set, epic_set = _build_layout_sets(layout)
+    layout_lane_of, standalone_set, epic_set, auto_lane_codes = _build_layout_sets(
+        layout, gh_issues
+    )
+    auto_placed, standalone_set = _collect_auto_placed(
+        gh_issues, auto_lane_codes, standalone_set, layout, label_prefix
+    )
     all_placed: set[tuple[str, int]] = (
-        set(layout_lane_of.keys()) | standalone_set | epic_set
+        set(layout_lane_of.keys()) | standalone_set | epic_set | auto_placed
     )
 
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     print(f"LABEL DRIFT AUDIT — {date_str}")
+    if auto_lane_codes:
+        print(f"  (auto-derived lanes: {', '.join(sorted(auto_lane_codes))})")
     print()
 
-    drift_found = False
-    drift_found |= _check_untriaged(labeled, all_placed, gh_issues, label_prefix)
-    drift_found |= _check_label_mismatches(layout_lane_of, gh_issues, label_prefix)
-    drift_found |= _check_defer(gh_issues, layout, label_prefix)
-    drift_found |= _check_standalone(gh_issues, layout, label_prefix)
+    drift_found = _check_placement(
+        layout_lane_of, labeled, all_placed, gh_issues, label_prefix
+    )
+    drift_found |= _check_meta(gh_issues, layout, label_prefix, auto_placed)
 
     if drift_found:
         print("RESULT: drift detected — exit 1")
         return 1
-    else:
-        print("RESULT: clean — exit 0")
-        return 0
+    print("RESULT: clean — exit 0")
+    return 0

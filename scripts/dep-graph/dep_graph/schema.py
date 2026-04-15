@@ -57,9 +57,7 @@ def _check_lanes(lanes: list, allowed_repos: set[str]) -> None:
                 _assert_repo(band["before"], loc, allowed_repos)
 
 
-def _check_keyed_section(
-    section: dict, prefix: str, allowed_repos: set[str]
-) -> None:
+def _check_keyed_section(section: dict, prefix: str, allowed_repos: set[str]) -> None:
     """Check that owner/repo portion of each key in *section* is in allowed_repos."""
     for key in section:
         repo = key.split("#", 1)[0]
@@ -75,17 +73,17 @@ def _check_refs(data: dict, allowed_repos: set[str]) -> None:
     if "issue" in data["meta"] and isinstance(data["meta"]["issue"], dict):
         _assert_repo(data["meta"]["issue"], "meta.issue", allowed_repos)
 
-    # lanes
+    # lanes (order/par_groups/bands are all optional now)
     _check_lanes(data.get("lanes", []), allowed_repos)
 
-    # standalone
+    # standalone (optional)
     for si, ref in enumerate(data.get("standalone", {}).get("order", [])):
         _assert_repo(ref, f"standalone.order[{si}]", allowed_repos)
 
-    # overrides keys
+    # overrides keys (optional)
     _check_keyed_section(data.get("overrides", {}), "overrides", allowed_repos)
 
-    # extra_deps keys
+    # extra_deps keys (optional, deprecated)
     extra = data.get("extra_deps", {})
     for direction in ("extra_blocked_by", "extra_blocking"):
         _check_keyed_section(

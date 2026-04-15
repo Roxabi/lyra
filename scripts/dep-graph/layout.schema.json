@@ -1,8 +1,9 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "dep-graph layout.json schema (multi-repo)",
+  "description": "Minimal layout.json: only meta + lanes[code/name/color] are required. order/par_groups/bands/extra_deps/cross_deps/title_rules are all optional — when absent they are auto-derived from GitHub metadata.",
   "type": "object",
-  "required": ["meta", "lanes", "standalone", "overrides", "extra_deps", "cross_deps", "title_rules"],
+  "required": ["meta", "lanes"],
   "additionalProperties": false,
   "properties": {
     "meta": {
@@ -25,7 +26,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["code", "name", "color", "order"],
+        "required": ["code", "name", "color"],
         "additionalProperties": false,
         "properties": {
           "code":  { "type": "string" },
@@ -48,10 +49,12 @@
             ]
           },
           "order": {
+            "description": "OPTIONAL: explicit display order. When absent, auto-derived from gh_issues topo-sort.",
             "type": "array",
             "items": { "$ref": "#/$defs/IssueRef" }
           },
           "par_groups": {
+            "description": "OPTIONAL: parallel groups. When absent, auto-derived from topo depth.",
             "type": "object",
             "additionalProperties": {
               "type": "array",
@@ -59,6 +62,7 @@
             }
           },
           "bands": {
+            "description": "OPTIONAL: milestone band headers. When absent, auto-derived from GH milestone field.",
             "type": "array",
             "items": {
               "type": "object",
@@ -74,8 +78,8 @@
       }
     },
     "standalone": {
+      "description": "OPTIONAL: standalone section. When order[] is absent/empty, auto-derived from graph:standalone labels.",
       "type": "object",
-      "required": ["order"],
       "additionalProperties": false,
       "properties": {
         "order": {
@@ -85,6 +89,7 @@
       }
     },
     "overrides": {
+      "description": "OPTIONAL: per-issue editorial overrides. Only anchor, anchor_after, extra_deps_ext, status are meaningful. title and size are deprecated (title_rules now global, size read from GH labels).",
       "type": "object",
       "additionalProperties": false,
       "patternProperties": {
@@ -92,8 +97,8 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "title":          { "type": "string" },
-            "size":           { "type": "string" },
+            "title":          { "type": "string", "description": "Deprecated: use GH title + title_rules instead." },
+            "size":           { "type": "string", "description": "Deprecated: use size:* GH label instead." },
             "status":         { "type": "string", "enum": ["done", "ready", "blocked", "defer"] },
             "anchor":         { "type": "string" },
             "anchor_after":   { "type": "string" },
@@ -103,6 +108,7 @@
       }
     },
     "extra_deps": {
+      "description": "DEPRECATED: add blocked_by relationships directly on GitHub instead.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -129,6 +135,7 @@
       }
     },
     "cross_deps": {
+      "description": "OPTIONAL: editorial cross-lane dependency notes (rendered in footer section).",
       "type": "array",
       "items": {
         "type": "object",
@@ -141,6 +148,7 @@
       }
     },
     "title_rules": {
+      "description": "DEPRECATED: built-in rules in titles.py handle conventional-commit stripping globally. Only add here for project-specific overrides applied BEFORE built-ins.",
       "type": "array",
       "items": {
         "type": "object",

@@ -116,7 +116,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
 
                 listener = NatsOutboundListener(
                     nc, platform_enum, bot_id, adapter,
-                    queue_group=adapter_outbound(platform_enum, bot_id),
+                    queue_group=adapter_outbound(platform_enum.value, bot_id),
                 )
                 adapter._outbound_listener = listener
                 await adapter.astart()
@@ -251,7 +251,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
 
                 listener_dc = NatsOutboundListener(
                     nc, platform_enum, bot_id, adapter_dc,
-                    queue_group=adapter_outbound(platform_enum, bot_id),
+                    queue_group=adapter_outbound(platform_enum.value, bot_id),
                 )
                 adapter_dc._outbound_listener = listener_dc
                 await adapter_dc.astart()

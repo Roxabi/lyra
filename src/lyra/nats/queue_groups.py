@@ -6,8 +6,6 @@ or helper defines exactly one role → name mapping.
 """
 from __future__ import annotations
 
-from lyra.core.message import Platform
-
 #: Hub-side inbound text message subscription (``NatsBus``).
 HUB_INBOUND = "hub-inbound"
 
@@ -18,11 +16,14 @@ TTS_WORKERS = "tts-workers"
 STT_WORKERS = "stt-workers"
 
 
-def adapter_outbound(platform: Platform, bot_id: str) -> str:
+def adapter_outbound(platform: str, bot_id: str) -> str:
     """Return the NATS queue group for an adapter's outbound subscription.
 
     Each adapter instance for a given ``(platform, bot_id)`` joins this group
     so that during rolling restarts only one process receives each outbound
     message, preventing duplicate sends to users.
+
+    ``platform`` is the lowercase platform name (e.g. ``"telegram"``,
+    ``"discord"``). Callers holding a ``Platform`` enum should pass ``.value``.
     """
-    return f"adapter-outbound-{platform.value}-{bot_id}"
+    return f"adapter-outbound-{platform}-{bot_id}"

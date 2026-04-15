@@ -210,11 +210,31 @@ class TestBuildTlsContext:
         monkeypatch: pytest.MonkeyPatch,
         valid_ca_pem: str,
     ) -> None:
-        """SystemExit when NATS_CA_CERT is a symlink (O_NOFOLLOW guard)."""
+        """SystemExit when NATS_CA_CERT is a symlink (O_NOFOLLOW, ELOOP branch)."""
         target = tmp_path / "ca.pem"
         target.write_text(valid_ca_pem)
         link = tmp_path / "ca-link.pem"
         link.symlink_to(target)
+        monkeypatch.setenv("NATS_CA_CERT", str(link))
+
+        # O_NOFOLLOW raises OSError(ELOOP) on a non-dangling symlink →
+        # mapped to "is not a file".
+        with pytest.raises(SystemExit, match="is not a file"):
+            _build_tls_context()
+
+    def test_dangling_symlink_rejected(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        valid_ca_pem: str,
+    ) -> None:
+        """SystemExit when NATS_CA_CERT is a symlink whose target is gone
+        (O_NOFOLLOW guard, ENOENT branch)."""
+        target = tmp_path / "ca.pem"
+        target.write_text(valid_ca_pem)
+        link = tmp_path / "ca-link.pem"
+        link.symlink_to(target)
+        target.unlink()  # leave the symlink dangling
         monkeypatch.setenv("NATS_CA_CERT", str(link))
 
         with pytest.raises(SystemExit, match="is not a file"):

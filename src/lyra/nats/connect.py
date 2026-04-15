@@ -92,7 +92,7 @@ def _build_tls_context() -> ssl.SSLContext | None:
             sys.exit(f"NATS_CA_CERT={ca_path_str!r} is not a file")
         with os.fdopen(fd, "r") as fh:
             fd = -1  # fdopen takes ownership; prevent double-close below
-            ca_data = fh.read()
+            ca_data = fh.read().strip()
     except OSError as exc:
         if fd != -1:
             os.close(fd)
@@ -101,12 +101,15 @@ def _build_tls_context() -> ssl.SSLContext | None:
             sys.exit(f"NATS_CA_CERT={ca_path_str!r} is not a file")
         strerror = exc.strerror or str(exc)
         sys.exit(f"NATS_CA_CERT={ca_path_str!r} is unreadable: {strerror}")
-    if not ca_data.strip():
+    if not ca_data:
         sys.exit(f"NATS_CA_CERT={ca_path_str!r} is empty")
     try:
         ctx = ssl.create_default_context(cadata=ca_data)
     except ssl.SSLError as exc:
-        sys.exit(f"NATS_CA_CERT={ca_path_str!r} is not a valid PEM bundle: {exc}")
+        # Use exc.reason only — avoid leaking OpenSSL internals (file paths,
+        # library build details) that would surface via the default str(exc).
+        reason = exc.reason or "invalid PEM"
+        sys.exit(f"NATS_CA_CERT={ca_path_str!r} is not a valid PEM bundle: {reason}")
     return ctx
 
 

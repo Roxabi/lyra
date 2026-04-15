@@ -248,9 +248,10 @@ dep-graph:
 		build)    $(call dep_graph_run,build) ;; \
 		audit)    $(call dep_graph_run,audit) ;; \
 		validate) $(call dep_graph_run,validate) ;; \
+		migrate)  $(call dep_graph_run,migrate) ;; \
 		open)     xdg-open $(DEP_GRAPH_OUT) 2>/dev/null || open $(DEP_GRAPH_OUT) 2>/dev/null || echo "Open $(DEP_GRAPH_OUT) manually" ;; \
 		""|all)   $(call dep_graph_run,fetch) && $(call dep_graph_run,build) ;; \
 		*)        echo "Unknown action: $(_LYRA_CMD)"; \
-		          echo "Use: fetch | build | audit | validate | open | (empty for full rebuild)"; \
+		          echo "Use: fetch | build | audit | validate | migrate | open | (empty for full rebuild)"; \
 		          exit 1 ;; \
 	esac

@@ -125,7 +125,7 @@ select = ["E", "F", "I", "C901", "PLR0913", "PLR0915"]
 
 [tool.ruff.lint.per-file-ignores]
 # Test files: long docstrings/comments are more readable than wrapped
-"tests/**/*.py" = ["E501"]
+"tests/dep_graph/**/*.py" = ["E501"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

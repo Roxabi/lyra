@@ -31,7 +31,9 @@ def run_migrate(layout_path: Path, *, verbose: bool = False) -> int:
         return 1
 
     out = layout_path.with_suffix(layout_path.suffix + ".new")
-    out.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    tmp.rename(out)
     print(f"Wrote {out}. Review and rename to {layout_path} to commit.")
     return 0
 

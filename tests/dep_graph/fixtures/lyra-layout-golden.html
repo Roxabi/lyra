@@ -22,7 +22,7 @@
 <meta name="diagram:cat-label" content="Plan">
 <meta name="diagram:color"     content="amber">
 <meta name="diagram:badges"    content="latest">
-<meta name="diagram:issue"     content="{'repo': 'Roxabi/lyra', 'issue': 445}">
+<meta name="diagram:issue"     content="445">
 <!-- diagram-meta:end -->
 <title>Lyra — v2 Dependency Graph</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -475,12 +475,12 @@ footer a { color: var(--accent); text-decoration: none; }
     <div class="epic-wrap">
       <div class="epic-banner"><span>#605 · containerize</span><span class="tag">M1</span></div>
       <div class="par">
-        <div class="card done" id="card-roxabi-lyra-606"><div class="top"><span class="num">#606</span></div><div class="title">Dockerfile</div><div class="deps"><span class="none">no deps</span></div></div>
-        <div class="card done" id="card-roxabi-lyra-612"><div class="top"><span class="num">#612</span></div><div class="title">paths/env</div><div class="deps"><span class="none">no deps</span></div></div>
+        <div class="card done" id="card-roxabi-lyra-606"><div class="top"><span class="num">#606</span></div><div class="title">Dockerfile</div><div class="deps">→#607</div></div>
+        <div class="card done" id="card-roxabi-lyra-612"><div class="top"><span class="num">#612</span></div><div class="title">paths/env</div><div class="deps">→#607</div></div>
       </div>
-      <div class="card done" id="card-roxabi-lyra-607"><div class="top"><span class="num">#607</span></div><div class="title">nats + hub QL</div><div class="deps"><span class="none">no deps</span></div></div>
+      <div class="card done" id="card-roxabi-lyra-607"><div class="top"><span class="num">#607</span></div><div class="title">nats + hub QL</div><div class="deps">←#606 ←#612 →#608 →#609</div></div>
       <div class="par">
-        <div class="card done" id="card-roxabi-lyra-608"><div class="top"><span class="num">#608</span></div><div class="title">tg + disc QL</div><div class="deps"><span class="none">no deps</span></div></div>
+        <div class="card done" id="card-roxabi-lyra-608"><div class="top"><span class="num">#608</span></div><div class="title">tg + disc QL</div><div class="deps">←#607</div></div>
         <div class="card ready" id="card-roxabi-lyra-609" data-anchor="m1-gate"><div class="top"><span class="num">#609</span><span class="size">next</span></div><div class="title">stt+tts QL</div><div class="deps">→#610 <span class="ext">→D:#670</span></div></div>
       </div>
       <div class="card blocked" id="card-roxabi-lyra-610"><div class="top"><span class="num">#610</span></div><div class="title">Makefile Podman</div><div class="deps">←#609 →#611 →#657</div></div>
@@ -496,8 +496,8 @@ footer a { color: var(--accent); text-decoration: none; }
     <div class="lane-head"><span class="code">C1</span><span class="name">LiteLLM</span></div>
     <div class="epic-wrap">
       <div class="epic-banner"><span>#663 · LiteLLM</span><span class="tag">M2</span></div>
-      <div class="card done" id="card-roxabi-lyra-674"><div class="top"><span class="num">#674</span></div><div class="title">ModelConfig ext</div><div class="deps"><span class="none">no deps</span></div></div>
-      <div class="card ready" id="card-roxabi-lyra-665"><div class="top"><span class="num">#665</span></div><div class="title">LiteLLMDriver</div><div class="deps">→#666 <span class="ext">→D:#671</span></div></div>
+      <div class="card done" id="card-roxabi-lyra-674"><div class="top"><span class="num">#674</span></div><div class="title">ModelConfig ext</div><div class="deps">→#665</div></div>
+      <div class="card ready" id="card-roxabi-lyra-665"><div class="top"><span class="num">#665</span></div><div class="title">LiteLLMDriver</div><div class="deps">←#674 →#666 <span class="ext">→D:#671</span></div></div>
       <div class="card blocked" id="card-roxabi-lyra-666"><div class="top"><span class="num">#666</span></div><div class="title">drop Anthropic</div><div class="deps">←#665</div></div>
     </div>
   </div>
@@ -537,8 +537,8 @@ footer a { color: var(--accent); text-decoration: none; }
     <div class="lane-head"><span class="code">D</span><span class="name">Observability</span></div>
     <div class="epic-wrap">
       <div class="epic-banner"><span>#667 · OTel pipeline</span><span class="tag">M3</span></div>
-      <div class="card done" id="card-roxabi-lyra-673"><div class="top"><span class="num">#673</span></div><div class="title">ObsProvider+NoOp</div><div class="deps"><span class="none">no deps</span></div></div>
-      <div class="card ready" id="card-roxabi-lyra-669"><div class="top"><span class="num">#669</span></div><div class="title">OTelObsProvider</div><div class="deps"><span class="none">no deps</span></div></div>
+      <div class="card done" id="card-roxabi-lyra-673"><div class="top"><span class="num">#673</span></div><div class="title">ObsProvider+NoOp</div><div class="deps">→#669</div></div>
+      <div class="card ready" id="card-roxabi-lyra-669"><div class="top"><span class="num">#669</span></div><div class="title">OTelObsProvider</div><div class="deps">←#673</div></div>
       <div class="card blocked" id="card-roxabi-lyra-671"><div class="top"><span class="num">#671</span></div><div class="title">LiteLLM→OTel</div><div class="deps"><span class="ext">←C1:#665</span></div></div>
       <div class="spacer" aria-hidden="true"></div>
       <div class="spacer" aria-hidden="true"></div>

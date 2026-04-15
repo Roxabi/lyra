@@ -19,12 +19,13 @@ import json
 import shutil
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Module-level flag: set to True after first shape assertion is performed.
-_dep_shape_checked: bool = False
+# Module-level event: set after first shape assertion is performed (thread-safe).
+_dep_shape_checked = threading.Event()
 
 
 def check_gh() -> None:
@@ -56,34 +57,42 @@ def _iter_lane_refs(lane: dict):
 
 def search_labeled_issues(
     repo: str, label_prefix: str, lane_codes: list[str]
-) -> set[int]:
+) -> set[tuple[str, int]]:
     """List all issues with any <prefix>lane/* or <prefix>standalone label."""
     nums: set[int] = set()
     labels = [f"{label_prefix}standalone"] + [
         f"{label_prefix}lane/{c}" for c in lane_codes
     ]
     for lbl in labels:
-        result = subprocess.run(
-            [
-                "gh",
-                "issue",
-                "list",
-                "--repo",
-                repo,
-                "--label",
-                lbl,
-                "--state",
-                "all",
-                "--limit",
-                "200",
-                "--json",
-                "number",
-                "--jq",
-                "[.[].number]",
-            ],
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "issue",
+                    "list",
+                    "--repo",
+                    repo,
+                    "--label",
+                    lbl,
+                    "--state",
+                    "all",
+                    "--limit",
+                    "200",
+                    "--json",
+                    "number",
+                    "--jq",
+                    "[.[].number]",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            print(
+                f"  WARN list timed out for '{lbl}'",
+                file=sys.stderr,
+            )
+            continue
         if result.returncode != 0:
             print(
                 f"  WARN list failed for '{lbl}': {result.stderr.strip()}",
@@ -99,7 +108,7 @@ def search_labeled_issues(
                     f"  WARN bad JSON for '{lbl}': {raw[:80]}",
                     file=sys.stderr,
                 )
-    return nums
+    return {(repo, n) for n in nums}
 
 
 def fetch_issue_meta(
@@ -110,11 +119,19 @@ def fetch_issue_meta(
     Returns (issue_num, title, state, label_names).
     """
     endpoint = f"repos/{repo}/issues/{issue_num}"
-    result = subprocess.run(
-        ["gh", "api", endpoint],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["gh", "api", endpoint],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            f"  WARN #{issue_num} meta: timed out",
+            file=sys.stderr,
+        )
+        return (issue_num, "", "open", [])
     if result.returncode != 0:
         print(
             f"  WARN #{issue_num} meta: {result.stderr.strip()}",
@@ -181,16 +198,22 @@ def fetch_dep_list(
     Returns (issue_num, direction, list_of_IssueRef_dicts).
     Each IssueRef has shape: {repo: str, issue: int}.
     """
-    global _dep_shape_checked
-
     endpoint = (
         f"repos/{repo}/issues/{issue_num}/dependencies/{direction}"
     )
-    result = subprocess.run(
-        ["gh", "api", endpoint],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["gh", "api", endpoint],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            f"  WARN #{issue_num} {direction}: timed out",
+            file=sys.stderr,
+        )
+        return (issue_num, direction, [])
     if result.returncode != 0:
         stderr = result.stderr.strip()
         if "404" not in stderr and "Not Found" not in stderr:
@@ -216,8 +239,8 @@ def fetch_dep_list(
 
     # Shape assertion on first non-empty response (API stability check).
     # Accepted: IssueRef {repo, issue} or raw gh API {number, repository}.
-    if not _dep_shape_checked:
-        _dep_shape_checked = True
+    if not _dep_shape_checked.is_set():
+        _dep_shape_checked.set()
         _check_dep_shape(payload)
 
     return (issue_num, direction, _parse_dep_refs(payload, repo))
@@ -231,8 +254,7 @@ def _discover_from_layout(
 
     # Label search per repo.
     for repo in repos:
-        nums = search_labeled_issues(repo, label_prefix, lane_codes)
-        discovered |= {(repo, n) for n in nums}
+        discovered |= search_labeled_issues(repo, label_prefix, lane_codes)
 
     # Explicit refs from lanes.
     for lane in layout.get("lanes", []):

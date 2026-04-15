@@ -206,3 +206,55 @@ def test_cross_repo_dep_arrow_rendered(tmp_path):
     assert "lyra#703" in html or "Roxabi/lyra" in html, (
         "Cross-repo dep ref not visible on vault card"
     )
+
+
+def test_extra_blocked_by_renders_post_migration(tmp_path):
+    """extra_deps.extra_blocked_by with owner/repo#N keys renders dep on the card."""
+    layout = _valid_single_lane_layout(
+        repos=["Roxabi/lyra"],
+        lane_order=[
+            {"repo": "Roxabi/lyra", "issue": 641},
+            {"repo": "Roxabi/lyra", "issue": 640},
+        ],
+    )
+    layout["extra_deps"] = {
+        "extra_blocked_by": {"Roxabi/lyra#641": ["Roxabi/lyra#640"]},
+        "extra_blocking": {},
+    }
+    cache = {
+        "fetched_at": "2026-04-15T00:00:00Z",
+        "repos": ["Roxabi/lyra"],
+        "issues": {
+            "Roxabi/lyra#641": {
+                "repo": "Roxabi/lyra",
+                "number": 641,
+                "title": "child",
+                "state": "OPEN",
+                "labels": [],
+                "blocked_by": [],
+                "blocking": [],
+            },
+            "Roxabi/lyra#640": {
+                "repo": "Roxabi/lyra",
+                "number": 640,
+                "title": "parent",
+                "state": "OPEN",
+                "labels": [],
+                "blocked_by": [],
+                "blocking": [],
+            },
+        },
+    }
+    layout_path = _write_layout(tmp_path, layout)
+    cache_path = _write_cache(tmp_path, cache)
+    out = tmp_path / "out.html"
+
+    run_build(
+        BuildPaths(
+            layout_path=layout_path, cache_path=cache_path, out_path=out, bak_path=None
+        )
+    )
+    html = out.read_text()
+
+    # The #641 card must show #640 as a blocker in its dep row
+    assert "640" in html, "extra_blocked_by dep #640 must appear in rendered HTML"

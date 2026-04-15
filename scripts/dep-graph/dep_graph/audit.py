@@ -279,8 +279,7 @@ def run_audit(layout_path: Path, cache_path: Path, *, verbose: bool = False) -> 
 
     labeled: set[tuple[str, int]] = set()
     for repo in repos:
-        found = search_labeled_issues(repo, label_prefix, lane_codes)
-        labeled |= {(repo, n) for n in found}
+        labeled |= search_labeled_issues(repo, label_prefix, lane_codes)
 
     layout_lane_of, standalone_set, epic_set = _build_layout_sets(layout)
     all_placed: set[tuple[str, int]] = (

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 
-from .keys import format_key, repo_slug
+from .keys import format_key, parse_key, repo_slug
 from .schema import LayoutValidationError, validate_layout
 from .titles import normalize_title
 
@@ -43,8 +43,8 @@ class CardContext:
     lane_of: dict[tuple[str, int], str]
     ovr: dict
     gh_entry: dict | None
-    extra_blocked_by: list[int]
-    extra_blocking: list[int]
+    extra_blocked_by: list[tuple[str, int]]
+    extra_blocking: list[tuple[str, int]]
     gh_issues: dict
     title_rules: list[dict]
     primary_repo: str = ""
@@ -76,7 +76,7 @@ class BuildPaths:
 
 def _has_active_blockers(
     gh_entry: dict,
-    extra_blocked_by: list[int],
+    extra_blocked_by: list[tuple[str, int]],
     gh_issues: dict,
     own_repo: str,
 ) -> bool:
@@ -88,8 +88,8 @@ def _has_active_blockers(
             key = format_key(own_repo, item) if own_repo else str(item)
         if gh_issues.get(key, {}).get("state") != "closed":
             return True
-    for n in extra_blocked_by:
-        key = format_key(own_repo, n) if own_repo else str(n)
+    for dep_repo, dep_num in extra_blocked_by:
+        key = format_key(dep_repo, dep_num)
         if gh_issues.get(key, {}).get("state") != "closed":
             return True
     return False
@@ -98,7 +98,7 @@ def _has_active_blockers(
 def derive_status(
     ovr: dict,
     gh_entry: dict | None,
-    extra_blocked_by: list[int],
+    extra_blocked_by: list[tuple[str, int]],
     gh_issues: dict,
     repo: str = "",
 ) -> str:
@@ -130,8 +130,8 @@ def _ref_to_tuple(item: dict | int, own_repo: str) -> tuple[str, int]:
 
 def _collect_dep_lists(
     gh_entry: dict | None,
-    extra_blocked_by: list[int],
-    extra_blocking: list[int],
+    extra_blocked_by: list[tuple[str, int]],
+    extra_blocking: list[tuple[str, int]],
     own_repo: str = "",
 ) -> tuple[list[tuple[str, int]], list[tuple[str, int]]]:
     """Merge GH deps with extra deps.
@@ -139,24 +139,19 @@ def _collect_dep_lists(
     Returns (blocked_by, blocking) as repo/issue tuples.
     """
     if gh_entry is None:
-        return (
-            [(own_repo, n) for n in extra_blocked_by],
-            [(own_repo, n) for n in extra_blocking],
-        )
+        return list(extra_blocked_by), list(extra_blocking)
 
     raw_bb = gh_entry.get("blocked_by", [])
     blocked_by: list[tuple[str, int]] = [_ref_to_tuple(x, own_repo) for x in raw_bb]
     seen_bb: set[tuple[str, int]] = set(blocked_by)
-    for n in extra_blocked_by:
-        t = (own_repo, n)
+    for t in extra_blocked_by:
         if t not in seen_bb:
             blocked_by.append(t)
 
     raw_bl = gh_entry.get("blocking", [])
     blocking: list[tuple[str, int]] = [_ref_to_tuple(x, own_repo) for x in raw_bl]
     seen_bl: set[tuple[str, int]] = set(blocking)
-    for n in extra_blocking:
-        t = (own_repo, n)
+    for t in extra_blocking:
         if t not in seen_bl:
             blocking.append(t)
 
@@ -541,8 +536,18 @@ def _render_issue_row(
     if gh_entry is None and not row_repo:
         # fallback for legacy int-keyed overrides
         gh_entry = ctx.gh_issues.get(str(n))
-    extra_bb = extra_blocked_by_map.get(str(n), [])
-    extra_bl = extra_blocking_map.get(str(n), [])
+    bb_key = format_key(row_repo, n) if row_repo else str(n)
+    bl_key = format_key(row_repo, n) if row_repo else str(n)
+    _raw_bb = extra_blocked_by_map.get(bb_key, [])
+    _raw_bl = extra_blocking_map.get(bl_key, [])
+
+    def _as_ref(k: str | int) -> tuple[str, int]:
+        if isinstance(k, str):
+            return parse_key(k)
+        return (row_repo, int(k))
+
+    extra_bb: list[tuple[str, int]] = [_as_ref(k) for k in _raw_bb]
+    extra_bl: list[tuple[str, int]] = [_as_ref(k) for k in _raw_bl]
     anchor_attr = ""
     if "anchor" in row:
         anchor_attr = f' data-anchor="{escape(row["anchor"])}"'
@@ -1150,6 +1155,26 @@ THEME_SCRIPT = """\
 </script>"""
 
 
+def _escape_meta(meta: dict, primary_repo: str) -> dict[str, str]:
+    """Escape user-provided meta fields for safe HTML rendering."""
+    raw_issue = meta.get("issue", "")
+    issue_display = (
+        str(raw_issue["issue"]) if isinstance(raw_issue, dict) else str(raw_issue)
+    )
+    repo_url = (
+        f"https://github.com/{escape(primary_repo)}/issues" if primary_repo else "#"
+    )
+    return {
+        "title": escape(meta["title"]),
+        "date": escape(meta["date"]),
+        "issue": escape(issue_display),
+        "category": escape(meta.get("category", "")),
+        "cat_label": escape(meta.get("cat_label", "")),
+        "color": escape(meta.get("color", "")),
+        "repo_url": repo_url,
+    }
+
+
 def build_html(layout: dict, gh_issues: dict) -> str:
     meta = layout["meta"]
     lanes = layout["lanes"]
@@ -1229,14 +1254,14 @@ def build_html(layout: dict, gh_issues: dict) -> str:
     # CSS — str.replace avoids .format() colliding with raw CSS braces
     css = CSS_BASE.replace("{extra_vars}", "").replace("{extra_selectors}", "")
 
-    title = escape(meta["title"])
-    date = escape(meta["date"])
-    issue = meta.get("issue", "")
-    category = escape(meta.get("category", ""))
-    cat_label = escape(meta.get("cat_label", ""))
-    color = escape(meta.get("color", ""))
-    repo = meta.get("repo", primary_repo)
-    repo_url = f"https://github.com/{repo}/issues" if repo else "#"
+    escaped = _escape_meta(meta, primary_repo)
+    title = escaped["title"]
+    date = escaped["date"]
+    issue = escaped["issue"]
+    category = escaped["category"]
+    cat_label = escaped["cat_label"]
+    color = escaped["color"]
+    repo_url = escaped["repo_url"]
     lane_count = len(lanes)
 
     subtitle = (
@@ -1249,7 +1274,7 @@ def build_html(layout: dict, gh_issues: dict) -> str:
     )
     footer_line = (
         f"Lyra v2 plan \u00b7 refreshed {date}"
-        f' \u00b7 <a href="{repo_url}">{repo_url}</a>'
+        f' \u00b7 <a href="{repo_url}">{escape(repo_url)}</a>'
         f' \u00b7 <a href="nats-arch-roadmap.html">NATS arch roadmap</a>'
     )
     standalone_comment = (

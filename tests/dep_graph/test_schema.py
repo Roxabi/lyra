@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 
 import pytest
-from dep_graph.schema import validate_layout
+from dep_graph.schema import LayoutValidationError, validate_layout
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -57,7 +57,7 @@ def test_rejects_meta_repo_singular(tmp_path: Path) -> None:
     p = _write_layout(tmp_path, layout)
 
     # Act + Assert
-    with pytest.raises(Exception):
+    with pytest.raises(LayoutValidationError):
         validate_layout(p)
 
 
@@ -79,7 +79,7 @@ def test_rejects_bare_int_issue_ref(tmp_path: Path) -> None:
     p = _write_layout(tmp_path, layout)
 
     # Act + Assert
-    with pytest.raises(Exception):
+    with pytest.raises(LayoutValidationError):
         validate_layout(p)
 
 
@@ -103,7 +103,7 @@ def test_rejects_issue_ref_repo_not_in_meta_repos(tmp_path: Path) -> None:
     p = _write_layout(tmp_path, layout)
 
     # Act + Assert
-    with pytest.raises(Exception):
+    with pytest.raises(LayoutValidationError):
         validate_layout(p)
 
 
@@ -115,7 +115,7 @@ def test_rejects_both_meta_repo_and_meta_repos(tmp_path: Path) -> None:
     p = _write_layout(tmp_path, layout)
 
     # Act + Assert
-    with pytest.raises(Exception):
+    with pytest.raises(LayoutValidationError):
         validate_layout(p)
 
 

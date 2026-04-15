@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta property="og:title" content="Lyra — v2 Dependency Graph">
+<meta property="og:description" content="Lyra — v2 Dependency Graph">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://forge.roxabi.dev/lyra/visuals/lyra-v2-dependency-graph.html">
+<meta property="og:image" content="https://forge.roxabi.dev/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="Roxabi Forge">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Lyra — v2 Dependency Graph">
+<meta name="twitter:description" content="Lyra — v2 Dependency Graph">
+<meta name="twitter:image" content="https://forge.roxabi.dev/og-image.png">
+<!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — v2 Dependency Graph">
+<meta name="diagram:date"      content="2026-04-15">
+<meta name="diagram:category"  content="plan">
+<meta name="diagram:cat-label" content="Plan">
+<meta name="diagram:color"     content="amber">
+<meta name="diagram:badges"    content="latest">
+<meta name="diagram:issue"     content="{'repo': 'Roxabi/lyra', 'issue': 445}">
+<!-- diagram-meta:end -->
+<title>Lyra — v2 Dependency Graph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --slot-h: 56px;
+}
+:root, [data-theme="dark"] {
+  --bg:          #0d1117;
+  --bg-panel:    #13191f;
+  --bg-card:     #161b22;
+  --bg-cell:     #0f141a;
+  --bg-epic:     rgba(232,93,4,0.05);
+  --border:      #21262d;
+  --border-hi:   #30363d;
+  --text:        #fafafa;
+  --text-muted:  #8b93a1;
+  --text-dim:    #6b7280;
+  --accent:      #e85d04;
+  --accent-hi:   #f97316;
+  --lane-a:      #22c55e;
+  --lane-b:      #3b82f6;
+  --lane-c1:     #a855f7;
+  --lane-c2:     #d946ef;
+  --lane-c3:     #ec4899;
+  --lane-d:      #06b6d4;
+  --lane-e:      #eab308;
+  --lane-f:      #10b981;
+  --lane-g:      #f97316;
+  --lane-h:      #f59e0b;
+  --lane-i:      #14b8a6;
+  --lane-indep:  #94a3b8;
+  --status-done: #16a34a;
+  --status-ready:#facc15;
+  --status-blocked:#fb923c;
+  --status-defer:#64748b;
+  --arrow:       #4b5563;
+  --dep-in:      #94a3b8;
+  --dep-out:     #94a3b8;
+  --dep-ext:     #f97316;
+
+[data-theme="light"] {
+  --bg:          #fafaf9;
+  --bg-panel:    #ffffff;
+  --bg-card:     #f4f4f0;
+  --bg-cell:     #ffffff;
+  --bg-epic:     rgba(232,93,4,0.04);
+  --border:      #d6d3d1;
+  --border-hi:   #a8a29e;
+  --text:        #1c1917;
+  --text-muted:  #57534e;
+  --text-dim:    #78716c;
+  --accent:      #c2410c;
+  --accent-hi:   #e85d04;
+  --arrow:       #a8a29e;
+  --dep-in:      #6b7280;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  padding: 24px;
+  min-height: 100vh;
+  font-size: 12px;
+  line-height: 1.4;
+}
+header {
+  max-width: 1750px;
+  margin: 0 auto 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+h1 span { color: var(--accent); }
+.subtitle {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.legend {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.legend .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot.done    { background: var(--status-done); }
+.dot.ready   { background: var(--status-ready); }
+.dot.blocked { background: var(--status-blocked); }
+.dot.defer   { background: var(--status-defer); }
+
+/* Flex-column lanes layout */
+.lanes {
+  max-width: 1750px;
+  margin: 0 auto;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  background: var(--bg-panel);
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.lane {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lane-head {
+  padding: 8px 6px;
+  text-align: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid;
+  border-radius: 5px 5px 0 0;
+}
+.lane-head .code {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 13px;
+}
+.lane-head .name {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-weight: 500;
+}
+.lane[data-lane="a"]     > .lane-head { border-top-color: var(--lane-a); }
+.lane[data-lane="b"]     > .lane-head { border-top-color: var(--lane-b); }
+.lane[data-lane="c1"]    > .lane-head { border-top-color: var(--lane-c1); }
+.lane[data-lane="c2"]    > .lane-head { border-top-color: var(--lane-c2); }
+.lane[data-lane="c3"]    > .lane-head { border-top-color: var(--lane-c3); }
+.lane[data-lane="d"]     > .lane-head { border-top-color: var(--lane-d); }
+.lane[data-lane="e"]     > .lane-head { border-top-color: var(--lane-e); }
+.lane[data-lane="f"]     > .lane-head { border-top-color: var(--lane-f); }
+.lane[data-lane="g"]     > .lane-head { border-top-color: var(--lane-g); }
+.lane[data-lane="h"]     > .lane-head { border-top-color: var(--lane-h); }
+.lane[data-lane="i"]     > .lane-head { border-top-color: var(--lane-i); }
+.lane[data-lane="indep"] > .lane-head { border-top-color: var(--lane-indep); }
+
+/* Epic wrap */
+.epic-wrap {
+  background: var(--bg-epic);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 5px 6px;
+  flex: 1 1 auto;
+}
+.epic-wrap.defer { opacity: 0.7; }
+.epic-banner {
+  background: var(--accent);
+  color: #fff;
+  padding: 3px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  border-radius: 5px 5px 0 0;
+  overflow: hidden;
+  white-space: nowrap;
+  margin: 0 -5px;
+}
+.epic-banner .tag {
+  font-size: 8px;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+}
+
+/* Section band (milestone label) */
+.ms-band {
+  display: flex;
+  align-items: center;
+  height: 18px;
+  line-height: 18px;
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.ms-band::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  margin-left: 6px;
+}
+
+/* Spacer — invisible slot placeholder */
+.spacer {
+  height: var(--slot-h);
+}
+
+/* Parallel siblings group */
+.par {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 2px solid var(--text-dim);
+  padding-left: 6px;
+  margin-left: 2px;
+}
+
+/* Card — fixed height for slot uniformity */
+.card {
+  background: var(--bg-cell);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--status-defer);
+  border-radius: 4px;
+  padding: 5px 7px;
+  font-size: 11px;
+  min-width: 0;
+  height: var(--slot-h);
+  min-height: var(--slot-h);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.card.done     { border-left-color: var(--status-done); opacity: 0.55; }
+.card.ready    { border-left-color: var(--status-ready); }
+.card.blocked  { border-left-color: var(--status-blocked); }
+.card.defer    { border-left-color: var(--status-defer); opacity: 0.65; }
+
+.card .top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px;
+}
+.card .num {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 11px;
+}
+.card.done .num::after { content: " ✓"; color: var(--status-done); }
+.card .size {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+.card .title {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card .deps {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px 6px;
+  margin-top: 2px;
+  color: var(--dep-in);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card .deps .ext { color: var(--dep-ext); font-weight: 600; }
+.card .deps .none { color: var(--text-dim); opacity: 0.6; }
+
+.rbadge {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-left: 6px;
+  font-size: 0.7em;
+  border-radius: 4px;
+  background: var(--border-hi, #30363d);
+  color: var(--text-dim, #6b7280);
+  font-weight: 500;
+}
+
+.card--missing {
+  border: 2px dashed var(--status-blocked, #fb923c);
+  background: rgba(251,146,60,0.06);
+  color: var(--text-muted, #8b93a1);
+  padding: 8px;
+  font-style: italic;
+}
+
+.standalone {
+  max-width: 1750px;
+  margin: 10px auto 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.standalone-head {
+  padding: 8px 14px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.standalone-head .label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.standalone-head .hint {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.standalone-grid {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 6px;
+}
+
+.cross-deps {
+  max-width: 1750px;
+  margin: 18px auto 0;
+  padding: 14px 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.cross-deps h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.cross-deps ul {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 4px 18px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.cross-deps li::before { content: "↳ "; color: var(--accent); }
+.cross-deps .kind {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 9px;
+  background: rgba(232,93,4,0.1);
+  color: var(--accent);
+  margin-right: 4px;
+}
+
+.theme-btn {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+footer {
+  max-width: 1750px;
+  margin: 16px auto 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+}
+footer a { color: var(--accent); text-decoration: none; }
+
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Lyra <span>v2</span> — Dependency Graph</h1>
+    <div class="subtitle">11 lanes · 1 card per row · <strong>←</strong> = blocked by · <strong>→</strong> = unblocks · <span class="ext" style="color:var(--dep-ext);font-family:monospace;font-weight:600;">X:#N</span> = cross-lane</div>
+  </div>
+  <div class="legend">
+    <span class="pill"><span class="dot done"></span> done</span>
+    <span class="pill"><span class="dot ready"></span> ready</span>
+    <span class="pill"><span class="dot blocked"></span> blocked</span>
+    <span class="pill"><span class="dot defer"></span> deferred</span>
+    <span class="pill" style="background: var(--accent); color: #fff; border-color: var(--accent);">epic</span>
+    <span class="pill"><span style="color: var(--dep-ext); font-weight: 700;">B:#609</span> = cross-lane ref</span>
+  </div>
+</header>
+
+<div class="lanes">
+
+  <div class="lane" data-lane="a">
+    <div class="lane-head"><span class="code">A</span><span class="name">NATS maturity</span></div>
+    <div class="ms-band">M0 tail ∥</div>
+    <div class="par">
+      <div class="card card--missing" id="card-roxabi-lyra-568" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#568</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-572" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#572</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-576" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#576</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    </div>
+    <div class="ms-band">M1 ∥</div>
+    <div class="par">
+      <div class="card card--missing" id="card-roxabi-lyra-660" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#660</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-662" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#662</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-687" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#687</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    </div>
+  </div>
+
+  <div class="lane" data-lane="b">
+    <div class="lane-head"><span class="code">B</span><span class="name">Containerize</span></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#605 · containerize</span><span class="tag">M1</span></div>
+      <div class="par">
+        <div class="card card--missing" id="card-roxabi-lyra-606" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#606</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+        <div class="card card--missing" id="card-roxabi-lyra-612" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#612</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      </div>
+      <div class="card card--missing" id="card-roxabi-lyra-607" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#607</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="par">
+        <div class="card card--missing" id="card-roxabi-lyra-608" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#608</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+        <div class="card card--missing" id="card-roxabi-lyra-609" data-anchor="m1-gate" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#609</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      </div>
+      <div class="card card--missing" id="card-roxabi-lyra-610" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#610</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="par">
+        <div class="card card--missing" id="card-roxabi-lyra-611" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#611</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+        <div class="card card--missing" id="card-roxabi-lyra-657" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#657</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      </div>
+      <div class="card card--missing" id="card-roxabi-lyra-661" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#661</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    </div>
+  </div>
+
+  <div class="lane" data-lane="c1">
+    <div class="lane-head"><span class="code">C1</span><span class="name">LiteLLM</span></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#663 · LiteLLM</span><span class="tag">M2</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-674" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#674</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-665" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#665</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-666" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#666</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    </div>
+  </div>
+
+  <div class="lane" data-lane="c2">
+    <div class="lane-head"><span class="code">C2</span><span class="name">lyra_harness</span></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#633 · harness</span><span class="tag">M2</span></div>
+      <div class="par">
+        <div class="card card--missing" id="card-roxabi-lyra-634" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#634</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+        <div class="card card--missing" id="card-roxabi-lyra-521" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#521</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      </div>
+      <div class="par">
+        <div class="card card--missing" id="card-roxabi-lyra-635" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#635</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+        <div class="card card--missing" id="card-roxabi-lyra-636" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#636</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      </div>
+      <div class="card card--missing" id="card-roxabi-lyra-637" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#637</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-638" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#638</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-639" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#639</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    </div>
+  </div>
+
+  <div class="lane" data-lane="c3">
+    <div class="lane-head"><span class="code">C3</span><span class="name">lyra_cli</span></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#628 · lyra_cli</span><span class="tag">M2</span></div>
+      <div class="par">
+        <div class="card card--missing" id="card-roxabi-lyra-629" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#629</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+        <div class="card card--missing" id="card-roxabi-lyra-630" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#630</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      </div>
+      <div class="card card--missing" id="card-roxabi-lyra-631" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#631</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-632" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#632</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    </div>
+  </div>
+
+  <div class="lane" data-lane="d">
+    <div class="lane-head"><span class="code">D</span><span class="name">Observability</span></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#667 · OTel pipeline</span><span class="tag">M3</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-673" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#673</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-669" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#669</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-671" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#671</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="spacer" aria-hidden="true"></div>
+      <div class="spacer" aria-hidden="true"></div>
+      <div class="par">
+        <div class="card card--missing" id="card-roxabi-lyra-670" data-anchor-after="m1-gate" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#670</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+        <div class="card card--missing" id="card-roxabi-lyra-672" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#672</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lane" data-lane="e">
+    <div class="lane-head"><span class="code">E</span><span class="name">Hub stateless</span></div>
+    <div class="epic-wrap defer">
+      <div class="epic-banner"><span>#640 · hub sheds Pool</span><span class="tag">M4 · deferred</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-641" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#641</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-642" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#642</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    </div>
+  </div>
+
+  <div class="lane" data-lane="f">
+    <div class="lane-head"><span class="code">F</span><span class="name">Plugins</span></div>
+    <div class="card card--missing" id="card-roxabi-lyra-644" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#644</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    <div class="card card--missing" id="card-roxabi-lyra-645" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#645</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+  </div>
+
+  <div class="lane" data-lane="g">
+    <div class="lane-head"><span class="code">G</span><span class="name">Voice</span></div>
+    <div class="card card--missing" id="card-roxabi-lyra-658" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#658</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    <div class="card card--missing" id="card-roxabi-lyra-603" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#603</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    <div class="card card--missing" id="card-roxabi-lyra-689" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#689</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    <div class="card card--missing" id="card-roxabi-lyra-690" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#690</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    <div class="card card--missing" id="card-roxabi-lyra-691" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#691</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+  </div>
+
+  <div class="lane" data-lane="h">
+    <div class="lane-head"><span class="code">H</span><span class="name">Deploy ops</span></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#693 · autodeploy</span><span class="tag">M1</span></div>
+      <div class="ms-band">M0 tail ∥</div>
+      <div class="par">
+        <div class="card card--missing" id="card-roxabi-lyra-695" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#695</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+        <div class="card card--missing" id="card-roxabi-lyra-696" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#696</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      </div>
+      <div class="card card--missing" id="card-roxabi-lyra-694" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#694</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-697" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#697</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="par">
+        <div class="card card--missing" id="card-roxabi-lyra-698" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#698</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+        <div class="card card--missing" id="card-roxabi-lyra-699" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#699</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+        <div class="card card--missing" id="card-roxabi-lyra-700" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#700</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      </div>
+      <div class="card card--missing" id="card-roxabi-lyra-701" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#701</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-702" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#702</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    </div>
+  </div>
+
+  <div class="lane" data-lane="i">
+    <div class="lane-head"><span class="code">I</span><span class="name">Vault ingest</span></div>
+    <div class="epic-wrap">
+      <div class="epic-banner"><span>#704 · vault+intel NATS bus</span><span class="tag">M2</span></div>
+      <div class="card card--missing" id="card-roxabi-lyra-703" data-missing="true"><span class="card-missing-label">not-found</span><span class="card-issue">#703</span><span class="card-missing-repo">Roxabi/lyra</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Dedicated row: standalone items (no chain, no deps, ship anytime) -->
+<div class="standalone">
+  <div class="standalone-head">
+    <span class="label">Standalone</span>
+    <span class="hint">— no chain, no deps, ship anytime</span>
+  </div>
+  <div class="standalone-grid">
+    <div class="card ready"><div class="top"><span class="num">#604</span><span class="size">B</span></div><div class="title">docker test env</div><div class="deps"><span class="none">no deps</span></div></div>
+    <div class="card ready"><div class="top"><span class="num">#646</span><span class="size">F · docs first</span></div><div class="title">agents.yml gen</div><div class="deps"><span class="none">no deps</span></div></div>
+    <div class="card ready"><div class="top"><span class="num">#627</span><span class="size">voice</span></div><div class="title">TTS failures</div><div class="deps"><span class="none">no deps</span></div></div>
+    <div class="card ready"><div class="top"><span class="num">#601</span><span class="size">refac</span></div><div class="title">resume_count unify</div><div class="deps"><span class="none">no deps</span></div></div>
+    <div class="card ready"><div class="top"><span class="num">#653</span><span class="size">refac</span></div><div class="title">stores relocation</div><div class="deps"><span class="none">no deps</span></div></div>
+    <div class="card blocked"><div class="top"><span class="num">#643</span><span class="size">refac · 50%</span></div><div class="title">codec tail</div><div class="deps"><span class="none">no deps</span></div></div>
+  </div>
+</div>
+
+<div class="cross-deps">
+  <h3>Cross-lane critical path (to M3 observability live)</h3>
+  <ul>
+    <li><span class="kind">M3 gate</span>B:#609 → D:#670 — Langfuse needs containerization</li>
+    <li><span class="kind">M3 gate</span>C1:#665 → D:#671 — LiteLLM OTel callback</li>
+    <li><span class="kind">M3 gate</span>C2:#637 → D:#672 — harness OTel wiring</li>
+    <li><span class="kind">M2 gate</span>#521 + #634 → C2:#635 — JetStream obj store prereq</li>
+    <li><span class="kind">M4 gate</span>C2:#637 → E:#641 — harness ships before hub sheds Pool</li>
+    <li><span class="kind">M4 gate</span>D live → E:#641 — traces needed for stateless debug</li>
+    <li><span class="kind">independent</span>#658 → #603 — voicecli contract before routing</li>
+    <li><span class="kind">cross-repo</span>I:#703 → roxabi-vault#24 — NATS subscriber depends on architecture</li>
+  </ul>
+</div>
+
+<button class="theme-btn" id="theme-toggle">&#9681; light</button>
+
+<footer>
+  <p>Lyra v2 plan · refreshed 2026-04-15 · <a href="https://github.com/Roxabi/lyra/issues">https://github.com/Roxabi/lyra/issues</a> · <a href="nats-arch-roadmap.html">NATS arch roadmap</a></p>
+</footer>
+
+<script>
+(function() {
+  const btn = document.getElementById('theme-toggle');
+  const KEY = 'lyra-v2-graph-theme';
+  const saved = localStorage.getItem(KEY);
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+  function update() {
+    const cur = document.documentElement.getAttribute('data-theme');
+    btn.textContent = cur === 'dark' ? '◑ light' : '◐ dark';
+  }
+  update();
+  btn.addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem(KEY, next);
+    update();
+  });
+})();
+</script>
+
+</body>
+</html>

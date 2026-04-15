@@ -13,4 +13,8 @@ set -a
 set +a
 while IFS= read -r kv; do [ -n "$kv" ] && export "$kv"; done <<< "$_sv_snapshot"
 unset _sv_snapshot
+if [ -n "${NATS_NKEY_SEED_PATH:-}" ] && [ ! -r "$NATS_NKEY_SEED_PATH" ]; then
+  echo "run_adapter.sh: NATS_NKEY_SEED_PATH set but not readable: $NATS_NKEY_SEED_PATH" >&2
+  exit 1
+fi
 exec "$HOME/projects/lyra/.venv/bin/lyra" adapter "$@"

@@ -11,7 +11,7 @@ frame: artifacts/frames/709-multi-repo-dep-graph-frame.mdx
 
 The dep-graph generator at `scripts/dep-graph/` handles a single repo via `meta.repo`. Cross-repo references exist only as free-text in `cross_deps[]` — no live state, no card, no visual placement in the lane timeline.
 
-Epic #704 (vault + intel ingestion) already has two first-class foreign children (`Roxabi/roxabi-vault#24`, `Roxabi/roxabi-intel#12`). Without multi-repo support, they remain invisible to the board.
+Epic #704 (vault + intel ingestion) already has a first-class foreign child at `Roxabi/roxabi-vault#24` (subscriber daemon), plus a future optional co-subscriber in `Roxabi/roxabi-intel` (no concrete issue filed yet). Without multi-repo support, foreign issues remain invisible to the board.
 
 **Scope boundary re. #704:** this spec unblocks #704's *visualization* need only. #704's NATS plumbing (ADR in #703, subscriber in `roxabi-vault#24`) stays in #704's own delivery.
 
@@ -36,7 +36,7 @@ Render mixed-repo lanes as first-class, using GitHub's native cross-repo issue d
 
 ### New path — multi-repo layout
 1. User edits `lyra-v2-dependency-graph.layout.json`:
-   - Sets `meta.repos = ["Roxabi/lyra", "Roxabi/roxabi-vault", "Roxabi/roxabi-intel"]`
+   - Sets `meta.repos = ["Roxabi/lyra", "Roxabi/roxabi-vault"]`
    - Adds `{ "repo": "Roxabi/roxabi-vault", "issue": 24 }` to `lanes[i].order[]`
    - Adds override: `"Roxabi/roxabi-vault#24": { "size": "M" }`
 2. User runs `make dep-graph fetch`.
@@ -253,7 +253,7 @@ Migration [C6] runs once, before [C2]: wraps bare ints → `IssueRef`, rewrites 
 | S1 | **Schema + migration** — update `layout.schema.json` to require `IssueRef` + `meta.repos[]` (rejects `meta.repo` singular, rejects bare ints); add `migrate.py` subcommand; commit migrated Lyra layout (`tests/fixtures/lyra-layout-golden.layout.json`). | `migrate` on current layout produces a new file that passes `validate`; idempotent on re-run. | S2, S3, S4 |
 | S2 | **Fetcher multi-repo** — `fetch.py` iterates `meta.repos[]`; replace jq filter to extract `{repo, issue}` from `.repository.full_name + .number`; write `gh.json` with `"owner/repo#N"` keys + `IssueRef[]` dep arrays. | `fetch` on a 3-repo test layout produces `gh.json` containing issues from all three repos with cross-repo `blocked_by` edges preserved. | S3 |
 | S3 | **Builder + audit multi-repo** — `build.py` resolves `IssueRef` across merged pool, adds repo badge on foreign cards, renders not-found placeholder (C9); `audit.py` key-handling rewritten for `"owner/repo#N"` format, treats each repo independently. | Byte-identical HTML vs. pre-migration baseline when built from the committed `gh.json` fixture (golden test); `audit` exits non-zero when a `graph:lane/*` label is removed from one repo, zero otherwise. | S4 |
-| S4 | **Multi-repo integration + docs** — add `#704` cross-repo children to the Lyra layout; `README.md` multi-repo example + migration section; add risk note re. `gh api` dep endpoint stability. | Lyra board renders `roxabi-vault#24` and `roxabi-intel#12` as cards with repo badges and cross-repo dep arrows without any `extra_deps` override. | — |
+| S4 | **Multi-repo integration + docs** — add `#704` cross-repo children to the Lyra layout; `README.md` multi-repo example + migration section; add risk note re. `gh api` dep endpoint stability. | Lyra board renders `roxabi-vault#24` as a card with repo badge and cross-repo dep arrow without any `extra_deps` override. | — |
 
 Each slice is independently demo-able and individually valuable:
 - S1 ships the migrated layout (users can already validate the new format).
@@ -269,7 +269,7 @@ Each slice is independently demo-able and individually valuable:
 - [ ] `python -m dep_graph.cli migrate` on a mixed (partially-migrated) layout produces a fully-migrated file; on an already-migrated file it exits 0 with "Already migrated." (detected via full schema re-validation, not `meta.repos` presence).
 - [ ] `make dep-graph fetch` on a 3-repo test layout produces a `gh.json` containing issues from all three repos; every `blocked_by[]` / `blocking[]` entry is an `IssueRef` object with `repo` matching the source repository.
 - [ ] Golden test passes: `make dep-graph build` fed the committed `tests/fixtures/lyra-layout-golden.{layout.json,gh.json}` produces HTML byte-identical to the committed `tests/fixtures/lyra-layout-golden.html`.
-- [ ] Lyra board renders `Roxabi/roxabi-vault#24` and `Roxabi/roxabi-intel#12` as cards with a visible repo badge and a cross-repo dep arrow from `Roxabi/lyra#703`, without any `extra_deps` override.
+- [ ] Lyra board renders `Roxabi/roxabi-vault#24` as a card with a visible repo badge and a cross-repo dep arrow from `Roxabi/lyra#703`, without any `extra_deps` override. (A future `roxabi-intel` co-subscriber will be added to the layout when filed.)
 - [ ] `make dep-graph audit` exits 0 on the migrated Lyra layout; exits 1 when a `graph:lane/*` label is removed from any listed repo; drift report lists the offending issue with its `"owner/repo#N"` key.
 - [ ] `scripts/dep-graph/README.md` includes a complete multi-repo example and a migration section with idempotency notes.
 

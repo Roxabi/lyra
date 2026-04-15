@@ -1,20 +1,21 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "dep-graph layout.json schema",
+  "title": "dep-graph layout.json schema (multi-repo)",
   "type": "object",
-  "required": ["meta", "lanes", "standalone", "overrides", "extra_deps", "cross_deps"],
+  "required": ["meta", "lanes", "standalone", "overrides", "extra_deps", "cross_deps", "title_rules"],
   "additionalProperties": false,
   "properties": {
     "meta": {
       "type": "object",
-      "required": ["title", "date", "repo", "label_prefix"],
-      "additionalProperties": true,
+      "required": ["title", "date", "repos", "label_prefix"],
+      "additionalProperties": false,
+      "not": { "required": ["repo"] },
       "properties": {
         "title":        { "type": "string" },
-        "date":         { "type": "string" },
-        "repo":         { "type": "string", "description": "e.g. Roxabi/lyra" },
+        "date":         { "type": "string", "format": "date" },
+        "repos":        { "type": "array", "items": { "type": "string" }, "minItems": 1 },
         "label_prefix": { "type": "string", "description": "e.g. graph:" },
-        "issue":        { "type": "integer" },
+        "issue":        { "$ref": "#/$defs/IssueRef" },
         "category":     { "type": "string" },
         "cat_label":    { "type": "string" },
         "color":        { "type": "string" }
@@ -27,9 +28,9 @@
         "required": ["code", "name", "color", "order"],
         "additionalProperties": false,
         "properties": {
-          "code":       { "type": "string" },
-          "name":       { "type": "string" },
-          "color":      { "type": "string" },
+          "code":  { "type": "string" },
+          "name":  { "type": "string" },
+          "color": { "type": "string" },
           "epic": {
             "oneOf": [
               { "type": "null" },
@@ -46,12 +47,15 @@
               }
             ]
           },
-          "order":      { "type": "array", "items": { "type": "integer" } },
+          "order": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/IssueRef" }
+          },
           "par_groups": {
             "type": "object",
             "additionalProperties": {
               "type": "array",
-              "items": { "type": "integer" }
+              "items": { "$ref": "#/$defs/IssueRef" }
             }
           },
           "bands": {
@@ -61,7 +65,7 @@
               "required": ["before", "text"],
               "additionalProperties": false,
               "properties": {
-                "before": { "type": "integer" },
+                "before": { "$ref": "#/$defs/IssueRef" },
                 "text":   { "type": "string" }
               }
             }
@@ -74,21 +78,27 @@
       "required": ["order"],
       "additionalProperties": false,
       "properties": {
-        "order": { "type": "array", "items": { "type": "integer" } }
+        "order": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/IssueRef" }
+        }
       }
     },
     "overrides": {
       "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": true,
-        "properties": {
-          "title":          { "type": "string" },
-          "size":           { "type": "string" },
-          "status":         { "type": "string", "enum": ["done","ready","blocked","defer"] },
-          "anchor":         { "type": "string" },
-          "anchor_after":   { "type": "string" },
-          "extra_deps_ext": { "type": "array", "items": { "type": "string" } }
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[^/]+/[^/]+#\\d+$": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title":          { "type": "string" },
+            "size":           { "type": "string" },
+            "status":         { "type": "string", "enum": ["done", "ready", "blocked", "defer"] },
+            "anchor":         { "type": "string" },
+            "anchor_after":   { "type": "string" },
+            "extra_deps_ext": { "type": "array", "items": { "type": "string" } }
+          }
         }
       }
     },
@@ -98,11 +108,23 @@
       "properties": {
         "extra_blocked_by": {
           "type": "object",
-          "additionalProperties": { "type": "array", "items": { "type": "integer" } }
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[^/]+/[^/]+#\\d+$": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[^/]+/[^/]+#\\d+$" }
+            }
+          }
         },
         "extra_blocking": {
           "type": "object",
-          "additionalProperties": { "type": "array", "items": { "type": "integer" } }
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[^/]+/[^/]+#\\d+$": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[^/]+/[^/]+#\\d+$" }
+            }
+          }
         }
       }
     },
@@ -128,6 +150,17 @@
           "pattern":     { "type": "string" },
           "replacement": { "type": "string" }
         }
+      }
+    }
+  },
+  "$defs": {
+    "IssueRef": {
+      "type": "object",
+      "required": ["repo", "issue"],
+      "additionalProperties": false,
+      "properties": {
+        "repo":  { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "issue": { "type": "integer", "minimum": 1 }
       }
     }
   }

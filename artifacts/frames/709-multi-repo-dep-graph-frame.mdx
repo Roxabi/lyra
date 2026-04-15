@@ -10,10 +10,10 @@ date: 2026-04-15
 
 The dep-graph generator at `scripts/dep-graph/` (promoted from a forge artifact to a git-tracked package earlier this week) handles a single repo via `meta.repo`. Cross-repo references are rendered only as free-text annotations in `cross_deps[]` — no live state, no card, no auto-sync with foreign issue titles or open/closed status.
 
-This breaks as soon as an initiative spans repos. Concretely, epic #704 (unified vault + intel ingestion via NATS) already has two first-class children sitting outside `Roxabi/lyra`:
+This breaks as soon as an initiative spans repos. Concretely, epic #704 (unified vault + intel ingestion via NATS) already has a first-class foreign child:
 
-- `Roxabi/roxabi-vault#24` — subscriber daemon
-- `Roxabi/roxabi-intel#12` — optional co-subscriber
+- `Roxabi/roxabi-vault#24` — subscriber daemon (real issue)
+- `Roxabi/roxabi-intel` — future optional co-subscriber (no issue filed yet; mentioned as an out-of-scope follow-up in #704)
 
 Today these show up as opaque text under Lane I. As more epics cut across repos (voiceCLI ↔ lyra, vault ↔ intel, future roxabi-dashboard), the text-annotation pattern degrades fast: foreign state is stale, relationships are not navigable, and lane timelines lie about what's actually blocking what.
 

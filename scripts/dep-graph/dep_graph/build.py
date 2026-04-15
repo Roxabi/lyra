@@ -26,7 +26,8 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 
-from .schema import validate_layout
+from .keys import format_key, parse_key, repo_slug
+from .schema import LayoutValidationError, validate_layout
 from .titles import normalize_title
 
 # ---------------------------------------------------------------------------
@@ -36,25 +37,28 @@ from .titles import normalize_title
 
 @dataclass(frozen=True, slots=True)
 class CardContext:
+    repo: str
     issue_num: int
     lane_code: str
-    lane_of: dict[int, str]
+    lane_of: dict[tuple[str, int], str]
     ovr: dict
     gh_entry: dict | None
-    extra_blocked_by: list[int]
-    extra_blocking: list[int]
+    extra_blocked_by: list[tuple[str, int]]
+    extra_blocking: list[tuple[str, int]]
     gh_issues: dict
     title_rules: list[dict]
+    primary_repo: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class FlatLaneContext:
     fl: dict
-    lane_of: dict[int, str]
+    lane_of: dict[tuple[str, int], str]
     gh_issues: dict
     overrides: dict
     extra_deps: dict
     title_rules: list[dict]
+    primary_repo: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,12 +74,33 @@ class BuildPaths:
 # ---------------------------------------------------------------------------
 
 
+def _has_active_blockers(
+    gh_entry: dict,
+    extra_blocked_by: list[tuple[str, int]],
+    gh_issues: dict,
+    own_repo: str,
+) -> bool:
+    """Return True if any blocker is still open."""
+    for item in gh_entry.get("blocked_by", []):
+        if isinstance(item, dict):
+            key = format_key(item["repo"], item["issue"])
+        else:
+            key = format_key(own_repo, item) if own_repo else str(item)
+        if gh_issues.get(key, {}).get("state") != "closed":
+            return True
+    for dep_repo, dep_num in extra_blocked_by:
+        key = format_key(dep_repo, dep_num)
+        if gh_issues.get(key, {}).get("state") != "closed":
+            return True
+    return False
+
+
 def derive_status(
-    issue_num: int,
     ovr: dict,
     gh_entry: dict | None,
-    extra_blocked_by: list[int],
+    extra_blocked_by: list[tuple[str, int]],
     gh_issues: dict,
+    repo: str = "",
 ) -> str:
     if "status" in ovr:
         return ovr["status"]
@@ -85,11 +110,7 @@ def derive_status(
         return "defer"
     if gh_entry.get("state") == "closed":
         return "done"
-    combined_bb = list(gh_entry.get("blocked_by", [])) + extra_blocked_by
-    active_blockers = [
-        n for n in combined_bb if gh_issues.get(str(n), {}).get("state") != "closed"
-    ]
-    if active_blockers:
+    if _has_active_blockers(gh_entry, extra_blocked_by, gh_issues, repo):
         return "blocked"
     return "ready"
 
@@ -99,51 +120,73 @@ def derive_status(
 # ---------------------------------------------------------------------------
 
 
+def _ref_to_tuple(item: dict | int, own_repo: str) -> tuple[str, int]:
+    """Normalise a blocked_by/blocking item to (repo, issue_num)."""
+    if isinstance(item, dict):
+        return item["repo"], item["issue"]
+    # legacy plain int — belongs to card's own repo
+    return own_repo, int(item)
+
+
 def _collect_dep_lists(
     gh_entry: dict | None,
-    extra_blocked_by: list[int],
-    extra_blocking: list[int],
-) -> tuple[list[int], list[int]]:
-    """Merge GH deps with extra deps. Returns (blocked_by, blocking)."""
+    extra_blocked_by: list[tuple[str, int]],
+    extra_blocking: list[tuple[str, int]],
+    own_repo: str = "",
+) -> tuple[list[tuple[str, int]], list[tuple[str, int]]]:
+    """Merge GH deps with extra deps.
+
+    Returns (blocked_by, blocking) as repo/issue tuples.
+    """
     if gh_entry is None:
         return list(extra_blocked_by), list(extra_blocking)
 
-    seen_bb: set[int] = set(gh_entry.get("blocked_by", []))
-    blocked_by = list(gh_entry.get("blocked_by", []))
-    for n in extra_blocked_by:
-        if n not in seen_bb:
-            blocked_by.append(n)
+    raw_bb = gh_entry.get("blocked_by", [])
+    blocked_by: list[tuple[str, int]] = [_ref_to_tuple(x, own_repo) for x in raw_bb]
+    seen_bb: set[tuple[str, int]] = set(blocked_by)
+    for t in extra_blocked_by:
+        if t not in seen_bb:
+            blocked_by.append(t)
 
-    seen_bl: set[int] = set(gh_entry.get("blocking", []))
-    blocking = list(gh_entry.get("blocking", []))
-    for n in extra_blocking:
-        if n not in seen_bl:
-            blocking.append(n)
+    raw_bl = gh_entry.get("blocking", [])
+    blocking: list[tuple[str, int]] = [_ref_to_tuple(x, own_repo) for x in raw_bl]
+    seen_bl: set[tuple[str, int]] = set(blocking)
+    for t in extra_blocking:
+        if t not in seen_bl:
+            blocking.append(t)
 
     return blocked_by, blocking
 
 
 def _format_dep_parts(
-    blocked_by: list[int],
-    blocking: list[int],
+    blocked_by: list[tuple[str, int]],
+    blocking: list[tuple[str, int]],
     lane_code: str,
-    lane_of: dict[int, str],
+    lane_of: dict[tuple[str, int], str],
+    own_repo: str = "",
 ) -> tuple[list[str], list[str]]:
     """Split deps into plain (same-lane) and ext (cross-lane) parts."""
     plain_parts: list[str] = []
     ext_parts: list[str] = []
 
-    for n in blocked_by:
-        dep_lane = lane_of.get(n)
-        if dep_lane == lane_code:
+    for ref_repo, n in blocked_by:
+        dep_lane = lane_of.get((ref_repo, n))
+        is_foreign = ref_repo != own_repo
+        if dep_lane == lane_code and not is_foreign:
             plain_parts.append(f"\u2190#{n}")
+        elif is_foreign:
+            # Show owner/repo#N for cross-repo deps
+            ext_parts.append(f"\u2190{ref_repo}#{n}")
         else:
             ext_parts.append(f"\u2190{dep_lane.upper() if dep_lane else '?'}:#{n}")
 
-    for n in blocking:
-        dep_lane = lane_of.get(n)
-        if dep_lane == lane_code:
+    for ref_repo, n in blocking:
+        dep_lane = lane_of.get((ref_repo, n))
+        is_foreign = ref_repo != own_repo
+        if dep_lane == lane_code and not is_foreign:
             plain_parts.append(f"\u2192#{n}")
+        elif is_foreign:
+            ext_parts.append(f"\u2192{ref_repo}#{n}")
         else:
             ext_parts.append(f"\u2192{dep_lane.upper() if dep_lane else '?'}:#{n}")
 
@@ -154,10 +197,10 @@ def render_deps(ctx: CardContext) -> str:
     extra_deps_ext: list[str] = ctx.ovr.get("extra_deps_ext", [])
 
     blocked_by, blocking = _collect_dep_lists(
-        ctx.gh_entry, ctx.extra_blocked_by, ctx.extra_blocking
+        ctx.gh_entry, ctx.extra_blocked_by, ctx.extra_blocking, ctx.repo
     )
     plain_parts, ext_parts = _format_dep_parts(
-        blocked_by, blocking, ctx.lane_code, ctx.lane_of
+        blocked_by, blocking, ctx.lane_code, ctx.lane_of, ctx.repo
     )
     ext_parts = ext_parts + extra_deps_ext
 
@@ -192,17 +235,52 @@ def display_title(
     return f"#{issue_num}"
 
 
+def _render_repo_badge(repo: str, primary_repo: str) -> str:
+    """Return HTML for a repo badge on foreign cards, or empty string if native."""
+    if repo == primary_repo:
+        return ""
+    name = repo.split("/", 1)[1] if "/" in repo else repo
+    # data-repo-badge carries the marker string; CSS targets .rbadge.
+    return (
+        f'<span class="rbadge" data-repo-badge title="{escape(repo)}">'
+        f"{escape(name)}</span>"
+    )
+
+
+def _render_missing_card(ref_repo: str, issue_num: int, anchor_attr: str = "") -> str:
+    """Return placeholder HTML for an IssueRef absent from gh.json."""
+    key = f"{ref_repo}#{issue_num}"
+    print(f"WARN: missing {key} in gh.json", file=sys.stderr)
+    card_id = f"card-{repo_slug(ref_repo)}-{issue_num}"
+    missing_attrs = f' id="{card_id}"{anchor_attr} data-missing="true"'
+    return (
+        f'<div class="card card--missing"{missing_attrs}>'
+        f'<span class="card-missing-label">not-found</span>'
+        f'<span class="card-issue">#{issue_num}</span>'
+        f'<span class="card-missing-repo">{escape(ref_repo)}</span>'
+        f"</div>"
+    )
+
+
 def render_card(ctx: CardContext, anchor_attr: str = "") -> str:
+    if ctx.gh_entry is None and ctx.repo:
+        return _render_missing_card(ctx.repo, ctx.issue_num, anchor_attr)
     status = derive_status(
-        ctx.issue_num, ctx.ovr, ctx.gh_entry, ctx.extra_blocked_by, ctx.gh_issues
+        ctx.ovr, ctx.gh_entry, ctx.extra_blocked_by, ctx.gh_issues,
+        ctx.repo,
     )
     size = ctx.ovr.get("size", "")
     title = display_title(ctx.issue_num, ctx.ovr, ctx.gh_entry, ctx.title_rules)
     size_html = f'<span class="size">{escape(size)}</span>' if size else ""
     deps_html = render_deps(ctx)
+    repo_badge_html = _render_repo_badge(ctx.repo, ctx.primary_repo)
+    card_id = f"card-{repo_slug(ctx.repo)}-{ctx.issue_num}"
+    top_inner = (
+        f'<span class="num">#{ctx.issue_num}</span>{repo_badge_html}{size_html}'
+    )
     return (
-        f'<div class="card {status}"{anchor_attr}>'
-        f'<div class="top"><span class="num">#{ctx.issue_num}</span>{size_html}</div>'
+        f'<div class="card {status}" id="{card_id}"{anchor_attr}>'
+        f'<div class="top">{top_inner}</div>'
         f'<div class="title">{title}</div>'
         f'<div class="deps">{deps_html}</div>'
         f"</div>"
@@ -317,17 +395,75 @@ def inject_spacers(flat_lanes: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _check_drift(n: int, code: str, gh_issues: dict) -> None:
+def _check_drift(repo: str, n: int, code: str, gh_issues: dict) -> None:
     """Emit stderr warning if GH lane label differs from layout lane."""
-    gh_entry = gh_issues.get(str(n))
+    gh_entry = gh_issues.get(format_key(repo, n))
     if not gh_entry:
         return
     gh_lane = gh_entry.get("lane_label")
     if gh_lane and gh_lane != code:
         print(
-            f"WARN drift: layout says #{n} → lane {code}, gh label says {gh_lane}",
+            f"WARN drift: layout says {format_key(repo, n)} → lane {code},"
+            f" gh label says {gh_lane}",
             file=sys.stderr,
         )
+
+
+def _build_issue_to_pg(pg_map: dict) -> dict[tuple[str, int], str]:
+    """Build (repo, issue) → par_group_id map from lane par_groups."""
+    issue_to_pg: dict[tuple[str, int], str] = {}
+    for gid, members in pg_map.items():
+        for ref in members:
+            if isinstance(ref, dict):
+                issue_to_pg[(ref["repo"], ref["issue"])] = gid
+            else:
+                issue_to_pg[("", int(ref))] = gid
+    return issue_to_pg
+
+
+def _build_band_before(bands: list) -> dict[tuple[str, int] | int, str]:
+    """Build ref → band text map from lane bands list."""
+    band_before: dict[tuple[str, int] | int, str] = {}
+    for b in bands:
+        bef = b["before"]
+        if isinstance(bef, dict):
+            band_before[(bef["repo"], bef["issue"])] = b["text"]
+        else:
+            band_before[int(bef)] = b["text"]
+    return band_before
+
+
+def _flatten_order_item(
+    item: dict | int,
+    overrides: dict,
+    issue_to_pg: dict[tuple[str, int], str],
+    band_before: dict[tuple[str, int] | int, str],
+) -> tuple[dict | None, dict]:
+    """Convert one order item to an optional band row + an issue row."""
+    if isinstance(item, dict):
+        repo: str = item["repo"]
+        n: int = item["issue"]
+        ref_key: tuple[str, int] | int = (repo, n)
+    else:
+        repo = ""
+        n = int(item)
+        ref_key = n
+
+    band_row: dict | None = None
+    if ref_key in band_before:
+        band_row = {"band": band_before[ref_key]}
+
+    ovr_key = f"{repo}#{n}" if repo else str(n)
+    ovr = overrides.get(ovr_key, {})
+    row: dict = {"issue": n, "repo": repo}
+    pg = issue_to_pg.get((repo, n)) or issue_to_pg.get(("", n))
+    if pg is not None:
+        row["par_group"] = pg
+    if "anchor" in ovr:
+        row["anchor"] = ovr["anchor"]
+    if "anchor_after" in ovr:
+        row["anchor_after"] = ovr["anchor_after"]
+    return band_row, row
 
 
 def flatten_lane(
@@ -339,33 +475,17 @@ def flatten_lane(
     """Convert new-schema lane into flat_rows consumed by render/inject."""
     code = lane["code"]
     order = lane.get("order", [])
-    pg_map = lane.get("par_groups", {})
-    bands = lane.get("bands", [])
-
-    issue_to_pg: dict[int, str] = {}
-    for gid, members in pg_map.items():
-        for n in members:
-            issue_to_pg[n] = gid
-
-    band_before: dict[int, str] = {b["before"]: b["text"] for b in bands}
+    issue_to_pg = _build_issue_to_pg(lane.get("par_groups", {}))
+    band_before = _build_band_before(lane.get("bands", []))
 
     flat_rows: list[dict] = []
-    for n in order:
-        if n in band_before:
-            flat_rows.append({"band": band_before[n]})
-        ovr = overrides.get(str(n), {})
-        row: dict = {"issue": n}
-        pg = issue_to_pg.get(n)
-        if pg is not None:
-            row["par_group"] = pg
-        if "anchor" in ovr:
-            row["anchor"] = ovr["anchor"]
-        if "anchor_after" in ovr:
-            row["anchor_after"] = ovr["anchor_after"]
+    for item in order:
+        band_row, row = _flatten_order_item(item, overrides, issue_to_pg, band_before)
+        if band_row is not None:
+            flat_rows.append(band_row)
         flat_rows.append(row)
-
-        if label_drift_check:
-            _check_drift(n, code, gh_issues)
+        if label_drift_check and row.get("repo"):
+            _check_drift(row["repo"], row["issue"], code, gh_issues)
 
     return {
         "code": code,
@@ -401,6 +521,7 @@ def _render_issue_row(
     extra_blocking_map: dict[str, list[int]] = ctx.extra_deps.get("extra_blocking", {})
 
     n = row["issue"]
+    row_repo: str = row.get("repo", "")
     pg: str | None = row.get("par_group")
     if pg != current_par:
         _close_par(row_htmls, current_par)
@@ -408,16 +529,32 @@ def _render_issue_row(
         if pg is not None:
             row_htmls.append('    <div class="par">')
             current_par = pg
-    ovr = ctx.overrides.get(str(n), {})
-    gh_entry = ctx.gh_issues.get(str(n))
-    extra_bb = extra_blocked_by_map.get(str(n), [])
-    extra_bl = extra_blocking_map.get(str(n), [])
+    ovr_key = format_key(row_repo, n) if row_repo else str(n)
+    ovr = ctx.overrides.get(ovr_key, {})
+    gh_key = format_key(row_repo, n) if row_repo else str(n)
+    gh_entry = ctx.gh_issues.get(gh_key)
+    if gh_entry is None and not row_repo:
+        # fallback for legacy int-keyed overrides
+        gh_entry = ctx.gh_issues.get(str(n))
+    bb_key = format_key(row_repo, n) if row_repo else str(n)
+    bl_key = format_key(row_repo, n) if row_repo else str(n)
+    _raw_bb = extra_blocked_by_map.get(bb_key, [])
+    _raw_bl = extra_blocking_map.get(bl_key, [])
+
+    def _as_ref(k: str | int) -> tuple[str, int]:
+        if isinstance(k, str):
+            return parse_key(k)
+        return (row_repo, int(k))
+
+    extra_bb: list[tuple[str, int]] = [_as_ref(k) for k in _raw_bb]
+    extra_bl: list[tuple[str, int]] = [_as_ref(k) for k in _raw_bl]
     anchor_attr = ""
     if "anchor" in row:
         anchor_attr = f' data-anchor="{escape(row["anchor"])}"'
     elif "anchor_after" in row:
         anchor_attr = f' data-anchor-after="{escape(row["anchor_after"])}"'
     card_ctx = CardContext(
+        repo=row_repo,
         issue_num=n,
         lane_code=code,
         lane_of=ctx.lane_of,
@@ -427,6 +564,7 @@ def _render_issue_row(
         extra_blocking=extra_bl,
         gh_issues=ctx.gh_issues,
         title_rules=ctx.title_rules,
+        primary_repo=ctx.primary_repo,
     )
     card = render_card(card_ctx, anchor_attr)
     indent = "      " if current_par is not None else "    "
@@ -505,12 +643,16 @@ def render_flat_lane(ctx: FlatLaneContext) -> str:
 # ---------------------------------------------------------------------------
 
 
-def render_untriaged(untriaged: list[int], gh_issues: dict) -> str:
+def render_untriaged(
+    untriaged: list[tuple[str, int]],
+    gh_issues: dict,
+    primary_repo: str = "",
+) -> str:
     if not untriaged:
         return ""
     cards = []
-    for n in untriaged:
-        gh_entry = gh_issues.get(str(n))
+    for repo, n in untriaged:
+        gh_entry = gh_issues.get(format_key(repo, n))
         title = escape(gh_entry["title"]) if gh_entry else f"#{n}"
         cards.append(
             f'    <div class="card ready">'
@@ -540,16 +682,18 @@ def render_untriaged(untriaged: list[int], gh_issues: dict) -> str:
 
 
 def render_standalone(
-    order: list[int],
+    order: list[tuple[str, int]],
     gh_issues: dict,
     overrides: dict,
     title_rules: list[dict],
+    primary_repo: str = "",
 ) -> str:
     cards = []
-    for n in order:
-        ovr = overrides.get(str(n), {})
-        gh_entry = gh_issues.get(str(n))
-        status = derive_status(n, ovr, gh_entry, [], gh_issues)
+    for repo, n in order:
+        ovr_key = format_key(repo, n) if repo else str(n)
+        ovr = overrides.get(ovr_key, {})
+        gh_entry = gh_issues.get(format_key(repo, n) if repo else str(n))
+        status = derive_status(ovr, gh_entry, [], gh_issues, repo)
         size = ovr.get("size", "")
         title = display_title(n, ovr, gh_entry, title_rules)
         size_html = f'<span class="size">{escape(size)}</span>' if size else ""
@@ -877,6 +1021,25 @@ h1 span { color: var(--accent); }
 .card .deps .ext { color: var(--dep-ext); font-weight: 600; }
 .card .deps .none { color: var(--text-dim); opacity: 0.6; }
 
+.rbadge {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-left: 6px;
+  font-size: 0.7em;
+  border-radius: 4px;
+  background: var(--border-hi, #30363d);
+  color: var(--text-dim, #6b7280);
+  font-weight: 500;
+}
+
+.card--missing {
+  border: 2px dashed var(--status-blocked, #fb923c);
+  background: rgba(251,146,60,0.06);
+  color: var(--text-muted, #8b93a1);
+  padding: 8px;
+  font-style: italic;
+}
+
 .standalone {
   max-width: 1750px;
   margin: 10px auto 0;
@@ -992,6 +1155,26 @@ THEME_SCRIPT = """\
 </script>"""
 
 
+def _escape_meta(meta: dict, primary_repo: str) -> dict[str, str]:
+    """Escape user-provided meta fields for safe HTML rendering."""
+    raw_issue = meta.get("issue", "")
+    issue_display = (
+        str(raw_issue["issue"]) if isinstance(raw_issue, dict) else str(raw_issue)
+    )
+    repo_url = (
+        f"https://github.com/{escape(primary_repo)}/issues" if primary_repo else "#"
+    )
+    return {
+        "title": escape(meta["title"]),
+        "date": escape(meta["date"]),
+        "issue": escape(issue_display),
+        "category": escape(meta.get("category", "")),
+        "cat_label": escape(meta.get("cat_label", "")),
+        "color": escape(meta.get("color", "")),
+        "repo_url": repo_url,
+    }
+
+
 def build_html(layout: dict, gh_issues: dict) -> str:
     meta = layout["meta"]
     lanes = layout["lanes"]
@@ -1001,34 +1184,51 @@ def build_html(layout: dict, gh_issues: dict) -> str:
     cross_deps = layout.get("cross_deps", [])
     title_rules: list[dict] = layout.get("title_rules", [])
 
-    # Build lane_of map
-    lane_of: dict[int, str] = {}
+    _repos_list: list[str] = meta.get("repos", [])
+    primary_repo: str = _repos_list[0] if _repos_list else meta.get("repo", "")
+
+    # Build lane_of map: (repo, issue) → lane_code
+    lane_of: dict[tuple[str, int], str] = {}
     for lane in lanes:
-        for n in lane.get("order", []):
-            lane_of[n] = lane["code"]
+        for item in lane.get("order", []):
+            if isinstance(item, dict):
+                lane_of[(item["repo"], item["issue"])] = lane["code"]
+            else:
+                lane_of[(primary_repo, int(item))] = lane["code"]
 
     flat_lanes = [flatten_lane(lane, overrides, True, gh_issues) for lane in lanes]
     flat_lanes = inject_spacers(flat_lanes)
 
-    # Untriaged detection
-    all_ordered: set[int] = set(lane_of.keys())
-    standalone_order: list[int] = standalone.get("order", [])
+    # Untriaged detection — use (repo, issue) set
+    all_ordered: set[tuple[str, int]] = set(lane_of.keys())
+    raw_standalone_order = standalone.get("order", [])
+    standalone_order: list[tuple[str, int]] = []
+    for item in raw_standalone_order:
+        if isinstance(item, dict):
+            standalone_order.append((item["repo"], item["issue"]))
+        else:
+            standalone_order.append((primary_repo, int(item)))
     all_ordered.update(standalone_order)
-    epic_issues: set[int] = {
-        lane["epic"]["issue"] for lane in layout["lanes"] if lane.get("epic")
-    }
-    untriaged: list[int] = sorted(
+    epic_issues: set[tuple[str, int]] = set()
+    for lane in layout["lanes"]:
+        if lane.get("epic"):
+            epic = lane["epic"]
+            epic_repo = epic.get("repo", primary_repo)
+            epic_issues.add((epic_repo, epic["issue"]))
+
+    untriaged: list[tuple[str, int]] = sorted(
         (
-            int(n)
-            for n, entry in gh_issues.items()
+            (entry.get("repo", primary_repo), entry["number"])
+            for _, entry in gh_issues.items()
             if entry
             and entry.get("lane_label") is not None
             and not entry.get("hidden")
-            and int(n) not in all_ordered
-            and int(n) not in epic_issues
+            and (entry.get("repo", primary_repo), entry["number"]) not in all_ordered
+            and (entry.get("repo", primary_repo), entry["number"]) not in epic_issues
             and not entry.get("standalone")
+            and "number" in entry
         ),
-        key=int,
+        key=lambda x: (x[0], x[1]),
     )
 
     lanes_html = "\n\n".join(
@@ -1040,27 +1240,28 @@ def build_html(layout: dict, gh_issues: dict) -> str:
                 overrides=overrides,
                 extra_deps=extra_deps,
                 title_rules=title_rules,
+                primary_repo=primary_repo,
             )
         )
         for fl in flat_lanes
     )
-    untriaged_html = render_untriaged(untriaged, gh_issues)
+    untriaged_html = render_untriaged(untriaged, gh_issues, primary_repo)
     standalone_html = render_standalone(
-        standalone_order, gh_issues, overrides, title_rules
+        standalone_order, gh_issues, overrides, title_rules, primary_repo
     )
     cross_html = render_cross_deps(cross_deps)
 
     # CSS — str.replace avoids .format() colliding with raw CSS braces
     css = CSS_BASE.replace("{extra_vars}", "").replace("{extra_selectors}", "")
 
-    title = escape(meta["title"])
-    date = escape(meta["date"])
-    issue = meta["issue"]
-    category = escape(meta["category"])
-    cat_label = escape(meta["cat_label"])
-    color = escape(meta["color"])
-    repo = meta.get("repo", "")
-    repo_url = f"https://github.com/{repo}/issues" if repo else "#"
+    escaped = _escape_meta(meta, primary_repo)
+    title = escaped["title"]
+    date = escaped["date"]
+    issue = escaped["issue"]
+    category = escaped["category"]
+    cat_label = escaped["cat_label"]
+    color = escaped["color"]
+    repo_url = escaped["repo_url"]
     lane_count = len(lanes)
 
     subtitle = (
@@ -1073,7 +1274,7 @@ def build_html(layout: dict, gh_issues: dict) -> str:
     )
     footer_line = (
         f"Lyra v2 plan \u00b7 refreshed {date}"
-        f' \u00b7 <a href="{repo_url}">{repo_url}</a>'
+        f' \u00b7 <a href="{repo_url}">{escape(repo_url)}</a>'
         f' \u00b7 <a href="nats-arch-roadmap.html">NATS arch roadmap</a>'
     )
     standalone_comment = (
@@ -1205,7 +1406,10 @@ def run_build(
     gh_issues = gh_data.get("issues", {})
 
     if not no_validate:
-        if not validate_layout(layout, verbose=verbose):
+        try:
+            validate_layout(layout_path)
+        except LayoutValidationError as exc:
+            print(f"SCHEMA ERROR at {exc.path}: {exc.message}", file=sys.stderr)
             return 1
 
     if bak_path and out_path.exists():

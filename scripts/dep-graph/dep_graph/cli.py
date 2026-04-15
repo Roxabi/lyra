@@ -16,7 +16,6 @@ Common flags:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -72,16 +71,26 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return run_audit(layout_path, cache_path, verbose=args.verbose)
 
 
+def cmd_migrate(args: argparse.Namespace) -> int:
+    from .migrate import run_migrate
+
+    return run_migrate(Path(args.layout), verbose=args.verbose)
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
-    from .schema import validate_layout
+    from .schema import LayoutValidationError, validate_layout
 
     layout_path = Path(args.layout)
     if not layout_path.exists():
         print(f"ERROR: {layout_path} not found", file=sys.stderr)
         return 1
-    layout = json.loads(layout_path.read_text())
-    ok = validate_layout(layout, verbose=True)
-    return 0 if ok else 1
+    try:
+        validate_layout(layout_path)
+        print("Schema validation passed.")
+        return 0
+    except LayoutValidationError as exc:
+        print(f"SCHEMA ERROR at {exc.path}: {exc.message}", file=sys.stderr)
+        return 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -135,6 +144,20 @@ def main(argv: list[str] | None = None) -> int:
     p_audit.add_argument("--cache", default=None, metavar="PATH")
     p_audit.add_argument("--verbose", "-v", action="store_true")
     p_audit.set_defaults(func=cmd_audit)
+
+    # migrate
+    p_migrate = subparsers.add_parser(
+        "migrate", help="Migrate layout to multi-repo format"
+    )
+    p_migrate.add_argument(
+        "layout",
+        nargs="?",
+        default=str(DEFAULT_LAYOUT),
+        metavar="PATH",
+        help="Path to layout.json (default: %(default)s)",
+    )
+    p_migrate.add_argument("--verbose", "-v", action="store_true")
+    p_migrate.set_defaults(func=cmd_migrate)
 
     # validate
     p_validate = subparsers.add_parser(

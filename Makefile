@@ -32,7 +32,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register quadlet-install deploy remote update nats-setup nats-install nats-deploy test test-integration lint typecheck format
+.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register quadlet-install deploy remote update nats-setup nats-install nats-deploy test test-integration voice-smoke lint typecheck format
 
 # ── Supervisor services ──────────────────────────────────────────────────────
 
@@ -219,6 +219,11 @@ test-integration:
 	EXIT=$$?; \
 	docker compose -f docker/docker-compose.test.yml down -v; \
 	exit $$EXIT
+
+# voice-smoke: round-trip TTS→STT via NATS to verify voicecli nats-serve workers are answering.
+# Decision: uses `lyra voice-smoke` CLI (self-contained, no Telegram dependency). See #689.
+voice-smoke:
+	uv run lyra voice-smoke
 
 lint:
 	uv run ruff check .

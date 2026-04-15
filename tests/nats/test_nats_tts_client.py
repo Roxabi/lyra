@@ -11,12 +11,35 @@ import pytest
 
 from lyra.core.agent_config import AgentTTSConfig
 from lyra.nats.nats_tts_client import _TTS_CONFIG_FIELDS, NatsTtsClient
+from lyra.nats.voice_health import WorkerStats
 from lyra.tts import TtsUnavailableError
 
 
-def _inject_fresh_worker(client: NatsTtsClient) -> None:
-    """Seed _worker_freshness with a fresh timestamp so freshness gate passes."""
-    client._worker_freshness["test-worker"] = time.monotonic()
+def _inject_fresh_worker(
+    client: NatsTtsClient,
+    worker_id: str = "test-worker",
+    *,
+    vram_used_mb: int = 0,
+    vram_total_mb: int = 0,
+    active_requests: int = 0,
+) -> None:
+    """Seed the registry with a fresh worker so routing + freshness gate pass."""
+    client._registry.record_heartbeat(
+        {
+            "worker_id": worker_id,
+            "vram_used_mb": vram_used_mb,
+            "vram_total_mb": vram_total_mb,
+            "active_requests": active_requests,
+        }
+    )
+
+
+def _seed_worker_with_age(client: NatsTtsClient, worker_id: str, age_s: float) -> None:
+    """Insert a worker whose last_heartbeat is ``age_s`` seconds ago."""
+    client._registry._workers[worker_id] = WorkerStats(
+        worker_id=worker_id,
+        last_heartbeat=time.monotonic() - age_s,
+    )
 
 
 class TestCircuitBreaker:
@@ -238,7 +261,7 @@ class TestTtsClientFreshness:
         """synthesize() raises TtsUnavailableError when last heartbeat was >15s ago."""
         mock_nc = AsyncMock()
         client = NatsTtsClient(nc=mock_nc)
-        client._worker_freshness["worker-1"] = time.monotonic() - 20.0
+        _seed_worker_with_age(client, "worker-1", 20.0)
         with pytest.raises(TtsUnavailableError, match="no live worker"):
             await client.synthesize("hello")
         mock_nc.request.assert_not_called()
@@ -258,7 +281,7 @@ class TestTtsClientFreshness:
         ).encode()
         mock_nc.request = AsyncMock(return_value=mock_response)
         client = NatsTtsClient(nc=mock_nc)
-        client._worker_freshness["worker-1"] = time.monotonic() - 5.0
+        _seed_worker_with_age(client, "worker-1", 5.0)
         result = await client.synthesize("hello")
         assert result.audio_bytes == b"audio"
         mock_nc.request.assert_called_once()
@@ -289,42 +312,122 @@ class TestTtsClientFreshness:
         mock_nc.request = AsyncMock(return_value=mock_response)
         client = NatsTtsClient(nc=mock_nc)
         # First: stale
-        client._worker_freshness["worker-1"] = time.monotonic() - 20.0
+        _seed_worker_with_age(client, "worker-1", 20.0)
         with pytest.raises(TtsUnavailableError, match="no live worker"):
             await client.synthesize("hello")
         # Simulate fresh heartbeat arrives
-        client._worker_freshness["worker-1"] = time.monotonic()
+        _seed_worker_with_age(client, "worker-1", 0.0)
         result = await client.synthesize("hello")
         assert result.audio_bytes == b"audio"
 
-    def test_any_worker_alive_true_within_ttl(self) -> None:
-        """_any_worker_alive() returns True when a worker has a recent timestamp."""
-        mock_nc = MagicMock()
-        client = NatsTtsClient(nc=mock_nc)
-        client._worker_freshness["worker-1"] = time.monotonic() - 5.0
-        assert client._any_worker_alive() is True
+    # NOTE: registry-level aliveness / pruning semantics are covered by
+    # ``tests/nats/test_voice_health.py`` — no need to duplicate here.
 
-    def test_any_worker_alive_false_when_stale(self) -> None:
-        """_any_worker_alive() returns False when all workers are >15s stale."""
-        mock_nc = MagicMock()
-        client = NatsTtsClient(nc=mock_nc)
-        client._worker_freshness["worker-1"] = time.monotonic() - 20.0
-        assert client._any_worker_alive() is False
 
-    def test_any_worker_alive_true_with_mixed_freshness(self) -> None:
-        """_any_worker_alive() returns True when at least one worker is fresh."""
-        mock_nc = MagicMock()
-        client = NatsTtsClient(nc=mock_nc)
-        client._worker_freshness["stale-worker"] = time.monotonic() - 20.0
-        client._worker_freshness["fresh-worker"] = time.monotonic() - 5.0
-        assert client._any_worker_alive() is True
+class TestTtsLoadAwareRouting:
+    """Tests for TTS load-aware routing added in #603."""
 
-    def test_stale_entries_pruned_in_any_worker_alive(self) -> None:
-        """_any_worker_alive() evicts entries older than TTL*2."""
-        mock_nc = MagicMock()
+    @staticmethod
+    def _ok_reply() -> MagicMock:
+        payload = json.dumps(
+            {
+                "contract_version": "1",
+                "ok": True,
+                "audio_b64": base64.b64encode(b"fake").decode(),
+                "mime_type": "audio/ogg",
+            }
+        ).encode()
+        reply = MagicMock()
+        reply.data = payload
+        return reply
+
+    @pytest.mark.asyncio
+    async def test_single_worker_targets_per_worker_subject(self) -> None:
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(return_value=self._ok_reply())
         client = NatsTtsClient(nc=mock_nc)
-        client._worker_freshness["ancient"] = time.monotonic() - 35.0  # > 15*2
-        client._worker_freshness["fresh"] = time.monotonic() - 5.0
-        client._any_worker_alive()
-        assert "ancient" not in client._worker_freshness
-        assert "fresh" in client._worker_freshness
+        _inject_fresh_worker(client, "tts-tower-01")
+        await client.synthesize("hi")
+        subject = mock_nc.request.call_args.args[0]
+        assert subject == "lyra.voice.tts.request.tts-tower-01"
+
+    @pytest.mark.asyncio
+    async def test_picks_least_loaded_by_score(self) -> None:
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(return_value=self._ok_reply())
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(
+            client, "tts-heavy", vram_used_mb=12000, vram_total_mb=16384
+        )
+        _inject_fresh_worker(
+            client, "tts-light", vram_used_mb=4800, vram_total_mb=16384
+        )
+        await client.synthesize("hi")
+        subject = mock_nc.request.call_args.args[0]
+        assert subject == "lyra.voice.tts.request.tts-light"
+
+    @pytest.mark.asyncio
+    async def test_active_requests_dominate_vram(self) -> None:
+        """A busy worker (active_requests>0) loses to an idle higher-VRAM worker."""
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(return_value=self._ok_reply())
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(
+            client,
+            "tts-busy",
+            vram_used_mb=2000,
+            vram_total_mb=16384,
+            active_requests=2,
+        )
+        _inject_fresh_worker(
+            client,
+            "tts-idle-but-fuller",
+            vram_used_mb=8000,
+            vram_total_mb=16384,
+            active_requests=0,
+        )
+        await client.synthesize("hi")
+        subject = mock_nc.request.call_args.args[0]
+        assert subject == "lyra.voice.tts.request.tts-idle-but-fuller"
+
+    @pytest.mark.asyncio
+    async def test_empty_registry_raises_without_request(self) -> None:
+        """Empty registry → immediate TtsUnavailableError, no NATS request attempted."""
+        mock_nc = AsyncMock()
+        client = NatsTtsClient(nc=mock_nc)
+        with pytest.raises(TtsUnavailableError, match="no live worker"):
+            await client.synthesize("hi")
+        mock_nc.request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_queue_group_on_timeout(self) -> None:
+        mock_nc = AsyncMock()
+        call_subjects: list[str] = []
+
+        async def request_mock(subject: str, payload: bytes, timeout: float):
+            call_subjects.append(subject)
+            if len(call_subjects) == 1:
+                raise TimeoutError
+            return self._ok_reply()
+
+        mock_nc.request = AsyncMock(side_effect=request_mock)
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(client, "tts-tower-01")
+        result = await client.synthesize("hi")
+        assert result.audio_bytes == b"fake"
+        assert call_subjects == [
+            "lyra.voice.tts.request.tts-tower-01",
+            "lyra.voice.tts.request",
+        ]
+        assert client._cb._failures == 0
+
+    @pytest.mark.asyncio
+    async def test_fallback_timeout_raises_and_records_failure(self) -> None:
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(side_effect=TimeoutError())
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(client, "tts-tower-01")
+        with pytest.raises(TtsUnavailableError, match="timeout"):
+            await client.synthesize("hi")
+        assert mock_nc.request.await_count == 2
+        assert client._cb._failures == 1

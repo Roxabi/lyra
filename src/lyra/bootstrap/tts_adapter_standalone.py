@@ -68,6 +68,9 @@ class TtsAdapterStandalone(NatsAdapterBase):
             "tts_adapter: TTSService ready (engine=%s)", tts_cfg.engine or "default"
         )
 
+    def _extra_subjects(self) -> list[str]:
+        return [f"{self.subject}.{self._worker_id}"]
+
     def _get_vram_info(self) -> tuple[int, int]:
         """Return (used_mb, total_mb). Both 0 if pynvml is unavailable."""
         try:

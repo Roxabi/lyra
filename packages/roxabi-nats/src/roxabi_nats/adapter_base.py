@@ -12,6 +12,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import signal
 import socket
 import time
@@ -66,7 +67,12 @@ class NatsAdapterBase(ABC):
         self._started_at: float | None = None
         self._heartbeat_subject = heartbeat_subject
         self._heartbeat_interval = heartbeat_interval
-        self._worker_id = f"{queue_group}-{socket.gethostname()}-{os.getpid()}"
+        # Hostnames may contain dots (FQDN) which are NATS subject delimiters,
+        # and colons/spaces which are not allowed tokens. Sanitize to the
+        # NATS-safe alphabet so publish and subscribe sides agree on the same
+        # subject token regardless of host.
+        raw_id = f"{queue_group}-{socket.gethostname()}-{os.getpid()}"
+        self._worker_id = re.sub(r"[^A-Za-z0-9_-]", "_", raw_id)
         self._heartbeat_task: asyncio.Task | None = None
 
     async def run(self, nats_url: str, stop: asyncio.Event | None = None) -> None:
@@ -74,6 +80,8 @@ class NatsAdapterBase(ABC):
         self._nc = nc
         await self._wait_ready()
         await nc.subscribe(self.subject, queue=self.queue_group, cb=self._dispatch)
+        for extra in self._extra_subjects():
+            await nc.subscribe(extra, cb=self._dispatch)
         if self._heartbeat_subject:
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         if stop is None:
@@ -87,6 +95,15 @@ class NatsAdapterBase(ABC):
 
     @abstractmethod
     async def handle(self, msg, payload: dict) -> None: ...
+
+    def _extra_subjects(self) -> list[str]:
+        """Return additional subjects to subscribe to (no queue group).
+
+        Default is empty. Subclasses override to add per-instance routing —
+        e.g. a voice adapter returns ``[f"{self.subject}.{self._worker_id}"]``
+        so the hub can target it directly via its worker id.
+        """
+        return []
 
     async def reply(self, msg, data: bytes) -> None:
         """Publish a response to msg.reply if a reply subject exists."""

@@ -27,7 +27,7 @@ from roxabi_nats import _version_check as _vc_mod
 def _reset_version_check_log_state() -> None:
     """Clear the module-level log rate-limit state before every test.
 
-    ``lyra.nats._version_check`` holds a process-wide dict of last-log
+    ``roxabi_nats._version_check`` holds a process-wide dict of last-log
     timestamps so repeat drops within 60 s are silent.  Tests that assert on
     ``log.error`` firing would be flaky across test ordering without this
     reset, since one test's logged drop would silence another's.

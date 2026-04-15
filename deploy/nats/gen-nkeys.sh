@@ -56,13 +56,21 @@ SUB_ALLOW[tts-adapter]='"lyra.voice.tts.request"'
 PUB_ALLOW[stt-adapter]='"lyra.voice.stt.heartbeat"'
 SUB_ALLOW[stt-adapter]='"lyra.voice.stt.request"'
 
+# voice-tts: voicecli nats-serve worker on Machine 1 (#689)
+PUB_ALLOW[voice-tts]='"lyra.voice.tts.heartbeat","_INBOX.>"'
+SUB_ALLOW[voice-tts]='"lyra.voice.tts.request"'
+
+# voice-stt: voicecli nats-serve worker on Machine 1 (#689)
+PUB_ALLOW[voice-stt]='"lyra.voice.stt.heartbeat","_INBOX.>"'
+SUB_ALLOW[voice-stt]='"lyra.voice.stt.request"'
+
 PUB_ALLOW[llm-worker]='"lyra.llm.health.*"'
 SUB_ALLOW[llm-worker]='"lyra.llm.request"'
 
 PUB_ALLOW[monitor]='"lyra.monitor.>"'
 SUB_ALLOW[monitor]='"lyra.monitor.>"'
 
-IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter llm-worker monitor)
+IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor)
 
 # ── emit_user (T1.3) ──────────────────────────────────────────────────────────
 # Writes one authorization users[] entry block to stdout.
@@ -162,8 +170,8 @@ apply_permissions() {
   mkdir -p "${SEEDS_DIR}"
   chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}"
   chmod 0700 "${SEEDS_DIR}"
-  # T1.5: extended to all 7 identities
-  for seed in hub telegram-adapter discord-adapter tts-adapter stt-adapter llm-worker monitor; do
+  # T1.5: extended to 7 identities; #689 adds voice-tts, voice-stt (9 total)
+  for seed in hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor; do
     if [ -f "${SEEDS_DIR}/${seed}.seed" ]; then
       chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}/${seed}.seed"
       chmod 0600 "${SEEDS_DIR}/${seed}.seed"
@@ -251,7 +259,7 @@ if [ -f "${AUTH_CONF}" ]; then
   existing_count=$(grep -cE '^[[:space:]]*# [a-z][a-z0-9-]*$' "${AUTH_CONF}" 2>/dev/null || echo 0)
   expected_count=${#IDENTITIES[@]}
   if [ "${existing_count}" -lt "${expected_count}" ]; then
-    warn "auth.conf has ${existing_count} identities; spec #706 requires ${expected_count}."
+    warn "auth.conf has ${existing_count} identities; spec #706/#689 requires ${expected_count}."
     warn "Run: sudo ./deploy/nats/gen-nkeys.sh --regenerate --yes"
     warn "(backs up auth.conf + seeds to .bak.\$(date +%s) before rotating)"
   else
@@ -373,6 +381,8 @@ TELEGRAM_PUB=$(generate_nkey "telegram-adapter")
 DISCORD_PUB=$(generate_nkey "discord-adapter")
 TTS_PUB=$(generate_nkey "tts-adapter")
 STT_PUB=$(generate_nkey "stt-adapter")
+VOICE_TTS_PUB=$(generate_nkey "voice-tts")
+VOICE_STT_PUB=$(generate_nkey "voice-stt")
 WORKER_PUB=$(generate_nkey "llm-worker")
 MONITOR_PUB=$(generate_nkey "monitor")
 
@@ -383,6 +393,8 @@ declare -A PUBKEYS=(
   [discord-adapter]="${DISCORD_PUB}"
   [tts-adapter]="${TTS_PUB}"
   [stt-adapter]="${STT_PUB}"
+  [voice-tts]="${VOICE_TTS_PUB}"
+  [voice-stt]="${VOICE_STT_PUB}"
   [llm-worker]="${WORKER_PUB}"
   [monitor]="${MONITOR_PUB}"
 )
@@ -403,6 +415,8 @@ info "  telegram-adapter.seed  NATS_NKEY_SEED_PATH=${SEEDS_DIR}/telegram-adapter
 info "  discord-adapter.seed   NATS_NKEY_SEED_PATH=${SEEDS_DIR}/discord-adapter.seed"
 info "  tts-adapter.seed       NATS_NKEY_SEED_PATH=${SEEDS_DIR}/tts-adapter.seed"
 info "  stt-adapter.seed       NATS_NKEY_SEED_PATH=${SEEDS_DIR}/stt-adapter.seed"
+info "  voice-tts.seed         NATS_NKEY_SEED_PATH=${SEEDS_DIR}/voice-tts.seed   (voicecli nats-serve tts)"
+info "  voice-stt.seed         NATS_NKEY_SEED_PATH=${SEEDS_DIR}/voice-stt.seed   (voicecli nats-serve stt)"
 info "  llm-worker.seed        NATS_NKEY_SEED_PATH=${SEEDS_DIR}/llm-worker.seed"
 info "  monitor.seed           NATS_NKEY_SEED_PATH=${SEEDS_DIR}/monitor.seed"
 warn "Supervisor confs already reference ~/.lyra/nkeys/ — no changes needed."

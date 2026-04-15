@@ -210,23 +210,20 @@ if [ "${REGEN_AUTHCONF}" = true ]; then
   NK_BIN=$(command -v nk || echo "")
   [ -n "${NK_BIN}" ] || error "nk not found — run without flags first (it will install nk)"
 
-  # Verify all seeds exist; collect pubkeys
+  # Collect pubkeys — derive from existing seeds or create missing ones
   declare -A EXISTING_PUBKEYS
-  missing=()
   for name in "${IDENTITIES[@]}"; do
     seed_file="${SEEDS_DIR}/${name}.seed"
-    if [ ! -f "${seed_file}" ]; then
-      missing+=("${name}")
-      continue
+    if [ -f "${seed_file}" ]; then
+      pubkey=$("${NK_BIN}" -inkey "${seed_file}" -pubout 2>/dev/null) \
+        || error "Failed to derive pubkey from ${seed_file}"
+      info "Derived pubkey from existing seed: ${name}"
+      EXISTING_PUBKEYS[$name]="${pubkey}"
+    else
+      info "Created missing seed: ${name}"
+      EXISTING_PUBKEYS[$name]=$(generate_nkey "${name}")
     fi
-    pubkey=$("${NK_BIN}" -inkey "${seed_file}" -pubout 2>/dev/null) \
-      || error "Failed to derive pubkey from ${seed_file}"
-    EXISTING_PUBKEYS[$name]="${pubkey}"
   done
-
-  if [ ${#missing[@]} -gt 0 ]; then
-    error "Missing seeds for: ${missing[*]} — run --regenerate to create all, or generate individually with nk"
-  fi
 
   # Backup current auth.conf if present
   if [ -f "${AUTH_CONF}" ]; then

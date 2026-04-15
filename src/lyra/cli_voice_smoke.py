@@ -15,7 +15,7 @@ import nats.errors
 import typer
 from nats.aio.client import Client as NATS
 
-from lyra.nats.connect import nats_connect  # noqa: F401 — module-level for patching
+from roxabi_nats.connect import nats_connect  # noqa: F401 — module-level for patching
 
 _SMOKE_TEXT = "Voice cutover smoke test one two three"
 _SMOKE_KEYWORDS = {"voice", "cutover", "smoke", "one", "two", "three"}

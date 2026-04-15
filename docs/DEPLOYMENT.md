@@ -276,6 +276,64 @@ journalctl --user -eu lyra.service --no-pager -n 50
 
 ---
 
+## 10. NATS ACL Rollout
+
+When the subject→identity ACL matrix changes (spec #706), regenerate and reload NATS without dropping client connections. `deploy/nats/gen-nkeys.sh` is the single source of truth for nkey generation and `auth.conf` emission; plugin ACL is deferred until ADR-045 (roxabi-nats SDK) lands and this section will be extended at that point.
+
+### Regenerate
+
+```bash
+sudo ./deploy/nats/gen-nkeys.sh --regenerate --yes
+```
+
+This rotates all seven nkeys — old seeds are backed up to `~/.lyra/nkeys.bak.{epoch}/` and the old `auth.conf` to `/etc/nats/nkeys/auth.conf.bak.{epoch}` before any files are overwritten.
+
+### Reload
+
+```bash
+sudo systemctl reload nats.service
+```
+
+> **Note:** the `nats.service` unit uses `Type=simple` with `ExecReload=/bin/kill -HUP $MAINPID`. There is no `.pid` file — reload must go through systemd, not `nats-server --signal`.
+
+### Reconnect order
+
+Restart adapters first so the hub is last to reconnect:
+
+```bash
+make telegram reload && make discord reload
+make lyra-tts reload && make lyra-stt reload
+make lyra reload     # hub last
+```
+
+New ACLs take effect on the next publish/subscribe; existing subscriptions opened before the reload continue to receive until the client reconnects.
+
+### Verify
+
+```bash
+scripts/check-nats-acls.sh --since "$(date -Iseconds)" --window 90 | tee rollout-evidence.txt
+```
+
+Attach `rollout-evidence.txt` to the PR as the rollout evidence artifact.
+
+### Rollback
+
+Old pubkeys only validate against old seeds — restoring `auth.conf` alone is not enough. Both the conf and the seed directory must be restored atomically:
+
+```bash
+EPOCH=<timestamp-from-ls>
+sudo cp -a /etc/nats/nkeys/auth.conf.bak.$EPOCH /etc/nats/nkeys/auth.conf
+sudo rm -rf ~/.lyra/nkeys && sudo cp -a ~/.lyra/nkeys.bak.$EPOCH ~/.lyra/nkeys
+sudo systemctl reload nats.service
+# then the reconnect sequence above
+```
+
+### Plugin identities
+
+ACL for plugin identities is deferred until ADR-045 (roxabi-nats SDK) lands. When a plugin nkey is introduced, rerun this entire section from **Regenerate** onward.
+
+---
+
 ## Troubleshooting
 
 **Service fails to start — "Missing required env var"**

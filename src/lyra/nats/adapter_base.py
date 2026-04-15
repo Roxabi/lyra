@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from nats.aio.client import Client as NATS
 
 from lyra.nats._validate import validate_nats_token
-from lyra.nats._version_check import check_schema_version
+from lyra.nats._version_check import check_contract_version, check_schema_version
 from lyra.nats.connect import nats_connect
 from lyra.nats.readiness import wait_for_hub
 
@@ -95,10 +95,18 @@ class NatsAdapterBase(ABC):
             await self.handle(msg, payload)
 
     def _validate_envelope(self, payload: dict) -> bool:
-        return check_schema_version(
+        if not check_schema_version(
             payload,
             envelope_name=self.envelope_name,
             expected=self.schema_version,
+            subject=self.subject,
+            counter=self._drop_count,
+        ):
+            return False
+        return check_contract_version(
+            payload,
+            envelope_name=self.envelope_name,
+            expected=CONTRACT_VERSION,
             subject=self.subject,
             counter=self._drop_count,
         )

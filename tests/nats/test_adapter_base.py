@@ -11,6 +11,7 @@ Covers:
 - T5: health() return shape, connected flag, uptime_s before/after _started_at
 - T6: run() signal handler wiring and _wait_ready invocation
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -223,6 +224,32 @@ class TestValidateEnvelope:
         # Assert — key is "CustomEnvelope", not the subject
         assert "CustomEnvelope" in adapter._drop_count
         assert adapter._drop_count["CustomEnvelope"] == 1
+
+    def test_higher_contract_version_dropped(self) -> None:
+        """Payload with contract_version > hub's CONTRACT_VERSION is dropped (#707)."""
+        # Arrange — schema is fine, contract is from the future
+        adapter = self._make_adapter(schema_version=1)
+        payload = {"schema_version": 1, "contract_version": "2", "data": "hello"}
+
+        # Act
+        result = adapter._validate_envelope(payload)
+
+        # Assert — dropped on the contract check, counter incremented
+        assert result is False
+        assert adapter._drop_count.get("InboundMessage", 0) == 1
+
+    def test_equal_contract_version_accepted(self) -> None:
+        """Payload with contract_version == hub's CONTRACT_VERSION is accepted."""
+        # Arrange
+        adapter = self._make_adapter(schema_version=1)
+        payload = {"schema_version": 1, "contract_version": "1", "data": "hello"}
+
+        # Act
+        result = adapter._validate_envelope(payload)
+
+        # Assert
+        assert result is True
+        assert adapter._drop_count == {}
 
 
 # ---------------------------------------------------------------------------
@@ -573,6 +600,7 @@ class TestRun:
         # Capture the event that run() creates internally by intercepting
         # add_signal_handler — on the second call, set the event so run() exits.
         from typing import Any
+
         captured_setters: list[Any] = []
 
         mock_loop = MagicMock()

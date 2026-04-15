@@ -219,8 +219,12 @@ if [ "${REGENERATE}" = true ]; then
   # B4: auto-restore trap — if any error occurs between the rm and the auth.conf
   # write below, put the backups back so the system never ends up with wiped
   # state + no new auth.conf. Trap is cleared on successful write at the end.
+  # B7: first thing in the handler must be `trap - ERR INT TERM` — otherwise
+  # the `exit 1` below re-triggers the ERR trap recursively (infinite loop on
+  # bash with `set -e`).
   restore_backups() {
     local rc=$?
+    trap - ERR INT TERM
     warn "Regeneration failed (exit ${rc}) — restoring backups..."
     if [ -f "${BACKUP_AUTH:-}" ] && [ ! -f "${AUTH_CONF}" ]; then
       cp -a "${BACKUP_AUTH}" "${AUTH_CONF}" && info "  auth.conf restored"
@@ -228,7 +232,8 @@ if [ "${REGENERATE}" = true ]; then
     if [ -d "${BACKUP_SEEDS:-}" ] && [ ! -d "${SEEDS_DIR}" ]; then
       cp -a "${BACKUP_SEEDS}" "${SEEDS_DIR}" && info "  seeds restored"
     fi
-    error "Regeneration aborted — state restored from ${epoch}"
+    echo -e "${RED}[x]${NC} Regeneration aborted — state restored from ${epoch}" >&2
+    exit 1
   }
   trap restore_backups ERR INT TERM
 

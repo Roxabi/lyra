@@ -302,7 +302,7 @@ Restart adapters first so the hub is last to reconnect:
 
 ```bash
 make telegram reload && make discord reload
-make tts reload && make stt reload
+make lyra-tts reload && make lyra-stt reload
 make lyra reload     # hub last
 ```
 

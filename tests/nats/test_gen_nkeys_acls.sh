@@ -51,16 +51,19 @@ EXPECTED_SUB[monitor]='lyra.monitor.>'
 IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter llm-worker monitor)
 
 # ── extract_block: print the user{} block for a given identity name ────────────
-# Uses brace depth + the `# <name>` comment anchor (emitted by emit_user) to
-# scope a single block precisely. Robust to reordering because each block ends
-# at its own closing brace, not at a shared token like `allow_responses`.
+# B9: the closing-brace condition records `entry_depth` when the identity's
+# `# <name>` anchor is seen, then exits on the `}` that returns depth to
+# `entry_depth - 1` — i.e. the outer user-block close, not the file's final `}`.
+# Without this, the awk range leaked from the identity's comment to the end of
+# the file (tests still passed by accident due to `head -1` in the caller's
+# regex, but the contract was wrong).
 extract_block() {
   local name="$1"
   awk -v target="# ${name}" '
     /\{/ { depth++ }
-    index($0, target) > 0 && depth >= 1 { inblock = 1 }
+    index($0, target) > 0 && !inblock { inblock = 1; entry_depth = depth }
     inblock { print }
-    /\}/ { if (inblock && depth == 1) { exit } ; depth-- }
+    /\}/ { if (inblock && depth == entry_depth) { exit } ; depth-- }
   ' "$OUT"
 }
 

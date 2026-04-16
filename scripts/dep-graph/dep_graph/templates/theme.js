@@ -6,7 +6,7 @@
   if (saved) document.documentElement.setAttribute('data-theme', saved);
   function update() {
     const cur = document.documentElement.getAttribute('data-theme');
-    btn.textContent = cur === 'dark' ? '\u25d1 light' : '\u25d0 dark';
+    btn.textContent = cur === 'dark' ? '◑ light' : '◐ dark';
   }
   update();
   btn.addEventListener('click', () => {

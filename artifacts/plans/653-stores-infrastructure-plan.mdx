@@ -10,7 +10,7 @@ generated: "2026-04-16T00:00:00Z"
 
 Incremental rollout: one prep PR establishes the `lyra.infrastructure` layer and activates the import-linter forbidden contract, then one PR per SQLite store moves it to `infrastructure/stores/` with a backward-compatible shim, then a final cleanup PR removes all shims and does the `core/stores/__init__.py` surgery. Each PR is independently mergeable and revertable. No behavior changes throughout.
 
-**PR count: 13** (1 prep + 10 store moves + 1 sqlite_base + 1 final cleanup — see breakdown below)
+**PR count: 12** (1 prep + 1 sqlite_base + 9 other store moves + 1 final cleanup — see breakdown below). A buffer slot is held between the last store move and the final PR for any caller-update follow-up that spills out of its primary PR.
 
 ## Architecture
 
@@ -172,13 +172,13 @@ lyra.hub, lyra.adapters, lyra.agents, lyra.commands (type-hint against protocols
 
 ---
 
-### PR 12 — Move `turn_store.py` ... (overlap check)
+### PR 12 — Buffer slot (optional follow-up caller updates)
 
-_Note: PRs 4–11 are listed in recommended order but may proceed in any order after PR 3. Each is independently mergeable. The numbering here reflects a reasonable sequencing — adjust based on developer bandwidth._
+_Policy slot, not a dedicated move. Use ONLY if a per-store PR (PRs 2–11) needs a follow-up caller-update PR that could not land in the original move. PRs 4–11 are listed in recommended order but may proceed in any order after PR 3; each is independently mergeable. If all callers are updated inside their primary PRs, this slot goes unused and the count effectively becomes 11 + Final._
 
 ---
 
-### PR 13 (Final) — `__init__.py` surgery + CLAUDE.md cleanup
+### PR Final — `__init__.py` surgery + CLAUDE.md cleanup
 
 **Goal:** Remove all remaining shims. Do `core/stores/__init__.py` surgery. Update documentation.
 
@@ -219,7 +219,7 @@ _Note: PRs 4–11 are listed in recommended order but may proceed in any order a
 | 9 | `prefs_store.py` | Move + callers | Yes |
 | 10 | `thread_store.py` | Move + callers | Yes |
 | 11 | `turn_store.py` | Move + callers | Yes |
-| 12 | `auth_store.py` (if split needed) | — | — |
+| 12 | Buffer slot | — (used only if a per-store PR needs a caller-update follow-up) | — |
 | Final | `__init__.py` surgery + CLAUDE.md cleanup | `core/stores/__init__.py`, `core/CLAUDE.md`, `infrastructure/CLAUDE.md` | Yes |
 
 **Total: 12 PRs** (1 prep + 10 store moves + 1 final). PR 12 slot left as buffer for any store that needs a follow-up caller-update PR after its shim period.

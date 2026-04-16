@@ -36,35 +36,35 @@
 <header>
   <div>
     <h1>Lyra <span>v2</span> — Dependency Graph</h1>
-    <div class="subtitle">{{ subtitle }}</div>
+    <div class="subtitle">{{ subtitle | safe }}</div>
   </div>
   <div class="legend">
     <span class="pill"><span class="dot done"></span> done</span>
     <span class="pill"><span class="dot ready"></span> ready</span>
     <span class="pill"><span class="dot blocked"></span> blocked</span>
     <span class="pill"><span class="dot defer"></span> deferred</span>
-    {{ legend_epic }}
-    {{ legend_xref }}
+    {{ legend_epic | safe }}
+    {{ legend_xref | safe }}
   </div>
 </header>
 
 <div class="milestones">
 
-{{ milestone_html }}
+{{ milestone_html | safe }}
 
 </div>
 
 <div class="cross-deps">
   <h3>Cross-lane critical path (to M3 observability live)</h3>
   <ul>
-{{ cross_html }}
+{{ cross_html | safe }}
   </ul>
 </div>
 
 <button class="theme-btn" id="theme-toggle">&#9681; light</button>
 
 <footer>
-  <p>{{ footer_line }}</p>
+  <p>{{ footer_line | safe }}</p>
 </footer>
 
 {% include 'theme.js' %}

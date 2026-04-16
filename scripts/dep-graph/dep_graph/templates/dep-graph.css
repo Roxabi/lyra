@@ -245,6 +245,8 @@ h1 span { color: var(--accent); }
   padding: 5px 7px;
   font-size: 11px;
   min-width: 0;
+  max-width: 230px;
+  width: 100%;
   height: var(--slot-h);
   min-height: var(--slot-h);
   display: flex;
@@ -366,8 +368,9 @@ h1 span { color: var(--accent); }
   overflow-x: auto;
 }
 .lane-col {
-  flex: 0 0 auto;
+  flex: 1 1 0;
   min-width: 180px;
+  max-width: 230px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -408,6 +411,8 @@ h1 span { color: var(--accent); }
 }
 .lane-col--split {
   flex-direction: column;
+  max-width: none;  /* let sub-columns expand to their full width */
+  flex: 0 0 auto;   /* size to content, don't share with siblings */
 }
 .lane-sub-cols {
   display: flex;
@@ -415,8 +420,9 @@ h1 span { color: var(--accent); }
   flex: 1;
 }
 .lane-sub-col {
-  flex: 0 0 auto;
+  flex: 1 1 0;
   min-width: 160px;
+  max-width: 230px;
   display: flex;
   flex-direction: column;
   gap: 2px;

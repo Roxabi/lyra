@@ -418,6 +418,28 @@ def test_sanitize_title_none_and_empty():
     assert _sanitize_title("") == ""
 
 
+def test_sanitize_title_preserves_spaces():
+    """Space characters pass through unchanged (not control chars)."""
+    assert _sanitize_title("   ") == "   "
+
+
+def test_sanitize_title_strips_tabs():
+    """Tab characters are C0 control chars and are stripped."""
+    assert _sanitize_title("\t  \t") == "  "  # tabs removed, spaces kept
+
+
+def test_sanitize_title_all_control_chars_returns_empty():
+    """Input consisting entirely of control chars returns empty string."""
+    assert _sanitize_title("\x00\x01\x02\x1f") == ""
+    assert _sanitize_title("\x7f\x80\x9f") == ""
+
+
+def test_sanitize_title_strips_zero_width_chars():
+    """Zero-width Unicode chars are removed."""
+    assert _sanitize_title("hello\u200bworld") == "helloworld"  # ZWSP
+    assert _sanitize_title("hello\ufeffworld") == "helloworld"  # BOM
+
+
 # ---------------------------------------------------------------------------
 # _derive_size_from_labels allowlist (#745)
 # ---------------------------------------------------------------------------

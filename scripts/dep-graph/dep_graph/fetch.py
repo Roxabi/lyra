@@ -150,8 +150,10 @@ def _derive_size_from_labels(labels: list[str]) -> str | None:
 
 _MILESTONE_ALLOWED = re.compile(r"[^A-Za-z0-9 \-_.#/()]")
 
-# C0/C1 control chars + Unicode bidi override chars (U+202A-U+202E, U+2066-U+2069)
-_TITLE_UNSAFE = re.compile(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+# C0/C1 control chars + Unicode bidi override + zero-width chars
+_TITLE_UNSAFE = re.compile(
+    r"[\x00-\x1f\x7f-\x9f\u200b-\u200d\ufeff\u202a-\u202e\u2066-\u2069]"
+)
 
 
 def _sanitize_milestone(raw: str | None) -> str | None:

@@ -233,7 +233,7 @@ class TestHealthEndpoint:
         """SC-3: last_message_age_s reflects time since last processed message."""
         from lyra.bootstrap.health import create_health_app
 
-        hub._last_processed_at = time.monotonic()
+        hub._outbound_router._last_processed_at = time.monotonic()
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)

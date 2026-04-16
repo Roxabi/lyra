@@ -11,6 +11,7 @@ FAIL=0
 # Files exempt from the limit (tracked for future refactoring).
 EXEMPT=(
     "src/lyra/core/hub/hub.py"              # 791 lines — #396 refactor backlog
+    "src/lyra/core/hub/outbound_router.py"  # 387 lines — #753 dispatch extraction
     "src/lyra/bootstrap/hub_standalone.py"  # 432 lines — #396 refactor backlog
     "src/lyra/adapters/_shared.py"          # 432 lines — #396 refactor backlog
     "src/lyra/core/cli_pool.py"             # 430 lines — #396 refactor backlog

@@ -258,6 +258,16 @@ def _prepare_milestone_rows(  # noqa: C901
     lane_meta = _prepare_lane_metadata(layout)
     groups = _group_issues_by_milestone(gh_issues, primary_repo)
 
+    # Collect epic issues to exclude from card rendering
+    epic_issues: set[tuple[str, int]] = set()
+    for lane in layout.get("lanes", []):
+        epic = lane.get("epic")
+        if epic and isinstance(epic, dict):
+            epic_repo = epic.get("repo", primary_repo)
+            epic_num = epic.get("issue")
+            if epic_num:
+                epic_issues.add((epic_repo, epic_num))
+
     # Also include issues from layout lanes that aren't in gh.json (render as missing)
     seen: set[tuple[str, int]] = set()
     for _ms, issues in groups.items():
@@ -295,10 +305,14 @@ def _prepare_milestone_rows(  # noqa: C901
         if not issues:
             continue
         sorted_issues = _topo_sort_issues(issues, gh_issues)
+        # Filter out epic issues - they appear as banners, not cards
+        filtered_issues = [
+            item for item in sorted_issues if (item[0], item[1]) not in epic_issues
+        ]
         milestone_rows.append(
             {
                 "milestone": ms,
-                "issues": sorted_issues,
+                "issues": filtered_issues,
             }
         )
 
@@ -307,14 +321,31 @@ def _prepare_milestone_rows(  # noqa: C901
         ms_key = None if ms == "" else ms
         if ms_key not in MILESTONE_ORDER:
             sorted_issues = _topo_sort_issues(groups[ms_key], gh_issues)
+            # Filter out epic issues
+            filtered_issues = [
+                item for item in sorted_issues if (item[0], item[1]) not in epic_issues
+            ]
             milestone_rows.append(
                 {
                     "milestone": ms,
-                    "issues": sorted_issues,
+                    "issues": filtered_issues,
                 }
             )
 
     return milestone_rows, lane_of, lane_meta
+
+
+def _render_epic_banner(epic: dict, gh_issues: dict) -> str:
+    """Render epic banner HTML for a lane with an epic."""
+    label = epic.get("label", "epic")
+    tag = epic.get("tag", "")
+    tag_html = f'<span class="tag">{escape(tag)}</span>' if tag else ""
+    defer_class = " defer" if epic.get("defer") else ""
+    return (
+        f'<div class="epic-banner{defer_class}">'
+        f'<span>{escape(label)}</span>{tag_html}'
+        f"</div>"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +411,7 @@ def _render_milestone_card(  # noqa: PLR0913
 # ---------------------------------------------------------------------------
 
 
-def render_milestone_row(  # noqa: C901, PLR0913
+def render_milestone_row(  # noqa: C901, PLR0913, PLR0915
     row: dict,
     lane_meta: dict[str, dict],
     lane_of: dict[tuple[str, int], str],
@@ -471,10 +502,25 @@ def render_milestone_row(  # noqa: C901, PLR0913
                 ]
 
                 inner = "\n".join(cards_html)
+
+                # Check for epic on this sub-lane
+                epic = meta.get("epic")
+                if epic:
+                    epic_banner = _render_epic_banner(epic, gh_issues)
+                    defer_class = " defer" if epic.get("defer") else ""
+                    inner = (
+                        f'<div class="epic-wrap{defer_class}">\n'
+                        f"{epic_banner}\n"
+                        f'<div class="lane-sub-cards">\n{inner}\n</div>\n'
+                        f"</div>"
+                    )
+                else:
+                    inner = f'<div class="lane-sub-cards">\n{inner}\n</div>'
+
                 sub_cols_html.append(
                     f'<div class="lane-sub-col">\n'
                     f"{sub_header}\n"
-                    f'<div class="lane-sub-cards">\n{inner}\n</div>\n'
+                    f"{inner}\n"
                     f"</div>"
                 )
 
@@ -505,10 +551,29 @@ def render_milestone_row(  # noqa: C901, PLR0913
             ]
 
             inner = "\n".join(cards_html)
+
+            # Check for epic on this lane
+            epic = None
+            if lane_code and lane_code in lane_meta:
+                epic = lane_meta[lane_code].get("epic")
+
+            if epic:
+                # Wrap in epic-wrap with banner
+                epic_banner = _render_epic_banner(epic, gh_issues)
+                defer_class = " defer" if epic.get("defer") else ""
+                inner = (
+                    f'<div class="epic-wrap{defer_class}">\n'
+                    f"{epic_banner}\n"
+                    f'<div class="lane-col-cards">\n{inner}\n</div>\n'
+                    f"</div>"
+                )
+            else:
+                inner = f'<div class="lane-col-cards">\n{inner}\n</div>'
+
             columns_html.append(
                 f'<div class="lane-col">\n'
                 f"{col_header}\n"
-                f'<div class="lane-col-cards">\n{inner}\n</div>\n'
+                f"{inner}\n"
                 f"</div>"
             )
 

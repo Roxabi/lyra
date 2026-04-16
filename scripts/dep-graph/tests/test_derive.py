@@ -75,18 +75,22 @@ def test_derive_lane_independent_issues_sorted_by_number():
     assert order_nums == [3, 7, 10]
 
 
-def test_derive_lane_closed_issue_excluded_from_order():
-    """Closed blocker is excluded from placement; order of open issues correct."""
+def test_derive_lane_closed_issue_included_in_order():
+    """Closed lane-labeled issues are included in order[] for done-styling.
+
+    Since b188e69 ("fix(dep-graph): include closed issues in lane order[]
+    for done-styling"), `_collect_lane_issues` no longer filters by state —
+    closed issues land in-lane and render as `.card done` in the template.
+    """
     gh = _gh(
-        _issue(1, lane="z", state="closed"),  # closed — must not appear
-        _issue(
-            2, lane="z", blocked_by=[1]
-        ),  # cross-ref to closed; in-lane DAG ignores it
+        _issue(1, lane="z", state="closed"),
+        _issue(2, lane="z", blocked_by=[1]),
         _issue(3, lane="z"),
     )
     result = derive_lane(_lane("z"), gh, REPO)
     order_nums = [r["issue"] for r in result["order"]]
-    assert 1 not in order_nums
+    # All three issues placed in-lane, including the closed one
+    assert 1 in order_nums
     assert 2 in order_nums
     assert 3 in order_nums
 

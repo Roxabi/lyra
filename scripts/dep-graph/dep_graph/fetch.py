@@ -149,6 +149,11 @@ def _sanitize_milestone(raw: str | None) -> str | None:
     parens. Preserves realistic milestone names like 'v2.4.0 (alpha)',
     'Sprint #3', 'Q2 2026 / Backend'. Everything else is dropped silently.
 
+    Note: HTML injection is prevented at render time via `html.escape`;
+    this allowlist is a defense-in-depth guard that limits the cache
+    key surface, not the primary XSS defense. Widening the allowlist
+    without reviewing the render path is safe but not encouraged.
+
     Returns None on empty, None, or all-stripped input.
     """
     if not raw:

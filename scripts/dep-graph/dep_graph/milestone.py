@@ -21,13 +21,12 @@ from .render import (
     render_deps,
 )
 
-
 # ---------------------------------------------------------------------------
 # Topological sort for dependency ordering
 # ---------------------------------------------------------------------------
 
 
-def _topo_sort_issues(
+def _topo_sort_issues(  # noqa: C901
     issues: list[tuple[str, int, str | None, str | None]],
     gh_issues: dict,
 ) -> list[tuple[str, int, str | None, str | None]]:
@@ -41,7 +40,10 @@ def _topo_sort_issues(
         return issues
 
     # Group by (lane_group, lane_code) for independent topo sorts
-    by_lane: dict[tuple[str | None, str | None], list[tuple[str, int, str | None, str | None]]] = {}
+    by_lane: dict[
+        tuple[str | None, str | None],
+        list[tuple[str, int, str | None, str | None]],
+    ] = {}
     for item in issues:
         repo, num, lane, group = item
         key = (group, lane)
@@ -60,7 +62,9 @@ def _topo_sort_issues(
             continue
 
         # Build issue set for this lane
-        issue_set: set[tuple[str, int]] = {(repo, num) for repo, num, _, _ in lane_issues}
+        issue_set: set[tuple[str, int]] = {
+            (repo, num) for repo, num, _, _ in lane_issues
+        }
 
         # Build adjacency: (repo, num) -> list of dependents
         # and in-degree: (repo, num) -> count of blockers within this lane
@@ -124,6 +128,7 @@ def _topo_sort_issues(
         result.extend(ordered)
 
     return result
+
 
 # ---------------------------------------------------------------------------
 # Milestone ordering constants

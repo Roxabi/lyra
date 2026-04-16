@@ -339,15 +339,15 @@ def run_fetch(layout_path: Path, cache_path: Path, *, verbose: bool = False) -> 
                 "state": state,
                 "labels": labels,
                 **_derive_label_fields(labels, label_prefix),
+                # milestone: GH milestone title (e.g. "M0", "M1") or None.
+                # Always present so downstream consumers can distinguish
+                # "not fetched" (key absent) from "no milestone" (None).
+                "milestone": milestone,
+                # size: derived from size:* label or None. Always present.
+                "size": size,
                 "blocked_by": [],
                 "blocking": [],
             }
-            # milestone: GH milestone title (e.g. "M0", "M1") — used for band derivation
-            if milestone is not None:
-                entry["milestone"] = milestone
-            # size: derived from size:* label — used for card rendering
-            if size is not None:
-                entry["size"] = size
             issues[key] = entry
 
         dep_fut: dict = {}

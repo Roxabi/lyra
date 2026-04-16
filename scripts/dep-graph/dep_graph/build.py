@@ -1191,10 +1191,17 @@ def _prepare_render_data(
     gh_issues: dict,
     primary_repo: str,
     overrides: dict,
-) -> tuple[list[dict], list[tuple[str, int]], list[tuple[str, int]]]:
+) -> tuple[
+    list[dict],
+    list[tuple[str, int]],
+    list[tuple[str, int]],
+    dict[tuple[str, int], str],
+]:
     """Derive lanes, resolve standalone/untriaged.
 
-    Returns (flat_lanes, standalone_order, untriaged).
+    Returns (flat_lanes, standalone_order, untriaged, lane_of) where lane_of
+    maps (repo, issue) → lane code for every item placed in a lane — used by
+    downstream renderers for cross-lane dep arrows.
     """
     raw_lanes = layout["lanes"]
     standalone = layout.get("standalone", {})
@@ -1243,7 +1250,7 @@ def _prepare_render_data(
         ),
         key=lambda x: (x[0], x[1]),
     )
-    return flat_lanes, standalone_order, untriaged
+    return flat_lanes, standalone_order, untriaged, lane_of
 
 
 def build_html(layout: dict, gh_issues: dict) -> str:
@@ -1256,17 +1263,9 @@ def build_html(layout: dict, gh_issues: dict) -> str:
     _repos_list: list[str] = meta.get("repos", [])
     primary_repo: str = _repos_list[0] if _repos_list else meta.get("repo", "")
 
-    flat_lanes, standalone_order, untriaged = _prepare_render_data(
+    flat_lanes, standalone_order, untriaged, lane_of = _prepare_render_data(
         layout, gh_issues, primary_repo, overrides
     )
-
-    # Rebuild lane_of from flat_lanes for cross-lane dep rendering
-    lane_of: dict[tuple[str, int], str] = {}
-    for fl in flat_lanes:
-        code = fl["code"]
-        for row in fl["flat_rows"]:
-            if "issue" in row and row.get("repo"):
-                lane_of[(row["repo"], row["issue"])] = code
 
     lanes_html = "\n\n".join(
         render_flat_lane(

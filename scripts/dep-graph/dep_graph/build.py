@@ -1204,11 +1204,11 @@ def _prepare_render_data(
     downstream renderers for cross-lane dep arrows.
     """
     raw_lanes = layout["lanes"]
-    standalone = layout.get("standalone", {})
-
     lanes = [derive_lane(lane, gh_issues, primary_repo) for lane in raw_lanes]
-    if is_auto_derived_standalone({"standalone": standalone}):
+    if is_auto_derived_standalone(layout):
         standalone = {"order": derive_standalone_order(gh_issues, primary_repo)}
+    else:
+        standalone = layout["standalone"]
 
     lane_of: dict[tuple[str, int], str] = {}
     for lane in lanes:

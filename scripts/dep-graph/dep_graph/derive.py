@@ -249,9 +249,6 @@ def derive_lane(
     return {**lane, "order": order, "par_groups": par_groups, "bands": bands}
 
 
-_UNSET = object()  # sentinel for "first iteration not yet seen"
-
-
 def _derive_bands(
     sorted_issues: list[tuple[str, int]],
     gh_issues: dict,
@@ -266,7 +263,6 @@ def _derive_bands(
     [M0, M1, M0, M2]) does NOT emit a duplicate header.
     """
     bands: list[dict] = []
-    prev_milestone: object = _UNSET
     seen_milestones: set[str] = set()
 
     for repo, num in sorted_issues:
@@ -274,11 +270,7 @@ def _derive_bands(
         entry = gh_issues.get(key, {})
         milestone = entry.get("milestone")
 
-        if (
-            milestone is not None
-            and milestone != prev_milestone
-            and milestone not in seen_milestones
-        ):
+        if milestone is not None and milestone not in seen_milestones:
             bands.append(
                 {
                     "before": {"repo": repo, "issue": num},
@@ -286,8 +278,6 @@ def _derive_bands(
                 }
             )
             seen_milestones.add(milestone)
-
-        prev_milestone = milestone
 
     return bands
 

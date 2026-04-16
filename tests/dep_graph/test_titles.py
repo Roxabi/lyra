@@ -29,14 +29,15 @@ def test_apply_title_rules_invalid_pattern_warns_and_continues(capsys):
 
 def test_apply_title_rules_builtins_still_run_after_invalid_user_rule(capsys):
     # A broken user rule must not prevent built-in rules from running.
-    # Built-in rules in titles.py will still be applied on whatever input survives.
+    # Use an input that triggers the "feat(scope): title" → "title" builtin
+    # so we can assert concrete downstream transformation, not just type.
     rules = [{"pattern": r"(unclosed", "replacement": "x"}]
-    result = normalize_title("normal title", rules=rules)
+    result = normalize_title("feat(api): normal title", rules=rules)
     captured = capsys.readouterr()
     assert "WARN title_rule regex error" in captured.err
-    # Result should be at least the input string (built-ins may transform it,
-    # but the broken rule did NOT crash the pipeline).
-    assert isinstance(result, str)
+    # The broken user rule was skipped (not fatal), and the builtin
+    # "feat(scope):" stripper still ran on the input.
+    assert result == "normal title"
 
 
 def test_apply_title_rules_none_rules_uses_builtins_only(capsys):

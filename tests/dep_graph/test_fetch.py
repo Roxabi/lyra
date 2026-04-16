@@ -323,3 +323,13 @@ def test_derive_size_short_labels_unchanged():
 def test_derive_size_none_when_absent():
     assert _derive_size_from_labels([]) is None
     assert _derive_size_from_labels(["foo", "bar"]) is None
+
+
+def test_derive_size_cap_boundary_exact_16():
+    # Label whose suffix is exactly 16 chars stays intact (inclusive boundary).
+    assert _derive_size_from_labels(["size:" + "x" * 16]) == "x" * 16
+
+
+def test_derive_size_cap_boundary_exact_17():
+    # Label whose suffix is 17 chars gets the last char truncated.
+    assert _derive_size_from_labels(["size:" + "x" * 17]) == "x" * 16

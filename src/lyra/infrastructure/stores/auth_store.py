@@ -8,8 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lyra.core.trust import TrustLevel
-
-from .sqlite_base import SqliteStore
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

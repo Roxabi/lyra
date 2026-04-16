@@ -1,23 +1,86 @@
 """Title normalization engine for dep-graph cards.
 
-Rules are applied in order from layout.json `title_rules[]`.
-Each rule is { "pattern": "<regex>", "replacement": "<str>" }.
-Per-issue `overrides.<N>.title` wins over rules (checked before calling
-normalize_title).
+Built-in default rules strip conventional-commit prefixes (feat:, fix:, etc.)
+and common noise suffixes.  Per-issue `overrides.<N>.title` wins over rules
+(checked before calling normalize_title).
+
+layout.json `title_rules[]` is now optional.  When present, those rules are
+applied *in addition to* (and before) the built-in rules.  Set `title_rules`
+to `null` or omit the key to use only built-in rules; setting it to `[]`
+behaves the same as omitting it (no additional rules, built-ins still apply).
+The built-in rules cannot be suppressed — if a layout rule overlaps with a
+built-in, the built-in is a safe idempotent pass-through.
 """
 
 import re
 
+# ---------------------------------------------------------------------------
+# Built-in rules — applied when layout.json has no title_rules or omits it.
+# These mirror what was previously hardcoded in layout.json title_rules[].
+# ---------------------------------------------------------------------------
 
-def normalize_title(raw: str, rules: list[dict]) -> str:
-    """Apply title_rules[] sequentially to raw GitHub title.
+_BUILTIN_RULES: list[dict] = [
+    # "feat(scope) [Tag]: title" → "Tag · title"
+    {
+        "pattern": (
+            r"^(feat|fix|chore|docs|refactor|test|ci|perf|style|epic)"
+            r"(\([^)]+\))?\s+\[([^\]]+)\]\s*:\s*"
+        ),
+        "replacement": "$3 \u00b7 ",
+    },
+    # "feat(scope)[Tag]: title" → "Tag · title"
+    {
+        "pattern": (
+            r"^(feat|fix|chore|docs|refactor|test|ci|perf|style|epic)"
+            r"(\([^)]+\))?\[([^\]]+)\]\s*:\s*"
+        ),
+        "replacement": "$3 \u00b7 ",
+    },
+    # "feat(scope): title" → "title"
+    {
+        "pattern": (
+            r"^(feat|fix|chore|docs|refactor|test|ci|perf|style|epic)"
+            r"(\([^)]+\))?\s*:\s*"
+        ),
+        "replacement": "",
+    },
+    # Strip leading "M0 — " / "M1 - " milestone prefixes
+    {
+        "pattern": r"^M\d+\s*[\u2014\-]\s*",
+        "replacement": "",
+    },
+    # Strip trailing " — subtitle" noise
+    {
+        "pattern": r"\s*[\u2014\-]\s+.+$",
+        "replacement": "",
+    },
+    # Strip trailing " + subtitle"
+    {
+        "pattern": r"\s*\+\s+.+$",
+        "replacement": "",
+    },
+]
 
-    Rules use Python regex; `$1` in replacement is converted to `\\1`.
+
+def normalize_title(raw: str, rules: list[dict] | None) -> str:
+    """Apply title normalization rules to a raw GitHub title.
+
+    - If *rules* is None or omitted: uses only the built-in rules.
+    - If *rules* is an explicit list (possibly empty): applies those rules
+      first, then falls through to built-in rules.  Pass [] to apply no
+      additional layout-level rules (built-ins still run).
+
+    Rules use Python regex; `$N` back-references are converted to `\\N`.
     """
+    effective_rules: list[dict]
+    if rules is None:
+        effective_rules = _BUILTIN_RULES
+    else:
+        effective_rules = list(rules) + _BUILTIN_RULES
+
     t = raw
-    for rule in rules:
+    for rule in effective_rules:
         pattern = rule["pattern"]
-        # Convert $N back-references to \\N for re.sub
         replacement = re.sub(r"\$(\d+)", r"\\\1", rule["replacement"])
         t = re.sub(pattern, replacement, t).strip()
     return t

@@ -1,19 +1,23 @@
 """Build dep-graph HTML from layout.json + gh.json.
 
-Layout schema (label-driven):
+Layout schema (label-driven, all fields except meta/lanes optional):
   meta{}                   — title, date, repo, label_prefix, issue, category, …
-  lanes[].order[]          — issue numbers in display order
-  lanes[].par_groups{}     — { group_id: [issue, ...] }
-  lanes[].bands[]          — [{ before: N, text: "..." }]
-  overrides{}              — per-issue keyed by str(number)
-  extra_deps{}             — extra_blocked_by / extra_blocking maps
-  standalone.order[]       — standalone issue numbers
-  cross_deps[]             — cross-lane notes
-  title_rules[]            — sequential regex rules for title normalization
+  lanes[].code/name/color  — required per lane
+  lanes[].epic             — optional epic banner
+  lanes[].order[]          — optional: if absent, auto-derived from gh_issues
+  lanes[].par_groups{}     — optional: if absent, auto-derived from topo depth
+  lanes[].bands[]          — optional: if absent, auto-derived from milestones
+  overrides{}              — optional per-issue editorial overrides
+  extra_deps{}             — deprecated: use GH blocked_by instead
+  standalone.order[]       — optional: if absent, auto-derived from labels
+  cross_deps[]             — optional cross-lane notes (editorial)
+  title_rules[]            — deprecated: built-in rules in titles.py handle this
 
 Defer status: driven by gh.issues[N].defer (from <prefix>defer label).
 Label-drift warnings: emitted to stderr when layout order lane ≠ GH label lane.
-Untriaged section: labeled issues not in any lane order.
+Untriaged section: labeled issues not in any lane order (only for explicit orders).
+Size: read from gh.json entry 'size' field (derived from size:* label in fetch),
+      overridden by overrides.<key>.size if present.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 
+from .derive import derive_lane, derive_standalone_order
 from .keys import format_key, parse_key, repo_slug
 from .schema import LayoutValidationError, validate_layout
 from .titles import normalize_title
@@ -46,7 +51,7 @@ class CardContext:
     extra_blocked_by: list[tuple[str, int]]
     extra_blocking: list[tuple[str, int]]
     gh_issues: dict
-    title_rules: list[dict]
+    title_rules: list[dict] | None
     primary_repo: str = ""
 
 
@@ -57,7 +62,7 @@ class FlatLaneContext:
     gh_issues: dict
     overrides: dict
     extra_deps: dict
-    title_rules: list[dict]
+    title_rules: list[dict] | None
     primary_repo: str = ""
 
 
@@ -223,7 +228,7 @@ def display_title(
     issue_num: int,
     ovr: dict,
     gh_entry: dict | None,
-    title_rules: list[dict],
+    title_rules: list[dict] | None,
 ) -> str:
     # Per-issue override wins
     if "title" in ovr:
@@ -266,18 +271,22 @@ def render_card(ctx: CardContext, anchor_attr: str = "") -> str:
     if ctx.gh_entry is None and ctx.repo:
         return _render_missing_card(ctx.repo, ctx.issue_num, anchor_attr)
     status = derive_status(
-        ctx.ovr, ctx.gh_entry, ctx.extra_blocked_by, ctx.gh_issues,
+        ctx.ovr,
+        ctx.gh_entry,
+        ctx.extra_blocked_by,
+        ctx.gh_issues,
         ctx.repo,
     )
-    size = ctx.ovr.get("size", "")
+    # size: override wins, then gh.json 'size' field (from size:* label), then empty
+    size = (
+        ctx.ovr.get("size") or (ctx.gh_entry.get("size") if ctx.gh_entry else "") or ""
+    )
     title = display_title(ctx.issue_num, ctx.ovr, ctx.gh_entry, ctx.title_rules)
     size_html = f'<span class="size">{escape(size)}</span>' if size else ""
     deps_html = render_deps(ctx)
     repo_badge_html = _render_repo_badge(ctx.repo, ctx.primary_repo)
     card_id = f"card-{repo_slug(ctx.repo)}-{ctx.issue_num}"
-    top_inner = (
-        f'<span class="num">#{ctx.issue_num}</span>{repo_badge_html}{size_html}'
-    )
+    top_inner = f'<span class="num">#{ctx.issue_num}</span>{repo_badge_html}{size_html}'
     return (
         f'<div class="card {status}" id="{card_id}"{anchor_attr}>'
         f'<div class="top">{top_inner}</div>'
@@ -685,7 +694,7 @@ def render_standalone(
     order: list[tuple[str, int]],
     gh_issues: dict,
     overrides: dict,
-    title_rules: list[dict],
+    title_rules: list[dict] | None,
     primary_repo: str = "",
 ) -> str:
     cards = []
@@ -694,7 +703,7 @@ def render_standalone(
         ovr = overrides.get(ovr_key, {})
         gh_entry = gh_issues.get(format_key(repo, n) if repo else str(n))
         status = derive_status(ovr, gh_entry, [], gh_issues, repo)
-        size = ovr.get("size", "")
+        size = ovr.get("size") or (gh_entry.get("size") if gh_entry else "") or ""
         title = display_title(n, ovr, gh_entry, title_rules)
         size_html = f'<span class="size">{escape(size)}</span>' if size else ""
         cards.append(
@@ -1177,19 +1186,30 @@ def _escape_meta(meta: dict, primary_repo: str) -> dict[str, str]:
     }
 
 
-def build_html(layout: dict, gh_issues: dict) -> str:
-    meta = layout["meta"]
-    lanes = layout["lanes"]
-    overrides = layout.get("overrides", {})
-    extra_deps = layout.get("extra_deps", {})
+def _prepare_render_data(
+    layout: dict,
+    gh_issues: dict,
+    primary_repo: str,
+    overrides: dict,
+) -> tuple[
+    list[dict],
+    list[tuple[str, int]],
+    list[tuple[str, int]],
+    dict[tuple[str, int], str],
+]:
+    """Derive lanes, resolve standalone/untriaged.
+
+    Returns (flat_lanes, standalone_order, untriaged, lane_of) where lane_of
+    maps (repo, issue) → lane code for every item placed in a lane — used by
+    downstream renderers for cross-lane dep arrows.
+    """
+    raw_lanes = layout["lanes"]
     standalone = layout.get("standalone", {})
-    cross_deps = layout.get("cross_deps", [])
-    title_rules: list[dict] = layout.get("title_rules", [])
 
-    _repos_list: list[str] = meta.get("repos", [])
-    primary_repo: str = _repos_list[0] if _repos_list else meta.get("repo", "")
+    lanes = [derive_lane(lane, gh_issues, primary_repo) for lane in raw_lanes]
+    if not standalone.get("order"):
+        standalone = {"order": derive_standalone_order(gh_issues, primary_repo)}
 
-    # Build lane_of map: (repo, issue) → lane_code
     lane_of: dict[tuple[str, int], str] = {}
     for lane in lanes:
         for item in lane.get("order", []):
@@ -1198,11 +1218,10 @@ def build_html(layout: dict, gh_issues: dict) -> str:
             else:
                 lane_of[(primary_repo, int(item))] = lane["code"]
 
-    flat_lanes = [flatten_lane(lane, overrides, True, gh_issues) for lane in lanes]
-    flat_lanes = inject_spacers(flat_lanes)
+    flat_lanes = inject_spacers(
+        [flatten_lane(lane, overrides, True, gh_issues) for lane in lanes]
+    )
 
-    # Untriaged detection — use (repo, issue) set
-    all_ordered: set[tuple[str, int]] = set(lane_of.keys())
     raw_standalone_order = standalone.get("order", [])
     standalone_order: list[tuple[str, int]] = []
     for item in raw_standalone_order:
@@ -1210,14 +1229,13 @@ def build_html(layout: dict, gh_issues: dict) -> str:
             standalone_order.append((item["repo"], item["issue"]))
         else:
             standalone_order.append((primary_repo, int(item)))
-    all_ordered.update(standalone_order)
-    epic_issues: set[tuple[str, int]] = set()
-    for lane in layout["lanes"]:
-        if lane.get("epic"):
-            epic = lane["epic"]
-            epic_repo = epic.get("repo", primary_repo)
-            epic_issues.add((epic_repo, epic["issue"]))
 
+    all_ordered: set[tuple[str, int]] = set(lane_of.keys()) | set(standalone_order)
+    epic_issues: set[tuple[str, int]] = {
+        (epic.get("repo", primary_repo), epic["issue"])
+        for lane in layout["lanes"]
+        if (epic := lane.get("epic"))
+    }
     untriaged: list[tuple[str, int]] = sorted(
         (
             (entry.get("repo", primary_repo), entry["number"])
@@ -1231,6 +1249,22 @@ def build_html(layout: dict, gh_issues: dict) -> str:
             and "number" in entry
         ),
         key=lambda x: (x[0], x[1]),
+    )
+    return flat_lanes, standalone_order, untriaged, lane_of
+
+
+def build_html(layout: dict, gh_issues: dict) -> str:
+    meta = layout["meta"]
+    overrides = layout.get("overrides", {})
+    extra_deps = layout.get("extra_deps", {})
+    cross_deps = layout.get("cross_deps", [])
+    title_rules: list[dict] | None = layout.get("title_rules", None)
+
+    _repos_list: list[str] = meta.get("repos", [])
+    primary_repo: str = _repos_list[0] if _repos_list else meta.get("repo", "")
+
+    flat_lanes, standalone_order, untriaged, lane_of = _prepare_render_data(
+        layout, gh_issues, primary_repo, overrides
     )
 
     lanes_html = "\n\n".join(
@@ -1264,7 +1298,7 @@ def build_html(layout: dict, gh_issues: dict) -> str:
     cat_label = escaped["cat_label"]
     color = escaped["color"]
     repo_url = escaped["repo_url"]
-    lane_count = len(lanes)
+    lane_count = len(flat_lanes)
 
     subtitle = (
         f"{lane_count} lanes \u00b7 1 card per row \u00b7"

@@ -12,8 +12,15 @@ dependencies = []
 [project.optional-dependencies]
 validate = ["jsonschema>=4.0"]
 
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
 [project.scripts]
 dep-graph = "dep_graph.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["dep_graph"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"

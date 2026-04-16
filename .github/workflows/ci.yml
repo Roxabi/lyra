@@ -40,6 +40,12 @@ jobs:
       - name: Test with coverage
         run: uv run pytest
 
+      - name: Test dep-graph sub-project
+        working-directory: scripts/dep-graph
+        run: |
+          uv sync --frozen
+          uv run pytest tests/
+
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 5

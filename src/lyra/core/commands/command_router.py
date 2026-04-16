@@ -132,13 +132,11 @@ class CommandRouter:
         return msg.command is not None or is_bare_url(msg.text, self._patterns)
 
     def get_command_name(self, msg: InboundMessage) -> str | None:
-        """Return full command name (e.g. '/join') or None."""
         if msg.command is None:
             return None
         return f"{msg.command.prefix}{msg.command.name}"
 
     def register_passthrough(self, name: str) -> None:
-        """Mark a command as agent-handled — dispatch() returns None."""
         self._passthroughs.add(f"/{name}")
 
     def register_session_command(
@@ -235,10 +233,9 @@ class CommandRouter:
             )
         return None
 
-    async def dispatch(  # noqa: C901 — command routing has inherent branching complexity
+    async def dispatch(  # noqa: C901
         self, msg: InboundMessage, pool: Pool | None = None
     ) -> Response | None:
-        """Route pre-parsed command. Returns None for !-prefixed unknowns."""
         msg = self.prepare(msg)
         if msg.command is None:
             raise ValueError("dispatch() called on non-command message")

@@ -1,8 +1,12 @@
 # Folder size exemptions (≤12 files per folder)
 # Each entry must have a tracking issue.
 # Format: <path>  # <count> files — <issue> <description>
+#
+# V4 of #760 (folder decomposition) deferred to follow-up — see #760 V4 plan.
+# File-size elimination done in #760; these folder overages will be reduced by
+# splitting into subfolders in a separate PR (very high blast radius on imports).
 
-src/lyra/core           # 49 files — #753 refactor backlog
-src/lyra/adapters       # 29 files — #753 refactor backlog
-src/lyra/bootstrap      # 21 files — #753 refactor backlog
-src/lyra/core/hub       # 20 files — #753 refactor backlog
+src/lyra/core           # 53 files — #760 V4 follow-up folder decomposition
+src/lyra/adapters       # 30 files — #760 V4 follow-up folder decomposition
+src/lyra/bootstrap      # 25 files — #760 V4 follow-up folder decomposition
+src/lyra/core/hub       # 21 files — #760 V4 follow-up folder decomposition

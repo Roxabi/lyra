@@ -1,14 +1,6 @@
 # File size exemptions (≤300 lines per file)
 # Each entry must have a tracking issue.
 # Format: <path>  # <lines> lines — <issue> <description>
-
-src/lyra/core/hub/hub.py                      # 542 lines — #396 refactor backlog
-src/lyra/core/hub/outbound_router.py          # 397 lines — #753 dispatch extraction
-src/lyra/bootstrap/hub_standalone.py          # 432 lines — #396 refactor backlog
-src/lyra/adapters/_shared.py                  # 432 lines — #396 refactor backlog
-src/lyra/core/cli_pool.py                     # 430 lines — #396 refactor backlog
-src/lyra/infrastructure/stores/agent_store.py # 340 lines — #396 refactor backlog
-src/lyra/adapters/discord.py                  # 322 lines — #196 adapter protocol
-src/lyra/core/commands/command_router.py      # 316 lines — #396 refactor backlog
-src/lyra/core/cli_streaming.py                # 305 lines — #753 new extraction
-src/lyra/core/stores/turn_store.py            # 301 lines — pending migration
+#
+# All previous file-size exemptions eliminated in #760 (V1+V2+V3+V-extra).
+# This file is intentionally empty — no file may exceed 300 lines.

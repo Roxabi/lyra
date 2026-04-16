@@ -137,15 +137,15 @@ The `.importlinter` contract file gains two changes:
 **1. Extended layering contract** — `lyra.infrastructure` is inserted between `lyra.llm | lyra.nats` and `lyra.adapters`:
 
 ```ini
-[importlinter:contract:layers]
-name = Lyra layer ordering
+[importlinter:contract:clean-architecture-layers]
+name = Clean architecture layers (core ← llm/nats ← infrastructure ← adapters ← bootstrap)
 type = layers
 layers =
-    lyra.core
-    lyra.llm | lyra.nats
-    lyra.infrastructure
-    lyra.adapters
     lyra.bootstrap
+    lyra.adapters
+    lyra.infrastructure
+    lyra.llm | lyra.nats
+    lyra.core
 ```
 
 **2. New forbidden contract** — explicitly blocks SQLite drivers from entering `lyra.core`:
@@ -159,26 +159,30 @@ source_modules =
 forbidden_modules =
     aiosqlite
     sqlite3
+allow_indirect_imports = true
 ```
 
 This contract makes the violation detectable at the module level going forward, closing the gap that lazy imports previously exploited.
 
+`allow_indirect_imports = true` scopes the contract to *direct* imports only. This accommodates the transitional shim period (see 'Migration sequencing' below), during which a shim at `core/stores/<x>.py` re-exports from `lyra.infrastructure.stores.<x>`. Once all shims are deleted in the Final PR, removing this flag hardens the contract to catch transitive chains too.
+
 ### Factory wiring
 
-`src/lyra/bootstrap/bootstrap_stores.py` (already exists) houses `make_xxx_store()` factory functions. These are the only sites that import from `lyra.infrastructure.stores`. All other callers — hub, agents, commands, adapters — receive store instances through dependency injection and type-hint against the protocols in `lyra.core.stores`.
+`src/lyra/bootstrap/bootstrap_stores.py` (already exists) houses `make_xxx_store()` factory functions. Bootstrap is the only site that imports store **factories** from `lyra.infrastructure.stores`. Adapter modules (Telegram, Discord) additionally import the store **type names** from `lyra.infrastructure.stores` at runtime for per-request access — these type imports are legal under the new layering (`adapters` is above `infrastructure`), but they do mean adapters are non-trivial consumers of `lyra.infrastructure`. Non-adapter callers — hub, agents, commands — receive store instances through dependency injection and type-hint against the protocols in `lyra.core.stores`.
 
 No DI container is introduced. The bootstrap layer is the composition root; factories are plain functions.
 
 ### Dependency graph after migration
 
 ```
+lyra.hub, lyra.adapters, lyra.agents, lyra.commands (consumers — type-hint against protocol)
+    ↓ imports (type-hint only)
 lyra.core.stores (protocols)
     ↑ imported by
-lyra.infrastructure.stores (implementations — imports aiosqlite, lyra.core.stores)
+lyra.infrastructure.stores (implementations — imports aiosqlite + lyra.core.stores for protocol)
     ↑ imported by
-lyra.bootstrap.bootstrap_stores (factories — make_xxx_store)
-    ↑ imported by
-lyra.hub, lyra.adapters, lyra.agents, lyra.commands (consumers — see protocol only)
+lyra.bootstrap.bootstrap_stores (factories — make_xxx_store; only call site for infrastructure factories)
+    + adapters import concrete store TYPES from lyra.infrastructure.stores at runtime
 ```
 
 No arrow points from `lyra.infrastructure` to `lyra.adapters` or above. No arrow points from `lyra.core` to `lyra.infrastructure`.
@@ -188,6 +192,8 @@ No arrow points from `lyra.infrastructure` to `lyra.adapters` or above. No arrow
 `packages/roxabi-nats/` was extracted because it has external consumers (voiceCLI, imageCLI, roxabi-vault). Store implementations have no external consumers — they are lyra-internal only. This ADR does NOT follow the workspace-subpackage path. Store implementations stay inside `src/lyra/infrastructure/` as a plain module, not a uv subpackage.
 
 A future `packages/roxabi-persistence/` promotion is noted as a possible trajectory IF a second Roxabi project (e.g., 2ndBrain) needs the same SQLite store pattern. That promotion requires its own ADR and is explicitly out of scope here.
+
+If no second Roxabi project has required these stores within 12 months of ADR-048 acceptance, the `packages/roxabi-persistence/` extraction is explicitly abandoned — `infrastructure/stores/` remains the permanent home. This negative trigger prevents the deferral from becoming permanent undecided debt.
 
 ### Migration sequencing
 
@@ -207,7 +213,7 @@ Rollout is incremental, store-by-store:
 
 ### Positive
 
-- `lyra.core` becomes genuinely infrastructure-free. The dependency rule is restored, not just papered over.
+- `lyra.core.stores` becomes genuinely infrastructure-free (enforced by the forbidden contract). Other `lyra.core` submodules are not directly covered by this contract — it is scoped to `lyra.core.stores` where the original violation lived. The dependency rule for the stores surface is restored, not just papered over; extending the guard to the rest of `lyra.core` is a follow-up if further violations surface.
 - Import-linter gains a forbidden contract that makes the `aiosqlite`-in-core violation immediately detectable in CI for all future contributions.
 - `lyra.adapters` retains its precise meaning: I/O transport channels for messaging platforms.
 - `lyra.infrastructure/` is an explicit extension point for future cross-cutting concerns — telemetry, filesystem helpers, cache backends — without requiring another ADR for each addition, only for significant new patterns.
@@ -225,4 +231,5 @@ Rollout is incremental, store-by-store:
 - The `core/stores/` directory name is retained (not renamed to `core/ports/`). This is a deliberate non-change — existing documentation and CLAUDE.md references remain valid.
 - `packages/roxabi-nats/` is unaffected. Its role as pure NATS transport is orthogonal to persistence infrastructure.
 - `src/lyra/infrastructure/` opens the door to `infrastructure/telemetry/`, `infrastructure/fs/`, etc. — scope of this ADR is stores only. Future additions do not require a new ADR unless they introduce a new cross-cutting pattern.
+- **Governance rule:** any new subdirectory under `infrastructure/` (e.g. `infrastructure/telemetry/`, `infrastructure/fs/`, `infrastructure/cache/`) requires its own ADR. Adding files to an existing subdirectory does not. This prevents the "junk drawer" drift that would otherwise follow from the "add freely" note above.
 - The worktree `feat/653-stores-relocation` (77 renamed files, `adapters/stores/` destination) is abandoned. That branch is superseded by `feat/653-stores-infrastructure`.

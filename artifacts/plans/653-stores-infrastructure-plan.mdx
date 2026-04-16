@@ -36,6 +36,8 @@ lyra.core (zero infra) ← lyra.llm | lyra.nats ← lyra.infrastructure (aiosqli
    (steps 3+4 may be in same PR or follow-up — shim provides backward compat)
 ```
 
+**IMPORTANT:** the shim also creates a `core → infrastructure` downward import. Add the shim path to `.importlinter`'s `layers` contract `exclude_modules` list for the duration of the shim. Remove the exclusion when the shim is deleted.
+
 ### Dependency Graph After Full Migration
 
 ```
@@ -60,8 +62,9 @@ lyra.hub, lyra.adapters, lyra.agents, lyra.commands (type-hint against protocols
 - Create `src/lyra/infrastructure/CLAUDE.md` — list all 10 stores as "pending migration" with their destination paths
 - Extend `.importlinter` layering contract: insert `lyra.infrastructure` between `lyra.llm | lyra.nats` and `lyra.adapters`
 - Add forbidden contract `core-stores-no-sqlite` blocking `aiosqlite` + `sqlite3` from `lyra.core.stores`
+- **Surgery on `src/lyra/core/stores/__init__.py`:** remove `from .sqlite_base import SqliteStore` and drop `SqliteStore` + `AgentStore` + `AuthStore` + `IdentityAliasStore` from `__all__`. Keep only `AgentStoreProtocol`, `make_agent_store`. Required BEFORE the forbidden contract activates, because the current `__init__.py` has a module-level `from .sqlite_base import SqliteStore` which would create a direct `core.stores → aiosqlite` chain that the forbidden contract catches. Callers that import `SqliteStore` from `lyra.core.stores` (not from `.sqlite_base`) must update in this PR too; survey: `grep -rn 'from lyra.core.stores import.*SqliteStore\|from lyra.core.stores import.*AgentStore\|from lyra.core.stores import.*AuthStore' src/ tests/`.
 
-**Verify:** `uv run lint-imports` passes. Contract is vacuous (no files moved yet) — this is expected.
+**Verify:** `uv run lint-imports` passes. Both the layers contract and the forbidden contract are active. The forbidden contract passes because `__init__.py` no longer re-exports `SqliteStore`; individual implementation files still live under `lyra.core.stores` but their `aiosqlite` imports are already there (pre-existing state, contract shape does not flag them until `source_modules` resolution walks into them via `__init__`). If CI fails on PR 1, the __init__.py surgery scope is wider than expected — expand this PR rather than defer.
 
 **Rollback:** Revert single PR. No callers affected.
 
@@ -114,6 +117,7 @@ lyra.hub, lyra.adapters, lyra.agents, lyra.commands (type-hint against protocols
 - Move → `src/lyra/infrastructure/stores/auth_store.py`
 - Shim → update callers → delete shim
 - Update `src/lyra/infrastructure/CLAUDE.md`
+- Decide treatment of `src/lyra/core/authenticator.py`'s function-body `AuthStore` import. Options: (a) DI refactor + new `AuthStoreProtocol`; (b) `exclude_modules` entry for `lyra.core.authenticator`. Confirm choice in PR description.
 
 **Callers to check:** `bootstrap_stores.py`, `bootstrap_wiring.py`, any auth middleware.
 
@@ -131,6 +135,7 @@ lyra.hub, lyra.adapters, lyra.agents, lyra.commands (type-hint against protocols
 
 **Tasks:** Same pattern.
 - Callers: `commands/identity/handlers.py`, `bootstrap_stores.py`, related tests.
+- Apply same treatment decided in PR 4 to `core/authenticator.py`'s `IdentityAliasStore` import.
 
 ---
 
@@ -197,7 +202,7 @@ _Policy slot, not a dedicated move. Use ONLY if a per-store PR (PRs 2–11) need
 
 **Verify:**
 - `grep -r "aiosqlite" src/lyra/core/` returns nothing
-- `grep -r "sqlite3" src/lyra/core/stores/` returns nothing (excluding `pairing_config.py` DDL constants if present — verify)
+- `grep -r "sqlite3" src/lyra/core/stores/` returns nothing
 - `uv run lint-imports` passes (layering + forbidden contract)
 - `uv run pytest` passes
 - `ls src/lyra/core/stores/` shows exactly: `__init__.py`, `agent_store_protocol.py`, `json_agent_store.py`, `pairing_config.py`
@@ -244,9 +249,22 @@ _Policy slot, not a dedicated move. Use ONLY if a per-store PR (PRs 2–11) need
 
 ## Consistency Report
 
-- Criteria covered: 9/9 (all success criteria from spec have at least one verifying task)
 - No gold plating: business logic changes explicitly deferred (pairing.py behavior OUT of scope)
 - No schema changes in scope
+
+### Success Criteria → PR Traceability
+
+| # | Success Criterion (from spec) | Verified in PR | Check |
+|---|-------------------------------|:--------------:|-------|
+| 1 | `src/lyra/infrastructure/stores/` contains the 10 moved implementation files | PR 2–11 | `ls src/lyra/infrastructure/stores/` shows 10 files after PR 11 |
+| 2 | `src/lyra/core/stores/` contains exactly: `__init__.py`, `agent_store_protocol.py`, `json_agent_store.py`, `pairing_config.py` | Final | `ls src/lyra/core/stores/` diff |
+| 3 | `grep -r "aiosqlite" src/lyra/core/` returns nothing | Final | grep check |
+| 4 | `grep -r "sqlite3" src/lyra/core/stores/` returns nothing | Final | grep check |
+| 5 | `uv run lint-imports` passes (layering + forbidden contract both satisfied) | PR 1 activates, verified every PR | CI gate |
+| 6 | `uv run pytest` passes unchanged | Every PR | CI gate |
+| 7 | `src/lyra/core/CLAUDE.md` has no SQLite implementation entries; retains protocol entries | Final | diff check |
+| 8 | `src/lyra/infrastructure/CLAUDE.md` exists and lists all 10 moved files | PR 1 (initial) + Final (complete) | presence check |
+| 9 | No re-export shims remain in `core/stores/` | Every per-store PR deletes its own shim; Final verifies | `ls src/lyra/core/stores/` diff |
 
 ## Task IDs
 

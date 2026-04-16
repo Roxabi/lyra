@@ -1,4 +1,4 @@
-"""Tests for AgentRefiner._extract_patch() — valid, missing, and multi-line cases."""
+"""Tests for extract_patch() — valid, missing, and multi-line cases."""
 
 from __future__ import annotations
 
@@ -6,10 +6,8 @@ import asyncio
 
 import pytest
 
-from lyra.core.agent_refiner import (
-    AgentRefiner,
-    RefinementPatch,
-)
+from lyra.core.agent_refiner import RefinementPatch
+from lyra.core.agent_refiner_stages import extract_patch
 
 
 @pytest.fixture(autouse=True)
@@ -21,19 +19,19 @@ def _restore_event_loop():  # noqa: F841  # autouse fixture
 
 
 # ---------------------------------------------------------------------------
-# T7 — _extract_patch valid (static method)
+# T7 — extract_patch valid
 # ---------------------------------------------------------------------------
 
 
 class TestExtractPatchValid:
-    """AgentRefiner._extract_patch() — extracts embedded JSON patch block."""
+    """extract_patch() — extracts embedded JSON patch block."""
 
     def test_extract_patch_returns_patch_from_valid_block(self) -> None:
         # Arrange
         text = 'Some text <<PATCH>>\n{"voice_json": "test"}\n<<END_PATCH>>'
 
         # Act
-        result = AgentRefiner._extract_patch(text)
+        result = extract_patch(text, RefinementPatch)
 
         # Assert
         assert result is not None
@@ -48,7 +46,7 @@ class TestExtractPatchValid:
         )
 
         # Act
-        result = AgentRefiner._extract_patch(text)
+        result = extract_patch(text, RefinementPatch)
 
         # Assert
         assert result is not None
@@ -60,7 +58,7 @@ class TestExtractPatchValid:
         text = '<<PATCH>>{"persona_json": "aryl"}<<END_PATCH>>'
 
         # Act
-        result = AgentRefiner._extract_patch(text)
+        result = extract_patch(text, RefinementPatch)
 
         # Assert
         assert result is not None
@@ -75,7 +73,7 @@ class TestExtractPatchValid:
         )
 
         # Act
-        result = AgentRefiner._extract_patch(text)
+        result = extract_patch(text, RefinementPatch)
 
         # Assert
         assert result is not None
@@ -83,33 +81,33 @@ class TestExtractPatchValid:
 
 
 # ---------------------------------------------------------------------------
-# T8 — _extract_patch missing (static method)
+# T8 — extract_patch missing
 # ---------------------------------------------------------------------------
 
 
 class TestExtractPatchMissing:
-    """AgentRefiner._extract_patch() — returns None when no patch block present."""
+    """extract_patch() — returns None when no patch block present."""
 
     def test_extract_patch_returns_none_when_no_block(self) -> None:
         # Arrange
         text = "No patch here"
 
         # Act
-        result = AgentRefiner._extract_patch(text)
+        result = extract_patch(text, RefinementPatch)
 
         # Assert
         assert result is None
 
     def test_extract_patch_returns_none_for_empty_string(self) -> None:
         # Arrange + Act + Assert
-        assert AgentRefiner._extract_patch("") is None
+        assert extract_patch("", RefinementPatch) is None
 
     def test_extract_patch_returns_none_for_malformed_block(self) -> None:
         # Arrange — markers present but JSON is invalid
         text = "<<PATCH>>\nnot valid json\n<<END_PATCH>>"
 
         # Act
-        result = AgentRefiner._extract_patch(text)
+        result = extract_patch(text, RefinementPatch)
 
         # Assert
         assert result is None
@@ -119,7 +117,7 @@ class TestExtractPatchMissing:
         text = '<<PATCH>>\n["list", "not", "dict"]\n<<END_PATCH>>'
 
         # Act
-        result = AgentRefiner._extract_patch(text)
+        result = extract_patch(text, RefinementPatch)
 
         # Assert
         assert result is None
@@ -129,19 +127,19 @@ class TestExtractPatchMissing:
         text = '<<PATCH>>\n{"model": "new"}'
 
         # Act
-        result = AgentRefiner._extract_patch(text)
+        result = extract_patch(text, RefinementPatch)
 
         # Assert
         assert result is None
 
 
 # ---------------------------------------------------------------------------
-# T11 — _extract_patch multi-line / pretty-printed JSON (SC-7)
+# T11 — extract_patch multi-line / pretty-printed JSON (SC-7)
 # ---------------------------------------------------------------------------
 
 
 class TestExtractPatchMultiLine:
-    """AgentRefiner._extract_patch() — handles pretty-printed and complex JSON."""
+    """extract_patch() — handles pretty-printed and complex JSON."""
 
     def test_extract_patch_handles_pretty_printed_json(self) -> None:
         # Arrange — LLMs commonly emit pretty-printed JSON
@@ -154,7 +152,7 @@ class TestExtractPatchMultiLine:
         )
 
         # Act
-        result = AgentRefiner._extract_patch(text)
+        result = extract_patch(text, RefinementPatch)
 
         # Assert
         assert result is not None
@@ -165,7 +163,7 @@ class TestExtractPatchMultiLine:
         text = '<<PATCH>>\n{"model": "new", "streaming": true}\n<<END_PATCH>>'
 
         # Act
-        result = AgentRefiner._extract_patch(text)
+        result = extract_patch(text, RefinementPatch)
 
         # Assert
         assert result is not None

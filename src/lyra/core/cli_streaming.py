@@ -3,7 +3,6 @@
 Extracted from cli_protocol.py — pure streaming I/O protocol concerns:
 StreamingIterator for text_delta chunks, and send_and_read_stream.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -248,7 +247,7 @@ class StreamingIterator:
         await self._cleanup()
 
 
-async def send_and_read_stream(  # noqa: PLR0913 — protocol fn: positional args map 1:1 to wire-level concerns
+async def send_and_read_stream(  # noqa: PLR0913 -- protocol fn: positional args map 1:1 to wire-level concerns
     entry: object,
     message: str,
     pool_id: str,

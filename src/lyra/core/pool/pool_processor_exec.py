@@ -23,7 +23,9 @@ from ..render_events import RenderEvent, TextRenderEvent
 log = logging.getLogger(__name__)
 
 
-async def guarded_process_one(msg: InboundMessage, agent: AgentBase, pool: Pool) -> None:
+async def guarded_process_one(
+    msg: InboundMessage, agent: AgentBase, pool: Pool
+) -> None:
     """Wrap process_one with timeout and error handling."""
     _start = time.monotonic()
     _cancelled = False

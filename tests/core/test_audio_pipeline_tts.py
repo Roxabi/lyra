@@ -455,6 +455,7 @@ class TestDispatchStreamingTTSFallback:
         mock_tts.synthesize = AsyncMock(side_effect=TtsUnavailableError("down"))
 
         hub = Hub(tts=mock_tts)
+        hub.dispatch_audio = AsyncMock()
         hub.dispatch_response = AsyncMock()
 
         adapter = MockAdapter()
@@ -484,4 +485,5 @@ class TestDispatchStreamingTTSFallback:
         await asyncio.sleep(0.1)
 
         # Assert - dispatch_response must NOT be called (#621)
+        hub.dispatch_audio.assert_not_awaited()
         hub.dispatch_response.assert_not_awaited()

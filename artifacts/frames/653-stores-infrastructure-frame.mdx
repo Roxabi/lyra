@@ -1,0 +1,75 @@
+---
+title: "frame(arch): introduce lyra.infrastructure layer — relocate SQLite store implementations out of lyra.core"
+issue: 653
+status: approved
+tier: F-lite
+date: 2026-04-16
+---
+
+## Problem
+
+`src/lyra/core/stores/` contains 10 SQLite implementation files that import `aiosqlite` and/or `sqlite3`. This places infrastructure drivers inside `lyra.core`, the innermost layer of the clean-architecture stack — a direct violation of the dependency rule that innermost layers must have zero infrastructure imports.
+
+The violation is currently undetected by import-linter because most store imports are inside function bodies (lazy), which static module-level analysis cannot see. The violation is real at runtime: `aiosqlite` is loaded whenever store methods execute. Once the forbidden contract in `.importlinter` is added, CI will fail on the first PR that activates it — unless the files have already moved.
+
+The original fix in issue #653 targeted `adapters/stores/` (Option A). That approach was rejected by ADR-048: placing SQLite persistence alongside I/O transport adapters (Telegram, Discord, CLI, NATS) degrades the taxonomy irreversibly. ADR-048 establishes the correct destination: a new `lyra.infrastructure` layer.
+
+**Decision authority:** ADR-048 (`docs/architecture/adr/048-lyra-infrastructure-layer-for-persistence.mdx`) — accepted, authoritative.
+
+## Tier: F-lite
+
+Justification: scope is clear, domain is single (backend/structural), all 10 moves are mechanical, acceptance criteria are binary. The 84 affected import lines and 50 files span multiple files but zero architectural unknowns — the pattern (move + shim + caller update + shim delete) is identical for every store. No novel design decisions remain after ADR-048.
+
+## Scope
+
+**In scope:**
+- Create `src/lyra/infrastructure/` module + `src/lyra/infrastructure/CLAUDE.md`
+- Move 10 SQLite implementation files from `core/stores/` to `infrastructure/stores/`
+- Add re-export shims at old paths during transition (deleted per-store when callers updated)
+- `core/stores/__init__.py` surgery: remove `SqliteStore` re-export (pulls `aiosqlite` at import time)
+- Update `.importlinter`: add `lyra.infrastructure` layer entry + forbidden contract on `lyra.core.stores` blocking `aiosqlite` / `sqlite3`
+- Update `src/lyra/core/CLAUDE.md` to remove implementation file entries, retain protocol entries
+
+**Out of scope:**
+- `pairing.py` business logic concerns — orthogonal cleanup, separate issue if needed
+- `packages/roxabi-persistence/` subpackage extraction — no external consumer exists; explicitly excluded by ADR-048
+- Store interface changes (protocols stay as-is)
+- SQLite schema or query changes
+- Any functional behavior change — pure structural relocation
+
+## Files: Stay vs Move
+
+| Decision | Files |
+|----------|-------|
+| MOVE to `infrastructure/stores/` | `sqlite_base.py`, `agent_store.py`, `auth_store.py`, `credential_store.py`, `identity_alias_store.py`, `message_index.py`, `pairing.py`, `prefs_store.py`, `thread_store.py`, `turn_store.py` |
+| STAY in `core/stores/` | `agent_store_protocol.py` (protocol + factory), `json_agent_store.py` (test double, no aiosqlite), `pairing_config.py` (pure Pydantic dataclass) |
+| SURGERY | `core/stores/__init__.py` — remove `SqliteStore` re-export |
+
+## Layering After Migration
+
+```
+lyra.core ← lyra.llm | lyra.nats ← lyra.infrastructure ← lyra.adapters ← lyra.bootstrap
+```
+
+`lyra.core` becomes genuinely infrastructure-free. Import-linter enforces this via the new forbidden contract.
+
+## Call-Site Scale
+
+- 84 import lines across 50 files
+- 56 module-level (visible to import-linter today)
+- 28 function-body / lazy (currently invisible to import-linter)
+- Rollout: per-store PRs with shims bridging the transition
+
+## Constraints
+
+- Must preserve all existing store behavior — zero functional changes
+- Shims MUST NOT re-import `aiosqlite` directly (forbidden contract activates on PR 1)
+- `src/lyra/core/CLAUDE.md` must be updated per project hygiene rule
+- `src/lyra/infrastructure/CLAUDE.md` must be created per project hygiene rule
+- CI gate (`uv run lint-imports`) is already in `.github/workflows/ci.yml:32` — no new CI wiring needed
+- #417 (schema migration blocker) is CLOSED — work can proceed immediately
+
+## Who
+
+- **Primary:** Developers maintaining clean architecture boundaries
+- **Secondary:** CI pipeline — import-linter enforcement becomes gated once forbidden contract is added

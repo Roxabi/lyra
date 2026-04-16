@@ -279,10 +279,26 @@ context window and encourages focused modules.
 
 If you need to defer a refactor:
 
-1. Add the file path to the `EXEMPT` array in `tools/check_file_length.sh`
+1. Add the file path to `tools/file_exemptions.txt`
 2. Include a comment with the line count and a tracking issue number: `# 450 lines — #396`
 3. Open a dedicated refactor issue if one doesn't exist
 4. Remove the exemption once the file is refactored below 300 lines
+
+The allowlist is not a permanent exemption — every entry must have a tracking issue.
+
+## Folder Size Policy
+
+All folders must contain ≤ 12 Python source files. This limit forces early splits and keeps
+folder lists graspable without scrolling.
+
+### Adding to the allowlist
+
+If you need to defer a refactor:
+
+1. Add the folder path to `tools/folder_exemptions.txt`
+2. Include a comment with the file count and a tracking issue number: `# 49 files — #753`
+3. Open a dedicated refactor issue if one doesn't exist
+4. Remove the exemption once the folder is split below 12 files
 
 The allowlist is not a permanent exemption — every entry must have a tracking issue.
 

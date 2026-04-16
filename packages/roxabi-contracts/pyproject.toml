@@ -1,0 +1,27 @@
+[project]
+name = "roxabi-contracts"
+version = "0.1.0"
+description = "Shared Pydantic schemas for Lyra cross-project NATS contracts"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [{ name = "Roxabi SAS", email = "mickael@bouly.io" }]
+dependencies = ["pydantic>=2"]
+
+[project.optional-dependencies]
+testing = ["nats-py>=2.6", "roxabi-nats"]
+
+[project.urls]
+Repository = "https://github.com/Roxabi/lyra"
+Issues = "https://github.com/Roxabi/lyra/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/roxabi_contracts"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -72,9 +72,10 @@ override-dependencies = [
 pkuseg = ["numpy"]
 
 [tool.uv.workspace]
-members = ["packages/roxabi-nats"]
+members = ["packages/roxabi-nats", "packages/roxabi-contracts"]
 
 [tool.uv.sources]
+roxabi-contracts = { workspace = true }
 roxabi-nats = { workspace = true }
 roxabi-vault = { git = "https://github.com/Roxabi/roxabi-vault.git", branch = "staging" }
 voicecli = { git = "https://github.com/Roxabi/voiceCLI.git", branch = "staging" }
@@ -97,7 +98,7 @@ show_missing = true
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["src", "tests", "packages/roxabi-nats/src"]
+include = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-contracts/src"]
 exclude = ["tests/dep_graph"]
 venvPath = "."
 venv = ".venv"
@@ -127,7 +128,7 @@ reportUnknownLambdaType = "none"
 reportMissingTypeArgument = "none"
 
 [tool.ruff]
-src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests"]
+src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests", "packages/roxabi-contracts/src", "packages/roxabi-contracts/tests"]
 exclude = [".claude/worktrees", "deploy"]
 
 [tool.ruff.lint]

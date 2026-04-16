@@ -101,7 +101,13 @@ class OutboundRouter:
         resource: str = "response",
     ) -> None:
         """Core outbound routing: dispatcher queue -> direct adapter fallback."""
-        platform = Platform(msg.platform)
+        try:
+            platform = Platform(msg.platform)
+        except ValueError:
+            raise KeyError(
+                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                f"Call register_adapter() before dispatching {resource}."
+            ) from None
         dispatcher = self._dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             enqueue_fn(dispatcher)
@@ -235,7 +241,13 @@ class OutboundRouter:
         ):
             outbound.routing = msg.routing
 
-        platform = Platform(msg.platform)
+        try:
+            platform = Platform(msg.platform)
+        except ValueError:
+            raise KeyError(
+                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
+                "Call register_adapter() before dispatching streaming responses."
+            ) from None
         dispatcher = self._dispatchers.get((platform, msg.bot_id))
         if dispatcher is not None:
             dispatcher.enqueue_streaming(msg, chunks, outbound)

@@ -69,15 +69,23 @@ class IdentityResolver:
         return auth.resolve(user_id)
 
     def resolve_binding(self, msg: InboundMessage) -> Binding | None:
-        """Resolve binding: exact key, then wildcard fallback, else None."""
+        """Resolve binding: exact key, then wildcard fallback, else None.
+
+        Returns None for invalid platform strings (consistent with resolve_identity
+        and resolve_message_trust graceful degradation).
+        """
+        try:
+            platform = Platform(msg.platform)
+        except ValueError:
+            return None
         scope = msg.scope_id
-        key = RoutingKey(Platform(msg.platform), msg.bot_id, scope)
+        key = RoutingKey(platform, msg.bot_id, scope)
         exact = self._bindings.get(key)
         if exact is not None:
             return exact
-        wb = self._bindings.get(RoutingKey(Platform(msg.platform), msg.bot_id, "*"))
+        wb = self._bindings.get(RoutingKey(platform, msg.bot_id, "*"))
         if wb is not None:
-            pid = RoutingKey(Platform(msg.platform), msg.bot_id, scope).to_pool_id()
+            pid = RoutingKey(platform, msg.bot_id, scope).to_pool_id()
             return Binding(agent_name=wb.agent_name, pool_id=pid)
         return None
 

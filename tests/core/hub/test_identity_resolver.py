@@ -25,6 +25,7 @@ def make_inbound(  # noqa: PLR0913
     scope_id: str = "chat:42",
     trust_level: TrustLevel = TrustLevel.PUBLIC,
     is_admin: bool = False,
+    roles: tuple[str, ...] = (),
 ) -> InboundMessage:
     """Build a minimal InboundMessage for IdentityResolver tests."""
     return InboundMessage(
@@ -41,17 +42,19 @@ def make_inbound(  # noqa: PLR0913
         platform_meta={"chat_id": 42},
         trust_level=trust_level,
         is_admin=is_admin,
+        roles=roles,
     )
 
 
 def make_authenticator(
     default: TrustLevel = TrustLevel.PUBLIC,
     admin_user_ids: frozenset[str] = frozenset(),
+    role_map: dict[str, TrustLevel] | None = None,
 ) -> Authenticator:
     """Build a minimal Authenticator for tests."""
     return Authenticator(
         store=None,
-        role_map={},
+        role_map=role_map or {},
         default=default,
         admin_user_ids=admin_user_ids,
     )
@@ -258,6 +261,27 @@ class TestResolveMessageTrust:
         msg = make_inbound(platform="unknown", trust_level=TrustLevel.PUBLIC)
         result = resolver.resolve_message_trust(msg)
         assert result is msg
+
+    def test_roles_passed_to_authenticator(self) -> None:
+        """Roles from message are passed to authenticator.resolve()."""
+        # Create authenticator with role-based trust mapping
+        auth = make_authenticator(
+            default=TrustLevel.PUBLIC,
+            role_map={"moderator": TrustLevel.TRUSTED},
+        )
+        resolver = IdentityResolver(
+            authenticators={(Platform.TELEGRAM, "main"): auth},
+            bindings={},
+        )
+        # Message with moderator role should get TRUSTED level
+        msg = make_inbound(
+            platform="telegram",
+            bot_id="main",
+            trust_level=TrustLevel.PUBLIC,
+            roles=("moderator",),
+        )
+        result = resolver.resolve_message_trust(msg)
+        assert result.trust_level == TrustLevel.TRUSTED
 
 
 # ---------------------------------------------------------------------------

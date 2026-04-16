@@ -16,7 +16,6 @@ from .outbound_errors import (
     _ITEM,
     _SEND_ERROR_MSG,
     _is_transient_error,
-    try_notify_user,
 )
 
 if TYPE_CHECKING:
@@ -193,10 +192,7 @@ async def dispatch_outbound_item(  # noqa: C901, PLR0913, PLR0915
         # Gate on circuit: skip if circuit already open to avoid duplicate
         # notifications (the circuit-open debounce already informed the user).
         if kind in ("send", "streaming"):
-            await try_notify_user(
-                platform_name,
-                adapter,
+            await try_notify_fn(
                 msg,
                 _SEND_ERROR_MSG,
-                circuit=circuit,
             )

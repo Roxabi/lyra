@@ -16,6 +16,8 @@ import json
 import re
 from unittest.mock import MagicMock
 
+from dep_graph.fetch import _derive_size_from_labels, _sanitize_milestone
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -264,3 +266,70 @@ def test_writes_gh_json_with_owner_repo_hash_keys(tmp_path, monkeypatch):
         assert re.match(r"^[^/]+/[^/]+#\d+$", k), (
             f"Key {k!r} does not match owner/repo#N pattern"
         )
+
+
+# ---------------------------------------------------------------------------
+# _sanitize_milestone (#741 item 1)
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_milestone_allowlist_passes_realistic_names():
+    assert _sanitize_milestone("v2.4.0 (alpha)") == "v2.4.0 (alpha)"
+    assert _sanitize_milestone("Sprint #3") == "Sprint #3"
+    assert _sanitize_milestone("Q2 2026 / Backend") == "Q2 2026 / Backend"
+    assert _sanitize_milestone("M0") == "M0"
+
+
+def test_sanitize_milestone_strips_html_tags():
+    # < and > are stripped; / is in the allowlist so </script> → /script
+    assert _sanitize_milestone("<script>xss</script>") == "scriptxss/script"
+
+
+def test_sanitize_milestone_truncates_to_64_chars():
+    assert _sanitize_milestone("x" * 100) == "x" * 64
+
+
+def test_sanitize_milestone_none_on_empty_and_none():
+    assert _sanitize_milestone(None) is None
+    assert _sanitize_milestone("") is None
+    assert _sanitize_milestone("   ") is None
+    assert _sanitize_milestone("!!!") is None  # all dropped by allowlist
+
+
+def test_sanitize_milestone_strips_trailing_leading_whitespace():
+    assert _sanitize_milestone("  M0  ") == "M0"
+
+
+# ---------------------------------------------------------------------------
+# _derive_size_from_labels cap (#741 item 6)
+# ---------------------------------------------------------------------------
+
+
+def test_derive_size_caps_suffix_at_16_chars():
+    # Unbounded label must not bloat cache — cap to 16 chars after 'size:' prefix
+    long_label = "size:" + "x" * 100
+    result = _derive_size_from_labels([long_label])
+    assert result is not None
+    assert len(result) == 16
+    assert result == "x" * 16
+
+
+def test_derive_size_short_labels_unchanged():
+    assert _derive_size_from_labels(["size:S"]) == "S"
+    assert _derive_size_from_labels(["size:F-lite"]) == "F-lite"
+    assert _derive_size_from_labels(["other:X", "size:M"]) == "M"
+
+
+def test_derive_size_none_when_absent():
+    assert _derive_size_from_labels([]) is None
+    assert _derive_size_from_labels(["foo", "bar"]) is None
+
+
+def test_derive_size_cap_boundary_exact_16():
+    # Label whose suffix is exactly 16 chars stays intact (inclusive boundary).
+    assert _derive_size_from_labels(["size:" + "x" * 16]) == "x" * 16
+
+
+def test_derive_size_cap_boundary_exact_17():
+    # Label whose suffix is 17 chars gets the last char truncated.
+    assert _derive_size_from_labels(["size:" + "x" * 17]) == "x" * 16

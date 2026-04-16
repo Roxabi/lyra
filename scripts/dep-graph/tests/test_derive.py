@@ -6,7 +6,14 @@ All tests use synthetic gh_issues dicts; no GitHub API calls.
 from __future__ import annotations
 
 import pytest
-from dep_graph.derive import _build_par_groups, derive_lane, derive_standalone_order
+from dep_graph.derive import (
+    _build_par_groups,
+    _derive_bands,
+    derive_lane,
+    derive_standalone_order,
+    is_auto_derived_lane,
+    is_auto_derived_standalone,
+)
 
 REPO = "Owner/repo"
 
@@ -483,3 +490,92 @@ def test_build_par_groups_creates_group_without_inner_edge():
     result = _build_par_groups("lane", sorted_issues, depth_map, edges)
     # Depth-1 bucket has no inner edges → must appear as a par_group
     assert any({m["issue"] for m in members} == {2, 3} for members in result.values())
+
+
+# ---------------------------------------------------------------------------
+# Predicate helpers (#741 item 2, 7)
+# ---------------------------------------------------------------------------
+
+
+def test_predicate_lane_with_order_is_explicit():
+    assert is_auto_derived_lane({"code": "A", "order": []}) is False
+    assert (
+        is_auto_derived_lane({"code": "A", "order": [{"repo": "r", "issue": 1}]})
+        is False
+    )
+
+
+def test_predicate_lane_without_order_is_auto():
+    assert is_auto_derived_lane({"code": "A"}) is True
+    assert is_auto_derived_lane({"code": "A", "name": "Alpha"}) is True
+
+
+def test_predicate_standalone_missing_key_is_auto():
+    assert is_auto_derived_standalone({}) is True
+
+
+def test_predicate_standalone_empty_object_is_auto():
+    assert is_auto_derived_standalone({"standalone": {}}) is True
+
+
+def test_predicate_standalone_empty_order_is_auto():
+    assert is_auto_derived_standalone({"standalone": {"order": []}}) is True
+
+
+def test_predicate_standalone_non_empty_order_is_explicit():
+    layout = {"standalone": {"order": [{"repo": "r", "issue": 1}]}}
+    assert is_auto_derived_standalone(layout) is False
+
+
+# ---------------------------------------------------------------------------
+# _derive_bands dedup (#741 item 4)
+# ---------------------------------------------------------------------------
+
+
+def _bands_for(milestones: list[str | None]) -> list[dict]:
+    """Build sorted_issues + gh_issues for a sequence of milestones, return bands."""
+    sorted_issues = [(REPO, i + 1) for i in range(len(milestones))]
+    gh_issues = {}
+    for i, ms in enumerate(milestones):
+        entry = _issue(i + 1, lane="A", milestone=ms if ms is not None else None)
+        # When milestone is None, _issue drops the key — mimic that.
+        if ms is None:
+            entry.pop("milestone", None)
+        gh_issues[f"{REPO}#{i + 1}"] = entry
+    return _derive_bands(sorted_issues, gh_issues, REPO)
+
+
+def test_derive_bands_interleaved_milestones_dedup():
+    # [M0, M1, M0, M2] → 3 bands (M0, M1, M2) in first-occurrence order.
+    bands = _bands_for(["M0", "M1", "M0", "M2"])
+    texts = [b["text"] for b in bands]
+    assert texts == ["M0 \u2225", "M1 \u2225", "M2 \u2225"]
+    # M0 anchors at issue #1 (first occurrence, not at #3 revisit).
+    assert bands[0]["before"] == {"repo": REPO, "issue": 1}
+
+
+def test_derive_bands_none_between_same_milestone():
+    # [None, M0, None, M0] → 1 band (M0 at iter 2, no duplicate at iter 4).
+    bands = _bands_for([None, "M0", None, "M0"])
+    assert len(bands) == 1
+    assert bands[0]["text"] == "M0 \u2225"
+    assert bands[0]["before"] == {"repo": REPO, "issue": 2}
+
+
+def test_derive_bands_same_milestone_repeated():
+    # [M0, M0, M0] → 1 band (emitted at first issue).
+    bands = _bands_for(["M0", "M0", "M0"])
+    assert len(bands) == 1
+
+
+def test_derive_bands_all_none():
+    # [None, None, None] → 0 bands.
+    bands = _bands_for([None, None, None])
+    assert bands == []
+
+
+def test_derive_bands_single_milestone_regression():
+    # [M0, M0, M1] → 2 bands (M0 at #1, M1 at #3) — preserves existing behavior.
+    bands = _bands_for(["M0", "M0", "M1"])
+    texts = [b["text"] for b in bands]
+    assert texts == ["M0 \u2225", "M1 \u2225"]

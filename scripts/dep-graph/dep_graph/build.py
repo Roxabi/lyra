@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 
-from .derive import derive_lane, derive_standalone_order
+from .derive import derive_lane, derive_standalone_order, is_auto_derived_standalone
 from .keys import format_key, parse_key, repo_slug
 from .schema import LayoutValidationError, validate_layout
 from .titles import normalize_title
@@ -1204,11 +1204,11 @@ def _prepare_render_data(
     downstream renderers for cross-lane dep arrows.
     """
     raw_lanes = layout["lanes"]
-    standalone = layout.get("standalone", {})
-
     lanes = [derive_lane(lane, gh_issues, primary_repo) for lane in raw_lanes]
-    if not standalone.get("order"):
+    if is_auto_derived_standalone(layout):
         standalone = {"order": derive_standalone_order(gh_issues, primary_repo)}
+    else:
+        standalone = layout["standalone"]
 
     lane_of: dict[tuple[str, int], str] = {}
     for lane in lanes:

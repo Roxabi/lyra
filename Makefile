@@ -32,7 +32,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register quadlet-install deploy remote update nats-setup nats-install nats-deploy test test-integration voice-smoke lint typecheck format
+.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register quadlet-install deploy remote update nats-setup nats-install nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
 # ── Supervisor services ──────────────────────────────────────────────────────
 
@@ -260,3 +260,8 @@ dep-graph:
 		          echo "Use: fetch | build | audit | validate | migrate | open | (empty for full rebuild)"; \
 		          exit 1 ;; \
 	esac
+
+# ── Supervisor config generation ─────────────────────────────────────────────
+
+gen-conf:              ## generate supervisord conf.d from agents.yml
+	uv run deploy/gen-supervisor-conf.py

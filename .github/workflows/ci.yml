@@ -46,6 +46,12 @@ jobs:
           uv sync --frozen
           uv run pytest tests/
 
+      - name: Validate dep-graph schema
+        working-directory: scripts/dep-graph
+        run: |
+          uv run python -c "from dep_graph.schema import validate_layout_dict; print('Schema module OK')"
+          # TODO: Add `uv run dep-graph validate` once layout.json is in repo
+
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 5

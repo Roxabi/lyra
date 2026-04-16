@@ -11,6 +11,8 @@ from typing import Any
 
 from jsonschema import Draft7Validator
 
+from .keys import parse_key
+
 _schema_cache: dict | None = None
 _SCHEMA_PATH = Path(__file__).parent.parent / "layout.schema.json"
 
@@ -28,8 +30,10 @@ def _load_schema() -> dict:
     global _schema_cache
     if _schema_cache is None:
         _schema_cache = json.loads(_SCHEMA_PATH.read_text())
-    assert _schema_cache is not None
-    return _schema_cache
+    # Type narrow: _schema_cache is guaranteed set after the if-block.
+    # Using explicit local reference avoids `assert` (stripped by `python -O`).
+    result: dict = _schema_cache  # type: ignore[assignment]
+    return result
 
 
 def _assert_repo(ref: Any, path: str, allowed_repos: set[str]) -> None:
@@ -60,7 +64,10 @@ def _check_lanes(lanes: list, allowed_repos: set[str]) -> None:
 def _check_keyed_section(section: dict, prefix: str, allowed_repos: set[str]) -> None:
     """Check that owner/repo portion of each key in *section* is in allowed_repos."""
     for key in section:
-        repo = key.split("#", 1)[0]
+        try:
+            repo, _ = parse_key(key)
+        except ValueError as exc:
+            raise LayoutValidationError(f"{prefix}.{key}", str(exc)) from exc
         if repo not in allowed_repos:
             raise LayoutValidationError(
                 f"{prefix}.{key}",
@@ -92,7 +99,12 @@ def _check_refs(data: dict, allowed_repos: set[str]) -> None:
 
 
 def validate_layout_dict(data: dict) -> None:
-    """Validate a layout dict. Raises LayoutValidationError on any violation."""
+    """Validate a layout dict. Raises LayoutValidationError on any violation.
+
+    Two-phase validation:
+      1. JSON Schema validation — structural checks (types, required fields, enums).
+      2. Cross-reference validation — semantic checks (IssueRef.repo ∈ meta.repos[]).
+    """
     # Phase 1: JSON Schema validation
     validator = Draft7Validator(_load_schema())
     errors = sorted(validator.iter_errors(data), key=lambda e: e.absolute_path)

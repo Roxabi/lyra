@@ -1,7 +1,13 @@
-"""Tests for multi-repo builder — RED phase (T10)."""
+"""Tests for multi-repo builder — RED phase (T10).
+
+Golden test regeneration:
+    Run `make dep-graph build` from the lyra repo root to regenerate the HTML
+    fixture from the committed layout + gh.json cache.
+"""
 
 from __future__ import annotations
 
+import difflib
 import json
 from pathlib import Path
 
@@ -51,7 +57,11 @@ def _valid_single_lane_layout(*, repos, lane_order):
 
 
 def test_golden_html_byte_identical(tmp_path):
-    """Build fed the committed lyra-layout-golden.* fixtures produces byte-identical HTML."""
+    """Build fed the committed lyra-layout-golden.* fixtures produces byte-identical HTML.
+
+    To regenerate the golden fixture:
+        make dep-graph build
+    """
     layout_fx = FIXTURES / "lyra-layout-golden.layout.json"
     cache_fx = FIXTURES / "lyra-layout-golden.gh.json"
     html_fx = FIXTURES / "lyra-layout-golden.html"
@@ -66,7 +76,13 @@ def test_golden_html_byte_identical(tmp_path):
             layout_path=layout_fx, cache_path=cache_fx, out_path=out, bak_path=None
         )
     )
-    assert out.read_bytes() == html_fx.read_bytes(), "Golden HTML drift"
+
+    expected = html_fx.read_text().splitlines(keepends=True)
+    actual = out.read_text().splitlines(keepends=True)
+
+    if expected != actual:
+        diff = "".join(difflib.unified_diff(expected, actual, "expected", "actual"))
+        raise AssertionError(f"Golden HTML drift:\n{diff}")
 
 
 def test_repo_badge_on_foreign_card(tmp_path):

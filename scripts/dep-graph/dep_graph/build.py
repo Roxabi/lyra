@@ -662,7 +662,7 @@ def render_untriaged(
     cards = []
     for repo, n in untriaged:
         gh_entry = gh_issues.get(format_key(repo, n))
-        title = escape(gh_entry["title"]) if gh_entry else f"#{n}"
+        title = escape(gh_entry.get("title", f"#{n}")) if gh_entry else f"#{n}"
         cards.append(
             f'    <div class="card ready">'
             f'<div class="top"><span class="num">#{n}</span></div>'

@@ -35,7 +35,8 @@
   --dep-in:      #94a3b8;
   --dep-out:     #94a3b8;
   --dep-ext:     #f97316;
-{extra_vars}
+{{ extra_vars }}
+}
 [data-theme="light"] {
   --bg:          #fafaf9;
   --bg-panel:    #ffffff;
@@ -163,7 +164,7 @@ h1 span { color: var(--accent); }
 .lane[data-lane="h"]     > .lane-head { border-top-color: var(--lane-h); }
 .lane[data-lane="i"]     > .lane-head { border-top-color: var(--lane-i); }
 .lane[data-lane="indep"] > .lane-head { border-top-color: var(--lane-indep); }
-{extra_selectors}
+{{ extra_selectors }}
 /* Epic wrap */
 .epic-wrap {
   background: var(--bg-epic);

@@ -8,6 +8,7 @@ dependencies = [
     "cryptography>=46.0.7",
     "pydantic>=2.12.5",
     "pyyaml>=6.0",  # YAML parsing for deploy/gen-supervisor-conf.py
+    "jinja2>=3.1.0",  # Template rendering for dep-graph HTML
     # Adapters
     "aiogram>=3.27.0",       # Telegram — asyncio-native, tracks Bot API same-day
     "discord.py[voice]>=2.7.1",  # Discord — gateway WebSocket + voice support (voice extra pulls pynacl + davey for crypto; keep updated)

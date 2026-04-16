@@ -32,14 +32,6 @@ from pathlib import Path
 from jinja2 import Environment, PackageLoader
 
 from .milestone import _prepare_milestone_rows, render_milestone_row
-from .render import (
-    CardContext,
-    _render_missing_card,
-    _render_repo_badge,
-    derive_status,
-    display_title,
-    render_deps,
-)
 from .schema import LayoutValidationError, validate_layout
 from .sections import render_cross_deps
 
@@ -117,12 +109,6 @@ def build_html(layout: dict, gh_issues: dict) -> str:
             gh_issues,
             overrides,
             primary_repo,
-            derive_status=derive_status,
-            display_title=display_title,
-            render_deps=render_deps,
-            CardContext=CardContext,
-            _render_missing_card=_render_missing_card,
-            _render_repo_badge=_render_repo_badge,
         )
         for row in milestone_rows
     )

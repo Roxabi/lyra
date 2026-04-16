@@ -9,8 +9,14 @@ import pytest
 from dep_graph.build import build_html
 
 
+@pytest.mark.integration
 def test_output_matches_golden() -> None:
-    """Verify extracted templates produce identical HTML."""
+    """Verify extracted templates produce identical HTML.
+
+    This is an integration test that requires local fixture files.
+    Run ``make dep-graph build`` first to generate the golden files.
+    Skips automatically if fixtures are missing.
+    """
     visuals_dir = Path.home() / ".roxabi" / "forge" / "lyra" / "visuals"
     layout_path = visuals_dir / "lyra-v2-dependency-graph.layout.json"
     cache_path = visuals_dir / "lyra-v2-dependency-graph.gh.json"

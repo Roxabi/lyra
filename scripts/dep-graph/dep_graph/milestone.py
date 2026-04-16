@@ -11,6 +11,14 @@ from __future__ import annotations
 from html import escape
 
 from .keys import format_key, repo_slug
+from .render import (
+    CardContext,
+    _render_missing_card,
+    _render_repo_badge,
+    derive_status,
+    display_title,
+    render_deps,
+)
 
 # ---------------------------------------------------------------------------
 # Milestone ordering constants
@@ -225,19 +233,8 @@ def _render_milestone_card(  # noqa: PLR0913
     gh_issues: dict,
     overrides: dict,
     primary_repo: str,
-    *,
-    derive_status,
-    display_title,
-    render_deps,
-    CardContext,
-    _render_missing_card,
-    _render_repo_badge,
 ) -> str:
-    """Render a single card within a milestone row.
-
-    Card rendering utilities are passed as keyword-only arguments to avoid
-    circular imports with build.py.
-    """
+    """Render a single card within a milestone row."""
     gh_key = format_key(repo, issue_num)
     gh_entry = gh_issues.get(gh_key)
 
@@ -292,19 +289,8 @@ def render_milestone_row(  # noqa: C901, PLR0913
     gh_issues: dict,
     overrides: dict,
     primary_repo: str,
-    *,
-    derive_status,
-    display_title,
-    render_deps,
-    CardContext,
-    _render_missing_card,
-    _render_repo_badge,
 ) -> str:
-    """Render one milestone row with header and cards in lane columns.
-
-    Card rendering utilities are passed as keyword-only arguments to avoid
-    circular imports with build.py.
-    """
+    """Render one milestone row with header and cards in lane columns."""
     milestone = row["milestone"]
     issues = row["issues"]  # [(repo, num, lane_code, lane_group)]
 
@@ -382,12 +368,6 @@ def render_milestone_row(  # noqa: C901, PLR0913
                         gh_issues,
                         overrides,
                         primary_repo,
-                        derive_status=derive_status,
-                        display_title=display_title,
-                        render_deps=render_deps,
-                        CardContext=CardContext,
-                        _render_missing_card=_render_missing_card,
-                        _render_repo_badge=_render_repo_badge,
                     )
                     for repo, num in lane_issues
                 ]
@@ -422,12 +402,6 @@ def render_milestone_row(  # noqa: C901, PLR0913
                     gh_issues,
                     overrides,
                     primary_repo,
-                    derive_status=derive_status,
-                    display_title=display_title,
-                    render_deps=render_deps,
-                    CardContext=CardContext,
-                    _render_missing_card=_render_missing_card,
-                    _render_repo_badge=_render_repo_badge,
                 )
                 for repo, num in lane_issues
             ]

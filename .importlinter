@@ -41,4 +41,6 @@ source_modules =
 forbidden_modules =
     aiosqlite
     sqlite3
+# Must keep allow_indirect_imports = true because make_agent_store() factory
+# imports AgentStore from infrastructure at runtime (intentional dependency inversion)
 allow_indirect_imports = true

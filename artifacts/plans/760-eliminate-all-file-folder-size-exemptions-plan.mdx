@@ -7,6 +7,21 @@ tier: F-full
 generated: "2026-04-16T12:00:00Z"
 ---
 
+## Progress Summary (Updated 2026-04-16)
+
+| Slice | Status | Tasks Done | Files Under 300L |
+|-------|--------|------------|------------------|
+| Prerequisites | Done | 2/2 | N/A |
+| V1 Quick Wins | Done | 6/6 | 5/6 (command_router: 303L) |
+| V2 Medium | Partial | 3/8 | 0/3 (outbound_router: 324L, hub_standalone: 362L, cli_pool: 406L) |
+| V3 Large | Pending | 0/4 | 0/1 (hub.py: 542L) |
+| V4 Folders | Pending | 0/4 | N/A |
+
+**Files still over 300 lines:** hub.py (542), _shared_streaming.py (478), cli_pool.py (406), hub_standalone.py (362), outbound_router.py (324)
+
+**Commit:** feat/760-eliminate-all-file-folder-size-exemptions (rebased)
+
+
 ## Summary
 
 Refactor 10 oversized files via in-place decomposition, extracting 18 modules across 4 slices. Each extraction preserves public API and stays within its architectural layer.

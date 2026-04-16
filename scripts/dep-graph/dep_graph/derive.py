@@ -72,7 +72,15 @@ def _resolve_cycle(
     depth: dict[tuple[str, int], int],
     result: list[tuple[str, int]],
 ) -> None:
-    """Warn and append cycle members sorted by issue number (in-place)."""
+    """Warn and append cycle members sorted by issue number (in-place).
+
+    Note: all remaining cycle members are assigned the same depth
+    (``max_depth + 1``). Multi-component cycles in the same lane thus
+    collapse to one depth, which may suppress ``par_group`` emission
+    for distinct components. Accepted trade-off — real-world GitHub
+    ``blocked_by`` cycles are vanishingly rare; Tarjan SCC is
+    revisitable if this ever matters in practice (#741 item 3).
+    """
     remaining_keys = ", ".join(
         f"{r}#{n}" for r, n in sorted(remaining, key=lambda x: x[1])
     )
@@ -251,39 +259,35 @@ def _derive_bands(
 ) -> list[dict]:
     """Derive band headers from milestone transitions in the sorted order.
 
-    Issues with no milestone go in an implicit first group (no band header).
-    When the milestone changes, a band header is inserted before the first
-    issue of the new milestone group.
+    Emits exactly one band header per unique milestone, at the first position
+    where that milestone appears (first-occurrence semantics). Issues with
+    no milestone are skipped silently — they inherit the prior band. A
+    milestone that is re-visited after an interleaving (e.g.
+    [M0, M1, M0, M2]) does NOT emit a duplicate header.
     """
     bands: list[dict] = []
-    prev_milestone: object = _UNSET  # use sentinel to detect first iteration
+    prev_milestone: object = _UNSET
+    seen_milestones: set[str] = set()
 
     for repo, num in sorted_issues:
         key = format_key(repo, num)
         entry = gh_issues.get(key, {})
-        milestone = entry.get("milestone")  # str | None
+        milestone = entry.get("milestone")
 
-        if prev_milestone is _UNSET:
-            # First issue — no band for None, band for named milestone
-            if milestone is not None:
-                bands.append(
-                    {
-                        "before": {"repo": repo, "issue": num},
-                        "text": f"{milestone} \u2225",
-                    }
-                )
-            prev_milestone = milestone
-            continue
+        if (
+            milestone is not None
+            and milestone != prev_milestone
+            and milestone not in seen_milestones
+        ):
+            bands.append(
+                {
+                    "before": {"repo": repo, "issue": num},
+                    "text": f"{milestone} \u2225",
+                }
+            )
+            seen_milestones.add(milestone)
 
-        if milestone != prev_milestone:
-            if milestone is not None:
-                bands.append(
-                    {
-                        "before": {"repo": repo, "issue": num},
-                        "text": f"{milestone} \u2225",
-                    }
-                )
-            prev_milestone = milestone
+        prev_milestone = milestone
 
     return bands
 

@@ -127,8 +127,8 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
         "ensure_nats",
         AsyncMock(return_value=(fake_nc, fake_embedded, "nats://localhost:4222")),
     )
-    monkeypatch.setattr(unified_mod, "_acquire_lockfile", lambda: None)
-    monkeypatch.setattr(unified_mod, "_release_lockfile", lambda: None)
+    monkeypatch.setattr(unified_mod, "acquire_lockfile", lambda: None)
+    monkeypatch.setattr(unified_mod, "release_lockfile", lambda: None)
     fake_nats_bus = MagicMock()
     fake_nats_bus.start = AsyncMock()
     fake_nats_bus.stop = AsyncMock()

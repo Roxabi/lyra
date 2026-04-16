@@ -56,8 +56,7 @@ def build_system_prompt(ctx: "RefinementContext") -> str:
             "1. Present the current profile in plain language.",
             "2. Ask what the operator would like to change.",
             "3. Propose specific, concrete field updates.",
-            "4. When the operator confirms changes (says 'yes', 'confirm',"
-            " or 'done'),",
+            "4. When the operator confirms changes (says 'yes', 'confirm', or 'done'),",
             "   output a summary followed by a JSON patch block:",
             "   <<PATCH>>",
             '   {"field_name": "new_value"}',

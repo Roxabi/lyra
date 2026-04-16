@@ -81,7 +81,9 @@ class TestPatchCommand:
             return mock_store
 
         # Act
-        with mock_patch("lyra.cli_agent_crud._connect_store", side_effect=fake_connect):
+        with mock_patch(
+            "lyra.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
+        ):
             result = runner.invoke(
                 agent_app,
                 ["patch", "lyra_default", "--json", '{"model": "claude-opus-4-6"}'],
@@ -108,7 +110,9 @@ class TestPatchCommand:
             return mock_store
 
         # Act
-        with mock_patch("lyra.cli_agent_crud._connect_store", side_effect=fake_connect):
+        with mock_patch(
+            "lyra.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
+        ):
             result = runner.invoke(
                 agent_app,
                 ["patch", "lyra_default", "--json", '{"model": "claude-opus-4-6"}'],
@@ -134,7 +138,9 @@ class TestPatchCommand:
             return mock_store
 
         # Act
-        with mock_patch("lyra.cli_agent_crud._connect_store", side_effect=fake_connect):
+        with mock_patch(
+            "lyra.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
+        ):
             runner.invoke(
                 agent_app,
                 ["patch", "lyra_default", "--json", '{"model": "claude-opus-4-6"}'],
@@ -328,7 +334,10 @@ class TestRefineCommand:
         runner = CliRunner()
 
         with (
-            mock_patch("lyra.cli_agent_crud._connect_store", side_effect=fake_connect),
+            mock_patch(
+                "lyra.agent_cmd.agents.edit_cmd._connect_store",
+                side_effect=fake_connect,
+            ),
             mock_patch(
                 "lyra.core.agent_refiner.AgentRefiner.run_session",
                 return_value=RefinementPatch(fields={"model": "claude-opus-4-6"}),
@@ -358,7 +367,10 @@ class TestRefineCommand:
         runner = CliRunner()
 
         with (
-            mock_patch("lyra.cli_agent_crud._connect_store", side_effect=fake_connect),
+            mock_patch(
+                "lyra.agent_cmd.agents.edit_cmd._connect_store",
+                side_effect=fake_connect,
+            ),
             mock_patch(
                 "lyra.core.agent_refiner.AgentRefiner.run_session",
                 side_effect=RefinementCancelled(),
@@ -386,7 +398,9 @@ class TestRefineCommand:
 
         runner = CliRunner()
 
-        with mock_patch("lyra.cli_agent_crud._connect_store", side_effect=fake_connect):
+        with mock_patch(
+            "lyra.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
+        ):
             result = runner.invoke(agent_app, ["refine", "unknown_agent"])
 
         # Assert — agent not found propagates as exit code 1

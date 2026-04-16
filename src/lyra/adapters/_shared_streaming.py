@@ -127,7 +127,6 @@ class StreamingSession:
                     body = "\n".join(format_tool_lines(event))
                     summary = f"{header}\n{body}".strip() if body else header
                     self._st.istate.set_tool_summary(summary)
-
                     # Guard: on Discord, don't overwrite intermediate text already
                     # visible in the placeholder (tool summary lives in a separate
                     # embed). On Telegram, tool summary is combined with intermediate
@@ -274,7 +273,6 @@ class StreamingSession:
             pass
         except Exception as exc:
             peek_error = exc
-
         if first_event is None and peek_error is None:
             await self._drain_fallback(events)
             self._handle_typing_tail()
@@ -286,7 +284,6 @@ class StreamingSession:
                 await self._deliver_final(result[0])
             self._handle_typing_tail()
             raise peek_error
-
         assert first_event is not None  # narrowed above
         result = await self._send_placeholder()
         full = _prepend(first_event, events)

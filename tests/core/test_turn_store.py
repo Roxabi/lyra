@@ -314,8 +314,10 @@ class TestTurnStoreIntegrationWithPool:
         pool = Pool(pool_id="p:2", agent_name="stub", ctx=ctx)
         pool._turn_store = store
 
+        from lyra.core.pool.pool_processor_exec import process_one
+
         msg = self._make_msg(user_id="u2")
-        await pool._processor._process_one(msg, agent)
+        await process_one(msg, agent, pool)
         await asyncio.sleep(0.05)
 
         rows = await store.get_turns("p:2", user_id="u2")
@@ -399,8 +401,10 @@ class TestPoolSessions:
         )
         await db.commit()
 
-        await store._backfill_sessions(db)
-        await store._backfill_sessions(db)  # second call must be a no-op
+        from lyra.core.stores.turn_store_queries import backfill_sessions
+
+        await backfill_sessions(db)
+        await backfill_sessions(db)  # second call must be a no-op
 
         async with db.execute(
             "SELECT COUNT(*) FROM pool_sessions WHERE session_id = ?",

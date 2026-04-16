@@ -6,8 +6,6 @@ import json
 import logging
 from pathlib import Path
 
-import aiosqlite
-
 from ..agent_models import (
     VALID_AGENT_STATUSES,
     AgentRow,
@@ -19,11 +17,11 @@ from ..agent_schema import (
     _CREATE_AGENT_RUNTIME_STATE,
     _CREATE_AGENTS,
     _CREATE_BOT_AGENT_MAP,
-    _MIGRATE_AGENTS,
     _SELECT_AGENTS,
     _UPSERT_AGENT,
 )
 from ..agent_seeder import seed_from_toml as _seed_from_toml
+from .agent_store_migrations import run_agent_migrations
 from .sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
@@ -62,14 +60,7 @@ class AgentStore(SqliteStore):
         )
         try:
             db = self._require_db()
-            # Additive migrations — idempotent: ignore "duplicate column name" errors.
-            for stmt in _MIGRATE_AGENTS:
-                try:
-                    await db.execute(stmt)
-                except aiosqlite.OperationalError as exc:
-                    if "duplicate column" not in str(exc).lower():
-                        raise
-            await db.commit()
+            await run_agent_migrations(db)
             await self._warm_cache()
         except Exception:
             log.exception("AgentStore.connect() setup failed; closing connection")

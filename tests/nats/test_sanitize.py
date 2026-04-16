@@ -19,7 +19,7 @@ import pytest
 
 from lyra.core.hub.message_pipeline import ResumeStatus
 from lyra.core.hub.middleware import PipelineContext
-from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
+from lyra.core.hub.path_validation import resolve_context
 from roxabi_nats._sanitize import PLATFORM_META_ALLOWLIST, sanitize_platform_meta
 from tests.core.conftest import _make_hub, make_inbound_message
 
@@ -258,7 +258,7 @@ class TestNatsBusSanitization:
 
 
 class TestScopeValidation:
-    """_resolve_context Path 2 rejects thread_session_id from wrong pool."""
+    """resolve_context Path 2 rejects thread_session_id from wrong pool."""
 
     async def test_cross_scope_thread_session_id_rejected(
         self, caplog: pytest.LogCaptureFixture
@@ -273,7 +273,6 @@ class TestScopeValidation:
             _FakeTurnStore({"sess-1": "telegram:main:chat:OTHER"}),
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(hub=hub)
 
         _base = make_inbound_message(scope_id="chat:99")
@@ -282,8 +281,8 @@ class TestScopeValidation:
         )
 
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.core.hub.middleware_submit"):
-            status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        with caplog.at_level(logging.WARNING, logger="lyra.core.hub.path_validation"):
+            status = await resolve_context(msg, pool, pool_id, ctx)
 
         # Assert
         assert status == ResumeStatus.SKIPPED
@@ -307,7 +306,6 @@ class TestScopeValidation:
 
         pool._session_resume_fn = _accepted_resume  # type: ignore[attr-defined]
 
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(hub=hub)
 
         _base = make_inbound_message(scope_id="chat:42")
@@ -317,7 +315,7 @@ class TestScopeValidation:
         )
 
         # Act
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         # Assert
         assert status == ResumeStatus.RESUMED
@@ -335,7 +333,6 @@ class TestScopeValidation:
             _FakeTurnStore({}),  # empty map → None for all session_ids
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(hub=hub)
 
         _base = make_inbound_message(scope_id="chat:42")
@@ -345,8 +342,8 @@ class TestScopeValidation:
         )
 
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.core.hub.middleware_submit"):
-            status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        with caplog.at_level(logging.WARNING, logger="lyra.core.hub.path_validation"):
+            status = await resolve_context(msg, pool, pool_id, ctx)
 
         # Assert
         assert status == ResumeStatus.SKIPPED
@@ -362,7 +359,6 @@ class TestScopeValidation:
         hub = _make_hub()
         assert hub._turn_store is None
         pool = hub.get_or_create_pool(pool_id, "lyra")
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(hub=hub)
 
         _base = make_inbound_message(scope_id="chat:42")
@@ -372,8 +368,8 @@ class TestScopeValidation:
         )
 
         # Act
-        with caplog.at_level(logging.DEBUG, logger="lyra.core.hub.middleware_submit"):
-            status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        with caplog.at_level(logging.DEBUG, logger="lyra.core.hub.path_validation"):
+            status = await resolve_context(msg, pool, pool_id, ctx)
 
         # Assert
         assert status == ResumeStatus.SKIPPED
@@ -391,14 +387,13 @@ class TestScopeValidation:
             _FakeTurnStore({}),
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(hub=hub)
 
         msg = make_inbound_message(scope_id="chat:42")
         assert msg.platform_meta.get("thread_session_id") is None
 
         # Act
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         # Assert — no thread_session_id means Path 2 is skipped entirely
         assert status == ResumeStatus.SKIPPED
@@ -422,7 +417,6 @@ class TestScopeValidation:
 
         pool._session_resume_fn = _track_resume  # type: ignore[attr-defined]
 
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(hub=hub)
 
         _base = make_inbound_message(scope_id="chat:42")
@@ -432,7 +426,7 @@ class TestScopeValidation:
         )
 
         # Act
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         # Assert — SKIPPED and resume was never called
         assert status == ResumeStatus.SKIPPED

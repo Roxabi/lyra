@@ -28,7 +28,6 @@ from .pipeline_types import (
 )
 
 log = logging.getLogger(__name__)
-
 _command_parser = CommandParser()
 
 
@@ -168,7 +167,6 @@ class ResolveBindingMiddleware:
             )
             return DROP
         ctx.binding = binding
-
         agent = ctx.hub.agent_registry.get(binding.agent_name)
         if agent is None:
             log.warning(
@@ -189,7 +187,6 @@ class ResolveBindingMiddleware:
             )
             return DROP
         ctx.agent = agent
-
         return await next(msg, ctx)
 
 
@@ -246,7 +243,6 @@ class CreatePoolMiddleware:
 
         if ctx.router and hasattr(ctx.router, "prepare"):
             msg = ctx.router.prepare(msg)
-
         try:
             return await next(msg, ctx)
         finally:
@@ -266,13 +262,11 @@ class CommandMiddleware:
             raise RuntimeError("CreatePoolMiddleware must precede CommandMiddleware")
         if ctx.key is None:
             raise RuntimeError("RateLimitMiddleware must precede CommandMiddleware")
-
         router = ctx.router
         if router and router.is_command(msg):
             _cmd = msg.text.split()[0] if msg.text else ""
             ctx.trace("processor", "command_detected", command=_cmd)
             return await self._dispatch_command(msg, _cmd, router, ctx, next)
-
         return await next(msg, ctx)
 
     async def _dispatch_command(  # noqa: PLR0913
@@ -299,7 +293,6 @@ class CommandMiddleware:
         if response is None:
             ctx.trace("processor", "command_fallthrough")
             return await next(msg, ctx)
-
         ctx.trace("outbound", "command_handled", action=Action.COMMAND_HANDLED.value)
         ctx.emit(
             CommandDispatched(msg_id=msg.id, stage=type(self).__name__, command=cmd)

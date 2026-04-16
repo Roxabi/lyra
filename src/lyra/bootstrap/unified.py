@@ -31,7 +31,7 @@ from lyra.bootstrap.config import (
     _load_pool_config,
 )
 from lyra.bootstrap.embedded_nats import ensure_nats
-from lyra.bootstrap.hub_standalone import _acquire_lockfile, _release_lockfile
+from lyra.bootstrap.lockfile import acquire_lockfile, release_lockfile
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent
 from lyra.core.agent_loader import agent_row_to_config
@@ -53,7 +53,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
 ) -> None:
     """Wire hub + adapters in one process with NATS (embedded or external)."""
     nc, embedded, _ = await ensure_nats(os.environ.get("NATS_URL"))
-    _acquire_lockfile()
+    acquire_lockfile()
     nats_llm_driver = None
     try:
         inbound_bus_cfg = _load_inbound_bus_config(raw_config)
@@ -288,6 +288,6 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             log.warning("Error closing NATS connection: %s", exc)
         if embedded:
             await embedded.stop()
-        _release_lockfile()
+        release_lockfile()
 
     log.info("Lyra stopped.")

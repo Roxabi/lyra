@@ -1,4 +1,4 @@
-"""Tests for SubmitToPoolMiddleware._resolve_context() — reply-to-resume,
+"""Tests for resolve_context() — reply-to-resume,
 MessageIndex integration (#244, #341), and session-fallthrough notification (#380)."""
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from unittest.mock import patch
 from lyra.core.hub.message_pipeline import Action, PipelineResult, ResumeStatus
 from lyra.core.hub.middleware import PipelineContext
 from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
+from lyra.core.hub.path_validation import resolve_context
 from tests.core.conftest import _make_hub, make_inbound_message
 
 if TYPE_CHECKING:
@@ -74,7 +75,7 @@ def _make_ctx(hub) -> PipelineContext:
 
 
 class TestReplyToResumePipeline:
-    """SubmitToPoolMiddleware._resolve_context() — reply-to-resume (#341)."""
+    """resolve_context() — reply-to-resume (#341)."""
 
     async def test_reply_to_resume_calls_pool_resume(self) -> None:
         """MessageIndex returns session_id — pool.resume_session is called."""
@@ -95,9 +96,8 @@ class TestReplyToResumePipeline:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="tg-msg-99")
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        await mw._resolve_context(msg, pool, pool_id, ctx)
+        await resolve_context(msg, pool, pool_id, ctx)
 
         assert resumed == ["sess-1"]
 
@@ -113,8 +113,7 @@ class TestReplyToResumePipeline:
         assert msg.reply_to_id is None
 
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
-        await mw._resolve_context(msg, pool, pool_id, ctx)
+        await resolve_context(msg, pool, pool_id, ctx)
 
         assert mi.resolve_calls == []
 
@@ -137,9 +136,8 @@ class TestReplyToResumePipeline:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="tg-msg-77")
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        await mw._resolve_context(msg, pool, pool_id, ctx)
+        await resolve_context(msg, pool, pool_id, ctx)
 
         assert mi.resolve_calls == [(pool_id, "tg-msg-77")]
         assert resumed == []
@@ -165,10 +163,9 @@ class TestReplyToResumePipeline:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="tg-msg-88")
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
         try:
-            await mw._resolve_context(msg, pool, pool_id, ctx)
+            await resolve_context(msg, pool, pool_id, ctx)
         finally:
             pool._current_task.cancel()
             try:
@@ -203,9 +200,8 @@ class TestReplyToResumePipeline:
             platform_meta={**_base.platform_meta, "is_group": True},
         )
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert mi.resolve_calls == [(pool_id, "tg-msg-55")]
         assert resumed == ["sess-alice"]
@@ -229,15 +225,14 @@ class TestReplyToResumePipeline:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="tg-msg-42")
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        await mw._resolve_context(msg, pool, pool_id, ctx)
+        await resolve_context(msg, pool, pool_id, ctx)
 
         assert resumed == []
 
 
 class TestResolveContextMessageIndex:
-    """Additional _resolve_context tests specific to MessageIndex (#341).
+    """Additional resolve_context tests specific to MessageIndex (#341).
 
     Note: cross-pool resume is impossible by design — MessageIndex.resolve
     is keyed on pool_id, so the old cross-pool guard test was removed.
@@ -262,9 +257,8 @@ class TestResolveContextMessageIndex:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="msg-100")
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        await mw._resolve_context(msg, pool, pool_id, ctx)
+        await resolve_context(msg, pool, pool_id, ctx)
 
         assert mi.resolve_calls == [(pool_id, "msg-100")]
         assert resumed == ["sess-abc"]
@@ -280,10 +274,9 @@ class TestResolveContextMessageIndex:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="unknown-msg")
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
         # Should not raise — falls through to Path 3
-        await mw._resolve_context(msg, pool, pool_id, ctx)
+        await resolve_context(msg, pool, pool_id, ctx)
 
         assert mi.resolve_calls == [(pool_id, "unknown-msg")]
 
@@ -307,10 +300,9 @@ class TestResolveContextMessageIndex:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="msg-busy")
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
         try:
-            await mw._resolve_context(msg, pool, pool_id, ctx)
+            await resolve_context(msg, pool, pool_id, ctx)
         finally:
             pool._current_task.cancel()
             try:
@@ -323,12 +315,12 @@ class TestResolveContextMessageIndex:
 
 
 # -------------------------------------------------------------------
-# T7.1 — _resolve_context ResumeStatus return values (#380)
+# T7.1 — resolve_context ResumeStatus return values (#380)
 # -------------------------------------------------------------------
 
 
 class TestResolveContextResumeStatus:
-    """_resolve_context() returns the correct ResumeStatus for each path (#380)."""
+    """resolve_context() returns the correct ResumeStatus for each path (#380)."""
 
     async def test_path1_resumed_returns_resumed(self) -> None:
         """Path 1 successful resume → RESUMED."""
@@ -346,9 +338,8 @@ class TestResolveContextResumeStatus:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(_base, reply_to_id="tg-99")
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.RESUMED
 
@@ -372,9 +363,8 @@ class TestResolveContextResumeStatus:
         _meta = {**_base.platform_meta, "thread_session_id": "tss-1"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.RESUMED
 
@@ -399,9 +389,8 @@ class TestResolveContextResumeStatus:
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.FRESH
 
@@ -439,9 +428,8 @@ class TestResolveContextResumeStatus:
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.RESUMED
         assert len(resume_calls) == 2  # path 2 + path 3
@@ -454,9 +442,8 @@ class TestResolveContextResumeStatus:
 
         msg = make_inbound_message(scope_id="chat:42")
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.SKIPPED
 
@@ -471,10 +458,9 @@ class TestResolveContextResumeStatus:
         _meta = {**_base.platform_meta, "thread_session_id": "tss-busy"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
         try:
-            status = await mw._resolve_context(msg, pool, pool_id, ctx)
+            status = await resolve_context(msg, pool, pool_id, ctx)
         finally:
             pool._current_task.cancel()
             try:
@@ -524,9 +510,8 @@ class TestResolveContextResumeStatus:
         }
         msg = dataclasses.replace(_base, platform_meta=_meta)
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.FRESH
 
@@ -560,9 +545,8 @@ class TestResolveContextResumeStatus:
         _meta = {**_base.platform_meta, "is_group": True}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.RESUMED
         assert resumed == ["sess-alice-last"]
@@ -589,9 +573,8 @@ class TestResolveContextResumeStatus:
         _meta = {**_base.platform_meta, "thread_session_id": "tss-other"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.SKIPPED
 
@@ -606,9 +589,8 @@ class TestResolveContextResumeStatus:
         _meta = {**_base.platform_meta, "thread_session_id": "tss-no-store"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.SKIPPED
 
@@ -625,9 +607,8 @@ class TestResolveContextResumeStatus:
         _meta = {**_base.platform_meta, "thread_session_id": pool.session_id}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.SKIPPED
 
@@ -684,9 +665,8 @@ class TestPath3DeadBackendGuard:
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         # If the dead-backend guard had returned SKIPPED at the inner check,
         # the result would be SKIPPED.  Falling through gives FRESH because
@@ -721,15 +701,14 @@ class TestPath3DeadBackendGuard:
 
         msg = make_inbound_message(scope_id="chat:42")
         ctx = _make_ctx(hub)
-        mw = SubmitToPoolMiddleware()
 
-        status = await mw._resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         assert status == ResumeStatus.SKIPPED
 
 
 # -------------------------------------------------------------------
-# T7.2 — _submit_to_pool notification on FRESH (#380)
+# T7.2 — _submit_to_pool notification on FRESH (#380) via resolve_context
 # -------------------------------------------------------------------
 
 

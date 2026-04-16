@@ -23,6 +23,7 @@ from lyra.core.hub.middleware_stages import (
     ValidatePlatformMiddleware,
 )
 from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
+from lyra.core.hub.path_validation import resolve_context
 from lyra.core.message import Platform, Response
 from tests.core.conftest import _make_hub, make_inbound_message
 
@@ -342,13 +343,13 @@ class TestSubmitToPool:
 
         hub = _make_hub()
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(
             hub=hub,
             pool=pool,
             key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
         )
         msg = make_inbound_message()
+        mw = SubmitToPoolMiddleware()
 
         result = await mw(msg, ctx, _make_next())
 
@@ -361,13 +362,13 @@ class TestSubmitToPool:
 
         hub = Hub()
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(
             hub=hub,
             pool=pool,
             key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
         )
         msg = make_inbound_message()
+        mw = SubmitToPoolMiddleware()
 
         result = await mw(msg, ctx, _make_next())
 
@@ -541,13 +542,13 @@ class TestCircuitBreakerDrop:
 
         hub = _make_hub(circuit_registry=registry)
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(
             hub=hub,
             pool=pool,
             key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
         )
         msg = make_inbound_message()
+        mw = SubmitToPoolMiddleware()
 
         result = await mw(msg, ctx, _make_next())
 
@@ -565,10 +566,9 @@ class TestResolveContextMiddleware:
         hub = _make_hub()
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
         ctx = PipelineContext(hub=hub)
-        mw = SubmitToPoolMiddleware()
         msg = make_inbound_message()
 
-        status = await mw._resolve_context(msg, pool, pool.pool_id, ctx)
+        status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
         assert status == ResumeStatus.SKIPPED
 
@@ -594,12 +594,11 @@ class TestResolveContextMiddleware:
         hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
 
         ctx = PipelineContext(hub=hub)
-        mw = SubmitToPoolMiddleware()
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-1"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
 
-        status = await mw._resolve_context(msg, pool, pool.pool_id, ctx)
+        status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
         assert status == ResumeStatus.RESUMED
 
@@ -628,12 +627,11 @@ class TestResolveContextMiddleware:
         hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
 
         ctx = PipelineContext(hub=hub)
-        mw = SubmitToPoolMiddleware()
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
 
-        status = await mw._resolve_context(msg, pool, pool.pool_id, ctx)
+        status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
         assert status == ResumeStatus.FRESH
 
@@ -737,7 +735,6 @@ class TestNotifySessionFallthroughMiddleware:
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(
             hub=hub,
             pool=pool,
@@ -750,6 +747,7 @@ class TestNotifySessionFallthroughMiddleware:
             notify_calls.append((platform, text))
 
         _patch = "lyra.core.hub.outbound_errors.try_notify_user"
+        mw = SubmitToPoolMiddleware()
         with patch(_patch, side_effect=_fake_notify):
             result = await mw(msg, ctx, _make_next())
 

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.hub.path_validation import resolve_context
 from lyra.core.message import InboundMessage
 from lyra.core.trust import TrustLevel
 
@@ -96,8 +97,6 @@ class _FakeHub:
 
 async def test_pending_session_id_set_when_pool_busy() -> None:
     """When pool is busy and reply-to arrives, _pending_session_id is set."""
-    from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
-
     pool = _make_pool("telegram:main:chat:42")
 
     # Make pool appear busy
@@ -117,9 +116,8 @@ async def test_pending_session_id_set_when_pool_busy() -> None:
             scope_id="chat:42",
         )
 
-        middleware = SubmitToPoolMiddleware()
         ctx = MagicMock(hub=fake_hub)
-        await middleware._resolve_context(msg, pool, pool.pool_id, ctx)
+        await resolve_context(msg, pool, pool.pool_id, ctx)
 
         assert pool._pending_session_id == "session-abc", (  # type: ignore[attr-defined]
             "pool._pending_session_id must be set when pool busy and reply-to resolves"

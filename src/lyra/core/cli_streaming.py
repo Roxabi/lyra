@@ -3,6 +3,7 @@
 Extracted from cli_protocol.py — pure streaming I/O protocol concerns:
 StreamingIterator for text_delta chunks, and send_and_read_stream.
 """
+
 from __future__ import annotations
 
 import asyncio

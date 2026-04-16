@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+from lyra.bootstrap.signal_handlers import setup_shutdown_event
 from lyra.core.bus import Bus
 from lyra.core.message import InboundMessage, Platform
 from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
@@ -137,13 +138,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 sys.exit("No Telegram adapters started — check credentials")
             await wait_for_hub(nc)
 
-            stop = _stop if _stop is not None else asyncio.Event()
-            if _stop is None:
-                import signal
-
-                loop = asyncio.get_running_loop()
-                for sig in (signal.SIGTERM, signal.SIGINT):
-                    loop.add_signal_handler(sig, stop.set)
+            stop = setup_shutdown_event(_stop)
 
             poll_tasks = [
                 asyncio.create_task(
@@ -279,13 +274,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                 sys.exit("No Discord adapters started — check credentials")
             await wait_for_hub(nc)
 
-            stop_dc = _stop if _stop is not None else asyncio.Event()
-            if _stop is None:
-                import signal
-
-                loop = asyncio.get_running_loop()
-                for sig in (signal.SIGTERM, signal.SIGINT):
-                    loop.add_signal_handler(sig, stop_dc.set)
+            stop_dc = setup_shutdown_event(_stop)
 
             start_tasks = [
                 asyncio.create_task(

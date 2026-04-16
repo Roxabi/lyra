@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import atexit
 import logging
 import os
 import sys
@@ -33,6 +32,8 @@ from lyra.bootstrap.lifecycle_helpers import (
     teardown_dispatchers,
 )
 from lyra.bootstrap.llm_overlay import init_nats_llm
+from lyra.bootstrap.lockfile import acquire_lockfile, release_lockfile
+from lyra.bootstrap.notify import notify_startup
 from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent
@@ -51,88 +52,6 @@ from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import start_readiness_responder
 
 log = logging.getLogger(__name__)
-
-
-def _lockfile() -> Path:
-    """Resolve the hub lockfile path from LYRA_VAULT_DIR at call time."""
-    return (
-        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))).resolve()
-        / "hub.lock"
-    )
-
-
-def _release_lockfile() -> None:
-    """Remove the Hub lockfile if it exists."""
-    lf = _lockfile()
-    try:
-        lf.unlink(missing_ok=True)
-    except OSError as exc:
-        log.warning("Could not remove lockfile %s: %s", lf, exc)
-
-
-def _acquire_lockfile() -> None:
-    """Write current PID to the lockfile.
-
-    If the lockfile already exists and the recorded PID is still alive,
-    log an error and exit — another Hub process is running.
-    Registers an atexit handler to clean up the lockfile on normal exit.
-    """
-    lf = _lockfile()
-    if lf.exists():
-        try:
-            pid_str = lf.read_text().strip()
-            pid = int(pid_str)
-            try:
-                os.kill(pid, 0)  # signal 0 = existence check only
-                sys.exit(
-                    f"Hub is already running (PID {pid}). "
-                    f"Remove {lf} if the process is stale."
-                )
-            except ProcessLookupError:
-                # PID no longer alive — stale lockfile, safe to overwrite
-                log.warning(
-                    "Stale lockfile found (PID %d not running) — overwriting", pid
-                )
-            except PermissionError:
-                # PID exists but we can't signal it — treat as alive
-                sys.exit(
-                    f"Hub is already running (PID {pid}, permission denied). "
-                    f"Remove {lf} if the process is stale."
-                )
-        except (ValueError, OSError) as exc:
-            log.warning("Could not read lockfile %s (%s) — overwriting", lf, exc)
-
-    lf.parent.mkdir(parents=True, exist_ok=True)
-    lf.write_text(str(os.getpid()))
-    atexit.register(_release_lockfile)
-
-
-async def _notify_startup(active_proxies: list[str], health_port: int) -> None:
-    """Send a Telegram notification on hub startup (best-effort)."""
-    token = os.environ.get("TELEGRAM_TOKEN", "")
-    chat_id = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
-    if not token or not chat_id:
-        log.debug("Startup notification skipped — TELEGRAM_TOKEN or CHAT_ID not set")
-        return
-
-    proxies = ", ".join(active_proxies) if active_proxies else "none"
-    text = f"✅ Lyra Hub started\n\nProxies: {proxies}\nHealth: :{health_port}"
-
-    import httpx
-
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": chat_id, "text": text},
-                timeout=10,
-            )
-        if resp.status_code != 200:
-            log.warning("Startup notification failed: HTTP %d", resp.status_code)
-        else:
-            log.info("Startup notification sent to Telegram")
-    except Exception as exc:
-        log.warning("Startup notification failed: %s", exc)
 
 
 async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
@@ -156,7 +75,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             "Set NATS_URL=nats://localhost:4222 (or your NATS server address)."
         )
 
-    _acquire_lockfile()
+    acquire_lockfile()
 
     try:
         nc = await nats_connect(nats_url)
@@ -477,7 +396,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             health_port,
         )
 
-        await _notify_startup(active, health_port)
+        await notify_startup(active, health_port)
 
         await watchdog(tasks, stop)
 
@@ -509,5 +428,5 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
     except Exception as exc:
         log.warning("Error closing NATS connection: %s", exc)
 
-    _release_lockfile()
+    release_lockfile()
     log.info("Hub standalone stopped.")

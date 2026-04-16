@@ -18,11 +18,6 @@ if TYPE_CHECKING:
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
 from lyra.adapters._shared import TypingTaskManager, resolve_msg
-from lyra.adapters.discord_config import (  # noqa: F401
-    DiscordConfig as DiscordConfig,
-    load_discord_config as load_discord_config,
-)
-
 from lyra.adapters.discord_inbound import handle_message
 from lyra.adapters.discord_normalize import normalize as _normalize_impl
 from lyra.adapters._base_outbound import OutboundAdapterBase

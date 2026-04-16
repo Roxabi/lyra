@@ -8,7 +8,6 @@ not hardcoded here.
 
 from __future__ import annotations
 
-import html
 import importlib
 import logging
 from pathlib import Path
@@ -27,7 +26,8 @@ from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 from lyra.core.stream_processor import StreamProcessor
 from lyra.core.tool_display_config import ToolDisplayConfig
 from lyra.llm.base import LlmProvider
-from lyra.stt import is_whisper_noise
+
+from .simple_agent_prompts import STTError, STTNoiseError, build_llm_text
 
 _AGENTS_DIR = Path(__file__).resolve().parent
 
@@ -195,46 +195,27 @@ class SimpleAgent(AgentBase):
         if _voice_rewritten is not None:
             msg = _voice_rewritten
 
-        # Handle audio messages — attachments with type="audio"
-        audio_attachment = next((a for a in msg.attachments if a.type == "audio"), None)
-        if audio_attachment is not None:
-            # Post-#534 Slice 1: STT-None case is filtered at the pipeline stage
-            # (MessagePipeline._run_stt_stage) before agents are invoked. By the
-            # time we reach this branch, self._stt is guaranteed non-None.
-            assert self._stt is not None
-            tmp_path = Path(str(audio_attachment.url_or_path_or_bytes))
-            try:
-                stt_result = await self._stt.transcribe(tmp_path)
-            except Exception:
-                log.exception("STT transcription failed in SimpleAgent")
-                return Response(
-                    content=(
-                        self._msg_manager.get("stt_failed")
-                        if self._msg_manager
-                        else "Sorry, I couldn't transcribe your voice message."
-                    ),
-                    metadata={"error": True},
+        # Build LLM text from message (handles audio, voice, regular messages)
+        try:
+            text, _stt_text = await build_llm_text(msg, self._stt)
+        except STTNoiseError:
+            return Response(
+                content=(
+                    self._msg_manager.get("stt_noise")
+                    if self._msg_manager
+                    else "I couldn't make out your voice message, please try again."
                 )
-            finally:
-                tmp_path.unlink(missing_ok=True)
-            if is_whisper_noise(stt_result.text):
-                return Response(
-                    content=(
-                        self._msg_manager.get("stt_noise")
-                        if self._msg_manager
-                        else "I couldn't make out your voice message, please try again."
-                    )
-                )
-            _esc = html.escape(stt_result.text)
-            text = f"<voice_transcript>{_esc}</voice_transcript>"
-        elif msg.modality == "voice":
-            # Pipeline-transcribed audio — wrap for prompt injection guard (H-8)
-            text = f"<voice_transcript>{html.escape(msg.text)}</voice_transcript>"
-        else:
-            if not msg.processor_enriched:
-                text = f"<user_message>{html.escape(msg.text)}</user_message>"
-            else:
-                text = msg.text
+            )
+        except STTError:
+            log.exception("STT transcription failed in SimpleAgent")
+            return Response(
+                content=(
+                    self._msg_manager.get("stt_failed")
+                    if self._msg_manager
+                    else "Sorry, I couldn't transcribe your voice message."
+                ),
+                metadata={"error": True},
+            )
 
         model_cfg = self.config.llm_config
 

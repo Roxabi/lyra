@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import logging
 import os
-import re
 import struct
 import tempfile
 import wave
@@ -13,7 +12,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pydantic import BaseModel
+from lyra.tts.engine_selector import (
+    LANG_ISO_TO_QWEN,
+    TTSConfig,
+    build_generate_kwargs,
+    load_tts_config,
+    normalize_language,
+)
+from lyra.tts.text_normalization import normalize_text_for_tts
 
 if TYPE_CHECKING:
     from lyra.core.agent_config import AgentTTSConfig
@@ -36,6 +42,7 @@ class TtsProtocol(Protocol):
 class TtsUnavailableError(Exception):
     """Raised when the TTS NATS adapter is unreachable (timeout or connection error)."""
 
+
 log = logging.getLogger(__name__)
 
 
@@ -47,18 +54,18 @@ class SynthesisResult:
     waveform_b64: str | None = None  # 256-byte amplitude array, base64
 
 
-class TTSConfig(BaseModel):
-    engine: str | None = None  # LYRA_TTS_ENGINE env var
-    voice: str | None = None  # LYRA_TTS_VOICE env var
-    language: str | None = None  # LYRA_TTS_LANGUAGE env var
-
-
-def load_tts_config() -> TTSConfig:
-    return TTSConfig(
-        engine=os.environ.get("LYRA_TTS_ENGINE"),
-        voice=os.environ.get("LYRA_TTS_VOICE"),
-        language=os.environ.get("LYRA_TTS_LANGUAGE"),
-    )
+__all__ = [
+    "TtsProtocol",
+    "TtsUnavailableError",
+    "SynthesisResult",
+    "TTSConfig",
+    "load_tts_config",
+    "LANG_ISO_TO_QWEN",
+    "normalize_language",
+    "build_generate_kwargs",
+    "normalize_text_for_tts",
+    "TTSService",
+]
 
 
 def _wav_duration_ms(path: Path) -> int | None:
@@ -137,71 +144,6 @@ def _merge_wav_chunks(chunk_paths: list[Path], output: Path) -> Path:
     return merged_path
 
 
-# qwen_tts expects full language names, not ISO 639-1 codes
-_LANG_ISO_TO_QWEN: dict[str, str] = {
-    "zh": "chinese",
-    "en": "english",
-    "fr": "french",
-    "de": "german",
-    "it": "italian",
-    "ja": "japanese",
-    "ko": "korean",
-    "pt": "portuguese",
-    "ru": "russian",
-    "es": "spanish",
-}
-
-
-def _normalize_language(lang: str | None) -> str | None:
-    if lang is None:
-        return None
-    return _LANG_ISO_TO_QWEN.get(lang.lower(), lang)
-
-
-# Precompiled regex patterns for TTS text normalization
-_MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")  # **bold**
-_MD_ITALIC = re.compile(r"\*([^*]+)\*")  # *italic* (single)
-_MD_UNDERLINE = re.compile(r"_([^_]+)_")  # _underline_
-_MD_CODE = re.compile(r"`([^`]+)`")  # `code`
-_MD_HEADING = re.compile(r"^#{1,6}\s*", re.MULTILINE)  # # heading
-_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")  # [text](url)
-_URL = re.compile(r"https?://[^\s<>)\"']+")
-_MULTI_SPACE = re.compile(r"\s+")
-
-
-def _normalize_text_for_tts(text: str) -> str:
-    """Normalize text for TTS synthesis.
-
-    Transforms:
-    - Markdown syntax (**, *, _, `, #) → stripped
-    - Links [text](url) → text
-    - URLs → "link" placeholder
-    - Multiple spaces → single space
-    - Newlines → space
-
-    Returns normalized text ready for voicecli.
-    """
-    # Strip markdown heading markers
-    text = _MD_HEADING.sub("", text)
-
-    # Convert markdown links: [text](url) → text
-    text = _MD_LINK.sub(r"\1", text)
-
-    # Strip markdown formatting (order matters: bold before italic)
-    text = _MD_BOLD.sub(r"\1", text)
-    text = _MD_ITALIC.sub(r"\1", text)
-    text = _MD_UNDERLINE.sub(r"\1", text)
-    text = _MD_CODE.sub(r"\1", text)
-
-    # Replace URLs with "link" placeholder
-    text = _URL.sub("link", text)
-
-    # Collapse all whitespace (newlines, multiple spaces) to single space
-    text = _MULTI_SPACE.sub(" ", text).strip()
-
-    return text
-
-
 class TTSService:
     """Async TTS service delegating to voiceCLI (Qwen TTS, daemon-first / fallback).
 
@@ -230,71 +172,6 @@ class TTSService:
             self._voice,
         )
 
-    def _build_generate_kwargs(
-        self,
-        output: Path,
-        *,
-        agent_tts: "AgentTTSConfig | None",
-        language: str | None,
-        voice: str | None,
-        fallback_language: str | None = None,
-    ) -> dict:
-        """Merge user pref > agent_tts > fallback_language > global defaults.
-
-        ``chunked`` is always ``True`` (safety hardcode, never overridden).
-        """
-        a = agent_tts
-
-        # language: user pref > agent_tts > fallback_language (#343) > global
-        if language is not None:
-            effective_lang = language
-        elif a is not None and a.language is not None:
-            effective_lang = a.language
-        elif fallback_language is not None:
-            effective_lang = fallback_language
-        else:
-            effective_lang = self._language
-
-        # voice: user pref > agent_tts > global
-        if voice is not None:
-            effective_voice = voice
-        elif a is not None and a.voice is not None:
-            effective_voice = a.voice
-        else:
-            effective_voice = self._voice
-
-        # engine: agent_tts > global (no user-pref layer)
-        effective_engine = (
-            a.engine if a is not None and a.engine is not None else self._engine
-        )
-
-        kwargs: dict = {
-            "output": output,
-            "engine": effective_engine,
-            "voice": effective_voice,
-            "language": _normalize_language(effective_lang),
-            "chunked": True,
-            "mp3": False,
-        }
-
-        if a is not None:
-            for field_name in (
-                "accent",
-                "personality",
-                "speed",
-                "emotion",
-                "exaggeration",
-                "cfg_weight",
-                "segment_gap",
-                "crossfade",
-                "chunk_size",
-            ):
-                val = getattr(a, field_name, None)
-                if val is not None:
-                    kwargs[field_name] = val
-
-        return kwargs
-
     async def synthesize(
         self,
         text: str,
@@ -317,7 +194,7 @@ class TTSService:
         from voicecli import generate_async  # type: ignore[import-missing]
 
         # Normalize text for TTS: strip markdown, collapse whitespace, handle URLs
-        text = _normalize_text_for_tts(text)
+        text = normalize_text_for_tts(text)
 
         tts_tmp = (
             Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))).resolve()
@@ -329,8 +206,11 @@ class TTSService:
         tmp_path = Path(tmp_str)
         extra_paths: list[Path] = []
         try:
-            gen_kwargs = self._build_generate_kwargs(
+            gen_kwargs = build_generate_kwargs(
                 tmp_path,
+                global_engine=self._engine,
+                global_voice=self._voice,
+                global_language=self._language,
                 agent_tts=agent_tts,
                 language=language,
                 voice=voice,

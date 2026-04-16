@@ -76,9 +76,7 @@ class STTService:
         resolved = Path(path).resolve()
         _tmpdir = Path(tempfile.gettempdir()).resolve()
         if not resolved.is_relative_to(_tmpdir):
-            raise ValueError(
-                f"Path outside allowed directory ({_tmpdir}): {resolved}"
-            )
+            raise ValueError(f"Path outside allowed directory ({_tmpdir}): {resolved}")
         if resolved.suffix.lower() not in _ALLOWED_AUDIO_EXTENSIONS:
             raise ValueError(
                 f"Unsupported audio extension {resolved.suffix!r},"
@@ -133,12 +131,17 @@ class STTService:
             if is_whisper_noise(result.text):
                 log.info(
                     "STT noise result: path=%s lang=%s text=%r",
-                    path, result.language, result.text,
+                    path,
+                    result.language,
+                    result.text,
                 )
                 raise STTNoiseError(f"Noise transcript: {result.text!r}")
             log.info(
                 "Transcription complete: path=%s lang=%s dur=%.2fs text_len=%d",
-                path, result.language, result.duration_seconds, len(result.text),
+                path,
+                result.language,
+                result.duration_seconds,
+                len(result.text),
             )
             return result
         except STTNoiseError:

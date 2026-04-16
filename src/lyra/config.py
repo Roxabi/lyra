@@ -22,7 +22,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from lyra.adapters.discord import DiscordConfig, load_discord_config
+from lyra.adapters.discord_config import DiscordConfig, load_discord_config
 from lyra.adapters.telegram import TelegramConfig, load_config
 
 __all__ = [

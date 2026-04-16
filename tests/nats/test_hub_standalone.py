@@ -14,7 +14,8 @@ from pathlib import Path
 import pytest
 from nats.aio.client import Client as NATS
 
-from lyra.bootstrap.hub_standalone import _acquire_lockfile, _release_lockfile
+from lyra.bootstrap.lockfile import acquire_lockfile as _acquire_lockfile
+from lyra.bootstrap.lockfile import release_lockfile as _release_lockfile
 from tests.nats.conftest import requires_nats_server
 
 # ---------------------------------------------------------------------------

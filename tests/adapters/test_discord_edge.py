@@ -53,7 +53,7 @@ def test_missing_discord_token_raises_on_load(
     """load_discord_config() raises SystemExit when DISCORD_TOKEN env var is absent."""
     monkeypatch.delenv("DISCORD_TOKEN", raising=False)
 
-    from lyra.adapters.discord import load_discord_config  # ImportError expected in RED
+    from lyra.adapters.discord_config import load_discord_config
 
     with pytest.raises(SystemExit, match="DISCORD_TOKEN"):
         load_discord_config()

@@ -18,7 +18,11 @@ if TYPE_CHECKING:
     from .pool import Pool
 
 from ..message import GENERIC_ERROR_REPLY, OutboundMessage, Response
-from ..render_events import RenderEvent, TextRenderEvent
+from .pool_processor_streaming import (
+    build_streaming_capture,
+    build_streaming_turn_logger,
+    run_streaming_turn_post,
+)
 
 log = logging.getLogger(__name__)
 
@@ -104,8 +108,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
     #     but _original_msg needs modality set here)
     #   - voice messages (modality already "voice" from audio pipeline)
     if msg.modality != "voice" and (
-        pool.voice_mode
-        or (msg.text and msg.text.strip().lower().startswith("/voice "))
+        pool.voice_mode or (msg.text and msg.text.strip().lower().startswith("/voice "))
     ):
         import dataclasses
 
@@ -145,8 +148,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
                     # with an unmodified message (confusing non-response).
                     _error_reply = pool._msg(
                         "generic",
-                        f"Command {_cmd_name} failed to prepare."
-                        " Please try again.",
+                        f"Command {_cmd_name} failed to prepare. Please try again.",
                     )
                     await _safe_dispatch(msg, Response(content=_error_reply), pool)
                     return
@@ -171,101 +173,51 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
     _user_id = pool.user_id or msg.user_id
 
     if isinstance(result, collections.abc.AsyncIterator):
-        # Fix #373: tee the iterator to capture streamed content for turn logging.
-        # Save original ref before wrapping — session_id lives on the original.
+        # Streaming path — delegate to helpers in pool_processor_streaming.py
         _result_iter_for_sid = result
         _content_parts: list[str] = []
         _cfg = getattr(agent, "config", None)
         _emit_tool_recap = _cfg.show_tool_recap if _cfg is not None else True
-        # Signal when the stream is fully consumed so post() can run (#372).
         _stream_done = asyncio.Event() if _processor is not None else None
 
-        async def _capture() -> collections.abc.AsyncGenerator[RenderEvent, None]:
-            # S4: _result_iter_for_sid yields RenderEvent from StreamProcessor.
-            # Collect TextRenderEvent.text for turn logging; forward all events.
-            # When show_tool_recap is False, ToolSummaryRenderEvent is filtered out.
-            try:
-                async for event in _result_iter_for_sid:
-                    if isinstance(event, TextRenderEvent):
-                        _content_parts.append(event.text)
-                        if event.is_error:
-                            pool._last_turn_had_backend_error = True
-                    elif not _emit_tool_recap:
-                        # ToolSummaryRenderEvent — suppress when recap is disabled
-                        continue
-                    yield event
-            finally:
-                _aclose = getattr(_result_iter_for_sid, "aclose", None)
-                if callable(_aclose):
-                    await _aclose()  # type: ignore[misc]
-                if _stream_done is not None:
-                    _stream_done.set()
+        # Wrap iterator to capture text content and signal completion
+        result = build_streaming_capture(
+            _result_iter_for_sid,
+            _content_parts,
+            pool,
+            _stream_done,
+            _emit_tool_recap,
+        )
 
-        result = _capture()  # type: ignore[assignment]  # AsyncGenerator is a subtype of AsyncIterator
-
-        # Bug 1 (#316): pass an OutboundMessage so the adapter can write
-        # reply_message_id on it; attach a callback for deferred turn logging.
-        _outbound = OutboundMessage.from_text("")
-        # Register before dispatch so _process_with_cancel can supersede it.
+        # Build outbound with turn-logging callback
+        _outbound, _log_callback = build_streaming_turn_logger(
+            pool,
+            _result_iter_for_sid,
+            _original_msg,
+            _platform,
+            _user_id,
+            _content_parts,
+        )
         pool._inflight_stream_outbound = _outbound
+        _outbound.metadata["_on_dispatched"] = _log_callback
 
-        async def _log_streaming_turn(outbound: OutboundMessage) -> None:
-            # Clear inflight reference once streaming is fully delivered.
-            if pool._inflight_stream_outbound is outbound:
-                pool._inflight_stream_outbound = None
-            # Propagate CLI session_id from the (now-consumed) iterator.
-            # When an OutboundDispatcher is used, dispatch_streaming returns
-            # immediately (fire-and-forget); the iterator is consumed later
-            # in the worker task.  Reading session_id here (in the
-            # _on_dispatched callback) guarantees the iterator has finished.
-            _stream_sid = getattr(_result_iter_for_sid, "session_id", None)
-            if _stream_sid and pool.session_id != _stream_sid:
-                await pool._observer.end_session_async(pool.session_id)
-                pool.session_id = _stream_sid
-            await pool._observer.session_update_async(_original_msg)
-            _reply_id = outbound.metadata.get("reply_message_id")
-            await pool._observer.log_turn_async(
-                role="assistant",
-                platform=_platform,
-                user_id=_user_id,
-                content="".join(_content_parts),
-                reply_message_id=(
-                    str(_reply_id) if _reply_id is not None else None
-                ),
-            )
-            # Index assistant turn for reply-to session routing (#341).
-            await pool._observer.index_turn_async(
-                str(_reply_id) if _reply_id is not None else None,
-                session_id=pool.session_id,
-                role="assistant",
-            )
-
-        _outbound.metadata["_on_dispatched"] = _log_streaming_turn
         try:
             await pool._ctx.dispatch_streaming(_original_msg, result, _outbound)
             pool._ctx.record_circuit_success()
         except BaseException as exc:
             pool._ctx.record_circuit_failure(exc)
             raise
-        # Fallback: update session_id here for the no-dispatcher path
-        # (where dispatch_streaming blocks until streaming finishes).
-        # The _on_dispatched callback above handles the dispatcher path.
+
+        # Fallback session_id update for no-dispatcher path
         _stream_sid = getattr(_result_iter_for_sid, "session_id", None)
         if _stream_sid and pool.session_id != _stream_sid:
             await pool._observer.end_session_async(pool.session_id)
             pool.session_id = _stream_sid
 
-        # Processor post-hook for streaming agents (#372).
-        # Wait for stream to be fully consumed, then call post() with the
-        # captured content.  post() runs fire-and-forget for side effects
-        # (e.g. vault save) — the user response is already streamed.
-        if _processor is not None and _stream_done is not None:
-            await _stream_done.wait()
-            _streamed = Response(content="".join(_content_parts))
-            try:
-                await _processor.post(_original_msg, _streamed)
-            except Exception:
-                log.warning("Processor post() failed (streaming)", exc_info=True)
+        # Processor post-hook for streaming agents (#372)
+        await run_streaming_turn_post(
+            _processor, _stream_done, _original_msg, _content_parts
+        )
     else:
         pool._ctx.record_circuit_success()
         # Update session_id with the real Claude CLI session UUID (#316).

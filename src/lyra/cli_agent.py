@@ -23,7 +23,7 @@ _AGENTS_DIR_OPT: Optional[Path] = typer.Option(
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers (used by cli_agent_create / cli_agent_crud)
+# Shared helpers (used by cli_agent_create / agent_cmd.agents)
 # ---------------------------------------------------------------------------
 
 
@@ -85,4 +85,4 @@ def _list_from_dir(
 # ---------------------------------------------------------------------------
 
 importlib.import_module("lyra.cli_agent_create")  # noqa: E402 â registers commands via @agent_app.command()
-importlib.import_module("lyra.cli_agent_crud")  # noqa: E402 â registers commands via @agent_app.command()
+importlib.import_module("lyra.agent_cmd.agents")  # noqa: E402 â registers commands via @agent_app.command()

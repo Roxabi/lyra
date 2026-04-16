@@ -251,7 +251,7 @@ class TestDiscordAutoThread:
 
     def test_discord_config_auto_thread_default_true(self) -> None:
         """DiscordConfig() has auto_thread=True by default (S5-5)."""
-        from lyra.adapters.discord import DiscordConfig
+        from lyra.adapters.discord_config import DiscordConfig
 
         # Arrange / Act
         config = DiscordConfig(token="dummy-token")

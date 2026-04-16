@@ -150,8 +150,7 @@ async def handle_chunk(listener: "NatsOutboundListener", data: dict) -> None:
         q.put_nowait(data)
     except asyncio.QueueFull:
         log.warning(
-            "NatsOutboundListener: stream queue full"
-            " for stream_id=%r, dropping chunk",
+            "NatsOutboundListener: stream queue full for stream_id=%r, dropping chunk",
             stream_id,
         )
         return

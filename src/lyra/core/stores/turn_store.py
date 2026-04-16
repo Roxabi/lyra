@@ -4,7 +4,6 @@ Persists every turn (user + assistant) to the ``conversation_turns`` table
 in a dedicated ``turns.db`` SQLite database (separate from roxabi-vault to
 avoid write contention). Provides an audit trail with platform message IDs,
 session context, and a basic query interface.
-
 Schema: v3 migration — creates ``conversation_turns`` table if absent,
 then adds missing indices idempotently (safe to call on an existing DB).
 """
@@ -17,6 +16,14 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from .sqlite_base import SqliteStore
+from .turn_store_queries import (
+    backfill_sessions,
+    get_cli_session,
+    get_cli_session_by_pool,
+    get_last_session,
+    get_session_pool_id,
+    get_turns,
+)
 
 log = logging.getLogger(__name__)
 
@@ -74,30 +81,6 @@ INSERT INTO conversation_turns
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
-_SELECT_BY_POOL = """
-SELECT id, pool_id, session_id, role, platform, user_id,
-       content, message_id, reply_message_id, timestamp, metadata
-FROM   conversation_turns
-WHERE  pool_id = ?
-  AND  user_id = ?
-ORDER BY timestamp DESC
-LIMIT  ?
-"""
-
-_COLS = (
-    "id",
-    "pool_id",
-    "session_id",
-    "role",
-    "platform",
-    "user_id",
-    "content",
-    "message_id",
-    "reply_message_id",
-    "timestamp",
-    "metadata",
-)
-
 
 class TurnStore(SqliteStore):
     """Async SQLite-backed store for raw conversation turns (L1).
@@ -134,7 +117,7 @@ class TurnStore(SqliteStore):
         # Gate backfill: skip if pool_sessions already has rows
         async with db.execute("SELECT 1 FROM pool_sessions LIMIT 1") as cur:
             if await cur.fetchone() is None:
-                await self._backfill_sessions(db)
+                await backfill_sessions(db)
 
     def _db_or_raise(self):
         """Return the open connection or raise with TurnStore-specific message."""
@@ -233,38 +216,14 @@ class TurnStore(SqliteStore):
         Queries the pool_sessions table (O(1) via index) instead of scanning
         conversation_turns. Returns a session from creation, not first reply.
         """
-        db = self._db_or_raise()
-        try:
-            async with db.execute(
-                "SELECT session_id FROM pool_sessions"
-                " WHERE pool_id = ?"
-                " ORDER BY last_active_at DESC LIMIT 1",
-                (pool_id,),
-            ) as cur:
-                row = await cur.fetchone()
-                return row[0] if row else None
-        except Exception:
-            log.exception("TurnStore.get_last_session failed (pool=%s)", pool_id)
-            return None
+        return await get_last_session(self._db_or_raise(), pool_id)
 
     async def get_session_pool_id(self, session_id: str) -> str | None:
         """Return the pool_id for a session, or None if not found.
 
         Used for scope validation at the NATS trust boundary (#525).
         """
-        db = self._db_or_raise()
-        try:
-            async with db.execute(
-                "SELECT pool_id FROM pool_sessions WHERE session_id = ?",
-                (session_id,),
-            ) as cur:
-                row = await cur.fetchone()
-                return row[0] if row else None
-        except Exception:
-            log.exception(
-                "TurnStore.get_session_pool_id failed (session=%s)", session_id
-            )
-            return None
+        return await get_session_pool_id(self._db_or_raise(), session_id)
 
     async def set_cli_session(self, session_id: str, cli_session_id: str) -> None:
         """Store the CLI session ID for a Lyra session (for --resume after restart)."""
@@ -280,17 +239,7 @@ class TurnStore(SqliteStore):
 
     async def get_cli_session(self, session_id: str) -> str | None:
         """Return the CLI session ID for a Lyra session, or None."""
-        db = self._db_or_raise()
-        try:
-            async with db.execute(
-                "SELECT cli_session_id FROM pool_sessions WHERE session_id = ?",
-                (session_id,),
-            ) as cur:
-                row = await cur.fetchone()
-                return row[0] if row else None
-        except Exception:
-            log.exception("TurnStore.get_cli_session failed (session=%s)", session_id)
-            return None
+        return await get_cli_session(self._db_or_raise(), session_id)
 
     async def get_cli_session_by_pool(self, pool_id: str) -> str | None:
         """Return CLI session ID for the most recent active session of pool_id.
@@ -298,54 +247,7 @@ class TurnStore(SqliteStore):
         Queries non-ended sessions first; falls back to most recent overall.
         Used by resume_and_reset() when an exact Lyra session lookup misses.
         """
-        db = self._db_or_raise()
-        try:
-            # Prefer a session that hasn't been explicitly ended (/clear)
-            async with db.execute(
-                "SELECT cli_session_id FROM pool_sessions"
-                " WHERE pool_id = ? AND ended_at IS NULL"
-                " ORDER BY last_active_at DESC LIMIT 1",
-                (pool_id,),
-            ) as cur:
-                row = await cur.fetchone()
-            if row and row[0]:
-                return row[0]
-            # Fallback: most recent session regardless of ended_at
-            async with db.execute(
-                "SELECT cli_session_id FROM pool_sessions"
-                " WHERE pool_id = ?"
-                " ORDER BY last_active_at DESC LIMIT 1",
-                (pool_id,),
-            ) as cur:
-                row = await cur.fetchone()
-            return row[0] if row else None
-        except Exception:
-            log.exception("TurnStore.get_cli_session_by_pool failed (pool=%s)", pool_id)
-            return None
-
-    async def _backfill_sessions(self, db) -> None:
-        """One-time backfill: derive pool_sessions from conversation_turns.
-
-        Uses INSERT OR IGNORE so running twice is safe. Skips empty session_id.
-        resume_count defaults to 0 (pre-backfill counts are lost).
-        """
-        try:
-            cursor = await db.execute(
-                "INSERT OR IGNORE INTO pool_sessions"
-                " (session_id, pool_id, started_at, last_active_at, resume_count)"
-                " SELECT session_id, pool_id, MIN(timestamp), MAX(timestamp), 0"
-                " FROM conversation_turns"
-                " WHERE session_id != ''"
-                " GROUP BY pool_id, session_id"
-            )
-            await db.commit()
-            if cursor.rowcount and cursor.rowcount > 0:
-                log.info(
-                    "TurnStore: backfilled %d session(s)",
-                    cursor.rowcount,
-                )
-        except Exception:
-            log.exception("TurnStore._backfill_sessions failed")
+        return await get_cli_session_by_pool(self._db_or_raise(), pool_id)
 
     async def increment_resume_count(self, session_id: str) -> None:
         """Increment resume_count for *session_id*. Tolerant: 0-row OK."""
@@ -395,13 +297,4 @@ class TurnStore(SqliteStore):
             List of dicts with keys matching the ``conversation_turns`` columns.
             The ``metadata`` value is deserialized from JSON.
         """
-        limit = min(limit, 500)  # guard against runaway reads
-        db = self._db_or_raise()
-        async with db.execute(_SELECT_BY_POOL, (pool_id, user_id, limit)) as cur:
-            rows = await cur.fetchall()
-        result = []
-        for row in rows:
-            d = dict(zip(_COLS, row))
-            d["metadata"] = json.loads(d["metadata"] or "{}")
-            result.append(d)
-        return result
+        return await get_turns(self._db_or_raise(), pool_id, user_id, limit)

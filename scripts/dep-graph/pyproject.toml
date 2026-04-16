@@ -22,3 +22,6 @@ packages = ["dep_graph"]
 testpaths = ["tests"]
 addopts = "--import-mode=importlib"
 pythonpath = ["."]
+markers = [
+    "integration: tests requiring local fixture files (not run in CI by default)",
+]

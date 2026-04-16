@@ -87,3 +87,4 @@ jobs:
         uses: trufflesecurity/trufflehog@47e7b7cd74f578e1e3145d48f669f22fd1330ca6 # v3.94.3
         with:
           extra_args: --only-verified
+

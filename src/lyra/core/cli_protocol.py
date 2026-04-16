@@ -14,10 +14,13 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .cli_non_streaming import read_until_result, send_and_read
+    from .cli_streaming import StreamingIterator, send_and_read_stream
 
 from .agent_config import ModelConfig
-from .cli_non_streaming import read_until_result, send_and_read  # noqa: E402
-from .cli_streaming import StreamingIterator, send_and_read_stream  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -129,6 +132,10 @@ class CliProtocolOptions:
     max_idle_retries: int = 3
     intermediate_timeout: float = 5.0
 
+
+# Re-export from submodules for backward compatibility (after class definitions)
+from .cli_non_streaming import read_until_result, send_and_read  # noqa: E402
+from .cli_streaming import StreamingIterator, send_and_read_stream  # noqa: E402
 
 __all__ = [
     "CliProtocolOptions",

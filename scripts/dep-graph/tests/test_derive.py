@@ -117,13 +117,7 @@ def test_derive_lane_cross_lane_blocker_ignored_for_sort():
     # Both lane-a issues must be present
     assert 5 in order_nums
     assert 8 in order_nums
-    # #5 has a cross-lane blocker, so no in-lane predecessor — depth 0, comes first
-    assert (
-        order_nums.index(5) < order_nums.index(8)
-        or order_nums == [5, 8]
-        or order_nums == [8, 5]
-    )
-    # Specifically: both at depth 0, tie-break by number → 5 before 8
+    # Both at depth 0 (cross-lane blocker doesn't count); tie-break by issue number
     assert order_nums == [5, 8]
 
 

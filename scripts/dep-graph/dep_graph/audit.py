@@ -267,16 +267,15 @@ def _check_standalone(
 
 def _build_layout_sets(
     layout: dict,
-    gh_issues: dict | None = None,
 ) -> tuple[
     dict[tuple[str, int], str], set[tuple[str, int]], set[tuple[str, int]], set[str]
 ]:
     """Return (layout_lane_of, standalone_set, epic_set, auto_lane_codes).
 
     layout_lane_of: explicit order[] members only.
-    auto_lane_codes: set of lane codes that have NO explicit order[] (auto-derived).
-    When gh_issues is provided, auto-derived lanes contribute all their labeled
-    issues to the "placed" set via auto_lane_codes.
+    auto_lane_codes: set of lane codes that have NO explicit order[] (auto-derived);
+    callers combine this with GH issue labels via `_collect_auto_placed` to
+    expand auto-derived lanes into the full placed set.
     """
     layout_lane_of: dict[tuple[str, int], str] = {}
     auto_lane_codes: set[str] = set()
@@ -379,8 +378,6 @@ def _check_meta(
     return drift_found
 
 
-
-
 def run_audit(layout_path: Path, cache_path: Path, *, verbose: bool = False) -> int:
     """Run the drift audit. Returns exit code (0 = clean, 1 = drift found)."""
     result = _load_inputs(layout_path, cache_path)
@@ -398,7 +395,7 @@ def run_audit(layout_path: Path, cache_path: Path, *, verbose: bool = False) -> 
         labeled |= search_labeled_issues(repo, label_prefix, lane_codes)
 
     layout_lane_of, standalone_set, epic_set, auto_lane_codes = _build_layout_sets(
-        layout, gh_issues
+        layout
     )
     auto_placed, standalone_set = _collect_auto_placed(
         gh_issues, auto_lane_codes, standalone_set, layout, label_prefix

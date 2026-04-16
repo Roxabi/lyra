@@ -5,10 +5,11 @@ and common noise suffixes.  Per-issue `overrides.<N>.title` wins over rules
 (checked before calling normalize_title).
 
 layout.json `title_rules[]` is now optional.  When present, those rules are
-applied *in addition to* (and before) the built-in rules.  To suppress the
-built-ins entirely, set `title_rules: []` in layout.json (empty list).
-
-Set `title_rules` to `null` or omit the key to use only built-in rules.
+applied *in addition to* (and before) the built-in rules.  Set `title_rules`
+to `null` or omit the key to use only built-in rules; setting it to `[]`
+behaves the same as omitting it (no additional rules, built-ins still apply).
+The built-in rules cannot be suppressed — if a layout rule overlaps with a
+built-in, the built-in is a safe idempotent pass-through.
 """
 
 import re
@@ -66,8 +67,8 @@ def normalize_title(raw: str, rules: list[dict] | None) -> str:
 
     - If *rules* is None or omitted: uses only the built-in rules.
     - If *rules* is an explicit list (possibly empty): applies those rules
-      first, then falls through to built-in rules.  Pass [] to disable
-      layout-level rules while still applying built-ins.
+      first, then falls through to built-in rules.  Pass [] to apply no
+      additional layout-level rules (built-ins still run).
 
     Rules use Python regex; `$N` back-references are converted to `\\N`.
     """

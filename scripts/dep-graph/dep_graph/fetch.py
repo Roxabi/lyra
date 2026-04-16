@@ -135,7 +135,7 @@ def _derive_size_from_labels(labels: list[str]) -> str | None:
     """Extract size string from size:* label, e.g. 'size:S' -> 'S'."""
     for lbl in labels:
         if lbl.startswith("size:"):
-            return lbl[5:]
+            return lbl[5:21]  # cap at 16 chars to prevent cache bloat from rogue labels
     return None
 
 

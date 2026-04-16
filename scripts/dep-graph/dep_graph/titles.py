@@ -13,6 +13,7 @@ built-in, the built-in is a safe idempotent pass-through.
 """
 
 import re
+import sys
 
 # ---------------------------------------------------------------------------
 # Built-in rules — applied when layout.json has no title_rules or omits it.
@@ -81,6 +82,13 @@ def normalize_title(raw: str, rules: list[dict] | None) -> str:
     t = raw
     for rule in effective_rules:
         pattern = rule["pattern"]
-        replacement = re.sub(r"\$(\d+)", r"\\\1", rule["replacement"])
-        t = re.sub(pattern, replacement, t).strip()
+        try:
+            replacement = re.sub(r"\$(\d+)", r"\\\1", rule["replacement"])
+            t = re.sub(pattern, replacement, t).strip()
+        except re.error as exc:
+            print(
+                f"  WARN title_rule regex error: {exc} (pattern={pattern!r})",
+                file=sys.stderr,
+            )
+            continue
     return t

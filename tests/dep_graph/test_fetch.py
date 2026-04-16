@@ -16,7 +16,7 @@ import json
 import re
 from unittest.mock import MagicMock
 
-from dep_graph.fetch import _sanitize_milestone
+from dep_graph.fetch import _derive_size_from_labels, _sanitize_milestone
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -298,3 +298,28 @@ def test_sanitize_milestone_none_on_empty_and_none():
 
 def test_sanitize_milestone_strips_trailing_leading_whitespace():
     assert _sanitize_milestone("  M0  ") == "M0"
+
+
+# ---------------------------------------------------------------------------
+# _derive_size_from_labels cap (#741 item 6)
+# ---------------------------------------------------------------------------
+
+
+def test_derive_size_caps_suffix_at_16_chars():
+    # Unbounded label must not bloat cache — cap to 16 chars after 'size:' prefix
+    long_label = "size:" + "x" * 100
+    result = _derive_size_from_labels([long_label])
+    assert result is not None
+    assert len(result) == 16
+    assert result == "x" * 16
+
+
+def test_derive_size_short_labels_unchanged():
+    assert _derive_size_from_labels(["size:S"]) == "S"
+    assert _derive_size_from_labels(["size:F-lite"]) == "F-lite"
+    assert _derive_size_from_labels(["other:X", "size:M"]) == "M"
+
+
+def test_derive_size_none_when_absent():
+    assert _derive_size_from_labels([]) is None
+    assert _derive_size_from_labels(["foo", "bar"]) is None

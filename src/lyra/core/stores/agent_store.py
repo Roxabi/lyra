@@ -6,6 +6,8 @@ import json
 import logging
 from pathlib import Path
 
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
+
 from ..agent_models import (
     VALID_AGENT_STATUSES,
     AgentRow,
@@ -22,7 +24,6 @@ from ..agent_schema import (
 )
 from ..agent_seeder import seed_from_toml as _seed_from_toml
 from .agent_store_migrations import run_agent_migrations
-from .sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

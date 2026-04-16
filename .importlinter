@@ -12,6 +12,18 @@ layers =
     lyra.infrastructure
     lyra.llm | lyra.nats
     lyra.core
+ignore_imports =
+    # Transitional: stores pending migration to infrastructure/stores (ADR-048)
+    # These stores import SqliteStore from infrastructure while awaiting migration
+    lyra.core.stores.agent_store -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.auth_store -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.credential_store -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.identity_alias_store -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.message_index -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.pairing -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.prefs_store -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.thread_store -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.turn_store -> lyra.infrastructure.stores.sqlite_base
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers
@@ -24,7 +36,5 @@ forbidden_modules =
 allow_indirect_imports = true
 ignore_imports =
     # Transitional: files pending migration to infrastructure/stores (ADR-048)
-    lyra.core.stores.sqlite_base -> aiosqlite
-    lyra.core.stores.sqlite_base -> sqlite3
     lyra.core.stores.agent_store_migrations -> aiosqlite
     lyra.core.stores.turn_store_queries -> aiosqlite

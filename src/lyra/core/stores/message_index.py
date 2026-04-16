@@ -10,7 +10,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from .sqlite_base import SqliteStore
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

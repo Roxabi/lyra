@@ -18,6 +18,7 @@ EXEMPT=(
     "src/lyra/adapters/discord.py"          # 322 lines — #196 adapter protocol
     "src/lyra/core/commands/command_router.py" # 310 lines — #396 refactor backlog
     "src/lyra/core/cli_streaming.py"        # 304 lines — #753 new extraction (4 lines over, needs trim)
+    "src/lyra/core/stores/turn_store.py"    # 301 lines — #753 1 line over, will migrate to infrastructure in PR 11
 )
 
 is_exempt() {

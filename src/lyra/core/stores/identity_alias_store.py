@@ -17,7 +17,7 @@ import string
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .sqlite_base import SqliteStore
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

@@ -441,3 +441,11 @@ def test_derive_size_mixed_chars():
     """Mixed safe and unsafe chars: only safe kept."""
     assert _derive_size_from_labels(["size:F-l!i@t#e$"]) == "F-lite"
     assert _derive_size_from_labels(["size:XS@2024"]) == "XS2024"
+
+
+def test_derive_size_cap_and_allowlist_interaction():
+    """16-char cap applied before allowlist filtering."""
+    # "a!" * 20 = 40 chars after colon, but cap takes first 16
+    # Slice: "a!a!a!a!a!a!a!a" (8 a's + 8 !'s)
+    # Filter: removes all ! → "a" * 8
+    assert _derive_size_from_labels(["size:" + "a!" * 20]) == "a" * 8

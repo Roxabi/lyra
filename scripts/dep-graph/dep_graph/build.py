@@ -1051,6 +1051,178 @@ h1 span { color: var(--accent); }
   font-style: italic;
 }
 
+/* Milestone-first layout */
+.milestone-row {
+  max-width: 100%;
+  margin: 0 auto 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.milestone-row-header {
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.milestone-row-header[data-milestone="none"] {
+  background: linear-gradient(90deg, var(--bg-card) 0%, rgba(148,163,184,0.1) 100%);
+  border-left: 3px solid var(--lane-indep);
+}
+.ms-anchor {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.ms-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.ms-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.milestone-cards {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+}
+.milestone-cols {
+  padding: 10px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+.lane-col {
+  flex: 0 0 auto;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lane-col-head {
+  padding: 6px 8px;
+  text-align: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid;
+  border-radius: 5px 5px 0 0;
+  font-family: 'JetBrains Mono', monospace;
+}
+.lane-col-head .code {
+  font-weight: 700;
+  font-size: 13px;
+}
+.lane-col-head .name {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.lane-col-head[data-lane="a1"] { border-top-color: var(--lane-a1); }
+.lane-col-head[data-lane="b"]  { border-top-color: var(--lane-b); }
+.lane-col-head[data-lane="c1"] { border-top-color: var(--lane-c1); }
+.lane-col-head[data-lane="d"]  { border-top-color: var(--lane-d); }
+.lane-col-head[data-lane="e"]  { border-top-color: var(--lane-e); }
+.lane-col-head[data-lane="f"]  { border-top-color: var(--lane-f); }
+.lane-col-head[data-lane="g"]  { border-top-color: var(--lane-g); }
+.lane-col-head[data-lane="h"]  { border-top-color: var(--lane-h); }
+.lane-col-head[data-lane="i"]  { border-top-color: var(--lane-i); }
+.lane-col-head[data-lane="indep"] { border-top-color: var(--lane-indep); }
+.lane-col-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lane-col--split {
+  flex-direction: column;
+}
+.lane-sub-cols {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+.lane-sub-col {
+  flex: 0 0 auto;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lane-sub-head {
+  padding: 4px 6px;
+  text-align: center;
+  background: var(--bg-cell);
+  border-left: 3px solid;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+}
+.lane-sub-head .code {
+  font-weight: 700;
+}
+.lane-sub-head[data-lane="a1"] { border-left-color: var(--lane-a1); }
+.lane-sub-head[data-lane="a2"] { border-left-color: var(--lane-a2); }
+.lane-sub-head[data-lane="c1"] { border-left-color: var(--lane-c1); }
+.lane-sub-head[data-lane="c2"] { border-left-color: var(--lane-c2); }
+.lane-sub-head[data-lane="c3"] { border-left-color: var(--lane-c3); }
+.lane-sub-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mini-lane-head {
+  grid-column: 1 / -1;
+  padding: 6px 8px;
+  margin: 4px 0 2px;
+  background: var(--bg-cell);
+  border-left: 3px solid;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  display: flex;
+  gap: 8px;
+}
+.mini-lane-head .code {
+  font-weight: 700;
+}
+.mini-lane-head .name {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.mini-lane-head[data-lane="a1"] { border-left-color: var(--lane-a1); }
+.mini-lane-head[data-lane="a2"] { border-left-color: var(--lane-a2); }
+.mini-lane-head[data-lane="b"]  { border-left-color: var(--lane-b); }
+.mini-lane-head[data-lane="c1"] { border-left-color: var(--lane-c1); }
+.mini-lane-head[data-lane="c2"] { border-left-color: var(--lane-c2); }
+.mini-lane-head[data-lane="c3"] { border-left-color: var(--lane-c3); }
+.mini-lane-head[data-lane="d"]  { border-left-color: var(--lane-d); }
+.mini-lane-head[data-lane="e"]  { border-left-color: var(--lane-e); }
+.mini-lane-head[data-lane="f"]  { border-left-color: var(--lane-f); }
+.mini-lane-head[data-lane="g"]  { border-left-color: var(--lane-g); }
+.mini-lane-head[data-lane="h"]  { border-left-color: var(--lane-h); }
+.mini-lane-head[data-lane="i"]  { border-left-color: var(--lane-i); }
+
+.lane-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  margin-left: 6px;
+  font-size: 0.7em;
+  border-radius: 4px;
+  background: var(--border);
+  color: var(--text-dim);
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+}
+
 .standalone {
   max-width: 100%;
   margin: 10px auto 0;
@@ -1186,6 +1358,379 @@ def _escape_meta(meta: dict, primary_repo: str) -> dict[str, str]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Milestone-first grouping (new architecture)
+# ---------------------------------------------------------------------------
+
+# Milestone display order: NO MILESTONE first, then M0-M5
+MILESTONE_ORDER = [
+    None,  # "No milestone" anchor at top
+    "M0 — NATS hardening",
+    "M1 — NATS maturity + containerize",
+    "M2 — LLM stack modernization",
+    "M3 — Observability",
+    "M4 — Hub statelessness",
+    "M5 — Plugin layer",
+]
+
+# Lane groups for column display (merge sub-lanes into major lanes)
+LANE_GROUPS = {
+    "A": ["a1", "a2"],  # NATS maturity + SDK
+    "B": ["b"],  # Containerize
+    "C": ["c1", "c2", "c3"],  # LLM stack (LiteLLM, harness, CLI)
+    "D": ["d"],  # Observability
+    "E": ["e"],  # Hub stateless
+    "F": ["f"],  # Plugins
+    "G": ["g"],  # Voice
+    "H": ["h"],  # Deploy ops
+    "I": ["i"],  # Vault ingest
+}
+
+# Lane group metadata
+LANE_GROUP_META = {
+    "A": {"name": "NATS", "color": "a1"},
+    "B": {"name": "Containerize", "color": "b"},
+    "C": {"name": "LLM Stack", "color": "c1"},
+    "D": {"name": "Observability", "color": "d"},
+    "E": {"name": "Stateless", "color": "e"},
+    "F": {"name": "Plugins", "color": "f"},
+    "G": {"name": "Voice", "color": "g"},
+    "H": {"name": "Deploy", "color": "h"},
+    "I": {"name": "Vault", "color": "i"},
+}
+
+
+def _lane_code_to_group(lane_code: str | None) -> str | None:
+    """Map a lane code (a1, a2, c1, etc.) to its group (A, C, etc.)."""
+    if lane_code is None:
+        return None
+    for group, codes in LANE_GROUPS.items():
+        if lane_code in codes:
+            return group
+    return None
+
+
+def _group_issues_by_milestone(
+    gh_issues: dict,
+    primary_repo: str,
+) -> dict[str | None, list[tuple[str, int, str | None, str | None]]]:
+    """Group issues by milestone.
+
+    Returns milestone → [(repo, issue_num, lane_code, lane_group)].
+    Issues with no milestone get key None. Lane_code is from lane_label field.
+    Lane_group is the major lane group (A, B, C, etc.).
+    """
+    groups: dict[str | None, list[tuple[str, int, str | None, str | None]]] = {}
+    for _key, entry in gh_issues.items():
+        if not entry:
+            continue
+        repo = entry.get("repo", primary_repo)
+        num = entry.get("number")
+        if num is None:
+            continue
+        lane_code = entry.get("lane_label")
+        lane_group = _lane_code_to_group(lane_code)
+        milestone = entry.get("milestone")
+        if milestone not in groups:
+            groups[milestone] = []
+        groups[milestone].append((repo, num, lane_code, lane_group))
+    return groups
+
+
+def _prepare_lane_metadata(layout: dict) -> dict[str, dict]:
+    """Build lane_code → {name, color, epic} lookup from layout."""
+    lane_meta: dict[str, dict] = {}
+    for lane in layout.get("lanes", []):
+        code = lane["code"]
+        lane_meta[code] = {
+            "name": lane.get("name", code.upper()),
+            "color": lane.get("color", code),
+            "epic": lane.get("epic"),
+        }
+    return lane_meta
+
+
+def _prepare_milestone_rows(  # noqa: C901
+    layout: dict,
+    gh_issues: dict,
+    primary_repo: str,
+    overrides: dict,
+) -> tuple[list[dict], dict[tuple[str, int], str], dict[str, dict]]:
+    """Prepare milestone-first row structure.
+
+    Returns (milestone_rows, lane_of, lane_meta) where:
+      - milestone_rows: list of {milestone, issues: [(repo, num, ...)]}
+      - lane_of: maps (repo, issue) → lane_code for cross-lane arrows
+      - lane_meta: lane_code → {name, color, epic}
+    """
+    lane_meta = _prepare_lane_metadata(layout)
+    groups = _group_issues_by_milestone(gh_issues, primary_repo)
+
+    # Also include issues from layout lanes that aren't in gh.json (render as missing)
+    seen: set[tuple[str, int]] = set()
+    for _ms, issues in groups.items():
+        for repo, num, _lane, _group in issues:
+            seen.add((repo, num))
+
+    for lane in layout.get("lanes", []):
+        lane_code = lane["code"]
+        lane_group = _lane_code_to_group(lane_code)
+        for item in lane.get("order", []):
+            if isinstance(item, dict):
+                repo = item["repo"]
+                num = item["issue"]
+            else:
+                repo = primary_repo
+                num = int(item)
+            if (repo, num) not in seen:
+                # Issue not in gh.json - add to "No milestone" group
+                # for missing placeholder rendering
+                if None not in groups:
+                    groups[None] = []
+                groups[None].append((repo, num, lane_code, lane_group))
+                seen.add((repo, num))
+
+    # Build lane_of mapping for cross-lane dependency arrows
+    lane_of: dict[tuple[str, int], str] = {}
+    for _ms, issues in groups.items():
+        for repo, num, lane_code, _lane_group in issues:
+            if lane_code:
+                lane_of[(repo, num)] = lane_code
+
+    # Sort issues within each milestone by lane group, then lane code, then issue
+    def sort_key(item: tuple[str, int, str | None, str | None]) -> tuple[int, int, int]:
+        _repo, num, lane, group = item
+        # Sort by group (A=0, B=1, ...), then lane code, then issue number
+        group_idx = ord(group) - ord("A") if group else 99
+        lane_idx = (
+            0
+            if lane is None
+            else ord(lane[0]) * 100 + (int(lane[1:]) if lane[1:].isdigit() else 0)
+        )
+        return (group_idx, lane_idx, num)
+
+    milestone_rows: list[dict] = []
+    for ms in MILESTONE_ORDER:
+        issues = groups.get(ms, [])
+        if not issues:
+            continue
+        sorted_issues = sorted(issues, key=sort_key)
+        milestone_rows.append(
+            {
+                "milestone": ms,
+                "issues": sorted_issues,
+            }
+        )
+
+    # Add any milestones not in MILESTONE_ORDER (e.g., legacy phases)
+    for ms in sorted(str(m) if m else "" for m in groups.keys()):
+        ms_key = None if ms == "" else ms
+        if ms_key not in MILESTONE_ORDER:
+            sorted_issues = sorted(groups[ms_key], key=sort_key)
+            milestone_rows.append(
+                {
+                    "milestone": ms,
+                    "issues": sorted_issues,
+                }
+            )
+
+    return milestone_rows, lane_of, lane_meta
+
+
+def _render_milestone_card(  # noqa: PLR0913
+    repo: str,
+    issue_num: int,
+    lane_code: str | None,
+    lane_meta: dict[str, dict],
+    lane_of: dict[tuple[str, int], str],
+    gh_issues: dict,
+    overrides: dict,
+    primary_repo: str,
+) -> str:
+    """Render a single card within a milestone row."""
+    gh_key = format_key(repo, issue_num)
+    gh_entry = gh_issues.get(gh_key)
+
+    # If issue is missing from gh.json, render a placeholder
+    if gh_entry is None:
+        return _render_missing_card(repo, issue_num)
+
+    ovr_key = gh_key
+    ovr = overrides.get(ovr_key, {})
+
+    status = derive_status(ovr, gh_entry, [], gh_issues, repo)
+    title = display_title(issue_num, ovr, gh_entry, None)
+    deps_html = render_deps(
+        CardContext(
+            repo=repo,
+            issue_num=issue_num,
+            lane_code=lane_code or "",
+            lane_of=lane_of,
+            ovr=ovr,
+            gh_entry=gh_entry,
+            extra_blocked_by=[],
+            extra_blocking=[],
+            gh_issues=gh_issues,
+            title_rules=None,
+            primary_repo=primary_repo,
+        )
+    )
+
+    # Repo badge for foreign repos (top right of card)
+    repo_badge_html = _render_repo_badge(repo, primary_repo)
+
+    card_id = f"card-{repo_slug(repo)}-{issue_num}"
+    top_inner = f'<span class="num">#{issue_num}</span>{repo_badge_html}'
+    return (
+        f'<div class="card {status}" id="{card_id}">'
+        f'<div class="top">{top_inner}</div>'
+        f'<div class="title">{title}</div>'
+        f'<div class="deps">{deps_html}</div>'
+        f"</div>"
+    )
+
+
+def render_milestone_row(  # noqa: C901, PLR0913
+    row: dict,
+    lane_meta: dict[str, dict],
+    lane_of: dict[tuple[str, int], str],
+    gh_issues: dict,
+    overrides: dict,
+    primary_repo: str,
+) -> str:
+    """Render one milestone row with header and cards in lane columns."""
+    milestone = row["milestone"]
+    issues = row["issues"]  # [(repo, num, lane_code, lane_group)]
+
+    if not issues:
+        return ""
+
+    # Header: "No milestone" or milestone title
+    if milestone is None:
+        header_html = (
+            '<div class="milestone-row-header" data-milestone="none">'
+            '<span class="ms-anchor">No milestone</span>'
+            '<span class="ms-hint">— independent lanes, standalone, closed</span>'
+            "</div>"
+        )
+    else:
+        header_html = (
+            f'<div class="milestone-row-header">'
+            f'<span class="ms-label">{escape(milestone)}</span>'
+            f"</div>"
+        )
+
+    # Group issues by lane_group (column), then by lane_code within each group
+    by_group: dict[str | None, dict[str | None, list[tuple[str, int]]]] = {}
+    for repo, num, lane_code, lane_group in issues:
+        if lane_group not in by_group:
+            by_group[lane_group] = {}
+        if lane_code not in by_group[lane_group]:
+            by_group[lane_group][lane_code] = []
+        by_group[lane_group][lane_code].append((repo, num))
+
+    # Render columns (lane groups A-I)
+    columns_html: list[str] = []
+    for group in ["A", "B", "C", "D", "E", "F", "G", "H", "I", None]:
+        if group not in by_group:
+            continue
+
+        group_meta = (
+            LANE_GROUP_META[group] if group else {"name": "Other", "color": "indep"}
+        )
+        by_lane = by_group[group]
+        lane_codes = sorted(by_lane.keys(), key=lambda x: (x or "zzz",))
+
+        # Column header (spans all sub-lanes if any)
+        col_header = (
+            f'<div class="lane-col-head" data-lane="{group_meta["color"]}">'
+            f'<span class="code">{group or "?"}</span>'
+            f'<span class="name">{escape(group_meta["name"])}</span></div>'
+        )
+
+        # If multiple sub-lanes, render as nested sub-columns
+        if len(lane_codes) > 1:
+            sub_cols_html: list[str] = []
+            for lane_code in lane_codes:
+                if lane_code is None:
+                    continue
+                lane_issues = by_lane[lane_code]
+                meta = lane_meta.get(
+                    lane_code, {"name": lane_code.upper(), "color": "indep"}
+                )
+
+                # Sub-column header
+                sub_header = (
+                    f'<div class="lane-sub-head" data-lane="{meta["color"]}">'
+                    f'<span class="code">{escape(lane_code.upper())}</span></div>'
+                )
+
+                # Render cards for this sub-lane
+                cards_html = [
+                    _render_milestone_card(
+                        repo,
+                        num,
+                        lane_code,
+                        lane_meta,
+                        lane_of,
+                        gh_issues,
+                        overrides,
+                        primary_repo,
+                    )
+                    for repo, num in lane_issues
+                ]
+
+                inner = "\n".join(cards_html)
+                sub_cols_html.append(
+                    f'<div class="lane-sub-col">\n'
+                    f"{sub_header}\n"
+                    f'<div class="lane-sub-cards">\n{inner}\n</div>\n'
+                    f"</div>"
+                )
+
+            sub_cols = "\n".join(sub_cols_html)
+            columns_html.append(
+                f'<div class="lane-col lane-col--split">\n'
+                f"{col_header}\n"
+                f'<div class="lane-sub-cols">\n{sub_cols}\n</div>\n'
+                f"</div>"
+            )
+        else:
+            # Single lane or no lane: render cards directly
+            lane_code = lane_codes[0] if lane_codes else None
+            lane_issues = by_lane.get(lane_code, [])
+
+            cards_html = [
+                _render_milestone_card(
+                    repo,
+                    num,
+                    lane_code,
+                    lane_meta,
+                    lane_of,
+                    gh_issues,
+                    overrides,
+                    primary_repo,
+                )
+                for repo, num in lane_issues
+            ]
+
+            inner = "\n".join(cards_html)
+            columns_html.append(
+                f'<div class="lane-col">\n'
+                f"{col_header}\n"
+                f'<div class="lane-col-cards">\n{inner}\n</div>\n'
+                f"</div>"
+            )
+
+    columns = "\n".join(columns_html)
+    return (
+        f'<div class="milestone-row">\n'
+        f"{header_html}\n"
+        f'<div class="milestone-cols">\n{columns}\n</div>\n'
+        f"</div>"
+    )
+
+
 def _prepare_render_data(
     layout: dict,
     gh_issues: dict,
@@ -1256,34 +1801,21 @@ def _prepare_render_data(
 def build_html(layout: dict, gh_issues: dict) -> str:
     meta = layout["meta"]
     overrides = layout.get("overrides", {})
-    extra_deps = layout.get("extra_deps", {})
     cross_deps = layout.get("cross_deps", [])
-    title_rules: list[dict] | None = layout.get("title_rules", None)
 
     _repos_list: list[str] = meta.get("repos", [])
     primary_repo: str = _repos_list[0] if _repos_list else meta.get("repo", "")
 
-    flat_lanes, standalone_order, untriaged, lane_of = _prepare_render_data(
+    # Milestone-first layout
+    milestone_rows, lane_of, lane_meta = _prepare_milestone_rows(
         layout, gh_issues, primary_repo, overrides
     )
 
-    lanes_html = "\n\n".join(
-        render_flat_lane(
-            FlatLaneContext(
-                fl=fl,
-                lane_of=lane_of,
-                gh_issues=gh_issues,
-                overrides=overrides,
-                extra_deps=extra_deps,
-                title_rules=title_rules,
-                primary_repo=primary_repo,
-            )
+    milestone_html = "\n\n".join(
+        render_milestone_row(
+            row, lane_meta, lane_of, gh_issues, overrides, primary_repo
         )
-        for fl in flat_lanes
-    )
-    untriaged_html = render_untriaged(untriaged, gh_issues, primary_repo)
-    standalone_html = render_standalone(
-        standalone_order, gh_issues, overrides, title_rules, primary_repo
+        for row in milestone_rows
     )
     cross_html = render_cross_deps(cross_deps)
 
@@ -1298,10 +1830,11 @@ def build_html(layout: dict, gh_issues: dict) -> str:
     cat_label = escaped["cat_label"]
     color = escaped["color"]
     repo_url = escaped["repo_url"]
-    lane_count = len(flat_lanes)
+    ms_count = len(milestone_rows)
 
     subtitle = (
-        f"{lane_count} lanes \u00b7 1 card per row \u00b7"
+        f"{ms_count} milestones \u00b7 M0\u2192M1\u2192M2\u2192M3"
+        f"\u2192M4\u2192M5 \u00b7"
         f" <strong>\u2190</strong> = blocked by"
         f" \u00b7 <strong>\u2192</strong> = unblocks"
         f' \u00b7 <span class="ext"'
@@ -1312,9 +1845,6 @@ def build_html(layout: dict, gh_issues: dict) -> str:
         f"Lyra v2 plan \u00b7 refreshed {date}"
         f' \u00b7 <a href="{repo_url}">{escape(repo_url)}</a>'
         f' \u00b7 <a href="nats-arch-roadmap.html">NATS arch roadmap</a>'
-    )
-    standalone_comment = (
-        "<!-- Dedicated row: standalone items (no chain, no deps, ship anytime) -->"
     )
     fonts_url = (
         "https://fonts.googleapis.com/css2?"
@@ -1382,21 +1912,10 @@ def build_html(layout: dict, gh_issues: dict) -> str:
   </div>
 </header>
 
-<div class="lanes">
+<div class="milestones">
 
-{lanes_html}
+{milestone_html}
 
-</div>
-
-{untriaged_html}{standalone_comment}
-<div class="standalone">
-  <div class="standalone-head">
-    <span class="label">Standalone</span>
-    <span class="hint">\u2014 no chain, no deps, ship anytime</span>
-  </div>
-  <div class="standalone-grid">
-{standalone_html}
-  </div>
 </div>
 
 <div class="cross-deps">

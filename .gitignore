@@ -1,4 +1,6 @@
 .env
+.env.*
+.env.bak*
 local/
 __pycache__/
 *.py[cod]

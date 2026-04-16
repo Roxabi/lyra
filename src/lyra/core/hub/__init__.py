@@ -15,6 +15,7 @@ from .middleware import (
     build_default_pipeline as build_default_pipeline,
 )
 from .outbound_dispatcher import OutboundDispatcher as OutboundDispatcher
+from .outbound_router import OutboundRouter as OutboundRouter
 from .pipeline_types import (
     Action as Action,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "IdentityResolver",
     "MiddlewarePipeline",
     "OutboundDispatcher",
+    "OutboundRouter",
     "PipelineMiddleware",
     "PipelineContext",
     "PipelineResult",

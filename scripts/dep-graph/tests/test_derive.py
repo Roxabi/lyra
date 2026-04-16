@@ -5,7 +5,8 @@ All tests use synthetic gh_issues dicts; no GitHub API calls.
 
 from __future__ import annotations
 
-from dep_graph.derive import derive_lane, derive_standalone_order
+import pytest
+from dep_graph.derive import _build_par_groups, derive_lane, derive_standalone_order
 
 REPO = "Owner/repo"
 
@@ -74,18 +75,22 @@ def test_derive_lane_independent_issues_sorted_by_number():
     assert order_nums == [3, 7, 10]
 
 
-def test_derive_lane_closed_issue_excluded_from_order():
-    """Closed blocker is excluded from placement; order of open issues correct."""
+def test_derive_lane_closed_issue_included_in_order():
+    """Closed lane-labeled issues are included in order[] for done-styling.
+
+    Since b188e69 ("fix(dep-graph): include closed issues in lane order[]
+    for done-styling"), `_collect_lane_issues` no longer filters by state —
+    closed issues land in-lane and render as `.card done` in the template.
+    """
     gh = _gh(
-        _issue(1, lane="z", state="closed"),  # closed — must not appear
-        _issue(
-            2, lane="z", blocked_by=[1]
-        ),  # cross-ref to closed; in-lane DAG ignores it
+        _issue(1, lane="z", state="closed"),
+        _issue(2, lane="z", blocked_by=[1]),
         _issue(3, lane="z"),
     )
     result = derive_lane(_lane("z"), gh, REPO)
     order_nums = [r["issue"] for r in result["order"]]
-    assert 1 not in order_nums
+    # All three issues placed in-lane, including the closed one
+    assert 1 in order_nums
     assert 2 in order_nums
     assert 3 in order_nums
 
@@ -301,3 +306,180 @@ def test_derive_standalone_order_excludes_closed():
     result = derive_standalone_order(gh, REPO)
     issue_nums = [r["issue"] for r in result]
     assert issue_nums == [2]
+
+
+# ---------------------------------------------------------------------------
+# T2 (G4) — Epic exclusion
+# ---------------------------------------------------------------------------
+
+
+def test_derive_lane_epic_excluded_same_repo():
+    """Epic issue in same repo is excluded from derived order."""
+    lane = {**_lane("ep"), "epic": {"repo": REPO, "issue": 5}}
+    gh = _gh(
+        _issue(5, lane="ep"),
+        _issue(6, lane="ep"),
+    )
+    result = derive_lane(lane, gh, REPO)
+    order_nums = [r["issue"] for r in result["order"]]
+    assert 5 not in order_nums
+    assert 6 in order_nums
+
+
+def test_derive_lane_epic_not_excluded_when_issue_is_cross_repo():
+    """Cross-repo issue matching epic number is NOT excluded.
+
+    _collect_lane_issues excludes only when `num == epic_issue_num AND
+    repo == primary_repo` (derive.py:134). An issue whose repo differs from
+    primary_repo falls through — this is the dark branch the same-repo test
+    above does not exercise.
+    """
+    lane = {**_lane("ep2"), "epic": {"repo": REPO, "issue": 5}}
+    cross_repo_entry = {
+        "repo": "Other/other",
+        "number": 5,
+        "title": "cross #5",
+        "state": "open",
+        "labels": ["graph:lane/ep2"],
+        "lane_label": "ep2",
+        "standalone": False,
+        "defer": False,
+        "blocked_by": [],
+        "blocking": [],
+    }
+    gh = {"Other/other#5": cross_repo_entry, **_gh(_issue(6, lane="ep2"))}
+    result = derive_lane(lane, gh, REPO)
+    order_pairs = [(r["repo"], r["issue"]) for r in result["order"]]
+    # Cross-repo #5 IS included (repo != primary_repo, so exclusion skipped)
+    assert ("Other/other", 5) in order_pairs
+    # Primary-repo #6 also included
+    assert (REPO, 6) in order_pairs
+
+
+# ---------------------------------------------------------------------------
+# T3 (G5) — derive_standalone_order malformed + default_repo
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        None,
+        {},
+        {"standalone": True},
+        {"standalone": False, "number": 1, "state": "open"},
+    ],
+)
+def test_derive_standalone_order_skips_malformed(entry):
+    """Malformed or non-standalone entries produce empty result."""
+    gh = {"key": entry}
+    result = derive_standalone_order(gh, REPO)
+    assert result == []
+
+
+def test_derive_standalone_order_defaults_repo():
+    """Entry with standalone=True but no repo field defaults to primary_repo."""
+    gh = {
+        "norepkey": {
+            "standalone": True,
+            "number": 5,
+            "state": "open",
+        }
+    }
+    result = derive_standalone_order(gh, REPO)
+    assert result == [{"repo": REPO, "issue": 5}]
+
+
+# ---------------------------------------------------------------------------
+# T4 (G6) — Empty-lane fast path
+# ---------------------------------------------------------------------------
+
+
+def test_derive_lane_empty_fast_path():
+    """Lane with no matching issues produces empty order, par_groups, and bands."""
+    result = derive_lane(_lane("nomatch"), _gh(_issue(1, lane="other")), REPO)
+    assert result["order"] == []
+    assert result["par_groups"] == {}
+    assert result["bands"] == []
+
+
+# ---------------------------------------------------------------------------
+# T5 (G7) — Single-node par_groups guard
+# ---------------------------------------------------------------------------
+
+
+def test_derive_lane_single_node_no_par_group():
+    """Single issue in a lane produces no par_groups entry."""
+    result = derive_lane(_lane("s"), _gh(_issue(1, lane="s")), REPO)
+    assert result["par_groups"] == {}
+
+
+# ---------------------------------------------------------------------------
+# T6 (G8) — Milestone transitions
+# ---------------------------------------------------------------------------
+
+
+def test_derive_bands_none_to_named():
+    """None → named milestone inserts 1 band before the named issue."""
+    gh = _gh(
+        _issue(1, lane="mb1"),
+        _issue(2, lane="mb1", blocked_by=[1], milestone="M1"),
+    )
+    result = derive_lane(_lane("mb1"), gh, REPO)
+    bands = result["bands"]
+    assert len(bands) == 1
+    assert bands[0]["before"]["issue"] == 2
+
+
+def test_derive_bands_named_to_none():
+    """Named → None milestone: band only for the named group."""
+    gh = _gh(
+        _issue(1, lane="mb2", milestone="M1"),
+        _issue(2, lane="mb2", blocked_by=[1]),
+    )
+    result = derive_lane(_lane("mb2"), gh, REPO)
+    bands = result["bands"]
+    # One band for M1 before #1; no band when transitioning from named to None
+    assert len(bands) == 1
+    assert bands[0]["before"]["issue"] == 1
+
+
+def test_derive_bands_all_same_milestone():
+    """All issues sharing one milestone produce exactly 1 band at the start."""
+    gh = _gh(
+        _issue(1, lane="mb3", milestone="M1"),
+        _issue(2, lane="mb3", blocked_by=[1], milestone="M1"),
+        _issue(3, lane="mb3", blocked_by=[2], milestone="M1"),
+    )
+    result = derive_lane(_lane("mb3"), gh, REPO)
+    bands = result["bands"]
+    assert len(bands) == 1
+    assert bands[0]["before"]["issue"] == 1
+
+
+# ---------------------------------------------------------------------------
+# T7 (G9) — _build_par_groups has_inner_edge skip
+# ---------------------------------------------------------------------------
+
+
+def test_build_par_groups_has_inner_edge_skip():
+    """Bucket with an intra-bucket edge is skipped (no par_group created)."""
+    # Issues 2 and 3 both at depth 1; edge 2→3 is an inner edge
+    sorted_issues = [(REPO, 1), (REPO, 2), (REPO, 3)]
+    depth_map = {(REPO, 1): 0, (REPO, 2): 1, (REPO, 3): 1}
+    edges = {(REPO, 2): [(REPO, 3)], (REPO, 3): []}
+    result = _build_par_groups("lane", sorted_issues, depth_map, edges)
+    # Depth-1 bucket has inner edge → must be skipped
+    assert not any(
+        {m["issue"] for m in members} == {2, 3} for members in result.values()
+    )
+
+
+def test_build_par_groups_creates_group_without_inner_edge():
+    """Bucket with no intra-bucket edges creates a par_group entry."""
+    sorted_issues = [(REPO, 1), (REPO, 2), (REPO, 3)]
+    depth_map = {(REPO, 1): 0, (REPO, 2): 1, (REPO, 3): 1}
+    edges = {(REPO, 2): [], (REPO, 3): []}
+    result = _build_par_groups("lane", sorted_issues, depth_map, edges)
+    # Depth-1 bucket has no inner edges → must appear as a par_group
+    assert any({m["issue"] for m in members} == {2, 3} for members in result.values())

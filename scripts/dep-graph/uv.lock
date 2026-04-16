@@ -32,6 +32,7 @@ validate = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "jsonschema" },
     { name = "pytest" },
 ]
 
@@ -40,7 +41,10 @@ requires-dist = [{ name = "jsonschema", marker = "extra == 'validate'", specifie
 provides-extras = ["validate"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
+dev = [
+    { name = "jsonschema", specifier = ">=4.26.0" },
+    { name = "pytest", specifier = ">=8.0" },
+]
 
 [[package]]
 name = "iniconfig"

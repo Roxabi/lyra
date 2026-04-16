@@ -358,9 +358,7 @@ def _check_placement(
         return drift_found | _check_label_mismatches(
             layout_lane_of, gh_issues, label_prefix
         )
-    print(
-        "In order[] but wrong/missing GH label:  (all lanes auto-derived, skipped)"
-    )
+    print("In order[] but wrong/missing GH label:  (all lanes auto-derived, skipped)")
     print()
     return drift_found
 
@@ -372,9 +370,7 @@ def _check_meta(
     auto_placed: set[tuple[str, int]],
 ) -> bool:
     """Check defer and standalone drift. Returns drift_found."""
-    drift_found = _check_defer(
-        gh_issues, layout, label_prefix, auto_placed=auto_placed
-    )
+    drift_found = _check_defer(gh_issues, layout, label_prefix, auto_placed=auto_placed)
     drift_found |= _check_standalone(gh_issues, layout, label_prefix)
     return drift_found
 

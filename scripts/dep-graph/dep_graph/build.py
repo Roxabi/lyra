@@ -47,7 +47,10 @@ from .sections import render_cross_deps
 # Jinja2 environment
 # ---------------------------------------------------------------------------
 
-_jinja_env = Environment(loader=PackageLoader("dep_graph", "templates"))
+_jinja_env = Environment(
+    loader=PackageLoader("dep_graph", "templates"),
+    autoescape=True,
+)
 
 
 # ---------------------------------------------------------------------------

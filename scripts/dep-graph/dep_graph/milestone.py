@@ -9,12 +9,8 @@ Extracted from build.py for modularity.
 from __future__ import annotations
 
 from html import escape
-from typing import TYPE_CHECKING
 
 from .keys import format_key, repo_slug
-
-if TYPE_CHECKING:
-    pass  # Avoid circular imports at type-check time
 
 # ---------------------------------------------------------------------------
 # Milestone ordering constants

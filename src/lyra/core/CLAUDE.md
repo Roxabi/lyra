@@ -17,7 +17,7 @@ Outbound (platform) ←──────────────── Outbound
 | Subdir | Purpose |
 |--------|---------|
 | `hub/` | Message routing, outbound dispatch, pool lifecycle orchestration |
-| `stores/` | All durable SQLite stores + shared base class |
+| `stores/` | Store protocols + factory functions (implementations in `lyra.infrastructure.stores/`) |
 | `pool/` | Pool primitives — lifecycle, per-message processing, session observation |
 | `commands/` | Internal command routing infra (NOT plugin commands) |
 
@@ -72,10 +72,10 @@ Reads are synchronous (from cache). Writes are async (SQLite). Cache updated ato
 # Top-level re-exports
 from lyra.core import Hub, Pool, RoutingKey
 
-# Subpackage re-exports
+# Subpackage re-exports (protocol-safe only from core.stores)
 from lyra.core.hub import Hub, MiddlewarePipeline, OutboundDispatcher
 from lyra.core.pool import Pool, PoolProcessor
-from lyra.core.stores import AgentStore, AuthStore, SqliteStore, AgentStoreProtocol
+from lyra.core.stores import AgentStoreProtocol, make_agent_store
 from lyra.core.commands import CommandRouter, CommandLoader
 
 # Direct imports (when not re-exported)

@@ -1,12 +1,30 @@
 [importlinter]
 root_package = lyra
 source_root = src
+include_external_packages = True
 
 [importlinter:contract:clean-architecture-layers]
-name = Clean architecture layers (core ← llm/nats ← adapters ← bootstrap)
+name = Clean architecture layers (core <- llm/nats <- infrastructure <- adapters <- bootstrap)
 type = layers
 layers =
     lyra.bootstrap
     lyra.adapters
+    lyra.infrastructure
     lyra.llm | lyra.nats
     lyra.core
+
+[importlinter:contract:core-stores-no-sqlite]
+name = core/stores protocols must not import SQLite drivers
+type = forbidden
+source_modules =
+    lyra.core.stores
+forbidden_modules =
+    aiosqlite
+    sqlite3
+allow_indirect_imports = true
+ignore_imports =
+    # Transitional: files pending migration to infrastructure/stores (ADR-048)
+    lyra.core.stores.sqlite_base -> aiosqlite
+    lyra.core.stores.sqlite_base -> sqlite3
+    lyra.core.stores.agent_store_migrations -> aiosqlite
+    lyra.core.stores.turn_store_queries -> aiosqlite

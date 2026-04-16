@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
-import inspect
 import logging
 import time
 from collections.abc import Callable, Coroutine
@@ -17,8 +15,6 @@ from ..identity import Identity
 from ..inbound_bus import LocalBus
 from ..message import InboundMessage, OutboundMessage, Platform, Response
 from ..pool import Pool
-from ..render_events import TextRenderEvent
-from ..trust import TrustLevel
 from ..tts_dispatch import AudioPipeline
 from .hub_protocol import (  # noqa: F401 — public re-export
     Binding,
@@ -26,11 +22,13 @@ from .hub_protocol import (  # noqa: F401 — public re-export
     RoutingKey,
 )
 from .hub_rate_limit import RateLimiter
+from .identity_resolver import IdentityResolver
 from .message_pipeline import (  # noqa: F401 — public re-export
     Action,
     PipelineResult,
 )
 from .middleware import build_default_pipeline
+from .outbound_router import OutboundRouter
 from .pool_manager import PoolManager
 
 if TYPE_CHECKING:
@@ -39,7 +37,6 @@ if TYPE_CHECKING:
 
     from ...stt import STTProtocol
     from ...tts import TtsProtocol
-    from ..agent_config import AgentTTSConfig
     from ..circuit_breaker import CircuitRegistry
     from ..cli_pool import CliPool
     from ..memory import MemoryManager
@@ -114,13 +111,12 @@ class Hub:
         self._pairing_manager = pairing_manager
         self._message_index: MessageIndex | None = None
         self._stt: STTProtocol | None = stt
-        self._tts: TtsProtocol | None = tts
+        self._tts_value: TtsProtocol | None = tts  # Private storage for _tts property
         self._pool_ttl = pool_ttl
         self._debounce_ms = debounce_ms
         self._cancel_on_new_message = cancel_on_new_message
         self._rate_limiter = RateLimiter(rate_limit, rate_window)
         self._start_time: float = time.monotonic()
-        self._last_processed_at: float | None = None
         self._memory: MemoryManager | None = None
         self._memory_tasks: set[asyncio.Task] = set()
         self._turn_store: TurnStore | None = None
@@ -136,6 +132,39 @@ class Hub:
         # C3: per-(platform, bot_id) authenticator registry — Hub is the trust authority
         self._authenticators: dict[tuple[Platform, str], Authenticator] = {}
         self._alias_store: IdentityAliasStore | None = None
+        # Identity resolver: pure logic, no I/O
+        self._identity_resolver = IdentityResolver(
+            authenticators=self._authenticators,
+            bindings=self.bindings,
+        )
+        # Outbound router: unified dispatch coordinator (issue #753 Phase 3)
+        # Pass dict references (mutable) so adapters/dispatchers added after
+        # construction are visible to the router.
+        self._outbound_router = OutboundRouter(
+            adapters=self.adapter_registry,
+            dispatchers=self.outbound_dispatchers,
+            audio_pipeline=self._audio_pipeline,
+            circuit_registry=self.circuit_registry,
+            msg_manager=self._msg_manager,
+            tts=self._tts,
+            memory_tasks=self._memory_tasks,
+        )
+
+    @property
+    def _last_processed_at(self) -> float | None:
+        """Delegate to OutboundRouter for backward compatibility."""
+        return self._outbound_router.last_processed_at
+
+    @property
+    def _tts(self) -> "TtsProtocol | None":
+        """TTS service, synced with OutboundRouter."""
+        return self._tts_value
+
+    @_tts.setter
+    def _tts(self, value: "TtsProtocol | None") -> None:
+        """Update TTS on both Hub and OutboundRouter."""
+        self._tts_value = value
+        self._outbound_router.set_tts(value)
 
     @property
     def pools(self) -> dict[str, Pool]:
@@ -216,50 +245,16 @@ class Hub:
     ) -> Identity:
         """Resolve identity for a user on a given (platform, bot_id).
 
-        Used by out-of-band adapter gates (e.g. Discord slash commands) that
-        don't flow through the inbound message bus. Returns PUBLIC identity
-        when no authenticator is registered for the pair.
+        Delegates to IdentityResolver.
         """
-        try:
-            key_platform = Platform(platform)
-        except ValueError:
-            return Identity(
-                user_id=user_id or "", trust_level=TrustLevel.PUBLIC, is_admin=False
-            )
-        auth = self._get_authenticator(key_platform, bot_id)
-        if auth is None:
-            return Identity(
-                user_id=user_id or "", trust_level=TrustLevel.PUBLIC, is_admin=False
-            )
-        return auth.resolve(user_id)
+        return self._identity_resolver.resolve_identity(user_id, platform, bot_id)
 
     def _resolve_message_trust(self, msg: InboundMessage) -> InboundMessage:
         """Re-resolve trust level on the Hub side (C3 — trust re-resolution).
 
-        Adapters send messages with trust_level=PUBLIC (raw). Hub overwrites with
-        the authoritative resolved identity before the pipeline sees the message.
-        No-op when no authenticator is registered for the (platform, bot_id) pair.
+        Delegates to IdentityResolver.
         """
-        try:
-            key_platform = Platform(msg.platform)
-        except ValueError:
-            return msg
-        auth = self._get_authenticator(key_platform, msg.bot_id)
-        if auth is None:
-            log.debug(
-                "no authenticator for %s/%s — trust unchanged", key_platform, msg.bot_id
-            )
-            return msg
-        uid = msg.user_id if msg.user_id else None
-        roles = list(getattr(msg, "roles", ()))
-        identity = auth.resolve(uid, roles=roles)
-        trust_unchanged = identity.trust_level == msg.trust_level
-        admin_unchanged = identity.is_admin == msg.is_admin
-        if trust_unchanged and admin_unchanged:
-            return msg
-        return dataclasses.replace(
-            msg, trust_level=identity.trust_level, is_admin=identity.is_admin
-        )
+        return self._identity_resolver.resolve_message_trust(msg)
 
     def register_binding(
         self,
@@ -287,17 +282,11 @@ class Hub:
         )
 
     def resolve_binding(self, msg: InboundMessage) -> Binding | None:
-        """Resolve binding: exact key, then wildcard fallback, else None."""
-        scope = msg.scope_id
-        key = RoutingKey(Platform(msg.platform), msg.bot_id, scope)
-        exact = self.bindings.get(key)
-        if exact is not None:
-            return exact
-        wb = self.bindings.get(RoutingKey(Platform(msg.platform), msg.bot_id, "*"))
-        if wb is not None:
-            pid = RoutingKey(Platform(msg.platform), msg.bot_id, scope).to_pool_id()
-            return Binding(agent_name=wb.agent_name, pool_id=pid)
-        return None
+        """Resolve binding: exact key, then wildcard fallback, else None.
+
+        Delegates to IdentityResolver. See IdentityResolver.resolve_binding for details.
+        """
+        return self._identity_resolver.resolve_binding(msg)
 
     def get_or_create_pool(self, pool_id: str, agent_name: str) -> Pool:
         return self._pool_manager.get_or_create_pool(pool_id, agent_name)
@@ -336,76 +325,74 @@ class Hub:
         return self._rate_limiter.is_limited(msg)
 
     # -----------------------------------------------------------------------
-    # Outbound routing methods (consolidated from hub_outbound.py per ADR-025 F-3)
+    # Outbound dispatch delegation (issue #753 Phase 3)
     # -----------------------------------------------------------------------
-
-    def _resolve_agent_tts(self, msg: InboundMessage) -> AgentTTSConfig | None:
-        """Resolve per-agent TTS config from the message's binding."""
-        binding = self.resolve_binding(msg)
-        if binding is None:
-            return None
-        agent = self.agent_registry.get(binding.agent_name)
-        if agent is None:
-            log.warning(
-                "Agent %r from binding not in registry — using global TTS defaults",
-                binding.agent_name,
-            )
-            return None
-        return agent.config.voice.tts if agent.config.voice is not None else None
-
-    def _resolve_pool(self, msg: InboundMessage) -> Pool | None:
-        """Resolve pool from message routing (for session-level state)."""
-        key = RoutingKey(Platform(msg.platform), msg.bot_id, msg.scope_id)
-        pool_id = key.to_pool_id()
-        return self._pool_manager.pools.get(pool_id)
-
-    def _tts_language_kwargs(self, msg: InboundMessage) -> dict:
-        """Build session_language + on_language_detected kwargs for TTS."""
-        pool = self._resolve_pool(msg)
-        if pool is None:
-            return {}
-        return {
-            "session_language": pool.last_detected_language,
-            "on_language_detected": lambda lang: setattr(
-                pool,
-                "last_detected_language",
-                lang,
-            ),
-        }
-
-    def _resolve_agent_fallback_language(self, msg: InboundMessage) -> str | None:
-        """Resolve per-agent fallback_language from the message's binding (#343)."""
-        binding = self.resolve_binding(msg)
-        if binding is None:
-            return None
-        agent = self.agent_registry.get(binding.agent_name)
-        if agent is None:
-            return None
-        return agent.config.i18n_language
 
     async def _route_outbound(
         self,
         msg: InboundMessage,
-        enqueue_fn: Callable[[OutboundDispatcher], None],
-        fallback_fn: Callable[[ChannelAdapter], Coroutine[Any, Any, None]],
+        enqueue_fn: Callable[["OutboundDispatcher"], None],
+        fallback_fn: Callable[["ChannelAdapter"], Coroutine[Any, Any, None]],
         *,
         resource: str = "response",
     ) -> None:
-        """Core outbound routing: dispatcher queue -> direct adapter fallback."""
-        platform = Platform(msg.platform)
-        dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
-        if dispatcher is not None:
-            enqueue_fn(dispatcher)
-            self._last_processed_at = time.monotonic()
-            return
-        adapter = self.adapter_registry.get((platform, msg.bot_id))
-        if adapter is None:
-            raise KeyError(
-                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
-                f"Call register_adapter() before dispatching {resource}."
-            )
-        await fallback_fn(adapter)
-        self._last_processed_at = time.monotonic()
+        """Core outbound routing. Delegates to OutboundRouter."""
+        await self._outbound_router._route_outbound(
+            msg, enqueue_fn, fallback_fn, resource=resource
+        )
+
+    async def dispatch_response(
+        self,
+        msg: InboundMessage,
+        response: Response | OutboundMessage,
+    ) -> None:
+        """Send response via originating adapter. Delegates to OutboundRouter."""
+        await self._outbound_router.dispatch_response(msg, response)
+
+    async def dispatch_streaming(
+        self,
+        msg: InboundMessage,
+        chunks: AsyncIterator["RenderEvent"],
+        outbound: OutboundMessage | None = None,
+    ) -> None:
+        """Stream response via originating adapter. Delegates to OutboundRouter."""
+        await self._outbound_router.dispatch_streaming(msg, chunks, outbound)
+
+    async def dispatch_attachment(
+        self,
+        msg: InboundMessage,
+        attachment: "OutboundAttachment",
+    ) -> None:
+        """Send attachment via originating adapter. Delegates to OutboundRouter."""
+        await self._outbound_router.dispatch_attachment(msg, attachment)
+
+    async def dispatch_audio(
+        self,
+        msg: InboundMessage,
+        audio: "OutboundAudio",
+    ) -> None:
+        """Send audio via originating adapter. Delegates to OutboundRouter."""
+        await self._outbound_router.dispatch_audio(msg, audio)
+
+    async def dispatch_audio_stream(
+        self,
+        msg: InboundMessage,
+        chunks: AsyncIterator["OutboundAudioChunk"],
+    ) -> None:
+        """Stream audio via originating adapter. Delegates to OutboundRouter."""
+        await self._outbound_router.dispatch_audio_stream(msg, chunks)
+
+    async def dispatch_voice_stream(
+        self,
+        msg: InboundMessage,
+        chunks: AsyncIterator["OutboundAudioChunk"],
+    ) -> None:
+        """Stream voice via Discord session. Delegates to OutboundRouter."""
+        await self._outbound_router.dispatch_voice_stream(msg, chunks)
+
+    # -----------------------------------------------------------------------
+    # Circuit breaker integration
+    # -----------------------------------------------------------------------
 
     async def circuit_breaker_drop(self, msg: InboundMessage) -> bool:
         """Return True if the circuit is open and a fast-fail reply was sent."""
@@ -427,243 +414,6 @@ class Hub:
         except Exception as exc:
             log.exception("dispatch_response failed for fast-fail reply: %s", exc)
         return True
-
-    async def dispatch_response(
-        self,
-        msg: InboundMessage,
-        response: Response | OutboundMessage,
-    ) -> None:
-        """Send response back via the originating adapter."""
-        if isinstance(response, OutboundMessage):
-            outbound = response
-        else:
-            outbound = response.to_outbound()
-            _cb = response.metadata.get("_on_dispatched")
-            if _cb is not None:
-                outbound.metadata["_on_dispatched"] = _cb
-        if outbound.routing is None and msg.routing is not None:
-            outbound.routing = msg.routing
-
-        async def _fallback_and_notify(adapter: ChannelAdapter) -> None:
-            await adapter.send(msg, outbound)
-            _dispatched = outbound.metadata.pop("_on_dispatched", None)
-            if callable(_dispatched):
-                _result = _dispatched(outbound)
-                if inspect.isawaitable(_result):
-                    await _result
-
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue(msg, outbound),
-            fallback_fn=_fallback_and_notify,
-            resource="responses",
-        )
-
-        if isinstance(response, Response) and response.audio:
-            await self.dispatch_audio(msg, response.audio)
-
-        _should_speak = msg.modality == "voice" or (
-            isinstance(response, Response) and response.speak
-        )
-        if _should_speak and self._tts is not None:
-            text = outbound.to_text().strip()
-            if text:
-                agent_tts = self._resolve_agent_tts(msg)
-                fallback_lang = self._resolve_agent_fallback_language(msg)
-                task = asyncio.create_task(
-                    self._audio_pipeline.synthesize_and_dispatch_audio(
-                        msg,
-                        text,
-                        agent_tts=agent_tts,
-                        fallback_language=fallback_lang,
-                        **self._tts_language_kwargs(msg),
-                    ),
-                    name=f"tts:{msg.id}",
-                )
-                self._memory_tasks.add(task)
-                task.add_done_callback(self._memory_tasks.discard)
-
-    async def dispatch_streaming(  # noqa: C901, PLR0915
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator[RenderEvent],
-        outbound: OutboundMessage | None = None,
-    ) -> None:
-        """Stream response back via the originating adapter.
-
-        For voice modality: text is streamed to the user immediately (so they
-        see it appearing) while also being collected for TTS synthesis.  After
-        the stream completes, TTS runs as a background task and the resulting
-        audio is dispatched as a voice note.
-        """
-        _should_speak = msg.modality == "voice" and self._tts is not None
-        _voice_parts: list[str] | None = None
-        _voice_done: asyncio.Event | None = None
-
-        if _should_speak:
-            # Tee the stream: forward chunks through the normal streaming path
-            # while collecting text for TTS synthesis after streaming completes.
-            _voice_parts = []
-            _voice_done = asyncio.Event()
-            _raw = chunks
-
-            async def _tee() -> AsyncIterator[RenderEvent]:
-                try:
-                    async for event in _raw:
-                        if isinstance(event, TextRenderEvent):
-                            _voice_parts.append(event.text)
-                        # ToolSummaryRenderEvent: skip — voice only needs text
-                        yield event
-                finally:
-                    _voice_done.set()
-
-            chunks = _tee()
-
-        if (
-            outbound is not None
-            and outbound.routing is None
-            and msg.routing is not None
-        ):
-            outbound.routing = msg.routing
-
-        platform = Platform(msg.platform)
-        dispatcher = self.outbound_dispatchers.get((platform, msg.bot_id))
-        if dispatcher is not None:
-            dispatcher.enqueue_streaming(msg, chunks, outbound)
-            self._last_processed_at = time.monotonic()
-            # Voice TTS: don't block here — fire TTS as a background task
-            # that waits for the tee to finish independently.  Blocking on
-            # _voice_done.wait() caused the pool processor to hang when the
-            # dispatcher's scope lock was held by a prior stream (#TTS-fix).
-            if _should_speak and _voice_done is not None:
-                _vp = _voice_parts
-                _vd = _voice_done
-                assert _vd is not None
-
-                async def _deferred_tts() -> None:
-                    await _vd.wait()
-                    full_text = "".join(_vp or []).strip()
-                    if full_text:
-                        agent_tts = self._resolve_agent_tts(msg)
-                        fallback_lang = self._resolve_agent_fallback_language(msg)
-                        await self._audio_pipeline.synthesize_and_dispatch_audio(
-                            msg,
-                            full_text,
-                            agent_tts=agent_tts,
-                            fallback_language=fallback_lang,
-                            **self._tts_language_kwargs(msg),
-                        )
-
-                task = asyncio.create_task(_deferred_tts(), name=f"tts:{msg.id}")
-                self._memory_tasks.add(task)
-                task.add_done_callback(self._memory_tasks.discard)
-                return
-        else:
-            adapter = self.adapter_registry.get((platform, msg.bot_id))
-            if adapter is None:
-                raise KeyError(
-                    f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
-                    "Call register_adapter() before dispatching responses."
-                )
-            if hasattr(adapter, "send_streaming"):
-                await adapter.send_streaming(msg, chunks, outbound)
-            else:
-                if outbound is not None:
-                    log.warning(
-                        "Adapter for %s lacks send_streaming; "
-                        "reply_message_id will not be recorded",
-                        msg.platform,
-                    )
-                text = ""
-                async for event in chunks:
-                    if isinstance(event, TextRenderEvent):
-                        text += event.text
-                if text:
-                    await adapter.send(msg, OutboundMessage.from_text(text))
-                else:
-                    log.debug(
-                        "dispatch_streaming fallback: no text events in stream"
-                        " — skipping send for msg %s",
-                        msg.id,
-                    )
-            if outbound is not None:
-                _dispatched = outbound.metadata.pop("_on_dispatched", None)
-                if callable(_dispatched):
-                    _result = _dispatched(outbound)
-                    if inspect.isawaitable(_result):
-                        await _result
-            self._last_processed_at = time.monotonic()
-
-        # Voice: synthesize TTS as a background task now that text is collected.
-        if _should_speak:
-            full_text = "".join(_voice_parts or []).strip()
-            if full_text:
-                agent_tts = self._resolve_agent_tts(msg)
-                fallback_lang = self._resolve_agent_fallback_language(msg)
-                task = asyncio.create_task(
-                    self._audio_pipeline.synthesize_and_dispatch_audio(
-                        msg,
-                        full_text,
-                        agent_tts=agent_tts,
-                        fallback_language=fallback_lang,
-                        **self._tts_language_kwargs(msg),
-                    ),
-                    name=f"tts:{msg.id}",
-                )
-                self._memory_tasks.add(task)
-                task.add_done_callback(self._memory_tasks.discard)
-
-    async def dispatch_attachment(
-        self,
-        msg: InboundMessage,
-        attachment: OutboundAttachment,
-    ) -> None:
-        """Send an attachment back via the originating adapter."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_attachment(msg, attachment),
-            fallback_fn=lambda a: a.render_attachment(attachment, msg),
-            resource="attachments",
-        )
-
-    async def dispatch_audio(
-        self,
-        msg: InboundMessage,
-        audio: OutboundAudio,
-    ) -> None:
-        """Send an audio voice note back via the originating adapter."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_audio(msg, audio),
-            fallback_fn=lambda a: a.render_audio(audio, msg),
-            resource="audio",
-        )
-
-    async def dispatch_audio_stream(
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator[OutboundAudioChunk],
-    ) -> None:
-        """Stream audio chunks back via the originating adapter."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_audio_stream(msg, chunks),
-            fallback_fn=lambda a: a.render_audio_stream(chunks, msg),
-            resource="audio stream",
-        )
-
-    async def dispatch_voice_stream(
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator[OutboundAudioChunk],
-    ) -> None:
-        """Stream TTS audio to an active Discord voice session."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_voice_stream(msg, chunks),
-            fallback_fn=lambda a: a.render_voice_stream(chunks, msg),
-            resource="voice stream",
-        )
 
     def record_circuit_success(self) -> None:
         if self.circuit_registry is not None:

@@ -21,6 +21,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .derive import is_auto_derived_lane, is_auto_derived_standalone
 from .fetch import search_labeled_issues
 from .keys import format_key, parse_key
 
@@ -221,7 +222,7 @@ def _check_standalone(
     all gh:standalone issues are considered placed — no drift for that direction.
     """
     standalone_lbl = f"{label_prefix}standalone"
-    auto_mode = not bool(layout.get("standalone", {}).get("order"))
+    auto_mode = is_auto_derived_standalone(layout)
 
     if auto_mode:
         print(f"{standalone_lbl} label vs standalone.order[]:  (auto-derived, skipped)")
@@ -281,7 +282,7 @@ def _build_layout_sets(
     auto_lane_codes: set[str] = set()
     for lane in layout.get("lanes", []):
         code = lane["code"]
-        if "order" not in lane:
+        if is_auto_derived_lane(lane):
             auto_lane_codes.add(code)
         else:
             for ref in lane.get("order", []):
@@ -329,7 +330,7 @@ def _collect_auto_placed(
                 except ValueError:
                     pass
 
-    standalone_auto = not bool(layout.get("standalone", {}).get("order"))
+    standalone_auto = is_auto_derived_standalone(layout)
     if standalone_auto:
         updated: set[tuple[str, int]] = set(standalone_set)
         for key, entry in gh_issues.items():

@@ -30,6 +30,24 @@ from collections import defaultdict, deque
 from .keys import format_key
 
 
+def is_auto_derived_lane(lane: dict) -> bool:
+    """A lane is auto-derived when no explicit `order` key is present.
+
+    Mirrors the fast-path gate in `derive_lane` and the auto-derive check
+    in `audit._scan_layout_placements`.
+    """
+    return "order" not in lane
+
+
+def is_auto_derived_standalone(layout: dict) -> bool:
+    """Standalone section is auto-derived when order[] is absent or empty.
+
+    Matches the check at `audit._collect_auto_placed` (uses .get() chain,
+    so a missing `standalone` key or `standalone: {}` both return True).
+    """
+    return not bool(layout.get("standalone", {}).get("order"))
+
+
 def _in_lane_edges(
     issue_key: str,
     gh_entry: dict,
@@ -200,7 +218,7 @@ def derive_lane(
     Epic issues (lane['epic']['issue']) are excluded from the derived order[]
     — they appear only in the epic-banner, not as regular cards.
     """
-    if "order" in lane:
+    if not is_auto_derived_lane(lane):
         return lane
 
     code = lane["code"]

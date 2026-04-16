@@ -6,7 +6,13 @@ All tests use synthetic gh_issues dicts; no GitHub API calls.
 from __future__ import annotations
 
 import pytest
-from dep_graph.derive import _build_par_groups, derive_lane, derive_standalone_order
+from dep_graph.derive import (
+    _build_par_groups,
+    derive_lane,
+    derive_standalone_order,
+    is_auto_derived_lane,
+    is_auto_derived_standalone,
+)
 
 REPO = "Owner/repo"
 
@@ -483,3 +489,38 @@ def test_build_par_groups_creates_group_without_inner_edge():
     result = _build_par_groups("lane", sorted_issues, depth_map, edges)
     # Depth-1 bucket has no inner edges → must appear as a par_group
     assert any({m["issue"] for m in members} == {2, 3} for members in result.values())
+
+
+# ---------------------------------------------------------------------------
+# Predicate helpers (#741 item 2, 7)
+# ---------------------------------------------------------------------------
+
+
+def test_predicate_lane_with_order_is_explicit():
+    assert is_auto_derived_lane({"code": "A", "order": []}) is False
+    assert (
+        is_auto_derived_lane({"code": "A", "order": [{"repo": "r", "issue": 1}]})
+        is False
+    )
+
+
+def test_predicate_lane_without_order_is_auto():
+    assert is_auto_derived_lane({"code": "A"}) is True
+    assert is_auto_derived_lane({"code": "A", "name": "Alpha"}) is True
+
+
+def test_predicate_standalone_missing_key_is_auto():
+    assert is_auto_derived_standalone({}) is True
+
+
+def test_predicate_standalone_empty_object_is_auto():
+    assert is_auto_derived_standalone({"standalone": {}}) is True
+
+
+def test_predicate_standalone_empty_order_is_auto():
+    assert is_auto_derived_standalone({"standalone": {"order": []}}) is True
+
+
+def test_predicate_standalone_non_empty_order_is_explicit():
+    layout = {"standalone": {"order": [{"repo": "r", "issue": 1}]}}
+    assert is_auto_derived_standalone(layout) is False

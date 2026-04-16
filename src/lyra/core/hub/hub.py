@@ -38,7 +38,6 @@ if TYPE_CHECKING:
 
     from ...stt import STTProtocol
     from ...tts import TtsProtocol
-    from ..agent_config import AgentTTSConfig
     from ..circuit_breaker import CircuitRegistry
     from ..cli_pool import CliPool
     from ..memory import MemoryManager
@@ -303,50 +302,6 @@ class Hub:
     # Outbound routing methods (consolidated from hub_outbound.py per ADR-025 F-3)
     # -----------------------------------------------------------------------
 
-    def _resolve_agent_tts(self, msg: InboundMessage) -> AgentTTSConfig | None:
-        """Resolve per-agent TTS config from the message's binding."""
-        binding = self.resolve_binding(msg)
-        if binding is None:
-            return None
-        agent = self.agent_registry.get(binding.agent_name)
-        if agent is None:
-            log.warning(
-                "Agent %r from binding not in registry — using global TTS defaults",
-                binding.agent_name,
-            )
-            return None
-        return agent.config.voice.tts if agent.config.voice is not None else None
-
-    def _resolve_pool(self, msg: InboundMessage) -> Pool | None:
-        """Resolve pool from message routing (for session-level state)."""
-        key = RoutingKey(Platform(msg.platform), msg.bot_id, msg.scope_id)
-        pool_id = key.to_pool_id()
-        return self._pool_manager.pools.get(pool_id)
-
-    def _tts_language_kwargs(self, msg: InboundMessage) -> dict:
-        """Build session_language + on_language_detected kwargs for TTS."""
-        pool = self._resolve_pool(msg)
-        if pool is None:
-            return {}
-        return {
-            "session_language": pool.last_detected_language,
-            "on_language_detected": lambda lang: setattr(
-                pool,
-                "last_detected_language",
-                lang,
-            ),
-        }
-
-    def _resolve_agent_fallback_language(self, msg: InboundMessage) -> str | None:
-        """Resolve per-agent fallback_language from the message's binding (#343)."""
-        binding = self.resolve_binding(msg)
-        if binding is None:
-            return None
-        agent = self.agent_registry.get(binding.agent_name)
-        if agent is None:
-            return None
-        return agent.config.i18n_language
-
     async def _route_outbound(
         self,
         msg: InboundMessage,
@@ -432,15 +387,17 @@ class Hub:
         if _should_speak and self._tts is not None:
             text = outbound.to_text().strip()
             if text:
-                agent_tts = self._resolve_agent_tts(msg)
-                fallback_lang = self._resolve_agent_fallback_language(msg)
+                agent_tts = self._audio_pipeline.resolve_agent_tts(msg)
+                fallback_lang = (
+                    self._audio_pipeline._resolve_agent_fallback_language(msg)
+                )
                 task = asyncio.create_task(
                     self._audio_pipeline.synthesize_and_dispatch_audio(
                         msg,
                         text,
                         agent_tts=agent_tts,
                         fallback_language=fallback_lang,
-                        **self._tts_language_kwargs(msg),
+                        **self._audio_pipeline.tts_language_kwargs(msg),
                     ),
                     name=f"tts:{msg.id}",
                 )
@@ -508,14 +465,16 @@ class Hub:
                     await _vd.wait()
                     full_text = "".join(_vp or []).strip()
                     if full_text:
-                        agent_tts = self._resolve_agent_tts(msg)
-                        fallback_lang = self._resolve_agent_fallback_language(msg)
+                        agent_tts = self._audio_pipeline.resolve_agent_tts(msg)
+                        fallback_lang = (
+                            self._audio_pipeline._resolve_agent_fallback_language(msg)
+                        )
                         await self._audio_pipeline.synthesize_and_dispatch_audio(
                             msg,
                             full_text,
                             agent_tts=agent_tts,
                             fallback_language=fallback_lang,
-                            **self._tts_language_kwargs(msg),
+                            **self._audio_pipeline.tts_language_kwargs(msg),
                         )
 
                 task = asyncio.create_task(_deferred_tts(), name=f"tts:{msg.id}")
@@ -562,15 +521,17 @@ class Hub:
         if _should_speak:
             full_text = "".join(_voice_parts or []).strip()
             if full_text:
-                agent_tts = self._resolve_agent_tts(msg)
-                fallback_lang = self._resolve_agent_fallback_language(msg)
+                agent_tts = self._audio_pipeline.resolve_agent_tts(msg)
+                fallback_lang = (
+                    self._audio_pipeline._resolve_agent_fallback_language(msg)
+                )
                 task = asyncio.create_task(
                     self._audio_pipeline.synthesize_and_dispatch_audio(
                         msg,
                         full_text,
                         agent_tts=agent_tts,
                         fallback_language=fallback_lang,
-                        **self._tts_language_kwargs(msg),
+                        **self._audio_pipeline.tts_language_kwargs(msg),
                     ),
                     name=f"tts:{msg.id}",
                 )

@@ -120,10 +120,10 @@ class TestSynthesizeDispatchAgentTTS:
 
 
 class TestResolveAgentTTS:
-    """T4 — hub._resolve_agent_tts resolves per-agent TTS config via binding."""
+    """T4 — AudioPipeline.resolve_agent_tts resolves TTS config via binding."""
 
     def test_resolve_agent_tts_returns_config_from_registry(self):
-        """_resolve_agent_tts returns the agent's tts config for a bound message."""
+        """resolve_agent_tts returns the agent's tts config for a bound message."""
         from lyra.core import Agent
         from lyra.core.agent import AgentBase
         from lyra.core.agent_config import AgentTTSConfig, AgentVoiceConfig
@@ -176,7 +176,7 @@ class TestResolveAgentTTS:
         )
 
         # Act
-        resolved = hub._resolve_agent_tts(msg)
+        resolved = hub._audio_pipeline.resolve_agent_tts(msg)
 
         # Assert
         assert resolved is agent_tts
@@ -185,7 +185,7 @@ class TestResolveAgentTTS:
         assert resolved.voice == "agent_vox"
 
     def test_resolve_agent_tts_returns_none_without_binding(self):
-        """_resolve_agent_tts returns None when no binding matches the message."""
+        """resolve_agent_tts returns None when no binding matches the message."""
         hub = Hub(stt=cast("STTService", FakeSTT()))
 
         msg = InboundMessage(
@@ -203,7 +203,7 @@ class TestResolveAgentTTS:
         )
 
         # Act
-        resolved = hub._resolve_agent_tts(msg)
+        resolved = hub._audio_pipeline.resolve_agent_tts(msg)
 
         # Assert — no binding registered, must return None
         assert resolved is None

@@ -19,6 +19,7 @@ from .message import (
     InboundMessage,
     OutboundAudio,
     OutboundMessage,
+    Platform,
 )
 
 if TYPE_CHECKING:
@@ -115,11 +116,58 @@ def _detect_language(
 class AudioPipeline:
     """TTS dispatch helper.
 
-    Only ``synthesize_and_dispatch_audio`` remains post-#534 Slice 1.
+    Owns TTS configuration resolution and synthesis/dispatch pipeline.
+    Extracted from Hub per ADR-045 Phase 2.
     """
 
     def __init__(self, hub: Hub) -> None:
         self._hub = hub
+
+    def resolve_agent_tts(self, msg: InboundMessage) -> "AgentTTSConfig | None":
+        """Resolve per-agent TTS config from the message's binding."""
+        binding = self._hub.resolve_binding(msg)
+        if binding is None:
+            return None
+        agent = self._hub.agent_registry.get(binding.agent_name)
+        if agent is None:
+            log.warning(
+                "Agent %r from binding not in registry — using global TTS defaults",
+                binding.agent_name,
+            )
+            return None
+        return agent.config.voice.tts if agent.config.voice is not None else None
+
+    def tts_language_kwargs(self, msg: InboundMessage) -> dict:
+        """Build session_language + on_language_detected kwargs for TTS."""
+        pool = self._resolve_pool(msg)
+        if pool is None:
+            return {}
+        return {
+            "session_language": pool.last_detected_language,
+            "on_language_detected": lambda lang: setattr(
+                pool,
+                "last_detected_language",
+                lang,
+            ),
+        }
+
+    def _resolve_agent_fallback_language(self, msg: InboundMessage) -> str | None:
+        """Resolve per-agent fallback_language from the message's binding (#343)."""
+        binding = self._hub.resolve_binding(msg)
+        if binding is None:
+            return None
+        agent = self._hub.agent_registry.get(binding.agent_name)
+        if agent is None:
+            return None
+        return agent.config.i18n_language
+
+    def _resolve_pool(self, msg: InboundMessage):
+        """Resolve pool from message routing (for session-level state)."""
+        from .hub.hub_protocol import RoutingKey
+
+        key = RoutingKey(Platform(msg.platform), msg.bot_id, msg.scope_id)
+        pool_id = key.to_pool_id()
+        return self._hub.pools.get(pool_id)
 
     async def synthesize_and_dispatch_audio(  # noqa: PLR0913, C901
         self,

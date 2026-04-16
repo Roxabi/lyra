@@ -1,0 +1,54 @@
+# agents.yml — Declarative agent registry for supervisord conf.d generation
+# Run: make gen-conf  →  generates deploy/supervisor/conf.d/*.conf
+
+schema_version: "1.0"
+
+defaults:
+  autostart: false
+  autorestart: true
+  startsecs: 5
+  startretries: 3
+  stopwaitsecs: 75
+  stopasgroup: true
+  killasgroup: true
+  stdout_logfile_maxbytes: 10MB
+  stdout_logfile_backups: 3
+  stderr_logfile_maxbytes: 5MB
+  stderr_logfile_backups: 3
+  # Paths are templated: {home}, {project_dir}, {logs_dir}
+  directory: "{project_dir}"
+  stdout_logfile: "{logs_dir}/{program}.log"
+  stderr_logfile: "{logs_dir}/{program}_error.log"
+
+agents:
+  hub:
+    command: lyra hub
+    priority: 100
+    startsecs: 10
+    nkey: hub.seed
+    env:
+      LYRA_HEALTH_PORT: "8443"
+
+  telegram:
+    command: lyra adapter telegram
+    priority: 200
+    nkey: telegram-adapter.seed
+
+  discord:
+    command: lyra adapter discord
+    priority: 200
+    nkey: discord-adapter.seed
+
+  stt:
+    command: lyra adapter stt
+    priority: 200
+    nkey: stt-adapter.seed
+    env:
+      LYRA_STT_ENABLED: "1"
+
+  tts:
+    command: lyra adapter tts
+    priority: 200
+    nkey: tts-adapter.seed
+    env:
+      LYRA_TTS_ENABLED: "1"

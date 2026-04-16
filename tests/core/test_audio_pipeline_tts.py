@@ -301,26 +301,30 @@ class TestDispatchResponseAgentTTSE2E:
 
 
 # ---------------------------------------------------------------------------
-# TTS unavailable fallback — dispatch_response with notification (#575)
+# TTS unavailable fallback — notification via _route_outbound (#627)
 # ---------------------------------------------------------------------------
 
 
 class TestTtsUnavailableFallback:
-    """When TTS fails, only a log is emitted — no secondary dispatch_response call.
+    """When TTS fails, a notification is sent via _route_outbound.
 
-    The text response is already delivered by the caller before TTS is attempted,
-    so calling dispatch_response again creates a reentrancy path and causes
-    the infinite loop observed in production (#621).
+    dispatch_response is NOT used because it would create a reentrancy path
+    causing the infinite loop observed in production (#621).
+
+    The text response is already delivered by the caller before TTS is attempted.
+
+    Fix (#627): Use _route_outbound directly to send a notification without
+    spawning TTS tasks.
     """
 
     @pytest.mark.asyncio
-    async def test_tts_unavailable_no_dispatch_response(
+    async def test_tts_unavailable_sends_notification(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """TtsUnavailableError → log.warning only, dispatch_response NOT called.
+        """TtsUnavailableError → notification sent via _route_outbound.
 
-        Text was already sent by the caller. Sending a secondary notification
-        creates the infinite retry loop (#621). Fix: log and return.
+        dispatch_response must NOT be called (#621). Instead, _route_outbound
+        is used directly to send a warning notification without TTS spawning.
         """
         import logging
 
@@ -333,6 +337,7 @@ class TestTtsUnavailableFallback:
         hub = Hub(tts=mock_tts)
         hub.dispatch_audio = AsyncMock()
         hub.dispatch_response = AsyncMock()
+        hub._route_outbound = AsyncMock()  # Mock _route_outbound for notification
 
         msg = InboundMessage(
             id="msg-fallback-1",
@@ -359,18 +364,24 @@ class TestTtsUnavailableFallback:
         hub.dispatch_audio.assert_not_awaited()
         # dispatch_response must NOT be called (#621 — text already sent before TTS)
         hub.dispatch_response.assert_not_awaited()
-        # Log warning must be emitted (sole observable side effect of the error path)
+        # _route_outbound IS called to send notification (#627)
+        hub._route_outbound.assert_awaited_once()
+        # Verify notification content
+        call_args = hub._route_outbound.call_args
+        assert call_args.kwargs.get("resource") == "tts-failure-notification"
+        # Log warning must be emitted
         assert "msg-fallback-1" in caplog.text
+        assert "notifying user" in caplog.text
         assert caplog.records[0].levelno == logging.WARNING
 
     @pytest.mark.asyncio
-    async def test_tts_generic_exception_no_dispatch_response(
+    async def test_tts_generic_exception_sends_notification(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Generic TTS exception → log.exception only, dispatch_response NOT called.
+        """Generic TTS exception → notification sent via _route_outbound.
 
-        Same contract as TtsUnavailableError: text was already delivered,
-        no secondary dispatch should occur regardless of exception type.
+        Same contract as TtsUnavailableError: dispatch_response NOT called,
+        notification sent via _route_outbound.
         """
         import logging
 
@@ -381,6 +392,7 @@ class TestTtsUnavailableFallback:
         hub = Hub(tts=mock_tts)
         hub.dispatch_audio = AsyncMock()
         hub.dispatch_response = AsyncMock()
+        hub._route_outbound = AsyncMock()  # Mock _route_outbound for notification
 
         msg = InboundMessage(
             id="msg-fallback-2",
@@ -406,13 +418,19 @@ class TestTtsUnavailableFallback:
         # Assert
         hub.dispatch_audio.assert_not_awaited()
         hub.dispatch_response.assert_not_awaited()
+        # _route_outbound IS called to send notification (#627)
+        hub._route_outbound.assert_awaited_once()
+        # Verify notification content
+        call_args = hub._route_outbound.call_args
+        assert call_args.kwargs.get("resource") == "tts-failure-notification"
         # log.exception must be emitted (ERROR level with traceback)
         assert "msg-fallback-2" in caplog.text
+        assert "notifying user" in caplog.text
         assert caplog.records[0].levelno == logging.ERROR
 
 
 # ---------------------------------------------------------------------------
-# dispatch_streaming TTS fallback — no dispatch_response on TTS failure (#621)
+# dispatch_streaming TTS fallback — notification via _route_outbound (#627)
 # ---------------------------------------------------------------------------
 
 
@@ -421,7 +439,7 @@ class TestDispatchStreamingTTSFallback:
 
     dispatch_streaming fires synthesize_and_dispatch_audio as a background
     task (_deferred_tts) after the stream completes.  If TTS fails there, the
-    same contract applies: log and return only — no secondary dispatch_response.
+    same contract applies: notification sent via _route_outbound, not dispatch_response.
     """
 
     @pytest.mark.asyncio
@@ -463,7 +481,7 @@ class TestDispatchStreamingTTSFallback:
         # Act
         await hub.dispatch_streaming(msg, _fake_chunks())
         # Allow background TTS task to complete
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.1)
 
-        # Assert
+        # Assert - dispatch_response must NOT be called (#621)
         hub.dispatch_response.assert_not_awaited()

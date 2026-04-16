@@ -1,0 +1,43 @@
+---
+title: Eliminate all 300-line file exemptions
+issue: 753
+status: approved
+tier: F-lite
+date: 2026-04-16
+---
+
+## Problem
+
+`tools/check_file_length.sh` has 26 exempted files (up from 12 in ADR-027). The exemptions have grown organically without a coordinated reduction effort, undermining the 300-line policy and increasing cognitive load.
+
+Additionally, no folder file count limit is enforced. ADR-025 recommends ≤20 files per directory, but `core/` has 53 files.
+
+## Who
+
+- **Primary:** Developers — maintainability suffers when files exceed cognitive limits
+- **Secondary:** Code reviewers — large files increase review burden and miss rates
+
+## Constraints
+
+- Zero behavioral changes — extractions must be pure code moves with re-exports
+- All `__init__.py` re-exports preserved — public API unchanged
+- Each extraction runnable in parallel — minimize merge conflicts by separating file groups
+- Pre-commit hook integration required for new folder limit tool
+
+## Out of Scope
+
+- Functional refactoring (only organizational changes)
+- New features or bug fixes
+- Documentation beyond code comments
+- Performance optimizations
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (code organization), well-defined task breakdown.
+
+**Signals:**
+- 21 extraction tasks identified with line ranges/functions
+- Effort estimates provided (XS/S/M)
+- No architectural unknowns
+- Single domain: Python module organization
+- Parallel execution viable — independent file groups

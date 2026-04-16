@@ -17,7 +17,7 @@ Outbound (platform) ←──────────────── Outbound
 | Subdir | Purpose |
 |--------|---------|
 | `hub/` | Message routing, outbound dispatch, pool lifecycle orchestration |
-| `stores/` | All durable SQLite stores + shared base class |
+| `stores/` | Store protocols + factory functions (implementations moved to `lyra.infrastructure.stores`) |
 | `pool/` | Pool primitives — lifecycle, per-message processing, session observation |
 | `commands/` | Internal command routing infra (NOT plugin commands) |
 
@@ -59,12 +59,14 @@ Narrow interface `Pool` requires from its owner. Test seam: inject a mock to uni
 
 ## Store pattern
 
-All stores follow the async store pattern:
+All stores follow the async store pattern (implementations in `lyra.infrastructure.stores`):
 - `__init__` — data structures only, no I/O
 - `connect()` — open DB, run migrations, warm cache
 - `close()` — teardown
 
 Reads are synchronous (from cache). Writes are async (SQLite). Cache updated atomically with write — event loop never blocks on a read.
+
+Protocols remain in this package for dependency inversion.
 
 ## Import patterns
 
@@ -75,16 +77,20 @@ from lyra.core import Hub, Pool, RoutingKey
 # Subpackage re-exports
 from lyra.core.hub import Hub, MiddlewarePipeline, OutboundDispatcher
 from lyra.core.pool import Pool, PoolProcessor
-from lyra.core.stores import AgentStore, AuthStore, SqliteStore, AgentStoreProtocol
+from lyra.core.stores import AgentStoreProtocol, make_agent_store
 from lyra.core.commands import CommandRouter, CommandLoader
 
 # Direct imports (when not re-exported)
 from lyra.core.hub.hub_protocol import ChannelAdapter, RoutingKey, Binding
 from lyra.core.hub.pool_manager import PoolManager
-from lyra.core.stores.agent_store import AgentRow, AgentRuntimeStateRow
 from lyra.core.stores.agent_store_protocol import make_agent_store
-from lyra.core.stores.identity_alias_store import IdentityAliasStore
-from lyra.core.stores.pairing import PairingStore
+
+# SQLite implementations (infrastructure layer, per ADR-048)
+from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
+from lyra.infrastructure.stores.auth_store import AuthStore
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from lyra.infrastructure.stores.pairing import PairingStore
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
 ```
 
 Never import from old flat-core paths — always import from the subpackage directly.

@@ -1,6 +1,7 @@
 from .hub import Hub as Hub
 from .hub_protocol import ChannelAdapter as ChannelAdapter
 from .hub_protocol import RoutingKey as RoutingKey
+from .identity_resolver import IdentityResolver as IdentityResolver
 from .middleware import (
     MiddlewarePipeline as MiddlewarePipeline,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "Action",
     "ChannelAdapter",
     "Hub",
+    "IdentityResolver",
     "MiddlewarePipeline",
     "OutboundDispatcher",
     "PipelineMiddleware",

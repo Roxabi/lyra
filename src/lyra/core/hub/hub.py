@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import inspect
 import logging
 import time
@@ -18,7 +17,6 @@ from ..inbound_bus import LocalBus
 from ..message import InboundMessage, OutboundMessage, Platform, Response
 from ..pool import Pool
 from ..render_events import TextRenderEvent
-from ..trust import TrustLevel
 from ..tts_dispatch import AudioPipeline
 from .hub_protocol import (  # noqa: F401 — public re-export
     Binding,
@@ -26,6 +24,7 @@ from .hub_protocol import (  # noqa: F401 — public re-export
     RoutingKey,
 )
 from .hub_rate_limit import RateLimiter
+from .identity_resolver import IdentityResolver
 from .message_pipeline import (  # noqa: F401 — public re-export
     Action,
     PipelineResult,
@@ -136,6 +135,11 @@ class Hub:
         # C3: per-(platform, bot_id) authenticator registry — Hub is the trust authority
         self._authenticators: dict[tuple[Platform, str], Authenticator] = {}
         self._alias_store: IdentityAliasStore | None = None
+        # Identity resolver: pure logic, no I/O
+        self._identity_resolver = IdentityResolver(
+            authenticators=self._authenticators,
+            bindings=self.bindings,
+        )
 
     @property
     def pools(self) -> dict[str, Pool]:
@@ -216,50 +220,16 @@ class Hub:
     ) -> Identity:
         """Resolve identity for a user on a given (platform, bot_id).
 
-        Used by out-of-band adapter gates (e.g. Discord slash commands) that
-        don't flow through the inbound message bus. Returns PUBLIC identity
-        when no authenticator is registered for the pair.
+        Delegates to IdentityResolver.
         """
-        try:
-            key_platform = Platform(platform)
-        except ValueError:
-            return Identity(
-                user_id=user_id or "", trust_level=TrustLevel.PUBLIC, is_admin=False
-            )
-        auth = self._get_authenticator(key_platform, bot_id)
-        if auth is None:
-            return Identity(
-                user_id=user_id or "", trust_level=TrustLevel.PUBLIC, is_admin=False
-            )
-        return auth.resolve(user_id)
+        return self._identity_resolver.resolve_identity(user_id, platform, bot_id)
 
     def _resolve_message_trust(self, msg: InboundMessage) -> InboundMessage:
         """Re-resolve trust level on the Hub side (C3 — trust re-resolution).
 
-        Adapters send messages with trust_level=PUBLIC (raw). Hub overwrites with
-        the authoritative resolved identity before the pipeline sees the message.
-        No-op when no authenticator is registered for the (platform, bot_id) pair.
+        Delegates to IdentityResolver.
         """
-        try:
-            key_platform = Platform(msg.platform)
-        except ValueError:
-            return msg
-        auth = self._get_authenticator(key_platform, msg.bot_id)
-        if auth is None:
-            log.debug(
-                "no authenticator for %s/%s — trust unchanged", key_platform, msg.bot_id
-            )
-            return msg
-        uid = msg.user_id if msg.user_id else None
-        roles = list(getattr(msg, "roles", ()))
-        identity = auth.resolve(uid, roles=roles)
-        trust_unchanged = identity.trust_level == msg.trust_level
-        admin_unchanged = identity.is_admin == msg.is_admin
-        if trust_unchanged and admin_unchanged:
-            return msg
-        return dataclasses.replace(
-            msg, trust_level=identity.trust_level, is_admin=identity.is_admin
-        )
+        return self._identity_resolver.resolve_message_trust(msg)
 
     def register_binding(
         self,
@@ -287,17 +257,11 @@ class Hub:
         )
 
     def resolve_binding(self, msg: InboundMessage) -> Binding | None:
-        """Resolve binding: exact key, then wildcard fallback, else None."""
-        scope = msg.scope_id
-        key = RoutingKey(Platform(msg.platform), msg.bot_id, scope)
-        exact = self.bindings.get(key)
-        if exact is not None:
-            return exact
-        wb = self.bindings.get(RoutingKey(Platform(msg.platform), msg.bot_id, "*"))
-        if wb is not None:
-            pid = RoutingKey(Platform(msg.platform), msg.bot_id, scope).to_pool_id()
-            return Binding(agent_name=wb.agent_name, pool_id=pid)
-        return None
+        """Resolve binding: exact key, then wildcard fallback, else None.
+
+        Delegates to IdentityResolver. See IdentityResolver.resolve_binding for details.
+        """
+        return self._identity_resolver.resolve_binding(msg)
 
     def get_or_create_pool(self, pool_id: str, agent_name: str) -> Pool:
         return self._pool_manager.get_or_create_pool(pool_id, agent_name)

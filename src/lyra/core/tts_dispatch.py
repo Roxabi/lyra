@@ -18,6 +18,7 @@ from ..tts import TtsUnavailableError
 from .message import (
     InboundMessage,
     OutboundAudio,
+    OutboundMessage,
 )
 
 if TYPE_CHECKING:
@@ -211,14 +212,30 @@ class AudioPipeline:
             # Text response was already dispatched by the caller before TTS was
             # attempted — the user has the content.  Do not call dispatch_response
             # here: doing so creates a reentrancy path that causes an infinite
-            # retry loop in production (#621).  Log and return.
+            # retry loop in production (#621).
+            # Instead, use _route_outbound directly to send a notification
+            # without spawning TTS tasks.
             if isinstance(_tts_exc, TtsUnavailableError):
                 log.warning(
-                    "TTS adapter unavailable for msg id=%s",
+                    "TTS adapter unavailable for msg id=%s — notifying user",
                     msg.id,
                 )
+                _notif_text = "⚠️ Voice synthesis temporarily unavailable."
             else:
                 log.exception(
-                    "TTS synthesis failed (msg id=%s)",
+                    "TTS synthesis failed (msg id=%s) — notifying user",
                     msg.id,
                 )
+                _notif_text = "⚠️ Voice synthesis failed."
+
+            # Send notification via _route_outbound (safe: no TTS spawning)
+            await self._hub._route_outbound(
+                msg,
+                enqueue_fn=lambda d: d.enqueue(
+                    msg, OutboundMessage.from_text(_notif_text)
+                ),
+                fallback_fn=lambda a: a.send(
+                    msg, OutboundMessage.from_text(_notif_text)
+                ),
+                resource="tts-failure-notification",
+            )

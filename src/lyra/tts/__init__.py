@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import re
 import struct
 import tempfile
 import wave
@@ -157,6 +158,50 @@ def _normalize_language(lang: str | None) -> str | None:
     return _LANG_ISO_TO_QWEN.get(lang.lower(), lang)
 
 
+# Precompiled regex patterns for TTS text normalization
+_MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")  # **bold**
+_MD_ITALIC = re.compile(r"\*([^*]+)\*")  # *italic* (single)
+_MD_UNDERLINE = re.compile(r"_([^_]+)_")  # _underline_
+_MD_CODE = re.compile(r"`([^`]+)`")  # `code`
+_MD_HEADING = re.compile(r"^#{1,6}\s*", re.MULTILINE)  # # heading
+_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")  # [text](url)
+_URL = re.compile(r"https?://[^\s<>)\"']+")
+_MULTI_SPACE = re.compile(r"\s+")
+
+
+def _normalize_text_for_tts(text: str) -> str:
+    """Normalize text for TTS synthesis.
+
+    Transforms:
+    - Markdown syntax (**, *, _, `, #) → stripped
+    - Links [text](url) → text
+    - URLs → "link" placeholder
+    - Multiple spaces → single space
+    - Newlines → space
+
+    Returns normalized text ready for voicecli.
+    """
+    # Strip markdown heading markers
+    text = _MD_HEADING.sub("", text)
+
+    # Convert markdown links: [text](url) → text
+    text = _MD_LINK.sub(r"\1", text)
+
+    # Strip markdown formatting (order matters: bold before italic)
+    text = _MD_BOLD.sub(r"\1", text)
+    text = _MD_ITALIC.sub(r"\1", text)
+    text = _MD_UNDERLINE.sub(r"\1", text)
+    text = _MD_CODE.sub(r"\1", text)
+
+    # Replace URLs with "link" placeholder
+    text = _URL.sub("link", text)
+
+    # Collapse all whitespace (newlines, multiple spaces) to single space
+    text = _MULTI_SPACE.sub(" ", text).strip()
+
+    return text
+
+
 class TTSService:
     """Async TTS service delegating to voiceCLI (Qwen TTS, daemon-first / fallback).
 
@@ -271,8 +316,8 @@ class TTSService:
         """
         from voicecli import generate_async  # type: ignore[import-missing]
 
-        # voicecli rejects newlines — collapse to spaces before synthesis.
-        text = " ".join(text.splitlines())
+        # Normalize text for TTS: strip markdown, collapse whitespace, handle URLs
+        text = _normalize_text_for_tts(text)
 
         tts_tmp = (
             Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))).resolve()

@@ -18,6 +18,19 @@ from typing import Any
 
 import yaml
 
+
+def validate_env_key(key: str) -> bool:
+    """Validate environment variable key — only alphanumeric, underscore, hyphen."""
+    import re
+
+    return bool(re.match(r"^[A-Za-z0-9_-]+$", key))
+
+
+def validate_env_value(value: str) -> bool:
+    """Validate environment variable value — no newlines or quotes."""
+    # Reject newlines and quotes that could break INI format
+    return not any(c in value for c in "\n\r\"'")
+
 # Template defaults matching existing conf.d/*.conf structure
 DEFAULTS: dict[str, Any] = {
     "autostart": False,
@@ -56,11 +69,19 @@ def build_environment(
     ]
 
     if nkey:
+        # Validate nkey filename (no path traversal)
+        if "/" in nkey or "\\" in nkey or not validate_env_key(nkey.replace(".", "")):
+            raise ValueError(f"Invalid nkey filename: {nkey}")
         nkey_path = f"{home}/.lyra/nkeys/{nkey}"
         parts.append(f'NATS_NKEY_SEED_PATH="{nkey_path}"')
 
     if extra_env:
         for k, v in sorted(extra_env.items()):
+            # Validate key and value to prevent config injection
+            if not validate_env_key(k):
+                raise ValueError(f"Invalid env key (injection risk): {k}")
+            if not validate_env_value(str(v)):
+                raise ValueError(f"Invalid env value for {k} (injection risk)")
             parts.append(f'{k}="{v}"')
 
     return ",".join(parts)
@@ -127,6 +148,32 @@ def generate_conf(
 
     lines.append("")  # trailing newline
     return "\n".join(lines)
+
+
+def cleanup_orphaned_configs(
+    output_dir: Path, expected_names: set[str], dry_run: bool
+) -> list[Path]:
+    """
+    Remove orphaned config files not matching current agent set.
+
+    Returns list of removed files (empty if dry_run).
+    """
+    if not output_dir.exists():
+        return []
+
+    expected_files = {f"lyra_{name}.conf" for name in expected_names}
+    removed: list[Path] = []
+
+    for conf_file in output_dir.glob("lyra_*.conf"):
+        if conf_file.name not in expected_files:
+            if dry_run:
+                print(f"Would remove orphaned: {conf_file}")
+            else:
+                conf_file.unlink()
+                print(f"Removed orphaned: {conf_file}")
+                removed.append(conf_file)
+
+    return removed
 
 
 def main() -> int:
@@ -196,6 +243,10 @@ def main() -> int:
             with open(output_path, "w") as f:
                 f.write(conf_content)
             print(f"Generated: {output_path}")
+
+    # Cleanup orphaned configs (files for agents no longer in agents.yml)
+    if not args.dry_run:
+        cleanup_orphaned_configs(output_dir, set(agents.keys()), dry_run=False)
 
     return 0
 

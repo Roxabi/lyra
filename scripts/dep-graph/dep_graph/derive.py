@@ -120,7 +120,11 @@ def _collect_lane_issues(
     primary_repo: str,
     epic_issue_num: int | None,
 ) -> list[tuple[str, int]]:
-    """Return open (repo, num) pairs whose lane_label matches code, epic excluded."""
+    """Return (repo, num) pairs whose lane_label matches code, epic excluded.
+
+    Closed issues are included so they render as `done` cards in-lane. They
+    typically topo-sort to depth 0 (their in-lane blockers are also closed).
+    """
     lane_issues: list[tuple[str, int]] = []
     for _key, entry in gh_issues.items():
         if not entry:
@@ -132,8 +136,6 @@ def _collect_lane_issues(
         if num is None:
             continue
         if num == epic_issue_num and repo == primary_repo:
-            continue
-        if entry.get("state") == "closed":
             continue
         lane_issues.append((repo, num))
     return lane_issues

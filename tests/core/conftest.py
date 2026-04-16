@@ -34,10 +34,10 @@ from lyra.core.message import (
 )
 from lyra.core.pool import Pool
 from lyra.core.render_events import RenderEvent
-from lyra.core.stores.agent_store import AgentRow, AgentStore
 from lyra.core.stores.auth_store import AuthStore
 from lyra.core.stores.pairing import PairingConfig, PairingManager
 from lyra.core.trust import TrustLevel
+from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
 
 # ---------------------------------------------------------------------------
 # MessageManager shared constants

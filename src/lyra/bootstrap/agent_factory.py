@@ -14,7 +14,7 @@ from lyra.core.agent_config import SmartRoutingConfig
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli_pool import CliPool
 from lyra.core.messages import MessageManager
-from lyra.core.stores.agent_store import AgentStore
+from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
 from lyra.llm.smart_routing import SmartRoutingDecorator

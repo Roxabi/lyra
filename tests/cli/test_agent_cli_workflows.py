@@ -15,7 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 from lyra.cli import agent_app
-from lyra.core.stores.agent_store import AgentRow, AgentStore
+from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
 
 # ---------------------------------------------------------------------------
 # Shared runner

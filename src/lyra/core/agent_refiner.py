@@ -11,7 +11,7 @@ from lyra.core.agent_refiner_stages import build_system_prompt, extract_patch
 
 if TYPE_CHECKING:
     from lyra.core.agent_models import AgentRow
-    from lyra.core.stores.agent_store import AgentStore
+    from lyra.infrastructure.stores.agent_store import AgentStore
 
 __all__ = [
     "AgentRefiner",

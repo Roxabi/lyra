@@ -14,7 +14,7 @@ EXEMPT=(
     "src/lyra/bootstrap/hub_standalone.py"  # 432 lines — #396 refactor backlog
     "src/lyra/adapters/_shared.py"          # 432 lines — #396 refactor backlog
     "src/lyra/core/cli_pool.py"             # 430 lines — #396 refactor backlog
-    "src/lyra/core/stores/agent_store.py"   # 341 lines — #396 refactor backlog
+    "src/lyra/infrastructure/stores/agent_store.py"   # 341 lines — #396 refactor backlog (migrated from core/stores)
     "src/lyra/adapters/discord.py"          # 322 lines — #196 adapter protocol
     "src/lyra/core/commands/command_router.py" # 310 lines — #396 refactor backlog
     "src/lyra/core/cli_streaming.py"        # 304 lines — #753 new extraction (4 lines over, needs trim)

@@ -3,9 +3,8 @@
 Persists every turn (user + assistant) to the ``conversation_turns`` table
 in a dedicated ``turns.db`` SQLite database (separate from roxabi-vault to
 avoid write contention). Provides an audit trail with platform message IDs,
-session context, and a basic query interface.
-Schema: v3 migration — creates ``conversation_turns`` table if absent,
-then adds missing indices idempotently (safe to call on an existing DB).
+session context, and a basic query interface. Schema: v3 migration — creates
+``conversation_turns`` table if absent, then adds missing indices idempotently.
 """
 
 from __future__ import annotations

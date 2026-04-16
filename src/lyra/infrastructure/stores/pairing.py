@@ -15,12 +15,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.core.stores.auth_store import AuthStore
+    from lyra.infrastructure.stores.auth_store import AuthStore
 
-from lyra.core.trust import TrustLevel
-from lyra.infrastructure.stores.sqlite_base import SqliteStore
-
-from .pairing_config import (
+from lyra.core.stores.pairing_config import (
     _CREATE_PAIRING_CODES,
     _MAX_CODE_ATTEMPTS,
     PairingConfig,
@@ -28,6 +25,8 @@ from .pairing_config import (
     _sha256,
     _utc_now,
 )
+from lyra.core.trust import TrustLevel
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
 
 # Re-export so existing `from lyra.core.pairing import PairingConfig/PairingError`
 # imports continue to work unchanged.

@@ -39,7 +39,7 @@ from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.message import InboundMessage
-from lyra.core.stores.pairing import PairingManager, set_pairing_manager
+from lyra.infrastructure.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.queue_groups import HUB_INBOUND
 

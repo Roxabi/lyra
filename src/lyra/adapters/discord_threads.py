@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lyra.core.message import InboundMessage
-    from lyra.core.stores.thread_store import ThreadStore
+    from lyra.infrastructure.stores.thread_store import ThreadStore
 
 log = logging.getLogger(__name__)
 

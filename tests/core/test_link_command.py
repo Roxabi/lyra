@@ -11,8 +11,8 @@ import pytest
 from lyra.commands.identity.handlers import cmd_link, cmd_unlink
 from lyra.core.message import InboundMessage
 from lyra.core.pool import Pool
-from lyra.core.stores.identity_alias_store import IdentityAliasStore
 from lyra.core.trust import TrustLevel
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -168,7 +168,7 @@ class TestLinkComplete:
 async def test_link_complete_blocked_initiator_rejected(tmp_path: Path) -> None:
     """SC #13: /link rejected if either identity is BLOCKED."""
     from lyra.core.authenticator import Authenticator
-    from lyra.core.stores.auth_store import AuthStore
+    from lyra.infrastructure.stores.auth_store import AuthStore
 
     store = IdentityAliasStore(db_path=tmp_path / "alias.db")
     await store.connect()

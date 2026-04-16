@@ -21,7 +21,7 @@ from lyra.core.agent_schema import (
     _UPSERT_AGENT,
 )
 from lyra.core.agent_seeder import seed_from_toml as _seed_from_toml
-from lyra.core.stores.agent_store_migrations import run_agent_migrations
+from lyra.infrastructure.stores.agent_store_migrations import run_agent_migrations
 
 from .sqlite_base import SqliteStore
 

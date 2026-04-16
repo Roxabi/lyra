@@ -13,7 +13,7 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from lyra.core.stores.turn_store import TurnStore
+    from lyra.infrastructure.stores.turn_store import TurnStore
 
 import pytest
 

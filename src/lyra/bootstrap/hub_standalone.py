@@ -43,7 +43,7 @@ from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 from lyra.core.message import InboundMessage, Platform
-from lyra.core.stores.pairing import PairingManager, set_pairing_manager
+from lyra.infrastructure.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 from lyra.nats.queue_groups import HUB_INBOUND

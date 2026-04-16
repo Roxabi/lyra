@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.stores.turn_store import TurnStore
+from lyra.infrastructure.stores.turn_store import TurnStore
 
 
 @pytest.fixture
@@ -401,7 +401,7 @@ class TestPoolSessions:
         )
         await db.commit()
 
-        from lyra.core.stores.turn_store_queries import backfill_sessions
+        from lyra.infrastructure.stores.turn_store_queries import backfill_sessions
 
         await backfill_sessions(db)
         await backfill_sessions(db)  # second call must be a no-op

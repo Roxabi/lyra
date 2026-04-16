@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.outbound_listener import OutboundListener
     from lyra.core.bus import Bus
-    from lyra.core.stores.turn_store import TurnStore
+    from lyra.infrastructure.stores.turn_store import TurnStore
 
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
@@ -44,7 +44,7 @@ from lyra.core.message import (
     OutboundMessage,
 )
 from lyra.core.messages import MessageManager
-from lyra.core.stores.thread_store import ThreadStore
+from lyra.infrastructure.stores.thread_store import ThreadStore
 
 log = logging.getLogger(__name__)
 

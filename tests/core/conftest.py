@@ -34,10 +34,10 @@ from lyra.core.message import (
 )
 from lyra.core.pool import Pool
 from lyra.core.render_events import RenderEvent
-from lyra.core.stores.auth_store import AuthStore
-from lyra.core.stores.pairing import PairingConfig, PairingManager
 from lyra.core.trust import TrustLevel
 from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
+from lyra.infrastructure.stores.auth_store import AuthStore
+from lyra.infrastructure.stores.pairing import PairingConfig, PairingManager
 
 # ---------------------------------------------------------------------------
 # MessageManager shared constants
@@ -807,7 +807,7 @@ _open_pairing_stores: list[AuthStore] = []
 @pytest.fixture(autouse=True)
 async def _cleanup_pairing_state(tmp_path: Path):
     """Reset pairing global and close all PairingManagers/AuthStores after each test."""
-    from lyra.core.stores.pairing import set_pairing_manager
+    from lyra.infrastructure.stores.pairing import set_pairing_manager
 
     setattr(_cleanup_pairing_state, "tmp_path", tmp_path)
     yield

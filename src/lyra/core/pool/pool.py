@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from lyra.infrastructure.stores.turn_store import TurnStore
+
     from ..memory import SessionSnapshot
-    from ..stores.turn_store import TurnStore
 
 from ..debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
 from ..message import InboundMessage, OutboundMessage
@@ -160,7 +161,6 @@ class Pool:
         """Toggle cancel-in-flight on the live pool (takes effect on next turn)."""
         self._cancel_on_new_message = value
 
-    # Session callback registration (Law of Demeter compliance)
     def has_session_update_fn(self) -> bool:
         """Check whether a session persistence callback is registered."""
         return self._observer.has_session_update_fn()

@@ -9,24 +9,24 @@ implementations live here while protocols remain in `lyra.core.stores/`.
 lyra.core (protocols) <- lyra.llm | lyra.nats <- lyra.infrastructure (implementations) <- lyra.adapters <- lyra.bootstrap
 ```
 
-## Files (pending migration)
+## Migration status
 
-All files will be moved from `src/lyra/core/stores/`:
+All stores have been migrated from `src/lyra/core/stores/`:
 
 | File | Status | Destination |
 |------|--------|-------------|
 | `sqlite_base.py` | migrated | `infrastructure/stores/sqlite_base.py` |
 | `agent_store.py` | migrated | `infrastructure/stores/agent_store.py` |
-| `agent_store_migrations.py` | pending | `infrastructure/stores/agent_store_migrations.py` |
-| `auth_store.py` | pending | `infrastructure/stores/auth_store.py` |
-| `credential_store.py` | **migrated** | `infrastructure/stores/credential_store.py` |
-| `identity_alias_store.py` | pending | `infrastructure/stores/identity_alias_store.py` |
-| `message_index.py` | pending | `infrastructure/stores/message_index.py` |
-| `pairing.py` | pending | `infrastructure/stores/pairing.py` |
-| `prefs_store.py` | pending | `infrastructure/stores/prefs_store.py` |
-| `thread_store.py` | pending | `infrastructure/stores/thread_store.py` |
-| `turn_store.py` | pending | `infrastructure/stores/turn_store.py` |
-| `turn_store_queries.py` | pending | `infrastructure/stores/turn_store_queries.py` |
+| `agent_store_migrations.py` | migrated | `infrastructure/stores/agent_store_migrations.py` |
+| `auth_store.py` | migrated | `infrastructure/stores/auth_store.py` |
+| `credential_store.py` | migrated | `infrastructure/stores/credential_store.py` |
+| `identity_alias_store.py` | migrated | `infrastructure/stores/identity_alias_store.py` |
+| `message_index.py` | migrated | `infrastructure/stores/message_index.py` |
+| `pairing.py` | migrated | `infrastructure/stores/pairing.py` |
+| `prefs_store.py` | migrated | `infrastructure/stores/prefs_store.py` |
+| `thread_store.py` | migrated | `infrastructure/stores/thread_store.py` |
+| `turn_store.py` | migrated | `infrastructure/stores/turn_store.py` |
+| `turn_store_queries.py` | migrated | `infrastructure/stores/turn_store_queries.py` |
 
 ## Files staying in core/stores
 

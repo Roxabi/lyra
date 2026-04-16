@@ -81,10 +81,10 @@ from lyra.core.commands import CommandRouter, CommandLoader
 # Direct imports (when not re-exported)
 from lyra.core.hub.hub_protocol import ChannelAdapter, RoutingKey, Binding
 from lyra.core.hub.pool_manager import PoolManager
-from lyra.core.stores.agent_store import AgentRow, AgentRuntimeStateRow
+from lyra.infrastructure.stores.agent_store import AgentRow, AgentRuntimeStateRow
 from lyra.core.stores.agent_store_protocol import make_agent_store
-from lyra.core.stores.identity_alias_store import IdentityAliasStore
-from lyra.core.stores.pairing import PairingStore
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from lyra.infrastructure.stores.pairing import PairingStore
 ```
 
 Never import from old flat-core paths — always import from the subpackage directly.

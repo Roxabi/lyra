@@ -16,7 +16,6 @@ ignore_imports =
     # Transitional: stores pending migration to infrastructure/stores (ADR-048)
     # These stores import SqliteStore from infrastructure while awaiting migration
     lyra.core.stores.auth_store -> lyra.infrastructure.stores.sqlite_base
-    lyra.core.stores.credential_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.identity_alias_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.message_index -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.pairing -> lyra.infrastructure.stores.sqlite_base

@@ -19,7 +19,7 @@ All files will be moved from `src/lyra/core/stores/`:
 | `agent_store.py` | migrated | `infrastructure/stores/agent_store.py` |
 | `agent_store_migrations.py` | pending | `infrastructure/stores/agent_store_migrations.py` |
 | `auth_store.py` | pending | `infrastructure/stores/auth_store.py` |
-| `credential_store.py` | pending | `infrastructure/stores/credential_store.py` |
+| `credential_store.py` | **migrated** | `infrastructure/stores/credential_store.py` |
 | `identity_alias_store.py` | pending | `infrastructure/stores/identity_alias_store.py` |
 | `message_index.py` | pending | `infrastructure/stores/message_index.py` |
 | `pairing.py` | pending | `infrastructure/stores/pairing.py` |

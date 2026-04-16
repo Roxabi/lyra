@@ -151,9 +151,11 @@ Test doubles live in `roxabi_contracts.<domain>.testing` and require the `[testi
 
 1. **Separate extras.** `pyproject.toml` declares `[project.optional-dependencies].testing = ["nats-py>=2.6", "roxabi-nats"]`. Production installs (`uv sync` without `--extra testing`) do not pull transport deps. Importing `roxabi_contracts.voice.testing` in a prod venv fails at import time with `ModuleNotFoundError: nats`.
 
-2. **Environment assertion.** `FakeTtsWorker.__init__` raises `RuntimeError("FakeTtsWorker cannot run in production")` if `os.environ.get("LYRA_ENV") == "production"`. Overridable only by explicit `NATS_ALLOW_FAKE_WORKER=1` env flag (undocumented outside this ADR; intended for adversarial CI scenarios only).
+2. **Environment assertion.** `FakeTtsWorker.__init__` raises `RuntimeError("FakeTtsWorker cannot run in production")` if `os.environ.get("LYRA_ENV") == "production"`. No override flag, no escape hatch — adversarial CI scenarios that need the fake worker must run with a non-production `LYRA_ENV` value (e.g., `LYRA_ENV=ci_adversarial`). Security-by-obscurity flags are explicitly rejected.
 
-3. **Loopback-only NATS URL.** `FakeTtsWorker.connect()` refuses non-loopback NATS URLs (anything other than `nats://127.0.0.1:*` or `nats://localhost:*`). Raises `ValueError` on non-loopback. This closes the accidental-prod-queue-group-shadowing class of bugs.
+3. **Loopback-only NATS URL.** `FakeTtsWorker.connect()` refuses non-loopback NATS URLs (anything other than `nats://127.0.0.1:*` or `nats://localhost:*`). Raises `ValueError` on non-loopback. No override. This closes the accidental-prod-queue-group-shadowing class of bugs even when `LYRA_ENV` is misconfigured.
+
+The three guards are **independent and non-bypassable** — an attacker who flips one must also flip the others to shadow a production worker. The `[testing]` extra is the strongest of the three because it fails at import time, before any runtime code executes.
 
 API surface:
 ```python
@@ -239,6 +241,7 @@ voiceCLI#69 must not merge before the tag exists — its `uv sync` would fail re
 // renovate.json — satellite repos
 {
   "packageRules": [{
+    "matchDatasources": ["git-refs"],
     "matchSourceUrls": ["https://github.com/Roxabi/lyra"],
     "matchPackageNames": ["roxabi-nats", "roxabi-contracts"],
     "groupName": "roxabi sdk",
@@ -246,6 +249,8 @@ voiceCLI#69 must not merge before the tag exists — its `uv sync` would fail re
   }]
 }
 ```
+
+`matchDatasources: ["git-refs"]` is required — Renovate resolves git-sourced `uv` pins through the `git-refs` datasource, not the default `pypi` datasource. Without it, the rule silently does not fire.
 
 Renovate reads the `tag = "..."` pin and opens a PR when a new tag appears. Without this, pin freshness is purely documentation and drift becomes inevitable.
 
@@ -341,6 +346,6 @@ CI check: a `tests/test_fixture_provenance.py` asserts each fixture is byte-iden
 
 ### Neutral
 
-- `CONTRACT_VERSION` constant migrates from `roxabi_nats.adapter_base` to `roxabi_contracts.envelope`. A compat re-export stays in `roxabi_nats` for one release cycle (until `roxabi-nats/v0.3.0`), then is removed — any external pin on `roxabi_nats.CONTRACT_VERSION` breaks at that point and requires a source update.
+- `CONTRACT_VERSION` constant migrates from `roxabi_nats.adapter_base` to `roxabi_contracts.envelope`. A compat re-export stays in `roxabi_nats` for one release cycle (until `roxabi-nats/v0.3.0`), then is removed. The `roxabi-nats/v0.3.0` release MUST carry a `BREAKING CHANGE:` trailer in its Conventional Commit so release-please surfaces the removal prominently in the changelog and so Renovate opens a major-bump PR in each satellite — any external pin on `roxabi_nats.CONTRACT_VERSION` breaks at that point and requires a source update.
 - ADR-044 remains the human-readable voice contract; it gains a canonical link to `roxabi_contracts.voice`. Future contract ADRs follow the same pattern.
 - Subject constants move from scattered `f"lyra.voice.tts.request"` literals into `SUBJECTS.tts_request`. Grep-gate in each satellite (ADR-047 §14.3) is updated: the check shifts from "no `lyra.*` string literal outside adapter module" to "no `import roxabi_contracts.<domain>` outside the designated adapter module." One PR per satellite to update the gate configuration.

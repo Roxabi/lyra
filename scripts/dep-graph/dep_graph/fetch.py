@@ -16,6 +16,7 @@ blocked_by / blocking (shape: {repo: str, issue: int}).
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -134,8 +135,33 @@ def _derive_size_from_labels(labels: list[str]) -> str | None:
     """Extract size string from size:* label, e.g. 'size:S' -> 'S'."""
     for lbl in labels:
         if lbl.startswith("size:"):
-            return lbl[5:]
+            return lbl[5:21]  # cap at 16 chars to prevent cache bloat from rogue labels
     return None
+
+
+_MILESTONE_ALLOWED = re.compile(r"[^A-Za-z0-9 \-_.#/()]")
+
+
+def _sanitize_milestone(raw: str | None) -> str | None:
+    """Strip unsafe chars from a GH milestone title, cap to 64 chars.
+
+    Allowlist: alphanumerics, space, dash, underscore, dot, hash, slash,
+    parens. Preserves realistic milestone names like 'v2.4.0 (alpha)',
+    'Sprint #3', 'Q2 2026 / Backend'. Everything else is dropped silently.
+
+    Note: HTML injection is prevented at render time via `html.escape`;
+    this allowlist is a defense-in-depth guard that limits the cache
+    key surface, not the primary XSS defense. Widening the allowlist
+    without reviewing the render path is safe but not encouraged.
+
+    Returns None on empty, None, or all-stripped input.
+    """
+    if not raw:
+        return None
+    cleaned = _MILESTONE_ALLOWED.sub("", raw).strip()
+    if not cleaned:
+        return None
+    return cleaned[:64]
 
 
 def fetch_issue_meta(
@@ -191,7 +217,7 @@ def fetch_issue_meta(
     raw_milestone = data.get("milestone")
     milestone_title: str | None = None
     if isinstance(raw_milestone, dict):
-        milestone_title = raw_milestone.get("title") or None
+        milestone_title = _sanitize_milestone(raw_milestone.get("title"))
 
     # Size: derived from size:* label
     size: str | None = _derive_size_from_labels(label_names)

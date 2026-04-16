@@ -46,6 +46,35 @@ jobs:
           uv sync --frozen
           uv run pytest tests/
 
+      - name: Validate dep-graph schema
+        working-directory: scripts/dep-graph
+        run: |
+          uv run python -c "from dep_graph.schema import validate_layout_dict; print('Schema module OK')"
+          # TODO: Add `uv run dep-graph validate` once layout.json is in repo
+
+  integration:
+    needs: [ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v7
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras --group dev
+
+      - name: Start Docker integration environment
+        run: docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 60
+
+      - name: Run integration tests
+        run: NATS_URL=nats://localhost:4222 uv run pytest tests/integration/ -v --no-cov
+
+      - name: Tear down Docker environment
+        if: always()
+        run: docker compose -f docker/docker-compose.test.yml down -v
+
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 5

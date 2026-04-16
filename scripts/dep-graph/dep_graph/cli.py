@@ -150,8 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         "migrate", help="Migrate layout to multi-repo format"
     )
     p_migrate.add_argument(
-        "layout",
-        nargs="?",
+        "--layout",
         default=str(DEFAULT_LAYOUT),
         metavar="PATH",
         help="Path to layout.json (default: %(default)s)",

@@ -44,6 +44,7 @@
     "044-lyra-voicecli-nats-contract",
     "045-roxabi-nats-sdk-uv-workspace-extraction",
     "046-nkey-provisioning-declarative-authconf",
-    "047-nats-connector-ownership-pattern"
+    "047-nats-connector-ownership-pattern",
+    "048-lyra-infrastructure-layer-for-persistence"
   ]
 }

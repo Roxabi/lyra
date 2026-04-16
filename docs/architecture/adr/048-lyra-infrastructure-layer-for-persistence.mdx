@@ -1,0 +1,235 @@
+---
+title: "ADR-048: Introduce lyra.infrastructure layer for persistence — move SQLite store implementations out of lyra.core"
+description: Add a new lyra.infrastructure layer between lyra.core and lyra.adapters to house SQLite store implementations, eliminating the aiosqlite import violation in the innermost layer while preserving dependency-inversion via protocols in core/stores/.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+### Current layering
+
+Import-linter enforces the following dependency order (innermost to outermost):
+
+```
+lyra.core ← lyra.llm | lyra.nats ← lyra.adapters ← lyra.bootstrap
+```
+
+`lyra.core` is the innermost layer. By the dependency rule, it must have zero infrastructure dependencies — no database drivers, no I/O libraries, no framework imports.
+
+### The violation
+
+`src/lyra/core/stores/sqlite_base.py` imports both `aiosqlite` and `sqlite3`. This places SQLite drivers inside `lyra.core`, which is a clean-architecture violation: the innermost layer is importing from infrastructure.
+
+The violation is currently **undetected by import-linter** because most store-module imports are inside function bodies (lazy imports). Import-linter performs module-level static analysis only; function-body imports are invisible to it. The violation is real at runtime — `aiosqlite` is loaded whenever the store methods execute — but no CI gate catches it today.
+
+### Scope of the problem
+
+14 files live in `src/lyra/core/stores/` (13 `.py` + `__init__.py`), classified below by what moves and what stays:
+
+**Moves to `infrastructure/stores/` — SQLite implementations (inherit `SqliteStore` or import `aiosqlite` directly):**
+
+| File | Notes |
+|---|---|
+| `sqlite_base.py` | Base class — imports `aiosqlite` and `sqlite3` directly |
+| `agent_store.py` | SQLite + write-through cache for agent config |
+| `auth_store.py` | SQLite + write-through cache for authorization grants |
+| `credential_store.py` | SQLite-backed encrypted bot token storage |
+| `identity_alias_store.py` | SQLite — cross-platform identity linking |
+| `message_index.py` | SQLite — session routing index for reply-to resume |
+| `pairing.py` | SQLite — `PairingManager`, invite-code access control |
+| `prefs_store.py` | SQLite — per-user TTS/STT preferences |
+| `thread_store.py` | SQLite — Discord thread ownership persistence |
+| `turn_store.py` | SQLite — raw conversation turn logging (L1 memory) |
+
+**Stays in `core/stores/` — no infrastructure deps:**
+
+| File | Notes |
+|---|---|
+| `agent_store_protocol.py` | Defines `AgentStoreProtocol` + `make_agent_store()` factory — zero SQLite dep; the partially-executed prototype this ADR generalises |
+| `json_agent_store.py` | Test double for `AgentStore` — in-memory + JSON file, no `aiosqlite`. Activated via `LYRA_DB=json`. Stays in `core/` because it has zero infrastructure imports and is the seam that makes store-level unit tests infrastructure-free. |
+| `pairing_config.py` | Pure Pydantic dataclass (`PairingConfig`, `PairingError`, SQL DDL constants) — no DB logic, no `aiosqlite`. Noted explicitly in `src/lyra/core/CLAUDE.md` as "sibling dataclass with no DB logic". |
+
+**Requires surgery during migration:**
+
+| File | Action |
+|---|---|
+| `__init__.py` | Currently re-exports `SqliteStore` from `sqlite_base`, pulling `aiosqlite` at package-import time. Must be updated to export only protocol-safe symbols (`AgentStoreProtocol`, `make_agent_store`) once `sqlite_base.py` moves. |
+
+Call-site survey: **84 total `from lyra.core.stores` import lines** across `src/lyra/` and `tests/` — **56 module-level** (visible to import-linter) and **28 function-body / lazy** (currently invisible to import-linter, but real at runtime).
+
+The existence of `agent_store_protocol.py` alongside `agent_store.py` shows the protocol-first instinct was already partially executed for one store — this ADR generalises that instinct to all stores and gives it a structural home.
+
+### Why this ADR supersedes issue #653's original approach
+
+Issue #653 originally scoped the fix as moving store implementations from `core/stores/` to `adapters/stores/` (Option A below). A worktree was created on branch `feat/653-stores-relocation` with 77 renamed files. That branch is being abandoned: the `adapters/` destination conflates persistence concerns with I/O transport concerns (Telegram, Discord, CLI, NATS adapters currently occupy `adapters/`), eroding the taxonomy. This ADR establishes the correct destination.
+
+## Options Considered
+
+### Option A: Move implementations to `adapters/stores/`
+
+The original proposal from issue #653. Move the 10 SQLite implementation files from `core/stores/` to `adapters/stores/`.
+
+- **Pros:** Minimal structural change. No new layer in the import graph. `adapters/` already sits outside `core/`, so `aiosqlite` imports become legal.
+- **Cons:** `lyra.adapters` currently means I/O transport adapters — the concrete implementations of Telegram, Discord, CLI, and NATS channels. Placing SQLite persistence implementations alongside them conflates two fundamentally different responsibilities under one label: "adapter" then means both "how lyra speaks to a messaging platform" and "how lyra persists data". Taxonomy erosion accumulates technical debt as future infrastructure concerns (telemetry, filesystem, cache) would have no principled home and would also land in `adapters/`, further diluting the concept.
+
+### Option B: Protocols-only extraction, keep implementations in `core/stores/` with factory indirection
+
+Keep all 13 files in `core/stores/`. Extract protocols for all stores (following the `agent_store_protocol.py` prototype). Callers type-hint against protocols. Implementations remain in `core/` but are hidden behind a factory (`make_agent_store()`, already present in `agent_store_protocol.py`).
+
+- **Pros:** Smallest change surface. Factory pattern already prototyped for one store. No new layer, no new directory structure.
+- **Cons:** `aiosqlite` remains in `lyra.core`. The dependency rule violation persists at runtime — only the call-site visibility is altered. Import-linter's module-level analysis still cannot catch the in-body imports. This approach hides the structural problem rather than fixing it: protocols and SQLite implementations continue to cohabit the innermost layer.
+
+### Option C: New `lyra.infrastructure` layer for persistence (chosen)
+
+Add `src/lyra/infrastructure/` as a new module sitting between `lyra.llm | lyra.nats` and `lyra.adapters` in the layering order. Move the 10 SQLite implementation files there. Leave protocols, the JSON test double, and the `PairingConfig` dataclass in `src/lyra/core/stores/`.
+
+- **Pros:** Clean taxonomy — `adapters/` = I/O transport channels; `infrastructure/` = persistence, telemetry, filesystem. The dependency rule is fully restored: `lyra.core` becomes genuinely infrastructure-free. Import-linter can enforce both the new layer ordering and an explicit forbidden contract on `core/stores/`. Opens a principled extension point for future cross-cutting concerns (`infrastructure/telemetry/`, `infrastructure/fs/`) without polluting either `core/` or `adapters/`. Dependency inversion is preserved: protocols in `core/`, implementations in `infrastructure/`, callers type-hint against protocols.
+- **Cons:** Adds one layer to the import graph. Import-linter contract requires a new `lyra.infrastructure` entry. 84 import lines across `src/lyra/` and `tests/` must be updated (56 module-level + 28 function-body). Three to four PRs of mechanical work.
+
+## Decision
+
+**Option C — introduce `lyra.infrastructure` as a new architectural layer.**
+
+The taxonomy argument is decisive. `lyra.adapters` is a named concept with a specific meaning in this codebase (platform I/O channels). Introducing persistence implementations there would be coherent only if "adapter" means "anything that is not core" — which is not how it has been used in any ADR to date. A dedicated `infrastructure/` layer maintains the conceptual integrity of both the `adapters/` label and the dependency-inversion pattern, at the cost of one additional layer entry.
+
+Option B is rejected because it does not fix the violation — it only obscures it. Option A is rejected because it degrades the taxonomy without compensating benefit.
+
+## Design
+
+### New layer structure
+
+```
+src/lyra/
+├── core/
+│   └── stores/               # zero-infra files only after migration
+│       ├── __init__.py                  # re-exports protocol-safe symbols only
+│       ├── agent_store_protocol.py      # AgentStoreProtocol + make_agent_store()
+│       ├── json_agent_store.py          # test double — no aiosqlite
+│       └── pairing_config.py            # PairingConfig dataclass — no DB logic
+├── infrastructure/
+│   └── stores/               # all SQLite implementations — aiosqlite freely imported
+│       ├── sqlite_base.py               # moved from core/stores/ — SqliteStore base
+│       ├── agent_store.py               # moved from core/stores/
+│       ├── auth_store.py                # moved from core/stores/
+│       ├── credential_store.py          # moved from core/stores/
+│       ├── identity_alias_store.py      # moved from core/stores/
+│       ├── message_index.py             # moved from core/stores/
+│       ├── pairing.py                   # moved from core/stores/ — PairingManager
+│       ├── prefs_store.py               # moved from core/stores/
+│       ├── thread_store.py              # moved from core/stores/
+│       └── turn_store.py                # moved from core/stores/
+├── llm/
+├── nats/
+├── adapters/                 # I/O transport channels only — Telegram, Discord, CLI, NATS
+└── bootstrap/
+    └── bootstrap_stores.py   # factory wiring — make_xxx_store() functions (already exists)
+```
+
+Protocols remain in `src/lyra/core/stores/`. The directory name `stores/` is retained (not renamed to `ports/`) — the codebase already uses `stores/` as a recognized label in CLAUDE.md, ARCHITECTURE.md, and existing ADRs. Renaming to `ports/` would be a documentation churn cost with no functional benefit at this stage. Future cleanup can rename if the `ports/` vocabulary becomes standard across other core sub-directories.
+
+### Updated import-linter contract
+
+The `.importlinter` contract file gains two changes:
+
+**1. Extended layering contract** — `lyra.infrastructure` is inserted between `lyra.llm | lyra.nats` and `lyra.adapters`:
+
+```ini
+[importlinter:contract:clean-architecture-layers]
+name = Clean architecture layers (core ← llm/nats ← infrastructure ← adapters ← bootstrap)
+type = layers
+layers =
+    lyra.bootstrap
+    lyra.adapters
+    lyra.infrastructure
+    lyra.llm | lyra.nats
+    lyra.core
+```
+
+**2. New forbidden contract** — explicitly blocks SQLite drivers from entering `lyra.core`:
+
+```ini
+[importlinter:contract:core-stores-no-sqlite]
+name = core/stores protocols must not import SQLite drivers
+type = forbidden
+source_modules =
+    lyra.core.stores
+forbidden_modules =
+    aiosqlite
+    sqlite3
+allow_indirect_imports = true
+```
+
+This contract makes the violation detectable at the module level going forward, closing the gap that lazy imports previously exploited.
+
+`allow_indirect_imports = true` scopes the contract to *direct* imports only. This accommodates the transitional shim period (see 'Migration sequencing' below), during which a shim at `core/stores/<x>.py` re-exports from `lyra.infrastructure.stores.<x>`. Once all shims are deleted in the Final PR, removing this flag hardens the contract to catch transitive chains too.
+
+### Factory wiring
+
+`src/lyra/bootstrap/bootstrap_stores.py` (already exists) houses `make_xxx_store()` factory functions. Bootstrap is the only site that imports store **factories** from `lyra.infrastructure.stores`. Adapter modules (Telegram, Discord) additionally import the store **type names** from `lyra.infrastructure.stores` at runtime for per-request access — these type imports are legal under the new layering (`adapters` is above `infrastructure`), but they do mean adapters are non-trivial consumers of `lyra.infrastructure`. Non-adapter callers — hub, agents, commands — receive store instances through dependency injection and type-hint against the protocols in `lyra.core.stores`.
+
+No DI container is introduced. The bootstrap layer is the composition root; factories are plain functions.
+
+### Dependency graph after migration
+
+```
+lyra.hub, lyra.adapters, lyra.agents, lyra.commands (consumers — type-hint against protocol)
+    ↓ imports (type-hint only)
+lyra.core.stores (protocols)
+    ↑ imported by
+lyra.infrastructure.stores (implementations — imports aiosqlite + lyra.core.stores for protocol)
+    ↑ imported by
+lyra.bootstrap.bootstrap_stores (factories — make_xxx_store; only call site for infrastructure factories)
+    + adapters import concrete store TYPES from lyra.infrastructure.stores at runtime
+```
+
+No arrow points from `lyra.infrastructure` to `lyra.adapters` or above. No arrow points from `lyra.core` to `lyra.infrastructure`.
+
+### Relation to ADR-045 (roxabi-nats subpackage)
+
+`packages/roxabi-nats/` was extracted because it has external consumers (voiceCLI, imageCLI, roxabi-vault). Store implementations have no external consumers — they are lyra-internal only. This ADR does NOT follow the workspace-subpackage path. Store implementations stay inside `src/lyra/infrastructure/` as a plain module, not a uv subpackage.
+
+A future `packages/roxabi-persistence/` promotion is noted as a possible trajectory IF a second Roxabi project (e.g., 2ndBrain) needs the same SQLite store pattern. That promotion requires its own ADR and is explicitly out of scope here.
+
+If no second Roxabi project has required these stores within 12 months of ADR-048 acceptance, the `packages/roxabi-persistence/` extraction is explicitly abandoned — `infrastructure/stores/` remains the permanent home. This negative trigger prevents the deferral from becoming permanent undecided debt.
+
+### Migration sequencing
+
+Issue #417 (auth.db → config.db schema split) is CLOSED. The migration-sequencing blocker from earlier drafts no longer applies — this work can proceed whenever. No active schema migration conflicts with the layer relocation.
+
+Rollout is incremental, store-by-store:
+
+1. **Per-store PR pattern:** Move `infrastructure/stores/<x>.py`. Add a re-export shim at the old path `core/stores/<x>.py` (`from lyra.infrastructure.stores.<x> import XxxStore`). Update call sites in the same PR or a follow-up. Delete the shim once all call sites are updated.
+2. **Order:** `sqlite_base.py` first (it is the shared base class; all implementation files depend on it). Agent store second (protocol already partially drafted). Remaining stores in any order.
+3. **Import-linter forbidden contract** activates on the first PR that moves `sqlite_base.py`. The shim at `core/stores/sqlite_base.py` must re-export without importing `aiosqlite` directly — the forbidden contract will catch any violation immediately.
+
+### CI gate
+
+`uv run lint-imports` is already gated in CI (`.github/workflows/ci.yml:32`). The new forbidden contract on `lyra.core.stores` will be enforced from the first PR that adds it to `.importlinter`. No new CI wiring required.
+
+## Consequences
+
+### Positive
+
+- `lyra.core.stores` becomes genuinely infrastructure-free (enforced by the forbidden contract). Other `lyra.core` submodules are not directly covered by this contract — it is scoped to `lyra.core.stores` where the original violation lived. The dependency rule for the stores surface is restored, not just papered over; extending the guard to the rest of `lyra.core` is a follow-up if further violations surface.
+- Import-linter gains a forbidden contract that makes the `aiosqlite`-in-core violation immediately detectable in CI for all future contributions.
+- `lyra.adapters` retains its precise meaning: I/O transport channels for messaging platforms.
+- `lyra.infrastructure/` is an explicit extension point for future cross-cutting concerns — telemetry, filesystem helpers, cache backends — without requiring another ADR for each addition, only for significant new patterns.
+- Protocols in `core/stores/` are caller-visible without any infrastructure dependency, making them safe to use from any layer.
+
+### Negative
+
+- 10 files move to `infrastructure/stores/`. `core/stores/__init__.py` requires surgery to remove the `SqliteStore` re-export. 84 import lines require updates (56 module-level, 28 function-body) across hub, bootstrap, agents, commands, and adapters.
+- `src/lyra/core/CLAUDE.md` must be updated to remove store implementation entries and retain only protocol entries.
+- A new `src/lyra/infrastructure/CLAUDE.md` must be created per the project CLAUDE.md hygiene rule.
+- Teams working on store-adjacent features must coordinate with the rollout to avoid merge conflicts on the `__init__.py` surgery and the incremental per-store moves.
+
+### Neutral
+
+- The `core/stores/` directory name is retained (not renamed to `core/ports/`). This is a deliberate non-change — existing documentation and CLAUDE.md references remain valid.
+- `packages/roxabi-nats/` is unaffected. Its role as pure NATS transport is orthogonal to persistence infrastructure.
+- `src/lyra/infrastructure/` opens the door to `infrastructure/telemetry/`, `infrastructure/fs/`, etc. — scope of this ADR is stores only. Future additions do not require a new ADR unless they introduce a new cross-cutting pattern.
+- **Governance rule:** any new subdirectory under `infrastructure/` (e.g. `infrastructure/telemetry/`, `infrastructure/fs/`, `infrastructure/cache/`) requires its own ADR. Adding files to an existing subdirectory does not. This prevents the "junk drawer" drift that would otherwise follow from the "add freely" note above.
+- The worktree `feat/653-stores-relocation` (77 renamed files, `adapters/stores/` destination) is abandoned. That branch is superseded by `feat/653-stores-infrastructure`.

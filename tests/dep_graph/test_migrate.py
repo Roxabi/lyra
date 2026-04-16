@@ -49,12 +49,15 @@ def _old_layout():
 
 
 def test_migrates_bare_ints_to_issue_refs(tmp_path):
+    # Arrange
     p = tmp_path / "layout.json"
     p.write_text(json.dumps(_old_layout()))
 
+    # Act
     result = run_migrate(p)
     assert result == 0
 
+    # Assert
     new = p.with_suffix(p.suffix + ".new")
     assert new.exists()
     data = json.loads(new.read_text())
@@ -89,9 +92,14 @@ def test_migrates_bare_ints_to_issue_refs(tmp_path):
 
 
 def test_migrates_override_keys_to_owner_repo_hash(tmp_path):
+    # Arrange
     p = tmp_path / "layout.json"
     p.write_text(json.dumps(_old_layout()))
+
+    # Act
     run_migrate(p)
+
+    # Assert
     data = json.loads(p.with_suffix(p.suffix + ".new").read_text())
 
     # overrides keys rewritten
@@ -110,7 +118,7 @@ def test_migrates_override_keys_to_owner_repo_hash(tmp_path):
 
 
 def test_idempotent_on_already_migrated(tmp_path, capsys):
-    # Write an already-migrated layout, run migrate, expect "Already migrated." exit 0
+    # Arrange — already-migrated layout
     already = {
         "meta": {
             "title": "T",
@@ -127,7 +135,11 @@ def test_idempotent_on_already_migrated(tmp_path, capsys):
     }
     p = tmp_path / "layout.json"
     p.write_text(json.dumps(already))
+
+    # Act
     result = run_migrate(p)
+
+    # Assert
     assert result == 0
     out = capsys.readouterr().out
     assert "Already migrated" in out
@@ -136,7 +148,7 @@ def test_idempotent_on_already_migrated(tmp_path, capsys):
 
 
 def test_completes_partial_migration(tmp_path):
-    # Mix of new `meta.repos` with leftover bare ints in lanes — should be completed
+    # Arrange — mix of new `meta.repos` with leftover bare ints in lanes + overrides
     partial = {
         "meta": {
             "title": "T",
@@ -156,27 +168,41 @@ def test_completes_partial_migration(tmp_path):
             }
         ],
         "standalone": {"order": []},
-        "overrides": {},
+        "overrides": {"641": {"title": "override"}},  # bare-int key leftover
         "extra_deps": {"extra_blocked_by": {}, "extra_blocking": {}},
         "cross_deps": [],
         "title_rules": [],
     }
     p = tmp_path / "layout.json"
     p.write_text(json.dumps(partial))
+
+    # Act
     result = run_migrate(p)
+
+    # Assert
     assert result == 0
-    # Since it doesn't validate fully, migrate should produce a .new completing it
     new = p.with_suffix(p.suffix + ".new")
     assert new.exists()
     data = json.loads(new.read_text())
+
+    # lanes order wrapped
     assert data["lanes"][0]["order"] == [{"repo": "Roxabi/lyra", "issue": 641}]
+
+    # overrides key rewritten
+    assert "Roxabi/lyra#641" in data["overrides"]
+    assert data["overrides"]["Roxabi/lyra#641"] == {"title": "override"}
 
 
 def test_never_mutates_original(tmp_path):
+    # Arrange
     p = tmp_path / "layout.json"
     original = _old_layout()
     p.write_text(json.dumps(original, indent=2))
     before = p.read_bytes()
+
+    # Act
     run_migrate(p)
+
+    # Assert
     after = p.read_bytes()
     assert before == after, "migrate must not mutate the original file"

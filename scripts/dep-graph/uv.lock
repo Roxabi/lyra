@@ -24,9 +24,7 @@ wheels = [
 name = "dep-graph"
 version = "0.1.0"
 source = { editable = "." }
-
-[package.optional-dependencies]
-validate = [
+dependencies = [
     { name = "jsonschema" },
 ]
 
@@ -37,8 +35,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "jsonschema", marker = "extra == 'validate'", specifier = ">=4.0" }]
-provides-extras = ["validate"]
+requires-dist = [{ name = "jsonschema", specifier = ">=4.0" }]
 
 [package.metadata.requires-dev]
 dev = [

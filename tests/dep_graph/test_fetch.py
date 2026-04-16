@@ -89,22 +89,39 @@ def test_iterates_meta_repos(tmp_path, monkeypatch):
 
 
 def test_dedupes_same_issue_from_two_repos(tmp_path, monkeypatch):
-    """If the same (repo, issue) appears in two label searches, gh.json has one entry."""
+    """If the same (repo, issue) appears in two label searches, gh.json has one entry.
+
+    Simulates two independent label-query calls (graph:standalone and graph:lane/a)
+    each returning the same issue #641.
+    """
     # Arrange
     from dep_graph.fetch import run_fetch
 
     layout = _layout_file(tmp_path, repos=["Roxabi/lyra"])
+    # Add lane codes so search_labeled_issues queries multiple labels
+    layout_data = json.loads(layout.read_text())
+    layout_data["lanes"] = [{"code": "a", "name": "A", "color": "a", "epic": {}, "order": [], "par_groups": {}, "bands": []}]
+    layout.write_text(json.dumps(layout_data))
+
     cache = tmp_path / "cache.gh.json"
     _patch_gh(monkeypatch)
+
+    call_count = {"label_list": 0}
 
     def fake_run(cmd, *a, **kw):
         cp = MagicMock()
         cp.stderr = ""
         cp.returncode = 0
         joined = " ".join(cmd)
-        # Label-list commands return issue 641 twice (simulating overlap across two label queries)
-        if "issue" in joined and "list" in joined and "--json" in joined:
-            cp.stdout = "[641, 641]"
+
+        # Label-list commands: simulate two independent calls each returning #641
+        if "issue" in joined and "list" in joined and "--json" in joined and "--label" in joined:
+            call_count["label_list"] += 1
+            # Each independent label query returns #641
+            cp.stdout = "[641]"
+        elif "/issues/" in joined and "/dependencies" not in joined:
+            # Issue meta request
+            cp.stdout = json.dumps({"number": 641, "title": "x", "state": "OPEN", "labels": []})
         else:
             cp.stdout = "[]"
         return cp
@@ -117,7 +134,8 @@ def test_dedupes_same_issue_from_two_repos(tmp_path, monkeypatch):
     # Assert — exactly one key for Roxabi/lyra#641 (not duplicated)
     data = json.loads(cache.read_text())
     keys_641 = [k for k in data.get("issues", {}) if k.endswith("#641")]
-    assert len(keys_641) <= 1, f"Duplicate keys for #641: {keys_641}"
+    assert len(keys_641) == 1, f"Expected 1 key for #641, got {len(keys_641)}: {keys_641}"
+    assert call_count["label_list"] >= 2, "Expected at least 2 label-list calls to simulate overlap"
 
 
 def test_extracts_issue_ref_from_dep_response(tmp_path, monkeypatch):

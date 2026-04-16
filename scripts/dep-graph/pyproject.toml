@@ -7,10 +7,7 @@ name = "dep-graph"
 version = "0.1.0"
 description = "GitHub-driven dependency graph generator for Lyra"
 requires-python = ">=3.11"
-dependencies = []
-
-[project.optional-dependencies]
-validate = ["jsonschema>=4.0"]
+dependencies = ["jsonschema>=4.0"]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "jsonschema>=4.26.0"]
@@ -24,3 +21,4 @@ packages = ["dep_graph"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--import-mode=importlib"
+pythonpath = ["."]

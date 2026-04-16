@@ -5,6 +5,15 @@
 
 ---
 
+## Architecture Reference Docs
+
+| Doc | Purpose |
+|-----|---------|
+| [architecture-patterns.md](architecture/architecture-patterns.md) | **Standard patterns** — Clean, Hexagonal, Kernel architecture rules |
+| [target-architecture.md](architecture/target-architecture.md) | **Implementation truth** — Hexagonal/Ports & Adapters as implemented |
+
+---
+
 ## Python-first Paradigm
 
 > Adopted 2026-03-08. All new Roxabi projects follow this model.

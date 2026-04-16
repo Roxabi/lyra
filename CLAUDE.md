@@ -21,6 +21,8 @@ See `docs/ARCHITECTURE.md` for full context.
 | File | Role |
 |------|------|
 | `docs/ARCHITECTURE.md` | Architecture + technical decisions |
+| `docs/architecture/architecture-patterns.md` | **Standard patterns** — Clean, Hexagonal, Kernel rules |
+| `docs/architecture/target-architecture.md` | **Implementation truth** — Hexagonal/Ports & Adapters |
 | `docs/CONFIGURATION.md` | All config files, their purpose, load order, and system vs instance split |
 | `docs/ROADMAP.md` | Roadmap and priorities |
 | `docs/GETTING-STARTED.md` | Machine 1 setup guide |

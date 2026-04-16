@@ -167,3 +167,240 @@ async def test_synthesize_language_none_uses_init_value():
         await svc.synthesize("Hello")  # no language override
 
     assert captured.get("language") == "English"
+
+
+# ---------------------------------------------------------------------------
+# Text normalization for TTS (#627)
+# ---------------------------------------------------------------------------
+
+
+class TestTextNormalization:
+    """Tests for _normalize_text_for_tts — regression tests for #627."""
+
+    @pytest.mark.asyncio
+    async def test_multiline_text_normalized_to_single_line(self) -> None:
+        """Multiline text → newlines replaced with spaces."""
+        captured_text: list[str] = []
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
+
+        converter = _make_ogg_converter()
+        svc = TTSService(TTSConfig(), converter=converter)
+
+        write_minimal_wav(wav_path)
+
+        async def fake_gen(text, **kwargs):
+            captured_text.append(text)
+            write_minimal_wav(wav_path)
+            return make_chunked_result([wav_path])
+
+        with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+            await svc.synthesize("Line one\nLine two\nLine three")
+
+        assert len(captured_text) == 1
+        assert "\n" not in captured_text[0]
+        assert captured_text[0] == "Line one Line two Line three"
+
+    @pytest.mark.asyncio
+    async def test_markdown_bold_stripped(self) -> None:
+        """Markdown bold (**text**) → stripped to plain text."""
+        captured_text: list[str] = []
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
+
+        converter = _make_ogg_converter()
+        svc = TTSService(TTSConfig(), converter=converter)
+
+        write_minimal_wav(wav_path)
+
+        async def fake_gen(text, **kwargs):
+            captured_text.append(text)
+            write_minimal_wav(wav_path)
+            return make_chunked_result([wav_path])
+
+        with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+            await svc.synthesize("This is **bold** text")
+
+        assert captured_text[0] == "This is bold text"
+
+    @pytest.mark.asyncio
+    async def test_markdown_italic_stripped(self) -> None:
+        """Markdown italic (*text*) → stripped to plain text."""
+        captured_text: list[str] = []
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
+
+        converter = _make_ogg_converter()
+        svc = TTSService(TTSConfig(), converter=converter)
+
+        write_minimal_wav(wav_path)
+
+        async def fake_gen(text, **kwargs):
+            captured_text.append(text)
+            write_minimal_wav(wav_path)
+            return make_chunked_result([wav_path])
+
+        with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+            await svc.synthesize("This is *italic* text")
+
+        assert captured_text[0] == "This is italic text"
+
+    @pytest.mark.asyncio
+    async def test_markdown_code_stripped(self) -> None:
+        """Markdown code (`text`) → stripped to plain text."""
+        captured_text: list[str] = []
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
+
+        converter = _make_ogg_converter()
+        svc = TTSService(TTSConfig(), converter=converter)
+
+        write_minimal_wav(wav_path)
+
+        async def fake_gen(text, **kwargs):
+            captured_text.append(text)
+            write_minimal_wav(wav_path)
+            return make_chunked_result([wav_path])
+
+        with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+            await svc.synthesize("Run `npm install` to install")
+
+        assert captured_text[0] == "Run npm install to install"
+
+    @pytest.mark.asyncio
+    async def test_markdown_heading_stripped(self) -> None:
+        """Markdown heading (# text) → stripped."""
+        captured_text: list[str] = []
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
+
+        converter = _make_ogg_converter()
+        svc = TTSService(TTSConfig(), converter=converter)
+
+        write_minimal_wav(wav_path)
+
+        async def fake_gen(text, **kwargs):
+            captured_text.append(text)
+            write_minimal_wav(wav_path)
+            return make_chunked_result([wav_path])
+
+        with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+            await svc.synthesize("## Introduction\nThis is the intro.")
+
+        assert captured_text[0] == "Introduction This is the intro."
+
+    @pytest.mark.asyncio
+    async def test_url_replaced_with_link(self) -> None:
+        """URLs → replaced with 'link' placeholder."""
+        captured_text: list[str] = []
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
+
+        converter = _make_ogg_converter()
+        svc = TTSService(TTSConfig(), converter=converter)
+
+        write_minimal_wav(wav_path)
+
+        async def fake_gen(text, **kwargs):
+            captured_text.append(text)
+            write_minimal_wav(wav_path)
+            return make_chunked_result([wav_path])
+
+        with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+            await svc.synthesize("Check https://example.com for more info")
+
+        assert captured_text[0] == "Check link for more info"
+
+    @pytest.mark.asyncio
+    async def test_markdown_link_text_preserved(self) -> None:
+        """Markdown links [text](url) → text preserved, url stripped."""
+        captured_text: list[str] = []
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
+
+        converter = _make_ogg_converter()
+        svc = TTSService(TTSConfig(), converter=converter)
+
+        write_minimal_wav(wav_path)
+
+        async def fake_gen(text, **kwargs):
+            captured_text.append(text)
+            write_minimal_wav(wav_path)
+            return make_chunked_result([wav_path])
+
+        with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+            await svc.synthesize(
+                "Read the [documentation](https://example.com) for details"
+            )
+
+        assert captured_text[0] == "Read the documentation for details"
+
+    @pytest.mark.asyncio
+    async def test_multiple_spaces_collapsed(self) -> None:
+        """Multiple spaces → collapsed to single space."""
+        captured_text: list[str] = []
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
+
+        converter = _make_ogg_converter()
+        svc = TTSService(TTSConfig(), converter=converter)
+
+        write_minimal_wav(wav_path)
+
+        async def fake_gen(text, **kwargs):
+            captured_text.append(text)
+            write_minimal_wav(wav_path)
+            return make_chunked_result([wav_path])
+
+        with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+            await svc.synthesize("Too    many     spaces")
+
+        assert captured_text[0] == "Too many spaces"
+
+    @pytest.mark.asyncio
+    async def test_complex_markdown_normalized(self) -> None:
+        """Complex markdown with multiple features → clean text."""
+        captured_text: list[str] = []
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
+
+        converter = _make_ogg_converter()
+        svc = TTSService(TTSConfig(), converter=converter)
+
+        write_minimal_wav(wav_path)
+
+        async def fake_gen(text, **kwargs):
+            captured_text.append(text)
+            write_minimal_wav(wav_path)
+            return make_chunked_result([wav_path])
+
+        complex_input = """## Summary
+
+This is **bold** and *italic* text.
+Check `code` and [links](https://example.com).
+Visit https://example.org for more.
+
+Multiple   spaces   here."""
+
+        with patch("voicecli.generate_async", new=AsyncMock(side_effect=fake_gen)):
+            await svc.synthesize(complex_input)
+
+        # Should be clean: no newlines, no markdown, collapsed spaces
+        result = captured_text[0]
+        assert "\n" not in result
+        assert "**" not in result
+        assert "*" not in result
+        assert "`" not in result
+        assert "#" not in result
+        assert "https://" not in result
+        assert "  " not in result  # no double spaces
+        assert result.startswith("Summary")

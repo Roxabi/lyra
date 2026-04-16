@@ -46,7 +46,6 @@ jobs:
           uv sync --frozen
           uv run pytest tests/
 
-<<<<<<< Updated upstream
       - name: Validate dep-graph schema
         working-directory: scripts/dep-graph
         run: |

@@ -1,0 +1,38 @@
+---
+title: Unify resume_count increment call sites
+issue: 601
+status: approved
+tier: F-lite
+date: 2026-04-16
+---
+
+## Problem
+
+The idle-pool reply-to path calls `hub._turn_store.increment_resume_count` directly at 6 sites across `middleware_submit.py` and `message_pipeline.py`. The busy-pool path added in #597 routes through `pool._on_resume_fn` because `hub` is out of scope inside `process_loop`. This callback divergence creates inconsistency and maintenance burden — future changes to resume-count logic must touch both paths separately.
+
+## Who
+
+- **Primary:** Developers maintaining the persistence layer — need single source of truth for resume-count increment logic.
+- **Secondary:** Code reviewers — flagged during #600 review as a cleanup opportunity.
+
+## Constraints
+
+- Must work for both idle-pool (hub in scope) and busy-pool (hub via callback) paths.
+- No behavioral changes — purely internal refactoring.
+- `hub._turn_store` access pattern remains valid; only the call sites move.
+
+## Out of Scope
+
+- Changes to `_turn_store` implementation.
+- Modifications to the busy-pool callback mechanism beyond routing.
+- Any changes to resume-count semantics or values.
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain, concrete refactoring target with no unknowns.
+
+**Signals observed:**
+- 2 files, 6 call sites — bounded surface area
+- Single domain (persistence) — no cross-cutting concerns
+- Goal is extraction, not new architecture
+- Flagged during code review — well-understood context

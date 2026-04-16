@@ -16,7 +16,11 @@ import json
 import re
 from unittest.mock import MagicMock
 
-from dep_graph.fetch import _derive_size_from_labels, _sanitize_milestone
+from dep_graph.fetch import (
+    _derive_size_from_labels,
+    _sanitize_milestone,
+    _sanitize_title,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -100,7 +104,17 @@ def test_dedupes_same_issue_from_two_repos(tmp_path, monkeypatch):
     layout = _layout_file(tmp_path, repos=["Roxabi/lyra"])
     # Add lane codes so search_labeled_issues queries multiple labels
     layout_data = json.loads(layout.read_text())
-    layout_data["lanes"] = [{"code": "a", "name": "A", "color": "a", "epic": {}, "order": [], "par_groups": {}, "bands": []}]
+    layout_data["lanes"] = [
+        {
+            "code": "a",
+            "name": "A",
+            "color": "a",
+            "epic": {},
+            "order": [],
+            "par_groups": {},
+            "bands": [],
+        }
+    ]
     layout.write_text(json.dumps(layout_data))
 
     cache = tmp_path / "cache.gh.json"
@@ -115,13 +129,20 @@ def test_dedupes_same_issue_from_two_repos(tmp_path, monkeypatch):
         joined = " ".join(cmd)
 
         # Label-list commands: simulate two independent calls each returning #641
-        if "issue" in joined and "list" in joined and "--json" in joined and "--label" in joined:
+        if (
+            "issue" in joined
+            and "list" in joined
+            and "--json" in joined
+            and "--label" in joined
+        ):
             call_count["label_list"] += 1
             # Each independent label query returns #641
             cp.stdout = "[641]"
         elif "/issues/" in joined and "/dependencies" not in joined:
             # Issue meta request
-            cp.stdout = json.dumps({"number": 641, "title": "x", "state": "OPEN", "labels": []})
+            cp.stdout = json.dumps(
+                {"number": 641, "title": "x", "state": "OPEN", "labels": []}
+            )
         else:
             cp.stdout = "[]"
         return cp
@@ -134,8 +155,12 @@ def test_dedupes_same_issue_from_two_repos(tmp_path, monkeypatch):
     # Assert — exactly one key for Roxabi/lyra#641 (not duplicated)
     data = json.loads(cache.read_text())
     keys_641 = [k for k in data.get("issues", {}) if k.endswith("#641")]
-    assert len(keys_641) == 1, f"Expected 1 key for #641, got {len(keys_641)}: {keys_641}"
-    assert call_count["label_list"] >= 2, "Expected at least 2 label-list calls to simulate overlap"
+    assert len(keys_641) == 1, (
+        f"Expected 1 key for #641, got {len(keys_641)}: {keys_641}"
+    )
+    assert call_count["label_list"] >= 2, (
+        "Expected at least 2 label-list calls to simulate overlap"
+    )
 
 
 def test_extracts_issue_ref_from_dep_response(tmp_path, monkeypatch):
@@ -351,3 +376,98 @@ def test_derive_size_cap_boundary_exact_16():
 def test_derive_size_cap_boundary_exact_17():
     # Label whose suffix is 17 chars gets the last char truncated.
     assert _derive_size_from_labels(["size:" + "x" * 17]) == "x" * 16
+
+
+# ---------------------------------------------------------------------------
+# _sanitize_title (#745)
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_title_preserves_safe_content():
+    """Normal titles pass through unchanged."""
+    assert _sanitize_title("Add dark mode") == "Add dark mode"
+    assert _sanitize_title("feat(api): new endpoint") == "feat(api): new endpoint"
+    assert _sanitize_title("日本語タイトル") == "日本語タイトル"  # wide chars preserved
+
+
+def test_sanitize_title_strips_c0_control_chars():
+    """C0 control chars (0x00-0x1f) are removed."""
+    assert _sanitize_title("hello\x00world") == "helloworld"
+    assert _sanitize_title("line1\nline2") == "line1line2"
+    assert _sanitize_title("tab\there") == "tabhere"
+
+
+def test_sanitize_title_strips_c1_control_chars():
+    """C1 control chars (0x7f-0x9f) are removed."""
+    assert _sanitize_title("clean\x7f\x80\x9f") == "clean"
+
+
+def test_sanitize_title_strips_bidi_override_chars():
+    """Unicode bidi override chars are removed."""
+    # U+202A LEFT-TO-RIGHT EMBEDDING
+    assert _sanitize_title("hello\u202aworld") == "helloworld"
+    # U+202E RIGHT-TO-LEFT OVERRIDE
+    assert _sanitize_title("hello\u202eworld") == "helloworld"
+    # U+2068 POP DIRECTIONAL ISOLATE
+    assert _sanitize_title("hello\u2068world") == "helloworld"
+
+
+def test_sanitize_title_none_and_empty():
+    """None and empty string return empty string."""
+    assert _sanitize_title(None) == ""
+    assert _sanitize_title("") == ""
+
+
+def test_sanitize_title_preserves_spaces():
+    """Space characters pass through unchanged (not control chars)."""
+    assert _sanitize_title("   ") == "   "
+
+
+def test_sanitize_title_strips_tabs():
+    """Tab characters are C0 control chars and are stripped."""
+    assert _sanitize_title("\t  \t") == "  "  # tabs removed, spaces kept
+
+
+def test_sanitize_title_all_control_chars_returns_empty():
+    """Input consisting entirely of control chars returns empty string."""
+    assert _sanitize_title("\x00\x01\x02\x1f") == ""
+    assert _sanitize_title("\x7f\x80\x9f") == ""
+
+
+def test_sanitize_title_strips_zero_width_chars():
+    """Zero-width Unicode chars are removed."""
+    assert _sanitize_title("hello\u200bworld") == "helloworld"  # ZWSP
+    assert _sanitize_title("hello\ufeffworld") == "helloworld"  # BOM
+
+
+# ---------------------------------------------------------------------------
+# _derive_size_from_labels allowlist (#745)
+# ---------------------------------------------------------------------------
+
+
+def test_derive_size_strips_non_alphanum_dash():
+    """Only alphanumerics and dash pass through."""
+    assert _derive_size_from_labels(["size:F-lite"]) == "F-lite"
+    assert _derive_size_from_labels(["size:F.lite"]) == "Flite"  # dot stripped
+    assert _derive_size_from_labels(["size:F lite"]) == "Flite"  # space stripped
+    assert _derive_size_from_labels(["size:F_lite"]) == "Flite"  # underscore stripped
+
+
+def test_derive_size_all_stripped_returns_none():
+    """If allowlist strips everything, return None."""
+    assert _derive_size_from_labels(["size:!!!"]) is None
+    assert _derive_size_from_labels(["size:   "]) is None
+
+
+def test_derive_size_mixed_chars():
+    """Mixed safe and unsafe chars: only safe kept."""
+    assert _derive_size_from_labels(["size:F-l!i@t#e$"]) == "F-lite"
+    assert _derive_size_from_labels(["size:XS@2024"]) == "XS2024"
+
+
+def test_derive_size_cap_and_allowlist_interaction():
+    """16-char cap applied before allowlist filtering."""
+    # "a!" * 20 = 40 chars after colon, but cap takes first 16
+    # Slice: "a!a!a!a!a!a!a!a" (8 a's + 8 !'s)
+    # Filter: removes all ! → "a" * 8
+    assert _derive_size_from_labels(["size:" + "a!" * 20]) == "a" * 8

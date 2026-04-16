@@ -8,6 +8,7 @@ Extracted from build.py for modularity.
 
 from __future__ import annotations
 
+from collections import deque
 from html import escape
 
 from .keys import format_key, repo_slug
@@ -19,6 +20,110 @@ from .render import (
     display_title,
     render_deps,
 )
+
+
+# ---------------------------------------------------------------------------
+# Topological sort for dependency ordering
+# ---------------------------------------------------------------------------
+
+
+def _topo_sort_issues(
+    issues: list[tuple[str, int, str | None, str | None]],
+    gh_issues: dict,
+) -> list[tuple[str, int, str | None, str | None]]:
+    """Topologically sort issues so dependencies come before dependents.
+
+    Uses Kahn's algorithm. Issues are grouped by (lane_group, lane_code) first,
+    then topologically sorted within each group. Cross-lane deps are ignored
+    for ordering (handled by visual arrows instead).
+    """
+    if not issues:
+        return issues
+
+    # Group by (lane_group, lane_code) for independent topo sorts
+    by_lane: dict[tuple[str | None, str | None], list[tuple[str, int, str | None, str | None]]] = {}
+    for item in issues:
+        repo, num, lane, group = item
+        key = (group, lane)
+        if key not in by_lane:
+            by_lane[key] = []
+        by_lane[key].append(item)
+
+    result: list[tuple[str, int, str | None, str | None]] = []
+
+    # Process lanes in sorted order (by group, then lane)
+    for key in sorted(by_lane.keys(), key=lambda k: (k[0] or "zzz", k[1] or "zzz")):
+        lane_issues = by_lane[key]
+
+        if len(lane_issues) <= 1:
+            result.extend(lane_issues)
+            continue
+
+        # Build issue set for this lane
+        issue_set: set[tuple[str, int]] = {(repo, num) for repo, num, _, _ in lane_issues}
+
+        # Build adjacency: (repo, num) -> list of dependents
+        # and in-degree: (repo, num) -> count of blockers within this lane
+        adj: dict[tuple[str, int], list[tuple[str, int]]] = {}
+        in_degree: dict[tuple[str, int], int] = {}
+
+        for repo, num, _, _ in lane_issues:
+            k = (repo, num)
+            adj[k] = []
+            in_degree[k] = 0
+
+        # Populate edges from blocked_by relationships (within same lane only)
+        for repo, num, _, _ in lane_issues:
+            gh_key = format_key(repo, num)
+            entry = gh_issues.get(gh_key, {})
+            for blocker in entry.get("blocked_by", []):
+                if isinstance(blocker, dict):
+                    blocker_key = (blocker["repo"], blocker["issue"])
+                else:
+                    blocker_key = (repo, blocker)  # legacy: same repo
+                # Only count blockers within this lane
+                if blocker_key in issue_set:
+                    # edge: blocker -> dependent
+                    adj[blocker_key].append((repo, num))
+                    in_degree[(repo, num)] += 1
+
+        # Kahn's algorithm: start with nodes having in_degree 0
+        queue: deque[tuple[str, int]] = deque()
+        for repo, num, _, _ in lane_issues:
+            if in_degree[(repo, num)] == 0:
+                queue.append((repo, num))
+
+        # Sort queue by issue number for deterministic output
+        queue = deque(sorted(queue, key=lambda x: x[1]))
+
+        ordered: list[tuple[str, int, str | None, str | None]] = []
+        issue_map: dict[tuple[str, int], tuple[str, int, str | None, str | None]] = {}
+        for issue_item in lane_issues:
+            issue_map[(issue_item[0], issue_item[1])] = issue_item
+        ordered_set: set[tuple[str, int]] = set()
+
+        while queue:
+            curr_repo, curr_num = queue.popleft()
+            ordered.append(issue_map[(curr_repo, curr_num)])
+            ordered_set.add((curr_repo, curr_num))
+
+            # Process neighbors sorted by issue number for determinism
+            neighbors = sorted(adj[(curr_repo, curr_num)], key=lambda x: x[1])
+            for nbr_repo, nbr_num in neighbors:
+                in_degree[(nbr_repo, nbr_num)] -= 1
+                if in_degree[(nbr_repo, nbr_num)] == 0:
+                    queue.append((nbr_repo, nbr_num))
+
+        # If not all issues were ordered, there's a cycle - append remaining by number
+        if len(ordered) < len(lane_issues):
+            remaining = [
+                item for item in lane_issues if (item[0], item[1]) not in ordered_set
+            ]
+            ordered.extend(sorted(remaining, key=lambda x: x[1]))
+
+        result.extend(ordered)
+
+    return result
 
 # ---------------------------------------------------------------------------
 # Milestone ordering constants
@@ -179,24 +284,12 @@ def _prepare_milestone_rows(  # noqa: C901
             if lane_code:
                 lane_of[(repo, num)] = lane_code
 
-    # Sort issues within each milestone by lane group, then lane code, then issue
-    def sort_key(item: tuple[str, int, str | None, str | None]) -> tuple[int, int, int]:
-        _repo, num, lane, group = item
-        # Sort by group (A=0, B=1, ...), then lane code, then issue number
-        group_idx = ord(group) - ord("A") if group else 99
-        lane_idx = (
-            0
-            if lane is None
-            else ord(lane[0]) * 100 + (int(lane[1:]) if lane[1:].isdigit() else 0)
-        )
-        return (group_idx, lane_idx, num)
-
     milestone_rows: list[dict] = []
     for ms in MILESTONE_ORDER:
         issues = groups.get(ms, [])
         if not issues:
             continue
-        sorted_issues = sorted(issues, key=sort_key)
+        sorted_issues = _topo_sort_issues(issues, gh_issues)
         milestone_rows.append(
             {
                 "milestone": ms,
@@ -208,7 +301,7 @@ def _prepare_milestone_rows(  # noqa: C901
     for ms in sorted(str(m) if m else "" for m in groups.keys()):
         ms_key = None if ms == "" else ms
         if ms_key not in MILESTONE_ORDER:
-            sorted_issues = sorted(groups[ms_key], key=sort_key)
+            sorted_issues = _topo_sort_issues(groups[ms_key], gh_issues)
             milestone_rows.append(
                 {
                     "milestone": ms,

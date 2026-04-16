@@ -56,20 +56,20 @@ SUB_ALLOW[discord-adapter]='"lyra.outbound.discord.>"'
 # + sub on _INBOX.*.* for reply. Uppercase + lowercase forms included because
 # nats-py historically emits lowercase inboxes and NATS subjects are case-sensitive.
 PUB_ALLOW[tts-adapter]='"lyra.voice.tts.heartbeat","lyra.system.ready"'
-SUB_ALLOW[tts-adapter]='"lyra.voice.tts.request.>","_INBOX.>","_inbox.>"'
+SUB_ALLOW[tts-adapter]='"lyra.voice.tts.request","lyra.voice.tts.request.>","_INBOX.>","_inbox.>"'
 
 PUB_ALLOW[stt-adapter]='"lyra.voice.stt.heartbeat","lyra.system.ready"'
-SUB_ALLOW[stt-adapter]='"lyra.voice.stt.request.>","_INBOX.>","_inbox.>"'
+SUB_ALLOW[stt-adapter]='"lyra.voice.stt.request","lyra.voice.stt.request.>","_INBOX.>","_inbox.>"'
 
 # voice-tts: voicecli nats-serve worker on Machine 1 (#689)
 # NB: voicecli.nats.base.AdapterBase subscribes to heartbeat_subject
 #     (no-op callback) in addition to publishing — ACL must allow both.
 PUB_ALLOW[voice-tts]='"lyra.voice.tts.heartbeat","_INBOX.>"'
-SUB_ALLOW[voice-tts]='"lyra.voice.tts.request.>","lyra.voice.tts.heartbeat"'
+SUB_ALLOW[voice-tts]='"lyra.voice.tts.request","lyra.voice.tts.request.>","lyra.voice.tts.heartbeat"'
 
 # voice-stt: voicecli nats-serve worker on Machine 1 (#689)
 PUB_ALLOW[voice-stt]='"lyra.voice.stt.heartbeat","_INBOX.>"'
-SUB_ALLOW[voice-stt]='"lyra.voice.stt.request.>","lyra.voice.stt.heartbeat"'
+SUB_ALLOW[voice-stt]='"lyra.voice.stt.request","lyra.voice.stt.request.>","lyra.voice.stt.heartbeat"'
 
 PUB_ALLOW[llm-worker]='"lyra.llm.health.*"'
 SUB_ALLOW[llm-worker]='"lyra.llm.request"'

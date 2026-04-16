@@ -15,8 +15,8 @@ import logging
 from datetime import UTC, datetime
 from typing import Literal
 
+from lyra.core.stores.turn_store_session import TurnStoreSessionMixin
 from lyra.infrastructure.stores.sqlite_base import SqliteStore
-from lyra.infrastructure.stores.turn_store_session import TurnStoreSessionMixin
 
 from .turn_store_queries import backfill_sessions, get_turns
 

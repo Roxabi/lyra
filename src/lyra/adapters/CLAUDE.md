@@ -26,7 +26,7 @@ iterator and logs a warning); functional voice-channel playback is Discord-only.
 
 ## Non-obvious structure notes
 
-Each platform is split into focused submodules: `{platform}.py` is the facade; concerns are `_inbound`, `_outbound`, `_normalize`, `_formatting`, `_audio`. Shared cross-platform code lives in `_shared.py`, `_shared_audio.py`, `_shared_streaming.py`.
+Each platform is split into focused submodules: `{platform}.py` is the facade; concerns are `_inbound`, `_outbound`, `_normalize`, `_formatting`, `_audio`. Shared cross-platform code lives in `_shared.py`, `_shared_audio.py`, `_shared_streaming.py` (re-export shim), `_shared_streaming_state.py` (state types), `_shared_streaming_emitter.py` (session + callbacks).
 
 `outbound_listener.py` defines a structural protocol — adapters reference it without inheriting. `NatsOutboundListener` satisfies it for the three-process NATS deployment mode.
 
@@ -77,7 +77,7 @@ Inherit this base whenever you add a new platform adapter.
 `send_streaming(original_msg, events, outbound=None)` — provided by the base; creates a
 `StreamingSession` with your `PlatformCallbacks` and runs the shared algorithm.
 
-### PlatformCallbacks fields (`_shared_streaming.py`)
+### PlatformCallbacks fields (`_shared_streaming_emitter.py`)
 
 | Field | Type | Role |
 |-------|------|------|

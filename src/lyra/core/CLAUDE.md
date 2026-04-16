@@ -39,7 +39,10 @@ The `cli_*.py` files handle the Claude CLI subprocess protocol:
 - `cli_streaming.py` — Async I/O layer: `StreamingIterator` handles timeout, EOF, process death
 - `cli_streaming_parser.py` — Pure JSON parsing: `CliStreamingParser` converts NDJSON lines to `LlmEvent` objects (no I/O, fully testable in isolation)
 - `cli_non_streaming.py` — Non-streaming protocol (`read_until_result`, `send_and_read`)
-- `cli_pool.py` — Process pool management (`_ProcessEntry`, `CliPool`)
+- `cli_pool.py` — Process pool management (`_ProcessEntry`, `CliPool`); inherits lifecycle, streaming, session, and worker mixins
+- `cli_pool_lifecycle.py` — `CliPoolLifecycleMixin`: `start`, `stop`, `drain`, `get_reaper_status` (#760)
+- `cli_pool_streaming.py` — `CliPoolStreamingMixin`: `send_streaming`, stale-resume guard (#760)
+- `cli_pool_session.py` — `CliPoolSessionMixin`: TurnStore wiring, CLI session persistence for `--resume`
 
 ## Non-obvious placement decisions
 

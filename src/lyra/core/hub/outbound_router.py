@@ -1,17 +1,11 @@
 """OutboundRouter — unified outbound routing and dispatch coordinator.
 
 Consolidates all dispatch_* methods extracted from Hub (issue #753 Phase 3).
-This class owns the routing logic that selects between dispatcher queue and
-direct adapter fallback, plus TTS integration for voice responses.
+Routes between dispatcher queue and direct adapter fallback.
 
-Architecture:
-- Hub owns adapter_registry, outbound_dispatchers, audio_pipeline, circuit_registry
-- OutboundRouter receives references to these at construction
-- Hub delegates dispatch_* calls to the router
-- PoolContext protocol is satisfied via delegation chain: Pool -> Hub -> Router
-
-TTS dispatch logic is delegated to TtsDispatch (outbound_tts.py), extracted
-per issue #760 for line count management.
+Hub → OutboundRouter delegates dispatch_* calls. TTS logic lives in
+TtsDispatch (outbound_tts.py); audio/attachment logic in AudioDispatch
+(outbound_audio.py). Both extracted per issue #760.
 """
 
 from __future__ import annotations
@@ -25,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..message import InboundMessage, OutboundMessage, Platform, Response
 from ..render_events import TextRenderEvent
+from .outbound_audio import AudioDispatch
 from .outbound_tts import TtsDispatch
 
 if TYPE_CHECKING:
@@ -37,7 +32,7 @@ if TYPE_CHECKING:
     from .outbound_dispatcher import OutboundDispatcher
 
 # Re-export for API preservation
-__all__ = ["OutboundRouter", "TtsDispatch"]
+__all__ = ["AudioDispatch", "OutboundRouter", "TtsDispatch"]
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +71,8 @@ class OutboundRouter:
             tts=tts,
             memory_tasks=memory_tasks,
         )
+        # Audio dispatch helper (extracted per #760)
+        self._audio_dispatch = AudioDispatch(route_outbound=self._route_outbound)
 
     def set_msg_manager(self, msg_manager: "MessageManager | None") -> None:
         """Update message manager reference (called after Hub construction)."""
@@ -173,7 +170,6 @@ class OutboundRouter:
         if isinstance(response, Response) and response.audio:
             await self.dispatch_audio(msg, response.audio)
 
-        # TTS dispatch via helper (extracted per #760)
         if self._tts_dispatch.should_speak(msg, response):
             await self._tts_dispatch.dispatch_tts_for_response(msg, outbound)
 
@@ -199,7 +195,6 @@ class OutboundRouter:
         _voice_done: asyncio.Event | None = None
 
         if _should_speak:
-            # Tee the stream via helper (extracted per #760)
             chunks, _voice_parts, _voice_done = self._tts_dispatch.create_streaming_tee(
                 chunks
             )
@@ -222,10 +217,9 @@ class OutboundRouter:
         if dispatcher is not None:
             dispatcher.enqueue_streaming(msg, chunks, outbound)
             self._last_processed_at = time.monotonic()
-            # Voice TTS: fire deferred task via helper (extracted per #760)
-            # Don't block — the deferred task waits for tee to finish independently.
-            # Blocking on _voice_done.wait() caused pool processor to hang when
-            # dispatcher's scope lock was held by a prior stream (#TTS-fix).
+            # Don't block — deferred TTS waits for tee finish independently.
+            # Blocking on _voice_done.wait() hung pool processor when dispatcher
+            # scope lock was held by a prior stream (#TTS-fix).
             if _should_speak and _voice_done is not None and _voice_parts is not None:
                 self._tts_dispatch.create_deferred_tts_task(
                     msg, _voice_parts, _voice_done
@@ -267,7 +261,7 @@ class OutboundRouter:
                         await _result
             self._last_processed_at = time.monotonic()
 
-        # Voice: synthesize TTS via helper after text collected (extracted per #760)
+        # Voice: synthesize TTS after text collected (fallback path)
         if _should_speak and _voice_parts is not None:
             await self._tts_dispatch.dispatch_tts_from_parts(msg, _voice_parts)
 
@@ -277,12 +271,7 @@ class OutboundRouter:
         attachment: "OutboundAttachment",
     ) -> None:
         """Send an attachment back via the originating adapter."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_attachment(msg, attachment),
-            fallback_fn=lambda a: a.render_attachment(attachment, msg),
-            resource="attachments",
-        )
+        await self._audio_dispatch.dispatch_attachment(msg, attachment)
 
     async def dispatch_audio(
         self,
@@ -290,12 +279,7 @@ class OutboundRouter:
         audio: "OutboundAudio",
     ) -> None:
         """Send an audio voice note back via the originating adapter."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_audio(msg, audio),
-            fallback_fn=lambda a: a.render_audio(audio, msg),
-            resource="audio",
-        )
+        await self._audio_dispatch.dispatch_audio(msg, audio)
 
     async def dispatch_audio_stream(
         self,
@@ -303,12 +287,7 @@ class OutboundRouter:
         chunks: AsyncIterator["OutboundAudioChunk"],
     ) -> None:
         """Stream audio chunks back via the originating adapter."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_audio_stream(msg, chunks),
-            fallback_fn=lambda a: a.render_audio_stream(chunks, msg),
-            resource="audio stream",
-        )
+        await self._audio_dispatch.dispatch_audio_stream(msg, chunks)
 
     async def dispatch_voice_stream(
         self,
@@ -316,9 +295,4 @@ class OutboundRouter:
         chunks: AsyncIterator["OutboundAudioChunk"],
     ) -> None:
         """Stream TTS audio to an active Discord voice session."""
-        await self._route_outbound(
-            msg,
-            enqueue_fn=lambda d: d.enqueue_voice_stream(msg, chunks),
-            fallback_fn=lambda a: a.render_voice_stream(chunks, msg),
-            resource="voice stream",
-        )
+        await self._audio_dispatch.dispatch_voice_stream(msg, chunks)

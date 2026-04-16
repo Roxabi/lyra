@@ -17,7 +17,9 @@ if TYPE_CHECKING:
     from .stores.turn_store import TurnStore
 
 from .agent_config import ModelConfig
+from .cli_pool_lifecycle import CliPoolLifecycleMixin
 from .cli_pool_session import CliPoolSessionMixin
+from .cli_pool_streaming import CliPoolStreamingMixin
 from .cli_pool_worker import (
     _LYRA_ROOT,
     CliPoolWorkerMixin,
@@ -27,9 +29,7 @@ from .cli_protocol import (
     _SESSION_ID_RE,
     CliProtocolOptions,
     CliResult,
-    StreamingIterator,
     send_and_read,
-    send_and_read_stream,
 )
 
 # Re-export private names that tests reference via `from lyra.core.cli_pool import …`
@@ -43,7 +43,12 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 
-class CliPool(CliPoolSessionMixin, CliPoolWorkerMixin):
+class CliPool(  # noqa: E501
+    CliPoolLifecycleMixin,
+    CliPoolStreamingMixin,
+    CliPoolSessionMixin,
+    CliPoolWorkerMixin,
+):
     """Pool of persistent Claude CLI processes (one per pool_id).
 
     Usage::
@@ -93,66 +98,6 @@ class CliPool(CliPoolSessionMixin, CliPoolWorkerMixin):
         # Updated by link_lyra_session() before each send, so the
         # _on_session_update callback can record {lyra_sid → cli_sid}.
         self._lyra_sessions: dict[str, str] = {}
-
-    async def start(self) -> None:
-        """Start the idle reaper background task."""
-        self._reaper_task = asyncio.create_task(self._idle_reaper())
-        log.info("CliPool started (idle_ttl=%ds)", self._idle_ttl)
-
-    def get_reaper_status(self) -> dict[str, bool | float | None]:
-        """Return reaper task status for health monitoring.
-
-        Returns a dict with:
-            - alive: whether the reaper task is running
-            - last_sweep_age: seconds since last sweep, or None
-        """
-        return {
-            "alive": (self._reaper_task is not None and not self._reaper_task.done()),
-            "last_sweep_age": (
-                round(time.monotonic() - self._last_sweep_at, 1)
-                if self._last_sweep_at is not None
-                else None
-            ),
-        }
-
-    async def drain(self, timeout: float = 60.0) -> None:
-        """Wait for all in-flight turns to complete before stopping.
-
-        A turn is considered in-flight when its ``_lock`` is held.  Idle
-        processes (alive but waiting for the next message) are not counted —
-        they are safe to kill immediately.
-        """
-        deadline = asyncio.get_event_loop().time() + timeout
-        while True:
-            inflight = [pid for pid, e in self._entries.items() if e._lock.locked()]
-            if not inflight:
-                return
-            remaining = deadline - asyncio.get_event_loop().time()
-            if remaining <= 0:
-                log.warning(
-                    "CliPool drain timeout — %d turn(s) still in-flight: %s",
-                    len(inflight),
-                    inflight,
-                )
-                return
-            log.info(
-                "CliPool draining — %d turn(s) in-flight, %.0fs remaining…",
-                len(inflight),
-                remaining,
-            )
-            await asyncio.sleep(1.0)
-
-    async def stop(self) -> None:
-        """Stop reaper and kill all processes."""
-        if self._reaper_task:
-            self._reaper_task.cancel()
-            try:
-                await self._reaper_task
-            except asyncio.CancelledError:
-                pass
-        for pool_id in list(self._entries):
-            await self._kill(pool_id)
-        log.info("CliPool stopped")
 
     async def send(  # noqa: C901
         self,
@@ -243,91 +188,6 @@ class CliPool(CliPoolSessionMixin, CliPoolWorkerMixin):
                     return CliResult(error=f"Send failed: {type(exc).__name__}")
 
         return CliResult(error="Failed after stale resume retry")
-
-    # How long to wait after a resumed spawn to detect a stale session.
-    # The CLI exits within ~1ms when a session doesn't exist; 50ms gives
-    # the asyncio child watcher plenty of time to set proc.returncode.
-    _STALE_RESUME_CHECK_DELAY = 0.05
-
-    async def send_streaming(  # noqa: C901
-        self,
-        pool_id: str,
-        message: str,
-        model_config: ModelConfig,
-        system_prompt: str = "",
-    ) -> StreamingIterator:
-        """Send a message and return a streaming iterator for text_delta chunks.
-
-        Locking model: acquire entry._lock → write stdin → release lock →
-        return iterator.  The lock is released before the first chunk is
-        yielded so that concurrent reset() calls do not deadlock.
-        """
-        for _attempt in range(2):  # at most one stale-resume retry
-            entry = self._entries.get(pool_id)
-
-            if entry is None or not entry.is_alive():
-                entry = await self._spawn(pool_id, model_config, system_prompt)
-                if entry is None:
-                    raise RuntimeError("Failed to spawn Claude CLI process")
-            elif entry.system_prompt != system_prompt:
-                log.info(
-                    "[pool:%s] system_prompt changed — respawning (streaming)",
-                    pool_id,
-                )
-                await self._kill(pool_id, preserve_session=False)
-                entry = await self._spawn(pool_id, model_config, system_prompt)
-                if entry is None:
-                    raise RuntimeError("Failed to respawn Claude CLI process")
-            elif entry.model_config != model_config:
-                log.info(
-                    "[pool:%s] model_config mismatch — respawning (streaming)",
-                    pool_id,
-                )
-                await self._kill(pool_id, preserve_session=False)
-                entry = await self._spawn(pool_id, model_config, system_prompt)
-                if entry is None:
-                    raise RuntimeError("Failed to respawn Claude CLI process")
-
-            _pool_id = pool_id
-
-            async def _reset() -> None:
-                await self.reset(_pool_id)
-
-            # Lock: write stdin inside lock, release before returning the
-            # read-only iterator.  This prevents concurrent stdin interleave
-            # while allowing the iterator to be consumed without holding the lock.
-            async with entry._lock:
-                if not entry.is_alive():
-                    raise RuntimeError("Process died before streaming send")
-                iterator = await send_and_read_stream(
-                    entry,
-                    message,
-                    pool_id,
-                    pool_reset_fn=_reset,
-                    default_timeout=self._default_timeout,
-                    opts=self._protocol_opts,
-                )
-
-            # Stale resume guard: if this process was spawned with --resume,
-            # briefly yield to let the event loop process a potential child-exit
-            # signal.  The CLI exits in ~1ms when the session doesn't exist.
-            if _attempt == 0 and entry.resumed_from and entry.turn_count == 0:
-                await asyncio.sleep(self._STALE_RESUME_CHECK_DELAY)
-                if not entry.is_alive():
-                    log.warning(
-                        "[pool:%s] stale resume (session %s) — retrying"
-                        " without --resume (streaming)",
-                        pool_id,
-                        entry.resumed_from,
-                    )
-                    await self._kill(pool_id, preserve_session=False)
-                    continue
-
-            entry.turn_count += 1
-            entry.last_activity = time.time()
-            return iterator
-
-        raise RuntimeError("Failed after stale resume retry")
 
     def is_alive(self, pool_id: str) -> bool:
         """Return True if a live process exists for pool_id."""

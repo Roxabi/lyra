@@ -3,37 +3,33 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable, Coroutine
-from typing import TYPE_CHECKING, Any
-
-from lyra.errors import ProviderError
+from typing import TYPE_CHECKING
 
 from ..agent import AgentBase
 from ..authenticator import Authenticator
 from ..bus import Bus
 from ..identity import Identity
 from ..inbound_bus import LocalBus
-from ..message import InboundMessage, OutboundMessage, Platform, Response
+from ..message import InboundMessage, Platform
 from ..pool import Pool
 from ..tts_dispatch import AudioPipeline
+from .hub_circuit_breaker import HubCircuitBreakerMixin
+from .hub_dispatch import HubDispatchMixin
+from .hub_pool_delegation import HubPoolDelegationMixin
 from .hub_protocol import (  # noqa: F401 — public re-export
     Binding,
     ChannelAdapter,
     RoutingKey,
 )
 from .hub_rate_limit import RateLimiter
+from .hub_shutdown import HubShutdownMixin
 from .identity_resolver import IdentityResolver
-from .message_pipeline import (  # noqa: F401 — public re-export
-    Action,
-    PipelineResult,
-)
 from .middleware import build_default_pipeline
 from .outbound_router import OutboundRouter
 from .pool_manager import PoolManager
 
 if TYPE_CHECKING:
     from collections import deque
-    from collections.abc import AsyncIterator
 
     from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
@@ -42,9 +38,7 @@ if TYPE_CHECKING:
     from ..circuit_breaker import CircuitRegistry
     from ..cli_pool import CliPool
     from ..memory import MemoryManager
-    from ..message import OutboundAttachment, OutboundAudio, OutboundAudioChunk
     from ..messages import MessageManager
-    from ..render_events import RenderEvent
     from ..stores.message_index import MessageIndex
     from ..stores.pairing import PairingManager
     from ..stores.prefs_store import PrefsStore
@@ -55,18 +49,16 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class Hub:
+class Hub(
+    HubShutdownMixin, HubCircuitBreakerMixin, HubPoolDelegationMixin, HubDispatchMixin
+):
     """Central hub: Bus + OutboundDispatchers + adapter registry + pools."""
 
-    # Class-level defaults used directly in tests and when Hub() is constructed
-    # without config.  Production values come from [hub] in config.toml via
-    # bootstrap.config._load_hub_config().
+    # Class-level defaults; production values come from [hub] in config.toml.
     BUS_SIZE = 100
     RATE_LIMIT = 20
     RATE_WINDOW = 60
     POOL_TTL: float = 604800.0  # 7 days
-
-    # Class-level defaults for pool and bus config.
     MAX_SDK_HISTORY = 50  # [pool] max_sdk_history
     SAFE_DISPATCH_TIMEOUT: float = 10.0  # [pool] safe_dispatch_timeout
     STAGING_MAXSIZE = 500  # [inbound_bus] staging_maxsize
@@ -107,12 +99,12 @@ class Hub:
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
         self.agent_registry: dict[str, AgentBase] = {}
         self.bindings: dict[RoutingKey, Binding] = {}
-        self.circuit_registry = circuit_registry
-        self._msg_manager = msg_manager
+        self.circuit_registry: CircuitRegistry | None = circuit_registry
+        self._msg_manager: MessageManager | None = msg_manager
         self._pairing_manager = pairing_manager
         self._message_index: MessageIndex | None = None
         self._stt: STTProtocol | None = stt
-        self._tts_value: TtsProtocol | None = tts  # Private storage for _tts property
+        self._tts_value: TtsProtocol | None = tts
         self._pool_ttl = pool_ttl
         self._debounce_ms = debounce_ms
         self._cancel_on_new_message = cancel_on_new_message
@@ -130,17 +122,12 @@ class Hub:
         self._event_bus: PipelineEventBus | None = event_bus
         self._pool_manager = PoolManager(self)
         self._audio_pipeline = AudioPipeline(self)
-        # C3: per-(platform, bot_id) authenticator registry — Hub is the trust authority
         self._authenticators: dict[tuple[Platform, str], Authenticator] = {}
         self._alias_store: IdentityAliasStore | None = None
-        # Identity resolver: pure logic, no I/O
         self._identity_resolver = IdentityResolver(
             authenticators=self._authenticators,
             bindings=self.bindings,
         )
-        # Outbound router: unified dispatch coordinator (issue #753 Phase 3)
-        # Pass dict references (mutable) so adapters/dispatchers added after
-        # construction are visible to the router.
         self._outbound_router = OutboundRouter(
             adapters=self.adapter_registry,
             dispatchers=self.outbound_dispatchers,
@@ -153,17 +140,14 @@ class Hub:
 
     @property
     def _last_processed_at(self) -> float | None:
-        """Delegate to OutboundRouter for backward compatibility."""
         return self._outbound_router.last_processed_at
 
     @property
     def _tts(self) -> "TtsProtocol | None":
-        """TTS service, synced with OutboundRouter."""
         return self._tts_value
 
     @_tts.setter
     def _tts(self, value: "TtsProtocol | None") -> None:
-        """Update TTS on both Hub and OutboundRouter."""
         self._tts_value = value
         self._outbound_router.set_tts(value)
 
@@ -202,7 +186,6 @@ class Hub:
 
     def set_alias_store(self, store: IdentityAliasStore) -> None:
         self._alias_store = store
-        # Inject into memory manager if present
         if self._memory is not None and hasattr(self._memory, "set_alias_store"):
             self._memory.set_alias_store(store)
 
@@ -228,33 +211,22 @@ class Hub:
     def register_authenticator(
         self, platform: Platform, bot_id: str, auth: Authenticator
     ) -> None:
-        """Register the Authenticator for a (platform, bot_id) pair.
-
-        Called during bootstrap wiring. The Hub is the trust authority — adapters
-        send raw identity fields; trust is resolved here (C3).
-        """
+        """Register the Authenticator for a (platform, bot_id) pair (C3)."""
         self._authenticators[(platform, bot_id)] = auth
 
     def _get_authenticator(
         self, platform: Platform, bot_id: str
     ) -> "Authenticator | None":
-        """Return the registered Authenticator for (platform, bot_id), or None."""
         return self._authenticators.get((platform, bot_id))
 
     def resolve_identity(
         self, user_id: str | None, platform: str, bot_id: str
     ) -> Identity:
-        """Resolve identity for a user on a given (platform, bot_id).
-
-        Delegates to IdentityResolver.
-        """
+        """Resolve identity for a user on a given (platform, bot_id)."""
         return self._identity_resolver.resolve_identity(user_id, platform, bot_id)
 
     def _resolve_message_trust(self, msg: InboundMessage) -> InboundMessage:
-        """Re-resolve trust level on the Hub side (C3 — trust re-resolution).
-
-        Delegates to IdentityResolver.
-        """
+        """Re-resolve trust level on the Hub side (C3 — trust re-resolution)."""
         return self._identity_resolver.resolve_message_trust(msg)
 
     def register_binding(
@@ -283,23 +255,8 @@ class Hub:
         )
 
     def resolve_binding(self, msg: InboundMessage) -> Binding | None:
-        """Resolve binding: exact key, then wildcard fallback, else None.
-
-        Delegates to IdentityResolver. See IdentityResolver.resolve_binding for details.
-        """
+        """Resolve binding: exact key, then wildcard fallback, else None."""
         return self._identity_resolver.resolve_binding(msg)
-
-    def get_or_create_pool(self, pool_id: str, agent_name: str) -> Pool:
-        return self._pool_manager.get_or_create_pool(pool_id, agent_name)
-
-    async def flush_pool(self, pool_id: str, reason: str = "end") -> None:
-        await self._pool_manager.flush_pool(pool_id, reason)
-
-    def set_debounce_ms(self, ms: int) -> None:
-        self._pool_manager.set_debounce_ms(ms)
-
-    def set_cancel_on_new_message(self, enabled: bool) -> None:
-        self._pool_manager.set_cancel_on_new_message(enabled)
 
     def get_agent(self, name: str) -> AgentBase | None:
         return self.agent_registry.get(name)
@@ -325,140 +282,6 @@ class Hub:
     def _is_rate_limited(self, msg: InboundMessage) -> bool:
         return self._rate_limiter.is_limited(msg)
 
-    # -----------------------------------------------------------------------
-    # Outbound dispatch delegation (issue #753 Phase 3)
-    # -----------------------------------------------------------------------
-
-    async def _route_outbound(
-        self,
-        msg: InboundMessage,
-        enqueue_fn: Callable[["OutboundDispatcher"], None],
-        fallback_fn: Callable[["ChannelAdapter"], Coroutine[Any, Any, None]],
-        *,
-        resource: str = "response",
-    ) -> None:
-        """Core outbound routing. Delegates to OutboundRouter."""
-        await self._outbound_router._route_outbound(
-            msg, enqueue_fn, fallback_fn, resource=resource
-        )
-
-    async def dispatch_response(
-        self,
-        msg: InboundMessage,
-        response: Response | OutboundMessage,
-    ) -> None:
-        """Send response via originating adapter. Delegates to OutboundRouter."""
-        await self._outbound_router.dispatch_response(msg, response)
-
-    async def dispatch_streaming(
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator["RenderEvent"],
-        outbound: OutboundMessage | None = None,
-    ) -> None:
-        """Stream response via originating adapter. Delegates to OutboundRouter."""
-        await self._outbound_router.dispatch_streaming(msg, chunks, outbound)
-
-    async def dispatch_attachment(
-        self,
-        msg: InboundMessage,
-        attachment: "OutboundAttachment",
-    ) -> None:
-        """Send attachment via originating adapter. Delegates to OutboundRouter."""
-        await self._outbound_router.dispatch_attachment(msg, attachment)
-
-    async def dispatch_audio(
-        self,
-        msg: InboundMessage,
-        audio: "OutboundAudio",
-    ) -> None:
-        """Send audio via originating adapter. Delegates to OutboundRouter."""
-        await self._outbound_router.dispatch_audio(msg, audio)
-
-    async def dispatch_audio_stream(
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator["OutboundAudioChunk"],
-    ) -> None:
-        """Stream audio via originating adapter. Delegates to OutboundRouter."""
-        await self._outbound_router.dispatch_audio_stream(msg, chunks)
-
-    async def dispatch_voice_stream(
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator["OutboundAudioChunk"],
-    ) -> None:
-        """Stream voice via Discord session. Delegates to OutboundRouter."""
-        await self._outbound_router.dispatch_voice_stream(msg, chunks)
-
-    # -----------------------------------------------------------------------
-    # Circuit breaker integration
-    # -----------------------------------------------------------------------
-
-    async def circuit_breaker_drop(self, msg: InboundMessage) -> bool:
-        """Return True if the circuit is open and a fast-fail reply was sent."""
-        if self.circuit_registry is None:
-            return False
-        cb = self.circuit_registry.get("anthropic")
-        if cb is None or not cb.is_open():
-            return False
-        status = cb.get_status()
-        retry_secs = int(status.retry_after or 0)
-        _retry_str = str(retry_secs)
-        _unavail = (
-            self._msg_manager.get("unavailable", retry_secs=_retry_str)
-            if self._msg_manager
-            else f"Lyra is currently unavailable. Please try again in {retry_secs}s."
-        )
-        try:
-            await self.dispatch_response(msg, Response(content=_unavail))
-        except Exception as exc:
-            log.exception("dispatch_response failed for fast-fail reply: %s", exc)
-        return True
-
-    def record_circuit_success(self) -> None:
-        if self.circuit_registry is not None:
-            for name in ("anthropic", "hub"):
-                cb = self.circuit_registry.get(name)
-                if cb is not None:
-                    cb.record_success()
-
-    def record_circuit_failure(self, exc: BaseException) -> None:
-        if self.circuit_registry is not None:
-            _hub_cb = self.circuit_registry.get("hub")
-            if _hub_cb is not None:
-                _hub_cb.record_failure()
-            if isinstance(exc, ProviderError):
-                _ant_cb = self.circuit_registry.get("anthropic")
-                if _ant_cb is not None:
-                    _ant_cb.record_failure()
-
-    async def _dispatch_pipeline_result(
-        self,
-        msg: InboundMessage,
-        result: PipelineResult,
-    ) -> None:
-        """Dispatch a pipeline result: send command response or submit to pool."""
-        if result.action == Action.COMMAND_HANDLED:
-            if result.response and (result.response.content or result.response.audio):
-                if result.response.audio:
-                    try:
-                        await self.dispatch_audio(msg, result.response.audio)
-                    except Exception as exc:
-                        log.exception("dispatch_audio() failed: %s", exc)
-                if result.response.content:
-                    try:
-                        await self.dispatch_response(msg, result.response)
-                    except Exception as exc:
-                        log.exception("dispatch_response() failed: %s", exc)
-            else:
-                log.debug(
-                    "command returned empty response for msg id=%s — skipping dispatch",
-                    msg.id,
-                )
-        elif result.action == Action.SUBMIT_TO_POOL and result.pool:
-            result.pool.submit(result.msg if result.msg is not None else msg)
-
     async def run(self) -> None:
         """Hub bus consumer loop. Runs until cancelled."""
         pipeline = build_default_pipeline(self, event_bus=self._event_bus)
@@ -473,70 +296,3 @@ class Hub:
                 await self._dispatch_pipeline_result(msg, result)
             finally:
                 self.inbound_bus.task_done()
-
-    async def notify_shutdown_inflight(self, active_pool_ids: list[str]) -> None:
-        """Notify users of in-flight requests that are about to be killed.
-
-        Called just before cli_pool.stop() during graceful shutdown.
-        Fire-and-forget with a 3s total timeout so it never blocks teardown.
-        """
-        from .outbound_errors import try_notify_user
-
-        _RESTART_MSG = (
-            "\u26a0\ufe0f I was restarted mid-response"
-            " \u2014 please resend your message."
-        )
-        _NOTIFY_TIMEOUT = 3.0
-
-        async def _notify_one(pool_id: str) -> None:
-            pool = self.pools.get(pool_id)
-            if pool is None or pool._last_msg is None:
-                return
-            if pool.is_idle:
-                # Subprocess alive but not processing — no in-flight turn to warn about.
-                return
-            msg = pool._last_msg
-            platform_str = str(msg.platform)
-            try:
-                platform = Platform(platform_str)
-            except ValueError:
-                return
-            adapter = self.adapter_registry.get((platform, msg.bot_id))
-            if adapter is None:
-                return
-            circuit = (
-                self.circuit_registry.get(platform_str)
-                if self.circuit_registry is not None
-                else None
-            )
-            await try_notify_user(
-                platform_str, adapter, msg, _RESTART_MSG, circuit=circuit
-            )
-
-        tasks = [asyncio.create_task(_notify_one(pid)) for pid in active_pool_ids]
-        if tasks:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=_NOTIFY_TIMEOUT,
-                )
-            except asyncio.TimeoutError:
-                log.warning(
-                    "notify_shutdown_inflight: timed out after %.1fs"
-                    " (%d pools pending)",
-                    _NOTIFY_TIMEOUT,
-                    len(active_pool_ids),
-                )
-
-    async def shutdown(self) -> None:
-        """Flush all live pools, drain pending memory tasks, close memory DB."""
-        for pool_id in list(self._pool_manager.pools.keys()):
-            await self._pool_manager.flush_pool(pool_id, "shutdown")
-        if self._memory_tasks:
-            await asyncio.gather(*self._memory_tasks, return_exceptions=True)
-        if self._memory is not None:
-            await self._memory.close()
-        if self._turn_store is not None:
-            await self._turn_store.close()
-        if self._message_index is not None:
-            await self._message_index.close()

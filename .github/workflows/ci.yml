@@ -53,6 +53,7 @@ jobs:
           # TODO: Add `uv run dep-graph validate` once layout.json is in repo
 
   integration:
+    needs: [ci]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

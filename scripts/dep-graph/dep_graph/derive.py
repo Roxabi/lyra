@@ -12,8 +12,8 @@ derives:
 Design:
   - Only in-lane edges are used for topo sort (cross-lane blocked_by is ignored
     for ordering, but still rendered as arrows in build.py).
-  - Open issues only are placed; closed issues are excluded from order/groups
-    but remain in gh_issues for status rendering when referenced.
+  - Both open and closed issues are included in order; closed issues render as
+    `done` cards in-lane for done-styling.
   - Topological cycles are logged as warnings and resolved by falling back to
     issue-number sort within the cycle.
   - The primary_repo is used to format IssueRef dicts.

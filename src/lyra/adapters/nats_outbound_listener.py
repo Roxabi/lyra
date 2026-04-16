@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import logging
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from nats.aio.client import Client as NATS
-from nats.aio.msg import Msg
 
 from lyra.adapters._inbound_cache import InboundCache
+from lyra.adapters.nats_envelope_handlers import handle_raw_message
 from lyra.adapters.nats_stream_decoder import (
     decode_stream_events,
     run_reaper_loop,
@@ -20,17 +19,9 @@ from lyra.adapters.nats_stream_decoder import (
 from lyra.adapters.nats_stream_decoder import (
     handle_stream_error as _handle_stream_error_impl,
 )
-from lyra.core.message import (
-    SCHEMA_VERSION_OUTBOUND_MESSAGE,
-    InboundMessage,
-    OutboundAttachment,
-    OutboundAudio,
-    OutboundMessage,
-    Platform,
-)
+from lyra.core.message import InboundMessage, OutboundMessage, Platform
 from roxabi_nats._serialize import deserialize_dict as _deserialize_dict
 from roxabi_nats._validate import validate_nats_token
-from roxabi_nats._version_check import check_schema_version
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
@@ -84,15 +75,6 @@ class NatsOutboundListener:
             if key.startswith(prefix)
         )
 
-    def _check_outbound_version(self, payload: dict, envelope_name: str) -> bool:
-        return check_schema_version(
-            payload,
-            envelope_name=envelope_name,
-            expected=SCHEMA_VERSION_OUTBOUND_MESSAGE,
-            subject=self._subject,
-            counter=self._version_mismatch_drops,
-        )
-
     async def start(self) -> None:
         """Subscribe to the outbound NATS subject."""
         self._sub = await self._nc.subscribe(
@@ -117,152 +99,13 @@ class NatsOutboundListener:
         self._stream_original_msgs.clear()
         self._stream_outbound.clear()
 
-    async def _handle(self, msg: Msg) -> None:
-        try:
-            data = json.loads(msg.data)
-        except Exception:
-            log.warning("NatsOutboundListener: failed to decode message")
-            return
-        msg_type = data.get("type")
-        if msg_type == "send":
-            await self._handle_send(data)
-        elif msg_type == "stream_start":
-            self._handle_stream_start(data)
-        elif msg_type == "stream_error":
-            self._handle_stream_error(data)
-        elif msg_type == "attachment":
-            await self._handle_attachment(data)
-        elif msg_type == "audio":
-            await self._handle_audio(data)
-        elif "stream_id" in data and "seq" in data:
-            await self._handle_chunk(data)
-        else:
-            log.warning("NatsOutboundListener: unknown envelope type=%r", msg_type)
-
-    async def _handle_send(self, data: dict) -> None:
-        resolved = self._cache.resolve(data, "send")
-        if resolved is None:
-            return
-        stream_id, original_msg = resolved
-        outbound_data = data.get("outbound")
-        if outbound_data is None:
-            log.warning("NatsOutboundListener: missing 'outbound' key in send envelope")
-            return
-        if not self._check_outbound_version(outbound_data, "OutboundMessage"):
-            return
-        try:
-            outbound = _deserialize_dict(outbound_data, OutboundMessage)
-        except Exception:
-            log.warning("NatsOutboundListener: failed to deserialize outbound message")
-            return
-        await self._adapter.send(original_msg, outbound)
-        self._cache.pop(stream_id)
-
-    async def _handle_attachment(self, data: dict) -> None:
-        resolved = self._cache.resolve(data, "attachment")
-        if resolved is None:
-            return
-        stream_id, original_msg = resolved
-        attachment_data = data.get("attachment")
-        if attachment_data is None:
-            log.warning("NatsOutboundListener: missing 'attachment' key in envelope")
-            return
-        if not self._check_outbound_version(attachment_data, "OutboundAttachment"):
-            return
-        try:
-            attachment = _deserialize_dict(attachment_data, OutboundAttachment)
-        except Exception:
-            log.warning("NatsOutboundListener: failed to deserialize attachment")
-            return
-        await self._adapter.render_attachment(attachment, original_msg)
-        self._cache.pop(stream_id)
-
-    async def _handle_audio(self, data: dict) -> None:
-        resolved = self._cache.resolve(data, "audio")
-        if resolved is None:
-            return
-        stream_id, original_msg = resolved
-        audio_data = data.get("audio")
-        if audio_data is None:
-            log.warning("NatsOutboundListener: missing 'audio' key in envelope")
-            return
-        try:
-            audio = _deserialize_dict(audio_data, OutboundAudio)
-        except Exception:
-            log.warning("NatsOutboundListener: failed to deserialize audio")
-            return
-        await self._adapter.render_audio(audio, original_msg)
-        self._cache.pop(stream_id)
-
-    def _handle_stream_start(self, data: dict) -> None:
-        """Store outbound metadata for a streaming session."""
-        stream_id = data.get("stream_id")
-        outbound_data = data.get("outbound")
-        if stream_id is None or outbound_data is None:
-            return
-        if not self._check_outbound_version(outbound_data, "OutboundMessage"):
-            return
-        if len(self._stream_outbound) >= _MAX_STREAMS:
-            log.warning(
-                "NatsOutboundListener: _stream_outbound full"
-                " (%d entries), dropping stream_id=%r",
-                _MAX_STREAMS,
-                stream_id,
-            )
-            return
-        try:
-            self._stream_outbound[stream_id] = _deserialize_dict(
-                outbound_data, OutboundMessage
-            )
-            raw_orig = data.get("original_msg")  # bounded by _MAX_STREAMS guard above
-            if raw_orig is not None:
-                self._stream_original_msgs[stream_id] = raw_orig
-        except Exception:
-            log.warning("NatsOutboundListener: failed to deserialize stream outbound")
+    async def _handle(self, msg: Any) -> None:
+        """Dispatch raw NATS message to envelope handlers."""
+        await handle_raw_message(self, msg)
 
     def _handle_stream_error(self, data: dict) -> None:
-        """Dispatch to the stream_error handler in _nats_outbound_stream."""
+        """Dispatch to the stream_error handler in nats_stream_decoder."""
         _handle_stream_error_impl(self, data)
-
-    async def _handle_chunk(self, data: dict) -> None:
-        stream_id = data.get("stream_id")
-        if stream_id is None:
-            log.warning("NatsOutboundListener: chunk envelope missing stream_id")
-            return
-        if stream_id in self._terminated_streams:
-            log.warning(
-                "NatsOutboundListener: chunk rejected for terminated stream_id=%r",
-                stream_id,
-            )
-            return
-        at_limit = len(self._stream_tasks) >= _MAX_STREAMS
-        if stream_id not in self._stream_tasks and at_limit:
-            log.warning(
-                "NatsOutboundListener: _stream_tasks full"
-                " (%d streams), dropping stream_id=%r",
-                _MAX_STREAMS,
-                stream_id,
-            )
-            return
-        q = self._stream_queues.setdefault(
-            stream_id,
-            asyncio.Queue(maxsize=_MAX_QUEUE_SIZE),
-        )
-        if stream_id in self._cache:
-            self._cache.touch(stream_id)
-        try:
-            q.put_nowait(data)
-        except asyncio.QueueFull:
-            log.warning(
-                "NatsOutboundListener: stream queue full"
-                " for stream_id=%r, dropping chunk",
-                stream_id,
-            )
-            return
-        if stream_id not in self._stream_tasks:
-            self._stream_tasks[stream_id] = asyncio.create_task(
-                self._drain_stream(stream_id, q)
-            )
 
     async def _drain_stream(self, stream_id: str, q: asyncio.Queue[dict]) -> None:
         """Drain a stream queue and call adapter.send_streaming()."""

@@ -7,6 +7,8 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
+from lyra.core.agent_refiner_stages import build_system_prompt, extract_patch
+
 if TYPE_CHECKING:
     from lyra.core.agent_models import AgentRow
     from lyra.core.stores.agent_store import AgentStore
@@ -213,7 +215,7 @@ class AgentRefiner:
         driver = self._driver or self._resolve_driver()
         ctx = self.read_profile()
 
-        system = self._build_system_prompt(ctx)
+        system = build_system_prompt(ctx)
         messages: list[dict[str, Any]] = []
 
         # Initial greeting
@@ -244,7 +246,7 @@ class AgentRefiner:
 
             # Only extract patch when operator explicitly confirmed
             if waiting_for_confirmation:
-                patch = self._extract_patch(response)
+                patch = extract_patch(response, RefinementPatch)
                 if patch is not None:
                     return patch
 
@@ -277,71 +279,6 @@ class AgentRefiner:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _build_system_prompt(ctx: RefinementContext) -> str:
-        lines = [
-            "You are an AI assistant helping an operator refine an AI agent profile.",
-            "",
-            f"Current profile for agent '{ctx.agent_name}':",
-            f"  model: {ctx.model}",
-        ]
-        if ctx.persona_json:
-            try:
-                p = json.loads(ctx.persona_json)
-                identity = p.get("identity", {})
-                if identity.get("display_name"):
-                    lines.append(f"  display_name: {identity['display_name']}")
-                if identity.get("role"):
-                    lines.append(f"  role: {identity['role']}")
-            except Exception:  # noqa: BLE001
-                pass
-        if ctx.voice_json:
-            try:
-                lines.append(f"  voice: {json.loads(ctx.voice_json)}")
-            except Exception:  # noqa: BLE001
-                pass
-        lines.extend(
-            [
-                f"  plugins: {ctx.plugins}",
-                f"  passthroughs: {ctx.passthroughs}",
-                "",
-                "Your job:",
-                "1. Present the current profile in plain language.",
-                "2. Ask what the operator would like to change.",
-                "3. Propose specific, concrete field updates.",
-                "4. When the operator confirms changes (says 'yes', 'confirm',"
-                " or 'done'),",
-                "   output a summary followed by a JSON patch block:",
-                "   <<PATCH>>",
-                '   {"field_name": "new_value"}',
-                "   <<END_PATCH>>",
-                "",
-                "Valid patchable AgentRow fields: model, persona_json,",
-                "voice_json, patterns_json, passthroughs_json,",
-                "plugins_json, fallback_language, tools_json, max_turns, streaming,",
-                "memory_namespace, workspaces_json, commands_json.",
-                "",
-                "JSON field values must be valid strings"
-                " (JSON arrays/objects as JSON strings).",
-                "Be specific, concise, and helpful.",
-            ]
-        )
-        return "\n".join(lines)
-
-    @staticmethod
-    def _extract_patch(text: str) -> RefinementPatch | None:
-        """Extract <<PATCH>>...<<END_PATCH>> block from LLM response."""
-        if "<<PATCH>>" not in text or "<<END_PATCH>>" not in text:
-            return None
-        try:
-            raw = text.split("<<PATCH>>", 1)[1].split("<<END_PATCH>>", 1)[0].strip()
-            fields = json.loads(raw)
-            if not isinstance(fields, dict):
-                return None
-            return RefinementPatch(fields=fields)
-        except (json.JSONDecodeError, IndexError, ValueError):
-            return None
 
     def _resolve_driver(self) -> LlmProvider:
         """Auto-detect LLM provider from environment."""

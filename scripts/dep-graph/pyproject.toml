@@ -13,7 +13,7 @@ dependencies = []
 validate = ["jsonschema>=4.0"]
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "jsonschema>=4.0"]
 
 [project.scripts]
 dep-graph = "dep_graph.cli:main"

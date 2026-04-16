@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.stores.identity_alias_store import IdentityAliasStore
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

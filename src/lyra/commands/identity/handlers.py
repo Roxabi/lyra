@@ -6,8 +6,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from lyra.core.message import InboundMessage, Response
-from lyra.core.stores.identity_alias_store import IdentityAliasStore
 from lyra.core.trust import TrustLevel
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 if TYPE_CHECKING:
     from lyra.core.pool import Pool

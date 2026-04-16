@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from lyra.core.authenticator import Authenticator
-from lyra.core.stores.identity_alias_store import IdentityAliasStore
 from lyra.core.trust import TrustLevel
 from lyra.infrastructure.stores.auth_store import AuthStore
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

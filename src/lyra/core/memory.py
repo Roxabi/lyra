@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from roxabi_vault import AsyncMemoryDB
 
 if TYPE_CHECKING:
-    from lyra.core.stores.identity_alias_store import IdentityAliasStore
+    from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 from lyra.core.memory_freshness import age_str, is_stale
 from lyra.core.memory_schema import apply_schema_compat

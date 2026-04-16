@@ -343,7 +343,7 @@ def _render_epic_banner(epic: dict, gh_issues: dict) -> str:
     defer_class = " defer" if epic.get("defer") else ""
     return (
         f'<div class="epic-banner{defer_class}">'
-        f'<span>{escape(label)}</span>{tag_html}'
+        f"<span>{escape(label)}</span>{tag_html}"
         f"</div>"
     )
 
@@ -518,10 +518,7 @@ def render_milestone_row(  # noqa: C901, PLR0913, PLR0915
                     inner = f'<div class="lane-sub-cards">\n{inner}\n</div>'
 
                 sub_cols_html.append(
-                    f'<div class="lane-sub-col">\n'
-                    f"{sub_header}\n"
-                    f"{inner}\n"
-                    f"</div>"
+                    f'<div class="lane-sub-col">\n{sub_header}\n{inner}\n</div>'
                 )
 
             sub_cols = "\n".join(sub_cols_html)
@@ -571,10 +568,7 @@ def render_milestone_row(  # noqa: C901, PLR0913, PLR0915
                 inner = f'<div class="lane-col-cards">\n{inner}\n</div>'
 
             columns_html.append(
-                f'<div class="lane-col">\n'
-                f"{col_header}\n"
-                f"{inner}\n"
-                f"</div>"
+                f'<div class="lane-col">\n{col_header}\n{inner}\n</div>'
             )
 
     columns = "\n".join(columns_html)

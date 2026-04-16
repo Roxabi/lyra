@@ -11,8 +11,8 @@ import pytest
 from lyra.commands.identity.handlers import cmd_link, cmd_unlink
 from lyra.core.message import InboundMessage
 from lyra.core.pool import Pool
-from lyra.core.stores.identity_alias_store import IdentityAliasStore
 from lyra.core.trust import TrustLevel
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 # ---------------------------------------------------------------------------
 # Helpers

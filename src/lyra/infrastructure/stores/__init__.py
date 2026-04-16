@@ -7,6 +7,7 @@ from lyra.infrastructure.stores.credential_store import (
     CredentialStore,
     LyraKeyring,
 )
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.sqlite_base import SqliteStore
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "AuthStore",
     "BotSecretRow",
     "CredentialStore",
+    "IdentityAliasStore",
     "LyraKeyring",
     "SqliteStore",
 ]

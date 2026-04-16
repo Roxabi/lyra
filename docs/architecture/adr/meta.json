@@ -45,6 +45,7 @@
     "045-roxabi-nats-sdk-uv-workspace-extraction",
     "046-nkey-provisioning-declarative-authconf",
     "047-nats-connector-ownership-pattern",
-    "048-lyra-infrastructure-layer-for-persistence"
+    "048-lyra-infrastructure-layer-for-persistence",
+    "049-roxabi-contracts-shared-schema-package"
   ]
 }

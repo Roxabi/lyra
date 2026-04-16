@@ -1,0 +1,346 @@
+---
+title: "ADR-049: Extract roxabi-contracts as shared schema package for cross-project NATS domains"
+description: Add a second uv workspace subpackage (packages/roxabi-contracts/) that ships subject registries, Pydantic envelope schemas, and test fixtures for every lyra-owned cross-project NATS domain. Publishers in lyra and subscribers in satellites import the same typed contracts, replacing ADR-only specifications and eliminating drift. Revised 2026-04-16 after architect + devops + security review.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+ADR-044 froze the lyra ↔ voiceCLI wire contract. ADR-047 codified the ownership boundary: lyra owns subjects + publishers + nkey identity; satellites own worker processes. ADR-045 extracted transport primitives into `roxabi-nats` so satellites can subscribe without importing lyra.
+
+Two problems remain after that stack lands:
+
+**1. Contract-as-document, not contract-as-code.**
+Today the voice contract lives in ADR-044's prose + tables. The envelope fields (`contract_version`, `trace_id`, `text`, `voice`, `audio`, `sample_rate`) are re-implemented independently in lyra's `NatsTtsClient` and voiceCLI's `tts_adapter.py`. Nothing prevents a payload field rename in the ADR from silently diverging between the two repos. Grep-gate (ADR-047 §14.3) catches stray subject literals but not payload drift.
+
+When `lyra.image.*` and `lyra.memory.*` are added as contract ADRs (per ADR-047 §4, pending work), the drift surface multiplies. Every new domain is a fresh opportunity for lyra and satellite to disagree on a field name, default, or type.
+
+**2. E2E testing requires the full stack.**
+Today, running an end-to-end voice test from lyra requires:
+- NATS server running
+- voiceCLI worker running, with GPU and Chatterbox/Whisper models loaded
+- lyra hub wired to the real NATS URL
+
+This is expensive in CI and impossible in laptop development. voiceCLI#69 (SDK adoption) is blocked in part because E2E tests on the lyra side cannot be run without spinning up real TTS/STT. The same pain will recur for imageCLI and any future satellite.
+
+The subscriber cannot be moved into lyra (ADR-047 rejected that — satellites must own their workers so they can run on GPU machines). So lyra needs a way to test its publisher without pulling satellite code, and satellites need a way to test their subscriber without pulling lyra.
+
+A shared contracts package — domain schemas + subject constants + canned fixtures, with zero runtime dependency on either lyra or any satellite — solves both problems in one artifact.
+
+## Options Considered
+
+### Option A: Keep contracts in ADR documents only (status quo)
+
+- **Pros:** Zero new packages. Contracts are human-readable. Works for small domain counts.
+- **Cons:** Drift is undetectable at type-check time. Every new cross-project domain doubles the re-implementation surface (lyra publisher + satellite subscriber). E2E testing pain persists — no shared fixtures exist. Fails the "best microkernel" criterion that the kernel/plugin boundary be explicit in code, not in prose.
+
+### Option B: Fold schemas into `roxabi-nats`
+
+- **Pros:** One package, fewer workspace members. Satellites already depend on `roxabi-nats` — no new dependency arrow.
+- **Cons:** Violates ADR-047's explicit rule: `roxabi-nats` is pure transport with zero knowledge of `lyra.*` subjects. Adding `roxabi_nats.contracts.voice` would mean external consumers of the transport SDK (including future non-Roxabi users) must depend on Lyra-specific domain schemas. Breaks transport/contract separation — the two coordinates evolve on different cadences (`roxabi-nats` = transport bugs; contracts = payload evolution).
+
+### Option C: Contract package per domain (`roxabi-voice-contract`, `roxabi-image-contract`, ...)
+
+- **Pros:** Each contract versions independently. Satellites depend only on the contract they implement.
+- **Cons:** Explosion of workspace members. Shared infrastructure (envelope base, `trace_id`, `contract_version`, test-double pattern) must be duplicated across every contract package or extracted into a `roxabi-contracts-base` package — re-creating Option D's structure under a different name.
+
+### Option D: Single `roxabi-contracts` package, one module per domain — **chosen**
+
+- **Pros:**
+  - Single source of truth. Publisher and subscriber import identical Pydantic models; drift becomes a type error.
+  - One package, multiple domains — shared envelope helpers (`ContractEnvelope` base, `trace_id` semantics, `contract_version` mixin) live once, not per-domain.
+  - Test fixtures (silence WAV, pixel PNG, canned memory query results) ship with the contract — every publisher and subscriber gets them for free.
+  - Enables the pytest test-double pattern: `roxabi_contracts.voice.testing.FakeTtsWorker` subscribes to `lyra.voice.tts.request` and replies with fixture data. Lyra E2E runs in-process, no GPU, no voiceCLI. Satellite E2E runs in-process, no lyra hub.
+  - Clean extension: adding `lyra.memory.*` or `lyra.llm.*` is a new submodule + tag bump, not a new repo or package.
+- **Cons:**
+  - One contract bump in one domain forces consumers of *other* domains to pick up a new version on their next lock update (if they pin tightly). Mitigated by semver: patch/minor for additive changes, major for breaks.
+  - Workspace member count grows from 1 (`roxabi-nats`) to 2. `uv.lock` size grows modestly.
+
+## Decision
+
+Add `packages/roxabi-contracts/` as a second uv workspace subpackage within the lyra monorepo. Ship one submodule per lyra-owned cross-project domain. Lyra publishers (Cohort B in `src/lyra/nats/`) and satellite subscribers both import from it.
+
+### Layout (v0.1.0 — voice-only)
+
+```
+lyra/
+├── pyproject.toml                          # [tool.uv.workspace] members += ["packages/roxabi-contracts"]
+├── packages/
+│   ├── roxabi-nats/                        # ADR-045, unchanged
+│   └── roxabi-contracts/
+│       ├── pyproject.toml                  # name = "roxabi-contracts", pydantic>=2; roxabi-nats in [testing] extra only
+│       ├── README.md                       # links to ADR-044 (voice), future ADRs (image/memory/llm)
+│       ├── src/roxabi_contracts/
+│       │   ├── __init__.py                 # re-exports ContractEnvelope, CONTRACT_VERSION
+│       │   ├── envelope.py                 # ContractEnvelope base: contract_version, trace_id, issued_at — PURE PYDANTIC, zero transport imports
+│       │   └── voice/
+│       │       ├── __init__.py             # re-exports SUBJECTS + models (no testing imports at package root)
+│       │       ├── subjects.py             # SUBJECTS namespace — string constants
+│       │       ├── models.py               # TtsRequest, TtsResponse, SttRequest, SttResponse — ConfigDict(extra="ignore")
+│       │       ├── fixtures.py             # PURE DATA — silence_wav_16khz (synthesized), sample_transcript_en, no NATS imports
+│       │       └── testing.py              # FakeTtsWorker, FakeSttWorker — requires [testing] extra, production guard-rails
+│       └── tests/
+│           ├── test_envelope.py
+│           ├── test_voice_models.py
+│           ├── test_voice_extra_ignore.py  # asserts unknown fields pass (forward-compat invariant)
+│           └── test_voice_testing_doubles.py
+```
+
+Image, memory, and llm submodules are added in later versions after their own contract ADRs land. They do **not** ship as placeholder directories in v0.1.0 — creating empty modules would let `import roxabi_contracts.image` succeed silently with missing attributes.
+
+### Relationship to existing ADRs
+
+| ADR | Before this ADR | After this ADR |
+|---|---|---|
+| ADR-044 (voice contract) | Prose defines envelope | Prose **plus** `roxabi_contracts.voice.models` is the normative source; ADR references the module |
+| ADR-045 (roxabi-nats) | Transport + contract commingled in `adapter_base.py` (`CONTRACT_VERSION` constant) | Transport in `roxabi-nats`; per-domain contract in `roxabi-contracts`; `CONTRACT_VERSION` moves to `roxabi_contracts.envelope` |
+| ADR-046 (nkey per-worker ACL) | Unaffected | Unaffected — auth remains at the NATS subject layer, not the schema layer. See §Trust Model below |
+| ADR-047 (worker ownership) | Lyra owns subjects + publishers + nkey; satellites own workers | Unchanged. Subject string literals move from satellite-side constants to `roxabi_contracts.<domain>.SUBJECTS` — still authored in lyra-controlled code, now imported by satellites. Grep-gate updated to confine `import roxabi_contracts.<domain>` to the satellite's designated adapter module |
+| ADR-048 (infrastructure layer) | Unaffected | Unaffected — contracts are wire, not persistence |
+
+### Dependency arrows
+
+```
+roxabi-nats (transport, zero lyra knowledge)
+   ↑
+   └── roxabi-contracts (pure Pydantic at runtime; roxabi-nats only via [testing] extra)
+          ↑                              ↑
+          │                              │
+          lyra (publishers + [testing])  satellites (workers + [testing] in dev)
+                                         voiceCLI, imageCLI, roxabi-vault
+```
+
+**Critical boundary:** `roxabi-contracts` runtime has zero transport dependency. A satellite that only needs schemas + fixtures installs `roxabi-contracts` without pulling `roxabi-nats` or `nats-py`. The `[testing]` extra is the only path that brings in transport — and only for test-double consumers.
+
+### Versioning
+
+Independent from both `roxabi-nats` and ADR-044 `contract_version`. Tag scheme: `roxabi-contracts/v{major}.{minor}.{patch}`.
+
+| Change type | Example | Bump |
+|---|---|---|
+| Add optional field (non-security) | `TtsRequest.style` (defaults to None) | minor |
+| Add a new domain submodule | `roxabi_contracts.memory` | minor |
+| Add a new subject to an existing domain | `SUBJECTS.tts_stream` | minor |
+| Rename/retype a required field | `text` → `prompt` on `TtsRequest` | major **and** new `contract_version` per ADR-044 |
+| Remove a deprecated field | Drop `sample_rate` after grace period | major |
+| **Add a security-bearing field** | caller identity, auth scopes, signed token | **major + new `contract_version`** — MUST NOT be additive |
+
+**Forward-compat invariant:** all `ContractEnvelope` subclasses declare `model_config = ConfigDict(extra="ignore")`. A v0.1.0 satellite receiving a v0.2.0 payload with a new optional field parses cleanly — unknown fields are dropped without error. Enforced by `test_voice_extra_ignore.py`.
+
+**Security-bearing fields exclusion:** any field whose presence or value affects authorization, identity attestation, or audit provenance is **not** eligible for additive introduction. A v1 satellite silently ignoring an `auth_token` or `caller_nkey` field adds the class of bug where the hub believes it shipped a tightened check but the satellite never enforced it. Such fields require a major bump + coordinated satellite upgrade + ADR amendment. Each domain contract ADR must list which fields (if any) are security-bearing.
+
+### Trust Model
+
+`roxabi-contracts` performs **structural validation only** — Pydantic enforces types, required vs optional, basic constraints (min/max length, regex patterns where declared). It does **not** sanitize content. The following remain the satellite worker's responsibility, per ADR-047 §Rule 4:
+
+- NUL byte stripping on any user-controlled string field
+- Path normalization / traversal rejection on filename-typed fields
+- Base64 length cross-check (decoded length vs claimed `sample_rate`, `duration`, etc.)
+- Domain-specific content rules (allowed voice IDs, model names, prompt length caps)
+
+**Consumers MUST NOT call `Model.model_validate_json()` directly on raw NATS `msg.data`.** The correct call site is `roxabi_nats.deserialize()`, which runs the pre-validation byte-size gate (default 1 MB, per truth §14.3 rule 5) before handing bytes to Pydantic. Calling the Pydantic method directly bypasses the gate and allows a 50 MB base64 blob to run through the JSON parser before any limit fires.
+
+Enforcement: `NatsAdapterBase._dispatch()` is the only caller of `deserialize()` in production paths. Test doubles in `testing.py` may call model methods directly only on pre-validated fixture data.
+
+### Test-double pattern
+
+Test doubles live in `roxabi_contracts.<domain>.testing` and require the `[testing]` optional extra. Three mandatory safety guards prevent production contamination:
+
+1. **Separate extras.** `pyproject.toml` declares `[project.optional-dependencies].testing = ["nats-py>=2.6", "roxabi-nats"]`. Production installs (`uv sync` without `--extra testing`) do not pull transport deps. Importing `roxabi_contracts.voice.testing` in a prod venv fails at import time with `ModuleNotFoundError: nats`.
+
+2. **Environment assertion.** `FakeTtsWorker.__init__` raises `RuntimeError("FakeTtsWorker cannot run in production")` if `os.environ.get("LYRA_ENV") == "production"`. Overridable only by explicit `NATS_ALLOW_FAKE_WORKER=1` env flag (undocumented outside this ADR; intended for adversarial CI scenarios only).
+
+3. **Loopback-only NATS URL.** `FakeTtsWorker.connect()` refuses non-loopback NATS URLs (anything other than `nats://127.0.0.1:*` or `nats://localhost:*`). Raises `ValueError` on non-loopback. This closes the accidental-prod-queue-group-shadowing class of bugs.
+
+API surface:
+```python
+# Signature:
+class FakeTtsWorker:
+    def __init__(self, nats_url: str = "nats://127.0.0.1:4222", reply_fixture: bytes | None = None): ...
+    async def start(self) -> None: ...
+    async def stop(self) -> None: ...
+    calls: list[TtsRequest]  # for assertions
+```
+
+Lyra's `test_nats_tts_client_e2e.py` imports `FakeTtsWorker` and drives the full publish/reply cycle without voiceCLI. Satellite-side tests in voiceCLI import `roxabi_contracts.voice.fixtures` for pure-data assertions without the transport weight.
+
+### Consumption
+
+**Internal (Lyra):**
+
+```toml
+[tool.uv.sources]
+roxabi-nats = { workspace = true }
+roxabi-contracts = { workspace = true, extras = ["testing"] }
+```
+
+**External runtime (voiceCLI, imageCLI, roxabi-vault — production deps):**
+
+```toml
+[tool.uv.sources]
+roxabi-nats      = { git = "https://github.com/Roxabi/lyra.git", subdirectory = "packages/roxabi-nats",      tag = "roxabi-nats/v0.2.0" }
+roxabi-contracts = { git = "https://github.com/Roxabi/lyra.git", subdirectory = "packages/roxabi-contracts", tag = "roxabi-contracts/v0.1.0" }
+```
+
+**External dev (satellites importing test doubles for their own unit tests):**
+
+```toml
+[dependency-groups]
+dev = [
+  { include-group = "runtime" },
+  "roxabi-contracts[testing]",
+]
+```
+
+Both tags are independent. A voiceCLI release can pin a specific `roxabi-contracts` version without forcing an image or memory contract update.
+
+### Release engineering
+
+**release-please ownership.** The root lyra `release-please-config.json` currently covers only `.`. Add both subpackages:
+
+```json
+{
+  "packages": {
+    ".": { "release-type": "python", "package-name": "lyra" },
+    "packages/roxabi-nats": {
+      "release-type": "python",
+      "component": "roxabi-nats",
+      "tag-name": "roxabi-nats/v${version}",
+      "package-name": "roxabi-nats"
+    },
+    "packages/roxabi-contracts": {
+      "release-type": "python",
+      "component": "roxabi-contracts",
+      "tag-name": "roxabi-contracts/v${version}",
+      "package-name": "roxabi-contracts"
+    }
+  }
+}
+```
+
+Seed `.release-please-manifest.json` with `"packages/roxabi-nats": "0.1.0"` and `"packages/roxabi-contracts": "0.1.0"` before first run so release-please does not attempt a root-lyra bump from the subpackage commits.
+
+**Release coordination — actor and sequence.** Lyra maintainer is the release-owner for both subpackages. Cross-repo rollout sequence is strictly ordered to avoid broken satellite lockfiles:
+
+1. Lyra PR merges (new subpackage + updated publishers + `uv.lock` regenerated).
+2. `roxabi-contracts/v0.1.0` tag is cut on the merge commit (release-please or manual).
+3. `roxabi-nats/v0.2.0` tag is cut in the same release cycle if the `CONTRACT_VERSION` migration bumps it.
+4. Release notes announce tags on Discord / release channel.
+5. Satellite PRs (voiceCLI#69, imageCLI adoption, vault) open **after** step 2 — they reference the now-existing tag and cannot land before it.
+
+voiceCLI#69 must not merge before the tag exists — its `uv sync` would fail resolving the phantom tag. This reverses the earlier Phase 1 wording that implied simultaneity.
+
+**Satellite pin freshness.** Each satellite repo adds a Renovate (or Dependabot) rule:
+
+```json5
+// renovate.json — satellite repos
+{
+  "packageRules": [{
+    "matchSourceUrls": ["https://github.com/Roxabi/lyra"],
+    "matchPackageNames": ["roxabi-nats", "roxabi-contracts"],
+    "groupName": "roxabi sdk",
+    "schedule": ["before 6am on monday"]
+  }]
+}
+```
+
+Renovate reads the `tag = "..."` pin and opens a PR when a new tag appears. Without this, pin freshness is purely documentation and drift becomes inevitable.
+
+### Python version floor
+
+Matches `roxabi-nats`: `requires-python = ">=3.12"`, broader than lyra's narrower pin. Lets satellites track a newer interpreter than the hub.
+
+### Test layout and CI integration
+
+Tests live at `packages/roxabi-contracts/tests/`. The current CI pattern is a single merged `uv run pytest` step with `testpaths = ["tests", "packages/roxabi-nats/tests"]`. Extend this to include `packages/roxabi-contracts/tests`:
+
+```toml
+# root pyproject.toml
+[tool.pytest.ini_options]
+testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests"]
+addopts  = "... --cov=roxabi_contracts ..."
+```
+
+A hub test failure continues to fail the same job as subpackage tests — this is the existing pattern and not a regression from ADR-049. Matrix split across subpackages is out of scope.
+
+### Pre-requisites
+
+| Issue | Blocker? | Reason |
+|---|---|---|
+| ADR-045 merged + `roxabi-nats/v0.1.0` tagged | Yes | Already done. |
+| ADR-047 merged | Yes | Establishes subject ownership. Already done. |
+| voiceCLI#69 not yet merged | Yes | Must open against `roxabi-contracts/v0.1.0` tag, not pre-empt it. |
+| `lyra.image.*` contract ADR | No | Blocks Phase 2 only. |
+
+### Migration plan
+
+Phase 1 — bootstrap the package and port voice:
+
+1. Create `packages/roxabi-contracts/` skeleton + `envelope.py` + `voice/` submodule with `subjects.py`, `models.py` (all with `ConfigDict(extra="ignore")`), `fixtures.py` (synthetic data only — see §Fixture generation).
+2. Port `TtsRequest` / `TtsResponse` / `SttRequest` / `SttResponse` dataclasses from lyra + voiceCLI into typed Pydantic models. Reconcile any silent drift as part of the port.
+3. Extract `SUBJECTS` namespace from `src/lyra/nats/nats_tts_client.py` and voiceCLI's `tts_adapter.py`.
+4. Ship `testing.py` with `FakeTtsWorker` + the three production guard-rails (`[testing]` extra, `LYRA_ENV` assertion, loopback-only URL check).
+5. Update lyra `NatsTtsClient` / `NatsSttClient` to import from `roxabi_contracts.voice`. Migrate `CONTRACT_VERSION` from `roxabi_nats.adapter_base` to `roxabi_contracts.envelope` and re-export from `roxabi_nats` for one release as a compat shim.
+6. Add `packages/roxabi-contracts` to the root `pyproject.toml`:
+   - `[tool.uv.workspace].members += ["packages/roxabi-contracts"]`
+   - `[tool.pyright].include += ["packages/roxabi-contracts/src"]`
+   - `[tool.ruff].src += ["packages/roxabi-contracts/src"]`
+   - `[tool.pytest.ini_options].testpaths += ["packages/roxabi-contracts/tests"]`
+7. Update `release-please-config.json` with the `packages/roxabi-contracts` entry. Seed `.release-please-manifest.json` with `"packages/roxabi-contracts": "0.1.0"`.
+8. Regenerate and commit `uv.lock` (without this, `uv sync --frozen` on `roxabituwer` fails at `deploy.sh:45`).
+9. Merge the lyra PR. Cut `roxabi-contracts/v0.1.0` tag on the merge commit.
+10. voiceCLI#69 opens against the newly-existing tag, adopts both `roxabi-nats v0.2.0` and `roxabi-contracts v0.1.0` in the same PR.
+
+Phase 2 — image:
+
+1. Land the pending `lyra.image.*` contract ADR.
+2. Add `roxabi_contracts.image/` submodule (models, subjects, fixtures, testing).
+3. Lyra ships `NatsImageClient` publisher.
+4. imageCLI's satellite-side subscriber (already shipped per truth §14.1) switches to the contract import.
+5. Tag `roxabi-contracts/v0.2.0`.
+
+Phase 3 — memory + llm:
+
+1. Write contract ADRs for each domain.
+2. Add submodules.
+3. Wire publishers and subscribers.
+
+### Fixture generation
+
+All binary fixtures (WAV, PNG, etc.) MUST be synthetically generated inside `fixtures.py` using standard libraries (`scipy.io.wavfile.write` for audio, `PIL` for images) — never seeded from real user data or live-session captures. Rationale: open-source package must not ship any byte that could leak user audio, API keys, hostnames (RIFF vendor strings, ID3 tags), or model outputs used as dev seeds.
+
+CI check: a `tests/test_fixture_provenance.py` asserts each fixture is byte-identical to the output of its documented generator call. If `silence_wav_16khz` is declared as "1 second of silence at 16kHz, 16-bit PCM," the test regenerates it and compares — any drift from the canonical generator output fails CI.
+
+### Out of scope
+
+- **Code generation (protobuf, OpenAPI, JSON Schema export).** Pydantic is the authored form. If a non-Python consumer ever materializes, a generator can emit schemas from the Pydantic models — not planned now.
+- **Versioned envelope negotiation.** `contract_version` is a single string field; rollback or multi-version parsing on the subscriber side is not added by this ADR. When `contract_version: "2"` ships, it is a coordinated major bump per ADR-044.
+- **Non-Roxabi consumers.** Same PyPI deferral criteria as ADR-045 §PyPI migration criteria apply here.
+- **Replacing per-satellite subscriber code.** Workers still live in satellite repos per ADR-047. This ADR only standardizes the *schema* they subscribe against.
+- **Matrix-split CI.** Subpackage tests continue to run in the shared pytest job as they do for `roxabi-nats` today.
+
+## Consequences
+
+### Positive
+
+- Drift between lyra publisher and satellite subscriber becomes a type-check error, not a silent wire mismatch.
+- E2E tests run in-process on either side. Laptop development no longer requires a GPU.
+- New domains (memory, llm) have a well-known place to land — no ad-hoc per-repo envelope re-implementation.
+- The microkernel boundary is explicit in code: kernel + transport + contract + plugin are four separate coordinates, each with its own version.
+- voiceCLI#69 adoption becomes one PR with two dependency updates.
+- Satellites that need only schemas install no transport code; `[testing]` extras stay out of production venvs.
+
+### Negative
+
+- Three version coordinates (`lyra`, `roxabi-nats`, `roxabi-contracts`) plus wire `contract_version`. Release-engineering discipline is load-bearing; release-please + Renovate mitigate but do not eliminate.
+- Satellite pinned to an old `roxabi-contracts` can block a lyra envelope evolution until it upgrades. Same coordination tax as ADR-044 prose, now machine-enforceable.
+- Pydantic v2 becomes a mandatory runtime dep for every satellite (~8 MB compiled core). No current satellite has a conflicting pin, but install-size is non-zero.
+
+### Neutral
+
+- `CONTRACT_VERSION` constant migrates from `roxabi_nats.adapter_base` to `roxabi_contracts.envelope`. A compat re-export stays in `roxabi_nats` for one release cycle (until `roxabi-nats/v0.3.0`), then is removed — any external pin on `roxabi_nats.CONTRACT_VERSION` breaks at that point and requires a source update.
+- ADR-044 remains the human-readable voice contract; it gains a canonical link to `roxabi_contracts.voice`. Future contract ADRs follow the same pattern.
+- Subject constants move from scattered `f"lyra.voice.tts.request"` literals into `SUBJECTS.tts_request`. Grep-gate in each satellite (ADR-047 §14.3) is updated: the check shifts from "no `lyra.*` string literal outside adapter module" to "no `import roxabi_contracts.<domain>` outside the designated adapter module." One PR per satellite to update the gate configuration.

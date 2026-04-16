@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 
 from lyra.core.memory import MemoryManager, SessionSnapshot
-from lyra.core.stores.identity_alias_store import IdentityAliasStore
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

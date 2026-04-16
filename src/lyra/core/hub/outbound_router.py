@@ -269,8 +269,8 @@ class OutboundRouter:
                         assert self._audio_pipeline is not None
                         audio_pipeline = self._audio_pipeline  # for type narrowing
                         agent_tts = audio_pipeline.resolve_agent_tts(msg)
-                        fallback_lang = (
-                            audio_pipeline._resolve_agent_fallback_language(msg)
+                        fallback_lang = audio_pipeline._resolve_agent_fallback_language(
+                            msg
                         )
                         await audio_pipeline.synthesize_and_dispatch_audio(
                             msg,
@@ -329,9 +329,7 @@ class OutboundRouter:
                 assert self._audio_pipeline is not None
                 audio_pipeline = self._audio_pipeline  # for type narrowing
                 agent_tts = audio_pipeline.resolve_agent_tts(msg)
-                fallback_lang = (
-                    audio_pipeline._resolve_agent_fallback_language(msg)
-                )
+                fallback_lang = audio_pipeline._resolve_agent_fallback_language(msg)
                 task = asyncio.create_task(
                     audio_pipeline.synthesize_and_dispatch_audio(
                         msg,

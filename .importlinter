@@ -19,12 +19,16 @@ ignore_imports =
     lyra.core.stores.pairing -> lyra.infrastructure.stores.auth_store
     lyra.core.stores.turn_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.message_index -> lyra.infrastructure.stores.sqlite_base
-    lyra.core.stores.identity_alias_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.thread_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.prefs_store -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.prefs_store -> lyra.infrastructure.stores.identity_alias_store
+    # Downward TYPE_CHECKING imports (ADR-048 transition)
     lyra.core.agent_refiner -> lyra.infrastructure.stores.agent_store
     lyra.core.authenticator -> lyra.infrastructure.stores.auth_store
+    lyra.core.authenticator -> lyra.infrastructure.stores.identity_alias_store
     lyra.core.agent -> lyra.infrastructure.stores.agent_store
+    lyra.core.memory -> lyra.infrastructure.stores.identity_alias_store
+    lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers

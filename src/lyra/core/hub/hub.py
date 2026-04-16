@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     from collections import deque
     from collections.abc import AsyncIterator
 
+    from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+
     from ...stt import STTProtocol
     from ...tts import TtsProtocol
     from ..circuit_breaker import CircuitRegistry
@@ -43,7 +45,6 @@ if TYPE_CHECKING:
     from ..message import OutboundAttachment, OutboundAudio, OutboundAudioChunk
     from ..messages import MessageManager
     from ..render_events import RenderEvent
-    from ..stores.identity_alias_store import IdentityAliasStore
     from ..stores.message_index import MessageIndex
     from ..stores.pairing import PairingManager
     from ..stores.prefs_store import PrefsStore

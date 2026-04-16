@@ -61,11 +61,11 @@ class TestRegisterAll:
 
         with (
             patch(
-                "lyra.core.stores.credential_store.LyraKeyring.load_or_create",
+                "lyra.infrastructure.stores.credential_store.LyraKeyring.load_or_create",
                 return_value=mock_keyring,
             ),
             patch(
-                "lyra.core.stores.credential_store.CredentialStore",
+                "lyra.infrastructure.stores.credential_store.CredentialStore",
                 return_value=mock_cred_store,
             ),
             patch(
@@ -96,11 +96,11 @@ class TestRegisterAll:
         # Should not raise — prints message and returns
         with (
             patch(
-                "lyra.core.stores.credential_store.LyraKeyring.load_or_create",
+                "lyra.infrastructure.stores.credential_store.LyraKeyring.load_or_create",
                 return_value=MagicMock(),
             ),
             patch(
-                "lyra.core.stores.credential_store.CredentialStore",
+                "lyra.infrastructure.stores.credential_store.CredentialStore",
                 return_value=AsyncMock(),
             ),
             patch(
@@ -121,11 +121,11 @@ class TestRegisterAll:
 
         with (
             patch(
-                "lyra.core.stores.credential_store.LyraKeyring.load_or_create",
+                "lyra.infrastructure.stores.credential_store.LyraKeyring.load_or_create",
                 return_value=MagicMock(),
             ),
             patch(
-                "lyra.core.stores.credential_store.CredentialStore",
+                "lyra.infrastructure.stores.credential_store.CredentialStore",
                 return_value=mock_cred_store,
             ),
             patch(
@@ -147,11 +147,11 @@ class TestRegisterAll:
 
         with (
             patch(
-                "lyra.core.stores.credential_store.LyraKeyring.load_or_create",
+                "lyra.infrastructure.stores.credential_store.LyraKeyring.load_or_create",
                 return_value=mock_keyring,
             ),
             patch(
-                "lyra.core.stores.credential_store.CredentialStore",
+                "lyra.infrastructure.stores.credential_store.CredentialStore",
                 return_value=mock_cred_store,
             ),
             patch(

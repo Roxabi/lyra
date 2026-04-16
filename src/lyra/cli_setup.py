@@ -121,7 +121,7 @@ async def _register_all(config_path: str) -> None:
     """For each Telegram bot: resolve token, collect commands, set_my_commands."""
     from lyra.adapters.discord_voice_commands import VOICE_COMMANDS
     from lyra.core.commands.command_loader import CommandLoader
-    from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
+    from lyra.infrastructure.stores.credential_store import CredentialStore, LyraKeyring
 
     try:
         with open(config_path, "rb") as f:

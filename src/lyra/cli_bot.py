@@ -9,7 +9,7 @@ from typing import Optional
 
 import typer
 
-from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
+from lyra.infrastructure.stores.credential_store import CredentialStore, LyraKeyring
 
 
 def _vault_dir() -> Path:

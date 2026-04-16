@@ -21,7 +21,6 @@ ignore_imports =
     lyra.core.stores.message_index -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.identity_alias_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.thread_store -> lyra.infrastructure.stores.sqlite_base
-    lyra.core.stores.credential_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.prefs_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.agent_refiner -> lyra.infrastructure.stores.agent_store
     lyra.core.authenticator -> lyra.infrastructure.stores.auth_store

@@ -1,3 +1,19 @@
 """SQLite store implementations — moved from lyra.core.stores per ADR-048."""
 
-__all__: list[str] = []
+from lyra.infrastructure.stores.agent_store import AgentStore
+from lyra.infrastructure.stores.auth_store import AuthStore
+from lyra.infrastructure.stores.credential_store import (
+    BotSecretRow,
+    CredentialStore,
+    LyraKeyring,
+)
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
+
+__all__ = [
+    "AgentStore",
+    "AuthStore",
+    "BotSecretRow",
+    "CredentialStore",
+    "LyraKeyring",
+    "SqliteStore",
+]

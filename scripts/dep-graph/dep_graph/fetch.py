@@ -131,15 +131,27 @@ def search_labeled_issues(
     return {(repo, n) for n in nums}
 
 
+# Allowlist for size label suffixes: alphanumerics and dash only
+_SIZE_ALLOWED = re.compile(r"[^A-Za-z0-9\-]")
+
+
 def _derive_size_from_labels(labels: list[str]) -> str | None:
-    """Extract size string from size:* label, e.g. 'size:S' -> 'S'."""
+    """Extract size string from size:* label, e.g. 'size:S' -> 'S'.
+
+    Applies strict allowlist (alphanumerics + dash) after the 16-char cap
+    to ensure cache keys are safe-by-construction.
+    """
     for lbl in labels:
         if lbl.startswith("size:"):
-            return lbl[5:21]  # cap at 16 chars to prevent cache bloat from rogue labels
+            raw = lbl[5:21]  # cap at 16 chars
+            return _SIZE_ALLOWED.sub("", raw) or None
     return None
 
 
 _MILESTONE_ALLOWED = re.compile(r"[^A-Za-z0-9 \-_.#/()]")
+
+# C0/C1 control chars + Unicode bidi override chars (U+202A-U+202E, U+2066-U+2069)
+_TITLE_UNSAFE = re.compile(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
 
 
 def _sanitize_milestone(raw: str | None) -> str | None:
@@ -162,6 +174,20 @@ def _sanitize_milestone(raw: str | None) -> str | None:
     if not cleaned:
         return None
     return cleaned[:64]
+
+
+def _sanitize_title(raw: str | None) -> str:
+    """Strip control and bidi override chars from a GH issue title.
+
+    Removes C0/C1 control characters and Unicode bidirectional override
+    characters that could be used for cache poisoning or display exploits.
+    Preserves all other content verbatim (titles are wide-character by design).
+
+    Returns empty string on None input (consistent with data.get("title", "")).
+    """
+    if not raw:
+        return ""
+    return _TITLE_UNSAFE.sub("", raw)
 
 
 def fetch_issue_meta(
@@ -210,7 +236,7 @@ def fetch_issue_meta(
     label_names: list[str] = (
         [lbl["name"] for lbl in raw_labels] if isinstance(raw_labels, list) else []
     )
-    title: str = data.get("title", "")
+    title: str = _sanitize_title(data.get("title"))
     state: str = data.get("state", data.get("State", "open"))
 
     # Milestone: read from GH API milestone object

@@ -201,7 +201,11 @@ class TestCheckPlacement:
         result = _check_placement({}, labeled, all_placed, gh, PREFIX)
         # Assert
         captured = capsys.readouterr()
-        assert "skipped" in captured.out
+        # Exact skip-branch marker — "skipped" alone would also match if the
+        # message drifted elsewhere, so pin the full auto-derive sentinel.
+        assert "all lanes auto-derived, skipped" in captured.out
+        # Sanity: _check_untriaged ran (proves parse_key path exercised)
+        assert "Labeled but not in any lane order" in captured.out
         assert result is False
 
     def test_check_placement_populated_no_drift(
@@ -241,14 +245,9 @@ class TestCheckMetaForwards:
             captured["defer_auto_placed"] = auto_placed
             return False
 
-        def stub_standalone(
-            gh_issues: dict,
-            layout: dict,
-            label_prefix: str,
-        ) -> bool:
-            captured["standalone_args_len"] = (
-                3  # verifies called with 3 positional args
-            )
+        def stub_standalone(*args: object, **kwargs: object) -> bool:
+            captured["standalone_args"] = args
+            captured["standalone_kwargs"] = kwargs
             return False
 
         monkeypatch.setattr("dep_graph.audit._check_defer", stub_defer)
@@ -259,9 +258,13 @@ class TestCheckMetaForwards:
         # Act
         _check_meta({}, {}, PREFIX, auto_placed=test_auto_placed)
 
-        # Assert
+        # Assert — _check_defer received auto_placed
         assert captured["defer_auto_placed"] == test_auto_placed
-        assert captured["standalone_args_len"] == 3
+        # _check_standalone called with exactly 3 positional args (gh, layout, prefix)
+        # and NO auto_placed anywhere — would regress if caller plumbed it through
+        assert len(captured["standalone_args"]) == 3
+        assert "auto_placed" not in captured["standalone_kwargs"]
+        assert test_auto_placed not in captured["standalone_args"]
 
 
 # ---------------------------------------------------------------------------

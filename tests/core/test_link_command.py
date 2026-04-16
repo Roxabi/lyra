@@ -168,7 +168,7 @@ class TestLinkComplete:
 async def test_link_complete_blocked_initiator_rejected(tmp_path: Path) -> None:
     """SC #13: /link rejected if either identity is BLOCKED."""
     from lyra.core.authenticator import Authenticator
-    from lyra.core.stores.auth_store import AuthStore
+    from lyra.infrastructure.stores.auth_store import AuthStore
 
     store = IdentityAliasStore(db_path=tmp_path / "alias.db")
     await store.connect()

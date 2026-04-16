@@ -10,8 +10,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 
 from lyra.errors import KeyringError
-
-from .sqlite_base import SqliteStore
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
 
 __all__ = ["BotSecretRow", "CredentialStore", "LyraKeyring"]
 

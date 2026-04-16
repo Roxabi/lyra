@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
     from lyra.core.cli_pool import CliPool
     from lyra.core.render_events import RenderEvent
-    from lyra.core.stores.agent_store import AgentStore
+    from lyra.infrastructure.stores.agent_store import AgentStore
     from lyra.stt import STTProtocol
     from lyra.tts import TtsProtocol
 

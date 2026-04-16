@@ -26,7 +26,7 @@ from lyra.stt import is_whisper_noise
 _AGENTS_DIR = Path(__file__).resolve().parent
 
 if TYPE_CHECKING:
-    from lyra.core.stores.agent_store import AgentStore
+    from lyra.infrastructure.stores.agent_store import AgentStore
     from lyra.stt import STTProtocol
     from lyra.tts import TtsProtocol
 

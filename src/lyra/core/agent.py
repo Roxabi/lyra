@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from lyra.infrastructure.stores.agent_store import AgentStore
     from lyra.stt import STTProtocol
     from lyra.tts import TtsProtocol
 
     from .memory import MemoryManager
     from .render_events import RenderEvent
-    from .stores.agent_store import AgentStore
 
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent  # noqa: F401 — Agent re-exported

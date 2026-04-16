@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.stores.auth_store import AuthStore
 from lyra.core.trust import TrustLevel
+from lyra.infrastructure.stores.auth_store import AuthStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

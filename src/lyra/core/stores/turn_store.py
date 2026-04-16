@@ -15,7 +15,8 @@ import logging
 from datetime import UTC, datetime
 from typing import Literal
 
-from .sqlite_base import SqliteStore
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
+
 from .turn_store_queries import (
     backfill_sessions,
     get_cli_session,

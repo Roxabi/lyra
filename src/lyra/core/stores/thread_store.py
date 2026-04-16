@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from .sqlite_base import SqliteStore
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

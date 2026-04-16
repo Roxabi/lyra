@@ -191,8 +191,8 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             finally:
                 await cred_store.close()
 
-            from lyra.core.stores.agent_store import AgentStore
             from lyra.core.stores.thread_store import ThreadStore
+            from lyra.infrastructure.stores.agent_store import AgentStore
 
             # Read per-bot settings then close — don't hold config.db open
             # during the long-lived adapter lifecycle (same pattern as CredentialStore).

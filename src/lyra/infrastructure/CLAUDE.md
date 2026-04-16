@@ -15,10 +15,10 @@ All files will be moved from `src/lyra/core/stores/`:
 
 | File | Status | Destination |
 |------|--------|-------------|
-| `sqlite_base.py` | pending | `infrastructure/stores/sqlite_base.py` |
-| `agent_store.py` | pending | `infrastructure/stores/agent_store.py` |
+| `sqlite_base.py` | **migrated** | `infrastructure/stores/sqlite_base.py` |
+| `agent_store.py` | **migrated** | `infrastructure/stores/agent_store.py` |
 | `agent_store_migrations.py` | pending | `infrastructure/stores/agent_store_migrations.py` |
-| `auth_store.py` | pending | `infrastructure/stores/auth_store.py` |
+| `auth_store.py` | **migrated** | `infrastructure/stores/auth_store.py` |
 | `credential_store.py` | pending | `infrastructure/stores/credential_store.py` |
 | `identity_alias_store.py` | pending | `infrastructure/stores/identity_alias_store.py` |
 | `message_index.py` | pending | `infrastructure/stores/message_index.py` |

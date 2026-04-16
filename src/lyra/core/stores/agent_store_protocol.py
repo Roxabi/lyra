@@ -25,7 +25,8 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from ..agent_models import AgentRow, AgentRuntimeStateRow
 
 if TYPE_CHECKING:
-    from .agent_store import AgentStore
+    from lyra.infrastructure.stores.agent_store import AgentStore
+
     from .json_agent_store import JsonAgentStore
 
 __all__ = ["AgentStoreProtocol", "make_agent_store"]
@@ -102,7 +103,7 @@ def make_agent_store(
         path = Path(store_path_env) if store_path_env else _vault / "agents_test.json"
         return JsonAgentStore(path=path)
 
-    from .agent_store import AgentStore
+    from lyra.infrastructure.stores.agent_store import AgentStore
 
     _vault = Path(
         os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))

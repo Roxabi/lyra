@@ -33,6 +33,10 @@ from lyra.bootstrap.lifecycle_helpers import (
 )
 from lyra.bootstrap.llm_overlay import init_nats_llm
 from lyra.bootstrap.lockfile import acquire_lockfile, release_lockfile
+from lyra.bootstrap.nats_wiring import (
+    wire_nats_discord_proxies,
+    wire_nats_telegram_proxies,
+)
 from lyra.bootstrap.notify import notify_startup
 from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
 from lyra.config import load_multibot_config
@@ -41,11 +45,9 @@ from lyra.core.agent_loader import agent_row_to_config
 from lyra.core.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
-from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
-from lyra.core.message import InboundMessage, Platform
+from lyra.core.message import InboundMessage
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats.nats_bus import NatsBus
-from lyra.nats.nats_channel_proxy import NatsChannelProxy
 from lyra.nats.queue_groups import HUB_INBOUND
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
@@ -262,94 +264,22 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             hub.register_agent(ag)
 
         # Wire each (platform, bot_id) to a NatsChannelProxy + OutboundDispatcher
-        from lyra.core.hub.hub_protocol import RoutingKey
-
-        dispatchers: list[OutboundDispatcher] = []
-        proxies: list[NatsChannelProxy] = []
-
-        for bot_cfg, auth in tg_bot_auths:
-            resolved_agent = bot_agent_map.get(("telegram", bot_cfg.bot_id))
-            if resolved_agent is None:
-                log.warning(
-                    "telegram bot_id=%r not in bot_agent_map — skipping",
-                    bot_cfg.bot_id,
-                )
-                continue
-
-            proxy = NatsChannelProxy(
-                nc=nc, platform=Platform.TELEGRAM, bot_id=bot_cfg.bot_id
-            )
-            proxies.append(proxy)
-            hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
-            hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, proxy)
-
-            tg_key = RoutingKey(Platform.TELEGRAM, bot_cfg.bot_id, "*")
-            hub.register_binding(
-                Platform.TELEGRAM,
-                bot_cfg.bot_id,
-                "*",
-                resolved_agent,
-                tg_key.to_pool_id(),
-            )
-
-            dispatcher = OutboundDispatcher(
-                platform_name="telegram",
-                adapter=proxy,
-                circuit=circuit_registry.get("telegram"),
-                circuit_registry=circuit_registry,
-                bot_id=bot_cfg.bot_id,
-            )
-            hub.register_outbound_dispatcher(
-                Platform.TELEGRAM, bot_cfg.bot_id, dispatcher
-            )
-            dispatchers.append(dispatcher)
-            log.info(
-                "Registered NATS proxy: telegram bot_id=%r agent=%r",
-                bot_cfg.bot_id,
-                resolved_agent,
-            )
-
-        for bot_cfg, auth in dc_bot_auths:
-            resolved_agent = bot_agent_map.get(("discord", bot_cfg.bot_id))
-            if resolved_agent is None:
-                log.warning(
-                    "discord bot_id=%r not in bot_agent_map — skipping",
-                    bot_cfg.bot_id,
-                )
-                continue
-
-            proxy = NatsChannelProxy(
-                nc=nc, platform=Platform.DISCORD, bot_id=bot_cfg.bot_id
-            )
-            proxies.append(proxy)
-            hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
-            hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, proxy)
-
-            dc_key = RoutingKey(Platform.DISCORD, bot_cfg.bot_id, "*")
-            hub.register_binding(
-                Platform.DISCORD,
-                bot_cfg.bot_id,
-                "*",
-                resolved_agent,
-                dc_key.to_pool_id(),
-            )
-
-            dispatcher = OutboundDispatcher(
-                platform_name="discord",
-                adapter=proxy,
-                circuit=circuit_registry.get("discord"),
-                circuit_registry=circuit_registry,
-                bot_id=bot_cfg.bot_id,
-            )
-            hub.register_outbound_dispatcher(
-                Platform.DISCORD, bot_cfg.bot_id, dispatcher
-            )
-            dispatchers.append(dispatcher)
-            log.info(
-                "Registered NATS proxy: discord bot_id=%r agent=%r",
-                bot_cfg.bot_id,
-                resolved_agent,
-            )
+        tg_proxies, tg_dispatchers = wire_nats_telegram_proxies(
+            hub=hub,
+            nc=nc,
+            tg_bot_auths=tg_bot_auths,
+            bot_agent_map=bot_agent_map,
+            circuit_registry=circuit_registry,
+        )
+        dc_proxies, dc_dispatchers = wire_nats_discord_proxies(
+            hub=hub,
+            nc=nc,
+            dc_bot_auths=dc_bot_auths,
+            bot_agent_map=bot_agent_map,
+            circuit_registry=circuit_registry,
+        )
+        proxies = tg_proxies + dc_proxies
+        dispatchers = tg_dispatchers + dc_dispatchers
 
         # Lifecycle: start buses, dispatchers, hub, health server
         await hub.inbound_bus.start()

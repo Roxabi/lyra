@@ -16,6 +16,7 @@ from .middleware import (
 )
 from .outbound_dispatcher import OutboundDispatcher as OutboundDispatcher
 from .outbound_router import OutboundRouter as OutboundRouter
+from .outbound_router import TtsDispatch as TtsDispatch
 from .pipeline_types import (
     Action as Action,
 )
@@ -35,5 +36,6 @@ __all__ = [
     "PipelineContext",
     "PipelineResult",
     "RoutingKey",
+    "TtsDispatch",
     "build_default_pipeline",
 ]

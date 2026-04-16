@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -16,22 +15,18 @@ from lyra.core.agent_models import (
 from lyra.core.agent_schema import (
     _CREATE_AGENT_RUNTIME_STATE,
     _CREATE_AGENTS,
-    _CREATE_BOT_AGENT_MAP,
     _SELECT_AGENTS,
     _UPSERT_AGENT,
 )
 from lyra.core.agent_seeder import seed_from_toml as _seed_from_toml
 from lyra.core.stores.agent_store_migrations import run_agent_migrations
 
+from .bot_agent_map import BotAgentMapStore
 from .sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 
 __all__ = ["AgentRow", "AgentStore", "AgentRuntimeStateRow", "BotAgentMapRow"]
-
-# ---------------------------------------------------------------------------
-# AgentStore
-# ---------------------------------------------------------------------------
 
 
 class AgentStore(SqliteStore):
@@ -45,8 +40,7 @@ class AgentStore(SqliteStore):
     def __init__(self, db_path: str | Path) -> None:
         super().__init__(db_path)
         self._agents: dict[str, AgentRow] = {}
-        self._bot_map: dict[tuple[str, str], str] = {}
-        self._bot_settings: dict[tuple[str, str], dict] = {}
+        self._bot_map_store = BotAgentMapStore(db_path)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -56,10 +50,11 @@ class AgentStore(SqliteStore):
         """Open aiosqlite, enable WAL, create tables, warm cache. Idempotent."""
         if self._db is not None:
             return  # already connected
-        await self._open_db(
-            ddl=[_CREATE_AGENTS, _CREATE_BOT_AGENT_MAP, _CREATE_AGENT_RUNTIME_STATE]
-        )
+        await self._open_db(ddl=[_CREATE_AGENTS, _CREATE_AGENT_RUNTIME_STATE])
         try:
+            # Connect bot map store first - it creates bot_agent_map table
+            # needed by migrations that add columns to it
+            await self._bot_map_store.connect()
             db = self._require_db()
             await run_agent_migrations(db)
             await self._warm_cache()
@@ -70,38 +65,20 @@ class AgentStore(SqliteStore):
         log.info("AgentStore connected (db=%s)", self._db_path)
 
     async def _warm_cache(self) -> None:
-        """Load agents and bot_agent_map into in-memory cache."""
+        """Load agents into in-memory cache."""
         db = self._require_db()
         self._agents.clear()
         async with db.execute(_SELECT_AGENTS) as cur:
             async for row in cur:
                 agent = AgentRow.from_db_row(tuple(row))
                 self._agents[agent.name] = agent
-        self._bot_map.clear()
-        self._bot_settings.clear()
-        async with db.execute(
-            "SELECT platform, bot_id, agent_name, settings_json FROM bot_agent_map"
-        ) as cur:
-            async for row in cur:
-                platform, bot_id, agent_name, settings_raw = row
-                self._bot_map[(platform, bot_id)] = agent_name
-                if settings_raw:
-                    try:
-                        self._bot_settings[(platform, bot_id)] = json.loads(
-                            settings_raw
-                        )
-                    except json.JSONDecodeError:
-                        log.warning(
-                            "corrupt settings_json for (%s, %s)", platform, bot_id
-                        )
 
     async def close(self) -> None:
         """Close the database connection and clear caches."""
         if self._db is not None:
             await super().close()
             self._agents.clear()
-            self._bot_map.clear()
-            self._bot_settings.clear()
+            await self._bot_map_store.close()
             log.info("AgentStore closed")
 
     # ------------------------------------------------------------------
@@ -118,20 +95,44 @@ class AgentStore(SqliteStore):
         self._require_db()
         return list(self._agents.values())
 
+    # ------------------------------------------------------------------
+    # Bot-agent mapping (delegated to BotAgentMapStore)
+    # ------------------------------------------------------------------
+
     def get_bot_agent(self, platform: str, bot_id: str) -> str | None:
         """Return agent_name for (platform, bot_id), or None."""
-        self._require_db()
-        return self._bot_map.get((platform, bot_id))
+        return self._bot_map_store.get_bot_agent(platform, bot_id)
 
     def get_all_bot_mappings(self) -> dict[tuple[str, str], str]:
-        """Return a snapshot of all (platform, bot_id) → agent_name mappings."""
-        self._require_db()
-        return dict(self._bot_map)
+        """Return a snapshot of all (platform, bot_id) -> agent_name mappings."""
+        return self._bot_map_store.get_all_bot_mappings()
 
     def get_bot_settings(self, platform: str, bot_id: str) -> dict:
         """Return parsed settings dict for (platform, bot_id), or empty dict."""
-        self._require_db()
-        return self._bot_settings.get((platform, bot_id), {})
+        return self._bot_map_store.get_bot_settings(platform, bot_id)
+
+    async def set_bot_agent(
+        self,
+        platform: str,
+        bot_id: str,
+        agent_name: str,
+        *,
+        settings: dict | None = None,
+    ) -> None:
+        """Upsert a bot -> agent mapping with optional settings."""
+        await self._bot_map_store.set_bot_agent(
+            platform, bot_id, agent_name, settings=settings
+        )
+
+    async def set_bot_settings(
+        self, platform: str, bot_id: str, settings: dict
+    ) -> None:
+        """Update settings_json for an existing bot mapping."""
+        await self._bot_map_store.set_bot_settings(platform, bot_id, settings)
+
+    async def remove_bot_agent(self, platform: str, bot_id: str) -> None:
+        """Remove a bot -> agent mapping. No-op if it does not exist."""
+        await self._bot_map_store.remove_bot_agent(platform, bot_id)
 
     # ------------------------------------------------------------------
     # Async writes
@@ -152,7 +153,7 @@ class AgentStore(SqliteStore):
                 row.name,
                 row.backend,
                 row.model,
-                row.max_turns or 0,  # None (unlimited) → 0 sentinel for NOT NULL
+                row.max_turns or 0,  # None (unlimited) -> 0 sentinel for NOT NULL
                 row.tools_json,
                 1 if row.show_intermediate else 0,
                 row.smart_routing_json,
@@ -207,84 +208,18 @@ class AgentStore(SqliteStore):
 
     async def delete(self, name: str) -> None:
         """Delete an agent. Raises ValueError if any bot is still assigned to it."""
+        # Check if any bot is assigned to this agent
+        bot_mappings = self._bot_map_store.get_all_bot_mappings()
+        for (_, _), agent_name in bot_mappings.items():
+            if agent_name == name:
+                raise ValueError(
+                    f"Agent {name!r} is still assigned to one or more bots. "
+                    "Run 'lyra agent unassign' first."
+                )
         db = self._require_db()
-        async with db.execute(
-            "SELECT COUNT(*) FROM bot_agent_map WHERE agent_name = ?", (name,)
-        ) as cur:
-            row = await cur.fetchone()
-            count = row[0] if row else 0
-        if count > 0:
-            raise ValueError(
-                f"Agent {name!r} is still assigned to one or more bots. "
-                "Run 'lyra agent unassign' first."
-            )
         await db.execute("DELETE FROM agents WHERE name = ?", (name,))
         await db.commit()
         self._agents.pop(name, None)
-
-    async def set_bot_agent(
-        self,
-        platform: str,
-        bot_id: str,
-        agent_name: str,
-        *,
-        settings: dict | None = None,
-    ) -> None:
-        """Upsert a bot → agent mapping with optional settings.
-
-        ``settings=None`` preserves the existing ``settings_json`` value in the
-        DB via COALESCE — it does **not** clear it.  Pass an explicit dict to
-        overwrite, or call :meth:`set_bot_settings` to update settings alone.
-        """
-        db = self._require_db()
-        now = _utc_now_iso()
-        settings_raw = json.dumps(settings) if settings else None
-        await db.execute(
-            "INSERT INTO bot_agent_map "
-            "(platform, bot_id, agent_name, settings_json, updated_at) "
-            "VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(platform, bot_id) DO UPDATE SET "
-            "agent_name=excluded.agent_name, "
-            "settings_json=COALESCE(excluded.settings_json, "
-            "bot_agent_map.settings_json), "
-            "updated_at=excluded.updated_at",
-            (platform, bot_id, agent_name, settings_raw, now),
-        )
-        await db.commit()
-        self._bot_map[(platform, bot_id)] = agent_name
-        if settings is not None:
-            self._bot_settings[(platform, bot_id)] = settings
-
-    async def set_bot_settings(
-        self, platform: str, bot_id: str, settings: dict
-    ) -> None:
-        """Update settings_json for an existing bot mapping."""
-        db = self._require_db()
-        now = _utc_now_iso()
-        settings_raw = json.dumps(settings)
-        cursor = await db.execute(
-            "UPDATE bot_agent_map SET settings_json=?, updated_at=? "
-            "WHERE platform=? AND bot_id=?",
-            (settings_raw, now, platform, bot_id),
-        )
-        if cursor.rowcount == 0:
-            raise ValueError(
-                f"No bot_agent_map row for platform={platform!r}, bot_id={bot_id!r}."
-                " Call set_bot_agent() first."
-            )
-        await db.commit()
-        self._bot_settings[(platform, bot_id)] = settings
-
-    async def remove_bot_agent(self, platform: str, bot_id: str) -> None:
-        """Remove a bot → agent mapping. No-op if it does not exist."""
-        db = self._require_db()
-        await db.execute(
-            "DELETE FROM bot_agent_map WHERE platform = ? AND bot_id = ?",
-            (platform, bot_id),
-        )
-        await db.commit()
-        self._bot_map.pop((platform, bot_id), None)
-        self._bot_settings.pop((platform, bot_id), None)
 
     # ------------------------------------------------------------------
     # Runtime state (not cached — always reads from DB)

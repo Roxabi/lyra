@@ -6,4 +6,3 @@ src/lyra/core           # 49 files — #753 refactor backlog
 src/lyra/adapters       # 29 files — #753 refactor backlog
 src/lyra/bootstrap      # 21 files — #753 refactor backlog
 src/lyra/core/hub       # 20 files — #753 refactor backlog
-src/lyra/core/stores    # 13 files — #753 refactor backlog

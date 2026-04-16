@@ -10,8 +10,8 @@ Architecture:
 - Hub delegates dispatch_* calls to the router
 - PoolContext protocol is satisfied via delegation chain: Pool -> Hub -> Router
 
-This separation keeps Hub focused on coordination while routing logic
-lives in a dedicated component (~300 lines extracted).
+TTS dispatch logic is delegated to TtsDispatch (outbound_tts.py), extracted
+per issue #760 for line count management.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..message import InboundMessage, OutboundMessage, Platform, Response
 from ..render_events import TextRenderEvent
+from .outbound_tts import TtsDispatch
 
 if TYPE_CHECKING:
     from ..circuit_breaker import CircuitRegistry
@@ -34,6 +35,9 @@ if TYPE_CHECKING:
     from ..tts_dispatch import AudioPipeline
     from .hub_protocol import ChannelAdapter
     from .outbound_dispatcher import OutboundDispatcher
+
+# Re-export for API preservation
+__all__ = ["OutboundRouter", "TtsDispatch"]
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +70,12 @@ class OutboundRouter:
         self._tts = tts
         self._memory_tasks = memory_tasks
         self._last_processed_at: float | None = None
+        # TTS dispatch helper (extracted per #760)
+        self._tts_dispatch = TtsDispatch(
+            audio_pipeline=audio_pipeline,
+            tts=tts,
+            memory_tasks=memory_tasks,
+        )
 
     def set_msg_manager(self, msg_manager: "MessageManager | None") -> None:
         """Update message manager reference (called after Hub construction)."""
@@ -74,14 +84,17 @@ class OutboundRouter:
     def set_tts(self, tts: "object | None") -> None:
         """Update TTS reference (called after Hub construction)."""
         self._tts = tts
+        self._tts_dispatch.set_tts(tts)
 
     def set_memory_tasks(self, tasks: "set[asyncio.Task] | None") -> None:
         """Update memory tasks set reference (called after Hub construction)."""
         self._memory_tasks = tasks
+        self._tts_dispatch.set_memory_tasks(tasks)
 
     def set_audio_pipeline(self, pipeline: "AudioPipeline | None") -> None:
         """Update audio pipeline reference (called after Hub construction)."""
         self._audio_pipeline = pipeline
+        self._tts_dispatch.set_audio_pipeline(pipeline)
 
     @property
     def last_processed_at(self) -> float | None:
@@ -160,39 +173,9 @@ class OutboundRouter:
         if isinstance(response, Response) and response.audio:
             await self.dispatch_audio(msg, response.audio)
 
-        _should_speak = msg.modality == "voice" or (
-            isinstance(response, Response) and response.speak
-        )
-        if _should_speak and self._tts is not None and self._audio_pipeline is not None:
-            text = outbound.to_text().strip()
-            if text:
-                agent_tts = (
-                    self._audio_pipeline.resolve_agent_tts(msg)
-                    if self._audio_pipeline
-                    else None
-                )
-                fallback_lang = (
-                    self._audio_pipeline._resolve_agent_fallback_language(msg)
-                    if self._audio_pipeline
-                    else None
-                )
-                task = asyncio.create_task(
-                    self._audio_pipeline.synthesize_and_dispatch_audio(
-                        msg,
-                        text,
-                        agent_tts=agent_tts,
-                        fallback_language=fallback_lang,
-                        **(
-                            self._audio_pipeline.tts_language_kwargs(msg)
-                            if self._audio_pipeline
-                            else {}
-                        ),
-                    ),
-                    name=f"tts:{msg.id}",
-                )
-                if self._memory_tasks is not None:
-                    self._memory_tasks.add(task)
-                    task.add_done_callback(self._memory_tasks.discard)
+        # TTS dispatch via helper (extracted per #760)
+        if self._tts_dispatch.should_speak(msg, response):
+            await self._tts_dispatch.dispatch_tts_for_response(msg, outbound)
 
     async def dispatch_streaming(  # noqa: C901, PLR0915
         self,
@@ -216,23 +199,10 @@ class OutboundRouter:
         _voice_done: asyncio.Event | None = None
 
         if _should_speak:
-            # Tee the stream: forward chunks through the normal streaming path
-            # while collecting text for TTS synthesis after streaming completes.
-            _voice_parts = []
-            _voice_done = asyncio.Event()
-            _raw = chunks
-
-            async def _tee() -> AsyncIterator["RenderEvent"]:
-                try:
-                    async for event in _raw:
-                        if isinstance(event, TextRenderEvent):
-                            _voice_parts.append(event.text)
-                        # ToolSummaryRenderEvent: skip — voice only needs text
-                        yield event
-                finally:
-                    _voice_done.set()
-
-            chunks = _tee()
+            # Tee the stream via helper (extracted per #760)
+            chunks, _voice_parts, _voice_done = self._tts_dispatch.create_streaming_tee(
+                chunks
+            )
 
         if (
             outbound is not None
@@ -252,39 +222,15 @@ class OutboundRouter:
         if dispatcher is not None:
             dispatcher.enqueue_streaming(msg, chunks, outbound)
             self._last_processed_at = time.monotonic()
-            # Voice TTS: don't block here — fire TTS as a background task
-            # that waits for the tee to finish independently.  Blocking on
-            # _voice_done.wait() caused the pool processor to hang when the
+            # Voice TTS: fire deferred task via helper (extracted per #760)
+            # Don't block — the deferred task waits for tee to finish independently.
+            # Blocking on _voice_done.wait() caused pool processor to hang when
             # dispatcher's scope lock was held by a prior stream (#TTS-fix).
-            if _should_speak and _voice_done is not None:
-                _vp = _voice_parts
-                _vd = _voice_done
-                assert _vd is not None
-
-                async def _deferred_tts() -> None:
-                    await _vd.wait()
-                    full_text = "".join(_vp or []).strip()
-                    if full_text:
-                        # _should_speak guarantees _audio_pipeline is not None
-                        assert self._audio_pipeline is not None
-                        audio_pipeline = self._audio_pipeline  # for type narrowing
-                        agent_tts = audio_pipeline.resolve_agent_tts(msg)
-                        fallback_lang = audio_pipeline._resolve_agent_fallback_language(
-                            msg
-                        )
-                        await audio_pipeline.synthesize_and_dispatch_audio(
-                            msg,
-                            full_text,
-                            agent_tts=agent_tts,
-                            fallback_language=fallback_lang,
-                            **audio_pipeline.tts_language_kwargs(msg),
-                        )
-
-                task = asyncio.create_task(_deferred_tts(), name=f"tts:{msg.id}")
-                if self._memory_tasks is not None:
-                    self._memory_tasks.add(task)
-                    task.add_done_callback(self._memory_tasks.discard)
-                return
+            if _should_speak and _voice_done is not None and _voice_parts is not None:
+                self._tts_dispatch.create_deferred_tts_task(
+                    msg, _voice_parts, _voice_done
+                )
+            return
         else:
             adapter = self._adapters.get((platform, msg.bot_id))
             if adapter is None:
@@ -321,28 +267,9 @@ class OutboundRouter:
                         await _result
             self._last_processed_at = time.monotonic()
 
-        # Voice: synthesize TTS as a background task now that text is collected.
-        if _should_speak:
-            full_text = "".join(_voice_parts or []).strip()
-            if full_text:
-                # _should_speak guarantees _audio_pipeline is not None
-                assert self._audio_pipeline is not None
-                audio_pipeline = self._audio_pipeline  # for type narrowing
-                agent_tts = audio_pipeline.resolve_agent_tts(msg)
-                fallback_lang = audio_pipeline._resolve_agent_fallback_language(msg)
-                task = asyncio.create_task(
-                    audio_pipeline.synthesize_and_dispatch_audio(
-                        msg,
-                        full_text,
-                        agent_tts=agent_tts,
-                        fallback_language=fallback_lang,
-                        **audio_pipeline.tts_language_kwargs(msg),
-                    ),
-                    name=f"tts:{msg.id}",
-                )
-                if self._memory_tasks is not None:
-                    self._memory_tasks.add(task)
-                    task.add_done_callback(self._memory_tasks.discard)
+        # Voice: synthesize TTS via helper after text collected (extracted per #760)
+        if _should_speak and _voice_parts is not None:
+            await self._tts_dispatch.dispatch_tts_from_parts(msg, _voice_parts)
 
     async def dispatch_attachment(
         self,

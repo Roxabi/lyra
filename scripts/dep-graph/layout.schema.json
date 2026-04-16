@@ -78,7 +78,7 @@
       }
     },
     "standalone": {
-      "description": "OPTIONAL: standalone section. When order[] is absent/empty, auto-derived from graph:standalone labels.",
+      "description": "OPTIONAL: standalone section. When order[] is absent, empty, or the entire object is {} (all three forms are equivalent), the section is auto-derived from graph:standalone labels.",
       "type": "object",
       "additionalProperties": false,
       "properties": {

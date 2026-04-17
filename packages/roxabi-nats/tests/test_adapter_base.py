@@ -1146,3 +1146,39 @@ class TestHeartbeatRun:
 
         # Assert
         assert adapter._heartbeat_task is None
+
+
+# ---------------------------------------------------------------------------
+# T4 (issue #729) — type_registry construction-time validation
+# ---------------------------------------------------------------------------
+
+from roxabi_nats._serialize import _EMPTY_RESOLVER  # noqa: E402
+
+
+def test_type_registry_fail_fast_invalid_module() -> None:
+    """NatsAdapterBase raises ValueError at init when module is missing."""
+    # Arrange — module "no.such.module" does not exist
+    # Act / Assert
+    with pytest.raises(ValueError, match="cannot import no.such.module"):
+        _ConcreteAdapter(
+            subject="test.subj",
+            queue_group="test.qg",
+            envelope_name="test",
+            schema_version=1,
+            type_registry=[("no.such.module", "X")],
+        )
+
+
+def test_type_registry_none_ok() -> None:
+    """NatsAdapterBase with type_registry=None binds the empty resolver singleton."""
+    # Arrange / Act
+    adapter = _ConcreteAdapter(
+        subject="test.subj",
+        queue_group="test.qg",
+        envelope_name="test",
+        schema_version=1,
+        type_registry=None,
+    )
+
+    # Assert
+    assert adapter._resolver is _EMPTY_RESOLVER

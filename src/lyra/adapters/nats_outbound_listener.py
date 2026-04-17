@@ -20,6 +20,8 @@ from lyra.adapters.nats_stream_decoder import (
     handle_stream_error as _handle_stream_error_impl,
 )
 from lyra.core.message import InboundMessage, OutboundMessage, Platform
+from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict as _deserialize_dict
 from roxabi_nats._validate import validate_nats_token
 
@@ -35,7 +37,7 @@ _MAX_QUEUE_SIZE = 256
 class NatsOutboundListener:
     """NATS outbound subscriber → adapter dispatch (send/attachment/stream)."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         nc: NATS,
         platform: Platform,
@@ -43,6 +45,7 @@ class NatsOutboundListener:
         adapter: "ChannelAdapter",
         *,
         queue_group: str = "",
+        resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
     ) -> None:
         validate_nats_token(queue_group, kind="queue_group", allow_empty=True)
         self._nc = nc
@@ -50,8 +53,9 @@ class NatsOutboundListener:
         self._bot_id = bot_id
         self._adapter = adapter
         self._queue_group = queue_group
+        self._resolver = resolver
         self._subject = f"lyra.outbound.{platform.value}.{bot_id}"
-        self._cache = InboundCache()
+        self._cache = InboundCache(resolver=resolver)
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
         self._stream_tasks: dict[str, asyncio.Task[None]] = {}
         self._stream_outbound: dict[str, OutboundMessage] = {}
@@ -101,7 +105,7 @@ class NatsOutboundListener:
 
     async def _handle(self, msg: Any) -> None:
         """Dispatch raw NATS message to envelope handlers."""
-        await handle_raw_message(self, msg)
+        await handle_raw_message(self, msg, resolver=self._resolver)
 
     def _handle_stream_error(self, data: dict) -> None:
         """Dispatch to the stream_error handler in nats_stream_decoder."""
@@ -114,7 +118,9 @@ class NatsOutboundListener:
             raw = self._stream_original_msgs.pop(stream_id, None)
             if raw is not None:
                 try:
-                    original_msg = _deserialize_dict(raw, InboundMessage)
+                    original_msg = _deserialize_dict(
+                        raw, InboundMessage, resolver=self._resolver
+                    )
                 except Exception:
                     log.warning(
                         "NatsOutboundListener: bad embedded original_msg"

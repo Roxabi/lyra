@@ -2289,7 +2289,7 @@ provides-extras = ["testing"]
 
 [[package]]
 name = "roxabi-nats"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/roxabi-nats" }
 dependencies = [
     { name = "nats-py" },

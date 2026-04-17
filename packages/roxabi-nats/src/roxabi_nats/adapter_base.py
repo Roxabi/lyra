@@ -17,9 +17,11 @@ import signal
 import socket
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 
 from nats.aio.client import Client as NATS
 
+from roxabi_nats._serialize import _EMPTY_RESOLVER, _TypeHintResolver
 from roxabi_nats._validate import validate_nats_token
 from roxabi_nats._version_check import check_contract_version, check_schema_version
 from roxabi_nats.connect import nats_connect
@@ -53,6 +55,7 @@ class NatsAdapterBase(ABC):
         *,
         heartbeat_subject: str | None = None,
         heartbeat_interval: float = 5.0,
+        type_registry: Sequence[tuple[str, str]] | None = None,
     ):
         validate_nats_token(subject, kind="subject")
         validate_nats_token(queue_group, kind="queue_group")
@@ -74,6 +77,11 @@ class NatsAdapterBase(ABC):
         raw_id = f"{queue_group}-{socket.gethostname()}-{os.getpid()}"
         self._worker_id = re.sub(r"[^A-Za-z0-9_-]", "_", raw_id)
         self._heartbeat_task: asyncio.Task | None = None
+        self._resolver: _TypeHintResolver = (
+            _TypeHintResolver(type_registry)
+            if type_registry is not None
+            else _EMPTY_RESOLVER
+        )
 
     async def run(self, nats_url: str, stop: asyncio.Event | None = None) -> None:
         nc = await nats_connect(nats_url)

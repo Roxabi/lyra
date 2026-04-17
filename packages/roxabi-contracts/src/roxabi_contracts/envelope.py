@@ -1,14 +1,25 @@
 """Envelope base for all roxabi-contracts domain models.
 
 See docs/architecture/adr/049-roxabi-contracts-shared-schema-package.mdx.
-CONTRACT_VERSION is NOT defined here — it is migrated from
-roxabi_nats.adapter_base in a follow-up issue (#765).
 """
 
 from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
+
+# ADR-044 — single source of truth for the wire-protocol contract version. All
+# producer sites (hub clients + satellite adapters) stamp this on outgoing
+# payloads. Consumers ignore unknown values. Bumping requires a new ADR.
+CONTRACT_VERSION = "1"
+
+# Import-time validation: a typo in CONTRACT_VERSION must crash at load, not
+# drop every inbound envelope at runtime. check_contract_version relies on
+# ``int(expected)`` succeeding — this assert is the single gate that guarantees
+# that invariant for every call site.
+assert CONTRACT_VERSION.isdigit() and int(CONTRACT_VERSION) > 0, (  # noqa: S101
+    f"CONTRACT_VERSION must be a positive decimal string, got {CONTRACT_VERSION!r}"
+)
 
 
 class ContractEnvelope(BaseModel):

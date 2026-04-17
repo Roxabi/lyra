@@ -11,6 +11,9 @@ dependencies = [
     # nkeys 0.1.0 predates API used by connect.py's seed auth path;
     # 0.2.0 is the first tested, stable version.
     "nkeys>=0.2.0",
+    # CONTRACT_VERSION canonical home (ADR-049). The compat re-export from
+    # roxabi_nats.adapter_base is removed at v0.3.0 (BREAKING CHANGE).
+    "roxabi-contracts",
 ]
 
 [project.urls]

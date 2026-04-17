@@ -4,6 +4,31 @@ All notable changes to the `roxabi-nats` package are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `CONTRACT_VERSION` canonical home moved to `roxabi_contracts.envelope`
+  (ADR-049 §Neutral consequence). `roxabi_nats.adapter_base.CONTRACT_VERSION`
+  and the top-level `roxabi_nats.CONTRACT_VERSION` are now compat re-exports
+  that emit a `DeprecationWarning` at module import time.
+
+### Deprecated
+
+- `from roxabi_nats.adapter_base import CONTRACT_VERSION`
+- `from roxabi_nats import CONTRACT_VERSION`
+
+  Import from `roxabi_contracts.envelope` instead. Both compat re-exports are
+  scheduled for removal at `v0.3.0` (see below).
+
+### Planned removal at v0.3.0 (BREAKING CHANGE)
+
+- The two `CONTRACT_VERSION` compat re-exports above will be removed. Consumers
+  must migrate to `from roxabi_contracts.envelope import CONTRACT_VERSION`.
+- The `v0.3.0` release commit will carry a `BREAKING CHANGE:` trailer so
+  release-please surfaces it in the changelog and Renovate opens a major-bump
+  PR across satellites.
+
 ## [0.2.0] — 2026-04-17
 
 ### Breaking

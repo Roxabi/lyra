@@ -2294,12 +2294,14 @@ source = { editable = "packages/roxabi-nats" }
 dependencies = [
     { name = "nats-py" },
     { name = "nkeys" },
+    { name = "roxabi-contracts" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "nats-py", specifier = ">=2.6" },
     { name = "nkeys", specifier = ">=0.2.0" },
+    { name = "roxabi-contracts", editable = "packages/roxabi-contracts" },
 ]
 
 [[package]]

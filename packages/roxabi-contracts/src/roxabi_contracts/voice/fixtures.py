@@ -16,8 +16,15 @@ from __future__ import annotations
 
 import io
 
-import numpy as np
-from scipy.io.wavfile import write as _wav_write
+try:
+    import numpy as np
+    from scipy.io.wavfile import write as _wav_write
+except ImportError as exc:  # pragma: no cover — exercised only without [testing]
+    raise ImportError(
+        "roxabi_contracts.voice.fixtures requires the `[testing]` extra "
+        "(numpy + scipy). Install with: `uv pip install roxabi-contracts[testing]` "
+        "or `uv sync --all-extras` inside the workspace."
+    ) from exc
 
 _SAMPLE_RATE_HZ: int = 16_000
 _DURATION_SECONDS: int = 1

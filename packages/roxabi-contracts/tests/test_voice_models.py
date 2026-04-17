@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from roxabi_contracts.voice import (
     SttRequest,
@@ -81,8 +81,8 @@ def test_roundtrip(model: type[BaseModel], payload: dict[str, Any]) -> None:
     assert parsed == inst
 
 
-def test_tts_response_success_invariant() -> None:
-    """Drift #1: ok=True implies audio_b64 + mime_type + duration_ms non-null."""
+def test_tts_response_success_accepts_complete_payload() -> None:
+    """Valid ok=True payload with all required success fields parses cleanly."""
     resp = TtsResponse(
         **_ENVELOPE,
         ok=True,
@@ -96,8 +96,27 @@ def test_tts_response_success_invariant() -> None:
     assert resp.duration_ms is not None
 
 
-def test_stt_response_success_invariant() -> None:
-    """Drift #3+#4: ok=True implies text + language + duration_seconds non-null."""
+@pytest.mark.parametrize(
+    "missing_field",
+    ["audio_b64", "mime_type", "duration_ms"],
+)
+def test_tts_response_ok_true_rejects_missing_field(missing_field: str) -> None:
+    """Drift #1: ok=True with any missing success field raises ValidationError."""
+    payload: dict[str, Any] = {
+        **_ENVELOPE,
+        "ok": True,
+        "request_id": "r1",
+        "audio_b64": _b64(silence_wav_16khz),
+        "mime_type": "audio/wav",
+        "duration_ms": 1000,
+    }
+    payload[missing_field] = None
+    with pytest.raises(ValidationError, match="must carry"):
+        TtsResponse.model_validate(payload)
+
+
+def test_stt_response_success_accepts_complete_payload() -> None:
+    """Valid ok=True payload with all required success fields parses cleanly."""
     resp = SttResponse(
         **_ENVELOPE,
         ok=True,
@@ -111,6 +130,25 @@ def test_stt_response_success_invariant() -> None:
     assert resp.duration_seconds is not None
 
 
+@pytest.mark.parametrize(
+    "missing_field",
+    ["text", "language", "duration_seconds"],
+)
+def test_stt_response_ok_true_rejects_missing_field(missing_field: str) -> None:
+    """Drift #3+#4: ok=True with any missing success field raises ValidationError."""
+    payload: dict[str, Any] = {
+        **_ENVELOPE,
+        "ok": True,
+        "request_id": "r2",
+        "text": "hello",
+        "language": "en",
+        "duration_seconds": 1.0,
+    }
+    payload[missing_field] = None
+    with pytest.raises(ValidationError, match="must carry"):
+        SttResponse.model_validate(payload)
+
+
 def test_tts_response_error_path_allows_null_mime_type() -> None:
     """Error path: mime_type is legitimately absent when ok=False."""
     resp = TtsResponse(
@@ -121,3 +159,16 @@ def test_tts_response_error_path_allows_null_mime_type() -> None:
     )
     assert resp.mime_type is None
     assert resp.audio_b64 is None
+
+
+def test_stt_response_error_path_allows_null_success_fields() -> None:
+    """Error path: text/language/duration_seconds absent when ok=False."""
+    resp = SttResponse(
+        **_ENVELOPE,
+        ok=False,
+        request_id="r2",
+        error="audio_decode_failed",
+    )
+    assert resp.text is None
+    assert resp.language is None
+    assert resp.duration_seconds is None

@@ -2,7 +2,30 @@
 
 from datetime import datetime, timezone
 
-from roxabi_contracts import ContractEnvelope
+from roxabi_contracts import CONTRACT_VERSION, ContractEnvelope
+
+
+def test_contract_version_is_positive_digit() -> None:
+    """Invariant: CONTRACT_VERSION MUST remain a positive decimal string.
+
+    The module-level assert in ``envelope.py`` enforces this at import
+    time; this test locks the invariant as an explicit characterization
+    so any future refactor that weakens the assert surfaces as a test
+    failure rather than a runtime drop of every inbound envelope.
+    """
+    assert isinstance(CONTRACT_VERSION, str)
+    assert CONTRACT_VERSION.isdigit()
+    assert int(CONTRACT_VERSION) > 0
+
+
+def test_contract_version_current_value() -> None:
+    """Lock the current value against accidental drift.
+
+    Bumping ``CONTRACT_VERSION`` is a cross-repo coordination event
+    (ADR-044 §Wire-protocol contract). A silent change must fail a test
+    so the bump is only ever deliberate.
+    """
+    assert CONTRACT_VERSION == "1"
 
 
 def test_instantiation_with_required_fields() -> None:

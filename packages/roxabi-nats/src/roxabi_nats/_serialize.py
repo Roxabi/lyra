@@ -25,9 +25,9 @@ from roxabi_nats._resolver import _EMPTY_RESOLVER, _TypeHintResolver
 T = TypeVar("T")
 
 _B64_PREFIX = "b64:"
-# Cache key pairs the dataclass type with the resolver's monotonic `_uid` —
-# unforgeable and never reused, so a GC'd resolver cannot collide with a new
-# one at the same `id()` address.
+# Cache key: (dc_type, resolver._uid). UIDs are unforgeable + never reused,
+# so GC'd resolvers can't collide. Growth bounded by adapters × dataclasses
+# in production; no eviction path.
 _hints_cache: dict[tuple[type, int], dict[str, Any]] = {}
 
 

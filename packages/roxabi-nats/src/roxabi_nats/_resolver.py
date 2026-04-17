@@ -42,20 +42,20 @@ class _TypeHintResolver:
         seen: set[tuple[str, str]] = set()
         deduped: list[tuple[str, str]] = []
         resolved: dict[str, type] = {}
+        # name_to_module: type_name → module_path for the entry that first
+        # claimed it. O(1) lookup for the duplicate-name error; keeps the
+        # predicate unambiguous regardless of `seen`-set evolution.
+        name_to_module: dict[str, str] = {}
         for module_path, type_name in entries:
             key = (module_path, type_name)
             if key in seen:
                 continue
             seen.add(key)
-            deduped.append(key)
             if type_name in resolved:
-                prev_module = next(
-                    m for m, n in deduped if n == type_name and (m, n) != key
-                )
                 raise ValueError(
                     f"type_registry: duplicate type_name {type_name!r} from "
                     f"{module_path!r} conflicts with earlier entry "
-                    f"from {prev_module!r}"
+                    f"from {name_to_module[type_name]!r}"
                 )
             try:
                 mod = importlib.import_module(module_path)
@@ -68,6 +68,8 @@ class _TypeHintResolver:
                     f"type_registry: {module_path} has no attribute {type_name}"
                 )
             resolved[type_name] = getattr(mod, type_name)
+            name_to_module[type_name] = module_path
+            deduped.append(key)
         self.entries: tuple[tuple[str, str], ...] = tuple(deduped)
         self.resolved: types.MappingProxyType[str, type] = types.MappingProxyType(
             resolved

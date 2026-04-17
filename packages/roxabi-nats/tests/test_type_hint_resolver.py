@@ -178,11 +178,10 @@ def test_empty_resolver_singleton_is_module_level() -> None:
 
 
 def test_hints_cache_isolated_across_resolvers() -> None:
-    """id(resolver) belongs to the _hints_cache key — resolvers never poison each other.
+    """resolver._uid belongs to _hints_cache key — resolvers do not poison each other.
 
-    Empty resolver leaves inner as None (no StubInner type in scope → NameError
-    fallback → field coercion skipped).  Non-empty resolver reconstructs StubInner
-    from the raw dict.
+    Empty resolver leaves inner uncoerced (NameError fallback → {}).  Non-empty
+    resolver reconstructs StubInner.  Order: non-empty first, then empty.
     """
     from roxabi_nats_test_stub import (
         StubInner,  # noqa: PLC0415  # type: ignore[import-not-found]
@@ -201,6 +200,33 @@ def test_hints_cache_isolated_across_resolvers() -> None:
     # Empty resolver: StubInner not in scope → inner stays as raw dict (not coerced)
     result_empty = deserialize(payload, _StubOuter, resolver=r_empty)
     assert not isinstance(result_empty.inner, StubInner)
+
+
+def test_hints_cache_no_poisoning_when_empty_runs_first() -> None:
+    """Mirror of the isolation test — run the empty resolver FIRST.
+
+    Canonical cache-poisoning scenario: under a dc_type-only cache key, the
+    empty resolver caches `{}` for `_StubOuter`, then the non-empty resolver
+    hits the cached empty hints and fails to coerce StubInner. The per-UID
+    cache key prevents this; the test asserts the second resolver still sees
+    correct coercion regardless of ordering.
+    """
+    from roxabi_nats_test_stub import (
+        StubInner,  # noqa: PLC0415  # type: ignore[import-not-found]
+    )
+
+    r_empty = _TypeHintResolver(())
+    r_non_empty = _TypeHintResolver([("roxabi_nats_test_stub", "StubInner")])
+
+    payload = serialize(_StubOuter(name="mirror", inner=StubInner()))
+
+    # Empty FIRST (would poison a dc_type-only cache)
+    result_empty = deserialize(payload, _StubOuter, resolver=r_empty)
+    assert not isinstance(result_empty.inner, StubInner)
+
+    # Non-empty SECOND — per-UID cache isolation must still give us StubInner
+    result_full = deserialize(payload, _StubOuter, resolver=r_non_empty)
+    assert isinstance(result_full.inner, StubInner)
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-# pyright: reportMissingTypeStubs=false
+# pyright: reportMissingTypeStubs=false, reportMissingImports=false
 """Test fixtures for roxabi_contracts.voice.
 
 Pure synthesized data. NO real user audio, NO binary blobs committed,

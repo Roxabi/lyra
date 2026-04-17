@@ -28,7 +28,6 @@ from lyra.adapters._shared_audio import (
 
 # Re-exports from _shared_streaming — importers can use either module.
 from lyra.adapters._shared_streaming import (
-    STREAMING_EDIT_INTERVAL,
     IntermediateTextState,
     StreamState,
 )
@@ -54,7 +53,6 @@ __all__ = [
     "mime_to_ext",
     "ATTACHMENT_EXTS_BASE",
     "DISCORD_MAX_LENGTH",
-    "STREAMING_EDIT_INTERVAL",
     "push_to_hub_guarded",
     "truncate_caption",
     "sanitize_filename",

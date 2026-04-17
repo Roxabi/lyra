@@ -84,7 +84,7 @@ class CommandRouter:
         self._passthroughs: set[str] = set()
         self._session_driver: object = session_driver
         self._session_handlers: dict[str, SessionCommandEntry] = {}
-        # Guard: raise early if any loaded plugin command clashes with a builtin.
+        self._builtin_handlers = self._build_builtin_handlers()
         check_command_conflicts(
             command_loader.get_commands(enabled_plugins), self._builtins
         )
@@ -219,7 +219,7 @@ class CommandRouter:
     async def _dispatch_builtin(
         self, command_name: str, args: list[str], msg: InboundMessage, pool: Pool | None
     ) -> Response | None:
-        handlers = self._build_builtin_handlers()
+        handlers = self._builtin_handlers
         handler = handlers.get(command_name)
         if handler is not None:
             result = handler(args, msg, pool)

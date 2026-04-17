@@ -21,18 +21,10 @@ from ..message import InboundMessage
 
 if TYPE_CHECKING:
     from ..message import OutboundAttachment, OutboundAudio, OutboundAudioChunk
-    from .hub_protocol import ChannelAdapter
-    from .outbound_dispatcher import OutboundDispatcher
 
-# Type alias for the _route_outbound callable signature
-_RouteOutbound = Callable[
-    [
-        InboundMessage,
-        Callable[["OutboundDispatcher"], None],
-        Callable[["ChannelAdapter"], Coroutine[Any, Any, None]],
-    ],
-    Coroutine[Any, Any, None],
-]
+# Type alias for OutboundRouter._route_outbound (variadic to accommodate
+# `resource=` kwarg; see outbound_router.py for concrete signature)
+_RouteOutbound = Callable[..., Coroutine[Any, Any, None]]
 
 
 class AudioDispatch:

@@ -6,8 +6,7 @@ This module re-exports the full public API from the two focused submodules:
   - _shared_streaming_emitter → PlatformCallbacks, StreamingSession
 
 Importers may continue to use ``from lyra.adapters._shared_streaming import ...``
-without change.  New code should prefer importing directly from the submodule
-that owns the symbol.
+without change.
 """
 
 from lyra.adapters._shared_streaming_emitter import (
@@ -15,14 +14,12 @@ from lyra.adapters._shared_streaming_emitter import (
     StreamingSession,
 )
 from lyra.adapters._shared_streaming_state import (
-    STREAMING_EDIT_INTERVAL,
     IntermediateTextState,
     StreamState,
     classify_stream_error,
 )
 
 __all__ = [
-    "STREAMING_EDIT_INTERVAL",
     "IntermediateTextState",
     "PlatformCallbacks",
     "StreamState",

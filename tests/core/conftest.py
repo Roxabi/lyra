@@ -23,7 +23,6 @@ from lyra.core.commands.command_router import CommandRouter
 from lyra.core.hub import Hub
 from lyra.core.message import (
     Attachment,
-    InboundAudio,
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -35,10 +34,10 @@ from lyra.core.message import (
 )
 from lyra.core.pool import Pool
 from lyra.core.render_events import RenderEvent
-from lyra.core.stores.agent_store import AgentRow, AgentStore
-from lyra.core.stores.auth_store import AuthStore
 from lyra.core.stores.pairing import PairingConfig, PairingManager
 from lyra.core.trust import TrustLevel
+from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
+from lyra.infrastructure.stores.auth_store import AuthStore
 
 # ---------------------------------------------------------------------------
 # MessageManager shared constants
@@ -94,7 +93,7 @@ class MockAdapter:
         mime_type: str,
         *,
         trust_level: TrustLevel,
-    ) -> InboundAudio:
+    ) -> InboundMessage:
         raise NotImplementedError
 
     async def send(
@@ -110,9 +109,7 @@ class MockAdapter:
     ) -> None:
         pass
 
-    async def render_audio(
-        self, msg: OutboundAudio, inbound: InboundMessage
-    ) -> None:
+    async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         pass
 
     async def render_audio_stream(
@@ -299,7 +296,7 @@ async def push_to_hub(hub: Hub, msg: InboundMessage) -> None:
         bus.register(platform)
     if isinstance(bus, LocalBus) and not bus._feeders:
         await bus.start()
-    bus.put(platform, msg)
+    await bus.put(platform, msg)
 
 
 # ---------------------------------------------------------------------------
@@ -750,32 +747,6 @@ class FastAgent:
 # AudioPipeline shared helpers (used by test_audio_pipeline_constraints +
 # test_audio_pipeline_tts)
 # ---------------------------------------------------------------------------
-
-
-def make_audio(
-    audio_id: str = "audio-1",
-    platform: str = "telegram",
-    trust_level: TrustLevel = TrustLevel.TRUSTED,
-    user_id: str = "alice",
-) -> InboundAudio:
-    """Build a minimal InboundAudio for audio pipeline tests."""
-    from datetime import datetime, timezone
-
-    return InboundAudio(
-        id=audio_id,
-        platform=platform,
-        bot_id="main",
-        scope_id="chat:42",
-        user_id=user_id,
-        audio_bytes=b"\x00" * 100,
-        mime_type="audio/ogg",
-        duration_ms=3000,
-        file_id="file-1",
-        timestamp=datetime.now(timezone.utc),
-        trust_level=trust_level,
-        user_name="Alice",
-        platform_meta={"chat_id": 42, "is_group": False},
-    )
 
 
 @_dataclass

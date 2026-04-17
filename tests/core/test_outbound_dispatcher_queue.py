@@ -107,8 +107,11 @@ class TestOutboundDispatcherCircuitBreaker:
             msg = make_dispatcher_msg()
             dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
             await asyncio.sleep(0.05)
-            # Circuit is open — adapter.send should NOT be called
-            adapter.send.assert_not_awaited()
+            # Circuit is open — main send is dropped, but try_notify_user
+            # calls adapter.send once to deliver the circuit-open notification.
+            assert adapter.send.await_count == 1
+            sent_outbound = adapter.send.call_args.args[1]
+            assert "unavailable" in sent_outbound.content[0]
         finally:
             await dispatcher.stop()
 

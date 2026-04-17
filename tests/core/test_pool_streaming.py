@@ -94,8 +94,10 @@ async def _consume_and_dispatch_cb(
 
         if isinstance(outbound, _OM):
             cb = outbound.metadata.pop("_on_dispatched", None)
-            if callable(cb):
-                cb(outbound)
+            if cb is not None:
+                result = cb(outbound)
+                if asyncio.iscoroutine(result):
+                    await result
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +273,7 @@ class TestPoolStreaming:
 
         log_calls: list[str] = []
 
-        def _capture_turn(**kw: object) -> None:
+        async def _capture_turn(**kw: object) -> None:
             if kw.get("role") == "assistant":
                 log_calls.append(str(kw.get("content", "")))
 
@@ -305,7 +307,7 @@ class TestPoolStreaming:
 
         logged: list[str] = []
 
-        def _capture_turn(**kw: object) -> None:
+        async def _capture_turn(**kw: object) -> None:
             if kw.get("role") == "assistant":
                 logged.append(str(kw.get("content", "")))
 
@@ -331,7 +333,7 @@ class TestPoolStreaming:
 
         logged: list[str] = []
 
-        def _capture_turn(**kw: object) -> None:
+        async def _capture_turn(**kw: object) -> None:
             if kw.get("role") == "assistant":
                 logged.append(str(kw.get("content", "MISSING")))
 
@@ -376,7 +378,7 @@ class TestPoolStreaming:
 
         logged: list[str] = []
 
-        def _capture_turn(**kw: object) -> None:
+        async def _capture_turn(**kw: object) -> None:
             if kw.get("role") == "assistant":
                 logged.append(str(kw.get("content", "")))
 

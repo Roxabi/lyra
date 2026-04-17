@@ -12,7 +12,11 @@ Lyra uses two types of configuration files with distinct responsibilities:
 | File | Type | Versioned | Purpose |
 |------|------|-----------|---------|
 | `config.toml` | Instance config | No | Deployment wiring: bots, tokens, auth, defaults |
-| `~/.lyra/auth.db` | Runtime DB | No | Agent registry (SQLite, written by `lyra agent` CLI) |
+| `lyra.toml` | Instance config | No | Monitoring thresholds (read by `lyra.monitoring` only) |
+| `~/.lyra/config.db` | Runtime DB | No | Agents, credentials, grants, user prefs (SQLite) |
+| `~/.lyra/turns.db` | Runtime DB | No | Conversation turns, pool sessions, message index |
+| `~/.lyra/discord.db` | Runtime DB | No | Discord thread data |
+| `~/.lyra/auth.db` | Runtime DB | No | Auth grants + credential store (legacy name, still used by CLI) |
 | `~/.lyra/agents/<name>.toml` | Seed source | No | Agent seed: imported into DB by `lyra agent init` |
 | `src/lyra/agents/<name>.toml` | Seed source | Yes | Agent seed: system defaults, imported into DB |
 | `src/lyra/commands/<name>/plugin.toml` | System data | Yes | Plugin manifest: commands, handlers |
@@ -100,9 +104,24 @@ At least one platform must be configured. A missing platform logs a warning and 
 
 ---
 
+## Runtime databases — `~/.lyra/`
+
+Lyra maintains several SQLite databases under `~/.lyra/`. They are written at runtime and are not versioned.
+
+| Database | Contents |
+|----------|----------|
+| `config.db` | Agents, bot-agent map, agent runtime state, credentials, user prefs |
+| `turns.db` | Conversation turns, pool sessions, message index |
+| `discord.db` | Discord thread data (owned by the Discord adapter) |
+| `auth.db` | Auth grants, identity aliases, credential store (legacy name; some CLI commands still use this path) |
+
+**Migration note:** Before v15, all tables lived in `auth.db`. Since v15, `config.db`, `turns.db`, and `discord.db` were split out. On first startup after upgrading, Lyra automatically migrates existing rows. The old `auth.db` is kept as a tombstone.
+
+---
+
 ## Agent definitions — SQLite DB + TOML seeds
 
-Agents are stored in **`~/.lyra/auth.db`** (SQLite). This is the runtime source of truth — startup reads agents from the DB only.
+Agents are stored in **`~/.lyra/config.db`** (SQLite). This is the runtime source of truth — startup reads agents from the DB only.
 
 TOML files (`src/lyra/agents/<name>.toml`, `~/.lyra/agents/<name>.toml`) are **seed sources**: they define the initial state and are imported into the DB via `lyra agent init`. After import, edits to TOML files have no effect until re-imported.
 
@@ -213,7 +232,7 @@ startup
         ├── parse [defaults] → machine-wide fallbacks
         ├── resolve env:VAR_NAME references
         ├── parse [[telegram.bots]] / [[discord.bots]]
-        └── AgentStore.connect() → open ~/.lyra/auth.db, warm in-memory cache
+        └── AgentStore.connect() → open ~/.lyra/config.db, warm in-memory cache
               └── for each bot → resolve agent from DB
                     ├── bot_agent_map DB row (highest priority)
                     │     └── if missing → fall back to config.toml bot.agent
@@ -228,3 +247,89 @@ startup
 `config.toml` is loaded once at startup. Agent DB rows are loaded into cache at connect time and served synchronously — no per-message file I/O.
 
 > **Important:** TOML file changes do NOT take effect at runtime. Run `lyra agent init --force` and restart to pick up TOML edits. Use `lyra agent edit` to change a running agent without touching TOML.
+
+## Monitoring (`lyra-monitor.timer`)
+
+The health monitoring cron runs as a **systemd user timer**, separate from supervisor.
+
+> **Config file split:** the monitoring process reads `lyra.toml` (not `config.toml`). Both files respect `$LYRA_CONFIG`, but the hub and monitoring use different defaults when the variable is unset (`config.toml` vs `lyra.toml`). If you set `$LYRA_CONFIG`, it must point to a file that contains both `[monitoring]` and any other sections you need.
+
+### Files
+
+| File | Role |
+|------|------|
+| `deploy/lyra-monitor.service` | Systemd oneshot — runs `python -m lyra.monitoring` |
+| `deploy/lyra-monitor.timer` | Triggers the service every 5 minutes |
+| `lyra.toml` `[monitoring]` | Thresholds (queue depth, idle hours, disk, model, etc.) |
+| `.env` | Secrets: `TELEGRAM_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_ADMIN_CHAT_ID` |
+
+### Installation
+
+```bash
+make register     # installs timer + enables it (but does not start)
+make monitor enable   # start the timer
+make monitor status   # check timer + last run
+make monitor logs     # journalctl follow
+make monitor run      # trigger a manual check now
+make monitor disable  # stop the timer
+```
+
+### `lyra.toml` `[monitoring]` — thresholds (all optional)
+
+All keys have defaults; the `[monitoring]` section can be omitted entirely.
+
+```toml
+[monitoring]
+check_interval_minutes  = 5                              # how often the timer fires
+health_endpoint_timeout_s = 5                            # HTTP timeout for /health/detail
+queue_depth_threshold   = 80                             # alert if inbound queue exceeds this
+idle_threshold_hours    = 6                              # alert if idle longer than this
+quiet_start             = "00:00"                        # HH:MM — suppress alerts from
+quiet_end               = "08:00"                        # HH:MM — suppress alerts until
+idle_check_enabled      = false                          # enable idle-time alerting
+min_disk_free_gb        = 1                              # alert if free disk drops below this
+health_endpoint_url     = "http://localhost:8443/health/detail"
+diagnostic_model        = "claude-haiku-4-5-20251001"    # model used for LLM diagnosis
+disk_check_path         = "/"                            # filesystem path to check
+service_name            = "lyra_telegram"                # supervisor service name to inspect
+```
+
+### Voice (optional)
+
+Enable when running `lyra_stt` / `lyra_tts` supervisor programs:
+
+```bash
+LYRA_STT_ENABLED=1              # activate NATS STT adapter (default: off)
+LYRA_STT_MODEL=large-v3-turbo   # faster-whisper model size
+LYRA_TTS_ENABLED=1              # activate NATS TTS adapter (default: off)
+# LYRA_TTS_ENGINE set per-adapter in deploy/supervisor/conf.d/lyra_tts.conf
+```
+
+The hub reads `LYRA_STT_ENABLED`/`LYRA_TTS_ENABLED` at startup to probe voice services via NATS. Deprecated `STT_MODEL_SIZE` and `TTS_ENGINE` still work for one cycle with a warning.
+
+### Required `.env` variables
+
+```bash
+TELEGRAM_TOKEN=bot...           # for sending alerts (same bot or dedicated)
+ANTHROPIC_API_KEY=sk-ant-...    # for LLM diagnosis (Layer 2, optional if claude CLI installed)
+TELEGRAM_ADMIN_CHAT_ID=123...   # numeric chat ID for alerts
+```
+
+### Why systemd timer, not supervisor?
+
+Monitoring is a **periodic task** (run checks, report, exit) — not a long-running daemon. Systemd timers provide `Persistent=true` (catch up after reboot), precise scheduling, and journalctl integration. The sleep-loop supervisor approach was replaced because it had no scheduling guarantees and no visibility into when the last check ran.
+
+---
+
+## `[logging]` — Structured log output (optional)
+
+Configures structured JSON logging for the hub process. All keys have defaults; the section can be omitted entirely.
+
+```toml
+[logging]
+json_file = true    # write structured JSON logs alongside the plain text stream
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `json_file` | bool | `true` | Emit a machine-readable JSON log file in addition to the standard log stream |

@@ -1,0 +1,77 @@
+---
+title: "fix(nats): adapter-side NatsBus creates unused inbound subscriptions"
+issue: 541
+status: approved
+tier: F-lite
+date: 2026-04-05
+---
+
+## Problem
+
+In `src/lyra/bootstrap/adapter_standalone.py`, each adapter process
+(Telegram, Discord) constructs its own `NatsBus` instances and calls
+`.register()` + `.start()`. `.start()` creates real NATS subscriptions to
+`lyra.inbound.{platform}.{bot_id}` — but the adapter only ever uses these
+buses to `put()` outbound publishes. Every inbound message the hub receives
+is also delivered a second time to each adapter process, lands in the
+adapter's in-memory staging queue, and is never drained.
+
+Under sustained inbound load the adapter staging queue fills up
+(`maxsize=500`) and starts logging misleading
+`NatsBus staging queue full — dropping message` warnings. The warnings
+look like lost-message incidents even though the hub is still delivering
+exactly once via its `hub-inbound` queue group (#527 / PR #539). During a
+rolling restart with N adapter replicas, the waste scales linearly.
+
+The subscription is purely accidental: the adapter only needs a
+publish-only path. The fix is to stop opening inbound subscriptions on the
+adapter-side `NatsBus`.
+
+## Who
+
+- **Primary:** Lyra operators — no more spurious "staging queue full"
+  warnings, lower NATS subscription count, cleaner log signal during
+  rolling deploys.
+- **Secondary:** Future contributors touching `NatsBus` — a clear
+  publish-only contract removes a foot-gun where a bus meant only for
+  outbound ends up consuming inbound traffic.
+
+End users are **not** affected — no duplicate delivery, no user-visible
+regression from the current behavior.
+
+## Constraints
+
+- Hub-side `NatsBus` behavior must remain identical — hub still consumes
+  `lyra.inbound.*` via the `hub-inbound` queue group.
+- Must not regress the duplicate-delivery fix from #527 / PR #539.
+- Wire-format compatibility with the existing three-process
+  (hub + telegram + discord) supervisor layout.
+- Single-process unified mode (`lyra start`) must continue to work — hub
+  and adapters share the same Python process but hold distinct bus roles.
+- Tests must prove publish-only buses do **not** create NATS subscriptions
+  (not just that they don't deliver messages).
+
+## Out of Scope
+
+- Option 2 (distinct `adapter-inbound-*` queue group) — still wasteful,
+  rejected.
+- Option 3 (document + silence warnings) — masks the root cause, rejected.
+- Rewriting the hub-side consumer path or queue-group strategy.
+- Schema / wire-format changes (handled by #530).
+- Any broader refactor of `NatsBus` beyond introducing the publish-only
+  path.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single backend domain (NATS transport),
+~3–5 files touched: `nats_bus.py`, `adapter_standalone.py`, and tests.
+The only open design decision is **shape of the publish-only contract**
+(constructor flag vs dedicated `PublishOnlyBus` class) — resolved in the
+spec phase.
+
+Signals:
+- Single domain (backend / NATS)
+- Clear acceptance criteria from issue body
+- Known root cause, known fix path
+- No new architectural patterns required
+- Surfaced by reviewers on a prior PR — bounded, well-understood

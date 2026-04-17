@@ -1,0 +1,16 @@
+name = "identity"
+description = "Cross-platform identity linking"
+version = "0.1.0"
+priority = 50
+enabled = true
+timeout = 10.0
+
+[[commands]]
+name = "link"
+description = "Link your identity across platforms. Run without args to start, or with a code to complete."
+handler = "cmd_link"
+
+[[commands]]
+name = "unlink"
+description = "Remove your cross-platform identity link"
+handler = "cmd_unlink"

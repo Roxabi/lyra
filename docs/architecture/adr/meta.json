@@ -32,6 +32,20 @@
     "030-tool-provider-protocol-for-session-commands",
     "032-llmevent-streamprocessor-renderevent-hexagonal-streaming",
     "033-pulid-flux2-face-lock-strategy",
-    "034-brand-asset-pipeline-structure"
+    "034-brand-asset-pipeline-structure",
+    "035-nats-subject-naming-convention",
+    "036-renderevent-streaming-chunk-protocol",
+    "037-nats-outbound-listener-placement-and-adapter-standalone-bootstrap",
+    "037-unified-identity-alias-layer-shape3",
+    "038-health-monitoring-layer-boundaries",
+    "039-stt-tts-nats-adapter-decoupling",
+    "040-nats-messaging-architecture-review",
+    "043-roxabi-autodeploy-per-project-manifests",
+    "044-lyra-voicecli-nats-contract",
+    "045-roxabi-nats-sdk-uv-workspace-extraction",
+    "046-nkey-provisioning-declarative-authconf",
+    "047-nats-connector-ownership-pattern",
+    "048-lyra-infrastructure-layer-for-persistence",
+    "049-roxabi-contracts-shared-schema-package"
   ]
 }

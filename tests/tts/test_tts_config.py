@@ -25,9 +25,9 @@ def test_config_defaults():
 
 
 def test_load_tts_config_defaults(monkeypatch):
-    monkeypatch.delenv("TTS_ENGINE", raising=False)
-    monkeypatch.delenv("TTS_VOICE", raising=False)
-    monkeypatch.delenv("TTS_LANGUAGE", raising=False)
+    monkeypatch.delenv("LYRA_TTS_ENGINE", raising=False)
+    monkeypatch.delenv("LYRA_TTS_VOICE", raising=False)
+    monkeypatch.delenv("LYRA_TTS_LANGUAGE", raising=False)
     cfg = load_tts_config()
     assert cfg.engine is None
     assert cfg.voice is None
@@ -35,9 +35,9 @@ def test_load_tts_config_defaults(monkeypatch):
 
 
 def test_load_tts_config_from_env(monkeypatch):
-    monkeypatch.setenv("TTS_ENGINE", "qwen")
-    monkeypatch.setenv("TTS_VOICE", "mia")
-    monkeypatch.setenv("TTS_LANGUAGE", "English")
+    monkeypatch.setenv("LYRA_TTS_ENGINE", "qwen")
+    monkeypatch.setenv("LYRA_TTS_VOICE", "mia")
+    monkeypatch.setenv("LYRA_TTS_LANGUAGE", "English")
     cfg = load_tts_config()
     assert cfg.engine == "qwen"
     assert cfg.voice == "mia"

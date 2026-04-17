@@ -1,0 +1,369 @@
+---
+title: "Plan: InboundAudio Unification — Slice 2 (Adapter Migration + Legacy Removal)"
+issue: 571
+spec: artifacts/specs/534-unify-inbound-audio-spec.mdx
+slug: slice2-adapter-migration
+tier: F-lite
+status: approved
+generated: 2026-04-06
+slice: V2
+---
+
+## Summary
+
+Slice 2 of #534: migrate both adapters to publish `InboundMessage(modality="voice")` directly on the unified NATS subject, then delete every piece of legacy infrastructure that Slice 1 kept alive. After this PR there is no `InboundAudio`, no `lyra.inbound.audio.*` subject tree, no compat shim, no `inbound_audio_bus`, and no `audio_pipeline.py`.
+
+## Architecture — end state
+
+```
+Text:  adapter → InboundMessage(modality="text") ──┐
+Voice: adapter → InboundMessage(modality="voice",  ├→ lyra.inbound.<platform>.<bot_id>
+                                audio=AudioPayload) ┘    → NatsBus[InboundMessage] → hub → pipeline
+```
+
+All legacy paths (`lyra.inbound.audio.*`, `InboundAudioLegacyHandler`, `InboundAudio`, `InboundAudioBus`) are deleted. `NatsChannelProxy.normalize_audio` stub is removed. `core/audio_pipeline.py` becomes `core/tts_dispatch.py`.
+
+---
+
+## Phases
+
+| Phase | Focus | Tasks |
+|-------|-------|-------|
+| MIGRATE | Adapter voice path → unified `InboundMessage` | T1, T2, T3, T4, T5 |
+| WIRE | Bootstrap cleanup — remove audio bus wiring | T6, T7, T8 |
+| DELETE | Remove all legacy classes and files | T9, T10, T11, T12, T13 |
+| TEST | Test migration + new E2E test | T14, T15, T16 |
+| GATE | Full quality gate | T17 |
+
+---
+
+## Task List
+
+### PHASE MIGRATE — Adapter voice path → unified InboundMessage
+
+---
+
+#### T1 — `telegram_normalize.py`: replace `normalize_audio` → return `InboundMessage`
+
+| Field | Value |
+|-------|-------|
+| File | `src/lyra/adapters/telegram_normalize.py` |
+| Action | Rewrite `normalize_audio()` so it returns `InboundMessage(modality="voice", audio=AudioPayload(...))` instead of `InboundAudio`. Drop import of `InboundAudio`. Import `AudioPayload` from `lyra.core.audio_payload`. All fields preserved: `id`, `platform`, `bot_id`, `scope_id`, `user_id`, `user_name`, `is_mention=False`, `text=""`, `text_raw=""`, `trust_level`, `platform_meta`, `routing`, `timestamp`, `audio=AudioPayload(audio_bytes, mime_type, duration_ms, file_id, waveform_b64=None)`. Keep existing helper `_build_routing` usage unchanged. |
+| Verify | `pytest tests/adapters/test_telegram_voice.py -x` — tests will need updating in T14, but the module must import cleanly first. |
+| Time | 30 min |
+| Difficulty | 2 |
+| Agent | backend-dev |
+| Blocked by | — |
+
+---
+
+#### T2 — `telegram_inbound.py`: update `handle_voice_message` to publish on unified bus
+
+| Field | Value |
+|-------|-------|
+| File | `src/lyra/adapters/telegram_inbound.py` |
+| Action | `handle_voice_message` currently calls `push_to_hub_guarded(inbound_bus=adapter._inbound_audio_bus, ...)`. Change to `adapter._inbound_bus`. The result of `normalize_audio()` is now `InboundMessage`, so the type is already correct for `_inbound_bus`. Remove `finally: adapter._cancel_typing(chat_id)` anti-pattern: voice messages should behave like text — `_cancel_typing` is called by the outbound path, not the inbound. Preserve the existing `_start_typing(chat_id)` call. Remove `normalize_audio` import (now no longer an `InboundAudio` builder — just a delegate). |
+| Verify | `pytest tests/adapters/test_telegram_voice.py tests/adapters/test_telegram_on_message.py -x` after T14 updates. |
+| Time | 20 min |
+| Difficulty | 2 |
+| Agent | backend-dev |
+| Blocked by | T1 |
+
+---
+
+#### T3 — `discord_audio.py`: replace `normalize_audio` → return `InboundMessage`
+
+| Field | Value |
+|-------|-------|
+| File | `src/lyra/adapters/discord_audio.py` |
+| Action | Rewrite `normalize_audio()` function to return `InboundMessage(modality="voice", audio=AudioPayload(...))`. Remove import of `InboundAudio`. Import `AudioPayload`, `InboundMessage` from their respective modules. Map `duration_ms=None`, `file_id=None` (Discord audio has neither). Preserve all scope/routing logic. Keep `is_valid_audio_magic()` and `handle_audio()` unchanged at this point. |
+| Verify | `pytest tests/adapters/test_discord_audio.py -x` after T15 updates. |
+| Time | 30 min |
+| Difficulty | 2 |
+| Agent | backend-dev |
+| Blocked by | — |
+
+---
+
+#### T4 — `discord_audio.py`: update `handle_audio` to publish on unified bus
+
+| Field | Value |
+|-------|-------|
+| File | `src/lyra/adapters/discord_audio.py` |
+| Action | In `handle_audio()`, line 223: change `inbound_bus=adapter._inbound_audio_bus` to `inbound_bus=adapter._inbound_bus`. The `push_to_hub_guarded` call otherwise remains identical — `hub_audio` is now `InboundMessage` so the type matches. |
+| Verify | `pytest tests/adapters/test_discord_audio.py -x`. |
+| Time | 10 min |
+| Difficulty | 1 |
+| Agent | backend-dev |
+| Blocked by | T3 |
+
+---
+
+#### T5 — `discord.py` + `telegram.py` facades: remove `_inbound_audio_bus` parameter and field
+
+| Field | Value |
+|-------|-------|
+| Files | `src/lyra/adapters/discord.py`, `src/lyra/adapters/telegram.py` |
+| Action | **`discord.py`**: remove `inbound_audio_bus: "Bus[InboundAudio]"` from `DiscordAdapter.__init__` signature and body. Remove `self._inbound_audio_bus = inbound_audio_bus` assignment. Remove `InboundAudio` import. **`telegram.py`**: same — remove `inbound_audio_bus` param, self-assignment, and `InboundAudio` import. The delegated methods `normalize_audio` on both facades now return `InboundMessage` (from T1/T3) — update the return type annotation accordingly. Verify `ChannelAdapter` protocol compliance: `normalize_audio` signature can be updated to return `InboundMessage` or the protocol method can be removed entirely if it is no longer part of the adapter contract (check `hub_protocol.py`). |
+| Verify | `mypy src/lyra/adapters/` (no new type errors). `pytest tests/adapters/ -x`. |
+| Time | 30 min |
+| Difficulty | 2 |
+| Agent | backend-dev |
+| Blocked by | T1, T3 |
+
+---
+
+#### T6 — `_shared.py`: narrow `push_to_hub_guarded` signature to `InboundMessage` only
+
+| Field | Value |
+|-------|-------|
+| File | `src/lyra/adapters/_shared.py` |
+| Action | Change `msg: InboundMessage \| InboundAudio` parameter to `msg: InboundMessage`. Remove `InboundAudio` import from this file. Update docstring. No logic changes — the guard body is type-agnostic; narrowing the annotation makes the contract explicit. |
+| Verify | `mypy src/lyra/adapters/`. `pytest tests/adapters/ -x`. |
+| Time | 10 min |
+| Difficulty | 1 |
+| Agent | backend-dev |
+| Blocked by | T2, T4 |
+
+---
+
+### PHASE WIRE — Bootstrap cleanup
+
+---
+
+#### T7 — `bootstrap_wiring.py`: remove audio bus wiring for both platforms
+
+| Field | Value |
+|-------|-------|
+| File | `src/lyra/bootstrap/bootstrap_wiring.py` |
+| Action | In `wire_telegram_adapters()`: delete the `tg_audio_bus` `NatsBus[InboundAudio]` construction block (lines ~69–76) and remove `inbound_audio_bus=tg_audio_bus` from `TelegramAdapter(...)`. In `wire_discord_adapters()` (or equivalent): delete the `dc_audio_bus` block (~lines 187–198) and remove `inbound_audio_bus=dc_audio_bus` from `DiscordAdapter(...)`. Remove `InboundAudio` import. Remove `HUB_INBOUND_AUDIO` import if no longer used. |
+| Verify | `python -c "from lyra.bootstrap.bootstrap_wiring import wire_telegram_adapters"` imports without error. `pytest tests/ -x -q`. |
+| Time | 20 min |
+| Difficulty | 2 |
+| Agent | backend-dev |
+| Blocked by | T5 |
+
+---
+
+#### T8 — `adapter_standalone.py`: remove audio bus wiring for both platforms
+
+| Field | Value |
+|-------|-------|
+| File | `src/lyra/bootstrap/adapter_standalone.py` |
+| Action | **Telegram block** (lines ~101–106, 112, 124, 153–156): delete `inbound_audio_bus` `NatsBus[InboundAudio]` construction; remove `inbound_audio_bus=inbound_audio_bus` arg from `TelegramAdapter(...)`; remove `inbound_audio_bus` from `wired.append(...)` tuple; remove `abus.stop()` in the `finally` block. **Discord block** (lines ~235–240, 245, 259, 289–291): same pattern. Remove `InboundAudio` import at file top. |
+| Verify | `python -c "from lyra.bootstrap.adapter_standalone import _bootstrap_adapter_standalone"` imports without error. |
+| Time | 20 min |
+| Difficulty | 2 |
+| Agent | backend-dev |
+| Blocked by | T5 |
+
+---
+
+#### T9 — `hub_standalone.py` + `unified.py`: remove compat handler subscription
+
+| Field | Value |
+|-------|-------|
+| Files | `src/lyra/bootstrap/hub_standalone.py`, `src/lyra/bootstrap/unified.py` |
+| Action | **`hub_standalone.py`**: delete `legacy_audio_handler = InboundAudioLegacyHandler(...)` instantiation (lines ~171–174); delete `await legacy_audio_handler.start()` (line ~431); delete the comment block referring to Slice 1/Slice 2; remove `from lyra.nats.compat import InboundAudioLegacyHandler` import. **`unified.py`**: same — remove `legacy_audio_handler` instantiation (~lines 67–68), the `await handler.start()` call (~line 287), and the import. Check `bootstrap_lifecycle.py`: it imports and type-annotates `InboundAudioLegacyHandler` — remove that too. |
+| Verify | `python -c "from lyra.bootstrap.hub_standalone import _bootstrap_hub_standalone"` imports clean. `python -c "from lyra.bootstrap.unified import _bootstrap_unified"` imports clean. |
+| Time | 20 min |
+| Difficulty | 2 |
+| Agent | backend-dev |
+| Blocked by | T7 |
+
+---
+
+### PHASE DELETE — Remove legacy classes and files
+
+---
+
+#### T10 — Delete `src/lyra/nats/compat/` directory
+
+| Field | Value |
+|-------|-------|
+| Files | `src/lyra/nats/compat/__init__.py`, `src/lyra/nats/compat/inbound_audio_legacy.py` |
+| Action | `git rm -r src/lyra/nats/compat/`. Confirm no remaining imports of `lyra.nats.compat` or `InboundAudioLegacyHandler` anywhere in `src/` or `tests/` (grep before delete). |
+| Verify | `grep -r "InboundAudioLegacyHandler\|lyra.nats.compat" src/ tests/` → zero results. |
+| Time | 10 min |
+| Difficulty | 1 |
+| Agent | backend-dev |
+| Blocked by | T9 |
+
+---
+
+#### T11 — Delete `src/lyra/core/inbound_audio_bus.py`
+
+| Field | Value |
+|-------|-------|
+| File | `src/lyra/core/inbound_audio_bus.py` |
+| Action | `git rm src/lyra/core/inbound_audio_bus.py`. Grep for remaining `from lyra.core.inbound_audio_bus import` — remove any found imports. |
+| Verify | `grep -r "inbound_audio_bus" src/` → only legitimate `_inbound_bus` attribute names remain (no module imports). |
+| Time | 10 min |
+| Difficulty | 1 |
+| Agent | backend-dev |
+| Blocked by | T8, T9 |
+
+---
+
+#### T12 — Delete `InboundAudio` class from `core/message.py`; remove `_ENVELOPE_VERSIONS[InboundAudio]` from `nats_bus.py`; remove `normalize_audio` stub from `nats_channel_proxy.py`
+
+| Field | Value |
+|-------|-------|
+| Files | `src/lyra/core/message.py`, `src/lyra/nats/nats_bus.py`, `src/lyra/nats/nats_channel_proxy.py` |
+| Action | **`message.py`**: delete `InboundAudio` dataclass (lines ~112–141) and `SCHEMA_VERSION_INBOUND_AUDIO` constant. **`nats_bus.py`**: remove `InboundAudio: ("InboundAudio", SCHEMA_VERSION_INBOUND_AUDIO)` entry from `_ENVELOPE_VERSIONS` dict (line ~62) and the `InboundAudio` import. **`nats_channel_proxy.py`**: delete `normalize_audio()` stub method (lines ~70–78) and the `InboundAudio` import (line ~17). |
+| Verify | `grep -r "InboundAudio" src/` → zero results. `python -m pytest tests/core/ -x`. |
+| Time | 20 min |
+| Difficulty | 2 |
+| Agent | backend-dev |
+| Blocked by | T10, T11 |
+
+---
+
+#### T13 — Rename `core/audio_pipeline.py` → `core/tts_dispatch.py`; update all call sites
+
+| Field | Value |
+|-------|-------|
+| Files | `src/lyra/core/audio_pipeline.py` (source), `src/lyra/core/tts_dispatch.py` (dest), all callers |
+| Action | `git mv src/lyra/core/audio_pipeline.py src/lyra/core/tts_dispatch.py`. Update module docstring to reflect new home. Grep for `from lyra.core.audio_pipeline import` and `lyra.core.audio_pipeline` across `src/` and `tests/` — update each import to `lyra.core.tts_dispatch`. Check `core/__init__.py` and any `__all__` re-exports. Expected callers include: agent files that call `synthesize_and_dispatch_audio`, bootstrap files, TTS-related tests. |
+| Verify | `grep -r "audio_pipeline" src/ tests/` → zero results after update. `python -c "from lyra.core.tts_dispatch import synthesize_and_dispatch_audio"` succeeds. `pytest tests/tts/ -x`. |
+| Time | 20 min |
+| Difficulty | 2 |
+| Agent | backend-dev |
+| Blocked by | T12 |
+
+---
+
+### PHASE TEST — Test migration + new E2E
+
+---
+
+#### T14 — Migrate Telegram voice tests to use `make_voice_message()` and unified path
+
+| Field | Value |
+|-------|-------|
+| Files | `tests/adapters/test_telegram_voice.py`, `tests/adapters/conftest.py` |
+| Action | **`test_telegram_voice.py`**: remove all `InboundAudio` imports and constructor calls. Replace `inbound_audio_bus` mock with assertions on `adapter._inbound_bus` (the unified bus). Rewrite `test_normalize_audio_*` tests to assert the return type is `InboundMessage` with `modality="voice"` and `audio: AudioPayload`. Update bus assertion: `buses.inbound_bus.put.assert_called_once()` (not `inbound_audio_bus.put`). **`conftest.py`**: remove `inbound_audio_bus` fixture/mock wiring from `TelegramAdapter` construction; the adapter no longer accepts that parameter. |
+| Verify | `pytest tests/adapters/test_telegram_voice.py -v` — all tests green. |
+| Time | 45 min |
+| Difficulty | 3 |
+| Agent | tester |
+| Blocked by | T2 |
+
+---
+
+#### T15 — Migrate Discord audio tests to use unified path
+
+| Field | Value |
+|-------|-------|
+| Files | `tests/adapters/test_discord_audio.py`, `tests/adapters/conftest.py` |
+| Action | Remove `InboundAudio` imports and constructor calls. Replace `inbound_audio_bus` mock with unified `inbound_bus` assertions. Rewrite `test_normalize_audio_*` to assert `InboundMessage(modality="voice", audio=AudioPayload(...))`. Update `DiscordAdapter` construction in test fixtures to drop `inbound_audio_bus` arg. Update `test_on_message_*` to assert `inbound_bus.put.assert_called_once()`. |
+| Verify | `pytest tests/adapters/test_discord_audio.py -v` — all tests green. |
+| Time | 45 min |
+| Difficulty | 3 |
+| Agent | tester |
+| Blocked by | T4 |
+
+---
+
+#### T16 — Delete/migrate remaining `InboundAudio` tests; add Slice 2 E2E test
+
+| Field | Value |
+|-------|-------|
+| Files | `tests/core/test_inbound_audio_bus.py`, `tests/nats/compat/test_inbound_audio_legacy.py`, `tests/integration/test_voice_end_to_end.py`, `tests/core/test_routing_context_basics.py`, `tests/core/test_routing_context_integration.py`, `tests/nats/test_sanitize*.py`, `tests/tts/test_voice_command.py` |
+| Action | **`tests/core/test_inbound_audio_bus.py`**: delete entirely (tests a deleted module). **`tests/nats/compat/test_inbound_audio_legacy.py`**: delete entirely (tests a deleted class). **`tests/integration/test_voice_end_to_end.py`**: rewrite as Slice 2 E2E — adapter publishes `InboundMessage(modality="voice", audio=AudioPayload(...))` directly to `lyra.inbound.telegram.{bot_id}` (no compat shim path); assert that STT stage fires and transcript is populated; assert `msg.audio is None` post-stage. **Other files** (`test_routing_context_*.py`, `test_sanitize*.py`, `test_voice_command.py`): grep for `InboundAudio` references, replace with `make_voice_message()` or remove dead assertions case by case. Remove `tests/nats/compat/` directory if empty after deletion. |
+| Verify | `pytest tests/ -x -q --ignore=tests/integration` passes; then `pytest tests/integration/ -x`. |
+| Time | 90 min |
+| Difficulty | 4 |
+| Agent | tester |
+| Blocked by | T12, T13, T14, T15 |
+
+---
+
+### PHASE GATE — Full quality gate
+
+---
+
+#### T17 — Full quality gate: mypy + ruff + pytest
+
+| Field | Value |
+|-------|-------|
+| Files | All modified files |
+| Action | Run: (1) `mypy src/lyra/` — must be clean, zero new errors; (2) `ruff check src/lyra/ tests/` — must be clean; (3) `pytest tests/ -x -q` — full suite must be green. Fix any residual import or type errors uncovered. |
+| Verify | All three commands exit 0. |
+| Time | 30 min |
+| Difficulty | 2 |
+| Agent | tester |
+| Blocked by | T16 |
+
+---
+
+## Dependency Graph
+
+```
+T1 ──────────────────────────────────────────────────────────────────────────┐
+                                                                              │
+T3 ──────────────────────────────────────────────────────────────────────────┤
+                                                                              ▼
+                                                                          T5 ──┬──► T7 ──► T9 ──► T10 ──► T12 ──► T13
+                                                                               │                            │
+T1 → T2 ──────────────────────────────────────────────────────────► T6 ──────►│                            │
+T3 → T4 ──────────────────────────────────────────────────────────────────────┘                            │
+                                                                                                            │
+                                                                          T8 ──────────────── T11 ──────────┘
+                                                                          (Blocked by T5)
+```
+
+**Parallel-safe groups (can run simultaneously):**
+
+| Group | Tasks | Prerequisite |
+|-------|-------|--------------|
+| A | T1, T3 | None — fully independent |
+| B | T2 (after T1), T4 (after T3) | T1 and T3 respectively |
+| C | T5 | T1 + T3 complete |
+| D | T6 | T2 + T4 complete |
+| E | T7, T8 | T5 complete |
+| F | T9 | T7 complete |
+| G | T10 | T9 complete |
+| H | T11 | T8 + T9 complete |
+| I | T12 | T10 + T11 complete |
+| J | T13 | T12 complete |
+| K | T14, T15 | T2 and T4 respectively (tests mirror impl) |
+| L | T16 | T12 + T13 + T14 + T15 complete |
+| M | T17 | T16 complete |
+
+---
+
+## Summary Table
+
+| Task | Phase | File(s) | Action | Time | Difficulty | Agent | Blocked by |
+|------|-------|---------|--------|------|-----------|-------|-----------|
+| T1 | MIGRATE | `telegram_normalize.py` | `normalize_audio` → returns `InboundMessage` | 30m | 2 | backend-dev | — |
+| T2 | MIGRATE | `telegram_inbound.py` | use `_inbound_bus` for voice publish | 20m | 2 | backend-dev | T1 |
+| T3 | MIGRATE | `discord_audio.py` | `normalize_audio` → returns `InboundMessage` | 30m | 2 | backend-dev | — |
+| T4 | MIGRATE | `discord_audio.py` | `handle_audio` → unified bus | 10m | 1 | backend-dev | T3 |
+| T5 | MIGRATE | `discord.py`, `telegram.py` | remove `_inbound_audio_bus` param + field | 30m | 2 | backend-dev | T1, T3 |
+| T6 | MIGRATE | `_shared.py` | narrow `push_to_hub_guarded` msg type | 10m | 1 | backend-dev | T2, T4 |
+| T7 | WIRE | `bootstrap_wiring.py` | remove audio bus construction (both platforms) | 20m | 2 | backend-dev | T5 |
+| T8 | WIRE | `adapter_standalone.py` | remove audio bus construction (both platforms) | 20m | 2 | backend-dev | T5 |
+| T9 | WIRE | `hub_standalone.py`, `unified.py`, `bootstrap_lifecycle.py` | remove compat handler | 20m | 2 | backend-dev | T7 |
+| T10 | DELETE | `nats/compat/` | delete directory | 10m | 1 | backend-dev | T9 |
+| T11 | DELETE | `core/inbound_audio_bus.py` | delete file | 10m | 1 | backend-dev | T8, T9 |
+| T12 | DELETE | `core/message.py`, `nats_bus.py`, `nats_channel_proxy.py` | delete `InboundAudio` class + references | 20m | 2 | backend-dev | T10, T11 |
+| T13 | DELETE | `core/audio_pipeline.py` → `core/tts_dispatch.py` | rename + update call sites | 20m | 2 | backend-dev | T12 |
+| T14 | TEST | `test_telegram_voice.py`, `conftest.py` | migrate to unified bus assertions | 45m | 3 | tester | T2 |
+| T15 | TEST | `test_discord_audio.py`, `conftest.py` | migrate to unified bus assertions | 45m | 3 | tester | T4 |
+| T16 | TEST | multiple test files | delete/rewrite legacy tests + new E2E | 90m | 4 | tester | T12, T13, T14, T15 |
+| T17 | GATE | all | mypy + ruff + pytest full suite | 30m | 2 | tester | T16 |
+
+**Total estimated: ~6.5h** (F-lite tier, parallelizable to ~3.5h with two agents)
+
+---
+
+## Key Constraints
+
+- T1 and T3 are fully independent — can be started in parallel immediately.
+- T5 is the merge point for MIGRATE: both adapter facades must be updated together.
+- T12 (delete `InboundAudio`) is the highest-risk deletion — must confirm zero grep hits before removing.
+- `synthesize_and_dispatch_audio` in `audio_pipeline.py` has callers in the TTS/agent path — T13 must update all import sites before the old file is removed.
+- The `ChannelAdapter` protocol in `hub_protocol.py` may define `normalize_audio` — verify during T5 whether the protocol method should be removed or updated to return `InboundMessage`.
+- `bootstrap_lifecycle.py` holds a reference to `InboundAudioLegacyHandler` for teardown coordination — confirmed in the grep above; must be cleaned in T9.

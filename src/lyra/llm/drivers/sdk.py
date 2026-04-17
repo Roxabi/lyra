@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 import anthropic
 
 from lyra.core.agent_config import ModelConfig
+from lyra.core.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from lyra.errors import (
     ProviderApiError,
     ProviderAuthError,
@@ -21,7 +22,6 @@ from lyra.errors import (
     ProviderRateLimitError,
 )
 from lyra.llm.base import LlmResult
-from lyra.llm.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 log = logging.getLogger(__name__)
 

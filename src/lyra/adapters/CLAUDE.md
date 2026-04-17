@@ -24,34 +24,11 @@ Every adapter must implement:
 `render_voice_stream()` is implemented as a no-op stub on Telegram (drains the
 iterator and logs a warning); functional voice-channel playback is Discord-only.
 
-## File structure
+## Non-obvious structure notes
 
-Each platform is split into focused submodules to keep files small:
+Each platform is split into focused submodules: `{platform}.py` is the facade; concerns are `_inbound`, `_outbound`, `_normalize`, `_formatting`, `_audio`. Shared cross-platform code lives in `_shared.py`, `_shared_audio.py`, `_shared_streaming.py` (re-export shim), `_shared_streaming_state.py` (state types), `_shared_streaming_emitter.py` (session + callbacks).
 
-```
-telegram.py              # Facade: wires everything, hosts FastAPI app
-telegram_inbound.py      # Webhook handler: parse → push to hub
-telegram_normalize.py    # normalize() and normalize_audio()
-telegram_outbound.py     # send() and send_streaming(); typing indicator
-telegram_formatting.py   # Markdown rendering, button layout
-telegram_audio.py        # Audio download and upload helpers
-
-discord.py               # Facade: discord.py Client subclass
-discord_inbound.py       # on_message() event handler
-discord_normalize.py     # normalize()
-discord_outbound.py      # send() and send_streaming(); typing worker
-discord_formatting.py    # Text rendering, embed helpers
-discord_audio.py         # Audio download helpers
-discord_audio_outbound.py# TTS audio upload to Discord
-discord_threads.py       # Thread restoration on reconnect
-discord_voice.py         # VoiceSessionManager (voice channel sessions)
-discord_voice_commands.py# /join, /leave app command handlers
-discord_config.py        # DiscordConfig, load_discord_config()
-
-_shared.py               # Shared helpers: push_to_hub_guarded, chunk_text,
-                         # TypingTaskManager, parse_reply_to_id, etc.
-_shared_audio.py         # Audio helpers: buffer_audio_chunks, mime_to_ext, etc.
-```
+`outbound_listener.py` defines a structural protocol — adapters reference it without inheriting. `NatsOutboundListener` satisfies it for the three-process NATS deployment mode.
 
 ## Telegram vs Discord differences
 
@@ -80,6 +57,74 @@ the complete response.
 
 When `outbound` is passed to `send_streaming()`, the adapter writes the platform
 message ID to `outbound.metadata["reply_message_id"]` after sending.
+
+## OutboundAdapterBase
+
+`_base_outbound.py` defines the shared outbound contract for all platform adapters.
+Inherit this base whenever you add a new platform adapter.
+
+### Abstract methods (must implement)
+
+| Method | Signature | Role |
+|--------|-----------|------|
+| `send` | `async (original_msg, outbound) -> None` | Send a complete reply |
+| `_make_streaming_callbacks` | `(original_msg, outbound) -> PlatformCallbacks` | Build platform callbacks |
+| `_start_typing` | `(scope_id: int) -> None` | Start typing indicator |
+| `_cancel_typing` | `(scope_id: int) -> None` | Cancel typing indicator |
+
+### Concrete method (do NOT override)
+
+`send_streaming(original_msg, events, outbound=None)` — provided by the base; creates a
+`StreamingSession` with your `PlatformCallbacks` and runs the shared algorithm.
+
+### PlatformCallbacks fields (`_shared_streaming_emitter.py`)
+
+| Field | Type | Role |
+|-------|------|------|
+| `send_placeholder` | `async () -> (obj, id\|None)` | Send initial placeholder message |
+| `edit_placeholder_text` | `async (obj, text) -> None` | Edit placeholder with intermediate text |
+| `edit_placeholder_tool` | `async (obj, event, header) -> None` | Edit placeholder with tool summary |
+| `send_message` | `async (text) -> id\|None` | Send new message (tool-using turns) |
+| `send_fallback` | `async (text) -> id\|None` | Fallback send when placeholder fails |
+| `chunk_text` | `(text) -> list[str]` | Split text into platform-sized chunks |
+| `start_typing` | `() -> None` | Start typing indicator (sync) |
+| `cancel_typing` | `() -> None` | Cancel typing indicator (sync) |
+
+### MRO pattern for discord.Client
+
+Discord requires `discord.Client` first in the MRO:
+
+```python
+class DiscordAdapter(discord.Client, OutboundAdapterBase):
+    def __init__(self, ...):
+        super().__init__(intents=intents)  # flows to discord.Client
+        # OutboundAdapterBase has no __init__ — no call needed
+```
+
+**`__init__` constraint:** `OutboundAdapterBase` intentionally has no `__init__`.
+Do NOT add one — it breaks the cooperative `discord.Client` chain.
+
+### Adding a new platform adapter
+
+```python
+class MyAdapter(OutboundAdapterBase):
+    async def send(self, original_msg, outbound): ...
+
+    def _make_streaming_callbacks(self, original_msg, outbound) -> PlatformCallbacks:
+        return PlatformCallbacks(
+            send_placeholder=...,
+            edit_placeholder_text=...,
+            edit_placeholder_tool=...,
+            send_message=...,
+            send_fallback=...,
+            chunk_text=...,
+            start_typing=...,
+            cancel_typing=...,
+        )
+
+    def _start_typing(self, scope_id): ...
+    def _cancel_typing(self, scope_id): ...
+```
 
 ## Security contract
 
@@ -121,5 +166,9 @@ when a message is received; cancel it when the reply is sent.
 - Do NOT add platform-specific constants to `_shared.py` — put them in the
   platform-specific submodule.
 - Do NOT block the event loop in any adapter method — all I/O must be async.
-- Do NOT use `channel.typing()` on Discord — it triggers 429s under load. Use
-  `trigger_typing()` in the manual loop pattern (`_discord_typing_worker`).
+- Do NOT use `async with channel.typing():` on Discord — the context manager auto-refreshes
+  every 5 s and triggers 429s under load. Instead call `await channel.typing()` manually
+  every 9 s (see `_discord_typing_worker`).
+- Do NOT override `send_streaming()` in a concrete adapter — it is a concrete method on
+  `OutboundAdapterBase` that delegates to `StreamingSession`. Platform differences belong
+  in `_make_streaming_callbacks()`, not in a `send_streaming` override.

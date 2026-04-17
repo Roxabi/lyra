@@ -76,7 +76,7 @@ uv run pre-commit install
 
 ## Adding a channel adapter
 
-A channel adapter normalizes messages from one platform into `InboundMessage` objects and sends `Response` objects back via the `OutboundDispatcher`.
+A channel adapter normalizes messages from one platform into `InboundMessage` objects and sends `OutboundMessage` objects back via the platform API.
 
 **1. Add a `Platform` variant** in `src/lyra/core/message.py`:
 
@@ -87,24 +87,51 @@ class Platform(str, Enum):
     SIGNAL   = "signal"        # new
 ```
 
-**2. Create `src/lyra/adapters/signal.py`** implementing the `ChannelAdapter` protocol:
+**2. Create `src/lyra/adapters/signal.py`** inheriting `OutboundAdapterBase`:
 
 ```python
-class SignalAdapter:
-    async def send(self, original_msg: InboundMessage, response: Response) -> None:
+from lyra.adapters._base_outbound import OutboundAdapterBase
+from lyra.adapters._shared_streaming import PlatformCallbacks
+
+class SignalAdapter(OutboundAdapterBase):
+    async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
         ...
+
+    def _make_streaming_callbacks(self, original_msg, outbound) -> PlatformCallbacks:
+        return PlatformCallbacks(
+            send_placeholder=...,
+            edit_placeholder_text=...,
+            edit_placeholder_tool=...,
+            send_message=...,
+            send_fallback=...,
+            chunk_text=...,
+            start_typing=...,
+            cancel_typing=...,
+        )
+
+    def _start_typing(self, scope_id): ...
+    def _cancel_typing(self, scope_id): ...
 ```
+
+`send_streaming()` is provided by `OutboundAdapterBase` — do not override it. Platform-specific streaming behaviour belongs in `_make_streaming_callbacks()`.
 
 See `src/lyra/adapters/_shared.py` for shared normalization helpers and render functions (audio, attachments).
 
-**4. Register it in `src/lyra/__main__.py`**:
+**3. Implement `_normalize()`** to parse raw platform payloads into `InboundMessage` objects, and any platform-specific render methods (`render_audio`, `render_attachment`, etc.) as needed.
+
+**4. Register it in `src/lyra/bootstrap/hub_standalone.py`** (and `adapter_standalone.py` for the adapter side):
+
+Add the platform's inbound/outbound NATS subjects to `_bootstrap_hub_standalone()` and wire
+a new `_bootstrap_adapter_standalone()` branch for the new platform. The hub registers the
+adapter via `hub.register_adapter(Platform.SIGNAL, bot_id, proxy)` where `proxy` is a
+`NatsChannelProxy` routing to `lyra.outbound.signal.<bot_id>`.
 
 ```python
-from lyra.adapters.signal import SignalAdapter
-
-signal_adapter = SignalAdapter(hub=hub, bot_id="main")
-hub.register_adapter(Platform.SIGNAL, "main", signal_adapter)
-hub.register_binding(Platform.SIGNAL, "main", "*", "lyra", ...)
+# In hub_standalone.py — register NATS proxy for the new adapter
+from lyra.nats.nats_channel_proxy import NatsChannelProxy
+proxy = NatsChannelProxy(nc, f"lyra.outbound.signal.{bot_id}")
+hub.register_adapter(Platform.SIGNAL, bot_id, proxy)
+hub.register_binding(Platform.SIGNAL, bot_id, "*", "lyra", ...)
 ```
 
 **5. Add tests** in `tests/adapters/test_signal.py` — mock the external SDK, test `_normalize()` and `send()`.
@@ -252,10 +279,26 @@ context window and encourages focused modules.
 
 If you need to defer a refactor:
 
-1. Add the file path to the `EXEMPT` array in `tools/check_file_length.sh`
+1. Add the file path to `tools/file_exemptions.txt`
 2. Include a comment with the line count and a tracking issue number: `# 450 lines — #396`
 3. Open a dedicated refactor issue if one doesn't exist
 4. Remove the exemption once the file is refactored below 300 lines
+
+The allowlist is not a permanent exemption — every entry must have a tracking issue.
+
+## Folder Size Policy
+
+All folders must contain ≤ 12 Python source files. This limit forces early splits and keeps
+folder lists graspable without scrolling.
+
+### Adding to the allowlist
+
+If you need to defer a refactor:
+
+1. Add the folder path to `tools/folder_exemptions.txt`
+2. Include a comment with the file count and a tracking issue number: `# 49 files — #753`
+3. Open a dedicated refactor issue if one doesn't exist
+4. Remove the exemption once the folder is split below 12 files
 
 The allowlist is not a permanent exemption — every entry must have a tracking issue.
 

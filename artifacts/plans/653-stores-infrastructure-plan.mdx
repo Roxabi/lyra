@@ -1,0 +1,283 @@
+---
+title: "Plan: Introduce lyra.infrastructure layer — per-store PR rollout"
+issue: 653
+spec: artifacts/specs/653-stores-infrastructure-spec.mdx
+tier: F-lite
+generated: "2026-04-16T00:00:00Z"
+---
+
+## Summary
+
+Incremental rollout: one prep PR establishes the `lyra.infrastructure` layer and activates the import-linter forbidden contract, then one PR per SQLite store moves it to `infrastructure/stores/` with a backward-compatible shim, then a final cleanup PR removes all shims and does the `core/stores/__init__.py` surgery. Each PR is independently mergeable and revertable. No behavior changes throughout.
+
+**PR count: 12** (1 prep + 1 sqlite_base + 9 other store moves + 1 final cleanup — see breakdown below). A buffer slot is held between the last store move and the final PR for any caller-update follow-up that spills out of its primary PR.
+
+## Architecture
+
+### Layering Before → After
+
+```
+Before:
+lyra.core (contains aiosqlite imports) ← lyra.llm | lyra.nats ← lyra.adapters ← lyra.bootstrap
+
+After:
+lyra.core (zero infra) ← lyra.llm | lyra.nats ← lyra.infrastructure (aiosqlite here) ← lyra.adapters ← lyra.bootstrap
+```
+
+### Per-Store PR Pattern
+
+```
+1. Move <x>.py  →  src/lyra/infrastructure/stores/<x>.py
+2. Add shim     →  src/lyra/core/stores/<x>.py
+                   (from lyra.infrastructure.stores.<x> import XxxStore  # noqa: F401)
+                   MUST NOT import aiosqlite directly
+3. Update call sites  →  all src/ and tests/ that import from lyra.core.stores.<x>
+4. Delete shim  →  remove src/lyra/core/stores/<x>.py
+   (steps 3+4 may be in same PR or follow-up — shim provides backward compat)
+```
+
+**IMPORTANT:** the shim also creates a `core → infrastructure` downward import. Add the shim path to `.importlinter`'s `layers` contract `exclude_modules` list for the duration of the shim. Remove the exclusion when the shim is deleted.
+
+### Dependency Graph After Full Migration
+
+```
+lyra.core.stores (protocols only)
+    ↑
+lyra.infrastructure.stores (implementations — aiosqlite freely imported here)
+    ↑
+lyra.bootstrap.bootstrap_stores (factory wiring — only site that imports from infrastructure.stores)
+    ↑
+lyra.hub, lyra.adapters, lyra.agents, lyra.commands (type-hint against protocols only)
+```
+
+## PR Breakdown
+
+### PR 1 — Prep: create infrastructure layer + importlinter contracts
+
+**Goal:** Structural scaffolding only. Zero file moves. Forbidden contract activates here (vacuous until PR 2).
+
+**Tasks:**
+- Create `src/lyra/infrastructure/__init__.py` (empty)
+- Create `src/lyra/infrastructure/stores/__init__.py` (empty)
+- Create `src/lyra/infrastructure/CLAUDE.md` — list all 10 stores as "pending migration" with their destination paths
+- Extend `.importlinter` layering contract: insert `lyra.infrastructure` between `lyra.llm | lyra.nats` and `lyra.adapters`
+- Add forbidden contract `core-stores-no-sqlite` blocking `aiosqlite` + `sqlite3` from `lyra.core.stores`
+- **Surgery on `src/lyra/core/stores/__init__.py`:** remove `from .sqlite_base import SqliteStore` and drop `SqliteStore` + `AgentStore` + `AuthStore` + `IdentityAliasStore` from `__all__`. Keep only `AgentStoreProtocol`, `make_agent_store`. Required BEFORE the forbidden contract activates, because the current `__init__.py` has a module-level `from .sqlite_base import SqliteStore` which would create a direct `core.stores → aiosqlite` chain that the forbidden contract catches. Callers that import `SqliteStore` from `lyra.core.stores` (not from `.sqlite_base`) must update in this PR too; survey: `grep -rn 'from lyra.core.stores import.*SqliteStore\|from lyra.core.stores import.*AgentStore\|from lyra.core.stores import.*AuthStore' src/ tests/`.
+
+**Verify:** `uv run lint-imports` passes. Both the layers contract and the forbidden contract are active. The forbidden contract passes because `__init__.py` no longer re-exports `SqliteStore`; individual implementation files still live under `lyra.core.stores` but their `aiosqlite` imports are already there (pre-existing state, contract shape does not flag them until `source_modules` resolution walks into them via `__init__`). If CI fails on PR 1, the __init__.py surgery scope is wider than expected — expand this PR rather than defer.
+
+**Rollback:** Revert single PR. No callers affected.
+
+---
+
+### PR 2 — Move `sqlite_base.py` (must be FIRST store move)
+
+**Rationale:** `sqlite_base.py` defines `SqliteStore`, the base class all other implementation files inherit. Moving it first means all subsequent PRs can import from the correct location.
+
+**Tasks:**
+- Move `src/lyra/core/stores/sqlite_base.py` → `src/lyra/infrastructure/stores/sqlite_base.py`
+- Add shim at `src/lyra/core/stores/sqlite_base.py`:
+  ```python
+  from lyra.infrastructure.stores.sqlite_base import SqliteStore  # noqa: F401
+  ```
+- Update all callers that import directly from `lyra.core.stores.sqlite_base` → `lyra.infrastructure.stores.sqlite_base`
+- Update `src/lyra/infrastructure/CLAUDE.md`: mark `sqlite_base.py` as migrated
+- Delete shim once all callers updated
+
+**Verify:**
+- `uv run lint-imports` passes (forbidden contract: shim imports nothing from aiosqlite directly)
+- `grep -r "from lyra.core.stores.sqlite_base" src/ tests/` returns nothing
+- `uv run pytest` passes
+
+**Rollback:** Revert this PR. Other stores still import via `core/stores/` shims or unchanged paths.
+
+---
+
+### PR 3 — Move `agent_store.py`
+
+**Rationale:** Protocol already partially drafted (`agent_store_protocol.py` in `core/stores/`). Move the implementation second.
+
+**Tasks:**
+- Move `src/lyra/core/stores/agent_store.py` → `src/lyra/infrastructure/stores/agent_store.py`
+- Add shim at `src/lyra/core/stores/agent_store.py`
+- Update all callers in `src/` and `tests/` importing from `lyra.core.stores.agent_store` or `lyra.core.stores` (AgentStore symbol)
+- Note: `agent_store_protocol.py` STAYS — callers type-hinting `AgentStoreProtocol` do NOT change
+- Delete shim
+- Update `src/lyra/infrastructure/CLAUDE.md`
+
+**Verify:**
+- `grep -r "from lyra.core.stores.agent_store import" src/ tests/` returns nothing (protocol imports from `agent_store_protocol` — unchanged)
+- `uv run pytest` passes
+
+---
+
+### PR 4 — Move `auth_store.py`
+
+**Tasks:** Same pattern as PR 3.
+- Move → `src/lyra/infrastructure/stores/auth_store.py`
+- Shim → update callers → delete shim
+- Update `src/lyra/infrastructure/CLAUDE.md`
+- Decide treatment of `src/lyra/core/authenticator.py`'s function-body `AuthStore` import. Options: (a) DI refactor + new `AuthStoreProtocol`; (b) `exclude_modules` entry for `lyra.core.authenticator`. Confirm choice in PR description.
+
+**Callers to check:** `bootstrap_stores.py`, `bootstrap_wiring.py`, any auth middleware.
+
+---
+
+### PR 5 — Move `credential_store.py`
+
+**Tasks:** Same pattern.
+
+**Edge case — mock patch strings:** `tests/cli/test_cli_setup.py` patches `"lyra.core.stores.credential_store.LyraKeyring.load_or_create"` and `"lyra.core.stores.credential_store.CredentialStore"`. These must be updated to patch at `"lyra.infrastructure.stores.credential_store.*"` or at the bootstrap import site, depending on which module the test is testing. Verify patch semantics before updating strings.
+
+---
+
+### PR 6 — Move `identity_alias_store.py`
+
+**Tasks:** Same pattern.
+- Callers: `commands/identity/handlers.py`, `bootstrap_stores.py`, related tests.
+- Apply same treatment decided in PR 4 to `core/authenticator.py`'s `IdentityAliasStore` import.
+
+---
+
+### PR 7 — Move `message_index.py`
+
+**Tasks:** Same pattern.
+- Callers: hub session routing, `bootstrap_stores.py`, `tests/core/test_message_index.py`.
+
+---
+
+### PR 8 — Move `pairing.py`
+
+**Tasks:** Same pattern.
+
+**Classification note:** `pairing.py` moves because it inherits `SqliteStore` — not because of its business responsibility. `pairing_config.py` (pure Pydantic dataclass, zero DB logic) STAYS in `core/stores/`. Callers importing `PairingConfig` or `PairingError` from `lyra.core.stores.pairing_config` do NOT change.
+
+- Callers: `commands/pairing/handlers.py`, `bootstrap_stores.py`, related tests.
+
+---
+
+### PR 9 — Move `prefs_store.py`
+
+**Tasks:** Same pattern.
+- Callers: `bootstrap_stores.py`, prefs commands, related tests.
+
+---
+
+### PR 10 — Move `thread_store.py`
+
+**Tasks:** Same pattern.
+- Callers: `adapters/discord.py`, `adapters/discord_threads.py`, `bootstrap_stores.py`, related tests.
+
+---
+
+### PR 11 — Move `turn_store.py`
+
+**Tasks:** Same pattern.
+- Callers: hub, `adapters/telegram.py`, `adapters/discord.py`, `bootstrap_stores.py`, related tests.
+
+---
+
+### PR 12 — Buffer slot (optional follow-up caller updates)
+
+_Policy slot, not a dedicated move. Use ONLY if a per-store PR (PRs 2–11) needs a follow-up caller-update PR that could not land in the original move. PRs 4–11 are listed in recommended order but may proceed in any order after PR 3; each is independently mergeable. If all callers are updated inside their primary PRs, this slot goes unused and the count effectively becomes 11 + Final._
+
+---
+
+### PR Final — `__init__.py` surgery + CLAUDE.md cleanup
+
+**Goal:** Remove all remaining shims. Do `core/stores/__init__.py` surgery. Update documentation.
+
+**Tasks:**
+- `core/stores/__init__.py` surgery: remove `SqliteStore` re-export. Retain only:
+  - `AgentStoreProtocol`
+  - `make_agent_store()`
+  - Any other protocol-safe symbols
+- Confirm no shims remain in `core/stores/` (all `infrastructure/stores/<x>.py` shims deleted in their respective PRs)
+- Update `src/lyra/core/CLAUDE.md`:
+  - Remove all 10 implementation file entries
+  - Retain: `agent_store_protocol.py`, `json_agent_store.py`, `pairing_config.py`, `__init__.py`
+  - Add note: "SQLite implementations live in `src/lyra/infrastructure/stores/`"
+- Update `src/lyra/infrastructure/CLAUDE.md`: mark all 10 files as fully migrated, remove "pending" markers
+- Update `CLAUDE.md` root if it references `core/stores/` implementation files
+
+**Verify:**
+- `grep -r "aiosqlite" src/lyra/core/` returns nothing
+- `grep -r "sqlite3" src/lyra/core/stores/` returns nothing
+- `uv run lint-imports` passes (layering + forbidden contract)
+- `uv run pytest` passes
+- `ls src/lyra/core/stores/` shows exactly: `__init__.py`, `agent_store_protocol.py`, `json_agent_store.py`, `pairing_config.py`
+
+---
+
+## PR Summary Table
+
+| PR | Focus | Files touched | Independently revertable |
+|----|-------|--------------|--------------------------|
+| 1 | Prep: infrastructure layer + importlinter | `.importlinter`, `infrastructure/__init__.py`, `infrastructure/stores/__init__.py`, `infrastructure/CLAUDE.md` | Yes |
+| 2 | `sqlite_base.py` | Move + callers (all stores depend on this) | Yes |
+| 3 | `agent_store.py` | Move + callers | Yes |
+| 4 | `auth_store.py` | Move + callers | Yes |
+| 5 | `credential_store.py` | Move + callers + mock patch strings | Yes |
+| 6 | `identity_alias_store.py` | Move + callers | Yes |
+| 7 | `message_index.py` | Move + callers | Yes |
+| 8 | `pairing.py` | Move + callers (pairing_config.py STAYS) | Yes |
+| 9 | `prefs_store.py` | Move + callers | Yes |
+| 10 | `thread_store.py` | Move + callers | Yes |
+| 11 | `turn_store.py` | Move + callers | Yes |
+| 12 | Buffer slot | — (used only if a per-store PR needs a caller-update follow-up) | — |
+| Final | `__init__.py` surgery + CLAUDE.md cleanup | `core/stores/__init__.py`, `core/CLAUDE.md`, `infrastructure/CLAUDE.md` | Yes |
+
+**Total: 12 PRs** (1 prep + 10 store moves + 1 final). PR 12 slot left as buffer for any store that needs a follow-up caller-update PR after its shim period.
+
+## Estimates
+
+| Phase | Effort |
+|-------|--------|
+| PR 1 (prep) | ~1 hour |
+| PR 2 (sqlite_base) | ~2-3 hours (most callers inherit from here; need to verify all) |
+| PRs 3–11 (stores, per store) | ~2 hours each |
+| Final PR | ~1-2 hours |
+| **Total** | **~1.5–2 days** |
+
+## Agents
+
+| Agent | Tasks |
+|-------|-------|
+| backend-dev | All file moves, import updates, shim writes, shim deletes, `__init__.py` surgery |
+| doc-writer | `infrastructure/CLAUDE.md` creation, `core/CLAUDE.md` updates, root `CLAUDE.md` if needed |
+| tester | `uv run pytest` + `uv run lint-imports` verification after each PR |
+
+## Consistency Report
+
+- No gold plating: business logic changes explicitly deferred (pairing.py behavior OUT of scope)
+- No schema changes in scope
+
+### Success Criteria → PR Traceability
+
+| # | Success Criterion (from spec) | Verified in PR | Check |
+|---|-------------------------------|:--------------:|-------|
+| 1 | `src/lyra/infrastructure/stores/` contains the 10 moved implementation files | PR 2–11 | `ls src/lyra/infrastructure/stores/` shows 10 files after PR 11 |
+| 2 | `src/lyra/core/stores/` contains exactly: `__init__.py`, `agent_store_protocol.py`, `json_agent_store.py`, `pairing_config.py` | Final | `ls src/lyra/core/stores/` diff |
+| 3 | `grep -r "aiosqlite" src/lyra/core/` returns nothing | Final | grep check |
+| 4 | `grep -r "sqlite3" src/lyra/core/stores/` returns nothing | Final | grep check |
+| 5 | `uv run lint-imports` passes (layering + forbidden contract both satisfied) | PR 1 activates, verified every PR | CI gate |
+| 6 | `uv run pytest` passes unchanged | Every PR | CI gate |
+| 7 | `src/lyra/core/CLAUDE.md` has no SQLite implementation entries; retains protocol entries | Final | diff check |
+| 8 | `src/lyra/infrastructure/CLAUDE.md` exists and lists all 10 moved files | PR 1 (initial) + Final (complete) | presence check |
+| 9 | No re-export shims remain in `core/stores/` | Every per-store PR deletes its own shim; Final verifies | `ls src/lyra/core/stores/` diff |
+
+## Task IDs
+
+<!-- Generated by /plan. Used by /implement to resume tasks on session restart. -->
+- T1: PR1 — Prep: create infrastructure layer + importlinter contracts
+- T2: PR2 — Move sqlite_base.py + update callers
+- T3: PR3 — Move agent_store.py + update callers
+- T4: PR4 — Move auth_store.py + update callers
+- T5: PR5 — Move credential_store.py + update callers + mock patch strings
+- T6: PR6 — Move identity_alias_store.py + update callers
+- T7: PR7 — Move message_index.py + update callers
+- T8: PR8 — Move pairing.py + update callers
+- T9: PR9 — Move prefs_store.py + update callers
+- T10: PR10 — Move thread_store.py + update callers
+- T11: PR11 — Move turn_store.py + update callers
+- T12: Final — __init__.py surgery + CLAUDE.md cleanup

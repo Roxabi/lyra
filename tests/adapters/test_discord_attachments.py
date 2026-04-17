@@ -15,8 +15,11 @@ class TestDiscordAttachments:
     def _make_adapter(self):
         from lyra.adapters.discord import DiscordAdapter
 
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main", intents=discord.Intents.none())
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+            intents=discord.Intents.none(),
+        )
         adapter._bot_user = SimpleNamespace(id=999, bot=True)
         return adapter
 

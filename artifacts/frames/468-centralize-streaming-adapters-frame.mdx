@@ -1,0 +1,65 @@
+---
+title: "refactor: centralize duplicated streaming logic across outbound adapters"
+issue: 468
+status: approved
+tier: F-full
+date: 2026-04-02
+---
+
+## Problem
+
+`send_streaming()` in `discord_outbound.py` and `telegram_outbound.py` share large blocks of near-identical logic. Any change to the streaming flow requires touching both files — the recent ⏳ intermediate message formatting is a concrete example of this tax. The duplication spans streaming state boilerplate, placeholder→fallback handling, final text delivery (~40 lines each), and overflow chunking.
+
+Beyond `send_streaming()`, several smaller patterns are also duplicated: `build_message_id()` f-strings in the normalize modules, tool summary header construction, `send_with_retry()` naming, and the typing lifecycle tail in both `send()` and `send_streaming()`.
+
+More fundamentally, there is no formalized outbound adapter contract. Discord and Telegram have grown organically into similar shapes, but without an explicit base class or protocol enforcing that shape. Any new platform adapter (e.g. NATS, phase:2) must rediscover and re-implement the pattern from scratch, and there is no guarantee of behavioral consistency across adapters.
+
+## Who
+
+- **Primary:** developers maintaining outbound adapters — any streaming flow change currently requires two parallel edits with no enforcement that they stay in sync
+- **Secondary:** future platform adapters (NATS phase:2, any new platform) that will implement the formalized contract rather than invent their own shape
+
+## Architecture
+
+**Hexagonal / Clean Architecture alignment:**
+
+| Layer | What | Where |
+|-------|------|-------|
+| Port (secondary) | `ChannelAdapter` Protocol — already defined, unchanged | `core/hub/hub_protocol.py` |
+| Shared infra base | `OutboundAdapterBase` ABC — default `send_streaming()` via `StreamingSession`, abstract platform hooks | `adapters/_base_outbound.py` (new) |
+| Streaming algorithm | `StreamingSession` — owns the full streaming loop, accepts platform callbacks | `adapters/_shared_streaming.py` (new) |
+| Platform adapters | `DiscordAdapter`, `TelegramAdapter` — inherit base, override hooks only | `adapters/discord.py`, `adapters/telegram.py` |
+
+The port (`ChannelAdapter`) is NOT changed — it is the contract the hub relies on. `_base_outbound.py` is an adapter-layer ABC, not a new port. Discord and Telegram implement `ChannelAdapter` structurally (as today); they simply gain a shared implementation base.
+
+`StreamingSession` processes `RenderEvent` objects (domain type) and translates them to platform calls via injected callbacks. Domain flows through unchanged — infrastructure handles platform specifics. This is correct DDD.
+
+**MRO constraint:** `DiscordAdapter` already inherits `discord.Client`. It becomes `DiscordAdapter(discord.Client, OutboundAdapterBase)`. Base class must be MRO-safe: no `__init__` conflicts, consistent `super()` usage throughout.
+
+## Constraints
+
+- Must not change observable streaming behavior — pure refactor
+- `OutboundAdapterBase` must be MRO-safe for `DiscordAdapter(discord.Client, OutboundAdapterBase)`
+- `StreamingSession` API accepts platform callbacks (placeholder send, edit fn, new message fn) — adapter glue stays ~20 lines
+- `ChannelAdapter` port in `core/hub/hub_protocol.py` is not modified
+- Phase:2 groundwork: NATS adapter will inherit `OutboundAdapterBase` and provide NATS-specific callbacks
+- Files in scope: `discord_outbound.py`, `telegram_outbound.py`, `discord.py`, `telegram.py`, `_shared.py`, `_shared_streaming.py` (new), `_base_outbound.py` (new)
+
+## Out of Scope
+
+- Changes to `core/hub/hub_protocol.py` (`ChannelAdapter` port) — already correct
+- Changes to inbound adapters or hub routing logic
+- New streaming features or behavior changes
+- NATS adapter implementation (phase:2 proper)
+- Migrating utilities already centralized (circuit breaker, backpressure, `IntermediateTextState`, `TypingTaskManager`)
+
+## Complexity
+
+**Tier: F-full** — new architectural layer (shared adapter base class), MRO constraints on Discord, `StreamingSession` callback API design, cross-adapter impact, phase:2 dependency.
+
+Signals observed:
+- New ABC definition with cross-adapter implications
+- MRO-safe multiple inheritance required for DiscordAdapter
+- `StreamingSession` callback API surface needs careful design
+- 7 files across adapters layer (2 new, 5 modified)
+- Phase:2 dependency: NATS adapter will consume this base

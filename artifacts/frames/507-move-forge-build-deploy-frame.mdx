@@ -1,0 +1,39 @@
+---
+title: "refactor(forge): move build/deploy scripts to roxabi-plugins"
+issue: 507
+status: approved
+tier: F-lite
+date: 2026-04-03
+---
+
+## Problem
+
+Forge build and deploy tooling (build.sh, gen-manifest.py, gen-deps.py, gen-image-manifests.py, seed-meta.py, update-meta.py) currently lives in lyra-stack, but it belongs with the forge skill in roxabi-plugins. This creates a coupling where forge operations require lyra-stack context even though forge is a standalone plugin system. Moving these scripts to roxabi-plugins makes forge self-contained and aligns ownership with the skill that uses them.
+
+## Who
+
+- **Primary:** Mickael — sole developer, runs forge build/deploy from CLI
+- **Secondary:** Any future forge skill consumers who shouldn't need lyra-stack checked out
+
+## Constraints
+
+- Cloudflare credentials (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`) must move to `roxabi-plugins/.env`
+- `forge-init` already handles `serve.py` + `index.html` placement in `~/.roxabi/forge/` — no change needed there
+- lyra-stack Makefile forge targets (`make forge push/pull/sync/deploy/deploy-prod/du`) need updating or removing
+- Scripts must work from roxabi-plugins without lyra-stack dependency
+
+## Out of Scope
+
+- Changing script logic or rewriting in a different language
+- Modifying forge-init behavior
+- Changes to `~/.roxabi/forge/` data layout
+- Google Drive sync (`make forge push/pull/sync`) — stays in lyra-stack (it's repo-level, not plugin-level)
+
+## Complexity
+
+**Tier: F-lite** — clear file moves with known source/destination, single infra domain, no architectural decisions.
+
+- 6 scripts to relocate
+- Makefile target updates in both repos
+- `.env` credential relocation
+- No new patterns or abstractions needed

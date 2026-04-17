@@ -1,0 +1,56 @@
+---
+title: dep-graph review warnings — hardening + contract cleanup
+issue: 741
+status: approved
+tier: F-lite
+date: 2026-04-16
+---
+
+## Problem
+
+PR #739 (auto-derive `order` / `par_groups` / `bands` from GitHub metadata) landed green but the code review surfaced 8 non-blocking warnings that were deferred to keep that PR focused. The warnings fall into three buckets:
+
+- **Defense-in-depth gaps** — cache layer writes raw milestone titles; regex runtime has no ReDoS guard; size-label lengths are unbounded. None actively exploitable (GitHub is the source), but each removes an implicit trust boundary inside the build pipeline.
+- **Dual source-of-truth risks** — the `"order" not in lane` predicate and the `standalone` auto-derive predicate are each re-implemented in two call sites (`build.py` + `audit.py`). Silent drift if one copy moves.
+- **Contract / doc drift** — `layout.schema.json` treats `standalone: {}` and `standalone: {"order": []}` as equivalent without saying so; `_topo_sort` collapses multi-component lanes to the same depth, killing parallelism; `_derive_bands` over-emits bands under interleaved topo output.
+
+Full context: https://github.com/Roxabi/lyra/pull/739#issuecomment-4258385659 — "Warnings" section.
+
+## Who
+
+- **Primary:** Mickael — the dep-graph is the single "what's next" planning board across Lyra + vault + intel + future roxabi-dashboard. Stale/sloppy cache state compounds.
+- **Secondary:** future `roxabi-dashboard` — this codebase is the precursor. Hardening the contract now is cheaper than untangling it after multi-board aggregation.
+
+## Constraints
+
+- **No behavior change on golden path** — rendered HTML for the current `lyra-v2-dependency-graph.layout.json` must stay byte-identical (existing golden test).
+- **Single-PR cleanup batch** — per issue acceptance, items 1, 2, 7, 8 land together; items 3, 4, 5, 6 each get an explicit decision (fix or won't-fix with rationale). Spec step locks in the fix-vs-defer call before any code lands.
+- **Extract, don't duplicate** — duplicated predicates (items 2, 7) move into `derive.py` as pure helpers. `build.py` and `audit.py` both import.
+- **Cache-layer sanitization must be idempotent** — `fetch.py` may run repeatedly; sanitizer output stable across re-runs.
+- **ReDoS guard is best-effort** — `titles.py` regex is user-supplied via layout config, not user input; guard is a stderr warning, not a hard fail.
+
+## Out of Scope
+
+- New dep-graph features (filters, collapsible lanes, zoom, new visual elements).
+- Fetcher API surface changes beyond sanitization.
+- `roxabi-dashboard` multi-board aggregation.
+- Performance work on topo-sort / band emission beyond item #3 scope.
+- Retroactive backfill of existing `gh.json` cache — sanitization takes effect on next `make dep-graph fetch`.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (`scripts/dep-graph/`), no architectural unknowns. Issue body is specification-grade: 8 items with file:line refs, owner agent type, and confidence scores.
+
+Signals observed:
+- `size:M` (per issue body)
+- 5–6 files touched, all within `scripts/dep-graph/` (`fetch.py`, `build.py`, `audit.py`, `titles.py`, `derive.py`, `layout.schema.json`)
+- No new dependencies, no new external contracts
+- Existing test surface (schema validation, golden render) covers the cleanup
+- Items 3 + 4 involve topo/band algorithm nuance — spec must decide fix vs document-as-is before plan
+
+## Related Work
+
+- #739 — parent PR whose review surfaced these warnings (`feat(dep-graph): auto-derive lane order/par_groups/bands from GH metadata`).
+- #709 — multi-repo dep-graph (recent precedent for single-PR cleanup that must preserve golden render).
+- `scripts/dep-graph/` package — all targeted files live here; precursor to `roxabi-dashboard`.
+- Memory: roxabi-dashboard vision — hardening this contract now reduces drift cost when the codebase generalizes.

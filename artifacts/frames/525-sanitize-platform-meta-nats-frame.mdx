@@ -1,0 +1,62 @@
+---
+title: "Sanitize platform_meta at NATS trust boundary"
+issue: 525
+status: approved
+tier: F-lite
+date: 2026-04-04
+---
+
+## Problem
+
+When Lyra runs in NATS three-process mode (hub + adapters as separate OS processes),
+`platform_meta` travels across a trust boundary — serialized by the adapter, deserialized
+by the hub. The hub currently trusts every key in the deserialized `platform_meta` dict
+without validation.
+
+This creates a session-hijack vector: a crafted NATS message can inject a
+`thread_session_id` value into `platform_meta`, causing `middleware_submit.py:164-187`
+to resume **another user's session** in the hub. The attacker's message gets routed into
+a victim's conversation context, leaking history and executing under the victim's identity.
+
+Secondary risk: internal-only keys like `_session_update_fn` (a callable reference used
+by pool internals) are stripped during serialization (callables removed in `_serialize.py:58-60`),
+but nothing prevents a malicious payload from injecting **string-valued** keys with
+underscore prefixes that downstream code might interpret.
+
+The NATS deserialization path (`_serialize.py:deserialize()`) currently has zero
+sanitization logic for `platform_meta` — it reconstructs the dict verbatim from JSON.
+
+## Who
+
+- **Primary:** All Lyra users — any user whose session can be hijacked via crafted NATS messages.
+- **Secondary:** Operators — a compromised or rogue adapter process could exploit this to
+  escalate privileges across conversation scopes.
+
+## Constraints
+
+- Must not break legitimate `platform_meta` keys set by adapters (e.g. `reply_to_message_id`,
+  `chat_type`, `is_voice_transcription`, `thread_session_id` when set by the owning adapter).
+- `thread_session_id` is a valid key — it just needs scope validation, not removal.
+- Sanitization must happen at the NATS ingress boundary (hub side), not in each consumer.
+- `_serialize.py` already strips callables on serialization; sanitization should complement
+  this on the deserialization side.
+- P1-high / security label — should ship quickly without large refactors.
+
+## Out of Scope
+
+- Outbound `platform_meta` sanitization (hub→adapter) — separate concern, lower risk.
+- NATS transport-level auth (mTLS, token auth) — infrastructure concern, not app-layer.
+- Refactoring `platform_meta` into a typed dataclass — desirable but separate effort.
+- Audit of non-`platform_meta` fields in NATS messages (e.g. `user_id`, `scope_id` spoofing) —
+  tracked separately if needed.
+
+## Complexity
+
+**Tier: F-lite** — Single security domain (NATS ingress), clear scope (~4-6 source files),
+well-defined fix pattern (sanitize + validate).
+
+Signals:
+- All consumers are in `core/` (hub/middleware_submit, hub/message_pipeline, pool/)
+- Fix is a sanitization layer at one boundary point + one scope validation
+- No new architecture patterns needed
+- Existing test infrastructure covers the NATS serialization path

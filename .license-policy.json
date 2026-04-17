@@ -1,5 +1,6 @@
 {
   "allowlist": [
+    "roxabi-nats",
     "lyra",
     "aiohttp",
     "fastembed",
@@ -41,7 +42,8 @@
     "sentencepiece",
     "PyMuPDF",
     "pyphen",
-    "angelique"
+    "angelique",
+    "pytest-timeout"
   ],
   "overrides": {}
 }

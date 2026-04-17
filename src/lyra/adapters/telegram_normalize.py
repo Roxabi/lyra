@@ -6,14 +6,13 @@ import logging
 from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
+from lyra.core.audio_payload import AudioPayload
 from lyra.core.message import (
     Attachment,
-    InboundAudio,
     InboundMessage,
     Platform,
     RoutingContext,
 )
-from lyra.core.scope import user_scoped
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
@@ -96,7 +95,7 @@ def _make_scope_id(
         base = f"chat:{chat_id}:topic:{topic_id}"
     else:
         base = f"chat:{chat_id}"
-    return user_scoped(base, user_id) if is_group else base
+    return base
 
 
 def _build_routing(  # noqa: PLR0913 — groups related metadata fields
@@ -195,7 +194,6 @@ def normalize(
         text_raw=text,
         attachments=attachments,
         timestamp=timestamp,
-        trust="user",
         trust_level=trust_level,
         is_admin=is_admin,
         platform_meta=platform_meta,
@@ -211,8 +209,8 @@ def normalize_audio(
     mime_type: str,
     *,
     trust_level: TrustLevel,
-) -> InboundAudio:
-    """Build an InboundAudio envelope from a Telegram voice/audio/video_note.
+) -> InboundMessage:
+    """Build a voice InboundMessage from a Telegram audio/voice/video_note update.
 
     Security: trust is always 'user'. normalize_audio() is never called for
     bot messages. Never logs the bot token.
@@ -238,23 +236,34 @@ def normalize_audio(
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
     message_id = getattr(raw, "message_id", None)
+    reply_to_message = getattr(raw, "reply_to_message", None)
+    reply_to_id = (
+        str(reply_to_message.message_id) if reply_to_message is not None else None
+    )
     platform_meta, routing = _build_routing(
         adapter, chat_id, topic_id, message_id, scope_id, is_group
     )
-    return InboundAudio(
+    return InboundMessage(
         id=(f"telegram:{user_id}:{int(timestamp.timestamp())}:{file_id or ''}"),
         platform=Platform.TELEGRAM.value,
         bot_id=adapter._bot_id,
         scope_id=scope_id,
         user_id=user_id,
-        audio_bytes=audio_bytes,
-        mime_type=mime_type,
-        duration_ms=duration_ms,
-        file_id=file_id,
-        timestamp=timestamp,
         user_name=raw.from_user.full_name,
         is_mention=False,
+        text="",
+        text_raw="",
         trust_level=trust_level,
+        timestamp=timestamp,
         platform_meta=platform_meta,
         routing=routing,
+        reply_to_id=reply_to_id,
+        modality="voice",
+        audio=AudioPayload(
+            audio_bytes=audio_bytes,
+            mime_type=mime_type,
+            duration_ms=duration_ms,
+            file_id=file_id,
+            waveform_b64=None,
+        ),
     )

@@ -500,9 +500,7 @@ class TestSessionCommands:
             registry._entries.pop("/fake-b", None)
 
     @pytest.mark.asyncio
-    async def test_help_dispatch_passes_passthroughs(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_help_dispatch_passes_passthroughs(self, tmp_path: Path) -> None:
         """Router dispatch /help passes passthroughs to help_command (#359)."""
         from lyra.core.processor_registry import BaseProcessor, ProcessorEntry, registry
 

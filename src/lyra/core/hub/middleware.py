@@ -9,8 +9,8 @@ ordering and session resume atomicity.
 
 Layout:
   middleware.py         — protocol, context, runner, factory
-  middleware_stages.py  — stages 1–5 (guards + command dispatch)
-  middleware_submit.py  — stage 6 (pool submit + session resume)
+  middleware_stages.py  — stages 0–8 (trace, guards, pool creation, command dispatch)
+  middleware_submit.py  — stage 9 (pool submit + session resume)
 """
 
 from __future__ import annotations
@@ -24,15 +24,15 @@ from typing import TYPE_CHECKING, Any, Protocol
 from ..agent import AgentBase
 from ..message import InboundMessage
 from ..pool import Pool
-from .message_pipeline import (
-    _DROP,
-    PipelineResult,
-    TraceHook,
-)
 from .pipeline_events import (
     MessageReceived,
     PipelineEvent,
     StageCompleted,
+)
+from .pipeline_types import (
+    DROP,
+    PipelineResult,
+    TraceHook,
 )
 
 if TYPE_CHECKING:
@@ -142,7 +142,7 @@ class MiddlewarePipeline:
             stage's own work since no downstream is called.
             """
             if index >= len(self._middlewares):
-                return _DROP
+                return DROP
             mw = self._middlewares[index]
             t0 = time.monotonic()
             result = await mw(msg, ctx, lambda m, c: _run(index + 1, m, c))
@@ -164,22 +164,28 @@ def build_default_pipeline(
     trace_hook: TraceHook | None = None,
     event_bus: PipelineEventBus | None = None,
 ) -> MiddlewarePipeline:
-    """Build the standard middleware pipeline with all 6 stages."""
+    """Build the standard middleware pipeline with all 10 stages."""
     from .middleware_stages import (
         CommandMiddleware,
         CreatePoolMiddleware,
         RateLimitMiddleware,
         ResolveBindingMiddleware,
+        ResolveTrustMiddleware,
         TraceMiddleware,
+        TrustGuardMiddleware,
         ValidatePlatformMiddleware,
     )
+    from .middleware_stt import SttMiddleware
     from .middleware_submit import SubmitToPoolMiddleware
 
     return MiddlewarePipeline(
         [
             TraceMiddleware(),
             ValidatePlatformMiddleware(),
+            ResolveTrustMiddleware(),
+            TrustGuardMiddleware(),
             RateLimitMiddleware(),
+            SttMiddleware(),
             ResolveBindingMiddleware(),
             CreatePoolMiddleware(),
             CommandMiddleware(),

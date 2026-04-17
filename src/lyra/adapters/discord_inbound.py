@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import logging
 from collections.abc import Callable
@@ -19,6 +18,7 @@ from lyra.adapters.discord_threads import (
     retrieve_thread_session,
 )
 from lyra.core.message import InboundMessage, Platform
+from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -36,19 +36,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     if message.author.bot:
         return
 
-    # Auth gate — runs before normalize() and before audio handling.
-    _raw_uid = str(message.author.id)
-    roles = (
-        [str(r.id) for r in message.author.roles]
-        if hasattr(message.author, "roles")
-        else []
-    )
-    identity = adapter._auth.resolve(_raw_uid, roles=roles)
-    if adapter._guard_chain.run(identity):
-        log.info("auth_reject user=%s channel=discord", f"dc:user:{message.author.id}")
-        return
-    trust = identity.trust_level
-
+    # C3: adapters send raw identity fields; Hub resolves trust in run().
     # Audio attachment detection
     audio_attachment = next(
         (
@@ -59,12 +47,12 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         None,
     )
     if audio_attachment is not None:
-        await _handle_audio(adapter, message, audio_attachment, trust)
+        await _handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
         return  # audio messages handled separately; skip text path
 
     # Voice command dispatch — guild-only; runs before mention/DM filter.
     if message.guild is not None:
-        if await adapter._handle_voice_command(message, trust):
+        if await adapter._handle_voice_command(message, TrustLevel.PUBLIC):
             return
 
     # Pre-detect mention (needed for auto-thread decision)
@@ -103,18 +91,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         not _is_dm and not _is_thread and message.channel.id in adapter._watch_channels
     )
 
-    # Vault channel: auto-save every message to the vault (no mention needed).
-    _is_vault_channel = (
-        not _is_dm and not _is_thread and message.channel.id in adapter._vault_channels
-    )
-
-    _should_process = (
-        _is_dm
-        or _is_mention
-        or _in_owned_thread
-        or _is_watch_channel
-        or _is_vault_channel
-    )
+    _should_process = _is_dm or _is_mention or _in_owned_thread or _is_watch_channel
     if not _should_process:
         return
 
@@ -124,7 +101,6 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     if (
         adapter._auto_thread
         and (_is_mention or _is_watch_channel)
-        and not _is_vault_channel
         and not isinstance(message.channel, discord.Thread)
         and hasattr(message.channel, "create_thread")
     ):
@@ -135,14 +111,12 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
             resolved_thread_id = thread.id
             adapter._owned_threads.add(thread.id)
             if adapter._thread_store is not None:
-                asyncio.create_task(
-                    persist_thread_claim(
-                        adapter._thread_store,
-                        thread_id=thread.id,
-                        bot_id=adapter._bot_id,
-                        channel_id=message.channel.id,
-                        guild_id=getattr(message.guild, "id", None),
-                    )
+                await persist_thread_claim(
+                    adapter._thread_store,
+                    thread_id=thread.id,
+                    bot_id=adapter._bot_id,
+                    channel_id=message.channel.id,
+                    guild_id=getattr(message.guild, "id", None),
                 )
         except Exception:
             log.exception(
@@ -155,30 +129,29 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                 resolved_thread_id = message.thread.id
                 adapter._owned_threads.add(message.thread.id)
                 if adapter._thread_store is not None:
-                    asyncio.create_task(
-                        persist_thread_claim(
+                    try:
+                        await persist_thread_claim(
                             adapter._thread_store,
                             thread_id=message.thread.id,
                             bot_id=adapter._bot_id,
                             channel_id=message.channel.id,
                             guild_id=getattr(message.guild, "id", None),
                         )
-                    )
+                    except Exception as e:
+                        log.warning(
+                            "Failed to persist thread claim in recovery path: %s", e
+                        )
 
     # Claim an existing thread when directly mentioned inside it.
     if _is_mention and isinstance(message.channel, discord.Thread):
         adapter._owned_threads.add(message.channel.id)
         if adapter._thread_store is not None:
-            asyncio.create_task(
-                persist_thread_claim(
-                    adapter._thread_store,
-                    thread_id=message.channel.id,
-                    bot_id=adapter._bot_id,
-                    channel_id=getattr(
-                        message.channel, "parent_id", message.channel.id
-                    ),
-                    guild_id=getattr(message.guild, "id", None),
-                )
+            await persist_thread_claim(
+                adapter._thread_store,
+                thread_id=message.channel.id,
+                bot_id=adapter._bot_id,
+                channel_id=getattr(message.channel, "parent_id", message.channel.id),
+                guild_id=getattr(message.guild, "id", None),
             )
 
     # Retrieve stored session for existing owned threads (read-side fix).
@@ -204,25 +177,47 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
             message,
             thread_id=resolved_thread_id,
             channel_id=resolved_channel_id,
-            trust_level=trust,
-            is_admin=identity.is_admin,
+            trust_level=TrustLevel.PUBLIC,
+            is_admin=False,
         )
     except Exception:
         log.exception("Failed to normalize discord message id=%s", message.id)
         return
 
-    # Vault channel: rewrite message text to /add-vault <content> so the
-    # AddVaultProcessor handles it automatically via the normal command pipeline.
-    if _is_vault_channel and hub_msg.text:
-        hub_msg = dataclasses.replace(hub_msg, text=f"/add-vault {hub_msg.text}")
-        log.debug("vault_channel: rewrote message %s as /add-vault command", hub_msg.id)
-
     # Inject stored session + persistence callback into platform_meta.
     _meta_updates: dict[str, Any] = {}
     if _stored_session_id is not None:
         _meta_updates["thread_session_id"] = _stored_session_id
+
+    # DM session wiring: inject prior session_id + persist callback for DMs.
+    _dm_session_id: str | None = None
+    if _is_dm and adapter._turn_store is not None:
+        from lyra.core.hub.hub_protocol import RoutingKey
+        from lyra.core.message import Platform
+
+        _pool_id = RoutingKey(
+            Platform.DISCORD, adapter._bot_id, f"channel:{message.channel.id}"
+        ).to_pool_id()
+        try:
+            _dm_session_id = await adapter._turn_store.get_last_session(_pool_id)
+        except Exception:
+            log.exception(  # noqa: TRY401
+                "TurnStore.get_last_session failed for DM pool_id=%s", _pool_id
+            )
+    if _dm_session_id is not None:
+        _meta_updates["thread_session_id"] = _dm_session_id
     _has_thread_id = hub_msg.platform_meta.get("thread_id") is not None
-    if _has_thread_id and adapter._thread_store is not None:
+    if _is_dm and adapter._turn_store is not None:
+        # DM path takes priority over thread-session persistence
+        _dm_ts = adapter._turn_store
+
+        async def _dm_session_update_fn(
+            _msg: InboundMessage, session_id: str, pool_id: str
+        ) -> None:
+            await _dm_ts.start_session(session_id, pool_id)
+
+        _meta_updates["_session_update_fn"] = _dm_session_update_fn
+    elif _has_thread_id and adapter._thread_store is not None:
         _ts = adapter._thread_store
         _bid, _cache = adapter._bot_id, adapter._thread_sessions
 
@@ -277,11 +272,12 @@ async def _push_to_hub(
             await source_message.reply(text)
 
     await push_to_hub_guarded(
-        inbound_bus=adapter._hub.inbound_bus,
+        inbound_bus=adapter._inbound_bus,
         platform=Platform.DISCORD,
         msg=hub_msg,
         circuit_registry=adapter._circuit_registry,
         on_drop=on_drop,
         send_backpressure=_send_bp,
         get_msg=adapter._msg,
+        outbound_listener=adapter._outbound_listener,
     )

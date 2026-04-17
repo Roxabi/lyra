@@ -33,9 +33,7 @@ class TestAgentMemoryInjection:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -59,9 +57,7 @@ class TestAgentMemoryInjection:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -101,9 +97,7 @@ class TestAgentEnsureSystemPrompt:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -135,9 +129,7 @@ class TestAgentEnsureSystemPrompt:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -183,9 +175,7 @@ class TestAgentFlushSession:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -215,9 +205,7 @@ class TestAgentFlushSession:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -265,9 +253,7 @@ class TestAgentCompact:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -299,9 +285,7 @@ class TestAgentCompact:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 

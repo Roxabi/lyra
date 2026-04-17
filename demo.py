@@ -3,8 +3,9 @@
 import asyncio
 from datetime import datetime, timezone
 
-from lyra.core.agent import Agent, AgentBase
 from lyra.core.auth import TrustLevel
+
+from lyra.core.agent import Agent, AgentBase
 from lyra.core.hub import Hub
 from lyra.core.message import InboundMessage, Platform, Response
 from lyra.core.pool import Pool
@@ -60,7 +61,7 @@ async def main() -> None:
             trust_level=TrustLevel.TRUSTED,
         )
         print(f"  -> {text}")
-        hub.inbound_bus.put(Platform.TELEGRAM, msg)
+        await hub.inbound_bus.put(Platform.TELEGRAM, msg)
 
     # Let the hub process all messages
     while hub.inbound_bus.staging_qsize() > 0:

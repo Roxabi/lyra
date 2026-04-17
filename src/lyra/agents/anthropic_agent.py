@@ -26,9 +26,9 @@ from lyra.stt import is_whisper_noise
 _AGENTS_DIR = Path(__file__).resolve().parent
 
 if TYPE_CHECKING:
-    from lyra.core.stores.agent_store import AgentStore
-    from lyra.stt import STTService
-    from lyra.tts import TTSService
+    from lyra.infrastructure.stores.agent_store import AgentStore
+    from lyra.stt import STTProtocol
+    from lyra.tts import TtsProtocol
 
 log = logging.getLogger(__name__)
 
@@ -47,8 +47,8 @@ class AnthropicAgent(AgentBase):
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         runtime_config: RuntimeConfig | None = None,
-        stt: "STTService | None" = None,
-        tts: "TTSService | None" = None,
+        stt: "STTProtocol | None" = None,
+        tts: "TtsProtocol | None" = None,
         agents_dir: Path | None = None,
         smart_routing_decorator: object | None = None,
         agent_store: "AgentStore | None" = None,
@@ -122,6 +122,16 @@ class AnthropicAgent(AgentBase):
         for cmd in registry.commands():
             self.command_router.register_passthrough(cmd.lstrip("/"))
 
+        # /add-vault — direct vault save, no LLM needed (#372).
+        from lyra.commands.add_vault.handlers import cmd_add_vault
+
+        self.command_router.register_session_command(
+            "add-vault",
+            cmd_add_vault,
+            tools=self._session_tools,
+            description="Save a note to the vault: /add-vault <note content>",
+        )
+
     async def _process_llm(  # noqa: C901 — voice modality branch adds one branch
         self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
     ) -> Response:
@@ -156,17 +166,6 @@ class AnthropicAgent(AgentBase):
                 _esc = html.escape(stt_result.text)
                 llm_text = f"<voice_transcript>{_esc}</voice_transcript>"
                 history_text = stt_result.text
-            elif _audio is not None and self._stt is None:
-                if tmp_path is not None:
-                    tmp_path.unlink(missing_ok=True)
-                    tmp_path = None  # prevent double-unlink in outer finally
-                return Response(
-                    content=(
-                        self._msg_manager.get("stt_unsupported")
-                        if self._msg_manager
-                        else "Voice messages are not supported — STT is not configured."
-                    )
-                )
             elif msg.modality == "voice":
                 # Pipeline-transcribed audio — wrap for prompt injection guard (H-8)
                 _esc = html.escape(msg.text)

@@ -1,0 +1,9 @@
+[Unit]
+Description=Lyra config bind mount (config.toml, read-only)
+ConditionPathExists=%h/.lyra/config.toml
+
+[Volume]
+Device=%h/.lyra/config.toml
+Type=bind
+Options=bind,ro
+Label=app=lyra

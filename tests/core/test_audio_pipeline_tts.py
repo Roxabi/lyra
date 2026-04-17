@@ -20,7 +20,7 @@ from lyra.core.message import InboundMessage, Platform, Response
 from lyra.core.pool import Pool
 from lyra.core.render_events import RenderEvent
 from lyra.core.trust import TrustLevel
-from tests.core.conftest import FakeSTT
+from tests.core.conftest import FakeSTT, MockAdapter
 
 if TYPE_CHECKING:
     from lyra.stt import STTService
@@ -120,10 +120,10 @@ class TestSynthesizeDispatchAgentTTS:
 
 
 class TestResolveAgentTTS:
-    """T4 — hub._resolve_agent_tts resolves per-agent TTS config via binding."""
+    """T4 — AudioPipeline.resolve_agent_tts resolves TTS config via binding."""
 
     def test_resolve_agent_tts_returns_config_from_registry(self):
-        """_resolve_agent_tts returns the agent's tts config for a bound message."""
+        """resolve_agent_tts returns the agent's tts config for a bound message."""
         from lyra.core import Agent
         from lyra.core.agent import AgentBase
         from lyra.core.agent_config import AgentTTSConfig, AgentVoiceConfig
@@ -135,9 +135,7 @@ class TestResolveAgentTTS:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -178,7 +176,7 @@ class TestResolveAgentTTS:
         )
 
         # Act
-        resolved = hub._resolve_agent_tts(msg)
+        resolved = hub._audio_pipeline.resolve_agent_tts(msg)
 
         # Assert
         assert resolved is agent_tts
@@ -187,7 +185,7 @@ class TestResolveAgentTTS:
         assert resolved.voice == "agent_vox"
 
     def test_resolve_agent_tts_returns_none_without_binding(self):
-        """_resolve_agent_tts returns None when no binding matches the message."""
+        """resolve_agent_tts returns None when no binding matches the message."""
         hub = Hub(stt=cast("STTService", FakeSTT()))
 
         msg = InboundMessage(
@@ -205,7 +203,7 @@ class TestResolveAgentTTS:
         )
 
         # Act
-        resolved = hub._resolve_agent_tts(msg)
+        resolved = hub._audio_pipeline.resolve_agent_tts(msg)
 
         # Assert — no binding registered, must return None
         assert resolved is None
@@ -235,9 +233,7 @@ class TestDispatchResponseAgentTTSE2E:
                 msg: InboundMessage,
                 pool: Pool,
                 *,
-                on_intermediate: (
-                    Callable[[str], Awaitable[None]] | None
-                ) = None,
+                on_intermediate: (Callable[[str], Awaitable[None]] | None) = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 return Response(content="")
 
@@ -302,3 +298,192 @@ class TestDispatchResponseAgentTTSE2E:
         mock_tts.synthesize.assert_awaited()
         call_kwargs = mock_tts.synthesize.call_args
         assert call_kwargs.kwargs.get("agent_tts") is agent_tts
+
+
+# ---------------------------------------------------------------------------
+# TTS unavailable fallback — notification via _route_outbound (#627)
+# ---------------------------------------------------------------------------
+
+
+class TestTtsUnavailableFallback:
+    """When TTS fails, a notification is sent via _route_outbound.
+
+    dispatch_response is NOT used because it would create a reentrancy path
+    causing the infinite loop observed in production (#621).
+
+    The text response is already delivered by the caller before TTS is attempted.
+
+    Fix (#627): Use _route_outbound directly to send a notification without
+    spawning TTS tasks.
+    """
+
+    @pytest.mark.asyncio
+    async def test_tts_unavailable_sends_notification(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """TtsUnavailableError → notification sent via _route_outbound.
+
+        dispatch_response must NOT be called (#621). Instead, _route_outbound
+        is used directly to send a warning notification without TTS spawning.
+        """
+        import logging
+
+        from lyra.tts import TtsUnavailableError
+
+        # Arrange
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(side_effect=TtsUnavailableError("adapter down"))
+
+        hub = Hub(tts=mock_tts)
+        hub.dispatch_audio = AsyncMock()
+        hub.dispatch_response = AsyncMock()
+        hub._route_outbound = AsyncMock()  # Mock _route_outbound for notification
+
+        msg = InboundMessage(
+            id="msg-fallback-1",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:99",
+            user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+            modality="voice",
+        )
+
+        # Act
+        with caplog.at_level(logging.WARNING, logger="lyra.core.tts_dispatch"):
+            await hub._audio_pipeline.synthesize_and_dispatch_audio(
+                msg, "Hello from Lyra"
+            )
+
+        # Assert
+        hub.dispatch_audio.assert_not_awaited()
+        # dispatch_response must NOT be called (#621 — text already sent before TTS)
+        hub.dispatch_response.assert_not_awaited()
+        # _route_outbound IS called to send notification (#627)
+        hub._route_outbound.assert_awaited_once()
+        # Verify notification content
+        call_args = hub._route_outbound.call_args
+        assert call_args.kwargs.get("resource") == "tts-failure-notification"
+        # Log warning must be emitted
+        assert "msg-fallback-1" in caplog.text
+        assert "notifying user" in caplog.text
+        assert caplog.records[0].levelno == logging.WARNING
+
+    @pytest.mark.asyncio
+    async def test_tts_generic_exception_sends_notification(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Generic TTS exception → notification sent via _route_outbound.
+
+        Same contract as TtsUnavailableError: dispatch_response NOT called,
+        notification sent via _route_outbound.
+        """
+        import logging
+
+        # Arrange
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(side_effect=RuntimeError("synthesis crash"))
+
+        hub = Hub(tts=mock_tts)
+        hub.dispatch_audio = AsyncMock()
+        hub.dispatch_response = AsyncMock()
+        hub._route_outbound = AsyncMock()  # Mock _route_outbound for notification
+
+        msg = InboundMessage(
+            id="msg-fallback-2",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:99",
+            user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+            modality="voice",
+        )
+
+        # Act
+        with caplog.at_level(logging.ERROR, logger="lyra.core.tts_dispatch"):
+            await hub._audio_pipeline.synthesize_and_dispatch_audio(
+                msg, "Hello from Lyra"
+            )
+
+        # Assert
+        hub.dispatch_audio.assert_not_awaited()
+        hub.dispatch_response.assert_not_awaited()
+        # _route_outbound IS called to send notification (#627)
+        hub._route_outbound.assert_awaited_once()
+        # Verify notification content
+        call_args = hub._route_outbound.call_args
+        assert call_args.kwargs.get("resource") == "tts-failure-notification"
+        # log.exception must be emitted (ERROR level with traceback)
+        assert "msg-fallback-2" in caplog.text
+        assert "notifying user" in caplog.text
+        assert caplog.records[0].levelno == logging.ERROR
+
+
+# ---------------------------------------------------------------------------
+# dispatch_streaming TTS fallback — notification via _route_outbound (#627)
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchStreamingTTSFallback:
+    """TTS failure during dispatch_streaming must not call dispatch_response.
+
+    dispatch_streaming fires synthesize_and_dispatch_audio as a background
+    task (_deferred_tts) after the stream completes.  If TTS fails there, the
+    same contract applies: notification sent via _route_outbound, not dispatch_response.
+    """
+
+    @pytest.mark.asyncio
+    async def test_streaming_tts_failure_no_dispatch_response(self) -> None:
+        """Voice dispatch_streaming: TTS failure → dispatch_response NOT called."""
+        from datetime import datetime, timezone
+
+        from lyra.core.render_events import TextRenderEvent
+        from lyra.tts import TtsUnavailableError
+
+        # Arrange
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(side_effect=TtsUnavailableError("down"))
+
+        hub = Hub(tts=mock_tts)
+        hub.dispatch_audio = AsyncMock()
+        hub.dispatch_response = AsyncMock()
+
+        adapter = MockAdapter()
+        hub.adapter_registry[(Platform.TELEGRAM, "main")] = adapter  # type: ignore[assignment]
+
+        msg = InboundMessage(
+            id="msg-streaming-1",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:99",
+            user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+            modality="voice",
+        )
+
+        async def _fake_chunks() -> AsyncIterator[RenderEvent]:
+            yield TextRenderEvent(text="Hello from Lyra", is_final=True)
+
+        # Act
+        await hub.dispatch_streaming(msg, _fake_chunks())
+        # Allow background TTS task to complete
+        await asyncio.sleep(0.1)
+
+        # Assert - dispatch_response must NOT be called (#621)
+        hub.dispatch_audio.assert_not_awaited()
+        hub.dispatch_response.assert_not_awaited()

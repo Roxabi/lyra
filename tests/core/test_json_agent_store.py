@@ -336,8 +336,8 @@ class TestMakeAgentStore:
     def test_default_returns_agent_store(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("LYRA_DB", raising=False)
 
-        from lyra.core.stores.agent_store import AgentStore
         from lyra.core.stores.agent_store_protocol import make_agent_store
+        from lyra.infrastructure.stores.agent_store import AgentStore
 
         store = make_agent_store()
         assert isinstance(store, AgentStore)
@@ -371,8 +371,8 @@ class TestMakeAgentStore:
     ) -> None:
         monkeypatch.setenv("LYRA_DB", "sqlite")
 
-        from lyra.core.stores.agent_store import AgentStore
         from lyra.core.stores.agent_store_protocol import make_agent_store
+        from lyra.infrastructure.stores.agent_store import AgentStore
 
         store = make_agent_store()
         assert isinstance(store, AgentStore)

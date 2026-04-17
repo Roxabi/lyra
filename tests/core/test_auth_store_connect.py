@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.stores.auth_store import AuthStore
 from lyra.core.trust import TrustLevel
+from lyra.infrastructure.stores.auth_store import AuthStore
 from tests.core.conftest import make_auth_store
 
 # ---------------------------------------------------------------------------
@@ -77,7 +77,9 @@ class TestAuthStoreConnect:
         # First session: write a grant directly
         store1 = AuthStore(db_path=db_path)
         await store1.connect()
-        await store1.upsert("user-persisted", TrustLevel.TRUSTED, None, "test", "test")
+        await store1.upsert(
+            "tg:user:persisted", TrustLevel.TRUSTED, None, "test", "test"
+        )
         await store1.close()
 
         # Second session: connect should warm cache from DB
@@ -85,7 +87,7 @@ class TestAuthStoreConnect:
         await store2.connect()
         try:
             # check() is sync and must return from cache without DB I/O
-            level = store2.check("user-persisted")
+            level = store2.check("tg:user:persisted")
             assert level == TrustLevel.TRUSTED
         finally:
             await store2.close()

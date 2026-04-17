@@ -62,7 +62,6 @@ class PipelineEventBus:
         if now - self._last_warn.get(qid, 0.0) >= _DROP_WARN_INTERVAL:
             self._last_warn[qid] = now
             log.warning(
-                "PipelineEventBus: subscriber queue full"
-                " — events dropped (maxsize=%d)",
+                "PipelineEventBus: subscriber queue full — events dropped (maxsize=%d)",
                 self._maxsize,
             )

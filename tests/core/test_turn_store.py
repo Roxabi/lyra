@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import sqlite3
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.stores.turn_store import TurnStore
+from lyra.infrastructure.stores.turn_store import TurnStore
 
 
 @pytest.fixture
@@ -268,8 +269,7 @@ class TestTurnStoreIntegrationWithPool:
         pool._turn_store = store
         msg = self._make_msg()
 
-        pool.append(msg)
-        await asyncio.sleep(0.05)
+        await pool.append(msg)
 
         rows = await store.get_turns("p:1", user_id="u1")
         assert len(rows) == 1
@@ -296,7 +296,9 @@ class TestTurnStoreIntegrationWithPool:
                 if _cb is not None:
                     outbound = OutboundMessage.from_text(response.content)
                     outbound.metadata["reply_message_id"] = "bot_msg_42"
-                    _cb(outbound)
+                    result = _cb(outbound)
+                    if inspect.isawaitable(result):
+                        await result
 
         ctx.dispatch_response = AsyncMock(side_effect=_dispatch_with_callback)
 
@@ -312,8 +314,10 @@ class TestTurnStoreIntegrationWithPool:
         pool = Pool(pool_id="p:2", agent_name="stub", ctx=ctx)
         pool._turn_store = store
 
+        from lyra.core.pool.pool_processor_exec import process_one
+
         msg = self._make_msg(user_id="u2")
-        await pool._processor._process_one(msg, agent)
+        await process_one(msg, agent, pool)
         await asyncio.sleep(0.05)
 
         rows = await store.get_turns("p:2", user_id="u2")
@@ -397,8 +401,10 @@ class TestPoolSessions:
         )
         await db.commit()
 
-        await store._backfill_sessions(db)
-        await store._backfill_sessions(db)  # second call must be a no-op
+        from lyra.infrastructure.stores.turn_store_queries import backfill_sessions
+
+        await backfill_sessions(db)
+        await backfill_sessions(db)  # second call must be a no-op
 
         async with db.execute(
             "SELECT COUNT(*) FROM pool_sessions WHERE session_id = ?",
@@ -443,9 +449,7 @@ class TestPoolSessions:
 
         assert after > before
 
-    async def test_get_last_session_returns_most_recent(
-        self, store: TurnStore
-    ) -> None:
+    async def test_get_last_session_returns_most_recent(self, store: TurnStore) -> None:
         """get_last_session returns the most recently started session, not first."""
         # Arrange — register two sessions with a measurable time gap
         await store.start_session("sess-first", "pool:order")

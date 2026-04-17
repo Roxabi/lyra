@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from lyra.core.cli_protocol import StreamingIterator
-from lyra.llm.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 from .conftest import (
     ASSISTANT_INTERMEDIATE_LINE,
@@ -365,29 +365,6 @@ class TestStreamingIteratorAssistant:
         # Assert — ToolUseLlmEvent before TextLlmEvent, then ResultLlmEvent
         assert events == [
             ToolUseLlmEvent(tool_name="Read", tool_id="tu_42", input={}),
-            TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
-        ]
-
-    async def test_on_intermediate_deprecated_but_harmless(self, caplog) -> None:
-        # Arrange — on_intermediate is deprecated; passing it should log a warning
-        # but not raise and not affect iteration
-        import logging
-
-        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE, RESULT_LINE])
-        entry = make_entry(proc)
-
-        async def cb(text: str) -> None:
-            pass
-
-        # Act
-        with caplog.at_level(logging.WARNING):
-            it = StreamingIterator(entry, DEFAULT_POOL_ID, on_intermediate=cb)
-        events = [ev async for ev in it]
-
-        # Assert — warning logged, events still correct
-        assert any("deprecated" in r.message.lower() for r in caplog.records)
-        assert events == [
             TextLlmEvent(text="Hello"),
             ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
         ]

@@ -1,55 +1,75 @@
+"""LLM streaming event types.
+
+These frozen dataclasses represent the raw events emitted by LLM drivers during
+streaming. They form the input side of the LLM → StreamProcessor → RenderEvent
+pipeline.
+
+They live in ``core/`` rather than ``llm/`` because the type system is a
+domain-level contract consumed by both sides of the pipeline — keeping it here
+lets ``llm/`` depend on ``core/`` unidirectionally (enforced by ``import-linter``).
+
+No framework imports (aiogram, discord, anthropic) are permitted in this module.
+
+Immutability contract
+---------------------
+All classes use ``frozen=True`` which prevents *re-assignment* of fields
+(``event.field = x`` raises ``FrozenInstanceError``) but does **not** prevent
+in-place mutation of mutable containers (``event.input["k"] = v`` succeeds).
+Callers must never mutate event objects after construction.
+"""
+
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
-class MonitoringEvent:
-    timestamp: float = field(default_factory=time.monotonic)
+class TextLlmEvent:
+    """A chunk of text from the LLM response stream."""
+
+    text: str
 
 
 @dataclass(frozen=True)
-class AgentEvent(MonitoringEvent):
-    agent_id: str = ""  # agent name (e.g. "lyra")
-    pool_id: str = ""  # routing key: "platform:bot:scope" — unique per conversation
+class ToolUseLlmEvent:
+    """Emitted when the LLM calls a tool.
+
+    ``input`` is empty at ``ContentBlockStart`` time (SDK); the full input dict
+    is populated via ``InputJsonDelta`` events but V1 only tracks tool name/id
+    for real-time visibility.
+    """
+
+    tool_name: str
+    tool_id: str
+    input: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
-class AgentStarted(AgentEvent):
-    scope_id: str | None = None
+class ResultLlmEvent:
+    """Final event in every stream — signals turn completion.
+
+    ``cost_usd`` is always ``None`` for ``ClaudeCliDriver`` (not present in
+    NDJSON result envelope).
+
+    ``error_text`` carries the backend-reported error message when
+    ``is_error=True`` (e.g. ``"Not logged in · Please run /login"`` from the
+    CLI's ``result`` field). Consumers surface it to the user when no other
+    text was streamed; ``None`` or empty on success.
+    """
+
+    is_error: bool
+    duration_ms: int
+    cost_usd: float | None = None
+    error_text: str | None = None
 
 
-@dataclass(frozen=True)
-class AgentCompleted(AgentEvent):
-    duration_ms: float = 0.0
+# Union type exported for type annotations and ``isinstance`` checks.
+LlmEvent = TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent
 
-
-@dataclass(frozen=True)
-class AgentFailed(AgentEvent):
-    error: str = ""
-
-
-@dataclass(frozen=True)
-class AgentIdle(AgentEvent):
-    finished_at: float = field(default_factory=time.monotonic)
-
-
-@dataclass(frozen=True)
-class CircuitStateChanged(MonitoringEvent):
-    platform: str = ""
-    old_state: str = ""
-    new_state: str = ""
-
-
-@dataclass(frozen=True)
-class QueueDepthExceeded(MonitoringEvent):
-    queue_name: str = ""
-    depth: int = 0
-    threshold: int = 0
-
-
-@dataclass(frozen=True)
-class QueueDepthNormal(MonitoringEvent):
-    queue_name: str = ""
-    depth: int = 0
+__all__ = [
+    "LlmEvent",
+    "ResultLlmEvent",
+    "TextLlmEvent",
+    "ToolUseLlmEvent",
+]

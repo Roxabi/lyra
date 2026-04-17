@@ -11,10 +11,10 @@ from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.agent_config import ModelConfig
+from lyra.core.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from lyra.llm.drivers.sdk import (
     AnthropicSdkDriver,
 )
-from lyra.llm.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 # ---------------------------------------------------------------------------
 # Helpers

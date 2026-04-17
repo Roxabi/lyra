@@ -81,12 +81,10 @@ class TestTelegramStreaming:
     def _make_adapter(self):
         from lyra.adapters.telegram import TelegramAdapter
 
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
         adapter = TelegramAdapter(
             bot_id="main",
             token="fake-token",
-            hub=hub,
+            inbound_bus=MagicMock(),
             webhook_secret="secret",
         )
         mock_bot = AsyncMock()
@@ -301,9 +299,10 @@ class TestDiscordStreaming:
     def _make_adapter(self):
         from lyra.adapters.discord import DiscordAdapter
 
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
 
         mock_placeholder = AsyncMock()
         mock_placeholder.edit = AsyncMock()
@@ -470,10 +469,11 @@ class TestTelegramIntermediateText:
     def _make_adapter(self):
         from lyra.adapters.telegram import TelegramAdapter
 
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
         adapter = TelegramAdapter(
-            bot_id="main", token="fake-token", hub=hub, webhook_secret="secret"
+            bot_id="main",
+            token="fake-token",
+            inbound_bus=MagicMock(),
+            webhook_secret="secret",
         )
         mock_bot = AsyncMock()
         placeholder = MagicMock()
@@ -536,9 +536,10 @@ class TestDiscordIntermediateText:
     def _make_adapter(self):
         from lyra.adapters.discord import DiscordAdapter
 
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
 
         mock_placeholder = AsyncMock()
         mock_placeholder.edit = AsyncMock()
@@ -596,9 +597,7 @@ class TestDiscordIntermediateText:
         await adapter.send_streaming(msg, long_intermediate())
 
         content_edits = [
-            c
-            for c in placeholder.edit.call_args_list
-            if c.kwargs.get("content") and "embed" not in c.kwargs
+            c for c in placeholder.edit.call_args_list if c.kwargs.get("content")
         ]
         assert len(content_edits) >= 1
         assert len(content_edits[0].kwargs["content"]) <= DISCORD_MAX_LENGTH
@@ -651,9 +650,12 @@ async def test_telegram_streaming_fallback_sends_all_chunks() -> None:
     """
     from lyra.adapters.telegram import TelegramAdapter
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, webhook_secret="s")
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="tok",
+        inbound_bus=MagicMock(),
+        webhook_secret="s",
+    )
     fallback_msgs = [MagicMock(message_id=i) for i in range(1, 4)]
     bot = AsyncMock()
     # First send_message raises (placeholder) → triggers fallback path

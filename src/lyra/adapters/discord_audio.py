@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, Any
 import discord
 
 from lyra.adapters._shared import push_to_hub_guarded
+from lyra.core.audio_payload import AudioPayload
 from lyra.core.message import (
-    InboundAudio,
+    InboundMessage,
     Platform,
     RoutingContext,
 )
@@ -36,8 +37,8 @@ def is_valid_audio_magic(data: bytes) -> bool:
     # WEBM (also used for Opus in browsers / Discord voice)
     if data[:4] == b"\x1aE\xdf\xa3":
         return True
-    # RIFF (WAV, WebP — WAV is audio/wav)
-    if data[:4] == b"RIFF":
+    # RIFF/WAV — check sub-type to reject non-audio RIFF containers (WebP, AVI)
+    if data[:4] == b"RIFF" and len(data) >= 12 and data[8:12] == b"WAVE":  # noqa: PLR2004
         return True
     # FLAC
     if data[:4] == b"fLaC":
@@ -61,8 +62,8 @@ def normalize_audio(
     *,
     bot_id: str,
     trust_level: "TrustLevel",
-) -> InboundAudio:
-    """Build an InboundAudio envelope from a Discord audio message.
+) -> InboundMessage:
+    """Build an InboundMessage (modality='voice') envelope from a Discord audio message.
 
     Security: trust is always 'user'. Bot messages are filtered by
     on_message().
@@ -88,22 +89,27 @@ def normalize_audio(
         reply_to_message_id=str(raw.id),
         platform_meta=dict(platform_meta),
     )
-    return InboundAudio(
+    return InboundMessage(
         id=f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}",
         platform=Platform.DISCORD.value,
         bot_id=bot_id,
         scope_id=scope_id,
         user_id=user_id,
-        audio_bytes=audio_bytes,
-        mime_type=mime_type,
-        duration_ms=None,
-        file_id=None,
-        timestamp=timestamp,
         user_name=(getattr(raw.author, "display_name", None) or raw.author.name),
         is_mention=False,
+        text="",
+        text_raw="",
         trust_level=trust_level,
+        timestamp=timestamp,
         platform_meta=platform_meta,
         routing=routing,
+        modality="voice",
+        audio=AudioPayload(
+            audio_bytes=audio_bytes,
+            mime_type=mime_type,
+            duration_ms=None,
+            file_id=None,
+        ),
     )
 
 
@@ -219,11 +225,12 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
 
     adapter._start_typing(message.channel.id)
     await push_to_hub_guarded(
-        inbound_bus=adapter._hub.inbound_audio_bus,
+        inbound_bus=adapter._inbound_bus,
         platform=Platform.DISCORD,
         msg=hub_audio,
         circuit_registry=adapter._circuit_registry,
         on_drop=lambda: adapter._cancel_typing(message.channel.id),
         send_backpressure=_send_bp,
         get_msg=adapter._msg,
+        outbound_listener=adapter._outbound_listener,
     )

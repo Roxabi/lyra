@@ -35,10 +35,13 @@ class TestRunChecks:
             service_name="lyra",
         )
 
-        # Mock all external calls
+        # Mock all external calls (supervisor-style output for process check)
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=0, stdout="active\n"),
+            lambda *a, **kw: MagicMock(
+                returncode=0,
+                stdout="lyra                             RUNNING   pid 1234, uptime 1:00:00\n",  # noqa: E501
+            ),
         )
 
         mock_response = MagicMock()
@@ -77,7 +80,7 @@ class TestRunChecks:
 
         assert report.all_passed is True
         assert report.failed_count == 0
-        # process + http_health + queue_depth + circuits + reaper + disk = 6
+        # process + http_health + queue_depth + circuits + reaper + disk
         assert len(report.checks) == 6
 
     async def test_failure_detected(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -103,10 +106,13 @@ class TestRunChecks:
             service_name="lyra",
         )
 
-        # Process check fails
+        # Process check fails (supervisor-style output)
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=3, stdout="inactive\n"),
+            lambda *a, **kw: MagicMock(
+                returncode=3,
+                stdout="lyra                             STOPPED   Mar 30 12:00 PM\n",
+            ),
         )
 
         # HTTP also fails (hub is down)

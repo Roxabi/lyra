@@ -1,0 +1,37 @@
+[Unit]
+Description=Lyra %i adapter
+After=lyra-hub.service
+Requires=lyra-hub.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+# Image digest pinning for localhost/lyra:latest tracks on a follow-up issue
+# (CI tag-by-SHA strategy).
+Image=localhost/lyra:latest
+ContainerName=lyra-%i
+Network=lyra.network
+# Hardening — defense in depth (see issue #652).
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+# Scoped env file — copy from .env.%i.example, fill in bot token only.
+# NATS_URL and NATS_NKEY_SEED_PATH are set inline below.
+EnvironmentFile=%h/projects/lyra/.env.%i
+Environment=NATS_URL=nats://lyra-nats:4222
+Volume=lyra-nkey-%i-adapter.volume:/run/secrets/%i-adapter.seed:ro,z
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/%i-adapter.seed
+Volume=lyra-data.volume:/home/lyra/.lyra:ro,z
+Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
+Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
+Volume=lyra-config.volume:/app/config.toml:ro,z
+Exec=lyra adapter %i
+
+[Service]
+Restart=on-failure
+RestartSec=5
+# Cap at 2 full cores — prevents a runaway worker from starving hub + NATS.
+CPUQuota=200%
+
+[Install]
+WantedBy=default.target

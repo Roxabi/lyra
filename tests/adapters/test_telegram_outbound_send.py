@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.telegram import _ALLOW_ALL
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import (  # noqa: F401
     InboundMessage,
     OutboundMessage,
@@ -32,11 +32,13 @@ async def test_send_calls_bot_send_message() -> None:
     """
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
-    hub = MagicMock()
     bot = AsyncMock()
 
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+        bot_id="main",
+        token="test-token-secret",
+        inbound_bus=MagicMock(),
+        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 
@@ -84,11 +86,13 @@ async def test_send_skips_when_platform_context_is_not_telegram(
     bot.send_message."""
     from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
-    hub = MagicMock()
     bot = AsyncMock()
 
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+        bot_id="main",
+        token="test-token-secret",
+        inbound_bus=MagicMock(),
+        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 
@@ -131,13 +135,15 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
     from lyra.adapters.telegram import TelegramAdapter
 
     # Arrange
-    hub = MagicMock()
     bot = AsyncMock()
     sent_msg = SimpleNamespace(message_id=888)
     bot.send_message.return_value = sent_msg
 
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+        bot_id="main",
+        token="test-token-secret",
+        inbound_bus=MagicMock(),
+        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 
@@ -196,14 +202,13 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
             cb.record_failure()  # trips to OPEN
         registry.register(cb)
 
-    hub = MagicMock()
     bot = AsyncMock()
     bot.send_message = AsyncMock(return_value=SimpleNamespace(message_id=99))
 
     adapter = TelegramAdapter(
         bot_id="main",
         token="test-token-secret",
-        hub=hub,
+        inbound_bus=MagicMock(),
         circuit_registry=registry,
     )
     adapter.bot = bot

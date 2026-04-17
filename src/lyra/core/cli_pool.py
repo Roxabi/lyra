@@ -7,14 +7,19 @@ Sends messages via stdin NDJSON, reads responses via stdout NDJSON.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from lyra.infrastructure.stores.turn_store import TurnStore
 
 from .agent_config import ModelConfig
+from .cli_pool_lifecycle import CliPoolLifecycleMixin
+from .cli_pool_session import CliPoolSessionMixin
+from .cli_pool_streaming import CliPoolStreamingMixin
 from .cli_pool_worker import (
     _LYRA_ROOT,
     CliPoolWorkerMixin,
@@ -24,9 +29,7 @@ from .cli_protocol import (
     _SESSION_ID_RE,
     CliProtocolOptions,
     CliResult,
-    StreamingIterator,
     send_and_read,
-    send_and_read_stream,
 )
 
 # Re-export private names that tests reference via `from lyra.core.cli_pool import …`
@@ -40,7 +43,12 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 
-class CliPool(CliPoolWorkerMixin):
+class CliPool(  # noqa: E501
+    CliPoolLifecycleMixin,
+    CliPoolStreamingMixin,
+    CliPoolSessionMixin,
+    CliPoolWorkerMixin,
+):
     """Pool of persistent Claude CLI processes (one per pool_id).
 
     Usage::
@@ -66,7 +74,6 @@ class CliPool(CliPoolWorkerMixin):
         stdin_drain_timeout: float = 10.0,
         max_idle_retries: int = 3,
         intermediate_timeout: float = 5.0,
-        session_store_dir: Path | None = None,
     ) -> None:
         self._idle_ttl = idle_ttl
         self._default_timeout = default_timeout
@@ -84,66 +91,13 @@ class CliPool(CliPoolWorkerMixin):
         self._cwd_overrides: dict[str, Path] = {}
         self._resume_session_ids: dict[str, str] = {}
         self._last_sweep_at: float | None = None
-        # Persistent CLI session store — survives daemon restarts so --resume
-        # uses the correct CLI session, not Lyra's internal session UUID.
-        # Structure: {"by_pool": {pool_id: cli_sid}, "by_session": {lyra_sid: cli_sid}}
-        self._cli_sessions_path = (
-            session_store_dir or Path.home() / ".lyra"
-        ) / "cli_sessions.json"
-        self._cli_sessions: dict[str, dict[str, str]] = self._load_cli_sessions()
+        # TurnStore — wired after construction via set_turn_store().
+        # Stores CLI session IDs in pool_sessions so --resume survives restarts.
+        self._turn_store: TurnStore | None = None
         # In-memory mapping of pool_id → current Lyra session UUID.
         # Updated by link_lyra_session() before each send, so the
         # _on_session_update callback can record {lyra_sid → cli_sid}.
         self._lyra_sessions: dict[str, str] = {}
-
-    def _load_cli_sessions(self) -> dict[str, dict[str, str]]:
-        try:
-            data = json.loads(self._cli_sessions_path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            return {"by_pool": {}, "by_session": {}}
-        # Migrate from old flat format (pool_id → cli_sid).
-        if "by_pool" not in data:
-            return {"by_pool": data, "by_session": {}}
-        return data
-
-    def link_lyra_session(self, pool_id: str, lyra_session_id: str) -> None:
-        """Associate the current Lyra session UUID with *pool_id*.
-
-        Called by the agent before each send so the persist callback can
-        map ``lyra_session_id → cli_session_id`` (for reply-to-resume).
-        """
-        self._lyra_sessions[pool_id] = lyra_session_id
-
-    def _persist_cli_session(self, pool_id: str, cli_session_id: str) -> None:
-        """Persist pool_id → CLI session_id (and lyra_sid → CLI) to disk."""
-        if not cli_session_id or not _SESSION_ID_RE.match(cli_session_id):
-            return
-        self._cli_sessions["by_pool"][pool_id] = cli_session_id
-        lyra_sid = self._lyra_sessions.get(pool_id)
-        if lyra_sid:
-            self._cli_sessions["by_session"][lyra_sid] = cli_session_id
-        try:
-            self._cli_sessions_path.parent.mkdir(parents=True, exist_ok=True)
-            self._cli_sessions_path.write_text(json.dumps(self._cli_sessions, indent=2))
-        except OSError:
-            log.warning("[pool:%s] failed to persist CLI session to disk", pool_id)
-
-    async def start(self) -> None:
-        """Start the idle reaper background task."""
-        self._reaper_task = asyncio.create_task(self._idle_reaper())
-        log.info("CliPool started (idle_ttl=%ds)", self._idle_ttl)
-
-    async def stop(self) -> None:
-        """Stop reaper and kill all processes."""
-        if self._reaper_task:
-            self._reaper_task.cancel()
-            try:
-                await self._reaper_task
-            except asyncio.CancelledError:
-                pass
-        for pool_id in list(self._entries):
-            await self._kill(pool_id)
-        log.info("CliPool stopped")
 
     async def send(  # noqa: C901
         self,
@@ -151,8 +105,6 @@ class CliPool(CliPoolWorkerMixin):
         message: str,
         model_config: ModelConfig,
         system_prompt: str = "",
-        *,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> CliResult:
         """Send a message to the persistent process for this pool.
 
@@ -201,7 +153,6 @@ class CliPool(CliPoolWorkerMixin):
                         entry,
                         message,
                         pool_id,
-                        on_intermediate=on_intermediate,
                         default_timeout=self._default_timeout,
                         opts=self._protocol_opts,
                     )
@@ -238,94 +189,6 @@ class CliPool(CliPoolWorkerMixin):
 
         return CliResult(error="Failed after stale resume retry")
 
-    # How long to wait after a resumed spawn to detect a stale session.
-    # The CLI exits within ~1ms when a session doesn't exist; 50ms gives
-    # the asyncio child watcher plenty of time to set proc.returncode.
-    _STALE_RESUME_CHECK_DELAY = 0.05
-
-    async def send_streaming(  # noqa: C901
-        self,
-        pool_id: str,
-        message: str,
-        model_config: ModelConfig,
-        system_prompt: str = "",
-        *,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
-    ) -> StreamingIterator:
-        """Send a message and return a streaming iterator for text_delta chunks.
-
-        Locking model: acquire entry._lock → write stdin → release lock →
-        return iterator.  The lock is released before the first chunk is
-        yielded so that concurrent reset() calls do not deadlock.
-        """
-        for _attempt in range(2):  # at most one stale-resume retry
-            entry = self._entries.get(pool_id)
-
-            if entry is None or not entry.is_alive():
-                entry = await self._spawn(pool_id, model_config, system_prompt)
-                if entry is None:
-                    raise RuntimeError("Failed to spawn Claude CLI process")
-            elif entry.system_prompt != system_prompt:
-                log.info(
-                    "[pool:%s] system_prompt changed — respawning (streaming)",
-                    pool_id,
-                )
-                await self._kill(pool_id, preserve_session=False)
-                entry = await self._spawn(pool_id, model_config, system_prompt)
-                if entry is None:
-                    raise RuntimeError("Failed to respawn Claude CLI process")
-            elif entry.model_config != model_config:
-                log.info(
-                    "[pool:%s] model_config mismatch — respawning (streaming)",
-                    pool_id,
-                )
-                await self._kill(pool_id, preserve_session=False)
-                entry = await self._spawn(pool_id, model_config, system_prompt)
-                if entry is None:
-                    raise RuntimeError("Failed to respawn Claude CLI process")
-
-            _pool_id = pool_id
-
-            async def _reset() -> None:
-                await self.reset(_pool_id)
-
-            # Lock: write stdin inside lock, release before returning the
-            # read-only iterator.  This prevents concurrent stdin interleave
-            # while allowing the iterator to be consumed without holding the lock.
-            async with entry._lock:
-                if not entry.is_alive():
-                    raise RuntimeError("Process died before streaming send")
-                iterator = await send_and_read_stream(
-                    entry,
-                    message,
-                    pool_id,
-                    pool_reset_fn=_reset,
-                    default_timeout=self._default_timeout,
-                    on_intermediate=on_intermediate,
-                    opts=self._protocol_opts,
-                )
-
-            # Stale resume guard: if this process was spawned with --resume,
-            # briefly yield to let the event loop process a potential child-exit
-            # signal.  The CLI exits in ~1ms when the session doesn't exist.
-            if _attempt == 0 and entry.resumed_from and entry.turn_count == 0:
-                await asyncio.sleep(self._STALE_RESUME_CHECK_DELAY)
-                if not entry.is_alive():
-                    log.warning(
-                        "[pool:%s] stale resume (session %s) — retrying"
-                        " without --resume (streaming)",
-                        pool_id,
-                        entry.resumed_from,
-                    )
-                    await self._kill(pool_id, preserve_session=False)
-                    continue
-
-            entry.turn_count += 1
-            entry.last_activity = time.time()
-            return iterator
-
-        raise RuntimeError("Failed after stale resume retry")
-
     def is_alive(self, pool_id: str) -> bool:
         """Return True if a live process exists for pool_id."""
         entry = self._entries.get(pool_id)
@@ -351,18 +214,20 @@ class CliPool(CliPoolWorkerMixin):
         """Kill process; next _spawn() uses --resume <cli_session_id> (one-shot).
 
         *session_id* is the Lyra-internal UUID from the turn store.  This method
-        looks up the real Claude CLI session ID from the persistent store
-        (``~/.lyra/cli_sessions.json``) and uses *that* for ``--resume``.
+        looks up the real Claude CLI session ID from TurnStore (pool_sessions table)
+        and uses *that* for ``--resume``.
 
         Returns True if the resume was accepted, False if skipped (no persisted
         CLI session, invalid id, or process already on that session).
         """
-        # Translate Lyra session → CLI session from the persistent store.
-        # Try exact Lyra-session mapping first (reply-to-resume), then
-        # fall back to latest CLI session for the pool (last-active-resume).
-        cli_sid = self._cli_sessions.get("by_session", {}).get(
-            session_id
-        ) or self._cli_sessions.get("by_pool", {}).get(pool_id)
+        # Translate Lyra session → CLI session from TurnStore.
+        # Try exact session lookup first (reply-to-resume), then fall back to
+        # the most recent active session for the pool (last-active-resume).
+        cli_sid: str | None = None
+        if self._turn_store is not None:
+            cli_sid = await self._turn_store.get_cli_session(session_id)
+            if not cli_sid:
+                cli_sid = await self._turn_store.get_cli_session_by_pool(pool_id)
         if cli_sid is None:
             log.info(
                 "[pool:%s] resume_and_reset: no persisted CLI session"

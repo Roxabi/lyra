@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import tempfile
 import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
@@ -17,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .agent_config import ModelConfig
+from .cli_protocol import _read_stderr_snippet, build_cmd
 
 log = logging.getLogger(__name__)
 
@@ -97,53 +97,12 @@ class CliPoolWorkerMixin:
         session_id: str | None = None,
         system_prompt: str = "",
     ) -> tuple[list[str], str | None]:
-        cmd = [
-            "claude",
-            "--input-format",
-            "stream-json",
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--model",
-            model_config.model,
-            # max_turns=None means unlimited — omit the flag, let claude CLI decide.
-            # max_turns=0 is treated as None (DB sentinel); any positive int is passed.
-            *(
-                [
-                    "--max-turns",
-                    str(model_config.max_turns),
-                ]
-                if model_config.max_turns
-                else []
-            ),
-        ]
-        if model_config.streaming:
-            cmd.append("--include-partial-messages")
-        if model_config.skip_permissions:
-            cmd.append("--dangerously-skip-permissions")
-        if model_config.tools:
-            cmd.extend(["--allowedTools", ",".join(model_config.tools)])
-        prompt_file: str | None = None
-        if system_prompt:
-            fd, prompt_file = tempfile.mkstemp(suffix=".txt", prefix="lyra-prompt-")
-            try:
-                os.write(fd, system_prompt.encode("utf-8"))
-            finally:
-                os.close(fd)
-            os.chmod(prompt_file, 0o600)
-            cmd.extend(["--system-prompt-file", prompt_file])
-        if session_id:
-            cmd.extend(["--resume", session_id])
-        return cmd, prompt_file
+        return build_cmd(model_config, session_id, system_prompt)
 
     async def _spawn(
         self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
     ) -> _ProcessEntry | None:
-        spawn_cwd = (
-            self._cwd_overrides.get(pool_id)
-            or model_config.cwd
-            or _LYRA_ROOT
-        )
+        spawn_cwd = self._cwd_overrides.get(pool_id) or model_config.cwd or _LYRA_ROOT
         resume_session_id = self._resume_session_ids.pop(pool_id, None)
         cmd, prompt_file = self._build_cmd(
             model_config,
@@ -177,6 +136,26 @@ class CliPoolWorkerMixin:
                 Path(prompt_file).unlink(missing_ok=True)
             return None
 
+        # Early liveness check: if the process dies within 100ms (e.g. auth
+        # failure, missing binary, bad flags), capture stderr and fail fast
+        # instead of returning an entry that will produce "stdout EOF".
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=0.1)
+        except asyncio.TimeoutError:
+            pass  # still alive — expected happy path
+        else:
+            # Process already exited
+            stderr_snippet = await _read_stderr_snippet(proc)
+            log.error(
+                "[pool:%s] process exited immediately (rc=%d): %s",
+                pool_id,
+                proc.returncode or -1,
+                stderr_snippet or "(no stderr)",
+            )
+            if prompt_file:
+                Path(prompt_file).unlink(missing_ok=True)
+            return None
+
         # Wire the session persist callback if the subclass provides it.
         _persist_fn = getattr(self, "_persist_cli_session", None)
         entry = _ProcessEntry(
@@ -195,10 +174,14 @@ class CliPoolWorkerMixin:
     def _maybe_preserve_session(
         self, pool_id: str, entry: _ProcessEntry, *, preserve_session: bool
     ) -> None:
-        """Write session_id to _resume_session_ids if both conditions hold.
+        """Write or clear _resume_session_ids based on preserve_session.
 
         Shared by _kill and _sync_evict_entry — single definition of the
         preservation contract so both callers stay in sync automatically.
+
+        When preserve_session=False (reset/clear/folder), any previously
+        scheduled resume for this pool is discarded so the next spawn starts
+        fresh.
 
         Note: the session file existence check was removed (#415) because
         stream-json mode does not flush .jsonl while the subprocess is alive,
@@ -214,6 +197,13 @@ class CliPoolWorkerMixin:
                 "[pool:%s] preserving session %s for auto-resume",
                 pool_id,
                 entry.session_id,
+            )
+        elif not preserve_session:
+            # Explicit reset (/clear, /folder) — discard any stale scheduled resume.
+            self._resume_session_ids.pop(pool_id, None)
+            log.debug(
+                "[pool:%s] discarded stale resume session (explicit reset)",
+                pool_id,
             )
 
     def _sync_evict_entry(self, pool_id: str, *, preserve_session: bool = True) -> None:
@@ -277,22 +267,15 @@ class CliPoolWorkerMixin:
                     reason = "idle" if entry.is_alive() else "dead"
                     log.info("[pool:%s] reaping %s process", pool_id, reason)
                     await self._kill(pool_id)
-                    # Fire-and-forget notification for idle evictions
                     if self._on_reap and reason == "idle":
-                        _t = asyncio.create_task(
-                            self._on_reap(pool_id, reason)
-                        )
-                        _t.add_done_callback(
-                            lambda t, pid=pool_id: (
-                                log.warning(
-                                    "[pool:%s] on_reap failed: %s",
-                                    pid,
-                                    t.exception(),
-                                )
-                                if not t.cancelled() and t.exception()
-                                else None
+                        try:
+                            await self._on_reap(pool_id, reason)
+                        except Exception:
+                            log.error(
+                                "[pool:%s] on_reap failed",
+                                pool_id,
+                                exc_info=True,
                             )
-                        )
             except asyncio.CancelledError:
                 break
             except Exception as exc:

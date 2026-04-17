@@ -23,6 +23,7 @@ from __future__ import annotations
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 
+from lyra.core.events import LlmEvent, TextLlmEvent, ToolUseLlmEvent
 from lyra.core.render_events import (
     FileEditSummary,
     RenderEvent,
@@ -31,7 +32,6 @@ from lyra.core.render_events import (
     ToolSummaryRenderEvent,
 )
 from lyra.core.tool_display_config import ToolDisplayConfig
-from lyra.llm.events import LlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 
 class StreamProcessor:
@@ -84,7 +84,7 @@ class StreamProcessor:
     # Public interface
     # ------------------------------------------------------------------
 
-    async def process(
+    async def process(  # noqa: C901 — event-type dispatch + terminal fallbacks
         self, events: AsyncIterator[LlmEvent]
     ) -> AsyncGenerator[RenderEvent, None]:
         """Process an async stream of ``LlmEvent`` objects.
@@ -119,8 +119,14 @@ class StreamProcessor:
                 _result_received = True
                 if self._has_any_tool_events():
                     yield self._emit_snapshot(is_complete=True)
+                # On error with no streamed text, fall back to backend's
+                # reported error so the adapter surfaces something
+                # actionable instead of a bare "❌".
+                final_text = self._pending_text or (
+                    event.error_text if event.is_error and event.error_text else ""
+                )
                 yield TextRenderEvent(
-                    text=self._pending_text,
+                    text=final_text,
                     is_final=True,
                     is_error=event.is_error,  # #392: propagate error state
                 )
@@ -131,6 +137,19 @@ class StreamProcessor:
                 yield self._emit_snapshot(is_complete=True)
             if self._pending_text:
                 yield TextRenderEvent(text=self._pending_text, is_final=False)
+            elif not self._has_any_tool_events():
+                # No text, no tools, no result — backend died before producing
+                # anything (e.g. auth failure, crash).  Emit an error event so
+                # the adapter replaces the "…" placeholder instead of leaving
+                # it stuck forever.
+                _upstream_error = getattr(events, "error", None)
+                yield TextRenderEvent(
+                    text=str(_upstream_error)
+                    if _upstream_error
+                    else ("Something went wrong. Please try again."),
+                    is_final=True,
+                    is_error=True,
+                )
 
     async def _handle_tool_event(
         self, event: ToolUseLlmEvent

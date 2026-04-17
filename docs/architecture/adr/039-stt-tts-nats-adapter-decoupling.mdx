@@ -1,0 +1,369 @@
+---
+title: "ADR-039: STT/TTS Decoupling via NATS Adapter Services"
+description: Remove the direct voicecli import from the hub process by introducing lyra_stt and lyra_tts as independent NATS adapter services, mirroring the existing Telegram/Discord adapter pattern.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+The hub process currently imports `voicecli` directly through `STTService` and `TTSService`
+wrappers in `src/lyra/stt/` and `src/lyra/tts/`. The voicecli library uses a
+"daemon-first, in-process fallback" strategy: it checks for a Unix socket daemon, and if
+absent loads the model in-process.
+
+The in-process fallback loads a ~2 GB Whisper model synchronously inside
+`asyncio.to_thread`. While this avoids blocking the event loop directly, it causes severe
+startup latency and has caused Telegram polling to crash during model load. The hub
+becomes brittle whenever either the `voicecli_stt` or `voicecli_tts` supervisor daemons
+are not running, and the fallback path defeats the purpose of running them at all.
+
+The structural problem is the dependency direction: the hub (application layer) imports
+`voicecli` (infrastructure). This couples the hub's startup time and crash surface to
+model loading. It also makes the hub non-startable on machines without voicecli installed
+(e.g. production if voice is not needed), and prevents the STT/TTS daemons from being
+independently managed.
+
+The existing Telegram and Discord adapters have already solved this class of problem: they
+run as independent supervisor processes that communicate with the hub over NATS
+(`lyra.inbound.*` / `lyra.outbound.*`). The same pattern applies here.
+
+Two places in the hub currently perform voice work:
+
+- `src/lyra/core/audio_pipeline.py` — `AudioPipeline._process_audio_item()` calls
+  `self._hub._stt.transcribe()` and re-enqueues the result as `InboundMessage`.
+- `src/lyra/core/audio_pipeline.py` — `AudioPipeline.synthesize_and_dispatch_audio()`
+  calls `self._hub._tts.synthesize()` and dispatches `OutboundAudio`.
+
+Both call sites go through `Hub._stt` and `Hub._tts`, which are injected from
+`voice_overlay.init_stt()` / `init_tts()` in `hub_standalone.py`.
+
+## Options Considered
+
+### Option A: Keep in-process, make it async-safe
+
+Wrap the in-process fallback so it never blocks the event loop — run model loading in a
+subprocess and communicate via a shared queue.
+
+- **Pros:** No new processes. No NATS topology changes.
+- **Cons:** Complex subprocess management inside the hub. Does not fix the startup latency
+  or the VRAM contention. The hub still imports voicecli. Any voicecli crash propagates
+  into the hub process. Does not align with the adapter pattern the project has already
+  adopted. Operational overhead remains hidden inside the hub.
+
+### Option B: STT and TTS as independent NATS adapter services (recommended)
+
+Introduce two new supervisor programs — `lyra_stt` and `lyra_tts` — that run as
+standalone processes alongside `lyra_hub`, `lyra_telegram`, and `lyra_discord`. They
+subscribe to NATS request subjects, call voicecli, and publish replies. The hub sends
+audio/text over NATS and receives results back. The hub never imports voicecli.
+
+- **Pros:** Hub is isolated from model loading. Voice adapters crash independently. Hub
+  starts and runs without voice support if adapters are down. Consistent with the
+  existing adapter pattern. voicecli dependency can be removed from lyra entirely.
+  Each adapter can be restarted without touching the hub.
+- **Cons:** Adds two new processes to manage. Adds NATS round-trip latency to each
+  transcription and synthesis call (~1–5 ms on localhost, negligible vs model inference).
+  Audio bytes travel over NATS (binary payload in JSON envelope or raw bytes).
+
+## Decision
+
+**Option B — STT and TTS as independent NATS adapter services.**
+
+The hub already communicates with Telegram and Discord adapters over NATS. Applying the
+same pattern to voice is the minimal-change path that fixes the crash, removes the
+voicecli import, and gives independent operational control over each voice service.
+
+## Design
+
+### NATS Subject Catalogue (voice tier)
+
+Follows ADR-035 domain-first naming. All voice subjects live under `lyra.voice.*`.
+
+| Subject | Direction | Publisher | Subscriber | Payload |
+|---------|-----------|-----------|------------|---------|
+| `lyra.voice.stt.request` | hub → stt adapter | Hub | `lyra_stt` | `SttRequest` (JSON) |
+| `lyra.voice.tts.request` | hub → tts adapter | Hub | `lyra_tts` | `TtsRequest` (JSON) |
+
+Both use NATS **request-reply** (core NATS `nc.request()` / `nc.publish(reply_to)`).
+The hub sends a request with a reply-to inbox (`_INBOX.*`); the adapter publishes the
+response directly to that inbox. No persistent subjects are created; each call gets a
+fresh inbox.
+
+This is synchronous from the hub's perspective (awaitable) and requires no subject
+subscription management on the hub side beyond a single `nc.request()` call.
+
+### Payload Schemas
+
+#### `SttRequest`
+
+```json
+{
+  "request_id": "<uuid>",
+  "audio_b64": "<base64-encoded audio bytes>",
+  "mime_type": "audio/ogg",
+  "model": "large-v3-turbo",
+  "language_detection_threshold": null,
+  "language_detection_segments": null,
+  "language_fallback": null
+}
+```
+
+#### `SttResponse`
+
+```json
+{
+  "request_id": "<uuid>",
+  "ok": true,
+  "text": "transcription text",
+  "language": "fr",
+  "duration_seconds": 3.7,
+  "error": null
+}
+```
+
+On failure: `ok: false`, `error: "<message>"`, other fields absent or null.
+
+#### `TtsRequest`
+
+```json
+{
+  "request_id": "<uuid>",
+  "text": "text to synthesize",
+  "engine": "qwen",
+  "voice": null,
+  "language": "french",
+  "chunked": true,
+  "accent": null,
+  "personality": null,
+  "speed": null,
+  "emotion": null,
+  "exaggeration": null,
+  "cfg_weight": null,
+  "segment_gap": null,
+  "crossfade": null,
+  "chunk_size": null
+}
+```
+
+#### `TtsResponse`
+
+```json
+{
+  "request_id": "<uuid>",
+  "ok": true,
+  "audio_b64": "<base64-encoded OGG/Opus bytes>",
+  "mime_type": "audio/ogg",
+  "duration_ms": 4200,
+  "waveform_b64": "<base64 256-byte amplitude array>",
+  "error": null
+}
+```
+
+On failure: `ok: false`, `error: "<message>"`, audio fields absent.
+
+### STT Adapter (`lyra_stt`)
+
+Entry point: `lyra adapter stt` → `_bootstrap_stt_adapter_standalone()` in
+`src/lyra/bootstrap/stt_adapter_standalone.py`.
+
+Responsibilities:
+1. Connect to NATS.
+2. Subscribe to `lyra.voice.stt.request` (queue group `stt-workers` for future
+   multi-instance scaling).
+3. On each message: decode audio from base64, write to a temp file, call
+   `voicecli.transcribe()` (which already handles daemon-first / in-process fallback),
+   return `SttResponse` to the reply-to inbox.
+4. The adapter does NOT import any lyra hub code. It only depends on `voicecli` and
+   the shared NATS serialization helpers.
+
+The existing `STTService` class moves into the STT adapter process unchanged. The adapter
+is `STTService` + a NATS subscription loop. No new voicecli API is introduced.
+
+### TTS Adapter (`lyra_tts`)
+
+Entry point: `lyra adapter tts` → `_bootstrap_tts_adapter_standalone()` in
+`src/lyra/bootstrap/tts_adapter_standalone.py`.
+
+Responsibilities:
+1. Connect to NATS.
+2. Subscribe to `lyra.voice.tts.request` (queue group `tts-workers`).
+3. On each message: call `voicecli.generate_async()`, merge WAV chunks, convert to
+   OGG/Opus, compute duration and waveform, return `TtsResponse` to reply-to inbox.
+4. Same isolation contract as the STT adapter: no lyra hub imports.
+
+The existing `TTSService` class (including `_merge_wav_chunks`, `_wav_duration_ms`,
+`_wav_waveform_b64`) moves into the TTS adapter process. The `FfmpegConverter` dependency
+stays inside the adapter.
+
+### Hub Changes
+
+`AudioPipeline` replaces the direct `self._hub._stt.transcribe()` and
+`self._hub._tts.synthesize()` calls with NATS request-reply calls via two thin client
+wrappers:
+
+- `NatsSttClient` in `src/lyra/nats/nats_stt_client.py` — wraps `nc.request()` to
+  `lyra.voice.stt.request`, serializes/deserializes `SttRequest`/`SttResponse`.
+- `NatsTtsClient` in `src/lyra/nats/nats_tts_client.py` — same pattern for TTS.
+
+Both clients expose the same interface as the old `STTService` / `TTSService` so that
+`AudioPipeline` requires minimal changes:
+
+```python
+# before
+result = await self._hub._stt.transcribe(tmp)
+
+# after
+result = await self._hub._stt.transcribe(tmp)  # same call — NatsSttClient implements the same method
+```
+
+`Hub._stt` and `Hub._tts` are typed as `Protocol` (structural interface), not concrete
+classes. Both `STTService` (old) and `NatsSttClient` (new) satisfy the protocol.
+
+When `NatsSttClient.transcribe()` gets a NATS timeout (adapter down), it raises
+`STTUnavailableError` (a new domain exception in `src/lyra/stt/`). `AudioPipeline`
+catches this and replies with the existing `stt_unsupported` message — same user-facing
+behavior as when STT is not configured.
+
+`voice_overlay.init_stt()` and `init_tts()` are replaced by `init_nats_stt()` and
+`init_nats_tts()` that construct the NATS client wrappers using the existing `nc`
+connection from the hub. The voicecli import is removed from both functions and from
+`hub_standalone.py`.
+
+### Graceful Degradation
+
+The hub checks whether the STT/TTS clients are available using the same `None`-guard
+pattern already in `AudioPipeline`:
+
+```python
+if self._hub._stt is None:
+    # send stt_unsupported reply — unchanged behavior
+```
+
+When the NATS adapter is down, `NatsSttClient.transcribe()` raises
+`STTUnavailableError`. `AudioPipeline` catches it and treats it the same as
+`stt is None`. Text messages are unaffected — only voice paths touch the STT/TTS clients.
+
+### Startup Order Independence
+
+NATS request-reply with a configurable timeout (default 30 s for TTS, 60 s for STT)
+means the hub starts and processes text messages immediately regardless of whether the
+voice adapters are up. If a voice adapter is not yet ready when a voice message arrives,
+the request times out and the user receives the `stt_unavailable` message. No hub restart
+is required when voice adapters come up later.
+
+### Supervisor Programs
+
+Two new supervisor configs in `deploy/supervisor/conf.d/`:
+
+- `lyra_stt.conf` — `command=run_stt_adapter.sh`, `autostart=false`, `autorestart=true`
+- `lyra_tts.conf` — `command=run_tts_adapter.sh`, `autostart=false`, `autorestart=true`
+
+Scripts in `supervisor/scripts/run_stt_adapter.sh` and `run_tts_adapter.sh` use the
+lyra venv (not voicecli's venv), consistent with how the existing adapters bootstrap.
+The lyra package must list voicecli as a dependency for the adapter entry points to work.
+
+The existing `voicecli_stt.conf` and `voicecli_tts.conf` (which run the raw voicecli
+Unix-socket daemons) remain as optional inner daemons. The new NATS adapters may still
+delegate to them if the socket is present — this is internal to the adapter process and
+transparent to the hub.
+
+### ACL Extension (ADR-035 alignment)
+
+Per ADR-035, new voice subjects extend the catalogue under a new domain tier:
+
+```
+# Identity: hub (updated)
+publish   ["lyra.outbound.>", "lyra.llm.request", "_INBOX.>"]
+subscribe ["lyra.inbound.>"]
+
+# Identity: stt-adapter (new)
+subscribe ["lyra.voice.stt.request"]
+publish   ["_INBOX.>"]
+
+# Identity: tts-adapter (new)
+subscribe ["lyra.voice.tts.request"]
+publish   ["_INBOX.>"]
+```
+
+`_INBOX.>` is the standard NATS reply inbox prefix. Hub needs publish rights to send
+requests (with reply-to set to its own inbox); adapters need publish rights to respond
+to those inboxes.
+
+### File Impact
+
+| File | Change |
+|------|--------|
+| `src/lyra/stt/__init__.py` | STTService stays (used by adapter); add `STTUnavailableError`; add `STTProtocol` |
+| `src/lyra/tts/__init__.py` | TTSService stays (used by adapter); add `TtsProtocol` |
+| `src/lyra/bootstrap/voice_overlay.py` | Replace `init_stt`/`init_tts` with `init_nats_stt`/`init_nats_tts` |
+| `src/lyra/bootstrap/hub_standalone.py` | Remove voicecli import path; use NATS client wrappers |
+| `src/lyra/bootstrap/stt_adapter_standalone.py` | New — NATS subscribe loop wrapping STTService |
+| `src/lyra/bootstrap/tts_adapter_standalone.py` | New — NATS subscribe loop wrapping TTSService |
+| `src/lyra/nats/nats_stt_client.py` | New — hub-side NATS client implementing STTProtocol |
+| `src/lyra/nats/nats_tts_client.py` | New — hub-side NATS client implementing TtsProtocol |
+| `src/lyra/core/audio_pipeline.py` | Catch `STTUnavailableError`; no other changes needed |
+| `deploy/supervisor/conf.d/lyra_stt.conf` | New supervisor program |
+| `deploy/supervisor/conf.d/lyra_tts.conf` | New supervisor program |
+| `supervisor/scripts/run_stt_adapter.sh` | New launch script |
+| `supervisor/scripts/run_tts_adapter.sh` | New launch script |
+
+### Migration Path
+
+1. **Add protocols** — add `STTProtocol` and `TtsProtocol` structural interfaces; make
+   the existing `STTService` and `TTSService` satisfy them (no changes needed — they
+   already do structurally). Add `STTUnavailableError`.
+
+2. **Build NATS clients** — implement `NatsSttClient` and `NatsTtsClient`. Both satisfy
+   the protocol interfaces. Unit-test with a mock NATS connection.
+
+3. **Build adapter bootstraps** — implement `stt_adapter_standalone.py` and
+   `tts_adapter_standalone.py`. Integration-test with a live NATS instance and real
+   voicecli calls.
+
+4. **Update hub bootstrap** — swap `init_stt`/`init_tts` for `init_nats_stt`/
+   `init_nats_tts` in `voice_overlay.py` and `hub_standalone.py`. Remove the voicecli
+   import from hub-side code.
+
+5. **Add supervisor configs** — add `lyra_stt.conf`, `lyra_tts.conf`, and launch scripts.
+
+6. **Test degradation** — verify hub starts and handles text messages with voice adapters
+   stopped; verify voice messages get `stt_unavailable` reply; bring adapters up and
+   verify voice works without hub restart.
+
+Steps 1–2 are hub-side only and can be merged independently. Step 4 is the cutover; the
+old `STTService`/`TTSService` code stays in place until step 3 is complete and tested.
+
+## Consequences
+
+### Positive
+
+- Hub never imports voicecli; model loading can no longer crash or slow the hub process.
+- Voice adapters crash in isolation — hub text processing is unaffected.
+- Hub starts immediately regardless of whether voice adapters are running.
+- Independent operational control: `make stt reload` restarts the STT adapter without
+  touching the hub.
+- Consistent with the existing Telegram/Discord adapter pattern — no new architectural
+  primitives.
+- NATS request-reply is observable: `nats sub "lyra.voice.>"` captures all voice traffic
+  for debugging.
+
+### Negative
+
+- Two additional supervisor processes to manage in production.
+- Audio bytes travel over NATS as base64 in JSON envelopes, adding ~33% size overhead.
+  A typical voice message (10–30 KB OGG) becomes ~14–40 KB base64 — well within NATS
+  default message size limits (1 MB). Not a concern at this scale.
+- NATS round-trip adds ~1–5 ms per voice call on localhost. Negligible versus model
+  inference time (hundreds of milliseconds to seconds).
+
+### Neutral
+
+- The existing `voicecli_stt` and `voicecli_tts` Unix-socket daemons are unaffected.
+  The new NATS adapters may still delegate to them internally, preserving the daemon-first
+  optimization for VRAM management.
+- `make tts` and `make stt` Makefile targets will need to be aliased or updated to target
+  `lyra_tts` / `lyra_stt` instead of `voicecli_tts` / `voicecli_stt` for typical
+  day-to-day operations — or both sets of targets can coexist.

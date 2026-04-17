@@ -1,0 +1,35 @@
+[project]
+name = "roxabi-nats"
+version = "0.2.0"
+description = "NATS transport SDK for Lyra and Roxabi plugin ecosystem"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [{ name = "Roxabi SAS", email = "mickael@bouly.io" }]
+dependencies = [
+    "nats-py>=2.6",
+    # nkeys 0.1.0 predates API used by connect.py's seed auth path;
+    # 0.2.0 is the first tested, stable version.
+    "nkeys>=0.2.0",
+    # CONTRACT_VERSION canonical home (ADR-049). The compat re-export from
+    # roxabi_nats.adapter_base is removed at v0.3.0 (BREAKING CHANGE).
+    # External consumers installing roxabi-nats via git tag must add a
+    # matching [tool.uv.sources] roxabi-contracts entry — the package is not
+    # published on PyPI (ADR-049 §Out of scope).
+    "roxabi-contracts>=0.1.0",
+]
+
+[project.urls]
+Repository = "https://github.com/Roxabi/lyra"
+Issues = "https://github.com/Roxabi/lyra/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/roxabi_nats"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

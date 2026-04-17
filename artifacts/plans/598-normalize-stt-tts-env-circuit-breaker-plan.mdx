@@ -1,0 +1,365 @@
+---
+title: "Plan: feat(voice): normalize STT/TTS env vars + circuit breaker"
+issue: 598
+spec: artifacts/specs/598-normalize-stt-tts-env-circuit-breaker-spec.mdx
+complexity: 4/10
+tier: F-lite
+generated: 2026-04-07
+---
+
+## Summary
+
+Normalize the four voice env vars (`LYRA_STT_ENABLED`, `LYRA_STT_MODEL`, `LYRA_TTS_ENABLED`,
+`LYRA_TTS_ENGINE`), decouple TTS from STT, add an in-process circuit breaker to both NATS
+voice clients, add a startup probe, and wire `LYRA_PROGRAMS` in the Makefile conditionally.
+
+## Architecture
+
+```flowchart TD
+    subgraph env [".env / supervisor conf.d"]
+        E1[LYRA_STT_ENABLED]
+        E2[LYRA_STT_MODEL]
+        E3[LYRA_TTS_ENABLED]
+        E4[LYRA_TTS_ENGINE]
+    end
+
+    subgraph overlay ["voice_overlay.py"]
+        VO1["init_nats_stt(nc)"]
+        VO2["init_nats_tts(nc)"]
+        VO3["probe_voice_services(nc,stt,tts)"]
+    end
+
+    subgraph clients ["src/lyra/nats/"]
+        CB["circuit_breaker.py\nNatsCircuitBreaker"]
+        STT["nats_stt_client.py\nNatsSttClient"]
+        TTS["nats_tts_client.py\nNatsTtsClient"]
+    end
+
+    subgraph loaders ["stt/__init__.py · tts/__init__.py"]
+        LS["load_stt_config()\nLYRA_STT_MODEL → fallback STT_MODEL_SIZE"]
+        LT["load_tts_config()\nLYRA_TTS_ENGINE → fallback TTS_ENGINE"]
+    end
+
+    E1 --> VO1
+    E2 --> VO1
+    E3 --> VO2
+    E4 --> VO2
+    VO1 --> STT
+    VO2 --> TTS
+    VO3 --> STT
+    VO3 --> TTS
+    CB --> STT
+    CB --> TTS
+    E2 --> LS
+    E4 --> LT
+```
+
+```flowchart LR
+    subgraph S1 ["S1 — env rename"]
+        LS["stt/__init__.py\nload_stt_config"]
+        LT["tts/__init__.py\nload_tts_config"]
+        VO["voice_overlay.py\ninit_nats_stt · init_nats_tts"]
+    end
+
+    subgraph S2 ["S2 — circuit breaker"]
+        CB["circuit_breaker.py\nNatsCircuitBreaker"]
+        SC["nats_stt_client.py\nNatsSttClient._cb"]
+        TC["nats_tts_client.py\nNatsTtsClient._cb"]
+    end
+
+    subgraph S3 ["S3 — probe"]
+        PR["voice_overlay.py\nprobe_voice_services"]
+    end
+
+    subgraph S4 ["S4 — infra"]
+        MK["Makefile\nLYRA_PROGRAMS"]
+        CF["lyra_stt.conf\nlyra_tts.conf"]
+    end
+
+    subgraph T ["tests"]
+        T1["test_circuit_breaker.py"]
+        T2["test_voice_overlay.py"]
+        T3["test_nats_stt_client.py"]
+        T4["test_nats_tts_client.py"]
+    end
+
+    CB --> SC
+    CB --> TC
+    VO --> PR
+    S1 --> T2
+    S2 --> T1
+    S2 --> T3
+    S2 --> T4
+```
+
+## Agents
+
+| Agent | Task count | Files |
+|-------|-----------|-------|
+| `backend-dev` | 7 | `voice_overlay.py`, `nats_stt_client.py`, `nats_tts_client.py`, `stt/__init__.py`, `tts/__init__.py`, `circuit_breaker.py` (new) |
+| `tester` | 4 | `tests/nats/test_circuit_breaker.py` (new), `tests/bootstrap/test_voice_overlay.py` (new), `tests/nats/test_nats_stt_client.py`, `tests/nats/test_nats_tts_client.py` |
+| `devops` | 2 | `Makefile`, `deploy/supervisor/conf.d/lyra_stt.conf`, `deploy/supervisor/conf.d/lyra_tts.conf` |
+| `doc-writer` | 1 | `docs/ARCHITECTURE.md` |
+
+## Consistency Report
+
+- Covered: 19/19 acceptance criteria
+- Uncovered: 0
+- Untraced tasks: 0
+
+## Micro-Tasks
+
+### S1 — Env var rename + TTS independence
+
+<!-- RED-GATE: all S1 RED tasks must pass before S2 begins -->
+
+#### T1 — load_stt_config reads LYRA_STT_MODEL [RED]
+- **File:** `src/lyra/stt/__init__.py`
+- **Agent:** backend-dev
+- **Spec trace:** SC-1, SC-6
+- **Parallel-safe:** N
+- **Difficulty:** 1
+- **Snippet:**
+  ```python
+  def load_stt_config() -> STTConfig:
+      model_size = (
+          os.environ.get("LYRA_STT_MODEL")
+          or _deprecated("STT_MODEL_SIZE", "LYRA_STT_MODEL")
+          or "large-v3-turbo"
+      )
+      return STTConfig(model_size=model_size)
+  ```
+- **Verify:** `python -c "import os; os.environ['LYRA_STT_MODEL']='tiny'; from lyra.stt import load_stt_config; assert load_stt_config().model_size == 'tiny'"`
+
+#### T2 — load_tts_config reads LYRA_TTS_ENGINE [RED]
+- **File:** `src/lyra/tts/__init__.py`
+- **Agent:** backend-dev
+- **Spec trace:** SC-2, SC-7
+- **Parallel-safe:** Y (with T1)
+- **Difficulty:** 1
+- **Snippet:**
+  ```python
+  def load_tts_config() -> TTSConfig:
+      return TTSConfig(
+          engine=os.environ.get("LYRA_TTS_ENGINE") or _deprecated("TTS_ENGINE", "LYRA_TTS_ENGINE") or None,
+          voice=os.environ.get("TTS_VOICE") or None,
+          language=os.environ.get("TTS_LANGUAGE") or None,
+      )
+  ```
+- **Verify:** `python -c "import os; os.environ['LYRA_TTS_ENGINE']='chatterbox'; from lyra.tts import load_tts_config; assert load_tts_config().engine == 'chatterbox'"`
+
+#### T3 — voice_overlay gates on LYRA_STT/TTS_ENABLED, removes LYRA_VOICE_RESPONSES [RED]
+- **File:** `src/lyra/bootstrap/voice_overlay.py`
+- **Agent:** backend-dev
+- **Spec trace:** SC-1,2,3,4,5,8
+- **Parallel-safe:** N (after T1, T2)
+- **Difficulty:** 2
+- **Snippet:**
+  ```python
+  def init_nats_stt(nc: "NATS") -> "NatsSttClient | None":
+      if os.environ.get("LYRA_STT_ENABLED", "0") != "1":
+          return None
+      model = os.environ.get("LYRA_STT_MODEL", "large-v3-turbo")
+      return NatsSttClient(nc=nc, model=model)
+
+  def init_nats_tts(nc: "NATS") -> "NatsTtsClient | None":
+      if os.environ.get("LYRA_TTS_ENABLED", "0") != "1":
+          return None
+      return NatsTtsClient(nc=nc)
+  # remove stt_client param — TTS independent of STT
+  ```
+- **Verify:** `python -c "from unittest.mock import MagicMock; import os; os.environ.pop('LYRA_STT_ENABLED', None); from lyra.bootstrap.voice_overlay import init_nats_stt; assert init_nats_stt(MagicMock()) is None"`
+
+<!-- RED-GATE S1 -->
+
+### S2 — Circuit breaker
+
+#### T4 — NatsCircuitBreaker class [RED]
+- **File:** `src/lyra/nats/circuit_breaker.py` (new)
+- **Agent:** backend-dev
+- **Spec trace:** SC-9,10,11,12,13
+- **Parallel-safe:** N (after S1 RED-GATE)
+- **Difficulty:** 3
+- **Snippet:**
+  ```python
+  import time, threading
+
+  class NatsCircuitBreaker:
+      def __init__(self, failure_threshold: int = 3, recovery_timeout: float = 60.0) -> None:
+          self.failure_threshold = failure_threshold
+          self.recovery_timeout = recovery_timeout
+          self._failures = 0
+          self._open_until: float = 0.0
+          self._lock = threading.Lock()
+
+      def is_open(self) -> bool:
+          with self._lock:
+              if self._open_until and time.monotonic() < self._open_until:
+                  return True
+              return False
+
+      def record_success(self) -> None:
+          with self._lock:
+              self._failures = 0
+              self._open_until = 0.0
+
+      def record_failure(self) -> None:
+          with self._lock:
+              self._failures += 1
+              if self._failures >= self.failure_threshold:
+                  self._open_until = time.monotonic() + self.recovery_timeout
+  ```
+- **Verify:** `python -c "from lyra.nats.circuit_breaker import NatsCircuitBreaker; cb = NatsCircuitBreaker(failure_threshold=1); cb.record_failure(); assert cb.is_open()"`
+
+#### T5 — Wire circuit breaker into NatsSttClient [GREEN]
+- **File:** `src/lyra/nats/nats_stt_client.py`
+- **Agent:** backend-dev
+- **Spec trace:** SC-9,10
+- **Parallel-safe:** Y (with T6)
+- **Difficulty:** 2
+- **Snippet:**
+  ```python
+  from lyra.nats.circuit_breaker import NatsCircuitBreaker
+
+  class NatsSttClient:
+      def __init__(self, ...):
+          ...
+          self._cb = NatsCircuitBreaker()
+
+      async def transcribe(self, path):
+          if self._cb.is_open():
+              raise STTUnavailableError("STT circuit open — adapter down")
+          try:
+              result = await self._do_transcribe(path)
+              self._cb.record_success()
+              return result
+          except (STTUnavailableError, TimeoutError, Exception) as exc:
+              self._cb.record_failure()
+              raise
+  ```
+- **Verify:** `uv run pytest tests/nats/test_nats_stt_client.py -x -q`
+
+#### T6 — Wire circuit breaker into NatsTtsClient [GREEN]
+- **File:** `src/lyra/nats/nats_tts_client.py`
+- **Agent:** backend-dev
+- **Spec trace:** SC-11
+- **Parallel-safe:** Y (with T5)
+- **Difficulty:** 2
+- **Snippet:** (mirror T5 pattern for TTS)
+- **Verify:** `uv run pytest tests/nats/test_nats_tts_client.py -x -q`
+
+### S3 — Startup probe
+
+#### T7 — probe_voice_services [GREEN]
+- **File:** `src/lyra/bootstrap/voice_overlay.py`
+- **Agent:** backend-dev
+- **Spec trace:** SC-14, SC-15
+- **Parallel-safe:** Y (with S2)
+- **Difficulty:** 2
+- **Snippet:**
+  ```python
+  async def probe_voice_services(nc: "NATS", stt: object | None, tts: object | None) -> None:
+      from nats.aio.errors import NoRespondersError
+      for name, subject in [
+          ("STT", "lyra.voice.stt.request"),
+          ("TTS", "lyra.voice.tts.request"),
+      ]:
+          client = stt if name == "STT" else tts
+          if client is None:
+              continue
+          try:
+              await nc.request(subject, b"", timeout=1.0)
+          except (NoRespondersError, TimeoutError):
+              log.warning("%s adapter not reachable at boot — will retry per-request", name)
+          except Exception:
+              pass
+  ```
+- **Verify:** `uv run pytest tests/bootstrap/test_voice_overlay.py -x -q`
+
+### S4 — Makefile + supervisor confs
+
+#### T8 — LYRA_PROGRAMS conditional in Makefile [GREEN]
+- **File:** `Makefile`
+- **Agent:** devops
+- **Spec trace:** SC-16,17,18
+- **Parallel-safe:** Y
+- **Difficulty:** 2
+- **Snippet:**
+  ```makefile
+  LYRA_PROGRAMS := lyra_hub lyra_telegram lyra_discord
+  ifneq ($(shell grep -s '^LYRA_STT_ENABLED=1' $(HOME)/projects/lyra/.env),)
+    LYRA_PROGRAMS += lyra_stt
+  endif
+  ifneq ($(shell grep -s '^LYRA_TTS_ENABLED=1' $(HOME)/projects/lyra/.env),)
+    LYRA_PROGRAMS += lyra_tts
+  endif
+  ```
+- **Verify:** `grep LYRA_PROGRAMS Makefile`
+
+#### T9 — Update supervisor conf.d env vars [GREEN]
+- **Files:** `deploy/supervisor/conf.d/lyra_stt.conf`, `deploy/supervisor/conf.d/lyra_tts.conf`
+- **Agent:** devops
+- **Spec trace:** SC-1,2
+- **Parallel-safe:** Y
+- **Difficulty:** 1
+- **Verify:** `grep LYRA_STT_ENABLED deploy/supervisor/conf.d/lyra_stt.conf`
+
+### Tests
+
+#### T10 — test_circuit_breaker.py [GREEN]
+- **File:** `tests/nats/test_circuit_breaker.py` (new)
+- **Agent:** tester
+- **Spec trace:** SC-9,10,11,12,13
+- **Parallel-safe:** Y
+- **Difficulty:** 2
+- **Cases:** open after threshold · closed after success · half-open after timeout · re-open on half-open failure
+
+#### T11 — test_voice_overlay.py [GREEN]
+- **File:** `tests/bootstrap/test_voice_overlay.py` (new)
+- **Agent:** tester
+- **Spec trace:** SC-1,2,3,4,5,8
+- **Parallel-safe:** Y
+- **Difficulty:** 2
+- **Cases:** ENABLED=1 creates client · ENABLED=0 returns None · TTS without STT · STT without TTS · deprecation warning on old vars
+
+#### T12 — update test_nats_stt_client.py [GREEN]
+- **File:** `tests/nats/test_nats_stt_client.py`
+- **Agent:** tester
+- **Spec trace:** SC-9,10
+- **Parallel-safe:** Y
+- **Difficulty:** 2
+
+#### T13 — update test_nats_tts_client.py [GREEN]
+- **File:** `tests/nats/test_nats_tts_client.py`
+- **Agent:** tester
+- **Spec trace:** SC-11
+- **Parallel-safe:** Y
+- **Difficulty:** 2
+
+### Docs
+
+#### T14 — Update ARCHITECTURE.md [REFACTOR]
+- **File:** `docs/ARCHITECTURE.md`
+- **Agent:** doc-writer
+- **Spec trace:** all
+- **Parallel-safe:** Y
+- **Difficulty:** 1
+- **Verify:** `grep LYRA_STT_ENABLED docs/ARCHITECTURE.md`
+
+## Task IDs
+
+<!-- Generated by /plan. Used by /implement to resume tasks on session restart. -->
+- T1: 9 — load_stt_config reads LYRA_STT_MODEL with fallback
+- T2: 10 — load_tts_config reads LYRA_TTS_ENGINE with fallback
+- T3: 11 — voice_overlay gates on LYRA_STT/TTS_ENABLED, removes LYRA_VOICE_RESPONSES
+- T4: 12 — NatsCircuitBreaker class (new file)
+- T5: 13 — Wire circuit breaker into NatsSttClient
+- T6: 14 — Wire circuit breaker into NatsTtsClient
+- T7: 15 — probe_voice_services startup probe
+- T8: 16 — Makefile LYRA_PROGRAMS conditional on LYRA_STT/TTS_ENABLED
+- T9: 17 — Update lyra_stt.conf and lyra_tts.conf env vars
+- T10: 18 — tests/nats/test_circuit_breaker.py (new)
+- T11: 19 — tests/bootstrap/test_voice_overlay.py (new)
+- T12: 20 — Update test_nats_stt_client.py for circuit breaker
+- T13: 21 — Update test_nats_tts_client.py for circuit breaker
+- T14: 22 — Update ARCHITECTURE.md STT/TTS env vars table

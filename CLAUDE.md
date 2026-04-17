@@ -1,4 +1,5 @@
 @.claude/stack.yml
+@~/.claude/shared/global-patterns.md
 
 # CLAUDE.md — Instructions for Claude Code
 
@@ -11,31 +12,29 @@ See `docs/ARCHITECTURE.md` for full context.
 
 - **Project:** Lyra
 - **Before work:** Use `/dev #N` as the single entry point — it determines tier (S / F-lite / F-full) and drives the full lifecycle
-- **Always** `AskUserQuestion` for choices — never plain-text questions
-- **Never** commit without asking, push without request, or use `--force`/`--hard`/`--amend`
+- **Decisions:** → see global patterns (@~/.claude/shared/global-patterns.md)
+- **Never** use `--force`/`--hard`/`--amend`
 - **Always** use appropriate skill even without slash command
-
-### AskUserQuestion
-
-Always `AskUserQuestion` for: decisions, choices (≥2 options), approach proposals.
-**Never** plain-text "Do you want..." / "Should I..." → use the tool.
-
-### Git
-
-Format: `<type>(<scope>): <desc>` + `Co-Authored-By: Claude <model> <noreply@anthropic.com>`
-Types: feat|fix|refactor|docs|style|test|chore|ci|perf
-Never push without request. Never force/hard/amend. Hook fail → fix + NEW commit.
 
 ## Key files
 
 | File | Role |
 |------|------|
 | `docs/ARCHITECTURE.md` | Architecture + technical decisions |
+| `docs/architecture/architecture-patterns.md` | **Standard patterns** — Clean, Hexagonal, Kernel rules |
+| `docs/architecture/target-architecture.md` | **Implementation truth** — Hexagonal/Ports & Adapters |
 | `docs/CONFIGURATION.md` | All config files, their purpose, load order, and system vs instance split |
 | `docs/ROADMAP.md` | Roadmap and priorities |
 | `docs/GETTING-STARTED.md` | Machine 1 setup guide |
 | `artifacts/` | Frames, specs, plans, analyses, explorations (dev-core) |
-| `~/projects/lyra-stack/scripts/provision.sh` | Machine 1 post-install provisioning script (sibling repo) |
+| `deploy/provision.sh` | Machine 1 post-install provisioning script |
+| `deploy/quadlet/` | Podman Quadlet units (`.container`, `.volume`, `.network`) — systemd-integrated containers; `lyra-nats-auth.volume` for NATS public auth.conf |
+| `deploy/nats/nats-container.conf` | NATS config for container deployment (no TLS, 0.0.0.0 bind) |
+| `scripts/dep-graph/` | GitHub-driven dep-graph generator (`dep_graph/` package + `layout.schema.json`). Run via `make dep-graph [fetch\|build\|audit\|validate\|open]`. Artifacts (layout.json, gh.json cache, HTML output) live in `~/.roxabi/forge/lyra/visuals/`. Precursor to roxabi-dashboard. |
+| `packages/roxabi-nats/` | NATS transport SDK (uv workspace subpackage) — adapter_base, connect, circuit_breaker, readiness, serialization. Extracted per ADR-045. |
+| `packages/roxabi-contracts/` | Shared Pydantic schemas for cross-project NATS contracts (uv workspace subpackage). v0.1.0 ships `ContractEnvelope` only; per-domain submodules (voice, image, memory, llm) added in later tags. Pure Pydantic runtime; transport via `[testing]` extra only. Extracted per ADR-049. |
+| `deploy/agents.yml` | Declarative agent registry for supervisord conf.d generation. Run `make gen-conf` to regenerate. |
+| `deploy/gen-supervisor-conf.py` | Python generator: agents.yml → supervisord conf.d/*.conf. |
 
 ## Local infrastructure
 
@@ -88,24 +87,141 @@ lyra agent delete <name>  # refuses if bot still assigned
 - Commits: Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
 - Issues: via `dev-core` workflow (`/dev #N`)
 
+## CLAUDE.md hygiene (hard rule)
+
+**When you add, remove, or rename a file/package, update the relevant CLAUDE.md immediately.**
+
+CLAUDE.md locations (one per package, single level — no nested sub-CLAUDE.md):
+- `CLAUDE.md` — project root (this file)
+- `src/lyra/core/CLAUDE.md` — hub, stores, pool, commands infra + all flat modules
+- `src/lyra/adapters/CLAUDE.md` — Telegram, Discord, CLI, NATS adapters
+- `src/lyra/agents/CLAUDE.md` — agent implementations
+- `src/lyra/commands/CLAUDE.md` — plugin commands
+- `src/lyra/llm/CLAUDE.md` — LLM drivers and providers
+
+Rules:
+- New file added → add it to the file table in the appropriate CLAUDE.md
+- File deleted → remove its entry
+- File moved → update source and destination CLAUDE.md
+- New package/subdir under `src/lyra/` → add to the nearest CLAUDE.md (do NOT create a new nested CLAUDE.md)
+
+## Production entry points (NATS three-process mode)
+
+Lyra runs as three separate supervisor processes on Machine 1:
+
+| Supervisor program | CLI command | Bootstrap function |
+|-------------------|-------------|-------------------|
+| `lyra_hub` | `lyra hub` | `_bootstrap_hub_standalone()` |
+| `lyra_telegram` | `lyra adapter telegram` | `_bootstrap_adapter_standalone()` |
+| `lyra_discord` | `lyra adapter discord` | `_bootstrap_adapter_standalone()` |
+
+Scripts: `run_hub.sh` and `run_adapter.sh` in `deploy/supervisor/scripts/` (lyra's own supervisord, managed via `lyra.service`).
+NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub) · `lyra.outbound.<platform>.<bot_id>` (hub→adapter).
+
+The unified single-process mode (`lyra start` → `_bootstrap_unified`) runs hub + adapters in one process with NATS. Auto-starts embedded nats-server when NATS_URL is not set.
+
 ## Gotchas
 
 <!-- Add project-specific gotchas here -->
 
-## Verification Summary
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
 
-_Fact-checked 2026-03-17 against `src/lyra/`, `docs/`, and git history._
+This project is indexed by GitNexus as **753-eliminate-all-300-line-file-exemptions** (16940 symbols, 39176 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-| # | Claim | Result |
-|---|-------|--------|
-| 1 | Key docs exist (`ARCHITECTURE.md`, `CONFIGURATION.md`, `ROADMAP.md`, `GETTING-STARTED.md`) | ✅ Confirmed |
-| 2 | `artifacts/` (analyses, explorations, frames, plans, specs) | ✅ Confirmed |
-| 3 | `lyra-stack/scripts/provision.sh` (relative path) | ❌ Fixed → `~/projects/lyra-stack/scripts/provision.sh` — `lyra-stack` is a sibling repo, not inside this project |
-| 4 | "TOML files in `src/lyra/agents/`" as the only location | ❌ Fixed → Two locations: `~/.lyra/agents/` (user-level, higher precedence) and `src/lyra/agents/` (system defaults) |
-| 5 | `workspaces` "each key becomes a `/<key>` slash command" | ❌ Fixed → command is `/workspace <key>`, not `/<key>` (verified in `workspace_commands.py`) |
-| 6 | `~/.lyra/auth.db` as agent store | ✅ Confirmed (`cli_agent.py:31`) |
-| 7 | `lyra agent init/list/show/edit/validate/assign/delete` commands | ✅ All confirmed in `cli_agent_crud.py` |
-| 8 | `lyra agent delete` refuses if bot assigned | ✅ Confirmed (`agent_store.py:315`) |
-| 9 | `cwd` in `config.toml [defaults]` | ✅ Confirmed (`config.toml:3-4`) |
-| 10 | `lyra agent unassign` command (missing) | ➕ Added — exists in `cli_agent_crud.py` |
-| 11 | `lyra agent create <name>` command (missing) | ➕ Added — documented in `docs/COMMANDS.md` |
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+
+## When Debugging
+
+1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
+2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
+3. `READ gitnexus://repo/753-eliminate-all-300-line-file-exemptions/process/{processName}` — trace the full execution flow step by step
+4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
+
+## When Refactoring
+
+- **Renaming**: MUST use `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` first. Review the preview — graph edits are safe, text_search edits need manual review. Then run with `dry_run: false`.
+- **Extracting/Splitting**: MUST run `gitnexus_context({name: "target"})` to see all incoming/outgoing refs, then `gitnexus_impact({target: "target", direction: "upstream"})` to find all external callers before moving code.
+- After any refactor: run `gitnexus_detect_changes({scope: "all"})` to verify only expected files changed.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
+- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+
+## Tools Quick Reference
+
+| Tool | When to use | Command |
+|------|-------------|---------|
+| `query` | Find code by concept | `gitnexus_query({query: "auth validation"})` |
+| `context` | 360-degree view of one symbol | `gitnexus_context({name: "validateUser"})` |
+| `impact` | Blast radius before editing | `gitnexus_impact({target: "X", direction: "upstream"})` |
+| `detect_changes` | Pre-commit scope check | `gitnexus_detect_changes({scope: "staged"})` |
+| `rename` | Safe multi-file rename | `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` |
+| `cypher` | Custom graph queries | `gitnexus_cypher({query: "MATCH ..."})` |
+
+## Impact Risk Levels
+
+| Depth | Meaning | Action |
+|-------|---------|--------|
+| d=1 | WILL BREAK — direct callers/importers | MUST update these |
+| d=2 | LIKELY AFFECTED — indirect deps | Should test |
+| d=3 | MAY NEED TESTING — transitive | Test if critical path |
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/753-eliminate-all-300-line-file-exemptions/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/753-eliminate-all-300-line-file-exemptions/clusters` | All functional areas |
+| `gitnexus://repo/753-eliminate-all-300-line-file-exemptions/processes` | All execution flows |
+| `gitnexus://repo/753-eliminate-all-300-line-file-exemptions/process/{name}` | Step-by-step execution trace |
+
+## Self-Check Before Finishing
+
+Before completing any code modification task, verify:
+1. `gitnexus_impact` was run for all modified symbols
+2. No HIGH/CRITICAL risk warnings were ignored
+3. `gitnexus_detect_changes()` confirms changes match expected scope
+4. All d=1 (WILL BREAK) dependents were updated
+
+## Keeping the Index Fresh
+
+After committing code changes, the GitNexus index becomes stale. Re-run analyze to update it:
+
+```bash
+npx gitnexus analyze
+```
+
+If the index previously included embeddings, preserve them by adding `--embeddings`:
+
+```bash
+npx gitnexus analyze --embeddings
+```
+
+To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.embeddings` field shows the count (0 means no embeddings). **Running analyze without `--embeddings` will delete any previously generated embeddings.**
+
+> Claude Code users: A PostToolUse hook handles this automatically after `git commit` and `git merge`.
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->

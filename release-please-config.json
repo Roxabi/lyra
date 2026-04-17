@@ -1,0 +1,23 @@
+{
+  "release-type": "python",
+  "target-branch": "main",
+  "separate-pull-requests": true,
+  "packages": {
+    ".": {
+      "component": "lyra",
+      "package-name": "lyra"
+    },
+    "packages/roxabi-nats": {
+      "release-type": "python",
+      "component": "roxabi-nats",
+      "tag-separator": "/",
+      "package-name": "roxabi-nats"
+    },
+    "packages/roxabi-contracts": {
+      "release-type": "python",
+      "component": "roxabi-contracts",
+      "tag-separator": "/",
+      "package-name": "roxabi-contracts"
+    }
+  }
+}

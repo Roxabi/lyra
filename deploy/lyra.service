@@ -1,0 +1,15 @@
+[Unit]
+Description=Lyra supervisord (hub, telegram, discord)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+PIDFile=%h/projects/lyra/deploy/supervisor/supervisord.pid
+ExecStart=%h/projects/lyra/deploy/supervisor/start.sh --all
+ExecStop=%h/projects/lyra/deploy/supervisor/supervisorctl.sh shutdown
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

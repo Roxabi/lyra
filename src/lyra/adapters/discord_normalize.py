@@ -14,7 +14,6 @@ from lyra.core.message import (
     Platform,
     RoutingContext,
 )
-from lyra.core.scope import user_scoped
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
@@ -59,12 +58,7 @@ def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing con
         else f"channel:{resolved_channel_id}"
     )
 
-    # User-scope guild channels so each user gets their own pool (#356).
-    # Threads and DMs are left as-is (single-user or thread-session-resume).
     user_id = f"dc:user:{raw.author.id}"
-    is_guild_channel = raw.guild is not None and not resolved_thread_id
-    if is_guild_channel:
-        scope_id = user_scoped(scope_id, user_id)
 
     # Detect channel type
     channel_type: str = "text"
@@ -84,6 +78,7 @@ def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing con
     )
 
     _display_name = getattr(raw.author, "display_name", None)
+    roles = tuple(str(r.id) for r in getattr(raw.author, "roles", []) or [])
     attachments = extract_attachments(getattr(raw, "attachments", None) or [])
     _reference = getattr(raw, "reference", None)
     reply_to_id: str | None = (
@@ -119,9 +114,9 @@ def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing con
         text_raw=raw.content,
         attachments=attachments,
         timestamp=timestamp,
-        trust="user",
         trust_level=trust_level,
         is_admin=is_admin,
+        roles=roles,
         platform_meta=platform_meta,
         routing=routing,
         reply_to_id=reply_to_id,

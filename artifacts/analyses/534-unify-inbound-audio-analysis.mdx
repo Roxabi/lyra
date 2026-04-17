@@ -1,0 +1,232 @@
+---
+title: "Unify InboundAudio into InboundMessage with modality tags"
+description: "Deep analysis of the dual-bus → single-bus refactor: envelope merge, STT pipeline stage placement, and NATS subject tree migration strategy."
+issue: 534
+tier: F-full
+date: 2026-04-05
+---
+
+## Source
+
+> "Lyra currently uses **two separate `NatsBus` instances** for inbound messages — one for `InboundMessage` (text) and one for `InboundAudio` (voice). This creates duplicate serialization/deserialization paths (both need sanitization — discovered in #525), duplicate handler wiring in bootstrap, a separate `AudioPipeline` consumer loop instead of a pipeline stage, and two NATS subject trees. `InboundMessage` already has a `modality` field — audio should be a message with extra payload, not a different type."
+> — Issue #534
+
+Related: #525 (sanitize `platform_meta` at NATS trust boundary) exposed the dual-sanitization cost of the current split.
+
+## Problem
+
+The inbound pipeline forks at the adapter boundary into two parallel envelope types with independent wire contracts:
+
+- `InboundMessage` → `LocalBus[InboundMessage]` → `MessagePipeline` → pool → agent. Subject: `lyra.inbound.{platform}.{bot_id}`, queue group `HUB_INBOUND`.
+- `InboundAudio` → `LocalBus[InboundAudio]` → bespoke `AudioPipeline.run()` consumer loop → STT → re-enqueue as `InboundMessage(modality="voice")`. Subject: `lyra.inbound.audio.{platform}.{bot_id}`, queue group `HUB_INBOUND_AUDIO`.
+
+**Concrete costs (grounded in the current codebase):**
+
+- `AudioPipeline.run()` at `src/lyra/core/audio_pipeline.py:119-146` is ~440 LOC of bespoke loop logic that duplicates `MessagePipeline`'s guard semantics (platform validation, trust resolution, rate limit, BLOCKED check) — all before its STT-specific steps.
+- Three supervisor bootstrap entry points each construct both buses: `hub_standalone.py:161-174`, `adapter_standalone.py:95-106` (telegram) + `229-240` (discord), `unified.py:59-72`.
+- `_shared.py:75` types `push_to_hub_guarded(msg: InboundMessage | InboundAudio, ...)` — every adapter call site carries the union.
+- 19 files reference `InboundAudio` (see inventory below). Each is a potential migration point.
+- Two NATS subjects require two independent envelope version checks (`_version_check.py` in `nats/`), two sanitization entry points, two queue groups to monitor.
+
+## Outcome
+
+Success means:
+
+1. **One envelope type** for all inbound messages. Voice messages flow as `InboundMessage` with the existing `modality` field, not a parallel dataclass.
+2. **One consumer-side sanitization boundary.** Any future NATS trust-boundary invariant (like #525) is applied once, not twice.
+3. **Audio and text share the same processing path** with equivalent rate-limiting, trust resolution, binding lookup, and agent routing. No bespoke loop drains a second staging queue.
+4. **Single NATS subject tree for inbound.** Voice and text converge on one subject namespace (end state; migration path is a shape decision).
+5. **Bootstrap wiring is simplified.** Hub and each adapter construct and pass one inbound bus instance, not two. Supervisor entry points shrink.
+6. **Backward compatibility during rollout.** No orphaned in-flight voice messages during independent restarts of the three supervisor processes. STT-free deployments continue to work unchanged, with the `stt_unsupported` reply text, timing, and scope routing preserved.
+
+Deliberately not specifying: where exactly the STT stage sits (pipeline vs middleware), whether adapters set `modality="text"` explicitly, whether audio remains flat fields vs a nested struct vs an attachment, and the fate of the `audio_pipeline.py` file. Those are spec-phase decisions.
+
+## Appetite
+
+**2-cycle appetite** — tight F-full budget. Phased rollout with two PRs: envelope + hub-side unification first, adapter + legacy-subject removal second. Each PR ships independently and is revertible.
+
+**Circuit-breaker:** if PR 1 expands past ~12 touched files (Shape B currently targets ~10) or if any of the 7 open unknowns cascade into a schema v2 bump or pipeline plugin system rework, **stop and re-spec Phase 2**. Do not absorb scope silently.
+
+Each PR is at the upper edge of its claimed size (M and S). The shape is well-partitioned but brittle to unknowns resolved incorrectly in the spec.
+
+## Shapes
+
+> **Note on relationship:** Shapes A and B converge on the **same end state** (one envelope, one subject tree, STT as a pipeline stage). They differ only in migration path. Shape C is a genuinely different architecture that keeps two NATS subjects permanently.
+
+### Shape A — Full unification (single PR, single cycle)
+
+One PR that:
+1. Folds `InboundAudio` fields into `InboundMessage`.
+2. Deletes `InboundAudioBus` shim.
+3. Inserts STT stage into `MessagePipeline` between rate-limit and binding lookup.
+4. Deletes `AudioPipeline.run()` + `_process_audio_item()` + `_dispatch_audio_reply()`.
+5. Updates all 19 consumer sites.
+6. Removes the legacy `lyra.inbound.audio.*` NATS subject tree.
+7. Adapters publish `InboundMessage(modality="voice", audio_bytes=...)` to `lyra.inbound.{platform}.{bot_id}`.
+
+**Rollout:** all three supervisor processes must restart together. Brief window where an old adapter publishing to the legacy subject has no consumer (dropped). Messages lost.
+
+**Trade-offs:**
+- Pro: cleanest end state, one PR review, #525 sanitization concern eliminated immediately.
+- Con: non-zero data loss window during deploy (voice messages dropped if an adapter is on old code while hub is on new, or vice versa). Not revertible without losing in-flight audio.
+- Con: 19 files touched in one diff → hard to review in isolation.
+
+**Rough scope:** L
+
+### Shape B — Staged rollout (two PRs, two cycles) ← recommended
+
+Delivers the same end state as Shape A via a safe migration path.
+
+**Phase 1 — hub-side unification (PR 1):**
+1. Fold `InboundAudio` fields into `InboundMessage` (additive, schema v1).
+2. Hub subscribes to **both** NATS subject trees temporarily. The legacy `lyra.inbound.audio.*` subscription is implemented as a **raw subscription handler** (not a second `NatsBus[InboundAudio]` instance) that deserializes the legacy envelope, converts it to a unified `InboundMessage(modality="voice", audio_bytes=...)`, and injects into the **single** `InboundMessage` staging queue. This keeps Phase 1's consumer loop truly single-queue and matches the refactor's intent. Dispatch of error replies (e.g. `stt_unsupported`) for legacy-subject messages routes through the same adapter dispatcher that handles new-subject messages — no dual error paths.
+3. Insert STT stage into `MessagePipeline`. Delete `AudioPipeline.run()` loop. Keep the TTS helper (`synthesize_and_dispatch_audio`) untouched for this phase; final relocation is a spec-phase decision.
+4. Agent-level `_stt is None` fallbacks removed.
+5. Adapters still publish `InboundAudio` to `lyra.inbound.audio.*` — **no change required** for adapter-side in phase 1.
+6. #525 sanitization concern eliminated: hub has one sanitization path for all inbound messages regardless of legacy or new subject.
+
+**Phase 2 — adapter + legacy subject removal (PR 2, one release later):**
+1. Adapters updated to publish `InboundMessage(modality="voice")` directly to `lyra.inbound.{platform}.{bot_id}`.
+2. `adapter_standalone.py` drops the publish-only audio bus construction.
+3. Hub's legacy subject subscription + compat shim are removed.
+4. `InboundAudio` class deleted. `inbound_audio_bus.py` deleted.
+5. `_shared.py` narrows `push_to_hub_guarded` signature.
+
+**Rollout:** Each PR is independently deployable. Phase 1 can ship even if adapters are on stale code; hub accepts both subjects. Phase 2 requires adapters to be on phase-2 code before legacy subject is removed, but the deprecation window is a full release cycle.
+
+**Trade-offs:**
+- Pro: zero data loss during rollout — hub accepts both subjects during transition.
+- Pro: each PR is ~10 files, reviewable in isolation.
+- Pro: #525 concern resolved in PR 1 (hub-side sanitization unified).
+- Pro: matches the project's demonstrated pattern (#541 shipped incrementally with publish-only mode).
+- Con: temporary compat shim adds ~50 LOC that gets deleted in phase 2 (minor cost).
+- Con: two-cycle timeline instead of one.
+
+**Rough scope:** M + S
+
+### Shape C — Hybrid subject tree (envelope merge, keep two NATS subjects)
+
+Unify the Python-side envelope type (`InboundMessage` carries audio fields) but **keep two NATS subjects** for operational separation: `lyra.inbound.{platform}.{bot_id}` for text, `lyra.inbound.voice.{platform}.{bot_id}` for audio. Both deserialize to `InboundMessage`.
+
+**Rationale:** audio backpressure (large payloads, slow STT) doesn't starve text queue group. Preserves independent monitoring.
+
+**Trade-offs:**
+- Pro: queue group separation preserved → backpressure isolation.
+- Pro: envelope duplication eliminated.
+- Con: **two sanitization paths on the wire remain** — the #525 concern is only partially addressed.
+- Con: two subject trees still to maintain, monitor, and deprecate eventually.
+- Con: adapters still branch on modality at publish time.
+
+**Rough scope:** M
+
+## Fit Check
+
+**Recommended: Shape B (Staged rollout).**
+
+| Constraint | Shape A | Shape B | Shape C |
+|---|---|---|---|
+| Three independent supervisor processes (restart ordering risk) | ✗ data loss window | ✓ zero loss via dual-subscribe | ✓ no change |
+| NATS subject tree is a wire contract | ✗ breaking in one step | ✓ deprecation window | ~ reshaped but stable |
+| STT-free deployment still works | ✓ | ✓ | ✓ |
+| Eliminate #525 sanitization concern | ✓ fully | ✓ fully in PR 1 | ✗ only partially |
+| Schema v1 additive (no version bump) | ✓ | ✓ | ✓ |
+| ~19 consumer modules to migrate | ✗ all in one PR | ✓ split across 2 PRs | ~ fewer adapter changes |
+| Revertibility | ✗ hard to revert | ✓ each PR revertible | ✓ |
+| Matches project rollout pattern (#541) | ✗ | ✓ | ~ |
+
+**Why Shape B wins:**
+- The #525 sanitization concern is the motivating constraint from the frame, and Shape B eliminates it **fully** in PR 1 (because hub-side is unified) while keeping the rollout safe.
+- The three-process supervisor topology makes Shape A's atomic deploy assumption untenable — voice messages will be dropped during the restart window.
+- Shape C leaves a two-subject wire contract in place, leaving the door open for the exact drift that produced #525 in the first place.
+- The project has demonstrated this staged pattern successfully in #541 (adapter NatsBus publish-only mode).
+
+**Why Shape A is eliminated:** Atomic cross-process deploy is not a property of this system. Data loss during rollout is unacceptable.
+
+**Why Shape C is eliminated:** The stated motivation — eliminating duplicate sanitization (#525) — is only partially achieved. Any future sanitization invariant still needs to be applied twice at the wire boundary.
+
+## User-Visible Risks
+
+Although this is a pure internal refactor, voice messages are a first-class Lyra feature. The spec must preserve or explicitly address:
+
+1. **STT stage latency impact on shared pipeline.** Current `AudioPipeline.run()` drains a dedicated queue, so a slow STT call never blocks text messages for the same user. Post-refactor, STT becomes a blocking stage in `MessagePipeline` — a slow transcription (cold model, network timeout, large audio) stalls the pipeline for that conversation scope until STT completes. Risk: visible latency for a user who sends a voice note followed quickly by a text message. **Mitigation to decide in spec:** hard timeout on the STT stage, background-task pattern, or explicit acceptance of the regression.
+2. **`stt_unsupported` reply continuity.** Current code dispatches via `AudioPipeline._dispatch_audio_reply()` at `audio_pipeline.py:283-314`, which constructs a synthetic `InboundMessage` from the `InboundAudio` envelope and routes it through `hub.dispatch_response()`. After the refactor, the STT pipeline stage emits this reply. The spec must guarantee the reply text, timing (before any agent invocation), and scope routing (same `scope_id` as the original audio) are bit-for-bit identical. Any regression here is user-visible.
+3. **STT noise / invalid-transcript reply behavior.** Same as above for `stt_noise`, `stt_invalid`, `stt_unavailable`, and `stt_failed` paths. The AudioPipeline currently emits four distinct error templates. The pipeline stage must preserve all four and their distinction.
+
+## Open Unknowns (for /spec)
+
+These are deliberately unresolved in the analysis and belong in the spec phase:
+
+1. **STT stage re-entrance guard.** Between rate-limit and binding lookup is the intent, but the stage must also handle the case where `InboundMessage(modality="voice")` arrives with already-populated `text` (e.g. from a re-entrant path or a test fixture). Does the stage skip transcription if `text != ""` already? Does it also need to preserve `reply_to_id` from the original audio context?
+2. **Audio field shape on `InboundMessage`.** Flat optional fields (`audio_bytes: bytes | None`) vs nested optional struct (`audio: AudioPayload | None`) vs attachment (`attachments: list[Attachment]` with a voice-typed attachment). Each has different agent-ergonomics implications. The nested struct keeps `InboundMessage` tidy for text users; the flat fields are simpler to serialize.
+3. **`modality` field default for text.** Currently `modality: Literal["text", "voice"] | None = None`. Should adapters explicitly set `"text"` post-refactor, or leave `None`? The STT pipeline stage needs a rule: "run if `modality == 'voice'`" vs "run if `audio_bytes is not None`". Pick one.
+4. **Agent raw-audio access.** Post-refactor, does the agent see `InboundMessage.audio_bytes` even after successful transcription, or is it stripped by the STT stage? Stripping simplifies serialization (no duplicate audio in history) but closes the door to agents that want raw audio.
+5. **Phase 1 compat shim implementation location.** Shape B specifies a raw subscription handler (not a second `NatsBus`) that injects into the unified staging queue — but where does this handler live? A dedicated module (`nats/compat/inbound_audio_legacy.py`) or inline in `hub_standalone.py` bootstrap? Affects ease of deletion in Phase 2.
+6. **Queue group for voice traffic.** Shape B unifies to one queue group (`HUB_INBOUND`). If voice STT backpressure becomes a problem, there's no isolation. Worth calling out — probably over-engineering to split, but the spec should state the decision explicitly.
+7. **Test migration strategy.** Many tests construct `InboundAudio` directly. The spec should decide: rewrite tests to construct `InboundMessage(modality="voice", ...)`, or introduce a test helper `make_voice_message()` to reduce churn.
+8. **Error reply dispatch path during Phase 1.** `AudioPipeline._dispatch_audio_reply()` is deleted in Phase 1. The STT pipeline stage must send `stt_unsupported`, `stt_failed`, `stt_noise`, `stt_invalid`, `stt_unavailable` replies for messages arriving on **both** the new subject and the legacy subject. The spec must name the dispatcher explicitly and verify it routes correctly for legacy-subject messages converted by the compat shim.
+9. **Observability regression.** Current system has two `staging_qsize()` endpoints and two `version_mismatch_drops` counters (one per `NatsBus` instance). Post-Phase-1, if the compat shim is a raw subscription handler, the per-type counters for audio disappear. Any monitoring dashboards or health checks reading these per-type metrics will silently stop reporting for audio. The spec should enumerate what replaces them (single unified counter, labels for modality, or explicit deprecation).
+10. **`audio_pipeline.py` file fate.** Phase 2 deletes the consumer-loop code but `synthesize_and_dispatch_audio()` (TTS) is out of scope. Does the file remain at `core/audio_pipeline.py` (misleading name for a TTS-only module) or does the TTS helper move to `core/hub/tts_dispatch.py` or similar? Decide in spec to avoid silent scope in the implementation PR.
+
+## Appendix — Current State Architectural Findings
+
+### Files impacted (inventory)
+
+| Layer | File | Role | Change shape |
+|---|---|---|---|
+| Types | `core/message.py:108-136` | `InboundAudio` dataclass | Fold fields into `InboundMessage`; delete class |
+| Bus | `core/inbound_audio_bus.py` (17 lines) | Shim: `LocalBus[InboundAudio]` | Delete file |
+| Pipeline | `core/audio_pipeline.py:113-281` | `AudioPipeline.run()` + `_process_audio_item()` | Convert to pipeline stage; delete consumer loop |
+| Pipeline | `core/audio_pipeline.py:316-413` | `synthesize_and_dispatch_audio()` (TTS) | **Keep** — out of scope |
+| Pipeline | `core/hub/message_pipeline.py:74-180` | Stage sequence | Insert STT stage between rate-limit and binding lookup |
+| Hub | `core/hub/hub.py` | Constructor takes `inbound_audio_bus` | Drop parameter; single inbound bus |
+| Hub | `core/hub/hub_outbound.py` | Uses `InboundAudio` for dispatch reply | Update type reference |
+| Bootstrap | `bootstrap/hub_standalone.py:161-174` | Constructs both buses | Construct only `inbound_bus` |
+| Bootstrap | `bootstrap/adapter_standalone.py:95-106, 229-240` | Constructs publish-only audio bus per adapter | Remove audio bus; publish unified `InboundMessage` |
+| Bootstrap | `bootstrap/unified.py:59-72` | Same as hub_standalone | Same |
+| NATS | `nats/nats_bus.py:47, 60-62` | `_ENVELOPE_VERSIONS` dict | Remove `InboundAudio` entry |
+| NATS | `nats/nats_channel_proxy.py:17, 70-78` | `normalize_audio()` stub | Delete stub |
+| Adapter | `adapters/telegram.py:98, 123, 266` | Stores `_inbound_audio_bus`, wraps `normalize_audio()` | Drop field; unify normalize |
+| Adapter | `adapters/discord.py:79, 105, 246` | Same as telegram | Same |
+| Adapter | `adapters/telegram_normalize.py:207-260` | `normalize_audio() → InboundAudio` | Return `InboundMessage(modality="voice", audio_bytes=...)` |
+| Adapter | `adapters/discord_audio.py:57-107` | `normalize_audio() → InboundAudio` | Same |
+| Adapter | `adapters/telegram_inbound.py:178-182` | `push_to_hub_guarded(inbound_bus=_inbound_audio_bus, ...)` | Push to unified bus |
+| Adapter | `adapters/discord_audio.py:223-227` | Same as telegram_inbound | Same |
+| Adapter | `adapters/_shared.py:75` | `push_to_hub_guarded(msg: InboundMessage \| InboundAudio, ...)` | Narrow to `InboundMessage` |
+| Agents | `agents/anthropic_agent.py:169` | Checks `_audio is not None and _stt is None` | Remove check — pipeline guarantees transcription |
+| Agents | `agents/simple_agent.py:208-212` | Same `_stt is None` check | Same |
+| Agents | `core/agent.py` | Uses `InboundAudio` type hint | Update |
+| Pool | `core/pool/pool_processor.py` | References `InboundAudio` | Update |
+
+**Total: 19 files.** Of these, ~12 are mechanical type-reference updates; ~7 require behavioral migration (bootstrap, adapter normalize, pipeline stage).
+
+### Pipeline stage ordering
+
+Current `MessagePipeline.process()` at `core/hub/message_pipeline.py:74-180`:
+
+```
+0. _validate_platform()      → drop if unknown
+1. _check_rate_limit()       → Response(rate_limited) or continue
+2. _resolve_binding()        → Binding or drop
+3. _lookup_agent()           → Agent or drop
+4. get_or_create_pool()      → Pool
+5. _prepare() / is_command() → command rewrite
+6. dispatch (command vs pool)
+```
+
+Trust resolution runs **outside** the pipeline via `ResolveTrustMiddleware` before `MessagePipeline.process()` is called (per `core/CLAUDE.md`). The STT stage sits best **between stages 1 and 2** — after rate-limit (so audio is rate-limited equivalently to text) but before binding lookup (so the transcript flows through normal routing).
+
+### NATS schema version semantics
+
+From `nats/_version_check.py:38-92` and `nats/_serialize.py:54-123`:
+
+- Deserializer is **lenient** — unknown fields in JSON are ignored; missing fields fall back to defaults.
+- Envelope version check: **payload version > expected → drop + rate-limited ERROR log**. Payload version ≤ expected → accept.
+- Current: `SCHEMA_VERSION_INBOUND_MESSAGE = 1`, `SCHEMA_VERSION_INBOUND_AUDIO = 1`.
+- **Critical consequence**: adding optional audio fields to `InboundMessage` at `schema_version=1` is **backward-compatible**. A v1 subscriber receiving a v1 payload with extra `audio_bytes` field will ignore the unknown field. ✓
+- **Bumping to v2 would break old subscribers** — they'd drop everything. Avoid.
+
+### STT-free deployment path (must preserve)
+
+- `audio_pipeline.py:183-191` checks `if self._hub._stt is None` → dispatches `stt_unsupported` reply via `_dispatch_audio_reply()`, drops audio.
+- `anthropic_agent.py:169` and `simple_agent.py:208-212` have redundant agent-level fallbacks.
+- Post-refactor: pipeline STT stage checks `hub._stt is None` first → dispatches `stt_unsupported` → drops. Agent-level checks become dead code and are removed.

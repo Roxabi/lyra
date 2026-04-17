@@ -7,14 +7,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable
+    from collections.abc import AsyncIterator
 
-    from lyra.stt import STTService
-    from lyra.tts import TTSService
+    from lyra.infrastructure.stores.agent_store import AgentStore
+    from lyra.stt import STTProtocol
+    from lyra.tts import TtsProtocol
 
     from .memory import MemoryManager
     from .render_events import RenderEvent
-    from .stores.agent_store import AgentStore
 
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent  # noqa: F401 — Agent re-exported
@@ -50,8 +50,8 @@ class AgentBase(ABC, SessionManager):
         plugins_dir: Path | None = None,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        stt: "STTService | None" = None,
-        tts: "TTSService | None" = None,
+        stt: "STTProtocol | None" = None,
+        tts: "TtsProtocol | None" = None,
         smart_routing_decorator: Any | None = None,
         compact_context_tokens: int = MODEL_CONTEXT_TOKENS,
         instance_overrides: dict | None = None,
@@ -252,6 +252,4 @@ class AgentBase(ABC, SessionManager):
         self,
         msg: InboundMessage,
         pool: Pool,
-        *,
-        on_intermediate: "Callable[[str], Awaitable[None]] | None" = None,
     ) -> "Response | AsyncIterator[RenderEvent]": ...

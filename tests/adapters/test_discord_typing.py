@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.adapters.discord import _ALLOW_ALL
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import OutboundMessage
 from lyra.core.render_events import TextRenderEvent
 
@@ -64,9 +64,11 @@ async def test_start_typing_creates_background_task() -> None:
 
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     mock_channel = AsyncMock()
     mock_channel.typing = AsyncMock()
@@ -89,9 +91,11 @@ async def test_cancel_typing_cancels_task() -> None:
 
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     mock_channel = AsyncMock()
     mock_channel.typing = AsyncMock()
@@ -111,9 +115,11 @@ async def test_send_cancels_typing_task_at_start() -> None:
     """send() calls _cancel_typing() before writing the response."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -143,9 +149,11 @@ async def test_send_streaming_cancels_typing_task_at_start() -> None:
     """send_streaming() calls _cancel_typing() before writing the response."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     mock_placeholder = AsyncMock()
@@ -192,12 +200,14 @@ async def test_on_message_does_not_cancel_typing_when_message_queued() -> None:
     """
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock()  # succeeds — no QueueFull
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()  # succeeds — no QueueFull
 
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=inbound_bus,
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -237,12 +247,14 @@ async def test_on_message_cancels_typing_when_message_dropped_queue_full() -> No
 
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock(side_effect=_asyncio.QueueFull())
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock(side_effect=_asyncio.QueueFull())
 
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=inbound_bus,
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -251,7 +263,7 @@ async def test_on_message_cancels_typing_when_message_dropped_queue_full() -> No
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     discord_msg = SimpleNamespace(
-        guild=SimpleNamespace(id=111),
+        guild=None,  # DM — ensures message reaches push_to_hub_guarded
         channel=SimpleNamespace(id=333, send=AsyncMock()),
         author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
         content="hello",

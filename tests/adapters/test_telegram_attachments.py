@@ -17,8 +17,11 @@ class TestTelegramAttachments:
     def _make_adapter(self):
         from lyra.adapters.telegram import TelegramAdapter
 
-        hub = MagicMock()
-        return TelegramAdapter(bot_id="main", token="test-token-secret", hub=hub)
+        return TelegramAdapter(
+            bot_id="main",
+            token="test-token-secret",
+            inbound_bus=MagicMock(),
+        )
 
     def _make_msg(  # noqa: PLR0913 — test factory with optional overrides
         self,

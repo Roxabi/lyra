@@ -25,10 +25,12 @@ import typer
 from lyra.cli_agent import agent_app  # noqa: F401 — re-exported for tests
 from lyra.cli_bot import bot_app
 from lyra.cli_setup import setup_app
+from lyra.cli_voice_smoke import voice_smoke_app
 
 # ---------------------------------------------------------------------------
 # Version
 # ---------------------------------------------------------------------------
+
 
 def _get_version() -> str:
     try:
@@ -54,6 +56,87 @@ lyra_app.add_typer(agent_app, name="agent")
 lyra_app.add_typer(config_app, name="config")
 lyra_app.add_typer(bot_app, name="bot")
 lyra_app.add_typer(setup_app, name="setup")
+lyra_app.add_typer(voice_smoke_app, name="voice-smoke")
+
+hub_app = typer.Typer(name="hub", help="Run standalone Hub process (requires NATS).")
+lyra_app.add_typer(hub_app, name="hub")
+
+adapter_app = typer.Typer(
+    name="adapter",
+    help="Run standalone adapter process (requires NATS).",
+)
+lyra_app.add_typer(adapter_app, name="adapter")
+
+# ---------------------------------------------------------------------------
+# lyra hub
+# ---------------------------------------------------------------------------
+
+
+@hub_app.callback(invoke_without_command=True)
+def _hub_callback(ctx: typer.Context) -> None:
+    """Start the standalone Hub process connected to NATS."""
+    if ctx.invoked_subcommand is None:
+        _run_hub()
+
+
+def _boot(coro_factory) -> None:
+    """Load config, set up logging, and run an async bootstrap function.
+
+    Every ``lyra <subcommand>`` entry point delegates here so logging
+    is always configured before the event loop starts.
+    """
+    from lyra.__main__ import _setup_logging
+    from lyra.bootstrap.config import _load_logging_config, _load_raw_config
+
+    raw_config = _load_raw_config()
+    _setup_logging(_load_logging_config(raw_config))
+    asyncio.run(coro_factory(raw_config))
+
+
+def _run_hub() -> None:
+    from lyra.bootstrap.hub_standalone import _bootstrap_hub_standalone
+
+    _boot(_bootstrap_hub_standalone)
+
+
+# ---------------------------------------------------------------------------
+# lyra adapter
+# ---------------------------------------------------------------------------
+
+
+@adapter_app.command("telegram")
+def _adapter_telegram() -> None:
+    """Start the standalone Telegram adapter connected to NATS."""
+    _run_adapter("telegram")
+
+
+@adapter_app.command("discord")
+def _adapter_discord() -> None:
+    """Start the standalone Discord adapter connected to NATS."""
+    _run_adapter("discord")
+
+
+@adapter_app.command("stt")
+def _adapter_stt() -> None:
+    """Start the standalone STT adapter connected to NATS."""
+    from lyra.bootstrap.stt_adapter_standalone import _bootstrap_stt_adapter_standalone
+
+    _boot(_bootstrap_stt_adapter_standalone)
+
+
+@adapter_app.command("tts")
+def _adapter_tts() -> None:
+    """Start the standalone TTS adapter connected to NATS."""
+    from lyra.bootstrap.tts_adapter_standalone import _bootstrap_tts_adapter_standalone
+
+    _boot(_bootstrap_tts_adapter_standalone)
+
+
+def _run_adapter(platform: str) -> None:
+    from lyra.bootstrap.adapter_standalone import _bootstrap_adapter_standalone
+
+    _boot(lambda raw: _bootstrap_adapter_standalone(raw, platform))
+
 
 # ---------------------------------------------------------------------------
 # lyra (root)
@@ -98,9 +181,9 @@ def start() -> None:
 
 
 def _run_server() -> None:
-    from lyra.__main__ import _main  # local import — avoids heavy deps at import time
+    from lyra.bootstrap.unified import _bootstrap_unified
 
-    asyncio.run(_main())
+    _boot(_bootstrap_unified)
 
 
 # ---------------------------------------------------------------------------

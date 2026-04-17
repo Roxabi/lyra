@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
-from lyra.core.auth import AuthMiddleware
+from lyra.core.authenticator import Authenticator as AuthMiddleware
 from lyra.core.message import Platform
 from tests.conftest import patch_all
 

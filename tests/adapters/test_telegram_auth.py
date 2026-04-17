@@ -1,19 +1,21 @@
-"""Tests for TelegramAdapter auth gate and HTTP auth/status endpoints.
+"""Tests for Telegram adapter inbound path and Hub-side auth gate (C3).
 
-Covers: TestTelegramAuth (S4 auth gate), T2 (missing secret → 401),
-T9 (missing env var → SystemExit), SC-14 (GET /status returns all circuits).
+After C3 (trust re-resolution #456), adapters forward all messages with
+trust_level=PUBLIC to the bus; the Hub resolves trust and TrustGuardMiddleware
+drops BLOCKED users. These tests verify the adapter-side half of that contract.
+
+Covers: T2 (missing secret → 401), T9 (missing env var → SystemExit),
+SC-14 (GET /status returns all circuits), C3 (adapter forwards with PUBLIC trust).
 """
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.telegram import _ALLOW_ALL
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.trust import TrustLevel
 
@@ -45,11 +47,12 @@ async def test_missing_secret_returns_401() -> None:
     """POST /webhooks/telegram/main without X-Telegram-Bot-Api-Secret-Token → 401."""
     import httpx
 
-    from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
+    from lyra.adapters.telegram import TelegramAdapter
 
-    hub = MagicMock()
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+        bot_id="main",
+        token="test-token-secret",
+        inbound_bus=MagicMock(),
     )
 
     async with httpx.AsyncClient(
@@ -71,7 +74,7 @@ def test_missing_token_raises_on_load(monkeypatch: pytest.MonkeyPatch) -> None:
     """load_config() raises SystemExit with 'TELEGRAM_TOKEN' when env var is absent."""
     monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
 
-    from lyra.config import load_config  # ImportError expected in RED
+    from lyra.config import load_config
 
     with pytest.raises(SystemExit, match="TELEGRAM_TOKEN"):
         load_config()
@@ -89,24 +92,20 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
 
     from lyra.adapters.telegram import TelegramAdapter
 
-    # Arrange — registry with all 4 circuits
     registry = CircuitRegistry()
     for name in ("anthropic", "telegram", "discord", "hub"):
         registry.register(
             CircuitBreaker(name, failure_threshold=3, recovery_timeout=60)
         )
 
-    hub = MagicMock()
     adapter = TelegramAdapter(
         bot_id="main",
         token="test-token-secret",
-        hub=hub,
+        inbound_bus=MagicMock(),
         webhook_secret="secret",
         circuit_registry=registry,
-        auth=_ALLOW_ALL,
     )
 
-    # Act
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=adapter.app)
     ) as client:
@@ -115,7 +114,6 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
             headers={"X-Telegram-Bot-Api-Secret-Token": "secret"},
         )
 
-    # Assert
     assert response.status_code == 200
     data = response.json()
     assert "services" in data
@@ -126,178 +124,107 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Slice S4: TelegramAdapter auth gate tests
+# C3: Adapter always forwards with PUBLIC trust — Hub resolves trust
 # ---------------------------------------------------------------------------
 
 
-class TestTelegramAuth:
-    """Auth gate tests for TelegramAdapter._on_message and _on_voice_message."""
+class TestTelegramAdapterInbound:
+    """C3 contract: adapter forwards all non-bot messages with raw PUBLIC trust."""
 
     @pytest.mark.asyncio
-    async def test_blocked_user_skips_normalize(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """BLOCKED user: _on_message returns early without calling normalize()."""
-        from unittest.mock import patch
-
+    async def test_any_user_forwarded_with_public_trust(self) -> None:
+        """All users reach the bus with trust_level=PUBLIC (Hub resolves trust)."""
         from lyra.adapters.telegram import TelegramAdapter
-        from lyra.core.auth import AuthMiddleware
-        from lyra.core.identity import Identity
 
-        auth = MagicMock(spec=AuthMiddleware)
-        auth.check.return_value = TrustLevel.BLOCKED
-        auth.resolve.return_value = Identity(
-            user_id="tg:user:42",
-            trust_level=TrustLevel.BLOCKED,
-            is_admin=False,
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
+        adapter = TelegramAdapter(
+            bot_id="main",
+            token="tok",
+            inbound_bus=inbound_bus,
         )
-
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
-
-        with caplog.at_level(logging.INFO, logger="lyra.adapters.telegram"):
-            with patch.object(adapter, "normalize") as mock_norm:
-                await adapter._on_message(_make_aiogram_msg())
-
-        mock_norm.assert_not_called()
-        hub.inbound_bus.put.assert_not_called()
-        assert any("auth_reject" in r.message for r in caplog.records)
-
-    @pytest.mark.asyncio
-    async def test_allowed_user_has_trust_level(self) -> None:
-        """TRUSTED user: message produced with correct trust_level."""
-        from lyra.adapters.telegram import TelegramAdapter
-        from lyra.core.auth import AuthMiddleware
-        from lyra.core.identity import Identity
-
-        auth = MagicMock(spec=AuthMiddleware)
-        auth.check.return_value = TrustLevel.TRUSTED
-        auth.resolve.return_value = Identity(
-            user_id="tg:user:42",
-            trust_level=TrustLevel.TRUSTED,
-            is_admin=False,
-        )
-
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
-        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
         adapter.bot = AsyncMock()
 
         await adapter._on_message(_make_aiogram_msg())
 
-        hub.inbound_bus.put.assert_called_once()
-        _platform, msg = hub.inbound_bus.put.call_args[0]
-        assert msg.trust_level == TrustLevel.TRUSTED
-        assert msg.is_admin is False
-
-    @pytest.mark.asyncio
-    async def test_admin_user_has_is_admin_set(self) -> None:
-        """Admin user: message produced with is_admin=True."""
-        from lyra.adapters.telegram import TelegramAdapter
-        from lyra.core.auth import AuthMiddleware
-        from lyra.core.identity import Identity
-
-        auth = MagicMock(spec=AuthMiddleware)
-        auth.resolve.return_value = Identity(
-            user_id="tg:user:42",
-            trust_level=TrustLevel.TRUSTED,
-            is_admin=True,
-        )
-
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
-        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
-        adapter.bot = AsyncMock()
-
-        await adapter._on_message(_make_aiogram_msg())
-
-        hub.inbound_bus.put.assert_called_once()
-        _platform, msg = hub.inbound_bus.put.call_args[0]
-        assert msg.is_admin is True
-
-    @pytest.mark.asyncio
-    async def test_voice_blocked_skips_normalize(self) -> None:
-        """BLOCKED user on voice: _on_voice_message returns early without sending."""
-        from unittest.mock import patch
-
-        from lyra.adapters.telegram import TelegramAdapter
-        from lyra.core.auth import AuthMiddleware
-        from lyra.core.identity import Identity
-
-        auth = MagicMock(spec=AuthMiddleware)
-        auth.check.return_value = TrustLevel.BLOCKED
-        auth.resolve.return_value = Identity(
-            user_id="tg:user:42",
-            trust_level=TrustLevel.BLOCKED,
-            is_admin=False,
-        )
-
-        hub = MagicMock()
-        bot = AsyncMock()
-        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
-        adapter.bot = bot
-
-        voice_msg = _make_aiogram_msg()
-        with patch.object(adapter, "normalize_audio") as mock_norm_audio:
-            await adapter._on_voice_message(voice_msg)
-
-        # bot.send_message should NOT have been called (blocked before handling)
-        bot.send_message.assert_not_called()
-        mock_norm_audio.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_public_user_message_forwarded(self) -> None:
-        """PUBLIC user: message reaches bus with trust_level=TrustLevel.PUBLIC."""
-        from lyra.adapters.telegram import TelegramAdapter
-        from lyra.core.auth import AuthMiddleware
-        from lyra.core.identity import Identity
-
-        auth = MagicMock(spec=AuthMiddleware)
-        auth.check.return_value = TrustLevel.PUBLIC
-        auth.resolve.return_value = Identity(
-            user_id="tg:user:42",
-            trust_level=TrustLevel.PUBLIC,
-            is_admin=False,
-        )
-
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put = MagicMock()
-        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
-        adapter.bot = AsyncMock()
-
-        await adapter._on_message(_make_aiogram_msg())
-
-        hub.inbound_bus.put.assert_called_once()
-        _platform, msg = hub.inbound_bus.put.call_args[0]
+        inbound_bus.put.assert_awaited_once()
+        _platform, msg = inbound_bus.put.call_args[0]
         assert msg.trust_level == TrustLevel.PUBLIC
         assert msg.is_admin is False
 
     @pytest.mark.asyncio
-    async def test_integration_blocked_user_rejected_by_real_guard(self) -> None:
-        """Integration: real Authenticator + real GuardChain rejects BLOCKED user."""
+    async def test_bot_message_still_dropped_early(self) -> None:
+        """Bot-authored messages are filtered before reaching the bus."""
         from unittest.mock import patch
 
         from lyra.adapters.telegram import TelegramAdapter
-        from lyra.core.authenticator import Authenticator
-        from lyra.core.guard import BlockedGuard, GuardChain
 
-        store = MagicMock()
-        store.check.return_value = TrustLevel.BLOCKED
-        auth = Authenticator(store=store, role_map={}, default=TrustLevel.BLOCKED)
-        guard_chain = GuardChain([BlockedGuard()])
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
+        adapter = TelegramAdapter(
+            bot_id="main",
+            token="tok",
+            inbound_bus=inbound_bus,
+        )
 
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=auth)
-        # Inject real guard chain
-        adapter._guard_chain = guard_chain
+        bot_msg = SimpleNamespace(
+            chat=SimpleNamespace(id=123, type="private"),
+            from_user=SimpleNamespace(id=99, full_name="Bot", is_bot=True),
+            text="I'm a bot",
+            date=datetime.now(timezone.utc),
+            message_thread_id=None,
+            message_id=2,
+            entities=None,
+        )
 
         with patch.object(adapter, "normalize") as mock_norm:
-            await adapter._on_message(_make_aiogram_msg())
+            await adapter._on_message(bot_msg)
 
         mock_norm.assert_not_called()
-        hub.inbound_bus.put.assert_not_called()
+        inbound_bus.put.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_voice_message_forwarded_with_public_trust(self) -> None:
+        """Voice messages reach the bus with trust_level=PUBLIC."""
+        from unittest.mock import patch
+
+        from lyra.adapters.telegram import TelegramAdapter
+
+        adapter = TelegramAdapter(
+            bot_id="main",
+            token="tok",
+            inbound_bus=MagicMock(),
+        )
+        adapter.bot = AsyncMock()
+
+        voice_msg = SimpleNamespace(
+            chat=SimpleNamespace(id=123, type="private"),
+            from_user=SimpleNamespace(id=42, full_name="Alice", is_bot=False),
+            text=None,
+            date=datetime.now(timezone.utc),
+            message_thread_id=None,
+            message_id=3,
+            voice=SimpleNamespace(file_id="f123", duration=5),
+            audio=None,
+            video_note=None,
+            entities=None,
+        )
+
+        _fake_audio = MagicMock(read_bytes=lambda: b"audio", unlink=MagicMock())
+        _fake_dl = AsyncMock(return_value=(_fake_audio, 5.0))
+        with patch("lyra.adapters.telegram_inbound._download_audio", new=_fake_dl):
+            with patch(  # noqa: E501
+                "lyra.adapters.telegram_inbound.normalize_audio"
+            ) as mock_norm_audio:
+                mock_norm_audio.return_value = MagicMock()
+                _fake_push = AsyncMock()
+                with patch(
+                    "lyra.adapters.telegram_inbound.push_to_hub_guarded",
+                    new=_fake_push,
+                ):
+                    await adapter._on_voice_message(voice_msg)
+
+        # normalize_audio called with PUBLIC trust
+        mock_norm_audio.assert_called_once()
+        call_kwargs = mock_norm_audio.call_args
+        assert call_kwargs.kwargs.get("trust_level") == TrustLevel.PUBLIC

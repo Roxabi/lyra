@@ -109,21 +109,21 @@ The `TurnStore` (`src/lyra/core/turn_store.py`) persists every user and assistan
 
 ---
 
-## Monitoring Events
+## Pipeline Telemetry Events
 
-Typed event dataclasses are defined in `src/lyra/core/events.py`. These are used by the monitoring module for health diagnostics.
+Typed telemetry events are emitted at middleware seam boundaries for observability (#432). These are defined in `src/lyra/core/hub/pipeline_events.py` and fanned out via `PipelineEventBus` (`src/lyra/core/hub/event_bus.py`).
 
-> **Note:** The `EventBus` pub/sub mechanism (formerly in `event_bus.py`) was removed during the architecture refactoring. The event dataclasses remain as structured types for the monitoring system.
+> **Note:** The original `events.py` (AgentStarted, AgentCompleted, etc.) was deleted in `6cd433c` — these types were never wired into the codebase. The current pipeline event system replaced them for middleware telemetry.
 
-| Event | Fields |
-|-------|--------|
-| `AgentStarted` | `agent_id`, `pool_id`, `scope_id` |
-| `AgentCompleted` | `agent_id`, `pool_id`, `duration_ms` |
-| `AgentFailed` | `agent_id`, `pool_id`, `error` |
-| `AgentIdle` | `agent_id`, `pool_id`, `finished_at` |
-| `CircuitStateChanged` | `platform`, `old_state`, `new_state` |
-| `QueueDepthExceeded` | `queue_name`, `depth`, `threshold` |
-| `QueueDepthNormal` | `queue_name`, `depth` |
+| Event | Fields | Purpose |
+|-------|--------|---------|
+| `MessageReceived` | `msg_id`, `platform`, `user_id`, `scope_id` | Inbound message enters pipeline |
+| `StageCompleted` | `msg_id`, `stage`, `duration_ms` | Middleware stage finished |
+| `MessageDropped` | `msg_id`, `stage`, `reason` | Pipeline short-circuited with DROP |
+| `CommandDispatched` | `msg_id`, `command` | CommandMiddleware dispatched a command |
+| `PoolSubmitted` | `msg_id`, `pool_id`, `agent_name`, `resume_status` | Message submitted to pool |
+
+The `PipelineEventBus` is injected via constructor (DI, not singleton) per ADR-025. Subscribers receive events via per-subscriber `asyncio.Queue` instances — the pipeline is never blocked by a slow consumer. `audit_consumer.py` is the first consumer, draining events for audit logging.
 
 ---
 
@@ -141,7 +141,8 @@ Config keys (in `config.toml` under `[monitoring]`):
 | `check_interval_minutes` | 5 | How often checks run |
 | `health_endpoint_timeout_s` | 5 | HTTP timeout for `/health` |
 | `queue_depth_threshold` | 80 | Alert threshold |
-| `idle_threshold_hours` | 6 | Flag pools idle longer than this |
+| `idle_check_enabled` | `false` | Enable the idle check (opt-in; check is skipped when `false`) |
+| `idle_threshold_hours` | 6 | Flag pools idle longer than this (only used when `idle_check_enabled = true`) |
 | `quiet_start` / `quiet_end` | `00:00` / `08:00` | Suppress alerts during quiet hours |
 
 ---

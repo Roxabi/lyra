@@ -17,7 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+from lyra.adapters.telegram import TelegramAdapter
+from lyra.core.authenticator import _ALLOW_ALL
 
 
 def _make_voice_msg(  # noqa: PLR0913 — test factory with optional overrides
@@ -28,8 +29,14 @@ def _make_voice_msg(  # noqa: PLR0913 — test factory with optional overrides
     chat_type: str = "private",
     topic_id: int | None = None,
     message_id: int | None = 55,
+    reply_to_message_id: int | None = None,
 ) -> SimpleNamespace:
     """Build a minimal aiogram-like voice message stub."""
+    reply_to_message = (
+        SimpleNamespace(message_id=reply_to_message_id)
+        if reply_to_message_id is not None
+        else None
+    )
     return SimpleNamespace(
         chat=SimpleNamespace(id=chat_id, type=chat_type),
         from_user=SimpleNamespace(id=user_id, full_name="Alice", is_bot=False),
@@ -38,20 +45,26 @@ def _make_voice_msg(  # noqa: PLR0913 — test factory with optional overrides
         date=datetime.now(timezone.utc),
         message_thread_id=topic_id,
         message_id=message_id,
+        reply_to_message=reply_to_message,
     )
 
 
 def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_audio_bus = MagicMock()
-    hub.inbound_audio_bus.put = MagicMock()
-    adapter = TelegramAdapter(bot_id="main", token="tok", hub=hub, auth=_ALLOW_ALL)
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
+    buses = MagicMock()
+    buses.inbound_bus = inbound_bus
+    adapter = TelegramAdapter(
+        bot_id="main",
+        token="tok",
+        inbound_bus=inbound_bus,
+        auth=_ALLOW_ALL,
+    )
     bot_mock = AsyncMock()
     bot_mock.send_chat_action = AsyncMock()
     bot_mock.send_message = AsyncMock()
     adapter.bot = bot_mock
-    return adapter, hub
+    return adapter, buses
 
 
 # ---------------------------------------------------------------------------
@@ -61,8 +74,8 @@ def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
 
 @pytest.mark.asyncio
 async def test_voice_message_enqueues_on_audio_bus(tmp_path: Path) -> None:
-    """Voice message → downloads audio and enqueues on inbound_audio_bus."""
-    adapter, hub = _make_adapter()
+    """Voice message → downloads audio and enqueues on inbound_bus."""
+    adapter, buses = _make_adapter()
 
     # Create a temp file to simulate download
     audio_file = tmp_path / "voice.ogg"
@@ -75,9 +88,8 @@ async def test_voice_message_enqueues_on_audio_bus(tmp_path: Path) -> None:
     ):
         await adapter._on_voice_message(_make_voice_msg())
 
-    # Enqueued on audio bus (not text bus)
-    hub.inbound_audio_bus.put.assert_called_once()
-    hub.inbound_bus.put.assert_not_called()
+    # Enqueued on unified inbound bus
+    buses.inbound_bus.put.assert_called_once()
     # No unsupported reply sent
     adapter.bot.send_message.assert_not_called()
 
@@ -90,14 +102,13 @@ async def test_voice_message_enqueues_on_audio_bus(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_voice_from_bot_is_ignored() -> None:
     """Voice messages from other bots are silently dropped."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
     msg = _make_voice_msg()
     msg.from_user = SimpleNamespace(id=99, full_name="BotUser", is_bot=True)
 
     await adapter._on_voice_message(msg)
 
-    hub.inbound_bus.put.assert_not_called()
-    hub.inbound_audio_bus.put.assert_not_called()
+    buses.inbound_bus.put.assert_not_called()
     adapter.bot.send_message.assert_not_called()
 
 
@@ -109,34 +120,34 @@ async def test_voice_from_bot_is_ignored() -> None:
 @pytest.mark.asyncio
 async def test_voice_message_no_voice_object_returns_early() -> None:
     """Message with voice=None, audio=None, video_note=None → early return."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
     msg = _make_voice_msg()
     msg.voice = None
     msg.audio = None
 
     await adapter._on_voice_message(msg)
 
-    hub.inbound_audio_bus.put.assert_not_called()
+    buses.inbound_bus.put.assert_not_called()
     adapter.bot.send_message.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_voice_message_no_file_id_returns_early() -> None:
     """Voice object with file_id=None → early return."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
     msg = _make_voice_msg()
     msg.voice = SimpleNamespace(file_id=None, duration=3)
 
     await adapter._on_voice_message(msg)
 
-    hub.inbound_audio_bus.put.assert_not_called()
+    buses.inbound_bus.put.assert_not_called()
     adapter.bot.send_message.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_voice_message_too_large_sends_reply() -> None:
     """_download_audio raises ValueError → user gets 'too large' reply."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
 
     with patch(
         "lyra.adapters.telegram_inbound._download_audio",
@@ -145,7 +156,7 @@ async def test_voice_message_too_large_sends_reply() -> None:
     ):
         await adapter._on_voice_message(_make_voice_msg())
 
-    hub.inbound_audio_bus.put.assert_not_called()
+    buses.inbound_bus.put.assert_not_called()
     adapter.bot.send_message.assert_called_once()
 
 
@@ -184,7 +195,7 @@ async def test_voice_too_large_no_reply_when_no_message_id() -> None:
 @pytest.mark.asyncio
 async def test_voice_message_download_error_returns_silently() -> None:
     """_download_audio raises generic exception → log + return, no enqueue."""
-    adapter, hub = _make_adapter()
+    adapter, buses = _make_adapter()
 
     with patch(
         "lyra.adapters.telegram_inbound._download_audio",
@@ -193,7 +204,7 @@ async def test_voice_message_download_error_returns_silently() -> None:
     ):
         await adapter._on_voice_message(_make_voice_msg())
 
-    hub.inbound_audio_bus.put.assert_not_called()
+    buses.inbound_bus.put.assert_not_called()
     adapter.bot.send_message.assert_not_called()
 
 
@@ -203,50 +214,58 @@ async def test_voice_message_download_error_returns_silently() -> None:
 
 
 def test_normalize_audio_voice_fields() -> None:
-    """normalize_audio returns InboundAudio with correct fields for a voice message."""
-    from lyra.core.message import InboundAudio
+    """normalize_audio returns InboundMessage(modality='voice') with correct fields."""
+    from lyra.core.audio_payload import AudioPayload
+    from lyra.core.message import InboundMessage
+    from lyra.core.trust import TrustLevel
 
     adapter, _ = _make_adapter()
     msg = _make_voice_msg(file_id="F1", duration=3, chat_id=42, user_id=7)
-    from lyra.core.trust import TrustLevel
 
     result = adapter.normalize_audio(
         msg, b"data", "audio/ogg", trust_level=TrustLevel.TRUSTED
     )
-    assert isinstance(result, InboundAudio)
+    assert isinstance(result, InboundMessage)
+    assert result.modality == "voice"
     assert result.id.startswith("telegram:tg:user:7:")
     assert result.scope_id == "chat:42"
-    assert result.mime_type == "audio/ogg"
-    assert result.duration_ms == 3000
-    assert result.file_id == "F1"
     assert result.user_id == "tg:user:7"
     assert result.platform == "telegram"
     assert result.bot_id == "main"
-    assert result.audio_bytes == b"data"
-    assert result.trust == "user"
+    assert result.trust_level == TrustLevel.TRUSTED
+    assert isinstance(result.audio, AudioPayload)
+    assert result.audio.mime_type == "audio/ogg"
+    assert result.audio.duration_ms == 3000
+    assert result.audio.file_id == "F1"
+    assert result.audio.audio_bytes == b"data"
 
 
 def test_normalize_audio_audio_file_fields() -> None:
     """normalize_audio reads mime_type and duration from msg.audio when voice is None."""  # noqa: E501
-    from lyra.core.message import InboundAudio
+    from lyra.core.audio_payload import AudioPayload
+    from lyra.core.message import InboundMessage
+    from lyra.core.trust import TrustLevel
 
     adapter, _ = _make_adapter()
     msg = _make_voice_msg(file_id="AF1", duration=5, chat_id=99, user_id=8)
     msg.voice = None
     msg.audio = SimpleNamespace(file_id="AF1", duration=5, mime_type="audio/mpeg")
-    from lyra.core.trust import TrustLevel
 
     result = adapter.normalize_audio(
         msg, b"bytes", "audio/mpeg", trust_level=TrustLevel.TRUSTED
     )
-    assert isinstance(result, InboundAudio)
-    assert result.mime_type == "audio/mpeg"
-    assert result.duration_ms == 5000
-    assert result.file_id == "AF1"
+    assert isinstance(result, InboundMessage)
+    assert result.modality == "voice"
+    assert result.trust_level == TrustLevel.TRUSTED
+    assert isinstance(result.audio, AudioPayload)
+    assert result.audio.mime_type == "audio/mpeg"
+    assert result.audio.duration_ms == 5000
+    assert result.audio.file_id == "AF1"
 
 
 def test_normalize_audio_private_chat_scope_id() -> None:
     """Private chat → scope_id='chat:<id>'."""
+    from lyra.core.message import InboundMessage
     from lyra.core.trust import TrustLevel
 
     adapter, _ = _make_adapter()
@@ -254,11 +273,13 @@ def test_normalize_audio_private_chat_scope_id() -> None:
     result = adapter.normalize_audio(
         msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
     )
+    assert isinstance(result, InboundMessage)
     assert result.scope_id == "chat:42"
 
 
-def test_normalize_audio_group_chat_user_scoped_scope_id() -> None:
-    """Group chat (no topic) → scope_id includes user suffix (#356)."""
+def test_normalize_audio_group_chat_shared_scope_id() -> None:
+    """Group chat (no topic) → scope_id shared (no user suffix, #592)."""
+    from lyra.core.message import InboundMessage
     from lyra.core.trust import TrustLevel
 
     adapter, _ = _make_adapter()
@@ -266,11 +287,13 @@ def test_normalize_audio_group_chat_user_scoped_scope_id() -> None:
     result = adapter.normalize_audio(
         msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
     )
-    assert result.scope_id == "chat:42:user:tg:user:7"
+    assert isinstance(result, InboundMessage)
+    assert result.scope_id == "chat:42"  # groups share pool (#592)
 
 
 def test_normalize_audio_topic_chat_scope_id() -> None:
-    """Topic chat → scope_id includes topic AND user suffix (#356)."""
+    """Topic chat → scope_id includes topic (no user suffix, #592)."""
+    from lyra.core.message import InboundMessage
     from lyra.core.trust import TrustLevel
 
     adapter, _ = _make_adapter()
@@ -278,7 +301,8 @@ def test_normalize_audio_topic_chat_scope_id() -> None:
     result = adapter.normalize_audio(
         msg, b"x", "audio/ogg", trust_level=TrustLevel.TRUSTED
     )
-    assert result.scope_id == "chat:42:topic:7:user:tg:user:99"
+    assert isinstance(result, InboundMessage)
+    assert result.scope_id == "chat:42:topic:7"  # topics share pool (#592)
 
 
 # ---------------------------------------------------------------------------
@@ -288,17 +312,53 @@ def test_normalize_audio_topic_chat_scope_id() -> None:
 
 def test_normalize_audio_video_note_fields() -> None:
     """video_note messages produce correct mime_type and fields."""
+    from lyra.core.audio_payload import AudioPayload
+    from lyra.core.message import InboundMessage
+    from lyra.core.trust import TrustLevel
+
     adapter, _ = _make_adapter()
     msg = _make_voice_msg()
     msg.voice = None
     msg.audio = None
     msg.video_note = SimpleNamespace(file_id="VN123", duration=5)
 
-    from lyra.core.trust import TrustLevel
-
     result = adapter.normalize_audio(
         msg, b"vid", "video/mp4", trust_level=TrustLevel.TRUSTED
     )
-    assert result.mime_type == "video/mp4"
-    assert result.duration_ms == 5000
-    assert result.file_id == "VN123"
+    assert isinstance(result, InboundMessage)
+    assert result.modality == "voice"
+    assert isinstance(result.audio, AudioPayload)
+    assert result.audio.mime_type == "video/mp4"
+    assert result.audio.duration_ms == 5000
+    assert result.audio.file_id == "VN123"
+    assert result.trust_level == TrustLevel.TRUSTED
+
+
+def test_normalize_audio_reply_to_id() -> None:
+    """Voice message replying to another message carries reply_to_id (#341)."""
+    from lyra.core.message import InboundMessage
+    from lyra.core.trust import TrustLevel
+
+    adapter, _ = _make_adapter()
+    msg = _make_voice_msg(reply_to_message_id=99)
+
+    result = adapter.normalize_audio(
+        msg, b"data", "audio/ogg", trust_level=TrustLevel.TRUSTED
+    )
+    assert isinstance(result, InboundMessage)
+    assert result.reply_to_id == "99"
+
+
+def test_normalize_audio_no_reply_has_no_reply_to_id() -> None:
+    """Voice message not replying to anything → reply_to_id is None."""
+    from lyra.core.message import InboundMessage
+    from lyra.core.trust import TrustLevel
+
+    adapter, _ = _make_adapter()
+    msg = _make_voice_msg()  # reply_to_message_id defaults to None
+
+    result = adapter.normalize_audio(
+        msg, b"data", "audio/ogg", trust_level=TrustLevel.TRUSTED
+    )
+    assert isinstance(result, InboundMessage)
+    assert result.reply_to_id is None

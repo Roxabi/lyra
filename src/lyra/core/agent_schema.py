@@ -9,7 +9,6 @@ __all__ = [
     "_CREATE_AGENT_RUNTIME_STATE",
     "_SELECT_AGENTS",
     "_UPSERT_AGENT",
-    "_REBUILD_346_DROP_OLD_COLUMNS",
 ]
 
 _CREATE_AGENTS = """
@@ -43,14 +42,9 @@ CREATE TABLE IF NOT EXISTS agents (
 
 # Additive migrations — ALTER TABLE ADD COLUMN is idempotent (OperationalError caught).
 _MIGRATE_AGENTS = [
-    # Legacy columns kept for the table-rebuild migration path: if upgrading from
-    # a pre-#346 DB, these ensure the old columns exist before _REBUILD_346 copies data.
-    "ALTER TABLE agents ADD COLUMN tts_json TEXT",
-    "ALTER TABLE agents ADD COLUMN stt_json TEXT",
     "ALTER TABLE agents ADD COLUMN skip_permissions INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE agents ADD COLUMN permissions_json TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE agents ADD COLUMN workspaces_json TEXT",
-    "ALTER TABLE agents ADD COLUMN i18n_language TEXT NOT NULL DEFAULT 'en'",
     "ALTER TABLE agents ADD COLUMN commands_json TEXT",
     "ALTER TABLE agents ADD COLUMN streaming INTEGER NOT NULL DEFAULT 0",
     # #343 — DB-first agent config: inline persona, merge voice, fallback_language
@@ -87,7 +81,7 @@ CREATE TABLE IF NOT EXISTS agent_runtime_state (
 """
 
 # Column list shared by SELECT and INSERT to keep them in sync.
-# 24 columns after #346 cleanup (dropped: persona, tts_json, stt_json, i18n_language).
+# 24 columns after #346 cleanup (dropped: tts_json, stt_json, i18n_language).
 _AGENT_COLUMNS = (
     "name, backend, model, max_turns, tools_json, "
     "show_intermediate, smart_routing_json, plugins_json, "
@@ -128,79 +122,3 @@ _UPSERT_AGENT = (
     "source=excluded.source, "
     "updated_at=?"
 )
-
-
-# ---------------------------------------------------------------------------
-# #346 — Table rebuild: drop old columns (persona, tts_json, stt_json, i18n_language)
-# ---------------------------------------------------------------------------
-# Executed as a multi-step migration in AgentStore.connect().  The migration
-# first merges tts_json + stt_json → voice_json, then rebuilds the table
-# without the four deprecated columns.
-#
-# Detection: if column "persona" exists in pragma_table_info, rebuild is needed.
-# After rebuild, the column is gone and the check short-circuits on next startup.
-
-_REBUILD_346_DROP_OLD_COLUMNS = """
--- Step 1: merge tts_json + stt_json → voice_json (only if voice_json IS NULL)
-UPDATE agents SET voice_json = CASE
-    WHEN tts_json IS NOT NULL AND stt_json IS NOT NULL
-        THEN json_object('tts', json(tts_json), 'stt', json(stt_json))
-    WHEN tts_json IS NOT NULL
-        THEN json_object('tts', json(tts_json), 'stt', json('{}'))
-    WHEN stt_json IS NOT NULL
-        THEN json_object('tts', json('{}'), 'stt', json(stt_json))
-    ELSE NULL
-END
-WHERE voice_json IS NULL AND (tts_json IS NOT NULL OR stt_json IS NOT NULL);
-
--- Step 2: copy fallback_language from i18n_language where not yet set
-UPDATE agents SET fallback_language = i18n_language
-WHERE fallback_language = 'en' AND i18n_language != 'en';
-
--- Step 3: rebuild table without old columns (IF NOT EXISTS for crash recovery)
-CREATE TABLE IF NOT EXISTS agents_346 (
-    name TEXT PRIMARY KEY,
-    backend TEXT NOT NULL,
-    model TEXT NOT NULL,
-    max_turns INTEGER NOT NULL DEFAULT 10,
-    tools_json TEXT NOT NULL DEFAULT '[]',
-    show_intermediate INTEGER NOT NULL DEFAULT 0,
-    smart_routing_json TEXT,
-    plugins_json TEXT NOT NULL DEFAULT '[]',
-    memory_namespace TEXT,
-    cwd TEXT,
-    source TEXT NOT NULL DEFAULT 'db',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    skip_permissions INTEGER NOT NULL DEFAULT 0,
-    permissions_json TEXT NOT NULL DEFAULT '[]',
-    workspaces_json TEXT,
-    commands_json TEXT,
-    streaming INTEGER NOT NULL DEFAULT 0,
-    persona_json TEXT,
-    voice_json TEXT,
-    fallback_language TEXT NOT NULL DEFAULT 'en',
-    patterns_json TEXT,
-    passthroughs_json TEXT,
-    show_tool_recap INTEGER NOT NULL DEFAULT 1
-);
-
-INSERT OR IGNORE INTO agents_346 (
-    name, backend, model, max_turns, tools_json,
-    show_intermediate, smart_routing_json, plugins_json,
-    memory_namespace, cwd, source, created_at, updated_at,
-    skip_permissions, permissions_json, workspaces_json, commands_json, streaming,
-    persona_json, voice_json, fallback_language, patterns_json, passthroughs_json,
-    show_tool_recap
-) SELECT
-    name, backend, model, max_turns, tools_json,
-    show_intermediate, smart_routing_json, plugins_json,
-    memory_namespace, cwd, source, created_at, updated_at,
-    skip_permissions, permissions_json, workspaces_json, commands_json, streaming,
-    persona_json, voice_json, fallback_language, patterns_json, passthroughs_json,
-    show_tool_recap
-FROM agents;
-
-DROP TABLE agents;
-ALTER TABLE agents_346 RENAME TO agents;
-"""

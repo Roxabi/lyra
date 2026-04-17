@@ -9,9 +9,9 @@ import logging
 
 import pytest
 
-from lyra.core.auth import AuthMiddleware
-from lyra.core.stores.auth_store import AuthStore
+from lyra.core.authenticator import Authenticator as AuthMiddleware
 from lyra.core.trust import TrustLevel
+from lyra.infrastructure.stores.auth_store import AuthStore
 
 # ---------------------------------------------------------------------------
 # TestFromConfig
@@ -34,8 +34,8 @@ class TestFromConfig:
         await auth_store.seed_from_config(raw, "telegram")
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
         assert auth is not None
-        assert auth.check("owner1") == TrustLevel.OWNER
-        assert auth.check("trusted1") == TrustLevel.TRUSTED
+        assert auth.check("tg:user:owner1") == TrustLevel.OWNER
+        assert auth.check("tg:user:trusted1") == TrustLevel.TRUSTED
         assert auth.check("unknown") == TrustLevel.BLOCKED
         assert auth.check("unknown", roles=["admin"]) == TrustLevel.TRUSTED
 
@@ -64,14 +64,14 @@ class TestFromConfig:
         await auth_store.seed_from_config(raw, "telegram")
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
         assert auth is not None
-        assert auth.check("7377831990") == TrustLevel.OWNER
+        assert auth.check("tg:user:7377831990") == TrustLevel.OWNER
 
     async def test_trusted_users_get_trusted_level(self, auth_store: AuthStore) -> None:
         raw = {"auth": {"telegram": {"trusted_users": ["9999"], "default": "blocked"}}}
         await auth_store.seed_from_config(raw, "telegram")
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
         assert auth is not None
-        assert auth.check("9999") == TrustLevel.TRUSTED
+        assert auth.check("tg:user:9999") == TrustLevel.TRUSTED
 
     def test_trusted_roles_get_trusted_level(self) -> None:
         raw = {"auth": {"discord": {"trusted_roles": ["staff"], "default": "public"}}}
@@ -95,7 +95,7 @@ class TestFromConfig:
         await auth_store.seed_from_config(raw, "telegram")
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
         assert auth is not None
-        assert auth.check("42") == TrustLevel.OWNER
+        assert auth.check("tg:user:42") == TrustLevel.OWNER
 
     def test_empty_lists_allowed(self) -> None:
         raw = {

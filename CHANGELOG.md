@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Entries are generated automatically by `/promote` and committed to staging before the promotion PR.
 
+## [Unreleased]
+
+### Subpackage changes (see subpackage CHANGELOGs for detail)
+
+- `roxabi-nats` — `CONTRACT_VERSION` moved to `roxabi_contracts.envelope` (ADR-049); a compat re-export remains in `roxabi_nats.adapter_base` and the top-level `roxabi_nats` package with a `DeprecationWarning` and is scheduled for removal at `roxabi-nats/v0.3.0` (BREAKING CHANGE). See `packages/roxabi-nats/CHANGELOG.md`.
+
 ## [v0.1.0] - 2026-03-06
 
 ### Fixed

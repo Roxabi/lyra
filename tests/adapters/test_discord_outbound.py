@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.adapters.discord import _ALLOW_ALL
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import (
     Button,
     OutboundMessage,
@@ -25,9 +25,11 @@ def _make_discord_adapter():
     """Build a DiscordAdapter with a MagicMock hub."""
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
-    hub = MagicMock()
     return DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
 
@@ -43,12 +45,14 @@ async def test_own_message_is_filtered() -> None:
 
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock()
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
 
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=inbound_bus,
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -65,7 +69,7 @@ async def test_own_message_is_filtered() -> None:
 
     await adapter.on_message(discord_msg)
 
-    hub.inbound_bus.put.assert_not_called()
+    inbound_bus.put.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -78,9 +82,11 @@ async def test_send_reply_on_mention() -> None:
     """adapter.send() calls msg.reply(text) when is_mention=True."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -107,9 +113,11 @@ async def test_send_reply_on_no_mention() -> None:
     """send() still replies to the trigger message even when is_mention=False."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -136,9 +144,11 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
     """send() via msg.reply() stores sent message id in metadata."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     sent_msg = SimpleNamespace(id=888)
@@ -167,9 +177,11 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
     """send() via msg.reply() stores sent message id in outbound.metadata."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     sent_msg = SimpleNamespace(id=7777)
@@ -198,9 +210,11 @@ async def test_send_no_reply_message_id_on_failure() -> None:
     """send() must NOT set reply_message_id in metadata when the send call throws."""
     from lyra.adapters.discord import DiscordAdapter
 
-    hub = MagicMock()
     adapter = DiscordAdapter(
-        hub=hub, bot_id="main", intents=discord.Intents.none(), auth=_ALLOW_ALL
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -328,3 +342,89 @@ class TestDiscordOutboundMessage:
         await adapter.send(make_dc_inbound_msg(), outbound)
 
         assert outbound.metadata.get("reply_message_id") == 7654
+
+
+# ---------------------------------------------------------------------------
+# V5 RED tests — DiscordAdapter MRO and fallback path (#468)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_discord_mro_instantiation() -> None:
+    """DiscordAdapter(discord.Client, OutboundAdapterBase) can be instantiated."""
+    from unittest.mock import MagicMock
+
+    import discord
+
+    from lyra.adapters.discord import DiscordAdapter
+
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+    )
+    assert adapter is not None
+
+
+@pytest.mark.asyncio
+async def test_discord_fallback_sets_reply_message_id() -> None:
+    """When send_streaming fallback path is taken (placeholder fails),
+    outbound.metadata['reply_message_id'] is set from the fallback message."""
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock
+
+    import discord
+
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.authenticator import _ALLOW_ALL
+    from lyra.core.message import InboundMessage, OutboundMessage
+    from lyra.core.trust import TrustLevel
+
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        auth=_ALLOW_ALL,
+    )
+
+    # Use a message with no message_id so should_reply=False (avoids reply() path)
+    # Both placeholder and fallback go through channel.send()
+    original_msg = InboundMessage(
+        id="msg-fallback-test",
+        platform="discord",
+        bot_id="main",
+        scope_id="channel:333",
+        user_id="dc:user:42",
+        user_name="Alice",
+        is_mention=False,
+        text="hello",
+        text_raw="hello",
+        timestamp=datetime.now(timezone.utc),
+        trust_level=TrustLevel.TRUSTED,
+        platform_meta={
+            "guild_id": 111,
+            "channel_id": 333,
+            "message_id": None,  # no reply-to → should_reply=False
+            "thread_id": None,
+            "channel_type": "text",
+        },
+    )
+
+    sent_mock = MagicMock()
+    sent_mock.id = 88
+    mock_channel = AsyncMock()
+    # First call (send placeholder) raises; second call (fallback send) succeeds
+    mock_channel.send = AsyncMock(
+        side_effect=[Exception("placeholder failed"), sent_mock]
+    )  # noqa: E501
+    adapter._resolve_channel = AsyncMock(return_value=mock_channel)
+
+    outbound = OutboundMessage.from_text("")
+
+    async def _events():
+        from lyra.core.render_events import TextRenderEvent
+
+        yield TextRenderEvent(text="hello", is_final=True)
+
+    await adapter.send_streaming(original_msg, _events(), outbound=outbound)
+    assert outbound.metadata.get("reply_message_id") == 88

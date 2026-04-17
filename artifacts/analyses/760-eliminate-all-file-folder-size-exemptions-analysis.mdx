@@ -1,0 +1,208 @@
+---
+title: Eliminate all file/folder size exemptions
+description: Analysis of 10 file + 5 folder exemptions with domain-driven reorganization approach
+---
+
+## Source
+
+> "Remove all 10 file exemptions (≤300 lines) and 5 folder exemptions (≤12 files) to achieve zero exemptions and clean CI."
+> — Issue #760 body
+
+## Problem
+
+10 files exceed the 300-line limit and 5 folders exceed the 12-file limit, bypassing pre-commit hooks. This creates technical debt, reduces code navigability, and masks architectural issues where modules have grown beyond their intended scope.
+
+## Outcome
+
+All exemptions removed, `make lint` passes clean, CI enforces uniformly.
+- Test coverage ≥ current baseline (no regressions)
+- Public API unchanged (internal refactors only)
+- Module boundaries align with domain (discoverability improved)
+
+## Appetite
+
+~3 weeks (~20 days) — fixed time, variable scope.
+
+## Constraints
+
+- **No breaking changes:** All refactors must preserve public APIs
+- **Test coverage:** Must maintain or improve coverage; baseline required before extraction
+- **Sequential dependencies:** Some files depend on others being split first
+- **Architecture compliance:** All moves respect Hexagonal layer boundaries
+
+## Context
+
+Issue #753 (dispatch extraction) completed significant refactoring, creating momentum for this cleanup. Commit `5ded6c5` (April 16, 2026) extracted IdentityResolver + OutboundRouter from Hub, reducing hub.py from 791 → 541 lines. The exemption files are stale and must be updated.
+
+The codebase follows Hexagonal/Ports & Adapters architecture:
+- **Domain Core** (core/) — no external dependencies, pure logic
+- **Adapters** (adapters/) — inbound/outbound platform implementations
+- **Infrastructure** (infrastructure/) — DB, external services
+- **Bootstrap** (bootstrap/) — wiring and lifecycle
+
+## Questions Explored
+
+1. What are the natural split points for each exempted file?
+2. Which folder reorganizations minimize import breakage?
+3. How do the proposed changes affect architecture layer compliance?
+4. What is the blast radius for each extraction?
+5. Do split strategies actually get files under 300 lines?
+
+## Analysis
+
+### Current State (Verified 2026-04-16)
+
+**Exemption files are stale.** Actual measurements:
+
+| File | Exemption Claim | Actual | Delta |
+|------|-----------------|--------|-------|
+| `core/hub/hub.py` | 791 lines | 541 lines | **-250** |
+| `core/hub/outbound_router.py` | 387 lines | 399 lines | +12 |
+
+### File Exemptions — Corrected Analysis
+
+| File | Lines | Over | Split Strategy | Remaining | Under 300? |
+|------|-------|------|-----------------|-----------|------------|
+| `core/hub/hub.py` | 541 | +241 | Extract circuit breaker (40L) + shutdown (70L) + pool delegation (80L) | ~351 | **NO** |
+| `core/hub/outbound_router.py` | 399 | +99 | Extract TTS/voice (80L) | ~319 | **NO** |
+| `bootstrap/hub_standalone.py` | 432 | +132 | Extract NATS wiring (90L) + auth seeding (30L) | ~312 | **NO** |
+| `adapters/_shared.py` | 432 | +132 | Extract streaming state (170L) | ~262 | **YES** |
+| `core/cli_pool.py` | 430 | +130 | Extract session persistence (30L) + streaming methods (80L) | ~320 | **NO** |
+| `infrastructure/stores/agent_store.py` | 340 | +40 | Extract bot mapping (63L) + runtime state (44L) | ~233 | **YES** |
+| `adapters/discord.py` | 322 | +22 | Extract lifecycle callbacks (47L) | ~275 | **YES** |
+| `core/commands/command_router.py` | 316 | +16 | Refactor dispatch to table-driven | ~270 | **YES** |
+| `core/cli_streaming.py` | 305 | +5 | Extract event parser (50L) | ~255 | **YES** |
+| `core/stores/turn_store.py` | 301 | +1 | Extract session methods (80L) | ~221 | **YES** |
+
+**Critical insight:** Only 4/10 files can get under 300 lines with single extraction. Hub, outbound_router, hub_standalone, and cli_pool require multiple extractions or deeper refactoring.
+
+### File Split Plans (To Get Under 300 Lines)
+
+**hub.py (541 → ≤300):**
+1. Extract `HubShutdown` mixin (~70L) → `hub/shutdown.py`
+2. Extract `CircuitBreakerIntegration` mixin (~40L) → `hub/circuit_breaker_integration.py`
+3. Extract `PoolDelegation` mixin (~80L) → `hub/pool_delegation.py`
+4. Remaining: ~351 lines — **still over**
+5. **Additional:** Extract `IdentityResolution` methods (~60L) → already delegated to `IdentityResolver`
+6. **Target:** Remove delegation boilerplate, inline remaining ~290 lines
+
+**outbound_router.py (399 → ≤300):**
+1. Extract `TtsDispatch` mixin (~80L) → `hub/outbound_tts.py`
+2. Remaining: ~319 lines — **still over**
+3. **Additional:** Extract `AudioDispatch` methods (~40L) → `hub/outbound_audio.py`
+4. **Target:** ~279 lines ✅
+
+**hub_standalone.py (432 → ≤300):**
+1. Extract `NatsAdapterWiring` (~90L) → `bootstrap/nats_wiring.py`
+2. Extract `AuthSeeding` (~30L) → `bootstrap/auth_seeding.py`
+3. Remaining: ~312 lines — **still over**
+4. **Additional:** Extract `HubConstruction` (~40L) → `bootstrap/hub_builder.py`
+5. **Target:** ~272 lines ✅
+
+**cli_pool.py (430 → ≤300):**
+1. Extract `SessionPersistence` mixin (~30L) → `cli_pool_session.py`
+2. Extract `StreamingMethods` (~80L) → `cli_pool_streaming.py`
+3. Remaining: ~320 lines — **still over**
+4. **Additional:** Extract `PoolLifecycle` mixin (~40L) → `cli_pool_lifecycle.py`
+5. **Target:** ~280 lines ✅
+
+### Folder Exemptions Summary
+
+| Folder | Files | Over | Reorganization Strategy |
+|--------|-------|------|------------------------|
+| `core/` | 49 | +37 | Create 6 domain subfolders: agent/, memory/, cli/, messaging/, auth/, config/ |
+| `adapters/` | 29 | +17 | Create 5 platform subfolders: discord/, telegram/, shared/, nats/, cli/ |
+| `bootstrap/` | 21 | +9 | Create 4 subfolders: entrypoints/, lifecycle/, wiring/, overlays/ |
+| `core/hub/` | 20 | +8 | Create 3 subfolders: middleware/, outbound/, pipeline/ |
+| `core/stores/` | 13 | +1 | Create 4 subfolders: agent/, identity/, conversation/, pairing/ |
+
+**Note:** Infrastructure files (circuit_breaker.py, debouncer.py, bus.py, etc.) should stay in `core/` or move to `infrastructure/` package — **never** create `core/infrastructure/` as that violates Kernel architecture.
+
+### GitNexus Impact Analysis
+
+**Hub class (highest risk):**
+- 25 impacted symbols
+- 7 direct callers: `_bootstrap_unified`, `_bootstrap_hub_standalone`, `demo.py:main`
+- 14 files import it directly
+- Affected processes: unified bootstrap, hub standalone
+- **Mitigation:** Extract mixins, preserve public API via composition
+
+**OutboundRouter (low risk):**
+- Only imported by `hub.py` and `hub/__init__.py`
+- Well-encapsulated, safe to split
+- 16 methods, clear dispatch boundaries
+
+**AgentStore (medium risk):**
+- 14 callers (tests + bootstrap + agents)
+- Extends `SqliteStore` (infrastructure layer)
+- Bot mapping methods are separable from agent CRUD
+- **Mitigation:** Extract `BotAgentMapStore` class, no protocol needed (internal detail)
+
+### Architecture Compliance Check
+
+All proposed extractions respect layer boundaries:
+
+| Extraction | Source Layer | Target Layer | Compliance |
+|------------|--------------|--------------|------------|
+| hub.py → shutdown.py | Domain (core/hub) | Domain (core/hub) | ✅ Same layer |
+| hub.py → circuit_breaker_integration.py | Domain (core/hub) | Domain (core/hub) | ✅ Same layer |
+| outbound_router.py → outbound_tts.py | Domain (core/hub) | Domain (core/hub) | ✅ Same layer |
+| hub_standalone.py → nats_wiring.py | Bootstrap | Bootstrap | ✅ Same layer |
+| _shared.py → _shared_streaming_state.py | Adapter | Adapter | ✅ Same layer |
+| agent_store.py → bot_agent_map_store.py | Infrastructure | Infrastructure | ✅ Same layer |
+| turn_store.py → session_store.py | Domain (core/stores) | Domain (core/stores) | ✅ Same layer |
+
+**Dependency direction preserved:** All extractions stay within their layer, maintaining inward dependencies per Clean Architecture.
+
+## Shapes
+
+### Shape 1: In-place decomposition
+
+- **Description:** Split each large file in-place, creating sibling modules within the same folder. Folders: create subfolders under each package. Minimal structural change, surgical extraction.
+- **Trade-offs:**
+  - Pro: Lower risk, incremental PRs possible, easier review
+  - Con: Less architectural improvement, may need future reorganization
+- **Rough scope:** M-L (10 file splits, 5 folder reorgs, ~25 new files)
+
+### Shape 2: Domain-driven reorganization
+
+- **Description:** Reorganize packages by domain (core/ → core/agent/, core/memory/, core/cli/). Move files to new homes, split where needed. Higher initial cost, cleaner long-term architecture.
+- **Trade-offs:**
+  - Pro: Cleaner module boundaries, improved discoverability, aligns with Hexagonal architecture domains
+  - Con: Higher risk, more import updates, larger PR, longer timeline
+- **Rough scope:** L-XL (15+ file moves + 20+ splits + 5 folder reorgs, ~35 new files)
+
+### Shape 3: Extraction-first
+
+- **Description:** Extract shared utilities first (streaming state, session stores), then reorganize. May over-extract but maximizes reuse.
+- **Trade-offs:**
+  - Pro: Maximizes code reuse, creates shared libraries
+  - Con: May over-fragment, risk of premature abstraction
+- **Rough scope:** XL (25+ new files, complex import graph)
+
+## Fit Check
+
+| Requirement | Shape 1 | Shape 2 | Shape 3 |
+|-------------|---------|---------|---------|
+| Appetite (~20 days) | ✅ | ⚠️ (may exceed) | ❌ |
+| Architecture improvement | ⚠️ (minimal) | ✅ | ⚠️ (over-fragmentation risk) |
+| Layer compliance | ✅ | ✅ | ✅ |
+| Single PR constraint | ⚠️ (large but feasible) | ⚠️ (very large) | ❌ |
+| Test coverage maintained | ✅ | ✅ | ⚠️ |
+
+**Selected shape:** In-place decomposition (Shape 1) — lower risk, fits appetite, still achieves architectural improvement via subfolder organization. Domain-driven reorganization deferred to future initiative.
+
+## Conclusions
+
+1. **In-place decomposition** is the safer approach for the 20-day appetite — domain-driven reorganization increases scope beyond timebox
+2. **Hub extraction is highest risk** — requires multiple extractions + delegation cleanup to get under 300 lines
+3. **4 files need multiple extractions:** hub.py, outbound_router.py, hub_standalone.py, cli_pool.py
+4. **Exemption files must be updated** — stale line counts mask progress from #753
+5. **Test coverage baseline required** — measure before any extraction, maintain threshold
+
+## Next Steps
+
+- Update exemption files with current line counts
+- Run test coverage baseline: `uv run pytest --cov=src/lyra --cov-report=term-missing`
+- Proceed to `/spec --issue 760` for detailed implementation specification
+- Create worktree for implementation

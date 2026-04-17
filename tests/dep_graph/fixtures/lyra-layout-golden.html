@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta property="og:title" content="Lyra — v2 Dependency Graph">
+<meta property="og:description" content="Lyra — v2 Dependency Graph">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://forge.roxabi.dev/lyra/visuals/lyra-v2-dependency-graph.html">
+<meta property="og:image" content="https://forge.roxabi.dev/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="Roxabi Forge">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Lyra — v2 Dependency Graph">
+<meta name="twitter:description" content="Lyra — v2 Dependency Graph">
+<meta name="twitter:image" content="https://forge.roxabi.dev/og-image.png">
+<!-- diagram-meta:start -->
+<meta name="diagram:title"     content="Lyra — v2 Dependency Graph">
+<meta name="diagram:date"      content="2026-04-15">
+<meta name="diagram:category"  content="plan">
+<meta name="diagram:cat-label" content="Plan">
+<meta name="diagram:color"     content="amber">
+<meta name="diagram:badges"    content="latest">
+<meta name="diagram:issue"     content="445">
+<!-- diagram-meta:end -->
+<title>Lyra — v2 Dependency Graph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --slot-h: 56px;
+}
+:root, [data-theme="dark"] {
+  --bg:          #0d1117;
+  --bg-panel:    #13191f;
+  --bg-card:     #161b22;
+  --bg-cell:     #0f141a;
+  --bg-epic:     rgba(232,93,4,0.05);
+  --border:      #21262d;
+  --border-hi:   #30363d;
+  --text:        #fafafa;
+  --text-muted:  #8b93a1;
+  --text-dim:    #6b7280;
+  --accent:      #e85d04;
+  --accent-hi:   #f97316;
+  --lane-a1:     #22c55e;
+  --lane-a2:     #6366f1;
+  --lane-b:      #3b82f6;
+  --lane-c1:     #a855f7;
+  --lane-c2:     #d946ef;
+  --lane-c3:     #ec4899;
+  --lane-d:      #06b6d4;
+  --lane-e:      #eab308;
+  --lane-f:      #10b981;
+  --lane-g:      #f97316;
+  --lane-h:      #f59e0b;
+  --lane-i:      #14b8a6;
+  --lane-indep:  #94a3b8;
+  --status-done: #16a34a;
+  --status-ready:#facc15;
+  --status-blocked:#fb923c;
+  --status-defer:#64748b;
+  --arrow:       #4b5563;
+  --dep-in:      #94a3b8;
+  --dep-out:     #94a3b8;
+  --dep-ext:     #f97316;
+
+[data-theme="light"] {
+  --bg:          #fafaf9;
+  --bg-panel:    #ffffff;
+  --bg-card:     #f4f4f0;
+  --bg-cell:     #ffffff;
+  --bg-epic:     rgba(232,93,4,0.04);
+  --border:      #d6d3d1;
+  --border-hi:   #a8a29e;
+  --text:        #1c1917;
+  --text-muted:  #57534e;
+  --text-dim:    #78716c;
+  --accent:      #c2410c;
+  --accent-hi:   #e85d04;
+  --arrow:       #a8a29e;
+  --dep-in:      #6b7280;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  padding: 24px;
+  min-height: 100vh;
+  font-size: 12px;
+  line-height: 1.4;
+}
+header {
+  max-width: 100%;
+  margin: 0 auto 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+h1 span { color: var(--accent); }
+.subtitle {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.legend {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.legend .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot.done    { background: var(--status-done); }
+.dot.ready   { background: var(--status-ready); }
+.dot.blocked { background: var(--status-blocked); }
+.dot.defer   { background: var(--status-defer); }
+
+/* Flex-column lanes layout */
+.lanes {
+  max-width: 100%;
+  margin: 0 auto;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  background: var(--bg-panel);
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.lane {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lane-head {
+  padding: 8px 6px;
+  text-align: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid;
+  border-radius: 5px 5px 0 0;
+}
+.lane-head .code {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 13px;
+}
+.lane-head .name {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-weight: 500;
+}
+.lane[data-lane="a1"]    > .lane-head { border-top-color: var(--lane-a1); }
+.lane[data-lane="a2"]    > .lane-head { border-top-color: var(--lane-a2); }
+.lane[data-lane="b"]     > .lane-head { border-top-color: var(--lane-b); }
+.lane[data-lane="c1"]    > .lane-head { border-top-color: var(--lane-c1); }
+.lane[data-lane="c2"]    > .lane-head { border-top-color: var(--lane-c2); }
+.lane[data-lane="c3"]    > .lane-head { border-top-color: var(--lane-c3); }
+.lane[data-lane="d"]     > .lane-head { border-top-color: var(--lane-d); }
+.lane[data-lane="e"]     > .lane-head { border-top-color: var(--lane-e); }
+.lane[data-lane="f"]     > .lane-head { border-top-color: var(--lane-f); }
+.lane[data-lane="g"]     > .lane-head { border-top-color: var(--lane-g); }
+.lane[data-lane="h"]     > .lane-head { border-top-color: var(--lane-h); }
+.lane[data-lane="i"]     > .lane-head { border-top-color: var(--lane-i); }
+.lane[data-lane="indep"] > .lane-head { border-top-color: var(--lane-indep); }
+
+/* Epic wrap */
+.epic-wrap {
+  background: var(--bg-epic);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 5px 6px;
+  flex: 1 1 auto;
+}
+.epic-wrap.defer { opacity: 0.7; }
+.epic-banner {
+  background: var(--accent);
+  color: #fff;
+  padding: 3px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  border-radius: 5px 5px 0 0;
+  overflow: hidden;
+  white-space: nowrap;
+  margin: 0 -5px;
+}
+.epic-banner .tag {
+  font-size: 8px;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+}
+
+/* Section band (milestone label) */
+.ms-band {
+  display: flex;
+  align-items: center;
+  height: 18px;
+  line-height: 18px;
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.ms-band::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  margin-left: 6px;
+}
+
+/* Spacer — invisible slot placeholder */
+.spacer {
+  height: var(--slot-h);
+}
+
+/* Parallel siblings group */
+.par {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 2px solid var(--text-dim);
+  padding-left: 6px;
+  margin-left: 2px;
+}
+
+/* Card — fixed height for slot uniformity */
+.card {
+  background: var(--bg-cell);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--status-defer);
+  border-radius: 4px;
+  padding: 5px 7px;
+  font-size: 11px;
+  min-width: 0;
+  height: var(--slot-h);
+  min-height: var(--slot-h);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.card.done     { border-left-color: var(--status-done); opacity: 0.55; }
+.card.ready    { border-left-color: var(--status-ready); }
+.card.blocked  { border-left-color: var(--status-blocked); }
+.card.defer    { border-left-color: var(--status-defer); opacity: 0.65; }
+
+.card .top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px;
+}
+.card .num {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 11px;
+}
+.card.done .num::after { content: " ✓"; color: var(--status-done); }
+.card .size {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+.card .title {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card .deps {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px 6px;
+  margin-top: 2px;
+  color: var(--dep-in);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card .deps .ext { color: var(--dep-ext); font-weight: 600; }
+.card .deps .none { color: var(--text-dim); opacity: 0.6; }
+
+.rbadge {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-left: 6px;
+  font-size: 0.7em;
+  border-radius: 4px;
+  background: var(--border-hi, #30363d);
+  color: var(--text-dim, #6b7280);
+  font-weight: 500;
+}
+
+.card--missing {
+  border: 2px dashed var(--status-blocked, #fb923c);
+  background: rgba(251,146,60,0.06);
+  color: var(--text-muted, #8b93a1);
+  padding: 8px;
+  font-style: italic;
+}
+
+/* Milestone-first layout */
+.milestone-row {
+  max-width: 100%;
+  margin: 0 auto 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.milestone-row-header {
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.milestone-row-header[data-milestone="none"] {
+  background: linear-gradient(90deg, var(--bg-card) 0%, rgba(148,163,184,0.1) 100%);
+  border-left: 3px solid var(--lane-indep);
+}
+.ms-anchor {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.ms-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.ms-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.milestone-cards {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+}
+.milestone-cols {
+  padding: 10px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+.lane-col {
+  flex: 0 0 auto;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lane-col-head {
+  padding: 6px 8px;
+  text-align: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid;
+  border-radius: 5px 5px 0 0;
+  font-family: 'JetBrains Mono', monospace;
+}
+.lane-col-head .code {
+  font-weight: 700;
+  font-size: 13px;
+}
+.lane-col-head .name {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.lane-col-head[data-lane="a1"] { border-top-color: var(--lane-a1); }
+.lane-col-head[data-lane="b"]  { border-top-color: var(--lane-b); }
+.lane-col-head[data-lane="c1"] { border-top-color: var(--lane-c1); }
+.lane-col-head[data-lane="d"]  { border-top-color: var(--lane-d); }
+.lane-col-head[data-lane="e"]  { border-top-color: var(--lane-e); }
+.lane-col-head[data-lane="f"]  { border-top-color: var(--lane-f); }
+.lane-col-head[data-lane="g"]  { border-top-color: var(--lane-g); }
+.lane-col-head[data-lane="h"]  { border-top-color: var(--lane-h); }
+.lane-col-head[data-lane="i"]  { border-top-color: var(--lane-i); }
+.lane-col-head[data-lane="indep"] { border-top-color: var(--lane-indep); }
+.lane-col-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lane-col--split {
+  flex-direction: column;
+}
+.lane-sub-cols {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+.lane-sub-col {
+  flex: 0 0 auto;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lane-sub-head {
+  padding: 4px 6px;
+  text-align: center;
+  background: var(--bg-cell);
+  border-left: 3px solid;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+}
+.lane-sub-head .code {
+  font-weight: 700;
+}
+.lane-sub-head[data-lane="a1"] { border-left-color: var(--lane-a1); }
+.lane-sub-head[data-lane="a2"] { border-left-color: var(--lane-a2); }
+.lane-sub-head[data-lane="c1"] { border-left-color: var(--lane-c1); }
+.lane-sub-head[data-lane="c2"] { border-left-color: var(--lane-c2); }
+.lane-sub-head[data-lane="c3"] { border-left-color: var(--lane-c3); }
+.lane-sub-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mini-lane-head {
+  grid-column: 1 / -1;
+  padding: 6px 8px;
+  margin: 4px 0 2px;
+  background: var(--bg-cell);
+  border-left: 3px solid;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  display: flex;
+  gap: 8px;
+}
+.mini-lane-head .code {
+  font-weight: 700;
+}
+.mini-lane-head .name {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.mini-lane-head[data-lane="a1"] { border-left-color: var(--lane-a1); }
+.mini-lane-head[data-lane="a2"] { border-left-color: var(--lane-a2); }
+.mini-lane-head[data-lane="b"]  { border-left-color: var(--lane-b); }
+.mini-lane-head[data-lane="c1"] { border-left-color: var(--lane-c1); }
+.mini-lane-head[data-lane="c2"] { border-left-color: var(--lane-c2); }
+.mini-lane-head[data-lane="c3"] { border-left-color: var(--lane-c3); }
+.mini-lane-head[data-lane="d"]  { border-left-color: var(--lane-d); }
+.mini-lane-head[data-lane="e"]  { border-left-color: var(--lane-e); }
+.mini-lane-head[data-lane="f"]  { border-left-color: var(--lane-f); }
+.mini-lane-head[data-lane="g"]  { border-left-color: var(--lane-g); }
+.mini-lane-head[data-lane="h"]  { border-left-color: var(--lane-h); }
+.mini-lane-head[data-lane="i"]  { border-left-color: var(--lane-i); }
+
+.lane-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  margin-left: 6px;
+  font-size: 0.7em;
+  border-radius: 4px;
+  background: var(--border);
+  color: var(--text-dim);
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.standalone {
+  max-width: 100%;
+  margin: 10px auto 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.standalone-head {
+  padding: 8px 14px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.standalone-head .label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.standalone-head .hint {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.standalone-grid {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 6px;
+}
+
+.cross-deps {
+  max-width: 100%;
+  margin: 18px auto 0;
+  padding: 14px 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.cross-deps h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.cross-deps ul {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 4px 18px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.cross-deps li::before { content: "↳ "; color: var(--accent); }
+.cross-deps .kind {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 9px;
+  background: rgba(232,93,4,0.1);
+  color: var(--accent);
+  margin-right: 4px;
+}
+
+.theme-btn {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+footer {
+  max-width: 100%;
+  margin: 16px auto 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+}
+footer a { color: var(--accent); text-decoration: none; }
+
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Lyra <span>v2</span> — Dependency Graph</h1>
+    <div class="subtitle">1 milestones · M0→M1→M2→M3→M4→M5 · <strong>←</strong> = blocked by · <strong>→</strong> = unblocks · <span class="ext" style="color:var(--dep-ext);font-family:monospace;font-weight:600;">X:#N</span> = cross-lane</div>
+  </div>
+  <div class="legend">
+    <span class="pill"><span class="dot done"></span> done</span>
+    <span class="pill"><span class="dot ready"></span> ready</span>
+    <span class="pill"><span class="dot blocked"></span> blocked</span>
+    <span class="pill"><span class="dot defer"></span> deferred</span>
+    <span class="pill" style="background: var(--accent); color: #fff; border-color: var(--accent);">epic</span>
+    <span class="pill"><span style="color: var(--dep-ext); font-weight: 700;">B:#727</span> = cross-lane ref</span>
+  </div>
+</header>
+
+<div class="milestones">
+
+<div class="milestone-row">
+<div class="milestone-row-header" data-milestone="none"><span class="ms-anchor">No milestone</span><span class="ms-hint">— independent lanes, standalone, closed</span></div>
+<div class="milestone-cols">
+<div class="lane-col">
+<div class="lane-col-head" data-lane="indep"><span class="code">?</span><span class="name">Other</span></div>
+<div class="lane-col-cards">
+<div class="card blocked" id="card-roxabi-roxabi-vault-24"><div class="top"><span class="num">#24</span><span class="rbadge" data-repo-badge title="Roxabi/roxabi-vault">roxabi-vault</span></div><div class="title">feature: NATS subscriber mode</div><div class="deps"><span class="ext">←Roxabi/lyra#703</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-521"><div class="top"><span class="num">#521</span></div><div class="title">JS obj store</div><div class="deps"><span class="ext">→?:#635 →?:#636</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-568"><div class="top"><span class="num">#568</span></div><div class="title">audio_bus probe</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-572"><div class="top"><span class="num">#572</span></div><div class="title">queue test</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-576"><div class="top"><span class="num">#576</span></div><div class="title">nkey rotation docs</div><div class="deps"><span class="ext">→?:#660 →?:#662 →?:#687</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-601"><div class="top"><span class="num">#601</span></div><div class="title">resume_count unify</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card done" id="card-roxabi-lyra-603"><div class="top"><span class="num">#603</span></div><div class="title">load-aware route</div><div class="deps"><span class="ext">→?:#689</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-604"><div class="top"><span class="num">#604</span></div><div class="title">docker test env</div><div class="deps"><span class="ext">→?:#733</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-605"><div class="top"><span class="num">#605</span></div><div class="title">Containerize production</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card done" id="card-roxabi-lyra-606"><div class="top"><span class="num">#606</span></div><div class="title">Dockerfile</div><div class="deps"><span class="ext">→?:#607</span></div></div>
+<div class="card done" id="card-roxabi-lyra-607"><div class="top"><span class="num">#607</span></div><div class="title">nats + hub QL</div><div class="deps"><span class="ext">←?:#612 ←?:#606 →?:#608</span></div></div>
+<div class="card done" id="card-roxabi-lyra-608"><div class="top"><span class="num">#608</span></div><div class="title">tg + disc QL</div><div class="deps"><span class="ext">←?:#607 →?:#727</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-610"><div class="top"><span class="num">#610</span></div><div class="title">Makefile Podman</div><div class="deps"><span class="ext">←?:#727 →?:#611 →?:#728</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-611"><div class="top"><span class="num">#611</span></div><div class="title">supervisord cutover</div><div class="deps"><span class="ext">←?:#610</span></div></div>
+<div class="card done" id="card-roxabi-lyra-612"><div class="top"><span class="num">#612</span></div><div class="title">paths/env</div><div class="deps"><span class="ext">→?:#607</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-627"><div class="top"><span class="num">#627</span></div><div class="title">TTS failures</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-628"><div class="top"><span class="num">#628</span></div><div class="title">lyra_cli standalone</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-629"><div class="top"><span class="num">#629</span></div><div class="title">NatsCliClient</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-630"><div class="top"><span class="num">#630</span></div><div class="title">cli_adapter</div><div class="deps"><span class="ext">→?:#631</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-631"><div class="top"><span class="num">#631</span></div><div class="title">supervisor wiring</div><div class="deps"><span class="ext">←?:#630 →?:#632</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-632"><div class="top"><span class="num">#632</span></div><div class="title">integration test</div><div class="deps"><span class="ext">←?:#631</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-633"><div class="top"><span class="num">#633</span></div><div class="title">lyra_harness</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card done" id="card-roxabi-lyra-634"><div class="top"><span class="num">#634</span></div><div class="title">harness spec</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-635"><div class="top"><span class="num">#635</span></div><div class="title">hub history[]</div><div class="deps"><span class="ext">←?:#521</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-636"><div class="top"><span class="num">#636</span></div><div class="title">NatsHarnessClient</div><div class="deps"><span class="ext">←?:#521 →?:#637</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-637"><div class="top"><span class="num">#637</span></div><div class="title">harness_adapter</div><div class="deps"><span class="ext">←?:#636 →?:#638</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-638"><div class="top"><span class="num">#638</span></div><div class="title">supervisor wiring</div><div class="deps"><span class="ext">←?:#637 →?:#639</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-639"><div class="top"><span class="num">#639</span></div><div class="title">integration test</div><div class="deps"><span class="ext">←?:#638</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-640"><div class="top"><span class="num">#640</span></div><div class="title">hub statelessness: shed Pool</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-641"><div class="top"><span class="num">#641</span></div><div class="title">Redis sessions</div><div class="deps"><span class="ext">→?:#642 ←D live</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-642"><div class="top"><span class="num">#642</span></div><div class="title">hub sheds Pool</div><div class="deps"><span class="ext">←?:#641</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-643"><div class="top"><span class="num">#643</span></div><div class="title">codec tail</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-644"><div class="top"><span class="num">#644</span></div><div class="title">entry-points pip</div><div class="deps"><span class="ext">→?:#645</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-645"><div class="top"><span class="num">#645</span></div><div class="title">PLUGIN.json</div><div class="deps"><span class="ext">←?:#644</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-646"><div class="top"><span class="num">#646</span></div><div class="title">agents.yml gen</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-653"><div class="top"><span class="num">#653</span></div><div class="title">stores relocation</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-657"><div class="top"><span class="num">#657</span></div><div class="title">SHA tags</div><div class="deps"><span class="ext">←?:#728</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-658"><div class="top"><span class="num">#658</span></div><div class="title">decouple voicecli</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-660"><div class="top"><span class="num">#660</span></div><div class="title">JS audit (DP)</div><div class="deps"><span class="ext">←?:#576</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-661"><div class="top"><span class="num">#661</span></div><div class="title">digest bumps</div><div class="deps"><span class="ext">←?:#728</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-662"><div class="top"><span class="num">#662</span></div><div class="title">reaper refactor</div><div class="deps"><span class="ext">←?:#576</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-663"><div class="top"><span class="num">#663</span></div><div class="title">replace AnthropicSdkDriver with LiteLLMDriver</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-665"><div class="top"><span class="num">#665</span></div><div class="title">LiteLLMDriver</div><div class="deps"><span class="ext">→?:#666</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-666"><div class="top"><span class="num">#666</span></div><div class="title">drop Anthropic</div><div class="deps"><span class="ext">←?:#665</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-667"><div class="top"><span class="num">#667</span></div><div class="title">OTel observability pipeline</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-669"><div class="top"><span class="num">#669</span></div><div class="title">OTelObsProvider</div><div class="deps"><span class="ext">→?:#671</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-670"><div class="top"><span class="num">#670</span></div><div class="title">Langfuse QL</div><div class="deps"><span class="ext">←?:#671</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-671"><div class="top"><span class="num">#671</span></div><div class="title">LiteLLM→OTel</div><div class="deps"><span class="ext">←?:#669 →?:#670 →?:#672</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-672"><div class="top"><span class="num">#672</span></div><div class="title">harness→OTel</div><div class="deps"><span class="ext">←?:#671</span></div></div>
+<div class="card done" id="card-roxabi-lyra-673"><div class="top"><span class="num">#673</span></div><div class="title">ObsProvider+NoOp</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card done" id="card-roxabi-lyra-674"><div class="top"><span class="num">#674</span></div><div class="title">ModelConfig ext</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-687"><div class="top"><span class="num">#687</span></div><div class="title">keepalive guard</div><div class="deps"><span class="ext">←?:#576</span></div></div>
+<div class="card done" id="card-roxabi-lyra-689"><div class="top"><span class="num">#689</span></div><div class="title">S3 · Machine-1 cutover</div><div class="deps"><span class="ext">←?:#603 →?:#690</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-690"><div class="top"><span class="num">#690</span></div><div class="title">S4 · delete lyra-side voice satellites</div><div class="deps"><span class="ext">←?:#689 →?:#691</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-691"><div class="top"><span class="num">#691</span></div><div class="title">S5 · drop voicecli from pyproject</div><div class="deps"><span class="ext">←?:#690 →?:#728</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-693"><div class="top"><span class="num">#693</span></div><div class="title">retire deploy.sh → roxabi-ops autodeploy (ADR-043)</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-694"><div class="top"><span class="num">#694</span></div><div class="title">promote ADR-043 Accepted</div><div class="deps"><span class="ext">←?:#696 →?:#697</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-695"><div class="top"><span class="num">#695</span></div><div class="title">fail fast on git fetch timeout (check returncode)</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-696"><div class="top"><span class="num">#696</span></div><div class="title">FAIL_FILE per-SHA pruning</div><div class="deps"><span class="ext">→?:#694</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-697"><div class="top"><span class="num">#697</span></div><div class="title">roxabi-ops repo · scaffold autodeploy</div><div class="deps"><span class="ext">←?:#694 →?:#698 →?:#699 →?:#700</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-698"><div class="top"><span class="num">#698</span></div><div class="title">lyra/deploy/auto-deploy.yml</div><div class="deps"><span class="ext">←?:#697</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-699"><div class="top"><span class="num">#699</span></div><div class="title">voiceCLI repo · deploy/auto-deploy.yml</div><div class="deps"><span class="ext">←?:#697</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-700"><div class="top"><span class="num">#700</span></div><div class="title">roxabi-* repos · pull-only auto-deploy.yml manifests</div><div class="deps"><span class="ext">←?:#697 →?:#701</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-701"><div class="top"><span class="num">#701</span></div><div class="title">roxabi-ops repo · migrate lyra.service</div><div class="deps"><span class="ext">←?:#700 →?:#702</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-702"><div class="top"><span class="num">#702</span></div><div class="title">cutover</div><div class="deps"><span class="ext">←?:#701</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-703"><div class="top"><span class="num">#703</span></div><div class="title">architecture: route vault writes through NATS (decouple #links from synchronous vault)</div><div class="deps"><span class="ext">→Roxabi/roxabi-vault#24</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-704"><div class="top"><span class="num">#704</span></div><div class="title">unified vault</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card done" id="card-roxabi-lyra-709"><div class="top"><span class="num">#709</span></div><div class="title">multi-repo support</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-720"><div class="top"><span class="num">#720</span></div><div class="title">deferred polish from #709 review</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-725"><div class="top"><span class="num">#725</span></div><div class="title">Plugin Layer</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-726"><div class="top"><span class="num">#726</span></div><div class="title">NATS maturity</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-727"><div class="top"><span class="num">#727</span></div><div class="title">podman bootstrap</div><div class="deps"><span class="ext">←?:#608 →?:#610 →?:#728</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-728"><div class="top"><span class="num">#728</span></div><div class="title">voicecli QL + GPU</div><div class="deps"><span class="ext">←?:#691 ←?:#727 ←?:#610 →?:#657 →?:#661</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-729"><div class="top"><span class="num">#729</span></div><div class="title">replace global type-checking registry with explicit per-adapter init param</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-730"><div class="top"><span class="num">#730</span></div><div class="title">lightweight per-package tag script for uv workspace monorepo</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-731"><div class="top"><span class="num">#731</span></div><div class="title">guard against re-adding transitive NATS deps to root pyproject.toml</div><div class="deps"><span class="none">no deps</span></div></div>
+<div class="card blocked" id="card-roxabi-lyra-733"><div class="top"><span class="num">#733</span></div><div class="title">integration tests for load-aware STT/TTS routing (#603 follow-up)</div><div class="deps"><span class="ext">←?:#604</span></div></div>
+<div class="card ready" id="card-roxabi-lyra-734"><div class="top"><span class="num">#734</span></div><div class="title">SDK v0.2.0 release</div><div class="deps"><span class="none">no deps</span></div></div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+
+<div class="cross-deps">
+  <h3>Cross-lane critical path (to M3 observability live)</h3>
+  <ul>
+    <li><span class="kind">M3 gate</span>B:#727 → D:#670 — Langfuse needs podman runtime</li>
+    <li><span class="kind">cross-lane</span>G:#691 → B:#728 — voicecli nats-serve verified before container cutover</li>
+    <li><span class="kind">M3 gate</span>C1:#665 → D:#671 — LiteLLM OTel callback</li>
+    <li><span class="kind">M3 gate</span>C2:#637 → D:#672 — harness OTel wiring</li>
+    <li><span class="kind">M2 gate</span>#521 + #634 → C2:#635 — JetStream obj store prereq</li>
+    <li><span class="kind">M4 gate</span>C2:#637 → E:#641 — harness ships before hub sheds Pool</li>
+    <li><span class="kind">M4 gate</span>D live → E:#641 — traces needed for stateless debug</li>
+    <li><span class="kind">independent</span>#658 → #603 — voicecli contract before routing</li>
+    <li><span class="kind">cross-repo</span>I:#703 → roxabi-vault#24 — NATS subscriber depends on architecture</li>
+  </ul>
+</div>
+
+<button class="theme-btn" id="theme-toggle">&#9681; light</button>
+
+<footer>
+  <p>Lyra v2 plan · refreshed 2026-04-15 · <a href="https://github.com/Roxabi/lyra/issues">https://github.com/Roxabi/lyra/issues</a> · <a href="nats-arch-roadmap.html">NATS arch roadmap</a></p>
+</footer>
+
+<script>
+(function() {
+  const btn = document.getElementById('theme-toggle');
+  const KEY = 'lyra-v2-graph-theme';
+  const saved = localStorage.getItem(KEY);
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+  function update() {
+    const cur = document.documentElement.getAttribute('data-theme');
+    btn.textContent = cur === 'dark' ? '◑ light' : '◐ dark';
+  }
+  update();
+  btn.addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem(KEY, next);
+    update();
+  });
+})();
+</script>
+
+</body>
+</html>

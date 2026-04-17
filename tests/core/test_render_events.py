@@ -225,6 +225,8 @@ class TestRenderEventUnion:
         assert set(_mod.__all__) == {
             "FileEditSummary",
             "RenderEvent",
+            "SCHEMA_VERSION_TEXT_RENDER_EVENT",
+            "SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT",
             "SilentCounts",
             "TextRenderEvent",
             "ToolSummaryRenderEvent",
@@ -246,7 +248,7 @@ class TestHexagonalBoundary:
         # Anchor to this file's location so the test works from any cwd.
         _root = Path(__file__).resolve().parent.parent.parent
         paths = [
-            _root / "src" / "lyra" / "llm" / "events.py",
+            _root / "src" / "lyra" / "core" / "events.py",
             _root / "src" / "lyra" / "core" / "render_events.py",
         ]
         for path in paths:

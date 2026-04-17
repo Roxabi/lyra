@@ -1,0 +1,188 @@
+---
+title: "ADR-047: NATS connector ownership pattern — lyra owns subjects + contracts, satellites own workers"
+description: "Establish that lyra owns the wire contract (subjects, envelopes, contract ADRs) for all lyra.* NATS domains, provisions per-worker nkey identities, and ships hub-side publishers. Satellite repos (voiceCLI, imageCLI, roxabi-vault) own the worker process and confine lyra.* subject literals to a single designated adapter module per satellite."
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Three prior ADRs collectively establish how lyra communicates with satellite processes over NATS:
+
+- [ADR-039](039-stt-tts-nats-adapter-decoupling.mdx) — Introduced STT/TTS as independent NATS satellite processes. Established the satellite-as-process pattern; ADR-047 clarifies that the satellite also owns the NATS worker code.
+- [ADR-044](044-lyra-voicecli-nats-contract.mdx) — Froze the `lyra.voice.*` wire contract (`contract_version: "1"`, subject names, queue groups, envelope schemas). Established that contracts are lyra-owned ADRs. This is the canonical contract ADR; all future domains follow its shape.
+- [ADR-045](045-roxabi-nats-sdk-uv-workspace-extraction.mdx) — Extracted NATS transport primitives into `packages/roxabi-nats/` (a uv workspace subpackage). The boundary is transport-vs-domain: `roxabi_nats` is pure transport; all `lyra.*` knowledge — contract text and hub-side publisher — stays in lyra even though the worker process lives in the satellite repo.
+
+None of these ADRs stated the ownership rule explicitly. That gap was addressed by observing what was actually shipping:
+
+- **imageCLI#50** (closed, completed 2026-04-15) — `imagecli nats-serve` subscribes to `lyra.image.generate.request` using `NatsAdapterBase`. Satellite-owned worker, lyra-owned contract. Pattern confirmed working.
+- **lyra#658** (epic, in flight) — voiceCLI becomes a satellite daemon (`voicecli nats-serve`). Lyra publishes to topic contracts and never imports voiceCLI symbols.
+- **lyra#690** (S4, open) — delete `src/lyra/bootstrap/stt_adapter_standalone.py` + `tts_adapter_standalone.py` + `lyra adapter stt/tts` subcommands + `lyra_stt.conf` + `lyra_tts.conf`.
+- **lyra#691** (S5, open) — drop voiceCLI from `pyproject.toml`, clean `deploy.sh`, audit CI extras.
+- **voiceCLI#69** (open) — adopt `roxabi-nats` SDK, retire `voicecli/nats/base.py` port code, **keep** `voicecli/nats/{stt,tts}_adapter.py` as the designated adapter modules.
+
+The correct pattern is satellite-owned workers. This ADR codifies what is shipping and provides the rule that governs all new domains.
+
+## Options Considered
+
+### Option A: Lyra-owned connectors via `src/lyra/connectors/` (previous draft — rejected)
+
+Worker-side connector code lives at `src/lyra/connectors/<domain>_worker.py` in the lyra repo. Satellites are pure libraries with no NATS code.
+
+- **Pros:** Single source of truth for subject constants inside lyra. Satellite repos carry no `lyra.*` literals.
+- **Cons:** Inverts production reality — imageCLI#50 shipped satellite-owned worker code and is already closed as completed. Unwinding it requires reversing #690, #691, voiceCLI#69. Forces lyra to import voiceCLI/imageCLI as runtime dependencies, coupling lyra releases to satellite releases. Satellite worker evolution requires lyra PRs.
+
+### Option B: Satellite-owned workers, lyra owns contracts + publishers + nkey — recommended
+
+Worker process lives in the satellite repo as a CLI entry point (`voicecli nats-serve`, `imagecli nats-serve`). Lyra owns the wire contract (ADR), hub-side publisher, and per-worker nkey identity. Satellites confine `lyra.*` subject literals to a single designated adapter module.
+
+- **Pros:** Matches shipped code. Satellite repos remain autonomous for worker evolution. Lyra retains wire-contract control via ADRs + publishers + nkey ACLs. New satellites onboard by implementing a single adapter module against the `roxabi-nats` SDK. No lyra/satellite runtime dependency inversion.
+- **Cons:** `lyra.*` subject literals appear in satellite repos (contained to one file each). Cross-repo PRs required when a contract version bumps. Satellites must pin SDK versions carefully. Grep-gate enforcement needed per satellite.
+
+### Option C: Extract connectors into their own uv subpackages
+
+Create a `packages/lyra-connectors/` workspace member, or one subpackage per domain.
+
+- **Pros:** Clean separation. Independent versioning per domain.
+- **Cons:** No external consumer justifies the packaging overhead — `roxabi-nats` warrants subpackage status because it is consumed by external repos; connectors are process-specific glue code. Premature abstraction.
+
+## Decision
+
+**Option B — satellite repos own worker processes; lyra owns contracts, publishers, and nkey identities.**
+
+The rules are:
+
+1. `packages/roxabi-nats/` is pure transport. Zero knowledge of lyra subjects, envelope field names, or domain semantics.
+2. All `lyra.<domain>.<action>.<verb>` subject registries, queue group names, envelope schemas, and request/reply contracts are documented in **lyra-side contract ADRs** ([ADR-044](044-lyra-voicecli-nats-contract.mdx) is the canonical example). The contract text is authoritative; satellites implement against it.
+3. Satellite repos consume `roxabi-nats` as a generic SDK. They MAY implement worker processes that subscribe to lyra-owned subjects, but MUST confine `lyra.*` subject literals to a **single designated adapter module** per satellite (e.g., `src/voicecli/nats/stt_adapter.py`, `src/imagecli/nats/adapter.py`). They MUST NOT redefine envelope schemas — the contract ADR is the source of truth.
+4. Worker processes live in the satellite repo as a CLI entry point (`voicecli nats-serve`, `imagecli nats-serve`, etc.). The worker MUST enforce a max-payload byte limit BEFORE calling `deserialize()`. Default 1 MB. Domains with legitimate binary payloads (audio, image) MUST declare the cap in their contract ADR. See `packages/roxabi-nats/src/roxabi_nats/_serialize.py:243` — `base64.b64decode` has no size cap; the limit is enforced by the caller. Workers MUST also sanitize user-controlled fields (text prompts, file paths, filenames) listed in the contract ADR before calling the satellite library.
+5. Hub-side client code (publishers, heartbeat listeners) stays at `src/lyra/nats/nats_<domain>_client.py` in the lyra repo. This is the hub's half of the request/reply contract.
+6. Each worker role has its own NATS nkey with subject-scoped ACL. Identities are provisioned by lyra in `gen-nkeys.sh` ([ADR-046](046-nats-nkey-provisioning.mdx), Invariant 2) and the resulting seed is distributed to the satellite host.
+7. Every new `lyra.<domain>.*` subject namespace requires a contract ADR **before** any satellite ships a worker subscribing to it. New top-level domains (e.g. `lyra.memory.*`, `lyra.llm.*`) require new contract ADRs. New actions within an existing domain amend the existing contract ADR.
+
+The `src/lyra/connectors/` directory referenced in the earlier draft of this ADR is **NOT created**. Worker code lives in satellite repos.
+
+## Design
+
+### Layer boundaries
+
+| Layer | Repo | Path | Owns |
+|---|---|---|---|
+| Transport SDK | lyra (`packages/roxabi-nats/`) | `src/roxabi_nats/` | `NatsAdapterBase`, `nats_connect`, `CONTRACT_VERSION`, circuit breaker, readiness |
+| Contract ADR | lyra | `docs/architecture/adr/NNN-lyra-<domain>-nats-contract.mdx` | Subject names, queue groups, envelope schemas, `contract_version`, error codes, max-payload caps |
+| Hub client | lyra | `src/lyra/nats/nats_<domain>_client.py` | Publishing to request subject, heartbeat tracking, error mapping |
+| nkey identity | lyra | `deploy/nats/gen-nkeys.sh` IDENTITIES | Per-role nkey + subject-scoped ACL |
+| Worker process | satellite | `src/<pkg>/nats/<adapter>.py` + `<pkg> nats-serve` entry point | Subject subscription, envelope validation, payload size cap, user-input sanitization, satellite-library dispatch |
+| Satellite library | satellite | `src/<pkg>/` (non-nats modules) | Domain logic — engine, config, generate/transcribe/synthesize |
+
+### Dependency graph
+
+```
+lyra hub client  → roxabi-nats (transport) → nats-py
+satellite worker → roxabi-nats (transport) → nats-py
+satellite worker → satellite library (in-process)
+```
+
+No arrow from lyra to satellite. No arrow from satellite to lyra (satellite imports only `roxabi-nats` + its own library).
+
+### Supervisor cutover
+
+Four programs, cutting FROM lyra-side adapters TO satellite-side:
+
+| Program | Status | CLI path | Notes |
+|---|---|---|---|
+| `lyra_stt` | **To retire** (#690 S4) | `run_adapter.sh stt` → `lyra adapter stt` | Bootstrap entry point created in earlier migration; inverted by ADR-047 |
+| `lyra_tts` | **To retire** (#690 S4) | `run_adapter.sh tts` → `lyra adapter tts` | Same |
+| `voicecli_stt` | **Target** | `voicecli nats-serve stt` | Currently dormant; becomes active after S3 cutover |
+| `voicecli_tts` | **Target** | `voicecli nats-serve tts` | Same |
+| `imagecli_gen` | **New** (imageCLI#50 completed) | `imagecli nats-serve` | Already ships; add to supervisor `conf.d` |
+
+nkey seed continuity: `lyra_{stt,tts}` currently use `{stt,tts}-adapter.seed`. After cutover, `voicecli_{stt,tts}` may either reuse the same seeds (simpler rollback) or switch to dedicated `voice-{stt,tts}.seed`. Choice is orthogonal to this ADR — captured in #658 spec.
+
+`startsecs` note: current `lyra_{stt,tts}.conf` have `startsecs=5`. Target `voicecli_{stt,tts}.conf` had `startsecs=15` and `10` respectively with a T15 measurement note ("re-measure first-ready time on Machine 1 first boot"). Use whichever value end-to-end warmup requires on `roxabituwer` (RTX 3080); carry the T15 note forward.
+
+### Rollback
+
+If `voicecli_{stt,tts}` fails post-cutover: re-enable `lyra_{stt,tts}` from `conf.d/disabled/` (files kept for one release, not deleted). Bootstrap code in `src/lyra/bootstrap/` is not deleted until smoke tests pass on `roxabituwer` post-#690 merge.
+
+### Subject and nkey ownership table
+
+| Domain | Subjects | Queue group | lyra nkey identity | Satellite adapter module |
+|---|---|---|---|---|
+| STT | `lyra.voice.stt.request`, `lyra.voice.stt.heartbeat` | `STT_WORKERS` | `stt-adapter` | `voicecli/src/voicecli/nats/stt_adapter.py` |
+| TTS | `lyra.voice.tts.request`, `lyra.voice.tts.heartbeat` | `TTS_WORKERS` | `tts-adapter` | `voicecli/src/voicecli/nats/tts_adapter.py` |
+| Image | `lyra.image.generate.request` | `IMAGE_WORKERS` | `image-worker` (to provision) | `imagecli/src/imagecli/nats/adapter.py` |
+| Memory | TBD — requires contract ADR | TBD | TBD | `roxabi-vault` TBD |
+
+### Contract ADR requirement
+
+Every domain that moves from "TBD" to shipped requires:
+
+1. A contract ADR (following ADR-044's structure: subjects, payload schemas, `contract_version`, error codes, max-payload cap).
+2. The nkey identity added to IDENTITIES in `gen-nkeys.sh` (ADR-046, Invariant 2).
+3. Hub-side `src/lyra/nats/nats_<domain>_client.py` landed in the same PR as the contract ADR.
+
+### voiceCLI migration state
+
+`voicecli/src/voicecli/nats/{stt,tts}_adapter.py` are the **designated adapter modules** under this pattern — they stay. Port code (`voicecli/nats/base.py`, `voicecli/nats/connect.py`) retires via voiceCLI#69 in favor of `roxabi_nats.NatsAdapterBase` / `roxabi_nats.nats_connect`.
+
+`lyra_stt` / `lyra_tts` bootstrap is the work being undone — tracked by lyra#690 / #691. Once retired, `src/lyra/bootstrap/stt_adapter_standalone.py` and `tts_adapter_standalone.py` are deleted.
+
+### imageCLI migration state
+
+imageCLI#50 shipped a satellite-owned worker via the SDK on 2026-04-15. `imagecli nats-serve` subscribes to `lyra.image.generate.request` using `NatsAdapterBase`. Remaining lyra-side work: contract ADR for `lyra.image.*`, `src/lyra/nats/nats_image_client.py`, `image-worker` nkey + ACL in `gen-nkeys.sh`. File new lyra-side ticket.
+
+### Enforcement
+
+A CI grep-gate in each satellite repo that forbids `lyra.*` subject strings **outside the designated adapter module**. Suggested:
+
+```bash
+ALLOWED="src/voicecli/nats/stt_adapter.py|src/voicecli/nats/tts_adapter.py"
+VIOLATORS=$(grep -rln "lyra\." src/ --include='*.py' | grep -Ev "^($ALLOWED)$" || true)
+if [ -n "$VIOLATORS" ]; then
+  echo "ERROR: lyra.* subject literal outside designated adapter module:"
+  echo "$VIOLATORS"
+  exit 1
+fi
+```
+
+The allowlist is narrow (1–2 files per satellite). This is the enforcement mechanism that makes rule §3 actionable. MUST land in each satellite repo as a follow-up to voiceCLI#69, imageCLI#50-equivalent.
+
+## Consequences
+
+### Positive
+
+- Codifies what is already shipping — no migration churn or inversion of in-flight work (#658, #690, #691, voiceCLI#69, imageCLI#50).
+- Satellite repos remain autonomous for worker evolution; lyra retains wire-contract control via ADRs + publishers + nkey.
+- New satellites onboard by implementing a single adapter module against the `roxabi-nats` SDK — no lyra PR required for the worker itself.
+- The ownership rule is explicit and citable. Any code review touching `lyra.*` subject strings outside the designated module has a concrete ADR to reference.
+
+### Negative
+
+- Satellite repos must maintain the grep-gate; enforcement is per-satellite CI, not a single lyra-side check.
+- Cross-repo PRs are needed when a contract version bumps — the satellite's designated adapter module must be updated alongside the lyra contract ADR.
+- Satellites must pin `roxabi-nats` SDK versions carefully; a breaking SDK change requires coordinated updates.
+
+### Migration order
+
+1. **voiceCLI#69** — adopt `roxabi-nats` v0.1.0 SDK. Retire `voicecli/nats/base.py`, `voicecli/nats/connect.py`, duplicate validators/serializers. **Keep** `voicecli/nats/{stt,tts}_adapter.py` as the designated adapter modules. Size S. Open.
+2. **lyra#658 / #690 / #691** slices — delete `src/lyra/bootstrap/{stt,tts}_adapter_standalone.py`, `lyra adapter stt/tts` subcommands, `lyra_{stt,tts}.conf`. Strip voicecli imports from `src/lyra/{stt,tts}/__init__.py`. Drop `voicecli` from lyra's `pyproject.toml`. In flight. Size F-lite.
+3. **CI grep-gate** on satellite repos — forbid `lyra.*` subject literals outside the designated adapter module per satellite. A satellite-local allowlist (one file path per satellite) makes the exception explicit. File new tickets in each satellite repo. Size S each.
+4. **imageCLI#50** already closed as COMPLETED 2026-04-15 under this pattern. Lyra-side remainder: contract ADR for `lyra.image.*`, `src/lyra/nats/nats_image_client.py`, `image-worker` nkey + ACL in `gen-nkeys.sh`. File new lyra-side ticket. Size S.
+5. **Memory over NATS (roxabi-vault)** — deferred until its contract ADR is scoped.
+
+### Neutral
+
+- `packages/roxabi-nats/` is unaffected. Its role as pure transport is reinforced, not changed.
+- roxabi-vault (memory over NATS) follows this pattern when the memory connector is needed. No work is scoped here.
+- Future satellite domains (LLM offload, vision, video, dashboard) start from this ADR. An `llm-worker` row will be added to the Subject and nkey ownership table when that issue is specced.
+
+## Relation to other ADRs
+
+- **ADR-035** — NATS subject naming convention. All `lyra.<domain>.<action>.<verb>` subjects in the ownership table above follow this shape.
+- **ADR-039** — STT/TTS NATS adapter decoupling. Confirmed the satellite-as-process pattern; ADR-047 clarifies that the satellite also owns the NATS worker code, not just the library.
+- **ADR-044** — lyra ↔ voicecli NATS voice contract. The canonical contract ADR. Every new domain follows its structure.
+- **ADR-045** — roxabi-nats SDK extraction. The boundary is transport-vs-domain: `roxabi_nats` is pure transport; all `lyra.*` knowledge — contract text and hub-side publisher — stays in lyra even though the worker process lives in the satellite repo.
+- **ADR-046** — nkey provisioning is declarative. Invariant 2 (IDENTITIES is the single source of truth) requires each new worker identity to appear in `gen-nkeys.sh` before its worker ships. ADR-046 is the authoritative security-boundary document. ADR-047 reinforces the per-role nkey model structurally but does not define the enforcement mechanism. Subject-level ACLs remain the actual security boundary.

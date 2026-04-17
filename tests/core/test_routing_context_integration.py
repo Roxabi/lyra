@@ -32,13 +32,13 @@ from .conftest import _RC_DC, _RC_TG, make_routing_inbound
 
 class TestTelegramNormalizeRouting:
     def test_routing_populated(self) -> None:
-        from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.authenticator import _ALLOW_ALL
 
-        hub = MagicMock()
         adapter = TelegramAdapter(
             bot_id="main",
             token="fake",
-            hub=hub,
+            inbound_bus=MagicMock(),
             auth=_ALLOW_ALL,
         )
 
@@ -67,13 +67,13 @@ class TestTelegramNormalizeRouting:
         assert msg.routing.reply_to_message_id == "999"
 
     def test_routing_with_topic(self) -> None:
-        from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.authenticator import _ALLOW_ALL
 
-        hub = MagicMock()
         adapter = TelegramAdapter(
             bot_id="main",
             token="fake",
-            hub=hub,
+            inbound_bus=MagicMock(),
             auth=_ALLOW_ALL,
         )
 
@@ -95,15 +95,20 @@ class TestTelegramNormalizeRouting:
 
         msg = adapter.normalize(raw)
         assert msg.routing is not None
-        assert msg.routing.scope_id == "chat:123:topic:456:user:tg:user:42"
+        assert msg.routing.scope_id == "chat:123:topic:456"  # topics share pool (#592)
         assert msg.routing.thread_id == "456"
 
     def test_routing_platform_meta_is_copy(self) -> None:
         """RoutingContext.platform_meta must not alias InboundMessage.platform_meta."""
-        from lyra.adapters.telegram import _ALLOW_ALL, TelegramAdapter
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.core.authenticator import _ALLOW_ALL
 
-        hub = MagicMock()
-        adapter = TelegramAdapter(bot_id="main", token="fake", hub=hub, auth=_ALLOW_ALL)
+        adapter = TelegramAdapter(
+            bot_id="main",
+            token="fake",
+            inbound_bus=MagicMock(),
+            auth=_ALLOW_ALL,
+        )
 
         raw = SimpleNamespace(
             from_user=SimpleNamespace(id=42, full_name="Alice"),
@@ -134,11 +139,10 @@ class TestTelegramNormalizeRouting:
 
 class TestDiscordNormalizeRouting:
     def test_routing_populated(self) -> None:
-        from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.core.authenticator import _ALLOW_ALL
 
-        hub = MagicMock()
         adapter = DiscordAdapter.__new__(DiscordAdapter)
-        adapter._hub = hub
         adapter._bot_id = "main"
         adapter._bot_user = None
         adapter._mention_re = None
@@ -164,7 +168,7 @@ class TestDiscordNormalizeRouting:
         assert msg.routing is not None
         assert msg.routing.platform == "discord"
         assert msg.routing.bot_id == "main"
-        assert msg.routing.scope_id == "channel:789:user:dc:user:42"
+        assert msg.routing.scope_id == "channel:789"  # guild channels share pool (#592)
         assert msg.routing.thread_id is None
         assert msg.routing.reply_to_message_id == "999"
 

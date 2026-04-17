@@ -9,7 +9,7 @@ from typing import Optional
 
 import typer
 
-from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
+from lyra.infrastructure.stores.credential_store import CredentialStore, LyraKeyring
 
 
 def _vault_dir() -> Path:
@@ -17,14 +17,14 @@ def _vault_dir() -> Path:
 
 
 bot_app = typer.Typer(
-    name="bot", help="Manage bot credentials stored in ~/.lyra/auth.db."
+    name="bot", help="Manage bot credentials stored in ~/.lyra/config.db."
 )
 
 
 async def _make_store(vault: Path) -> CredentialStore:
     vault.mkdir(parents=True, exist_ok=True)
     keyring = LyraKeyring.load_or_create(vault / "keyring.key")
-    store = CredentialStore(db_path=vault / "auth.db", keyring=keyring)
+    store = CredentialStore(db_path=vault / "config.db", keyring=keyring)
     await store.connect()
     return store
 

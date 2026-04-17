@@ -1,0 +1,9 @@
+[Unit]
+Description=Lyra NATS auth.conf (public nkeys — read-only)
+ConditionPathExists=%h/.lyra/nkeys/auth.conf
+
+[Volume]
+Device=%h/.lyra/nkeys/auth.conf
+Type=bind
+Options=bind,ro
+Label=app=lyra

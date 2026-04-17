@@ -25,7 +25,8 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from ..agent_models import AgentRow, AgentRuntimeStateRow
 
 if TYPE_CHECKING:
-    from .agent_store import AgentStore
+    from lyra.infrastructure.stores.agent_store import AgentStore
+
     from .json_agent_store import JsonAgentStore
 
 __all__ = ["AgentStoreProtocol", "make_agent_store"]
@@ -87,7 +88,7 @@ def make_agent_store(
                           ``~/.lyra/agents_test.json``
 
     Any other value (or unset)  →  :class:`~lyra.core.agent_store.AgentStore`
-                                    Path: *db_path* or ``~/.lyra/auth.db``
+                                    Path: *db_path* or ``~/.lyra/config.db``
 
     Note: the returned store is not yet connected — callers must ``await
     store.connect()`` before use.
@@ -96,14 +97,16 @@ def make_agent_store(
         from .json_agent_store import JsonAgentStore
 
         store_path_env = os.environ.get("LYRA_AGENT_STORE_PATH")
-        path = (
-            Path(store_path_env)
-            if store_path_env
-            else Path.home() / ".lyra" / "agents_test.json"
-        )
+        _vault = Path(
+            os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
+        ).resolve()
+        path = Path(store_path_env) if store_path_env else _vault / "agents_test.json"
         return JsonAgentStore(path=path)
 
-    from .agent_store import AgentStore
+    from lyra.infrastructure.stores.agent_store import AgentStore
 
-    resolved = db_path or (Path.home() / ".lyra" / "auth.db")
+    _vault = Path(
+        os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
+    ).resolve()
+    resolved = db_path or (_vault / "config.db")
     return AgentStore(db_path=resolved)

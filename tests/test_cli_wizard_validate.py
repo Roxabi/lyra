@@ -13,7 +13,7 @@ import pytest
 from typer.testing import CliRunner
 
 from lyra.cli import agent_app as app
-from lyra.core.stores.agent_store import AgentRow, AgentStore
+from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,7 +56,7 @@ class TestValidate:
         """Valid agent in DB exits 0 with no warnings."""
         # Arrange
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
-        _seed_agent(tmp_path / "auth.db", name="validagent")
+        _seed_agent(tmp_path / "config.db", name="validagent")
 
         # Act
         result = runner.invoke(app, ["validate", "validagent"])
@@ -73,7 +73,7 @@ class TestValidate:
         # Arrange -- claude-cli backend with smart_routing enabled (mismatch)
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         _seed_agent(
-            tmp_path / "auth.db",
+            tmp_path / "config.db",
             name="mismatch",
             backend="claude-cli",
             smart_routing_json='{"enabled": true}',
@@ -104,7 +104,7 @@ class TestValidate:
         """anthropic-sdk + SR enabled exits 0."""
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         _seed_agent(
-            tmp_path / "auth.db",
+            tmp_path / "config.db",
             name="sdkagent",
             backend="anthropic-sdk",
             model="claude-sonnet-4-6",

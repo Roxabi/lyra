@@ -1,0 +1,169 @@
+---
+title: "ADR-037: NatsOutboundListener Placement and Adapter Standalone Bootstrap"
+description: Decides where NatsOutboundListener lives in the package hierarchy and establishes the bootstrap contract for adapter standalone processes (issue #458, Slice C5).
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Issue #458 (Slice C5) rewires `TelegramAdapter` and `DiscordAdapter` as thin NATS
+clients. Two design questions arise that affect multiple modules and the `nats/` ↔
+`adapters/` dependency boundary:
+
+1. Where should `NatsOutboundListener` (the background coroutine that subscribes to
+   `lyra.outbound.{platform}.{bot_id}` and calls `adapter.send` / `adapter.send_streaming`)
+   live — in `lyra/nats/` alongside `NatsBus` and `NatsChannelProxy`, or in
+   `lyra/adapters/`?
+
+2. What is the full bootstrap contract for the new `adapter_standalone.py` process,
+   and where should it live?
+
+Background ADRs:
+- ADR-035: NATS subject naming convention
+- ADR-036: `NatsChunkEnvelope` streaming protocol (stream_id multiplexing, single
+  persistent outbound subject)
+
+The spec for #458 also introduced `NatsOutboundEnvelope.original_msg` (embedding the
+full `InboundMessage` in the outbound envelope) and a separate `lyra.outbound.stream.*`
+subject hierarchy for streaming. Both diverge from ADR-036 and are resolved here.
+
+## Options Considered
+
+### Option A: `NatsOutboundListener` in `lyra/nats/`
+
+Co-locate with `nats_bus.py` and `nats_channel_proxy.py` — all NATS machinery in one
+package.
+
+- **Pros:** Physical locality; grep for NATS code lands in one place.
+- **Cons:** `NatsOutboundListener` must import `ChannelAdapter` (defined in
+  `lyra/core/` or `lyra/adapters/`). This creates an upward dependency:
+  `nats/` → `adapters/` or `nats/` → `core/`. The `nats/` package is an infrastructure
+  layer; it should not import from the layer that uses it. The dependency rule is
+  violated regardless of whether `ChannelAdapter` lives in `core/` or `adapters/`.
+
+### Option B: `NatsOutboundListener` in `lyra/adapters/`
+
+Place in `src/lyra/adapters/nats_outbound_listener.py`, alongside `_shared.py`.
+
+- **Pros:** `adapters/` imports `nats/` (infrastructure → transport), not the reverse.
+  Dependency direction is correct. The class is instantiated by adapter constructors
+  and belongs to the same layer. Consistent with the naming pattern
+  `{platform}_{concern}.py` used in the rest of `adapters/`.
+- **Cons:** NATS machinery is now split: transport primitives in `nats/`, listener
+  logic in `adapters/`. Acceptable because the listener is inherently adapter-aware.
+
+## Decision
+
+**Option B — place `NatsOutboundListener` in `src/lyra/adapters/nats_outbound_listener.py`.**
+
+The dependency direction is the deciding factor. `nats/` is a pure infrastructure
+module (NATS client wrappers, serialization). `adapters/` depends on `nats/`; `nats/`
+must not depend on `adapters/` or `core/` adapter protocols.
+
+## Streaming Protocol Alignment (ADR-036)
+
+The #458 spec introduced two deviations from ADR-036 that are corrected here:
+
+### 1. Remove `original_msg` from the outbound envelope
+
+The spec's `NatsOutboundEnvelope.original_msg` embedded the full serialized
+`InboundMessage` in every outbound envelope so the adapter could call
+`adapter.send(original_msg, outbound)`.
+
+This is unnecessary: the adapter process that received the inbound message is the same
+process running `NatsOutboundListener`. It can cache `InboundMessage` by `msg_id` for
+the duration of a turn and look it up locally when the outbound envelope arrives.
+Embedding ~2KB in every envelope is wasteful and creates a deserialization cost on the
+hot path.
+
+**Adopted design:** `NatsOutboundListener` maintains a `dict[str, InboundMessage]`
+keyed by `msg_id`. The outbound envelope carries only `msg_id` (for non-streaming) or
+`stream_id` (for streaming) as the correlation key. The listener resolves
+`original_msg` from the local cache before calling `adapter.send`.
+
+### 2. Align streaming with ADR-036 single-subject model
+
+The spec proposed a separate subject hierarchy
+`lyra.outbound.stream.{platform}.{bot_id}.{msg_id}` for streaming chunks. ADR-036
+explicitly rejected ephemeral per-request subjects (Option B in ADR-036) in favour of
+a single persistent subject `lyra.outbound.{platform}.{bot_id}` with `stream_id`
+multiplexing.
+
+**Adopted design:** All outbound messages (single-shot and streaming) flow on
+`lyra.outbound.{platform}.{bot_id}`. Streaming chunks use `NatsChunkEnvelope` as
+specified in ADR-036: `stream_id` multiplexing, monotonically incrementing `seq`, gap
+detection, `done=true` on the final chunk. The `lyra.outbound.stream.*` subject pattern
+is not implemented.
+
+## Bootstrap Contract for `adapter_standalone.py`
+
+The new `src/lyra/bootstrap/adapter_standalone.py` must wire the following in order:
+
+1. **NATS connection** — `nc = await nats.connect(NATS_URL)`. `nc` is shared across
+   `NatsBus` (inbound publish) and `NatsOutboundListener` (outbound subscribe).
+   `nc.close()` is called on shutdown after all listeners are stopped.
+
+2. **`inbound_bus`** — `NatsBus[InboundMessage]` constructed with `nc`. One
+   registration per `(platform, bot_id)` pair. Used as `adapter._inbound_bus`; the
+   adapter calls `inbound_bus.put(platform, msg)` to publish inbound messages to Hub.
+
+3. **`inbound_audio_bus`** — `LocalBus[InboundAudio]` no-op sink (same as
+   `hub_standalone.py`). Audio-over-NATS is deferred to C5 follow-up.
+
+4. **Adapter construction** — adapters receive `inbound_bus` (not `hub`). Trust
+   elevation is Hub-side only; adapters always emit `trust_level=PUBLIC`. No
+   `Authenticator` is wired into the adapter process. `circuit_registry=None` is
+   acceptable; `push_to_hub_guarded` handles this gracefully.
+
+5. **`resolve_identity()`** — call `await adapter.resolve_identity()` before starting
+   the webhook server (Telegram) or Gateway connection (Discord).
+
+6. **`NatsOutboundListener`** — constructed with `nc`, `platform`, `bot_id`, and the
+   adapter instance. Started via `await listener.start()` as part of the adapter
+   lifecycle; stopped in `adapter.close()`.
+
+7. **HTTP server (Telegram only)** — `uvicorn` serves `adapter.app` on the configured
+   webhook port. This is the adapter process's HTTP server, distinct from the Hub's
+   health endpoint.
+
+8. **Shutdown** — on SIGTERM/SIGINT: stop listeners, call `adapter.close()`, stop
+   `inbound_bus`, close `nc`.
+
+### Trust contract
+
+Adapters in NATS mode carry no `Authenticator`. The Hub's `Authenticator` (loaded from
+config and registered via `hub.register_authenticator()`) is the sole authority for
+trust elevation. This is the C3 contract, unchanged. `adapter_standalone.py` must not
+attempt to pass an `Authenticator` to the adapter constructor.
+
+## Consequences
+
+### Positive
+
+- `nats/` remains a pure transport layer with no upward imports — the dependency rule
+  is preserved.
+- `NatsOutboundListener` is co-located with the adapters that own it; its imports and
+  naming are consistent with the adapter module convention.
+- The streaming protocol is fully consistent with ADR-036: single subject, `stream_id`
+  multiplexing, no separate stream subjects.
+- Adapter-side `InboundMessage` caching eliminates ~2KB serialized payload from every
+  outbound envelope.
+
+### Negative
+
+- NATS-related code is now spread across two packages (`nats/` for transport, `adapters/`
+  for the listener). Developers must know to look in both places.
+- The local `InboundMessage` cache in `NatsOutboundListener` introduces state that must
+  be evicted after each turn completes to avoid unbounded memory growth.
+
+### Neutral
+
+- Audio inbound remains on a `LocalBus` no-op sink in C5; this ADR does not change
+  the audio deferral decision from the #458 spec.
+- `adapter_standalone.py` runs `uvicorn` for Telegram webhooks in the adapter process.
+  This means the adapter process has two long-running coroutines: the uvicorn server
+  and the Gateway connection (Discord). Both are managed by the same `asyncio` event
+  loop, consistent with the existing multibot pattern.

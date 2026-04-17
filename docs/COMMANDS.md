@@ -6,7 +6,7 @@
 
 ## The `lyra` CLI
 
-The `lyra` CLI is the main entry point for managing Lyra from your shell. It replaces the former `python -m lyra` and `lyra-agent` commands.
+The `lyra` CLI is the main entry point for managing Lyra from your shell.
 
 ### Installation
 
@@ -24,7 +24,7 @@ source .venv/bin/activate
 
 | Command | Description |
 |---------|-------------|
-| `lyra` / `lyra start` | Start the Lyra server |
+| `lyra` / `lyra start` | Start hub + adapters in one process (auto-starts embedded NATS if `NATS_URL` is not set) |
 | `lyra --version` / `lyra -V` | Print the installed version |
 | `lyra --help` | List all available subcommands |
 
@@ -32,9 +32,34 @@ source .venv/bin/activate
 
 | Command | Description |
 |---------|-------------|
-| `lyra agent create <name>` | Create a new agent (writes directly to DB) |
+| `lyra agent init` | Seed DB from TOML files (first-time setup) |
+| `lyra agent init --force` | Overwrite existing DB rows with TOML |
 | `lyra agent list` | List all discovered agents |
-| `lyra agent validate [<name>]` | Validate agent TOML config(s) |
+| `lyra agent show <name>` | Full config for one agent |
+| `lyra agent create` | Interactively create a new agent TOML |
+| `lyra agent edit <name>` | Edit an agent interactively in DB |
+| `lyra agent validate <name>` | Validate agent config in DB |
+| `lyra agent assign <name> --platform <p> --bot <id>` | Assign agent to a bot |
+| `lyra agent unassign --platform <p> --bot <id>` | Remove a bot-agent mapping |
+| `lyra agent delete <name>` | Delete agent (refuses if bot still assigned) |
+| `lyra agent patch <name> --json <json_object>` | Apply a partial JSON patch to an agent |
+| `lyra agent refine <name>` | Interactively refine agent persona/voice |
+
+**Bot credential management**
+
+| Command | Description |
+|---------|-------------|
+| `lyra bot add --platform <p> --bot-id <id>` | Store encrypted bot token (prompts for token) |
+| `lyra bot list` | List all stored bot credentials (tokens masked) |
+| `lyra bot remove --platform <p> --bot-id <id>` | Remove stored bot credentials |
+
+**Hub and adapter (production three-process mode)**
+
+| Command | Description |
+|---------|-------------|
+| `lyra hub` | Start the standalone Hub process (requires NATS) |
+| `lyra adapter telegram` | Start the standalone Telegram adapter (requires NATS) |
+| `lyra adapter discord` | Start the standalone Discord adapter (requires NATS) |
 
 **Config management**
 
@@ -99,7 +124,7 @@ lyra setup commands              # register for all configured Telegram bots
 lyra setup commands -c prod.toml # use a specific config file
 ```
 
-Re-run after adding/removing commands to update the menu. Admin-only commands (`/circuit`, `/routing`, `/config`) are excluded from the public menu.
+Re-run after adding/removing commands to update the menu. Admin-only commands (`/circuit`, `/routing`, `/config`, `/svc`, `/invite`, `/unpair`) are excluded from the public menu.
 
 **Discord** — voice commands (`/join`, `/leave`) are registered as native slash commands via `app_commands`. Synced automatically at bot connect (guild-scoped, instant propagation). Text-prefix fallback (`!join`, `!leave`) continues to work.
 
@@ -115,13 +140,15 @@ Incoming message
   │
   ├─ CommandParser: detect / or ! prefix → CommandContext
   │
+  ├─ CommandRouter.prepare(): bare URL? → rewrite to /vault-add <url> (patterns.toml)
+  │
   ├─ CommandRouter.dispatch():
-  │    1. Bare URL? → rewrite to /vault-add <url> (target from patterns.toml)
-  │    2. Builtin?  → /help, /clear, /new, /stop, /config, /circuit, /routing, /folder, /cd
-  │    3. /workspace → list (ls/list/no-arg) or switch to named workspace
-  │    4. Session?  → /vault-add, /explain, /summarize, /search (isolated LLM calls)
-  │    5. Plugin?   → any [[commands]] from enabled plugin.toml files
-  │    6. Passthrough? → registered commands that skip dispatch, go to LLM (e.g. /voice)
+  │    1. /clear, /new   → workspace_commands.cmd_clear()
+  │    2. /folder, /cd   → workspace_commands.cmd_folder()
+  │    3. /workspace     → workspace_commands.cmd_workspace() (list or switch)
+  │    4. Builtin?       → _dispatch_builtin(): /help, /stop, /config, /circuit, /routing, /voice, /text
+  │    5. Session?       → registered session command handlers (deprecated, see processor_registry)
+  │    6. Plugin?        → any [[commands]] from enabled plugin.toml files
   │    7. ! prefix + unknown → return None → fall through to LLM
   │    8. / prefix + unknown → return "Unknown command" error
   │
@@ -155,8 +182,13 @@ Incoming message
 | `/new` | Start a new session (alias for /clear) | — (builtin) |
 | `/echo <text>` | Echo back the message (test) | — (plugin) |
 | `/voice <text>` | Send voice reply — routes through LLM then TTS (OGG/Opus) | `voicecli` |
-| `/image <prompt>` | Generate image prompt | — (prompt-only) |
+| `/invite` | Generate a pairing code (admin-only) | — (plugin) |
+| `/join` | Redeem a pairing code | — (plugin) |
+| `/unpair` | Revoke a user's paired session (admin-only) | — (plugin) |
+| `/link` | Link your identity across platforms | — (plugin) |
+| `/unlink` | Remove your cross-platform identity link | — (plugin) |
 | `/vault-add <url>` | Scrape URL → LLM summary → save to vault | `web-intel:scrape`, `vault` |
+| `/add-vault <note>` | Save a direct text note to the vault (no LLM call) | `vault` |
 | `/explain <url>` | Scrape URL → plain-language explanation | `web-intel:scrape` |
 | `/summarize <url>` | Scrape URL → bullet-point summary | `web-intel:scrape` |
 | `/search <query>` | Full-text search over vault | `vault` (plugin) |
@@ -166,9 +198,9 @@ Incoming message
 
 ---
 
-## Session Commands
+## Processor Commands
 
-Session commands (`/vault-add`, `/explain`, `/summarize`) make an isolated LLM call per invocation. They never read or write the pool conversation history — they are stateless with respect to the active session.
+Processor commands (`/vault-add`, `/explain`, `/summarize`) hook into the normal pool flow as pre/post processors. Unlike the old session-command pattern, their responses land in pool conversation history, enabling follow-up questions.
 
 ### `/vault-add <url>` — Save to vault
 
@@ -225,13 +257,15 @@ Runs `vault search <query>` and returns matching results. Stateless — no LLM c
 
 ### How it works internally
 
-Session commands use `SessionCommandHandler` protocol (defined in `session_commands.py`) and are registered in the `CommandRouter`. The `AnthropicAgent` passes its LLM driver to the handler — LLM calls use an isolated `pool_id` (`"session:<command>"`) that never touches the real pool history.
+Processor commands use `BaseProcessor` from `processor_registry.py` and are registered with the `@register` decorator. Each processor implements `pre()` (enriches the message before pool submission) and optionally `post()` (side effects after the LLM response). Because they run inside the normal pool flow, responses appear in conversation history and are available for follow-up questions.
 
 ```python
-class SessionCommandHandler(Protocol):
-    async def __call__(
-        self, msg: InboundMessage, driver: LlmProvider, args: list[str], timeout: float
-    ) -> Response: ...
+from lyra.core.processor_registry import BaseProcessor, register
+
+@register("/my-cmd", description="Do something: /my-cmd <url>")
+class MyCmdProcessor(BaseProcessor):
+    async def pre(self, msg: InboundMessage) -> InboundMessage: ...
+    async def post(self, msg: InboundMessage, response: Response) -> Response: ...
 ```
 
 ---

@@ -240,14 +240,19 @@ async def test_transient_error_retried_and_succeeds() -> None:
 
 
 async def test_non_transient_error_not_retried() -> None:
-    """Non-transient error (ValueError) is not retried — adapter called exactly once."""
+    """Non-transient error (ValueError) is not retried.
+
+    adapter.send is called twice: once for the original send (which fails)
+    and once by try_notify_user to inform the user of the error.
+    """
     adapter = MagicMock()
     call_count = 0
 
     async def bad_send(_msg: InboundMessage, _out: OutboundMessage) -> None:
         nonlocal call_count
         call_count += 1
-        raise ValueError("permanent error")
+        if call_count == 1:
+            raise ValueError("permanent error")
 
     adapter.send = AsyncMock(side_effect=bad_send)
     dispatcher = OutboundDispatcher(platform_name="telegram", adapter=adapter)
@@ -256,7 +261,8 @@ async def test_non_transient_error_not_retried() -> None:
         msg = make_dispatcher_msg()
         dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
         await asyncio.sleep(0.1)
-        assert call_count == 1
+        # 1 failed send + 1 notification via try_notify_user = 2 calls
+        assert call_count == 2
     finally:
         await dispatcher.stop()
 
@@ -369,7 +375,11 @@ class TestRetryExhaustion:
 
 
 async def test_scope_task_exception_logged_and_dispatcher_survives() -> None:
-    """If a scope task raises, it's logged and the dispatcher keeps running."""
+    """If a scope task raises, it's logged and the dispatcher keeps running.
+
+    adapter.send is called 3 times: (1) first send fails, (2) try_notify_user
+    sends error notification, (3) second message dispatched normally.
+    """
     adapter = MagicMock()
     call_count = 0
 
@@ -389,6 +399,7 @@ async def test_scope_task_exception_logged_and_dispatcher_survives() -> None:
         # Dispatcher still alive — second message dispatched normally
         dispatcher.enqueue(msg, OutboundMessage.from_text("second"))
         await asyncio.sleep(0.05)
-        assert call_count == 2
+        # 1 failed send + 1 notification + 1 successful send = 3
+        assert call_count == 3
     finally:
         await dispatcher.stop()

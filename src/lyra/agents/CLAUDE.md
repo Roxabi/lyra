@@ -2,11 +2,11 @@
 
 ## Purpose
 
-`agents/` contains two things:
-1. **Concrete agent implementations** — classes that implement `AgentBase` and
-   wire up an `LlmProvider` to handle incoming messages.
-2. **System-default TOML configs** — the versioned source of truth for built-in
-   agents (`lyra_default.toml`, `aryl_default.toml`).
+`agents/` contains **concrete agent implementations** — classes that implement `AgentBase` and
+wire up an `LlmProvider` to handle incoming messages.
+
+Note: TOML seed files are not versioned here. They live in `~/.lyra/agents/` (machine-specific,
+gitignored) and are the source of truth for agent config at runtime.
 
 Note: `AgentStore`, `AgentSeeder`, `AgentRow`, and all store/lifecycle machinery
 live in `core/`, not here.
@@ -32,17 +32,13 @@ streaming via `ClaudeCliDriver` and handles STT transcription and TTS synthesis.
 ## TOML → DB seeding flow
 
 TOML files are **seed sources only**. The runtime reads agent config from SQLite
-(`~/.lyra/auth.db`), not from TOML directly.
+(`~/.lyra/config.db`), not from TOML directly.
 
 ```
-src/lyra/agents/<name>.toml  ←  system defaults (versioned)
 ~/.lyra/agents/<name>.toml   ←  user overrides (gitignored, machine-specific)
          ↓  lyra agent init [--force]
-~/.lyra/auth.db              ←  runtime source of truth
+~/.lyra/config.db            ←  runtime source of truth
 ```
-
-Resolution order when loading a TOML: user-level (`~/.lyra/agents/`) takes
-precedence over system defaults (`src/lyra/agents/`).
 
 After editing any TOML file, run `lyra agent init --force` and restart the daemon.
 The DB is NOT updated automatically on file change.

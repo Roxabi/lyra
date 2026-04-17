@@ -1,182 +1,229 @@
-ifeq (remote,$(firstword $(MAKECMDGOALS)))
-  REMOTE_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(REMOTE_CMD):;@:)
-else ifeq (lyra,$(firstword $(MAKECMDGOALS)))
-  LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(LYRA_CMD):;@:)
-else ifeq (telegram,$(firstword $(MAKECMDGOALS)))
-  TELEGRAM_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(TELEGRAM_CMD):;@:)
-else ifeq (discord,$(firstword $(MAKECMDGOALS)))
-  DISCORD_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(eval $(DISCORD_CMD):;@:)
+SUPERVISOR_HUB ?= $(HOME)/projects
+HUB_SERVICES   := lyra telegram discord lyra-stt lyra-tts
+-include $(SUPERVISOR_HUB)/hub.mk
+
+# Fallback SVC_CMD parsing — used when hub.mk is not present (e.g. prod).
+ifndef SVC_CMD
+ifneq (,$(filter $(HUB_SERVICES),$(firstword $(MAKECMDGOALS))))
+  SVC_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  ifneq (,$(SVC_CMD))
+    $(eval $(SVC_CMD):;@:)
+  endif
+endif
 endif
 
-LYRA_STACK_DIR ?= $(HOME)/projects/lyra-stack
-SUPERVISORCTL  := $(LYRA_STACK_DIR)/scripts/supervisorctl.sh
-SUPERVISOR_START := $(LYRA_STACK_DIR)/scripts/start.sh
-HUB_PID        := $(LYRA_STACK_DIR)/supervisord.pid
+# Sub-command parsing for multi-word targets (remote, monitor, deploy).
+# These are NOT in HUB_SERVICES because their sub-commands can collide
+# with real target names (e.g. `make remote telegram reload`).
+_LYRA_MULTI := monitor deploy remote dep-graph
+ifneq (,$(filter $(_LYRA_MULTI),$(firstword $(MAKECMDGOALS))))
+  _LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  _IS_LYRA_SUBCMD := true
+  ifneq (,$(_LYRA_CMD))
+    $(eval $(_LYRA_CMD):;@:)
+  endif
+endif
 
-define ensure_hub
-	@if [ ! -d "$(LYRA_STACK_DIR)" ]; then \
-		echo "Error: lyra-stack not found at $(LYRA_STACK_DIR)"; \
-		echo "       Clone it or set LYRA_STACK_DIR=/path/to/lyra-stack"; \
-		exit 1; \
-	fi
-	@if [ ! -f "$(HUB_PID)" ] || ! kill -0 $$(cat "$(HUB_PID)" 2>/dev/null) 2>/dev/null; then \
-		echo "Hub supervisord not running, starting..."; \
-		$(SUPERVISOR_START); \
-	fi
-endef
-
-MACHINE1 := $(shell grep '^MACHINE1_HOST=' .env 2>/dev/null | cut -d= -f2)
-MACHINE1_DIR := $(shell grep '^MACHINE1_DIR=' .env 2>/dev/null | cut -d= -f2)
+DEPLOY_HOST := $(shell grep '^DEPLOY_HOST=' .env 2>/dev/null | cut -d= -f2)
+DEPLOY_DIR := $(shell grep '^DEPLOY_DIR=' .env 2>/dev/null | cut -d= -f2)
 
 define require_machine1
-	@[ -n "$(MACHINE1)" ] || { echo "Error: MACHINE1_HOST not set in .env"; exit 1; }
-	@[ -n "$(MACHINE1_DIR)" ] || { echo "Error: MACHINE1_DIR not set in .env"; exit 1; }
+	@[ -n "$(DEPLOY_HOST)" ] || { echo "Error: DEPLOY_HOST not set in .env"; exit 1; }
+	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord register deploy remote test lint typecheck format
+.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register quadlet-install deploy remote update nats-setup nats-install nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
-ifneq (remote,$(firstword $(MAKECMDGOALS)))
+# ── Supervisor services ──────────────────────────────────────────────────────
+
+LYRA_PROGRAMS := lyra_hub lyra_telegram lyra_discord
+ifneq ($(shell grep -s '^LYRA_STT_ENABLED=1' .env),)
+  LYRA_PROGRAMS += lyra_stt
+endif
+ifneq ($(shell grep -s '^LYRA_TTS_ENABLED=1' .env),)
+  LYRA_PROGRAMS += lyra_tts
+endif
+
 lyra:
-ifeq ($(LYRA_CMD),stop)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) stop lyra_telegram
-	@$(SUPERVISORCTL) stop lyra_discord
-else ifeq ($(LYRA_CMD),reload)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) restart lyra_telegram
-	@$(SUPERVISORCTL) restart lyra_discord
-else ifeq ($(LYRA_CMD),logs)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) tail -f lyra_telegram
-else ifeq ($(LYRA_CMD),errors)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) tail -f lyra_telegram stderr
-else ifeq ($(LYRA_CMD),status)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) status lyra_telegram
-	@$(SUPERVISORCTL) status lyra_discord
-else ifeq ($(LYRA_CMD),)
-	@$(SUPERVISOR_START)
-	@$(SUPERVISORCTL) start lyra_telegram
-	@$(SUPERVISORCTL) start lyra_discord
-else
-	$(ensure_hub)
-	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_telegram
-	@$(SUPERVISORCTL) $(LYRA_CMD) lyra_discord
+ifndef _IS_LYRA_SUBCMD
+	$(call lyra_svc,$(LYRA_PROGRAMS))
 endif
 
 telegram:
-ifeq ($(TELEGRAM_CMD),stop)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) stop lyra_telegram
-else ifeq ($(TELEGRAM_CMD),reload)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) stop lyra_telegram
-	@sleep 1
-	@$(SUPERVISORCTL) start lyra_telegram
-else ifeq ($(TELEGRAM_CMD),logs)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) tail -f lyra_telegram
-else ifeq ($(TELEGRAM_CMD),errors)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) tail -f lyra_telegram stderr
-else ifeq ($(TELEGRAM_CMD),status)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) status lyra_telegram
-else ifeq ($(TELEGRAM_CMD),)
-	@$(SUPERVISOR_START)
-	@$(SUPERVISORCTL) start lyra_telegram
-else
-	$(ensure_hub)
-	@$(SUPERVISORCTL) $(TELEGRAM_CMD) lyra_telegram
+ifndef _IS_LYRA_SUBCMD
+	$(call lyra_svc,lyra_telegram)
 endif
 
 discord:
-ifeq ($(DISCORD_CMD),stop)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) stop lyra_discord
-else ifeq ($(DISCORD_CMD),reload)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) stop lyra_discord
-	@sleep 1
-	@$(SUPERVISORCTL) start lyra_discord
-else ifeq ($(DISCORD_CMD),logs)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) tail -f lyra_discord
-else ifeq ($(DISCORD_CMD),errors)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) tail -f lyra_discord stderr
-else ifeq ($(DISCORD_CMD),status)
-	$(ensure_hub)
-	@$(SUPERVISORCTL) status lyra_discord
-else ifeq ($(DISCORD_CMD),)
-	@$(SUPERVISOR_START)
-	@$(SUPERVISORCTL) start lyra_discord
-else
-	$(ensure_hub)
-	@$(SUPERVISORCTL) $(DISCORD_CMD) lyra_discord
+ifndef _IS_LYRA_SUBCMD
+	$(call lyra_svc,lyra_discord)
 endif
 
-endif # ifneq remote
+lyra-stt:
+ifndef _IS_LYRA_SUBCMD
+	$(call lyra_svc,lyra_stt)
+endif
+
+lyra-tts:
+ifndef _IS_LYRA_SUBCMD
+	$(call lyra_svc,lyra_tts)
+endif
+
+# ── Monitor (systemd timer, not supervisor) ──────────────────────────────────
+
+monitor:
+	@case "$(_LYRA_CMD)" in \
+		status) systemctl --user status lyra-monitor.timer lyra-monitor.service 2>&1 || true; \
+			echo ""; systemctl --user list-timers lyra-monitor.timer 2>/dev/null || true ;; \
+		logs)   journalctl --user -u lyra-monitor.service -f ;; \
+		run)    echo "Triggering manual monitoring run..."; systemctl --user start lyra-monitor.service ;; \
+		enable) systemctl --user enable --now lyra-monitor.timer; echo "Monitor timer enabled." ;; \
+		disable) systemctl --user disable --now lyra-monitor.timer; echo "Monitor timer disabled." ;; \
+		"")     systemctl --user status lyra-monitor.timer 2>&1 || true ;; \
+		*)      echo "Usage: make monitor [status|logs|run|enable|disable]" ;; \
+	esac
+
+# ── Registration ─────────────────────────────────────────────────────────────
+
+SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
+QUADLET_DIR      := $(HOME)/.config/containers/systemd
 
 register:
-	@echo "Registering lyra with lyra-stack..."
-	@if [ ! -d "$(LYRA_STACK_DIR)" ]; then \
-		echo "Error: lyra-stack not found at $(LYRA_STACK_DIR)"; \
-		echo "       Clone it or set LYRA_STACK_DIR=/path/to/lyra-stack"; \
-		exit 1; \
-	fi
-	@mkdir -p "$(LYRA_STACK_DIR)/conf.d"
-	@ln -sf "$(abspath supervisor/conf.d/lyra_telegram.conf)" "$(LYRA_STACK_DIR)/conf.d/lyra_telegram.conf"
-	@ln -sf "$(abspath supervisor/conf.d/lyra_discord.conf)"  "$(LYRA_STACK_DIR)/conf.d/lyra_discord.conf"
-	@if [ -L "$(LYRA_STACK_DIR)/conf.d/lyra.conf" ]; then rm "$(LYRA_STACK_DIR)/conf.d/lyra.conf"; fi
+	@echo "Registering lyra with supervisor hub..."
+	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord lyra-stt lyra-tts monitor remote deploy
+	$(call hub-link-conf,lyra_hub,deploy/supervisor/conf.d/lyra_hub.conf)
+	$(call hub-link-conf,lyra_telegram,deploy/supervisor/conf.d/lyra_telegram.conf)
+	$(call hub-link-conf,lyra_discord,deploy/supervisor/conf.d/lyra_discord.conf)
+	$(call hub-link-conf,lyra_stt,deploy/supervisor/conf.d/lyra_stt.conf)
+	$(call hub-link-conf,lyra_tts,deploy/supervisor/conf.d/lyra_tts.conf)
 	@mkdir -p "$(HOME)/.local/state/lyra/logs"
-	@if [ -S "$(LYRA_STACK_DIR)/supervisor.sock" ]; then \
-		$(SUPERVISORCTL) reread && $(SUPERVISORCTL) update; \
+	$(hub_reread)
+	@echo ""
+	@echo "Installing lyra systemd service..."
+	@mkdir -p "$(SYSTEMD_USER_DIR)"
+	@cp "$(abspath deploy/lyra.service)" "$(SYSTEMD_USER_DIR)/lyra.service"
+	@echo ""
+	@echo "Installing monitoring systemd timer..."
+	@cp "$(abspath deploy/lyra-monitor.service)" "$(SYSTEMD_USER_DIR)/lyra-monitor.service"
+	@cp "$(abspath deploy/lyra-monitor.timer)"   "$(SYSTEMD_USER_DIR)/lyra-monitor.timer"
+	@systemctl --user daemon-reload
+	@systemctl --user enable --now lyra.service
+	@systemctl --user enable lyra-monitor.timer
+	@echo ""
+	@echo "Done."
+	@echo "  Supervisor: lyra.service is running. Use 'make lyra status' or 'systemctl --user status lyra'."
+	@echo "  Monitor:    run 'make monitor enable' to start the health check timer."
+	@echo "  Secrets:    ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
+
+quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + reload
+	@mkdir -p "$(QUADLET_DIR)"
+	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container}
+	@cp deploy/quadlet/lyra.network                "$(QUADLET_DIR)/lyra.network"
+	@cp deploy/quadlet/lyra-data.volume            "$(QUADLET_DIR)/lyra-data.volume"
+	@cp deploy/quadlet/lyra-config.volume          "$(QUADLET_DIR)/lyra-config.volume"
+	@cp deploy/quadlet/lyra-nkey-hub.volume        "$(QUADLET_DIR)/lyra-nkey-hub.volume"
+	@cp deploy/quadlet/lyra-nkey-llm-worker.volume "$(QUADLET_DIR)/lyra-nkey-llm-worker.volume"
+	@cp deploy/quadlet/lyra-nkey-monitor.volume    "$(QUADLET_DIR)/lyra-nkey-monitor.volume"
+	@cp deploy/quadlet/lyra-nkey-tts-adapter.volume "$(QUADLET_DIR)/lyra-nkey-tts-adapter.volume"
+	@cp deploy/quadlet/lyra-nkey-stt-adapter.volume "$(QUADLET_DIR)/lyra-nkey-stt-adapter.volume"
+	@cp deploy/quadlet/lyra-nats-auth.volume       "$(QUADLET_DIR)/lyra-nats-auth.volume"
+	@cp deploy/quadlet/nats.container              "$(QUADLET_DIR)/nats.container"
+	@cp deploy/quadlet/hub.container               "$(QUADLET_DIR)/hub.container"
+	@systemctl --user daemon-reload
+	@echo "Quadlet units installed."
+
+# ── Supervisor config reload ──────────────────────────────────────────────────
+
+SCTL := $(or $(SUPERVISORCTL),$(CURDIR)/deploy/supervisor/supervisorctl.sh)
+LYRA_START := $(CURDIR)/deploy/supervisor/start.sh
+
+# Ensure supervisord is running (for standalone prod use without hub.mk).
+define ensure_lyra_supervisor
+	@if ! $(SCTL) status >/dev/null 2>&1; then \
+		echo "supervisord not running, starting..."; \
+		$(LYRA_START) > /dev/null; \
 	fi
-	@echo "Done. Run 'make telegram' and 'make discord' to start."
+endef
+
+# Local supervisorctl dispatch — mirrors svc.sh but uses SCTL directly.
+define lyra_svc
+	$(ensure_lyra_supervisor)
+	@case "$(SVC_CMD)" in \
+		reload)         $(SCTL) restart $(1) ;; \
+		start)          $(SCTL) start   $(1) ;; \
+		stop)           $(SCTL) stop    $(1) ;; \
+		logs)           $(SCTL) tail -f $(1) ;; \
+		errlogs|errors) $(SCTL) tail -f $(1) stderr ;; \
+		status|"")      $(SCTL) status  $(1) ;; \
+		*) echo "Unknown action: $(SVC_CMD)"; exit 1 ;; \
+	esac
+endef
+
+update:
+	@$(SCTL) reread && $(SCTL) update
+
+# ── Deploy + remote ──────────────────────────────────────────────────────────
 
 deploy:
 	$(require_machine1)
-	@echo "Deploying to Machine 1 ($(MACHINE1))..."
-	@ssh $(MACHINE1) "cd $(MACHINE1_DIR) && bash scripts/deploy.sh"
+	@echo "Deploying to Machine 1 ($(DEPLOY_HOST))..."
+	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && bash scripts/deploy.sh"
 
-REMOTE_SCTL := ~/projects/lyra-stack/scripts/supervisorctl.sh
+REMOTE_SCTL := ~/projects/lyra/deploy/supervisor/supervisorctl.sh
 
 # make remote [service] [action]
-#   Services: lyra, telegram, discord, tts, stt (default: all)
-#   Actions:  reload, start, stop, status, logs, errors (default: status)
+#   service: lyra or empty → all lyra_* programs | <shortname> → lyra_<shortname>
+#   action:  reload | start | stop | status (default) | logs | errors | update
+#   Single SSH call — service/action disambiguation happens on the remote.
 remote:
 	$(require_machine1)
-	@SVC="$(word 1,$(REMOTE_CMD))"; \
-	ACTION="$(word 2,$(REMOTE_CMD))"; \
-	SCTL="$(REMOTE_SCTL)"; \
-	case "$$SVC" in \
-	  lyra)     PROGS="lyra_telegram lyra_discord" ;; \
-	  telegram) PROGS="lyra_telegram" ;; \
-	  discord)  PROGS="lyra_discord" ;; \
-	  tts)      PROGS="voicecli_tts" ;; \
-	  stt)      PROGS="voicecli_stt" ;; \
-	  reload|start|stop|status|logs|errors|"") \
-	    ACTION="$$SVC"; PROGS="lyra_telegram lyra_discord voicecli_tts voicecli_stt" ;; \
-	  *) echo "Unknown service: $$SVC"; exit 1 ;; \
-	esac; \
+	@ssh $(DEPLOY_HOST) '\
+	SVC="$(word 1,$(_LYRA_CMD))"; ACTION="$(word 2,$(_LYRA_CMD))"; \
+	SCTL=$(REMOTE_SCTL); \
+	CONF=$(DEPLOY_DIR)/deploy/supervisor/conf.d; \
+	rdisc() { grep -rh "^\[program:lyra_" "$$CONF" | tr -d "[]" | cut -d: -f2 | tr "\n" " "; }; \
+	if   [ -z "$$SVC" ] || [ "$$SVC" = lyra ]; then PROGS=$$(rdisc); FIRST=lyra_hub; \
+	elif [ -f "$$CONF/lyra_$$SVC.conf" ];       then PROGS="lyra_$$SVC"; FIRST="$$PROGS"; \
+	else ACTION="$$SVC"; PROGS=$$(rdisc); FIRST=lyra_hub; fi; \
 	case "$${ACTION:-status}" in \
-	  reload)  ssh $(MACHINE1) "$$SCTL restart $$PROGS" ;; \
-	  start)   ssh $(MACHINE1) "$$SCTL start $$PROGS" ;; \
-	  stop)    ssh $(MACHINE1) "$$SCTL stop $$PROGS" ;; \
-	  status)  ssh $(MACHINE1) "$$SCTL status $$PROGS" ;; \
-	  logs)    FIRST=$${PROGS%% *}; ssh $(MACHINE1) "$$SCTL tail -f $$FIRST" ;; \
-	  errors)  FIRST=$${PROGS%% *}; ssh $(MACHINE1) "$$SCTL tail -f $$FIRST stderr" ;; \
-	  *) echo "Unknown action: $$ACTION"; exit 1 ;; \
-	esac
+	  reload)  $$SCTL restart $$PROGS ;; \
+	  start)   $$SCTL start $$PROGS ;; \
+	  stop)    $$SCTL stop $$PROGS ;; \
+	  status)  $$SCTL status $$PROGS ;; \
+	  update)  $$SCTL reread && $$SCTL update ;; \
+	  logs)    $$SCTL tail -f $$FIRST ;; \
+	  errors)  $$SCTL tail -f $$FIRST stderr ;; \
+	  *)       echo "Unknown action: $$ACTION"; exit 1 ;; \
+	esac'
+
+# ── Dev tools ────────────────────────────────────────────────────────────────
+
+nats-setup:
+	@bash deploy/nats/setup.sh
+
+nats-deploy:              ## run NATS setup on prod, then reload supervisor conf
+	$(require_machine1)
+	@echo "Running NATS setup on $(DEPLOY_HOST)..."
+	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && bash deploy/nats/setup.sh"
+	@echo "Reloading supervisor config on $(DEPLOY_HOST)..."
+	@ssh $(DEPLOY_HOST) "$(REMOTE_SCTL) reread && $(REMOTE_SCTL) update"
 
 test:
 	uv run pytest -v
+
+test-integration:
+	@echo "Starting integration environment..."
+	docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 30
+	@echo "Running integration tests..."
+	NATS_URL=nats://localhost:4222 uv run pytest tests/ -v -m nats_integration 2>&1; \
+	EXIT=$$?; \
+	docker compose -f docker/docker-compose.test.yml down -v; \
+	exit $$EXIT
+
+# voice-smoke: round-trip TTS→STT via NATS to verify voicecli nats-serve workers are answering.
+# Decision: uses `lyra voice-smoke` CLI (self-contained, no Telegram dependency). See #689.
+voice-smoke:
+	uv run lyra voice-smoke
 
 lint:
 	uv run ruff check .
@@ -186,3 +233,35 @@ typecheck:
 
 format:
 	uv run ruff format .
+
+# ── Dep graph ────────────────────────────────────────────────────────────────
+# Multi-action target — see _LYRA_MULTI list at top of file.
+# Sub-actions: fetch | build | audit | validate | open | (empty = full rebuild)
+
+DEP_GRAPH_DIR := $(HOME)/projects/lyra/scripts/dep-graph
+DEP_GRAPH_OUT := $(HOME)/.roxabi/forge/lyra/visuals/lyra-v2-dependency-graph.html
+
+define dep_graph_run
+	cd $(DEP_GRAPH_DIR) && uv run --project $(HOME)/projects/lyra python -m dep_graph.cli $(1)
+endef
+
+.PHONY: dep-graph
+
+dep-graph:
+	@case "$(_LYRA_CMD)" in \
+		fetch)    $(call dep_graph_run,fetch) ;; \
+		build)    $(call dep_graph_run,build) ;; \
+		audit)    $(call dep_graph_run,audit) ;; \
+		validate) $(call dep_graph_run,validate) ;; \
+		migrate)  $(call dep_graph_run,migrate) ;; \
+		open)     xdg-open $(DEP_GRAPH_OUT) 2>/dev/null || open $(DEP_GRAPH_OUT) 2>/dev/null || echo "Open $(DEP_GRAPH_OUT) manually" ;; \
+		""|all)   $(call dep_graph_run,fetch) && $(call dep_graph_run,build) ;; \
+		*)        echo "Unknown action: $(_LYRA_CMD)"; \
+		          echo "Use: fetch | build | audit | validate | migrate | open | (empty for full rebuild)"; \
+		          exit 1 ;; \
+	esac
+
+# ── Supervisor config generation ─────────────────────────────────────────────
+
+gen-conf:              ## generate supervisord conf.d from agents.yml
+	uv run deploy/gen-supervisor-conf.py

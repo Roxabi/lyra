@@ -1,5 +1,8 @@
 [errors.en]
 generic           = "Something went wrong. Please try again."
+error_timeout     = "⏱️ The backend took longer than 120 s to respond. Please try again."
+error_stream      = "⚠️ Streaming error: {kind}: {detail}. Please try again."
+error_no_final    = "⚠️ Response ended without a final message (tool events only). Please try again."
 unavailable       = "Lyra is currently unavailable. Please try again in {retry_secs}s."
 unknown_command   = "Unknown command: {command_name}. Type /help for available commands."
 help_header       = "Available commands:"
@@ -7,8 +10,8 @@ timeout           = "Your request timed out. Please try again."
 cancelled         = "Request cancelled."
 stt_noise         = "I couldn't make out your voice message, please try again."
 stt_unsupported   = "Voice messages are not supported — STT is not configured."
+stt_unavailable   = "Voice messages are temporarily unavailable. Please try again later or send a text message."
 stt_failed        = "Sorry, I couldn't transcribe your voice message."
-
 [adapters.telegram.en]
 backpressure_ack    = "Processing your request\u2026"
 circuit_open_ack    = "I'm temporarily overloaded, please try again in a moment."
@@ -30,8 +33,8 @@ timeout           = "Ta requête a expiré. Réessaie."
 cancelled         = "Requête annulée."
 stt_noise         = "Je n'ai pas pu comprendre ton message vocal, réessaie."
 stt_unsupported   = "Les messages vocaux ne sont pas pris en charge — STT non configuré."
+stt_unavailable   = "Les messages vocaux sont temporairement indisponibles. Réessaie plus tard ou envoie un message texte."
 stt_failed        = "Désolé, je n'ai pas pu transcrire ton message vocal."
-
 [adapters.telegram.fr]
 backpressure_ack    = "Traitement de ta requête\u2026"
 circuit_open_ack    = "Je suis temporairement surchargé, réessaie dans un instant."

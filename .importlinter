@@ -1,0 +1,50 @@
+[importlinter]
+root_package = lyra
+source_root = src
+include_external_packages = True
+
+[importlinter:contract:clean-architecture-layers]
+name = Clean architecture layers (core ← llm/nats ← infrastructure ← adapters ← bootstrap)
+type = layers
+layers =
+    lyra.bootstrap
+    lyra.adapters
+    lyra.infrastructure
+    lyra.llm | lyra.nats
+    lyra.core
+ignore_imports =
+    # Transitional: core.stores files pending migration import infrastructure (ADR-048)
+    lyra.core.stores.agent_store_protocol -> lyra.infrastructure.stores.agent_store
+    lyra.core.stores.pairing -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.pairing -> lyra.infrastructure.stores.auth_store
+    lyra.core.stores.message_index -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.thread_store -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.prefs_store -> lyra.infrastructure.stores.sqlite_base
+    lyra.core.stores.prefs_store -> lyra.infrastructure.stores.identity_alias_store
+    # Downward TYPE_CHECKING imports (ADR-048 transition)
+    lyra.core.agent_refiner -> lyra.infrastructure.stores.agent_store
+    lyra.core.authenticator -> lyra.infrastructure.stores.auth_store
+    lyra.core.authenticator -> lyra.infrastructure.stores.identity_alias_store
+    lyra.core.agent -> lyra.infrastructure.stores.agent_store
+    lyra.core.memory -> lyra.infrastructure.stores.identity_alias_store
+    lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store
+    # TurnStore moved to infrastructure per ADR-048 (#760 review fix f2)
+    lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store
+    lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store
+    lyra.core.cli_pool -> lyra.infrastructure.stores.turn_store
+    lyra.core.cli_pool_session -> lyra.infrastructure.stores.turn_store
+    lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store
+    lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store
+
+[importlinter:contract:core-stores-no-sqlite]
+name = core/stores protocols must not import SQLite drivers
+type = forbidden
+source_modules =
+    lyra.core.stores
+forbidden_modules =
+    aiosqlite
+    sqlite3
+allow_indirect_imports = true
+ignore_imports =
+    # Transitional: files pending migration to infrastructure/stores (ADR-048)
+    lyra.core.stores.agent_store_migrations -> aiosqlite

@@ -1,10 +1,4 @@
 {
-  "extraKnownMarketplaces": {
-    "roxabi-marketplace": { "source": { "source": "github", "repo": "Roxabi/roxabi-plugins" } },
-    "roxabi-vault-marketplace": { "source": { "source": "github", "repo": "Roxabi/roxabi-vault" } },
-    "visual-explainer-marketplace": { "source": { "source": "github", "repo": "nicobailon/visual-explainer" } },
-    "claude-plugins-official": { "source": { "source": "github", "repo": "anthropics/claude-plugins-official" } }
-  },
   "enabledPlugins": {
     "dev-core@roxabi-marketplace": true,
     "compress@roxabi-marketplace": true,
@@ -17,6 +11,26 @@
     "roxabi-vault@roxabi-vault-marketplace": true,
     "typescript-lsp@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
-    "visual-explainer@visual-explainer-marketplace": true
+    "gitnexus@roxabi-marketplace": true
+  },
+  "extraKnownMarketplaces": {
+    "roxabi-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "Roxabi/roxabi-plugins"
+      }
+    },
+    "roxabi-vault-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "Roxabi/roxabi-vault"
+      }
+    },
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
   }
 }

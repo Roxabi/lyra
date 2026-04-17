@@ -1,0 +1,43 @@
+---
+title: Fill test coverage gaps from PR #739 review
+issue: 740
+status: approved
+tier: F-lite
+date: 2026-04-16
+---
+
+## Problem
+
+PR #739 shipped the dep-graph auto-derive logic (lane order, par_groups, bands) with 11 unit tests against `derive.py`, but the `tester` code-review agent flagged 9 concrete coverage gaps that were deferred to keep the PR scope tight. Those gaps leave dark branches in `fetch.py::_derive_size_from_labels`, the new `audit.py` auto-derive helpers (`_build_layout_sets`, `_collect_auto_placed`, `_check_placement`, `_check_meta`, `_check_standalone` auto-mode, `_check_defer` auto arg), the `build.py::_prepare_render_data` fallback wiring, and 6 edge cases in `derive.py` itself (epic exclusion, empty-dict/malformed-entry handling, empty-lane fast path, single-node guard, milestone transitions, `has_inner_edge` skip branch).
+
+Without these tests, future regressions in auto-derive behavior can silently ship — the dep-graph is Lyra's planning surface and a precursor to roxabi-dashboard, so silent drift on lane/band/parallel-group computation degrades the whole visual planning system.
+
+## Who
+
+- **Primary:** Mickael — owns dep-graph tooling, relies on CI to catch auto-derive regressions when iterating on `derive.py` / `audit.py` / `fetch.py` / `build.py`.
+- **Secondary:** Future `/dev` runs that modify any of these four files — impact analysis will be more trustworthy once the graph is well-covered.
+
+## Constraints
+
+- Test scope is testing-only — **no production code changes**, no refactor of the four target modules.
+- `audit.py` helpers MUST be tested with synthetic dicts (no filesystem / no real GitHub fetch).
+- Tests MUST run via the existing CI step added in PR #739 (`make dep-graph test` or equivalent — verify actual invocation during plan).
+- Follow the `tests/test_derive.py` style already established in PR #739 — pytest, flat module layout under `scripts/dep-graph/tests/`.
+- Coverage targets the 9 enumerated gaps; no scope creep into untouched modules.
+
+## Out of Scope
+
+- Changes to `derive.py`, `audit.py`, `fetch.py`, `build.py` production logic (tests only reveal existing behavior; any bug found → separate issue).
+- New CI infrastructure or pytest config changes beyond what PR #739 added.
+- Integration / e2e tests — unit-level only.
+- Coverage for modules outside the 4 listed (e.g., rendering, layout schema).
+
+## Complexity
+
+**Tier: F-lite** — Clear, enumerated scope (9 gaps), single domain (testing), 4 files touched (2 new: `test_fetch.py` + `test_audit.py`; 2 extended: `test_build.py` + `test_derive.py`). No architecture, no unknowns, no multi-domain coordination. Matches `size:M` label on the issue.
+
+Signals observed:
+- Single domain: testing
+- 4 files, well within F-lite range (4–10)
+- No new patterns — mirrors existing `test_derive.py` style
+- Every gap has a confidence score from prior review → low ambiguity

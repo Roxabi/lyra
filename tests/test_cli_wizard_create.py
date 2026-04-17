@@ -218,7 +218,7 @@ class TestCreate:
         import lyra.cli_agent_create as create_mod
 
         user_dir = tmp_path / "user_agents"
-        monkeypatch.setattr(create_mod, "_USER_AGENTS_DIR", user_dir)
+        monkeypatch.setattr(create_mod, "_user_agents_dir", lambda: user_dir)
         sys_dir = tmp_path / "system_agents"
         monkeypatch.setattr(create_mod, "_SYSTEM_AGENTS_DIR", sys_dir)
 
@@ -250,7 +250,8 @@ class TestCreate:
         import lyra.cli_agent_create as create_mod
 
         system_dir = tmp_path / "system_agents"
-        monkeypatch.setattr(create_mod, "_USER_AGENTS_DIR", tmp_path / "user_agents")
+        _user_dir = tmp_path / "user_agents"
+        monkeypatch.setattr(create_mod, "_user_agents_dir", lambda: _user_dir)
         monkeypatch.setattr(create_mod, "_SYSTEM_AGENTS_DIR", system_dir)
 
         input_str = "\n".join(

@@ -3,7 +3,7 @@ Description=Run Lyra health monitor periodically
 
 [Timer]
 OnBootSec=1min
-OnUnitActiveSec={{MONITOR_INTERVAL:-5min}}
+OnUnitActiveSec=5min
 Persistent=true
 
 [Install]

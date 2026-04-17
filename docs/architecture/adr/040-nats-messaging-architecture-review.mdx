@@ -1,0 +1,459 @@
+---
+title: "ADR-040: NATS Messaging Architecture Review"
+description: Architectural quality review of the NATS messaging layer — protocol abstraction, envelope design, serialization, coupling, consistency, dispatcher complexity, state management, audio gap, and error boundaries.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+This ADR documents a systematic structural review of the NATS messaging architecture
+introduced in Slice C (#445). The review covers nine focus areas: protocol abstraction
+quality, message envelope design, serialization strategy, coupling depth, adapter
+consistency, outbound dispatcher design, distributed state management, the audio gap,
+and error propagation across process boundaries.
+
+The codebase under review spans:
+
+- `src/lyra/nats/` — `NatsBus`, `NatsChannelProxy`, `NatsRenderEventCodec`, `_serialize`
+- `src/lyra/core/bus.py` — `Bus[T]` Protocol
+- `src/lyra/core/hub/hub_protocol.py` — `ChannelAdapter` Protocol
+- `src/lyra/core/hub/outbound_dispatcher.py` — per-platform dispatch worker
+- `src/lyra/adapters/nats_outbound_listener.py` — adapter-side outbound consumer
+- `src/lyra/adapters/_base_outbound.py`, `telegram_outbound.py`, `discord_outbound.py`
+- `src/lyra/bootstrap/hub_standalone.py`, `adapter_standalone.py`
+
+---
+
+## Finding 1 — Protocol Abstraction Quality
+
+### Bus[T] (`core/bus.py`)
+
+**Assessment: Well-designed with one documented asymmetry.**
+
+`Bus[T]` is a clean structural Protocol. The Hub depends on it, and both `LocalBus`
+(asyncio queue) and `NatsBus` (NATS subscriptions) satisfy it without inheritance.
+The abstraction enables the bootstrap layer to inject either transport via constructor
+argument.
+
+One documented asymmetry in the protocol contract is worth noting explicitly: the
+`put()` docstring states that `LocalBus` may raise `asyncio.QueueFull` but
+`NatsBus` does not. This is a behavioral difference between two implementations of the
+same method signature. Callers that catch `QueueFull` from `LocalBus` do not need to
+handle it on `NatsBus`, but callers that rely on backpressure through `put()` will
+behave differently depending on which implementation is injected. The asymmetry is
+documented in the protocol, which is the correct mitigation.
+
+A secondary asymmetry: `NatsBus.task_done()` is a documented no-op. `LocalBus` uses
+`asyncio.Queue.task_done()` for join/wait semantics. Code that relies on `task_done()`
+for coordination would silently fail on `NatsBus`. In practice `Hub.run()` does call
+`task_done()`, so this is a latent hazard if join semantics are ever added to the hub
+shutdown path.
+
+`maxsize` is accepted by `NatsBus.register()` for protocol compatibility but has no
+effect. The staging queue has a fixed hardcoded size of 500 regardless of
+`platform_queue_maxsize`. This means the `inbound_bus_cfg.platform_queue_maxsize`
+configuration value is effectively ignored in NATS mode.
+
+### ChannelAdapter (`core/hub/hub_protocol.py`)
+
+**Assessment: Sound. `NatsChannelProxy` conforms cleanly with explicit scope limits.**
+
+`ChannelAdapter` is a structural Protocol with eight methods. `NatsChannelProxy`
+implements all eight, raises `NotImplementedError` on the two inbound normalization
+methods (which the Hub never calls on its own proxy), and explicitly no-ops the
+audio methods with a labeled comment (`C5` future capability). This is a correct
+partial implementation: the hub only calls `send`, `send_streaming`, and
+`render_attachment` on the proxy. The no-ops are guarded by warning logs rather
+than silent drops.
+
+The protocol does not define `normalize` and `normalize_audio` as optional. If a
+future caller exercises those methods on a `NatsChannelProxy`, it will raise at
+runtime rather than at type-check time. This is not a problem at current call sites
+but would benefit from a sentinel value or an explicit sub-protocol split
+(`OutboundOnlyAdapter`) when audio-over-NATS (C5) is implemented.
+
+---
+
+## Finding 2 — Message Envelope Design
+
+**Assessment: Correct decomposition. Streaming protocol is robust. Two missing cases.**
+
+The outbound wire protocol defines four envelope types:
+
+| Type | Shape | Used for |
+|------|-------|----------|
+| `send` | `{type, stream_id, outbound}` | Complete text reply |
+| `stream_start` | `{type, stream_id, outbound}` | Streaming metadata preamble |
+| chunk | `{stream_id, seq, event_type, payload, done}` | Streaming body + `stream_end` sentinel |
+| `attachment` | `{type, stream_id, attachment}` | File/image delivery |
+
+The stream protocol has correct safeguards: the hub always publishes a `stream_end`
+sentinel after the event iterator, even if the iterator was empty. The adapter's
+`_drain_stream` terminates on either `stream_end` or an event with `done=True`.
+Sequence numbers are tracked and out-of-order chunks generate a warning. This is
+appropriate for a single-writer/single-reader per-stream scenario.
+
+**Missing case 1 — `stream_error` envelope:** There is no explicit error signal for
+a failed hub-side stream. If the hub process crashes mid-stream, the adapter's
+`_drain_stream` task blocks on `q.get()` indefinitely because neither the
+`stream_end` sentinel nor a terminal event ever arrives. The stream queue for that
+`stream_id` accumulates no further items; `_drain_stream` never exits; the
+`_stream_tasks` entry is never cleaned up; and the `_cache` entry for the
+`stream_id` is never evicted. This is the primary reliability gap in the current
+protocol (see also Finding 9).
+
+**Missing case 2 — audio envelope:** Audio chunks over NATS are not defined (C5).
+The current system routes audio locally within each process, which works in
+single-process mode but means `render_audio`, `render_audio_stream`, and
+`render_voice_stream` are silently dropped by `NatsChannelProxy` in distributed
+mode. This is an intentional deferral, not an oversight (see Finding 8).
+
+The `stream_start` / chunk split for outbound metadata was added to carry the
+`outbound` field (typing indicator lifecycle, `reply_message_id`) across the process
+boundary. This is correct: without `stream_start`, the adapter would not know whether
+to start a typing indicator before the first chunk. The current design threads
+`outbound` through `send_streaming` on both sides of the NATS boundary.
+
+---
+
+## Finding 3 — Serialization Strategy
+
+**Assessment: Appropriate at current scale. Key limitations documented below.**
+
+`_serialize.py` implements a custom JSON codec using Python's `dataclasses` and
+`typing.get_type_hints` for reflection. It handles: dataclass fields, enum→value,
+datetime→ISO string, bytes→base64, nested dataclasses, and Optional/Union types.
+
+**Why custom over protobuf/msgpack:**
+The domain model uses plain Python dataclasses with rich type annotations. A code-generated
+schema (protobuf) or binary format (msgpack) would require either a separate schema file
+synchronized with the dataclasses, or a mapping layer. For a team of one and a payload
+vocabulary that evolves weekly, the custom codec eliminates a synchronization surface.
+
+**Known limitations:**
+
+1. **Reflection cost:** `_get_hints` calls `typing.get_type_hints()` on every
+   deserialization. There is no per-type hint cache. For high-frequency message paths
+   (streaming chunks at sub-second intervals), this adds measurable overhead that grows
+   linearly with field count. A `@lru_cache` on `_get_hints(dc_type)` would eliminate
+   this cost.
+
+2. **No schema version:** The wire format carries no schema version field. A rolling
+   deploy where the hub publishes a new envelope shape while an old adapter is still
+   running will cause silent field mismatches or `_decode_dataclass` kwargs failures.
+   The current `_decode_dataclass` implementation silently skips unknown fields but
+   cannot handle a field that was removed — it would pass `None` where a required value
+   is expected.
+
+3. **`platform_meta` stripping:** Callable values are stripped from `platform_meta`
+   before serialization. This is necessary because `platform_meta` contains
+   platform-SDK callback objects in single-process mode. In NATS mode the adapter never
+   sends `platform_meta` over the wire (only the hub's `InboundMessage` arrives at the
+   hub), so the stripping is defensive but correct.
+
+4. **TYPE_CHECKING import workaround:** `_get_hints` has a hardcoded list of
+   TYPE_CHECKING-only imports to resolve at runtime (`CommandContext`). This is a code
+   smell: the serializer has implicit knowledge of the application's import graph. A
+   proper fix would ensure that serializable dataclasses do not have TYPE_CHECKING-only
+   fields, or use `__future__.annotations` + explicit forward-ref resolution.
+
+**Compared to alternatives:**
+
+| | Custom JSON | msgpack | protobuf |
+|--|-------------|---------|----------|
+| Schema sync | None needed | None needed | `.proto` file |
+| Human-readable wire | Yes | No | No |
+| Performance | Moderate | Better | Best |
+| Forward compat | Manual | Manual | Built-in |
+| Typing integration | Native dataclasses | Manual | Generated code |
+
+For Lyra's current throughput (single user, low-volume chat), the custom codec is
+not a bottleneck. It becomes a liability if: (a) multi-user load increases chunk
+frequency significantly, or (b) schema changes happen during rolling deploys.
+
+---
+
+## Finding 4 — Coupling Analysis
+
+**Assessment: Transport coupling is well-contained. Replacing NATS is feasible at the
+bootstrap layer.**
+
+The Hub does not import anything from `lyra.nats`. The Hub holds a `Bus[T]` and a
+dict of `ChannelAdapter` instances — both are structural protocols. `NatsBus` and
+`NatsChannelProxy` are injected in `hub_standalone.py`, the bootstrap layer.
+
+Replacing NATS with Redis Streams or RabbitMQ would require:
+1. A `RedisBus[T]` implementing the `Bus[T]` Protocol (parallel to `NatsBus`).
+2. A `RedisChannelProxy` implementing `ChannelAdapter` (parallel to `NatsChannelProxy`).
+3. A `RedisOutboundListener` replacing `NatsOutboundListener` in the adapter process.
+4. Changes to `hub_standalone.py` and `adapter_standalone.py` to wire the new classes.
+
+No changes to Hub, Pool, OutboundDispatcher, or any platform adapter would be required.
+The abstraction is doing its job.
+
+**One coupling leak (resolved by PR #550 / issue #529):** `NatsOutboundListener`
+was originally not behind an abstraction — the adapter bootstrap called
+`adapter._outbound_listener = listener` and then `await listener.start()` after
+platform-specific setup, injecting the listener as a duck-typed `_outbound_listener`
+attribute. That made the adapter process always NATS-specific at the type level.
+Issue #529 introduces `OutboundListener` (a structural `typing.Protocol` in
+`src/lyra/adapters/outbound_listener.py`) with the 3-method surface adapter code
+requires (`cache_inbound`, `start`, `stop`). `TelegramAdapter` and `DiscordAdapter`
+now annotate `_outbound_listener` as `OutboundListener | None`, and
+`NatsOutboundListener` satisfies the protocol structurally without inheritance.
+A future `LocalOutboundListener` or `RedisOutboundListener` can be wired in
+`adapter_standalone.py` with zero changes to adapter code.
+
+---
+
+## Finding 5 — Adapter Consistency
+
+**Assessment: High consistency. Divergence is intentional and platform-driven.**
+
+Both Telegram and Discord adapters follow the identical structural pattern:
+
+1. Inbound: platform SDK event → `push_to_hub_guarded()` → `inbound_bus.put()`
+2. Outbound: `NatsOutboundListener` → adapter `send/send_streaming/render_attachment`
+3. Outbound algorithm: `OutboundAdapterBase.send_streaming()` → `StreamingSession` →
+   `PlatformCallbacks` (platform-specific closures)
+
+The `OutboundAdapterBase` ABC enforces the shared contract. `send_streaming()` is a
+concrete final method — adapters cannot override it, only supply `PlatformCallbacks`.
+This is the correct inversion for shared algorithm / platform-specific I/O.
+
+**Intentional divergences:**
+
+| Aspect | Telegram | Discord |
+|--------|----------|---------|
+| Typing interval | 3 s (`send_chat_action`) | 9 s (`trigger_typing`) |
+| Thread model | `reply_to_message_id` | Discord thread restore |
+| Voice | No-op stub | Full `VoiceSessionManager` |
+| Auth | HMAC webhook secret | Bot token only |
+
+These reflect real platform differences and are not code duplication.
+
+**Minor inconsistency:** `discord_outbound.send()` guards against
+`original_msg.platform != Platform.DISCORD.value` with an explicit platform check
+and returns early. `telegram_outbound.send()` delegates this check to
+`_validate_inbound()`. The behavior is equivalent but the implementation shape differs.
+Not a defect, but if a third platform were added, the `_validate_inbound` helper pattern
+is cleaner to replicate.
+
+---
+
+## Finding 6 — Outbound Dispatcher Design
+
+**Assessment: Appropriate complexity. Circuit breaker integration is correct.
+Retry is limited by design.**
+
+`OutboundDispatcher` provides:
+- An unbounded `asyncio.Queue` as the per-platform dispatch queue
+- Per-scope `asyncio.Lock` to serialize same-conversation messages
+- Circuit breaker check before every dispatch
+- Exponential backoff retry (1 s, 2 s, 4 s — 4 total attempts) for `send` kind only
+- Debounced user notification on circuit-open and on delivery failure
+- Routing context verification (platform + bot_id must match)
+- Generator drain on failure/circuit-open to prevent iterator leaks
+
+**Why retry is `send`-only:** Streaming iterators cannot be replayed — the
+`AsyncIterator[RenderEvent]` from `Pool.process()` is consumed once. Retrying a
+streaming item would require buffering the entire stream. The current choice to
+not retry streaming is correct given this constraint.
+
+**The queue is unbounded.** `asyncio.Queue()` with no maxsize. If the platform is
+persistently unavailable and the circuit breaker has not yet tripped, the queue will
+grow without bound. The circuit breaker is the primary backstop. With the current
+threshold settings, a circuit-open will eventually stop new items from being
+dispatched, but items already queued before the circuit opens will still be processed
+(and likely fail). A `maxsize` on the outbound queue, or a max-age drain, would bound
+this exposure.
+
+**Scope lock reaping** uses a threshold of 256 locks and reaps only unlocked entries.
+This is correct: a locked entry is an active dispatch and must not be removed. At 256
+concurrent scopes the reap is triggered; each reap removes all idle locks. Under
+normal operation (one user, a handful of conversations) this will never trigger. Under
+adversarial conditions (many distinct `scope_id` values) the dict could grow to
+`_SCOPE_REAP_THRESHOLD` before reaping begins.
+
+**The `_on_dispatched` callback** stored in `outbound.metadata` is a hidden
+control channel between the hub and the adapter. Metadata is a `dict[str, Any]` and
+the callback key `_on_dispatched` is a convention known to both sides of the
+dispatcher. This is functional but fragile: a serialization roundtrip would lose it.
+In NATS mode, `outbound.metadata` crosses the wire via `_serialize.py`, which strips
+callables. This means `_on_dispatched` is always stripped before the adapter receives
+the outbound envelope. The callback is only effective on the hub side of the boundary
+— the dispatcher invokes it in `OutboundDispatcher._dispatch_item` before the message
+leaves the hub process. This is correct and by design, but worth documenting explicitly.
+
+---
+
+## Finding 7 — State Management
+
+**Assessment: The inbound cache is unbounded and has no eviction path for interrupted
+streams.**
+
+`NatsOutboundListener` maintains two main state dictionaries:
+
+| Dict | Key | Value | Eviction |
+|------|-----|-------|----------|
+| `_cache` | `stream_id` (message ID) | `InboundMessage \| InboundAudio` | On `send`, `attachment`, or `_drain_stream` completion |
+| `_stream_queues` | `stream_id` | `asyncio.Queue[dict]` | On `_drain_stream` completion |
+| `_stream_tasks` | `stream_id` | `asyncio.Task` | On `_drain_stream` completion |
+| `_stream_outbound` | `stream_id` | `OutboundMessage` | On `_drain_stream` start (via `pop`) |
+
+Eviction works correctly when the happy path completes. The risk is the interrupted
+path: if the hub crashes mid-stream or the `stream_end` sentinel is never published,
+`_drain_stream` blocks on `q.get()` forever. All three dictionaries retain the
+`stream_id` entry permanently, and the `asyncio.Task` running `_drain_stream` is
+never cancelled. This is a memory and goroutine leak that compounds over the lifetime
+of the adapter process.
+
+`cache_inbound()` is called on every inbound message (`push_to_hub_guarded` in
+`_shared.py`). The cache is keyed by `msg.id`, which is a UUID. There is no maximum
+size. In normal operation the cache evicts on response — so size is bounded by the
+number of concurrent in-flight conversations. But for any stream that never
+terminates, that entry persists indefinitely.
+
+The fix requires a timeout or a periodic reaper for `_stream_tasks`. See Finding 9
+for the related error boundary gap.
+
+---
+
+## Finding 8 — Audio Gap
+
+**Assessment: Intentional scope deferral, not design debt.**
+
+Audio (TTS voice notes, STT input, voice channel streaming) does not transit NATS.
+In distributed mode:
+- The hub creates a `LocalBus[InboundAudio]` as a no-op sink for the audio bus.
+- `NatsChannelProxy.render_audio`, `render_audio_stream`, and `render_voice_stream`
+  log a warning and drain iterators without publishing.
+- The bootstrap comments label this `C5` (a future capability slice).
+
+Audio messages are per-user and typically large (binary PCM/Ogg frames). Routing them
+through NATS Core (which is pub-sub with no persistence) would require either a
+chunked binary envelope or out-of-band transfer (e.g. shared filesystem, object store,
+or a separate binary subject). The current deferral is appropriate because:
+
+1. The primary use case (personal bot, single machine) does not require cross-process
+   audio routing today.
+2. Designing the audio transport correctly requires a separate ADR (ADR-039 addresses
+   the STT/TTS decoupling; audio-over-NATS would extend that work).
+
+**What it would take to add audio-over-NATS:**
+
+1. Define an `audio` envelope type analogous to `attachment`.
+2. Choose a transfer mechanism: inline base64 (simple, 33% overhead), NATS object
+   store (better for large payloads), or out-of-band URL reference.
+3. Implement `render_audio` in `NatsChannelProxy` to publish the envelope.
+4. Implement an `_handle_audio` path in `NatsOutboundListener`.
+5. Route the `inbound_audio_bus` over NATS in the hub bootstrap (currently uses `LocalBus`).
+6. Implement `_handle_inbound_audio` in the adapter bootstrap.
+
+Steps 5 and 6 are the harder parts because audio messages include raw bytes that are
+currently passed in-process.
+
+---
+
+## Finding 9 — Error Boundaries
+
+**Assessment: The most significant gap. Hub crash mid-stream leaves adapters in a
+blocking state with no timeout.**
+
+### Hub crash scenario
+
+1. Hub publishes `stream_start` + 3 chunks, then crashes before `stream_end`.
+2. Adapter receives those 4 messages, spawns `_drain_stream`, and blocks on `q.get()`.
+3. NATS connection from the hub drops. The adapter's NATS subscription remains active.
+4. Supervisor restarts the hub. The hub has no state about the abandoned stream.
+5. The new hub instance may receive a new message from the same user and start a new
+   stream. The adapter now has two `_drain_stream` tasks for different `stream_id`
+   values. The old one is permanently blocked.
+
+**No timeout exists on `q.get()` in `_drain_stream`.** The adapter has no mechanism
+to detect that the hub process died mid-stream. The NATS subscription from which
+chunks would arrive is still active (the NATS server is still running); NATS Core
+does not signal "publisher disconnected."
+
+### Error propagation shape
+
+For `send` envelopes: errors in `_handle_send` are logged and the `cache` entry may
+or may not be evicted depending on at which line the error occurs. If
+`OutboundMessage(**outbound_data)` raises (malformed payload), the `stream_id` is
+never evicted from `_cache`. Over time, malformed messages accumulate as stale cache
+entries.
+
+For `attachment`: same pattern as `send`.
+
+For `streaming`: errors in `_drain_stream` are caught by the `try/except` block and
+logged. The `finally` clause cleans up `_cache`, `_stream_tasks`, and `_stream_queues`
+correctly on any exception path. However, `asyncio.CancelledError` is an
+`BaseException` subclass — if the task is cancelled externally (e.g., during
+`NatsOutboundListener.stop()`), the `finally` block still runs. This is correct.
+
+### Circuit breaker visibility
+
+The outbound circuit breaker lives in `OutboundDispatcher` on the hub side. The
+adapter has no circuit breaker. If the platform (Telegram API, Discord API) is down,
+the hub's circuit breaker opens after threshold failures, and subsequent items are
+dropped with a debounced user notification. But the circuit breaker state is
+in-memory in the hub process — it is not propagated to the adapter. If the hub is
+restarted (e.g., for a deploy), the circuit breaker resets to closed, which is the
+correct behavior.
+
+---
+
+## Summary of Issues by Severity
+
+| # | Finding | Severity | File(s) |
+|---|---------|----------|---------|
+| 1 | `_drain_stream` blocks indefinitely on hub crash; no stream timeout | High | `nats_outbound_listener.py` |
+| 2 | Inbound cache and stream state are unbounded without stream timeout | High | `nats_outbound_listener.py` |
+| 3 | `NatsBus` staging queue hardcoded to 500; `platform_queue_maxsize` config ignored | Medium | `nats_bus.py` |
+| 4 | No schema versioning in wire format; rolling deploys risk silent mismatch | Medium | `_serialize.py` |
+| 5 | `task_done()` is no-op on `NatsBus`; join semantics would silently not work | Low | `nats_bus.py` |
+| 6 | `_get_hints` lacks a per-type cache; reflection on every deserialization | Low | `_serialize.py` |
+| 7 | Outbound queue is unbounded; no max-age drain before circuit opens | Low | `outbound_dispatcher.py` |
+| 8 | `_on_dispatched` in metadata is a hidden control channel stripped by serializer | Low (by design) | `outbound_dispatcher.py`, `_serialize.py` |
+| 9 | No `OutboundListener` protocol; adapter process is always NATS-specific — **resolved by PR #550 / issue #529** | Low | `adapter_standalone.py` |
+| 10 | `TYPE_CHECKING`-only import workaround in `_get_hints` | Low | `_serialize.py` |
+
+---
+
+## Consequences
+
+### Positive
+
+- The `Bus[T]` / `ChannelAdapter` protocol pair is clean and transport-agnostic.
+  Replacing NATS at the bootstrap layer is feasible with minimal blast radius.
+- The streaming protocol (seq numbers, `stream_end` sentinel, `stream_start` preamble)
+  is well-structured for the single-writer/single-reader case.
+- Adapter consistency through `OutboundAdapterBase` and `StreamingSession` is high;
+  platform differences are isolated to `PlatformCallbacks`.
+- The audio deferral is correctly labeled and scoped.
+- Circuit breaker, retry, and user notification are correctly wired in the dispatcher.
+
+### Negative
+
+- Hub crash mid-stream produces a permanently blocked `_drain_stream` task and
+  leaked cache entries in the adapter process. Mitigating this requires either a
+  `stream_error` envelope type, a timeout on `_drain_stream`'s `q.get()`, or a
+  NATS JetStream durable consumer pattern that detects publisher disconnection.
+- The custom serializer has no schema versioning, creating a fragile rolling-deploy
+  surface as the message model evolves.
+- The inbound cache in `NatsOutboundListener` is an unbounded dict that doubles as
+  the correlation mechanism for the streaming protocol. Its correct operation depends
+  entirely on every stream terminating — which it does not guarantee under failure.
+
+### Neutral
+
+- The audio gap is a correctly deferred scope boundary, not structural debt.
+- The `_on_dispatched` callback stripping by the serializer is intentional behavior
+  that works correctly given current call sites. It should be documented more
+  explicitly to prevent future misuse.
+- The `NatsOutboundListener` is not behind a protocol today. For current scope
+  (NATS-only distributed mode) this is acceptable. A listener protocol would be
+  needed to support transport substitution at the adapter process level.

@@ -1,7 +1,7 @@
-"""ThreadStore — persistent Discord thread ownership (auth.db).
+"""ThreadStore — persistent Discord thread ownership (discord.db).
 
 Persists the set of threads owned by each Discord bot across restarts.
-Table ``discord_threads`` lives in ``auth.db`` alongside agent/auth tables.
+Table ``discord_threads`` lives in ``discord.db`` (#417 / S4).
 
 Schema
 ------
@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from .sqlite_base import SqliteStore
+from lyra.infrastructure.stores.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

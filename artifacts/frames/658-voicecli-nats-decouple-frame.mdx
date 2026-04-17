@@ -1,0 +1,49 @@
+---
+title: "refactor(voice): decouple voicecli from lyra — NATS-only, remove direct imports"
+issue: 658
+status: approved
+tier: F-lite
+date: 2026-04-14
+---
+
+## Problem
+
+Lyra currently has two coexisting paths to `voicecli`:
+
+| Path | What | Health |
+|---|---|---|
+| `src/lyra/stt/__init__.py` / `src/lyra/tts/__init__.py` (`STTService` / `TTSService`) | Direct `import voicecli.*` — in-process | Causes pyright errors when optional `[voice]` extra is not installed; forces every worktree to install GPU-tier deps just to typecheck |
+| `src/lyra/nats/nats_{stt,tts}_client.py` | Talks to voicecli daemon over NATS | Correct long-term path — matches adapter/satellite pattern (Telegram, Discord) |
+
+The two paths diverged while NATS migration landed. The legacy in-process path is no longer exercised in production (voicecli runs as supervisord `voicecli_tts` / `voicecli_stt` daemons) but still compiles into the tree, tripping typecheck in fresh worktrees and leaking GPU concerns into lyra's install surface.
+
+Surfaced while debugging a pre-commit typecheck failure on PR #656 (issue #652).
+
+## Who
+
+- **Primary:** Lyra developers — any fresh worktree without `--all-extras` currently fails pyright due to unresolved `voicecli.*` imports.
+- **Secondary:** CI / pre-commit hooks; voicecli maintainers (protects them from lyra-side coupling when they refactor).
+
+## Constraints
+
+- **Keep contract surface intact:** `lyra.stt` / `lyra.tts` also export protocols (`STTProtocol`, `TtsProtocol`), errors (`STTUnavailableError`, `STTNoiseError`, `TtsUnavailableError`), dataclasses (`TranscriptionResult`, `SynthesisResult`), config loaders (`load_{stt,tts}_config`), and the `is_whisper_noise` helper. These are consumed by agents, NATS clients, bootstrap, hub middleware, and `core/agent.py` — they must continue to exist (scope = drop `voicecli`-importing code, not the whole module).
+- **NATS is already the production path** on Machine 1 (`lyra_telegram`/`lyra_discord` → NATS → voicecli daemons).
+- **Freeze voice topic contract** (`voice.tts.request`, `voice.stt.request`, response/event shape, versioning) before deletion so future voicecli refactors have a stable boundary.
+- **Backward compat: none required** — single-process (non-NATS) in-process fallback was an aid during the migration and is no longer relied on.
+
+## Out of Scope
+
+- Refactoring NATS codecs or renaming existing NATS topics (contract is captured as-is).
+- Changes to voicecli itself (repo stays independent; lyra just stops importing it).
+- Replacing ffmpeg / audio conversion utilities (`lyra.integrations.audio` etc.).
+- Deleting `bootstrap/{stt,tts}_adapter_standalone.py` if they still serve as satellite entry points (decide during spec).
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (backend), no new architecture.
+
+Signals:
+- 1 domain (backend), label `size:F-lite`.
+- Known call-sites (grep-able): ~5 files import from `lyra.stt`/`lyra.tts`, ~2 files import `voicecli` symbols directly.
+- Deliverable is a subtraction + a doc, not new behavior.
+- Unknown: whether `bootstrap/{stt,tts}_adapter_standalone.py` are still used → spec step decides.

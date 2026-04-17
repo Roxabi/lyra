@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
 
+from lyra.core.audio_payload import AudioPayload
 from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
@@ -12,6 +13,9 @@ if TYPE_CHECKING:
 
 # Shared user-facing fallback for unhandled agent or dispatch errors.
 GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
+
+SCHEMA_VERSION_INBOUND_MESSAGE = 1
+SCHEMA_VERSION_OUTBOUND_MESSAGE = 1
 
 
 class Platform(str, Enum):
@@ -64,7 +68,8 @@ class InboundMessage:
     """Normalized inbound envelope produced by all channel adapters.
 
     platform_meta carries platform-specific routing data. See spec platform_meta table.
-    Security: trust is always 'user' from adapters — never set above adapter layer.
+    Security (C3): adapters set trust_level=PUBLIC; Hub overwrites via
+    _resolve_message_trust() (ResolveTrustMiddleware) before the pipeline runs.
     Bot-authored messages are filtered by adapters before normalize() is called.
     """
 
@@ -78,7 +83,9 @@ class InboundMessage:
     text: str  # normalized plain text (markup stripped)
     text_raw: str  # original text with platform markup
     trust_level: TrustLevel
+    schema_version: int = 1
     is_admin: bool = False
+    roles: tuple[str, ...] = ()
     attachments: list[Attachment] = field(default_factory=list)
     reply_to_id: str | None = None
     thread_id: str | None = None
@@ -86,9 +93,6 @@ class InboundMessage:
     locale: str | None = None
     # Whisper-detected spoken language (e.g. "fr") — distinct from locale
     language: str | None = None
-    # Deprecated: use trust_level (TrustLevel) for authorization.
-    # Removal tracked separately.
-    trust: Literal["user", "system"] = "user"
     platform_meta: dict = field(default_factory=dict)
     routing: RoutingContext | None = None
     command: CommandContext | None = None
@@ -96,35 +100,9 @@ class InboundMessage:
     # Set to True by processors that have already enriched text with trusted context.
     # Agents use this flag to decide whether to wrap plain text in <user_message> tags.
     processor_enriched: bool = False
-
-
-@dataclass(frozen=True)
-class InboundAudio:
-    """Normalized inbound audio envelope produced by all channel adapters.
-
-    Mirrors InboundMessage for audio: adapters produce this; hub/agents consume it.
-    Adapters enqueue via InboundAudioBus; hub/agents consume from its staging queue.
-    Security: trust is always 'user' from adapters — never set above adapter layer.
-    """
-
-    id: str
-    platform: str  # "telegram" | "discord" | ...
-    bot_id: str
-    scope_id: str
-    user_id: str
-    audio_bytes: bytes
-    mime_type: str
-    duration_ms: int | None
-    file_id: str | None
-    timestamp: datetime
-    trust_level: TrustLevel
-    # Deprecated: use trust_level (TrustLevel) for authorization.
-    # Removal tracked separately.
-    trust: Literal["user", "system"] = "user"
-    user_name: str = ""
-    is_mention: bool = False
-    platform_meta: dict = field(default_factory=dict)
-    routing: RoutingContext | None = None
+    # Audio payload — populated when modality == "voice" (#534).
+    # Stripped to None by the STT pipeline stage after successful transcription.
+    audio: AudioPayload | None = None
 
 
 @dataclass
@@ -255,6 +233,7 @@ class OutboundMessage:
     intermediate: bool = False  # True → typing continues after send
     metadata: dict[str, Any] = field(default_factory=dict)
     routing: RoutingContext | None = None
+    schema_version: int = 1
 
     @classmethod
     def from_text(cls, text: str) -> "OutboundMessage":

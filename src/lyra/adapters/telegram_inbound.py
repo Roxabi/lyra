@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -11,6 +12,7 @@ from lyra.adapters.telegram_audio import _download_audio
 from lyra.adapters.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.message import InboundMessage, Platform
+from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -42,13 +44,14 @@ async def _push_to_hub(
         await adapter.bot.send_message(chat_id, text)
 
     await push_to_hub_guarded(
-        inbound_bus=adapter._hub.inbound_bus,
+        inbound_bus=adapter._inbound_bus,
         platform=Platform.TELEGRAM,
         msg=hub_msg,
         circuit_registry=adapter._circuit_registry,
         on_drop=on_drop,
         send_backpressure=_send_bp,
         get_msg=adapter._msg,
+        outbound_listener=adapter._outbound_listener,
     )
 
 
@@ -57,20 +60,43 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
     if not msg.from_user or getattr(msg.from_user, "is_bot", False):
         return
 
-    user_id = str(msg.from_user.id)
-    identity = adapter._auth.resolve(user_id)
-    if adapter._guard_chain.run(identity):
-        log.info("auth_reject user=%s channel=telegram", user_id)
-        return
-
-    hub_msg = adapter.normalize(
-        msg, trust_level=identity.trust_level, is_admin=identity.is_admin
-    )
+    # C3: adapters send raw identity fields; Hub resolves trust in run().
+    hub_msg = adapter.normalize(msg, trust_level=TrustLevel.PUBLIC, is_admin=False)
 
     # In group chats, only respond when directly mentioned.
     # In private chats, always respond.
     if hub_msg.platform_meta.get("is_group") and not hub_msg.is_mention:
         return
+
+    # Session wiring: inject prior session_id + persist callback.
+    _meta_updates: dict[str, Any] = {}
+    if adapter._turn_store is not None:
+        from lyra.core.hub.hub_protocol import RoutingKey
+        from lyra.core.message import Platform
+
+        _pool_id = RoutingKey(
+            Platform.TELEGRAM, adapter._bot_id, hub_msg.scope_id
+        ).to_pool_id()
+        try:
+            _last_sid = await adapter._turn_store.get_last_session(_pool_id)
+        except Exception:
+            log.exception("TurnStore.get_last_session failed for pool_id=%s", _pool_id)
+            _last_sid = None
+        if _last_sid is not None:
+            _meta_updates["thread_session_id"] = _last_sid
+        _ts = adapter._turn_store
+
+        async def _tg_session_update_fn(
+            msg: InboundMessage, session_id: str, pool_id: str
+        ) -> None:
+            await _ts.start_session(session_id, pool_id)
+
+        _meta_updates["_session_update_fn"] = _tg_session_update_fn
+    if _meta_updates:
+        hub_msg = dataclasses.replace(
+            hub_msg,
+            platform_meta={**hub_msg.platform_meta, **_meta_updates},
+        )
 
     log.info(
         "message_received",
@@ -95,18 +121,13 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
 async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
     """Handle an incoming voice or audio message.
 
-    Downloads audio, builds an InboundAudio envelope, and enqueues it
-    on the inbound audio bus with backpressure / circuit-open guards.
+    Downloads audio, builds an InboundMessage (modality='voice') envelope, and
+    enqueues it on the inbound bus with backpressure / circuit-open guards.
     """
     if not msg.from_user or getattr(msg.from_user, "is_bot", False):
         return
 
-    uid = str(msg.from_user.id)
-    identity = adapter._auth.resolve(uid)
-    if adapter._guard_chain.run(identity):
-        log.info("auth_reject user=%s channel=telegram", uid)
-        return
-
+    # C3: adapters send raw identity fields; Hub resolves trust in run().
     voice = msg.voice or msg.audio or getattr(msg, "video_note", None)
     if voice is None:
         return
@@ -165,13 +186,13 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    # is_admin not propagated to InboundAudio — InboundAudio.is_admin is deferred (see #315)  # noqa: E501
+    # C3: trust resolved by Hub; adapter passes PUBLIC as raw identity.
     hub_audio = normalize_audio(
         adapter,
         msg,
         audio_bytes=audio_bytes,
         mime_type="audio/ogg",
-        trust_level=identity.trust_level,
+        trust_level=TrustLevel.PUBLIC,
     )
 
     adapter._start_typing(chat_id)
@@ -183,13 +204,14 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
             )
 
         await push_to_hub_guarded(
-            inbound_bus=adapter._hub.inbound_audio_bus,
+            inbound_bus=adapter._inbound_bus,
             platform=Platform.TELEGRAM,
             msg=hub_audio,
             circuit_registry=adapter._circuit_registry,
             on_drop=None,
             send_backpressure=_send_bp,
             get_msg=adapter._msg,
+            outbound_listener=adapter._outbound_listener,
         )
     finally:
         adapter._cancel_typing(chat_id)

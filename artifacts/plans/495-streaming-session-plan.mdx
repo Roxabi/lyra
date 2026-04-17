@@ -1,0 +1,93 @@
+---
+title: "refactor(adapters): implement StreamingSession + PlatformCallbacks [#468 V2]"
+issue: 495
+status: approved
+tier: F-lite
+date: 2026-04-02
+parent-spec: artifacts/specs/468-centralize-streaming-adapters-spec.mdx
+---
+
+## Goal
+
+Create `src/lyra/adapters/_shared_streaming.py` with `PlatformCallbacks` dataclass and `StreamingSession` class that owns the full streaming algorithm (placeholder send, event loop, final delivery, typing tail). This is Slice 2 of #468 — the hard gate for V3–V5.
+
+## Files
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/lyra/adapters/_shared_streaming.py` | **new** | `PlatformCallbacks` + `StreamingSession` |
+| `tests/adapters/test_streaming_session.py` | **new** | Unit tests with mock callbacks |
+
+## Implementation Plan
+
+### 1. `PlatformCallbacks` dataclass
+
+```python
+@dataclass
+class PlatformCallbacks:
+    send_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
+    edit_placeholder_text: Callable[[Any, str], Awaitable[None]]
+    edit_placeholder_tool: Callable[[Any, ToolSummaryRenderEvent, str], Awaitable[None]]
+    send_message: Callable[[str], Awaitable[int | None]]
+    send_fallback: Callable[[str], Awaitable[int | None]]
+    chunk_text: Callable[[str], list[str]]
+    start_typing: Callable[[], None]
+    cancel_typing: Callable[[], None]
+```
+
+All callbacks are opaque to `StreamingSession` — platform-specific logic stays in the callbacks.
+
+### 2. `StreamingSession` class
+
+```python
+class StreamingSession:
+    def __init__(self, callbacks: PlatformCallbacks, outbound: OutboundMessage | None): ...
+    async def run(self, events: AsyncIterator[RenderEvent]) -> None: ...
+```
+
+Internal methods:
+- `_send_placeholder() -> tuple[Any, int | None]` — calls `callbacks.send_placeholder()`, writes `reply_message_id` to outbound. On failure: drains events, calls `callbacks.send_fallback()`, writes fallback message_id, returns early.
+- `_run_event_loop(events, placeholder_obj)` — iterates events:
+  - `ToolSummaryRenderEvent`: sets `had_tool_events`, applies `not istate.has_intermediate_text` guard, debounces, computes `istate.display()`, calls `edit_placeholder_tool(placeholder_obj, event, display_text)`
+  - `TextRenderEvent(is_final=True)`: calls `_st.on_final_text(event)`
+  - `TextRenderEvent(is_final=False)`: appends to `istate`, debounces, calls `edit_placeholder_text(placeholder_obj, raw_text)`
+  - Catches exceptions → `_st.stream_error`
+- `_deliver_final(placeholder_obj)` — three branches:
+  1. `had_tool_events` → `send_message(chunk)` per chunk; last chunk writes `reply_message_id`
+  2. `elif final_chunks` → `edit_placeholder_text(placeholder_obj, chunks[0])` + overflow via `send_message`
+  3. `elif stream_error` → `edit_placeholder_text(placeholder_obj, error_text)`
+- `_handle_typing_tail()` — `outbound.intermediate` → `start_typing()` else `cancel_typing()`
+
+### 3. Dependencies
+
+Imports from existing modules:
+- `StreamState`, `STREAMING_EDIT_INTERVAL` from `_shared.py`
+- `RenderEvent`, `TextRenderEvent`, `ToolSummaryRenderEvent` from `core/render_events.py`
+- `OutboundMessage`, `GENERIC_ERROR_REPLY` from `core/message.py`
+
+### 4. Test plan
+
+All tests use mock `PlatformCallbacks` (AsyncMock/MagicMock).
+
+| Test | What it verifies |
+|------|-----------------|
+| `test_text_only_turn` | Final text edits placeholder; no `send_message` calls |
+| `test_tool_then_text_turn` | Tool events edit placeholder; final text sent via `send_message`; `reply_message_id` updated to last chunk |
+| `test_stream_error_no_text` | Error branch edits placeholder with generic error |
+| `test_placeholder_fallback` | `send_placeholder` raises → drains events → `send_fallback` called; `reply_message_id` from fallback |
+| `test_reply_message_id_with_outbound` | Each branch writes `reply_message_id` when `outbound` is provided |
+| `test_reply_message_id_without_outbound` | No crash when `outbound=None` |
+| `test_typing_tail_intermediate` | `outbound.intermediate=True` → `start_typing()` |
+| `test_typing_tail_final` | `outbound.intermediate=False` → `cancel_typing()` |
+| `test_intermediate_text_guard` | Tool event after intermediate text → `edit_placeholder_tool` NOT called |
+| `test_overflow_chunks` | Multiple chunks in text-only → first edits placeholder, rest via `send_message` |
+
+### 5. Agent assignment
+
+Single `backend-dev` agent — 2 files, 1 domain, no parallelism needed.
+
+### 6. Verification
+
+```bash
+uv run pytest tests/adapters/test_streaming_session.py -v
+```

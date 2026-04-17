@@ -1,4 +1,4 @@
-"""Voice overlay helpers — STT config overlay and service initialisation."""
+"""Voice overlay helpers — NATS STT/TTS client initialisation."""
 
 from __future__ import annotations
 
@@ -7,68 +7,88 @@ import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.core.agent_config import Agent
+    from nats.aio.client import Client as NATS
 
-from lyra.core.agent_config import AgentSTTConfig
-from lyra.stt import STTConfig, STTService, load_stt_config
-from lyra.tts import TTSService, load_tts_config
+    from lyra.nats.nats_stt_client import NatsSttClient
+    from lyra.nats.nats_tts_client import NatsTtsClient
 
 log = logging.getLogger(__name__)
 
 
-def apply_agent_stt_overlay(
-    agent_stt: AgentSTTConfig | None,
-    stt_cfg: STTConfig,
-) -> STTConfig:
-    """Overlay non-None fields from AgentSTTConfig onto STTConfig.
+def _deprecated_env(old_var: str, new_var: str) -> str | None:
+    val = os.environ.get(old_var)
+    if val is not None:
+        import warnings
 
-    None fields in agent_stt are skipped — voicecli global defaults remain in effect.
-    Returns an updated STTConfig (via model_copy).
-    """
-    if agent_stt is None:
-        return stt_cfg
-    a = agent_stt
-    updates: dict[str, object] = {}
-    if a.language_detection_threshold is not None:
-        updates["language_detection_threshold"] = a.language_detection_threshold
-    if a.language_detection_segments is not None:
-        updates["language_detection_segments"] = a.language_detection_segments
-    if a.language_fallback is not None:
-        updates["language_fallback"] = a.language_fallback
-    return stt_cfg.model_copy(update=updates) if updates else stt_cfg
+        warnings.warn(
+            f"{old_var} is deprecated; use {new_var} instead",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+    return val
 
 
-def init_stt(first_agent_config: "Agent") -> STTService | None:
-    """Initialise STT service if STT_MODEL_SIZE is set."""
-    if not os.environ.get("STT_MODEL_SIZE"):
+def init_nats_stt(nc: "NATS") -> "NatsSttClient | None":
+    """Initialise NATS STT client if LYRA_STT_ENABLED=1."""
+    if os.environ.get("LYRA_STT_ENABLED", "0") != "1":
+        if os.environ.get("STT_MODEL_SIZE") and not os.environ.get("LYRA_STT_ENABLED"):
+            log.warning(
+                "STT_MODEL_SIZE is set but LYRA_STT_ENABLED=1 is absent"
+                " — STT is disabled; add LYRA_STT_ENABLED=1 to enable"
+            )
         return None
-    try:
-        agent_stt = first_agent_config.voice.stt if first_agent_config.voice else None
-        stt_cfg = apply_agent_stt_overlay(agent_stt, load_stt_config())
-        stt_service = STTService(stt_cfg)
-        log.info("STT enabled: model=%s (via voiceCLI)", stt_cfg.model_size)
-        return stt_service
-    except ValueError as exc:
-        raise SystemExit(f"Invalid STT configuration: {exc}") from exc
+    from lyra.nats.nats_stt_client import NatsSttClient
 
-
-def init_tts(
-    stt_service: STTService | None,
-) -> TTSService | None:
-    """Initialise TTS service from global env-var defaults.
-
-    Per-agent TTS config is resolved at synthesis time via
-    Hub.dispatch_response() → resolve_binding() → agent.config.voice.tts.
-    """
-    voice_responses = os.environ.get("LYRA_VOICE_RESPONSES", "1") != "0"
-    if stt_service is None or not voice_responses:
-        return None
-
-    tts_cfg = load_tts_config()
-    tts_service = TTSService(tts_cfg)
-    log.info(
-        "TTS voice responses enabled (global defaults): engine=%s voice=%s",
-        tts_cfg.engine or "default",
-        tts_cfg.voice or "default",
+    model = (
+        os.environ.get("LYRA_STT_MODEL")
+        or _deprecated_env("STT_MODEL_SIZE", "LYRA_STT_MODEL")
+        or "large-v3-turbo"
     )
-    return tts_service
+    client = NatsSttClient(nc=nc, model=model)
+    log.info("STT enabled via NATS (model=%s)", model)
+    return client
+
+
+def init_nats_tts(nc: "NATS") -> "NatsTtsClient | None":
+    """Initialise NATS TTS client if LYRA_TTS_ENABLED=1 (independent of STT)."""
+    if os.environ.get("LYRA_TTS_ENABLED", "0") != "1":
+        return None
+    from lyra.nats.nats_tts_client import NatsTtsClient
+
+    client = NatsTtsClient(nc=nc)
+    log.info("TTS enabled via NATS")
+    return client
+
+
+async def probe_voice_services(
+    nc: "NATS",
+    stt: object | None,
+    tts: object | None,
+) -> None:
+    """Ping STT/TTS adapters at startup; log a warning if unreachable.
+
+    Non-fatal: hub starts regardless. Per-request circuit breaker handles
+    ongoing availability tracking.
+    """
+    from nats.errors import NoRespondersError
+
+    checks = [
+        ("STT", "lyra.voice.stt.request", stt),
+        ("TTS", "lyra.voice.tts.request", tts),
+    ]
+    for name, subject, client in checks:
+        if client is None:
+            continue
+        try:
+            await nc.request(subject, b'{"ping":true}', timeout=1.0)
+        except (NoRespondersError, TimeoutError):
+            log.warning(
+                "%s adapter not reachable at boot — will retry per-request", name
+            )
+        except Exception as exc:
+            log.warning(
+                "%s probe failed unexpectedly: %s: %s",
+                name,
+                type(exc).__name__,
+                exc,
+            )

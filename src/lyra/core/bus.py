@@ -31,16 +31,32 @@ class Bus(Protocol[T]):
     ``put(item: T)`` positions).
     """
 
-    def register(self, platform: Platform, maxsize: int = 100) -> None:
-        """Register a bounded queue for the given platform."""
+    def register(
+        self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
+    ) -> None:
+        """Register a bounded queue for the given platform.
+
+        bot_id is used by NatsBus to key subscriptions per (platform, bot_id).
+        LocalBus ignores it.
+        """
         ...
 
-    def put(self, platform: Platform, item: T) -> None:
-        """Enqueue an item on the platform's queue (synchronous, non-blocking)."""
+    async def put(self, platform: Platform, item: T) -> None:
+        """Enqueue an item on the platform's queue.
+
+        May raise ``asyncio.QueueFull`` when the implementation uses local
+        queuing (e.g. ``LocalBus``) and the platform queue is at capacity.
+        Network-backed implementations (e.g. ``NatsBus``) do not raise —
+        callers must not assume backpressure from this method.
+        """
         ...
 
     async def get(self) -> T:
-        """Wait for and return the next item from the staging queue."""
+        """Wait for and return the next item from the staging queue.
+
+        Some implementations raise ``RuntimeError`` when the bus is configured
+        as publish-only (see ``NatsBus(..., publish_only=True)``).
+        """
         ...
 
     def task_done(self) -> None:
@@ -48,11 +64,19 @@ class Bus(Protocol[T]):
         ...
 
     async def start(self) -> None:
-        """Start the bus (spawn feeder tasks, open connections, etc.)."""
+        """Start the bus (spawn feeder tasks, open connections, etc.).
+
+        Network-backed implementations may be no-ops when configured as
+        publish-only (e.g. ``NatsBus(..., publish_only=True)``).
+        """
         ...
 
     async def stop(self) -> None:
-        """Stop the bus and clean up resources."""
+        """Stop the bus and clean up resources.
+
+        Network-backed implementations may be no-ops when configured as
+        publish-only (e.g. ``NatsBus(..., publish_only=True)``).
+        """
         ...
 
     def qsize(self, platform: Platform) -> int:
@@ -65,4 +89,14 @@ class Bus(Protocol[T]):
 
     def registered_platforms(self) -> frozenset[Platform]:
         """Return the set of platforms with a registered queue."""
+        ...
+
+    @property
+    def subscription_count(self) -> int:
+        """Return the number of active transport subscriptions.
+
+        Network-backed implementations (e.g. ``NatsBus``) report the number
+        of live NATS subscriptions. In-process implementations
+        (e.g. ``LocalBus``) report ``0`` — they have no remote subscriptions.
+        """
         ...

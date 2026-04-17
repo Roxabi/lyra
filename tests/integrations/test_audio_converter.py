@@ -60,9 +60,7 @@ class TestFfmpegConverterConvert:
         wav = tmp_path / "test.wav"
         ogg = tmp_path / "test.ogg"
 
-        with patch(
-            "asyncio.create_subprocess_exec", side_effect=FileNotFoundError
-        ):
+        with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
             with pytest.raises(AudioConversionFailed) as exc_info:
                 await FfmpegConverter().convert_wav_to_ogg(wav, ogg)
             assert exc_info.value.reason == "not_available"

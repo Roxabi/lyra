@@ -16,12 +16,11 @@ from .message import InboundMessage, Response
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from lyra.llm.smart_routing import SmartRoutingDecorator
-
     from .circuit_breaker import CircuitRegistry
     from .commands.command_loader import CommandLoader
     from .messages import MessageManager
     from .runtime_config import RuntimeConfigHolder
+    from .smart_routing_protocol import SmartRoutingProtocol
 
 
 def require_admin(msg: InboundMessage) -> "Response | None":
@@ -106,7 +105,7 @@ def circuit_status(
 
 def routing_status(
     msg: InboundMessage,
-    smart_routing: "SmartRoutingDecorator | None",
+    smart_routing: "SmartRoutingProtocol | None",
 ) -> Response:
     """Show smart routing decisions (admin-only)."""
     if denied := require_admin(msg):

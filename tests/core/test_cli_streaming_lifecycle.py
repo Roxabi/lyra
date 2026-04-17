@@ -7,7 +7,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.cli_protocol import StreamingIterator, send_and_read_stream
-from lyra.llm.events import ResultLlmEvent, TextLlmEvent
+from lyra.core.events import ResultLlmEvent, TextLlmEvent
 
 from .conftest import (
     ASSISTANT_INTERMEDIATE_LINE,
@@ -40,7 +40,14 @@ class TestStreamingIteratorError:
         chunks = [chunk async for chunk in it]
 
         # Assert
-        assert chunks == [ResultLlmEvent(is_error=True, duration_ms=50, cost_usd=None)]
+        assert chunks == [
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=50,
+                cost_usd=None,
+                error_text="Something went wrong",
+            )
+        ]
         assert it.error == "Something went wrong"
 
     async def test_error_none_on_success(self) -> None:
@@ -78,6 +85,73 @@ class TestStreamingIteratorError:
 
         # Assert
         assert it.error == "rate_limit_error"
+
+    async def test_subtype_success_with_streamed_text_downgrades_to_success(
+        self,
+    ) -> None:
+        """is_error=True + subtype=success is a recovered-tool case — but only
+        when text was actually streamed via text_delta events.
+        """
+        # Arrange — CLI streamed real text before signalling recovered error
+        recovered_result = _ndjson(
+            {
+                "type": "result",
+                "session_id": "abc-123",
+                "result": "Hello",
+                "is_error": True,
+                "subtype": "success",
+                "duration_ms": 1200,
+            }
+        )
+        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE, recovered_result])
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert — downgraded to success, no error set
+        assert it.error is None
+        assert events[0] == TextLlmEvent(text="Hello")
+        assert events[-1] == ResultLlmEvent(
+            is_error=False, duration_ms=1200, cost_usd=None
+        )
+
+    async def test_subtype_success_without_streamed_text_stays_error(self) -> None:
+        """is_error=True + subtype=success with result text but no text_delta
+        events is a fast-fail (auth error, crash) — must stay flagged as error
+        so the adapter surfaces it instead of leaving "…" stuck.
+        """
+        # Arrange — 21ms result with text in result field but no text_delta
+        fast_fail_result = _ndjson(
+            {
+                "type": "result",
+                "session_id": "abc-123",
+                "result": "Please run /login",
+                "is_error": True,
+                "subtype": "success",
+                "duration_ms": 21,
+            }
+        )
+        proc = make_fake_proc([INIT_LINE, fast_fail_result])
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert — flagged as error, result text surfaced via it.error AND
+        # propagated through the result event so downstream consumers can
+        # render it without needing to peek at iterator attributes.
+        assert it.error == "Please run /login"
+        assert events == [
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=21,
+                cost_usd=None,
+                error_text="Please run /login",
+            )
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -315,32 +389,8 @@ class TestSendAndReadStream:
         # Assert — reset_fn wired through correctly
         pool_reset_fn.assert_awaited_once()
 
-    async def test_on_intermediate_accepted_but_deprecated(self) -> None:
-        # Arrange — on_intermediate still accepted for backward compat but is deprecated
-        proc = make_fake_proc(
-            [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
-        )
-        entry = make_entry(proc)
-        received: list[str] = []
-
-        async def on_intermediate(text: str) -> None:
-            received.append(text)
-
-        # Act
-        it = await send_and_read_stream(
-            entry, "hello", DEFAULT_POOL_ID, on_intermediate=on_intermediate
-        )
-        events = [ev async for ev in it]
-
-        # Assert — callback NOT fired (deprecated); events still yielded correctly
-        assert received == []
-        assert events == [
-            TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
-        ]
-
-    async def test_on_intermediate_none_yields_events_normally(self) -> None:
-        # Arrange — no on_intermediate; iterator must work normally
+    async def test_streaming_yields_events_normally(self) -> None:
+        # Arrange — iterator yields LlmEvents from the stream
         proc = make_fake_proc(
             [INIT_LINE, ASSISTANT_INTERMEDIATE_LINE, TEXT_DELTA_LINE, RESULT_LINE]
         )

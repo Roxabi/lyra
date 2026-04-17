@@ -131,3 +131,17 @@ def test_outbound_importable_from_core() -> None:
     assert CodeBlock is not None
     assert ContentPart is not None
     assert OutboundMessage is not None
+
+
+def test_schema_version_constants_exist_and_equal_one() -> None:
+    """SCHEMA_VERSION_* constants for core/message.py exist and equal 1.
+
+    Slice 2 (issue #534): SCHEMA_VERSION_INBOUND_AUDIO removed with InboundAudio.
+    """
+    from lyra.core.message import (
+        SCHEMA_VERSION_INBOUND_MESSAGE,
+        SCHEMA_VERSION_OUTBOUND_MESSAGE,
+    )
+
+    assert SCHEMA_VERSION_INBOUND_MESSAGE == 1
+    assert SCHEMA_VERSION_OUTBOUND_MESSAGE == 1

@@ -14,8 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.stores.credential_store import BotSecretRow, CredentialStore, LyraKeyring
 from lyra.errors import KeyringError
+from lyra.infrastructure.stores.credential_store import (
+    BotSecretRow,
+    CredentialStore,
+    LyraKeyring,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures

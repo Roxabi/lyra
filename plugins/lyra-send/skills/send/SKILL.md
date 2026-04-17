@@ -124,7 +124,7 @@ import sqlite3, requests
 lyra_dir = Path.home() / '.lyra'
 key = (lyra_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'auth.db')
+conn = sqlite3.connect(lyra_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'telegram')
@@ -153,7 +153,7 @@ import sqlite3, requests
 lyra_dir = Path.home() / '.lyra'
 key = (lyra_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'auth.db')
+conn = sqlite3.connect(lyra_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'telegram')
@@ -184,7 +184,7 @@ import sqlite3, requests
 lyra_dir = Path.home() / '.lyra'
 key = (lyra_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'auth.db')
+conn = sqlite3.connect(lyra_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'telegram')
@@ -213,7 +213,7 @@ import sqlite3, requests
 lyra_dir = Path.home() / '.lyra'
 key = (lyra_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'auth.db')
+conn = sqlite3.connect(lyra_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'telegram')
@@ -244,7 +244,7 @@ import sqlite3, requests
 lyra_dir = Path.home() / '.lyra'
 key = (lyra_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'auth.db')
+conn = sqlite3.connect(lyra_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'discord')
@@ -274,7 +274,7 @@ import sqlite3, requests
 lyra_dir = Path.home() / '.lyra'
 key = (lyra_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'auth.db')
+conn = sqlite3.connect(lyra_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'discord')

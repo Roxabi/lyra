@@ -5,19 +5,19 @@ import logging
 import time
 import uuid
 from collections import deque
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..agent import AgentBase
+    from lyra.infrastructure.stores.turn_store import TurnStore
+
     from ..memory import SessionSnapshot
-    from ..stores.turn_store import TurnStore
 
 from ..debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
-from ..message import InboundMessage, OutboundMessage, Response
-from ..render_events import RenderEvent
+from ..message import InboundMessage, OutboundMessage
+from .pool_context import PoolContext as PoolContext
 from .pool_observer import PoolObserver
 from .pool_processor import PoolProcessor
 
@@ -26,40 +26,8 @@ log = logging.getLogger(__name__)
 TURN_TIMEOUT_DEFAULT: float | None = None  # CliPool handles liveness
 
 
-@runtime_checkable
-class PoolContext(Protocol):
-    """Narrow interface that Pool needs from its owner (typically Hub).
-
-    Decouples Pool from the full Hub, enabling isolated testing and
-    reducing coupling (ADR-017, issue #204).
-    """
-
-    def get_agent(self, name: str) -> AgentBase | None: ...
-
-    def get_message(self, key: str) -> str | None: ...
-
-    async def dispatch_response(
-        self, msg: InboundMessage, response: Response | OutboundMessage
-    ) -> None: ...
-
-    async def dispatch_streaming(
-        self,
-        msg: InboundMessage,
-        chunks: AsyncIterator[RenderEvent],
-        outbound: OutboundMessage | None = None,
-    ) -> None: ...
-
-    def record_circuit_success(self) -> None: ...
-
-    def record_circuit_failure(self, exc: BaseException) -> None: ...
-
-
 class Pool:
     """One pool per conversation scope. Holds history and a per-session asyncio.Task."""
-
-    _session_reset_fn: Callable[[], Awaitable[None]] | None
-    _session_resume_fn: Callable[[str], Awaitable[bool]] | None
-    _switch_workspace_fn: Callable[[Path], Awaitable[None]] | None
 
     def __init__(  # noqa: PLR0913
         self,
@@ -82,6 +50,7 @@ class Pool:
         self._safe_dispatch_timeout: float = safe_dispatch_timeout
         self._session_reset_fn: Callable[[], Awaitable[None]] | None = None
         self._session_resume_fn: Callable[[str], Awaitable[bool]] | None = None
+        self._on_resume_fn: Callable[[str], Awaitable[None]] | None = None  # set once
         self._switch_workspace_fn: Callable[[Path], Awaitable[None]] | None = None
         self._ctx = ctx
         # Ceiling clamp: use ceiling as default, clamp agent override to ceiling
@@ -115,18 +84,17 @@ class Pool:
         self._system_prompt: str = ""
         self.voice_mode: bool = False
         self.last_detected_language: str | None = None
+        self._last_turn_had_backend_error: bool = False
         self._last_msg: InboundMessage | None = None
+        # set by pipeline when pool busy on reply-to
+        self._pending_session_id: str | None = None
         self._observer = PoolObserver(
             pool_id=pool_id,
             session_id_fn=lambda: self.session_id,
         )
         self._processor = PoolProcessor(self)
 
-    # ------------------------------------------------------------------
-    # Backward-compat shims — delegate to observer so existing callers
-    # (tests, hub.py) that read/write these attributes keep working.
-    # ------------------------------------------------------------------
-
+    # Backward-compat shims — delegate to observer so callers keep working.
     @property
     def _turn_store(self) -> TurnStore | None:
         return self._observer._turn_store
@@ -179,19 +147,35 @@ class Pool:
 
     @property
     def cancel_on_new_message(self) -> bool:
-        """Whether a new message cancels an in-flight LLM turn (cancel-in-flight).
-
-        Default is False: new messages queue naturally and are processed after
-        the current turn finishes.  Set to True to restore legacy cancel-in-flight
-        behaviour where a new message aborts the ongoing turn and re-dispatches
-        the merged context.
-        """
         return self._cancel_on_new_message
 
     @cancel_on_new_message.setter
     def cancel_on_new_message(self, value: bool) -> None:
         """Toggle cancel-in-flight on the live pool (takes effect on next turn)."""
         self._cancel_on_new_message = value
+
+    # Session callback registration (Law of Demeter compliance)
+    def has_session_update_fn(self) -> bool:
+        """Check whether a session persistence callback is registered."""
+        return self._observer.has_session_update_fn()
+
+    def register_session_callbacks(
+        self,
+        *,
+        reset_fn: Callable[[], Awaitable[None]] | None = None,
+        resume_fn: Callable[[str], Awaitable[bool]] | None = None,
+        workspace_fn: Callable[[Path], Awaitable[None]] | None = None,
+        update_fn: Callable[[InboundMessage, str, str], Awaitable[None]] | None = None,
+    ) -> None:
+        """Wire session callbacks. Each is registered only if not already set."""
+        if reset_fn is not None and self._session_reset_fn is None:
+            self._session_reset_fn = reset_fn
+        if resume_fn is not None and self._session_resume_fn is None:
+            self._session_resume_fn = resume_fn
+        if workspace_fn is not None and self._switch_workspace_fn is None:
+            self._switch_workspace_fn = workspace_fn
+        if update_fn is not None and not self._observer.has_session_update_fn():
+            self._observer.register_session_update_fn(update_fn)
 
     @property
     def last_active(self) -> float:
@@ -222,12 +206,9 @@ class Pool:
             self._current_task.cancel()
 
     async def resume_session(self, session_id: str) -> bool:
-        """Resume a specific Claude session (CLI backend).
-
-        Returns True if the resume was accepted, False if skipped (pruned file,
-        invalid id, SDK pool, or misconfigured agent).
-        Resets _session_persisted only when resume is accepted so the resumed
-        session_id is re-persisted on the next turn (#341).
+        """Resume a specific Claude session (CLI backend). Returns True if accepted.
+        Resets _session_persisted only when accepted so the resumed session_id is
+        re-persisted on the next turn (#341).
         """
         if self._session_resume_fn is not None:
             accepted = await self._session_resume_fn(session_id)
@@ -241,6 +222,15 @@ class Pool:
             accepted = False
         if accepted:
             self._observer.reset_session_persisted()
+            if self._on_resume_fn is not None:
+                try:
+                    await self._on_resume_fn(session_id)
+                except Exception:
+                    log.exception(
+                        "[pool:%s] resume count increment failed for %r",
+                        self.pool_id,
+                        session_id,
+                    )
         return accepted
 
     def _msg(self, key: str, fallback: str) -> str:
@@ -249,7 +239,17 @@ class Pool:
         return result if result is not None else fallback
 
     async def reset_session(self) -> None:
-        """Reset session state; called by /clear. Delegates to reset callback if set."""
+        """Reset session state; called by /clear. Rotates UUID, notifies TurnStore."""
+        old_sid = self.session_id
+        await self._observer.end_session_async(old_sid)
+        self.session_id = str(uuid.uuid4())
+        if self._observer._turn_store is not None:
+            try:
+                await self._observer._turn_store.start_session(
+                    self.session_id, self.pool_id
+                )
+            except Exception:
+                log.exception("[pool:%s] start_session failed", self.pool_id)
         self._observer.reset_session_persisted()
         if self._session_reset_fn is not None:
             await self._session_reset_fn()
@@ -270,14 +270,14 @@ class Pool:
 
     # S1 — session identity mutators (issue #83)
 
-    def append(self, msg: InboundMessage) -> None:
+    async def append(self, msg: InboundMessage) -> None:
         """Called from _process_one. Promotes session identity and tracks count."""
         if self.user_id == "":
             self.user_id = msg.user_id
             self.medium = str(msg.platform)
         self.message_count += 1
         self._last_msg = msg
-        self._observer.append(msg, session_id=self.session_id)
+        await self._observer.append(msg, session_id=self.session_id)
 
     def snapshot(self, agent_namespace: str) -> "SessionSnapshot":
         from ..memory import SessionSnapshot

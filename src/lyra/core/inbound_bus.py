@@ -10,19 +10,13 @@ Usage::
 
     from lyra.core.bus import Bus
     from lyra.core.inbound_bus import LocalBus
-    from lyra.core.message import InboundMessage, InboundAudio, Platform
+    from lyra.core.message import InboundMessage, Platform
 
-    # Text messages
     bus: Bus[InboundMessage] = LocalBus(name="inbound")
     bus.register(Platform.TELEGRAM, maxsize=100)
     await bus.start()
     ...
     await bus.stop()
-
-    # Audio envelopes — depth monitoring included
-    audio_bus: Bus[InboundAudio] = LocalBus(name="inbound-audio")
-    audio_bus.register(Platform.TELEGRAM, maxsize=100)
-    await audio_bus.start()
 """
 
 from __future__ import annotations
@@ -72,21 +66,27 @@ class LocalBus(Generic[T]):
         self._threshold = queue_depth_threshold
         self._depth_exceeded = False
 
-    def register(self, platform: Platform, maxsize: int = 100) -> None:
+    def register(  # noqa: ARG002
+        self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
+    ) -> None:
         """Register a bounded queue for the given platform.
 
         Must be called before start(). Raises RuntimeError if called after
         start() — the new queue would have no feeder task and messages would
         silently never reach staging.
+
+        bot_id is accepted for protocol compatibility but ignored by LocalBus.
         """
         if self._feeders:
             raise RuntimeError(
                 f"Cannot register platform {platform!r} after start() — "
                 "feeders are already running."
             )
+        if platform in self._queues:
+            return  # Already registered — idempotent for multi-bot
         self._queues[platform] = asyncio.Queue(maxsize=maxsize)
 
-    def put(self, platform: Platform, item: T) -> None:
+    async def put(self, platform: Platform, item: T) -> None:
         """Enqueue an item on the platform's queue.
 
         Raises asyncio.QueueFull if the platform queue is at capacity.
@@ -168,6 +168,18 @@ class LocalBus(Generic[T]):
         """Return the current number of items in the staging queue."""
         return self._staging.qsize()
 
+    def inject(self, item: T) -> None:
+        """Public injection API for compat shims (bypasses publish tracing)."""
+        try:
+            self._staging.put_nowait(item)
+        except asyncio.QueueFull:
+            log.warning("inject: staging queue full — item dropped")
+
     def registered_platforms(self) -> frozenset[Platform]:
         """Return the set of platforms with a registered queue."""
         return frozenset(self._queues)
+
+    @property
+    def subscription_count(self) -> int:
+        """LocalBus has no remote subscriptions — always 0."""
+        return 0

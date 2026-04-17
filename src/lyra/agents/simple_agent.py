@@ -8,7 +8,6 @@ not hardcoded here.
 
 from __future__ import annotations
 
-import html
 import importlib
 import logging
 from pathlib import Path
@@ -27,17 +26,19 @@ from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 from lyra.core.stream_processor import StreamProcessor
 from lyra.core.tool_display_config import ToolDisplayConfig
 from lyra.llm.base import LlmProvider
-from lyra.stt import is_whisper_noise
+
+from .simple_agent_prompts import STTError, STTNoiseError, build_llm_text
 
 _AGENTS_DIR = Path(__file__).resolve().parent
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable
+    from collections.abc import AsyncIterator
 
+    from lyra.core.cli_pool import CliPool
     from lyra.core.render_events import RenderEvent
-    from lyra.core.stores.agent_store import AgentStore
-    from lyra.stt import STTService
-    from lyra.tts import TTSService
+    from lyra.infrastructure.stores.agent_store import AgentStore
+    from lyra.stt import STTProtocol
+    from lyra.tts import TtsProtocol
 
 log = logging.getLogger(__name__)
 
@@ -63,10 +64,11 @@ class SimpleAgent(AgentBase):
         self,
         config: Agent,
         provider: LlmProvider,
+        cli_pool: CliPool | None = None,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        stt: "STTService | None" = None,
-        tts: "TTSService | None" = None,
+        stt: "STTProtocol | None" = None,
+        tts: "TtsProtocol | None" = None,
         runtime_config: RuntimeConfig | None = None,
         agents_dir: Path | None = None,
         agent_store: "AgentStore | None" = None,
@@ -82,6 +84,7 @@ class SimpleAgent(AgentBase):
         self._runtime_config_holder = RuntimeConfigHolder(rc)
         self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
         self._provider = provider
+        self._cli_pool = cli_pool
         super().__init__(
             config,
             agents_dir=agents_dir,
@@ -98,9 +101,8 @@ class SimpleAgent(AgentBase):
 
     async def reset_backend(self, pool_id: str) -> None:
         """Kill the backend process so the next turn gets a fresh one."""
-        reset_fn = getattr(self._provider, "reset", None)
-        if reset_fn is not None:
-            await reset_fn(pool_id)
+        if self._cli_pool is not None:
+            await self._cli_pool.reset(pool_id)
 
     def _build_router_kwargs(self) -> dict[str, object]:
         return {
@@ -137,34 +139,39 @@ class SimpleAgent(AgentBase):
         for cmd in registry.commands():
             self.command_router.register_passthrough(cmd.lstrip("/"))
 
+        # /add-vault — direct vault save, no LLM needed (#372).
+        from lyra.commands.add_vault.handlers import cmd_add_vault
+
+        self.command_router.register_session_command(
+            "add-vault",
+            cmd_add_vault,
+            tools=self._session_tools,
+            description="Save a note to the vault: /add-vault <note content>",
+        )
+
     def _maybe_register_reset(self, pool: Pool) -> None:
-        """Register a session reset callback on the pool the first time we process.
-
-        /clear calls pool.reset_session(), which delegates here → CliPool.reset().
-        """
-        if pool._session_reset_fn is None:
-            reset_fn = getattr(self._provider, "reset", None)
-            if reset_fn is not None:
-                _pool_id = pool.pool_id
-                pool._session_reset_fn = lambda: reset_fn(_pool_id)
-
-        switch_fn = getattr(self._provider, "switch_cwd", None)
-        if switch_fn is not None and pool._switch_workspace_fn is None:
+        """Register session reset/switch callbacks on the pool."""
+        _cli_pool = self._cli_pool  # narrow once; stable capture for lambdas
+        if _cli_pool is not None:
             _pool_id = pool.pool_id
-            pool._switch_workspace_fn = lambda cwd: switch_fn(_pool_id, cwd)
+            pool.register_session_callbacks(
+                reset_fn=lambda: _cli_pool.reset(_pool_id),
+                workspace_fn=lambda cwd: _cli_pool.switch_cwd(_pool_id, cwd),
+            )
 
     def _maybe_register_resume(self, pool: Pool) -> None:
-        """Register session resume callback on the pool the first time we process.
+        """Register session resume callback on the pool.
 
         Hub calls pool.resume_session(session_id) → delegates here →
         CliPool.resume_and_reset(). Follows the same lazy-wiring pattern as
         _maybe_register_reset.
         """
-        if pool._session_resume_fn is None:
-            resume_fn = getattr(self._provider, "resume_and_reset", None)
-            if resume_fn is not None:
-                _pool_id = pool.pool_id
-                pool._session_resume_fn = lambda sid: resume_fn(_pool_id, sid)
+        _cli_pool = self._cli_pool  # narrow once; stable capture for lambda
+        if _cli_pool is not None:
+            _pool_id = pool.pool_id
+            pool.register_session_callbacks(
+                resume_fn=lambda sid: _cli_pool.resume_and_reset(_pool_id, sid),
+            )
 
     def configure_pool(self, pool: Pool) -> None:
         """Wire provider callbacks onto *pool* before first message is processed.
@@ -180,8 +187,6 @@ class SimpleAgent(AgentBase):
         self,
         msg: InboundMessage,
         pool: Pool,
-        *,
-        on_intermediate: "Callable[[str], Awaitable[None]] | None" = None,
     ) -> "Response | AsyncIterator[RenderEvent]":
         self._maybe_reload()
 
@@ -190,60 +195,33 @@ class SimpleAgent(AgentBase):
         if _voice_rewritten is not None:
             msg = _voice_rewritten
 
-        # Handle audio messages — attachments with type="audio"
-        audio_attachment = next((a for a in msg.attachments if a.type == "audio"), None)
-        if audio_attachment is not None:
-            tmp_path = Path(str(audio_attachment.url_or_path_or_bytes))
-            try:
-                if self._stt is None:
-                    return Response(
-                        content=(
-                            self._msg_manager.get("stt_unsupported")
-                            if self._msg_manager
-                            else (
-                                "Voice messages are not supported"
-                                " — STT is not configured."
-                            )
-                        )
-                    )
-                stt_result = await self._stt.transcribe(tmp_path)
-            except Exception:
-                log.exception("STT transcription failed in SimpleAgent")
-                return Response(
-                    content=(
-                        self._msg_manager.get("stt_failed")
-                        if self._msg_manager
-                        else "Sorry, I couldn't transcribe your voice message."
-                    ),
-                    metadata={"error": True},
+        # Build LLM text from message (handles audio, voice, regular messages)
+        try:
+            text, _stt_text = await build_llm_text(msg, self._stt)
+        except STTNoiseError:
+            return Response(
+                content=(
+                    self._msg_manager.get("stt_noise")
+                    if self._msg_manager
+                    else "I couldn't make out your voice message, please try again."
                 )
-            finally:
-                tmp_path.unlink(missing_ok=True)
-            if is_whisper_noise(stt_result.text):
-                return Response(
-                    content=(
-                        self._msg_manager.get("stt_noise")
-                        if self._msg_manager
-                        else "I couldn't make out your voice message, please try again."
-                    )
-                )
-            _esc = html.escape(stt_result.text)
-            text = f"<voice_transcript>{_esc}</voice_transcript>"
-        elif msg.modality == "voice":
-            # Pipeline-transcribed audio — wrap for prompt injection guard (H-8)
-            text = f"<voice_transcript>{html.escape(msg.text)}</voice_transcript>"
-        else:
-            if not msg.processor_enriched:
-                text = f"<user_message>{html.escape(msg.text)}</user_message>"
-            else:
-                text = msg.text
+            )
+        except STTError:
+            log.exception("STT transcription failed in SimpleAgent")
+            return Response(
+                content=(
+                    self._msg_manager.get("stt_failed")
+                    if self._msg_manager
+                    else "Sorry, I couldn't transcribe your voice message."
+                ),
+                metadata={"error": True},
+            )
 
         model_cfg = self.config.llm_config
 
         # Link Lyra session → CLI session so reply-to-resume works.
-        _link = getattr(self._provider, "link_lyra_session", None)
-        if _link is not None:
-            _link(pool.pool_id, pool.session_id)
+        if self._cli_pool is not None:
+            self._cli_pool.link_lyra_session(pool.pool_id, pool.session_id)
 
         log.debug(
             "[agent:%s][pool:%s] processing message (%d chars)",
@@ -267,15 +245,11 @@ class SimpleAgent(AgentBase):
             )
             return processor.process(stream_iter)
 
-        # Use injected callback only if show_intermediate is enabled
-        cb = on_intermediate if self.config.show_intermediate else None
-
         result = await self._provider.complete(
             pool.pool_id,
             text,
             model_cfg,
             pool._system_prompt or self.config.system_prompt,
-            on_intermediate=cb,
         )
 
         if not result.ok:
@@ -285,6 +259,7 @@ class SimpleAgent(AgentBase):
                 pool.pool_id,
                 result.error,
             )
+            pool._last_turn_had_backend_error = True
             # Timeout gets a specific message; all other errors get a generic one
             if "Timeout" in result.error:
                 user_msg = (

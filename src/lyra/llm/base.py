@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from lyra.core.agent_config import ModelConfig
-from lyra.llm.events import LlmEvent
+from lyra.core.events import LlmEvent
 
 
 @dataclass
@@ -41,7 +41,6 @@ class LlmProvider(Protocol):
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
     ) -> LlmResult: ...
 
     def is_alive(self, pool_id: str) -> bool: ...

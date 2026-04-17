@@ -87,22 +87,3 @@ class TestSimpleAgentAudioBranch:
         assert not Path(tmp_path).exists()
         assert isinstance(response, Response)
         assert response.metadata.get("error") is True
-
-    async def test_audio_tmp_file_deleted_no_stt(self) -> None:
-        """Temp file is unlinked even when stt=None (unsupported path)."""
-        # Arrange
-        cli_pool = make_cli_pool()
-        agent = SimpleAgent(make_config(), cli_pool, stt=None)
-
-        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
-            tmp_path = f.name
-
-        assert Path(tmp_path).exists()
-        msg = make_audio_message(tmp_path)
-        pool = make_pool()
-
-        # Act
-        await agent.process(msg, pool)
-
-        # Assert
-        assert not Path(tmp_path).exists()

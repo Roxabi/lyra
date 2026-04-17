@@ -16,9 +16,19 @@ repos:
         entry: tools/check_file_length.sh
         language: system
         pass_filenames: false
-      - id: gitleaks
-        name: gitleaks secret scan
-        entry: gitleaks detect --source . --no-git
+      - id: check-folder-size
+        name: check-folder-size
+        entry: tools/check_folder_size.sh
+        language: system
+        pass_filenames: false
+      - id: import-layers
+        name: import-layers
+        entry: uv run lint-imports
+        language: system
+        pass_filenames: false
+      - id: trufflehog
+        name: trufflehog secret scan
+        entry: 'bash -c "[ -d .git ] && trufflehog git file://. --fail || true"'
         language: system
         pass_filenames: false
         stages: [pre-push]

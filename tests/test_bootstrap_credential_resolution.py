@@ -15,9 +15,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
-import lyra.bootstrap.multibot_stores as stores_mod
-import lyra.bootstrap.multibot_wiring as wiring_mod
-from lyra.core.auth import AuthMiddleware
+import lyra.bootstrap.bootstrap_stores as stores_mod
+import lyra.bootstrap.bootstrap_wiring as wiring_mod
+from lyra.core.authenticator import Authenticator as AuthMiddleware
 from tests.conftest import (
     _FakeDcAdapter,
     _FakeTgAdapter,
@@ -63,7 +63,6 @@ class TestCredentialResolution:
                 super().__init__(**kwargs)
                 captured_kwargs.append(dict(kwargs))
 
-        monkeypatch.setattr(main_mod, "TelegramAdapter", CapturingTgAdapter)
         monkeypatch.setattr(wiring_mod, "TelegramAdapter", CapturingTgAdapter)
         monkeypatch.setattr(
             main_mod,
@@ -125,14 +124,9 @@ class TestCredentialResolution:
                 await asyncio.sleep(0)
 
         monkeypatch.setattr(
-            main_mod,
-            "DiscordAdapter",
-            lambda hub, **kwargs: CapturingDcAdapter(hub=hub),
-        )
-        monkeypatch.setattr(
             wiring_mod,
             "DiscordAdapter",
-            lambda hub, **kwargs: CapturingDcAdapter(hub=hub),
+            lambda **kwargs: CapturingDcAdapter(),
         )
         monkeypatch.setattr(
             main_mod,

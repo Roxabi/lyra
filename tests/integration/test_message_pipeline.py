@@ -1,6 +1,6 @@
-"""Integration tests for MessagePipeline that emit structured traces.
+"""Integration tests for the middleware pipeline that emit structured traces.
 
-Each test instruments MessagePipeline with a trace hook and writes a
+Each test instruments the pipeline with a trace hook and writes a
 JSON trace to tests/data/traces/<test_name>.json for local debugging.
 
 Traces are gitignored (see .gitignore) but provide an instant record of
@@ -20,18 +20,22 @@ Trace format::
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
-from lyra.core.hub.message_pipeline import Action, MessagePipeline
+from lyra.core.hub.message_pipeline import Action
+from lyra.core.hub.middleware import build_default_pipeline
 from lyra.core.message import Platform
 from tests.core.conftest import (
     _make_hub,
     _MockAdapter,
     make_inbound_message,
+    push_to_hub,
 )
 
 # ---------------------------------------------------------------------------
@@ -72,7 +76,7 @@ class TestMessagePipelineTraces:
         steps: list[dict[str, Any]] = []
 
         hub = _make_hub()
-        pipeline = MessagePipeline(hub, trace_hook=_make_trace_hook(steps))
+        pipeline = build_default_pipeline(hub, trace_hook=_make_trace_hook(steps))
         msg = make_inbound_message()
 
         result = await pipeline.process(msg)
@@ -102,7 +106,7 @@ class TestMessagePipelineTraces:
         steps: list[dict[str, Any]] = []
 
         hub = _make_hub()
-        pipeline = MessagePipeline(hub, trace_hook=_make_trace_hook(steps))
+        pipeline = build_default_pipeline(hub, trace_hook=_make_trace_hook(steps))
         msg = make_inbound_message(platform="unknown_plat")
 
         result = await pipeline.process(msg)
@@ -127,11 +131,15 @@ class TestMessagePipelineTraces:
         hub = _make_hub(rate_limit=1, rate_window=60)
         msg = make_inbound_message()
 
-        pipeline1 = MessagePipeline(hub, trace_hook=_make_trace_hook(steps_first))
+        pipeline1 = build_default_pipeline(
+            hub, trace_hook=_make_trace_hook(steps_first)
+        )
         r1 = await pipeline1.process(msg)
         _write_trace(f"{test_name}_pass", steps_first)
 
-        pipeline2 = MessagePipeline(hub, trace_hook=_make_trace_hook(steps_second))
+        pipeline2 = build_default_pipeline(
+            hub, trace_hook=_make_trace_hook(steps_second)
+        )
         r2 = await pipeline2.process(msg)
         _write_trace(f"{test_name}_drop", steps_second)
 
@@ -153,7 +161,7 @@ class TestMessagePipelineTraces:
         hub.register_adapter(Platform.TELEGRAM, "main", adapter)
         # Intentionally no binding registered
 
-        pipeline = MessagePipeline(hub, trace_hook=_make_trace_hook(steps))
+        pipeline = build_default_pipeline(hub, trace_hook=_make_trace_hook(steps))
         msg = make_inbound_message()
 
         result = await pipeline.process(msg)
@@ -181,7 +189,7 @@ class TestMessagePipelineTraces:
         )
         # "ghost_agent" is never registered → no agent found
 
-        pipeline = MessagePipeline(hub, trace_hook=_make_trace_hook(steps))
+        pipeline = build_default_pipeline(hub, trace_hook=_make_trace_hook(steps))
         msg = make_inbound_message()
 
         result = await pipeline.process(msg)
@@ -199,7 +207,7 @@ class TestMessagePipelineTraces:
     async def test_trace_hook_is_optional(self) -> None:
         """Pipeline without trace_hook runs correctly with no overhead path."""
         hub = _make_hub()
-        pipeline = MessagePipeline(hub)  # no trace_hook
+        pipeline = build_default_pipeline(hub)  # no trace_hook
         msg = make_inbound_message()
 
         result = await pipeline.process(msg)
@@ -209,11 +217,11 @@ class TestMessagePipelineTraces:
     async def test_trace_hook_exception_is_swallowed(self) -> None:
         """A raising trace_hook must not abort pipeline processing."""
 
-        def _bad_hook(stage: str, event: str, **payload: object) -> None:
+        def _bad_hook(_stage: str, _event: str, **_payload: object) -> None:
             raise RuntimeError("trace hook bug")
 
         hub = _make_hub()
-        pipeline = MessagePipeline(hub, trace_hook=_bad_hook)
+        pipeline = build_default_pipeline(hub, trace_hook=_bad_hook)
         msg = make_inbound_message()
 
         # Must not raise despite the hook failing on every call
@@ -234,7 +242,7 @@ class TestMessagePipelineTraces:
         steps: list[dict[str, Any]] = []
 
         hub = _make_hub()
-        pipeline = MessagePipeline(hub, trace_hook=_make_trace_hook(steps))
+        pipeline = build_default_pipeline(hub, trace_hook=_make_trace_hook(steps))
         msg = make_inbound_message()
 
         await pipeline.process(msg)
@@ -247,3 +255,42 @@ class TestMessagePipelineTraces:
         assert data["test"] == test_name
         assert isinstance(data["steps"], list)
         assert len(data["steps"]) >= 3  # received, agent_selected, message_submitted
+
+
+# ---------------------------------------------------------------------------
+# hub.run() delegates to the pipeline
+# ---------------------------------------------------------------------------
+
+
+class TestHubRunDelegatesToPipeline:
+    """hub.run() receives a message from the bus and submits it to the pool."""
+
+    async def test_hub_run_delegates_to_pipeline(self) -> None:
+        """hub.run() should submit the message to the pool via the pipeline."""
+        hub = _make_hub()
+        msg = make_inbound_message()
+
+        # Push message before run() so it is waiting in the bus.
+        await push_to_hub(hub, msg)
+
+        # Resolve which pool will be created for this message's routing key
+        # by resolving the binding, then spy on pool.submit before run().
+        binding = hub.resolve_binding(msg)
+        assert binding is not None, "binding must exist for the test message"
+        pool = hub.get_or_create_pool(binding.pool_id, binding.agent_name)
+
+        submitted_messages: list = []
+        original_submit = pool.submit
+
+        def _spy_submit(m):
+            submitted_messages.append(m)
+            return original_submit(m)
+
+        with patch.object(pool, "submit", side_effect=_spy_submit):
+            try:
+                await asyncio.wait_for(hub.run(), timeout=0.3)
+            except asyncio.TimeoutError:
+                pass  # expected — run() loops forever
+
+        assert len(submitted_messages) == 1
+        assert submitted_messages[0].id == msg.id

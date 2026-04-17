@@ -23,6 +23,7 @@ from lyra.core.hub.middleware_stages import (
     ValidatePlatformMiddleware,
 )
 from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
+from lyra.core.hub.path_validation import resolve_context
 from lyra.core.message import Platform, Response
 from tests.core.conftest import _make_hub, make_inbound_message
 
@@ -199,6 +200,62 @@ class TestCreatePool:
         next_fn.assert_awaited_once()
         assert ctx.pool is not None
 
+    async def test_on_resume_fn_wired_when_turn_store_present(self) -> None:
+        from lyra.core.hub.hub_protocol import Binding
+
+        hub = _make_hub()
+        hub._turn_store = MagicMock()
+        hub._turn_store.increment_resume_count = AsyncMock()
+        agent = hub.agent_registry["lyra"]
+        binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
+        mw = CreatePoolMiddleware()
+        ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
+        msg = make_inbound_message()
+
+        await mw(msg, ctx, _make_next())
+
+        assert ctx.pool is not None
+        assert ctx.pool._on_resume_fn is hub._turn_store.increment_resume_count  # type: ignore[attr-defined]
+
+    async def test_on_resume_fn_not_set_when_turn_store_absent(self) -> None:
+        from lyra.core.hub.hub_protocol import Binding
+
+        hub = _make_hub()
+        hub._turn_store = None
+        agent = hub.agent_registry["lyra"]
+        binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
+        mw = CreatePoolMiddleware()
+        ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
+        msg = make_inbound_message()
+
+        await mw(msg, ctx, _make_next())
+
+        assert ctx.pool is not None
+        assert ctx.pool._on_resume_fn is None  # type: ignore[attr-defined]
+
+    async def test_on_resume_fn_not_overwritten_when_already_set(self) -> None:
+        from lyra.core.hub.hub_protocol import Binding
+
+        hub = _make_hub()
+        hub._turn_store = MagicMock()
+        hub._turn_store.increment_resume_count = AsyncMock()
+
+        # Pre-create the pool and assign a sentinel
+        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        sentinel = MagicMock()
+        pool._on_resume_fn = sentinel
+
+        agent = hub.agent_registry["lyra"]
+        binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
+        mw = CreatePoolMiddleware()
+        ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
+        msg = make_inbound_message()
+
+        await mw(msg, ctx, _make_next())
+
+        assert ctx.pool is not None
+        assert ctx.pool._on_resume_fn is sentinel  # type: ignore[attr-defined]
+
 
 # ──────────────────────────────────────────────────────────────────────
 # CommandMiddleware
@@ -286,13 +343,13 @@ class TestSubmitToPool:
 
         hub = _make_hub()
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(
             hub=hub,
             pool=pool,
             key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
         )
         msg = make_inbound_message()
+        mw = SubmitToPoolMiddleware()
 
         result = await mw(msg, ctx, _make_next())
 
@@ -305,13 +362,13 @@ class TestSubmitToPool:
 
         hub = Hub()
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(
             hub=hub,
             pool=pool,
             key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
         )
         msg = make_inbound_message()
+        mw = SubmitToPoolMiddleware()
 
         result = await mw(msg, ctx, _make_next())
 
@@ -479,21 +536,19 @@ class TestCircuitBreakerDrop:
         from lyra.core.hub.hub_protocol import RoutingKey
 
         registry = CircuitRegistry()
-        cb = CircuitBreaker(
-            name="anthropic", failure_threshold=1, recovery_timeout=60
-        )
+        cb = CircuitBreaker(name="anthropic", failure_threshold=1, recovery_timeout=60)
         registry.register(cb)
         cb.record_failure()
 
         hub = _make_hub(circuit_registry=registry)
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(
             hub=hub,
             pool=pool,
             key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
         )
         msg = make_inbound_message()
+        mw = SubmitToPoolMiddleware()
 
         result = await mw(msg, ctx, _make_next())
 
@@ -511,50 +566,72 @@ class TestResolveContextMiddleware:
         hub = _make_hub()
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
         ctx = PipelineContext(hub=hub)
-        mw = SubmitToPoolMiddleware()
         msg = make_inbound_message()
 
-        status = await mw._resolve_context(msg, pool, pool.pool_id, ctx)
+        status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
         assert status == ResumeStatus.SKIPPED
 
     async def test_thread_session_accepted_returns_resumed(self) -> None:
         """thread_session_id + accepted → RESUMED."""
         hub = _make_hub()
-        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        pool_id = "telegram:main:chat:42"
+        pool = hub.get_or_create_pool(pool_id, "lyra")
 
         async def _fake_resume(sid: str) -> bool:
             return True
 
         pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
 
+        # Wire fake TurnStore so scope validation passes (#525).
+        class _FakeTurnStore:
+            async def get_session_pool_id(self, session_id: str) -> str | None:
+                return pool_id
+
+            async def increment_resume_count(self, sid: str) -> None:
+                pass
+
+        hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
+
         ctx = PipelineContext(hub=hub)
-        mw = SubmitToPoolMiddleware()
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-1"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
 
-        status = await mw._resolve_context(msg, pool, pool.pool_id, ctx)
+        status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
         assert status == ResumeStatus.RESUMED
 
     async def test_thread_session_rejected_returns_fresh(self) -> None:
-        """thread_session_id rejected, no TurnStore → FRESH."""
+        """thread_session_id rejected → FRESH."""
         hub = _make_hub()
-        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        pool_id = "telegram:main:chat:42"
+        pool = hub.get_or_create_pool(pool_id, "lyra")
 
         async def _fake_resume(sid: str) -> bool:
             return False
 
         pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
 
+        # Wire fake TurnStore so scope validation passes (#525).
+        class _FakeTurnStore:
+            async def get_session_pool_id(self, session_id: str) -> str | None:
+                return pool_id
+
+            async def get_last_session(self, pid: str) -> str | None:
+                return None
+
+            async def increment_resume_count(self, sid: str) -> None:
+                pass
+
+        hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
+
         ctx = PipelineContext(hub=hub)
-        mw = SubmitToPoolMiddleware()
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
 
-        status = await mw._resolve_context(msg, pool, pool.pool_id, ctx)
+        status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
         assert status == ResumeStatus.FRESH
 
@@ -634,17 +711,30 @@ class TestNotifySessionFallthroughMiddleware:
         from lyra.core.hub.hub_protocol import RoutingKey
 
         hub = _make_hub()
-        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
+        pool_id = "telegram:main:chat:42"
+        pool = hub.get_or_create_pool(pool_id, "lyra")
 
         async def _rejected_resume(sid: str) -> bool:
             return False
 
         pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
 
+        # Wire fake TurnStore so scope validation passes (#525).
+        class _FakeTurnStore:
+            async def get_session_pool_id(self, session_id: str) -> str | None:
+                return pool_id
+
+            async def get_last_session(self, pid: str) -> str | None:
+                return None
+
+            async def increment_resume_count(self, sid: str) -> None:
+                pass
+
+        hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
+
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
         msg = dataclasses.replace(_base, platform_meta=_meta)
-        mw = SubmitToPoolMiddleware()
         ctx = PipelineContext(
             hub=hub,
             pool=pool,
@@ -657,6 +747,7 @@ class TestNotifySessionFallthroughMiddleware:
             notify_calls.append((platform, text))
 
         _patch = "lyra.core.hub.outbound_errors.try_notify_user"
+        mw = SubmitToPoolMiddleware()
         with patch(_patch, side_effect=_fake_notify):
             result = await mw(msg, ctx, _make_next())
 

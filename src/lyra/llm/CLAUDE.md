@@ -24,21 +24,16 @@ the Protocol base until all drivers implement it.
 `LlmResult` fields: `result` (text), `session_id`, `error`, `retryable`, `warning`,
 `user_message`. Check `result.ok` before using `result.result`.
 
-## Driver pattern
+## Drivers
 
-Each driver is a concrete class in `drivers/` that implements `LlmProvider`:
+Three concrete drivers in `drivers/`:
 
-| Driver | File | Backend | Streaming |
-|--------|------|---------|-----------|
-| `AnthropicSdkDriver` | `drivers/sdk.py` | Anthropic Messages API (HTTP) | `capabilities["streaming"] = False` — buffers full response |
-| `ClaudeCliDriver` | `drivers/cli.py` | `CliPool` (Claude Code subprocess) | `capabilities["streaming"] = True` — native NDJSON stream |
+| Driver | Backend | `capabilities["streaming"]` | `capabilities["auth"]` |
+|--------|---------|---------------------------|----------------------|
+| `AnthropicSdkDriver` | Anthropic Messages API (HTTP) | `False` — buffers full response | `"api_key"` |
+| `ClaudeCliDriver` | Claude Code subprocess (`CliPool`) | `True` — native NDJSON stream | `"oauth_only"` |
+| `NatsLlmDriver` | Remote LLM worker over NATS request-reply | `True` — ephemeral inbox streaming | `"nats"` |
 
-`capabilities["streaming"]` tells the caller whether the driver produces real-time
-chunks (`True`) or a single buffered result (`False`).
-
-`capabilities["auth"]` describes how the driver authenticates:
-- `"api_key"` — requires `ANTHROPIC_API_KEY` env var
-- `"oauth_only"` — uses Claude Code's built-in OAuth (no API key needed)
 
 ## Decorator stack
 
@@ -52,9 +47,11 @@ The stack is assembled in `bootstrap/` during startup — not in `llm/`.
 `SmartRoutingDecorator` (`smart_routing.py`) selects a cheaper model for trivial
 messages and upgrades to a more capable model for complex ones.
 
-## LlmEvent types (`events.py`)
+## LlmEvent types (defined in `core/events.py`)
 
-Events emitted by streaming drivers:
+Events emitted by streaming drivers. The types live in `lyra.core.events` so
+that `core/` can consume them without importing `llm/` — preserving the
+unidirectional `llm → core` dependency (enforced by `import-linter`).
 
 | Event | Purpose |
 |-------|---------|
@@ -65,7 +62,10 @@ Events emitted by streaming drivers:
 `LlmEvent = TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent` — use this union type
 for annotations. All event classes are `frozen=True` — never mutate after construction.
 
-`cost_usd` is always `None` for `ClaudeCliDriver` (not present in its NDJSON output).
+Import canonically from `lyra.core.events`. The `lyra.llm` package does **not**
+re-export these types — doing so would make the canonical location invisible to
+tooling (`import-linter` checks statements, not re-exports). `cost_usd` is always
+`None` for `ClaudeCliDriver` (not present in its NDJSON output).
 
 ## SmartRouting (`smart_routing.py`)
 
@@ -82,7 +82,7 @@ Configure in agent TOML under `[agent.smart_routing]`. Default: `enabled = false
 ## ProviderRegistry (`registry.py`)
 
 A simple dict-based registry: `register(backend, driver)` and `get(backend)`.
-Backends are registered by name: `"claude-cli"`, `"anthropic-sdk"`.
+Backends are registered by name: `"claude-cli"`, `"anthropic-sdk"`, `"litellm"` (future).
 `get()` raises `KeyError` for unknown backends — callers must handle this.
 
 ## Conventions
@@ -91,7 +91,7 @@ Backends are registered by name: `"claude-cli"`, `"anthropic-sdk"`.
 - `LlmResult.error` is a non-empty string on failure. Always check `.ok` first.
 - `retryable=False` means the caller must NOT retry (e.g. quota exhausted, bad key).
   Default is `True` (transient failures are retriable).
-- No framework imports (aiogram, discord, anthropic) in `events.py`.
+- No framework imports (aiogram, discord, anthropic) in `core/events.py`.
 - `on_intermediate` in `complete()` is accepted for protocol compliance but ignored
   by drivers that buffer the full response — this is intentional.
 

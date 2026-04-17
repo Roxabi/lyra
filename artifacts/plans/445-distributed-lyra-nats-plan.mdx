@@ -1,0 +1,342 @@
+---
+title: "Plan: Distributed Lyra — NATS bus, compute offloading & process split"
+issue: 445
+spec: artifacts/specs/445-distributed-lyra-nats-spec.mdx
+complexity: 9
+tier: F-full
+generated: "2026-03-30T18:00:00Z"
+---
+
+## Summary
+
+Install NATS on Machine 1 with TLS + nkey auth, amend `Bus[T]` for async `put()`, build a NATS-based LLM driver + Machine 2 worker for GPU offloading, with circuit breaker fallback. 4 slices across 2 active waves + 2 deferred waves, 16 sub-issues, 33 micro-tasks.
+
+**Active scope (Slice A + B):** 7 issues, ~20 micro-tasks
+**Deferred scope (Slice C + D):** 9 issues — created for visibility, not scheduled
+
+## Architecture
+
+### Data Flow (Slice B — target state)
+
+```mermaid
+flowchart TD
+    subgraph "Machine 1 — Hub (RTX 3080)"
+        TG[TelegramAdapter] -->|put| BUS["Bus[InboundMessage]<br/>(LocalBus)"]
+        DC[DiscordAdapter] -->|put| BUS
+        BUS --> HUB[Hub.run]
+        HUB --> POOL[Pool]
+        POOL --> AGENT[Agent]
+        AGENT -->|complete/stream| STACK["CircuitBreaker<br/>→ SmartRouting<br/>→ Retry<br/>→ NatsLlmDriver"]
+        STACK -->|request| NATS[(NATS Server<br/>TLS + nkey)]
+        NATS -->|response| STACK
+        STACK -.->|fallback| SDK[AnthropicSdkDriver]
+        HEALTH[NatsHealthMonitor] -->|subscribe| NATS
+    end
+
+    subgraph "Machine 2 — GPU (RTX 5070Ti)"
+        NATS -->|request| WORKER[LLM Worker<br/>queue group]
+        WORKER -->|response| NATS
+        WORKER -->|heartbeat| NATS
+        WORKER --> MODEL[Local LLM<br/>Qwen/Mistral]
+    end
+
+    style NATS fill:#4CAF50,color:white
+    style WORKER fill:#2196F3,color:white
+    style SDK fill:#FF9800,color:white
+```
+
+### Dependency Graph
+
+```mermaid
+flowchart LR
+    subgraph "Slice A — Foundation"
+        A1["✓ A1: Bus async put"]
+        A2["✓ A2: NATS server install"]
+        A2b[A2b: NATS opt-in #469]
+        A3[A3: Health probe #449]
+    end
+
+    subgraph "Slice B — Compute"
+        B1[B1: NatsLlmDriver]
+        B2[B2: Machine 2 worker]
+        B3[B3: Circuit breaker]
+        B4[B4: Integration test]
+    end
+
+    subgraph "Slice C — Hub Extraction ⏸"
+        C1[C1: Design artifacts]
+        C2[C2: NatsBus]
+        C3[C3: Trust re-resolution]
+        C4[C4: Extract Hub]
+        C5[C5: Rewire adapters]
+        C6[C6: Ops + ADR + test]
+    end
+
+    subgraph "Slice D — Hardening ⏸"
+        D1[D1: JetStream]
+        D2[D2: JWT auth + ACL]
+        D3[D3: Prometheus]
+    end
+
+    EXT14["#14 LLM benchmark"]
+
+    A2 --> A2b
+    A2b --> A3
+    A2b --> B1
+    A2 --> B2
+    EXT14 --> B2
+    B1 --> B3
+    B1 --> B4
+    B2 --> B4
+
+    B4 --> C1
+    A1 --> C2
+    C1 --> C2
+    C1 --> C3
+    C2 --> C4
+    C3 --> C4
+    C4 --> C5
+    C5 --> C6
+
+    C6 --> D1
+    C6 --> D2
+    C6 --> D3
+    D2 --> D4[D2 includes ACL]
+
+    style A1 fill:#4CAF50,color:white,stroke-dasharray:5 5
+    style A2 fill:#4CAF50,color:white,stroke-dasharray:5 5
+    style A2b fill:#4CAF50,color:white
+    style A3 fill:#4CAF50,color:white
+    style B1 fill:#2196F3,color:white
+    style B2 fill:#2196F3,color:white
+    style B3 fill:#2196F3,color:white
+    style B4 fill:#2196F3,color:white
+    style C1 fill:#9E9E9E,color:white
+    style C2 fill:#9E9E9E,color:white
+    style C3 fill:#9E9E9E,color:white
+    style C4 fill:#9E9E9E,color:white
+    style C5 fill:#9E9E9E,color:white
+    style C6 fill:#9E9E9E,color:white
+    style D1 fill:#757575,color:white
+    style D2 fill:#757575,color:white
+    style D3 fill:#757575,color:white
+    style EXT14 fill:#FF9800,color:white
+```
+
+### File x Function Map
+
+```mermaid
+flowchart LR
+    subgraph "src/lyra/core/"
+        BUS_PY[bus.py<br/>Bus.put → async]
+        LBUS[inbound_bus.py<br/>LocalBus.put → async]
+    end
+
+    subgraph "src/lyra/nats/"
+        CONN[connection.py<br/>NatsConnection]
+        HMON[health_monitor.py<br/>NatsHealthMonitor]
+    end
+
+    subgraph "src/lyra/llm/drivers/"
+        NDRV[nats_driver.py<br/>NatsLlmDriver]
+    end
+
+    subgraph "src/lyra/llm/"
+        REG[registry.py<br/>register 'nats']
+    end
+
+    subgraph "src/lyra/adapters/"
+        SHARED[_shared.py<br/>await bus.put]
+    end
+
+    subgraph "src/lyra/bootstrap/"
+        MULTI[multibot.py<br/>wire NatsConnection]
+    end
+
+    subgraph "tools/llm-worker/"
+        WMAIN[__main__.py<br/>CLI entry]
+        WSERV[worker.py<br/>request handler]
+        WHEARTBEAT[heartbeat.py<br/>health publisher]
+    end
+
+    subgraph "lyra-stack (sibling repo)"
+        PROV[scripts/provision.sh<br/>NATS binary + certs]
+        NCONF[nats/nats.conf<br/>server config]
+        NSVC[nats/nats.service<br/>systemd unit]
+    end
+
+    BUS_PY --> LBUS
+    BUS_PY --> SHARED
+    CONN --> NDRV
+    CONN --> HMON
+    NDRV --> REG
+    HMON --> NDRV
+    MULTI --> CONN
+    MULTI --> NDRV
+    WMAIN --> WSERV
+    WSERV --> WHEARTBEAT
+```
+
+## Waves
+
+### Wave 1 — Slice A: Foundation
+
+> **A1 and A2 done.** Remaining: A2b (#469) + A3 (#449) — can run in parallel (different repos).
+
+| Track | Issue | Agent | Status | Notes |
+|-------|-------|-------|--------|-------|
+| 1 | A1: Bus[T] async put (#447) | backend-dev | ✓ done | merged 2026-03-30 |
+| 2 | A2: NATS server install (#448) | devops | ✓ done | merged 2026-03-30 in lyra-stack |
+| 3 | A2b: NATS opt-in in provision.sh (#469) | devops | open | lyra-stack repo |
+| 4 | A3: Health probe (#449) | backend-dev | open | parallel with A2b |
+
+#### A2b micro-tasks (devops — lyra-stack repo)
+
+1. Extract NATS block from `scripts/provision.sh` into a standalone function
+2. Guard behind `--nats` flag or remove from base run entirely
+3. Add `nats-install` target to `Makefile` (calls the extracted function, idempotent)
+4. Remove `After=nats.service` from `lyra-stack.service` if present
+5. Document `make nats-install` in `README.md` under "Multi-machine setup"
+
+#### A3 micro-tasks (backend-dev — lyra repo, parallel with A2b)
+
+1. Read `NATS_URL` from config/env in `lyra_monitoring`
+2. If `NATS_URL` not set: skip NATS check entirely, omit `nats` key from response
+3. If `NATS_URL` set: TCP connect to host:port + NATS PING/PONG
+4. Return `{"nats": "ok"}` or `{"nats": "unreachable"}` + overall `degraded` when unreachable
+5. Test: no `NATS_URL` → clean response, no `nats` key
+6. Test: `NATS_URL` set, NATS stopped → `degraded` + `"nats": "unreachable"`
+7. Test: `NATS_URL` set, NATS running → `ok` + `"nats": "ok"`
+
+### Wave 2 — Slice B: Compute (after Wave 1)
+
+Two parallel tracks (B1, B2), then two sequential (B3, B4).
+
+| Track | Issue | Agent | Micro-tasks | Blocked by |
+|-------|-------|-------|-------------|------------|
+| 1 | B1: NatsLlmDriver | backend-dev | 10 | A2b (#469) |
+| 2 | B2: Machine 2 worker | backend-dev | 8 | A2, #14 |
+| 3 | B3: Circuit breaker | backend-dev | 5 | B1 |
+| 4 | B4: Integration test | tester | 5 | B1, B2 |
+
+#### B1 micro-tasks (backend-dev)
+
+1. Create `src/lyra/nats/__init__.py` and `src/lyra/nats/connection.py` — `NatsConnection` class
+2. Add `nats-py` to `pyproject.toml` as optional dependency (`extras = ["nats"]`)
+3. Create `src/lyra/nats/health_monitor.py` — `NatsHealthMonitor` class (subscribe `lyra.llm.health.*`, track heartbeats)
+4. Create `src/lyra/llm/drivers/nats_driver.py` — `NatsLlmDriver` skeleton
+5. Implement `NatsLlmDriver.complete()` — NATS request-reply with JSON serialization
+6. Implement `NatsLlmDriver.stream()` — ephemeral inbox subscription, yield `LlmEvent`s
+7. Implement `NatsLlmDriver.is_alive()` — delegate to `NatsHealthMonitor`
+8. Register `"nats"` backend in `registry.py` **only if `NATS_URL` env var is set**
+9. Wire `NatsConnection` + `NatsHealthMonitor` lifecycle in `bootstrap/multibot.py` — connect/close only if `NATS_URL` set
+10. Test: no `NATS_URL` → lyra boots cleanly, `"nats"` absent from registry, no errors
+10. Unit tests: `NatsLlmDriver` with mocked NATS connection
+
+#### B2 micro-tasks (backend-dev)
+
+1. Create `tools/llm-worker/` package: `pyproject.toml`, `__init__.py`, `__main__.py`
+2. Implement `worker.py` — NATS subscription on `lyra.llm.request` (queue group `workers`)
+3. Implement request dispatch — deserialize JSON, route to local LLM backend
+4. Implement response publishing — complete (single message) + streaming (chunks with `done`)
+5. Implement `heartbeat.py` — publish to `lyra.llm.health.{worker_id}` every 10s
+6. CLI entry point with env-based config (`NATS_URL`, `NATS_NKEY_SEED`, etc.)
+7. Add supervisor config template for Machine 2 (WSL2)
+8. Setup documentation: `tools/llm-worker/README.md`
+
+#### B3 micro-tasks (backend-dev, blocked by B1)
+
+1. Add `fallback_backend` field to agent TOML `[agent.llm]` section
+2. Wire fallback routing in bootstrap: resolve primary + fallback drivers
+3. Connect `CircuitBreakerDecorator` → on circuit open, route to fallback driver
+4. Log fallback activation/deactivation events
+5. Unit test: mock NATS timeout → circuit opens → fallback driver receives request
+
+#### B4 micro-tasks (tester, blocked by B1 + B2)
+
+1. Create test fixture: embedded NATS server (ephemeral port, no TLS)
+2. Create mock LLM worker (echoes request text as response)
+3. Test: Hub → NatsLlmDriver → NATS → mock worker → response → Hub. Assert round-trip.
+4. Test: kill mock worker → circuit opens → fallback provider answers → restart worker → circuit closes
+5. Test: streaming round-trip — verify all `LlmEvent` types arrive in order
+
+### Wave 3 — Slice C: Hub Extraction (deferred)
+
+> Not scheduled. Issues created for visibility and dependency tracking.
+
+| Issue | Size | Blocked by |
+|-------|------|------------|
+| C1: Design artifacts | S | B4 |
+| C2: NatsBus implementation | F-lite | A1, C1 |
+| C3: Trust re-resolution | S | C1 |
+| C4: Extract Hub process | F-full | C2, C3 |
+| C5: Rewire adapters | F-lite | C4 |
+| C6: Ops + ADR + integration test | S | C5 |
+
+### Wave 4 — Slice D: Hardening (deferred)
+
+> Not scheduled. Issues created for visibility.
+
+| Issue | Size | Blocked by |
+|-------|------|------------|
+| D1: JetStream persistence | S | C6 |
+| D2: JWT auth + ACL audit | S | C6 |
+| D3: Prometheus exporter | S | C6 |
+
+## Agent Assignments
+
+| Wave | Issue | Agent type | Why |
+|------|-------|-----------|-----|
+| 1 | A1 | backend-dev | Protocol change + caller migration |
+| 1 | A2 | devops | Systemd, TLS certs, UFW, provision script |
+| 1 | A3 | backend-dev | Health endpoint extension |
+| 2 | B1 | backend-dev | New driver + NATS client wiring |
+| 2 | B2 | backend-dev | Standalone worker service |
+| 2 | B3 | backend-dev | Decorator stack modification |
+| 2 | B4 | tester | Integration test with embedded NATS |
+
+## Config Changes
+
+### `config.toml` additions (Slice B)
+
+```toml
+[nats]
+url = "nats://192.168.1.16:4222"
+nkey_seed = "/etc/nats/nkeys/hub.seed"    # path to nkey seed file
+tls_ca = "/etc/nats/certs/ca.pem"         # path to CA cert
+
+[nats.llm]
+request_timeout = 120                      # seconds
+heartbeat_timeout = 30                     # seconds — worker marked offline after this
+```
+
+### Agent TOML additions (Slice B)
+
+```toml
+[agent.llm]
+backend = "nats"                           # routes to NatsLlmDriver
+fallback_backend = "anthropic-sdk"         # used when circuit breaker opens
+```
+
+### Environment variables (Machine 2 worker)
+
+```bash
+NATS_URL=nats://192.168.1.16:4222
+NATS_NKEY_SEED=/path/to/llm-worker.seed
+NATS_TLS_CA=/path/to/ca.pem
+LLM_MODEL=qwen2.5-14b                     # determined by #14
+LLM_BACKEND=ollama                         # or vllm, huggingface
+WORKER_ID=machine2-gpu
+```
+
+## Critical Path
+
+```
+#14 (LLM benchmark) ─────────────────────────────────┐
+                                                       ▼
+A2 (NATS install) ──→ B1 (NatsLlmDriver) ──→ B3 (fallback) ──→ B4 (integration test)
+                  └──→ B2 (worker) ────────────────────────────→ B4
+A1 (async put) ── deferred ──→ C2 (NatsBus) ──→ C4 (Hub extraction) ──→ ...
+```
+
+Shortest path to value: **A2 → B1 + B2 → B4** (4 issues, ~2 sprints after #14 closes).

@@ -13,6 +13,36 @@ Complete guide to set up Machine 1 (Ubuntu Server 24.04 LTS) as the Lyra hub fro
 
 ---
 
+## Choose your install path
+
+Three ways to run lyra — pick the one that matches your goal.
+
+| Tier | Goal | Setup |
+|------|------|-------|
+| **1. Library** | Import `lyra` in your own code | `uv add "lyra @ git+https://github.com/Roxabi/lyra.git@staging"` — nothing else |
+| **2. Standalone** | Run lyra on one machine (dev or personal use) | See **Tier 2** below — 5 commands, no supervisord, no separate NATS server |
+| **3. Full production** | 24/7 hub with adapters, auto-deploy, monitoring | Continue to **Step 1** below — this guide covers Machine 1 hub setup |
+
+---
+
+## Tier 2 — Standalone (unified mode)
+
+For single-machine dev or personal use. `lyra start` runs hub + adapters in one process and auto-starts an embedded nats-server when `NATS_URL` is unset.
+
+```bash
+git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
+cd ~/projects/lyra && uv sync
+cp .env.example .env         # tokens go via `lyra bot add` (see Step 8)
+lyra agent init              # seed agents DB from bundled TOML
+lyra start                   # hub + telegram + discord in one process
+```
+
+No supervisord. No systemd. No `make deploy`. Stop with `Ctrl+C`. For bot token setup see **Step 8 — Configure**.
+
+Move to Tier 3 (split processes, auto-deploy timer, health monitoring, embedded NATS replaced by a system service) only when you actually need 24/7 uptime. Tier 3 is what this guide covers from **Step 1** onward.
+
+---
+
 ## Step 1 — Create bootable USB (on Machine 2)
 
 Download the ISO and flash it with Rufus (Windows) or dd (Linux):
@@ -117,7 +147,7 @@ ssh-copy-id yourname@<MACHINE_1_IP>
 
 ```bash
 ssh yourname@<MACHINE_1_IP>
-curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra-stack/main/scripts/provision.sh | ADMIN_USER=yourname bash
+curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname bash
 ```
 
 The script handles:
@@ -160,7 +190,7 @@ ssh yourname@<MACHINE_1_IP> "
 
 ---
 
-## Step 7 — Clone lyra-stack and run setup
+## Step 7 — Clone lyra and run setup
 
 ```bash
 ssh yourname@<MACHINE_1_IP>
@@ -168,8 +198,8 @@ ssh yourname@<MACHINE_1_IP>
 # Add your GitHub SSH key if not already done
 # https://github.com/settings/keys → paste output of: cat ~/.ssh/id_ed25519.pub
 
-git clone git@github.com:Roxabi/lyra-stack.git ~/projects/lyra-stack
-cd ~/projects/lyra-stack && make setup
+git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
+cd ~/projects/lyra && python3 deploy/setup.py
 ```
 
 `make setup` will:
@@ -237,9 +267,14 @@ lyra bot add --platform discord --bot-id lyra
 # Prompts for: token
 ```
 
-This encrypts and stores the tokens in `~/.lyra/auth.db`.
+This encrypts and stores the tokens in `~/.lyra/config.db`.
 
-> **Note:** `.env` is for non-secret config only (TTS engine, STT model size, monitoring settings).
+> **Note:** `.env` is mostly for non-secret config. Key entries:
+> - `NATS_URL=tls://127.0.0.1:4222` — set this for production (`lyra hub` + `lyra adapter`). Omit it for single-machine dev — `lyra start` auto-starts an embedded nats-server.
+> - `NATS_NKEY_SEED_PATH`, `NATS_CA_CERT` — nkey auth and TLS (set by `make nats-setup`)
+> - `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` — monitoring cron reads these directly from `.env`
+> - `LYRA_STT_ENABLED=1`, `LYRA_TTS_ENABLED=1` — enable NATS STT/TTS adapters; `LYRA_STT_MODEL=large-v3-turbo` — STT model size
+>
 > See `.env.example` for all available options.
 
 ---
@@ -254,56 +289,117 @@ Follow the prompts to authenticate. Lyra uses Claude Code as its LLM backend —
 
 ---
 
-## Step 10 — Enable auto-start on boot
+## Step 10 — NATS (optional for single-machine dev)
+
+For **single-machine development**, no NATS setup is required. `lyra start` auto-starts an embedded nats-server when `NATS_URL` is not set in `.env`.
+
+For **multi-machine production** (hub and adapters as separate processes — the default on Machine 1):
+
+```bash
+cd ~/projects/lyra
+
+# One command — installs binary, system user, nats.conf, TLS certs, nkeys, starts service, verifies auth
+make nats-setup
+```
+
+`make nats-setup` is idempotent — safe to re-run after upgrades or re-provisioning. It wires three env vars into `.env` automatically:
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `NATS_URL` | `tls://127.0.0.1:4222` | TLS connection to local NATS |
+| `NATS_NKEY_SEED_PATH` | `~/.lyra/nkeys/hub.seed` | nkey authentication |
+| `NATS_CA_CERT` | `/etc/nats/certs/ca.crt` | CA cert for TLS verification |
+
+> **Key rotation:** `sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.lyra/nkeys && make nats-setup`
+> **Manual permission fix only:** `sudo deploy/nats/gen-nkeys.sh --fix-perms`
+
+---
+
+## Step 11 — Enable auto-start on boot
 
 ```bash
 # Enable the systemd user unit + linger (runs without login session)
-systemctl --user enable lyra-stack.service
+systemctl --user enable lyra.service
 loginctl enable-linger $USER
 
 # Start now
-systemctl --user start lyra-stack
+systemctl --user start lyra
 ```
 
-## Step 11 — Verify services
+## Step 12 — Enable health monitoring
+
+The monitoring system runs as a separate **systemd user timer** (not part of supervisor). It runs every 5 minutes, checks hub health, and sends Telegram alerts on anomalies.
 
 ```bash
-cd ~/projects/lyra-stack
+cd ~/projects/lyra
+
+# Ensure monitoring secrets are in .env
+# TELEGRAM_TOKEN=<bot token for sending alerts>
+# TELEGRAM_ADMIN_CHAT_ID=<your numeric Telegram user ID>
+
+# Create the health secret file (used by /health/detail endpoint)
+mkdir -p ~/.lyra/secrets
+echo -n "$(openssl rand -hex 32)" > ~/.lyra/secrets/health_secret
+chmod 600 ~/.lyra/secrets/health_secret
+
+# Copy the same secret to .env so the monitoring cron can use it
+echo "LYRA_HEALTH_SECRET=$(cat ~/.lyra/secrets/health_secret)" >> .env
+
+# Install + enable the timer (done automatically by make register)
+make monitor enable
+
+# Verify it works
+make monitor run      # trigger a manual check
+make monitor status   # check result
+```
+
+## Step 13 — Verify services
+
+```bash
+cd ~/projects/lyra
 make ps
 ```
 
 You should see:
 ```
+lyra_hub         RUNNING   pid 12344, uptime 0:00:10
 lyra_telegram    RUNNING   pid 12345, uptime 0:00:10
 lyra_discord     RUNNING   pid 12346, uptime 0:00:10
 voicecli_tts     RUNNING   pid 12347, uptime 0:00:10
 voicecli_stt     RUNNING   pid 12348, uptime 0:00:10
 ```
 
+Check the monitoring timer:
+```bash
+make monitor status
+```
+
 Check the logs:
 ```bash
 make lyra logs      # tail Telegram adapter stdout
 make lyra errlogs   # tail stderr (where INFO/ERROR logs go)
+make monitor logs   # tail monitoring cron output (journalctl)
 ```
 
 ---
 
-## Step 12 — Send your first message
+## Step 14 — Send your first message
 
 **Telegram:** Open a DM with your bot and type anything. Lyra will respond.
 
 **Discord:** @mention your bot in a channel: `@YourBot hello!`
 
 What happens under the hood:
-1. The adapter normalizes your message into an `InboundMessage` object
-2. It goes onto the hub's async bus (`asyncio.Queue`)
-3. The hub resolves the routing (wildcard binding → your user gets an isolated pool)
+1. The adapter (standalone process) normalizes your message into an `InboundMessage`
+2. It publishes to NATS (`lyra.inbound.<platform>.<bot_id>`)
+3. The Hub picks it up via its `NatsBus` subscription and resolves the routing
 4. `SimpleAgent` sends the text to a persistent `claude` subprocess
-5. The response is dispatched back to the originating platform
+5. The Hub publishes the response to NATS (`lyra.outbound.<platform>.<bot_id>`)
+6. The `NatsOutboundListener` in the adapter process receives it and dispatches to the platform
 
 ---
 
-## Step 13 — Set up lyra agent account (optional)
+## Step 15 — Set up lyra agent account (optional)
 
 Generate a dedicated SSH key for the agent on Machine 2:
 
@@ -332,19 +428,19 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Agent access | `ssh -i ~/.ssh/lyra_agent lyra@<IP>` (optional) |
 | Lyra project | `~/projects/lyra/` |
 | VoiceCLI project | `~/projects/voiceCLI/` (if installed) |
-| Supervisor hub | `~/projects/lyra-stack/` |
+| Supervisor configs | `~/projects/lyra/deploy/supervisor/` |
 | Config | `~/projects/lyra/config.toml` |
-| Credentials | `~/.lyra/auth.db` (encrypted, via `lyra bot add`) |
+| Credentials | `~/.lyra/config.db` (encrypted, via `lyra bot add`) |
 | Logs | `~/.local/state/lyra/logs/` |
-| Diagrams | `~/.agent/` (if installed) |
+| Diagrams | `~/.roxabi/forge/` (if installed) |
 | Firewall | UFW, SSH only |
 
-**Daily commands** (from `~/projects/lyra-stack`):
+**Daily commands** (from `~/projects/lyra`):
 ```bash
-make ps              # status of all services
-make lyra reload     # restart lyra
-make lyra logs       # tail logs
-make deploy          # pull latest + restart (from Machine 2)
+make ps              # status of all services (lyra_hub + lyra_telegram + lyra_discord)
+make lyra reload     # restart hub + both adapters
+make lyra logs       # tail lyra_hub stdout
+make deploy          # pull latest + run tests + restart (from Machine 2)
 ```
 
 ---

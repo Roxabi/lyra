@@ -8,12 +8,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.discord import _ALLOW_ALL, DiscordAdapter
+from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.discord_voice import (
     VoiceAlreadyActiveError,
     VoiceDependencyError,
     VoiceMode,
 )
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import OutboundAudioChunk
 from lyra.core.trust import TrustLevel
 
@@ -63,8 +64,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_join_transient_calls_vsm_join(self) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
         voice_ch = MagicMock()
@@ -80,8 +83,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_join_slash_prefix_calls_vsm_join(self) -> None:
         # Arrange — /join (slash prefix) must route identically to !join
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
         voice_ch = MagicMock()
@@ -97,8 +102,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_join_stay_calls_vsm_join_persistent(self) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
         voice_ch = MagicMock()
@@ -114,8 +121,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_join_stay_case_insensitive_is_persistent(self) -> None:
         # Arrange — "!join STAY" (uppercase) must map to PERSISTENT
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
         voice_ch = MagicMock()
@@ -132,8 +141,10 @@ class TestHandleVoiceCommand:
     async def test_join_stay_with_extra_args_is_persistent(self) -> None:
         # Arrange — "!join stay please" should still be PERSISTENT
         # (prefix match on first token)
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
         voice_ch = MagicMock()
@@ -149,8 +160,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_leave_with_active_session_disconnects_and_replies(self) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         leave_mock = AsyncMock()
         adapter._vsm.leave = leave_mock
         adapter._vsm.get = MagicMock(return_value=MagicMock())  # session exists
@@ -167,8 +180,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_leave_without_session_replies_not_in_channel(self) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         leave_mock = AsyncMock()
         adapter._vsm.leave = leave_mock
         adapter._vsm.get = MagicMock(return_value=None)  # no session
@@ -185,8 +200,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_non_voice_command_returns_false(self) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock()
         leave_mock = AsyncMock()
         adapter._vsm.join = join_mock
@@ -204,8 +221,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_join_user_not_in_voice_channel_replies_error(self) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
         msg = _make_message("!join", author_voice_channel=None)
@@ -221,8 +240,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_join_user_no_voice_state_replies_error(self) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
         msg = _make_message("!join")
@@ -239,8 +260,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_join_already_active_replies_error(self) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock(side_effect=VoiceAlreadyActiveError("1"))
         adapter._vsm.join = join_mock
         voice_ch = MagicMock()
@@ -258,8 +281,10 @@ class TestHandleVoiceCommand:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         # Arrange — inner reply() raises; log.warning must fire, True must return
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock(side_effect=VoiceAlreadyActiveError("1"))
         adapter._vsm.join = join_mock
         voice_ch = MagicMock()
@@ -279,8 +304,10 @@ class TestHandleVoiceCommand:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock(side_effect=VoiceDependencyError("libopus missing"))
         adapter._vsm.join = join_mock
         voice_ch = MagicMock()
@@ -298,8 +325,10 @@ class TestHandleVoiceCommand:
     @pytest.mark.asyncio
     async def test_other_command_returns_false(self) -> None:
         # Arrange
-        hub = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=MagicMock(),
+        )
         join_mock = AsyncMock()
         adapter._vsm.join = join_mock
         msg = _make_message("!help")
@@ -319,11 +348,13 @@ class TestHandleVoiceCommand:
 class TestOnMessageVoiceCommandWiring:
     @pytest.mark.asyncio
     async def test_voice_command_in_guild_skips_hub_push(self) -> None:
-        # Arrange — !join in a guild text channel should NOT reach hub.inbound_bus
-        hub = MagicMock()
-        hub.inbound_bus = MagicMock()
-        hub.inbound_bus.put_nowait = MagicMock()
-        adapter = DiscordAdapter(hub=hub, bot_id="main")
+        # Arrange — !join in a guild text channel should NOT reach inbound_bus
+        inbound_bus = MagicMock()
+        inbound_bus.put = AsyncMock()
+        adapter = DiscordAdapter(
+            bot_id="main",
+            inbound_bus=inbound_bus,
+        )
         adapter._auth = _ALLOW_ALL  # permit the message
         # Mock _handle_voice_command to return True (simulates voice command handled)
         adapter._handle_voice_command = AsyncMock(return_value=True)
@@ -342,5 +373,5 @@ class TestOnMessageVoiceCommandWiring:
         # Act
         await adapter.on_message(message)
 
-        # Assert — hub inbound bus was NOT called
-        hub.inbound_bus.put_nowait.assert_not_called()
+        # Assert — inbound bus was NOT called
+        inbound_bus.put.assert_not_called()

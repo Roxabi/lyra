@@ -150,8 +150,9 @@ class TestVaultAddProcessorPre:
 
         # Assert
         assert "[content truncated]" in enriched.text
-        # Total text length grows by instruction overhead, but raw content is bounded
-        assert enriched.text.count("A") <= _SAFE_SCRAPE_MAX_CHARS
+        # Raw scraped payload (the contiguous run of A's) is bounded. Robust
+        # against instruction text changes that may themselves contain "A".
+        assert "A" * (_SAFE_SCRAPE_MAX_CHARS + 1) not in enriched.text
 
     async def test_does_not_truncate_content_within_limit(self) -> None:
         # Arrange

@@ -3,44 +3,52 @@
 Extracted from Telegram and Discord adapters to eliminate near-identical
 circuit-open / backpressure guard logic and reply_to_id parsing.
 
-Audio helpers live in _shared_audio; they are re-exported here so existing
-importers continue to work without changes.
+Audio helpers live in _shared_audio; text utilities live in _shared_text;
+streaming state classes live in _shared_streaming.
+All are re-exported here so existing importers continue to work without
+changes.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import re
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
-# Re-exports from _shared_audio — importers can use either module.
 from lyra.adapters._shared_audio import (
     _AUDIO_EXTS,
     _MAX_OUTBOUND_AUDIO_BYTES,
     AUDIO_MIME_TYPES,
     _PartialAudioError,
+    buffer_and_render_audio,
     buffer_audio_chunks,
     mime_to_ext,
 )
-from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import (
-    InboundAudio,
-    InboundMessage,
-    Platform,
+
+# Re-exports from _shared_streaming — importers can use either module.
+from lyra.adapters._shared_streaming import (
+    IntermediateTextState,
+    StreamState,
 )
 
+# Re-exports from _shared_audio — importers can use either module.
+from lyra.adapters._shared_text import chunk_text, sanitize_filename, truncate_caption
+from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.message import InboundMessage, Platform
+
 if TYPE_CHECKING:
+    from lyra.adapters.outbound_listener import OutboundListener
     from lyra.core.bus import Bus
     from lyra.core.messages import MessageManager
+    from lyra.core.render_events import ToolSummaryRenderEvent
 
 __all__ = [
     "AUDIO_MIME_TYPES",
     "_AUDIO_EXTS",
     "_MAX_OUTBOUND_AUDIO_BYTES",
     "_PartialAudioError",
+    "buffer_and_render_audio",
     "buffer_audio_chunks",
     "mime_to_ext",
     "ATTACHMENT_EXTS_BASE",
@@ -51,7 +59,11 @@ __all__ = [
     "chunk_text",
     "resolve_msg",
     "TypingTaskManager",
+    "IntermediateTextState",
+    "StreamState",
+    "format_tool_summary_header",
     "parse_reply_to_id",
+    "send_with_retry",
 ]
 
 log = logging.getLogger(__name__)
@@ -61,18 +73,27 @@ async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard
     *,
     inbound_bus: "Bus[Any]",
     platform: Platform,
-    msg: InboundMessage | InboundAudio,
+    msg: InboundMessage,
     circuit_registry: CircuitRegistry | None,
     on_drop: Callable[[], None] | None,
     send_backpressure: Callable[[str], Awaitable[None]],
     get_msg: Callable[[str, str], str],
+    outbound_listener: "OutboundListener | None" = None,
 ) -> None:
     """Put *msg* on the inbound bus with circuit-open and backpressure guards.
 
     *on_drop* is called before early return in both circuit-open and QueueFull
     cases. *send_backpressure* sends the backpressure ack to the user.
     Always returns normally.
+
+    *outbound_listener* — when provided, ``cache_inbound(msg)`` is called
+    before enqueuing so that outbound NATS correlation can resolve the original
+    message by stream_id.  Must be called here (not by the caller) to guarantee
+    the cache is populated before the hub can dispatch a response.
     """
+    if outbound_listener is not None:
+        outbound_listener.cache_inbound(msg)
+
     if circuit_registry is not None:
         cb = circuit_registry.get("hub")
         if cb is not None and cb.is_open():
@@ -94,49 +115,12 @@ async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard
             return
 
     try:
-        inbound_bus.put(platform, msg)
+        await inbound_bus.put(platform, msg)
     except asyncio.QueueFull:
         if on_drop is not None:
             on_drop()
         text = get_msg("backpressure_ack", "Processing your request\u2026")
         await send_backpressure(text)
-
-
-def truncate_caption(caption: str | None, limit: int) -> str | None:
-    """Truncate caption to *limit* characters, returning None if empty."""
-    if not caption:
-        return None
-    return caption[:limit]
-
-
-def sanitize_filename(
-    filename: str,
-    allowed_exts: frozenset[str],
-    fallback: str = "attachment.bin",
-) -> str:
-    """Sanitize a caller-supplied filename for outbound attachments.
-
-    Strips path components, control characters, and validates the
-    extension against *allowed_exts*. Returns *fallback* if the
-    result is empty or the extension is not whitelisted.
-    """
-    # Strip path components (defense against ../../ traversal)
-    name = os.path.basename(filename)
-    # Strip control characters and null bytes
-    name = re.sub(r"[\x00-\x1f\x7f]", "", name)
-    # Enforce length cap
-    name = name[:255]
-
-    if not name:
-        return fallback
-
-    # Validate extension against whitelist
-    _, ext = os.path.splitext(name)
-    ext_clean = ext.lstrip(".").lower()
-    if ext_clean not in allowed_exts:
-        return fallback
-
-    return name
 
 
 # Shared base set of allowed file extensions for outbound attachment filenames.
@@ -166,52 +150,6 @@ ATTACHMENT_EXTS_BASE = frozenset(
 
 # Discord API message length limit — used by discord_formatting and discord_audio.
 DISCORD_MAX_LENGTH = 2000
-
-
-def chunk_text(
-    text: str,
-    max_len: int,
-    escape_fn: Callable[[str], str] | None = None,
-) -> list[str]:
-    """Split *text* into chunks of at most *max_len* characters.
-
-    Splits at the latest natural boundary before the limit (in order of
-    preference): paragraph break, newline, sentence end (`. ` / `! ` / `? `),
-    word boundary.  Falls back to a hard cut only if no boundary is found.
-
-    If *escape_fn* is provided it is applied to the entire text before
-    chunking (e.g. MarkdownV2 escaping), so *max_len* applies to the
-    post-escape length. Callers must account for any expansion the escape
-    function introduces. Returns [] for empty text.
-
-    Raises ValueError if *max_len* is not positive.
-    """
-    if max_len <= 0:
-        raise ValueError(f"chunk_text: max_len must be > 0, got {max_len!r}")
-    if escape_fn is not None:
-        text = escape_fn(text)
-    if not text:
-        return []
-    if len(text) <= max_len:
-        return [text]
-
-    chunks: list[str] = []
-    while len(text) > max_len:
-        window = text[:max_len]
-        # Priority order: paragraph > newline > sentence end > word boundary
-        cut = -1
-        for sep in ("\n\n", "\n", ". ", "! ", "? ", " "):
-            idx = window.rfind(sep)
-            if idx > 0:
-                cut = idx + len(sep)
-                break
-        if cut <= 0:
-            cut = max_len  # hard cut as last resort
-        chunks.append(text[:cut].rstrip())
-        text = text[cut:].lstrip()
-    if text:
-        chunks.append(text)
-    return chunks
 
 
 def resolve_msg(
@@ -274,3 +212,44 @@ def parse_reply_to_id(reply_to_id: str | None) -> int | None:
             reply_to_id,
         )
         return None
+
+
+async def send_with_retry(
+    coro_fn: Callable[[], Any],
+    *,
+    label: str,
+    max_attempts: int = 3,
+) -> None:
+    """Call *coro_fn()* and retry with exponential backoff (1 s, 2 s, 4 s ...).
+
+    Swallows the final exception and returns normally after exhaustion. Use only
+    for cosmetic/intermediate operations where silent skip is acceptable (e.g.
+    streaming edits, tool embeds). For operations whose return value drives
+    routing (e.g. updating reply_message_id), bypass this function and use a
+    bare try/except instead.
+    """
+    for attempt in range(max_attempts):
+        try:
+            await coro_fn()
+            return
+        except Exception:
+            if attempt == max_attempts - 1:
+                log.exception("%s failed after %d attempts", label, max_attempts)
+                return
+            delay = 2**attempt  # 1 s, 2 s, 4 s ...
+            log.warning(
+                "%s failed (attempt %d/%d), retrying in %d s",
+                label,
+                attempt + 1,
+                max_attempts,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+
+def format_tool_summary_header(event: ToolSummaryRenderEvent) -> str:
+    """Return the tool summary header string for a ToolSummaryRenderEvent.
+
+    Header only — does NOT include tool body lines.
+    """
+    return "🔧 Done ✅" if event.is_complete else "🔧 Working…"

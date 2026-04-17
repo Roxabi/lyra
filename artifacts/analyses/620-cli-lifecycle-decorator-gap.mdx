@@ -1,0 +1,204 @@
+---
+issue: 620
+title: "CLI subprocess lifecycle not reachable through LlmProvider decorator chain"
+date: 2026-04-08
+status: analysis
+---
+
+# Analysis: CLI Lifecycle / Decorator Gap (#620)
+
+## Problem statement
+
+`/clear` (and `/new`) silently skips killing the Claude Code CLI subprocess when a
+circuit breaker is configured for the `claude-cli` backend.
+
+The user gets a "Conversation history cleared. Starting fresh." response, `pool.history`
+and `pool.sdk_history` are empty, and the session ID is rotated — but the CLI process
+keeps running with its full context window intact. The next message resumes that
+subprocess as if nothing happened.
+
+---
+
+## Root cause chain
+
+```
+SimpleAgent._maybe_register_reset()
+  → getattr(self._provider, "reset", None)
+  → self._provider = CircuitBreakerDecorator(ClaudeCliDriver(...))
+  → CircuitBreakerDecorator has no reset()
+  → reset_fn = None
+  → pool._session_reset_fn = None  (never wired)
+
+pool.reset_session()
+  → if self._session_reset_fn is not None:  ← False
+  →     await self._session_reset_fn()      ← skipped
+  → subprocess never killed
+```
+
+### When does this trigger?
+
+`agent_factory.py:67-71`:
+
+```python
+cli_cb = circuit_registry.get("claude-cli")
+if cli_cb is not None:
+    providers["claude-cli"] = CircuitBreakerDecorator(cli_driver, cli_cb)  # ← gap
+else:
+    providers["claude-cli"] = cli_driver  # ← works fine
+```
+
+Only affects deployments with a `claude-cli` circuit breaker configured. Without it,
+`self._provider` is the bare `ClaudeCliDriver` and `reset()` is found directly.
+
+### Affected methods (same pattern)
+
+| Method | Used for | Also broken? |
+|--------|----------|-------------|
+| `reset()` | `/clear` subprocess kill | **Yes** |
+| `switch_cwd()` | `/workspace` command | **Yes** |
+| `resume_and_reset()` | Reply-to-resume, `/pause` resume | **Yes** |
+| `link_lyra_session()` | CLI session→Lyra session mapping | **Yes** |
+
+All four are wired via `getattr(self._provider, ...)` in `_maybe_register_reset` and
+`_maybe_register_resume`. All four are absent on `CircuitBreakerDecorator`.
+
+---
+
+## Why the design is the problem, not just the missing method
+
+The duck typing pattern (`getattr(provider, "reset", None)`) works when there are no
+decorators. But it is fragile by design:
+
+- Adding any decorator that does not explicitly forward `reset()` silently breaks `/clear`
+- There is no type-level contract — the gap is invisible until runtime
+- The `None` branch in `pool.reset_session()` is indistinguishable from "SDK backend
+  (no subprocess)" vs "CLI backend but callback not wired" — silent failure
+
+Adding `reset()` to `CircuitBreakerDecorator` fixes the immediate symptom but does not
+fix the root cause: CLI subprocess lifecycle is being routed through an inference
+abstraction (`LlmProvider`) that has no concept of process management.
+
+---
+
+## Correct long-term fix
+
+### Principle
+
+Split responsibilities:
+
+| Abstraction | Owns | Interface |
+|-------------|------|-----------|
+| `LlmProvider` | Inference: `complete`, `stream`, `is_alive` | Stable, backend-agnostic |
+| `CliPool` | Subprocess lifecycle: `reset`, `switch_cwd`, `resume_and_reset`, `link_lyra_session` | CLI-only |
+
+`SimpleAgent` takes both as separate constructor dependencies. Decorators stay
+inference-only and never need to know about subprocess management.
+
+### Proposed change
+
+**`SimpleAgent.__init__`** — add `cli_pool: CliPool | None = None`:
+
+```python
+def __init__(
+    self,
+    config: Agent,
+    provider: LlmProvider,
+    cli_pool: CliPool | None = None,   # ← new
+    ...
+) -> None:
+    self._provider = provider
+    self._cli_pool = cli_pool
+```
+
+**`SimpleAgent._maybe_register_reset`** — use `cli_pool` directly:
+
+```python
+def _maybe_register_reset(self, pool: Pool) -> None:
+    if pool._session_reset_fn is None and self._cli_pool is not None:
+        _pool_id = pool.pool_id
+        pool._session_reset_fn = lambda: self._cli_pool.reset(_pool_id)
+    if pool._switch_workspace_fn is None and self._cli_pool is not None:
+        _pool_id = pool.pool_id
+        pool._switch_workspace_fn = lambda cwd: self._cli_pool.switch_cwd(_pool_id, cwd)
+```
+
+**`SimpleAgent._maybe_register_resume`** — same pattern:
+
+```python
+def _maybe_register_resume(self, pool: Pool) -> None:
+    if pool._session_resume_fn is None and self._cli_pool is not None:
+        _pool_id = pool.pool_id
+        pool._session_resume_fn = lambda sid: self._cli_pool.resume_and_reset(_pool_id, sid)
+```
+
+**`agent_factory.py`** — pass `cli_pool` when building `SimpleAgent`:
+
+```python
+return SimpleAgent(
+    agent_row_to_config(agent_row),
+    provider,
+    cli_pool=cli_pool,   # ← new
+    ...
+)
+```
+
+**`CircuitBreakerDecorator` / `RetryDecorator`** — no change needed.
+
+### What does NOT change
+
+- `LlmProvider` protocol — no new methods
+- `Pool._session_reset_fn` signature — same `Callable[[], Awaitable[None]] | None`
+- `pool.reset_session()` call site — unchanged
+- `AnthropicAgent` — unaffected (no `cli_pool`, no subprocess)
+- All decorator classes — stay inference-only
+
+---
+
+## Alternatives considered
+
+### A. Add `reset()` delegation to `CircuitBreakerDecorator`
+
+```python
+async def reset(self, pool_id: str) -> None:
+    fn = getattr(self._inner, "reset", None)
+    if fn is not None:
+        await fn(pool_id)
+```
+
+**Rejected:** Fixes the immediate symptom but preserves the fragile duck-typing
+architecture. Any future decorator added without `reset()` silently breaks `/clear`
+again. Also requires adding `switch_cwd`, `resume_and_reset`, `link_lyra_session` —
+inference decorators accumulating CLI-specific concerns.
+
+### B. Walk the decorator chain in `_maybe_register_reset`
+
+Traverse `provider._inner._inner...` until `reset` is found.
+
+**Rejected:** Couples agent code to decorator implementation details. Fragile against
+decorator stack changes. Harder to reason about than explicit dependency injection.
+
+---
+
+## Files affected
+
+| File | Change |
+|------|--------|
+| `src/lyra/agents/simple_agent.py` | Add `cli_pool` param; rewrite `_maybe_register_reset/resume` |
+| `src/lyra/bootstrap/agent_factory.py` | Pass `cli_pool` to `SimpleAgent` |
+| `src/lyra/llm/decorators.py` | No change |
+| `src/lyra/core/pool/pool.py` | No change |
+| `src/lyra/core/hub/message_pipeline.py` | No change |
+| `tests/` | Update `SimpleAgent` construction in fixtures; add regression test for `/clear` with wrapped provider |
+
+---
+
+## Risk
+
+**Low.** The change is additive — `cli_pool` defaults to `None`, so existing call
+sites without it continue to work (SDK backend unaffected). The only functional
+difference is that `_session_reset_fn` is now always wired for CLI backend regardless
+of decorator stack.
+
+Regression test to add: instantiate `SimpleAgent` with
+`CircuitBreakerDecorator(ClaudeCliDriver(mock_pool))` as provider + `cli_pool=mock_pool`,
+send `/clear`, assert `CliPool.reset()` was called.

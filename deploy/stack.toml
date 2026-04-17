@@ -1,0 +1,32 @@
+# Lyra module registry
+# Edit paths here if you clone modules to non-default locations.
+# Run `make setup` to clone missing modules and register them.
+
+[modules.lyra]
+repo     = "git@github.com:Roxabi/lyra.git"
+path     = "~/projects/lyra"
+install  = "uv sync"
+optional = false
+tag      = ""          # pin to a release tag (e.g. "v1.2.0"); empty = HEAD
+
+[modules.voiceCLI]
+repo     = "git@github.com:Roxabi/voiceCLI.git"
+path     = "~/projects/voiceCLI"
+install  = "uv sync"
+optional = true        # requires NVIDIA GPU — TTS/STT, Lyra works without it
+tag      = ""          # pin to a release tag (e.g. "v1.2.0"); empty = HEAD
+
+[modules.imageCLI]
+repo     = "git@github.com:Roxabi/imageCLI.git"
+path     = "~/projects/imageCLI"
+install  = "uv sync"
+optional = true
+register = false       # no daemon — skip supervisord registration
+tag      = ""          # pin to a release tag (e.g. "v1.2.0"); empty = HEAD
+
+[modules.roxabi-vault]
+repo     = "git@github.com:Roxabi/roxabi-vault.git"
+path     = "~/projects/roxabi-vault"
+install  = "uv sync"
+optional = true
+tag      = ""          # pin to a release tag (e.g. "v1.2.0"); empty = HEAD

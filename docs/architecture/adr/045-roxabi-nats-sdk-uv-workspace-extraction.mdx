@@ -1,0 +1,192 @@
+---
+title: "ADR-045: Extract roxabi-nats SDK as uv workspace subpackage"
+description: Extract NATS transport primitives from src/lyra/nats/ into a packages/roxabi-nats/ uv workspace member, consumed by external plugins (voiceCLI, roxabi-vault, imageCLI) via git+subdirectory dependency — colocated with the hub and ADR-044 contract during pre-1.0.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Lyra's NATS transport primitives — `NatsAdapterBase`, `nats_connect`, `circuit_breaker`, `readiness`, the version/validation/sanitize helpers — live in `src/lyra/nats/`. The code is reusable by construction: it has no dependency on the hub's domain model. Evidence of its reusability is already in production — voiceCLI copied `base.py` into `~/projects/voiceCLI/src/voicecli/nats/base.py` to build its own adapters.
+
+Two things have changed since that copy:
+
+1. **ADR-044 froze the wire contract** (commit `e7a890a`). Every producer payload now carries `contract_version: "1"`. The SDK enforces this via `CONTRACT_VERSION` in `src/lyra/nats/adapter_base.py:32`. Copy-paste reuse means the next contract bump silently diverges.
+2. **More plugins want in.** roxabi-vault (knowledge bot) and imageCLI are next in line to subscribe to lyra NATS topics as standalone satellite processes. Hand-rolling `nats.connect` + subscribe logic in each is redundant and drags in subtle bugs (credential handling, heartbeat cadence, graceful shutdown).
+
+We need one source of truth for transport primitives, shared between the hub and plugin venvs, compatible with the project's "GitHub-installable deps, no submodules" preference, and — ideally — colocated with the ADR-044 contract and `CONTRACT_VERSION` constant it enforces.
+
+Not everything in `src/lyra/nats/` is reusable. A boundary review identified two cohorts:
+
+**Cohort A — transport primitives (zero `lyra.core` imports):**
+`connect.py`, `adapter_base.py`, `_validate.py`, `_version_check.py`, `_sanitize.py`, `_serialize.py`, `circuit_breaker.py`, `readiness.py`, `_tts_constants.py`.
+
+**Cohort B — hub-domain-coupled (imports `lyra.core.message`, `lyra.core.render_events`, `lyra.tts`, `lyra.stt`):**
+`nats_bus.py`, `nats_channel_proxy.py`, `render_event_codec.py`, `queue_groups.py`, `nats_tts_client.py`, `nats_stt_client.py`.
+
+Only Cohort A is a candidate for extraction. Cohort B is hub orchestration and stays in `src/lyra/nats/`.
+
+One coupling in Cohort A blocks the split: `src/lyra/nats/queue_groups.py:9` imports `Platform` from `lyra.core.message`. Tracked in issue #705 — must land before extraction.
+
+## Options Considered
+
+### Option A: Port/copy SDK into each plugin
+
+- **Pros:** Zero coupling. Plugins can evolve independently. Matches voiceCLI precedent.
+- **Cons:** Drift is already observable (voiceCLI's copy predates ADR-044's `contract_version` field). Every contract change requires N plugin PRs. No single source of truth. Scales poorly as plugin count grows.
+
+### Option B: Keep plugins depending on the full `lyra` package
+
+- **Pros:** Trivially works today — `pip install lyra` gives you `NatsAdapterBase`.
+- **Cons:** Drags the hub domain (stores, pool, commands, LLM drivers, Telegram/Discord adapters) into every plugin venv. Violates the plugin's one job — subscribe to NATS. Tight coupling means a hub-internal refactor can break every satellite.
+
+### Option C: Publish `roxabi-nats` as a standalone PyPI package
+
+- **Pros:** Standard distribution. Signed releases + immutable versions offer stronger supply-chain guarantees than git sources. Fully decoupled from the lyra repo.
+- **Cons:** Premature at pre-1.0. The SDK and `CONTRACT_VERSION` constant co-evolve with ADR-044; colocation means one PR touches both. PyPI release ceremony adds friction before the API has stabilized.
+
+### Option D: Extract into `packages/roxabi-nats/` as a uv workspace subpackage (monorepo), consumed externally via `git + subdirectory=` — **chosen**
+
+- **Pros:**
+  - Single source of truth. SDK and ADR-044 contract text ship together.
+  - Lyra itself consumes it via `{ workspace = true }` — editable link, no round-trip through git.
+  - External plugins install via `{ git = "https://github.com/Roxabi/lyra.git", subdirectory = "packages/roxabi-nats", tag = "roxabi-nats/v0.1.0" }`, which matches the user's "GitHub-installable deps, no submodules" preference.
+  - Package name generalizes to roxabi-dashboard reuse across projects (not Lyra-branded).
+  - PyPI migration path stays open — the subpackage has its own `pyproject.toml` and build backend from day one.
+- **Cons:**
+  - Branch-pinned consumers silently run stale SDK versions until `uv lock --upgrade-package roxabi-nats` — tag discipline mitigates.
+  - `uv.lock` must be committed with the refactor PR — `uv sync --frozen` on prod (`scripts/deploy.sh:45`) fails otherwise.
+  - Shared nkey identity across hub and plugin processes means subject-level authorization is the only isolation boundary — per-role nkeys + nats-server ACLs are a pre-req (issue #706).
+
+## Decision
+
+Extract Cohort A into `packages/roxabi-nats/` as a uv workspace member within the lyra monorepo. External plugins install it via `git + subdirectory=` against pinned tags. Cohort B stays in `src/lyra/nats/`.
+
+### Layout
+
+```
+lyra/
+├── pyproject.toml                    # [tool.uv.workspace] members = ["packages/roxabi-nats"]
+├── src/lyra/nats/                    # Cohort B — hub-coupled modules
+└── packages/
+    └── roxabi-nats/
+        ├── pyproject.toml            # name = "roxabi-nats", hatchling, nats-py + nkeys
+        └── src/roxabi_nats/
+            ├── __init__.py           # re-exports NatsAdapterBase, nats_connect, ...
+            ├── adapter_base.py       # contains CONTRACT_VERSION
+            ├── connect.py
+            ├── circuit_breaker.py
+            ├── readiness.py
+            ├── _validate.py
+            ├── _version_check.py
+            ├── _sanitize.py
+            ├── _serialize.py
+            └── _tts_constants.py
+```
+
+### Naming
+
+Package is named `roxabi-nats` (import path `roxabi_nats`), not `lyra-nats`. Rationale: the SDK is shared transport infrastructure that roxabi-dashboard and future Roxabi projects will consume — naming it after one consumer (Lyra) creates a conceptual mismatch. `roxabi-nats` is NATS-specific by design; a transport-agnostic `roxabi-bus` is explicitly out of scope and would be introduced only if a second transport appears.
+
+### Versioning
+
+Package semver is **independent** from ADR-044's `contract_version`. Justification: `contract_version` is a wire-protocol identifier agreed by producers and consumers; package version is an API surface identifier. A bug fix in `_serialize.py` increments patch without touching the wire.
+
+Tag scheme on the monorepo: `roxabi-nats/v{major}.{minor}.{patch}`. An ADR-044 contract bump (`contract_version: "2"`) requires a **major** roxabi-nats version bump and a new ADR documenting the contract change.
+
+### Consumption
+
+**Internal (Lyra):**
+
+```toml
+[tool.uv.sources]
+roxabi-nats = { workspace = true }
+```
+
+**External (voiceCLI, roxabi-vault, imageCLI):**
+
+```toml
+[tool.uv.sources]
+roxabi-nats = {
+  git = "https://github.com/Roxabi/lyra.git",
+  subdirectory = "packages/roxabi-nats",
+  tag = "roxabi-nats/v0.1.0"
+}
+```
+
+Tag pinning is **required** for external consumers. Branch pinning is permitted only in plugin-dev branches — never in `staging` or `main` of a production plugin.
+
+### Python version floor
+
+The subpackage declares `requires-python = ">=3.12"` — **broader** than lyra's `>=3.12,<3.13`. Rationale: external plugins may want to track a newer interpreter than the hub. Dropping the upper bound on `roxabi-nats` prevents the SDK from becoming the bottleneck the day roxabi-vault or imageCLI moves to py3.13.
+
+The SDK must therefore avoid features that are gated on a specific patch release and must pass CI against both 3.12 and the latest stable (3.13 at time of writing). Lyra itself retains its narrower pin in the root `pyproject.toml` — the workspace link honors that pin for hub dev.
+
+### Test layout
+
+Tests live with the subpackage at `packages/roxabi-nats/tests/`, not alongside lyra's `tests/`. Rationale: the subpackage must be independently buildable and testable so external consumers (or future PyPI releases) can verify the SDK without pulling the hub venv.
+
+`pytest` discovery at the monorepo root picks up both `tests/` and `packages/*/tests/` by default — no config change beyond adding the new path to `pyright.include`. CI runs the subpackage test suite as a distinct job so a hub-only breakage cannot block a plugin release cut.
+
+### PyPI migration criteria (Option C deferral conditions)
+
+Option C (standalone PyPI publication) is deferred but not rejected in principle. The ADR commits to revisiting publication when **any** of these triggers fires:
+
+1. ≥3 external consumers (voiceCLI + roxabi-vault + imageCLI, or equivalent) depend on `roxabi-nats` in their `staging` branches.
+2. roxabi-dashboard or any non-Roxabi consumer wants a dependency that does not require cloning the full lyra repo history.
+3. `contract_version` reaches `"2"` — a second contract revision implies the wire protocol is stabilizing and the SDK API has likely followed.
+4. The monorepo clone size becomes a friction point for consumers (e.g., CI cache bloat in satellite projects).
+
+Until a trigger fires, colocation with ADR-044 is strictly more valuable than PyPI ceremony.
+
+### Pre-requisites
+
+| Issue | Blocker? | Status | Reason |
+|---|---|---|---|
+| #705 | Yes | Done | `queue_groups.py:9` imports `Platform` from `lyra.core.message` — must be decoupled before extraction |
+| #706 | Yes | Done | Per-role NATS nkeys + subject ACLs — without them, plugins installing the SDK inherit the hub nkey and can publish to `lyra.inbound.*` |
+| #707 | No | — | `contract_version` inbound validation (follow-up, non-blocking) |
+| #708 | No | — | `O_NOFOLLOW` on `NATS_CA_CERT` path (follow-up, non-blocking) |
+
+Both blocking prerequisites are resolved; the `roxabi-nats/v0.1.0` tag is unblocked at merge time.
+
+### Extraction PR checklist
+
+1. Land #705 and #706 first.
+2. Move Cohort A files to `packages/roxabi-nats/src/roxabi_nats/` (rename import path `lyra.nats` → `roxabi_nats` for extracted modules only).
+3. Update lyra's internal imports (`from lyra.nats.adapter_base import NatsAdapterBase` → `from roxabi_nats import NatsAdapterBase`).
+4. Add `[tool.uv.workspace]` to root `pyproject.toml` with `members = ["packages/roxabi-nats"]`.
+5. Add `packages/roxabi-nats/src` to `pyright.include` and ensure `ruff` discovers the new path (it does by default via `[tool.ruff]` src auto-detection, but verify against the current config).
+6. Regenerate and commit `uv.lock`.
+7. Tag `roxabi-nats/v0.1.0` on the merge commit.
+8. Open follow-up PRs in voiceCLI (replace `voicecli/nats/base.py` port with `roxabi-nats` dependency) and scaffold the same in roxabi-vault and imageCLI.
+
+## Consequences
+
+### Positive
+
+- Single source of truth for the NATS SDK and ADR-044 contract.
+- Internal Lyra dev keeps editable-install ergonomics via uv workspace.
+- External plugins get a clean, hub-domain-free dependency — install via GitHub source, no submodules, matching project preference.
+- Naming (`roxabi-nats`) generalizes to the roxabi-dashboard multi-project direction without a future rename.
+- PyPI publication path remains open; the subpackage is already structured as a publishable unit.
+
+### Negative
+
+- Tag discipline is now a load-bearing process — sloppy bumps without a new ADR can ship contract-breaking changes to plugins.
+- `uv` caches git sources by resolved commit SHA; branch-pinned consumers need explicit `uv lock --upgrade-package roxabi-nats` to pick up changes. This is usually correct behavior but occasionally surprising.
+- The committed `uv.lock` must include the workspace member before prod deploys — a slip here breaks `uv sync --frozen` on `roxabituwer`.
+- Adds one more coordinate (package version) to the release mental model alongside `contract_version` and lyra's own version.
+
+### Known design debt
+
+- **Resolved in #729 (v0.2.0 — clean break, no deprecation shim).** The process-global `_TYPE_CHECKING_IMPORTS` list and its `_register_type_checking_import` mutator were deleted outright. Adapters now pass TYPE_CHECKING-only types via an explicit keyword-only `type_registry` argument on `NatsAdapterBase.__init__`; direct `serialize`/`deserialize` consumers pass a `resolver=` keyword argument. Lyra owns a single `TYPE_REGISTRY_RESOLVER` module constant in `src/lyra/nats/type_registry.py`. External `v0.1.x` consumers importing the removed private symbols hit a loud `ImportError` at load — the chosen failure mode over a silent `DeprecationWarning + no-op` shim that would have masked degraded type coercion.
+- **Public vs private submodule asymmetry** — lyra (as workspace host) imports `roxabi_nats._serialize`, `_sanitize`, etc. directly; external consumers are restricted to `__all__`. Python's underscore convention is social, not enforced — the contract is maintained via README and ADR documentation, not runtime guard.
+
+### Neutral
+
+- Cohort B stays in `src/lyra/nats/`. The directory remains a mix of extracted and hub-internal code; this is by design and documented in the root `CLAUDE.md`.
+- External plugin authors see two import namespaces (`roxabi_nats` for transport, `nats` for the underlying nats-py client). Unchanged from today's experience with `voicecli.nats.*`.
+- voiceCLI's current `voicecli/nats/base.py` copy is not deleted by this ADR — removal is a voiceCLI-side PR that lands after `roxabi-nats/v0.1.0` is tagged.

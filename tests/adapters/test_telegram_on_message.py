@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.telegram import _ALLOW_ALL
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
 
@@ -53,15 +53,17 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
 
     from lyra.adapters.telegram import TelegramAdapter
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
 
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+        bot_id="main",
+        token="test-token-secret",
+        inbound_bus=inbound_bus,
+        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 
@@ -93,9 +95,8 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
 
     import asyncio
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock(side_effect=asyncio.QueueFull())
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
@@ -103,7 +104,7 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
     adapter = TelegramAdapter(
         bot_id="main",
         token="test-token-secret",
-        hub=hub,
+        inbound_bus=inbound_bus,
         msg_manager=mm,
         auth=_ALLOW_ALL,
     )
@@ -136,10 +137,13 @@ async def test_on_message_drops_bot_text_message() -> None:
     """_on_message drops messages when from_user.is_bot=True."""
     from lyra.adapters.telegram import TelegramAdapter
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+        bot_id="main",
+        token="test-token-secret",
+        inbound_bus=inbound_bus,
+        auth=_ALLOW_ALL,
     )
     bot_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -151,7 +155,7 @@ async def test_on_message_drops_bot_text_message() -> None:
         entities=None,
     )
     await adapter._on_message(bot_msg)
-    hub.inbound_bus.put.assert_not_called()
+    inbound_bus.put.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -167,9 +171,8 @@ async def test_on_message_drops_and_notifies_when_hub_circuit_open() -> None:
     # Arrange
     registry = _make_open_registry("hub")
 
-    hub = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.put = MagicMock()
+    inbound_bus = MagicMock()
+    inbound_bus.put = AsyncMock()
 
     bot = AsyncMock()
     bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
@@ -178,7 +181,7 @@ async def test_on_message_drops_and_notifies_when_hub_circuit_open() -> None:
     adapter = TelegramAdapter(
         bot_id="main",
         token="test-token-secret",
-        hub=hub,
+        inbound_bus=inbound_bus,
         circuit_registry=registry,
         auth=_ALLOW_ALL,
     )
@@ -198,7 +201,7 @@ async def test_on_message_drops_and_notifies_when_hub_circuit_open() -> None:
     await adapter._on_message(aiogram_msg)
 
     # Assert — inbound_bus.put must NOT be called (message dropped)
-    hub.inbound_bus.put.assert_not_called()
+    inbound_bus.put.assert_not_called()
     # Assert — user receives a circuit-open notification
     bot.send_message.assert_called_once()
     call_kwargs = bot.send_message.call_args

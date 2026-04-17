@@ -9,7 +9,7 @@ import pytest
 
 import lyra.__main__ as main_mod
 import lyra.bootstrap.agent_factory as agent_factory_mod
-import lyra.bootstrap.multibot as multibot_mod
+import lyra.bootstrap.unified as unified_mod
 from lyra.core.agent import Agent
 from lyra.core.agent_config import ModelConfig
 from tests.conftest import patch_auth_config_test
@@ -83,7 +83,7 @@ class TestAuthConfig:
         monkeypatch.setattr(main_mod, "_load_raw_config", lambda: {})
         stop = asyncio.Event()
         stop.set()
-        # With no config, _bootstrap_multibot exits with "No adapters configured"
+        # With no config, _bootstrap_unified exits with "No adapters configured"
         # which includes "auth.telegram_bots" — matches pattern "auth.telegram".
         with pytest.raises(SystemExit, match="auth.telegram"):
             await main_mod._main(_stop=stop)
@@ -96,7 +96,7 @@ class TestAuthConfig:
 
         patch_auth_config_test(monkeypatch)
         # Use the multi-bot format (telegram_bots) since load_multibot_config
-        # now routes through _bootstrap_multibot even for legacy-style configs.
+        # now routes through _bootstrap_unified even for legacy-style configs.
         monkeypatch.setattr(
             main_mod,
             "_load_raw_config",
@@ -111,7 +111,7 @@ class TestAuthConfig:
             backend="claude-cli",
             model="claude-sonnet-4-5",
         )
-        import lyra.bootstrap.multibot_stores as stores_mod_local
+        import lyra.bootstrap.bootstrap_stores as stores_mod_local
 
         _fake_agent_store = MagicMock()
         _fake_agent_store.connect = AsyncMock()
@@ -124,7 +124,7 @@ class TestAuthConfig:
         )
         # Sentinel: if we reach agent_row_to_config, auth validation passed.
         monkeypatch.setattr(
-            multibot_mod,
+            unified_mod,
             "agent_row_to_config",
             lambda row, **kw: (_ for _ in ()).throw(SystemExit("past_auth")),
         )
@@ -137,7 +137,7 @@ class TestAuthConfig:
         """Invalid default in auth config causes SystemExit when _main() runs."""
         patch_auth_config_test(monkeypatch)
         # Use the multi-bot format (telegram_bots) since load_multibot_config
-        # routes through _bootstrap_multibot.
+        # routes through _bootstrap_unified.
         monkeypatch.setattr(
             main_mod,
             "_load_raw_config",

@@ -121,7 +121,7 @@ async def _register_all(config_path: str) -> None:
     """For each Telegram bot: resolve token, collect commands, set_my_commands."""
     from lyra.adapters.discord_voice_commands import VOICE_COMMANDS
     from lyra.core.commands.command_loader import CommandLoader
-    from lyra.core.stores.credential_store import CredentialStore, LyraKeyring
+    from lyra.infrastructure.stores.credential_store import CredentialStore, LyraKeyring
 
     try:
         with open(config_path, "rb") as f:
@@ -137,7 +137,7 @@ async def _register_all(config_path: str) -> None:
 
     lyra_dir = Path.home() / ".lyra"
     keyring = LyraKeyring.load_or_create(lyra_dir / "keyring.key")
-    cred_store = CredentialStore(lyra_dir / "auth.db", keyring)
+    cred_store = CredentialStore(lyra_dir / "config.db", keyring)
     await cred_store.connect()
 
     commands_dir = Path(__file__).parent / "commands"

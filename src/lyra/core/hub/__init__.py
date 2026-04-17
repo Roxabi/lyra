@@ -1,15 +1,7 @@
 from .hub import Hub as Hub
 from .hub_protocol import ChannelAdapter as ChannelAdapter
 from .hub_protocol import RoutingKey as RoutingKey
-from .message_pipeline import (
-    Action as Action,
-)
-from .message_pipeline import (
-    MessagePipeline as MessagePipeline,
-)
-from .message_pipeline import (
-    PipelineResult as PipelineResult,
-)
+from .identity_resolver import IdentityResolver as IdentityResolver
 from .middleware import (
     MiddlewarePipeline as MiddlewarePipeline,
 )
@@ -23,17 +15,29 @@ from .middleware import (
     build_default_pipeline as build_default_pipeline,
 )
 from .outbound_dispatcher import OutboundDispatcher as OutboundDispatcher
+from .outbound_router import AudioDispatch as AudioDispatch
+from .outbound_router import OutboundRouter as OutboundRouter
+from .outbound_router import TtsDispatch as TtsDispatch
+from .pipeline_types import (
+    Action as Action,
+)
+from .pipeline_types import (
+    PipelineResult as PipelineResult,
+)
 
 __all__ = [
     "Action",
+    "AudioDispatch",
     "ChannelAdapter",
     "Hub",
-    "MessagePipeline",
+    "IdentityResolver",
     "MiddlewarePipeline",
     "OutboundDispatcher",
+    "OutboundRouter",
     "PipelineMiddleware",
     "PipelineContext",
     "PipelineResult",
     "RoutingKey",
+    "TtsDispatch",
     "build_default_pipeline",
 ]

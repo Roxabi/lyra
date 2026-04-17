@@ -110,49 +110,6 @@ class TestAgentRowToConfigTTSNewFields:
 
 
 # ---------------------------------------------------------------------------
-# SC-8 -- apply_agent_stt_overlay helper
+# SC-8 -- apply_agent_stt_overlay removed in #518 (ADR-039)
+# STT config overlay is now applied per-request inside stt_adapter_standalone.py
 # ---------------------------------------------------------------------------
-
-
-class TestApplyAgentSTTOverlay:
-    """SC-8 -- apply_agent_stt_overlay merges AgentSTTConfig into STTConfig."""
-
-    def test_none_agent_stt_returns_stt_cfg_unchanged(self):
-        from lyra.bootstrap.agent_factory import apply_agent_stt_overlay
-        from lyra.stt import STTConfig
-
-        stt_cfg = STTConfig(model_size="large-v3-turbo")
-        result = apply_agent_stt_overlay(None, stt_cfg)
-        assert result is stt_cfg
-
-    def test_non_none_fields_overwrite(self):
-        from lyra.bootstrap.agent_factory import apply_agent_stt_overlay
-        from lyra.core.agent_config import AgentSTTConfig
-        from lyra.stt import STTConfig
-
-        stt_cfg = STTConfig(model_size="large-v3-turbo")
-        agent_stt = AgentSTTConfig(
-            language_detection_threshold=0.9,
-            language_fallback="en",
-        )
-        result = apply_agent_stt_overlay(agent_stt, stt_cfg)
-        assert result.language_detection_threshold == 0.9
-        assert result.language_fallback == "en"
-        assert result.language_detection_segments is None  # unchanged
-
-    def test_none_fields_leave_stt_cfg_unchanged(self):
-        from lyra.bootstrap.agent_factory import apply_agent_stt_overlay
-        from lyra.core.agent_config import AgentSTTConfig
-        from lyra.stt import STTConfig
-
-        stt_cfg = STTConfig(
-            model_size="large-v3-turbo",
-            language_detection_threshold=0.8,
-            language_detection_segments=3,
-            language_fallback="fr",
-        )
-        agent_stt = AgentSTTConfig()  # all fields None
-        result = apply_agent_stt_overlay(agent_stt, stt_cfg)
-        assert result.language_detection_threshold == 0.8
-        assert result.language_detection_segments == 3
-        assert result.language_fallback == "fr"

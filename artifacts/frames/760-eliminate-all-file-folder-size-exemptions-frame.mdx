@@ -1,0 +1,48 @@
+---
+title: Eliminate all file/folder size exemptions
+issue: 760
+status: approved
+tier: F-full
+date: 2026-04-16
+---
+
+## Problem
+
+The codebase has 10 file exemptions (≤300 lines) and 5 folder exemptions (≤12 files) that bypass size limits enforced by pre-commit hooks. These exemptions create technical debt, reduce code navigability, and mask architectural issues where modules have grown beyond their intended scope.
+
+**Why now:** Issue #753 (dispatch extraction) completed significant refactoring of `outbound_router.py` and `cli_streaming.py`. This is the right time to continue the cleanup momentum and eliminate all remaining exemptions before they accumulate further.
+
+**Observable impact:**
+- Files >300 lines are harder to navigate, review, and test
+- Folders >12 files indicate poor module boundaries
+- CI exemptions list grows stale and loses enforcement credibility
+
+## Who
+
+- **Primary:** Developers maintaining lyra — navigation, code review, refactoring
+- **Secondary:** Future contributors — onboarding friction from large files
+
+## Constraints
+
+- **No breaking changes:** All refactors must preserve public APIs
+- **Test coverage:** Must maintain or improve coverage; no regressions
+- **Sequential dependencies:** Some files depend on others being split first (hub.py depends on earlier extractions)
+- **Time estimate:** ~3 weeks total effort across 4 waves
+- **Related work:** Issues #196 (adapter protocol), #396 (refactor backlog), #753 (dispatch extraction)
+
+## Out of Scope
+
+- New features unrelated to size reduction
+- Performance optimizations beyond structural cleanup
+- Documentation updates (unless required by refactor)
+- Changing pre-commit hook thresholds
+
+## Complexity
+
+**Tier: F-full** — Multi-domain architectural refactoring affecting core, adapters, bootstrap, and infrastructure packages. Estimated ~20 days work with sequential dependencies between waves.
+
+**Signals observed:**
+- Multi-domain: core/, adapters/, bootstrap/, infrastructure/
+- New patterns: module splits, extraction patterns, folder reorganization
+- Unknowns: dependency chains between affected modules, test coverage gaps
+- XL scope: 10 files + 5 folders, ~3 weeks estimate

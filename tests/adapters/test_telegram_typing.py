@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.telegram import _ALLOW_ALL
+from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.render_events import TextRenderEvent
 from lyra.core.trust import TrustLevel
 
@@ -126,14 +126,16 @@ async def test_send_cancels_typing_task() -> None:
     from lyra.core.message import InboundMessage, OutboundMessage
 
     # Arrange
-    hub = MagicMock()
     bot = AsyncMock()
     sent_mock = MagicMock()
     sent_mock.message_id = 1
     bot.send_message = AsyncMock(return_value=sent_mock)
 
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+        bot_id="main",
+        token="test-token-secret",
+        inbound_bus=MagicMock(),
+        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 
@@ -189,14 +191,16 @@ async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
     from lyra.core.message import InboundMessage
 
     # Arrange
-    hub = MagicMock()
     bot = AsyncMock()
     placeholder_mock = MagicMock()
     placeholder_mock.message_id = 10
     bot.send_message = AsyncMock(return_value=placeholder_mock)
 
     adapter = TelegramAdapter(
-        bot_id="main", token="test-token-secret", hub=hub, auth=_ALLOW_ALL
+        bot_id="main",
+        token="test-token-secret",
+        inbound_bus=MagicMock(),
+        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 

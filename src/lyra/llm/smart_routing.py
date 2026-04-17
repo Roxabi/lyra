@@ -12,30 +12,18 @@ import logging
 import re
 import time
 from collections import deque
-from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent_config import Complexity, ModelConfig, SmartRoutingConfig
+from lyra.core.events import LlmEvent
+from lyra.core.smart_routing_protocol import RoutingDecision
 from lyra.llm.base import LlmProvider, LlmResult
-from lyra.llm.events import LlmEvent
 
 if TYPE_CHECKING:
     from lyra.core.message import InboundMessage
 
 log = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class RoutingDecision:
-    """Record of a single routing decision."""
-
-    complexity: Complexity
-    original_model: str
-    routed_model: str
-    reason: str
-    timestamp: float
-    message_preview: str
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +195,6 @@ class SmartRoutingDecorator:
         system_prompt: str,
         *,
         messages: list[dict] | None = None,
-        on_intermediate: Callable[[str], Awaitable[None]] | None = None,
         msg: InboundMessage | None = None,
     ) -> LlmResult:
         if not self._config.enabled:
@@ -217,7 +204,6 @@ class SmartRoutingDecorator:
                 model_cfg,
                 system_prompt,
                 messages=messages,
-                on_intermediate=on_intermediate,
             )
 
         # Classify and route
@@ -259,7 +245,6 @@ class SmartRoutingDecorator:
             routed_cfg,
             system_prompt,
             messages=messages,
-            on_intermediate=on_intermediate,
         )
 
         # Record decision

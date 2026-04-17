@@ -1,0 +1,217 @@
+---
+title: "ADR-038: Health Monitoring Layer Boundaries"
+description: Remove the dead-backend timing heuristic; assign each health concern to the layer that can observe it correctly.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Lyra's external monitor timer runs five checks that depend on the hub's
+`/health/detail` endpoint. One of them, `check_dead_backend`, reads a
+`dead_backend_hits` counter that `PoolProcessor` increments when a turn
+completes in under a minimum expected duration. The intent was to catch silent
+CLI backend failures where the process returns an empty or malformed response
+without raising an exception.
+
+This approach has a fundamental flaw: turns legitimately complete fast when
+they skip the LLM entirely — command turns, debounce drops, `PipelineResult`
+short-circuits, and routing decisions. The counter has no way to distinguish
+fast-because-broken from fast-because-no-LLM-was-needed. The result is false
+positives that trigger Telegram alerts for healthy hubs.
+
+The broader problem is a missing conceptual model for what should be observed
+at each layer. The monitor timer, the health endpoint, and the hub's internal
+state are conflated into a single flat list of checks with no ownership
+boundaries.
+
+## The Three Observation Layers
+
+In a hexagonal architecture, health concerns decompose across three distinct
+scopes:
+
+| Layer | Observer | Observable surface | Examples |
+|-------|----------|--------------------|---------|
+| In-process self-monitoring | Hub, PoolProcessor, Agent, LLM adapter | Internal state: call outcomes, error counts, circuit state | Circuit breaker trips, LLM errors, queue growth |
+| Health endpoint | Hub exposes it; anything polls it | Aggregated snapshot of in-process state | `/health/detail` JSON |
+| External monitor | Systemd timer, separate process, outside the hexagon | Process alive, endpoint reachable, OS resources | `check_process`, `check_disk` |
+
+Each layer should only observe what it can see directly and reliably. Mixing
+layers — for example, having the external monitor reason about per-turn timing
+internals via an aggregated counter — produces fragile checks that fail for
+reasons unrelated to the failure they are meant to detect.
+
+## Where Backend Health Belongs
+
+The Anthropic API is an outbound port (dependency adapter). Its health belongs
+at the call site — the LLM provider or CLI adapter layer that issues the
+actual network call. The circuit breaker is already at that layer. When
+consecutive calls fail, the circuit opens. The open state is already exposed
+in `/health/detail` under `circuits` and already checked by `check_circuits`.
+
+Silent protocol failures — the CLI subprocess writing empty stdout or malformed
+NDJSON without raising an OS-level error — are a protocol-layer concern. They
+should be classified as errors inside `send_and_read` / `send_and_read_stream`
+in `cli_protocol.py` and recorded on the circuit breaker. That is the point
+where the raw response is parsed and where the failure is directly observable.
+Detecting them via a post-turn timing heuristic in `PoolProcessor` is an
+indirect approximation that cannot distinguish failure from legitimate
+fast-path turns.
+
+## Liveness vs Readiness vs Dependency Health
+
+These three concepts require different checks:
+
+**Liveness** — is the process alive and the event loop running?
+- `check_process` (supervisorctl) and `check_http_health` cover this.
+- If `/health` returns 200, the hub's asyncio event loop is scheduled and
+  FastAPI is serving.
+
+**Readiness** — is the hub able to process messages?
+- `check_queue_depth` (backlog not growing uncontrollably) and `check_reaper`
+  (CLI pool maintenance running) cover this.
+- These are internal operational conditions, not external dependency states.
+
+**Dependency health** — are the external services the hub talks to reachable
+and functioning?
+- `check_circuits` covers this. Each circuit breaker wraps one outbound port
+  (Anthropic API, NATS, etc.). An open circuit means that dependency is
+  currently failing.
+- NATS connectivity is observable directly: if adapters stop delivering
+  messages the inbound queue stays empty, which `check_idle` catches
+  indirectly. A dedicated NATS circuit breaker would make this explicit.
+
+The `check_dead_backend` check does not fit cleanly into any of these
+categories. It is not liveness (the process is alive), not readiness (the
+reaper is running and the queue is empty), and not dependency health (the
+Anthropic circuit already tracks that). It is a post-hoc inference about turn
+quality, made at the wrong layer, from the wrong signal.
+
+## How Circuit Breakers Already Solve This
+
+The `CircuitBreaker` in `core/circuit_breaker.py` transitions through
+`CLOSED → OPEN → HALF_OPEN → CLOSED`. When the Anthropic API or the Claude
+CLI subprocess returns an error — including a timeout, an empty response
+classified as an error, or a subprocess exit — `record_failure()` is called.
+After `failure_threshold` consecutive failures the circuit opens.
+
+The external monitor reads circuit states via `check_circuits`. An open
+`anthropic` or `claude_cli` circuit is a direct, accurate signal that the LLM
+backend is unhealthy. No timing heuristic is needed.
+
+The missing piece is ensuring that silent CLI protocol failures (empty
+response, malformed NDJSON) are classified as errors and routed to
+`record_failure()` rather than returning a CliResult with an empty text field
+that the caller ignores.
+
+## Options Considered
+
+### Option A: Gate the counter on a `llm_was_called` flag
+
+Pass a boolean from `PoolProcessor` to the CLI pool indicating whether an LLM
+call actually happened in this turn. Only increment `dead_backend_hits` when
+the flag is true.
+
+- **Pros:** Preserves the existing alert path; reduces false positives without
+  removing the heuristic.
+- **Cons:** Adds cross-layer coupling (PoolProcessor must tell CliPool about
+  its own internal branching). The root signal (timing) remains unreliable for
+  streaming turns, variable-length responses, and tool-call turns. The counter
+  still does not distinguish silent failures from legitimately fast LLM
+  responses (short prompts, tool results).
+
+### Option B: Remove `check_dead_backend`; fix detection at the protocol layer (Recommended)
+
+Remove `check_dead_backend` from the external monitor. Remove the
+`dead_backend_hits` counter from `CliPool` and `/health/detail`. Ensure that
+silent protocol failures in `cli_protocol.py` are classified as errors and
+recorded on the circuit breaker. Rely on `check_circuits` as the single source
+of truth for LLM backend health.
+
+- **Pros:** Eliminates the false-positive class entirely. Each layer observes
+  only what it can see directly. The circuit breaker already implements the
+  correct failure-counting and recovery logic. No new state or coupling is
+  needed.
+- **Cons:** Requires verifying that all silent-failure paths in
+  `cli_protocol.py` (empty stdout, NDJSON parse error, subprocess exit without
+  OS exception) call `record_failure()` on the circuit. This is a one-time
+  audit, not ongoing maintenance.
+
+### Option C: Add a ratio-based suppression
+
+Keep `dead_backend_hits` and add a `llm_turns_total` counter. Suppress the
+check when `hits / total` is below a threshold.
+
+- **Pros:** More nuanced than a raw counter.
+- **Cons:** Two counters with the same root problem. The ratio threshold is
+  arbitrary and context-dependent. Still triggers false positives during
+  command-heavy sessions.
+
+## Decision
+
+Option B: remove `check_dead_backend` and the `dead_backend_hits` counter.
+
+The circuit breaker is the correct mechanism for LLM backend health
+observation. `check_circuits` in the external monitor already surfaces circuit
+state. The `dead_backend_hits` counter is a workaround for an incomplete
+circuit breaker integration in the CLI protocol layer, not a genuine health
+signal.
+
+The correct remediation has two parts:
+
+1. Audit `cli_protocol.py` (`send_and_read`, `send_and_read_stream`) to
+   ensure all silent-failure paths — empty stdout, NDJSON parse error,
+   unexpected subprocess exit — produce a `CliResult` with `ok=False` (or
+   raise) so the call site can invoke `cb.record_failure()`.
+
+2. Remove `dead_backend_hits` from `CliPool`, remove the field from
+   `/health/detail` in `bootstrap/health.py`, and remove `check_dead_backend`
+   from `monitoring/checks.py`.
+
+No new check, counter, or coupling is needed.
+
+## The Correct Monitor Checklist (Post-Decision)
+
+| Check | Layer | Detects |
+|-------|-------|---------|
+| `check_process` | External | Hub process not running |
+| `check_http_health` | External → Health endpoint | Hub event loop hung / FastAPI not serving |
+| `check_queue_depth` | Health endpoint | Inbound backlog growing (message processing stalled) |
+| `check_idle` | Health endpoint | No messages processed in N hours (optional, quiet-hours-aware) |
+| `check_circuits` | Health endpoint | Any outbound dependency (LLM, NATS) in OPEN state |
+| `check_reaper` | Health endpoint | CLI pool reaper task not running / not sweeping |
+| `check_disk` | External | Disk full (OS resource, independent of hub) |
+
+`check_dead_backend` is removed. The `circuits` check already covers LLM
+backend health with higher accuracy and without false positives.
+
+## Consequences
+
+### Positive
+
+- Eliminates the false-positive alert class that fires when turns legitimately
+  skip the LLM.
+- Each check is now owned by the layer that can observe it directly.
+- The monitoring surface is simpler and easier to reason about.
+- Circuit breaker state is already tested and battle-hardened; no new
+  detection logic is introduced.
+
+### Negative
+
+- Silent CLI protocol failures (empty stdout without OS error) must now be
+  classified as `CliResult(ok=False)` to propagate to the circuit breaker.
+  This requires a targeted audit of `cli_protocol.py`. Until that audit is
+  complete, some silent failures may go undetected for longer than the circuit
+  breaker's `failure_threshold`.
+
+### Neutral
+
+- `dead_backend_hits` removal is a breaking change to the `/health/detail`
+  JSON schema. Any tooling or dashboards reading that field must be updated.
+  In practice, only the monitor script reads it, and that check is being
+  removed.
+- The `reset_dead_backend_hits()` call in `CliPool.send()` and
+  `send_streaming()` (called after a successful spawn) also becomes dead code
+  and should be removed.

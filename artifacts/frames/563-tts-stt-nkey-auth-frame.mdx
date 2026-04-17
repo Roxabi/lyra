@@ -1,0 +1,73 @@
+---
+title: "fix(security): TTS/STT adapters bypass nkey auth — use nats_connect()"
+issue: 563
+status: approved
+tier: F-lite
+date: 2026-04-06
+---
+
+## Problem
+
+When the NATS server enforces nkey authentication (via `/etc/nats/nkeys/auth.conf`),
+every connecting process must present a valid nkey seed. The security review of
+`2026-04-06-sec-auth.md` (finding: MEDIUM) identified that `tts_adapter_standalone.py`
+and `stt_adapter_standalone.py` called `nats.connect()` directly — bypassing
+`nats_connect()` and therefore connecting unauthenticated.
+
+**Current state (post-#588):** The Python bypass is already resolved. Both adapters now
+extend `NatsAdapterBase`, whose `run()` method calls `nats_connect()` internally. The
+NATS connection layer is correct in the code.
+
+**Remaining gap:** Two infrastructure pieces are missing:
+1. `gen-nkeys.sh` generates seeds only for `hub`, `llm-worker`, and `monitor`. No seeds
+   exist for `tts-adapter` or `stt-adapter`. When the NATS server is running in
+   nkey-enforced mode, the TTS and STT processes will be rejected at the handshake layer
+   because their public keys are absent from `auth.conf`.
+2. `lyra_tts.conf` and `lyra_stt.conf` do not set `NATS_NKEY_SEED_PATH`. Without this
+   env var, `nats_connect()` falls through to the unauthenticated dev path — fail-open
+   rather than fail-closed.
+
+Observable impact: On production (nkey-enforced NATS), TTS and STT adapter processes
+either fail to connect (if strict enforcement is active) or silently connect
+unauthenticated (if server is not yet enforcing). Either way the security guarantee is
+broken.
+
+## Who
+
+- **Primary:** Lyra production deployment — `lyra_tts` and `lyra_stt` supervisor
+  processes on `roxabituwer` (Machine 1).
+- **Secondary:** Any operator running `gen-nkeys.sh` to provision or rotate nkeys —
+  the script must be the single source of truth for all process identities.
+
+## Constraints
+
+- `gen-nkeys.sh` is idempotent/skip-if-exists: regeneration requires deleting
+  `/etc/nats/nkeys/` and re-running as root. Adding new seeds requires either
+  a fresh run or a targeted addendum.
+- NATS `auth.conf` is included by `nats.conf` at server startup — adding new
+  authorized users requires a NATS server reload/restart on Machine 1.
+- Supervisor `environment=` lines use a single comma-separated string; the new
+  `NATS_NKEY_SEED_PATH` must be appended to the existing value without breaking
+  other env vars.
+- Seed files must be: `root:root 0600`, stored outside the repo tree
+  (convention: `/etc/nats/nkeys/`).
+
+## Out of Scope
+
+- Key rotation tooling or expiry policy (noted in review as future hardening).
+- TLS changes — TLS 1.3 config is already in place.
+- Changing the fail-open dev behavior of `nats_connect()` — unset
+  `NATS_NKEY_SEED_PATH` = dev mode is an explicit, documented design choice.
+- Any changes to the Python adapter code — already correct post-#588.
+
+## Complexity
+
+**Tier: F-lite** — Clear, bounded scope across 2–3 files (shell script + 2 supervisor
+confs). No design decisions: the pattern is established by existing entries in
+`gen-nkeys.sh` and `lyra_hub.conf`. No Python changes required.
+
+Signals observed:
+- 3 files to change: `gen-nkeys.sh`, `lyra_tts.conf`, `lyra_stt.conf`
+- Single domain: infra/deploy
+- Zero unknowns: fix mirrors existing `hub` / `llm-worker` / `monitor` pattern exactly
+- No new arch, no new dependencies

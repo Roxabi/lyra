@@ -13,7 +13,7 @@ dependencies = ["pydantic>=2"]
 # The bare name resolves inside the uv workspace via lockfile editable reference.
 # External consumers installing roxabi-contracts[testing] from a git tag must
 # declare their own [tool.uv.sources] roxabi-nats = { git = ... } entry.
-testing = ["nats-py>=2.6", "roxabi-nats"]
+testing = ["nats-py>=2.6", "roxabi-nats", "scipy>=1.11"]
 
 [project.urls]
 Repository = "https://github.com/Roxabi/lyra"

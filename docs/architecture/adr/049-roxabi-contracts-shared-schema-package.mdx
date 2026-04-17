@@ -210,18 +210,20 @@ Both tags are independent. A voiceCLI release can pin a specific `roxabi-contrac
     "packages/roxabi-nats": {
       "release-type": "python",
       "component": "roxabi-nats",
-      "tag-name": "roxabi-nats/v${version}",
+      "tag-separator": "/",
       "package-name": "roxabi-nats"
     },
     "packages/roxabi-contracts": {
       "release-type": "python",
       "component": "roxabi-contracts",
-      "tag-name": "roxabi-contracts/v${version}",
+      "tag-separator": "/",
       "package-name": "roxabi-contracts"
     }
   }
 }
 ```
+
+Note: release-please does not support a `tag-name` template field — tags are constructed from `component` + `tag-separator` + (optional `v`) + version. The `tag-separator: "/"` above yields `roxabi-nats/v0.1.0` (with the default `include-v-in-tag: true`), which is the slash-path scheme this ADR relies on for independent subpackage tags.
 
 Seed `.release-please-manifest.json` with `"packages/roxabi-nats": "0.1.0"` and `"packages/roxabi-contracts": "0.1.0"` before first run so release-please does not attempt a root-lyra bump from the subpackage commits.
 

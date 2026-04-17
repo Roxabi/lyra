@@ -13,7 +13,10 @@ dependencies = [
     "nkeys>=0.2.0",
     # CONTRACT_VERSION canonical home (ADR-049). The compat re-export from
     # roxabi_nats.adapter_base is removed at v0.3.0 (BREAKING CHANGE).
-    "roxabi-contracts",
+    # External consumers installing roxabi-nats via git tag must add a
+    # matching [tool.uv.sources] roxabi-contracts entry — the package is not
+    # published on PyPI (ADR-049 §Out of scope).
+    "roxabi-contracts>=0.1.0",
 ]
 
 [project.urls]

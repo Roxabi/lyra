@@ -16,19 +16,35 @@ import re
 import signal
 import socket
 import time
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 from nats.aio.client import Client as NATS
 
 # Compat shim — canonical home is roxabi_contracts.envelope per ADR-049.
-# Remove this re-export at roxabi-nats v0.3.0 (BREAKING CHANGE).
+# Remove this re-export at roxabi-nats v0.3.0 (BREAKING CHANGE). Both
+# `roxabi_nats.adapter_base.CONTRACT_VERSION` and the top-level
+# `roxabi_nats.CONTRACT_VERSION` resolve through this module, so emitting
+# the warning here covers every deprecated access path.
 from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_nats._serialize import _EMPTY_RESOLVER, _TypeHintResolver
-from roxabi_nats._validate import validate_nats_token
-from roxabi_nats._version_check import check_contract_version, check_schema_version
-from roxabi_nats.connect import nats_connect
-from roxabi_nats.readiness import wait_for_hub
+
+warnings.warn(
+    "roxabi_nats.adapter_base.CONTRACT_VERSION (and roxabi_nats.CONTRACT_VERSION) "
+    "is deprecated; import from roxabi_contracts.envelope instead. "
+    "The re-export is removed at roxabi-nats v0.3.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+from roxabi_nats._serialize import _EMPTY_RESOLVER, _TypeHintResolver  # noqa: E402
+from roxabi_nats._validate import validate_nats_token  # noqa: E402
+from roxabi_nats._version_check import (  # noqa: E402
+    check_contract_version,
+    check_schema_version,
+)
+from roxabi_nats.connect import nats_connect  # noqa: E402
+from roxabi_nats.readiness import wait_for_hub  # noqa: E402
 
 __all__ = ["CONTRACT_VERSION", "NatsAdapterBase"]
 

@@ -4,6 +4,13 @@ All notable changes to the `roxabi-nats` package are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/Roxabi/lyra/compare/roxabi-nats/v0.1.0...roxabi-nats/v0.2.0) (2026-04-17)
+
+
+### Features
+
+* **voice:** load-aware routing for multi-GPU STT/TTS workers ([#732](https://github.com/Roxabi/lyra/issues/732)) ([b928bb0](https://github.com/Roxabi/lyra/commit/b928bb0685ba78d04e2a4a62760d39d507e67ab9))
+
 ## [Unreleased]
 
 ### Changed

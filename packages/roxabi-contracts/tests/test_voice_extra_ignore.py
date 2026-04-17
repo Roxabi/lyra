@@ -37,7 +37,9 @@ _REQUIRED: list[tuple[type[BaseModel], dict[str, Any]]] = [
 
 
 @pytest.mark.parametrize(
-    ("model", "required"), _REQUIRED, ids=lambda x: getattr(x, "__name__", "")
+    ("model", "required"),
+    _REQUIRED,
+    ids=["TtsRequest", "TtsResponse", "SttRequest", "SttResponse"],
 )
 def test_extra_field_dropped_dict_path(
     model: type[BaseModel], required: dict[str, Any]
@@ -51,7 +53,9 @@ def test_extra_field_dropped_dict_path(
 
 
 @pytest.mark.parametrize(
-    ("model", "required"), _REQUIRED, ids=lambda x: getattr(x, "__name__", "")
+    ("model", "required"),
+    _REQUIRED,
+    ids=["TtsRequest", "TtsResponse", "SttRequest", "SttResponse"],
 )
 def test_extra_field_dropped_json_path(
     model: type[BaseModel], required: dict[str, Any]

@@ -6,6 +6,7 @@ no derivation) so grep can locate every reference across the monorepo.
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 # NATS subject tokens are `.`-separated. ``*`` matches any single token and
 # ``>`` matches a subtree. A worker id that contains any of those characters
@@ -20,14 +21,19 @@ class _Subjects:
 
     Attribute access is pyright-checked: typos fail at type-check time
     rather than silently returning None (cf. ADR-049 §API ergonomics).
+
+    Each field is typed as a ``Literal[...]`` — a typo in the default
+    value (e.g. ``"lyra.voice.tts.reuqest"``) fails type-checking
+    independently of the runtime string-equality assertions in
+    ``tests/test_voice_subjects.py``.
     """
 
-    tts_request: str = "lyra.voice.tts.request"
-    tts_heartbeat: str = "lyra.voice.tts.heartbeat"
-    stt_request: str = "lyra.voice.stt.request"
-    stt_heartbeat: str = "lyra.voice.stt.heartbeat"
-    tts_workers: str = "tts_workers"
-    stt_workers: str = "stt_workers"
+    tts_request: Literal["lyra.voice.tts.request"] = "lyra.voice.tts.request"
+    tts_heartbeat: Literal["lyra.voice.tts.heartbeat"] = "lyra.voice.tts.heartbeat"
+    stt_request: Literal["lyra.voice.stt.request"] = "lyra.voice.stt.request"
+    stt_heartbeat: Literal["lyra.voice.stt.heartbeat"] = "lyra.voice.stt.heartbeat"
+    tts_workers: Literal["tts_workers"] = "tts_workers"
+    stt_workers: Literal["stt_workers"] = "stt_workers"
 
 
 SUBJECTS = _Subjects()

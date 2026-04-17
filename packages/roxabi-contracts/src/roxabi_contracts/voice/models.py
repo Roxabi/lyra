@@ -20,7 +20,7 @@ from roxabi_contracts.envelope import ContractEnvelope
 class TtsRequest(ContractEnvelope):
     """TTS synthesis request. Canonical subject: ``lyra.voice.tts.request``."""
 
-    request_id: str
+    request_id: Annotated[str, StringConstraints(min_length=1)]
     text: Annotated[str, StringConstraints(min_length=1)]
     language: str | None = None
     voice: str | None = None
@@ -50,7 +50,7 @@ class TtsResponse(ContractEnvelope):
     """
 
     ok: bool
-    request_id: str
+    request_id: Annotated[str, StringConstraints(min_length=1)]
     error: str | None = None
     audio_b64: str | None = None
     mime_type: str | None = None
@@ -74,7 +74,7 @@ class TtsResponse(ContractEnvelope):
 class SttRequest(ContractEnvelope):
     """STT transcription request. Canonical subject: ``lyra.voice.stt.request``."""
 
-    request_id: str
+    request_id: Annotated[str, StringConstraints(min_length=1)]
     audio_b64: Annotated[str, StringConstraints(min_length=1)]
     model: str
     mime_type: str | None = None
@@ -93,7 +93,7 @@ class SttResponse(ContractEnvelope):
     """
 
     ok: bool
-    request_id: str
+    request_id: Annotated[str, StringConstraints(min_length=1)]
     error: str | None = None
     text: str | None = None
     language: str | None = None

@@ -172,3 +172,57 @@ def test_stt_response_error_path_allows_null_success_fields() -> None:
     assert resp.text is None
     assert resp.language is None
     assert resp.duration_seconds is None
+
+
+# ---------------------------------------------------------------------------
+# Negative tests for `StringConstraints(min_length=1)` — pin the declared
+# constraints so a silent weakening (e.g. dropping the Annotated wrapper)
+# fails here. Covers drift-unrelated correctness guarantees on the base
+# envelope (trace_id) and the per-domain request models (text, audio_b64,
+# request_id).
+# ---------------------------------------------------------------------------
+
+_MIN_LENGTH_CASES: list[tuple[type[BaseModel], str]] = [
+    (TtsRequest, "text"),
+    (TtsRequest, "request_id"),
+    (TtsRequest, "trace_id"),
+    (SttRequest, "audio_b64"),
+    (SttRequest, "request_id"),
+    (SttRequest, "trace_id"),
+    (TtsResponse, "request_id"),
+    (TtsResponse, "trace_id"),
+    (SttResponse, "request_id"),
+    (SttResponse, "trace_id"),
+]
+
+
+def _valid_payload_for(model: type[BaseModel]) -> dict[str, Any]:
+    if model is TtsRequest:
+        return {**_ENVELOPE, "request_id": "r1", "text": sample_transcript_en}
+    if model is SttRequest:
+        return {
+            **_ENVELOPE,
+            "request_id": "r2",
+            "audio_b64": _b64(silence_wav_16khz),
+            "model": "large-v3-turbo",
+        }
+    if model is TtsResponse:
+        return {**_ENVELOPE, "ok": False, "request_id": "r1", "error": "x"}
+    if model is SttResponse:
+        return {**_ENVELOPE, "ok": False, "request_id": "r2", "error": "x"}
+    raise AssertionError(f"Unknown model {model!r}")
+
+
+@pytest.mark.parametrize(
+    ("model", "field"),
+    _MIN_LENGTH_CASES,
+    ids=[f"{m.__name__}.{f}" for m, f in _MIN_LENGTH_CASES],
+)
+def test_min_length_one_rejects_empty_string(
+    model: type[BaseModel], field: str
+) -> None:
+    """Empty string for any ``min_length=1`` field raises ValidationError."""
+    payload = _valid_payload_for(model)
+    payload[field] = ""
+    with pytest.raises(ValidationError):
+        model.model_validate(payload)

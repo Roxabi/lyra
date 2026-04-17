@@ -14,6 +14,8 @@ import logging
 import time
 
 from lyra.core.message import InboundMessage
+from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict
 
 log = logging.getLogger(__name__)
@@ -27,11 +29,12 @@ REAPER_INTERVAL_SECONDS = 30
 class InboundCache:
     """stream_id → InboundMessage cache with TTL reaper."""
 
-    __slots__ = ("_msgs", "_ts")
+    __slots__ = ("_msgs", "_resolver", "_ts")
 
-    def __init__(self) -> None:
+    def __init__(self, *, resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER) -> None:
         self._msgs: dict[str, InboundMessage] = {}
         self._ts: dict[str, float] = {}
+        self._resolver = resolver
 
     # -- public API --------------------------------------------------
 
@@ -88,7 +91,7 @@ class InboundCache:
             raw = data.get("original_msg")
             if raw is not None:
                 try:
-                    msg = deserialize_dict(raw, InboundMessage)
+                    msg = deserialize_dict(raw, InboundMessage, resolver=self._resolver)
                 except Exception:
                     log.warning(
                         "InboundCache: bad embedded original_msg for %s stream_id=%r",

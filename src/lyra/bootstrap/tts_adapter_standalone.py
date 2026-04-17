@@ -59,6 +59,7 @@ class TtsAdapterStandalone(NatsAdapterBase):
             1,
             heartbeat_subject="lyra.voice.tts.heartbeat",
             heartbeat_interval=5.0,
+            type_registry=None,
         )
         self._active_count: int = 0
         tts_cfg = load_tts_config()

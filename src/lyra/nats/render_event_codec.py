@@ -18,14 +18,14 @@ from lyra.core.render_events import (
     TextRenderEvent,
     ToolSummaryRenderEvent,
 )
+from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize, serialize
 from roxabi_nats._version_check import check_schema_version
 
 
 class NatsRenderEventCodec:
     """Encode/decode pair for RenderEvent ↔ NATS chunk payload.
-
-    All methods are static — instantiation is not required.
 
     Wire format per chunk::
 
@@ -41,6 +41,9 @@ class NatsRenderEventCodec:
     ``NatsChannelProxy``; ``decode()`` returns ``None`` for it.
     """
 
+    def __init__(self, *, resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER) -> None:
+        self._resolver = resolver
+
     @staticmethod
     def encode(event: RenderEvent) -> tuple[str, dict, bool]:
         """Return ``(event_type, payload_dict, is_done)`` for *event*.
@@ -54,8 +57,8 @@ class NatsRenderEventCodec:
         # ToolSummaryRenderEvent
         return "tool_summary", payload, event.is_complete
 
-    @staticmethod
     def decode(
+        self,
         event_type: str,
         payload: dict,
         *,
@@ -85,6 +88,7 @@ class NatsRenderEventCodec:
             return deserialize(
                 json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                 TextRenderEvent,
+                resolver=self._resolver,
             )
         if event_type == "tool_summary":
             if not check_schema_version(

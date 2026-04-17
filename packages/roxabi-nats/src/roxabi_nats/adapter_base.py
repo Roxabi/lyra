@@ -16,29 +16,39 @@ import re
 import signal
 import socket
 import time
+import warnings
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 
 from nats.aio.client import Client as NATS
 
-from roxabi_nats._validate import validate_nats_token
-from roxabi_nats._version_check import check_contract_version, check_schema_version
-from roxabi_nats.connect import nats_connect
-from roxabi_nats.readiness import wait_for_hub
+# Compat shim — canonical home is roxabi_contracts.envelope per ADR-049.
+# Remove this re-export at roxabi-nats v0.3.0 (BREAKING CHANGE). Both
+# `roxabi_nats.adapter_base.CONTRACT_VERSION` and the top-level
+# `roxabi_nats.CONTRACT_VERSION` resolve through this module, so emitting
+# the warning here covers every deprecated access path.
+from roxabi_contracts.envelope import CONTRACT_VERSION
+
+warnings.warn(
+    "roxabi_nats.adapter_base.CONTRACT_VERSION (and roxabi_nats.CONTRACT_VERSION) "
+    "is deprecated; import from roxabi_contracts.envelope instead. "
+    "The re-export is removed at roxabi-nats v0.3.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+from roxabi_nats._serialize import _EMPTY_RESOLVER, _TypeHintResolver  # noqa: E402
+from roxabi_nats._validate import validate_nats_token  # noqa: E402
+from roxabi_nats._version_check import (  # noqa: E402
+    check_contract_version,
+    check_schema_version,
+)
+from roxabi_nats.connect import nats_connect  # noqa: E402
+from roxabi_nats.readiness import wait_for_hub  # noqa: E402
+
+__all__ = ["CONTRACT_VERSION", "NatsAdapterBase"]
 
 log = logging.getLogger(__name__)
-
-# ADR-044 — single source of truth for the voice NATS contract version. All
-# producer sites (hub clients + satellite adapters) stamp this on outgoing
-# payloads. Consumers ignore unknown values. Bumping requires a new ADR.
-CONTRACT_VERSION = "1"
-
-# Import-time validation: a typo in CONTRACT_VERSION must crash at load, not
-# drop every inbound envelope at runtime.  check_contract_version relies on
-# ``int(expected)`` succeeding — this assert is the single gate that guarantees
-# that invariant for every call site.
-assert CONTRACT_VERSION.isdigit() and int(CONTRACT_VERSION) > 0, (  # noqa: S101
-    f"CONTRACT_VERSION must be a positive decimal string, got {CONTRACT_VERSION!r}"
-)
 
 
 class NatsAdapterBase(ABC):
@@ -53,6 +63,7 @@ class NatsAdapterBase(ABC):
         *,
         heartbeat_subject: str | None = None,
         heartbeat_interval: float = 5.0,
+        type_registry: Sequence[tuple[str, str]] | None = None,
     ):
         validate_nats_token(subject, kind="subject")
         validate_nats_token(queue_group, kind="queue_group")
@@ -74,6 +85,11 @@ class NatsAdapterBase(ABC):
         raw_id = f"{queue_group}-{socket.gethostname()}-{os.getpid()}"
         self._worker_id = re.sub(r"[^A-Za-z0-9_-]", "_", raw_id)
         self._heartbeat_task: asyncio.Task | None = None
+        self._resolver: _TypeHintResolver = (
+            _TypeHintResolver(type_registry)
+            if type_registry is not None
+            else _EMPTY_RESOLVER
+        )
 
     async def run(self, nats_url: str, stop: asyncio.Event | None = None) -> None:
         nc = await nats_connect(nats_url)

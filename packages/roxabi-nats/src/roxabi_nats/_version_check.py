@@ -166,7 +166,8 @@ def check_contract_version(
         return False
 
     payload_v = int(raw)
-    expected_v = int(expected)  # asserted parseable at module load in adapter_base
+    # expected is asserted parseable at module load in roxabi_contracts.envelope
+    expected_v = int(expected)
 
     if payload_v > expected_v:
         _drop(ctx, raw, expected, kind="contract")

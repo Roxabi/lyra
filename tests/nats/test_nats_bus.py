@@ -24,6 +24,7 @@ from lyra.core.message import (
 )
 from lyra.core.trust import TrustLevel
 from lyra.nats.nats_bus import NatsBus
+from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats._serialize import deserialize, serialize
 from tests.nats.conftest import requires_nats_server
 
@@ -96,7 +97,7 @@ class TestSerialize:
 
         # Act
         payload = serialize(msg)
-        result = deserialize(payload, InboundMessage)
+        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
 
         # Assert
         assert "_session_update_fn" not in result.platform_meta
@@ -122,7 +123,7 @@ class TestSerialize:
 
         # Act
         payload = serialize(msg)
-        result = deserialize(payload, InboundMessage)
+        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
 
         # Assert
         assert result.platform_meta["chat_id"] == 42
@@ -137,7 +138,7 @@ class TestSerialize:
 
         # Act
         payload = serialize(msg)
-        result = deserialize(payload, InboundMessage)
+        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
 
         # Assert
         assert result.trust_level == TrustLevel.TRUSTED
@@ -163,11 +164,51 @@ class TestSerialize:
 
         # Act
         payload = serialize(msg)
-        result = deserialize(payload, InboundMessage)
+        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
 
         # Assert — same UTC moment, timezone-aware
         assert result.timestamp.utctimetuple() == ts.utctimetuple()
         assert result.timestamp.tzinfo is not None
+
+    def test_nats_bus_defaults_to_type_registry_resolver(self) -> None:
+        """NatsBus stores TYPE_REGISTRY_RESOLVER when no resolver kwarg is given.
+
+        Guards the lyra-side wiring invariant from #729: every NatsBus instance
+        must be able to resolve CommandContext and any other TYPE_CHECKING-only
+        hint in InboundMessage without an explicit construction argument.
+        """
+        # Arrange — no nc needed; we only inspect construction-time state.
+        # Act
+        bus: NatsBus[InboundMessage] = NatsBus(
+            nc=None,  # type: ignore[arg-type]
+            bot_id="main",
+            item_type=InboundMessage,
+        )
+        # Assert
+        assert bus._resolver is TYPE_REGISTRY_RESOLVER
+        assert (
+            "lyra.core.commands.command_parser",
+            "CommandContext",
+        ) in bus._resolver.entries
+
+    def test_nats_bus_round_trips_inbound_with_non_empty_resolver(self) -> None:
+        """Round-trip InboundMessage via the module API using the non-empty
+        lyra resolver; type coercion survives CommandContext TYPE_CHECKING hints.
+
+        Covers spec SC-tests(lyra-side NatsBus non-empty resolver).
+        """
+        # Arrange
+        msg = _make_msg(Platform.TELEGRAM)
+
+        # Act
+        payload = serialize(msg)
+        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
+
+        # Assert — enum, datetime, and platform_meta all survive coercion
+        assert isinstance(result.trust_level, TrustLevel)
+        assert result.trust_level == TrustLevel.TRUSTED
+        assert result.timestamp.tzinfo is not None
+        assert result.platform_meta["chat_id"] == 123
 
     def test_bytes_roundtrip(self) -> None:
         """bytes field (Attachment.url_or_path_or_bytes) survives as bytes."""
@@ -196,7 +237,7 @@ class TestSerialize:
 
         # Act
         payload = serialize(msg)
-        result = deserialize(payload, InboundMessage)
+        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
 
         # Assert
         assert len(result.attachments) == 1

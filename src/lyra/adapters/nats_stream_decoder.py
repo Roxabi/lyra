@@ -58,6 +58,7 @@ async def decode_stream_events(
     """
     from lyra.nats.render_event_codec import NatsRenderEventCodec
 
+    _codec = NatsRenderEventCodec()
     expected_seq = 0
     while True:
         try:
@@ -89,7 +90,7 @@ async def decode_stream_events(
             break
         payload = chunk.get("payload", {})
         is_done = chunk.get("done", False)
-        event = NatsRenderEventCodec.decode(event_type, payload, counter=counter)
+        event = _codec.decode(event_type, payload, counter=counter)
         if event is not None:
             yield event
         if NatsRenderEventCodec.is_terminal(event_type, is_done):

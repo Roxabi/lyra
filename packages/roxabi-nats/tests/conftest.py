@@ -8,17 +8,44 @@ fixture are automatically skipped when nats-server is not found.
 
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import AsyncGenerator, Generator
+from pathlib import Path
 
 import pytest
 from nats.aio.client import Client as NATS
 
 import nats
 from roxabi_nats import _version_check as _vc_mod
+
+
+def _register_stub_fixture() -> None:
+    """Register ``_stub_fixture.py`` under ``roxabi_nats_test_stub`` at collection time.
+
+    Resolver tests construct ``_TypeHintResolver([("roxabi_nats_test_stub", ...)])``.
+    Keeping the stub a sibling of this ``conftest.py`` excludes it from the
+    wheel (hatch only packages ``src/roxabi_nats/``) while preserving a stable
+    absolute module path for ``importlib.import_module``.
+    """
+    if "roxabi_nats_test_stub" in sys.modules:
+        return
+    path = Path(__file__).parent / "_stub_fixture.py"
+    spec = importlib.util.spec_from_file_location("roxabi_nats_test_stub", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            "failed to build import spec for roxabi_nats_test_stub"
+        )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["roxabi_nats_test_stub"] = mod
+    spec.loader.exec_module(mod)
+
+
+_register_stub_fixture()
 
 
 @pytest.fixture(autouse=True)

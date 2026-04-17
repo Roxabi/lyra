@@ -182,7 +182,7 @@ Both blocking prerequisites are resolved; the `roxabi-nats/v0.1.0` tag is unbloc
 
 ### Known design debt
 
-- **`_register_type_checking_import` global registry** — `_serialize.py` maintains `_TYPE_CHECKING_IMPORTS` as a process-global mutable list populated at lyra startup. This solves the TYPE_CHECKING-hint-resolution problem but imposes implicit global state on the SDK. The helper is kept hub-internal (underscore prefix, not in `__all__`) until a per-adapter explicit init param replaces it. Tracked in issue #729.
+- **Resolved in #729 (v0.2.0 — clean break, no deprecation shim).** The process-global `_TYPE_CHECKING_IMPORTS` list and its `_register_type_checking_import` mutator were deleted outright. Adapters now pass TYPE_CHECKING-only types via an explicit keyword-only `type_registry` argument on `NatsAdapterBase.__init__`; direct `serialize`/`deserialize` consumers pass a `resolver=` keyword argument. Lyra owns a single `TYPE_REGISTRY_RESOLVER` module constant in `src/lyra/nats/type_registry.py`. External `v0.1.x` consumers importing the removed private symbols hit a loud `ImportError` at load — the chosen failure mode over a silent `DeprecationWarning + no-op` shim that would have masked degraded type coercion.
 - **Public vs private submodule asymmetry** — lyra (as workspace host) imports `roxabi_nats._serialize`, `_sanitize`, etc. directly; external consumers are restricted to `__all__`. Python's underscore convention is social, not enforced — the contract is maintained via README and ADR documentation, not runtime guard.
 
 ### Neutral

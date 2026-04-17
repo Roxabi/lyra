@@ -46,6 +46,8 @@ from lyra.core.message import (
     InboundMessage,
     Platform,
 )
+from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+from roxabi_nats import TypeHintResolver
 from roxabi_nats._sanitize import sanitize_platform_meta
 from roxabi_nats._serialize import deserialize_dict, serialize
 from roxabi_nats._validate import validate_nats_token
@@ -79,14 +81,11 @@ class NatsBus(Generic[T]):
 
     Args:
         nc: Already-connected ``nats.NATS`` client.
-        bot_id: Default bot identifier used when ``register()`` is called
-            without an explicit ``bot_id``.
-        item_type: Concrete type used for deserialization (e.g. ``InboundMessage``).
+        bot_id: Default bot id for ``register()`` when no explicit one is given.
+        item_type: Concrete type used for deserialization.
         subject_prefix: NATS subject prefix. Defaults to ``"lyra.inbound"``.
-            Use a different prefix (e.g. ``"lyra.inbound.audio"``) to avoid
-            subject collisions between different message types.
-        publish_only: If ``True``, ``start()`` is a no-op and ``get()`` raises.
-            For adapter-side buses that only publish (see #541).
+        publish_only: If ``True``, ``start()`` is a no-op and ``get()`` raises
+            (adapter-side buses that only publish, see #541).
     """
 
     def __init__(  # noqa: PLR0913
@@ -99,6 +98,7 @@ class NatsBus(Generic[T]):
         staging_maxsize: int = 500,
         queue_group: str = "",
         publish_only: bool = False,
+        resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
     ) -> None:
         validate_nats_token(subject_prefix, kind="subject_prefix")
         validate_nats_token(queue_group, kind="queue_group", allow_empty=True)
@@ -108,6 +108,7 @@ class NatsBus(Generic[T]):
         self._subject_prefix = subject_prefix
         self._queue_group = queue_group
         self._publish_only = publish_only
+        self._resolver = resolver
         self._started = False
         self._registrations: set[tuple[Platform, str]] = set()
         self._subscriptions: dict[tuple[Platform, str], Subscription] = {}
@@ -265,7 +266,9 @@ class NatsBus(Generic[T]):
                 return  # helper already logged + incremented counter
 
             try:
-                item = deserialize_dict(payload, self._item_type)
+                item = deserialize_dict(
+                    payload, self._item_type, resolver=self._resolver
+                )
                 if hasattr(item, "platform_meta"):
                     _item: Any = item
                     item = dataclasses.replace(

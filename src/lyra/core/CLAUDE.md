@@ -104,6 +104,7 @@ from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.pairing import PairingStore
 from lyra.infrastructure.stores.sqlite_base import SqliteStore
+from lyra.infrastructure.stores.turn_store import TurnStore
 ```
 
 Never import from old flat-core paths — always import from the subpackage directly.

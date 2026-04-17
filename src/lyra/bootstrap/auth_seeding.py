@@ -6,7 +6,6 @@ Extracted from hub_standalone.py for size compliance (#760).
 from __future__ import annotations
 
 import logging
-import sys
 
 from lyra.bootstrap.bootstrap_wiring import _build_bot_auths
 from lyra.bootstrap.config import _load_circuit_config
@@ -45,14 +44,11 @@ def build_bot_auths(
     """Load circuit config and build per-bot authenticators.
 
     Returns (circuit_registry, admin_user_ids, tg_bot_auths, dc_bot_auths).
-    Calls sys.exit on misconfiguration.
+    Raises ValueError on misconfiguration — caller is responsible for sys.exit.
     """
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
 
-    try:
-        tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
-    except ValueError as exc:
-        sys.exit(str(exc))
+    tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
 
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
         raw_config,
@@ -64,7 +60,7 @@ def build_bot_auths(
     log.info("Authenticator: %d admin_user_id(s) configured", len(admin_user_ids))
 
     if not tg_bot_auths and not dc_bot_auths:
-        sys.exit(
+        raise ValueError(
             "No adapters configured — add at least one [[telegram.bots]] or"
             " [[discord.bots]] entry with a matching [[auth.telegram_bots]] or"
             " [[auth.discord_bots]] section to config.toml"

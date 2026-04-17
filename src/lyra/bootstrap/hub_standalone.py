@@ -94,9 +94,13 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
         await seed_auth_store(stores.auth, raw_config)
 
-        circuit_registry, admin_user_ids, tg_bot_auths, dc_bot_auths = build_bot_auths(
-            raw_config, stores.auth
-        )
+        try:
+            circuit_registry, admin_user_ids, tg_bot_auths, dc_bot_auths = (
+                build_bot_auths(raw_config, stores.auth)
+            )
+        except ValueError as exc:
+            log.error("Configuration error: %s", exc)
+            sys.exit(str(exc))
 
         # Resolve (platform, bot_id) -> agent_name
         bot_agent_map = await _resolve_bot_agent_map(

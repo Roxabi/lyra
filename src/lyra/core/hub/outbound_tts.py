@@ -113,44 +113,6 @@ class TtsDispatch:
 
         return _tee(), voice_parts, voice_done
 
-    async def dispatch_deferred_tts(
-        self,
-        msg: InboundMessage,
-        voice_parts: list[str],
-        voice_done: asyncio.Event,
-    ) -> None:
-        """Dispatch TTS as a background task after streaming completes.
-
-        Waits for the tee iterator to finish, then synthesizes TTS from the
-        collected text. The task is created and returned immediately; the
-        caller can await it or let it run in the background.
-        """
-        if self._audio_pipeline is None or self._tts is None:
-            return
-
-        async def _deferred_tts() -> None:
-            await voice_done.wait()
-            full_text = "".join(voice_parts).strip()
-            if not full_text:
-                return
-            # should_speak guarantees _audio_pipeline is not None
-            assert self._audio_pipeline is not None
-            audio_pipeline = self._audio_pipeline
-            agent_tts = audio_pipeline.resolve_agent_tts(msg)
-            fallback_lang = audio_pipeline._resolve_agent_fallback_language(msg)
-            await audio_pipeline.synthesize_and_dispatch_audio(
-                msg,
-                full_text,
-                agent_tts=agent_tts,
-                fallback_language=fallback_lang,
-                **audio_pipeline.tts_language_kwargs(msg),
-            )
-
-        task = asyncio.create_task(_deferred_tts(), name=f"tts:{msg.id}")
-        if self._memory_tasks is not None:
-            self._memory_tasks.add(task)
-            task.add_done_callback(self._memory_tasks.discard)
-
     def create_deferred_tts_task(
         self,
         msg: InboundMessage,

@@ -10,7 +10,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .stores.turn_store import TurnStore
+    from lyra.infrastructure.stores.turn_store import TurnStore
 
 from .cli_protocol import _SESSION_ID_RE
 

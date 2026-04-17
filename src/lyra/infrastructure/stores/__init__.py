@@ -10,6 +10,7 @@ from lyra.infrastructure.stores.credential_store import (
 )
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.sqlite_base import SqliteStore
+from lyra.infrastructure.stores.turn_store import TurnStore
 
 __all__ = [
     "AgentStore",
@@ -20,4 +21,5 @@ __all__ = [
     "IdentityAliasStore",
     "LyraKeyring",
     "SqliteStore",
+    "TurnStore",
 ]

@@ -17,7 +17,6 @@ ignore_imports =
     lyra.core.stores.agent_store_protocol -> lyra.infrastructure.stores.agent_store
     lyra.core.stores.pairing -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.pairing -> lyra.infrastructure.stores.auth_store
-    lyra.core.stores.turn_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.message_index -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.thread_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.prefs_store -> lyra.infrastructure.stores.sqlite_base
@@ -29,6 +28,13 @@ ignore_imports =
     lyra.core.agent -> lyra.infrastructure.stores.agent_store
     lyra.core.memory -> lyra.infrastructure.stores.identity_alias_store
     lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store
+    # TurnStore moved to infrastructure per ADR-048 (#760 review fix f2)
+    lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store
+    lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store
+    lyra.core.cli_pool -> lyra.infrastructure.stores.turn_store
+    lyra.core.cli_pool_session -> lyra.infrastructure.stores.turn_store
+    lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store
+    lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers
@@ -42,4 +48,3 @@ allow_indirect_imports = true
 ignore_imports =
     # Transitional: files pending migration to infrastructure/stores (ADR-048)
     lyra.core.stores.agent_store_migrations -> aiosqlite
-    lyra.core.stores.turn_store_queries -> aiosqlite

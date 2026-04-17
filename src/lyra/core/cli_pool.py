@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .stores.turn_store import TurnStore
+    from lyra.infrastructure.stores.turn_store import TurnStore
 
 from .agent_config import ModelConfig
 from .cli_pool_lifecycle import CliPoolLifecycleMixin

@@ -10,13 +10,14 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from lyra.infrastructure.stores.turn_store import TurnStore
+
     from ..circuit_breaker import CircuitRegistry
     from ..memory import MemoryManager
     from ..message import Platform
     from ..messages import MessageManager
     from ..pool import Pool
     from ..stores.message_index import MessageIndex
-    from ..stores.turn_store import TurnStore
     from .hub_protocol import ChannelAdapter
     from .outbound_dispatcher import OutboundDispatcher
     from .pool_manager import PoolManager

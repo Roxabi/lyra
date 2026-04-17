@@ -13,7 +13,7 @@ from lyra.errors import ProviderError
 
 if TYPE_CHECKING:
     from ..circuit_breaker import CircuitRegistry
-    from ..message import InboundMessage
+    from ..message import InboundMessage, OutboundMessage, Response
     from ..messages import MessageManager
 
 log = logging.getLogger(__name__)
@@ -28,7 +28,9 @@ class HubCircuitBreakerMixin:
         _msg_manager: MessageManager | None
 
         async def dispatch_response(
-            self, msg: InboundMessage, response: object
+            self,
+            msg: "InboundMessage",
+            response: "Response | OutboundMessage",
         ) -> None: ...
 
     async def circuit_breaker_drop(self, msg: InboundMessage) -> bool:

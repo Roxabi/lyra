@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING
 
-from lyra.core.stores.turn_store_queries import (
+if TYPE_CHECKING:
+    import aiosqlite
+
+from lyra.infrastructure.stores.turn_store_queries import (
     get_cli_session,
     get_cli_session_by_pool,
     get_last_session,
@@ -30,7 +33,7 @@ class TurnStoreSessionMixin:
     open aiosqlite connection.
     """
 
-    def _db_or_raise(self) -> Any:
+    def _db_or_raise(self) -> "aiosqlite.Connection":
         """Return DB connection. Must be overridden by host class."""
         raise NotImplementedError("Host class must provide _db_or_raise")
 

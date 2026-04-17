@@ -99,7 +99,7 @@ class TestCliPoolResumeAndReset:
         # the real CLI session ID in pool_sessions.
         from unittest.mock import AsyncMock
 
-        from lyra.core.stores.turn_store import TurnStore
+        from lyra.infrastructure.stores.turn_store import TurnStore
 
         mock_store = AsyncMock(spec=TurnStore)
         mock_store.get_cli_session = AsyncMock(return_value=_CLI_SESS)

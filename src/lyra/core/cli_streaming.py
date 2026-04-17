@@ -9,13 +9,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections import deque
 from collections.abc import Awaitable, Callable
 
 from .cli_protocol import CliProtocolOptions, _read_stderr_snippet
-from .events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from .cli_streaming_parser import CliStreamingParser
+from .events import LlmEvent
 
 log = logging.getLogger(__name__)
+
+# Re-export for API preservation
+__all__ = ["StreamingIterator", "send_and_read_stream", "CliStreamingParser"]
 
 
 class StreamingIterator:
@@ -43,21 +46,38 @@ class StreamingIterator:
         self._default_timeout = default_timeout
         self._max_idle_retries = opts.max_idle_retries
         self._idle_retries = 0
-        self._done = False
-        self._had_text_delta = False
-        self._pending: deque[LlmEvent] = deque()
-        self.session_id: str | None = None
-        self.error: str | None = None
+        self._parser = CliStreamingParser(pool_id)
+        self._done = False  # I/O-level done flag (EOF, timeout, cleanup)
+
+    @property
+    def session_id(self) -> str | None:
+        """Session ID from parser state."""
+        return self._parser.session_id
+
+    @session_id.setter
+    def session_id(self, value: str | None) -> None:
+        self._parser.session_id = value
+
+    @property
+    def error(self) -> str | None:
+        """Error from parser state."""
+        return self._parser.error
+
+    @error.setter
+    def error(self, value: str | None) -> None:
+        self._parser.error = value
 
     def __aiter__(self) -> "StreamingIterator":
         return self
 
-    async def __anext__(self) -> LlmEvent:  # noqa: C901, PLR0912, PLR0915 — protocol event dispatch
-        if self._done:
+    async def __anext__(self) -> LlmEvent:  # noqa: C901 — protocol event dispatch with I/O
+        if self._done or self._parser._done:
+            self._done = True
             raise StopAsyncIteration
 
-        if self._pending:
-            return self._pending.popleft()
+        pending = self._parser._pending
+        if pending:
+            return pending.popleft()
 
         entry = self._entry
         assert entry is not None
@@ -67,8 +87,8 @@ class StreamingIterator:
             raise StopAsyncIteration
 
         while True:
-            if self._pending:
-                return self._pending.popleft()
+            if pending:
+                return pending.popleft()
 
             try:
                 raw = await asyncio.wait_for(
@@ -84,7 +104,7 @@ class StreamingIterator:
                         proc.returncode,
                         detail,
                     )
-                    self.error = (
+                    self._parser.error = (
                         f"Process terminated unexpectedly"
                         f" (rc={proc.returncode}){detail}"
                     )
@@ -112,7 +132,7 @@ class StreamingIterator:
                     proc.returncode,
                     detail,
                 )
-                self.error = (
+                self._parser.error = (
                     f"Process terminated unexpectedly (rc={proc.returncode}){detail}"
                 )
                 self._done = True
@@ -123,112 +143,19 @@ class StreamingIterator:
             if not line:
                 continue
 
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+            # Delegate parsing to CliStreamingParser
+            self._parser.parse_line(line)
 
-            msg_type = data.get("type", "")
+            # Sync session_id back to entry (for --resume on next turn)
+            if self._parser.session_id:
+                entry.update_session_id(self._parser.session_id)
 
-            if msg_type == "system" and data.get("subtype") == "init":
-                self.session_id = data.get("session_id", "") or None
-                if self.session_id:
-                    entry.update_session_id(self.session_id)
-                log.debug(
-                    "[pool:%s] streaming init: session=%s",
-                    self._pool_id,
-                    self.session_id,
-                )
-
-            elif msg_type == "assistant":
-                blocks = data.get("message", {}).get("content", [])
-                for b in blocks:
-                    if b.get("type") == "tool_use":
-                        self._pending.append(
-                            ToolUseLlmEvent(
-                                tool_name=b.get("name", ""),
-                                tool_id=b.get("id", ""),
-                                input=b.get("input", {}),
-                            )
-                        )
-                if self._pending:
-                    return self._pending.popleft()
-
-            elif msg_type == "stream_event":
-                event_data = data.get("event", data)
-                event_type = event_data.get("type", "")
-                if event_type == "content_block_start":
-                    cb = event_data.get("content_block", {})
-                    if cb.get("type") == "tool_use":
-                        self._pending.append(
-                            ToolUseLlmEvent(
-                                tool_name=cb.get("name", ""),
-                                tool_id=cb.get("id", ""),
-                                input={},
-                            )
-                        )
-                        if self._pending:
-                            return self._pending.popleft()
-                elif event_type == "content_block_delta":
-                    delta = event_data.get("delta", {})
-                    if delta.get("type") == "text_delta":
-                        text = delta.get("text", "")
-                        if text:
-                            self._had_text_delta = True
-                            return TextLlmEvent(text=text)
-
-            elif msg_type == "result":
-                sid = data.get("session_id", "")
-                if sid:
-                    self.session_id = sid
-                    entry.update_session_id(sid)
-                is_error = data.get("is_error", False)
-                subtype = data.get("subtype", "")
-                # Classify based on observed stream, not self-reported flags.
-                # CLI reports is_error=True + subtype="success" both when:
-                #   (a) a tool call failed but the model recovered and
-                #       streamed a valid answer via text_delta events, and
-                #   (b) the CLI exited early (auth failure, crash) and
-                #       emitted the error text only in the result field.
-                # Only (a) should downgrade to success — and the signal for
-                # that is whether any text was actually streamed.
-                if is_error and subtype == "success" and self._had_text_delta:
-                    log.info(
-                        "[pool:%s] streaming result is_error=True but"
-                        " subtype=success with streamed text — treating"
-                        " as success",
-                        self._pool_id,
-                    )
-                    is_error = False
-                elif is_error:
-                    errors = data.get("errors", [])
-                    self.error = (
-                        errors[0]
-                        if errors
-                        else data.get("result") or subtype or "Unknown streaming error"
-                    )
-                    log.warning(
-                        "[pool:%s] streaming result is_error=True"
-                        " subtype=%s had_text_delta=%s duration_ms=%d"
-                        " result=%r",
-                        self._pool_id,
-                        subtype,
-                        self._had_text_delta,
-                        data.get("duration_ms", 0),
-                        (data.get("result") or "")[:200],
-                    )
-                log.info(
-                    "[pool:%s] streaming result: %dms",
-                    self._pool_id,
-                    data.get("duration_ms", 0),
-                )
+            # Check if parser set done (result event)
+            if self._parser._done:
                 self._done = True
-                return ResultLlmEvent(
-                    is_error=is_error,
-                    duration_ms=data.get("duration_ms", 0),
-                    cost_usd=None,
-                    error_text=self.error if is_error else None,
-                )
+
+            if pending:
+                return pending.popleft()
 
     async def _cleanup(self) -> None:
         """Call pool_reset_fn and mark done. Safe to call multiple times."""

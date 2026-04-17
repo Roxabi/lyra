@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from lyra.infrastructure.stores.turn_store import TurnStore
+
     from ..memory import SessionSnapshot
-    from ..stores.turn_store import TurnStore
 
 from ..debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
 from ..message import InboundMessage, OutboundMessage
@@ -146,13 +147,6 @@ class Pool:
 
     @property
     def cancel_on_new_message(self) -> bool:
-        """Whether a new message cancels an in-flight LLM turn (cancel-in-flight).
-
-        Default is False: new messages queue naturally and are processed after
-        the current turn finishes.  Set to True to restore legacy cancel-in-flight
-        behaviour where a new message aborts the ongoing turn and re-dispatches
-        the merged context.
-        """
         return self._cancel_on_new_message
 
     @cancel_on_new_message.setter

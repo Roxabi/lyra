@@ -31,6 +31,19 @@ Placed here (not in `llm/`) so `llm → core` stays unidirectional. See
 `render_events.py` defines the platform-agnostic render events that
 `StreamProcessor` emits downstream to adapters.
 
+## CLI subprocess protocol
+
+The `cli_*.py` files handle the Claude CLI subprocess protocol:
+
+- `cli_protocol.py` — Public API re-exports (`StreamingIterator`, `send_and_read_stream`, etc.)
+- `cli_streaming.py` — Async I/O layer: `StreamingIterator` handles timeout, EOF, process death
+- `cli_streaming_parser.py` — Pure JSON parsing: `CliStreamingParser` converts NDJSON lines to `LlmEvent` objects (no I/O, fully testable in isolation)
+- `cli_non_streaming.py` — Non-streaming protocol (`read_until_result`, `send_and_read`)
+- `cli_pool.py` — Process pool management (`_ProcessEntry`, `CliPool`); inherits lifecycle, streaming, session, and worker mixins
+- `cli_pool_lifecycle.py` — `CliPoolLifecycleMixin`: `start`, `stop`, `drain`, `get_reaper_status` (#760)
+- `cli_pool_streaming.py` — `CliPoolStreamingMixin`: `send_streaming`, stale-resume guard (#760)
+- `cli_pool_session.py` — `CliPoolSessionMixin`: TurnStore wiring, CLI session persistence for `--resume`
+
 ## Non-obvious placement decisions
 
 **`pool_manager.py` and `pipeline_types.py` are in `hub/`** — both import `Hub` at runtime; placing them in `pool/` would create a circular import. `message_pipeline.py` is a backward-compatibility shim that re-exports from `pipeline_types.py`.
@@ -91,6 +104,7 @@ from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.pairing import PairingStore
 from lyra.infrastructure.stores.sqlite_base import SqliteStore
+from lyra.infrastructure.stores.turn_store import TurnStore
 ```
 
 Never import from old flat-core paths — always import from the subpackage directly.

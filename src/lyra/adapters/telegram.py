@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.outbound_listener import OutboundListener
     from lyra.core.bus import Bus
-    from lyra.core.stores.turn_store import TurnStore
+    from lyra.infrastructure.stores.turn_store import TurnStore
 
 from lyra.adapters import telegram_audio  # noqa: I001
 from lyra.adapters._base_outbound import OutboundAdapterBase

@@ -1,14 +1,15 @@
 """Command router — dispatch slash commands to builtins, processor commands, or plugins.
 
-Builtin implementations live in builtin_commands.py and workspace_commands.py (#298).
-Processor commands (pre/post hooks into the pool flow) live in processor_registry.py.
+Builtins: builtin_commands.py, workspace_commands.py. Processors: processor_registry.py.
 """
 
 from __future__ import annotations
 
 import asyncio
 import importlib
+import inspect
 import logging
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,16 +30,18 @@ from .command_patterns import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from lyra.core.runtime_config import RuntimeConfigHolder
     from lyra.core.smart_routing_protocol import SmartRoutingProtocol
 
     from ..circuit_breaker import CircuitRegistry
     from ..messages import MessageManager
 
-
 log = logging.getLogger(__name__)
+
+# Type alias for builtin handler (sync or async)
+BuiltinHandler = Callable[
+    [list, InboundMessage, Pool | None], Response | Awaitable[Response] | None
+]
 
 
 class CommandRouter:
@@ -81,7 +84,7 @@ class CommandRouter:
         self._passthroughs: set[str] = set()
         self._session_driver: object = session_driver
         self._session_handlers: dict[str, SessionCommandEntry] = {}
-        # Guard: raise early if any loaded plugin command clashes with a builtin.
+        self._builtin_handlers = self._build_builtin_handlers()
         check_command_conflicts(
             command_loader.get_commands(enabled_plugins), self._builtins
         )
@@ -98,11 +101,7 @@ class CommandRouter:
         ]
 
     def command_metadata(self) -> list[tuple[str, str, bool]]:
-        """Return (name, description, admin_only) for all registered commands.
-
-        Includes builtins and plugin commands. Admin-only is derived from
-        the description containing '(admin-only)'.
-        """
+        """Return (name, description, admin_only) for all registered commands."""
         result: list[tuple[str, str, bool]] = []
         for name, cfg in self._builtins.items():
             result.append((name, cfg.description, is_admin_only(cfg.description)))
@@ -111,11 +110,10 @@ class CommandRouter:
         )
         for name, desc in plugin_descs.items():
             result.append((name, desc, is_admin_only(desc)))
-        # Processor commands — only include those registered as passthroughs (#359).
+        # Processor commands — only include those registered as passthroughs.
         try:
-            importlib.import_module("lyra.core.processors")  # trigger self-registration
+            importlib.import_module("lyra.core.processors")
             from lyra.core.processor_registry import registry as _proc_registry
-
             for cmd, desc in _proc_registry.descriptions().items():
                 if cmd in self._passthroughs:
                     result.append((cmd, desc, False))
@@ -131,18 +129,14 @@ class CommandRouter:
 
     def is_command(self, msg: InboundMessage) -> bool:
         """Return True if msg carries a CommandContext or is a rewritable bare URL."""
-        if msg.command is not None:
-            return True
-        return is_bare_url(msg.text, self._patterns)
+        return msg.command is not None or is_bare_url(msg.text, self._patterns)
 
     def get_command_name(self, msg: InboundMessage) -> str | None:
-        """Return full command name (e.g. '/join') or None. Single source of truth."""
         if msg.command is None:
             return None
         return f"{msg.command.prefix}{msg.command.name}"
 
     def register_passthrough(self, name: str) -> None:
-        """Mark a command as agent-handled — dispatch() returns None."""
         self._passthroughs.add(f"/{name}")
 
     def register_session_command(
@@ -156,77 +150,82 @@ class CommandRouter:
     ) -> None:
         """Register a session command handler.
 
-        .. deprecated::
-            Prefer ``@register`` from ``lyra.core.processor_registry`` for new commands.
-            Processor commands land in conversation history and support
-            follow-up questions.
-            See ADR-031 (docs/architecture/adr/031-*.mdx).
-
-        **Exception:** ``/add-vault`` is the ONLY session command allowed to remain
-        on the deprecated API because it performs a direct vault write without LLM
-        involvement — processor commands are for pre/post hooks around LLM calls.
-
-        *name* must not include the leading slash (e.g. ``"vault-add"``).
-        Raises ``ValueError`` if the name clashes with a builtin or plugin command.
+        Deprecated: prefer ``@register`` from ``lyra.core.processor_registry``.
+        *name* must not include the leading slash. Raises ``ValueError`` on clash.
         """
         full_name = f"/{name}"
         if full_name in self._builtins:
-            raise ValueError(
-                f"Session command {full_name!r} clashes with a builtin. "
-                "Use a different name."
-            )
+            raise ValueError(f"Session command {full_name!r} clashes with a builtin.")
         plugin_handlers = self._command_loader.get_commands(self._enabled_plugins)
         if full_name in plugin_handlers:
-            raise ValueError(
-                f"Session command {full_name!r} clashes with a plugin. "
-                "Use a different name."
-            )
+            raise ValueError(f"Session command {full_name!r} clashes with a plugin.")
         self._session_handlers[full_name] = SessionCommandEntry(
-            handler=handler,
-            tools=tools,
-            description=description,
-            timeout=timeout,
+            handler=handler, tools=tools, description=description, timeout=timeout
         )
 
-    def _dispatch_builtin(  # noqa: C901
-        self, command_name: str, args: list[str], msg: InboundMessage, pool: Pool | None
-    ) -> Response | None:
-        if command_name == "/help":
-            return builtin_commands.help_command(
+    def _build_builtin_handlers(self) -> dict[str, BuiltinHandler]:
+        """Build dispatch table for builtin commands."""
+        def _stop(_a: list, _m: InboundMessage, p: Pool | None) -> Response:
+            if p:
+                p.cancel()
+            return Response(content="")
+
+        def _voice(a: list, _m: InboundMessage, p: Pool | None) -> Response | None:
+            if a:
+                return None  # passthrough
+            if p:
+                p.voice_mode = True
+            return Response(content="Voice mode on — replies will be spoken.")
+
+        def _text(_a: list, _m: InboundMessage, p: Pool | None) -> Response:
+            if p:
+                p.voice_mode = False
+            return Response(content="Voice mode off — text-only replies.")
+        return {
+            "/help": lambda a, m, p: builtin_commands.help_command(
                 self._builtins,
                 self._session_handlers,
                 self._command_loader,
                 self._enabled_plugins,
                 self._msg_manager,
-                passthroughs=frozenset(self._passthroughs),
-            )
-        if command_name == "/circuit":
-            return builtin_commands.circuit_status(msg, self._circuit_registry)
-        if command_name == "/routing":
-            return builtin_commands.routing_status(msg, self._smart_routing)
-        if command_name == "/stop":
-            if pool is not None:
-                pool.cancel()
-            return Response(content="")
-        if command_name == "/config":
-            return builtin_commands.config_command(
-                msg,
-                args,
+                frozenset(self._passthroughs),
+            ),
+            "/circuit": lambda a, m, p: builtin_commands.circuit_status(
+                m, self._circuit_registry
+            ),
+            "/routing": lambda a, m, p: builtin_commands.routing_status(
+                m, self._smart_routing
+            ),
+            "/stop": _stop,
+            "/config": lambda a, m, p: builtin_commands.config_command(
+                m,
+                a,
                 self._runtime_config_holder,
                 self._runtime_config_path,
                 self._on_debounce_change,
                 self._on_cancel_change,
-            )
-        if command_name == "/voice":
-            if args:
-                return None  # /voice <prompt> → passthrough to agent
-            if pool is not None:
-                pool.voice_mode = True
-            return Response(content="Voice mode on — replies will be spoken.")
-        if command_name == "/text":
-            if pool is not None:
-                pool.voice_mode = False
-            return Response(content="Voice mode off — text-only replies.")
+            ),
+            "/voice": _voice,
+            "/text": _text,
+            "/clear": lambda a, m, p: workspace_commands.cmd_clear(p),
+            "/new": lambda a, m, p: workspace_commands.cmd_clear(p),
+            "/folder": lambda a, m, p: workspace_commands.cmd_folder(m, a, p),
+            "/cd": lambda a, m, p: workspace_commands.cmd_folder(m, a, p),
+            "/workspace": lambda a, m, p: workspace_commands.cmd_workspace(
+                m, a, p, self._workspaces
+            ),
+        }
+
+    async def _dispatch_builtin(
+        self, command_name: str, args: list[str], msg: InboundMessage, pool: Pool | None
+    ) -> Response | None:
+        handlers = self._builtin_handlers
+        handler = handlers.get(command_name)
+        if handler is not None:
+            result = handler(args, msg, pool)
+            if inspect.isawaitable(result):
+                return await result
+            return result
         builtin = self._builtins.get(command_name)
         if builtin and builtin.builtin:
             return Response(
@@ -234,30 +233,17 @@ class CommandRouter:
             )
         return None
 
-    async def dispatch(  # noqa: C901 — command routing has inherent branching complexity
+    async def dispatch(  # noqa: C901
         self, msg: InboundMessage, pool: Pool | None = None
     ) -> Response | None:
-        """Route pre-parsed command. Returns None for !-prefixed unknowns."""
         msg = self.prepare(msg)
         if msg.command is None:
             raise ValueError("dispatch() called on non-command message")
-
         command_name = f"{msg.command.prefix}{msg.command.name}"
         args = msg.command.args.split() if msg.command.args else []
-
-        if command_name in ("/clear", "/new"):
-            return await workspace_commands.cmd_clear(pool)
-        if command_name in ("/folder", "/cd"):
-            return await workspace_commands.cmd_folder(msg, args, pool)
-        if command_name == "/workspace":
-            return await workspace_commands.cmd_workspace(
-                msg, args, pool, self._workspaces
-            )
-
-        builtin_response = self._dispatch_builtin(command_name, args, msg, pool)
+        builtin_response = await self._dispatch_builtin(command_name, args, msg, pool)
         if builtin_response is not None:
             return builtin_response
-
         session_entry = self._session_handlers.get(command_name)
         if session_entry is not None:
             if self._session_driver is None:
@@ -285,7 +271,6 @@ class CommandRouter:
                 return Response(
                     content=format_timeout_message(command_name, session_entry.timeout)
                 )
-
         plugin_handlers: dict[str, AsyncHandler] = self._command_loader.get_commands(
             self._enabled_plugins
         )
@@ -299,7 +284,6 @@ class CommandRouter:
                 else format_unknown_command(command_name)
             )
             return Response(content=reply)
-
         if pool is None:
             raise TypeError(
                 f"Plugin command '{command_name}' requires a Pool instance."

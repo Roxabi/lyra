@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.outbound_listener import OutboundListener
     from lyra.core.bus import Bus
-    from lyra.core.stores.turn_store import TurnStore
+    from lyra.infrastructure.stores.turn_store import TurnStore
 
 from lyra.adapters import discord_audio  # noqa: I001
 from lyra.adapters import discord_audio_outbound
@@ -26,8 +26,12 @@ from lyra.adapters.discord_outbound import (
     build_streaming_callbacks as _build_streaming_callbacks,
     send as _send_impl,
 )
-from lyra.adapters.discord_threads import restore_hot_threads
 from lyra.adapters.discord_voice import VoiceSessionManager
+from lyra.adapters.discord.lifecycle import (
+    on_guild_join as _on_guild_join_impl,
+    on_ready as _on_ready_impl,
+    on_voice_state_update as _on_voice_state_update_impl,
+)
 from lyra.adapters.discord_voice_commands import (
     handle_voice_command as _handle_voice_command_impl,
     register_voice_app_commands as _register_voice_app_commands,
@@ -164,51 +168,11 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
 
     async def on_ready(self) -> None:
         """Cache bot user and compile mention regex on login."""
-        self._bot_user = self.user
-        if self.user is not None:
-            self._mention_re = re.compile(rf"<@!?{self.user.id}>")
-        log.info(
-            "Discord bot ready: %s (id=%s)",
-            self.user,
-            getattr(self.user, "id", "?"),
-        )
-        if not self.intents.message_content:
-            log.warning(
-                "message_content intent is disabled — "
-                "guild message content will be empty. "
-                "Enable 'Message Content Intent' in the Developer Portal."
-            )
-        # Restore hot threads from ThreadStore on startup.
-        if self._thread_store is not None:
-            try:
-                self._owned_threads = await restore_hot_threads(
-                    self._thread_store, self._bot_id, self._thread_hot_hours
-                )
-            except Exception:
-                log.exception("ThreadStore: failed to restore owned threads")
-        # Sync app_commands tree for each guild (guild-scoped = instant).
-        for guild in self.guilds:
-            try:
-                await self.tree.sync(guild=guild)
-                log.info("Synced app_commands for guild %s", guild.id)
-            except Exception:
-                log.warning(
-                    "Failed to sync app_commands for guild %s",
-                    guild.id,
-                    exc_info=True,
-                )
+        await _on_ready_impl(self)
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         """Sync app_commands tree when the bot joins a new guild."""
-        try:
-            await self.tree.sync(guild=guild)
-            log.info("Synced app_commands for new guild %s", guild.id)
-        except Exception:
-            log.warning(
-                "Failed to sync app_commands for new guild %s",
-                guild.id,
-                exc_info=True,
-            )
+        await _on_guild_join_impl(self, guild)
 
     async def on_voice_state_update(
         self,
@@ -217,12 +181,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         after: discord.VoiceState,
     ) -> None:
         """Invalidate stale voice session when the bot is forcibly disconnected."""
-        bot_user = self._bot_user
-        if bot_user is None or member.id != bot_user.id or after.channel is not None:
-            return
-        # member.guild is always set for voice state events (guild-only, no DM voice).
-        guild_id = str(member.guild.id)
-        self._vsm.invalidate(guild_id)
+        await _on_voice_state_update_impl(self, member, before, after)
 
     async def _handle_voice_command(
         self, message: Any, trust: TrustLevel = TrustLevel.TRUSTED

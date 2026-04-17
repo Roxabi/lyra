@@ -88,7 +88,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             finally:
                 await cred_store.close()
 
-            from lyra.core.stores.turn_store import TurnStore as TurnStore
+            from lyra.infrastructure.stores.turn_store import TurnStore as TurnStore
 
             tg_turn_store = TurnStore(db_path=vault_dir / "turns.db")
             await tg_turn_store.connect()
@@ -223,7 +223,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             dc_thread_store = ThreadStore(db_path=vault_dir / "discord.db")
             await dc_thread_store.connect()
 
-            from lyra.core.stores.turn_store import TurnStore
+            from lyra.infrastructure.stores.turn_store import TurnStore
 
             dc_turn_store = TurnStore(db_path=vault_dir / "turns.db")
             await dc_turn_store.connect()

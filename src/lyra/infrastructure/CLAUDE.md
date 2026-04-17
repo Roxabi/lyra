@@ -25,8 +25,9 @@ All files will be moved from `src/lyra/core/stores/`:
 | `pairing.py` | pending | `infrastructure/stores/pairing.py` |
 | `prefs_store.py` | pending | `infrastructure/stores/prefs_store.py` |
 | `thread_store.py` | pending | `infrastructure/stores/thread_store.py` |
-| `turn_store.py` | pending | `infrastructure/stores/turn_store.py` |
-| `turn_store_queries.py` | pending | `infrastructure/stores/turn_store_queries.py` |
+| `turn_store.py` | **migrated** | `infrastructure/stores/turn_store.py` |
+| `turn_store_queries.py` | **migrated** | `infrastructure/stores/turn_store_queries.py` |
+| `turn_store_session.py` | **migrated** | `infrastructure/stores/turn_store_session.py` |
 
 ## Files staying in core/stores
 

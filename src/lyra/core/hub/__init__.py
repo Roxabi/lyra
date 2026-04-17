@@ -15,7 +15,9 @@ from .middleware import (
     build_default_pipeline as build_default_pipeline,
 )
 from .outbound_dispatcher import OutboundDispatcher as OutboundDispatcher
+from .outbound_router import AudioDispatch as AudioDispatch
 from .outbound_router import OutboundRouter as OutboundRouter
+from .outbound_router import TtsDispatch as TtsDispatch
 from .pipeline_types import (
     Action as Action,
 )
@@ -25,6 +27,7 @@ from .pipeline_types import (
 
 __all__ = [
     "Action",
+    "AudioDispatch",
     "ChannelAdapter",
     "Hub",
     "IdentityResolver",
@@ -35,5 +38,6 @@ __all__ = [
     "PipelineContext",
     "PipelineResult",
     "RoutingKey",
+    "TtsDispatch",
     "build_default_pipeline",
 ]

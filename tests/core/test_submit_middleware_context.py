@@ -16,7 +16,7 @@ from tests.core.conftest import _make_hub, make_inbound_message
 
 if TYPE_CHECKING:
     from lyra.core.stores.message_index import MessageIndex
-    from lyra.core.stores.turn_store import TurnStore
+    from lyra.infrastructure.stores.turn_store import TurnStore
 
 # -------------------------------------------------------------------
 # Stubs

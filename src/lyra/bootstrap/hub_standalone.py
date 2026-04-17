@@ -8,24 +8,21 @@ import os
 import sys
 from pathlib import Path
 
-from lyra.bootstrap.agent_factory import _resolve_agents, _resolve_bot_agent_map
+from lyra.bootstrap.agent_factory import _resolve_bot_agent_map
+from lyra.bootstrap.auth_seeding import build_bot_auths, seed_auth_store
 from lyra.bootstrap.bootstrap_stores import open_stores
-from lyra.bootstrap.bootstrap_wiring import _build_bot_auths
 from lyra.bootstrap.config import (
     MessageIndexConfig,
     _build_agent_overrides,
-    _load_circuit_config,
-    _load_cli_pool_config,
-    _load_debouncer_config,
-    _load_event_bus_config,
-    _load_hub_config,
-    _load_inbound_bus_config,
-    _load_llm_config,
-    _load_messages,
     _load_pairing_config,
-    _load_pool_config,
 )
 from lyra.bootstrap.health import create_health_app
+from lyra.bootstrap.hub_builder import (
+    build_cli_pool,
+    build_hub,
+    build_inbound_bus,
+    register_agents,
+)
 from lyra.bootstrap.lifecycle_helpers import (
     setup_signal_handlers,
     teardown_buses,
@@ -33,20 +30,14 @@ from lyra.bootstrap.lifecycle_helpers import (
 )
 from lyra.bootstrap.llm_overlay import init_nats_llm
 from lyra.bootstrap.lockfile import acquire_lockfile, release_lockfile
+from lyra.bootstrap.nats_wiring import (
+    wire_nats_discord_proxies,
+    wire_nats_telegram_proxies,
+)
 from lyra.bootstrap.notify import notify_startup
 from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
-from lyra.config import load_multibot_config
-from lyra.core.agent import Agent
 from lyra.core.agent_loader import agent_row_to_config
-from lyra.core.cli_pool import CliPool
-from lyra.core.hub import Hub
-from lyra.core.hub.event_bus import PipelineEventBus
-from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
-from lyra.core.message import InboundMessage, Platform
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
-from lyra.nats.nats_bus import NatsBus
-from lyra.nats.nats_channel_proxy import NatsChannelProxy
-from lyra.nats.queue_groups import HUB_INBOUND
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import start_readiness_responder
@@ -83,14 +74,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
-    inbound_bus_cfg = _load_inbound_bus_config(raw_config)
-    inbound_bus: NatsBus[InboundMessage] = NatsBus(
-        nc=nc,
-        bot_id="hub",
-        item_type=InboundMessage,
-        staging_maxsize=inbound_bus_cfg.staging_maxsize,
-        queue_group=HUB_INBOUND,
-    )
+    inbound_bus, inbound_bus_cfg = build_inbound_bus(nc, raw_config)
+
     vault_dir = Path(
         os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
     ).resolve()
@@ -107,45 +92,27 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
                 mi_cfg.retention_days,
             )
 
-        # Seed per-bot owner/trusted users as permanent grants
-        auth_block: dict = raw_config.get("auth", {})
-        for entry in auth_block.get("telegram_bots", []):
-            synthetic = {"auth": {"telegram": entry}}
-            await stores.auth.seed_from_config(synthetic, "telegram")
-        for entry in auth_block.get("discord_bots", []):
-            synthetic = {"auth": {"discord": entry}}
-            await stores.auth.seed_from_config(synthetic, "discord")
-
-        circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
+        await seed_auth_store(stores.auth, raw_config)
 
         try:
-            tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
-        except ValueError as exc:
-            sys.exit(str(exc))
-
-        tg_bot_auths, dc_bot_auths = _build_bot_auths(
-            raw_config,
-            tg_multi_cfg,
-            dc_multi_cfg,
-            stores.auth,
-            admin_user_ids,
-        )
-        log.info("Authenticator: %d admin_user_id(s) configured", len(admin_user_ids))
-
-        if not tg_bot_auths and not dc_bot_auths:
-            sys.exit(
-                "No adapters configured — add at least one [[telegram.bots]] or"
-                " [[discord.bots]] entry with a matching [[auth.telegram_bots]] or"
-                " [[auth.discord_bots]] section to config.toml"
+            circuit_registry, admin_user_ids, tg_bot_auths, dc_bot_auths = (
+                build_bot_auths(raw_config, stores.auth)
             )
+        except ValueError as exc:
+            log.error("Configuration error: %s", exc)
+            sys.exit(str(exc))
 
         # Resolve (platform, bot_id) -> agent_name
         bot_agent_map = await _resolve_bot_agent_map(
-            stores.agent, tg_multi_cfg.bots, dc_multi_cfg.bots
+            stores.agent,
+            [cfg for cfg, _ in tg_bot_auths],
+            [cfg for cfg, _ in dc_bot_auths],
         )
         agent_names: set[str] = set(bot_agent_map.values())
 
         # Load all agent configs from DB
+        from lyra.core.agent import Agent
+
         agent_configs: dict[str, Agent] = {}
         for n in sorted(agent_names):
             row = stores.agent.get(n)
@@ -163,6 +130,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             )
         first_agent_name = next(iter(sorted(agent_configs)))
         first_agent_config = agent_configs[first_agent_name]
+
+        from lyra.bootstrap.config import _load_messages
 
         msg_manager = _load_messages(language=first_agent_config.i18n_language)
 
@@ -194,162 +163,55 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             await tts_service.start()
         nats_llm_driver = await init_nats_llm(nc)
 
-        cli_pool_cfg = _load_cli_pool_config(raw_config)
-        hub_cfg = _load_hub_config(raw_config)
-        pool_cfg = _load_pool_config(raw_config)
-        llm_cfg = _load_llm_config(raw_config)
-        debouncer_cfg = _load_debouncer_config(raw_config)
-        event_bus_cfg = _load_event_bus_config(raw_config)
-        event_bus = PipelineEventBus(maxsize=event_bus_cfg.queue_maxsize)
-
-        hub = Hub(
+        hub = build_hub(
+            raw_config,
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
             pairing_manager=pm,
-            stt=stt_service,
-            tts=tts_service,
-            debounce_ms=debouncer_cfg.default_debounce_ms,
-            cancel_on_new_message=debouncer_cfg.cancel_on_new_message,
+            stt_service=stt_service,
+            tts_service=tts_service,
             prefs_store=stores.prefs,
-            turn_timeout=cli_pool_cfg.turn_timeout,
-            pool_ttl=hub_cfg.pool_ttl,
-            rate_limit=hub_cfg.rate_limit,
-            rate_window=hub_cfg.rate_window,
-            max_sdk_history=pool_cfg.max_sdk_history,
-            safe_dispatch_timeout=pool_cfg.safe_dispatch_timeout,
-            staging_maxsize=inbound_bus_cfg.staging_maxsize,
-            platform_queue_maxsize=inbound_bus_cfg.platform_queue_maxsize,
-            queue_depth_threshold=inbound_bus_cfg.queue_depth_threshold,
-            max_merged_chars=debouncer_cfg.max_merged_chars,
-            event_bus=event_bus,
             inbound_bus=inbound_bus,
+            inbound_bus_cfg=inbound_bus_cfg,
         )
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)
 
-        # Build cli_pool if any agent needs it
-        cli_pool: CliPool | None = None
-        for cfg in agent_configs.values():
-            if cfg.llm_config.backend == "claude-cli":
-                cli_pool = CliPool(
-                    idle_ttl=cli_pool_cfg.idle_ttl,
-                    default_timeout=cli_pool_cfg.default_timeout,
-                    reaper_interval=cli_pool_cfg.reaper_interval,
-                    kill_timeout=cli_pool_cfg.kill_timeout,
-                    read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
-                    stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
-                    max_idle_retries=cli_pool_cfg.max_idle_retries,
-                    intermediate_timeout=cli_pool_cfg.intermediate_timeout,
-                )
-                await cli_pool.start()
-                cli_pool.set_turn_store(stores.turn)
-                break
+        cli_pool = await build_cli_pool(raw_config, agent_configs)
+        if cli_pool is not None:
+            cli_pool.set_turn_store(stores.turn)
         hub.cli_pool = cli_pool
 
-        # Create and register all agents
-        all_agents = _resolve_agents(
+        register_agents(
+            hub,
             agent_configs,
             cli_pool,
             circuit_registry,
             msg_manager,
             stt_service,
             tts_service,
-            agent_store=stores.agent,
-            llm_cfg=llm_cfg,
-            nats_llm_driver=nats_llm_driver,
+            stores.agent,
+            raw_config,
+            nats_llm_driver,
         )
-        for ag in all_agents.values():
-            hub.register_agent(ag)
 
         # Wire each (platform, bot_id) to a NatsChannelProxy + OutboundDispatcher
-        from lyra.core.hub.hub_protocol import RoutingKey
-
-        dispatchers: list[OutboundDispatcher] = []
-        proxies: list[NatsChannelProxy] = []
-
-        for bot_cfg, auth in tg_bot_auths:
-            resolved_agent = bot_agent_map.get(("telegram", bot_cfg.bot_id))
-            if resolved_agent is None:
-                log.warning(
-                    "telegram bot_id=%r not in bot_agent_map — skipping",
-                    bot_cfg.bot_id,
-                )
-                continue
-
-            proxy = NatsChannelProxy(
-                nc=nc, platform=Platform.TELEGRAM, bot_id=bot_cfg.bot_id
-            )
-            proxies.append(proxy)
-            hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
-            hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, proxy)
-
-            tg_key = RoutingKey(Platform.TELEGRAM, bot_cfg.bot_id, "*")
-            hub.register_binding(
-                Platform.TELEGRAM,
-                bot_cfg.bot_id,
-                "*",
-                resolved_agent,
-                tg_key.to_pool_id(),
-            )
-
-            dispatcher = OutboundDispatcher(
-                platform_name="telegram",
-                adapter=proxy,
-                circuit=circuit_registry.get("telegram"),
-                circuit_registry=circuit_registry,
-                bot_id=bot_cfg.bot_id,
-            )
-            hub.register_outbound_dispatcher(
-                Platform.TELEGRAM, bot_cfg.bot_id, dispatcher
-            )
-            dispatchers.append(dispatcher)
-            log.info(
-                "Registered NATS proxy: telegram bot_id=%r agent=%r",
-                bot_cfg.bot_id,
-                resolved_agent,
-            )
-
-        for bot_cfg, auth in dc_bot_auths:
-            resolved_agent = bot_agent_map.get(("discord", bot_cfg.bot_id))
-            if resolved_agent is None:
-                log.warning(
-                    "discord bot_id=%r not in bot_agent_map — skipping",
-                    bot_cfg.bot_id,
-                )
-                continue
-
-            proxy = NatsChannelProxy(
-                nc=nc, platform=Platform.DISCORD, bot_id=bot_cfg.bot_id
-            )
-            proxies.append(proxy)
-            hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
-            hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, proxy)
-
-            dc_key = RoutingKey(Platform.DISCORD, bot_cfg.bot_id, "*")
-            hub.register_binding(
-                Platform.DISCORD,
-                bot_cfg.bot_id,
-                "*",
-                resolved_agent,
-                dc_key.to_pool_id(),
-            )
-
-            dispatcher = OutboundDispatcher(
-                platform_name="discord",
-                adapter=proxy,
-                circuit=circuit_registry.get("discord"),
-                circuit_registry=circuit_registry,
-                bot_id=bot_cfg.bot_id,
-            )
-            hub.register_outbound_dispatcher(
-                Platform.DISCORD, bot_cfg.bot_id, dispatcher
-            )
-            dispatchers.append(dispatcher)
-            log.info(
-                "Registered NATS proxy: discord bot_id=%r agent=%r",
-                bot_cfg.bot_id,
-                resolved_agent,
-            )
+        tg_proxies, tg_dispatchers = wire_nats_telegram_proxies(
+            hub=hub,
+            nc=nc,
+            tg_bot_auths=tg_bot_auths,
+            bot_agent_map=bot_agent_map,
+            circuit_registry=circuit_registry,
+        )
+        dc_proxies, dc_dispatchers = wire_nats_discord_proxies(
+            hub=hub,
+            nc=nc,
+            dc_bot_auths=dc_bot_auths,
+            bot_agent_map=bot_agent_map,
+            circuit_registry=circuit_registry,
+        )
+        proxies = tg_proxies + dc_proxies
+        dispatchers = tg_dispatchers + dc_dispatchers
 
         # Lifecycle: start buses, dispatchers, hub, health server
         await hub.inbound_bus.start()

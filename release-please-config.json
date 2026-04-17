@@ -2,6 +2,18 @@
   "release-type": "python",
   "target-branch": "main",
   "packages": {
-    ".": {}
+    ".": {},
+    "packages/roxabi-nats": {
+      "release-type": "python",
+      "component": "roxabi-nats",
+      "tag-name": "roxabi-nats/v${version}",
+      "package-name": "roxabi-nats"
+    },
+    "packages/roxabi-contracts": {
+      "release-type": "python",
+      "component": "roxabi-contracts",
+      "tag-name": "roxabi-contracts/v${version}",
+      "package-name": "roxabi-contracts"
+    }
   }
 }

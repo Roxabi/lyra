@@ -2277,6 +2277,7 @@ dependencies = [
 testing = [
     { name = "nats-py" },
     { name = "roxabi-nats" },
+    { name = "scipy" },
 ]
 
 [package.metadata]
@@ -2284,6 +2285,7 @@ requires-dist = [
     { name = "nats-py", marker = "extra == 'testing'", specifier = ">=2.6" },
     { name = "pydantic", specifier = ">=2" },
     { name = "roxabi-nats", marker = "extra == 'testing'", editable = "packages/roxabi-nats" },
+    { name = "scipy", marker = "extra == 'testing'", specifier = ">=1.11" },
 ]
 provides-extras = ["testing"]
 

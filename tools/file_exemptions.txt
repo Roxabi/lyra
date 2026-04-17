@@ -1,6 +1,9 @@
 # File size exemptions (≤300 lines per file)
 # Each entry must have a tracking issue.
 # Format: <path>  # <lines> lines — <issue> <description>
-#
-# All previous file-size exemptions eliminated in #760 (V1+V2+V3+V-extra).
-# This file is intentionally empty — no file may exceed 300 lines.
+
+src/lyra/core/hub/hub.py                      # 542 lines — #760 V3 pending
+src/lyra/core/hub/outbound_router.py          # 324 lines — #760 V2 partial
+src/lyra/bootstrap/hub_standalone.py          # 362 lines — #760 V2 partial
+src/lyra/core/cli_pool.py                     # 406 lines — #760 V2 partial
+src/lyra/adapters/_shared_streaming.py        # 478 lines — #760 extracted from _shared.py

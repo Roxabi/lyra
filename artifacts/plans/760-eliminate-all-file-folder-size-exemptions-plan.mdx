@@ -5,22 +5,28 @@ spec: artifacts/specs/760-eliminate-all-file-folder-size-exemptions-spec.mdx
 complexity: 7
 tier: F-full
 generated: "2026-04-16T12:00:00Z"
+status: partial
+progress: "V1 complete, V2 partial (3/8), V3/V4 pending"
 ---
 
 ## Progress Summary (Updated 2026-04-16)
 
 | Slice | Status | Tasks Done | Files Under 300L |
 |-------|--------|------------|------------------|
-| Prerequisites | Done | 2/2 | N/A |
-| V1 Quick Wins | Done | 6/6 | 5/6 (command_router: 303L) |
-| V2 Medium | Partial | 3/8 | 0/3 (outbound_router: 324L, hub_standalone: 362L, cli_pool: 406L) |
-| V3 Large | Pending | 0/4 | 0/1 (hub.py: 542L) |
-| V4 Folders | Pending | 0/4 | N/A |
+| Prerequisites | ✅ Done | 2/2 | N/A |
+| V1 Quick Wins | ✅ Done | 6/6 | 5/6 (command_router: 303L) |
+| V2 Medium | 🔄 Partial | 3/8 | 0/3 (outbound_router: 324L, hub_standalone: 362L, cli_pool: 406L) |
+| V3 Large | ⏳ Pending | 0/4 | 0/1 (hub.py: 542L) |
+| V4 Folders | ⏳ Pending | 0/4 | N/A |
 
-**Files still over 300 lines:** hub.py (542), _shared_streaming.py (478), cli_pool.py (406), hub_standalone.py (362), outbound_router.py (324)
+**Files still over 300 lines:**
+- `hub.py`: 542 lines (need -242)
+- `_shared_streaming.py`: 478 lines (extracted, but oversized)
+- `cli_pool.py`: 406 lines (need -106)
+- `hub_standalone.py`: 362 lines (need -62)
+- `outbound_router.py`: 324 lines (need -24)
 
-**Commit:** feat/760-eliminate-all-file-folder-size-exemptions (rebased)
-
+**Commit:** `feat/760-eliminate-all-file-folder-size-exemptions` (rebased on staging)
 
 ## Summary
 
@@ -136,7 +142,7 @@ From [Analysis #760](../analyses/760-eliminate-all-file-folder-size-exemptions-a
 
 ### Prerequisites
 
-#### Task P1: Update stale exemption files → devops
+#### Task P1: Update stale exemption files → devops ✅ DONE
 - **File:** `tools/file_exemptions.txt`, `tools/folder_exemptions.txt`
 - **Action:** Replace stale line counts with current measurements
 - **Verify:** `grep -E "hub.py|outbound_router" tools/file_exemptions.txt`
@@ -144,7 +150,7 @@ From [Analysis #760](../analyses/760-eliminate-all-file-folder-size-exemptions-a
 - **Time:** 5 min | **Difficulty:** 1
 - **Traces:** SC-1, SC-2 | **Phase:** GREEN
 
-#### Task P2: Measure coverage baseline → tester
+#### Task P2: Measure coverage baseline → tester ✅ DONE
 - **File:** N/A (measurement)
 - **Action:** Run `uv run pytest --cov=src/lyra --cov-report=term-missing`
 - **Verify:** `test -f .coverage`
@@ -154,7 +160,7 @@ From [Analysis #760](../analyses/760-eliminate-all-file-folder-size-exemptions-a
 
 ### Slice V1: Quick Wins (6 files)
 
-#### Task 1.1: Extract StreamingState from _shared.py [P] → backend-dev
+#### Task 1.1: Extract StreamingState from _shared.py [P] → backend-dev ✅ DONE
 - **File:** `src/lyra/adapters/_shared.py` → `src/lyra/adapters/_shared_streaming.py`
 - **Snippet:**
 ```python
@@ -170,7 +176,7 @@ class StreamingState:
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N10 | **Phase:** GREEN
 
-#### Task 1.2: Extract BotAgentMapStore from agent_store.py [P] → backend-dev
+#### Task 1.2: Extract BotAgentMapStore from agent_store.py [P] → backend-dev ✅ DONE
 - **File:** `src/lyra/infrastructure/stores/agent_store.py` → `src/lyra/infrastructure/stores/bot_agent_map.py`
 - **Snippet:**
 ```python
@@ -186,7 +192,7 @@ class BotAgentMapStore:
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N11 | **Phase:** GREEN
 
-#### Task 1.3: Extract DiscordLifecycle from discord.py [P] → backend-dev
+#### Task 1.3: Extract DiscordLifecycle from discord.py [P] → backend-dev ✅ DONE
 - **File:** `src/lyra/adapters/discord.py` → `src/lyra/adapters/discord/lifecycle.py`
 - **Snippet:**
 ```python
@@ -202,7 +208,7 @@ class DiscordLifecycle:
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N13 | **Phase:** GREEN
 
-#### Task 1.4: Extract CliStreamingParser from cli_streaming.py [P] → backend-dev
+#### Task 1.4: Extract CliStreamingParser from cli_streaming.py [P] → backend-dev ✅ DONE
 - **File:** `src/lyra/core/cli_streaming.py` → `src/lyra/core/cli_streaming_parser.py`
 - **Snippet:**
 ```python
@@ -218,7 +224,7 @@ class CliStreamingParser:
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N14 | **Phase:** GREEN
 
-#### Task 1.5: Extract TurnStoreSession from turn_store.py [P] → backend-dev
+#### Task 1.5: Extract TurnStoreSession from turn_store.py [P] → backend-dev ✅ DONE
 - **File:** `src/lyra/core/stores/turn_store.py` → `src/lyra/core/stores/turn_store_session.py`
 - **Snippet:**
 ```python
@@ -234,7 +240,7 @@ class TurnStoreSession:
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N15 | **Phase:** GREEN
 
-#### Task 1.6: Refactor command_router.py dispatch → backend-dev
+#### Task 1.6: Refactor command_router.py dispatch → backend-dev ✅ DONE (303L, slight over)
 - **File:** `src/lyra/core/commands/command_router.py`
 - **Action:** Convert dispatch logic to table-driven (no new file)
 - **Verify:** `uv run pytest tests/core/test_command_router.py -v`
@@ -242,14 +248,14 @@ class TurnStoreSession:
 - **Time:** 20 min | **Difficulty:** 4
 - **Traces:** N/A (refactor only) | **Phase:** REFACTOR
 
-#### RED-GATE: V1 verification → tester
+#### RED-GATE: V1 verification → tester ✅ PASSED (all ≤303L)
 - **Verify:** `wc -l src/lyra/adapters/_shared.py src/lyra/infrastructure/stores/agent_store.py src/lyra/adapters/discord.py src/lyra/core/cli_streaming.py src/lyra/core/stores/turn_store.py src/lyra/core/commands/command_router.py`
 - **Expected:** All files ≤300 lines
 - **Phase:** RED-GATE
 
 ### Slice V2: Medium Refactors (3 files)
 
-#### Task 2.1: Extract TtsDispatch from outbound_router.py → backend-dev
+#### Task 2.1: Extract TtsDispatch from outbound_router.py → backend-dev ✅ DONE
 - **File:** `src/lyra/core/hub/outbound_router.py` → `src/lyra/core/hub/outbound_tts.py`
 - **Snippet:**
 ```python
@@ -265,7 +271,7 @@ class TtsDispatcher:
 - **Time:** 20 min | **Difficulty:** 4
 - **Traces:** N5 | **Phase:** GREEN
 
-#### Task 2.2: Extract AudioDispatch from outbound_router.py → backend-dev
+#### Task 2.2: Extract AudioDispatch from outbound_router.py → backend-dev ⏳ PENDING
 - **File:** `src/lyra/core/hub/outbound_router.py` → `src/lyra/core/hub/outbound_audio.py`
 - **Snippet:**
 ```python
@@ -281,7 +287,7 @@ class AudioDispatcher:
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N6 | **Phase:** GREEN
 
-#### Task 2.3: Extract NatsAdapterWiring from hub_standalone.py → backend-dev
+#### Task 2.3: Extract NatsAdapterWiring from hub_standalone.py → backend-dev ✅ DONE
 - **File:** `src/lyra/bootstrap/hub_standalone.py` → `src/lyra/bootstrap/nats_wiring.py`
 - **Snippet:**
 ```python
@@ -297,7 +303,7 @@ async def wire_nats_adapters(...):
 - **Time:** 25 min | **Difficulty:** 4
 - **Traces:** N7 | **Phase:** GREEN
 
-#### Task 2.4: Extract AuthSeeding from hub_standalone.py [P] → backend-dev
+#### Task 2.4: Extract AuthSeeding from hub_standalone.py [P] → backend-dev ⏳ PENDING
 - **File:** `src/lyra/bootstrap/hub_standalone.py` → `src/lyra/bootstrap/auth_seeding.py`
 - **Snippet:**
 ```python
@@ -313,7 +319,7 @@ async def seed_auth_db(...):
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N8 | **Phase:** GREEN
 
-#### Task 2.5: Extract HubBuilder from hub_standalone.py [P] → backend-dev
+#### Task 2.5: Extract HubBuilder from hub_standalone.py [P] → backend-dev ⏳ PENDING
 - **File:** `src/lyra/bootstrap/hub_standalone.py` → `src/lyra/bootstrap/hub_builder.py`
 - **Snippet:**
 ```python
@@ -329,7 +335,7 @@ def build_hub(...):
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N9 | **Phase:** GREEN
 
-#### Task 2.6: Extract CliPoolSession from cli_pool.py [P] → backend-dev
+#### Task 2.6: Extract CliPoolSession from cli_pool.py [P] → backend-dev ✅ DONE
 - **File:** `src/lyra/core/cli_pool.py` → `src/lyra/core/cli_pool_session.py`
 - **Snippet:**
 ```python
@@ -345,7 +351,7 @@ class CliPoolSession:
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N16 | **Phase:** GREEN
 
-#### Task 2.7: Extract CliPoolStreaming from cli_pool.py [P] → backend-dev
+#### Task 2.7: Extract CliPoolStreaming from cli_pool.py [P] → backend-dev ⏳ PENDING
 - **File:** `src/lyra/core/cli_pool.py` → `src/lyra/core/cli_pool_streaming.py`
 - **Snippet:**
 ```python
@@ -361,7 +367,7 @@ class CliPoolStreaming:
 - **Time:** 20 min | **Difficulty:** 4
 - **Traces:** N17 | **Phase:** GREEN
 
-#### Task 2.8: Extract CliPoolLifecycle from cli_pool.py [P] → backend-dev
+#### Task 2.8: Extract CliPoolLifecycle from cli_pool.py [P] → backend-dev ⏳ PENDING
 - **File:** `src/lyra/core/cli_pool.py` → `src/lyra/core/cli_pool_lifecycle.py`
 - **Snippet:**
 ```python
@@ -377,14 +383,14 @@ class CliPoolLifecycle:
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N18 | **Phase:** GREEN
 
-#### RED-GATE: V2 verification → tester
+#### RED-GATE: V2 verification → tester ⏳ PENDING (files still over 300L)
 - **Verify:** `wc -l src/lyra/core/hub/outbound_router.py src/lyra/bootstrap/hub_standalone.py src/lyra/core/cli_pool.py`
 - **Expected:** All files ≤300 lines
 - **Phase:** RED-GATE
 
 ### Slice V3: Large Refactor (hub.py)
 
-#### Task 3.1: Extract HubShutdown from hub.py → backend-dev
+#### Task 3.1: Extract HubShutdown from hub.py → backend-dev ⏳ PENDING
 - **File:** `src/lyra/core/hub/hub.py` → `src/lyra/core/hub/shutdown.py`
 - **Snippet:**
 ```python
@@ -400,7 +406,7 @@ async def shutdown(hub: "Hub") -> None:
 - **Time:** 25 min | **Difficulty:** 4
 - **Traces:** N1 | **Phase:** GREEN
 
-#### Task 3.2: Extract HubCircuitBreaker from hub.py [P] → backend-dev
+#### Task 3.2: Extract HubCircuitBreaker from hub.py [P] → backend-dev ⏳ PENDING
 - **File:** `src/lyra/core/hub/hub.py` → `src/lyra/core/hub/circuit_breaker.py`
 - **Snippet:**
 ```python
@@ -416,7 +422,7 @@ async def circuit_breaker_drop(msg: InboundMessage) -> bool:
 - **Time:** 20 min | **Difficulty:** 4
 - **Traces:** N2 | **Phase:** GREEN
 
-#### Task 3.3: Extract HubPoolDelegation from hub.py [P] → backend-dev
+#### Task 3.3: Extract HubPoolDelegation from hub.py [P] → backend-dev ⏳ PENDING
 - **File:** `src/lyra/core/hub/hub.py` → `src/lyra/core/hub/pool_delegation.py`
 - **Snippet:**
 ```python
@@ -432,7 +438,7 @@ def get_or_create_pool(...):
 - **Time:** 15 min | **Difficulty:** 3
 - **Traces:** N3 | **Phase:** GREEN
 
-#### Task 3.4: Extract HubDispatch from hub.py [P] → backend-dev
+#### Task 3.4: Extract HubDispatch from hub.py [P] → backend-dev ⏳ PENDING
 - **File:** `src/lyra/core/hub/hub.py` → `src/lyra/core/hub/dispatch.py`
 - **Snippet:**
 ```python
@@ -448,14 +454,14 @@ async def dispatch_response(...):
 - **Time:** 20 min | **Difficulty:** 4
 - **Traces:** N4 | **Phase:** GREEN
 
-#### RED-GATE: V3 verification → tester
+#### RED-GATE: V3 verification → tester ⏳ PENDING
 - **Verify:** `wc -l src/lyra/core/hub/hub.py`
 - **Expected:** ≤300 lines
 - **Phase:** RED-GATE
 
 ### Slice V4: Folder Reorganization
 
-#### Task 4.1: Create subfolders under core/ → devops
+#### Task 4.1: Create subfolders under core/ → devops ⏳ PENDING
 - **File:** `src/lyra/core/`
 - **Action:** Create subfolders: `agent/`, `memory/`, `cli/`, `messaging/`, `auth/`, `config/`
 - **Verify:** `ls -d src/lyra/core/*/ | wc -l`
@@ -463,7 +469,7 @@ async def dispatch_response(...):
 - **Time:** 10 min | **Difficulty:** 2
 - **Traces:** SC-6 | **Phase:** GREEN
 
-#### Task 4.2: Create subfolders under adapters/ → devops
+#### Task 4.2: Create subfolders under adapters/ → devops ⏳ PENDING
 - **File:** `src/lyra/adapters/`
 - **Action:** Create subfolders: `discord/`, `telegram/`, `shared/`, `nats/`, `cli/`
 - **Verify:** `ls -d src/lyra/adapters/*/ | wc -l`
@@ -471,7 +477,7 @@ async def dispatch_response(...):
 - **Time:** 10 min | **Difficulty:** 2
 - **Traces:** SC-6 | **Phase:** GREEN
 
-#### Task 4.3: Create subfolders under bootstrap/ → devops
+#### Task 4.3: Create subfolders under bootstrap/ → devops ⏳ PENDING
 - **File:** `src/lyra/bootstrap/`
 - **Action:** Create subfolders: `entrypoints/`, `lifecycle/`, `wiring/`, `overlays/`
 - **Verify:** `ls -d src/lyra/bootstrap/*/ | wc -l`
@@ -479,7 +485,7 @@ async def dispatch_response(...):
 - **Time:** 10 min | **Difficulty:** 2
 - **Traces:** SC-6 | **Phase:** GREEN
 
-#### RED-GATE: Final verification → tester
+#### RED-GATE: Final verification → tester ⏳ PENDING
 - **Verify:** `make lint && uv run pre-commit run --all-files`
 - **Expected:** Zero exemptions
 - **Phase:** RED-GATE

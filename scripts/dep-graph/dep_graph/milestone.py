@@ -147,7 +147,7 @@ MILESTONE_ORDER = [
 
 # Lane groups for column display (merge sub-lanes into major lanes)
 LANE_GROUPS = {
-    "A": ["a1", "a2"],  # NATS maturity + SDK
+    "A": ["a1", "a2", "a3"],  # NATS maturity + SDK + contracts
     "B": ["b"],  # Containerize
     "C": ["c1", "c2", "c3"],  # LLM stack (LiteLLM, harness, CLI)
     "D": ["d"],  # Observability

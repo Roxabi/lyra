@@ -1,8 +1,12 @@
 {
   "release-type": "python",
   "target-branch": "main",
+  "separate-pull-requests": true,
   "packages": {
-    ".": {},
+    ".": {
+      "component": "lyra",
+      "package-name": "lyra"
+    },
     "packages/roxabi-nats": {
       "release-type": "python",
       "component": "roxabi-nats",

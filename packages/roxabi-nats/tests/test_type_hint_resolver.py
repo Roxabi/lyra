@@ -65,6 +65,7 @@ def test_resolver_resolves_stub_type() -> None:
 
 def test_empty_resolver_no_typechecking_hints() -> None:
     """Empty resolver round-trips a plain dataclass with no TYPE_CHECKING fields."""
+
     # Arrange
     @dataclass
     class Plain:
@@ -87,10 +88,12 @@ def test_empty_resolver_no_typechecking_hints() -> None:
 def test_duplicate_entries_deduped() -> None:
     """Duplicate (module, name) pairs collapse to a single entry."""
     # Arrange / Act
-    r = _TypeHintResolver([
-        ("roxabi_nats._test_stub_module", "StubInner"),
-        ("roxabi_nats._test_stub_module", "StubInner"),
-    ])
+    r = _TypeHintResolver(
+        [
+            ("roxabi_nats._test_stub_module", "StubInner"),
+            ("roxabi_nats._test_stub_module", "StubInner"),
+        ]
+    )
 
     # Assert
     assert len(r.entries) == 1

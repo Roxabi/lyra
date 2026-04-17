@@ -25,7 +25,8 @@ from lyra.core.message import (
 from lyra.core.render_events import RenderEvent
 from lyra.core.trust import TrustLevel
 from lyra.nats.render_event_codec import NatsRenderEventCodec
-from roxabi_nats._serialize import serialize
+from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+from roxabi_nats._serialize import _TypeHintResolver, serialize
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +47,14 @@ class NatsChannelProxy:
     render_audio_stream() and render_voice_stream() are not yet implemented (C5).
     """
 
-    def __init__(self, nc: NATS, platform: Platform, bot_id: str) -> None:
+    def __init__(
+        self,
+        nc: NATS,
+        platform: Platform,
+        bot_id: str,
+        *,
+        resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+    ) -> None:
         """Store nc, platform, bot_id. No I/O."""
         if not re.fullmatch(r"[A-Za-z0-9_-]+", bot_id):
             raise ValueError(
@@ -56,6 +64,7 @@ class NatsChannelProxy:
         self._nc = nc
         self._platform = platform
         self._bot_id = bot_id
+        self._resolver = resolver
         self._active_streams: set[str] = set()
 
     # ------------------------------------------------------------------
@@ -89,8 +98,12 @@ class NatsChannelProxy:
         envelope = {
             "type": "send",
             "stream_id": original_msg.id,
-            "outbound": json.loads(serialize(outbound).decode("utf-8")),
-            "original_msg": json.loads(serialize(original_msg).decode("utf-8")),
+            "outbound": json.loads(
+                serialize(outbound, resolver=self._resolver).decode("utf-8")
+            ),
+            "original_msg": json.loads(
+                serialize(original_msg, resolver=self._resolver).decode("utf-8")
+            ),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
         await self._nc.publish(subject, payload)
@@ -112,8 +125,12 @@ class NatsChannelProxy:
             header = {
                 "type": "stream_start",
                 "stream_id": original_msg.id,
-                "outbound": json.loads(serialize(outbound).decode("utf-8")),
-                "original_msg": json.loads(serialize(original_msg).decode("utf-8")),
+                "outbound": json.loads(
+                    serialize(outbound, resolver=self._resolver).decode("utf-8")
+                ),
+                "original_msg": json.loads(
+                    serialize(original_msg, resolver=self._resolver).decode("utf-8")
+                ),
             }
             await self._nc.publish(
                 subject,
@@ -215,8 +232,12 @@ class NatsChannelProxy:
         envelope = {
             "type": "audio",
             "stream_id": inbound.id,
-            "audio": json.loads(serialize(msg).decode("utf-8")),
-            "original_msg": json.loads(serialize(inbound).decode("utf-8")),
+            "audio": json.loads(
+                serialize(msg, resolver=self._resolver).decode("utf-8")
+            ),
+            "original_msg": json.loads(
+                serialize(inbound, resolver=self._resolver).decode("utf-8")
+            ),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
         await self._nc.publish(subject, payload)
@@ -259,7 +280,9 @@ class NatsChannelProxy:
         envelope = {
             "type": "attachment",
             "stream_id": inbound.id,
-            "attachment": json.loads(serialize(msg).decode("utf-8")),
+            "attachment": json.loads(
+                serialize(msg, resolver=self._resolver).decode("utf-8")
+            ),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
         await self._nc.publish(subject, payload)

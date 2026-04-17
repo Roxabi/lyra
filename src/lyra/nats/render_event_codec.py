@@ -18,14 +18,13 @@ from lyra.core.render_events import (
     TextRenderEvent,
     ToolSummaryRenderEvent,
 )
-from roxabi_nats._serialize import deserialize, serialize
+from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+from roxabi_nats._serialize import _TypeHintResolver, deserialize, serialize
 from roxabi_nats._version_check import check_schema_version
 
 
 class NatsRenderEventCodec:
     """Encode/decode pair for RenderEvent ↔ NATS chunk payload.
-
-    All methods are static — instantiation is not required.
 
     Wire format per chunk::
 
@@ -40,6 +39,9 @@ class NatsRenderEventCodec:
     ``"stream_end"`` is a synthetic terminal sentinel emitted by
     ``NatsChannelProxy``; ``decode()`` returns ``None`` for it.
     """
+
+    def __init__(self, *, resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER) -> None:
+        self._resolver = resolver
 
     @staticmethod
     def encode(event: RenderEvent) -> tuple[str, dict, bool]:
@@ -60,6 +62,7 @@ class NatsRenderEventCodec:
         payload: dict,
         *,
         counter: dict[str, int] | None = None,
+        resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
     ) -> RenderEvent | None:
         """Reconstruct a ``RenderEvent`` from *(event_type, payload_dict)*.
 
@@ -73,6 +76,7 @@ class NatsRenderEventCodec:
             counter:    Caller-owned mutable dict; incremented at
                         ``counter[envelope_name]`` on every version-check drop.
                         Pass ``None`` to skip counting.
+            resolver:   Type-hint resolver for deserialization.
         """
         if event_type == "text":
             if not check_schema_version(
@@ -85,6 +89,7 @@ class NatsRenderEventCodec:
             return deserialize(
                 json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                 TextRenderEvent,
+                resolver=resolver,
             )
         if event_type == "tool_summary":
             if not check_schema_version(

@@ -53,17 +53,15 @@ class _TypeHintResolver:
             try:
                 mod = importlib.import_module(module_path)
             except ImportError as exc:
-                raise ValueError(
-                    f"type_registry: cannot import {module_path}"
-                ) from exc
+                raise ValueError(f"type_registry: cannot import {module_path}") from exc
             if not hasattr(mod, type_name):
                 raise ValueError(
                     f"type_registry: {module_path} has no attribute {type_name}"
                 )
             resolved[type_name] = getattr(mod, type_name)
         self.entries: tuple[tuple[str, str], ...] = tuple(deduped)
-        self.resolved: types.MappingProxyType[str, type] = (
-            types.MappingProxyType(resolved)
+        self.resolved: types.MappingProxyType[str, type] = types.MappingProxyType(
+            resolved
         )
 
     def localns(self) -> dict[str, Any]:

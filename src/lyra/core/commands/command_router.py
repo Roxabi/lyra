@@ -1,7 +1,4 @@
-"""Command router — dispatch slash commands to builtins, processor commands, or plugins.
-
-Builtins: builtin_commands.py, workspace_commands.py. Processors: processor_registry.py.
-"""
+"""Command router — dispatch slash commands to builtins, processors, or plugins."""
 
 from __future__ import annotations
 
@@ -114,6 +111,7 @@ class CommandRouter:
         try:
             importlib.import_module("lyra.core.processors")
             from lyra.core.processor_registry import registry as _proc_registry
+
             for cmd, desc in _proc_registry.descriptions().items():
                 if cmd in self._passthroughs:
                     result.append((cmd, desc, False))
@@ -165,6 +163,7 @@ class CommandRouter:
 
     def _build_builtin_handlers(self) -> dict[str, BuiltinHandler]:
         """Build dispatch table for builtin commands."""
+
         def _stop(_a: list, _m: InboundMessage, p: Pool | None) -> Response:
             if p:
                 p.cancel()
@@ -181,6 +180,7 @@ class CommandRouter:
             if p:
                 p.voice_mode = False
             return Response(content="Voice mode off — text-only replies.")
+
         return {
             "/help": lambda a, m, p: builtin_commands.help_command(
                 self._builtins,

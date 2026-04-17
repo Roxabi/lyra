@@ -82,10 +82,13 @@ class TestRegisterAgents:
 
         import lyra.bootstrap.hub_builder as hub_builder_mod
 
-        with patch.object(hub, "register_agent") as mock_register, patch.object(
-            hub_builder_mod,
-            "_resolve_agents",
-            return_value={"alpha": mock_alpha, "beta": mock_beta},
+        with (
+            patch.object(hub, "register_agent") as mock_register,
+            patch.object(
+                hub_builder_mod,
+                "_resolve_agents",
+                return_value={"alpha": mock_alpha, "beta": mock_beta},
+            ),
         ):
             # Act
             register_agents(

@@ -15,18 +15,26 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 
 import pytest
 from nats.aio.client import Client as NATS
 
 import nats
-from conftest import requires_nats_server  # noqa: PLC2701
 from roxabi_nats.readiness import (
     PROBE_INTERVAL_S,
     PROBE_TIMEOUT_S,
     READINESS_SUBJECT,
     start_readiness_responder,
     wait_for_hub,
+)
+
+# Mark inlined to avoid cross-conftest import path problems when the package
+# test suite is collected under the repo-root rootdir. The package's own
+# conftest.py defines the same marker for other test files in this dir.
+requires_nats_server = pytest.mark.skipif(
+    shutil.which("nats-server") is None,
+    reason="nats-server not found in PATH — install via 'make nats-install'",
 )
 
 # ---------------------------------------------------------------------------

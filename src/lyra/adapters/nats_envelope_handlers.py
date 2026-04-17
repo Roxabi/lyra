@@ -19,6 +19,8 @@ from lyra.core.message import (
     OutboundAudio,
     OutboundMessage,
 )
+from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+from roxabi_nats._serialize import _TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict as _deserialize_dict
 from roxabi_nats._version_check import check_schema_version
 
@@ -31,7 +33,12 @@ _MAX_STREAMS = 100
 _MAX_QUEUE_SIZE = 256
 
 
-async def handle_send(listener: "NatsOutboundListener", data: dict) -> None:
+async def handle_send(
+    listener: "NatsOutboundListener",
+    data: dict,
+    *,
+    resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+) -> None:
     """Handle 'send' envelope — resolve cached msg, deserialize, dispatch."""
     resolved = listener._cache.resolve(data, "send")
     if resolved is None:
@@ -44,7 +51,7 @@ async def handle_send(listener: "NatsOutboundListener", data: dict) -> None:
     if not _check_outbound_version(listener, outbound_data, "OutboundMessage"):
         return
     try:
-        outbound = _deserialize_dict(outbound_data, OutboundMessage)
+        outbound = _deserialize_dict(outbound_data, OutboundMessage, resolver=resolver)
     except Exception:
         log.warning("NatsOutboundListener: failed to deserialize outbound message")
         return
@@ -52,7 +59,12 @@ async def handle_send(listener: "NatsOutboundListener", data: dict) -> None:
     listener._cache.pop(stream_id)
 
 
-async def handle_attachment(listener: "NatsOutboundListener", data: dict) -> None:
+async def handle_attachment(
+    listener: "NatsOutboundListener",
+    data: dict,
+    *,
+    resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+) -> None:
     """Handle 'attachment' envelope type — resolve, deserialize, dispatch to adapter."""
     resolved = listener._cache.resolve(data, "attachment")
     if resolved is None:
@@ -65,7 +77,9 @@ async def handle_attachment(listener: "NatsOutboundListener", data: dict) -> Non
     if not _check_outbound_version(listener, attachment_data, "OutboundAttachment"):
         return
     try:
-        attachment = _deserialize_dict(attachment_data, OutboundAttachment)
+        attachment = _deserialize_dict(
+            attachment_data, OutboundAttachment, resolver=resolver
+        )
     except Exception:
         log.warning("NatsOutboundListener: failed to deserialize attachment")
         return
@@ -73,7 +87,12 @@ async def handle_attachment(listener: "NatsOutboundListener", data: dict) -> Non
     listener._cache.pop(stream_id)
 
 
-async def handle_audio(listener: "NatsOutboundListener", data: dict) -> None:
+async def handle_audio(
+    listener: "NatsOutboundListener",
+    data: dict,
+    *,
+    resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+) -> None:
     """Handle 'audio' envelope type — resolve, deserialize, dispatch to adapter."""
     resolved = listener._cache.resolve(data, "audio")
     if resolved is None:
@@ -84,7 +103,7 @@ async def handle_audio(listener: "NatsOutboundListener", data: dict) -> None:
         log.warning("NatsOutboundListener: missing 'audio' key in envelope")
         return
     try:
-        audio = _deserialize_dict(audio_data, OutboundAudio)
+        audio = _deserialize_dict(audio_data, OutboundAudio, resolver=resolver)
     except Exception:
         log.warning("NatsOutboundListener: failed to deserialize audio")
         return
@@ -92,7 +111,12 @@ async def handle_audio(listener: "NatsOutboundListener", data: dict) -> None:
     listener._cache.pop(stream_id)
 
 
-def handle_stream_start(listener: "NatsOutboundListener", data: dict) -> None:
+def handle_stream_start(
+    listener: "NatsOutboundListener",
+    data: dict,
+    *,
+    resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+) -> None:
     """Handle 'stream_start' envelope — store outbound metadata for streaming."""
     stream_id = data.get("stream_id")
     outbound_data = data.get("outbound")
@@ -110,7 +134,7 @@ def handle_stream_start(listener: "NatsOutboundListener", data: dict) -> None:
         return
     try:
         listener._stream_outbound[stream_id] = _deserialize_dict(
-            outbound_data, OutboundMessage
+            outbound_data, OutboundMessage, resolver=resolver
         )
         raw_orig = data.get("original_msg")  # bounded by _MAX_STREAMS guard above
         if raw_orig is not None:
@@ -160,7 +184,12 @@ async def handle_chunk(listener: "NatsOutboundListener", data: dict) -> None:
         )
 
 
-async def handle_raw_message(listener: "NatsOutboundListener", msg: Msg) -> None:
+async def handle_raw_message(
+    listener: "NatsOutboundListener",
+    msg: Msg,
+    *,
+    resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+) -> None:
     """Parse raw NATS message and dispatch to appropriate envelope handler."""
     try:
         data = json.loads(msg.data)
@@ -169,15 +198,15 @@ async def handle_raw_message(listener: "NatsOutboundListener", msg: Msg) -> None
         return
     msg_type = data.get("type")
     if msg_type == "send":
-        await handle_send(listener, data)
+        await handle_send(listener, data, resolver=resolver)
     elif msg_type == "stream_start":
-        handle_stream_start(listener, data)
+        handle_stream_start(listener, data, resolver=resolver)
     elif msg_type == "stream_error":
         listener._handle_stream_error(data)
     elif msg_type == "attachment":
-        await handle_attachment(listener, data)
+        await handle_attachment(listener, data, resolver=resolver)
     elif msg_type == "audio":
-        await handle_audio(listener, data)
+        await handle_audio(listener, data, resolver=resolver)
     elif "stream_id" in data and "seq" in data:
         await handle_chunk(listener, data)
     else:

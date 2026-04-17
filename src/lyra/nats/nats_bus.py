@@ -47,8 +47,9 @@ from lyra.core.message import (
     Platform,
 )
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+from roxabi_nats import TypeHintResolver
 from roxabi_nats._sanitize import sanitize_platform_meta
-from roxabi_nats._serialize import _TypeHintResolver, deserialize_dict, serialize
+from roxabi_nats._serialize import deserialize_dict, serialize
 from roxabi_nats._validate import validate_nats_token
 from roxabi_nats._version_check import check_schema_version
 
@@ -97,7 +98,7 @@ class NatsBus(Generic[T]):
         staging_maxsize: int = 500,
         queue_group: str = "",
         publish_only: bool = False,
-        resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+        resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
     ) -> None:
         validate_nats_token(subject_prefix, kind="subject_prefix")
         validate_nats_token(queue_group, kind="queue_group", allow_empty=True)

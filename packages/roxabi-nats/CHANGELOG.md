@@ -23,15 +23,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   ```
   Adapters that do not need TYPE_CHECKING resolution can pass `type_registry=None` (the default).
 - **`serialize`, `deserialize`, `deserialize_dict` gain a keyword-only `resolver` parameter.**
-  Callers that decode dataclasses carrying TYPE_CHECKING-only annotations MUST pass a configured `_TypeHintResolver`. Bare calls default to an empty resolver and will fail to coerce types whose hints are only visible under `TYPE_CHECKING`.
+  Callers that decode dataclasses carrying TYPE_CHECKING-only annotations MUST pass a configured `TypeHintResolver`. Bare calls default to an empty resolver and will fail to coerce types whose hints are only visible under `TYPE_CHECKING`.
 - **`_register_type_checking_import` removed.**
   The process-global `_TYPE_CHECKING_IMPORTS` registry is gone. Consumers must construct a `_TypeHintResolver` and pass it explicitly.
 - **`_TYPE_CHECKING_IMPORTS` module-level list removed** from `roxabi_nats._serialize`.
 
 ### Added
 
-- `_TypeHintResolver` class with fail-fast validation. Invalid module paths or missing attributes raise `ValueError` at resolver construction, not at deserialize time.
-- `_EMPTY_RESOLVER` module-level singleton — immutable null-object used as the default resolver for bare `serialize`/`deserialize` calls.
+- **Public `TypeHintResolver`** exported from the package root (`from roxabi_nats import TypeHintResolver`). Wraps the internal `_TypeHintResolver` class; external consumers should use the public alias rather than reaching into `_serialize` / `_resolver`.
+- `_TypeHintResolver` class with fail-fast validation. Invalid module paths or missing attributes raise `ValueError` at resolver construction, not at deserialize time. Duplicate `type_name` with different `module_path` also fails loud (was silently last-wins internally during development).
+- Internal singleton `_EMPTY_RESOLVER` — immutable null-object used as the default resolver for bare `serialize`/`deserialize` calls. `resolved` is a `MappingProxyType` so attempted mutation raises `TypeError`.
+- Resolver instances carry a per-instance monotonic `_uid`; the hint cache pairs `(dc_type, resolver._uid)` so GC'd resolvers cannot poison cache entries of new resolvers that happen to land at the same `id()` address.
 
 ### Migration
 
@@ -66,9 +68,10 @@ from roxabi_nats._serialize import deserialize
 msg = deserialize(data, MyDataclass)
 
 # After — build one resolver at module scope, reuse it
-from roxabi_nats._serialize import _TypeHintResolver, deserialize
+from roxabi_nats import TypeHintResolver
+from roxabi_nats._serialize import deserialize
 
-_RESOLVER = _TypeHintResolver([
+_RESOLVER = TypeHintResolver([
     ("my.package.types", "MyTypeCheckingOnlyType"),
 ])
 msg = deserialize(data, MyDataclass, resolver=_RESOLVER)

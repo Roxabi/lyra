@@ -15,7 +15,8 @@ import time
 
 from lyra.core.message import InboundMessage
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
-from roxabi_nats._serialize import _TypeHintResolver, deserialize_dict
+from roxabi_nats import TypeHintResolver
+from roxabi_nats._serialize import deserialize_dict
 
 log = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class InboundCache:
 
     __slots__ = ("_msgs", "_resolver", "_ts")
 
-    def __init__(self, *, resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER) -> None:
+    def __init__(self, *, resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER) -> None:
         self._msgs: dict[str, InboundMessage] = {}
         self._ts: dict[str, float] = {}
         self._resolver = resolver

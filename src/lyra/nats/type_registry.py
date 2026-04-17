@@ -21,12 +21,12 @@ Tests that need alternative resolvers pass them explicitly.
 
 from __future__ import annotations
 
-from roxabi_nats._serialize import _TypeHintResolver
+from roxabi_nats import TypeHintResolver
 
 TYPE_REGISTRY: tuple[tuple[str, str], ...] = (
     ("lyra.core.commands.command_parser", "CommandContext"),
 )
 
-TYPE_REGISTRY_RESOLVER = _TypeHintResolver(TYPE_REGISTRY)
+TYPE_REGISTRY_RESOLVER = TypeHintResolver(TYPE_REGISTRY)
 
 __all__ = ["TYPE_REGISTRY", "TYPE_REGISTRY_RESOLVER"]

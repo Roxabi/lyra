@@ -12,63 +12,23 @@ from __future__ import annotations
 
 import base64
 import dataclasses
-import importlib
 import json
 import sys
 import types
 import typing
-from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from typing import Any, TypeVar, get_type_hints
 
+from roxabi_nats._resolver import _EMPTY_RESOLVER, _TypeHintResolver
+
 T = TypeVar("T")
 
 _B64_PREFIX = "b64:"
+# Cache key pairs the dataclass type with the resolver's monotonic `_uid` —
+# unforgeable and never reused, so a GC'd resolver cannot collide with a new
+# one at the same `id()` address.
 _hints_cache: dict[tuple[type, int], dict[str, Any]] = {}
-
-
-class _TypeHintResolver:
-    """Per-instance registry of TYPE_CHECKING-only types for deserialization.
-
-    Constructed at adapter/consumer init time. Eagerly imports every
-    (module_path, type_name) entry and caches the resolved type object so
-    `_get_hints` never pays `importlib.import_module` on the hot path.
-    Non-existent modules or attributes raise ValueError immediately —
-    fail-fast at construction, not on first message.
-    """
-
-    __slots__ = ("entries", "resolved")
-
-    def __init__(self, entries: Sequence[tuple[str, str]]) -> None:
-        seen: set[tuple[str, str]] = set()
-        deduped: list[tuple[str, str]] = []
-        resolved: dict[str, type] = {}
-        for module_path, type_name in entries:
-            key = (module_path, type_name)
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(key)
-            try:
-                mod = importlib.import_module(module_path)
-            except ImportError as exc:
-                raise ValueError(f"type_registry: cannot import {module_path}") from exc
-            if not hasattr(mod, type_name):
-                raise ValueError(
-                    f"type_registry: {module_path} has no attribute {type_name}"
-                )
-            resolved[type_name] = getattr(mod, type_name)
-        self.entries: tuple[tuple[str, str], ...] = tuple(deduped)
-        self.resolved: types.MappingProxyType[str, type] = types.MappingProxyType(
-            resolved
-        )
-
-    def localns(self) -> dict[str, Any]:
-        return dict(self.resolved)
-
-
-_EMPTY_RESOLVER = _TypeHintResolver(())
 
 
 # ---------------------------------------------------------------------------
@@ -138,12 +98,12 @@ def _get_hints(dc_type: type, resolver: _TypeHintResolver) -> dict[str, Any]:
     NameError is raised (e.g. ``CommandContext`` imported under TYPE_CHECKING).
     The supplement comes from resolver.localns() — no global mutable registry.
 
-    Cache key is (dc_type, id(resolver)) to prevent one resolver's empty hints
+    Cache key is (dc_type, resolver._uid) to prevent one resolver's empty hints
     from poisoning another resolver's non-empty resolution for the same type.
 
     Results are cached per (type, resolver) pair.
     """
-    cache_key = (dc_type, id(resolver))
+    cache_key = (dc_type, resolver._uid)
     cached = _hints_cache.get(cache_key)
     if cached is not None:
         return cached

@@ -20,7 +20,7 @@ from lyra.core.message import (
     OutboundMessage,
 )
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
-from roxabi_nats._serialize import _TypeHintResolver
+from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict as _deserialize_dict
 from roxabi_nats._version_check import check_schema_version
 
@@ -37,7 +37,7 @@ async def handle_send(
     listener: "NatsOutboundListener",
     data: dict,
     *,
-    resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+    resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
     """Handle 'send' envelope — resolve cached msg, deserialize, dispatch."""
     resolved = listener._cache.resolve(data, "send")
@@ -63,7 +63,7 @@ async def handle_attachment(
     listener: "NatsOutboundListener",
     data: dict,
     *,
-    resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+    resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
     """Handle 'attachment' envelope type — resolve, deserialize, dispatch to adapter."""
     resolved = listener._cache.resolve(data, "attachment")
@@ -91,7 +91,7 @@ async def handle_audio(
     listener: "NatsOutboundListener",
     data: dict,
     *,
-    resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+    resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
     """Handle 'audio' envelope type — resolve, deserialize, dispatch to adapter."""
     resolved = listener._cache.resolve(data, "audio")
@@ -115,7 +115,7 @@ def handle_stream_start(
     listener: "NatsOutboundListener",
     data: dict,
     *,
-    resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+    resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
     """Handle 'stream_start' envelope — store outbound metadata for streaming."""
     stream_id = data.get("stream_id")
@@ -188,7 +188,7 @@ async def handle_raw_message(
     listener: "NatsOutboundListener",
     msg: Msg,
     *,
-    resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+    resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
     """Parse raw NATS message and dispatch to appropriate envelope handler."""
     try:

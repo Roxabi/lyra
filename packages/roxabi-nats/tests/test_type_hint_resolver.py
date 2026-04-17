@@ -1,9 +1,4 @@
-"""RED-phase tests for _TypeHintResolver and clean-break removal of the global
-registry (issue #729).
-
-All tests are expected to fail with ImportError until T2 implements
-_TypeHintResolver and removes _register_type_checking_import / _TYPE_CHECKING_IMPORTS
-from _serialize.py.
+"""Tests for _TypeHintResolver and clean-break removal of the global registry (#729).
 
 Covers:
 - (a) non-empty resolver round-trip resolves the stub type
@@ -13,11 +8,14 @@ Covers:
 - (e) non-existent attribute raises ValueError at resolver construction
 - (f) clean-break guard: _register_type_checking_import and _TYPE_CHECKING_IMPORTS
       are not importable from roxabi_nats._serialize
+- (g) hint cache isolates resolvers (no cross-resolver poisoning)
+- (h) duplicate type_name with different module_path rejected
 """
 
 from __future__ import annotations
 
 import importlib
+import types
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -31,7 +29,11 @@ from roxabi_nats._serialize import (
 )
 
 if TYPE_CHECKING:
-    from roxabi_nats._test_stub_module import StubInner
+    # `roxabi_nats_test_stub` is registered in `sys.modules` at test-collection
+    # time by this package's conftest.py — it does NOT exist on disk under that
+    # name, so pyright cannot statically resolve it and we suppress the import
+    # error. Runtime imports still work everywhere the stub is actually needed.
+    from roxabi_nats_test_stub import StubInner  # type: ignore[import-not-found]
 
 
 @dataclass
@@ -46,16 +48,26 @@ class _StubOuter:
 
 
 def test_resolver_resolves_stub_type() -> None:
-    """A resolver with the stub module entry correctly round-trips _StubOuter."""
+    """A resolver with the stub module entry correctly round-trips _StubOuter.
+
+    Exercises resolver-driven type coercion: the inner field is typed as
+    StubInner under TYPE_CHECKING only; the resolver provides it at runtime
+    so deserialize can reconstruct the nested dataclass from a raw dict.
+    """
     # Arrange
-    r = _TypeHintResolver([("roxabi_nats._test_stub_module", "StubInner")])
-    payload = serialize(_StubOuter(name="x"))
+    from roxabi_nats_test_stub import (
+        StubInner,  # noqa: PLC0415  # type: ignore[import-not-found]
+    )
+
+    r = _TypeHintResolver([("roxabi_nats_test_stub", "StubInner")])
+    payload = serialize(_StubOuter(name="x", inner=StubInner()))
 
     # Act
-    round = deserialize(payload, _StubOuter, resolver=r)
+    result = deserialize(payload, _StubOuter, resolver=r)
 
     # Assert
-    assert round.name == "x"
+    assert result.name == "x"
+    assert isinstance(result.inner, StubInner)
 
 
 # ---------------------------------------------------------------------------
@@ -90,8 +102,8 @@ def test_duplicate_entries_deduped() -> None:
     # Arrange / Act
     r = _TypeHintResolver(
         [
-            ("roxabi_nats._test_stub_module", "StubInner"),
-            ("roxabi_nats._test_stub_module", "StubInner"),
+            ("roxabi_nats_test_stub", "StubInner"),
+            ("roxabi_nats_test_stub", "StubInner"),
         ]
     )
 
@@ -120,7 +132,7 @@ def test_non_existent_attribute_raises() -> None:
     """Constructing with a missing attribute on a real module raises ValueError."""
     # Arrange / Act / Assert
     with pytest.raises(ValueError, match="has no attribute DoesNotExist"):
-        _TypeHintResolver([("roxabi_nats._test_stub_module", "DoesNotExist")])
+        _TypeHintResolver([("roxabi_nats_test_stub", "DoesNotExist")])
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +160,60 @@ def test_clean_break_global_registry_removed() -> None:
 
 
 def test_empty_resolver_singleton_is_module_level() -> None:
-    """_EMPTY_RESOLVER is a module-level instance with an empty entries tuple."""
-    # Arrange / Act / Assert
+    """_EMPTY_RESOLVER is a module-level instance with an empty entries tuple,
+    an immutable MappingProxyType resolved dict, and rejects mutation.
+    """
+    # Assert entries empty
     assert _EMPTY_RESOLVER.entries == ()
+    # Assert resolved is a MappingProxyType (immutable)
+    assert isinstance(_EMPTY_RESOLVER.resolved, types.MappingProxyType)
+    # Assert mutation raises TypeError
+    with pytest.raises(TypeError):
+        _EMPTY_RESOLVER.resolved["x"] = 1  # type: ignore[index]
+
+
+# ---------------------------------------------------------------------------
+# Cache isolation across resolvers
+# ---------------------------------------------------------------------------
+
+
+def test_hints_cache_isolated_across_resolvers() -> None:
+    """id(resolver) belongs to the _hints_cache key — resolvers never poison each other.
+
+    Empty resolver leaves inner as None (no StubInner type in scope → NameError
+    fallback → field coercion skipped).  Non-empty resolver reconstructs StubInner
+    from the raw dict.
+    """
+    from roxabi_nats_test_stub import (
+        StubInner,  # noqa: PLC0415  # type: ignore[import-not-found]
+    )
+
+    r_non_empty = _TypeHintResolver([("roxabi_nats_test_stub", "StubInner")])
+    r_empty = _TypeHintResolver(())
+
+    inner = StubInner()
+    payload = serialize(_StubOuter(name="cache-test", inner=inner))
+
+    # Non-empty resolver: StubInner resolved → inner is a StubInner instance
+    result_full = deserialize(payload, _StubOuter, resolver=r_non_empty)
+    assert isinstance(result_full.inner, StubInner)
+
+    # Empty resolver: StubInner not in scope → inner stays as raw dict (not coerced)
+    result_empty = deserialize(payload, _StubOuter, resolver=r_empty)
+    assert not isinstance(result_empty.inner, StubInner)
+
+
+# ---------------------------------------------------------------------------
+# Duplicate type_name collision detection
+# ---------------------------------------------------------------------------
+
+
+def test_type_registry_duplicate_type_name_rejected() -> None:
+    """Same type_name with different module_path raises ValueError (fail-loud)."""
+    with pytest.raises(ValueError, match="duplicate type_name"):
+        _TypeHintResolver(
+            [
+                ("roxabi_nats_test_stub", "StubInner"),
+                ("nonexistent.path", "StubInner"),
+            ]
+        )

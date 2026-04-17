@@ -21,7 +21,7 @@ from lyra.adapters.nats_stream_decoder import (
 )
 from lyra.core.message import InboundMessage, OutboundMessage, Platform
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
-from roxabi_nats._serialize import _TypeHintResolver
+from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict as _deserialize_dict
 from roxabi_nats._validate import validate_nats_token
 
@@ -45,7 +45,7 @@ class NatsOutboundListener:
         adapter: "ChannelAdapter",
         *,
         queue_group: str = "",
-        resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+        resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
     ) -> None:
         validate_nats_token(queue_group, kind="queue_group", allow_empty=True)
         self._nc = nc

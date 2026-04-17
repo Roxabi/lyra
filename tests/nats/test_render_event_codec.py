@@ -29,10 +29,11 @@ class TestRenderEventCodecVersionCheck:
     def test_text_match_decodes(self) -> None:
         """v1 text payload decodes to TextRenderEvent; counter stays empty."""
         # Arrange
+        codec = NatsRenderEventCodec()
         counter: dict[str, int] = {}
 
         # Act
-        result = NatsRenderEventCodec.decode(
+        result = codec.decode(
             "text",
             {"schema_version": 1, "text": "hi", "is_final": True},
             counter=counter,
@@ -47,10 +48,11 @@ class TestRenderEventCodecVersionCheck:
     def test_text_legacy_decodes(self) -> None:
         """text payload without schema_version defaults to v1 and decodes normally."""
         # Arrange
+        codec = NatsRenderEventCodec()
         counter: dict[str, int] = {}
 
         # Act
-        result = NatsRenderEventCodec.decode(
+        result = codec.decode(
             "text",
             {"text": "hi", "is_final": True},
             counter=counter,
@@ -69,11 +71,12 @@ class TestRenderEventCodecVersionCheck:
     def test_text_mismatch_drops(self, caplog: pytest.LogCaptureFixture) -> None:
         """v2 text payload returns None, increments counter, emits log.error."""
         # Arrange
+        codec = NatsRenderEventCodec()
         counter: dict[str, int] = {}
 
         # Act
         with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
-            result = NatsRenderEventCodec.decode(
+            result = codec.decode(
                 "text",
                 {"schema_version": 2, "text": "hi", "is_final": True},
                 counter=counter,
@@ -95,10 +98,11 @@ class TestRenderEventCodecVersionCheck:
     def test_tool_summary_match_decodes(self) -> None:
         """v1 tool_summary payload decodes to ToolSummaryRenderEvent; counter empty."""
         # Arrange
+        codec = NatsRenderEventCodec()
         counter: dict[str, int] = {}
 
         # Act
-        result = NatsRenderEventCodec.decode(
+        result = codec.decode(
             "tool_summary",
             {
                 "schema_version": 1,
@@ -131,6 +135,7 @@ class TestRenderEventCodecVersionCheck:
         A passing test proves the version gate short-circuits before the landmine.
         """
         # Arrange — payload that would blow up if extracted
+        codec = NatsRenderEventCodec()
         counter: dict[str, int] = {}
         landmine_payload = {
             "schema_version": 2,
@@ -139,7 +144,7 @@ class TestRenderEventCodecVersionCheck:
 
         # Act — must NOT raise
         with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
-            result = NatsRenderEventCodec.decode(
+            result = codec.decode(
                 "tool_summary",
                 landmine_payload,
                 counter=counter,
@@ -159,22 +164,23 @@ class TestRenderEventCodecVersionCheck:
     def test_counter_isolation_between_decodes(self) -> None:
         """Two independent counter dicts accumulate only their own drops."""
         # Arrange
+        codec = NatsRenderEventCodec()
         c1: dict[str, int] = {}
         c2: dict[str, int] = {}
 
         # Act — two drops into c1
-        NatsRenderEventCodec.decode(
+        codec.decode(
             "text",
             {"schema_version": 2, "text": "x", "is_final": True},
             counter=c1,
         )
-        NatsRenderEventCodec.decode(
+        codec.decode(
             "text",
             {"schema_version": 2, "text": "x", "is_final": True},
             counter=c1,
         )
         # One drop into c2
-        NatsRenderEventCodec.decode(
+        codec.decode(
             "text",
             {"schema_version": 2, "text": "y", "is_final": True},
             counter=c2,

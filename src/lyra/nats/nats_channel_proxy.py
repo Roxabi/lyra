@@ -26,7 +26,8 @@ from lyra.core.render_events import RenderEvent
 from lyra.core.trust import TrustLevel
 from lyra.nats.render_event_codec import NatsRenderEventCodec
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
-from roxabi_nats._serialize import _TypeHintResolver, serialize
+from roxabi_nats import TypeHintResolver
+from roxabi_nats._serialize import serialize
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class NatsChannelProxy:
         platform: Platform,
         bot_id: str,
         *,
-        resolver: _TypeHintResolver = TYPE_REGISTRY_RESOLVER,
+        resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
     ) -> None:
         """Store nc, platform, bot_id. No I/O."""
         if not re.fullmatch(r"[A-Za-z0-9_-]+", bot_id):

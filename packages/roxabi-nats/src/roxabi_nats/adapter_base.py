@@ -78,7 +78,9 @@ class NatsAdapterBase(ABC):
         self._worker_id = re.sub(r"[^A-Za-z0-9_-]", "_", raw_id)
         self._heartbeat_task: asyncio.Task | None = None
         self._resolver: _TypeHintResolver = (
-            _TypeHintResolver(type_registry) if type_registry else _EMPTY_RESOLVER
+            _TypeHintResolver(type_registry)
+            if type_registry is not None
+            else _EMPTY_RESOLVER
         )
 
     async def run(self, nats_url: str, stop: asyncio.Event | None = None) -> None:

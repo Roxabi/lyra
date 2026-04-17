@@ -9,6 +9,10 @@ authors = [{ name = "Roxabi SAS", email = "mickael@bouly.io" }]
 dependencies = ["pydantic>=2"]
 
 [project.optional-dependencies]
+# Workspace-only: roxabi-nats is not published to PyPI (ADR-045 §PyPI deferral).
+# The bare name resolves inside the uv workspace via lockfile editable reference.
+# External consumers installing roxabi-contracts[testing] from a git tag must
+# declare their own [tool.uv.sources] roxabi-nats = { git = ... } entry.
 testing = ["nats-py>=2.6", "roxabi-nats"]
 
 [project.urls]

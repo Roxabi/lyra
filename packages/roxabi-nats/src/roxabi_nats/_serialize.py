@@ -17,6 +17,7 @@ import json
 import sys
 import types
 import typing
+from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from typing import Any, TypeVar, get_type_hints
@@ -24,31 +25,52 @@ from typing import Any, TypeVar, get_type_hints
 T = TypeVar("T")
 
 _B64_PREFIX = "b64:"
-_hints_cache: dict[type, dict[str, Any]] = {}
-
-_TYPE_CHECKING_IMPORTS: list[tuple[str, str]] = []
+_hints_cache: dict[tuple[type, int], dict[str, Any]] = {}
 
 
-def _register_type_checking_import(module_path: str, type_name: str) -> None:
-    """Register a TYPE_CHECKING-only type for runtime hint resolution.
+class _TypeHintResolver:
+    """Per-instance registry of TYPE_CHECKING-only types for deserialization.
 
-    Hub-internal wiring. NOT public API — external SDK consumers must not
-    import this helper. Lyra (as the workspace host) is the only permitted
-    caller. See issue #729 for the planned refactor to a per-adapter
-    explicit init param that removes the global mutable registry.
-
-    Some dataclasses reference types imported only under ``TYPE_CHECKING``
-    (to avoid runtime circular imports). At deserialization time those names
-    must be resolvable. Consumers that send such dataclasses over NATS can
-    register them here once at startup; the serializer will attempt the
-    import lazily and fall back silently if unavailable.
-
-    Duplicate registrations are deduped. Registration after first
-    deserialization of the affected type has no effect (hints are cached).
+    Constructed at adapter/consumer init time. Eagerly imports every
+    (module_path, type_name) entry and caches the resolved type object so
+    `_get_hints` never pays `importlib.import_module` on the hot path.
+    Non-existent modules or attributes raise ValueError immediately —
+    fail-fast at construction, not on first message.
     """
-    entry = (module_path, type_name)
-    if entry not in _TYPE_CHECKING_IMPORTS:
-        _TYPE_CHECKING_IMPORTS.append(entry)
+
+    __slots__ = ("entries", "resolved")
+
+    def __init__(self, entries: Sequence[tuple[str, str]]) -> None:
+        seen: set[tuple[str, str]] = set()
+        deduped: list[tuple[str, str]] = []
+        resolved: dict[str, type] = {}
+        for module_path, type_name in entries:
+            key = (module_path, type_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(key)
+            try:
+                mod = importlib.import_module(module_path)
+            except ImportError as exc:
+                raise ValueError(
+                    f"type_registry: cannot import {module_path}"
+                ) from exc
+            if not hasattr(mod, type_name):
+                raise ValueError(
+                    f"type_registry: {module_path} has no attribute {type_name}"
+                )
+            resolved[type_name] = getattr(mod, type_name)
+        self.entries: tuple[tuple[str, str], ...] = tuple(deduped)
+        self.resolved: types.MappingProxyType[str, type] = (
+            types.MappingProxyType(resolved)
+        )
+
+    def localns(self) -> dict[str, Any]:
+        return dict(self.resolved)
+
+
+_EMPTY_RESOLVER = _TypeHintResolver(())
 
 
 # ---------------------------------------------------------------------------
@@ -56,33 +78,45 @@ def _register_type_checking_import(module_path: str, type_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def serialize(item: Any) -> bytes:
+def serialize(item: Any, *, resolver: _TypeHintResolver = _EMPTY_RESOLVER) -> bytes:
     """Serialize a dataclass instance to UTF-8 JSON bytes.
 
     Encodes Enum → .value, datetime → .isoformat(), bytes → "b64:<base64>".
     Callables are stripped from any dict-typed field (e.g. platform_meta).
+    The resolver parameter is accepted for API symmetry; the encode path
+    does not consult it.
     """
     encoded = _encode(item)
     return json.dumps(encoded, ensure_ascii=False).encode("utf-8")
 
 
-def deserialize(data: bytes, item_type: type[T]) -> T:
+def deserialize(
+    data: bytes,
+    item_type: type[T],
+    *,
+    resolver: _TypeHintResolver = _EMPTY_RESOLVER,
+) -> T:
     """Reconstruct a dataclass from UTF-8 JSON bytes.
 
     Parses JSON, then recursively reconstructs item_type from the resulting
     dict, rehydrating enums, datetimes, bytes fields, and nested dataclasses.
     """
     raw = json.loads(data.decode("utf-8"))
-    return _decode(raw, item_type)  # type: ignore[return-value]
+    return _decode(raw, item_type, resolver)  # type: ignore[return-value]
 
 
-def deserialize_dict(d: dict[str, Any], item_type: type[T]) -> T:
+def deserialize_dict(
+    d: dict[str, Any],
+    item_type: type[T],
+    *,
+    resolver: _TypeHintResolver = _EMPTY_RESOLVER,
+) -> T:
     """Reconstruct a dataclass from a pre-parsed dict.
 
     Same as :func:`deserialize` but skips the JSON parse step — use when
     the caller already has a ``dict`` (e.g. from a prior ``json.loads``).
     """
-    return _decode(d, item_type)  # type: ignore[return-value]
+    return _decode(d, item_type, resolver)  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +129,7 @@ def _strip_callables(d: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in d.items() if not callable(v)}
 
 
-def _get_hints(dc_type: type) -> dict[str, Any]:
+def _get_hints(dc_type: type, resolver: _TypeHintResolver) -> dict[str, Any]:
     """Get type hints for a dataclass, handling TYPE_CHECKING-only imports.
 
     Uses the class's own module globals as the resolution namespace so that
@@ -104,16 +138,21 @@ def _get_hints(dc_type: type) -> dict[str, Any]:
 
     Falls back to explicitly importing known TYPE_CHECKING-only types when
     NameError is raised (e.g. ``CommandContext`` imported under TYPE_CHECKING).
+    The supplement comes from resolver.localns() — no global mutable registry.
 
-    Results are cached per type to avoid repeated ``get_type_hints`` calls.
+    Cache key is (dc_type, id(resolver)) to prevent one resolver's empty hints
+    from poisoning another resolver's non-empty resolution for the same type.
+
+    Results are cached per (type, resolver) pair.
     """
-    cached = _hints_cache.get(dc_type)
+    cache_key = (dc_type, id(resolver))
+    cached = _hints_cache.get(cache_key)
     if cached is not None:
         return cached
 
     try:
         result = get_type_hints(dc_type)
-        _hints_cache[dc_type] = result
+        _hints_cache[cache_key] = result
         return result
     except NameError:
         pass
@@ -125,16 +164,13 @@ def _get_hints(dc_type: type) -> dict[str, Any]:
     globalns: dict[str, Any] = dict(vars(module)) if module is not None else {}
 
     # Supplement with TYPE_CHECKING-only types not present at runtime.
-    # The registry is populated by consumers via _register_type_checking_import();
+    # The resolver is populated by consumers at construction time;
     # the SDK itself knows no domain types.
-    localns: dict[str, Any] = {}
-    for module_path, type_name in _TYPE_CHECKING_IMPORTS:
-        if type_name not in globalns:
-            try:
-                mod = importlib.import_module(module_path)
-                localns[type_name] = getattr(mod, type_name)
-            except Exception:
-                pass
+    localns = resolver.localns()
+    for type_name in list(localns.keys()):
+        if type_name in globalns:
+            # Module globals win — don't shadow existing identifiers.
+            localns.pop(type_name)
 
     try:
         result = get_type_hints(dc_type, globalns=globalns, localns=localns)
@@ -143,7 +179,7 @@ def _get_hints(dc_type: type) -> dict[str, Any]:
         # Do NOT cache the empty fallback: a transient resolution failure
         # should not permanently disable type coercion for this type.
         return {}
-    _hints_cache[dc_type] = result
+    _hints_cache[cache_key] = result
     return result
 
 
@@ -192,7 +228,9 @@ def _encode(obj: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _decode_union(value: Any, args: tuple[Any, ...]) -> Any:
+def _decode_union(
+    value: Any, args: tuple[Any, ...], resolver: _TypeHintResolver
+) -> Any:
     """Decode value when the target is a Union / Optional type."""
     if value is None:
         return None
@@ -202,7 +240,7 @@ def _decode_union(value: Any, args: tuple[Any, ...]) -> Any:
         return base64.b64decode(value[len(_B64_PREFIX) :])
     # Single non-None candidate: decode as that type
     if len(non_none) == 1:
-        return _decode(value, non_none[0])
+        return _decode(value, non_none[0], resolver)
     # Multiple non-None: str | bytes without b64 prefix → keep as str
     if str in non_none and isinstance(value, str):
         return value
@@ -213,11 +251,11 @@ def _decode_union(value: Any, args: tuple[Any, ...]) -> Any:
             and isinstance(candidate, type)
             and isinstance(value, dict)
         ):
-            return _decode_dataclass(value, candidate)
+            return _decode_dataclass(value, candidate, resolver)
     return value
 
 
-def _decode_concrete(value: Any, target_type: Any) -> Any:
+def _decode_concrete(value: Any, target_type: Any, resolver: _TypeHintResolver) -> Any:
     """Decode value for concrete (non-generic, non-union) types."""
     # ── Dataclass ────────────────────────────────────────────────────────────
     if dataclasses.is_dataclass(target_type) and isinstance(target_type, type):
@@ -225,7 +263,7 @@ def _decode_concrete(value: Any, target_type: Any) -> Any:
             return None
         if not isinstance(value, dict):
             return value
-        return _decode_dataclass(value, target_type)
+        return _decode_dataclass(value, target_type, resolver)
 
     # ── Enum ──────────────────────────────────────────────────────────────────
     if isinstance(target_type, type) and issubclass(target_type, Enum):
@@ -251,7 +289,7 @@ def _decode_concrete(value: Any, target_type: Any) -> Any:
     return value
 
 
-def _decode(value: Any, target_type: Any) -> Any:
+def _decode(value: Any, target_type: Any, resolver: _TypeHintResolver) -> Any:
     """Reconstruct value as target_type.
 
     Handles: dataclass, Enum, datetime, bytes, list[X], Union/Optional, scalars.
@@ -267,25 +305,27 @@ def _decode(value: Any, target_type: Any) -> Any:
         hasattr(types, "UnionType") and isinstance(target_type, types.UnionType)
     )
     if is_union:
-        return _decode_union(value, args)
+        return _decode_union(value, args, resolver)
 
     # ── list[X] ──────────────────────────────────────────────────────────────
     if origin is list:
         if value is None:
             return value
         elem_type = args[0] if args else Any
-        return [_decode(item, elem_type) for item in value]
+        return [_decode(item, elem_type, resolver) for item in value]
 
     # ── Literal — return as-is ───────────────────────────────────────────────
     if origin is typing.Literal:
         return value
 
-    return _decode_concrete(value, target_type)
+    return _decode_concrete(value, target_type, resolver)
 
 
-def _decode_dataclass(d: dict[str, Any], dc_type: type) -> Any:
+def _decode_dataclass(
+    d: dict[str, Any], dc_type: type, resolver: _TypeHintResolver
+) -> Any:
     """Reconstruct a dataclass from a dict using field type hints for coercion."""
-    hints = _get_hints(dc_type)
+    hints = _get_hints(dc_type, resolver)
 
     kwargs: dict[str, Any] = {}
     for f in dataclasses.fields(dc_type):  # type: ignore[arg-type]
@@ -297,6 +337,6 @@ def _decode_dataclass(d: dict[str, Any], dc_type: type) -> Any:
         if field_type is None:
             kwargs[f.name] = raw_value
         else:
-            kwargs[f.name] = _decode(raw_value, field_type)
+            kwargs[f.name] = _decode(raw_value, field_type, resolver)
 
     return dc_type(**kwargs)

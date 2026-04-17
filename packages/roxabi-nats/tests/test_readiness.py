@@ -20,6 +20,7 @@ import pytest
 from nats.aio.client import Client as NATS
 
 import nats
+from conftest import requires_nats_server  # noqa: PLC2701
 from roxabi_nats.readiness import (
     PROBE_INTERVAL_S,
     PROBE_TIMEOUT_S,
@@ -27,8 +28,6 @@ from roxabi_nats.readiness import (
     start_readiness_responder,
     wait_for_hub,
 )
-
-from .conftest import requires_nats_server
 
 # ---------------------------------------------------------------------------
 # Helpers

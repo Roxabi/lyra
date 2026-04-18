@@ -108,3 +108,28 @@ from roxabi_contracts.voice.fixtures import silence_wav_16khz, sample_transcript
 
 `scipy` is declared in `[project.optional-dependencies].testing` and is
 only pulled when a consumer requests the `[testing]` extra.
+
+## Test doubles
+
+`roxabi_contracts.voice.testing` provides in-process replacements for a real
+voiceCLI satellite (`FakeTtsWorker`, `FakeSttWorker`) — intended for lyra hub
+tests and voiceCLI adapter tests that need to exercise the NATS request/reply
+cycle without a GPU or real model.
+
+Install with the `[testing]` optional extra:
+
+```bash
+uv pip install "roxabi-contracts[testing]"
+```
+
+Three non-bypassable guards prevent production contamination
+(see [ADR-049 §Test-double pattern](../../docs/architecture/adr/049-roxabi-contracts-shared-schema-package.mdx)):
+
+1. **Import-time gate.** `voice.testing` imports `nats` at module top. A
+   bare `roxabi-contracts` install (no `[testing]` extra) fails with
+   `ModuleNotFoundError: No module named 'nats'` before any runtime code runs.
+2. **Environment assertion.** `__init__` raises `RuntimeError` when
+   `LYRA_ENV=production`. No override flag.
+3. **Loopback-only URL.** `start()` raises `ValueError` on any non-loopback
+   NATS URL (`127.0.0.1`, `localhost`, `::1`, `0:0:0:0:0:0:0:1` are the only
+   accepted hosts). No override.

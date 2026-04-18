@@ -46,21 +46,42 @@ async def test_g3_non_loopback_raises(cls, bad_url: str) -> None:
         await w.start()
 
 
-@pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
-@pytest.mark.parametrize(
-    "ok_url",
-    ["nats://127.0.0.1:4222", "nats://[::1]:4222", "nats://[0:0:0:0:0:0:0:1]:4222"],
-)
-async def test_g3_accepts_loopback_but_refuses_connect_without_server(
-    cls, ok_url: str
-) -> None:
+async def _run_loopback_passes_guard(cls: type, url: str) -> None:
     # No nats-server running on these ports in this unit test — assert the
     # guard does NOT raise ValueError, but some other error (connection
     # refused / timeout) occurs downstream. We only care that Guard 3 passed.
     # If Guard 3 fired incorrectly, its ValueError would not match the tuple
     # below and pytest.raises would fail, catching the regression.
-    w = cls(nats_url=ok_url)
+    w = cls(nats_url=url)
     with pytest.raises((OSError, asyncio.TimeoutError, NoServersError)):
+        await w.start()
+
+
+@pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
+async def test_g3_accepts_ipv4_loopback(cls) -> None:
+    await _run_loopback_passes_guard(cls, "nats://127.0.0.1:4222")
+
+
+@pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
+async def test_g3_accepts_ipv6_loopback(cls) -> None:
+    await _run_loopback_passes_guard(cls, "nats://[::1]:4222")
+
+
+@pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
+async def test_g3_accepts_ipv6_loopback_full(cls) -> None:
+    await _run_loopback_passes_guard(cls, "nats://[0:0:0:0:0:0:0:1]:4222")
+
+
+@pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
+async def test_g3_non_loopback_raises_when_g2_unset(cls) -> None:
+    """Guard 3 fires even with LYRA_ENV unset — proves G3 independent of G2.
+
+    The `_clear_lyra_env` autouse fixture ensures LYRA_ENV is unset for
+    this test. This mirrors the spec's guard independence matrix row
+    explicitly rather than relying on the autouse fixture implicitly.
+    """
+    w = cls(nats_url="nats://10.0.0.5:4222")
+    with pytest.raises(ValueError, match="loopback"):
         await w.start()
 
 
@@ -106,6 +127,7 @@ _ENVELOPE: dict[str, Any] = {
 async def test_tts_roundtrip_default_fixture(nats_server_url: str) -> None:
     worker = FakeTtsWorker(nats_url=nats_server_url)
     await worker.start()
+    assert worker.calls == []  # contamination check — prior test leaked?
     try:
         nc = await _nats.connect(nats_server_url)
         req = TtsRequest(**_ENVELOPE, request_id="r1", text="hello")
@@ -123,12 +145,14 @@ async def test_tts_roundtrip_default_fixture(nats_server_url: str) -> None:
         await nc.close()
     finally:
         await worker.stop()
+        await asyncio.sleep(0.05)  # session-scoped fixture drain barrier
 
 
 @requires_nats_server
 async def test_stt_roundtrip_default_fixture(nats_server_url: str) -> None:
     worker = FakeSttWorker(nats_url=nats_server_url)
     await worker.start()
+    assert worker.calls == []  # contamination check — prior test leaked?
     try:
         nc = await _nats.connect(nats_server_url)
         req = SttRequest(
@@ -150,6 +174,7 @@ async def test_stt_roundtrip_default_fixture(nats_server_url: str) -> None:
         await nc.close()
     finally:
         await worker.stop()
+        await asyncio.sleep(0.05)  # session-scoped fixture drain barrier
 
 
 @requires_nats_server
@@ -158,6 +183,7 @@ async def test_calls_records_multiple_requests_in_order(
 ) -> None:
     worker = FakeTtsWorker(nats_url=nats_server_url)
     await worker.start()
+    assert worker.calls == []  # contamination check — prior test leaked?
     try:
         nc = await _nats.connect(nats_server_url)
         for i in range(3):
@@ -169,6 +195,53 @@ async def test_calls_records_multiple_requests_in_order(
         await nc.close()
     finally:
         await worker.stop()
+        await asyncio.sleep(0.05)  # session-scoped fixture drain barrier
+
+
+@requires_nats_server
+async def test_dispatch_drops_malformed_json(nats_server_url: str) -> None:
+    """_dispatch silently drops requests that fail Pydantic validation.
+
+    Spec F8: `except ValidationError` path — log WARNING, no reply, no
+    entry in `.calls`. Proves the drop-on-drift contract.
+    """
+    worker = FakeTtsWorker(nats_url=nats_server_url)
+    await worker.start()
+    assert worker.calls == []  # contamination check — prior test leaked?
+    try:
+        nc = await _nats.connect(nats_server_url)
+        # Use publish (not request) because request would time out when
+        # no reply arrives — publish + sleep to let the dispatch run.
+        await nc.publish(SUBJECTS.tts_request, b"this is not json at all")
+        await asyncio.sleep(0.1)  # let dispatch run
+        assert worker.calls == []
+        await nc.close()
+    finally:
+        await worker.stop()
+        await asyncio.sleep(0.05)  # session-scoped fixture drain barrier
+
+
+@requires_nats_server
+async def test_dispatch_no_reply_records_call_without_publishing(
+    nats_server_url: str,
+) -> None:
+    """Fire-and-forget publish (no reply subject) records the call but
+    sends no reply. Spec F8: `if not msg.reply ... return` short-circuit.
+    """
+    worker = FakeTtsWorker(nats_url=nats_server_url)
+    await worker.start()
+    assert worker.calls == []  # contamination check — prior test leaked?
+    try:
+        nc = await _nats.connect(nats_server_url)
+        req = TtsRequest(**_ENVELOPE, request_id="r-fire", text="hello")
+        await nc.publish(SUBJECTS.tts_request, req.model_dump_json().encode())
+        await asyncio.sleep(0.1)
+        assert len(worker.calls) == 1
+        assert worker.calls[0].request_id == "r-fire"
+        await nc.close()
+    finally:
+        await worker.stop()
+        await asyncio.sleep(0.05)  # session-scoped fixture drain barrier
 
 
 async def test_stop_is_idempotent() -> None:

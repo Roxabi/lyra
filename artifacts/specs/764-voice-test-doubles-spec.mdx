@@ -241,7 +241,7 @@ F11 test_voice_testing_doubles.py
    ├─ test_g3_rejects_localhost_subdomain[nats://localhost.evil.com:4222]
    ├─ test_tts_roundtrip_default_fixture — uses F12, drives publish → reply → assert calls
    ├─ test_stt_roundtrip_default_fixture — same, for STT
-   └─ test_calls_records_multiple_requests_in_order — issues 3 parallel requests, asserts len(calls) == 3 and preserves order
+   └─ test_calls_records_multiple_requests_in_order — issues 3 serial requests with distinct request_id values, asserts len(calls) == 3 and [r.request_id for r in calls] matches the send order. Amended from "parallel" per PR #789 review: NATS queue groups serialize dispatch per-message; serial send-order is the stronger, more reliable ordering assertion and avoids event-loop scheduling non-determinism on loaded CI runners.
 ```
 
 ## Slices

@@ -12,6 +12,15 @@ Guard 3 (loopback): start() raises ValueError on non-loopback NATS URL.
 
 from __future__ import annotations
 
+# Guard 1 tripwire — LOAD-BEARING. Do NOT move below other imports, and
+# do NOT wrap in try/except. This import is the first runtime event when
+# `roxabi_contracts.voice.testing` is loaded; without the [testing] extra,
+# `nats-py` is absent and the import fails with ModuleNotFoundError before
+# any class definition is reached. `test_g1_import_without_extra`
+# regression-guards this placement via a subprocess with a sabotaged
+# PYTHONPATH.
+import nats  # noqa: F401  # pyright: ignore[reportUnusedImport]  # isort:skip
+
 import asyncio
 import base64
 import logging
@@ -24,9 +33,6 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from pydantic import ValidationError
 
-# Guard 1: fails at import with ModuleNotFoundError when [testing] extra
-# is not installed. Do NOT wrap in try/except — that would defeat Guard 1.
-import nats  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from roxabi_contracts.voice.fixtures import sample_transcript_en, silence_wav_16khz
 from roxabi_contracts.voice.models import (
     SttRequest,
@@ -83,6 +89,12 @@ class FakeTtsWorker:
         _assert_loopback_url(self._nats_url)
         if self._nc is not None:
             raise RuntimeError("FakeTtsWorker already started")
+        # `allow_reconnect=False, connect_timeout=2` bound the nats-py handshake;
+        # the outer `asyncio.wait_for(..., timeout=3.0)` catches kernel-level
+        # stalls (e.g., kernel TCP socket stuck in SYN_SENT). Both layers are
+        # load-bearing for the Guard 3 loopback-accept tests where no nats-server
+        # is running on the loopback port — without them the tests would hang
+        # until the library's default 30s reconnect window elapses.
         self._nc = await asyncio.wait_for(
             nats_connect(self._nats_url, allow_reconnect=False, connect_timeout=2),
             timeout=3.0,
@@ -95,7 +107,9 @@ class FakeTtsWorker:
         if self._nc is not None and self._nc.is_connected:
             try:
                 await asyncio.wait_for(self._nc.drain(), timeout=_DRAIN_TIMEOUT_S)
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError:  # pragma: no cover
+                # TODO(#761 follow-up): add explicit drain-timeout test when the first
+                # domain fake (TTS or image) hits a real slow-drain scenario in CI.
                 log.warning(
                     "FakeTtsWorker drain timed out after %.1fs", _DRAIN_TIMEOUT_S
                 )
@@ -143,6 +157,12 @@ class FakeSttWorker:
         _assert_loopback_url(self._nats_url)
         if self._nc is not None:
             raise RuntimeError("FakeSttWorker already started")
+        # `allow_reconnect=False, connect_timeout=2` bound the nats-py handshake;
+        # the outer `asyncio.wait_for(..., timeout=3.0)` catches kernel-level
+        # stalls (e.g., kernel TCP socket stuck in SYN_SENT). Both layers are
+        # load-bearing for the Guard 3 loopback-accept tests where no nats-server
+        # is running on the loopback port — without them the tests would hang
+        # until the library's default 30s reconnect window elapses.
         self._nc = await asyncio.wait_for(
             nats_connect(self._nats_url, allow_reconnect=False, connect_timeout=2),
             timeout=3.0,
@@ -155,7 +175,9 @@ class FakeSttWorker:
         if self._nc is not None and self._nc.is_connected:
             try:
                 await asyncio.wait_for(self._nc.drain(), timeout=_DRAIN_TIMEOUT_S)
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError:  # pragma: no cover
+                # TODO(#761 follow-up): add explicit drain-timeout test when the first
+                # domain fake (TTS or image) hits a real slow-drain scenario in CI.
                 log.warning(
                     "FakeSttWorker drain timed out after %.1fs", _DRAIN_TIMEOUT_S
                 )

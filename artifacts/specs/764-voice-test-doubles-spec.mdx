@@ -36,7 +36,7 @@ After merge:
 
 - `from roxabi_contracts.voice.testing import FakeTtsWorker, FakeSttWorker` resolves **only** in an environment where `roxabi-contracts[testing]` is installed. In a bare `roxabi-contracts` install (no `[testing]` extra), the import fails with `ModuleNotFoundError: No module named 'nats'` (Guard 1 — see below for why this bites at module-top-level import).
 - `FakeTtsWorker(nats_url="nats://127.0.0.1:4222", reply_fixture=None)` is the canonical constructor. `reply_fixture=None` means the fake replies with `silence_wav_16khz` (TTS) or `sample_transcript_en` (STT) from `roxabi_contracts.voice.fixtures`.
-- Constructing with `os.environ.get("LYRA_ENV") == "production"` raises `RuntimeError("FakeTtsWorker cannot run in production")` (or `FakeSttWorker cannot run in production`). The guard fires **before** any field is stored on `self`, and **before** any NATS import is exercised lazily. No override flag exists — no kwarg, no subclass escape hatch, no environment flag to disable the guard. Security-by-obscurity is explicitly rejected per ADR-049.
+- Constructing with `os.environ.get("LYRA_ENV", "").casefold() == "production"` raises `RuntimeError("FakeTtsWorker cannot run in production")` (or `FakeSttWorker cannot run in production`). Comparison is **case-insensitive** — `PRODUCTION`, `Production`, `pRoDuCtIoN` all trip the guard (amended from exact-match per PR #789 review item W5; closes a latent case-sensitivity bypass). The guard fires **before** any field is stored on `self`, and **before** any NATS import is exercised lazily. No override flag exists — no kwarg, no subclass escape hatch, no environment flag to disable the guard. Security-by-obscurity is explicitly rejected per ADR-049.
 - Calling `await worker.start()` with a non-loopback URL raises `ValueError` with a message enumerating the allowed hosts (`127.0.0.1`, `localhost`). The guard fires **before** `nats_connect()` is called. No override. This closes the accidental-prod-queue-group-shadowing class of bugs even when Guard 2 is misconfigured.
 - Allowed URL hosts for Guard 3 (rationale in `## Risks`):
   - `127.0.0.1` (IPv4 loopback)
@@ -159,7 +159,7 @@ flowchart LR
 | ID | Name | Type | Handler | Data |
 |---|---|---|---|---|
 | F1 | `testing.py` module | module | Python import | `packages/roxabi-contracts/src/roxabi_contracts/voice/testing.py` — defines `FakeTtsWorker`, `FakeSttWorker`, `__all__ = ["FakeTtsWorker", "FakeSttWorker"]`. Imports `nats` at module top (Guard 1 gate). |
-| F2 | `_assert_not_production` helper | function | direct call from `__init__` | `testing.py::_assert_not_production(cls_name: str) -> None` — raises `RuntimeError(f"{cls_name} cannot run in production")` when `os.environ.get("LYRA_ENV") == "production"`. Underscore-private. No kwargs. No override path. |
+| F2 | `_assert_not_production` helper | function | direct call from `__init__` | `testing.py::_assert_not_production(cls_name: str) -> None` — raises `RuntimeError(f"{cls_name} cannot run in production")` when `os.environ.get("LYRA_ENV", "").casefold() == "production"` (case-insensitive, per PR #789 amendment). Underscore-private. No kwargs. No override path. |
 | F3 | `_assert_loopback_url` helper | function | direct call from `start()` | `testing.py::_assert_loopback_url(url: str) -> None` — uses `urllib.parse.urlparse` to extract `.hostname`; raises `ValueError` if `hostname not in ALLOWED_LOOPBACK_HOSTS`. |
 | F4 | `ALLOWED_LOOPBACK_HOSTS` | module const | frozenset lookup | `frozenset({"127.0.0.1", "localhost", "::1"})`. Module-level, underscore-prefixed only if not documented in README; otherwise public for grepability. |
 | F5 | `FakeTtsWorker` class | class | instantiate → `await start()` → assertions on `.calls` → `await stop()` | `__init__(nats_url: str = "nats://127.0.0.1:4222", reply_fixture: bytes \| None = None)`; `calls: list[TtsRequest]`; `start()`; `stop()`. Constructor calls F2; `start()` calls F3 then connects. |
@@ -185,7 +185,7 @@ F1 (testing.py) — module top
    └─ __all__ = ["FakeTtsWorker", "FakeSttWorker"]
 
 F2 _assert_not_production(cls_name) ← called by F5.__init__ and F6.__init__ FIRST LINE
-   └─ os.environ.get("LYRA_ENV") == "production" → RuntimeError
+   └─ os.environ.get("LYRA_ENV", "").casefold() == "production" → RuntimeError  (case-insensitive; amended per PR #789 review)
 
 F3 _assert_loopback_url(url) ← called by F7 FIRST LINE (before nats_connect)
    ├─ parsed = urlparse(url)
@@ -237,8 +237,10 @@ F11 test_voice_testing_doubles.py
    ├─ test_g2_prod_env_raises_even_when_g3_would_pass[...]
    ├─ test_g3_non_loopback_raises[nats://10.0.0.5:4222]
    ├─ test_g3_rejects_wildcard_bind[nats://0.0.0.0:4222]
-   ├─ test_g3_accepts_ipv6_loopback[nats://[::1]:4222]
-   ├─ test_g3_rejects_localhost_subdomain[nats://localhost.evil.com:4222]
+   ├─ test_g3_accepts_ipv4_loopback[FakeTtsWorker|FakeSttWorker]  # URL nats://127.0.0.1:4222
+   ├─ test_g3_accepts_ipv6_loopback[FakeTtsWorker|FakeSttWorker]  # URL nats://[::1]:4222
+   ├─ test_g3_accepts_ipv6_loopback_full[FakeTtsWorker|FakeSttWorker]  # URL nats://[0:0:0:0:0:0:0:1]:4222
+   ├─ test_g3_rejects_localhost_subdomain[FakeTtsWorker|FakeSttWorker]  # URL nats://localhost.evil.com:4222
    ├─ test_tts_roundtrip_default_fixture — uses F12, drives publish → reply → assert calls
    ├─ test_stt_roundtrip_default_fixture — same, for STT
    └─ test_calls_records_multiple_requests_in_order — issues 3 serial requests with distinct request_id values, asserts len(calls) == 3 and [r.request_id for r in calls] matches the send order. Amended from "parallel" per PR #789 review: NATS queue groups serialize dispatch per-message; serial send-order is the stronger, more reliable ordering assertion and avoids event-loop scheduling non-determinism on loaded CI runners.
@@ -265,7 +267,8 @@ F11 test_voice_testing_doubles.py
 ### Guard 2 — `LYRA_ENV=production` assertion in `__init__`
 
 - [ ] `FakeTtsWorker.__init__` and `FakeSttWorker.__init__` call the private helper `_assert_not_production("FakeTtsWorker")` / `_assert_not_production("FakeSttWorker")` as their **first statement**, before any attribute assignment
-- [ ] `_assert_not_production(cls_name: str)` raises `RuntimeError(f"{cls_name} cannot run in production")` when `os.environ.get("LYRA_ENV") == "production"`, returns `None` otherwise
+- [ ] `_assert_not_production(cls_name: str)` raises `RuntimeError(f"{cls_name} cannot run in production")` when `os.environ.get("LYRA_ENV", "").casefold() == "production"` (case-insensitive per PR #789 amendment), returns `None` otherwise
+- [ ] `test_g2_prod_env_case_insensitive` parametrized over `["PRODUCTION", "Production", "pRoDuCtIoN"]` × both fakes — asserts the `RuntimeError` with class name message for each casing
 - [ ] `__init__` accepts only the two documented kwargs (`nats_url`, `reply_fixture`) — no additional kwargs exist that could bypass Guard 2 (structurally verifiable via pyright on the signature)
 - [ ] `test_g2_prod_env_raises[FakeTtsWorker]` and `[FakeSttWorker]` assert the `RuntimeError` with the class name in the message
 - [ ] `test_g2_prod_env_raises_even_when_g3_would_pass` sets `LYRA_ENV=production` AND passes a loopback URL → still `RuntimeError` (proves Guard 2 independent of Guard 3)
@@ -277,8 +280,9 @@ F11 test_voice_testing_doubles.py
 - [ ] Raises `ValueError` with a message naming the rejected hostname and listing the allowed set
 - [ ] `test_g3_non_loopback_raises[nats://10.0.0.5:4222]` → `ValueError`
 - [ ] `test_g3_rejects_wildcard_bind[nats://0.0.0.0:4222]` → `ValueError` (wildcard is NOT loopback)
-- [ ] `test_g3_accepts_ipv6_loopback[nats://[::1]:4222]` → call proceeds past the guard (asserts no `ValueError`; does not require a real nats-server at ::1)
-- [ ] `test_g3_accepts_ipv6_loopback_full[nats://[0:0:0:0:0:0:0:1]:4222]` → call proceeds past the guard (expanded IPv6 form also allowed)
+- [ ] `test_g3_accepts_ipv4_loopback[FakeTtsWorker|FakeSttWorker]` (URL `nats://127.0.0.1:4222`) → call proceeds past the guard
+- [ ] `test_g3_accepts_ipv6_loopback[FakeTtsWorker|FakeSttWorker]` (URL `nats://[::1]:4222`) → call proceeds past the guard (asserts no `ValueError`; does not require a real nats-server at ::1)
+- [ ] `test_g3_accepts_ipv6_loopback_full[FakeTtsWorker|FakeSttWorker]` (URL `nats://[0:0:0:0:0:0:0:1]:4222`) → call proceeds past the guard (expanded IPv6 form also allowed)
 - [ ] `test_g3_rejects_localhost_subdomain[nats://localhost.evil.com:4222]` → `ValueError` (URL parsing, not substring match)
 - [ ] `test_g3_non_loopback_raises_when_g2_unset` with `LYRA_ENV` unset → still `ValueError` (proves Guard 3 independent of Guard 2 state)
 - [ ] `start` takes no extra kwargs beyond `self` — no override surface for Guard 3 (structurally verifiable via pyright on the signature)

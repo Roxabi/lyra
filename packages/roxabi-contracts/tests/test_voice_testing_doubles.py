@@ -57,25 +57,28 @@ async def test_g3_accepts_loopback_but_refuses_connect_without_server(
     # No nats-server running on these ports in this unit test — assert the
     # guard does NOT raise ValueError, but some other error (connection
     # refused / timeout) occurs downstream. We only care that Guard 3 passed.
+    # If Guard 3 fired incorrectly, its ValueError would not match the tuple
+    # below and pytest.raises would fail, catching the regression.
     w = cls(nats_url=ok_url)
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises((OSError, asyncio.TimeoutError, NoServersError)):
         await w.start()
-    assert not isinstance(exc_info.value, ValueError) or "loopback" not in str(
-        exc_info.value
-    )
 
 
 # ---------------------------------------------------------------------------
 # Slice V2: roundtrip + ordering + idempotent/double-start tests
 # ---------------------------------------------------------------------------
 
+import asyncio  # noqa: E402
 import base64  # noqa: E402
+import os  # noqa: E402
 import subprocess  # noqa: E402
 import sys  # noqa: E402
 import textwrap  # noqa: E402
 from datetime import datetime, timezone  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Any  # noqa: E402
+
+from nats.errors import NoServersError  # noqa: E402
 
 import nats as _nats  # noqa: E402
 from roxabi_contracts.voice import (  # noqa: E402
@@ -184,8 +187,43 @@ async def test_start_twice_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Slice V3: Guard 1 subprocess test
+# Slice V3: Guard 1 subprocess test + API surface invariant
 # ---------------------------------------------------------------------------
+
+
+def test_voice_init_does_not_expose_testing() -> None:
+    """Regression guard — voice/__init__.py must NOT re-export testing.
+
+    The testing module lives behind the [testing] extra; accidental re-export
+    at the voice package root would mean a bare `import roxabi_contracts.voice`
+    in a production install would trigger Guard 1's ModuleNotFoundError even
+    when no caller wants test doubles. Spec #764 §API surface invariant.
+
+    Note: after *any* submodule import Python injects the submodule into the
+    parent package namespace, so `vars(voice_mod)` will contain 'testing'
+    once this test suite has imported it. The meaningful invariant is that
+    __init__.py does NOT import or list testing — checked via __all__ and
+    source inspection.
+    """
+    import roxabi_contracts.voice as voice_mod
+
+    # __all__ must not advertise the testing module
+    assert "testing" not in voice_mod.__all__
+    # __init__.py source must not contain an explicit import of testing
+    import inspect
+
+    src = inspect.getsource(voice_mod)
+    assert "testing" not in src
+
+
+@pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
+@pytest.mark.parametrize("value", ["PRODUCTION", "Production", "pRoDuCtIoN"])
+def test_g2_prod_env_case_insensitive(
+    cls, value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LYRA_ENV", value)
+    with pytest.raises(RuntimeError, match=f"{cls.__name__} cannot run in production"):
+        cls()
 
 
 def test_g1_import_without_extra(tmp_path: Path) -> None:
@@ -224,7 +262,10 @@ def test_g1_import_without_extra(tmp_path: Path) -> None:
     ).lstrip()
     result = subprocess.run(
         [sys.executable, "-c", script],
-        env={"PYTHONPATH": str(tmp_path), "PATH": "/usr/bin:/bin"},
+        env={
+            **os.environ,
+            "PYTHONPATH": f"{tmp_path}{os.pathsep}{os.environ.get('PYTHONPATH', '')}",
+        },
         capture_output=True,
         text=True,
         timeout=10,

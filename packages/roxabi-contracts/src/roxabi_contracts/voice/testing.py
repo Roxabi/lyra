@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from nats.aio.client import Client as NATS
+from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from pydantic import ValidationError
 
@@ -48,8 +49,8 @@ ALLOWED_LOOPBACK_HOSTS: frozenset[str] = frozenset(
 
 
 def _assert_not_production(cls_name: str) -> None:
-    """Guard 2 — raises RuntimeError when LYRA_ENV=production."""
-    if os.environ.get("LYRA_ENV") == "production":
+    """Guard 2 — raises RuntimeError when LYRA_ENV=production (case-insensitive)."""
+    if os.environ.get("LYRA_ENV", "").casefold() == "production":
         raise RuntimeError(f"{cls_name} cannot run in production")
 
 
@@ -91,20 +92,17 @@ class FakeTtsWorker:
         )
 
     async def stop(self) -> None:
-        if self._sub is not None:
-            await self._sub.unsubscribe()
-            self._sub = None
-        if self._nc is not None:
-            if self._nc.is_connected:
-                try:
-                    await asyncio.wait_for(self._nc.drain(), timeout=_DRAIN_TIMEOUT_S)
-                except asyncio.TimeoutError:
-                    log.warning(
-                        "FakeTtsWorker drain timed out after %.1fs", _DRAIN_TIMEOUT_S
-                    )
-            self._nc = None
+        if self._nc is not None and self._nc.is_connected:
+            try:
+                await asyncio.wait_for(self._nc.drain(), timeout=_DRAIN_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                log.warning(
+                    "FakeTtsWorker drain timed out after %.1fs", _DRAIN_TIMEOUT_S
+                )
+        self._sub = None
+        self._nc = None
 
-    async def _dispatch(self, msg: nats.aio.msg.Msg) -> None:  # type: ignore[name-defined]
+    async def _dispatch(self, msg: Msg) -> None:
         try:
             req = TtsRequest.model_validate_json(msg.data)
         except ValidationError as exc:
@@ -154,20 +152,17 @@ class FakeSttWorker:
         )
 
     async def stop(self) -> None:
-        if self._sub is not None:
-            await self._sub.unsubscribe()
-            self._sub = None
-        if self._nc is not None:
-            if self._nc.is_connected:
-                try:
-                    await asyncio.wait_for(self._nc.drain(), timeout=_DRAIN_TIMEOUT_S)
-                except asyncio.TimeoutError:
-                    log.warning(
-                        "FakeSttWorker drain timed out after %.1fs", _DRAIN_TIMEOUT_S
-                    )
-            self._nc = None
+        if self._nc is not None and self._nc.is_connected:
+            try:
+                await asyncio.wait_for(self._nc.drain(), timeout=_DRAIN_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                log.warning(
+                    "FakeSttWorker drain timed out after %.1fs", _DRAIN_TIMEOUT_S
+                )
+        self._sub = None
+        self._nc = None
 
-    async def _dispatch(self, msg: nats.aio.msg.Msg) -> None:  # type: ignore[name-defined]
+    async def _dispatch(self, msg: Msg) -> None:
         try:
             req = SttRequest.model_validate_json(msg.data)
         except ValidationError as exc:

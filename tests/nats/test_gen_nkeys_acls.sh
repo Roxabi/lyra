@@ -33,26 +33,28 @@ echo "PASS: template-only produced output ($(wc -l < "$OUT") lines)"
 # ── Expected allow-lists (authoritative copy mirrors spec §Data Model matrix) ──
 # If the spec matrix changes, update both deploy/nats/gen-nkeys.sh AND this file.
 declare -A EXPECTED_PUB EXPECTED_SUB
-EXPECTED_PUB[hub]='lyra.outbound.telegram.> lyra.outbound.discord.> lyra.voice.tts.request lyra.voice.stt.request lyra.llm.request'
-EXPECTED_SUB[hub]='lyra.inbound.telegram.> lyra.inbound.discord.> lyra.voice.tts.heartbeat lyra.voice.stt.heartbeat lyra.llm.health.* lyra.system.ready _INBOX.>'
+EXPECTED_PUB[hub]='lyra.outbound.telegram.> lyra.outbound.discord.> lyra.voice.tts.request.> lyra.voice.stt.request.> lyra.llm.request lyra.image.generate.request'
+EXPECTED_SUB[hub]='lyra.inbound.telegram.> lyra.inbound.discord.> lyra.voice.tts.heartbeat lyra.voice.stt.heartbeat lyra.llm.health.* lyra.system.ready _INBOX.> lyra.image.heartbeat'
 EXPECTED_PUB[telegram-adapter]='lyra.inbound.telegram.> lyra.system.ready'
 EXPECTED_SUB[telegram-adapter]='lyra.outbound.telegram.>'
 EXPECTED_PUB[discord-adapter]='lyra.inbound.discord.> lyra.system.ready'
 EXPECTED_SUB[discord-adapter]='lyra.outbound.discord.>'
 EXPECTED_PUB[tts-adapter]='lyra.voice.tts.heartbeat lyra.system.ready'
-EXPECTED_SUB[tts-adapter]='lyra.voice.tts.request _INBOX.> _inbox.>'
+EXPECTED_SUB[tts-adapter]='lyra.voice.tts.request lyra.voice.tts.request.> _INBOX.> _inbox.>'
 EXPECTED_PUB[stt-adapter]='lyra.voice.stt.heartbeat lyra.system.ready'
-EXPECTED_SUB[stt-adapter]='lyra.voice.stt.request _INBOX.> _inbox.>'
+EXPECTED_SUB[stt-adapter]='lyra.voice.stt.request lyra.voice.stt.request.> _INBOX.> _inbox.>'
 EXPECTED_PUB[voice-tts]='lyra.voice.tts.heartbeat _INBOX.>'
-EXPECTED_SUB[voice-tts]='lyra.voice.tts.request lyra.voice.tts.heartbeat'
+EXPECTED_SUB[voice-tts]='lyra.voice.tts.request lyra.voice.tts.request.> lyra.voice.tts.heartbeat'
 EXPECTED_PUB[voice-stt]='lyra.voice.stt.heartbeat _INBOX.>'
-EXPECTED_SUB[voice-stt]='lyra.voice.stt.request lyra.voice.stt.heartbeat'
+EXPECTED_SUB[voice-stt]='lyra.voice.stt.request lyra.voice.stt.request.> lyra.voice.stt.heartbeat'
 EXPECTED_PUB[llm-worker]='lyra.llm.health.*'
 EXPECTED_SUB[llm-worker]='lyra.llm.request'
+EXPECTED_PUB[image-worker]='lyra.image.heartbeat'
+EXPECTED_SUB[image-worker]='lyra.image.generate.request'
 EXPECTED_PUB[monitor]='lyra.monitor.>'
 EXPECTED_SUB[monitor]='lyra.monitor.>'
 
-IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor)
+IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker image-worker monitor)
 
 # ── extract_block: print the user{} block for a given identity name ────────────
 # B9: the closing-brace condition records `entry_depth` when the identity's
@@ -110,28 +112,28 @@ assert_allow_list_equals() {
   fi
 }
 
-# ── (a) 9 identity comment labels ──────────────────────────────────────────────
-count=$(grep -cE '^[[:space:]]+#[[:space:]]+(hub|telegram-adapter|discord-adapter|tts-adapter|stt-adapter|voice-tts|voice-stt|llm-worker|monitor)$' "$OUT" || true)
-[ "$count" -eq 9 ] \
-  || { echo "FAIL (a): expected 9 identity blocks, got ${count}"; exit 1; }
-echo "PASS (a): 9 identity blocks found"
+# ── (a) 10 identity comment labels ─────────────────────────────────────────────
+count=$(grep -cE '^[[:space:]]+#[[:space:]]+(hub|telegram-adapter|discord-adapter|tts-adapter|stt-adapter|voice-tts|voice-stt|llm-worker|image-worker|monitor)$' "$OUT" || true)
+[ "$count" -eq 10 ] \
+  || { echo "FAIL (a): expected 10 identity blocks, got ${count}"; exit 1; }
+echo "PASS (a): 10 identity blocks found"
 
-# ── (b) + (c) + (f) set-equality publish and subscribe for all 7 identities ───
+# ── (b) + (c) + (f) set-equality publish and subscribe for all 10 identities ──
 for name in "${IDENTITIES[@]}"; do
   block=$(extract_block "$name")
   [ -n "$block" ] || { echo "FAIL: block not found for ${name}"; exit 1; }
   assert_allow_list_equals "$block" "publish"   "${EXPECTED_PUB[$name]}" "$name"
   assert_allow_list_equals "$block" "subscribe" "${EXPECTED_SUB[$name]}" "$name"
 done
-echo "PASS (b): publish allow-lists match matrix (set equality, 9 identities)"
-echo "PASS (c): subscribe allow-lists match matrix (set equality, 9 identities)"
+echo "PASS (b): publish allow-lists match matrix (set equality, 10 identities)"
+echo "PASS (c): subscribe allow-lists match matrix (set equality, 10 identities)"
 echo "PASS (f): no over-privilege detected"
 
-# ── (d) allow_responses: true present on every user (9 occurrences) ───────────
+# ── (d) allow_responses: true present on every user (10 occurrences) ──────────
 ar_count=$(grep -c 'allow_responses: true' "$OUT" || true)
-[ "$ar_count" -eq 9 ] \
-  || { echo "FAIL (d): expected 9 allow_responses: true lines, got ${ar_count}"; exit 1; }
-echo "PASS (d): allow_responses: true appears 9 times"
+[ "$ar_count" -eq 10 ] \
+  || { echo "FAIL (d): expected 10 allow_responses: true lines, got ${ar_count}"; exit 1; }
+echo "PASS (d): allow_responses: true appears 10 times"
 
 # ── (e) the word 'plugin' must not appear anywhere in the generated conf ──────
 if grep -qi 'plugin' "$OUT"; then
@@ -156,4 +158,78 @@ dp_sub=$(awk '/default_permissions:[[:space:]]*\{/,/users:[[:space:]]*\[/' "$OUT
 echo "PASS (g): default_permissions denies publish + subscribe on \">\" fallback"
 
 echo ""
-echo "PASS: all 7 assertions (a–g) — 7 identities × {pub,sub} × set equality"
+echo "PASS: all 7 assertions (a–g) — 10 identities × {pub,sub} × set equality"
+
+# ── #754 image domain integration — assert image-worker + amended hub ACL ──
+# Contract: ADR-050 (lyra ↔ imagecli). See artifacts/specs/754-lyra-image-domain-integration-spec.mdx §Slice 3.
+
+# Re-invoke template-only to get fresh output for the new assertions.
+output=$(./deploy/nats/gen-nkeys.sh --template-only)
+
+# ── (#754-1) image-worker block must be present ───────────────────────────────
+echo "$output" | grep -qE '# image-worker$' \
+  || { echo "FAIL: image-worker block missing"; exit 1; }
+echo "PASS (#754-1): image-worker block present"
+
+# ── (#754-2) image-worker publish allow-list == ["lyra.image.heartbeat"] ──────
+iw_block=$(echo "$output" | awk '/# image-worker$/,/^    }$/')
+[ -n "$iw_block" ] || { echo "FAIL: could not extract image-worker block"; exit 1; }
+
+# Must contain lyra.image.heartbeat in the publish line
+echo "$iw_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' \
+  | grep -q '"lyra.image.heartbeat"' \
+  || { echo "FAIL: image-worker publish must allow lyra.image.heartbeat"; exit 1; }
+
+# Must NOT contain any other lyra.* subject in the publish line
+iw_pub_line=$(echo "$iw_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' | head -1)
+extra_pub=$(echo "$iw_pub_line" | grep -oE '"lyra\.[^"]+"' | grep -v '"lyra\.image\.heartbeat"' || true)
+[ -z "$extra_pub" ] \
+  || { echo "FAIL: image-worker publish has unexpected lyra.* subject(s): ${extra_pub}"; exit 1; }
+echo "PASS (#754-2): image-worker publish allow-list == [\"lyra.image.heartbeat\"]"
+
+# ── (#754-3) image-worker subscribe allow-list == ["lyra.image.generate.request"] ──
+# Must contain lyra.image.generate.request in the subscribe line
+echo "$iw_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
+  | grep -q '"lyra.image.generate.request"' \
+  || { echo "FAIL: image-worker subscribe must allow lyra.image.generate.request"; exit 1; }
+
+# Must NOT contain any other lyra.* subject in the subscribe line
+iw_sub_line=$(echo "$iw_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' | head -1)
+extra_sub=$(echo "$iw_sub_line" | grep -oE '"lyra\.[^"]+"' | grep -v '"lyra\.image\.generate\.request"' || true)
+[ -z "$extra_sub" ] \
+  || { echo "FAIL: image-worker subscribe has unexpected lyra.* subject(s): ${extra_sub}"; exit 1; }
+echo "PASS (#754-3): image-worker subscribe allow-list == [\"lyra.image.generate.request\"]"
+
+# ── (#754-4) hub publish gained lyra.image.generate.request ──────────────────
+hub_block=$(echo "$output" | awk '/# hub$/,/^    }$/')
+[ -n "$hub_block" ] || { echo "FAIL: could not extract hub block"; exit 1; }
+
+echo "$hub_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' \
+  | grep -q '"lyra.image.generate.request"' \
+  || { echo "FAIL: hub publish must include lyra.image.generate.request"; exit 1; }
+echo "PASS (#754-4): hub publish allow-list includes lyra.image.generate.request"
+
+# ── (#754-5) hub subscribe gained lyra.image.heartbeat ───────────────────────
+echo "$hub_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
+  | grep -q '"lyra.image.heartbeat"' \
+  || { echo "FAIL: hub subscribe must include lyra.image.heartbeat"; exit 1; }
+echo "PASS (#754-5): hub subscribe allow-list includes lyra.image.heartbeat"
+
+# ── (#754-6) no other identity may access lyra.image.* ───────────────────────
+OTHER_IDENTITIES=(telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor)
+for other_id in "${OTHER_IDENTITIES[@]}"; do
+  other_block=$(echo "$output" | awk -v target="# ${other_id}" '
+    /\{/ { depth++ }
+    index($0, target) > 0 && !inblock { inblock = 1; entry_depth = depth }
+    inblock { print }
+    /\}/ { if (inblock && depth == entry_depth) { exit } ; depth-- }
+  ')
+  [ -n "$other_block" ] || { echo "FAIL: could not extract block for ${other_id}"; exit 1; }
+  leak=$(echo "$other_block" | grep -oE '"lyra\.image\.[^"]+"' || true)
+  [ -z "$leak" ] \
+    || { echo "FAIL: ${other_id} must not have lyra.image.* access, found: ${leak}"; exit 1; }
+done
+echo "PASS (#754-6): no other identity has lyra.image.* access"
+
+echo ""
+echo "PASS (#754): image-worker ACL + amended hub ACL assertions (5 checks)"

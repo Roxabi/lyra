@@ -96,8 +96,14 @@ def generate_conf(
     # Merge defaults with agent overrides
     cfg = {**defaults, **agent}
 
-    # Determine command: hub uses run_hub.sh, adapters use run_adapter.sh <name>
-    if name == "hub":
+    # Determine command:
+    #   1. explicit command_override in agents.yml — used verbatim (for external-satellite
+    #      programs like imagecli nats-serve that are not lyra CLI subcommands).
+    #   2. name == "hub" — deploy/supervisor/scripts/run_hub.sh.
+    #   3. default — deploy/supervisor/scripts/run_adapter.sh <name>.
+    if "command_override" in agent:
+        cmd_path = agent["command_override"]
+    elif name == "hub":
         cmd_path = RUN_HUB.format(home=ctx["home"])
     else:
         cmd_path = f"{RUN_ADAPTER.format(home=ctx['home'])} {name}"

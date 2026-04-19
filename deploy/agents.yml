@@ -52,3 +52,9 @@ agents:
     nkey: tts-adapter.seed
     env:
       LYRA_TTS_ENABLED: "1"
+
+  imagecli_gen:
+    command_override: "imagecli nats-serve"
+    priority: 200
+    startsecs: 20  # T15 note — re-measure first-ready time on Machine 1 RTX 3080 pre-merge; bump if >20s observed
+    nkey: image-worker.seed

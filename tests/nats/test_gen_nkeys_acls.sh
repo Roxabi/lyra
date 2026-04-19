@@ -49,7 +49,7 @@ EXPECTED_PUB[voice-stt]='lyra.voice.stt.heartbeat _INBOX.>'
 EXPECTED_SUB[voice-stt]='lyra.voice.stt.request lyra.voice.stt.request.> lyra.voice.stt.heartbeat'
 EXPECTED_PUB[llm-worker]='lyra.llm.health.*'
 EXPECTED_SUB[llm-worker]='lyra.llm.request'
-EXPECTED_PUB[image-worker]='lyra.image.heartbeat'
+EXPECTED_PUB[image-worker]='lyra.image.heartbeat _INBOX.> _inbox.>'
 EXPECTED_SUB[image-worker]='lyra.image.generate.request'
 EXPECTED_PUB[monitor]='lyra.monitor.>'
 EXPECTED_SUB[monitor]='lyra.monitor.>'
@@ -171,21 +171,28 @@ echo "$output" | grep -qE '# image-worker$' \
   || { echo "FAIL: image-worker block missing"; exit 1; }
 echo "PASS (#754-1): image-worker block present"
 
-# ── (#754-2) image-worker publish allow-list == ["lyra.image.heartbeat"] ──────
+# ── (#754-2) image-worker publish allow-list ───────────────────────────────────
+# Expected: lyra.image.heartbeat + _INBOX.> + _inbox.> (defensive inbox entries
+# mirror voice-tts/voice-stt for reply-path robustness; see #804 review fix).
 iw_block=$(echo "$output" | awk '/# image-worker$/,/^    }$/')
 [ -n "$iw_block" ] || { echo "FAIL: could not extract image-worker block"; exit 1; }
 
 # Must contain lyra.image.heartbeat in the publish line
-echo "$iw_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' \
-  | grep -q '"lyra.image.heartbeat"' \
+iw_pub_line=$(echo "$iw_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' | head -1)
+echo "$iw_pub_line" | grep -q '"lyra.image.heartbeat"' \
   || { echo "FAIL: image-worker publish must allow lyra.image.heartbeat"; exit 1; }
 
+# Must contain both inbox forms
+echo "$iw_pub_line" | grep -q '"_INBOX.>"' \
+  || { echo "FAIL: image-worker publish must allow _INBOX.>"; exit 1; }
+echo "$iw_pub_line" | grep -q '"_inbox.>"' \
+  || { echo "FAIL: image-worker publish must allow _inbox.>"; exit 1; }
+
 # Must NOT contain any other lyra.* subject in the publish line
-iw_pub_line=$(echo "$iw_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' | head -1)
 extra_pub=$(echo "$iw_pub_line" | grep -oE '"lyra\.[^"]+"' | grep -v '"lyra\.image\.heartbeat"' || true)
 [ -z "$extra_pub" ] \
   || { echo "FAIL: image-worker publish has unexpected lyra.* subject(s): ${extra_pub}"; exit 1; }
-echo "PASS (#754-2): image-worker publish allow-list == [\"lyra.image.heartbeat\"]"
+echo "PASS (#754-2): image-worker publish allow-list == [\"lyra.image.heartbeat\", \"_INBOX.>\", \"_inbox.>\"]"
 
 # ── (#754-3) image-worker subscribe allow-list == ["lyra.image.generate.request"] ──
 # Must contain lyra.image.generate.request in the subscribe line

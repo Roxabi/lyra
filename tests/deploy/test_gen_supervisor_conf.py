@@ -12,13 +12,31 @@ REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "deploy" / "gen-supervisor-conf.py"
 
 
-def _run_dry(tmp_agents: Path) -> str:
+def _run_dry(tmp_agents: Path, *, expect_fail: bool = False) -> str:
+    """Run the generator in dry-run mode against a tmp agents.yml.
+
+    On unexpected failure, surfaces the script's stderr/stdout via
+    ``pytest.fail`` — raw ``CalledProcessError`` swallows the diagnostic
+    which makes the first test run on a broken generator very hard to
+    triage. 10 s timeout guards against --dry-run ever growing a blocking
+    call that deadlocks CI.
+    """
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "--dry-run", "--agents-file", str(tmp_agents)],
         capture_output=True,
         text=True,
-        check=True,
+        timeout=10,
     )
+    if expect_fail:
+        return result.stderr
+    if result.returncode != 0:
+        import pytest as _pytest
+
+        _pytest.fail(
+            f"gen-supervisor-conf.py failed (exit={result.returncode}):\n"
+            f"--- stdout ---\n{result.stdout}\n"
+            f"--- stderr ---\n{result.stderr}"
+        )
     return result.stdout
 
 

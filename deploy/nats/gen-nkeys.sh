@@ -77,7 +77,10 @@ SUB_ALLOW[llm-worker]='"lyra.llm.request"'
 
 # image-worker: imagecli nats-serve satellite. Heartbeat-publish + request-subscribe.
 # Contract: ADR-050. Shipped via imageCLI#50 (satellite) + #754 (lyra-side).
-PUB_ALLOW[image-worker]='"lyra.image.heartbeat"'
+# _INBOX.>/_inbox.> defensively included for reply-path robustness, mirroring
+# voice-tts/voice-stt — allow_responses: true alone may not cover every
+# nats-server version's reply publish path.
+PUB_ALLOW[image-worker]='"lyra.image.heartbeat","_INBOX.>","_inbox.>"'
 SUB_ALLOW[image-worker]='"lyra.image.generate.request"'
 
 PUB_ALLOW[monitor]='"lyra.monitor.>"'

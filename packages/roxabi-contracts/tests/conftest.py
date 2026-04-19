@@ -8,19 +8,54 @@ without cross-package dependency.
 
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
-_nats_server_available = shutil.which("nats-server") is not None
-requires_nats_server = pytest.mark.skipif(
-    not _nats_server_available,
-    reason="nats-server not found in PATH — install via 'make nats-install'",
-)
+_CANONICAL_MARKERS_KEY = "roxabi_contracts_test_markers"
+_ALIAS_MARKERS_KEY = "_markers"
+
+
+def _register_markers() -> None:
+    """Register ``_markers.py`` under a namespaced key at collection time.
+
+    Tests in this package deliberately have no ``__init__.py`` (aligns with
+    ``packages/roxabi-nats/tests`` — a package-level ``__init__.py`` makes
+    two conftest modules collide under ``tests.conftest``). Without a
+    package, ``from _markers import ...`` from sibling test modules would
+    depend on pytest-specific sys.path injection, which ``--import-mode=importlib``
+    disables. Use the same spec-from-file-location pattern that
+    ``packages/roxabi-nats/tests/conftest.py`` uses for ``_stub_fixture.py``.
+
+    The canonical ``sys.modules`` key is namespaced (``roxabi_contracts_test_markers``)
+    so it cannot collide with a similarly-named helper in another package's
+    conftest. The bare ``_markers`` name is exposed as an alias so callers
+    can keep writing ``from _markers import requires_nats_server`` — but the
+    idempotency guard checks the namespaced key, not the alias, so a collision
+    on ``_markers`` from elsewhere no longer short-circuits this loader with
+    the wrong module.
+    """
+    if _CANONICAL_MARKERS_KEY in sys.modules:
+        sys.modules.setdefault(_ALIAS_MARKERS_KEY, sys.modules[_CANONICAL_MARKERS_KEY])
+        return
+    path = Path(__file__).parent / "_markers.py"
+    spec = importlib.util.spec_from_file_location(_CANONICAL_MARKERS_KEY, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"failed to build import spec for {_CANONICAL_MARKERS_KEY}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[_CANONICAL_MARKERS_KEY] = mod
+    sys.modules[_ALIAS_MARKERS_KEY] = mod
+    spec.loader.exec_module(mod)
+
+
+_register_markers()
 
 
 def _free_port() -> int:
@@ -31,7 +66,7 @@ def _free_port() -> int:
 
 @pytest.fixture(scope="session")
 def nats_server_url() -> Generator[str, None, None]:
-    if not _nats_server_available:
+    if shutil.which("nats-server") is None:
         pytest.skip("nats-server not found in PATH")
     port = _free_port()
     url = f"nats://127.0.0.1:{port}"

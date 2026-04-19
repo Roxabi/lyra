@@ -28,6 +28,9 @@ jobs:
       - name: Check file length
         run: bash tools/check_file_length.sh
 
+      - name: Check duplicate test basenames
+        run: bash tools/check_duplicate_test_basenames.sh
+
       - name: Enforce import layers
         run: uv run lint-imports
 

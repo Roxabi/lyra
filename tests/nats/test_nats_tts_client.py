@@ -118,6 +118,31 @@ class TestCircuitBreaker:
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
+    async def test_ok_false_with_error_field_forwards_message(self) -> None:
+        """ok=False with a populated `error` field must surface the error string
+        in the TtsUnavailableError message (not the default "synthesis failed")."""
+        mock_nc = AsyncMock()
+        error_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "ok": False,
+                "request_id": "r-err",
+                "error": "worker OOM",
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = error_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+
+        with pytest.raises(TtsUnavailableError, match="worker OOM"):
+            await client.synthesize("hello")
+        assert client._cb._failures == 1
+
+    @pytest.mark.asyncio
     async def test_agent_tts_fields_forwarded_in_request(self) -> None:
         # Arrange — agent_tts with engine + speed set
         mock_nc = AsyncMock()
@@ -441,6 +466,7 @@ class TestTtsLoadAwareRouting:
         call_subjects: list[str] = []
 
         async def request_mock(subject: str, payload: bytes, timeout: float):
+            del payload, timeout  # signature required by AsyncMock side_effect
             call_subjects.append(subject)
             if len(call_subjects) == 1:
                 raise TimeoutError
@@ -502,7 +528,35 @@ class TestMalformedReply:
         _inject_fresh_worker(client)
         initial_failures = client._cb._failures
 
-        with pytest.raises(TtsUnavailableError, match="schema"):
+        with pytest.raises(TtsUnavailableError, match="schema") as exc_info:
             await client.synthesize("hello")
 
+        # Pin the cause chain to the _parse_reply error-boundary so a future
+        # regression where ok=False handling accidentally produces a
+        # "schema"-flavored message cannot silently pass this test.
+        from pydantic import ValidationError
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
+        assert client._cb._failures == initial_failures + 1
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_raises_domain_error(self) -> None:
+        """Malformed JSON bytes (not just invariant violations) must also
+        surface as TtsUnavailableError + CB failure — `_parse_reply` catches
+        every pydantic.ValidationError, including JSON-parse errors."""
+        mock_nc = AsyncMock()
+        fake_reply = MagicMock()
+        fake_reply.data = b"not json {"
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+        initial_failures = client._cb._failures
+
+        with pytest.raises(TtsUnavailableError, match="schema") as exc_info:
+            await client.synthesize("hello")
+
+        from pydantic import ValidationError
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
         assert client._cb._failures == initial_failures + 1

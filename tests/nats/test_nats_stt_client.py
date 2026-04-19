@@ -425,6 +425,35 @@ class TestTranscribeResponseParsing:
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
+    async def test_ok_false_with_error_field_forwards_message(
+        self, tmp_path: Path
+    ) -> None:
+        """ok=False with a populated `error` field must surface the error string
+        in the STTUnavailableError message (not the default "transcription failed")."""
+        mock_nc = AsyncMock()
+        error_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "ok": False,
+                "request_id": "r-err",
+                "error": "cuda oom",
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = error_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+        wav_file = tmp_path / "test.wav"
+        wav_file.write_bytes(b"\x00" * 64)
+
+        with pytest.raises(STTUnavailableError, match="cuda oom"):
+            await client.transcribe(wav_file)
+        assert client._cb._failures == 1
+
+    @pytest.mark.asyncio
     async def test_noise_transcript_raises_noise_error(self, tmp_path: Path) -> None:
         # Arrange — Whisper returns a known noise token
         mock_nc = AsyncMock()
@@ -552,6 +581,7 @@ class TestLoadAwareRouting:
         call_subjects: list[str] = []
 
         async def request_mock(subject: str, payload: bytes, timeout: float):
+            del payload, timeout  # signature required by AsyncMock side_effect
             call_subjects.append(subject)
             if len(call_subjects) == 1:
                 raise TimeoutError
@@ -626,7 +656,38 @@ class TestMalformedReply:
         initial_failures = client._cb._failures
 
         # Act / Assert
-        with pytest.raises(STTUnavailableError, match="schema"):
+        with pytest.raises(STTUnavailableError, match="schema") as exc_info:
             await client.transcribe(audio)
 
+        # Pin the cause chain to the _parse_reply error-boundary so a future
+        # regression where ok=False handling accidentally produces a
+        # "schema"-flavored message cannot silently pass this test.
+        from pydantic import ValidationError
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
+        assert client._cb._failures == initial_failures + 1
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_raises_domain_error(self, tmp_path: Path) -> None:
+        """Malformed JSON bytes (not just invariant violations) must also
+        surface as STTUnavailableError + CB failure — `_parse_reply` catches
+        every pydantic.ValidationError, including JSON-parse errors."""
+        audio = tmp_path / "sample.wav"
+        audio.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+
+        mock_nc = AsyncMock()
+        fake_reply = MagicMock()
+        fake_reply.data = b"not json {"
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+        initial_failures = client._cb._failures
+
+        with pytest.raises(STTUnavailableError, match="schema") as exc_info:
+            await client.transcribe(audio)
+
+        from pydantic import ValidationError
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
         assert client._cb._failures == initial_failures + 1

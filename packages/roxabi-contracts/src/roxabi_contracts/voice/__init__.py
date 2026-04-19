@@ -16,6 +16,7 @@ from roxabi_contracts.voice.subjects import (
     SUBJECTS,
     per_worker_stt,
     per_worker_tts,
+    validate_worker_id,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "TtsResponse",
     "per_worker_stt",
     "per_worker_tts",
+    "validate_worker_id",
 ]

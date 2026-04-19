@@ -29,7 +29,13 @@ from lyra.stt import (
     is_whisper_noise,
 )
 from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_contracts.voice import SUBJECTS, SttRequest, SttResponse, per_worker_stt
+from roxabi_contracts.voice import (
+    SUBJECTS,
+    SttRequest,
+    SttResponse,
+    per_worker_stt,
+    validate_worker_id,
+)
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 log = logging.getLogger(__name__)
@@ -103,8 +109,21 @@ class NatsSttClient:
         except Exception:
             log.debug("stt_client: heartbeat parse error", exc_info=True)
             return
-        if not data.get("worker_id"):
+        worker_id = data.get("worker_id")
+        if not worker_id:
             log.warning("stt_client: heartbeat missing worker_id, ignoring")
+            return
+        # Receive-side match for the PUBLISH-path safe-chars enforcement in
+        # per_worker_stt. Without this, a rogue worker publishing a heartbeat
+        # with a wildcard-bearing id (e.g. "evil.worker.*") would pollute the
+        # registry until first routing attempt.
+        try:
+            validate_worker_id(worker_id)
+        except ValueError:
+            log.warning(
+                "stt_client: heartbeat with unsafe worker_id=%r, ignoring",
+                worker_id,
+            )
             return
         self._registry.record_heartbeat(data)
 
@@ -179,8 +198,6 @@ class NatsSttClient:
         try:
             reply = await self._nc.request(target, payload, timeout=self._timeout)
             return self._parse_reply(reply.data)
-        except STTUnavailableError:
-            raise
         except TimeoutError:
             log.warning(
                 "STT: preferred worker %s timed out after %.0fs;"
@@ -196,8 +213,6 @@ class NatsSttClient:
                 SUBJECTS.stt_request, payload, timeout=self._timeout
             )
             return self._parse_reply(reply.data)
-        except STTUnavailableError:
-            raise
         except TimeoutError as exc:
             log.warning("STT adapter timeout after %.0fs", self._timeout)
             self._cb.record_failure()
@@ -206,7 +221,15 @@ class NatsSttClient:
             self._raise_nats_failure(exc, payload_kb)
 
     def _raise_nats_failure(self, exc: Exception, payload_kb: float) -> NoReturn:
-        """Convert a NATS request exception to STTUnavailableError."""
+        """Convert a NATS request exception to STTUnavailableError.
+
+        Domain errors (``STTUnavailableError``) pass through unchanged so callers
+        can rely on this being the single translation boundary for NATS-transport
+        exceptions — no per-site ``except STTUnavailableError: raise`` guard
+        needed anywhere in this file.
+        """
+        if isinstance(exc, STTUnavailableError):
+            raise exc
         if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
             log.error(
                 "STT payload too large (%.0f KB) — check NATS max_payload",

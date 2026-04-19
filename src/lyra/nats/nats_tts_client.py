@@ -21,7 +21,13 @@ from pydantic import ValidationError
 from lyra.nats.voice_health import VoiceWorkerRegistry
 from lyra.tts import SynthesisResult, TtsUnavailableError
 from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_contracts.voice import SUBJECTS, TtsRequest, TtsResponse, per_worker_tts
+from roxabi_contracts.voice import (
+    SUBJECTS,
+    TtsRequest,
+    TtsResponse,
+    per_worker_tts,
+    validate_worker_id,
+)
 from roxabi_nats._tts_constants import _TTS_CONFIG_FIELDS
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
@@ -52,8 +58,22 @@ class NatsTtsClient:
         except Exception:
             log.debug("tts_client: heartbeat parse error", exc_info=True)
             return
-        if not data.get("worker_id"):
+        worker_id = data.get("worker_id")
+        if not worker_id:
             log.warning("tts_client: heartbeat missing worker_id, ignoring")
+            return
+        # Receive-side match for the PUBLISH-path safe-chars enforcement in
+        # per_worker_tts. Without this, a rogue worker publishing a heartbeat
+        # with a wildcard-bearing id (e.g. "evil.worker.*") would pollute the
+        # registry until first routing attempt; the publish helper would then
+        # raise at call time, long after the trust boundary was crossed.
+        try:
+            validate_worker_id(worker_id)
+        except ValueError:
+            log.warning(
+                "tts_client: heartbeat with unsafe worker_id=%r, ignoring",
+                worker_id,
+            )
             return
         self._registry.record_heartbeat(data)
 
@@ -81,8 +101,6 @@ class NatsTtsClient:
                 self._timeout,
             )
             resp = await self._fallback(payload, payload_kb)
-        except TtsUnavailableError:
-            raise
         except Exception as exc:
             self._raise_nats_failure(exc, payload_kb)
         if not resp.ok:
@@ -100,13 +118,19 @@ class NatsTtsClient:
             log.warning("TTS adapter timeout after %.0fs", self._timeout)
             self._cb.record_failure()
             raise TtsUnavailableError("TTS adapter timeout") from exc
-        except TtsUnavailableError:
-            raise
         except Exception as exc:
             self._raise_nats_failure(exc, payload_kb)
 
     def _raise_nats_failure(self, exc: Exception, payload_kb: float) -> NoReturn:
-        """Convert a NATS request exception to TtsUnavailableError."""
+        """Convert a NATS request exception to TtsUnavailableError.
+
+        Domain errors (``TtsUnavailableError``) pass through unchanged so callers
+        can rely on this being the single translation boundary for NATS-transport
+        exceptions — no per-site ``except TtsUnavailableError: raise`` guard
+        needed anywhere in this file.
+        """
+        if isinstance(exc, TtsUnavailableError):
+            raise exc
         if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
             log.error(
                 "TTS payload too large (%.0f KB) — check NATS max_payload",

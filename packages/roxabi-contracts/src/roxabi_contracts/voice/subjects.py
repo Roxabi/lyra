@@ -39,7 +39,15 @@ class _Subjects:
 SUBJECTS = _Subjects()
 
 
-def _validate_worker_id(worker_id: str) -> None:
+def validate_worker_id(worker_id: str) -> None:
+    """Validate a worker_id against the NATS-subject-safe character class.
+
+    Raises ``ValueError`` if ``worker_id`` contains anything outside
+    ``[A-Za-z0-9_-]`` (notably ``. * >``, which are NATS wildcard or
+    subtree delimiters). Used by ``per_worker_tts`` / ``per_worker_stt``
+    on the PUBLISH path and by consumers on the heartbeat-receive path
+    to keep the registry free of wildcard-injectable ids.
+    """
     if not _SAFE_WORKER_ID_RE.fullmatch(worker_id):
         raise ValueError(
             f"worker_id must match [A-Za-z0-9_-]+ (got {worker_id!r}); "
@@ -52,9 +60,9 @@ def per_worker_tts(worker_id: str) -> str:
     """Per-worker TTS request subject: ``lyra.voice.tts.request.{worker_id}``.
 
     Raises ``ValueError`` if ``worker_id`` contains characters outside
-    ``[A-Za-z0-9_-]`` — see ``_validate_worker_id``.
+    ``[A-Za-z0-9_-]`` — see ``validate_worker_id``.
     """
-    _validate_worker_id(worker_id)
+    validate_worker_id(worker_id)
     return f"{SUBJECTS.tts_request}.{worker_id}"
 
 
@@ -62,7 +70,7 @@ def per_worker_stt(worker_id: str) -> str:
     """Per-worker STT request subject: ``lyra.voice.stt.request.{worker_id}``.
 
     Raises ``ValueError`` if ``worker_id`` contains characters outside
-    ``[A-Za-z0-9_-]`` — see ``_validate_worker_id``.
+    ``[A-Za-z0-9_-]`` — see ``validate_worker_id``.
     """
-    _validate_worker_id(worker_id)
+    validate_worker_id(worker_id)
     return f"{SUBJECTS.stt_request}.{worker_id}"

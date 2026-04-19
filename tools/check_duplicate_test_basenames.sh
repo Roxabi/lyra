@@ -22,14 +22,25 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-TESTPATHS=(
-    "tests"
-    "packages/roxabi-nats/tests"
-    "packages/roxabi-contracts/tests"
-)
+# Single source of truth: read ``testpaths`` from ``[tool.pytest.ini_options]``
+# in the root ``pyproject.toml``. Guarantees this guard stays in sync with
+# actual pytest collection, so adding a new testpath in ``pyproject.toml``
+# automatically extends the check — no silent drift.
+mapfile -t TESTPATHS < <(python3 -c "
+import tomllib
+with open('pyproject.toml', 'rb') as f:
+    cfg = tomllib.load(f)
+for p in cfg['tool']['pytest']['ini_options']['testpaths']:
+    print(p)
+")
+
+if [ "${#TESTPATHS[@]}" -eq 0 ]; then
+    echo "no testpaths found in pyproject.toml [tool.pytest.ini_options]" >&2
+    exit 1
+fi
 
 for p in "${TESTPATHS[@]}"; do
-    [ -d "$p" ] || { echo "testpath not found: $p" >&2; exit 2; }
+    [ -d "$p" ] || { echo "testpath not found: $p" >&2; exit 1; }
 done
 
 # A test file resolves to a bare basename iff its directory has no
@@ -68,3 +79,5 @@ if [ -n "$DUPES" ]; then
     echo "parent directory to force a fully-qualified module path." >&2
     exit 1
 fi
+
+exit 0

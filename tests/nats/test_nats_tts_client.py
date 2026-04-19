@@ -98,7 +98,15 @@ class TestCircuitBreaker:
     async def test_ok_false_raises_unavailable(self) -> None:
         # Arrange
         mock_nc = AsyncMock()
-        error_payload = json.dumps({"contract_version": "1", "ok": False}).encode()
+        error_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "ok": False,
+                "request_id": "r-err",
+            }
+        ).encode()
         fake_reply = MagicMock()
         fake_reply.data = error_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -110,15 +118,44 @@ class TestCircuitBreaker:
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
+    async def test_ok_false_with_error_field_forwards_message(self) -> None:
+        """ok=False with a populated `error` field must surface the error string
+        in the TtsUnavailableError message (not the default "synthesis failed")."""
+        mock_nc = AsyncMock()
+        error_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "ok": False,
+                "request_id": "r-err",
+                "error": "worker OOM",
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = error_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+
+        with pytest.raises(TtsUnavailableError, match="worker OOM"):
+            await client.synthesize("hello")
+        assert client._cb._failures == 1
+
+    @pytest.mark.asyncio
     async def test_agent_tts_fields_forwarded_in_request(self) -> None:
         # Arrange — agent_tts with engine + speed set
         mock_nc = AsyncMock()
         success_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-agent",
                 "audio_b64": base64.b64encode(b"fake").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 1000,
             }
         ).encode()
         fake_reply = MagicMock()
@@ -136,7 +173,7 @@ class TestCircuitBreaker:
         payload_bytes = call_args.args[1]
         request_dict = json.loads(payload_bytes)
         assert request_dict["engine"] == "chatterbox"
-        assert request_dict["speed"] == "1.2"
+        assert request_dict["speed"] == 1.2
         # contract_version is always stamped (ADR-044)
         assert request_dict["contract_version"] == "1"
         # All unset fields (None) must be absent from the NATS payload
@@ -150,9 +187,13 @@ class TestCircuitBreaker:
         success_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-success",
                 "audio_b64": base64.b64encode(b"fake").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 1000,
             }
         ).encode()
         fake_reply = MagicMock()
@@ -178,9 +219,13 @@ class TestContractVersion:
         success_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-cv",
                 "audio_b64": base64.b64encode(b"hi").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 500,
             }
         ).encode()
         fake_reply = MagicMock()
@@ -203,9 +248,13 @@ class TestContractVersion:
         reply_payload = json.dumps(
             {
                 "contract_version": "999",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-future",
                 "audio_b64": base64.b64encode(b"future").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 500,
             }
         ).encode()
         fake_reply = MagicMock()
@@ -243,6 +292,26 @@ class TestTtsClientStart:
         await client.start()
         assert mock_nc.subscribe.await_count == 1
 
+    @pytest.mark.asyncio
+    async def test_heartbeat_with_wildcard_worker_id_is_dropped(self) -> None:
+        """_on_heartbeat with a wildcard worker_id is rejected; registry stays empty."""
+        mock_nc = AsyncMock()
+        client = NatsTtsClient(nc=mock_nc)
+        msg = MagicMock()
+        msg.data = json.dumps({"worker_id": "evil.worker.*"}).encode()
+        await client._on_heartbeat(msg)
+        assert client._registry.pick_least_loaded() is None
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_with_non_string_worker_id_is_dropped(self) -> None:
+        """_on_heartbeat with a non-string worker_id drops the message; no TypeError."""
+        mock_nc = AsyncMock()
+        client = NatsTtsClient(nc=mock_nc)
+        msg = MagicMock()
+        msg.data = json.dumps({"worker_id": 12345}).encode()
+        await client._on_heartbeat(msg)
+        assert client._registry.pick_least_loaded() is None
+
 
 class TestTtsClientFreshness:
     """Tests for freshness tracking gate in NatsTtsClient."""
@@ -274,9 +343,13 @@ class TestTtsClientFreshness:
         mock_response.data = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-fresh",
                 "audio_b64": base64.b64encode(b"audio").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 1000,
             }
         ).encode()
         mock_nc.request = AsyncMock(return_value=mock_response)
@@ -304,9 +377,13 @@ class TestTtsClientFreshness:
         mock_response.data = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-resume",
                 "audio_b64": base64.b64encode(b"audio").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 1000,
             }
         ).encode()
         mock_nc.request = AsyncMock(return_value=mock_response)
@@ -332,9 +409,13 @@ class TestTtsLoadAwareRouting:
         payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-ok",
                 "audio_b64": base64.b64encode(b"fake").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 1000,
             }
         ).encode()
         reply = MagicMock()
@@ -405,6 +486,7 @@ class TestTtsLoadAwareRouting:
         call_subjects: list[str] = []
 
         async def request_mock(subject: str, payload: bytes, timeout: float):
+            del payload, timeout  # signature required by AsyncMock side_effect
             call_subjects.append(subject)
             if len(call_subjects) == 1:
                 raise TimeoutError
@@ -431,3 +513,70 @@ class TestTtsLoadAwareRouting:
             await client.synthesize("hi")
         assert mock_nc.request.await_count == 2
         assert client._cb._failures == 1
+
+
+class TestMalformedReply:
+    """Pydantic ValidationError on reply MUST surface as TtsUnavailableError."""
+
+    @pytest.mark.asyncio
+    async def test_malformed_reply_raises_domain_error(self) -> None:
+        """ok=True without duration_ms → TtsResponse invariant fails →
+        client must translate into TtsUnavailableError and record a
+        circuit-breaker failure (receive-path anti-drift guard).
+        """
+        mock_nc = AsyncMock()
+        # Reply is ok=True but missing duration_ms — violates
+        # TtsResponse._enforce_success_invariant (see contracts spec #763
+        # drift item #1).
+        bad_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "ok": True,
+                "request_id": "r-bad",
+                "audio_b64": base64.b64encode(b"audio").decode(),
+                "mime_type": "audio/ogg",
+                # duration_ms deliberately omitted
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = bad_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+        initial_failures = client._cb._failures
+
+        with pytest.raises(TtsUnavailableError, match="schema") as exc_info:
+            await client.synthesize("hello")
+
+        # Pin the cause chain to the _parse_reply error-boundary so a future
+        # regression where ok=False handling accidentally produces a
+        # "schema"-flavored message cannot silently pass this test.
+        from pydantic import ValidationError
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
+        assert client._cb._failures == initial_failures + 1
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_raises_domain_error(self) -> None:
+        """Malformed JSON bytes (not just invariant violations) must also
+        surface as TtsUnavailableError + CB failure — `_parse_reply` catches
+        every pydantic.ValidationError, including JSON-parse errors."""
+        mock_nc = AsyncMock()
+        fake_reply = MagicMock()
+        fake_reply.data = b"not json {"
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+        initial_failures = client._cb._failures
+
+        with pytest.raises(TtsUnavailableError, match="schema") as exc_info:
+            await client.synthesize("hello")
+
+        from pydantic import ValidationError
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
+        assert client._cb._failures == initial_failures + 1

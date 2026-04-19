@@ -13,11 +13,13 @@ import base64
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import NoReturn
 from uuid import uuid4
 
 from nats.aio.client import Client as NATS
+from pydantic import ValidationError
 
 from lyra.nats.voice_health import VoiceWorkerRegistry
 from lyra.stt import (
@@ -26,7 +28,14 @@ from lyra.stt import (
     TranscriptionResult,
     is_whisper_noise,
 )
-from roxabi_nats.adapter_base import CONTRACT_VERSION
+from roxabi_contracts.envelope import CONTRACT_VERSION
+from roxabi_contracts.voice import (
+    SUBJECTS,
+    SttRequest,
+    SttResponse,
+    per_worker_stt,
+    validate_worker_id,
+)
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 log = logging.getLogger(__name__)
@@ -34,8 +43,6 @@ log = logging.getLogger(__name__)
 _STT_TIMEOUT_DEFAULT = 15.0
 _STT_TIMEOUT_MIN = 1.0
 _STT_TIMEOUT_MAX = 300.0
-
-_HB_SUBJECT = "lyra.voice.stt.heartbeat"
 
 
 def _parse_stt_timeout(timeout: float | None) -> float:
@@ -69,8 +76,6 @@ def _parse_stt_timeout(timeout: float | None) -> float:
 
 
 class NatsSttClient:
-    SUBJECT = "lyra.voice.stt.request"
-
     def __init__(  # noqa: PLR0913
         self,
         nc: NATS,
@@ -94,7 +99,9 @@ class NatsSttClient:
     async def start(self) -> None:
         """Subscribe to heartbeat subject. Called once after nc is connected."""
         if self._hb_sub is None:
-            self._hb_sub = await self._nc.subscribe(_HB_SUBJECT, cb=self._on_heartbeat)
+            self._hb_sub = await self._nc.subscribe(
+                SUBJECTS.stt_heartbeat, cb=self._on_heartbeat
+            )
 
     async def _on_heartbeat(self, msg) -> None:
         try:
@@ -102,10 +109,37 @@ class NatsSttClient:
         except Exception:
             log.debug("stt_client: heartbeat parse error", exc_info=True)
             return
-        if not data.get("worker_id"):
+        worker_id = data.get("worker_id")
+        if not worker_id:
             log.warning("stt_client: heartbeat missing worker_id, ignoring")
             return
+        if not isinstance(worker_id, str):
+            log.warning(
+                "stt_client: heartbeat non-string worker_id=%r, ignoring", worker_id
+            )
+            return
+        # Receive-side match for the PUBLISH-path safe-chars enforcement in
+        # per_worker_stt. Without this, a rogue worker publishing a heartbeat
+        # with a wildcard-bearing id (e.g. "evil.worker.*") would pollute the
+        # registry until first routing attempt.
+        try:
+            validate_worker_id(worker_id)
+        except ValueError:
+            log.warning(
+                "stt_client: heartbeat with unsafe worker_id=%r, ignoring",
+                worker_id,
+            )
+            return
         self._registry.record_heartbeat(data)
+
+    def _parse_reply(self, raw: bytes) -> SttResponse:
+        """Validate a NATS reply against SttResponse; translate a ValidationError
+        into STTUnavailableError + record a circuit-breaker failure."""
+        try:
+            return SttResponse.model_validate_json(raw)
+        except ValidationError as exc:
+            self._cb.record_failure()
+            raise STTUnavailableError("STT reply failed schema validation") from exc
 
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
         preferred = self._registry.pick_least_loaded()
@@ -118,25 +152,33 @@ class NatsSttClient:
         resolved = Path(path).resolve()
         audio_bytes = await asyncio.to_thread(resolved.read_bytes)
         mime = _mime_from_suffix(resolved.suffix)
-        request = {
-            "contract_version": CONTRACT_VERSION,
-            "request_id": str(uuid4()),
-            "audio_b64": base64.b64encode(audio_bytes).decode("ascii"),
-            "mime_type": mime,
-            "model": self._model,
-            "language_detection_threshold": self._detection_threshold,
-            "language_detection_segments": self._detection_segments,
-            "language_fallback": self._detection_fallback,
-        }
-        payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
-        data = await self._request_with_fallback(payload, preferred.worker_id)
-        if not data.get("ok"):
+        request = SttRequest(
+            contract_version=CONTRACT_VERSION,
+            trace_id=str(uuid4()),
+            issued_at=datetime.now(timezone.utc),
+            request_id=str(uuid4()),
+            audio_b64=base64.b64encode(audio_bytes).decode("ascii"),
+            mime_type=mime,
+            model=self._model,
+            language_detection_threshold=self._detection_threshold,
+            language_detection_segments=self._detection_segments,
+            language_fallback=self._detection_fallback,
+        )
+        payload = request.model_dump_json(exclude_none=True).encode("utf-8")
+        resp = await self._request_with_fallback(payload, preferred.worker_id)
+        if not resp.ok:
             self._cb.record_failure()
-            raise STTUnavailableError("STT transcription failed")
+            raise STTUnavailableError(resp.error or "STT transcription failed")
+        # SttResponse._enforce_success_invariant guarantees text, language, and
+        # duration_seconds are non-null whenever ok=True. Asserting narrows the
+        # types and fails loudly if that invariant ever drifts.
+        assert resp.text is not None
+        assert resp.language is not None
+        assert resp.duration_seconds is not None
         result = TranscriptionResult(
-            text=data["text"],
-            language=data.get("language", "unknown"),
-            duration_seconds=data.get("duration_seconds", 0.0),
+            text=resp.text,
+            language=resp.language,
+            duration_seconds=resp.duration_seconds,
         )
         self._cb.record_success()
         if is_whisper_noise(result.text):
@@ -148,17 +190,19 @@ class NatsSttClient:
             raise STTNoiseError(f"Noise transcript: {result.text!r}")
         return result
 
-    async def _request_with_fallback(self, payload: bytes, worker_id: str) -> dict:
+    async def _request_with_fallback(
+        self, payload: bytes, worker_id: str
+    ) -> SttResponse:
         """Send to per-worker subject; on timeout, fall back once to queue group.
 
         Raises ``STTUnavailableError`` on final failure (after fallback), wrapping
         the originating exception. Circuit-breaker failures are recorded here.
         """
         payload_kb = len(payload) / 1024
-        target = f"{self.SUBJECT}.{worker_id}"
+        target = per_worker_stt(worker_id)
         try:
             reply = await self._nc.request(target, payload, timeout=self._timeout)
-            return json.loads(reply.data)
+            return self._parse_reply(reply.data)
         except TimeoutError:
             log.warning(
                 "STT: preferred worker %s timed out after %.0fs;"
@@ -170,8 +214,10 @@ class NatsSttClient:
             self._raise_nats_failure(exc, payload_kb)
         # Fallback: queue group (round-robin among alive workers).
         try:
-            reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
-            return json.loads(reply.data)
+            reply = await self._nc.request(
+                SUBJECTS.stt_request, payload, timeout=self._timeout
+            )
+            return self._parse_reply(reply.data)
         except TimeoutError as exc:
             log.warning("STT adapter timeout after %.0fs", self._timeout)
             self._cb.record_failure()
@@ -180,7 +226,15 @@ class NatsSttClient:
             self._raise_nats_failure(exc, payload_kb)
 
     def _raise_nats_failure(self, exc: Exception, payload_kb: float) -> NoReturn:
-        """Convert a NATS request exception to STTUnavailableError."""
+        """Convert a NATS request exception to STTUnavailableError.
+
+        Domain errors (``STTUnavailableError``) pass through unchanged so callers
+        can rely on this being the single translation boundary for NATS-transport
+        exceptions — no per-site ``except STTUnavailableError: raise`` guard
+        needed anywhere in this file.
+        """
+        if isinstance(exc, STTUnavailableError):
+            raise exc
         if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
             log.error(
                 "STT payload too large (%.0f KB) — check NATS max_payload",

@@ -102,6 +102,7 @@ from typing import Any  # noqa: E402
 from nats.errors import NoServersError  # noqa: E402
 
 import nats as _nats  # noqa: E402
+from _markers import requires_nats_server  # noqa: E402
 from roxabi_contracts.voice import (  # noqa: E402
     SttRequest,
     SttResponse,
@@ -113,8 +114,6 @@ from roxabi_contracts.voice.fixtures import (  # noqa: E402
     silence_wav_16khz,
 )
 from roxabi_contracts.voice.subjects import SUBJECTS  # noqa: E402
-
-from .conftest import requires_nats_server  # noqa: E402
 
 _ENVELOPE: dict[str, Any] = {
     "contract_version": "1",

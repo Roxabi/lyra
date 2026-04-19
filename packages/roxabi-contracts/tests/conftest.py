@@ -11,16 +11,27 @@ from __future__ import annotations
 import shutil
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
+# Tests in this package deliberately have no ``__init__.py`` (aligns with
+# ``packages/roxabi-nats/tests`` — a package-level ``__init__.py`` makes
+# two conftest modules collide under ``tests.conftest``). Add the test
+# directory to sys.path so sibling helpers like ``_markers`` resolve both
+# here (conftest load, before pytest injects the path) and in test modules.
+_TEST_DIR = str(Path(__file__).resolve().parent)
+if _TEST_DIR not in sys.path:
+    sys.path.insert(0, _TEST_DIR)
+
+from _markers import requires_nats_server  # noqa: E402 — re-exported for marker callers
+
+__all__ = ["nats_server_url", "requires_nats_server"]
+
 _nats_server_available = shutil.which("nats-server") is not None
-requires_nats_server = pytest.mark.skipif(
-    not _nats_server_available,
-    reason="nats-server not found in PATH — install via 'make nats-install'",
-)
 
 
 def _free_port() -> int:

@@ -29,3 +29,4 @@ packages = ["src/roxabi_contracts"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "--import-mode=importlib"

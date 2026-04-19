@@ -28,6 +28,9 @@ jobs:
       - name: Check file length
         run: bash tools/check_file_length.sh
 
+      - name: Check duplicate test basenames
+        run: bash tools/check_duplicate_test_basenames.sh
+
       - name: Enforce import layers
         run: uv run lint-imports
 
@@ -37,8 +40,14 @@ jobs:
       - name: Typecheck
         run: uv run pyright
 
-      - name: Test with coverage
-        run: uv run pytest
+      - name: Coverage — lyra
+        run: uv run pytest tests/ --cov=lyra --cov-report=term-missing --cov-fail-under=50
+
+      - name: Coverage — roxabi_nats
+        run: uv run pytest packages/roxabi-nats/tests --cov=roxabi_nats --cov-report=term-missing --cov-fail-under=70
+
+      - name: Coverage — roxabi_contracts
+        run: uv run pytest packages/roxabi-contracts/tests --cov=roxabi_contracts --cov-report=term-missing --cov-fail-under=80
 
       - name: Test dep-graph sub-project
         working-directory: scripts/dep-graph
@@ -69,7 +78,7 @@ jobs:
         run: docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 60
 
       - name: Run integration tests
-        run: NATS_URL=nats://localhost:4222 uv run pytest tests/integration/ -v --no-cov
+        run: NATS_URL=nats://localhost:4222 uv run pytest tests/integration/ -v
 
       - name: Tear down Docker environment
         if: always()

@@ -1,0 +1,53 @@
+---
+title: Split --cov-fail-under into per-package thresholds
+issue: 795
+status: approved
+tier: F-lite
+date: 2026-04-19
+---
+
+## Problem
+
+Root `pyproject.toml` uses a single `--cov-fail-under=50` threshold that runs against a combined `--cov=lyra --cov=roxabi_nats --cov=roxabi_contracts` invocation. Coverage.py computes one combined ratio (statements covered ÷ total statements) across all three targets, so a regression in one package can be masked by high coverage in the others.
+
+Current statement counts:
+
+- `lyra`: ~13,800 statements
+- `roxabi_nats`: ~900 statements
+- `roxabi_contracts`: ~200 statements
+
+A drop of `lyra` from 50% to, say, 45% can still net above the 50% combined threshold if `roxabi_nats` and `roxabi_contracts` sit near 100% — the gate fails to catch a real `lyra` regression.
+
+The condition pre-existed before #768 (the repo already combined `lyra` and `roxabi_nats`). #768 added `roxabi_contracts`, slightly enlarging the denominator and making the dilution marginally worse. It was surfaced in the code review of #768 / PR #793.
+
+## Who
+
+- **Primary:** Lyra maintainers relying on the CI coverage gate to catch regressions before merge.
+- **Secondary:** Future package extractions (voice, memory, llm subpackages) that will land as small, high-coverage dependencies and would otherwise further dilute the shared ratio.
+
+## Constraints
+
+- CI must continue to produce a single pass/fail verdict per PR — per-package thresholds must not turn one gate into three orthogonal red/greens.
+- Per-package thresholds must be explicit and easy to tune; small, isolated packages (`roxabi_nats`, `roxabi_contracts`) can reasonably hold a higher bar than `lyra`.
+- Local `uv run pytest` must still work with a sane default; developers should not have to invoke three separate commands to reproduce CI.
+- No new test tooling — stay on `pytest` + `pytest-cov`.
+- Coverage threshold numbers inherit from today's combined 50% for `lyra`; sub-package numbers are new policy to be fixed in the spec.
+
+## Out of Scope
+
+- Raising or lowering the `lyra` threshold itself (keep at 50%).
+- Replacing `pytest-cov` with another coverage tool.
+- Introducing diff-coverage (only-new-code) gates — separate concern.
+- Per-module (sub-package directory) thresholds inside `lyra` — this frame scopes to top-level installable packages only.
+- Coverage reporting format changes (xml/html/term); only the fail-under gate changes.
+
+## Complexity
+
+**Tier: F-lite** — CI/config-only change, single domain (test infra), scope is clear from the issue body.
+
+Signals observed:
+
+- Change area is narrow: `pyproject.toml` `addopts`, CI workflow coverage step(s), possibly a Makefile target used locally.
+- No architectural unknowns; the fix is a known pattern (per-package invocation + `--cov-fail-under`).
+- Acceptance threshold per sub-package is a policy decision the spec will pin down.
+- Low priority (`P3-low`), no urgency coupling.

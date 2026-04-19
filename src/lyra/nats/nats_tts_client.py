@@ -62,6 +62,11 @@ class NatsTtsClient:
         if not worker_id:
             log.warning("tts_client: heartbeat missing worker_id, ignoring")
             return
+        if not isinstance(worker_id, str):
+            log.warning(
+                "tts_client: heartbeat non-string worker_id=%r, ignoring", worker_id
+            )
+            return
         # Receive-side match for the PUBLISH-path safe-chars enforcement in
         # per_worker_tts. Without this, a rogue worker publishing a heartbeat
         # with a wildcard-bearing id (e.g. "evil.worker.*") would pollute the

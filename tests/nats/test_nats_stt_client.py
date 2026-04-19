@@ -290,6 +290,26 @@ class TestSttClientStart:
         await client.start()
         assert mock_nc.subscribe.await_count == 1
 
+    @pytest.mark.asyncio
+    async def test_heartbeat_with_wildcard_worker_id_is_dropped(self) -> None:
+        """_on_heartbeat with a wildcard worker_id is rejected; registry stays empty."""
+        mock_nc = AsyncMock()
+        client = NatsSttClient(nc=mock_nc)
+        msg = MagicMock()
+        msg.data = json.dumps({"worker_id": "evil.worker.*"}).encode()
+        await client._on_heartbeat(msg)
+        assert client._registry.pick_least_loaded() is None
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_with_non_string_worker_id_is_dropped(self) -> None:
+        """_on_heartbeat with a non-string worker_id drops the message; no TypeError."""
+        mock_nc = AsyncMock()
+        client = NatsSttClient(nc=mock_nc)
+        msg = MagicMock()
+        msg.data = json.dumps({"worker_id": 12345}).encode()
+        await client._on_heartbeat(msg)
+        assert client._registry.pick_least_loaded() is None
+
 
 class TestSttClientFreshness:
     """Tests for freshness tracking gate in NatsSttClient."""

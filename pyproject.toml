@@ -90,7 +90,7 @@ addopts = "--import-mode=importlib --cov=lyra --cov=roxabi_nats --cov=roxabi_con
 
 [tool.coverage.run]
 branch = true
-source = ["lyra"]
+source = ["lyra", "roxabi_nats", "roxabi_contracts"]
 
 [tool.coverage.report]
 show_missing = true

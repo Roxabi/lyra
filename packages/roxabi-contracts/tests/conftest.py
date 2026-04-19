@@ -27,9 +27,7 @@ _TEST_DIR = str(Path(__file__).resolve().parent)
 if _TEST_DIR not in sys.path:
     sys.path.insert(0, _TEST_DIR)
 
-from _markers import requires_nats_server  # noqa: E402 — re-exported for marker callers
-
-__all__ = ["nats_server_url", "requires_nats_server"]
+from _markers import requires_nats_server as requires_nats_server  # noqa: E402
 
 _nats_server_available = shutil.which("nats-server") is not None
 

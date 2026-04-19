@@ -98,7 +98,15 @@ class TestCircuitBreaker:
     async def test_ok_false_raises_unavailable(self) -> None:
         # Arrange
         mock_nc = AsyncMock()
-        error_payload = json.dumps({"contract_version": "1", "ok": False}).encode()
+        error_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "ok": False,
+                "request_id": "r-err",
+            }
+        ).encode()
         fake_reply = MagicMock()
         fake_reply.data = error_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -116,9 +124,13 @@ class TestCircuitBreaker:
         success_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-agent",
                 "audio_b64": base64.b64encode(b"fake").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 1000,
             }
         ).encode()
         fake_reply = MagicMock()
@@ -150,9 +162,13 @@ class TestCircuitBreaker:
         success_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-success",
                 "audio_b64": base64.b64encode(b"fake").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 1000,
             }
         ).encode()
         fake_reply = MagicMock()
@@ -178,9 +194,13 @@ class TestContractVersion:
         success_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-cv",
                 "audio_b64": base64.b64encode(b"hi").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 500,
             }
         ).encode()
         fake_reply = MagicMock()
@@ -203,9 +223,13 @@ class TestContractVersion:
         reply_payload = json.dumps(
             {
                 "contract_version": "999",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-future",
                 "audio_b64": base64.b64encode(b"future").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 500,
             }
         ).encode()
         fake_reply = MagicMock()
@@ -274,9 +298,13 @@ class TestTtsClientFreshness:
         mock_response.data = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-fresh",
                 "audio_b64": base64.b64encode(b"audio").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 1000,
             }
         ).encode()
         mock_nc.request = AsyncMock(return_value=mock_response)
@@ -304,9 +332,13 @@ class TestTtsClientFreshness:
         mock_response.data = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-resume",
                 "audio_b64": base64.b64encode(b"audio").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 1000,
             }
         ).encode()
         mock_nc.request = AsyncMock(return_value=mock_response)
@@ -332,9 +364,13 @@ class TestTtsLoadAwareRouting:
         payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-ok",
                 "audio_b64": base64.b64encode(b"fake").decode(),
                 "mime_type": "audio/ogg",
+                "duration_ms": 1000,
             }
         ).encode()
         reply = MagicMock()
@@ -431,3 +467,42 @@ class TestTtsLoadAwareRouting:
             await client.synthesize("hi")
         assert mock_nc.request.await_count == 2
         assert client._cb._failures == 1
+
+
+class TestMalformedReply:
+    """Pydantic ValidationError on reply MUST surface as TtsUnavailableError."""
+
+    @pytest.mark.asyncio
+    async def test_malformed_reply_raises_domain_error(self) -> None:
+        """ok=True without duration_ms → TtsResponse invariant fails →
+        client must translate into TtsUnavailableError and record a
+        circuit-breaker failure (receive-path anti-drift guard).
+        """
+        mock_nc = AsyncMock()
+        # Reply is ok=True but missing duration_ms — violates
+        # TtsResponse._enforce_success_invariant (see contracts spec #763
+        # drift item #1).
+        bad_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "ok": True,
+                "request_id": "r-bad",
+                "audio_b64": base64.b64encode(b"audio").decode(),
+                "mime_type": "audio/ogg",
+                # duration_ms deliberately omitted
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = bad_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+
+        client = NatsTtsClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+        initial_failures = client._cb._failures
+
+        with pytest.raises(TtsUnavailableError, match="schema"):
+            await client.synthesize("hello")
+
+        assert client._cb._failures == initial_failures + 1

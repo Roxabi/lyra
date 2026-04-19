@@ -177,7 +177,10 @@ class TestCircuitBreaker:
         success_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-ok",
                 "text": "hello",
                 "language": "en",
                 "duration_seconds": 1.0,
@@ -208,7 +211,10 @@ class TestContractVersion:
         success_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-ok",
                 "text": "hi",
                 "language": "en",
                 "duration_seconds": 1.0,
@@ -238,7 +244,10 @@ class TestContractVersion:
         reply_payload = json.dumps(
             {
                 "contract_version": "999",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-future",
                 "text": "future",
                 "language": "en",
                 "duration_seconds": 0.5,
@@ -315,7 +324,10 @@ class TestSttClientFreshness:
         success_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-ok",
                 "text": "hello world",
                 "language": "en",
                 "duration_seconds": 1.0,
@@ -351,7 +363,10 @@ class TestSttClientFreshness:
         success_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-ok",
                 "text": "resumed",
                 "language": "en",
                 "duration_seconds": 1.0,
@@ -388,7 +403,15 @@ class TestTranscribeResponseParsing:
     async def test_ok_false_raises_unavailable(self, tmp_path: Path) -> None:
         # Arrange
         mock_nc = AsyncMock()
-        error_payload = json.dumps({"contract_version": "1", "ok": False}).encode()
+        error_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "ok": False,
+                "request_id": "r-err",
+            }
+        ).encode()
         fake_reply = MagicMock()
         fake_reply.data = error_payload
         mock_nc.request = AsyncMock(return_value=fake_reply)
@@ -408,7 +431,10 @@ class TestTranscribeResponseParsing:
         noise_payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-noise",
                 "text": "[music]",
                 "language": "en",
                 "duration_seconds": 0.5,
@@ -436,7 +462,10 @@ class TestLoadAwareRouting:
         payload = json.dumps(
             {
                 "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
                 "ok": True,
+                "request_id": "r-ok",
                 "text": "hi",
                 "language": "en",
                 "duration_seconds": 0.1,
@@ -557,3 +586,47 @@ class TestLoadAwareRouting:
             await client.transcribe(wav)
         assert mock_nc.request.await_count == 2
         assert client._cb._failures == 1
+
+
+class TestMalformedReply:
+    """Pydantic ValidationError on reply MUST surface as STTUnavailableError."""
+
+    @pytest.mark.asyncio
+    async def test_malformed_reply_raises_domain_error(self, tmp_path: Path) -> None:
+        """ok=True without duration_seconds → SttResponse invariant fails →
+        client must translate into STTUnavailableError and record a
+        circuit-breaker failure (receive-path anti-drift guard).
+        """
+        # Arrange
+        audio = tmp_path / "sample.wav"
+        audio.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+
+        mock_nc = AsyncMock()
+        # Reply is ok=True but missing duration_seconds — violates
+        # SttResponse._enforce_success_invariant (see contracts spec #763
+        # drift item #4).
+        bad_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "ok": True,
+                "request_id": "r-bad",
+                "text": "hello",
+                "language": "en",
+                # duration_seconds deliberately omitted
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = bad_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client)
+        initial_failures = client._cb._failures
+
+        # Act / Assert
+        with pytest.raises(STTUnavailableError, match="schema"):
+            await client.transcribe(audio)
+
+        assert client._cb._failures == initial_failures + 1

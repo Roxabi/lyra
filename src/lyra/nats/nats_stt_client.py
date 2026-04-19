@@ -19,6 +19,7 @@ from typing import NoReturn
 from uuid import uuid4
 
 from nats.aio.client import Client as NATS
+from pydantic import ValidationError
 
 from lyra.nats.voice_health import VoiceWorkerRegistry
 from lyra.stt import (
@@ -28,7 +29,7 @@ from lyra.stt import (
     is_whisper_noise,
 )
 from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_contracts.voice import SUBJECTS, SttRequest
+from roxabi_contracts.voice import SUBJECTS, SttRequest, SttResponse
 from roxabi_contracts.voice.subjects import per_worker_stt
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
@@ -108,6 +109,15 @@ class NatsSttClient:
             return
         self._registry.record_heartbeat(data)
 
+    def _parse_reply(self, raw: bytes) -> SttResponse:
+        """Validate a NATS reply against SttResponse; translate a ValidationError
+        into STTUnavailableError + record a circuit-breaker failure."""
+        try:
+            return SttResponse.model_validate_json(raw)
+        except ValidationError as exc:
+            self._cb.record_failure()
+            raise STTUnavailableError("STT reply failed schema validation") from exc
+
     async def transcribe(self, path: Path | str) -> TranscriptionResult:
         preferred = self._registry.pick_least_loaded()
         if preferred is None:
@@ -132,14 +142,15 @@ class NatsSttClient:
             language_fallback=self._detection_fallback,
         )
         payload = request.model_dump_json(exclude_none=True).encode("utf-8")
-        data = await self._request_with_fallback(payload, preferred.worker_id)
-        if not data.get("ok"):
+        resp = await self._request_with_fallback(payload, preferred.worker_id)
+        if not resp.ok:
             self._cb.record_failure()
-            raise STTUnavailableError("STT transcription failed")
+            raise STTUnavailableError(resp.error or "STT transcription failed")
+        # ok=True invariant guarantees text / language / duration_seconds non-null
         result = TranscriptionResult(
-            text=data["text"],
-            language=data.get("language", "unknown"),
-            duration_seconds=data.get("duration_seconds", 0.0),
+            text=resp.text or "",
+            language=resp.language or "unknown",
+            duration_seconds=resp.duration_seconds or 0.0,
         )
         self._cb.record_success()
         if is_whisper_noise(result.text):
@@ -151,7 +162,9 @@ class NatsSttClient:
             raise STTNoiseError(f"Noise transcript: {result.text!r}")
         return result
 
-    async def _request_with_fallback(self, payload: bytes, worker_id: str) -> dict:
+    async def _request_with_fallback(
+        self, payload: bytes, worker_id: str
+    ) -> SttResponse:
         """Send to per-worker subject; on timeout, fall back once to queue group.
 
         Raises ``STTUnavailableError`` on final failure (after fallback), wrapping
@@ -161,7 +174,9 @@ class NatsSttClient:
         target = per_worker_stt(worker_id)
         try:
             reply = await self._nc.request(target, payload, timeout=self._timeout)
-            return json.loads(reply.data)
+            return self._parse_reply(reply.data)
+        except STTUnavailableError:
+            raise
         except TimeoutError:
             log.warning(
                 "STT: preferred worker %s timed out after %.0fs;"
@@ -176,7 +191,9 @@ class NatsSttClient:
             reply = await self._nc.request(
                 SUBJECTS.stt_request, payload, timeout=self._timeout
             )
-            return json.loads(reply.data)
+            return self._parse_reply(reply.data)
+        except STTUnavailableError:
+            raise
         except TimeoutError as exc:
             log.warning("STT adapter timeout after %.0fs", self._timeout)
             self._cb.record_failure()

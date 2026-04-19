@@ -16,11 +16,12 @@ from typing import TYPE_CHECKING, Any, NoReturn
 from uuid import uuid4
 
 from nats.aio.client import Client as NATS
+from pydantic import ValidationError
 
 from lyra.nats.voice_health import VoiceWorkerRegistry
 from lyra.tts import SynthesisResult, TtsUnavailableError
 from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_contracts.voice import SUBJECTS, TtsRequest
+from roxabi_contracts.voice import SUBJECTS, TtsRequest, TtsResponse
 from roxabi_contracts.voice.subjects import per_worker_tts
 from roxabi_nats._tts_constants import _TTS_CONFIG_FIELDS
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
@@ -57,13 +58,22 @@ class NatsTtsClient:
             return
         self._registry.record_heartbeat(data)
 
-    async def _send(self, payload: bytes, worker_id: str) -> dict:
+    def _parse_reply(self, raw: bytes) -> TtsResponse:
+        """Validate a NATS reply against TtsResponse; translate a ValidationError
+        into TtsUnavailableError + record a circuit-breaker failure."""
+        try:
+            return TtsResponse.model_validate_json(raw)
+        except ValidationError as exc:
+            self._cb.record_failure()
+            raise TtsUnavailableError("TTS reply failed schema validation") from exc
+
+    async def _send(self, payload: bytes, worker_id: str) -> TtsResponse:
         """Send payload to the per-worker subject, falling back once to queue group."""
         payload_kb = len(payload) / 1024
         target = per_worker_tts(worker_id)
         try:
             reply = await self._nc.request(target, payload, timeout=self._timeout)
-            data = json.loads(reply.data)
+            resp = self._parse_reply(reply.data)
         except TimeoutError:
             log.warning(
                 "TTS: preferred worker %s timed out after %.0fs;"
@@ -71,24 +81,28 @@ class NatsTtsClient:
                 worker_id,
                 self._timeout,
             )
-            data = await self._fallback(payload, payload_kb)
+            resp = await self._fallback(payload, payload_kb)
+        except TtsUnavailableError:
+            raise
         except Exception as exc:
             self._raise_nats_failure(exc, payload_kb)
-        if not data.get("ok"):
+        if not resp.ok:
             self._cb.record_failure()
-            raise TtsUnavailableError("TTS synthesis failed")
-        return data
+            raise TtsUnavailableError(resp.error or "TTS synthesis failed")
+        return resp
 
-    async def _fallback(self, payload: bytes, payload_kb: float) -> dict:
+    async def _fallback(self, payload: bytes, payload_kb: float) -> TtsResponse:
         try:
             reply = await self._nc.request(
                 SUBJECTS.tts_request, payload, timeout=self._timeout
             )
-            return json.loads(reply.data)
+            return self._parse_reply(reply.data)
         except TimeoutError as exc:
             log.warning("TTS adapter timeout after %.0fs", self._timeout)
             self._cb.record_failure()
             raise TtsUnavailableError("TTS adapter timeout") from exc
+        except TtsUnavailableError:
+            raise
         except Exception as exc:
             self._raise_nats_failure(exc, payload_kb)
 
@@ -145,12 +159,12 @@ class NatsTtsClient:
                 req_kwargs["voice"] = agent_tts.voice
         request = TtsRequest.model_validate(req_kwargs)
         payload = request.model_dump_json(exclude_none=True).encode("utf-8")
-        data = await self._send(payload, preferred.worker_id)
-        audio_bytes = base64.b64decode(data["audio_b64"])
+        resp = await self._send(payload, preferred.worker_id)
+        audio_bytes = base64.b64decode(resp.audio_b64 or "")
         self._cb.record_success()
         return SynthesisResult(
             audio_bytes=audio_bytes,
-            mime_type=data.get("mime_type", "audio/ogg"),
-            duration_ms=data.get("duration_ms"),
-            waveform_b64=data.get("waveform_b64"),
+            mime_type=resp.mime_type or "audio/ogg",
+            duration_ms=resp.duration_ms,
+            waveform_b64=resp.waveform_b64,
         )

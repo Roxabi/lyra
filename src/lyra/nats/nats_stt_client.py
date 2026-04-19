@@ -26,6 +26,8 @@ from lyra.stt import (
     TranscriptionResult,
     is_whisper_noise,
 )
+from roxabi_contracts.voice import SUBJECTS
+from roxabi_contracts.voice.subjects import per_worker_stt
 from roxabi_nats.adapter_base import CONTRACT_VERSION
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
@@ -34,8 +36,6 @@ log = logging.getLogger(__name__)
 _STT_TIMEOUT_DEFAULT = 15.0
 _STT_TIMEOUT_MIN = 1.0
 _STT_TIMEOUT_MAX = 300.0
-
-_HB_SUBJECT = "lyra.voice.stt.heartbeat"
 
 
 def _parse_stt_timeout(timeout: float | None) -> float:
@@ -69,8 +69,6 @@ def _parse_stt_timeout(timeout: float | None) -> float:
 
 
 class NatsSttClient:
-    SUBJECT = "lyra.voice.stt.request"
-
     def __init__(  # noqa: PLR0913
         self,
         nc: NATS,
@@ -94,7 +92,9 @@ class NatsSttClient:
     async def start(self) -> None:
         """Subscribe to heartbeat subject. Called once after nc is connected."""
         if self._hb_sub is None:
-            self._hb_sub = await self._nc.subscribe(_HB_SUBJECT, cb=self._on_heartbeat)
+            self._hb_sub = await self._nc.subscribe(
+                SUBJECTS.stt_heartbeat, cb=self._on_heartbeat
+            )
 
     async def _on_heartbeat(self, msg) -> None:
         try:
@@ -155,7 +155,7 @@ class NatsSttClient:
         the originating exception. Circuit-breaker failures are recorded here.
         """
         payload_kb = len(payload) / 1024
-        target = f"{self.SUBJECT}.{worker_id}"
+        target = per_worker_stt(worker_id)
         try:
             reply = await self._nc.request(target, payload, timeout=self._timeout)
             return json.loads(reply.data)
@@ -170,7 +170,9 @@ class NatsSttClient:
             self._raise_nats_failure(exc, payload_kb)
         # Fallback: queue group (round-robin among alive workers).
         try:
-            reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
+            reply = await self._nc.request(
+                SUBJECTS.stt_request, payload, timeout=self._timeout
+            )
             return json.loads(reply.data)
         except TimeoutError as exc:
             log.warning("STT adapter timeout after %.0fs", self._timeout)

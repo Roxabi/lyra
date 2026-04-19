@@ -18,6 +18,8 @@ from nats.aio.client import Client as NATS
 
 from lyra.nats.voice_health import VoiceWorkerRegistry
 from lyra.tts import SynthesisResult, TtsUnavailableError
+from roxabi_contracts.voice import SUBJECTS
+from roxabi_contracts.voice.subjects import per_worker_tts
 from roxabi_nats._tts_constants import _TTS_CONFIG_FIELDS
 from roxabi_nats.adapter_base import CONTRACT_VERSION
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
@@ -27,12 +29,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_HB_SUBJECT = "lyra.voice.tts.heartbeat"
-
 
 class NatsTtsClient:
-    SUBJECT = "lyra.voice.tts.request"
-
     def __init__(self, nc: NATS, *, timeout: float = 30.0) -> None:
         self._nc = nc
         self._timeout = timeout
@@ -43,7 +41,9 @@ class NatsTtsClient:
     async def start(self) -> None:
         """Subscribe to heartbeat subject. Called once after nc is connected."""
         if self._hb_sub is None:
-            self._hb_sub = await self._nc.subscribe(_HB_SUBJECT, cb=self._on_heartbeat)
+            self._hb_sub = await self._nc.subscribe(
+                SUBJECTS.tts_heartbeat, cb=self._on_heartbeat
+            )
 
     async def _on_heartbeat(self, msg) -> None:
         try:
@@ -59,7 +59,7 @@ class NatsTtsClient:
     async def _send(self, payload: bytes, worker_id: str) -> dict:
         """Send payload to the per-worker subject, falling back once to queue group."""
         payload_kb = len(payload) / 1024
-        target = f"{self.SUBJECT}.{worker_id}"
+        target = per_worker_tts(worker_id)
         try:
             reply = await self._nc.request(target, payload, timeout=self._timeout)
             data = json.loads(reply.data)
@@ -80,7 +80,9 @@ class NatsTtsClient:
 
     async def _fallback(self, payload: bytes, payload_kb: float) -> dict:
         try:
-            reply = await self._nc.request(self.SUBJECT, payload, timeout=self._timeout)
+            reply = await self._nc.request(
+                SUBJECTS.tts_request, payload, timeout=self._timeout
+            )
             return json.loads(reply.data)
         except TimeoutError as exc:
             log.warning("TTS adapter timeout after %.0fs", self._timeout)

@@ -40,8 +40,14 @@ jobs:
       - name: Typecheck
         run: uv run pyright
 
-      - name: Test with coverage
-        run: uv run pytest
+      - name: Coverage — lyra
+        run: uv run pytest tests/ --cov=lyra --cov-report=term-missing --cov-report=xml --cov-fail-under=50
+
+      - name: Coverage — roxabi_nats
+        run: uv run pytest packages/roxabi-nats/tests --cov=roxabi_nats --cov-report=term-missing --cov-fail-under=70
+
+      - name: Coverage — roxabi_contracts
+        run: uv run pytest packages/roxabi-contracts/tests --cov=roxabi_contracts --cov-report=term-missing --cov-fail-under=80
 
       - name: Test dep-graph sub-project
         working-directory: scripts/dep-graph

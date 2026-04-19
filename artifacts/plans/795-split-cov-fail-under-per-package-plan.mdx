@@ -104,11 +104,13 @@ Mapping matrix (spec success-criterion → covering task):
 
 ## Threshold Pinning (filled by T5)
 
+Measured on bare runner (no `nats-server` installed — matches the `ci` GitHub Actions job). Contracts measurement had 5 tests skipped (all `@requires_nats_server` in `test_voice_testing_doubles.py`); skip-adjusted coverage is still well above the 75% floor, so no follow-up issue is needed.
+
 | Package | Proposed | Actual (T4, bare runner) | Pinned (T5) | Policy |
 |---|---|---|---|---|
-| `lyra` | 50% | <filled by T4> | 50% (policy floor) | Keep current; do not raise. |
-| `roxabi_nats` | 70% | <filled by T4> | `min(70, actual − 2)` | Floor at current skip-adjusted actual − 2 pts. |
-| `roxabi_contracts` | 80% | <filled by T4; note nats-server skips> | `min(80, actual − 2)` | If actual < 75%, open a follow-up issue per spec Edge Cases to either install `nats-server` in `ci` job or relocate nats-gated tests to `integration`. |
+| `lyra` | 50% | 85% | **50%** (policy floor) | Keep current; do not raise. Leaves wide headroom for future lyra regressions to still trip at 50%. |
+| `roxabi_nats` | 70% | 83% | **70%** (`min(70, 83−2) = min(70, 81) = 70`) | Proposed ceiling applied since `actual − 2 ≥ proposed`. |
+| `roxabi_contracts` | 80% | 83% (5 nats-server-gated tests skipped) | **80%** (`min(80, 83−2) = min(80, 81) = 80`) | Skip-adjusted actual (83%) comfortably exceeds the 75% floor; no follow-up issue needed. |
 
 ## Micro-Tasks
 

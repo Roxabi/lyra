@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from lyra.nats.voice_health import VoiceWorkerRegistry
 from roxabi_contracts.envelope import CONTRACT_VERSION, ContractEnvelope
+from roxabi_contracts.voice.subjects import validate_worker_id
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 log = logging.getLogger(__name__)
@@ -167,7 +168,26 @@ class NatsImageClient:
             log.debug("image_client: heartbeat parse error", exc_info=True)
             return
         worker_id = data.get("worker_id")
-        if not isinstance(worker_id, str) or not worker_id:
+        if not worker_id:
+            log.warning("image_client: heartbeat missing worker_id, ignoring")
+            return
+        if not isinstance(worker_id, str):
+            log.warning(
+                "image_client: heartbeat non-string worker_id=%r, ignoring",
+                worker_id,
+            )
+            return
+        # Receive-side match for the PUBLISH-path safe-chars enforcement; blocks
+        # wildcard-bearing ids (e.g. "evil.worker.*") from polluting the registry
+        # for up to the 15 s heartbeat-stale window. Mirrors voice canonical at
+        # nats_tts_client.py:70-82.
+        try:
+            validate_worker_id(worker_id)
+        except ValueError:
+            log.warning(
+                "image_client: heartbeat with unsafe worker_id=%r, ignoring",
+                worker_id,
+            )
             return
         self._registry.record_heartbeat(data)
 

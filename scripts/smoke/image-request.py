@@ -10,7 +10,7 @@ image-worker nkey. Capture stdout as rollout evidence:
 
 Env:
     NATS_URL               Defaults to nats://127.0.0.1:4222
-    NATS_NKEY_SEED_PATH    Optional; enables nkey auth when set
+    NATS_NKEY_SEED_PATH    Optional; enables nkey auth (path to seed file)
 """
 from __future__ import annotations
 
@@ -19,13 +19,12 @@ import asyncio
 import os
 import sys
 
-from nats.aio.client import Client as NATS
-
 from lyra.nats.nats_image_client import (
     ImageGenParams,
     ImageUnavailableError,
     NatsImageClient,
 )
+from roxabi_nats import nats_connect
 
 
 async def main() -> int:
@@ -38,13 +37,10 @@ async def main() -> int:
     args = parser.parse_args()
 
     nats_url = os.environ.get("NATS_URL", "nats://127.0.0.1:4222")
-    seed = os.environ.get("NATS_NKEY_SEED_PATH")
-
-    nc = NATS()
-    kwargs: dict = {"servers": [nats_url]}
-    if seed:
-        kwargs["nkeys_seed"] = seed
-    await nc.connect(**kwargs)
+    # roxabi_nats.nats_connect reads NATS_NKEY_SEED_PATH itself, validates the
+    # file (perms, size, symlink safety), and passes `nkeys_seed_str` to
+    # nats-py. This is the canonical helper — do NOT hand-roll the kwarg.
+    nc = await nats_connect(nats_url)
 
     client = NatsImageClient(nc, timeout=180.0)
     await client.start()

@@ -52,6 +52,7 @@ agents:
     nkey: tts-adapter.seed
     env:
       LYRA_TTS_ENABLED: "1"
+      LYRA_TTS_ENGINE: "chatterbox"
 
   imagecli_gen:
     command_override: "imagecli nats-serve"

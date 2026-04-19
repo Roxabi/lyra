@@ -88,7 +88,11 @@ class TestNatsImageClient:
         assert result.ok is True
         assert result.image_b64 is not None
         assert len(base64.b64decode(result.image_b64)) > 0
+        # record_success() was called — CB is neither failed nor open.
+        # Both fields are zero on a happy-path round-trip. Prior assertion
+        # only proved absence-of-failure; this pair proves success path ran.
         assert client._cb._failures == 0
+        assert client._cb._open_until == 0.0
 
     @pytest.mark.asyncio
     async def test_reply_schema_failure_raises_domain_error(self) -> None:
@@ -175,3 +179,60 @@ class TestNatsImageClient:
             await client.generate(prompt="test", engine="flux2-klein")
         # nc.request must never have been awaited
         mock_nc.request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_open_circuit_raises_domain_error(self) -> None:
+        # Arrange — live worker registered; trip the CB so is_open() returns True
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock()
+        client = NatsImageClient(nc=mock_nc)
+        client._registry.record_heartbeat({"worker_id": "img-1", "active_requests": 0})
+        # Force CB open without going through real failures; mirrors the
+        # internal shape of NatsCircuitBreaker (see packages/roxabi-nats).
+        client._cb._open_until = time.monotonic() + 100.0
+        # Act / Assert
+        with pytest.raises(ImageUnavailableError, match="circuit open"):
+            await client.generate(prompt="test", engine="flux2-klein")
+        # nc.request must never have been awaited — early-exit on is_open()
+        mock_nc.request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ok_false_reply_propagates_error_field(self) -> None:
+        # Arrange — valid-schema reply with ok=false + a specific error token
+        mock_nc = AsyncMock()
+        err_payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "request_id": "r-err",
+                "ok": False,
+                "error": "insufficient_resources",
+                "error_detail": "Not enough VRAM to load engine",
+            }
+        ).encode()
+        fake_reply = MagicMock()
+        fake_reply.data = err_payload
+        mock_nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsImageClient(nc=mock_nc)
+        client._registry.record_heartbeat({"worker_id": "img-1", "active_requests": 0})
+        initial_failures = client._cb._failures
+        # Act / Assert — the error token must propagate into the exception
+        # message so logs/metrics on the hub side can disambiguate error codes.
+        with pytest.raises(ImageUnavailableError, match="insufficient_resources"):
+            await client.generate(prompt="test", engine="flux2-klein")
+        assert client._cb._failures == initial_failures + 1
+
+    @pytest.mark.asyncio
+    async def test_generic_exception_raises_adapter_unreachable(self) -> None:
+        # Arrange — nc.request raises a generic Exception (not timeout, not
+        # max_payload). Exercises the fallback branch in _raise_nats_failure.
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(side_effect=Exception("connection refused"))
+        client = NatsImageClient(nc=mock_nc)
+        client._registry.record_heartbeat({"worker_id": "img-1", "active_requests": 0})
+        initial_failures = client._cb._failures
+        # Act / Assert
+        with pytest.raises(ImageUnavailableError, match="adapter unreachable"):
+            await client.generate(prompt="test", engine="flux2-klein")
+        assert client._cb._failures == initial_failures + 1

@@ -41,7 +41,7 @@ jobs:
         run: uv run pyright
 
       - name: Coverage — lyra
-        run: uv run pytest tests/ --cov=lyra --cov-report=term-missing --cov-report=xml --cov-fail-under=50
+        run: uv run pytest tests/ --cov=lyra --cov-report=term-missing --cov-fail-under=50
 
       - name: Coverage — roxabi_nats
         run: uv run pytest packages/roxabi-nats/tests --cov=roxabi_nats --cov-report=term-missing --cov-fail-under=70
@@ -78,7 +78,7 @@ jobs:
         run: docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 60
 
       - name: Run integration tests
-        run: NATS_URL=nats://localhost:4222 uv run pytest tests/integration/ -v --no-cov
+        run: NATS_URL=nats://localhost:4222 uv run pytest tests/integration/ -v
 
       - name: Tear down Docker environment
         if: always()

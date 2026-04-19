@@ -8,11 +8,12 @@ on:
     branches: [main, staging]
   pull_request:
     branches: [main, staging]
-  workflow_dispatch: {}
+  workflow_dispatch: {}  # dispatch resolves from default branch — per-branch re-triggers require the branch to contain a compatible ci.yml
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel only on feature branches; protected branches (main, staging) run to completion so every merge-commit SHA has a recorded status.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/staging' }}
 
 jobs:
   ci:

@@ -31,6 +31,21 @@ def validate_env_value(value: str) -> bool:
     # Reject newlines and quotes that could break INI format
     return not any(c in value for c in "\n\r\"'")
 
+
+def validate_command_override(value: str) -> bool:
+    """Validate command_override — printable ASCII, no shell metacharacters.
+
+    Accepts: alphanumerics, `/` (paths), `.`, `-`, `_`, spaces (argv split).
+    Rejects: newlines, quotes, `;`, `&`, `|`, backticks, `$`, `(`, `)`, `<`, `>`.
+    This is the same philosophy as validate_env_value, tightened for the
+    fact that the value lands verbatim on a supervisord ``command=`` line
+    which is fed to /bin/sh on program start.
+    """
+    import re
+
+    # Must be non-empty and entirely within a safe character class
+    return bool(value) and bool(re.match(r"^[A-Za-z0-9/_.\- ]+$", value))
+
 # Template defaults matching existing conf.d/*.conf structure
 DEFAULTS: dict[str, Any] = {
     "autostart": False,
@@ -96,8 +111,18 @@ def generate_conf(
     # Merge defaults with agent overrides
     cfg = {**defaults, **agent}
 
-    # Determine command: hub uses run_hub.sh, adapters use run_adapter.sh <name>
-    if name == "hub":
+    # Determine command:
+    #   1. explicit command_override in agents.yml — used verbatim (for external-satellite
+    #      programs like imagecli nats-serve that are not lyra CLI subcommands).
+    #   2. name == "hub" — deploy/supervisor/scripts/run_hub.sh.
+    #   3. default — deploy/supervisor/scripts/run_adapter.sh <name>.
+    if "command_override" in agent:
+        cmd_path = agent["command_override"]
+        if not validate_command_override(cmd_path):
+            raise ValueError(
+                f"Invalid command_override for {name!r} (shell-metachar or empty): {cmd_path!r}"
+            )
+    elif name == "hub":
         cmd_path = RUN_HUB.format(home=ctx["home"])
     else:
         cmd_path = f"{RUN_ADAPTER.format(home=ctx['home'])} {name}"

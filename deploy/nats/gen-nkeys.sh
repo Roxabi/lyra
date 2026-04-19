@@ -4,8 +4,9 @@
 # Seeds (private keys) → ~/.lyra/nkeys/     owned by LYRA_USER, 0600 — no system access needed
 # auth.conf (public keys) → /etc/nats/nkeys/ owned by root:nats,  0640 — read by nats-server
 #
-# Creates 7 user nkey seeds: hub, telegram-adapter, discord-adapter,
-#                             tts-adapter, stt-adapter, llm-worker, monitor
+# Creates 10 user nkey seeds: hub, telegram-adapter, discord-adapter,
+#                              tts-adapter, stt-adapter, voice-tts, voice-stt,
+#                              llm-worker, image-worker, monitor
 #
 # Usage: sudo ./deploy/nats/gen-nkeys.sh
 #        sudo ./deploy/nats/gen-nkeys.sh --fix-perms        # re-apply permissions without regenerating
@@ -39,11 +40,11 @@ error() { echo -e "${RED}[x]${NC} $1" >&2; exit 1; }
 #                scoped to "lyra.plugin.<name>.>" — see spec §Out-of-scope.
 declare -A PUB_ALLOW SUB_ALLOW
 
-PUB_ALLOW[hub]='"lyra.outbound.telegram.>","lyra.outbound.discord.>","lyra.voice.tts.request.>","lyra.voice.stt.request.>","lyra.llm.request"'
+PUB_ALLOW[hub]='"lyra.outbound.telegram.>","lyra.outbound.discord.>","lyra.voice.tts.request.>","lyra.voice.stt.request.>","lyra.llm.request","lyra.image.generate.request"'
 # NOTE: "_INBOX.>" is broader than this role needs — required because
 # NatsLlmDriver.stream() uses a manual inbox subscription. Tightening tracked
 # in issue #715 (migrate to nc.request() → drop "_INBOX.>" from this list).
-SUB_ALLOW[hub]='"lyra.inbound.telegram.>","lyra.inbound.discord.>","lyra.voice.tts.heartbeat","lyra.voice.stt.heartbeat","lyra.llm.health.*","lyra.system.ready","_INBOX.>"'
+SUB_ALLOW[hub]='"lyra.inbound.telegram.>","lyra.inbound.discord.>","lyra.voice.tts.heartbeat","lyra.voice.stt.heartbeat","lyra.llm.health.*","lyra.system.ready","_INBOX.>","lyra.image.heartbeat"'
 
 PUB_ALLOW[telegram-adapter]='"lyra.inbound.telegram.>","lyra.system.ready"'
 SUB_ALLOW[telegram-adapter]='"lyra.outbound.telegram.>"'
@@ -74,10 +75,18 @@ SUB_ALLOW[voice-stt]='"lyra.voice.stt.request","lyra.voice.stt.request.>","lyra.
 PUB_ALLOW[llm-worker]='"lyra.llm.health.*"'
 SUB_ALLOW[llm-worker]='"lyra.llm.request"'
 
+# image-worker: imagecli nats-serve satellite. Heartbeat-publish + request-subscribe.
+# Contract: ADR-050. Shipped via imageCLI#50 (satellite) + #754 (lyra-side).
+# _INBOX.>/_inbox.> defensively included for reply-path robustness, mirroring
+# voice-tts/voice-stt — allow_responses: true alone may not cover every
+# nats-server version's reply publish path.
+PUB_ALLOW[image-worker]='"lyra.image.heartbeat","_INBOX.>","_inbox.>"'
+SUB_ALLOW[image-worker]='"lyra.image.generate.request"'
+
 PUB_ALLOW[monitor]='"lyra.monitor.>"'
 SUB_ALLOW[monitor]='"lyra.monitor.>"'
 
-IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor)
+IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker image-worker monitor)
 
 # ── emit_user (T1.3) ──────────────────────────────────────────────────────────
 # Writes one authorization users[] entry block to stdout.
@@ -179,8 +188,8 @@ apply_permissions() {
   mkdir -p "${SEEDS_DIR}"
   chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}"
   chmod 0700 "${SEEDS_DIR}"
-  # T1.5: extended to 7 identities; #689 adds voice-tts, voice-stt (9 total)
-  for seed in hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor; do
+  # T1.5: extended to 7 identities; #689 adds voice-tts, voice-stt (9 total); #754 adds image-worker (10 total)
+  for seed in hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker image-worker monitor; do
     if [ -f "${SEEDS_DIR}/${seed}.seed" ]; then
       chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}/${seed}.seed"
       chmod 0600 "${SEEDS_DIR}/${seed}.seed"
@@ -466,6 +475,7 @@ STT_PUB=$(generate_nkey "stt-adapter")
 VOICE_TTS_PUB=$(generate_nkey "voice-tts")
 VOICE_STT_PUB=$(generate_nkey "voice-stt")
 WORKER_PUB=$(generate_nkey "llm-worker")
+IMAGE_WORKER_PUB=$(generate_nkey "image-worker")
 MONITOR_PUB=$(generate_nkey "monitor")
 
 # ── write auth.conf via render_auth_conf (T1.6) ───────────────────────────────
@@ -478,6 +488,7 @@ declare -A PUBKEYS=(
   [voice-tts]="${VOICE_TTS_PUB}"
   [voice-stt]="${VOICE_STT_PUB}"
   [llm-worker]="${WORKER_PUB}"
+  [image-worker]="${IMAGE_WORKER_PUB}"
   [monitor]="${MONITOR_PUB}"
 )
 render_auth_conf PUBKEYS > "${AUTH_CONF}"
@@ -500,5 +511,6 @@ info "  stt-adapter.seed       NATS_NKEY_SEED_PATH=${SEEDS_DIR}/stt-adapter.seed
 info "  voice-tts.seed         NATS_NKEY_SEED_PATH=${SEEDS_DIR}/voice-tts.seed   (voicecli nats-serve tts)"
 info "  voice-stt.seed         NATS_NKEY_SEED_PATH=${SEEDS_DIR}/voice-stt.seed   (voicecli nats-serve stt)"
 info "  llm-worker.seed        NATS_NKEY_SEED_PATH=${SEEDS_DIR}/llm-worker.seed"
+info "  image-worker.seed      NATS_NKEY_SEED_PATH=${SEEDS_DIR}/image-worker.seed  (imagecli nats-serve)"
 info "  monitor.seed           NATS_NKEY_SEED_PATH=${SEEDS_DIR}/monitor.seed"
 warn "Supervisor confs already reference ~/.lyra/nkeys/ — no changes needed."

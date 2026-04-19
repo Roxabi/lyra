@@ -181,10 +181,10 @@ Slices 1→3 are ordered for bisect-friendliness: if CI breaks at slice 3, the b
 - [ ] `grep -nE '\.get\("(audio_b64|mime_type|duration_ms|waveform_b64|text|language|duration_seconds|ok|error)"' src/lyra/nats/nats_tts_client.py src/lyra/nats/nats_stt_client.py` returns zero hits (responses are accessed as Pydantic attributes, not dict keys).
 - [ ] `grep -nE '(nats_tts_client|nats_stt_client)\.SUBJECT\b' src/lyra/ tests/` returns zero hits (no external caller imported the deleted class attribute — out-of-scope modules must stay compiling).
 - [ ] `grep -nE 'except\s+ValidationError|except\s+pydantic\.ValidationError' src/lyra/nats/nats_tts_client.py src/lyra/nats/nats_stt_client.py` matches both files (error-boundary wrap is in place).
-- [ ] Every TTS response mock in `tests/nats/test_nats_tts_client.py` with `"ok": True` includes `"duration_ms"` as an int. Verified: `python - <<'PY' ...` one-liner (or equivalent pytest assertion) scans the file and exits non-zero on any `"ok": True` literal missing a sibling `"duration_ms"`.
+- [ ] Every TTS response mock in `tests/nats/test_nats_tts_client.py` with `"ok": True` includes `"duration_ms"` as an int, **except inside functions whose name starts with `test_malformed_`** (those are negative fixtures that deliberately omit `duration_ms` to trigger the success-invariant check). Verified: AST walk that descends into `FunctionDef`/`AsyncFunctionDef` and skips nodes whose enclosing function name starts with `test_malformed_` — exits non-zero on any other `"ok": True` literal missing a sibling `"duration_ms"`.
 - [ ] Two new tests exist: one in `tests/nats/test_nats_tts_client.py` and one in `tests/nats/test_nats_stt_client.py` named like `test_malformed_reply_raises_domain_error` that send a reply failing Pydantic validation and assert (a) the domain exception is raised (`TtsUnavailableError` / `STTUnavailableError`), not a raw `ValidationError`, and (b) `client._cb.record_failure` was called.
 - [ ] `uv run pyright` exits 0 over the full lyra tree.
-- [ ] `uv run pytest tests/nats/` exits 0.
+- [ ] `uv run pytest tests/nats/ --cov-fail-under=0` exits 0. (The project-level `--cov-fail-under=50` in `pyproject.toml addopts` fires against any targeted run that covers <50% of the full codebase — `tests/nats/` alone covers ~25%. The gate-local `--cov-fail-under=0` override keeps the manual check runnable; CI still enforces the 50% threshold on the full suite.)
 - [ ] `uv run pytest` (full lyra suite) exits 0; no test previously passing now fails.
 
 **Manual review item (not a binary gate):**

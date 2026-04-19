@@ -21,8 +21,7 @@ from pydantic import ValidationError
 from lyra.nats.voice_health import VoiceWorkerRegistry
 from lyra.tts import SynthesisResult, TtsUnavailableError
 from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_contracts.voice import SUBJECTS, TtsRequest, TtsResponse
-from roxabi_contracts.voice.subjects import per_worker_tts
+from roxabi_contracts.voice import SUBJECTS, TtsRequest, TtsResponse, per_worker_tts
 from roxabi_nats._tts_constants import _TTS_CONFIG_FIELDS
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
@@ -160,11 +159,17 @@ class NatsTtsClient:
         request = TtsRequest.model_validate(req_kwargs)
         payload = request.model_dump_json(exclude_none=True).encode("utf-8")
         resp = await self._send(payload, preferred.worker_id)
-        audio_bytes = base64.b64decode(resp.audio_b64 or "")
+        # TtsResponse._enforce_success_invariant guarantees audio_b64, mime_type,
+        # and duration_ms are non-null whenever ok=True. Asserting narrows the
+        # types for the type checker and fails loudly if that invariant ever drifts.
+        assert resp.audio_b64 is not None
+        assert resp.mime_type is not None
+        assert resp.duration_ms is not None
+        audio_bytes = base64.b64decode(resp.audio_b64)
         self._cb.record_success()
         return SynthesisResult(
             audio_bytes=audio_bytes,
-            mime_type=resp.mime_type or "audio/ogg",
+            mime_type=resp.mime_type,
             duration_ms=resp.duration_ms,
             waveform_b64=resp.waveform_b64,
         )

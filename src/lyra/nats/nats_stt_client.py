@@ -29,8 +29,7 @@ from lyra.stt import (
     is_whisper_noise,
 )
 from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_contracts.voice import SUBJECTS, SttRequest, SttResponse
-from roxabi_contracts.voice.subjects import per_worker_stt
+from roxabi_contracts.voice import SUBJECTS, SttRequest, SttResponse, per_worker_stt
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 log = logging.getLogger(__name__)
@@ -146,11 +145,16 @@ class NatsSttClient:
         if not resp.ok:
             self._cb.record_failure()
             raise STTUnavailableError(resp.error or "STT transcription failed")
-        # ok=True invariant guarantees text / language / duration_seconds non-null
+        # SttResponse._enforce_success_invariant guarantees text, language, and
+        # duration_seconds are non-null whenever ok=True. Asserting narrows the
+        # types and fails loudly if that invariant ever drifts.
+        assert resp.text is not None
+        assert resp.language is not None
+        assert resp.duration_seconds is not None
         result = TranscriptionResult(
-            text=resp.text or "",
-            language=resp.language or "unknown",
-            duration_seconds=resp.duration_seconds or 0.0,
+            text=resp.text,
+            language=resp.language,
+            duration_seconds=resp.duration_seconds,
         )
         self._cb.record_success()
         if is_whisper_noise(result.text):

@@ -1,8 +1,9 @@
 """Voice-domain NATS contract surface.
 
-Public API: SUBJECTS + four envelope models. The `fixtures` submodule is
-test-only and DELIBERATELY not re-exported here — it must be imported
-explicitly as ``from roxabi_contracts.voice.fixtures import ...``.
+Public API: SUBJECTS namespace + per_worker_* helpers + four envelope
+models. The `fixtures` submodule is test-only and DELIBERATELY not
+re-exported here — it must be imported explicitly as
+``from roxabi_contracts.voice.fixtures import ...``.
 """
 
 from roxabi_contracts.voice.models import (
@@ -11,7 +12,11 @@ from roxabi_contracts.voice.models import (
     TtsRequest,
     TtsResponse,
 )
-from roxabi_contracts.voice.subjects import SUBJECTS
+from roxabi_contracts.voice.subjects import (
+    SUBJECTS,
+    per_worker_stt,
+    per_worker_tts,
+)
 
 __all__ = [
     "SUBJECTS",
@@ -19,4 +24,6 @@ __all__ = [
     "SttResponse",
     "TtsRequest",
     "TtsResponse",
+    "per_worker_stt",
+    "per_worker_tts",
 ]

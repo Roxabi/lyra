@@ -13,6 +13,7 @@ import base64
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import NoReturn
 from uuid import uuid4
@@ -26,9 +27,9 @@ from lyra.stt import (
     TranscriptionResult,
     is_whisper_noise,
 )
-from roxabi_contracts.voice import SUBJECTS
+from roxabi_contracts.envelope import CONTRACT_VERSION
+from roxabi_contracts.voice import SUBJECTS, SttRequest
 from roxabi_contracts.voice.subjects import per_worker_stt
-from roxabi_nats.adapter_base import CONTRACT_VERSION
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 log = logging.getLogger(__name__)
@@ -118,17 +119,19 @@ class NatsSttClient:
         resolved = Path(path).resolve()
         audio_bytes = await asyncio.to_thread(resolved.read_bytes)
         mime = _mime_from_suffix(resolved.suffix)
-        request = {
-            "contract_version": CONTRACT_VERSION,
-            "request_id": str(uuid4()),
-            "audio_b64": base64.b64encode(audio_bytes).decode("ascii"),
-            "mime_type": mime,
-            "model": self._model,
-            "language_detection_threshold": self._detection_threshold,
-            "language_detection_segments": self._detection_segments,
-            "language_fallback": self._detection_fallback,
-        }
-        payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
+        request = SttRequest(
+            contract_version=CONTRACT_VERSION,
+            trace_id=str(uuid4()),
+            issued_at=datetime.now(timezone.utc),
+            request_id=str(uuid4()),
+            audio_b64=base64.b64encode(audio_bytes).decode("ascii"),
+            mime_type=mime,
+            model=self._model,
+            language_detection_threshold=self._detection_threshold,
+            language_detection_segments=self._detection_segments,
+            language_fallback=self._detection_fallback,
+        )
+        payload = request.model_dump_json(exclude_none=True).encode("utf-8")
         data = await self._request_with_fallback(payload, preferred.worker_id)
         if not data.get("ok"):
             self._cb.record_failure()

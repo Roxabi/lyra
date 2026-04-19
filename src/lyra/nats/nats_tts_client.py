@@ -11,17 +11,18 @@ from __future__ import annotations
 import base64
 import json
 import logging
-from typing import TYPE_CHECKING, NoReturn
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, NoReturn
 from uuid import uuid4
 
 from nats.aio.client import Client as NATS
 
 from lyra.nats.voice_health import VoiceWorkerRegistry
 from lyra.tts import SynthesisResult, TtsUnavailableError
-from roxabi_contracts.voice import SUBJECTS
+from roxabi_contracts.envelope import CONTRACT_VERSION
+from roxabi_contracts.voice import SUBJECTS, TtsRequest
 from roxabi_contracts.voice.subjects import per_worker_tts
 from roxabi_nats._tts_constants import _TTS_CONFIG_FIELDS
-from roxabi_nats.adapter_base import CONTRACT_VERSION
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 if TYPE_CHECKING:
@@ -120,8 +121,10 @@ class NatsTtsClient:
             raise TtsUnavailableError(
                 "TTS circuit open — adapter temporarily unavailable"
             )
-        request: dict = {
+        req_kwargs: dict[str, Any] = {
             "contract_version": CONTRACT_VERSION,
+            "trace_id": str(uuid4()),
+            "issued_at": datetime.now(timezone.utc),
             "request_id": str(uuid4()),
             "text": text,
             "language": language,
@@ -134,13 +137,14 @@ class NatsTtsClient:
             for field in _TTS_CONFIG_FIELDS:
                 val = getattr(agent_tts, field, None)
                 if val is not None:
-                    request[field] = val
+                    req_kwargs[field] = val
             # Also pass language/voice from agent_tts if not overridden by caller
             if language is None and getattr(agent_tts, "language", None) is not None:
-                request["language"] = agent_tts.language
+                req_kwargs["language"] = agent_tts.language
             if voice is None and getattr(agent_tts, "voice", None) is not None:
-                request["voice"] = agent_tts.voice
-        payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
+                req_kwargs["voice"] = agent_tts.voice
+        request = TtsRequest.model_validate(req_kwargs)
+        payload = request.model_dump_json(exclude_none=True).encode("utf-8")
         data = await self._send(payload, preferred.worker_id)
         audio_bytes = base64.b64decode(data["audio_b64"])
         self._cb.record_success()

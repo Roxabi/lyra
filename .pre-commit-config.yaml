@@ -21,6 +21,11 @@ repos:
     entry: tools/check_folder_size.sh
     language: system
     pass_filenames: false
+  - id: check-duplicate-test-basenames
+    name: check-duplicate-test-basenames
+    entry: tools/check_duplicate_test_basenames.sh
+    language: system
+    pass_filenames: false
   - id: import-layers
     name: import-layers
     entry: uv run lint-imports

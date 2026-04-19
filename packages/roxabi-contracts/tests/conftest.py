@@ -8,6 +8,7 @@ without cross-package dependency.
 
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import socket
 import subprocess
@@ -18,18 +19,30 @@ from pathlib import Path
 
 import pytest
 
-# Tests in this package deliberately have no ``__init__.py`` (aligns with
-# ``packages/roxabi-nats/tests`` — a package-level ``__init__.py`` makes
-# two conftest modules collide under ``tests.conftest``). Add the test
-# directory to sys.path so sibling helpers like ``_markers`` resolve both
-# here (conftest load, before pytest injects the path) and in test modules.
-_TEST_DIR = str(Path(__file__).resolve().parent)
-if _TEST_DIR not in sys.path:
-    sys.path.insert(0, _TEST_DIR)
 
-from _markers import requires_nats_server as requires_nats_server  # noqa: E402
+def _register_markers() -> None:
+    """Register ``_markers.py`` under ``_markers`` at collection time.
 
-_nats_server_available = shutil.which("nats-server") is not None
+    Tests in this package deliberately have no ``__init__.py`` (aligns with
+    ``packages/roxabi-nats/tests`` — a package-level ``__init__.py`` makes
+    two conftest modules collide under ``tests.conftest``). Without a
+    package, ``from _markers import ...`` from sibling test modules would
+    depend on pytest-specific sys.path injection, which ``--import-mode=importlib``
+    disables. Use the same spec-from-file-location pattern that
+    ``packages/roxabi-nats/tests/conftest.py`` uses for ``_stub_fixture.py``.
+    """
+    if "_markers" in sys.modules:
+        return
+    path = Path(__file__).parent / "_markers.py"
+    spec = importlib.util.spec_from_file_location("_markers", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("failed to build import spec for _markers")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["_markers"] = mod
+    spec.loader.exec_module(mod)
+
+
+_register_markers()
 
 
 def _free_port() -> int:
@@ -40,7 +53,7 @@ def _free_port() -> int:
 
 @pytest.fixture(scope="session")
 def nats_server_url() -> Generator[str, None, None]:
-    if not _nats_server_available:
+    if shutil.which("nats-server") is None:
         pytest.skip("nats-server not found in PATH")
     port = _free_port()
     url = f"nats://127.0.0.1:{port}"

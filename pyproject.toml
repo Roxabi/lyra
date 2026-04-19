@@ -86,7 +86,7 @@ packages = ["src/lyra"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests"]
-addopts = "--import-mode=importlib --cov=lyra --cov=roxabi_nats --cov=roxabi_contracts --cov-report=term-missing --cov-report=xml --cov-fail-under=50"
+addopts = "--import-mode=importlib"
 
 [tool.coverage.run]
 branch = true

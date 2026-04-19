@@ -46,6 +46,13 @@ done
 # A test file resolves to a bare basename iff its directory has no
 # ``__init__.py``. Collect only those files — they are the population at
 # risk of collision.
+#
+# Invariant: root ``tests/`` has a full ``__init__.py`` chain on every
+# subdirectory, so every file under it is fully qualified and is filtered
+# out here — including ``tests/`` in testpaths costs nothing. If that
+# invariant ever breaks (someone removes a ``tests/**/__init__.py``) this
+# guard would start flagging tests/-local basenames against package
+# testpaths, which is the desired behavior.
 BARE_FILES=$(
     find "${TESTPATHS[@]}" -type f -name 'test_*.py' \
         | while IFS= read -r f; do

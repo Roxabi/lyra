@@ -19,9 +19,12 @@ from pathlib import Path
 
 import pytest
 
+_CANONICAL_MARKERS_KEY = "roxabi_contracts_test_markers"
+_ALIAS_MARKERS_KEY = "_markers"
+
 
 def _register_markers() -> None:
-    """Register ``_markers.py`` under ``_markers`` at collection time.
+    """Register ``_markers.py`` under a namespaced key at collection time.
 
     Tests in this package deliberately have no ``__init__.py`` (aligns with
     ``packages/roxabi-nats/tests`` — a package-level ``__init__.py`` makes
@@ -30,15 +33,25 @@ def _register_markers() -> None:
     depend on pytest-specific sys.path injection, which ``--import-mode=importlib``
     disables. Use the same spec-from-file-location pattern that
     ``packages/roxabi-nats/tests/conftest.py`` uses for ``_stub_fixture.py``.
+
+    The canonical ``sys.modules`` key is namespaced (``roxabi_contracts_test_markers``)
+    so it cannot collide with a similarly-named helper in another package's
+    conftest. The bare ``_markers`` name is exposed as an alias so callers
+    can keep writing ``from _markers import requires_nats_server`` — but the
+    idempotency guard checks the namespaced key, not the alias, so a collision
+    on ``_markers`` from elsewhere no longer short-circuits this loader with
+    the wrong module.
     """
-    if "_markers" in sys.modules:
+    if _CANONICAL_MARKERS_KEY in sys.modules:
+        sys.modules.setdefault(_ALIAS_MARKERS_KEY, sys.modules[_CANONICAL_MARKERS_KEY])
         return
     path = Path(__file__).parent / "_markers.py"
-    spec = importlib.util.spec_from_file_location("_markers", path)
+    spec = importlib.util.spec_from_file_location(_CANONICAL_MARKERS_KEY, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("failed to build import spec for _markers")
+        raise RuntimeError(f"failed to build import spec for {_CANONICAL_MARKERS_KEY}")
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["_markers"] = mod
+    sys.modules[_CANONICAL_MARKERS_KEY] = mod
+    sys.modules[_ALIAS_MARKERS_KEY] = mod
     spec.loader.exec_module(mod)
 
 

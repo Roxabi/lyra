@@ -17,7 +17,7 @@ dependencies = [
     # HTTP (webhook server for Telegram + inter-machine calls)
     "fastapi>=0.115",
     "uvicorn[standard]>=0.44.0",
-    "httpx[asyncio]>=0.28",
+    "httpx[asyncio]>=0.28.1",
     "python-dotenv>=1.2.2",
     # NATS transport (NatsBus — issue #455, Slice C of #445).
     # Do NOT add nats-py or nkeys here — they arrive transitively via

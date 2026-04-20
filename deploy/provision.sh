@@ -22,7 +22,15 @@ section() { echo -e "\n${GREEN}=== $1 ===${NC}"; }
 ADMIN_USER="${ADMIN_USER:-$(whoami)}"
 # Agent user (defaults to lyra, override with AGENT_USER=anotherame)
 AGENT_USER="${AGENT_USER:-lyra}"
-info "Running setup for admin: $ADMIN_USER, agent: $AGENT_USER"
+# Validate usernames — reject shell metachars since values are env-driven (curl|bash).
+# Matches POSIX NAME_REGEX used by useradd: [a-z_][a-z0-9_-]* (max 32 chars).
+USER_RE='^[a-z_][a-z0-9_-]{0,31}$'
+[[ "$ADMIN_USER" =~ $USER_RE ]] || error "Invalid ADMIN_USER: $ADMIN_USER"
+[[ "$AGENT_USER" =~ $USER_RE ]] || error "Invalid AGENT_USER: $AGENT_USER"
+# Resolve admin home from passwd — do not assume /home/$ADMIN_USER.
+ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6)
+[[ -n "$ADMIN_HOME" && -d "$ADMIN_HOME" ]] || error "Could not resolve home directory for $ADMIN_USER."
+info "Running setup for admin: $ADMIN_USER (home: $ADMIN_HOME), agent: $AGENT_USER"
 
 # ── System packages ──────────────────────────────────────────────────────────
 
@@ -62,7 +70,7 @@ section "Podman"
 if command -v podman &>/dev/null; then
   info "podman already installed ($(podman --version))."
 else
-  # Ubuntu 24.04 ships podman 4.9.x — sufficient for Quadlet (requires ≥4.4).
+  # Ubuntu 26.04 LTS ships podman 5.x — Quadlet generator included natively.
   # uidmap: required for rootless user namespace mapping (subuid/subgid).
   # fuse-overlayfs: overlay storage driver for rootless containers.
   # slirp4netns: rootless networking (usually pulled in by podman dep chain).
@@ -70,10 +78,26 @@ else
   info "podman installed ($(podman --version))."
 fi
 
+# Verify rootless uid/gid ranges — required for user namespace mapping.
+# Missing when user was created via `useradd` without -U/-m (adduser adds them).
+if ! grep -q "^$ADMIN_USER:" /etc/subuid || ! grep -q "^$ADMIN_USER:" /etc/subgid; then
+  warn "subuid/subgid ranges missing for $ADMIN_USER — adding 100000-165535."
+  sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$ADMIN_USER"
+  # Re-run migrate in case podman already has stale rootless state.
+  sudo -u "$ADMIN_USER" podman system migrate 2>/dev/null || true
+  info "subuid/subgid added for $ADMIN_USER."
+else
+  info "subuid/subgid already configured for $ADMIN_USER."
+fi
+
 # Ensure user-scope container + systemd config dirs exist.
-sudo -u "$ADMIN_USER" mkdir -p "/home/$ADMIN_USER/.config/containers/systemd"
-sudo -u "$ADMIN_USER" mkdir -p "/home/$ADMIN_USER/.config/systemd/user"
+sudo -u "$ADMIN_USER" mkdir -p "$ADMIN_HOME/.config/containers/systemd"
+sudo -u "$ADMIN_USER" mkdir -p "$ADMIN_HOME/.config/systemd/user"
 info "Container dirs present: ~/.config/containers/systemd/ and ~/.config/systemd/user/"
+
+# Enable linger now so /run/user/$UID persists for systemctl --user calls below
+# (also re-enabled at the Users section — both idempotent).
+loginctl enable-linger "$ADMIN_USER" 2>/dev/null || true
 
 # Enable + start the rootless Podman API socket.
 # XDG_RUNTIME_DIR is required when running systemctl --user via sudo;
@@ -93,17 +117,26 @@ sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
   systemctl --user daemon-reload
 info "User systemd daemon reloaded (Quadlet generator active)."
 
-# Smoke tests — guarded so re-runs on air-gapped machines don't fail.
-sudo -u "$ADMIN_USER" podman info --format '{{.Version.Version}}' > /dev/null \
-  && info "podman info OK"
+# Smoke tests — soft-fail so a transient network error doesn't abort provisioning
+# before SSH hardening / firewall run.
+if sudo -u "$ADMIN_USER" podman info --format '{{.Version.Version}}' > /dev/null 2>&1; then
+  info "podman info OK"
+else
+  warn "podman info failed — rootless setup may be incomplete (check subuid/subgid)."
+fi
 
 if sudo -u "$ADMIN_USER" podman images --format '{{.Repository}}' \
      | grep -q "^docker.io/library/hello-world$"; then
   info "hello-world image already pulled, skipping smoke test."
 else
-  sudo -u "$ADMIN_USER" podman run --rm docker.io/library/hello-world > /dev/null \
-    && info "podman hello-world smoke OK"
+  if sudo -u "$ADMIN_USER" podman run --rm docker.io/library/hello-world > /dev/null; then
+    info "podman hello-world smoke OK"
+  else
+    warn "hello-world pull failed — check network / docker.io reachability."
+  fi
 fi
+
+warn "Remember to update local/machines.md with: Podman $(podman --version 2>/dev/null | awk '{print $3}' || echo 'N/A')"
 
 # ── Security ─────────────────────────────────────────────────────────────────
 
@@ -175,7 +208,7 @@ else
   sudo mkdir -p /home/"$AGENT_USER"/.ssh
   sudo chmod 700 /home/"$AGENT_USER"/.ssh
   sudo chown -R "$AGENT_USER":"$AGENT_USER" /home/"$AGENT_USER"/.ssh
-  sudo chmod 750 /home/"$ADMIN_USER"
+  sudo chmod 750 "$ADMIN_HOME"
   info "User '$AGENT_USER' created (bash, no sudo, isolated home)."
   warn "Add your agent SSH public key to /home/$AGENT_USER/.ssh/authorized_keys"
 fi

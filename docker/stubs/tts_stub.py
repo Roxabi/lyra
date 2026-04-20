@@ -7,6 +7,10 @@ Subscribes to:
 
 Publishes:
   lyra.voice.tts.heartbeat         (every 5s)
+
+Response envelope matches `roxabi_contracts.voice.TtsResponse` (ok,
+request_id, contract_version, trace_id, issued_at, audio_b64, mime_type,
+duration_ms) — per ADR-049.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ import json
 import os
 import signal
 import time
+from datetime import datetime, timezone
 
 import nats
 
@@ -25,6 +30,7 @@ WORKER_ID = os.getenv("TTS_STUB_WORKER_ID", "tts-stub-01")
 VRAM_USED = int(os.getenv("TTS_STUB_VRAM_USED_MB", "4800"))
 VRAM_TOTAL = int(os.getenv("TTS_STUB_VRAM_TOTAL_MB", "16384"))
 HB_INTERVAL = float(os.getenv("TTS_STUB_HB_INTERVAL", "5"))
+CONTRACT_VERSION = "1"
 
 # Minimal valid WAV: 44-byte header + 1 sample of silence
 _SILENT_WAV = (
@@ -43,11 +49,20 @@ async def handle_request(msg: nats.aio.client.Msg) -> None:
     global _active
     _active += 1
     try:
+        try:
+            request = json.loads(msg.data)
+        except Exception:
+            request = {}
         response = {
+            "ok": True,
+            "contract_version": request.get("contract_version", CONTRACT_VERSION),
+            "trace_id": request.get("trace_id", "stub-trace"),
+            "issued_at": datetime.now(timezone.utc).isoformat(),
+            "request_id": request.get("request_id", "stub-req"),
             "audio_b64": _SILENT_WAV_B64,
             "mime_type": "audio/wav",
-            "duration": 0.01,
-            "waveform": None,
+            "duration_ms": 10,
+            "waveform_b64": None,
             "error": None,
         }
         await msg.respond(json.dumps(response).encode())

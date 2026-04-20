@@ -7,6 +7,11 @@ Subscribes to:
 
 Publishes:
   lyra.voice.stt.heartbeat         (every 5s)
+
+Response envelope matches `roxabi_contracts.voice.SttResponse`
+(ok, request_id, contract_version, trace_id, issued_at, text, language,
+duration_seconds) — per ADR-049. trace_id + request_id are echoed from
+the incoming SttRequest so call sites can correlate.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ import json
 import os
 import signal
 import time
+from datetime import datetime, timezone
 
 import nats
 
@@ -25,6 +31,7 @@ VRAM_USED = int(os.getenv("STT_STUB_VRAM_USED_MB", "2400"))
 VRAM_TOTAL = int(os.getenv("STT_STUB_VRAM_TOTAL_MB", "16384"))
 TRANSCRIPT = os.getenv("STT_STUB_TRANSCRIPT", "hello from stub")
 HB_INTERVAL = float(os.getenv("STT_STUB_HB_INTERVAL", "5"))
+CONTRACT_VERSION = "1"
 
 _active = 0
 _start = time.monotonic()
@@ -35,10 +42,19 @@ async def handle_request(msg: nats.aio.client.Msg) -> None:
     global _active
     _active += 1
     try:
+        try:
+            request = json.loads(msg.data)
+        except Exception:
+            request = {}
         response = {
+            "ok": True,
+            "contract_version": request.get("contract_version", CONTRACT_VERSION),
+            "trace_id": request.get("trace_id", "stub-trace"),
+            "issued_at": datetime.now(timezone.utc).isoformat(),
+            "request_id": request.get("request_id", "stub-req"),
             "text": TRANSCRIPT,
             "language": "en",
-            "duration": 1.0,
+            "duration_seconds": 1.0,
             "error": None,
         }
         await msg.respond(json.dumps(response).encode())

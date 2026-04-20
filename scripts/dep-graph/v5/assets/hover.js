@@ -125,8 +125,13 @@
       highlightKey(pinnedKey);
     }
     input.addEventListener('input', applySearch);
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Escape') { input.value = ''; applySearch(); input.blur(); }
+    // Esc clears search — works from input focus or anywhere on the page.
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      if (!input.value && !pinnedKey) return;
+      input.value = '';
+      applySearch();
+      if (document.activeElement === input) input.blur();
     });
   }
 })();

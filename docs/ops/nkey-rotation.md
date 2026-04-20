@@ -25,6 +25,8 @@ Rotation replaces the seed file (private key material) for one or more identitie
 | `image-worker.seed` | `lyra_imagecli_gen` | `~/.local/state/lyra/logs/lyra_imagecli_gen.log` |
 | `monitor.seed` | _(no supervisor program yet)_ | — |
 
+Every supervisor program also writes a `<name>_error.log` in the same directory; check both stdout and error logs during verification.
+
 All seeds live in `~/.lyra/nkeys/` on Machine 1. Live auth.conf lives at `/etc/nats/nkeys/auth.conf`.
 
 ---
@@ -43,7 +45,20 @@ List the affected seed filenames. Example: `telegram-adapter.seed`. If hub is co
 ssh mickael@192.168.1.16
 ```
 
+**1.3a If voicecli workers are in scope (`voice-tts.seed` or `voice-stt.seed`), confirm TLS cert is in place.**
+voicecli workers connect via `tls://127.0.0.1:4222` and require `/etc/nats/certs/ca.crt`. If this file is absent, the workers will fail to connect after restart regardless of nkey rotation status.
+
+```bash
+# On Machine 1:
+ls -la /etc/nats/certs/ca.crt
+```
+
+Resolve any missing cert before proceeding. voicecli connection errors during verification (Step 6.2) may indicate a TLS issue rather than an nkey issue.
+
 **1.4 Confirm a baseline before starting.**
+
+> **TODO:** replace with `lyra ops verify` once implemented (ADR-046 invariant 5).
+
 `lyra ops verify` is planned per ADR-046 Invariant 5 but not yet implemented. Until it is, run the manual equivalent:
 
 ```bash
@@ -68,7 +83,7 @@ For each identity being rotated, back up its seed before deletion. Use a timesta
 # Replace IDENTITY with the identity name (e.g. telegram-adapter).
 
 IDENTITY=telegram-adapter
-TS=$(date +%Y%m%d-%H%M)
+TS=$(date +%Y%m%d-%H%M%S)
 cp ~/.lyra/nkeys/${IDENTITY}.seed ~/.lyra/nkeys/${IDENTITY}.seed.bak-${TS}
 chmod 0600 ~/.lyra/nkeys/${IDENTITY}.seed.bak-${TS}
 ```
@@ -119,11 +134,25 @@ RELOAD_TS=$(date -Iseconds)
 echo "Reload timestamp: ${RELOAD_TS}"
 ```
 
+**4.1 Assess whether active compromise is in progress.**
+
+`systemctl reload` does not disconnect existing authenticated sessions. A connection authenticated under the old key before the reload remains open until it reconnects. The old public key is invalid for new connections, but any session already established continues until the client disconnects or reconnects.
+
+- **Historical compromise** (seed leak only, no evidence of live use) — `reload` is sufficient. The attacker cannot open new sessions; proceed to Step 5.
+- **Active/in-progress compromise** (attacker may hold a live connection now) — use `sudo systemctl restart nats.service` instead of `reload` to evict all sessions immediately. This causes ~5 s of downtime and drops all current connections, including legitimate ones.
+
+```bash
+# Active compromise only — replaces the reload in Step 4:
+sudo systemctl restart nats.service
+```
+
+Update `RELOAD_TS` after a restart if you use this path.
+
 ---
 
 ## 5. Rolling Restart Order
 
-Restart affected programs in this order: workers first, adapters second, hub last. The hub is last because losing its seed mid-flight drops all queued in-flight messages. Adapters are reconnect-tolerant and will resume once the hub is back.
+Restart affected programs in this order: workers first, adapters second, hub last. Workers and adapters first — they are reconnect-tolerant (circuit breaker in roxabi-nats) and can queue at NATS while the hub is briefly down. Hub last — it is the sole consumer of inbound queues; restarting it last minimises the window where inbound messages could fill NATS queues with no consumer.
 
 Only restart programs that use a rotated identity. If only `telegram-adapter` was rotated, restart only `lyra_telegram`. If `hub` was rotated, restart all programs.
 
@@ -166,6 +195,8 @@ supervisorctl status
 
 ## 6. Verification
 
+> **TODO:** `lyra ops verify` planned per ADR-046 invariant 5 — replace manual checks below once CLI ships.
+
 **6.1 Check for NATS auth errors** using the reload timestamp captured in Step 4:
 
 ```bash
@@ -176,21 +207,34 @@ Expected output on success: `OK: no Permissions Violation in nats.service over 9
 
 If violations are detected, the script prints the offending lines and exits 1. Jump to **Rollback** immediately.
 
-**6.2 Check each restarted service log for a successful NATS connection:**
+**6.2 Check each restarted service log for a successful NATS connection.**
+
+Supervisord splits stdout and stderr. Python auth errors go to the `_error.log` — check both files for each program.
 
 ```bash
 # Hub
 tail -30 ~/.local/state/lyra/logs/lyra_hub.log | grep -i "nats\|connected\|ready"
+tail -30 ~/.local/state/lyra/logs/lyra_hub_error.log | grep -i "nats\|auth\|error"
 
 # Telegram adapter
 tail -30 ~/.local/state/lyra/logs/lyra_telegram.log | grep -i "nats\|connected\|ready"
+tail -30 ~/.local/state/lyra/logs/lyra_telegram_error.log | grep -i "nats\|auth\|error"
 
 # Discord adapter
 tail -30 ~/.local/state/lyra/logs/lyra_discord.log | grep -i "nats\|connected\|ready"
+tail -30 ~/.local/state/lyra/logs/lyra_discord_error.log | grep -i "nats\|auth\|error"
+
+# imagecli gen worker (if image-worker.seed was rotated)
+tail -30 ~/.local/state/lyra/logs/lyra_imagecli_gen.log | grep -i "nats\|connected\|ready"
+tail -30 ~/.local/state/lyra/logs/lyra_imagecli_gen_error.log | grep -i "nats\|auth\|error"
 
 # voicecli workers (if rotated)
+# Note: voicecli connects via tls://127.0.0.1:4222 — connection errors here may
+# indicate a TLS issue (/etc/nats/certs/ca.crt) rather than an nkey issue.
 tail -30 ~/.local/state/voicecli/logs/voicecli_tts.log | grep -i "nats\|connected\|ready"
+tail -30 ~/.local/state/voicecli/logs/voicecli_tts_error.log | grep -i "nats\|auth\|error"
 tail -30 ~/.local/state/voicecli/logs/voicecli_stt.log | grep -i "nats\|connected\|ready"
+tail -30 ~/.local/state/voicecli/logs/voicecli_stt_error.log | grep -i "nats\|auth\|error"
 ```
 
 **6.3 Confirm supervisor program states:**
@@ -229,11 +273,13 @@ ls /etc/nats/nkeys/auth.conf.bak.*
 # Note the backup created by --regen-authconf in Step 3.
 ```
 
+> **WARNING:** The compromised seed becomes live again the moment `systemctl reload` runs in Step 7.3. Before proceeding: (a) record the current time and reason for rollback in your incident log; (b) treat this rollback as a temporary measure only — a second rotation attempt must follow within 24 h once the root cause of the rotation failure is resolved.
+
 **7.2 Restore the compromised seed:**
 
 ```bash
-# Replace BAK_TS with the actual timestamp from your Step 2 backup.
-BAK_TS=20240120-1430
+# Replace BAK_TS with the actual timestamp from your Step 2 output (format: YYYYMMDD-HHMMSS).
+BAK_TS=YYYYMMDD-HHMMSS  # ← replace with timestamp from Step 2 output
 
 cp ~/.lyra/nkeys/${IDENTITY}.seed.bak-${BAK_TS} ~/.lyra/nkeys/${IDENTITY}.seed
 chmod 0600 ~/.lyra/nkeys/${IDENTITY}.seed
@@ -242,29 +288,68 @@ chmod 0600 ~/.lyra/nkeys/${IDENTITY}.seed
 **7.3 Restore auth.conf and reload NATS:**
 
 ```bash
-# Replace CONF_BAK with the actual backup filename from Step 3 output.
-CONF_BAK=/etc/nats/nkeys/auth.conf.bak.20240120-143012
+# Replace CONF_BAK with the actual backup filename from Step 3 output (format: YYYYMMDD-HHMMSS).
+CONF_BAK=/etc/nats/nkeys/auth.conf.bak.YYYYMMDD-HHMMSS  # ← replace with timestamp from Step 3 output
 
 sudo cp -a "${CONF_BAK}" /etc/nats/nkeys/auth.conf
-sudo chown root:nats /etc/nats/nkeys/auth.conf
-sudo chmod 0640 /etc/nats/nkeys/auth.conf
+# cp -a preserves ownership + mode from --regen-authconf backup
 sudo systemctl reload nats.service
 ```
 
-**7.4 Reverse-order restart** (workers first, hub last — same order as Step 5):
+**7.4 Reverse-order restart** (workers first, hub last — same order as Step 5).
+
+Multi-arg `supervisorctl restart a b c` does NOT wait between restarts — the next program may start while the previous is still STARTING. Use one program per line and confirm each reaches RUNNING before continuing.
 
 ```bash
-supervisorctl restart voicecli_tts voicecli_stt
+supervisorctl restart voicecli_tts
+supervisorctl restart voicecli_stt
+supervisorctl status voicecli_tts voicecli_stt
+
 supervisorctl restart lyra_imagecli_gen
-supervisorctl restart lyra_telegram lyra_discord lyra_tts lyra_stt
+supervisorctl status lyra_imagecli_gen
+
+supervisorctl restart lyra_telegram
+supervisorctl restart lyra_discord
+supervisorctl restart lyra_tts
+supervisorctl restart lyra_stt
+supervisorctl status lyra_telegram lyra_discord lyra_tts lyra_stt
+
 supervisorctl restart lyra_hub
+supervisorctl status lyra_hub
 ```
 
 **7.5 Re-run verification** (Step 6) to confirm the rollback restored service. Then escalate: the rotation failed, the compromised seed is live again, and the compromise signal must be reassessed before the next attempt.
 
 ---
 
-## 8. Cross-references
+## 8. Backup Cleanup
+
+After verification passes (Step 6), dispose of the seed backup. Compromised key material should not persist indefinitely in the live-seed directory — an idle backup file is still a leak vector if the directory is later exposed.
+
+**Option A — delete:**
+
+```bash
+rm ~/.lyra/nkeys/${IDENTITY}.seed.bak-${TS}
+```
+
+**Option B — move to forensics archive:**
+
+```bash
+mkdir -p ~/.lyra/forensics
+mv ~/.lyra/nkeys/${IDENTITY}.seed.bak-${TS} ~/.lyra/forensics/
+```
+
+Use Option B if you need to preserve the seed for incident investigation. In either case, confirm no `.bak-*` file remains in `~/.lyra/nkeys/`:
+
+```bash
+ls ~/.lyra/nkeys/*.bak-* 2>/dev/null && echo "WARNING: backup files still present"
+```
+
+> **TODO:** consider automating backup cleanup via a retention hook in gen-nkeys.sh.
+
+---
+
+## 9. Cross-References
 
 - [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — declarative provisioning invariants, `--regen-authconf` semantics, `lyra ops verify` (Invariant 5, planned)
 - [#561](https://github.com/Roxabi/lyra/issues/561) — parent epic (NATS nkey provisioning)

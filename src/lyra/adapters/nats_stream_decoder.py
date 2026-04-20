@@ -172,8 +172,10 @@ def handle_stream_error(listener: Any, data: dict) -> None:
             # documented bounded recovery path. No separate abort signal is
             # needed because that timeout IS the bound.
             log.warning(
-                "NatsOutboundListener: stream queue full, cannot enqueue"
-                " stream_error for stream_id=%r",
+                "NatsOutboundListener: stream queue full, poison pill dropped"
+                " — stream will self-terminate via %ds idle timeout"
+                " (stream_id=%r)",
+                int(_CHUNK_TIMEOUT_SECONDS),
                 stream_id,
             )
         remember_terminated(listener, stream_id)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -606,40 +607,61 @@ async def test_stream_error_queue_full_records_tombstone_without_exception() -> 
     the tombstone must be recorded so late chunks are rejected, and the original
     queue contents must be untouched (the poison pill is dropped).
     """
-    import asyncio
-
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.adapters.nats_stream_decoder import handle_stream_error
 
     nc = AsyncMock()
     adapter = AsyncMock()
-    adapter.send_streaming = AsyncMock()
     listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
 
     sid = "msg-queue-full"
     msg = _make_tg_msg(sid)
     listener.cache_inbound(msg)
 
-    # Set up a queue with maxsize=1 and fill it with one real chunk.
-    q: asyncio.Queue[dict] = asyncio.Queue(maxsize=1)
-    existing_chunk = {
+    # Arrange: drive stream_start through the real dispatch chain so _cache,
+    # _stream_outbound, and _stream_queues are populated naturally.
+    stream_start = {
+        "type": "stream_start",
+        "stream_id": sid,
+        "outbound": {"content": [], "buttons": [], "metadata": {}},
+    }
+    await listener._handle(_make_nats_msg(stream_start))
+
+    # Send one chunk so a drain task is spawned and the queue exists.
+    chunk_payload = {
         "stream_id": sid,
         "seq": 0,
         "event_type": "text",
         "payload": {"text": "partial", "is_final": False},
         "done": False,
     }
+    await listener._handle(_make_nats_msg(chunk_payload))
+
+    # Surgically replace the queue with a maxsize=1 version pre-filled with
+    # one item, forcing QueueFull when the poison pill is attempted.
+    q: asyncio.Queue[dict] = asyncio.Queue(maxsize=1)
+    existing_chunk = dict(chunk_payload)
     q.put_nowait(existing_chunk)
     listener._stream_queues[sid] = q
 
-    # Act — must not raise even though the queue is full.
-    handle_stream_error(listener, {"stream_id": sid, "type": "stream_error"})
+    # Act — drive stream_error through the real _handle dispatch chain.
+    # Must not raise even though the queue is full.
+    error_envelope = {
+        "type": "stream_error",
+        "stream_id": sid,
+    }
+    await listener._handle(_make_nats_msg(error_envelope))
 
     # Tombstone IS recorded (late chunks will be rejected).
     assert sid in listener._terminated_streams
 
-    # Poison pill was NOT enqueued — only the original chunk remains.
-    assert q.qsize() == 1
+    # Cache is untouched — queue-full branch returns before any pop.
+    assert sid in listener._cache
+
+    # Queue entry is still present and has exactly the original chunk.
+    assert sid in listener._stream_queues
+    assert listener._stream_queues[sid].qsize() == 1
+
+    # Poison pill was NOT enqueued — the original chunk is the only item.
     assert q.get_nowait() == existing_chunk
 
 

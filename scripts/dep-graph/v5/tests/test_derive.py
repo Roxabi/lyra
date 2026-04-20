@@ -4,6 +4,7 @@ from __future__ import annotations
 from v5.data.derive import (
     build_matrix,
     compute_depth,
+    compute_visible,
     epic_keys,
     lane_by_code,
     sort_cards_in_cell,
@@ -55,6 +56,7 @@ def _minimal_data(issues: dict, epic_ks: set | None = None) -> GraphData:
         lane_by_code=lbc,
         issues=issues,
         epic_keys=epic_ks or set(),
+        visible=set(issues.keys()),
         depth_by_key=compute_depth(issues),
     )
     return data
@@ -190,6 +192,64 @@ class TestEpicKeys:
         assert len(keys) == 0
 
 
+# ─── compute_visible ─────────────────────────────────────────────────────────
+
+
+class TestComputeVisible:
+    def test_seeds_open_primary_items(self):
+        a = _make_issue(1, state="open")
+        b = _make_issue(2, state="open", repo="Roxabi/other")
+        issues = _issues(a, b)
+        visible = compute_visible(issues, "Roxabi/lyra")
+        assert "Roxabi/lyra#1" in visible
+        assert "Roxabi/other#2" not in visible
+
+    def test_excludes_closed_primary_items_not_on_chain(self):
+        a = _make_issue(1, state="closed")
+        issues = _issues(a)
+        visible = compute_visible(issues, "Roxabi/lyra")
+        assert visible == set()
+
+    def test_forward_cascade_any_state(self):
+        a = _make_issue(
+            1, state="open",
+            blocking=[{"repo": "Roxabi/lyra", "issue": 2}],
+        )
+        b = _make_issue(
+            2, state="closed",
+            blocking=[{"repo": "Roxabi/lyra", "issue": 3}],
+        )
+        c = _make_issue(3, state="open")
+        issues = _issues(a, b, c)
+        visible = compute_visible(issues, "Roxabi/lyra")
+        assert {"Roxabi/lyra#1", "Roxabi/lyra#2", "Roxabi/lyra#3"} <= visible
+
+    def test_one_step_backward_any_state_any_repo(self):
+        blocker = _make_issue(10, state="closed", repo="Roxabi/voiceCLI")
+        iss = _make_issue(
+            1, state="open",
+            blocked_by=[{"repo": "Roxabi/voiceCLI", "issue": 10}],
+        )
+        issues = _issues(blocker, iss)
+        visible = compute_visible(issues, "Roxabi/lyra")
+        assert "Roxabi/voiceCLI#10" in visible
+
+    def test_backward_is_one_hop_only(self):
+        grand = _make_issue(20, state="closed")
+        blocker = _make_issue(
+            10, state="closed",
+            blocked_by=[{"repo": "Roxabi/lyra", "issue": 20}],
+        )
+        iss = _make_issue(
+            1, state="open",
+            blocked_by=[{"repo": "Roxabi/lyra", "issue": 10}],
+        )
+        issues = _issues(grand, blocker, iss)
+        visible = compute_visible(issues, "Roxabi/lyra")
+        assert "Roxabi/lyra#10" in visible
+        assert "Roxabi/lyra#20" not in visible
+
+
 # ─── build_matrix ────────────────────────────────────────────────────────────
 
 class TestBuildMatrix:
@@ -205,16 +265,28 @@ class TestBuildMatrix:
             nums = [i["number"] for i in cell_issues]
             assert 100 not in nums
 
-    def test_skips_items_missing_milestone(self):
+    def test_items_missing_milestone_go_to_no_ms_sentinel(self):
+        from v5.data.model import NO_MS
         task = _make_issue(1, milestone=None)
         data = _minimal_data(_issues(task))
-        _, _, total = build_matrix(data)
-        assert total == 0
+        matrix, _, total = build_matrix(data)
+        assert total == 1
+        assert (NO_MS, "a1") in matrix
 
-    def test_skips_items_missing_lane(self):
+    def test_items_missing_lane_go_to_no_lane_sentinel(self):
+        from v5.data.model import NO_LANE
         task = _make_issue(1)
         task["lane_label"] = None
         data = _minimal_data(_issues(task))
+        matrix, _, total = build_matrix(data)
+        assert total == 1
+        assert ("M0  NATS hardening", NO_LANE) in matrix
+
+    def test_items_not_in_visibility_set_excluded(self):
+        task = _make_issue(1)
+        issues = _issues(task)
+        data = _minimal_data(issues)
+        data.visible = set()  # force empty visibility
         _, _, total = build_matrix(data)
         assert total == 0
 

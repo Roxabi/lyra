@@ -1,0 +1,69 @@
+---
+title: Quick-win cleanup of inline lint/type ignores (buckets 1-5)
+issue: null
+status: approved
+tier: F-lite
+date: 2026-04-20
+---
+
+## Problem
+
+The codebase carries **394 inline ignores across 171 files** (47 unique `noqa:` / `type: ignore[...]` kinds). An Explore-agent audit classified the top 12 buckets by ROI. Five buckets — **58 ignores / ~15% of total** — are low-risk, test-only, mechanical refactors with no runtime impact. Left alone, they erode lint signal and mask real regressions.
+
+**Why now:** clusters are small (≤10 files per bucket), the cleanup can be parallelized across buckets, and it unblocks a clearer signal before tackling the structural debt (`PLR0913`, `C901`, `attr-defined` — 147 ignores that need a separate frame).
+
+**Observable impact:**
+- 58 inline ignores suppressing lint/type checks in tests
+- Lint noise normalises ignores → future tests accumulate more
+- Cleaner baseline makes structural-debt frame easier to scope next
+
+## Who
+
+- **Primary:** developers maintaining lyra tests — clearer mocks, stricter fixtures
+- **Secondary:** future contributors — fewer "why is this ignored?" questions during review
+
+## Scope
+
+**In scope (5 buckets, 58 ignores):**
+
+| # | Bucket | Count | Strategy |
+|---|---|---|---|
+| 1 | `type: ignore[arg-type]` (test fixtures) | 17 | Replace fake objects with `MagicMock`/strict ABC |
+| 2 | `noqa: ARG002` (unused callback params) | 8 | `functools.partial` or wrapper closures |
+| 3 | `type: ignore[assignment]` (test doubles) | 10 | `unittest.mock.patch` decorator |
+| 4 | `type: ignore[method-assign]` (mock setup) | 7 | `@patch.object(..., autospec=True)` |
+| 5 | `noqa: PLC0415` (deferred test imports) | 16 | Move to fixtures/helpers or top-level |
+
+**Affected paths (approx. 15-20 files):**
+- `tests/integration/test_session_reply_to.py`, `tests/integration/test_session_telegram.py`
+- `tests/core/test_middleware.py`, `tests/core/test_pool_streaming.py`, `tests/core/test_session_clear.py`, `tests/core/test_session_commands_pre.py`
+- `tests/test_circuit_config.py`, `tests/bootstrap/`
+- `packages/roxabi-nats/tests/test_adapter_base.py` + siblings
+
+## Constraints
+
+- **Test-only:** no runtime source changes; `src/lyra/` untouched
+- **No coverage regressions:** `make validate` green pre/post
+- **No new dependencies:** use stdlib `unittest.mock` + existing `pytest` fixtures
+- **Bucket-independent:** each bucket merge-able on its own — no cross-bucket coupling
+- **Time budget:** ~8h total (~1-3h per bucket, parallelizable)
+
+## Out of Scope
+
+- Structural buckets: `PLR0913` (68), `C901` (37), `attr-defined` (42) — own frame
+- Justified buckets: `E501` (47), `E402` (33), `F401` (16), `BLE001` (12) — keep as-is
+- Source-code refactors (mixin → Protocol, ctor → dataclass) — blocked on design decisions
+- Changing lint config / thresholds
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (tests), no unknowns, mechanical refactor.
+
+**Signals observed:**
+- Single domain: `tests/` + `packages/*/tests/`
+- No new patterns: stdlib mock primitives already used elsewhere
+- No unknowns: ignores already grepped and categorized
+- File count (~15-20) slightly exceeds F-lite 10-file heuristic, but all edits are same-class mechanical changes — does not warrant F-full process weight
+- Bucket-independent → can be split into 5 parallel sub-PRs if preferred
+
+**Expected outcome:** 5 PRs (one per bucket) or 1 bundled PR. Success = zero `arg-type`/`ARG002`/`assignment`/`method-assign`/`PLC0415` ignores across the listed paths, `make validate` green.

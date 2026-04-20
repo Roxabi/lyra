@@ -4,6 +4,8 @@
 #        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname bash
 #        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname AGENT_USER=myagent bash
 set -euo pipefail
+# Pin locale so [a-z] / [0-9] regex classes are ASCII-only regardless of host locale.
+export LC_ALL=C
 
 export PATH="$HOME/.local/bin:$PATH"
 source "$HOME/.local/bin/env" 2>/dev/null || true  # uv
@@ -72,9 +74,13 @@ if command -v podman &>/dev/null; then
   info "podman already installed ($(podman --version))."
 else
   # Ubuntu 26.04 LTS ships podman 5.x — Quadlet generator included natively.
-  # uidmap: required for rootless user namespace mapping (subuid/subgid).
-  # fuse-overlayfs: overlay storage driver for rootless containers.
-  # slirp4netns: rootless networking (usually pulled in by podman dep chain).
+  # Belt-and-suspenders on explicit deps (most are already pulled in by podman):
+  #   uidmap         — rootless UID namespace mapping (hard dep of podman ≥4.5).
+  #   fuse-overlayfs — fallback overlay driver when kernel overlayfs is
+  #                    unavailable to unprivileged users (26.04 kernel has it,
+  #                    but leave as safety net for older HWE kernels).
+  #   slirp4netns    — legacy rootless networking; podman 5.x defaults to
+  #                    `pasta` and slirp4netns is deprecated but still usable.
   sudo apt install -y podman uidmap fuse-overlayfs slirp4netns
   info "podman installed ($(podman --version))."
 fi
@@ -296,9 +302,10 @@ UNIT
   info "lyra.service created."
 fi
 
-# Enable linger so user services start without login session
-loginctl enable-linger "$ADMIN_USER" 2>/dev/null || true
-info "Linger enabled for $ADMIN_USER (services auto-start on boot)."
+# Linger is already enabled (and verified) in the Podman section above —
+# do not call it again here. A duplicate `loginctl enable-linger ... || true`
+# would silently log success even if the real call had failed, creating false
+# confidence about persistent user services.
 
 # Note: lyra-monitor.timer (health monitoring) is installed by `make register`
 # in the lyra repo, not by provision.sh. It requires secrets in .env first.

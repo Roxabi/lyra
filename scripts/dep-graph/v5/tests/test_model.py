@@ -16,8 +16,8 @@ from v5.data.model import (
 # ─── COLUMN_GROUPS ───────────────────────────────────────────────────────────
 
 class TestColumnGroups:
-    def test_has_nine_entries(self):
-        assert len(COLUMN_GROUPS) == 9
+    def test_has_fifteen_entries(self):
+        assert len(COLUMN_GROUPS) == 15
 
     def test_labels_are_unique(self):
         labels = [label for label, _, _ in COLUMN_GROUPS]
@@ -43,12 +43,15 @@ class TestColumnGroups:
 # ─── MILESTONES ──────────────────────────────────────────────────────────────
 
 class TestMilestones:
-    def test_has_six_entries(self):
-        assert len(MILESTONES) == 6
+    def test_has_twelve_entries(self):
+        assert len(MILESTONES) == 12
 
-    def test_codes_are_m0_through_m5(self):
+    def test_codes_cover_m0_through_fin(self):
         codes = [code for _, code, _ in MILESTONES]
-        assert codes == ["M0", "M1", "M2", "M3", "M4", "M5"]
+        assert codes == [
+            "M0", "M1", "M2", "M3", "M4", "M5",
+            "M6", "M7", "M8", "M9", "M10", "FIN",
+        ]
 
     def test_ms_codes_list_matches(self):
         codes_from_list = [code for _, code, _ in MILESTONES]

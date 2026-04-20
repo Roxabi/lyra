@@ -45,6 +45,12 @@ MILESTONES: list[tuple[str, str, str]] = [
 MS_CODES: list[str] = [code for _, code, _ in MILESTONES]
 MS_NAME_BY_CODE: dict[str, str] = {code: name for _, code, name in MILESTONES}
 
+# Sentinel keys for issues in the visibility set that lack milestone/lane.
+# Rendered as a prepended row ("No milestone") or column ("No lane") when
+# non-empty; hidden otherwise.
+NO_MS: str = "__nomilestone__"
+NO_LANE: str = "__nolane__"
+
 
 # ─── Domain dataclasses ─────────────────────────────────────────────────────
 
@@ -74,6 +80,11 @@ class GraphData:
     # Cell matrix: (ms_label, lane_code) → [issue dicts], excludes epics.
     matrix: dict[tuple[str, str], list[dict[str, Any]]] = field(default_factory=dict)
     epic_keys: set[str] = field(default_factory=set)
+    # Visibility set — canonical keys the grid/graph should render. Rule:
+    #   · all open items in primary repo
+    #   · forward cascade (blocking edges), any state, any repo
+    #   · 1-hop backward (blocked_by), any state, any repo
+    visible: set[str] = field(default_factory=set)
     # Topological depth (counts all blockers, open + closed).
     depth_by_key: dict[str, int] = field(default_factory=dict)
     # Rollup counts after filtering epics.

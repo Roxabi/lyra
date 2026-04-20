@@ -11,11 +11,7 @@ from pathlib import Path
 from lyra.bootstrap.agent_factory import _resolve_bot_agent_map
 from lyra.bootstrap.auth_seeding import build_bot_auths, seed_auth_store
 from lyra.bootstrap.bootstrap_stores import open_stores
-from lyra.bootstrap.config import (
-    MessageIndexConfig,
-    _build_agent_overrides,
-    _load_pairing_config,
-)
+from lyra.bootstrap.config import MessageIndexConfig
 from lyra.bootstrap.health import create_health_app
 from lyra.bootstrap.hub_builder import (
     build_cli_pool,
@@ -23,11 +19,12 @@ from lyra.bootstrap.hub_builder import (
     build_inbound_bus,
     register_agents,
 )
-from lyra.bootstrap.lifecycle_helpers import (
-    setup_signal_handlers,
-    teardown_buses,
-    teardown_dispatchers,
+from lyra.bootstrap.hub_standalone_helpers import (
+    build_pairing_manager,
+    load_agent_configs,
+    shutdown_hub_runtime,
 )
+from lyra.bootstrap.lifecycle_helpers import setup_signal_handlers
 from lyra.bootstrap.llm_overlay import init_nats_llm
 from lyra.bootstrap.lockfile import acquire_lockfile, release_lockfile
 from lyra.bootstrap.nats_wiring import (
@@ -36,8 +33,6 @@ from lyra.bootstrap.nats_wiring import (
 )
 from lyra.bootstrap.notify import notify_startup
 from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
-from lyra.core.agent_loader import agent_row_to_config
-from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import start_readiness_responder
@@ -108,51 +103,27 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             [cfg for cfg, _ in tg_bot_auths],
             [cfg for cfg, _ in dc_bot_auths],
         )
-        agent_names: set[str] = set(bot_agent_map.values())
 
-        # Load all agent configs from DB
-        from lyra.core.agent import Agent
-
-        agent_configs: dict[str, Agent] = {}
-        for n in sorted(agent_names):
-            row = stores.agent.get(n)
-            if row is not None:
-                overrides = _build_agent_overrides(raw_config, n)
-                agent_configs[n] = agent_row_to_config(
-                    row, instance_overrides=overrides.model_dump()
-                )
-            else:
-                log.error("Agent %r not found in DB — skipping", n)
+        agent_configs = load_agent_configs(
+            stores.agent, raw_config, set(bot_agent_map.values())
+        )
         if not agent_configs:
             sys.exit(
                 "No agent configs could be loaded — run 'lyra agent init' to seed the"
                 " agents table"
             )
-        first_agent_name = next(iter(sorted(agent_configs)))
-        first_agent_config = agent_configs[first_agent_name]
+        first_agent_config = agent_configs[next(iter(sorted(agent_configs)))]
 
         from lyra.bootstrap.config import _load_messages
 
         msg_manager = _load_messages(language=first_agent_config.i18n_language)
 
-        # Pairing manager
-        pairing_config = _load_pairing_config(raw_config)
-        if pairing_config.enabled and not admin_user_ids:
-            log.warning(
-                "Pairing enabled but [admin].user_ids is empty — "
-                "/invite and /unpair require is_admin=True "
-                "(granted to [admin].user_ids entries "
-                "or users configured as OWNER in [[auth.*_bots]])"
-            )
-        pm: PairingManager | None = None
-        if pairing_config.enabled:
-            pm = PairingManager(
-                config=pairing_config,
-                db_path=vault_dir / "pairing.db",
-                auth_store=stores.auth,
-            )
-            await pm.connect()
-            set_pairing_manager(pm)
+        pm = await build_pairing_manager(
+            raw_config,
+            vault_dir=vault_dir,
+            auth_store=stores.auth,
+            admin_user_ids=admin_user_ids,
+        )
 
         # STT / TTS via NATS clients (hub talks to voicecli adapters over NATS)
         stt_service = init_nats_stt(nc)
@@ -266,22 +237,15 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        await readiness_sub.unsubscribe()
-        await teardown_buses(hub.inbound_bus)
-        await teardown_dispatchers(dispatchers)
-        for proxy in proxies:
-            await proxy.publish_stream_errors("hub_shutdown")
-        if pm is not None:
-            await pm.close()
-        if cli_pool is not None:
-            await cli_pool.drain(timeout=60.0)
-            active_ids = cli_pool.get_active_pool_ids()
-            if active_ids:
-                await hub.notify_shutdown_inflight(active_ids)
-            await cli_pool.stop()
-        if nats_llm_driver is not None:
-            await nats_llm_driver.stop()
-        await hub.shutdown()
+        await shutdown_hub_runtime(
+            hub,
+            readiness_sub=readiness_sub,
+            dispatchers=dispatchers,
+            proxies=proxies,
+            pm=pm,
+            cli_pool=cli_pool,
+            nats_llm_driver=nats_llm_driver,
+        )
 
     # Close NATS connection after stores context exits
     try:

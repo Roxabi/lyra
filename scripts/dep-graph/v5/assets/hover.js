@@ -39,8 +39,8 @@
     return seen;
   }
 
-  function highlight(el) {
-    const k = el.dataset.iss;
+  function highlightKey(k) {
+    if (!byKey.has(k)) return false;
     const up = traverse(k, blockers);
     const down = traverse(k, unblocks);
     body.classList.add('hl-active');
@@ -53,6 +53,7 @@
         e.classList.add('hl-edge');
       }
     });
+    return true;
   }
 
   function clearHighlight() {
@@ -62,18 +63,70 @@
     edges.forEach(e => e.classList.remove('hl-edge'));
   }
 
+  // Persistent search selection — re-applied after any hover clears.
+  let pinnedKey = null;
+  function restorePinned() {
+    clearHighlight();
+    if (pinnedKey) highlightKey(pinnedKey);
+  }
+
   targets.forEach(el => {
-    el.addEventListener('mouseenter', () => highlight(el));
-    el.addEventListener('mouseleave', clearHighlight);
+    el.addEventListener('mouseenter', () => {
+      clearHighlight();
+      highlightKey(el.dataset.iss);
+    });
+    el.addEventListener('mouseleave', restorePinned);
   });
 
   // Epic-header hover — highlight only that epic's own cards (grid view only)
   document.querySelectorAll('.epic-header').forEach(h => {
     h.addEventListener('mouseenter', () => {
+      clearHighlight();
       body.classList.add('hl-active');
       const group = h.parentElement;
       group.querySelectorAll('.issue-card').forEach(c => c.classList.add('hl-self'));
     });
-    h.addEventListener('mouseleave', clearHighlight);
+    h.addEventListener('mouseleave', restorePinned);
   });
+
+  // ── Issue-number search — exact match, highlight same as hover ─────
+  // Map: issue number (int) → array of full keys (`repo#num`). Typing a bare
+  // number matches the num part exactly, not as a prefix (69 ≠ 690).
+  const byNum = new Map();
+  for (const k of byKey.keys()) {
+    const m = /#(\d+)$/.exec(k);
+    if (!m) continue;
+    const num = m[1];
+    if (!byNum.has(num)) byNum.set(num, []);
+    byNum.get(num).push(k);
+  }
+
+  const input = document.getElementById('issue-search');
+  if (input) {
+    const wrap = input.closest('.search') || input;
+    function applySearch() {
+      const raw = input.value.trim().replace(/^#/, '');
+      if (!raw) {
+        pinnedKey = null;
+        wrap.classList.remove('no-match');
+        clearHighlight();
+        return;
+      }
+      const keys = byNum.get(raw);
+      if (!keys || keys.length === 0) {
+        pinnedKey = null;
+        wrap.classList.add('no-match');
+        clearHighlight();
+        return;
+      }
+      wrap.classList.remove('no-match');
+      pinnedKey = keys[0];
+      clearHighlight();
+      highlightKey(pinnedKey);
+    }
+    input.addEventListener('input', applySearch);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { input.value = ''; applySearch(); input.blur(); }
+    });
+  }
 })();

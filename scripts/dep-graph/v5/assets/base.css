@@ -72,6 +72,26 @@ body:not(.view-grid-active) .toolbar .filters { display: none; }
 }
 .toolbar input[type="checkbox"] { accent-color: var(--accent); }
 
+/* Search wrapper inherits `.toolbar label` chrome (border/padding/bg) so it
+   sits flush with the checkbox pills. The <input> is transparent and unframed. */
+.toolbar label.search { cursor: text; padding: 2px 10px; }
+.toolbar label.search:focus-within { border-color: var(--accent); color: var(--text); }
+.toolbar label.search.no-match { border-color: var(--status-blocked); color: var(--status-blocked); }
+.toolbar label.search input {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  width: 88px;
+  outline: none;
+}
+.toolbar label.search input::placeholder { color: var(--text-muted); }
+.toolbar label.search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .toolbar .legend-pills {
   display: inline-flex;
   gap: 8px;

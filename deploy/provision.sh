@@ -56,6 +56,55 @@ else
   NEEDS_REBOOT=true
 fi
 
+# ── Container runtime ────────────────────────────────────────────────────────
+
+section "Podman"
+if command -v podman &>/dev/null; then
+  info "podman already installed ($(podman --version))."
+else
+  # Ubuntu 24.04 ships podman 4.9.x — sufficient for Quadlet (requires ≥4.4).
+  # uidmap: required for rootless user namespace mapping (subuid/subgid).
+  # fuse-overlayfs: overlay storage driver for rootless containers.
+  # slirp4netns: rootless networking (usually pulled in by podman dep chain).
+  sudo apt install -y podman uidmap fuse-overlayfs slirp4netns
+  info "podman installed ($(podman --version))."
+fi
+
+# Ensure user-scope container + systemd config dirs exist.
+sudo -u "$ADMIN_USER" mkdir -p "/home/$ADMIN_USER/.config/containers/systemd"
+sudo -u "$ADMIN_USER" mkdir -p "/home/$ADMIN_USER/.config/systemd/user"
+info "Container dirs present: ~/.config/containers/systemd/ and ~/.config/systemd/user/"
+
+# Enable + start the rootless Podman API socket.
+# XDG_RUNTIME_DIR is required when running systemctl --user via sudo;
+# without it systemd cannot locate the user's dbus session.
+ADMIN_UID=$(id -u "$ADMIN_USER")
+if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+     systemctl --user is-enabled podman.socket &>/dev/null; then
+  info "podman.socket already enabled for $ADMIN_USER."
+else
+  sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+    systemctl --user enable --now podman.socket
+  info "podman.socket enabled and started for $ADMIN_USER."
+fi
+
+# Reload user systemd so the Quadlet generator picks up any new .container units.
+sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+  systemctl --user daemon-reload
+info "User systemd daemon reloaded (Quadlet generator active)."
+
+# Smoke tests — guarded so re-runs on air-gapped machines don't fail.
+sudo -u "$ADMIN_USER" podman info --format '{{.Version.Version}}' > /dev/null \
+  && info "podman info OK"
+
+if sudo -u "$ADMIN_USER" podman images --format '{{.Repository}}' \
+     | grep -q "^docker.io/library/hello-world$"; then
+  info "hello-world image already pulled, skipping smoke test."
+else
+  sudo -u "$ADMIN_USER" podman run --rm docker.io/library/hello-world > /dev/null \
+    && info "podman hello-world smoke OK"
+fi
+
 # ── Security ─────────────────────────────────────────────────────────────────
 
 section "SSH hardening"

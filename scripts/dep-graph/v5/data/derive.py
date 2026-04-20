@@ -8,6 +8,8 @@ from .model import (
     COLUMN_GROUPS,
     MILESTONES,
     MS_NAME_BY_CODE,
+    NO_LANE,
+    NO_MS,
     GraphData,
     Lane,
     ref_key,
@@ -54,6 +56,37 @@ def status_of(iss: dict[str, Any], issues: dict[str, dict[str, Any]]) -> str:
     return "blocked" if open_blockers else "ready"
 
 
+def compute_visible(
+    issues: dict[str, dict[str, Any]], primary_repo: str
+) -> set[str]:
+    """Visibility set per project-level rule.
+
+    · Seed: all open items in primary repo.
+    · Forward cascade (blocking), any state, any repo.
+    · 1-hop backward (blocked_by) from anything already visible.
+    """
+    visible: set[str] = {
+        k for k, i in issues.items()
+        if i.get("repo") == primary_repo and i.get("state") == "open"
+    }
+
+    stack = list(visible)
+    while stack:
+        for ref in issues.get(stack.pop(), {}).get("blocking", []):
+            rk = ref_key(ref)
+            if rk in issues and rk not in visible:
+                visible.add(rk)
+                stack.append(rk)
+
+    for k in list(visible):
+        for ref in issues.get(k, {}).get("blocked_by", []):
+            rk = ref_key(ref)
+            if rk in issues:
+                visible.add(rk)
+
+    return visible
+
+
 def epic_keys(layout_lanes: list[dict[str, Any]], primary_repo: str) -> set[str]:
     """Set of canonical keys for every epic issue declared in layout.json."""
     keys: set[str] = set()
@@ -67,15 +100,20 @@ def epic_keys(layout_lanes: list[dict[str, Any]], primary_repo: str) -> set[str]
 def build_matrix(
     data: GraphData,
 ) -> tuple[dict[tuple[str, str], list[dict[str, Any]]], dict[str, int], int]:
-    """Build (ms_label, lane) → issues matrix + status counts + total."""
+    """Build (ms_label, lane) → issues matrix + status counts + total.
+
+    Only visibility-set issues are placed. Visible issues lacking a
+    milestone or lane land in NO_MS / NO_LANE sentinel cells (hidden by
+    the grid renderer when empty).
+    """
     matrix: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     counts = {"ready": 0, "blocked": 0, "done": 0}
     total = 0
     for key, iss in data.issues.items():
-        ms = iss.get("milestone")
-        lane = iss.get("lane_label")
-        if not ms or not lane or key in data.epic_keys:
+        if key in data.epic_keys or key not in data.visible:
             continue
+        ms = iss.get("milestone") or NO_MS
+        lane = iss.get("lane_label") or NO_LANE
         matrix[(ms, lane)].append(iss)
         counts[status_of(iss, data.issues)] += 1
         total += 1
@@ -96,7 +134,7 @@ def tasks_for_graph(data: GraphData) -> list[dict[str, Any]]:
     for key, iss in data.issues.items():
         ms = iss.get("milestone")
         lane = iss.get("lane_label")
-        if not ms or not lane or key in data.epic_keys:
+        if not ms or not lane or key in data.epic_keys or key not in data.visible:
             continue
         lmeta = data.lane_by_code.get(lane)
         tasks.append({

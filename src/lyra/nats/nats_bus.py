@@ -115,14 +115,13 @@ class NatsBus(Generic[T]):
         self._staging: asyncio.Queue[T] = asyncio.Queue(maxsize=staging_maxsize)
         self._version_mismatch_drops: dict[str, int] = {}
 
-    # ------------------------------------------------------------------
-    # Registration
-    # ------------------------------------------------------------------
+    # -- Registration --
 
-    def register(  # noqa: ARG002
+    def register(
         self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
     ) -> None:
         """Record *(platform, bot_id)* for subscription setup (idempotent)."""
+        del maxsize  # NATS has no local buffer — Bus protocol slot
         if self._started:
             raise RuntimeError(f"Cannot register {platform!r} after start().")
         resolved_bid = bot_id or self._bot_id
@@ -202,8 +201,9 @@ class NatsBus(Generic[T]):
     # Introspection
     # ------------------------------------------------------------------
 
-    def qsize(self, platform: Platform) -> int:  # noqa: ARG002
+    def qsize(self, platform: Platform) -> int:
         """Always returns 0 — NatsBus has no per-platform local buffer."""
+        del platform  # Bus protocol slot; NatsBus keeps no local buffer
         return 0
 
     def staging_qsize(self) -> int:

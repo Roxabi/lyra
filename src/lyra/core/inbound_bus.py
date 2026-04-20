@@ -66,7 +66,7 @@ class LocalBus(Generic[T]):
         self._threshold = queue_depth_threshold
         self._depth_exceeded = False
 
-    def register(  # noqa: ARG002
+    def register(
         self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
     ) -> None:
         """Register a bounded queue for the given platform.
@@ -77,6 +77,7 @@ class LocalBus(Generic[T]):
 
         bot_id is accepted for protocol compatibility but ignored by LocalBus.
         """
+        del bot_id  # Bus protocol slot; LocalBus keys queues on platform only
         if self._feeders:
             raise RuntimeError(
                 f"Cannot register platform {platform!r} after start() — "

@@ -29,7 +29,7 @@ dependencies = [
     "typer>=0.24.1",
     "tomli-w>=1.0",
     "telegramify-markdown>=1.1.0",
-    "tabulate>=0.9",
+    "tabulate>=0.10.0",
 ]
 
 [project.scripts]

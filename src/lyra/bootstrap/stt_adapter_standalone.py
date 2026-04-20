@@ -15,6 +15,15 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pynvml  # type: ignore[import-untyped]
+else:
+    try:
+        import pynvml  # type: ignore[import-untyped]
+    except ImportError:
+        pynvml = None
 
 from lyra.nats.queue_groups import STT_WORKERS
 from lyra.stt import STTService, TranscriptionResult, load_stt_config
@@ -49,9 +58,9 @@ class SttAdapterStandalone(NatsAdapterBase):
 
     def _get_vram_info(self) -> tuple[int, int]:
         """Return (used_mb, total_mb). Both 0 if pynvml is unavailable."""
+        if pynvml is None:
+            return 0, 0
         try:
-            import pynvml  # noqa: PLC0415  # type: ignore[import-untyped]
-
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)

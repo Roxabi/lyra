@@ -249,6 +249,36 @@ scripts/dep-graph/
 - **Cross-repo edges only render for repos in the pool** — if `lyra#703` is `blocked_by` `vault#24` but `Roxabi/roxabi-vault` is not in `meta.repos[]`, the edge won't appear in the graph. Add the missing repo to `meta.repos[]` to surface it.
 - **Schema evolution** — if `IssueRef` gains fields later (e.g., `branch`), a second migration pass will be needed. The current shape `{"repo": str, "issue": int}` is the intended stable natural key.
 
+## v5 — dual-mode builder (table + graph)
+
+**Default output**: `~/.roxabi/forge/lyra/visuals/lyra-v2-dependency-graph-v5.1.html`.
+
+`make dep-graph` (no sub-action) runs `fetch` + the v5 build. The v5 package is **independent** of v3.1 / v4.8 — it loads `layout.json` + `gh.json` directly, derives status/depth itself, and emits a single HTML with a `[Graph] | [Table]` mode toggle.
+
+Layout:
+
+```
+scripts/dep-graph/v5/
+├── build.py         · compose.py      · __init__.py
+├── data/            model · load · derive · layout_graph (DAG math)
+├── views/           grid (v3.1 swim-lane) · graph (dots + pill labels)
+├── components/      card · header · toolbar · toggle
+├── assets/          tokens · base · toggle · card · grid · graph .css
+│                    hover · app .js
+└── tests/           conftest + 9 suites (255 tests)
+```
+
+Run modes:
+
+| Command | Effect |
+|---|---|
+| `make dep-graph` | fetch + v5 build → v5.1 HTML (default) |
+| `make dep-graph fetch` | refresh `gh.json` only |
+| `make dep-graph build` | v5 build (no fetch) |
+| `make dep-graph legacy` | old `dep_graph.cli` build → `lyra-v2-dependency-graph.html` |
+| `make dep-graph open` | open the v5.1 HTML |
+| `make dep-graph audit` · `validate` · `migrate` | schema ops |
+
 ## TODO (deferred)
 
 - `add-issue` subcommand (YAGNI — manual 3-step flow is fine for now)

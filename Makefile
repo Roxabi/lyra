@@ -236,13 +236,18 @@ format:
 
 # ── Dep graph ────────────────────────────────────────────────────────────────
 # Multi-action target — see _LYRA_MULTI list at top of file.
-# Sub-actions: fetch | build | audit | validate | open | (empty = full rebuild)
+# Default (no sub-action) = fetch + v5 build.
+# Sub-actions: fetch | build | legacy | audit | validate | migrate | open
 
 DEP_GRAPH_DIR := $(HOME)/projects/lyra/scripts/dep-graph
-DEP_GRAPH_OUT := $(HOME)/.roxabi/forge/lyra/visuals/lyra-v2-dependency-graph.html
+DEP_GRAPH_OUT := $(HOME)/.roxabi/forge/lyra/visuals/lyra-v2-dependency-graph-v5.1.html
 
 define dep_graph_run
 	cd $(DEP_GRAPH_DIR) && uv run --project $(HOME)/projects/lyra python -m dep_graph.cli $(1)
+endef
+
+define dep_graph_v5
+	uv run --project $(HOME)/projects/lyra python $(DEP_GRAPH_DIR)/v5/build.py
 endef
 
 .PHONY: dep-graph
@@ -250,14 +255,15 @@ endef
 dep-graph:
 	@case "$(_LYRA_CMD)" in \
 		fetch)    $(call dep_graph_run,fetch) ;; \
-		build)    $(call dep_graph_run,build) ;; \
+		build)    $(call dep_graph_v5) ;; \
+		legacy)   $(call dep_graph_run,build) ;; \
 		audit)    $(call dep_graph_run,audit) ;; \
 		validate) $(call dep_graph_run,validate) ;; \
 		migrate)  $(call dep_graph_run,migrate) ;; \
 		open)     xdg-open $(DEP_GRAPH_OUT) 2>/dev/null || open $(DEP_GRAPH_OUT) 2>/dev/null || echo "Open $(DEP_GRAPH_OUT) manually" ;; \
-		""|all)   $(call dep_graph_run,fetch) && $(call dep_graph_run,build) ;; \
+		""|all)   $(call dep_graph_run,fetch) && $(call dep_graph_v5) ;; \
 		*)        echo "Unknown action: $(_LYRA_CMD)"; \
-		          echo "Use: fetch | build | audit | validate | migrate | open | (empty for full rebuild)"; \
+		          echo "Use: fetch | build | legacy | audit | validate | migrate | open | (empty for fetch + build)"; \
 		          exit 1 ;; \
 	esac
 

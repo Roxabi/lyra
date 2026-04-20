@@ -1,0 +1,117 @@
+/* Reset + page chrome — applies globally (not per-view). */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  padding: 24px;
+  min-height: 100vh;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* ─── Page header ─────────────────────────────────────────────── */
+header.page-header {
+  max-width: 100%;
+  margin: 0 auto 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+h1 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+h1 .accent { color: var(--accent); }
+.subtitle {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ─── Toolbar ────────────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  flex-wrap: wrap;
+}
+.toolbar .filters {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+/* Filters only apply to grid view — hide them when any other view is active */
+body:not(.view-grid-active) .toolbar .filters { display: none; }
+.toolbar label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+}
+.toolbar label:hover {
+  border-color: var(--border-hi);
+  color: var(--text);
+}
+.toolbar input[type="checkbox"] { accent-color: var(--accent); }
+
+.toolbar .legend-pills {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.toolbar .lp {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.toolbar .lp .lpd {
+  width: 8px; height: 8px; border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+.lp.ready    { color: var(--status-ready); }
+.lp.blocked  { color: var(--status-blocked); }
+.lp.done     { color: var(--status-done); }
+
+/* ─── View switching ─────────────────────────────────────────── */
+.view { display: none; }
+.view.view-active { display: block; }
+
+/* ─── Footer ─────────────────────────────────────────────────── */
+footer.page-footer {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+}
+footer.page-footer a { color: var(--accent); text-decoration: none; }
+footer.page-footer a:hover { text-decoration: underline; }
+
+/* ─── Global filter toggles (both views honor these) ─────────── */
+body.hide-closed .issue-card.done { display: none; }
+body.hide-closed .epic-group:has(.epic-cards:empty) { display: none; }
+body.only-ready .issue-card.blocked,
+body.only-ready .issue-card.done { display: none; }

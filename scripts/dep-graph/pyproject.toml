@@ -19,7 +19,7 @@ dep-graph = "dep_graph.cli:main"
 packages = ["dep_graph"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "v5/tests"]
 addopts = "--import-mode=importlib"
 pythonpath = ["."]
 markers = [

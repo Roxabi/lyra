@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from lyra.infrastructure.stores.turn_store import TurnStore
 
 pytestmark = pytest.mark.asyncio
 
@@ -78,7 +81,7 @@ async def test_reset_session_calls_end_session_on_turn_store() -> None:
     """pool.reset_session() must call TurnStore.end_session(before_sid)."""
     pool = _make_pool("telegram:main:chat:42")
     fake_store = _FakeTurnStore()
-    pool._observer._turn_store = fake_store  # type: ignore[assignment]
+    pool._observer._turn_store = cast(TurnStore, fake_store)
 
     before_sid = pool.session_id
 
@@ -93,7 +96,7 @@ async def test_reset_session_calls_start_session_on_turn_store() -> None:
     """pool.reset_session() must call TurnStore.start_session(new_sid, pool_id)."""
     pool = _make_pool("telegram:main:chat:42")
     fake_store = _FakeTurnStore()
-    pool._observer._turn_store = fake_store  # type: ignore[assignment]
+    pool._observer._turn_store = cast(TurnStore, fake_store)
 
     await pool.reset_session()
 

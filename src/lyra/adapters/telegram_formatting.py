@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -24,15 +24,24 @@ TELEGRAM_CAPTION_MAX = 1024  # Telegram Bot API caption limit
 _MARKDOWNV2_SPECIAL = re.compile(r"([_*\[\]()~`>#\+\-=|{}.!\\])")
 
 # Markdown → MarkdownV2 converter (preserves bold, italic, code, etc.)
+_ConvertFn = Callable[[str], str]
+
+if TYPE_CHECKING:
+    _convert_markdown: _ConvertFn
+
 try:
     from telegramify_markdown import (  # type: ignore[import-untyped]
-        markdownify as _convert_markdown,  # type: ignore[assignment]
+        markdownify as _md,
     )
+
+    _convert_markdown = cast(_ConvertFn, _md)
 except ImportError:  # pragma: no cover — fallback if dependency missing
     log.warning("telegramify-markdown not installed; Telegram formatting disabled")
 
-    def _convert_markdown(text: str) -> str:
+    def _fallback(text: str) -> str:
         return _MARKDOWNV2_SPECIAL.sub(r"\\\1", text)
+
+    _convert_markdown = _fallback
 
 
 def _make_send_kwargs(chat_id: int, text: str, reply_to: int | None) -> dict[str, Any]:

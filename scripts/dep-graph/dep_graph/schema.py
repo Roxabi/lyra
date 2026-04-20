@@ -30,10 +30,8 @@ def _load_schema() -> dict:
     global _schema_cache
     if _schema_cache is None:
         _schema_cache = json.loads(_SCHEMA_PATH.read_text())
-    # Type narrow: _schema_cache is guaranteed set after the if-block.
-    # Using explicit local reference avoids `assert` (stripped by `python -O`).
-    result: dict = _schema_cache  # type: ignore[assignment]
-    return result
+    assert _schema_cache is not None
+    return _schema_cache
 
 
 def _assert_repo(ref: Any, path: str, allowed_repos: set[str]) -> None:

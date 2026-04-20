@@ -8,7 +8,8 @@ All tests use mock PlatformCallbacks — no platform SDK imports required.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -378,7 +379,7 @@ async def test_had_tool_events_reply_id_last_chunk_only():
         send_call_count += 1
         return 100 + send_call_count
 
-    cb.send_message = _send_message  # type: ignore[assignment]
+    cb.send_message = cast(Callable[[str], Awaitable[int | None]], _send_message)
 
     session = StreamingSession(cb, outbound=outbound)
     await session.run(

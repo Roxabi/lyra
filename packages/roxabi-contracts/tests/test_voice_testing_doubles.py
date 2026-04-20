@@ -1,11 +1,15 @@
 """Three-guard tests for roxabi_contracts.voice.testing. See spec #764."""
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 # Imports are here (not inside fixtures) to prove the module loads in the
 # test env — Guard 1 (import-time) is exercised in a separate subprocess
 # test in Slice V3.
+from nats.aio.client import Client as NATS
+
 from roxabi_contracts.voice.testing import FakeSttWorker, FakeTtsWorker
 
 
@@ -253,7 +257,7 @@ async def test_start_twice_raises() -> None:
     """start() with a live _nc must raise RuntimeError."""
     # Bypass actual connection by setting _nc manually to exercise the check.
     worker = FakeTtsWorker()
-    worker._nc = object()  # type: ignore[assignment]
+    worker._nc = cast(NATS, object())
     with pytest.raises(RuntimeError, match="already started"):
         await worker.start()
 

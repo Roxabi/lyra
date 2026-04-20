@@ -1,8 +1,16 @@
 """Tests for v5.views.grid — grid view HTML output."""
 from __future__ import annotations
 
-from v5.data.model import COLUMN_GROUPS, MILESTONES
+from v5.data.model import COLUMN_GROUPS, MILESTONES, NO_LANE, NO_MS
 from v5.views import grid
+
+
+def _sentinel_cols(data) -> int:
+    return 1 if any(lane == NO_LANE and v for (_, lane), v in data.matrix.items()) else 0
+
+
+def _sentinel_rows(data) -> int:
+    return 1 if any(ms == NO_MS and v for (ms, _), v in data.matrix.items()) else 0
 
 
 class TestGridRender:
@@ -22,29 +30,31 @@ class TestGridRender:
         result = grid.render(graph_data, active=True)
         assert 'class="view view-grid view-active"' in result
 
-    def test_has_nine_col_headers(self, graph_data):
+    def test_col_headers_count(self, graph_data):
         result = grid.render(graph_data)
-        assert result.count('class="col-header"') == len(COLUMN_GROUPS)
-        assert result.count('class="col-header"') == 9
+        expected = len(COLUMN_GROUPS) + _sentinel_cols(graph_data)
+        assert result.count('class="col-header"') == expected
 
     def test_has_spacer_div(self, graph_data):
         result = grid.render(graph_data)
         assert '<div class="spacer">' in result
 
-    def test_has_six_grid_rows(self, graph_data):
+    def test_grid_rows_count(self, graph_data):
         result = grid.render(graph_data)
-        assert result.count('class="grid-row"') == len(MILESTONES)
-        assert result.count('class="grid-row"') == 6
+        expected = len(MILESTONES) + _sentinel_rows(graph_data)
+        assert result.count('class="grid-row"') == expected
 
     def test_each_row_has_one_row_header(self, graph_data):
         result = grid.render(graph_data)
-        assert result.count('class="row-header"') == 6
+        expected = len(MILESTONES) + _sentinel_rows(graph_data)
+        assert result.count('class="row-header"') == expected
 
-    def test_nine_plus_one_columns_per_row(self, graph_data):
-        # Each row has 1 row-header + 9 grid-cells
+    def test_grid_cells_count(self, graph_data):
+        # Each row has 1 row-header + n_cols grid-cells
         result = grid.render(graph_data)
-        n_cols = len(COLUMN_GROUPS)
-        assert result.count('class="grid-cell"') == len(MILESTONES) * n_cols
+        n_cols = len(COLUMN_GROUPS) + _sentinel_cols(graph_data)
+        n_rows = len(MILESTONES) + _sentinel_rows(graph_data)
+        assert result.count('class="grid-cell"') == n_rows * n_cols
 
     def test_empty_cells_show_dot(self, graph_data):
         result = grid.render(graph_data)
@@ -52,7 +62,8 @@ class TestGridRender:
 
     def test_cols_custom_property(self, graph_data):
         result = grid.render(graph_data)
-        assert "--cols: 9" in result
+        expected = len(COLUMN_GROUPS) + _sentinel_cols(graph_data)
+        assert f"--cols: {expected}" in result
 
     def test_lane_swim_grid_present(self, graph_data):
         result = grid.render(graph_data)

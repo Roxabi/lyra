@@ -5,7 +5,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .derive import build_matrix, compute_depth, epic_keys, lane_by_code
+from .derive import (
+    build_matrix,
+    compute_depth,
+    compute_visible,
+    epic_keys,
+    lane_by_code,
+)
 from .model import EpicMeta, GraphData, Lane
 
 FORGE = Path.home() / ".roxabi/forge/lyra/visuals"
@@ -53,6 +59,7 @@ def load_from_dicts(layout: dict[str, Any], gh: dict[str, Any]) -> GraphData:
     primary_repo = layout["meta"]["repos"][0]
     ekeys = epic_keys(layout["lanes"], primary_repo)
     depth = compute_depth(issues)
+    visible = compute_visible(issues, primary_repo)
 
     data = GraphData(
         meta=layout["meta"],
@@ -60,6 +67,7 @@ def load_from_dicts(layout: dict[str, Any], gh: dict[str, Any]) -> GraphData:
         lane_by_code=lane_by_code(lanes),
         issues=issues,
         epic_keys=ekeys,
+        visible=visible,
         depth_by_key=depth,
     )
     matrix, counts, total = build_matrix(data)

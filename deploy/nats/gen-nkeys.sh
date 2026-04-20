@@ -47,10 +47,15 @@ PUB_ALLOW[hub]='"lyra.outbound.telegram.>","lyra.outbound.discord.>","lyra.voice
 SUB_ALLOW[hub]='"lyra.inbound.telegram.>","lyra.inbound.discord.>","lyra.voice.tts.heartbeat","lyra.voice.stt.heartbeat","lyra.llm.health.*","lyra.system.ready","_INBOX.>","lyra.image.heartbeat"'
 
 PUB_ALLOW[telegram-adapter]='"lyra.inbound.telegram.>","lyra.system.ready"'
-SUB_ALLOW[telegram-adapter]='"lyra.outbound.telegram.>"'
+# _INBOX.> required: adapter uses nc.request() for readiness probe on
+# lyra.system.ready; allow_responses covers the replier side only, not the
+# requester's own reply inbox. Without this, NATS logs "Subscription Violation"
+# on every probe. Tightening to per-identity inbox prefix tracked in #717.
+SUB_ALLOW[telegram-adapter]='"lyra.outbound.telegram.>","_INBOX.>"'
 
 PUB_ALLOW[discord-adapter]='"lyra.inbound.discord.>","lyra.system.ready"'
-SUB_ALLOW[discord-adapter]='"lyra.outbound.discord.>"'
+# See telegram-adapter note above — same readiness-probe requirement.
+SUB_ALLOW[discord-adapter]='"lyra.outbound.discord.>","_INBOX.>"'
 
 # tts-adapter / stt-adapter: lyra-side voice satellites (retired in #690 cutover).
 # Readiness probe via nc.request('lyra.system.ready') needs pub on system.ready

@@ -17,20 +17,39 @@ COLUMN_GROUPS: list[tuple[str, str, list[str]]] = [
     ("VOICE",     "g",  ["g"]),
     ("DEPLOY",    "h",  ["h"]),
     ("VAULT",     "i",  ["i"]),
+    ("MEMORY",    "a1", ["j"]),
+    ("IDENTITY",  "a2", ["k"]),
+    ("TOOLS",     "c1", ["l"]),
+    ("OMNI",      "g",  ["m"]),
+    ("SOCIAL",    "f",  ["n"]),
+    ("FINAL",     "e",  ["o"]),
 ]
 
 # Milestones — (full label, code, short name).
+# NOTE: full label matches GitHub title with em-dashes stripped (double-space).
 MILESTONES: list[tuple[str, str, str]] = [
-    ("M0  NATS hardening",               "M0", "NATS hardening"),
-    ("M1  NATS maturity  containerize",  "M1", "NATS maturity / containerize"),
-    ("M2  LLM stack modernization",      "M2", "LLM stack modernization"),
-    ("M3  Observability",                "M3", "Observability"),
-    ("M4  Hub statelessness",            "M4", "Hub statelessness"),
-    ("M5  Plugin layer",                 "M5", "Plugin layer"),
+    ("M0  NATS hardening",               "M0",  "NATS hardening"),
+    ("M1  NATS maturity  containerize",  "M1",  "NATS maturity / containerize"),
+    ("M2  LLM stack modernization",      "M2",  "LLM stack modernization"),
+    ("M3  Observability",                "M3",  "Observability"),
+    ("M4  Hub statelessness",            "M4",  "Hub statelessness"),
+    ("M5  Plugin layer",                 "M5",  "Plugin layer"),
+    ("M6  Memory",                       "M6",  "Memory"),
+    ("M7  Identity",                     "M7",  "Identity"),
+    ("M8  Tools",                        "M8",  "Tools"),
+    ("M9  Voice-to-Voice (Omni)",        "M9",  "Voice-to-Voice (Omni)"),
+    ("M10  Social Media Bricks",         "M10", "Social Media Bricks"),
+    ("Final Initiatives",                "FIN", "Final Initiatives"),
 ]
 
 MS_CODES: list[str] = [code for _, code, _ in MILESTONES]
 MS_NAME_BY_CODE: dict[str, str] = {code: name for _, code, name in MILESTONES}
+
+# Sentinel keys for issues in the visibility set that lack milestone/lane.
+# Rendered as a prepended row ("No milestone") or column ("No lane") when
+# non-empty; hidden otherwise.
+NO_MS: str = "__nomilestone__"
+NO_LANE: str = "__nolane__"
 
 
 # ─── Domain dataclasses ─────────────────────────────────────────────────────
@@ -61,6 +80,11 @@ class GraphData:
     # Cell matrix: (ms_label, lane_code) → [issue dicts], excludes epics.
     matrix: dict[tuple[str, str], list[dict[str, Any]]] = field(default_factory=dict)
     epic_keys: set[str] = field(default_factory=set)
+    # Visibility set — canonical keys the grid/graph should render. Rule:
+    #   · all open items in primary repo
+    #   · forward cascade (blocking edges), any state, any repo
+    #   · 1-hop backward (blocked_by), any state, any repo
+    visible: set[str] = field(default_factory=set)
     # Topological depth (counts all blockers, open + closed).
     depth_by_key: dict[str, int] = field(default_factory=dict)
     # Rollup counts after filtering epics.

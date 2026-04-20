@@ -236,3 +236,73 @@ class TestPoolIdContextVar:
 
         assert len(captured_pool_ids) == 1
         assert captured_pool_ids[0] == "telegram:main:chat:42"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# TelegramTokenFilter
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestTelegramTokenFilter:
+    """Redact Telegram bot tokens from log messages (security fix, 2026-04-20)."""
+
+    def _make_record(self, msg: str, *args: object) -> logging.LogRecord:
+        return logging.LogRecord(
+            name="httpx",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=msg,
+            args=args if args else None,
+            exc_info=None,
+        )
+
+    def test_redacts_token_in_telegram_url(self) -> None:
+        from lyra.core.trace import TelegramTokenFilter
+
+        filt = TelegramTokenFilter()
+        url = (
+            "https://api.telegram.org/"
+            "bot8500388193:AAGg_wDfJ7896yPdf-L10CEVHbiuShA38Sw/sendMessage"
+        )
+        record = self._make_record(f'HTTP Request: POST {url} "HTTP/1.1 200 OK"')
+        assert filt.filter(record) is True
+        assert "AAGg_wDfJ7896yPdf-L10CEVHbiuShA38Sw" not in record.getMessage()
+        assert "bot8500388193:<REDACTED>" in record.getMessage()
+
+    def test_preserves_bot_id_for_debuggability(self) -> None:
+        from lyra.core.trace import TelegramTokenFilter
+
+        filt = TelegramTokenFilter()
+        record = self._make_record(
+            "POST https://api.telegram.org/bot123:AAA_bbb-CCC111/getMe"
+        )
+        filt.filter(record)
+        # Bot id (123) kept so operators can still identify which bot was called.
+        assert "bot123:<REDACTED>" in record.getMessage()
+
+    def test_redacts_in_args_interpolation(self) -> None:
+        """% args format — filter must run getMessage() to expose the token."""
+        from lyra.core.trace import TelegramTokenFilter
+
+        filt = TelegramTokenFilter()
+        record = self._make_record(
+            "calling %s", "https://api.telegram.org/bot999:secret_token_xyz-123/sendMessage"
+        )
+        filt.filter(record)
+        assert "secret_token_xyz-123" not in record.getMessage()
+
+    def test_passes_through_unrelated_messages(self) -> None:
+        from lyra.core.trace import TelegramTokenFilter
+
+        filt = TelegramTokenFilter()
+        record = self._make_record("normal log line, no secrets here")
+        filt.filter(record)
+        assert record.getMessage() == "normal log line, no secrets here"
+
+    def test_never_suppresses_records(self) -> None:
+        from lyra.core.trace import TelegramTokenFilter
+
+        filt = TelegramTokenFilter()
+        record = self._make_record("anything")
+        assert filt.filter(record) is True

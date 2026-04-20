@@ -426,6 +426,42 @@ def run_fetch(layout_path: Path, cache_path: Path, *, verbose: bool = False) -> 
             if key in issues:
                 issues[key][direction] = refs
 
+        # Second pass: fetch meta for blocker/blocking refs that aren't in the
+        # initial discovery set. Without this, closed-but-unlabeled blockers
+        # appear as missing → status_of() treats them as non-closed → false
+        # "blocked" status downstream.
+        extra: set[tuple[str, int]] = set()
+        for entry in issues.values():
+            for direction in ("blocked_by", "blocking"):
+                for ref in entry.get(direction, []):
+                    k = f"{ref['repo']}#{ref['issue']}"
+                    if k not in issues:
+                        extra.add((ref["repo"], ref["issue"]))
+
+        if extra:
+            if verbose:
+                print(f"  second pass: fetching {len(extra)} referenced issues")
+            extra_fut: dict = {
+                pool.submit(fetch_issue_meta, n, r, label_prefix): (r, n)
+                for (r, n) in extra
+            }
+            for f in as_completed(extra_fut):
+                repo_key, n = extra_fut[f]
+                _, title, state, labels, milestone, size = f.result()
+                key = f"{repo_key}#{n}"
+                issues[key] = {
+                    "repo": repo_key,
+                    "number": n,
+                    "title": title,
+                    "state": state,
+                    "labels": labels,
+                    **_derive_label_fields(labels, label_prefix),
+                    "milestone": milestone,
+                    "size": size,
+                    "blocked_by": [],
+                    "blocking": [],
+                }
+
     output = {
         "fetched_at": _now_iso(),
         "repos": repos,

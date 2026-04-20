@@ -4,6 +4,8 @@
 #        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname bash
 #        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname AGENT_USER=myagent bash
 set -euo pipefail
+# Pin locale so [a-z] / [0-9] regex classes are ASCII-only regardless of host locale.
+export LC_ALL=C
 
 export PATH="$HOME/.local/bin:$PATH"
 source "$HOME/.local/bin/env" 2>/dev/null || true  # uv
@@ -22,7 +24,16 @@ section() { echo -e "\n${GREEN}=== $1 ===${NC}"; }
 ADMIN_USER="${ADMIN_USER:-$(whoami)}"
 # Agent user (defaults to lyra, override with AGENT_USER=anotherame)
 AGENT_USER="${AGENT_USER:-lyra}"
-info "Running setup for admin: $ADMIN_USER, agent: $AGENT_USER"
+# Validate usernames — reject shell metachars since values are env-driven (curl|bash).
+# Matches POSIX NAME_REGEX used by useradd: [a-z_][a-z0-9_-]* (max 32 chars).
+USER_RE='^[a-z_][a-z0-9_-]{0,31}$'
+[[ "$ADMIN_USER" =~ $USER_RE ]] || error "Invalid ADMIN_USER: $ADMIN_USER"
+[[ "$AGENT_USER" =~ $USER_RE ]] || error "Invalid AGENT_USER: $AGENT_USER"
+# Resolve admin home + UID from passwd — do not assume /home/$ADMIN_USER.
+ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6)
+[[ -n "$ADMIN_HOME" && -d "$ADMIN_HOME" ]] || error "Could not resolve home directory for $ADMIN_USER."
+ADMIN_UID=$(id -u "$ADMIN_USER")
+info "Running setup for admin: $ADMIN_USER (uid: $ADMIN_UID, home: $ADMIN_HOME), agent: $AGENT_USER"
 
 # ── System packages ──────────────────────────────────────────────────────────
 
@@ -55,6 +66,101 @@ else
   warn "Reboot required after script finishes to activate NVIDIA drivers."
   NEEDS_REBOOT=true
 fi
+
+# ── Container runtime ────────────────────────────────────────────────────────
+
+section "Podman"
+if command -v podman &>/dev/null; then
+  info "podman already installed ($(podman --version))."
+else
+  # Ubuntu 26.04 LTS ships podman 5.x — Quadlet generator included natively.
+  # Belt-and-suspenders on explicit deps (most are already pulled in by podman):
+  #   uidmap         — rootless UID namespace mapping (hard dep of podman ≥4.5).
+  #   fuse-overlayfs — fallback overlay driver when kernel overlayfs is
+  #                    unavailable to unprivileged users (26.04 kernel has it,
+  #                    but leave as safety net for older HWE kernels).
+  #   slirp4netns    — legacy rootless networking; podman 5.x defaults to
+  #                    `pasta` and slirp4netns is deprecated but still usable.
+  sudo apt install -y podman uidmap fuse-overlayfs slirp4netns
+  info "podman installed ($(podman --version))."
+fi
+
+# Verify rootless uid/gid ranges — required for user namespace mapping.
+# Missing or too-small ranges (podman requires ≥65536 IDs) when user was created
+# via `useradd` without -U/-m, or via a manual `usermod --add-subuids` with a
+# smaller range. The grep-only "presence" check would accept `user:100000:100`.
+has_sufficient_subids() {
+  awk -F: -v u="$ADMIN_USER" '$1 == u && $3 >= 65536 {found=1} END {exit !found}' "$1"
+}
+if ! has_sufficient_subids /etc/subuid || ! has_sufficient_subids /etc/subgid; then
+  warn "subuid/subgid ranges missing or too small for $ADMIN_USER — adding 100000-165535."
+  sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$ADMIN_USER"
+  # Re-run migrate in case podman already has stale rootless state.
+  sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+    podman system migrate 2>/dev/null || true
+  info "subuid/subgid added for $ADMIN_USER (≥65536 IDs)."
+else
+  info "subuid/subgid already configured for $ADMIN_USER (≥65536 IDs)."
+fi
+
+# Ensure user-scope container + systemd config dirs exist.
+sudo -u "$ADMIN_USER" mkdir -p "$ADMIN_HOME/.config/containers/systemd"
+sudo -u "$ADMIN_USER" mkdir -p "$ADMIN_HOME/.config/systemd/user"
+info "Container dirs present: ~/.config/containers/systemd/ and ~/.config/systemd/user/"
+
+# Enable linger so /run/user/$UID persists across logout for systemctl --user
+# calls below. Hard-fail if this doesn't work — every downstream systemctl --user
+# call depends on it; silent failure would only surface as cryptic "Failed to
+# connect to bus" errors later.
+loginctl enable-linger "$ADMIN_USER"
+info "Linger enabled for $ADMIN_USER."
+
+# Poll for /run/user/$ADMIN_UID — systemd-logind may create it asynchronously
+# after enable-linger, and on a fresh headless boot it may not exist yet.
+# Bounded wait (≤10s); bail out loud if it never materialises.
+for _ in $(seq 10); do
+  [[ -d "/run/user/$ADMIN_UID" ]] && break
+  sleep 1
+done
+[[ -d "/run/user/$ADMIN_UID" ]] || error "/run/user/$ADMIN_UID never appeared — logind/linger not functional."
+
+# Enable + start the rootless Podman API socket.
+# XDG_RUNTIME_DIR is required when running systemctl --user via sudo;
+# without it systemd cannot locate the user's dbus session.
+if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+     systemctl --user is-enabled podman.socket &>/dev/null; then
+  info "podman.socket already enabled for $ADMIN_USER."
+else
+  sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+    systemctl --user enable --now podman.socket
+  info "podman.socket enabled and started for $ADMIN_USER."
+fi
+
+# Reload user systemd so the Quadlet generator picks up any new .container units.
+sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+  systemctl --user daemon-reload
+info "User systemd daemon reloaded (Quadlet generator active)."
+
+# Smoke tests — soft-fail so a transient network error doesn't abort provisioning
+# before SSH hardening / firewall run.
+if sudo -u "$ADMIN_USER" podman info --format '{{.Version.Version}}' > /dev/null 2>&1; then
+  info "podman info OK"
+else
+  warn "podman info failed — rootless setup may be incomplete (check subuid/subgid)."
+fi
+
+if sudo -u "$ADMIN_USER" podman images --format '{{.Repository}}' \
+     | grep -q "^quay.io/podman/hello$"; then
+  info "hello-world image already pulled, skipping smoke test."
+else
+  if sudo -u "$ADMIN_USER" podman run --rm quay.io/podman/hello > /dev/null; then
+    info "podman hello-world smoke OK"
+  else
+    warn "hello-world pull failed — check network / quay.io reachability."
+  fi
+fi
+
+warn "Remember to update local/machines.md with: Podman $(podman --version 2>/dev/null | awk '{print $3}' || echo 'N/A')"
 
 # ── Security ─────────────────────────────────────────────────────────────────
 
@@ -126,7 +232,7 @@ else
   sudo mkdir -p /home/"$AGENT_USER"/.ssh
   sudo chmod 700 /home/"$AGENT_USER"/.ssh
   sudo chown -R "$AGENT_USER":"$AGENT_USER" /home/"$AGENT_USER"/.ssh
-  sudo chmod 750 /home/"$ADMIN_USER"
+  sudo chmod 750 "$ADMIN_HOME"
   info "User '$AGENT_USER' created (bash, no sudo, isolated home)."
   warn "Add your agent SSH public key to /home/$AGENT_USER/.ssh/authorized_keys"
 fi
@@ -196,9 +302,10 @@ UNIT
   info "lyra.service created."
 fi
 
-# Enable linger so user services start without login session
-loginctl enable-linger "$ADMIN_USER" 2>/dev/null || true
-info "Linger enabled for $ADMIN_USER (services auto-start on boot)."
+# Linger is already enabled (and verified) in the Podman section above —
+# do not call it again here. A duplicate `loginctl enable-linger ... || true`
+# would silently log success even if the real call had failed, creating false
+# confidence about persistent user services.
 
 # Note: lyra-monitor.timer (health monitoring) is installed by `make register`
 # in the lyra repo, not by provision.sh. It requires secrets in .env first.

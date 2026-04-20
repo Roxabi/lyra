@@ -101,6 +101,8 @@ Derived from the audit (see §Audit Provenance). `PUB` = identity publishes to t
 [^inbox]: The `NatsLlmDriver.stream()` path in `src/lyra/llm/drivers/nats_driver.py:200` uses a manual inbox subscription (`self._nc.new_inbox()` + `subscribe(inbox)`) rather than `nc.request()`. `allow_responses: true` only covers auto-managed inboxes from `nc.request()`, so the hub needs `_INBOX.>` in its subscribe allow-list explicitly for LLM streaming to work. Other clients (adapters, workers) do not need this — they are responders via `msg.respond()`, which is covered by `allow_responses: true`.
 [^monitor]: Monitor has no code today (seed + ACL exist only to reserve the namespace). Kept in scope to avoid a second `gen-nkeys.sh --regenerate` + reload cycle when the monitor service lands.
 
+[^inbox-fix]: **Post-ship correction (2026-04-20).** The shipped spec claimed adapters only needed `allow_responses: true` because they are "responders via `msg.respond()`" (see `[^inbox]`). This was incomplete: telegram-adapter and discord-adapter also act as **requesters** for the readiness probe (`nc.request('lyra.system.ready', …)` via `roxabi_nats.readiness.wait_for_hub`), and `allow_responses` does not grant subscribe permission on the requester's own reply inbox. Symptom: `nats-server[…] Subscription Violation - Nkey "UD…" Subject "_INBOX.<uuid>.*"` every 22s during startup; each probe failed silently and the adapter degraded to "start anyway after 30s" graceful path. Fix: append `"_INBOX.>"` to `SUB_ALLOW` for both adapters in `deploy/nats/gen-nkeys.sh`; re-render with `sudo ./deploy/nats/gen-nkeys.sh --regen-authconf` + `sudo systemctl reload nats`. Tightening to per-identity `inbox_prefix` tracked in #717.
+
 ### Consumer map (who uses which subjects)
 
 ```mermaid
@@ -127,8 +129,8 @@ The matrix above is authoritative. The table below is a per-identity rollup — 
 | Identity | Publishes | Subscribes | Uses `allow_responses` | Status |
 |---|---|---|:-:|---|
 | hub | `lyra.outbound.telegram.>`, `lyra.outbound.discord.>`, `lyra.voice.tts.request`, `lyra.voice.stt.request`, `lyra.llm.request` | `lyra.inbound.telegram.>`, `lyra.inbound.discord.>`, `lyra.voice.tts.heartbeat`, `lyra.voice.stt.heartbeat`, `lyra.llm.health.*`, `lyra.system.ready`, `_INBOX.>` | ✓ (requester) | This issue |
-| telegram-adapter | `lyra.inbound.telegram.>`, `lyra.system.ready` | `lyra.outbound.telegram.>` | ✓ | This issue |
-| discord-adapter | `lyra.inbound.discord.>`, `lyra.system.ready` | `lyra.outbound.discord.>` | ✓ | This issue |
+| telegram-adapter | `lyra.inbound.telegram.>`, `lyra.system.ready` | `lyra.outbound.telegram.>`, `_INBOX.>` [^inbox-fix] | ✓ | This issue |
+| discord-adapter | `lyra.inbound.discord.>`, `lyra.system.ready` | `lyra.outbound.discord.>`, `_INBOX.>` [^inbox-fix] | ✓ | This issue |
 | tts-adapter | `lyra.voice.tts.heartbeat` | `lyra.voice.tts.request` | ✓ (responder) | This issue |
 | stt-adapter | `lyra.voice.stt.heartbeat` | `lyra.voice.stt.request` | ✓ (responder) | This issue |
 | llm-worker | `lyra.llm.health.*` | `lyra.llm.request` | ✓ (responder) | This issue |

@@ -27,10 +27,11 @@ AGENT_USER="${AGENT_USER:-lyra}"
 USER_RE='^[a-z_][a-z0-9_-]{0,31}$'
 [[ "$ADMIN_USER" =~ $USER_RE ]] || error "Invalid ADMIN_USER: $ADMIN_USER"
 [[ "$AGENT_USER" =~ $USER_RE ]] || error "Invalid AGENT_USER: $AGENT_USER"
-# Resolve admin home from passwd — do not assume /home/$ADMIN_USER.
+# Resolve admin home + UID from passwd — do not assume /home/$ADMIN_USER.
 ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6)
 [[ -n "$ADMIN_HOME" && -d "$ADMIN_HOME" ]] || error "Could not resolve home directory for $ADMIN_USER."
-info "Running setup for admin: $ADMIN_USER (home: $ADMIN_HOME), agent: $AGENT_USER"
+ADMIN_UID=$(id -u "$ADMIN_USER")
+info "Running setup for admin: $ADMIN_USER (uid: $ADMIN_UID, home: $ADMIN_HOME), agent: $AGENT_USER"
 
 # ── System packages ──────────────────────────────────────────────────────────
 
@@ -79,15 +80,21 @@ else
 fi
 
 # Verify rootless uid/gid ranges — required for user namespace mapping.
-# Missing when user was created via `useradd` without -U/-m (adduser adds them).
-if ! grep -q "^$ADMIN_USER:" /etc/subuid || ! grep -q "^$ADMIN_USER:" /etc/subgid; then
-  warn "subuid/subgid ranges missing for $ADMIN_USER — adding 100000-165535."
+# Missing or too-small ranges (podman requires ≥65536 IDs) when user was created
+# via `useradd` without -U/-m, or via a manual `usermod --add-subuids` with a
+# smaller range. The grep-only "presence" check would accept `user:100000:100`.
+has_sufficient_subids() {
+  awk -F: -v u="$ADMIN_USER" '$1 == u && $3 >= 65536 {found=1} END {exit !found}' "$1"
+}
+if ! has_sufficient_subids /etc/subuid || ! has_sufficient_subids /etc/subgid; then
+  warn "subuid/subgid ranges missing or too small for $ADMIN_USER — adding 100000-165535."
   sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$ADMIN_USER"
   # Re-run migrate in case podman already has stale rootless state.
-  sudo -u "$ADMIN_USER" podman system migrate 2>/dev/null || true
-  info "subuid/subgid added for $ADMIN_USER."
+  sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+    podman system migrate 2>/dev/null || true
+  info "subuid/subgid added for $ADMIN_USER (≥65536 IDs)."
 else
-  info "subuid/subgid already configured for $ADMIN_USER."
+  info "subuid/subgid already configured for $ADMIN_USER (≥65536 IDs)."
 fi
 
 # Ensure user-scope container + systemd config dirs exist.
@@ -95,14 +102,25 @@ sudo -u "$ADMIN_USER" mkdir -p "$ADMIN_HOME/.config/containers/systemd"
 sudo -u "$ADMIN_USER" mkdir -p "$ADMIN_HOME/.config/systemd/user"
 info "Container dirs present: ~/.config/containers/systemd/ and ~/.config/systemd/user/"
 
-# Enable linger now so /run/user/$UID persists for systemctl --user calls below
-# (also re-enabled at the Users section — both idempotent).
-loginctl enable-linger "$ADMIN_USER" 2>/dev/null || true
+# Enable linger so /run/user/$UID persists across logout for systemctl --user
+# calls below. Hard-fail if this doesn't work — every downstream systemctl --user
+# call depends on it; silent failure would only surface as cryptic "Failed to
+# connect to bus" errors later.
+loginctl enable-linger "$ADMIN_USER"
+info "Linger enabled for $ADMIN_USER."
+
+# Poll for /run/user/$ADMIN_UID — systemd-logind may create it asynchronously
+# after enable-linger, and on a fresh headless boot it may not exist yet.
+# Bounded wait (≤10s); bail out loud if it never materialises.
+for _ in $(seq 10); do
+  [[ -d "/run/user/$ADMIN_UID" ]] && break
+  sleep 1
+done
+[[ -d "/run/user/$ADMIN_UID" ]] || error "/run/user/$ADMIN_UID never appeared — logind/linger not functional."
 
 # Enable + start the rootless Podman API socket.
 # XDG_RUNTIME_DIR is required when running systemctl --user via sudo;
 # without it systemd cannot locate the user's dbus session.
-ADMIN_UID=$(id -u "$ADMIN_USER")
 if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
      systemctl --user is-enabled podman.socket &>/dev/null; then
   info "podman.socket already enabled for $ADMIN_USER."
@@ -126,13 +144,13 @@ else
 fi
 
 if sudo -u "$ADMIN_USER" podman images --format '{{.Repository}}' \
-     | grep -q "^docker.io/library/hello-world$"; then
+     | grep -q "^quay.io/podman/hello$"; then
   info "hello-world image already pulled, skipping smoke test."
 else
-  if sudo -u "$ADMIN_USER" podman run --rm docker.io/library/hello-world > /dev/null; then
+  if sudo -u "$ADMIN_USER" podman run --rm quay.io/podman/hello > /dev/null; then
     info "podman hello-world smoke OK"
   else
-    warn "hello-world pull failed — check network / docker.io reachability."
+    warn "hello-world pull failed — check network / quay.io reachability."
   fi
 fi
 

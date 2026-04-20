@@ -5,7 +5,8 @@ Routes between dispatcher queue and direct adapter fallback.
 
 Hub → OutboundRouter delegates dispatch_* calls. TTS logic lives in
 TtsDispatch (outbound_tts.py); audio/attachment logic in AudioDispatch
-(outbound_audio.py). Both extracted per issue #760.
+(outbound_audio.py); streaming-dispatch logic in StreamingDispatch
+(outbound_streaming.py). All extracted per issue #760.
 """
 
 from __future__ import annotations
@@ -18,8 +19,8 @@ from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
 from ..message import InboundMessage, OutboundMessage, Platform, Response
-from ..render_events import TextRenderEvent
 from .outbound_audio import AudioDispatch
+from .outbound_streaming import StreamingDispatch
 from .outbound_tts import TtsDispatch
 
 if TYPE_CHECKING:
@@ -73,6 +74,14 @@ class OutboundRouter:
         )
         # Audio dispatch helper (extracted per #760)
         self._audio_dispatch = AudioDispatch(route_outbound=self._route_outbound)
+        # Streaming dispatch helper (extracted per #760)
+        self._streaming_dispatch = StreamingDispatch(
+            adapters=adapters,
+            dispatchers=dispatchers,
+            tts_dispatch=self._tts_dispatch,
+            get_tts=lambda: self._tts,
+            get_audio_pipeline=lambda: self._audio_pipeline,
+        )
 
     def set_msg_manager(self, msg_manager: "MessageManager | None") -> None:
         """Update message manager reference (called after Hub construction)."""
@@ -136,7 +145,7 @@ class OutboundRouter:
     # Dispatch methods
     # -----------------------------------------------------------------------
 
-    async def dispatch_response(  # noqa: C901
+    async def dispatch_response(
         self,
         msg: InboundMessage,
         response: Response | OutboundMessage,
@@ -173,97 +182,16 @@ class OutboundRouter:
         if self._tts_dispatch.should_speak(msg, response):
             await self._tts_dispatch.dispatch_tts_for_response(msg, outbound)
 
-    async def dispatch_streaming(  # noqa: C901, PLR0915
+    async def dispatch_streaming(
         self,
         msg: InboundMessage,
         chunks: AsyncIterator["RenderEvent"],
         outbound: OutboundMessage | None = None,
     ) -> None:
-        """Stream response back via the originating adapter.
-
-        For voice modality: text is streamed to the user immediately (so they
-        see it appearing) while also being collected for TTS synthesis.  After
-        the stream completes, TTS runs as a background task and the resulting
-        audio is dispatched as a voice note.
-        """
-        _should_speak = (
-            msg.modality == "voice"
-            and self._tts is not None
-            and self._audio_pipeline is not None
+        """Stream response via the streaming-dispatch helper."""
+        self._last_processed_at = await self._streaming_dispatch.dispatch(
+            msg, chunks, outbound
         )
-        _voice_parts: list[str] | None = None
-        _voice_done: asyncio.Event | None = None
-
-        if _should_speak:
-            chunks, _voice_parts, _voice_done = self._tts_dispatch.create_streaming_tee(
-                chunks
-            )
-
-        if (
-            outbound is not None
-            and outbound.routing is None
-            and msg.routing is not None
-        ):
-            outbound.routing = msg.routing
-
-        try:
-            platform = Platform(msg.platform)
-        except ValueError:
-            raise KeyError(
-                f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
-                "Call register_adapter() before dispatching streaming responses."
-            ) from None
-        dispatcher = self._dispatchers.get((platform, msg.bot_id))
-        if dispatcher is not None:
-            dispatcher.enqueue_streaming(msg, chunks, outbound)
-            self._last_processed_at = time.monotonic()
-            # Don't block — deferred TTS waits for tee finish independently.
-            # Blocking on _voice_done.wait() hung pool processor when dispatcher
-            # scope lock was held by a prior stream (#TTS-fix).
-            if _should_speak and _voice_done is not None and _voice_parts is not None:
-                self._tts_dispatch.create_deferred_tts_task(
-                    msg, _voice_parts, _voice_done
-                )
-            return
-        else:
-            adapter = self._adapters.get((platform, msg.bot_id))
-            if adapter is None:
-                raise KeyError(
-                    f"No adapter registered for ({msg.platform!r}, {msg.bot_id!r}). "
-                    "Call register_adapter() before dispatching responses."
-                )
-            if hasattr(adapter, "send_streaming"):
-                await adapter.send_streaming(msg, chunks, outbound)
-            else:
-                if outbound is not None:
-                    log.warning(
-                        "Adapter for %s lacks send_streaming; "
-                        "reply_message_id will not be recorded",
-                        msg.platform,
-                    )
-                text = ""
-                async for event in chunks:
-                    if isinstance(event, TextRenderEvent):
-                        text += event.text
-                if text:
-                    await adapter.send(msg, OutboundMessage.from_text(text))
-                else:
-                    log.debug(
-                        "dispatch_streaming fallback: no text events in stream"
-                        " — skipping send for msg %s",
-                        msg.id,
-                    )
-            if outbound is not None:
-                _dispatched = outbound.metadata.pop("_on_dispatched", None)
-                if callable(_dispatched):
-                    _result = _dispatched(outbound)
-                    if inspect.isawaitable(_result):
-                        await _result
-            self._last_processed_at = time.monotonic()
-
-        # Voice: synthesize TTS after text collected (fallback path)
-        if _should_speak and _voice_parts is not None:
-            await self._tts_dispatch.dispatch_tts_from_parts(msg, _voice_parts)
 
     async def dispatch_attachment(
         self,

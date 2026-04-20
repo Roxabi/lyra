@@ -165,6 +165,12 @@ def handle_stream_error(listener: Any, data: dict) -> None:
         try:
             q.put_nowait({"event_type": "stream_error", "done": True})
         except asyncio.QueueFull:
+            # Queue full — put_nowait cannot block, so the poison pill is
+            # dropped. The tombstone written below still rejects any late
+            # chunks. _drain_stream is not stranded: its idle q.get() will
+            # time out after _CHUNK_TIMEOUT_SECONDS (120 s), which is the
+            # documented bounded recovery path. No separate abort signal is
+            # needed because that timeout IS the bound.
             log.warning(
                 "NatsOutboundListener: stream queue full, cannot enqueue"
                 " stream_error for stream_id=%r",

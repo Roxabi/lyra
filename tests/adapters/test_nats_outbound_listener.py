@@ -597,6 +597,52 @@ async def test_stream_error_unknown_stream_id_is_noop() -> None:
     assert cached.id in listener._cache
 
 
+@pytest.mark.asyncio
+async def test_stream_error_queue_full_records_tombstone_without_exception() -> None:
+    """QueueFull on poison-pill enqueue: tombstone written, no exception, queue intact.
+
+    Regression guard for the bounded-recovery path: when stream_error arrives
+    while the queue is already at capacity, handle_stream_error must not raise,
+    the tombstone must be recorded so late chunks are rejected, and the original
+    queue contents must be untouched (the poison pill is dropped).
+    """
+    import asyncio
+
+    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats_stream_decoder import handle_stream_error
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    adapter.send_streaming = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, "main", adapter)
+
+    sid = "msg-queue-full"
+    msg = _make_tg_msg(sid)
+    listener.cache_inbound(msg)
+
+    # Set up a queue with maxsize=1 and fill it with one real chunk.
+    q: asyncio.Queue[dict] = asyncio.Queue(maxsize=1)
+    existing_chunk = {
+        "stream_id": sid,
+        "seq": 0,
+        "event_type": "text",
+        "payload": {"text": "partial", "is_final": False},
+        "done": False,
+    }
+    q.put_nowait(existing_chunk)
+    listener._stream_queues[sid] = q
+
+    # Act — must not raise even though the queue is full.
+    handle_stream_error(listener, {"stream_id": sid, "type": "stream_error"})
+
+    # Tombstone IS recorded (late chunks will be rejected).
+    assert sid in listener._terminated_streams
+
+    # Poison pill was NOT enqueued — only the original chunk remains.
+    assert q.qsize() == 1
+    assert q.get_nowait() == existing_chunk
+
+
 # ---------------------------------------------------------------------------
 # #566: check_schema_version on OutboundMessage receive paths
 # ---------------------------------------------------------------------------

@@ -340,9 +340,16 @@ def _discover_from_layout(
     """Return all (repo, issue_num) pairs to fetch."""
     discovered: set[tuple[str, int]] = set()
 
-    # Label search per repo.
-    for repo in repos:
-        discovered |= search_labeled_issues(repo, label_prefix, lane_codes)
+    # Label search — run repos in parallel; each repo spawns several `gh`
+    # subprocesses, and they don't depend on each other.
+    if repos:
+        with ThreadPoolExecutor(max_workers=min(8, len(repos))) as pool:
+            futures = [
+                pool.submit(search_labeled_issues, repo, label_prefix, lane_codes)
+                for repo in repos
+            ]
+            for f in as_completed(futures):
+                discovered |= f.result()
 
     # Explicit refs from lanes.
     for lane in layout.get("lanes", []):

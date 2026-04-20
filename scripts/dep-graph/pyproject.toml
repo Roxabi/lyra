@@ -14,9 +14,10 @@ dev = ["pytest>=8.0", "jsonschema>=4.26.0"]
 
 [project.scripts]
 dep-graph = "dep_graph.cli:main"
+dep-graph-v5 = "v5.build:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["dep_graph"]
+packages = ["dep_graph", "v5"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "v5/tests"]
@@ -25,3 +26,8 @@ pythonpath = ["."]
 markers = [
     "integration: tests requiring local fixture files (not run in CI by default)",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files: long docstrings/comments are more readable than wrapped.
+"tests/**/*.py" = ["E501"]
+"v5/tests/**/*.py" = ["E501"]

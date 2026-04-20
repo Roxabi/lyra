@@ -23,8 +23,6 @@ def render_footer(repo: str, date: str) -> str:
     return (
         '<footer class="page-footer">\n'
         f'  Lyra v2 plan · refreshed {html.escape(date)} · '
-        f'<a href="{repo_url}">{html.escape(repo_url)}</a> · '
-        '<a href="lyra-v2-dependency-graph-v3.1.html">v3.1</a> · '
-        '<a href="lyra-v2-dependency-graph-v4.8.html">v4.8</a>\n'
+        f'<a href="{repo_url}">{html.escape(repo_url)}</a>\n'
         '</footer>\n'
     )

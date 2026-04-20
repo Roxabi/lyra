@@ -247,7 +247,7 @@ define dep_graph_run
 endef
 
 define dep_graph_v5
-	uv run --project $(HOME)/projects/lyra python $(DEP_GRAPH_DIR)/v5/build.py
+	cd $(DEP_GRAPH_DIR) && uv run --project $(HOME)/projects/lyra python -m v5.build
 endef
 
 .PHONY: dep-graph

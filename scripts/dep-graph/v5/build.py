@@ -1,16 +1,16 @@
-"""CLI entry: build v5 HTML and write to the visuals dir."""
+"""CLI entry: build v5 HTML and write to the visuals dir.
+
+Run from the ``scripts/dep-graph`` directory::
+
+    python -m v5.build [--active=grid]
+"""
 from __future__ import annotations
 
-import sys
+import argparse
 from pathlib import Path
 
-_HERE = Path(__file__).resolve().parent
-_PARENT = _HERE.parent
-if str(_PARENT) not in sys.path:
-    sys.path.insert(0, str(_PARENT))
-
-from v5 import compose  # noqa: E402
-from v5.data import load as loader  # noqa: E402
+from . import compose
+from .data import load as loader
 
 OUT = (
     Path.home()
@@ -19,13 +19,18 @@ OUT = (
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    active = "graph"
-    if "--active=grid" in argv:
-        active = "grid"
+    parser = argparse.ArgumentParser(prog="v5.build")
+    parser.add_argument(
+        "--active",
+        choices=("graph", "grid"),
+        default="graph",
+        help="Which view is active on first paint.",
+    )
+    args = parser.parse_args(argv)
+
     data = loader.load()
-    size = compose.write(OUT, data, active=active)
-    print(f"wrote {OUT} ({size:,} bytes) · active={active}")
+    size = compose.write(OUT, data, active=args.active)
+    print(f"wrote {OUT} ({size:,} bytes) · active={args.active}")
     return 0
 
 

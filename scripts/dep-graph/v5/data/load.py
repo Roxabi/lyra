@@ -36,14 +36,15 @@ def load(
 ) -> GraphData:
     layout_path = layout_path or LAYOUT_PATH
     cache_path = cache_path or CACHE_PATH
-    if not layout_path.exists():
-        raise FileNotFoundError(f"layout not found: {layout_path}")
-    if not cache_path.exists():
-        raise FileNotFoundError(f"gh cache not found: {cache_path}")
-    return load_from_dicts(
-        json.loads(layout_path.read_text()),
-        json.loads(cache_path.read_text()),
-    )
+    try:
+        layout_raw = layout_path.read_text()
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"layout not found: {layout_path}") from exc
+    try:
+        cache_raw = cache_path.read_text()
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"gh cache not found: {cache_path}") from exc
+    return load_from_dicts(json.loads(layout_raw), json.loads(cache_raw))
 
 
 def load_from_dicts(layout: dict[str, Any], gh: dict[str, Any]) -> GraphData:

@@ -39,11 +39,9 @@ def _resolve_paths(
 def cmd_fetch(args: argparse.Namespace) -> int:
     from .fetch import run_fetch
 
-    layout_path = Path(args.layout)
-    stem = layout_path.stem.removesuffix(".layout")
-    base_dir = layout_path.parent
-    out_path = Path(args.out) if args.out else base_dir / f"{stem}.gh.json"
-
+    layout_path, cache_path, _ = _resolve_paths(args)
+    # For fetch, --out (if given) overrides the cache path.
+    out_path = Path(args.out) if args.out else cache_path
     return run_fetch(layout_path, out_path, verbose=args.verbose)
 
 
@@ -63,11 +61,7 @@ def cmd_build(args: argparse.Namespace) -> int:
 def cmd_audit(args: argparse.Namespace) -> int:
     from .audit import run_audit
 
-    layout_path = Path(args.layout)
-    stem = layout_path.stem.removesuffix(".layout")
-    base_dir = layout_path.parent
-    cache_path = Path(args.cache) if args.cache else base_dir / f"{stem}.gh.json"
-
+    layout_path, cache_path, _ = _resolve_paths(args)
     return run_audit(layout_path, cache_path, verbose=args.verbose)
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
-from .components.header import render_footer, render_header
+from .components.header import render_footer
 from .components.toggle import render_toggle
 from .components.toolbar import render_toolbar
 from .data.model import COLUMN_GROUPS, MILESTONES, GraphData
@@ -48,7 +48,7 @@ def _subtitle(data: GraphData) -> str:
     )
 
 
-def _title_html(meta: dict) -> str:
+def _title_html() -> str:
     return (
         'Lyra <span class="accent">v2</span> — '
         'Dep Graph <span class="accent">v5.1</span>'
@@ -68,7 +68,7 @@ def build_html(data: GraphData, active: str = "graph") -> str:
     header = (
         '<header class="page-header">\n'
         f'  <div>\n'
-        f'    <h1>{_title_html(meta)}</h1>\n'
+        f'    <h1>{_title_html()}</h1>\n'
         f'    <div class="subtitle">{html.escape(_subtitle(data))}</div>\n'
         '  </div>\n'
         f'  {render_toggle(active)}'
@@ -78,10 +78,6 @@ def build_html(data: GraphData, active: str = "graph") -> str:
     grid_html = grid_view.render(data, active=(active == "grid"))
     graph_html = graph_view.render(data, active=(active == "graph"))
     footer = render_footer(data.primary_repo, date)
-
-    # Render `header` helper is unused because we need the toggle inline with
-    # title; keep the import available for other callers.
-    _ = render_header
 
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">

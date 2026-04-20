@@ -62,6 +62,31 @@ _BUILTIN_RULES: list[dict] = [
     },
 ]
 
+_BACKREF_RE = re.compile(r"\$(\d+)")
+
+
+def _compile_rules(rules: list[dict]) -> list[tuple[re.Pattern[str], str]]:
+    """Pre-compile (pattern, replacement) pairs.
+
+    Rules that fail to compile are skipped with a warning so a single bad
+    user rule doesn't sink the whole pipeline.
+    """
+    compiled: list[tuple[re.Pattern[str], str]] = []
+    for rule in rules:
+        raw_pattern = rule["pattern"]
+        replacement = _BACKREF_RE.sub(r"\\\1", rule["replacement"])
+        try:
+            compiled.append((re.compile(raw_pattern), replacement))
+        except re.error as exc:
+            print(
+                f"  WARN title_rule regex error: {exc} (pattern={raw_pattern!r})",
+                file=sys.stderr,
+            )
+    return compiled
+
+
+_COMPILED_BUILTINS = _compile_rules(_BUILTIN_RULES)
+
 
 def normalize_title(raw: str, rules: list[dict] | None) -> str:
     """Apply title normalization rules to a raw GitHub title.
@@ -73,22 +98,8 @@ def normalize_title(raw: str, rules: list[dict] | None) -> str:
 
     Rules use Python regex; `$N` back-references are converted to `\\N`.
     """
-    effective_rules: list[dict]
-    if rules is None:
-        effective_rules = _BUILTIN_RULES
-    else:
-        effective_rules = list(rules) + _BUILTIN_RULES
-
+    compiled = _compile_rules(rules) + _COMPILED_BUILTINS if rules else _COMPILED_BUILTINS
     t = raw
-    for rule in effective_rules:
-        pattern = rule["pattern"]
-        try:
-            replacement = re.sub(r"\$(\d+)", r"\\\1", rule["replacement"])
-            t = re.sub(pattern, replacement, t).strip()
-        except re.error as exc:
-            print(
-                f"  WARN title_rule regex error: {exc} (pattern={pattern!r})",
-                file=sys.stderr,
-            )
-            continue
+    for pattern, replacement in compiled:
+        t = pattern.sub(replacement, t).strip()
     return t

@@ -272,14 +272,6 @@ class TestRenderHeader:
 # ─── render_footer ───────────────────────────────────────────────────────────
 
 class TestRenderFooter:
-    def test_has_v3_1_back_link(self):
-        html = render_footer("Roxabi/lyra", "2026-04-20")
-        assert "v3.1" in html
-
-    def test_has_v4_8_back_link(self):
-        html = render_footer("Roxabi/lyra", "2026-04-20")
-        assert "v4.8" in html
-
     def test_has_footer_tag(self):
         html = render_footer("Roxabi/lyra", "2026-04-20")
         assert "<footer" in html

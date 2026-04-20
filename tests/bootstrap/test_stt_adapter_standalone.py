@@ -135,10 +135,10 @@ class TestSttAdapterReplyContractVersion:
         async def capture_reply(msg, data: bytes) -> None:
             captured["payload"] = json.loads(data)
 
-        adapter.reply = capture_reply  # type: ignore[method-assign]
         mock_msg = MagicMock()
         mock_msg.reply = "_INBOX.test"
-        await adapter.handle(mock_msg, payload)
+        with patch.object(adapter, "reply", side_effect=capture_reply):
+            await adapter.handle(mock_msg, payload)
         return captured["payload"]
 
     @pytest.mark.asyncio

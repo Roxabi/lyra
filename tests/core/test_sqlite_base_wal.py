@@ -182,8 +182,8 @@ class TestPeriodicCheckpointTask:
         await store.connect()
         try:
             spy = AsyncMock(wraps=store._checkpoint)
-            store._checkpoint = spy  # type: ignore[method-assign]
-            await asyncio.sleep(0.05)
+            with patch.object(store, "_checkpoint", spy):
+                await asyncio.sleep(0.05)
             assert spy.call_count >= 1, (
                 f"Expected _checkpoint() to be called at least once, "
                 f"got {spy.call_count}"

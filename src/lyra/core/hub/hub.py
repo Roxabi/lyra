@@ -5,7 +5,6 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from ..agent import AgentBase
 from ..authenticator import Authenticator
 from ..bus import Bus
 from ..identity import Identity
@@ -22,6 +21,7 @@ from .hub_protocol import (  # noqa: F401 — public re-export
     RoutingKey,
 )
 from .hub_rate_limit import RateLimiter
+from .hub_registration import HubRegistrationMixin
 from .hub_shutdown import HubShutdownMixin
 from .identity_resolver import IdentityResolver
 from .middleware import build_default_pipeline
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
     from ...stt import STTProtocol
     from ...tts import TtsProtocol
+    from ..agent import AgentBase
     from ..circuit_breaker import CircuitRegistry
     from ..cli_pool import CliPool
     from ..memory import MemoryManager
@@ -50,7 +51,11 @@ log = logging.getLogger(__name__)
 
 
 class Hub(
-    HubShutdownMixin, HubCircuitBreakerMixin, HubPoolDelegationMixin, HubDispatchMixin
+    HubShutdownMixin,
+    HubCircuitBreakerMixin,
+    HubPoolDelegationMixin,
+    HubDispatchMixin,
+    HubRegistrationMixin,
 ):
     """Central hub: Bus + OutboundDispatchers + adapter registry + pools."""
 
@@ -155,70 +160,6 @@ class Hub(
     def pools(self) -> dict[str, Pool]:
         return self._pool_manager.pools
 
-    def register_agent(self, agent: AgentBase) -> None:
-        """Register an agent implementation by name."""
-        self.agent_registry[agent.name] = agent
-        if self._memory is not None and hasattr(agent, "_memory"):
-            agent._memory = self._memory
-        if hasattr(agent, "_task_registry"):
-            agent._task_registry = self._memory_tasks
-        router = getattr(agent, "command_router", None)
-        if router is not None and hasattr(router, "_on_debounce_change"):
-            router._on_debounce_change = self.set_debounce_ms
-        if router is not None and hasattr(router, "_on_cancel_change"):
-            router._on_cancel_change = self.set_cancel_on_new_message
-
-    def set_memory(self, manager: MemoryManager) -> None:
-        self._memory = manager
-        for agent in self.agent_registry.values():
-            if hasattr(agent, "_memory"):
-                agent._memory = manager
-
-    def set_turn_store(self, store: TurnStore) -> None:
-        self._turn_store = store
-        for pool in self.pools.values():
-            pool._observer.register_turn_store(store)
-
-    def set_message_index(self, store: MessageIndex) -> None:
-        self._message_index = store
-        for pool in self.pools.values():
-            pool._observer.register_message_index(store)
-
-    def set_alias_store(self, store: IdentityAliasStore) -> None:
-        self._alias_store = store
-        if self._memory is not None and hasattr(self._memory, "set_alias_store"):
-            self._memory.set_alias_store(store)
-
-    def register_adapter(
-        self,
-        platform: Platform,
-        bot_id: str,
-        adapter: ChannelAdapter,
-    ) -> None:
-        self.adapter_registry[(platform, bot_id)] = adapter
-        self.inbound_bus.register(
-            platform, maxsize=self._platform_queue_maxsize, bot_id=bot_id
-        )
-
-    def register_outbound_dispatcher(
-        self,
-        platform: Platform,
-        bot_id: str,
-        dispatcher: OutboundDispatcher,
-    ) -> None:
-        self.outbound_dispatchers[(platform, bot_id)] = dispatcher
-
-    def register_authenticator(
-        self, platform: Platform, bot_id: str, auth: Authenticator
-    ) -> None:
-        """Register the Authenticator for a (platform, bot_id) pair (C3)."""
-        self._authenticators[(platform, bot_id)] = auth
-
-    def _get_authenticator(
-        self, platform: Platform, bot_id: str
-    ) -> "Authenticator | None":
-        return self._authenticators.get((platform, bot_id))
-
     def resolve_identity(
         self, user_id: str | None, platform: str, bot_id: str
     ) -> Identity:
@@ -228,31 +169,6 @@ class Hub(
     def _resolve_message_trust(self, msg: InboundMessage) -> InboundMessage:
         """Re-resolve trust level on the Hub side (C3 — trust re-resolution)."""
         return self._identity_resolver.resolve_message_trust(msg)
-
-    def register_binding(
-        self,
-        platform: Platform,
-        bot_id: str,
-        scope_id: str,
-        agent_name: str,
-        pool_id: str,
-    ) -> None:
-        for ek, eb in self.bindings.items():
-            if (
-                ek.platform == platform
-                and ek.bot_id == bot_id
-                and ek.scope_id != scope_id
-                and eb.pool_id == pool_id
-            ):
-                raise ValueError(
-                    f"pool_id {pool_id!r} is already bound to scope_id "
-                    f"{ek.scope_id!r} on {platform}:{bot_id}. "
-                    "Each pool must serve at most one scope per (platform, bot_id)."
-                )
-        self.bindings[RoutingKey(platform, bot_id, scope_id)] = Binding(
-            agent_name=agent_name,
-            pool_id=pool_id,
-        )
 
     def resolve_binding(self, msg: InboundMessage) -> Binding | None:
         """Resolve binding: exact key, then wildcard fallback, else None."""

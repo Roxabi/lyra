@@ -62,6 +62,12 @@ LAYOUT = {
         {"code": "g", "name": "Voice", "color": "g"},
         {"code": "h", "name": "Deploy", "color": "h"},
         {"code": "i", "name": "Vault", "color": "i"},
+        {"code": "j", "name": "Memory", "color": "a1"},
+        {"code": "k", "name": "Identity", "color": "a2"},
+        {"code": "l", "name": "Tools", "color": "c1"},
+        {"code": "m", "name": "Omni", "color": "g"},
+        {"code": "n", "name": "Social", "color": "f"},
+        {"code": "o", "name": "Final", "color": "e"},
     ],
 }
 

@@ -8,6 +8,10 @@
 #                              tts-adapter, stt-adapter, voice-tts, voice-stt,
 #                              llm-worker, image-worker, monitor
 #
+# ACL matrix (identities + publish/subscribe allow-lists) is sourced from
+# deploy/nats/acl-matrix.json — do not edit inline; update the JSON instead.
+# Requires jq >= 1.6 on $PATH.
+#
 # Usage: sudo ./deploy/nats/gen-nkeys.sh
 #        sudo ./deploy/nats/gen-nkeys.sh --fix-perms        # re-apply permissions without regenerating
 #        sudo ./deploy/nats/gen-nkeys.sh --show             # print existing public keys
@@ -33,65 +37,64 @@ info()  { echo -e "${GREEN}[+]${NC} $1" >&2; }
 warn()  { echo -e "${YELLOW}[!]${NC} $1" >&2; }
 error() { echo -e "${RED}[x]${NC} $1" >&2; exit 1; }
 
-# ── ACL matrix (T1.2) ─────────────────────────────────────────────────────────
-# Source of truth: artifacts/specs/706-per-role-nkeys-acls-spec.mdx §Data Model
-# If spec matrix changes, update these arrays — they are the executable copy.
-# TODO(ADR-045): when roxabi-nats SDK lands, extend with plugin identity entries
-#                scoped to "lyra.plugin.<name>.>" — see spec §Out-of-scope.
-declare -A PUB_ALLOW SUB_ALLOW
+MATRIX_JSON="$(dirname "${BASH_SOURCE[0]}")/acl-matrix.json"
 
-PUB_ALLOW[hub]='"lyra.outbound.telegram.>","lyra.outbound.discord.>","lyra.voice.tts.request.>","lyra.voice.stt.request.>","lyra.llm.request","lyra.image.generate.request"'
-# NOTE: "_INBOX.>" is broader than this role needs — required because
-# NatsLlmDriver.stream() uses a manual inbox subscription. Tightening tracked
-# in issue #715 (migrate to nc.request() → drop "_INBOX.>" from this list).
-SUB_ALLOW[hub]='"lyra.inbound.telegram.>","lyra.inbound.discord.>","lyra.voice.tts.heartbeat","lyra.voice.stt.heartbeat","lyra.llm.health.*","lyra.system.ready","_INBOX.>","lyra.image.heartbeat"'
+# ── load_matrix ───────────────────────────────────────────────────────────────
+# Reads deploy/nats/acl-matrix.json and populates PUB_ALLOW, SUB_ALLOW, IDENTITIES.
+# Aborts with a clear error if jq is missing/too old, JSON is absent/malformed,
+# .version != "1", or any identity has an invalid schema.
+load_matrix() {
+  # Assert jq on $PATH
+  command -v jq >/dev/null 2>&1 \
+    || error "jq is required (apt-get install -y jq) — not found on \$PATH"
 
-PUB_ALLOW[telegram-adapter]='"lyra.inbound.telegram.>","lyra.system.ready"'
-# _INBOX.> required: adapter uses nc.request() for readiness probe on
-# lyra.system.ready; allow_responses covers the replier side only, not the
-# requester's own reply inbox. Without this, NATS logs "Subscription Violation"
-# on every probe. Tightening to per-identity inbox prefix tracked in #717.
-SUB_ALLOW[telegram-adapter]='"lyra.outbound.telegram.>","_INBOX.>"'
+  # Assert jq >= 1.6
+  local jqver
+  jqver=$(jq --version 2>/dev/null | sed 's/^jq-//')
+  local jq_major jq_minor
+  jq_major=$(echo "${jqver}" | cut -d. -f1)
+  jq_minor=$(echo "${jqver}" | cut -d. -f2)
+  if [ "${jq_major}" -lt 1 ] || { [ "${jq_major}" -eq 1 ] && [ "${jq_minor}" -lt 6 ]; }; then
+    error "jq >= 1.6 required (found: ${jqver})"
+  fi
 
-PUB_ALLOW[discord-adapter]='"lyra.inbound.discord.>","lyra.system.ready"'
-# See telegram-adapter note above — same readiness-probe requirement.
-SUB_ALLOW[discord-adapter]='"lyra.outbound.discord.>","_INBOX.>"'
+  # Assert MATRIX_JSON exists
+  [ -f "${MATRIX_JSON}" ] \
+    || error "ACL matrix not found: ${MATRIX_JSON}"
 
-# tts-adapter / stt-adapter: lyra-side voice satellites (retired in #690 cutover).
-# Readiness probe via nc.request('lyra.system.ready') needs pub on system.ready
-# + sub on _INBOX.*.* for reply. Uppercase + lowercase forms included because
-# nats-py historically emits lowercase inboxes and NATS subjects are case-sensitive.
-PUB_ALLOW[tts-adapter]='"lyra.voice.tts.heartbeat","lyra.system.ready"'
-SUB_ALLOW[tts-adapter]='"lyra.voice.tts.request","lyra.voice.tts.request.>","_INBOX.>","_inbox.>"'
+  # Assert .version == "1"
+  local v
+  v=$(jq -r '.version' "${MATRIX_JSON}")
+  [ "${v}" = "1" ] \
+    || error "unsupported acl-matrix.json version: ${v} (expected \"1\")"
 
-PUB_ALLOW[stt-adapter]='"lyra.voice.stt.heartbeat","lyra.system.ready"'
-SUB_ALLOW[stt-adapter]='"lyra.voice.stt.request","lyra.voice.stt.request.>","_INBOX.>","_inbox.>"'
+  # Validate all identities and populate arrays
+  declare -gA PUB_ALLOW SUB_ALLOW
+  IDENTITIES=()
 
-# voice-tts: voicecli nats-serve worker on Machine 1 (#689)
-# NB: voicecli.nats.base.AdapterBase subscribes to heartbeat_subject
-#     (no-op callback) in addition to publishing — ACL must allow both.
-PUB_ALLOW[voice-tts]='"lyra.voice.tts.heartbeat","_INBOX.>"'
-SUB_ALLOW[voice-tts]='"lyra.voice.tts.request","lyra.voice.tts.request.>","lyra.voice.tts.heartbeat"'
+  local valid_owners="lyra voicecli imagecli reserved"
+  while IFS= read -r name; do
+    IDENTITIES+=("${name}")
 
-# voice-stt: voicecli nats-serve worker on Machine 1 (#689)
-PUB_ALLOW[voice-stt]='"lyra.voice.stt.heartbeat","_INBOX.>"'
-SUB_ALLOW[voice-stt]='"lyra.voice.stt.request","lyra.voice.stt.request.>","lyra.voice.stt.heartbeat"'
+    for field in owner description publish subscribe; do
+      local has
+      has=$(jq -r --arg n "${name}" --arg f "${field}" \
+        'if .identities[$n] | has($f) then "yes" else "no" end' "${MATRIX_JSON}")
+      [ "${has}" = "yes" ] \
+        || error "acl-matrix.json: identity '${name}' missing field '${field}'"
+    done
 
-PUB_ALLOW[llm-worker]='"lyra.llm.health.*"'
-SUB_ALLOW[llm-worker]='"lyra.llm.request"'
+    local o
+    o=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
+    echo " ${valid_owners} " | grep -qw "${o}" \
+      || error "acl-matrix.json: identity '${name}' has invalid owner '${o}'"
 
-# image-worker: imagecli nats-serve satellite. Heartbeat-publish + request-subscribe.
-# Contract: ADR-050. Shipped via imageCLI#50 (satellite) + #754 (lyra-side).
-# _INBOX.>/_inbox.> defensively included for reply-path robustness, mirroring
-# voice-tts/voice-stt — allow_responses: true alone may not cover every
-# nats-server version's reply publish path.
-PUB_ALLOW[image-worker]='"lyra.image.heartbeat","_INBOX.>","_inbox.>"'
-SUB_ALLOW[image-worker]='"lyra.image.generate.request"'
-
-PUB_ALLOW[monitor]='"lyra.monitor.>"'
-SUB_ALLOW[monitor]='"lyra.monitor.>"'
-
-IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker image-worker monitor)
+    PUB_ALLOW[$name]=$(jq -r --arg n "${name}" \
+      '.identities[$n].publish | map("\"" + . + "\"") | join(",")' "${MATRIX_JSON}")
+    SUB_ALLOW[$name]=$(jq -r --arg n "${name}" \
+      '.identities[$n].subscribe | map("\"" + . + "\"") | join(",")' "${MATRIX_JSON}")
+  done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
+}
 
 # ── emit_user (T1.3) ──────────────────────────────────────────────────────────
 # Writes one authorization users[] entry block to stdout.
@@ -130,6 +133,9 @@ while [[ $# -gt 0 ]]; do
     *) error "Unknown option: $1" ;;
   esac
 done
+
+# ── load ACL matrix ───────────────────────────────────────────────────────────
+load_matrix
 
 # ── auth.conf renderer (shared by --template-only and regenerate paths) ──────
 # Accepts the name of an associative array of pubkeys as $1. Writes the full
@@ -194,6 +200,7 @@ apply_permissions() {
   chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}"
   chmod 0700 "${SEEDS_DIR}"
   # T1.5: extended to 7 identities; #689 adds voice-tts, voice-stt (9 total); #754 adds image-worker (10 total)
+  # TODO(#717): drive from acl-matrix.json identities list — out of scope for this refactor
   for seed in hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker image-worker monitor; do
     if [ -f "${SEEDS_DIR}/${seed}.seed" ]; then
       chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}/${seed}.seed"

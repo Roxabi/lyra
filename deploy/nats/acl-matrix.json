@@ -1,0 +1,137 @@
+{
+  "version": "1",
+  "identities": {
+    "hub": {
+      "owner": "lyra",
+      "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image workers. _INBOX.> required for NatsLlmDriver.stream() manual inbox subscription (tighten in #715).",
+      "publish": [
+        "lyra.outbound.telegram.>",
+        "lyra.outbound.discord.>",
+        "lyra.voice.tts.request.>",
+        "lyra.voice.stt.request.>",
+        "lyra.llm.request",
+        "lyra.image.generate.request"
+      ],
+      "subscribe": [
+        "lyra.inbound.telegram.>",
+        "lyra.inbound.discord.>",
+        "lyra.voice.tts.heartbeat",
+        "lyra.voice.stt.heartbeat",
+        "lyra.llm.health.*",
+        "lyra.system.ready",
+        "_INBOX.>",
+        "lyra.image.heartbeat"
+      ]
+    },
+    "telegram-adapter": {
+      "owner": "lyra",
+      "description": "Telegram bot adapter — _INBOX.> required for readiness probe via nc.request() on lyra.system.ready; allow_responses covers replier side only, not requester inbox. Tighten to per-identity inbox prefix tracked in #717.",
+      "publish": [
+        "lyra.inbound.telegram.>",
+        "lyra.system.ready"
+      ],
+      "subscribe": [
+        "lyra.outbound.telegram.>",
+        "_INBOX.>"
+      ]
+    },
+    "discord-adapter": {
+      "owner": "lyra",
+      "description": "Discord bot adapter — same readiness-probe _INBOX.> requirement as telegram-adapter.",
+      "publish": [
+        "lyra.inbound.discord.>",
+        "lyra.system.ready"
+      ],
+      "subscribe": [
+        "lyra.outbound.discord.>",
+        "_INBOX.>"
+      ]
+    },
+    "tts-adapter": {
+      "owner": "lyra",
+      "description": "Lyra-side TTS voice satellite (retired in #690 cutover). Readiness probe via nc.request('lyra.system.ready') needs _INBOX.>/_inbox.> — both forms included because nats-py historically emits lowercase inboxes and NATS subjects are case-sensitive.",
+      "publish": [
+        "lyra.voice.tts.heartbeat",
+        "lyra.system.ready"
+      ],
+      "subscribe": [
+        "lyra.voice.tts.request",
+        "lyra.voice.tts.request.>",
+        "_INBOX.>",
+        "_inbox.>"
+      ]
+    },
+    "stt-adapter": {
+      "owner": "lyra",
+      "description": "Lyra-side STT voice satellite (retired in #690 cutover). Same readiness-probe _INBOX.>/_inbox.> requirement as tts-adapter.",
+      "publish": [
+        "lyra.voice.stt.heartbeat",
+        "lyra.system.ready"
+      ],
+      "subscribe": [
+        "lyra.voice.stt.request",
+        "lyra.voice.stt.request.>",
+        "_INBOX.>",
+        "_inbox.>"
+      ]
+    },
+    "voice-tts": {
+      "owner": "voicecli",
+      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). AdapterBase subscribes to heartbeat_subject (no-op callback) in addition to publishing — ACL must allow both pub and sub on heartbeat.",
+      "publish": [
+        "lyra.voice.tts.heartbeat",
+        "_INBOX.>"
+      ],
+      "subscribe": [
+        "lyra.voice.tts.request",
+        "lyra.voice.tts.request.>",
+        "lyra.voice.tts.heartbeat"
+      ]
+    },
+    "voice-stt": {
+      "owner": "voicecli",
+      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Same heartbeat pub+sub pattern as voice-tts.",
+      "publish": [
+        "lyra.voice.stt.heartbeat",
+        "_INBOX.>"
+      ],
+      "subscribe": [
+        "lyra.voice.stt.request",
+        "lyra.voice.stt.request.>",
+        "lyra.voice.stt.heartbeat"
+      ]
+    },
+    "llm-worker": {
+      "owner": "reserved",
+      "description": "Reserved LLM worker identity — publishes health status, subscribes to LLM request queue.",
+      "publish": [
+        "lyra.llm.health.*"
+      ],
+      "subscribe": [
+        "lyra.llm.request"
+      ]
+    },
+    "image-worker": {
+      "owner": "imagecli",
+      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). _INBOX.>/_inbox.> defensively included for reply-path robustness, mirroring voice-tts/voice-stt — allow_responses alone may not cover every nats-server version's reply publish path.",
+      "publish": [
+        "lyra.image.heartbeat",
+        "_INBOX.>",
+        "_inbox.>"
+      ],
+      "subscribe": [
+        "lyra.image.generate.request"
+      ]
+    },
+    "monitor": {
+      "owner": "reserved",
+      "description": "Monitoring identity — full pub+sub on lyra.monitor.> namespace.",
+      "publish": [
+        "lyra.monitor.>"
+      ],
+      "subscribe": [
+        "lyra.monitor.>"
+      ]
+    }
+  }
+}

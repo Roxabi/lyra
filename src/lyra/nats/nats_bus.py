@@ -1,32 +1,17 @@
 """NatsBus — Bus[T] implementation over NATS pub/sub.
 
-Concrete implementation of the ``Bus[T]`` Protocol defined in ``bus.py``,
-using NATS as the transport layer instead of local asyncio queues.
-
-Each registered (platform, bot_id) pair maps to one NATS subscription on the
-subject ``lyra.inbound.{platform.value}.{bot_id}``.  Inbound messages are
-deserialized from JSON and placed into a single staging queue consumed
-by Hub.run().
+Each registered (platform, bot_id) pair maps to one NATS subscription.
+Inbound messages are deserialized from JSON and placed into a staging queue.
 
 Usage::
-
-    import nats
-    from lyra.nats.nats_bus import NatsBus
-    from lyra.core.messaging.message import InboundMessage, Platform
 
     nc = await nats.connect("nats://localhost:4222")
     bus: Bus[InboundMessage] = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
     bus.register(Platform.TELEGRAM)
     await bus.start()
-    ...
+    # ...
     await bus.stop()
     await nc.close()
-
-Multi-bot usage::
-
-    bus.register(Platform.TELEGRAM, bot_id="bot-a")
-    bus.register(Platform.TELEGRAM, bot_id="bot-b")
-    await bus.start()  # two subscriptions: one per (platform, bot_id) pair
 """
 
 from __future__ import annotations
@@ -65,27 +50,15 @@ _ENVELOPE_VERSIONS: dict[type, tuple[str, int]] = {
 class NatsBus(Generic[T]):
     """Bus[T] implementation backed by NATS pub/sub.
 
-    The caller is responsible for establishing and closing the NATS connection.
-    ``NatsBus`` only manages subscriptions — it never calls ``nc.connect()``
-    or ``nc.close()``.
-
-    Lifecycle::
-
-        nc = await nats.connect("nats://localhost:4222")
-        bus = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
-        bus.register(Platform.TELEGRAM)
-        await bus.start()   # creates NATS subscriptions
-        ...
-        await bus.stop()    # unsubscribes; registrations remain intact
-        await bus.start()   # safe to restart without re-registering
+    Caller manages the NATS connection; NatsBus only manages subscriptions.
+    Registrations survive ``stop()`` — safe to restart without re-registering.
 
     Args:
-        nc: Already-connected ``nats.NATS`` client.
-        bot_id: Default bot id for ``register()`` when no explicit one is given.
-        item_type: Concrete type used for deserialization.
-        subject_prefix: NATS subject prefix. Defaults to ``"lyra.inbound"``.
-        publish_only: If ``True``, ``start()`` is a no-op and ``get()`` raises
-            (adapter-side buses that only publish, see #541).
+        nc: Already-connected NATS client.
+        bot_id: Default bot id for ``register()`` when no explicit one given.
+        item_type: Concrete type for deserialization.
+        subject_prefix: NATS subject prefix (default: ``"lyra.inbound"``).
+        publish_only: If True, ``start()`` is no-op and ``get()`` raises.
     """
 
     def __init__(  # noqa: PLR0913
@@ -244,51 +217,7 @@ class NatsBus(Generic[T]):
         subject = f"{self._subject_prefix}.{platform.value}.{bot_id}"
 
         async def handler(msg: Msg) -> None:
-            # Pre-parse JSON so we can inspect schema_version before full deserialize.
-            try:
-                payload = json.loads(msg.data.decode("utf-8"))
-            except Exception:
-                log.exception(
-                    "NatsBus: failed to parse JSON on platform=%s bot_id=%s",
-                    platform.value,
-                    bot_id,
-                )
-                return
-
-            envelope_name, expected = _ENVELOPE_VERSIONS[self._item_type]
-            if not check_schema_version(
-                payload,
-                envelope_name=envelope_name,
-                expected=expected,
-                subject=subject,
-                counter=self._version_mismatch_drops,
-            ):
-                return  # helper already logged + incremented counter
-
-            try:
-                item = deserialize_dict(
-                    payload, self._item_type, resolver=self._resolver
-                )
-                if hasattr(item, "platform_meta"):
-                    _item: Any = item
-                    item = dataclasses.replace(
-                        _item,
-                        platform_meta=sanitize_platform_meta(_item.platform_meta),
-                    )
-                self._staging.put_nowait(item)
-            except asyncio.QueueFull:
-                log.warning(
-                    "NatsBus staging queue full — dropping message on"
-                    " platform=%s bot_id=%s",
-                    platform.value,
-                    bot_id,
-                )
-            except Exception:
-                log.exception(
-                    "NatsBus: failed to deserialize message on platform=%s bot_id=%s",
-                    platform.value,
-                    bot_id,
-                )
+            await self._handle_nats_message(msg, platform, bot_id, subject)
 
         sub = await self._nc.subscribe(subject, queue=self._queue_group, cb=handler)
         self._subscriptions[(platform, bot_id)] = sub
@@ -298,3 +227,50 @@ class NatsBus(Generic[T]):
             bot_id,
             self._queue_group,
         )
+
+    async def _handle_nats_message(
+        self, msg: Msg, platform: Platform, bot_id: str, subject: str
+    ) -> None:
+        """Process a single NATS message and enqueue it."""
+        try:
+            payload = json.loads(msg.data.decode("utf-8"))
+        except Exception:
+            log.exception(
+                "NatsBus: failed to parse JSON on platform=%s bot_id=%s",
+                platform.value,
+                bot_id,
+            )
+            return
+
+        envelope_name, expected = _ENVELOPE_VERSIONS[self._item_type]
+        if not check_schema_version(
+            payload,
+            envelope_name=envelope_name,
+            expected=expected,
+            subject=subject,
+            counter=self._version_mismatch_drops,
+        ):
+            return  # helper already logged + incremented counter
+
+        try:
+            item = deserialize_dict(payload, self._item_type, resolver=self._resolver)
+            if hasattr(item, "platform_meta"):
+                _item: Any = item
+                item = dataclasses.replace(
+                    _item,
+                    platform_meta=sanitize_platform_meta(_item.platform_meta),
+                )
+            self._staging.put_nowait(item)
+        except asyncio.QueueFull:
+            log.warning(
+                "NatsBus staging queue full — dropping message on"
+                " platform=%s bot_id=%s",
+                platform.value,
+                bot_id,
+            )
+        except Exception:
+            log.exception(
+                "NatsBus: failed to deserialize message on platform=%s bot_id=%s",
+                platform.value,
+                bot_id,
+            )

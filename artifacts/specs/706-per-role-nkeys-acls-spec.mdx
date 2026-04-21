@@ -80,21 +80,23 @@ classDiagram
 
 Derived from the audit (see §Audit Provenance). `PUB` = identity publishes to this subject. `SUB` = identity subscribes. Reply subjects (NATS `_INBOX.>`) are granted automatically by `allow_responses: true` — they do **not** appear in the matrix.
 
+<!-- acl-matrix:begin -->
 | Subject | hub | telegram-adapter | discord-adapter | tts-adapter | stt-adapter | llm-worker | monitor |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | `lyra.inbound.telegram.>` | SUB | PUB | — | — | — | — | — |
 | `lyra.inbound.discord.>` | SUB | — | PUB | — | — | — | — |
 | `lyra.outbound.telegram.>` | PUB | SUB | — | — | — | — | — |
 | `lyra.outbound.discord.>` | PUB | — | SUB | — | — | — | — |
-| `lyra.system.ready` [^ready] | SUB | PUB | PUB | — | — | — | — |
+| `lyra.system.ready` [^ready] | SUB | PUB | PUB | PUB | PUB | — | — |
 | `lyra.voice.tts.request` | PUB | — | — | SUB | — | — | — |
 | `lyra.voice.tts.heartbeat` | SUB | — | — | PUB | — | — | — |
 | `lyra.voice.stt.request` | PUB | — | — | — | SUB | — | — |
 | `lyra.voice.stt.heartbeat` | SUB | — | — | — | PUB | — | — |
 | `lyra.llm.request` | PUB | — | — | — | — | SUB | — |
 | `lyra.llm.health.*` [^health] | SUB | — | — | — | — | PUB | — |
-| `_INBOX.>` [^inbox] | SUB | — | — | — | — | — | — |
+| `_INBOX.>` [^inbox] | SUB | SUB | SUB | SUB | SUB | — | — |
 | `lyra.monitor.>` (reserved) [^monitor] | — | — | — | — | — | — | PUB+SUB |
+<!-- acl-matrix:end -->
 
 [^ready]: Readiness probe uses request/reply. Adapter publishes `lyra.system.ready` with `reply=<ephemeral>`; hub subscribes, responds via `msg.respond()`. The reply subject is covered by `allow_responses: true` on the hub.
 [^health]: Code uses single-token wildcard `*` (`lyra.llm.health.*`) not `>` — matches `lyra.llm.health.<driver>` today; tightening to `.*` prevents a future multi-segment publish from silently landing via a `>`-based ACL.

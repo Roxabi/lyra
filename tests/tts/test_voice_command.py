@@ -284,7 +284,6 @@ class TestTelegramAdapterRenderAudio:
     """
 
     def _make_adapter(self) -> TelegramAdapter:
-
         adapter = TelegramAdapter(
             bot_id="main",
             token="test-token",

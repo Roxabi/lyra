@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.discord.voice.discord_voice import (
+from lyra.adapters.discord.voice import (
     VoiceAlreadyActiveError,
     VoiceDependencyError,
     VoiceMode,

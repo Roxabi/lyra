@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from lyra.adapters.discord_voice import (
+from lyra.adapters.discord.voice.discord_voice import (
     VoiceAlreadyActiveError,
     VoiceDependencyError,
     VoiceMode,

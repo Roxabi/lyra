@@ -10,15 +10,15 @@ from typing import TYPE_CHECKING, Any
 
 from nats.aio.client import Client as NATS
 
-from lyra.adapters._inbound_cache import InboundCache
-from lyra.adapters.nats_envelope_handlers import handle_raw_message
-from lyra.adapters.nats_stream_decoder import (
+from lyra.adapters.nats.nats_envelope_handlers import handle_raw_message
+from lyra.adapters.nats.nats_stream_decoder import (
     decode_stream_events,
     run_reaper_loop,
 )
-from lyra.adapters.nats_stream_decoder import (
+from lyra.adapters.nats.nats_stream_decoder import (
     handle_stream_error as _handle_stream_error_impl,
 )
+from lyra.adapters.shared._inbound_cache import InboundCache
 from lyra.core.messaging.message import InboundMessage, OutboundMessage, Platform
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver

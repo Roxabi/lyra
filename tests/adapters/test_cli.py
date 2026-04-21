@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lyra.adapters.cli import CLIAdapter
+from lyra.adapters.shared.cli import CLIAdapter
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage
 

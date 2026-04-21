@@ -7,10 +7,10 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from lyra.adapters._shared import push_to_hub_guarded
-from lyra.adapters.telegram_audio import _download_audio
-from lyra.adapters.telegram_formatting import _make_send_kwargs
-from lyra.adapters.telegram_normalize import _make_scope_id, normalize_audio
+from lyra.adapters.shared._shared import push_to_hub_guarded
+from lyra.adapters.telegram.telegram_audio import _download_audio
+from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
+from lyra.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, Platform
 

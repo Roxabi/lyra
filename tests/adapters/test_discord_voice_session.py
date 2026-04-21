@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import lyra.adapters.discord_voice as dv_module
+import lyra.adapters.discord.voice.discord_voice as dv_module
 from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.discord_voice import (
+from lyra.adapters.discord.voice.discord_voice import (
     PCMQueueSource,
     VoiceAlreadyActiveError,
     VoiceDependencyError,
@@ -113,15 +113,15 @@ class TestVoiceDeps:
     def test_missing_libopus(self) -> None:
         with (
             patch(
-                "lyra.adapters.discord_voice.discord.opus.is_loaded",
+                "lyra.adapters.discord.voice.discord_voice.discord.opus.is_loaded",
                 return_value=False,
             ),
             patch(
-                "lyra.adapters.discord_voice.ctypes.util.find_library",
+                "lyra.adapters.discord.voice.discord_voice.ctypes.util.find_library",
                 return_value=None,
             ),
             patch(
-                "lyra.adapters.discord_voice.shutil.which",
+                "lyra.adapters.discord.voice.discord_voice.shutil.which",
                 return_value="/usr/bin/ffmpeg",
             ),
         ):
@@ -131,10 +131,13 @@ class TestVoiceDeps:
     def test_missing_ffmpeg(self) -> None:
         with (
             patch(
-                "lyra.adapters.discord_voice.discord.opus.is_loaded",
+                "lyra.adapters.discord.voice.discord_voice.discord.opus.is_loaded",
                 return_value=True,
             ),
-            patch("lyra.adapters.discord_voice.shutil.which", return_value=None),
+            patch(
+                "lyra.adapters.discord.voice.discord_voice.shutil.which",
+                return_value=None,
+            ),  # noqa: E501
         ):
             with pytest.raises(VoiceDependencyError, match="ffmpeg"):
                 _check_voice_deps()
@@ -142,11 +145,11 @@ class TestVoiceDeps:
     def test_passes_when_deps_present(self) -> None:
         with (
             patch(
-                "lyra.adapters.discord_voice.discord.opus.is_loaded",
+                "lyra.adapters.discord.voice.discord_voice.discord.opus.is_loaded",
                 return_value=True,
             ),
             patch(
-                "lyra.adapters.discord_voice.shutil.which",
+                "lyra.adapters.discord.voice.discord_voice.shutil.which",
                 return_value="/usr/bin/ffmpeg",
             ),
         ):
@@ -189,7 +192,7 @@ class TestVoiceSessionManager:
         vsm = _make_vsm()
         guild = _make_guild()
         channel, _ = _make_channel()
-        with patch("lyra.adapters.discord_voice._check_voice_deps"):
+        with patch("lyra.adapters.discord.voice.discord_voice._check_voice_deps"):
             session = await vsm.join(guild, channel, VoiceMode.TRANSIENT)
         assert vsm.get("1") is session
 
@@ -198,7 +201,7 @@ class TestVoiceSessionManager:
         vsm = _make_vsm()
         guild = _make_guild()
         channel, _ = _make_channel()
-        with patch("lyra.adapters.discord_voice._check_voice_deps"):
+        with patch("lyra.adapters.discord.voice.discord_voice._check_voice_deps"):
             await vsm.join(guild, channel, VoiceMode.TRANSIENT)
             with pytest.raises(VoiceAlreadyActiveError):
                 channel2, _ = _make_channel()
@@ -209,7 +212,7 @@ class TestVoiceSessionManager:
         vsm = _make_vsm()
         guild = _make_guild()
         channel, vc = _make_channel()
-        with patch("lyra.adapters.discord_voice._check_voice_deps"):
+        with patch("lyra.adapters.discord.voice.discord_voice._check_voice_deps"):
             session = await vsm.join(guild, channel, VoiceMode.TRANSIENT)
         mock_source = MagicMock(spec=PCMQueueSource)
         session.source = mock_source

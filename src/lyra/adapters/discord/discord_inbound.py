@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from lyra.adapters._shared import AUDIO_MIME_TYPES, push_to_hub_guarded
-from lyra.adapters.discord_audio import handle_audio as _handle_audio
-from lyra.adapters.discord_formatting import make_thread_name
-from lyra.adapters.discord_threads import (
+from lyra.adapters.discord.discord_audio import handle_audio as _handle_audio
+from lyra.adapters.discord.discord_formatting import make_thread_name
+from lyra.adapters.discord.discord_threads import (
     persist_thread_claim,
     persist_thread_session,
     retrieve_thread_session,
 )
+from lyra.adapters.shared._shared import AUDIO_MIME_TYPES, push_to_hub_guarded
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, Platform
 

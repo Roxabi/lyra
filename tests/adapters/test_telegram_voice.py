@@ -81,7 +81,7 @@ async def test_voice_message_enqueues_on_audio_bus(tmp_path: Path) -> None:
     audio_file.write_bytes(b"fake_ogg_data")
 
     with patch(
-        "lyra.adapters.telegram_inbound._download_audio",
+        "lyra.adapters.telegram.telegram_inbound._download_audio",
         new_callable=AsyncMock,
         return_value=(audio_file, 3.0),
     ):
@@ -149,7 +149,7 @@ async def test_voice_message_too_large_sends_reply() -> None:
     adapter, buses = _make_adapter()
 
     with patch(
-        "lyra.adapters.telegram_inbound._download_audio",
+        "lyra.adapters.telegram.telegram_inbound._download_audio",
         new_callable=AsyncMock,
         side_effect=ValueError("Audio file too large"),
     ):
@@ -165,7 +165,7 @@ async def test_voice_too_large_replies_to_original_message() -> None:
     adapter, _hub = _make_adapter()
 
     with patch(
-        "lyra.adapters.telegram_inbound._download_audio",
+        "lyra.adapters.telegram.telegram_inbound._download_audio",
         new_callable=AsyncMock,
         side_effect=ValueError("too large"),
     ):
@@ -181,7 +181,7 @@ async def test_voice_too_large_no_reply_when_no_message_id() -> None:
     adapter, _hub = _make_adapter()
 
     with patch(
-        "lyra.adapters.telegram_inbound._download_audio",
+        "lyra.adapters.telegram.telegram_inbound._download_audio",
         new_callable=AsyncMock,
         side_effect=ValueError("too large"),
     ):
@@ -197,7 +197,7 @@ async def test_voice_message_download_error_returns_silently() -> None:
     adapter, buses = _make_adapter()
 
     with patch(
-        "lyra.adapters.telegram_inbound._download_audio",
+        "lyra.adapters.telegram.telegram_inbound._download_audio",
         new_callable=AsyncMock,
         side_effect=RuntimeError("network error"),
     ):

@@ -11,14 +11,14 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.types import BufferedInputFile
 
-from lyra.adapters._shared import (
+from lyra.adapters.shared._shared import (
     buffer_and_render_audio,
     mime_to_ext,
     parse_reply_to_id,
     sanitize_filename,
     truncate_caption,
 )
-from lyra.adapters.telegram_formatting import (
+from lyra.adapters.telegram.telegram_formatting import (
     _ATTACHMENT_EXTS,
     TELEGRAM_CAPTION_MAX,
     _validate_inbound,

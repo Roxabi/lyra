@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from lyra.adapters._shared_streaming_state import (
+from lyra.adapters.shared._shared_streaming_state import (
     STREAMING_EDIT_INTERVAL,
     StreamState,
     classify_stream_error,

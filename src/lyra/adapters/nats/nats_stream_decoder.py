@@ -132,7 +132,7 @@ async def run_reaper_loop(listener: Any) -> None:
     partial-teardown races and library hiccups; ``CancelledError``
     propagates so ``stop()`` can cleanly cancel the task.
     """
-    from lyra.adapters._inbound_cache import REAPER_INTERVAL_SECONDS, TTL_SECONDS
+    from lyra.adapters.shared._inbound_cache import REAPER_INTERVAL_SECONDS, TTL_SECONDS
 
     while True:
         await asyncio.sleep(REAPER_INTERVAL_SECONDS)

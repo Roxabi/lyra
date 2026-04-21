@@ -19,7 +19,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
-from lyra.adapters._shared_streaming import PlatformCallbacks, StreamingSession
+from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage, OutboundMessage

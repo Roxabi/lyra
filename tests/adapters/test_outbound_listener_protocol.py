@@ -20,8 +20,8 @@ import inspect
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
-from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-from lyra.adapters.outbound_listener import OutboundListener
+from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+from lyra.adapters.shared.outbound_listener import OutboundListener
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, Platform

@@ -15,24 +15,24 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
-    from lyra.adapters._shared_streaming import PlatformCallbacks
-    from lyra.adapters.outbound_listener import OutboundListener
+    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
+    from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.messaging.bus import Bus
     from lyra.infrastructure.stores.turn_store import TurnStore
 
-from lyra.adapters import telegram_audio  # noqa: I001
-from lyra.adapters._base_outbound import OutboundAdapterBase
-from lyra.adapters._shared import TypingTaskManager, resolve_msg
-from lyra.adapters.telegram_formatting import (
+from lyra.adapters.telegram import telegram_audio  # noqa: I001
+from lyra.adapters.shared._base_outbound import OutboundAdapterBase
+from lyra.adapters.shared._shared import TypingTaskManager, resolve_msg
+from lyra.adapters.telegram.telegram_formatting import (
     _render_buttons as _render_buttons_impl,
     _render_text as _render_text_impl,
 )
-from lyra.adapters.telegram_inbound import handle_message, handle_voice_message
-from lyra.adapters.telegram_normalize import (
+from lyra.adapters.telegram.telegram_inbound import handle_message, handle_voice_message
+from lyra.adapters.telegram.telegram_normalize import (
     normalize as _normalize_impl,
     normalize_audio as _normalize_audio_impl,
 )
-from lyra.adapters.telegram_outbound import (
+from lyra.adapters.telegram.telegram_outbound import (
     _typing_loop as _typing_loop,  # noqa: F401
     _typing_worker,
     build_streaming_callbacks as _build_streaming_callbacks,

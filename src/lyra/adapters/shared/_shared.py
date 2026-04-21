@@ -16,7 +16,7 @@ import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
-from lyra.adapters._shared_audio import (
+from lyra.adapters.shared._shared_audio import (
     _AUDIO_EXTS,
     _MAX_OUTBOUND_AUDIO_BYTES,
     AUDIO_MIME_TYPES,
@@ -27,18 +27,22 @@ from lyra.adapters._shared_audio import (
 )
 
 # Re-exports from _shared_streaming — importers can use either module.
-from lyra.adapters._shared_streaming import (
+from lyra.adapters.shared._shared_streaming import (
     IntermediateTextState,
     StreamState,
 )
 
 # Re-exports from _shared_audio — importers can use either module.
-from lyra.adapters._shared_text import chunk_text, sanitize_filename, truncate_caption
+from lyra.adapters.shared._shared_text import (
+    chunk_text,
+    sanitize_filename,
+    truncate_caption,
+)
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.messaging.message import InboundMessage, Platform
 
 if TYPE_CHECKING:
-    from lyra.adapters.outbound_listener import OutboundListener
+    from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.messaging.bus import Bus
     from lyra.core.messaging.messages import MessageManager
     from lyra.core.messaging.render_events import ToolSummaryRenderEvent

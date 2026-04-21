@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from lyra.adapters._shared import (
+from lyra.adapters.shared._shared import (
     IntermediateTextState,
     chunk_text,
     format_tool_summary_header,

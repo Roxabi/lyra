@@ -9,7 +9,7 @@ from typing import Any
 import discord
 from tabulate import tabulate
 
-from lyra.adapters._shared import AUDIO_MIME_TYPES, chunk_text
+from lyra.adapters.shared._shared import AUDIO_MIME_TYPES, chunk_text
 from lyra.core.messaging.message import Attachment, InboundMessage, Platform
 
 log = logging.getLogger("lyra.adapters.discord")

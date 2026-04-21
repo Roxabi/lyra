@@ -14,8 +14,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters._shared_streaming import PlatformCallbacks, StreamingSession
-from lyra.adapters.nats_stream_decoder import StreamChunkTimeout, decode_stream_events
+from lyra.adapters.nats.nats_stream_decoder import (
+    StreamChunkTimeout,
+    decode_stream_events,
+)
+from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
 from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
 
@@ -456,7 +459,7 @@ async def test_decode_stream_events_timeout_raises_stream_chunk_timeout():
     gen = decode_stream_events("test-stream-id", q)
 
     # Patch _CHUNK_TIMEOUT_SECONDS to 0.01s so the test doesn't wait 120s
-    import lyra.adapters.nats_stream_decoder as _mod
+    import lyra.adapters.nats.nats_stream_decoder as _mod
 
     original = _mod._CHUNK_TIMEOUT_SECONDS
     _mod._CHUNK_TIMEOUT_SECONDS = 0.01

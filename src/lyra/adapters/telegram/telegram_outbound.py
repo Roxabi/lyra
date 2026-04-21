@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
-from lyra.adapters.telegram_formatting import (
+from lyra.adapters.telegram.telegram_formatting import (
     _render_buttons,
     _render_text,
     _validate_inbound,
@@ -20,7 +20,7 @@ from lyra.core.messaging.message import (
 from lyra.core.messaging.render_events import ToolSummaryRenderEvent
 
 if TYPE_CHECKING:
-    from lyra.adapters._shared_streaming import PlatformCallbacks
+    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
     from lyra.adapters.telegram import TelegramAdapter
 
 log = logging.getLogger("lyra.adapters.telegram")
@@ -168,7 +168,7 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
     Extracted from TelegramAdapter._make_streaming_callbacks to keep telegram.py
     under the 300-line file-length limit.
     """
-    from lyra.adapters._shared_streaming import PlatformCallbacks
+    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
 
     meta = _validate_inbound(original_msg, "send_streaming")
     if meta is None:

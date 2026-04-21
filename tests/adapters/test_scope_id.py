@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 
 from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.telegram_normalize import _make_scope_id
+from lyra.adapters.telegram.telegram_normalize import _make_scope_id
 
 # ---------------------------------------------------------------------------
 # Discord — two users in same guild channel

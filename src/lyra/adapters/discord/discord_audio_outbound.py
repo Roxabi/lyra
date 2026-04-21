@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from lyra.adapters._shared import (
+from lyra.adapters.discord.discord_formatting import _validate_inbound
+from lyra.adapters.shared._shared import (
     _AUDIO_EXTS,
     ATTACHMENT_EXTS_BASE,
     DISCORD_MAX_LENGTH,
@@ -19,7 +20,6 @@ from lyra.adapters._shared import (
     sanitize_filename,
     truncate_caption,
 )
-from lyra.adapters.discord_formatting import _validate_inbound
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,

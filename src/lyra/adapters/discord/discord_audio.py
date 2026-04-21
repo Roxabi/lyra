@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from lyra.adapters._shared import push_to_hub_guarded
+from lyra.adapters.shared._shared import push_to_hub_guarded
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.messaging.message import (
     InboundMessage,

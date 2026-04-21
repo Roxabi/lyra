@@ -25,7 +25,7 @@ from roxabi_nats._serialize import deserialize_dict as _deserialize_dict
 from roxabi_nats._version_check import check_schema_version
 
 if TYPE_CHECKING:
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
 log = logging.getLogger(__name__)
 

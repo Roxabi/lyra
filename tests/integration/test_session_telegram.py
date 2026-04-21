@@ -93,7 +93,9 @@ def _make_telegram_adapter(fake_turn_store=None, mock_bus=None):
 
 async def test_telegram_private_injects_thread_session_id() -> None:
     """TelegramAdapter with turn_store injects thread_session_id for private chats."""
-    from lyra.adapters.telegram_inbound import handle_message as telegram_handle_message
+    from lyra.adapters.telegram.telegram_inbound import (
+        handle_message as telegram_handle_message,
+    )
 
     mock_bus = MagicMock()
     mock_bus.put_nowait = MagicMock()
@@ -143,7 +145,9 @@ async def test_telegram_no_turn_store_no_injection() -> None:
     Currently this trivially passes (no injection exists). It becomes a meaningful
     regression guard once injection is added.
     """
-    from lyra.adapters.telegram_inbound import handle_message as telegram_handle_message
+    from lyra.adapters.telegram.telegram_inbound import (
+        handle_message as telegram_handle_message,
+    )
 
     mock_bus = MagicMock()
     mock_bus.put_nowait = MagicMock()

@@ -5,15 +5,15 @@ This module re-exports the full public API from the two focused submodules:
                                 classify_stream_error
   - _shared_streaming_emitter → PlatformCallbacks, StreamingSession
 
-Importers may continue to use ``from lyra.adapters._shared_streaming import ...``
+Importers may continue to use ``from lyra.adapters.shared._shared_streaming import ...``
 without change.
 """
 
-from lyra.adapters._shared_streaming_emitter import (
+from lyra.adapters.shared._shared_streaming_emitter import (
     PlatformCallbacks,
     StreamingSession,
 )
-from lyra.adapters._shared_streaming_state import (
+from lyra.adapters.shared._shared_streaming_state import (
     IntermediateTextState,
     StreamState,
     classify_stream_error,

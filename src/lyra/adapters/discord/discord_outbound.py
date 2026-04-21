@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from lyra.adapters._shared import (
-    DISCORD_MAX_LENGTH,
-    format_tool_summary_header,
-)
-from lyra.adapters.discord_formatting import (
+from lyra.adapters.discord.discord_formatting import (
     _validate_inbound,
     render_buttons,
     render_text,
+)
+from lyra.adapters.shared._shared import (
+    DISCORD_MAX_LENGTH,
+    format_tool_summary_header,
 )
 from lyra.core.messaging.message import (
     InboundMessage,
@@ -25,8 +25,8 @@ from lyra.core.messaging.message import (
 from lyra.core.messaging.render_events import ToolSummaryRenderEvent
 
 if TYPE_CHECKING:
-    from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.discord import DiscordAdapter
+    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
 
 log = logging.getLogger("lyra.adapters.discord")
 
@@ -160,8 +160,8 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
     under the 300-line file-length limit, matching the Telegram pattern in
     telegram_outbound.build_streaming_callbacks().
     """
-    from lyra.adapters._shared import send_with_retry
-    from lyra.adapters._shared_streaming import PlatformCallbacks
+    from lyra.adapters.shared._shared import send_with_retry
+    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
 
     meta = _validate_inbound(original_msg, "build_streaming_callbacks")
     if meta is None:

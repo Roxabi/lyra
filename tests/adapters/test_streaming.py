@@ -583,7 +583,7 @@ class TestDiscordIntermediateText:
 
     async def test_intermediate_truncates_to_discord_max(self) -> None:
         """Intermediate text longer than DISCORD_MAX_LENGTH is tail-truncated."""
-        from lyra.adapters._shared import DISCORD_MAX_LENGTH
+        from lyra.adapters.shared._shared import DISCORD_MAX_LENGTH
 
         adapter, _, placeholder = self._make_adapter()
         msg = make_dc_message()

@@ -67,7 +67,9 @@ def _make_dm_message(channel_id: int = 555, user_id: int = 42) -> SimpleNamespac
 async def test_discord_dm_injects_thread_session_id() -> None:
     """DiscordAdapter with turn_store injects thread_session_id for DMs."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord_inbound import handle_message as discord_handle_message
+    from lyra.adapters.discord.discord_inbound import (
+        handle_message as discord_handle_message,
+    )
 
     mock_bus = MagicMock()
     mock_bus.put_nowait = MagicMock()
@@ -110,7 +112,9 @@ async def test_discord_dm_no_turn_store_does_not_inject() -> None:
     simply do not inject thread_session_id.
     """
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord_inbound import handle_message as discord_handle_message
+    from lyra.adapters.discord.discord_inbound import (
+        handle_message as discord_handle_message,
+    )
 
     mock_bus = MagicMock()
     mock_bus.put_nowait = MagicMock()

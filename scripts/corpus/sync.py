@@ -49,17 +49,31 @@ def canonical_key(ref: int | str, repo: str) -> str:
 
 
 def upsert_issue(conn: sqlite3.Connection, issue: dict[str, Any]) -> None:
-    """INSERT OR REPLACE into issues. Expects keys:
-    key, repo, number, title, state, url, created_at, updated_at,
-    closed_at (nullable), milestone (nullable), is_stub (0 or 1).
+    """Insert-or-update a row in issues keyed on `key`.
+
+    Uses ON CONFLICT DO UPDATE so FK children (labels) are preserved across
+    upserts — INSERT OR REPLACE would trigger ON DELETE CASCADE first.
+    Expected keys: key, repo, number, title, state, url, created_at,
+    updated_at, closed_at (nullable), milestone (nullable), is_stub (0 or 1).
     """
     conn.execute(
         """
-        INSERT OR REPLACE INTO issues
+        INSERT INTO issues
             (key, repo, number, title, state, url, created_at, updated_at,
              closed_at, milestone, is_stub)
         VALUES
             (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            repo = excluded.repo,
+            number = excluded.number,
+            title = excluded.title,
+            state = excluded.state,
+            url = excluded.url,
+            created_at = excluded.created_at,
+            updated_at = excluded.updated_at,
+            closed_at = excluded.closed_at,
+            milestone = excluded.milestone,
+            is_stub = excluded.is_stub
         """,
         (
             issue["key"],
@@ -245,8 +259,7 @@ def closed_hop_pass(conn: sqlite3.Connection) -> int:
             # "Stored as-is in edges; stub fetched if accessible, else logged as orphan"
             print(f"[corpus] orphan reference: {key}", file=sys.stderr)
             continue
-        rl = response.get("rateLimit") or response["data"]["rateLimit"]
-        log_rate_limit(rl)
+        log_rate_limit(response["data"]["rateLimit"])
         node = response["data"]["repository"]["issue"]
         if node is None:
             print(f"[corpus] orphan reference: {key}", file=sys.stderr)

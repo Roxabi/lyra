@@ -136,15 +136,23 @@ def test_closed_hop_triggers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
 
     # Mock gh_graphql so closed_hop_pass receives a canned response for #42.
     def fake_gh_graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        return {"data": {"repository": {"issue": {
-            "number": 42,
-            "title": "ancient closed blocker",
-            "state": "CLOSED",
-            "url": "https://github.com/Roxabi/lyra/issues/42",
-            "createdAt": "2025-06-01T00:00:00Z",
-            "updatedAt": "2025-06-15T00:00:00Z",
-            "closedAt": "2025-06-15T00:00:00Z",
-        }}}, "rateLimit": {"cost": 1, "remaining": 4999, "resetAt": "2026-04-21T10:00:00Z"}}
+        return {
+            "data": {
+                "repository": {"issue": {
+                    "number": 42,
+                    "title": "ancient closed blocker",
+                    "state": "CLOSED",
+                    "url": "https://github.com/Roxabi/lyra/issues/42",
+                    "createdAt": "2025-06-01T00:00:00Z",
+                    "updatedAt": "2025-06-15T00:00:00Z",
+                    "closedAt": "2025-06-15T00:00:00Z",
+                }},
+                "rateLimit": {
+                    "cost": 1, "remaining": 4999,
+                    "resetAt": "2026-04-21T10:00:00Z",
+                },
+            },
+        }
     monkeypatch.setattr("scripts.corpus.sync.gh_graphql", fake_gh_graphql)
 
     # Act

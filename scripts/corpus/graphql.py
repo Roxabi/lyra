@@ -96,12 +96,16 @@ def gh_graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     Raises GraphQLError if the response contains an "errors" key or gh exits non-zero.
     """
     flags = _build_variable_flags(variables)
-    result = subprocess.run(
-        ["gh", "api", "graphql", "-f", f"query={query}", *flags],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["gh", "api", "graphql", "-f", f"query={query}", *flags],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GraphQLError("gh subprocess timed out after 120s") from exc
     if result.returncode != 0:
         raise GraphQLError(f"gh exited {result.returncode}: {result.stderr.strip()}")
     try:

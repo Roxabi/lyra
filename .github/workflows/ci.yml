@@ -37,6 +37,14 @@ jobs:
       - name: Check duplicate test basenames
         run: bash tools/check_duplicate_test_basenames.sh
 
+      - name: Check supervisor conf drift (agents.yml is source of truth)
+        run: |
+          uv run deploy/gen-supervisor-conf.py
+          if ! git diff --exit-code -- 'deploy/supervisor/conf.d/*.conf'; then
+            echo "::error::deploy/supervisor/conf.d/*.conf is out of sync with agents.yml — run 'make gen-conf' and commit the result"
+            exit 1
+          fi
+
       - name: Enforce import layers
         run: uv run lint-imports
 

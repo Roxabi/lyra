@@ -3,6 +3,15 @@
 
 schema_version: "1.0"
 
+# Per-entry `role:` controls launcher dispatch in deploy/gen-supervisor-conf.py:
+#   role: hub                 → run_hub.sh (name must be 'hub')
+#   role: lyra-adapter        → run_adapter.sh <name> (default)
+#   role: external-satellite  → command_override (required on the entry)
+# Optional — inferred when absent; see resolve_role in gen-supervisor-conf.py.
+#
+# Per-entry `command:` is documentation-only — not read by the generator.
+# Removal deferred to a follow-up issue (see #807 spec Out of Scope).
+
 defaults:
   autostart: false
   autorestart: true
@@ -22,6 +31,7 @@ defaults:
 
 agents:
   hub:
+    role: hub
     command: lyra hub
     priority: 100
     startsecs: 10
@@ -30,16 +40,19 @@ agents:
       LYRA_HEALTH_PORT: "8443"
 
   telegram:
+    role: lyra-adapter
     command: lyra adapter telegram
     priority: 200
     nkey: telegram-adapter.seed
 
   discord:
+    role: lyra-adapter
     command: lyra adapter discord
     priority: 200
     nkey: discord-adapter.seed
 
   stt:
+    role: lyra-adapter
     command: lyra adapter stt
     priority: 200
     nkey: stt-adapter.seed
@@ -47,6 +60,7 @@ agents:
       LYRA_STT_ENABLED: "1"
 
   tts:
+    role: lyra-adapter
     command: lyra adapter tts
     priority: 200
     nkey: tts-adapter.seed

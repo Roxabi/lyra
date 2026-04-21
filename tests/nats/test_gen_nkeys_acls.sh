@@ -30,31 +30,16 @@ trap 'rm -f "$OUT"' EXIT
 ./deploy/nats/gen-nkeys.sh --template-only > "$OUT"
 echo "PASS: template-only produced output ($(wc -l < "$OUT") lines)"
 
-# ── Expected allow-lists (authoritative copy mirrors spec §Data Model matrix) ──
-# If the spec matrix changes, update both deploy/nats/gen-nkeys.sh AND this file.
+# ── Expected allow-lists loaded from acl-matrix.json (SSoT per #717) ──
+MATRIX_JSON="deploy/nats/acl-matrix.json"
+[ -f "$MATRIX_JSON" ] || { echo "FAIL: $MATRIX_JSON not found"; exit 1; }
 declare -A EXPECTED_PUB EXPECTED_SUB
-EXPECTED_PUB[hub]='lyra.outbound.telegram.> lyra.outbound.discord.> lyra.voice.tts.request.> lyra.voice.stt.request.> lyra.llm.request lyra.image.generate.request'
-EXPECTED_SUB[hub]='lyra.inbound.telegram.> lyra.inbound.discord.> lyra.voice.tts.heartbeat lyra.voice.stt.heartbeat lyra.llm.health.* lyra.system.ready _INBOX.> lyra.image.heartbeat'
-EXPECTED_PUB[telegram-adapter]='lyra.inbound.telegram.> lyra.system.ready'
-EXPECTED_SUB[telegram-adapter]='lyra.outbound.telegram.>'
-EXPECTED_PUB[discord-adapter]='lyra.inbound.discord.> lyra.system.ready'
-EXPECTED_SUB[discord-adapter]='lyra.outbound.discord.>'
-EXPECTED_PUB[tts-adapter]='lyra.voice.tts.heartbeat lyra.system.ready'
-EXPECTED_SUB[tts-adapter]='lyra.voice.tts.request lyra.voice.tts.request.> _INBOX.> _inbox.>'
-EXPECTED_PUB[stt-adapter]='lyra.voice.stt.heartbeat lyra.system.ready'
-EXPECTED_SUB[stt-adapter]='lyra.voice.stt.request lyra.voice.stt.request.> _INBOX.> _inbox.>'
-EXPECTED_PUB[voice-tts]='lyra.voice.tts.heartbeat _INBOX.>'
-EXPECTED_SUB[voice-tts]='lyra.voice.tts.request lyra.voice.tts.request.> lyra.voice.tts.heartbeat'
-EXPECTED_PUB[voice-stt]='lyra.voice.stt.heartbeat _INBOX.>'
-EXPECTED_SUB[voice-stt]='lyra.voice.stt.request lyra.voice.stt.request.> lyra.voice.stt.heartbeat'
-EXPECTED_PUB[llm-worker]='lyra.llm.health.*'
-EXPECTED_SUB[llm-worker]='lyra.llm.request'
-EXPECTED_PUB[image-worker]='lyra.image.heartbeat _INBOX.> _inbox.>'
-EXPECTED_SUB[image-worker]='lyra.image.generate.request'
-EXPECTED_PUB[monitor]='lyra.monitor.>'
-EXPECTED_SUB[monitor]='lyra.monitor.>'
-
-IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker image-worker monitor)
+IDENTITIES=()
+while IFS= read -r name; do
+  IDENTITIES+=("$name")
+  EXPECTED_PUB[$name]=$(jq -r --arg n "$name" '.identities[$n].publish | join(" ")' "$MATRIX_JSON")
+  EXPECTED_SUB[$name]=$(jq -r --arg n "$name" '.identities[$n].subscribe | join(" ")' "$MATRIX_JSON")
+done < <(jq -r '.identities | keys_unsorted[]' "$MATRIX_JSON")
 
 # ── extract_block: print the user{} block for a given identity name ────────────
 # B9: the closing-brace condition records `entry_depth` when the identity's

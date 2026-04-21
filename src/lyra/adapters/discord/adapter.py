@@ -10,43 +10,43 @@ from typing import TYPE_CHECKING, Any, cast
 import discord
 
 if TYPE_CHECKING:
-    from lyra.adapters._shared_streaming import PlatformCallbacks
-    from lyra.adapters.outbound_listener import OutboundListener
-    from lyra.core.bus import Bus
+    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
+    from lyra.adapters.shared.outbound_listener import OutboundListener
+    from lyra.core.messaging.bus import Bus
     from lyra.infrastructure.stores.turn_store import TurnStore
 
-from lyra.adapters import discord_audio  # noqa: I001
-from lyra.adapters import discord_audio_outbound
-from lyra.adapters._shared import TypingTaskManager, resolve_msg
-from lyra.adapters.discord_inbound import handle_message
-from lyra.adapters.discord_normalize import normalize as _normalize_impl
-from lyra.adapters._base_outbound import OutboundAdapterBase
-from lyra.adapters.discord_outbound import (
+from lyra.adapters.discord import discord_audio  # noqa: I001
+from lyra.adapters.discord import discord_audio_outbound
+from lyra.adapters.shared._shared import TypingTaskManager, resolve_msg
+from lyra.adapters.discord.discord_inbound import handle_message
+from lyra.adapters.discord.discord_normalize import normalize as _normalize_impl
+from lyra.adapters.shared._base_outbound import OutboundAdapterBase
+from lyra.adapters.discord.discord_outbound import (
     _discord_typing_worker,
     build_streaming_callbacks as _build_streaming_callbacks,
     send as _send_impl,
 )
-from lyra.adapters.discord_voice import VoiceSessionManager
+from lyra.adapters.discord.voice.discord_voice import VoiceSessionManager
 from lyra.adapters.discord.lifecycle import (
     on_guild_join as _on_guild_join_impl,
     on_ready as _on_ready_impl,
     on_voice_state_update as _on_voice_state_update_impl,
 )
-from lyra.adapters.discord_voice_commands import (
+from lyra.adapters.discord.voice.discord_voice_commands import (
     handle_voice_command as _handle_voice_command_impl,
     register_voice_app_commands as _register_voice_app_commands,
 )
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.guard import BlockedGuard, GuardChain
-from lyra.core.trust import TrustLevel
-from lyra.core.message import (
+from lyra.core.auth.guard import BlockedGuard, GuardChain
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
     OutboundAudioChunk,
     OutboundMessage,
 )
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.messages import MessageManager
 from lyra.core.stores.thread_store import ThreadStore
 
 log = logging.getLogger(__name__)

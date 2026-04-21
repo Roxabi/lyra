@@ -1,4 +1,5 @@
 """Three-guard tests for roxabi_contracts.voice.testing. See spec #764."""
+
 from __future__ import annotations
 
 from typing import cast

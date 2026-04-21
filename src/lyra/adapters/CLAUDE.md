@@ -7,6 +7,48 @@ Adapters translate platform-native events into `InboundMessage` / `InboundAudio`
 and translate `OutboundMessage` / `OutboundAudio` into platform API calls.
 No business logic or LLM interaction lives here.
 
+## Subdir layout (V4 decomposition — #773)
+
+```
+adapters/
+  discord/          # Discord adapter (11 files + __init__)
+    adapter.py      # DiscordAdapter facade
+    lifecycle.py    # on_ready, on_guild_join, on_voice_state_update
+    discord_audio.py
+    discord_audio_outbound.py
+    discord_config.py
+    discord_formatting.py
+    discord_inbound.py
+    discord_normalize.py
+    discord_outbound.py
+    discord_threads.py
+    voice/          # Discord voice channel sub-package (2 files + __init__)
+      discord_voice.py          # VoiceSession, VoiceSessionManager
+      discord_voice_commands.py # !join/!leave/slash commands, VOICE_COMMANDS
+  telegram/         # Telegram adapter (6 files + __init__)
+    telegram.py     # TelegramAdapter facade
+    telegram_audio.py
+    telegram_formatting.py
+    telegram_inbound.py
+    telegram_normalize.py
+    telegram_outbound.py
+  nats/             # NATS transport (3 files + __init__)
+    nats_envelope_handlers.py
+    nats_outbound_listener.py   # NatsOutboundListener
+    nats_stream_decoder.py
+  shared/           # Cross-platform helpers (10 files + __init__)
+    _base_outbound.py           # OutboundAdapterBase
+    _inbound_cache.py           # InboundCache (NATS correlation)
+    _shared.py                  # push_to_hub_guarded, TypingTaskManager, …
+    _shared_audio.py
+    _shared_streaming.py        # re-export shim
+    _shared_streaming_emitter.py # PlatformCallbacks, StreamingSession
+    _shared_streaming_state.py
+    _shared_text.py             # chunk_text, sanitize_filename, truncate_caption
+    cli.py                      # CLIAdapter
+    outbound_listener.py        # OutboundListener protocol
+```
+
 ## ChannelAdapter protocol (defined in `core/hub/hub_protocol.py`)
 
 Every adapter must implement:
@@ -26,7 +68,7 @@ iterator and logs a warning); functional voice-channel playback is Discord-only.
 
 ## Non-obvious structure notes
 
-Each platform is split into focused submodules: `{platform}.py` is the facade; concerns are `_inbound`, `_outbound`, `_normalize`, `_formatting`, `_audio`. Shared cross-platform code lives in `_shared.py`, `_shared_audio.py`, `_shared_streaming.py` (re-export shim), `_shared_streaming_state.py` (state types), `_shared_streaming_emitter.py` (session + callbacks).
+Each platform is split into focused submodules: `{platform}.py` is the facade; concerns are `_inbound`, `_outbound`, `_normalize`, `_formatting`, `_audio`. Shared cross-platform code lives in `shared/_shared.py`, `shared/_shared_audio.py`, `shared/_shared_streaming.py` (re-export shim), `shared/_shared_streaming_state.py` (state types), `shared/_shared_streaming_emitter.py` (session + callbacks).
 
 `outbound_listener.py` defines a structural protocol — adapters reference it without inheriting. `NatsOutboundListener` satisfies it for the three-process NATS deployment mode.
 

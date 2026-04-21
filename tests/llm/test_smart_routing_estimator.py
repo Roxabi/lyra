@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from lyra.core.agent_config import Complexity, SmartRoutingConfig
+from lyra.core.agent.agent_config import Complexity, SmartRoutingConfig
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_parser import CommandContext
-from lyra.core.message import Attachment, InboundMessage
-from lyra.core.trust import TrustLevel
+from lyra.core.messaging.message import Attachment, InboundMessage
 from lyra.llm.smart_routing import (
     ComplexityEstimator,
     SmartRoutingDecorator,

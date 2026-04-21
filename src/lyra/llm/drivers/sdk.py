@@ -13,8 +13,13 @@ if TYPE_CHECKING:
 
 import anthropic
 
-from lyra.core.agent_config import ModelConfig
-from lyra.core.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.messaging.events import (
+    LlmEvent,
+    ResultLlmEvent,
+    TextLlmEvent,
+    ToolUseLlmEvent,
+)
 from lyra.errors import (
     ProviderApiError,
     ProviderAuthError,

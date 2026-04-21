@@ -68,8 +68,7 @@ def test_schema_has_no_body_column(tmp_path: Path) -> None:
     con = sqlite3.connect(db_path)
     try:
         columns = {
-            row[1]
-            for row in con.execute("PRAGMA table_info(issues)").fetchall()
+            row[1] for row in con.execute("PRAGMA table_info(issues)").fetchall()
         }
     finally:
         con.close()

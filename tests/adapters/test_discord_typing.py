@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.message import OutboundMessage
-from lyra.core.render_events import TextRenderEvent
+from lyra.core.messaging.message import OutboundMessage
+from lyra.core.messaging.render_events import TextRenderEvent
 
 from .conftest import make_dc_inbound_msg
 

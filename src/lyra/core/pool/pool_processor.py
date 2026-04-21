@@ -13,10 +13,10 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..agent import AgentBase
-    from ..message import InboundMessage
+    from ..messaging.message import InboundMessage
     from .pool import Pool
 
-from ..message import Response
+from ..messaging.message import Response
 from .pool_processor_exec import _safe_dispatch, guarded_process_one
 
 log = logging.getLogger(__name__)

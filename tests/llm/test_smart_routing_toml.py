@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tomllib
 
-from lyra.core.agent_config import Complexity, SmartRoutingConfig
+from lyra.core.agent.agent_config import Complexity, SmartRoutingConfig
 
 
 class TestSmartRoutingTomlConfig:

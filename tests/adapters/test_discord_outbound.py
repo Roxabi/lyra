@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     Button,
     OutboundMessage,
 )
@@ -253,14 +253,14 @@ class TestDiscordOutboundMessage:
 
     def test_render_text_empty_returns_no_chunks(self) -> None:
         """render_text("") returns [] — no empty-string chunk to send to the API."""
-        from lyra.adapters.discord_formatting import render_text
+        from lyra.adapters.discord.discord_formatting import render_text
 
         chunks = render_text("")
         assert chunks == []
 
     def test_render_text_chunks_at_2000(self) -> None:
         """render_text("x" * 2500) returns 2 chunks, each <= 2000 characters."""
-        from lyra.adapters.discord_formatting import render_text
+        from lyra.adapters.discord.discord_formatting import render_text
 
         text = "x" * 2500
         chunks = render_text(text)
@@ -269,14 +269,14 @@ class TestDiscordOutboundMessage:
 
     def test_render_buttons_none_when_empty(self) -> None:
         """render_buttons([]) returns None."""
-        from lyra.adapters.discord_formatting import render_buttons
+        from lyra.adapters.discord.discord_formatting import render_buttons
 
         result = render_buttons([])
         assert result is None
 
     def test_render_buttons_returns_view(self) -> None:
         """render_buttons([Button("Yes","yes")]) returns a discord.ui.View."""
-        from lyra.adapters.discord_formatting import render_buttons
+        from lyra.adapters.discord.discord_formatting import render_buttons
 
         result = render_buttons([Button("Yes", "yes")])
         assert isinstance(result, discord.ui.View)
@@ -368,8 +368,8 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
     import discord
 
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage, OutboundMessage
-    from lyra.core.trust import TrustLevel
+    from lyra.core.auth.trust import TrustLevel
+    from lyra.core.messaging.message import InboundMessage, OutboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -412,7 +412,7 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
     outbound = OutboundMessage.from_text("")
 
     async def _events():
-        from lyra.core.render_events import TextRenderEvent
+        from lyra.core.messaging.render_events import TextRenderEvent
 
         yield TextRenderEvent(text="hello", is_final=True)
 

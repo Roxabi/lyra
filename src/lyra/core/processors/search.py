@@ -11,10 +11,10 @@ import html
 import logging
 from typing import TYPE_CHECKING
 
-from lyra.core.processor_registry import BaseProcessor, register
+from lyra.core.processors.processor_registry import BaseProcessor, register
 
 if TYPE_CHECKING:
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage
 
 log = logging.getLogger(__name__)
 

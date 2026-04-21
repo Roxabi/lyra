@@ -11,7 +11,7 @@ import pytest
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.core.audio_payload import AudioPayload
-from lyra.core.message import InboundMessage
+from lyra.core.messaging.message import InboundMessage
 
 
 def _make_audio_attachment(content_type: str = "audio/ogg") -> SimpleNamespace:
@@ -63,7 +63,7 @@ def _make_adapter() -> DiscordAdapter:
 
 def test_normalize_audio_attachment_fields() -> None:
     """normalize_audio returns InboundMessage(modality='voice') with correct fields."""
-    from lyra.core.trust import TrustLevel
+    from lyra.core.auth.trust import TrustLevel
 
     adapter = _make_adapter()
     msg = _make_discord_msg(attachments=[_make_audio_attachment("audio/ogg")])
@@ -89,7 +89,7 @@ def test_normalize_audio_attachment_fields() -> None:
 
 def test_normalize_audio_channel_scope_id() -> None:
     """Regular channel → scope_id='channel:<id>:user:<user_id>' (user-scoped)."""
-    from lyra.core.trust import TrustLevel
+    from lyra.core.auth.trust import TrustLevel
 
     adapter = _make_adapter()
     msg = _make_discord_msg()
@@ -102,7 +102,7 @@ def test_normalize_audio_channel_scope_id() -> None:
 
 def test_normalize_audio_thread_scope_id() -> None:
     """Thread channel → scope_id='thread:<id>'."""
-    from lyra.core.trust import TrustLevel
+    from lyra.core.auth.trust import TrustLevel
 
     adapter = _make_adapter()
     msg = _make_discord_msg(channel_type="thread", thread_id=555)

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.message import (  # noqa: F401
+from lyra.core.messaging.message import (  # noqa: F401
     Button,
     OutboundMessage,
 )
@@ -191,7 +191,7 @@ async def test_telegram_fallback_sets_reply_message_id() -> None:
     outbound = OutboundMessage.from_text("")
 
     async def _events():
-        from lyra.core.render_events import TextRenderEvent
+        from lyra.core.messaging.render_events import TextRenderEvent
 
         yield TextRenderEvent(text="hello", is_final=True)
 

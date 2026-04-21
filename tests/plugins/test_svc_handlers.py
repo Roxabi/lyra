@@ -10,9 +10,9 @@ import pytest
 
 import lyra.commands.svc.handlers as svc_mod
 from lyra.commands.svc.handlers import _sanitize_svc_output, cmd_svc
-from lyra.core.message import InboundMessage
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage
 from lyra.core.pool import Pool
-from lyra.core.trust import TrustLevel
 from lyra.integrations.base import ServiceControlFailed
 
 

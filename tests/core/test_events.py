@@ -1,4 +1,4 @@
-"""Tests for lyra.core.events — LlmEvent type system (S1).
+"""Tests for lyra.core.messaging.events — LlmEvent type system (S1).
 
 Source: src/lyra/core/events.py
 """
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.core.events import (
+from lyra.core.messaging.events import (
     LlmEvent,
     ResultLlmEvent,
     TextLlmEvent,
@@ -137,14 +137,14 @@ class TestLlmEventUnion:
         assert isinstance(e, ResultLlmEvent)
 
     def test_union_exported_from_module(self) -> None:
-        """LlmEvent must be importable from lyra.core.events."""
-        from lyra.core.events import LlmEvent as _LlmEvent  # noqa: F401
+        """LlmEvent must be importable from lyra.core.messaging.events."""
+        from lyra.core.messaging.events import LlmEvent as _LlmEvent  # noqa: F401
 
         assert _LlmEvent is LlmEvent
 
     def test_all_exports_complete(self) -> None:
         """Ensure __all__ matches the exact expected public API."""
-        import lyra.core.events as _mod
+        import lyra.core.messaging.events as _mod
 
         assert set(_mod.__all__) == {
             "LlmEvent",

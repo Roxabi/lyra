@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from ..agent import AgentBase
-    from ..message import InboundMessage, OutboundMessage, Response
-    from ..render_events import RenderEvent
+    from ..messaging.message import InboundMessage, OutboundMessage, Response
+    from ..messaging.render_events import RenderEvent
 
 
 @runtime_checkable

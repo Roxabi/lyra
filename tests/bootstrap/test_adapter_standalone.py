@@ -33,11 +33,12 @@ def _cred_store_patches(token: str, webhook_secret: str = "") -> tuple:
     mock_store = _mock_cred_store(token, webhook_secret)
     return (
         patch(
-            "lyra.bootstrap.adapter_standalone.LyraKeyring.load_or_create",
+            "lyra.bootstrap.standalone.adapter_standalone.LyraKeyring.load_or_create",
             return_value=MagicMock(),
         ),
         patch(
-            "lyra.bootstrap.adapter_standalone.CredentialStore", return_value=mock_store
+            "lyra.bootstrap.standalone.adapter_standalone.CredentialStore",
+            return_value=mock_store,
         ),
     )
 
@@ -45,7 +46,9 @@ def _cred_store_patches(token: str, webhook_secret: str = "") -> tuple:
 @pytest.mark.asyncio
 async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
     """Telegram standalone bootstrap: NatsOutboundListener wired, astart() called."""
-    from lyra.bootstrap.adapter_standalone import _bootstrap_adapter_standalone
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
 
     stop = asyncio.Event()
     stop.set()  # return immediately
@@ -73,7 +76,7 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
             return_value=mock_listener,
         ),
         keyring_patch,
@@ -91,7 +94,9 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
 @pytest.mark.asyncio
 async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     """Discord standalone bootstrap: NatsOutboundListener wired, astart() called."""
-    from lyra.bootstrap.adapter_standalone import _bootstrap_adapter_standalone
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
 
     stop = asyncio.Event()
     stop.set()
@@ -114,7 +119,7 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
         patch("lyra.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
-            "lyra.bootstrap.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
             return_value=mock_listener_dc,
         ),
         keyring_patch,
@@ -132,7 +137,9 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
 @pytest.mark.asyncio
 async def test_nats_url_missing_exits() -> None:
     """Missing NATS_URL env var → sys.exit before any NATS connection."""
-    from lyra.bootstrap.adapter_standalone import _bootstrap_adapter_standalone
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
 
     with (
         patch.dict(os.environ, {}, clear=True),
@@ -144,7 +151,9 @@ async def test_nats_url_missing_exits() -> None:
 @pytest.mark.asyncio
 async def test_nc_close_called_even_on_exception() -> None:
     """nc.close() is called in finally block even when bootstrap raises."""
-    from lyra.bootstrap.adapter_standalone import _bootstrap_adapter_standalone
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
 
     mock_nc = AsyncMock()
     keyring_patch, cred_patch = _cred_store_patches("t")

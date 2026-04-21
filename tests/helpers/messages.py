@@ -13,8 +13,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from lyra.core.audio_payload import AudioPayload
-from lyra.core.message import InboundMessage
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage
 
 # ---------------------------------------------------------------------------
 # Default constants

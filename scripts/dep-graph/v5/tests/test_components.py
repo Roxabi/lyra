@@ -1,4 +1,5 @@
 """Tests for v5 component renderers — pure HTML fragment functions."""
+
 from __future__ import annotations
 
 import pytest
@@ -9,6 +10,7 @@ from v5.components.toggle import render_toggle
 from v5.components.toolbar import render_toolbar
 
 # ─── render_card ─────────────────────────────────────────────────────────────
+
 
 def _issue(  # noqa: PLR0913
     num: int = 1,
@@ -102,7 +104,9 @@ class TestRenderCard:
         iss = _issue(blocked_by=[{"repo": "Roxabi/voiceCLI", "issue": 10}])
         issues = {
             "Roxabi/voiceCLI#10": {
-                "repo": "Roxabi/voiceCLI", "number": 10, "title": "TTS",
+                "repo": "Roxabi/voiceCLI",
+                "number": 10,
+                "title": "TTS",
                 "state": "open",
             }
         }
@@ -116,13 +120,13 @@ class TestRenderCard:
         iss = _issue(blocked_by=[{"repo": "Roxabi/lyra", "issue": 4}])
         issues = {
             "Roxabi/lyra#4": {
-                "repo": "Roxabi/lyra", "number": 4, "title": "done",
+                "repo": "Roxabi/lyra",
+                "number": 4,
+                "title": "done",
                 "state": "closed",
             }
         }
-        html = render_card(
-            iss, epic_tone="a1", issues=issues, status="ready", depth=0
-        )
+        html = render_card(iss, epic_tone="a1", issues=issues, status="ready", depth=0)
         assert "closed" in html
 
     def test_long_title_truncated_with_ellipsis(self):
@@ -140,7 +144,9 @@ class TestRenderCard:
         iss = _issue(blocked_by=[{"repo": "Roxabi/lyra", "issue": 2}])
         issues = {
             "Roxabi/lyra#2": {
-                "repo": "Roxabi/lyra", "number": 2, "title": "other",
+                "repo": "Roxabi/lyra",
+                "number": 2,
+                "title": "other",
                 "state": "open",
             }
         }
@@ -153,6 +159,7 @@ class TestRenderCard:
 
 
 # ─── render_toggle ───────────────────────────────────────────────────────────
+
 
 class TestRenderToggle:
     def test_graph_active_graph_button_has_active_class(self):
@@ -210,6 +217,7 @@ class TestRenderToggle:
 
 # ─── render_toolbar ──────────────────────────────────────────────────────────
 
+
 class TestRenderToolbar:
     def test_has_toggle_epic_checkbox(self):
         html = render_toolbar()
@@ -246,6 +254,7 @@ class TestRenderToolbar:
 
 # ─── render_header ───────────────────────────────────────────────────────────
 
+
 class TestRenderHeader:
     def test_escapes_title(self):
         html = render_header("<b>Title</b>", "sub")
@@ -270,6 +279,7 @@ class TestRenderHeader:
 
 
 # ─── render_footer ───────────────────────────────────────────────────────────
+
 
 class TestRenderFooter:
     def test_has_footer_tag(self):

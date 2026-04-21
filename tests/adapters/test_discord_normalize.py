@@ -17,7 +17,7 @@ import pytest
 def test_normalize_builds_correct_discord_context() -> None:
     """normalize() on a discord message produces correct platform_meta."""
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -210,7 +210,7 @@ def test_mention_prefix_stripped_nickname_variant() -> None:
 def test_normalize_dm_no_guild() -> None:
     """DM messages (guild=None) normalize with guild_id=None — no AttributeError."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -346,7 +346,7 @@ def test_discord_token_not_in_logs(
 def test_normalize_guild_channel_user_scoped_scope_id() -> None:
     """Guild text channel → scope_id includes user_id suffix."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -433,7 +433,7 @@ def test_two_users_same_guild_channel_share_pool_id() -> None:
     """
     from lyra.adapters.discord import DiscordAdapter
     from lyra.core.hub.hub_protocol import RoutingKey
-    from lyra.core.message import Platform
+    from lyra.core.messaging.message import Platform
 
     adapter = DiscordAdapter(
         bot_id="main",

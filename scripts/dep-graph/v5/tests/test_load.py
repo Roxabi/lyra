@@ -1,4 +1,5 @@
 """Tests for v5.data.load — load_from_dicts and parse logic."""
+
 from __future__ import annotations
 
 import pytest
@@ -119,12 +120,12 @@ class TestLayoutDrivenMatrixConfig:
         custom = dict(layout)
         custom["column_groups"] = [
             {"label": "ALPHA", "tone": "a1", "lane_codes": ["a1", "a2"]},
-            {"label": "BETA",  "tone": "b",  "lane_codes": ["b"]},
+            {"label": "BETA", "tone": "b", "lane_codes": ["b"]},
         ]
         data = load_from_dicts(custom, gh)
         assert data.column_groups == [
             ("ALPHA", "a1", ["a1", "a2"]),
-            ("BETA",  "b",  ["b"]),
+            ("BETA", "b", ["b"]),
         ]
         # Isolation: override must not mutate the module-level default
         assert data.column_groups is not COLUMN_GROUPS

@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
-from lyra.core.message import OutboundMessage
-from lyra.core.render_events import TextRenderEvent
+from lyra.core.messaging.message import OutboundMessage
+from lyra.core.messaging.render_events import TextRenderEvent
 
 from .conftest import make_dispatcher_msg
 
@@ -200,7 +200,7 @@ class TestOutboundDispatcherCircuitBreaker:
 def test_enqueue_accepts_outbound_message() -> None:
     """OutboundDispatcher.enqueue() must accept an OutboundMessage payload
     without raising TypeError (issue #138, U3)."""
-    from lyra.core.message import OutboundMessage
+    from lyra.core.messaging.message import OutboundMessage
 
     # Arrange
     adapter = MagicMock()

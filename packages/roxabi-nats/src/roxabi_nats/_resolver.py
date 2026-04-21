@@ -60,9 +60,7 @@ class _TypeHintResolver:
             try:
                 mod = importlib.import_module(module_path)
             except ImportError as exc:
-                raise ValueError(
-                    f"type_registry: cannot import {module_path}"
-                ) from exc
+                raise ValueError(f"type_registry: cannot import {module_path}") from exc
             if not hasattr(mod, type_name):
                 raise ValueError(
                     f"type_registry: {module_path} has no attribute {type_name}"

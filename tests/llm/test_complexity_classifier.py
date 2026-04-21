@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lyra.core.agent_config import Complexity
+from lyra.core.agent.agent_config import Complexity
 from lyra.llm.smart_routing import ComplexityClassifier
 
 

@@ -4,6 +4,7 @@ Run from the ``scripts/dep-graph`` directory::
 
     python -m v5.build [--active=grid]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -12,10 +13,7 @@ from pathlib import Path
 from . import compose
 from .data import load as loader
 
-OUT = (
-    Path.home()
-    / ".roxabi/forge/lyra/visuals/lyra-v2-dependency-graph-v5.1.html"
-)
+OUT = Path.home() / ".roxabi/forge/lyra/visuals/lyra-v2-dependency-graph-v5.1.html"
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -11,7 +11,7 @@ from collections.abc import Generator
 
 import pytest
 
-from lyra.core.processor_registry import registry
+from lyra.core.processors.processor_registry import registry
 
 
 @pytest.fixture(autouse=True)

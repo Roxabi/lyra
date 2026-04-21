@@ -1,4 +1,4 @@
-"""Tests for lyra.core.stream_processor — StreamProcessor (S3)."""
+"""Tests for lyra.core.processors.stream_processor — StreamProcessor (S3)."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ import ast
 from pathlib import Path
 from typing import AsyncIterator
 
-from lyra.core.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
-from lyra.core.render_events import (
+from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.messaging.render_events import (
     TextRenderEvent,
     ToolSummaryRenderEvent,
 )
-from lyra.core.stream_processor import StreamProcessor
-from lyra.core.tool_display_config import ToolDisplayConfig
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
+from lyra.core.processors.stream_processor import StreamProcessor
 
 # ---------------------------------------------------------------------------
 # Helpers

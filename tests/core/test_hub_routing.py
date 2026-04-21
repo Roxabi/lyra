@@ -8,7 +8,7 @@ import logging
 import pytest
 
 from lyra.core import Agent, AgentBase, Hub, Pool, Response
-from lyra.core.message import InboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, Platform
 from tests.core.conftest import MockAdapter, make_inbound_message, push_to_hub
 
 # ---------------------------------------------------------------------------
@@ -220,7 +220,7 @@ class TestMissingAdapterDrop:
 
 
 def test_generic_error_reply_is_user_facing_string() -> None:
-    from lyra.core.message import GENERIC_ERROR_REPLY
+    from lyra.core.messaging.message import GENERIC_ERROR_REPLY
 
     assert GENERIC_ERROR_REPLY == "Something went wrong. Please try again."
 

@@ -2,7 +2,7 @@
 
 All tests in this module are expected to FAIL until the backend-dev GREEN phase
 implements OutboundMessage, Button, CodeBlock, Attachment, ContentPart in
-lyra.core.message and exports them from lyra.core.
+lyra.core.messaging.message and exports them from lyra.core.
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from __future__ import annotations
 
 def test_outbound_message_importable() -> None:
     """OutboundMessage, Button, CodeBlock, Attachment, ContentPart must be
-    importable from lyra.core.message."""
+    importable from lyra.core.messaging.message."""
     # Arrange / Act / Assert — ImportError is the expected RED failure
-    from lyra.core.message import (
+    from lyra.core.messaging.message import (
         Attachment,
         Button,
         CodeBlock,
@@ -33,7 +33,7 @@ def test_outbound_message_importable() -> None:
 
 def test_from_text_factory() -> None:
     """OutboundMessage.from_text('hello world') returns the correct shape."""
-    from lyra.core.message import OutboundMessage
+    from lyra.core.messaging.message import OutboundMessage
 
     # Arrange
     text = "hello world"
@@ -50,7 +50,7 @@ def test_from_text_factory() -> None:
 
 def test_response_to_outbound() -> None:
     """Response(content='x').to_outbound() returns OutboundMessage with content=['x']."""  # noqa: E501
-    from lyra.core.message import OutboundMessage, Response
+    from lyra.core.messaging.message import OutboundMessage, Response
 
     # Arrange
     response = Response(content="x")
@@ -65,7 +65,7 @@ def test_response_to_outbound() -> None:
 
 def test_to_text_renders_code_block() -> None:
     """OutboundMessage.to_text() renders CodeBlock as a fenced code block string."""
-    from lyra.core.message import CodeBlock, OutboundMessage
+    from lyra.core.messaging.message import CodeBlock, OutboundMessage
 
     # Arrange
     outbound = OutboundMessage(content=[CodeBlock(code="x = 1", language="python")])
@@ -80,7 +80,7 @@ def test_to_text_renders_code_block() -> None:
 
 def test_to_text_renders_attachment() -> None:
     """OutboundMessage.to_text() renders MediaPart as 'url — caption'."""
-    from lyra.core.message import MediaPart, OutboundMessage
+    from lyra.core.messaging.message import MediaPart, OutboundMessage
 
     # Arrange
     outbound = OutboundMessage(
@@ -99,7 +99,7 @@ def test_to_text_renders_attachment() -> None:
 
 def test_to_text_multi_part() -> None:
     """OutboundMessage.to_text() joins multiple content parts with newlines."""
-    from lyra.core.message import CodeBlock, OutboundMessage
+    from lyra.core.messaging.message import CodeBlock, OutboundMessage
 
     # Arrange
     outbound = OutboundMessage(
@@ -138,7 +138,7 @@ def test_schema_version_constants_exist_and_equal_one() -> None:
 
     Slice 2 (issue #534): SCHEMA_VERSION_INBOUND_AUDIO removed with InboundAudio.
     """
-    from lyra.core.message import (
+    from lyra.core.messaging.message import (
         SCHEMA_VERSION_INBOUND_MESSAGE,
         SCHEMA_VERSION_OUTBOUND_MESSAGE,
     )

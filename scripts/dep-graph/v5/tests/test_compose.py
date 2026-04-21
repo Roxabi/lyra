@@ -1,4 +1,5 @@
 """Tests for v5.compose — full-page HTML assembly."""
+
 from __future__ import annotations
 
 import tempfile

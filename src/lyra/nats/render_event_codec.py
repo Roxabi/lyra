@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from lyra.core.render_events import (
+from lyra.core.messaging.render_events import (
     SCHEMA_VERSION_TEXT_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
     FileEditSummary,

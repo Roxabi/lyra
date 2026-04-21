@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.turn_store import TurnStore
 
-    from ..message import InboundMessage
+    from ..messaging.message import InboundMessage
     from ..stores.message_index import MessageIndex
 
 log = logging.getLogger(__name__)

@@ -33,9 +33,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.core.audio_payload import AudioPayload
-from lyra.core.inbound_bus import LocalBus
-from lyra.core.message import InboundMessage
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.inbound_bus import LocalBus
+from lyra.core.messaging.message import InboundMessage
 
 # ---------------------------------------------------------------------------
 # Helpers / stubs shared across this module

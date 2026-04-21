@@ -10,7 +10,7 @@ from pathlib import Path
 import typer
 
 from lyra.cli_agent import _AGENTS_DIR_OPT, _connect_store, agent_app
-from lyra.core.agent_config import _VALID_BACKENDS
+from lyra.core.agent.agent_config import _VALID_BACKENDS
 
 
 def _user_agents_dir() -> Path:

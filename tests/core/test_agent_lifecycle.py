@@ -6,9 +6,9 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 
 import pytest
 
-from lyra.core.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response
+from lyra.core.messaging.render_events import RenderEvent
 from lyra.core.pool import Pool
-from lyra.core.render_events import RenderEvent
 
 
 class TestAgentMemoryInjection:

@@ -9,11 +9,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_parser import CommandParser
-from lyra.core.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from lyra.core.processor_registry import registry
-from lyra.core.trust import TrustLevel
+from lyra.core.processors.processor_registry import registry
 from lyra.integrations.base import SessionTools
 from tests.helpers import reload_processors
 

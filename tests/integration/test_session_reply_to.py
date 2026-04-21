@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.hub.path_validation import resolve_context
-from lyra.core.message import InboundMessage
-from lyra.core.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage
 
 pytestmark = pytest.mark.asyncio
 

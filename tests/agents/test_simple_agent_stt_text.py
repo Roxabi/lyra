@@ -13,7 +13,7 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response
 from lyra.stt import TranscriptionResult
 
 from .conftest import (

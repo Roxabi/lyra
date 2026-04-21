@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
-import lyra.bootstrap.agent_factory as agent_factory_mod
-import lyra.bootstrap.unified as unified_mod
+import lyra.bootstrap.factory.agent_factory as agent_factory_mod
+import lyra.bootstrap.factory.unified as unified_mod
 from lyra.core.agent import Agent
-from lyra.core.agent_config import ModelConfig
+from lyra.core.agent.agent_config import ModelConfig
 from tests.conftest import patch_auth_config_test
 
 # ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ class TestAuthConfig:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Missing discord auth is allowed when telegram is configured."""
-        from lyra.core.agent_models import AgentRow
+        from lyra.core.agent.agent_models import AgentRow
 
         patch_auth_config_test(monkeypatch)
         # Use the multi-bot format (telegram_bots) since load_multibot_config

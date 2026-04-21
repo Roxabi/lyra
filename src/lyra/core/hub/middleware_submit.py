@@ -11,7 +11,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import cast
 
-from ..message import (
+from ..messaging.message import (
     InboundMessage,
     Platform,
 )

@@ -1,6 +1,6 @@
-"""Tests for lyra.core.render_events — RenderEvent type system (S1).
+"""Tests for lyra.core.messaging.render_events — RenderEvent type system (S1).
 
-Source: src/lyra/core/render_events.py
+Source: src/lyra/core/messaging/render_events.py
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from lyra.core.render_events import (
+from lyra.core.messaging.render_events import (
     FileEditSummary,
     RenderEvent,
     SilentCounts,
@@ -214,13 +214,15 @@ class TestRenderEventUnion:
         assert isinstance(e, ToolSummaryRenderEvent)
 
     def test_union_exported_from_module(self) -> None:
-        from lyra.core.render_events import RenderEvent as _RenderEvent  # noqa: F401
+        from lyra.core.messaging.render_events import (
+            RenderEvent as _RenderEvent,  # noqa: F401
+        )
 
         assert _RenderEvent is RenderEvent
 
     def test_all_exports_complete(self) -> None:
         """Ensure __all__ matches the exact expected public API."""
-        import lyra.core.render_events as _mod
+        import lyra.core.messaging.render_events as _mod
 
         assert set(_mod.__all__) == {
             "FileEditSummary",
@@ -248,8 +250,8 @@ class TestHexagonalBoundary:
         # Anchor to this file's location so the test works from any cwd.
         _root = Path(__file__).resolve().parent.parent.parent
         paths = [
-            _root / "src" / "lyra" / "core" / "events.py",
-            _root / "src" / "lyra" / "core" / "render_events.py",
+            _root / "src" / "lyra" / "core" / "messaging" / "events.py",
+            _root / "src" / "lyra" / "core" / "messaging" / "render_events.py",
         ]
         for path in paths:
             assert path.exists(), f"Source not found: {path}"

@@ -9,7 +9,7 @@ import time
 from typing import TYPE_CHECKING
 
 from ..circuit_breaker import CircuitBreaker
-from ..message import RoutingContext
+from ..messaging.message import RoutingContext
 from .outbound_errors import (
     _CIRCUIT_NOTIFY_DEBOUNCE,
     _CIRCUIT_OPEN_MSG,

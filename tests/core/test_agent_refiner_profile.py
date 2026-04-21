@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent_models import AgentRow
-from lyra.core.agent_refiner import (
+from lyra.core.agent.agent_models import AgentRow
+from lyra.core.agent.agent_refiner import (
     AgentRefiner,
     RefinementContext,
     RefinementPatch,

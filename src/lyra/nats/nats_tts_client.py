@@ -32,7 +32,7 @@ from roxabi_nats._tts_constants import _TTS_CONFIG_FIELDS
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 if TYPE_CHECKING:
-    from lyra.core.agent_config import AgentTTSConfig
+    from lyra.core.agent.agent_config import AgentTTSConfig
 
 log = logging.getLogger(__name__)
 

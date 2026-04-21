@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from lyra.core.agent_config import Complexity
+from lyra.core.agent.agent_config import Complexity
 
 
 @dataclass(frozen=True)

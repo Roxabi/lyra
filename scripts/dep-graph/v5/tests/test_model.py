@@ -1,4 +1,5 @@
 """Tests for v5.data.model — dataclass invariants and static config."""
+
 from __future__ import annotations
 
 import pytest
@@ -14,6 +15,7 @@ from v5.data.model import (
 )
 
 # ─── COLUMN_GROUPS ───────────────────────────────────────────────────────────
+
 
 class TestColumnGroups:
     def test_has_fifteen_entries(self):
@@ -42,6 +44,7 @@ class TestColumnGroups:
 
 # ─── MILESTONES ──────────────────────────────────────────────────────────────
 
+
 class TestMilestones:
     def test_has_twelve_entries(self):
         assert len(MILESTONES) == 12
@@ -49,8 +52,18 @@ class TestMilestones:
     def test_codes_cover_m0_through_fin(self):
         codes = [code for _, code, _ in MILESTONES]
         assert codes == [
-            "M0", "M1", "M2", "M3", "M4", "M5",
-            "M6", "M7", "M8", "M9", "M10", "FIN",
+            "M0",
+            "M1",
+            "M2",
+            "M3",
+            "M4",
+            "M5",
+            "M6",
+            "M7",
+            "M8",
+            "M9",
+            "M10",
+            "FIN",
         ]
 
     def test_ms_codes_list_matches(self):
@@ -67,6 +80,7 @@ class TestMilestones:
 
 
 # ─── EpicMeta ────────────────────────────────────────────────────────────────
+
 
 class TestEpicMeta:
     def test_frozen(self):
@@ -86,6 +100,7 @@ class TestEpicMeta:
 
 
 # ─── Lane ────────────────────────────────────────────────────────────────────
+
 
 class TestLane:
     def test_frozen(self):
@@ -110,6 +125,7 @@ class TestLane:
 
 # ─── ref_key ─────────────────────────────────────────────────────────────────
 
+
 class TestRefKey:
     def test_basic_format(self):
         ref = {"repo": "Roxabi/lyra", "issue": 5}
@@ -129,6 +145,7 @@ class TestRefKey:
 
 
 # ─── GraphData ───────────────────────────────────────────────────────────────
+
 
 class TestGraphData:
     def test_primary_repo(self):

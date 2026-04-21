@@ -6,9 +6,9 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 
-from lyra.core.agent_config import ModelConfig
+from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker
-from lyra.core.events import LlmEvent
+from lyra.core.messaging.events import LlmEvent
 from lyra.llm.base import LlmProvider, LlmResult
 
 log = logging.getLogger(__name__)

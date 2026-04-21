@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.message import InboundMessage, Platform
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Platform
 from roxabi_nats._serialize import serialize
 
 
@@ -47,7 +47,7 @@ def _make_nats_msg(data: dict) -> MagicMock:
 @pytest.mark.asyncio
 async def test_send_envelope_dispatches_to_adapter_send() -> None:
     """cache_inbound + send envelope -> adapter.send() called once."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -76,7 +76,7 @@ async def test_send_envelope_dispatches_to_adapter_send() -> None:
 @pytest.mark.asyncio
 async def test_send_unknown_stream_id_logs_warning_no_crash() -> None:
     """Unknown stream_id in send envelope -> warning logged, no crash."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -97,7 +97,7 @@ async def test_attachment_envelope_dispatches_to_render_attachment() -> None:
     """Attachment envelope -> adapter.render_attachment() called once."""
     import base64
 
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -125,7 +125,7 @@ async def test_attachment_envelope_dispatches_to_render_attachment() -> None:
 @pytest.mark.asyncio
 async def test_send_evicts_cache_entry() -> None:
     """send envelope -> cache entry removed after dispatch (eviction is unconditional)."""  # noqa: E501
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -149,7 +149,7 @@ async def test_send_evicts_cache_entry() -> None:
 @pytest.mark.asyncio
 async def test_chunk_envelope_triggers_send_streaming() -> None:
     """Chunk envelopes reassemble into a stream and call adapter.send_streaming()."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -180,7 +180,7 @@ async def test_chunk_envelope_triggers_send_streaming() -> None:
 @pytest.mark.asyncio
 async def test_start_subscribes_and_stop_unsubscribes() -> None:
     """start() subscribes to NATS subject; stop() unsubscribes."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     mock_sub = AsyncMock()
     nc = AsyncMock()
@@ -201,7 +201,7 @@ async def test_start_subscribes_and_stop_unsubscribes() -> None:
 @pytest.mark.asyncio
 async def test_stop_cancels_reaper_task() -> None:
     """stop() cancels the reaper task and sets _reaper_task to None."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     mock_sub = AsyncMock()
     nc = AsyncMock()
@@ -225,8 +225,8 @@ def test_cache_inbound_drops_when_full(caplog) -> None:
     """cache_inbound evicts oldest and warns when _cache is at max size."""
     import logging
 
-    from lyra.adapters._inbound_cache import MAX_SIZE
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.shared._inbound_cache import MAX_SIZE
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -244,7 +244,7 @@ def test_cache_inbound_drops_when_full(caplog) -> None:
         listener._cache._ts[fake.id] = 0.0
 
     overflow_msg = _make_tg_msg("overflow-msg")
-    _logger = "lyra.adapters._inbound_cache"
+    _logger = "lyra.adapters.shared._inbound_cache"
     with caplog.at_level(logging.WARNING, logger=_logger):
         listener.cache_inbound(overflow_msg)
 
@@ -262,7 +262,7 @@ async def test_stream_drops_when_at_max_streams(caplog) -> None:
     import asyncio
     import logging
 
-    from lyra.adapters.nats_outbound_listener import (
+    from lyra.adapters.nats.nats_outbound_listener import (
         _MAX_STREAMS,
         NatsOutboundListener,
     )
@@ -289,7 +289,7 @@ async def test_stream_drops_when_at_max_streams(caplog) -> None:
         "payload": {"text": "hello", "is_final": True},
         "done": True,
     }
-    _logger = "lyra.adapters.nats_outbound_listener"
+    _logger = "lyra.adapters.nats.nats_outbound_listener"
     with caplog.at_level(logging.WARNING, logger=_logger):
         await listener._handle(_make_nats_msg(chunk))
 
@@ -304,7 +304,7 @@ async def test_existing_stream_receives_chunks_at_capacity(caplog) -> None:
     import asyncio
     import logging
 
-    from lyra.adapters.nats_outbound_listener import (
+    from lyra.adapters.nats.nats_outbound_listener import (
         _MAX_STREAMS,
         NatsOutboundListener,
     )
@@ -336,7 +336,7 @@ async def test_existing_stream_receives_chunks_at_capacity(caplog) -> None:
         "payload": {"text": "hello", "is_final": True},
         "done": True,
     }
-    _logger = "lyra.adapters.nats_outbound_listener"
+    _logger = "lyra.adapters.nats.nats_outbound_listener"
     with caplog.at_level(logging.WARNING, logger=_logger):
         await listener._handle(_make_nats_msg(chunk))
 
@@ -354,8 +354,8 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
     import time
     import unittest.mock as mock
 
-    from lyra.adapters._inbound_cache import TTL_SECONDS, run_reaper
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.shared._inbound_cache import TTL_SECONDS, run_reaper
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -379,7 +379,7 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
     listener._cache._ts[fresh_id] = time.monotonic()
 
     # Wire up _stream_outbound and a mock task for the stale entry
-    from lyra.core.message import OutboundMessage
+    from lyra.core.messaging.message import OutboundMessage
 
     listener._stream_outbound[stale_id] = OutboundMessage(
         content=["x"], buttons=[], metadata={}
@@ -398,8 +398,8 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
         if call_count >= 2:
             raise asyncio.CancelledError
 
-    _target = "lyra.adapters._inbound_cache.asyncio.sleep"
-    _logger = "lyra.adapters._inbound_cache"
+    _target = "lyra.adapters.shared._inbound_cache.asyncio.sleep"
+    _logger = "lyra.adapters.shared._inbound_cache"
     with mock.patch(_target, side_effect=_sleep_once):
         with caplog.at_level(logging.WARNING, logger=_logger):
             try:
@@ -415,7 +415,7 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
 @pytest.mark.asyncio
 async def test_start_subscribes_with_queue_group() -> None:
     """NatsOutboundListener.start() passes queue_group to nc.subscribe()."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     # Arrange
     nc = AsyncMock()
@@ -440,7 +440,7 @@ async def test_start_subscribes_with_queue_group() -> None:
 @pytest.mark.asyncio
 async def test_default_queue_group_is_empty() -> None:
     """Default queue_group is empty string."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     # Arrange / Act
     nc = AsyncMock()
@@ -458,7 +458,7 @@ async def test_stream_error_enqueues_poison_pill() -> None:
     _handle_stream_error enqueues a poison-pill chunk into the active stream
     queue so _drain_stream terminates immediately.
     """
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -506,7 +506,7 @@ async def test_stream_error_enqueues_poison_pill() -> None:
 @pytest.mark.asyncio
 async def test_stream_error_missing_stream_id_is_noop() -> None:
     """stream_error with no stream_id is a no-op — no crash, no state change."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -529,8 +529,8 @@ async def test_stream_error_no_queue_cleans_cache() -> None:
     """stream_error with no active queue removes the cache entry."""
     import time
 
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.core.message import OutboundMessage
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+    from lyra.core.messaging.message import OutboundMessage
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -569,7 +569,7 @@ async def test_stream_error_unknown_stream_id_is_noop() -> None:
     publisher identity belongs at the NATS auth layer; this test guards the
     code-level blast-radius reduction.
     """
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -607,7 +607,7 @@ async def test_stream_error_queue_full_records_tombstone_without_exception() -> 
     the tombstone must be recorded so late chunks are rejected, and the original
     queue contents must be untouched (the poison pill is dropped).
     """
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -673,8 +673,8 @@ async def test_stream_error_queue_full_records_tombstone_without_exception() -> 
 @pytest.mark.asyncio
 async def test_send_version_mismatch_drops_and_increments_counter() -> None:
     """send envelope with schema_version > expected is dropped; counter incremented."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.core.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+    from lyra.core.messaging.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -702,8 +702,8 @@ async def test_send_version_mismatch_drops_and_increments_counter() -> None:
 @pytest.mark.asyncio
 async def test_stream_start_version_mismatch_drops_and_increments_counter() -> None:
     """stream_start envelope with schema_version > expected is dropped; counter incremented."""  # noqa: E501
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.core.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+    from lyra.core.messaging.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -733,8 +733,8 @@ async def test_attachment_version_mismatch_drops_and_increments_counter() -> Non
     """attachment envelope with schema_version > expected is dropped; counter incremented."""  # noqa: E501
     import base64
 
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.core.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+    from lyra.core.messaging.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -764,7 +764,7 @@ async def test_attachment_version_mismatch_drops_and_increments_counter() -> Non
 @pytest.mark.parametrize("schema_version", [None, 1])
 async def test_send_valid_version_is_accepted(schema_version) -> None:
     """send envelope with valid schema_version (absent or == 1) is accepted."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -806,10 +806,10 @@ async def test_version_mismatch_counter_flows_from_listener() -> None:
     import asyncio
     from unittest.mock import AsyncMock
 
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.adapters.nats_stream_decoder import decode_stream_events
-    from lyra.core.message import Platform
-    from lyra.core.render_events import TextRenderEvent
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_stream_decoder import decode_stream_events
+    from lyra.core.messaging.message import Platform
+    from lyra.core.messaging.render_events import TextRenderEvent
 
     # Arrange
     nc = AsyncMock()
@@ -867,7 +867,7 @@ async def test_version_mismatch_counter_flows_from_listener() -> None:
 @pytest.mark.asyncio
 async def test_stream_cache_miss_with_embedded_original_msg_delivers() -> None:
     """SC-7: cache miss + embedded original_msg -> send_streaming called."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     # Arrange
     nc = AsyncMock()
@@ -915,7 +915,7 @@ async def test_stream_cache_miss_bad_embedded_original_msg_warns_and_drains(
     caplog,
 ) -> None:
     """SC-7b: cache miss + malformed embedded original_msg -> warn + drain."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -934,7 +934,7 @@ async def test_stream_cache_miss_bad_embedded_original_msg_warns_and_drains(
         "done": True,
     }
 
-    _logger = "lyra.adapters.nats_outbound_listener"
+    _logger = "lyra.adapters.nats.nats_outbound_listener"
     with caplog.at_level(logging.WARNING, logger=_logger):
         await listener._handle(_make_nats_msg(done_chunk))
         task = listener._stream_tasks.get(stream_id)
@@ -954,7 +954,7 @@ async def test_stream_cache_miss_bad_embedded_original_msg_warns_and_drains(
 @pytest.mark.asyncio
 async def test_stream_cache_hit_does_not_use_stream_original_msgs() -> None:
     """SC-8: cache hit -> _stream_original_msgs unused and cleaned up after drain."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     # Arrange
     nc = AsyncMock()
@@ -998,7 +998,7 @@ async def test_stream_cache_hit_does_not_use_stream_original_msgs() -> None:
 @pytest.mark.asyncio
 async def test_stream_both_missing_warns_and_drains(caplog) -> None:
     """SC-9: no cache entry and no _stream_original_msgs -> warn + drain."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     # Arrange — no cache_inbound, no stream_start (so _stream_original_msgs is empty)
     nc = AsyncMock()
@@ -1016,7 +1016,7 @@ async def test_stream_both_missing_warns_and_drains(caplog) -> None:
         "done": True,
     }
 
-    _logger = "lyra.adapters.nats_outbound_listener"
+    _logger = "lyra.adapters.nats.nats_outbound_listener"
     with caplog.at_level(logging.WARNING, logger=_logger):
         await listener._handle(_make_nats_msg(done_chunk))
 
@@ -1033,9 +1033,9 @@ async def test_stream_both_missing_warns_and_drains(caplog) -> None:
 
 def test_remember_terminated_evicts_oldest_first(monkeypatch) -> None:
     """#569: FIFO eviction drops the oldest tombstone across the full sequence."""
-    from lyra.adapters import nats_stream_decoder as nsd
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.adapters.nats_stream_decoder import remember_terminated
+    from lyra.adapters.nats import nats_stream_decoder as nsd
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_stream_decoder import remember_terminated
 
     # Shrink the cap so the FIFO property is verified against a tiny sequence.
     monkeypatch.setattr(nsd, "_MAX_TERMINATED_STREAMS", 3)
@@ -1069,10 +1069,10 @@ def test_reap_tombstones_evicts_stale_entries(monkeypatch) -> None:
     Uses a frozen monotonic clock so the stale/fresh boundary can't drift
     under CI load.
     """
-    from lyra.adapters import nats_stream_decoder as nsd
-    from lyra.adapters._inbound_cache import TTL_SECONDS
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.adapters.nats_stream_decoder import reap_tombstones
+    from lyra.adapters.nats import nats_stream_decoder as nsd
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_stream_decoder import reap_tombstones
+    from lyra.adapters.shared._inbound_cache import TTL_SECONDS
 
     frozen = 1_000_000.0
     monkeypatch.setattr(nsd.time, "monotonic", lambda: frozen)
@@ -1102,9 +1102,9 @@ async def test_run_reaper_loop_wires_into_start_and_evicts_stale(monkeypatch) ->
     """
     import asyncio
 
-    from lyra.adapters import nats_stream_decoder as nsd
-    from lyra.adapters._inbound_cache import TTL_SECONDS
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats import nats_stream_decoder as nsd
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.shared._inbound_cache import TTL_SECONDS
 
     frozen = 2_000_000.0
     monkeypatch.setattr(nsd.time, "monotonic", lambda: frozen)
@@ -1151,8 +1151,8 @@ async def test_run_reaper_loop_survives_transient_exception(monkeypatch) -> None
     """
     import asyncio
 
-    from lyra.adapters import nats_stream_decoder as nsd
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats import nats_stream_decoder as nsd
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     call_count = 0
 
@@ -1194,7 +1194,7 @@ async def test_run_reaper_loop_survives_transient_exception(monkeypatch) -> None
 @pytest.mark.asyncio
 async def test_stop_clears_stream_original_msgs() -> None:
     """SC-11: stop() clears _stream_original_msgs dict."""
-    from lyra.adapters.nats_outbound_listener import NatsOutboundListener
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     # Arrange
     mock_sub = AsyncMock()

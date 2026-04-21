@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from ..message import InboundMessage
+from ..messaging.message import InboundMessage
 from ..pool import Pool
 from .middleware import PipelineContext
 from .pipeline_types import ResumeStatus

@@ -244,7 +244,7 @@ class TestDiscordAutoThread:
 
     def test_discord_config_auto_thread_default_true(self) -> None:
         """DiscordConfig() has auto_thread=True by default (S5-5)."""
-        from lyra.adapters.discord_config import DiscordConfig
+        from lyra.adapters.discord.discord_config import DiscordConfig
 
         # Arrange / Act
         config = DiscordConfig(token="dummy-token")
@@ -266,7 +266,7 @@ class TestPersistThreadSessionEviction:
         """Cache at 500 entries: adding one more evicts oldest, inserts new."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.adapters.discord_threads import persist_thread_session
+        from lyra.adapters.discord.discord_threads import persist_thread_session
 
         # Arrange — cache pre-filled to the limit (500 entries)
         cache: dict[str, tuple[str, str]] = {str(i): ("s", "p") for i in range(500)}
@@ -348,7 +348,7 @@ class TestPersistThreadClaimFailurePath:
 
         # Patch persist_thread_claim to raise
         with patch(
-            "lyra.adapters.discord_inbound.persist_thread_claim",
+            "lyra.adapters.discord.discord_inbound.persist_thread_claim",
             AsyncMock(side_effect=RuntimeError("DB error")),
         ):
             # Act — must not raise

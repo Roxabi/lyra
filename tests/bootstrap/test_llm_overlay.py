@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from lyra.bootstrap.llm_overlay import init_nats_llm
+from lyra.bootstrap.factory.llm_overlay import init_nats_llm
 from lyra.llm.drivers.nats_driver import NatsLlmDriver
 
 

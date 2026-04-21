@@ -12,7 +12,7 @@ Usage::
 
     import nats
     from lyra.nats.nats_bus import NatsBus
-    from lyra.core.message import InboundMessage, Platform
+    from lyra.core.messaging.message import InboundMessage, Platform
 
     nc = await nats.connect("nats://localhost:4222")
     bus: Bus[InboundMessage] = NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
@@ -41,7 +41,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     SCHEMA_VERSION_INBOUND_MESSAGE,
     InboundMessage,
     Platform,

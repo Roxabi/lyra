@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
 from tests.core.conftest import make_auth_store
 
 # ---------------------------------------------------------------------------

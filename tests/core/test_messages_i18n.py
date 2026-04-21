@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.messages import MessageManager
 
 from .conftest import MESSAGES_TOML_PATH
 
@@ -98,8 +98,8 @@ class TestAgentI18nLanguage:
 
     def test_i18n_language_defaults_to_en(self) -> None:
         # Arrange -- AgentRow without explicit fallback_language (defaults to "en")
-        from lyra.core.agent_db_loader import agent_row_to_config
-        from lyra.core.agent_models import AgentRow
+        from lyra.core.agent.agent_db_loader import agent_row_to_config
+        from lyra.core.agent.agent_models import AgentRow
 
         row = AgentRow(
             name="nolangage",
@@ -115,8 +115,8 @@ class TestAgentI18nLanguage:
 
     def test_i18n_language_reads_fr(self) -> None:
         # Arrange -- AgentRow with fallback_language = "fr"
-        from lyra.core.agent_db_loader import agent_row_to_config
-        from lyra.core.agent_models import AgentRow
+        from lyra.core.agent.agent_db_loader import agent_row_to_config
+        from lyra.core.agent.agent_models import AgentRow
 
         row = AgentRow(
             name="frenchagent",
@@ -133,8 +133,8 @@ class TestAgentI18nLanguage:
 
     def test_i18n_language_explicit_en(self) -> None:
         # Arrange -- AgentRow explicitly sets "en"
-        from lyra.core.agent_db_loader import agent_row_to_config
-        from lyra.core.agent_models import AgentRow
+        from lyra.core.agent.agent_db_loader import agent_row_to_config
+        from lyra.core.agent.agent_models import AgentRow
 
         row = AgentRow(
             name="enagent",
@@ -165,9 +165,9 @@ class TestHotReloadPreservesMsgManager:
         from unittest.mock import MagicMock
 
         from lyra.core.agent import Agent, AgentBase
-        from lyra.core.agent_config import ModelConfig
-        from lyra.core.agent_models import AgentRow
-        from lyra.core.message import InboundMessage, Response
+        from lyra.core.agent.agent_config import ModelConfig
+        from lyra.core.agent.agent_models import AgentRow
+        from lyra.core.messaging.message import InboundMessage, Response
         from lyra.core.pool import Pool
 
         # Create a concrete subclass of AgentBase for testing
@@ -220,9 +220,9 @@ class TestHotReloadPreservesMsgManager:
         import os
 
         from lyra.core.agent import Agent, AgentBase
-        from lyra.core.agent_config import ModelConfig
+        from lyra.core.agent.agent_config import ModelConfig
         from lyra.core.commands.command_router import CommandRouter
-        from lyra.core.message import InboundMessage, Response
+        from lyra.core.messaging.message import InboundMessage, Response
         from lyra.core.pool import Pool
 
         # Create a plugins directory with a minimal echo plugin
@@ -240,7 +240,7 @@ class TestHotReloadPreservesMsgManager:
         )
         handlers_path = plugin_dir / "handlers.py"
         handlers_path.write_text(
-            "from lyra.core.message import Response, InboundMessage\n"
+            "from lyra.core.messaging.message import Response, InboundMessage\n"
             "from lyra.core.pool import Pool\n"
             "async def cmd_echo("
             "msg: InboundMessage, pool: Pool, args: list[str]) -> Response:\n"
@@ -281,7 +281,7 @@ class TestHotReloadPreservesMsgManager:
         # Act -- simulate plugin handlers.py change (content + mtime)
         old_cr = agent.command_router
         handlers_path.write_text(
-            "from lyra.core.message import Response, InboundMessage\n"
+            "from lyra.core.messaging.message import Response, InboundMessage\n"
             "from lyra.core.pool import Pool\n"
             "async def cmd_echo("
             "msg: InboundMessage, pool: Pool, args: list[str]) -> Response:\n"
@@ -302,8 +302,8 @@ class TestHotReloadPreservesMsgManager:
         """When msg_manager is not passed, command_router._msg_manager is None
         (backward-compatible with existing code paths -- SC-9)."""
         from lyra.core.agent import Agent, AgentBase
-        from lyra.core.agent_config import ModelConfig
-        from lyra.core.message import InboundMessage, Response
+        from lyra.core.agent.agent_config import ModelConfig
+        from lyra.core.messaging.message import InboundMessage, Response
         from lyra.core.pool import Pool
 
         class ConcreteAgent(AgentBase):

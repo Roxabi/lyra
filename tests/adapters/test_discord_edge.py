@@ -10,9 +10,9 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messages import MessageManager
-from lyra.core.trust import TrustLevel
+from lyra.core.messaging.messages import MessageManager
 
 from .conftest import attach_typing_cm
 
@@ -52,7 +52,7 @@ def test_missing_discord_token_raises_on_load(
     """load_discord_config() raises SystemExit when DISCORD_TOKEN env var is absent."""
     monkeypatch.delenv("DISCORD_TOKEN", raising=False)
 
-    from lyra.adapters.discord_config import load_discord_config
+    from lyra.adapters.discord.discord_config import load_discord_config
 
     with pytest.raises(SystemExit, match="DISCORD_TOKEN"):
         load_discord_config()
@@ -202,7 +202,7 @@ async def test_send_skips_when_discord_circuit_open() -> None:
     CB check is owned by OutboundDispatcher. Adapter always delivers.
     """
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage, OutboundMessage
+    from lyra.core.messaging.message import InboundMessage, OutboundMessage
 
     # Arrange
     registry = _make_open_registry("discord")
@@ -307,7 +307,7 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
 def test_normalize_empty_text() -> None:
     """normalize() with content="" produces msg.text == ""."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",

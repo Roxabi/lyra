@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.message import InboundMessage, OutboundMessage
-from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, OutboundMessage
+from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -237,7 +237,7 @@ class TestTelegramStreaming:
         """When outbound.intermediate=True, _start_typing is called after send."""
         adapter, _ = self._make_adapter()
         msg = make_tg_message()
-        from lyra.core.message import OutboundMessage
+        from lyra.core.messaging.message import OutboundMessage
 
         outbound = OutboundMessage.from_text("")
         outbound.intermediate = True
@@ -425,7 +425,7 @@ class TestDiscordStreaming:
         """When outbound.intermediate=True, _start_typing is called after send."""
         adapter, _, _ = self._make_adapter()
         msg = make_dc_message()
-        from lyra.core.message import OutboundMessage
+        from lyra.core.messaging.message import OutboundMessage
 
         outbound = OutboundMessage.from_text("")
         outbound.intermediate = True
@@ -583,7 +583,7 @@ class TestDiscordIntermediateText:
 
     async def test_intermediate_truncates_to_discord_max(self) -> None:
         """Intermediate text longer than DISCORD_MAX_LENGTH is tail-truncated."""
-        from lyra.adapters._shared import DISCORD_MAX_LENGTH
+        from lyra.adapters.shared._shared import DISCORD_MAX_LENGTH
 
         adapter, _, placeholder = self._make_adapter()
         msg = make_dc_message()

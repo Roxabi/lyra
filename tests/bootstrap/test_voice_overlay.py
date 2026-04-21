@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.bootstrap.voice_overlay import (
+from lyra.bootstrap.factory.voice_overlay import (
     init_nats_stt,
     init_nats_tts,
     probe_voice_services,

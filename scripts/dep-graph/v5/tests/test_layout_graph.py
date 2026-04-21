@@ -1,4 +1,5 @@
 """Tests for v5.data.layout_graph — DAG positioning math."""
+
 from __future__ import annotations
 
 import pytest
@@ -15,6 +16,7 @@ from v5.data.layout_graph import (
 )
 
 # ─── ms_idx ──────────────────────────────────────────────────────────────────
+
 
 class TestMsIdx:
     def test_m0_returns_0(self):
@@ -64,6 +66,7 @@ class TestMsIdx:
 
 # ─── edge_path ───────────────────────────────────────────────────────────────
 
+
 class TestEdgePath:
     def test_starts_with_M(self):
         path = edge_path(10.0, 20.0, 50.0, 60.0)
@@ -103,8 +106,13 @@ class TestEdgePath:
 
 # ─── layout_grid ─────────────────────────────────────────────────────────────
 
+
 def _make_task(
-    num: int, ms: str, lane: str, depth: int, repo: str = "Roxabi/lyra",
+    num: int,
+    ms: str,
+    lane: str,
+    depth: int,
+    repo: str = "Roxabi/lyra",
 ) -> dict:
     return {
         "key": f"{repo}#{num}",
@@ -149,8 +157,9 @@ class TestLayoutGrid:
         tasks = self._fixture_tasks()
         node_records, _, _ = layout_grid(tasks)
         for n in node_records:
-            assert LANE_X_START <= n["x"] <= LANE_X_END, \
+            assert LANE_X_START <= n["x"] <= LANE_X_END, (
                 f"x={n['x']} out of [{LANE_X_START}, {LANE_X_END}]"
+            )
 
     def test_all_y_in_bounds(self):
         tasks = self._fixture_tasks()
@@ -212,6 +221,7 @@ class TestLayoutGrid:
 
 
 # ─── ms_vertical_extents ─────────────────────────────────────────────────────
+
 
 class TestMsVerticalExtents:
     def test_top_less_than_bot(self):
@@ -292,11 +302,15 @@ class TestLayoutGridKwargs:
         ]
         # Default-ish lane_order: 'a1' before 'b'.
         nodes_default, _, _ = layout_grid(
-            tasks, lane_order=["a1", "b"], ms_codes=["P0"],
+            tasks,
+            lane_order=["a1", "b"],
+            ms_codes=["P0"],
         )
         # Reversed order — 'b' before 'a1'.
         nodes_reversed, _, _ = layout_grid(
-            tasks, lane_order=["b", "a1"], ms_codes=["P0"],
+            tasks,
+            lane_order=["b", "a1"],
+            ms_codes=["P0"],
         )
         x_by_num_default = {n["task"]["num"]: n["x"] for n in nodes_default}
         x_by_num_reversed = {n["task"]["num"]: n["x"] for n in nodes_reversed}

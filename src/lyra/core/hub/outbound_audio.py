@@ -17,10 +17,14 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
-from ..message import InboundMessage
+from ..messaging.message import InboundMessage
 
 if TYPE_CHECKING:
-    from ..message import OutboundAttachment, OutboundAudio, OutboundAudioChunk
+    from ..messaging.message import (
+        OutboundAttachment,
+        OutboundAudio,
+        OutboundAudioChunk,
+    )
 
 # Type alias for OutboundRouter._route_outbound (variadic to accommodate
 # `resource=` kwarg; see outbound_router.py for concrete signature)

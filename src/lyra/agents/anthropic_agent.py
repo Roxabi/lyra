@@ -14,10 +14,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.agent_config import ModelConfig
+from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import InboundMessage, Response
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.message import InboundMessage, Response
+from lyra.core.messaging.messages import MessageManager
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 from lyra.llm.base import LlmProvider
@@ -99,7 +99,7 @@ class AnthropicAgent(AgentBase):
         follow-up questions.
         """
         importlib.import_module("lyra.core.processors")  # trigger self-registration
-        from lyra.core.processor_registry import registry
+        from lyra.core.processors.processor_registry import registry
         from lyra.integrations.base import SessionTools
         from lyra.integrations.vault_cli import VaultCli
         from lyra.integrations.web_intel import WebIntelScraper

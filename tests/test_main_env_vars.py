@@ -31,7 +31,7 @@ class TestMissingEnvVars:
     def test_missing_discord_token_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DISCORD_TOKEN", raising=False)
 
-        from lyra.adapters.discord_config import load_discord_config
+        from lyra.adapters.discord.discord_config import load_discord_config
 
         with pytest.raises(SystemExit, match="DISCORD_TOKEN"):
             load_discord_config()

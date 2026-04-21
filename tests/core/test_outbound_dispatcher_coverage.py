@@ -19,8 +19,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 from lyra.core.hub.outbound_errors import _SCOPE_REAP_THRESHOLD
-from lyra.core.message import InboundMessage, OutboundMessage, RoutingContext
-from lyra.core.render_events import TextRenderEvent
+from lyra.core.messaging.message import InboundMessage, OutboundMessage, RoutingContext
+from lyra.core.messaging.render_events import TextRenderEvent
 
 from .conftest import make_dispatcher_msg
 

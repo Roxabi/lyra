@@ -8,7 +8,7 @@ on the Hub.
 from __future__ import annotations
 
 from lyra.core.hub.hub_protocol import RoutingKey
-from lyra.core.message import Platform
+from lyra.core.messaging.message import Platform
 from tests.core.conftest import MockAdapter, _make_hub
 
 

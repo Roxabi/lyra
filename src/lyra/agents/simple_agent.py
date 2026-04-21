@@ -15,16 +15,16 @@ from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     GENERIC_ERROR_REPLY,
     InboundMessage,
     Response,
 )
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.messages import MessageManager
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.pool import Pool
+from lyra.core.processors.stream_processor import StreamProcessor
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
-from lyra.core.stream_processor import StreamProcessor
-from lyra.core.tool_display_config import ToolDisplayConfig
 from lyra.llm.base import LlmProvider
 
 from .simple_agent_prompts import STTError, STTNoiseError, build_llm_text
@@ -34,8 +34,8 @@ _AGENTS_DIR = Path(__file__).resolve().parent
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from lyra.core.cli_pool import CliPool
-    from lyra.core.render_events import RenderEvent
+    from lyra.core.cli.cli_pool import CliPool
+    from lyra.core.messaging.render_events import RenderEvent
     from lyra.infrastructure.stores.agent_store import AgentStore
     from lyra.stt import STTProtocol
     from lyra.tts import TtsProtocol
@@ -118,7 +118,7 @@ class SimpleAgent(AgentBase):
     def _register_session_commands(self) -> None:
         """Store SessionTools; register processor cmds as passthroughs (B2, #363)."""
         importlib.import_module("lyra.core.processors")  # trigger self-registration
-        from lyra.core.processor_registry import registry
+        from lyra.core.processors.processor_registry import registry
         from lyra.integrations.base import SessionTools
         from lyra.integrations.vault_cli import VaultCli
         from lyra.integrations.web_intel import WebIntelScraper

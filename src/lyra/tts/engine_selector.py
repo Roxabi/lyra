@@ -10,7 +10,7 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from lyra.core.agent_config import AgentTTSConfig
+    from lyra.core.agent.agent_config import AgentTTSConfig
 
 
 class TTSConfig(BaseModel):

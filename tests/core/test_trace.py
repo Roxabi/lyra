@@ -207,7 +207,7 @@ class TestPoolIdContextVar:
         from unittest.mock import MagicMock
 
         from lyra.core.hub.hub import Binding, RoutingKey
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         captured_pool_ids: list[str | None] = []
 
@@ -287,7 +287,8 @@ class TestTelegramTokenFilter:
 
         filt = TelegramTokenFilter()
         record = self._make_record(
-            "calling %s", "https://api.telegram.org/bot999:secret_token_xyz-123/sendMessage"
+            "calling %s",
+            "https://api.telegram.org/bot999:secret_token_xyz-123/sendMessage",
         )
         filt.filter(record)
         assert "secret_token_xyz-123" not in record.getMessage()

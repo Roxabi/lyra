@@ -15,11 +15,11 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-from lyra.core.processor_registry import BaseProcessor
+from lyra.core.processors.processor_registry import BaseProcessor
 from lyra.integrations.base import ScrapeFailed
 
 if TYPE_CHECKING:
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage
 
 log = logging.getLogger(__name__)
 

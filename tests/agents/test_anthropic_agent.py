@@ -11,10 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent import Agent
-from lyra.core.agent_config import ModelConfig
-from lyra.core.message import InboundMessage
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage
 from lyra.core.pool import Pool
-from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
 from tests.helpers import reload_processors
 
@@ -111,7 +111,7 @@ class TestConstruction:
 class TestProcess:
     async def test_process_returns_response_with_text(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
-        from lyra.core.message import Response
+        from lyra.core.messaging.message import Response
 
         provider = make_mock_provider("Hello world!")
         agent = AnthropicAgent(make_config(), provider)
@@ -263,7 +263,7 @@ class TestOverlayAppliedInProcess:
         """process() uses overlaid model and system including style + language."""
         # Arrange
         from lyra.agents.anthropic_agent import AnthropicAgent
-        from lyra.core.agent_config import ModelConfig
+        from lyra.core.agent.agent_config import ModelConfig
         from lyra.core.runtime_config import RuntimeConfig
 
         config = make_config(system_prompt="Base prompt.")
@@ -344,7 +344,7 @@ class TestSessionCommandWiring:
 
     def test_session_handlers_have_correct_descriptions(self) -> None:
         from lyra.agents.anthropic_agent import AnthropicAgent
-        from lyra.core.processor_registry import registry
+        from lyra.core.processors.processor_registry import registry
 
         reload_processors()
         provider = make_mock_provider()

@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-import lyra.bootstrap.config as config_mod
-from lyra.bootstrap.config import (
+import lyra.bootstrap.factory.config as config_mod
+from lyra.bootstrap.factory.config import (
     _load_circuit_config,
     _load_raw_config,
 )
@@ -171,7 +171,7 @@ class TestLoadCliPoolConfig:
 
     def test_defaults_when_section_missing(self) -> None:
         """SC-1: Missing [cli_pool] → hardcoded defaults preserved."""
-        from lyra.bootstrap.config import _load_cli_pool_config
+        from lyra.bootstrap.factory.config import _load_cli_pool_config
 
         result = _load_cli_pool_config({})
         assert result.idle_ttl == 1200
@@ -180,7 +180,7 @@ class TestLoadCliPoolConfig:
 
     def test_overrides_from_toml(self) -> None:
         """SC-1: TOML values override defaults."""
-        from lyra.bootstrap.config import _load_cli_pool_config
+        from lyra.bootstrap.factory.config import _load_cli_pool_config
 
         raw = {
             "cli_pool": {
@@ -196,7 +196,7 @@ class TestLoadCliPoolConfig:
 
     def test_partial_override_keeps_defaults(self) -> None:
         """SC-1: Only turn_timeout set → idle_ttl and default_timeout keep defaults."""
-        from lyra.bootstrap.config import _load_cli_pool_config
+        from lyra.bootstrap.factory.config import _load_cli_pool_config
 
         raw = {"cli_pool": {"turn_timeout": 600}}
         result = _load_cli_pool_config(raw)
@@ -215,7 +215,7 @@ class TestLoadPoolConfig:
 
     def test_defaults_when_section_missing(self) -> None:
         """Missing [pool] → hardcoded defaults returned."""
-        from lyra.bootstrap.config import _load_pool_config
+        from lyra.bootstrap.factory.config import _load_pool_config
 
         result = _load_pool_config({})
         assert result.max_sdk_history == 50
@@ -223,7 +223,7 @@ class TestLoadPoolConfig:
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
-        from lyra.bootstrap.config import _load_pool_config
+        from lyra.bootstrap.factory.config import _load_pool_config
 
         raw = {"pool": {"max_sdk_history": 100, "safe_dispatch_timeout": 30.0}}
         result = _load_pool_config(raw)
@@ -232,7 +232,7 @@ class TestLoadPoolConfig:
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only max_sdk_history set → safe_dispatch_timeout keeps default."""
-        from lyra.bootstrap.config import _load_pool_config
+        from lyra.bootstrap.factory.config import _load_pool_config
 
         raw = {"pool": {"max_sdk_history": 200}}
         result = _load_pool_config(raw)
@@ -250,7 +250,7 @@ class TestLoadLlmConfig:
 
     def test_defaults_when_section_missing(self) -> None:
         """Missing [llm] → hardcoded defaults returned."""
-        from lyra.bootstrap.config import _load_llm_config
+        from lyra.bootstrap.factory.config import _load_llm_config
 
         result = _load_llm_config({})
         assert result.max_retries == 3
@@ -258,7 +258,7 @@ class TestLoadLlmConfig:
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
-        from lyra.bootstrap.config import _load_llm_config
+        from lyra.bootstrap.factory.config import _load_llm_config
 
         raw = {"llm": {"max_retries": 5, "backoff_base": 2.0}}
         result = _load_llm_config(raw)
@@ -267,7 +267,7 @@ class TestLoadLlmConfig:
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only max_retries set → backoff_base keeps default."""
-        from lyra.bootstrap.config import _load_llm_config
+        from lyra.bootstrap.factory.config import _load_llm_config
 
         raw = {"llm": {"max_retries": 10}}
         result = _load_llm_config(raw)
@@ -285,7 +285,7 @@ class TestLoadInboundBusConfig:
 
     def test_defaults_when_section_missing(self) -> None:
         """Missing [inbound_bus] → hardcoded defaults returned."""
-        from lyra.bootstrap.config import _load_inbound_bus_config
+        from lyra.bootstrap.factory.config import _load_inbound_bus_config
 
         result = _load_inbound_bus_config({})
         assert result.queue_depth_threshold == 100
@@ -294,7 +294,7 @@ class TestLoadInboundBusConfig:
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
-        from lyra.bootstrap.config import _load_inbound_bus_config
+        from lyra.bootstrap.factory.config import _load_inbound_bus_config
 
         raw = {
             "inbound_bus": {
@@ -310,7 +310,7 @@ class TestLoadInboundBusConfig:
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only staging_maxsize set → other keys keep defaults."""
-        from lyra.bootstrap.config import _load_inbound_bus_config
+        from lyra.bootstrap.factory.config import _load_inbound_bus_config
 
         raw = {"inbound_bus": {"staging_maxsize": 2000}}
         result = _load_inbound_bus_config(raw)
@@ -329,7 +329,7 @@ class TestLoadDebouncerConfig:
 
     def test_defaults_when_section_missing(self) -> None:
         """Missing [debouncer] → hardcoded defaults returned."""
-        from lyra.bootstrap.config import _load_debouncer_config
+        from lyra.bootstrap.factory.config import _load_debouncer_config
 
         result = _load_debouncer_config({})
         assert result.default_debounce_ms == 300
@@ -337,7 +337,7 @@ class TestLoadDebouncerConfig:
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
-        from lyra.bootstrap.config import _load_debouncer_config
+        from lyra.bootstrap.factory.config import _load_debouncer_config
 
         raw = {"debouncer": {"default_debounce_ms": 500, "max_merged_chars": 8192}}
         result = _load_debouncer_config(raw)
@@ -346,7 +346,7 @@ class TestLoadDebouncerConfig:
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only max_merged_chars set → default_debounce_ms keeps default."""
-        from lyra.bootstrap.config import _load_debouncer_config
+        from lyra.bootstrap.factory.config import _load_debouncer_config
 
         raw = {"debouncer": {"max_merged_chars": 1024}}
         result = _load_debouncer_config(raw)
@@ -361,14 +361,14 @@ class TestLoadDebouncerConfig:
 
 class TestBuildAgentOverrides:
     def test_defaults_only(self) -> None:
-        from lyra.bootstrap.config import _build_agent_overrides
+        from lyra.bootstrap.factory.config import _build_agent_overrides
 
         raw = {"defaults": {"cwd": "/tmp"}}
         result = _build_agent_overrides(raw, "test")
         assert result.cwd == "/tmp"
 
     def test_agent_specific_wins(self) -> None:
-        from lyra.bootstrap.config import _build_agent_overrides
+        from lyra.bootstrap.factory.config import _build_agent_overrides
 
         raw = {
             "defaults": {"cwd": "/default"},
@@ -378,7 +378,7 @@ class TestBuildAgentOverrides:
         assert result.cwd == "/specific"
 
     def test_workspace_deep_merge(self) -> None:
-        from lyra.bootstrap.config import _build_agent_overrides
+        from lyra.bootstrap.factory.config import _build_agent_overrides
 
         raw = {
             "defaults": {"workspaces": {"a": "/a", "b": "/b"}},
@@ -388,7 +388,7 @@ class TestBuildAgentOverrides:
         assert result.workspaces == {"a": "/a", "b": "/b2", "c": "/c"}
 
     def test_empty_config(self) -> None:
-        from lyra.bootstrap.config import _build_agent_overrides
+        from lyra.bootstrap.factory.config import _build_agent_overrides
 
         result = _build_agent_overrides({}, "nonexistent")
         assert result.cwd is None

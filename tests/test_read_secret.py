@@ -1,4 +1,4 @@
-"""Tests for lyra.bootstrap.health._read_secret."""
+"""Tests for lyra.bootstrap.infra.health._read_secret."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.bootstrap.health import _read_secret
+from lyra.bootstrap.infra.health import _read_secret
 
 
 class TestReadSecret:

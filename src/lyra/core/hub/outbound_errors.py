@@ -10,7 +10,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ..message import InboundMessage
+    from ..messaging.message import InboundMessage
 
 log = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ async def try_notify_user(
         )
         return
     try:
-        from ..message import OutboundMessage as _OM
+        from ..messaging.message import OutboundMessage as _OM
 
         outbound = _OM(content=[text])
         await adapter.send(msg, outbound)

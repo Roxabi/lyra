@@ -21,8 +21,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent_config import ModelConfig
-from lyra.core.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from lyra.llm.drivers.nats_driver import HB_TTL, NatsLlmDriver
 
 # ---------------------------------------------------------------------------

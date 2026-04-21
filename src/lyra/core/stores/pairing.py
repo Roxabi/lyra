@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.auth_store import AuthStore
 
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
 from lyra.infrastructure.stores.sqlite_base import SqliteStore
 
 from .pairing_config import (

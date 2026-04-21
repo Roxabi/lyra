@@ -15,12 +15,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from lyra.bootstrap.config import (
+from lyra.bootstrap.factory.config import (
     LoggingConfig,
     _load_logging_config,
     _load_raw_config,
 )
-from lyra.bootstrap.unified import _bootstrap_unified
+from lyra.bootstrap.factory.unified import _bootstrap_unified
 from lyra.core.trace import JsonFormatter, TelegramTokenFilter, TraceIdFilter
 from lyra.errors import KeyringError, MissingCredentialsError
 

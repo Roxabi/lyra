@@ -10,10 +10,10 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-from lyra.core.bus import Bus
 from lyra.core.hub import Hub
-from lyra.core.inbound_bus import LocalBus
-from lyra.core.message import InboundMessage, Platform
+from lyra.core.messaging.bus import Bus
+from lyra.core.messaging.inbound_bus import LocalBus
+from lyra.core.messaging.message import InboundMessage, Platform
 from tests.core.conftest import MockAdapter
 
 # ---------------------------------------------------------------------------

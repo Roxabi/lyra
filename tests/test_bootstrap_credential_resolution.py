@@ -16,8 +16,8 @@ import pytest
 
 import lyra.__main__ as main_mod
 import lyra.bootstrap.bootstrap_stores as stores_mod
-import lyra.bootstrap.bootstrap_wiring as wiring_mod
-from lyra.core.authenticator import Authenticator as AuthMiddleware
+import lyra.bootstrap.wiring.bootstrap_wiring as wiring_mod
+from lyra.core.auth.authenticator import Authenticator as AuthMiddleware
 from tests.conftest import (
     _FakeDcAdapter,
     _FakeTgAdapter,

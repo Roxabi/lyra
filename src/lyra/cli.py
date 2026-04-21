@@ -86,7 +86,7 @@ def _boot(coro_factory) -> None:
     is always configured before the event loop starts.
     """
     from lyra.__main__ import _setup_logging
-    from lyra.bootstrap.config import _load_logging_config, _load_raw_config
+    from lyra.bootstrap.factory.config import _load_logging_config, _load_raw_config
 
     raw_config = _load_raw_config()
     _setup_logging(_load_logging_config(raw_config))
@@ -94,7 +94,7 @@ def _boot(coro_factory) -> None:
 
 
 def _run_hub() -> None:
-    from lyra.bootstrap.hub_standalone import _bootstrap_hub_standalone
+    from lyra.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
 
     _boot(_bootstrap_hub_standalone)
 
@@ -119,7 +119,9 @@ def _adapter_discord() -> None:
 @adapter_app.command("stt")
 def _adapter_stt() -> None:
     """Start the standalone STT adapter connected to NATS."""
-    from lyra.bootstrap.stt_adapter_standalone import _bootstrap_stt_adapter_standalone
+    from lyra.bootstrap.standalone.stt_adapter_standalone import (
+        _bootstrap_stt_adapter_standalone,
+    )
 
     _boot(_bootstrap_stt_adapter_standalone)
 
@@ -127,13 +129,17 @@ def _adapter_stt() -> None:
 @adapter_app.command("tts")
 def _adapter_tts() -> None:
     """Start the standalone TTS adapter connected to NATS."""
-    from lyra.bootstrap.tts_adapter_standalone import _bootstrap_tts_adapter_standalone
+    from lyra.bootstrap.standalone.tts_adapter_standalone import (
+        _bootstrap_tts_adapter_standalone,
+    )
 
     _boot(_bootstrap_tts_adapter_standalone)
 
 
 def _run_adapter(platform: str) -> None:
-    from lyra.bootstrap.adapter_standalone import _bootstrap_adapter_standalone
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
 
     _boot(lambda raw: _bootstrap_adapter_standalone(raw, platform))
 
@@ -181,7 +187,7 @@ def start() -> None:
 
 
 def _run_server() -> None:
-    from lyra.bootstrap.unified import _bootstrap_unified
+    from lyra.bootstrap.factory.unified import _bootstrap_unified
 
     _boot(_bootstrap_unified)
 

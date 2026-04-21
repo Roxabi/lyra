@@ -36,7 +36,7 @@ async def on_ready(adapter: "DiscordAdapter") -> None:
     # Restore hot threads from ThreadStore on startup.
     if adapter._thread_store is not None:
         try:
-            from lyra.adapters.discord_threads import restore_hot_threads
+            from lyra.adapters.discord.discord_threads import restore_hot_threads
 
             adapter._owned_threads = await restore_hot_threads(
                 adapter._thread_store, adapter._bot_id, adapter._thread_hot_hours

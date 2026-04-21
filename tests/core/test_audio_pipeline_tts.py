@@ -14,13 +14,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent_config import AgentTTSConfig
+from lyra.core.agent.agent_config import AgentTTSConfig
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.hub import Hub
 from lyra.core.hub.hub_protocol import ChannelAdapter
-from lyra.core.message import InboundMessage, Platform, Response
+from lyra.core.messaging.message import InboundMessage, Platform, Response
+from lyra.core.messaging.render_events import RenderEvent
 from lyra.core.pool import Pool
-from lyra.core.render_events import RenderEvent
-from lyra.core.trust import TrustLevel
 from tests.core.conftest import FakeSTT, MockAdapter
 
 if TYPE_CHECKING:
@@ -127,7 +127,7 @@ class TestResolveAgentTTS:
         """resolve_agent_tts returns the agent's tts config for a bound message."""
         from lyra.core import Agent
         from lyra.core.agent import AgentBase
-        from lyra.core.agent_config import AgentTTSConfig, AgentVoiceConfig
+        from lyra.core.agent.agent_config import AgentTTSConfig, AgentVoiceConfig
 
         # Arrange — build a concrete AgentBase subclass
         class FakeAgent(AgentBase):
@@ -223,7 +223,7 @@ class TestDispatchResponseAgentTTSE2E:
         """Voice-modality dispatch_response synthesizes audio with agent_tts."""
         from lyra.core import Agent
         from lyra.core.agent import AgentBase
-        from lyra.core.agent_config import AgentTTSConfig, AgentVoiceConfig
+        from lyra.core.agent.agent_config import AgentTTSConfig, AgentVoiceConfig
         from lyra.core.hub.hub_protocol import ChannelAdapter
         from lyra.tts import SynthesisResult
 
@@ -448,7 +448,7 @@ class TestDispatchStreamingTTSFallback:
         """Voice dispatch_streaming: TTS failure → dispatch_response NOT called."""
         from datetime import datetime, timezone
 
-        from lyra.core.render_events import TextRenderEvent
+        from lyra.core.messaging.render_events import TextRenderEvent
         from lyra.tts import TtsUnavailableError
 
         # Arrange

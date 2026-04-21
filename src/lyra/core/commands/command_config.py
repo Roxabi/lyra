@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.core.message import Response
+    from lyra.core.messaging.message import Response
 
 
 @dataclass(frozen=True)

@@ -10,9 +10,9 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .. import builtin_commands, workspace_commands
-from ..message import InboundMessage, Response
+from ..messaging.message import InboundMessage, Response
 from ..pool.pool import Pool
+from . import builtin_commands, workspace_commands
 from .command_config import DEFAULT_BUILTINS, CommandConfig, SessionCommandEntry
 from .command_loader import AsyncHandler, CommandLoader
 from .command_parser import CommandContext
@@ -31,14 +31,13 @@ if TYPE_CHECKING:
     from lyra.core.smart_routing_protocol import SmartRoutingProtocol
 
     from ..circuit_breaker import CircuitRegistry
-    from ..messages import MessageManager
+    from ..messaging.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
-# Type alias for builtin handler (sync or async)
 BuiltinHandler = Callable[
     [list, InboundMessage, Pool | None], Response | Awaitable[Response] | None
-]
+]  # noqa: E501
 
 
 class CommandRouter:
@@ -88,10 +87,7 @@ class CommandRouter:
 
     @classmethod
     def builtin_metadata(cls) -> list[tuple[str, str, bool]]:
-        """Return (name, description, admin_only) for default builtins only.
-
-        Class method — usable without instantiation (e.g., from CLI).
-        """
+        """Return (name, description, admin_only) for default builtins only."""
         return [
             (name, cfg.description, is_admin_only(cfg.description))
             for name, cfg in DEFAULT_BUILTINS.items()
@@ -110,7 +106,9 @@ class CommandRouter:
         # Processor commands — only include those registered as passthroughs.
         try:
             importlib.import_module("lyra.core.processors")
-            from lyra.core.processor_registry import registry as _proc_registry
+            from lyra.core.processors.processor_registry import (
+                registry as _proc_registry,
+            )
 
             for cmd, desc in _proc_registry.descriptions().items():
                 if cmd in self._passthroughs:
@@ -148,9 +146,9 @@ class CommandRouter:
     ) -> None:
         """Register a session command handler.
 
-        Deprecated: prefer ``@register`` from ``lyra.core.processor_registry``.
+        Deprecated: prefer ``@register`` from ``lyra.core.processors.processor_registry``.
         *name* must not include the leading slash. Raises ``ValueError`` on clash.
-        """
+        """  # noqa: E501
         full_name = f"/{name}"
         if full_name in self._builtins:
             raise ValueError(f"Session command {full_name!r} clashes with a builtin.")

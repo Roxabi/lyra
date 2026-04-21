@@ -69,9 +69,7 @@ def test_edge_dedup(tmp_path: Path) -> None:
         assert count == 1, f"Expected 1 edge row, got {count}"
 
         # Assert — canonical direction: blocker is src, blocked is dst
-        row = conn.execute(
-            "SELECT src_key, dst_key FROM edges"
-        ).fetchone()
+        row = conn.execute("SELECT src_key, dst_key FROM edges").fetchone()
         assert row == ("Roxabi/lyra#2", "Roxabi/lyra#1"), (
             f"Expected canonical (blocker→blocked) row, got {row}"
         )
@@ -117,42 +115,48 @@ def test_closed_hop_triggers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     conn = connect(db_path)
 
     # One open issue in Roxabi/lyra, blocked by a key that is NOT yet in issues.
-    upsert_issue(conn, {
-        "key": "Roxabi/lyra#100",
-        "repo": "Roxabi/lyra",
-        "number": 100,
-        "title": "needs closed ancestor",
-        "state": "open",
-        "url": "https://github.com/Roxabi/lyra/issues/100",
-        "created_at": "2026-01-01T00:00:00Z",
-        "updated_at": "2026-01-02T00:00:00Z",
-        "closed_at": None,
-        "milestone": None,
-        "is_stub": 0,
-    })
-    upsert_edges(conn, "Roxabi/lyra#100",
-                 blocked_by=["Roxabi/lyra#42"], blocking=[])
+    upsert_issue(
+        conn,
+        {
+            "key": "Roxabi/lyra#100",
+            "repo": "Roxabi/lyra",
+            "number": 100,
+            "title": "needs closed ancestor",
+            "state": "open",
+            "url": "https://github.com/Roxabi/lyra/issues/100",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-02T00:00:00Z",
+            "closed_at": None,
+            "milestone": None,
+            "is_stub": 0,
+        },
+    )
+    upsert_edges(conn, "Roxabi/lyra#100", blocked_by=["Roxabi/lyra#42"], blocking=[])
     conn.commit()
 
     # Mock gh_graphql so closed_hop_pass receives a canned response for #42.
     def fake_gh_graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
         return {
             "data": {
-                "repository": {"issue": {
-                    "number": 42,
-                    "title": "ancient closed blocker",
-                    "state": "CLOSED",
-                    "url": "https://github.com/Roxabi/lyra/issues/42",
-                    "createdAt": "2025-06-01T00:00:00Z",
-                    "updatedAt": "2025-06-15T00:00:00Z",
-                    "closedAt": "2025-06-15T00:00:00Z",
-                }},
+                "repository": {
+                    "issue": {
+                        "number": 42,
+                        "title": "ancient closed blocker",
+                        "state": "CLOSED",
+                        "url": "https://github.com/Roxabi/lyra/issues/42",
+                        "createdAt": "2025-06-01T00:00:00Z",
+                        "updatedAt": "2025-06-15T00:00:00Z",
+                        "closedAt": "2025-06-15T00:00:00Z",
+                    }
+                },
                 "rateLimit": {
-                    "cost": 1, "remaining": 4999,
+                    "cost": 1,
+                    "remaining": 4999,
                     "resetAt": "2026-04-21T10:00:00Z",
                 },
             },
         }
+
     monkeypatch.setattr("scripts.corpus.sync.gh_graphql", fake_gh_graphql)
 
     # Act

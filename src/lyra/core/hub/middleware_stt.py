@@ -20,7 +20,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..message import InboundMessage, Response
+from ..messaging.message import InboundMessage, Response
 from .message_pipeline import _DROP, PipelineResult
 
 if TYPE_CHECKING:

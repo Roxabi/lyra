@@ -1,4 +1,5 @@
 """Tests for v5.views.graph — graph view HTML output."""
+
 from __future__ import annotations
 
 import re
@@ -100,6 +101,7 @@ class TestGraphRender:
         """One .gg-msrow per milestone that has at least one task.
         The fixture has tasks in M0..M4 (not M5), so 5 msrows expected."""
         from v5.data.derive import tasks_for_graph
+
         tasks = tasks_for_graph(graph_data)
         active_ms = {t["milestone"] for t in tasks}
         result = graph.render(graph_data)
@@ -109,6 +111,7 @@ class TestGraphRender:
     def test_msrow_separators_count(self, graph_data):
         """Separators = msrows - 1."""
         from v5.data.derive import tasks_for_graph
+
         tasks = tasks_for_graph(graph_data)
         active_ms = {t["milestone"] for t in tasks}
         result = graph.render(graph_data)
@@ -124,6 +127,7 @@ class TestGraphRender:
     def test_active_milestone_codes_in_msrows(self, graph_data):
         """Each milestone that has tasks should appear in msrow labels."""
         from v5.data.derive import tasks_for_graph
+
         tasks = tasks_for_graph(graph_data)
         active_ms = {t["milestone"] for t in tasks}
         result = graph.render(graph_data)
@@ -138,11 +142,11 @@ class TestGraphRenderLayoutOverride:
     def test_custom_milestones_appear_in_msrow(self, layout, gh):
         # Remap the fixture's milestone labels to custom codes.
         mapped = {
-            "M0  NATS hardening":              ("P0", "Phase zero"),
+            "M0  NATS hardening": ("P0", "Phase zero"),
             "M1  NATS maturity  containerize": ("P1", "Phase one"),
-            "M2  LLM stack modernization":     ("P2", "Phase two"),
-            "M3  Observability":               ("P3", "Phase three"),
-            "M4  Hub statelessness":           ("P4", "Phase four"),
+            "M2  LLM stack modernization": ("P2", "Phase two"),
+            "M3  Observability": ("P3", "Phase three"),
+            "M4  Hub statelessness": ("P4", "Phase four"),
         }
         custom = dict(layout)
         custom["milestones"] = [
@@ -165,7 +169,7 @@ class TestGraphRenderLayoutOverride:
         custom["column_groups"] = [
             # Put 'b' before 'a1' — reverse of the default order.
             {"label": "CONTAINER", "tone": "b", "lane_codes": ["b"]},
-            {"label": "NATS",      "tone": "a1", "lane_codes": ["a1"]},
+            {"label": "NATS", "tone": "a1", "lane_codes": ["a1"]},
         ]
         data = load_from_dicts(custom, gh)
         # lane_order property reflects the override

@@ -25,7 +25,7 @@ def test_session_snapshot_is_frozen():
     """SessionSnapshot must be immutable (frozen dataclass)."""
     from dataclasses import FrozenInstanceError
 
-    from lyra.core.memory import SessionSnapshot
+    from lyra.core.memory.memory import SessionSnapshot
 
     snap = SessionSnapshot(
         session_id="s1",
@@ -49,7 +49,7 @@ def test_session_snapshot_is_frozen():
 @pytest_asyncio.fixture
 async def mm():
     """Real MemoryManager with in-memory SQLite DB."""
-    from lyra.core.memory import MemoryManager
+    from lyra.core.memory.memory import MemoryManager
 
     manager = MemoryManager(":memory:")
     await manager.connect()
@@ -67,7 +67,7 @@ def make_snap():
         medium: str = "telegram",
         agent_namespace: str = "lyra",
     ):
-        from lyra.core.memory import SessionSnapshot
+        from lyra.core.memory.memory import SessionSnapshot
 
         return SessionSnapshot(
             session_id=session_id,
@@ -91,9 +91,9 @@ def make_snap():
 @pytest.mark.asyncio
 async def test_connect_calls_db_connect():
     """MemoryManager.connect() calls the underlying DB connect."""
-    from lyra.core.memory import MemoryManager
+    from lyra.core.memory.memory import MemoryManager
 
-    with patch("lyra.core.memory.AsyncMemoryDB") as MockDB:
+    with patch("lyra.core.memory.memory.AsyncMemoryDB") as MockDB:
         mock_db_instance = AsyncMock()
         MockDB.return_value = mock_db_instance
 
@@ -106,9 +106,9 @@ async def test_connect_calls_db_connect():
 @pytest.mark.asyncio
 async def test_close_calls_db_close():
     """MemoryManager.close() calls the underlying DB close."""
-    from lyra.core.memory import MemoryManager
+    from lyra.core.memory.memory import MemoryManager
 
-    with patch("lyra.core.memory.AsyncMemoryDB") as MockDB:
+    with patch("lyra.core.memory.memory.AsyncMemoryDB") as MockDB:
         mock_db_instance = AsyncMock()
         MockDB.return_value = mock_db_instance
 

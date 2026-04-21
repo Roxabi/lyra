@@ -734,7 +734,7 @@ class TestNotifySessionFallthrough:
         msg = dataclasses.replace(_base, platform_meta=_meta)
 
         from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         key = RoutingKey(Platform("telegram"), "main", "chat:42")
         ctx = _make_ctx(hub)
@@ -780,7 +780,7 @@ class TestNotifySessionFallthrough:
         msg = dataclasses.replace(_base, platform_meta=_meta)
 
         from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         key = RoutingKey(Platform("telegram"), "main", "chat:42")
         ctx = _make_ctx(hub)
@@ -813,7 +813,7 @@ class TestNotifySessionFallthrough:
         msg = make_inbound_message(scope_id="chat:42")
 
         from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         key = RoutingKey(Platform("telegram"), "main", "chat:42")
         ctx = _make_ctx(hub)

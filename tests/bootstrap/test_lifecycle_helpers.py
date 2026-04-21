@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.bootstrap.lifecycle_helpers import (
+from lyra.bootstrap.lifecycle.lifecycle_helpers import (
     setup_signal_handlers,
     teardown_buses,
     teardown_dispatchers,
@@ -20,7 +20,7 @@ def test_setup_signal_handlers_registers_sigint_and_sigterm() -> None:
     mock_loop = MagicMock()
     stop = asyncio.Event()
 
-    _target = "lyra.bootstrap.lifecycle_helpers.asyncio.get_running_loop"
+    _target = "lyra.bootstrap.lifecycle.lifecycle_helpers.asyncio.get_running_loop"
     with patch(_target, return_value=mock_loop):
         setup_signal_handlers(stop)
 
@@ -35,7 +35,7 @@ def test_setup_signal_handlers_uses_stop_event() -> None:
     mock_loop = MagicMock()
     stop = asyncio.Event()
 
-    _target = "lyra.bootstrap.lifecycle_helpers.asyncio.get_running_loop"
+    _target = "lyra.bootstrap.lifecycle.lifecycle_helpers.asyncio.get_running_loop"
     with patch(_target, return_value=mock_loop):
         setup_signal_handlers(stop)
 

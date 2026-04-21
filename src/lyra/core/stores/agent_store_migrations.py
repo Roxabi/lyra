@@ -6,7 +6,7 @@ import logging
 
 import aiosqlite
 
-from ..agent_schema import _MIGRATE_AGENTS
+from ..agent.agent_schema import _MIGRATE_AGENTS
 
 log = logging.getLogger(__name__)
 

@@ -1,4 +1,5 @@
 """Tests for v5.data.derive — pure logic layer."""
+
 from __future__ import annotations
 
 from v5.data.derive import (
@@ -14,6 +15,7 @@ from v5.data.derive import (
 from v5.data.model import COLUMN_GROUPS, MILESTONES, EpicMeta, GraphData, Lane
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
 
 def _make_issue(  # noqa: PLR0913
     num: int,
@@ -45,8 +47,12 @@ def _issues(*items: dict) -> dict:
 
 def _minimal_data(issues: dict, epic_ks: set | None = None) -> GraphData:
     lanes = [
-        Lane(code="a1", name="NATS", color="a1",
-             epic=EpicMeta(issue=100, label="Epic", tag="M0")),
+        Lane(
+            code="a1",
+            name="NATS",
+            color="a1",
+            epic=EpicMeta(issue=100, label="Epic", tag="M0"),
+        ),
         Lane(code="b", name="Container", color="b", epic=None),
     ]
     lbc = {lane.code: lane for lane in lanes}
@@ -66,6 +72,7 @@ def _minimal_data(issues: dict, epic_ks: set | None = None) -> GraphData:
 
 # ─── compute_depth ───────────────────────────────────────────────────────────
 
+
 class TestComputeDepth:
     def test_no_blockers_returns_zero(self):
         issues = _issues(_make_issue(1, blocked_by=[]))
@@ -75,7 +82,8 @@ class TestComputeDepth:
     def test_chain_a_b_c_depths(self):
         # A has no blockers, B blocked by A, C blocked by B
         a = _make_issue(
-            1, blocked_by=[],
+            1,
+            blocked_by=[],
             blocking=[{"repo": "Roxabi/lyra", "issue": 2}],
         )
         b = _make_issue(
@@ -115,15 +123,14 @@ class TestComputeDepth:
         # External blocker key is in blocked_by but absent from issues dict.
         # The `max(..., default=0)` generator is empty (filter `if b in issues`
         # excludes the absent key), so depth = 1 + 0 = 1.
-        a = _make_issue(
-            1, blocked_by=[{"repo": "Roxabi/voiceCLI", "issue": 10}]
-        )
+        a = _make_issue(1, blocked_by=[{"repo": "Roxabi/voiceCLI", "issue": 10}])
         issues = _issues(a)
         depth = compute_depth(issues)
         assert depth["Roxabi/lyra#1"] == 1
 
 
 # ─── status_of ───────────────────────────────────────────────────────────────
+
 
 class TestStatusOf:
     def test_closed_issue_is_done(self):
@@ -166,6 +173,7 @@ class TestStatusOf:
 
 
 # ─── epic_keys ───────────────────────────────────────────────────────────────
+
 
 class TestEpicKeys:
     def test_extracts_epic_issue_numbers(self):
@@ -214,11 +222,13 @@ class TestComputeVisible:
 
     def test_forward_cascade_any_state(self):
         a = _make_issue(
-            1, state="open",
+            1,
+            state="open",
             blocking=[{"repo": "Roxabi/lyra", "issue": 2}],
         )
         b = _make_issue(
-            2, state="closed",
+            2,
+            state="closed",
             blocking=[{"repo": "Roxabi/lyra", "issue": 3}],
         )
         c = _make_issue(3, state="open")
@@ -229,7 +239,8 @@ class TestComputeVisible:
     def test_one_step_backward_any_state_any_repo(self):
         blocker = _make_issue(10, state="closed", repo="Roxabi/voiceCLI")
         iss = _make_issue(
-            1, state="open",
+            1,
+            state="open",
             blocked_by=[{"repo": "Roxabi/voiceCLI", "issue": 10}],
         )
         issues = _issues(blocker, iss)
@@ -239,11 +250,13 @@ class TestComputeVisible:
     def test_backward_is_one_hop_only(self):
         grand = _make_issue(20, state="closed")
         blocker = _make_issue(
-            10, state="closed",
+            10,
+            state="closed",
             blocked_by=[{"repo": "Roxabi/lyra", "issue": 20}],
         )
         iss = _make_issue(
-            1, state="open",
+            1,
+            state="open",
             blocked_by=[{"repo": "Roxabi/lyra", "issue": 10}],
         )
         issues = _issues(grand, blocker, iss)
@@ -253,6 +266,7 @@ class TestComputeVisible:
 
 
 # ─── build_matrix ────────────────────────────────────────────────────────────
+
 
 class TestBuildMatrix:
     def test_skips_epic_keys(self):
@@ -269,6 +283,7 @@ class TestBuildMatrix:
 
     def test_items_missing_milestone_go_to_no_ms_sentinel(self):
         from v5.data.model import NO_MS
+
         task = _make_issue(1, milestone=None)
         data = _minimal_data(_issues(task))
         matrix, _, total = build_matrix(data)
@@ -277,6 +292,7 @@ class TestBuildMatrix:
 
     def test_items_missing_lane_go_to_no_lane_sentinel(self):
         from v5.data.model import NO_LANE
+
         task = _make_issue(1)
         task["lane_label"] = None
         data = _minimal_data(_issues(task))
@@ -315,6 +331,7 @@ class TestBuildMatrix:
 
 # ─── tasks_for_graph ─────────────────────────────────────────────────────────
 
+
 class TestTasksForGraph:
     def test_excludes_epics(self, graph_data):
         tasks = tasks_for_graph(graph_data)
@@ -336,8 +353,21 @@ class TestTasksForGraph:
 
     def test_task_has_required_keys(self, graph_data):
         tasks = tasks_for_graph(graph_data)
-        required = {"key", "repo", "num", "title", "url", "state", "status",
-                    "milestone", "lane", "column", "depth", "blockers", "unblocks"}
+        required = {
+            "key",
+            "repo",
+            "num",
+            "title",
+            "url",
+            "state",
+            "status",
+            "milestone",
+            "lane",
+            "column",
+            "depth",
+            "blockers",
+            "unblocks",
+        }
         for t in tasks:
             assert required.issubset(t.keys())
 
@@ -356,6 +386,7 @@ class TestTasksForGraph:
 
 
 # ─── sort_cards_in_cell ──────────────────────────────────────────────────────
+
 
 class TestSortCardsInCell:
     def test_sorts_by_depth_then_num(self):
@@ -400,6 +431,7 @@ class TestSortCardsInCell:
 
 
 # ─── lane_by_code ────────────────────────────────────────────────────────────
+
 
 class TestLaneByCode:
     def test_builds_lookup(self):

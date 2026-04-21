@@ -14,7 +14,8 @@ from typing import Any
 
 from nats.aio.client import Client as NATS
 
-from lyra.core.message import (
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -22,8 +23,7 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
-from lyra.core.render_events import RenderEvent
-from lyra.core.trust import TrustLevel
+from lyra.core.messaging.render_events import RenderEvent
 from lyra.nats.render_event_codec import NatsRenderEventCodec
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver

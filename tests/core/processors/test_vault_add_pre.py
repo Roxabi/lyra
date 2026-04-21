@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_parser import CommandContext
-from lyra.core.message import InboundMessage
+from lyra.core.messaging.message import InboundMessage
 from lyra.core.processors._scraping import _SAFE_SCRAPE_MAX_CHARS
 from lyra.core.processors.vault_add import VaultAddProcessor
-from lyra.core.trust import TrustLevel
 from lyra.integrations.base import ScrapeFailed, SessionTools
 
 

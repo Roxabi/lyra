@@ -15,7 +15,7 @@ import tempfile
 import pytest
 
 from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.message import Response
+from lyra.core.messaging.message import Response
 from lyra.stt import TranscriptionResult
 
 from .conftest import (

@@ -10,14 +10,19 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from lyra.core.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.messaging.events import (
+    LlmEvent,
+    ResultLlmEvent,
+    TextLlmEvent,
+    ToolUseLlmEvent,
+)
 from lyra.llm.base import LlmResult
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
     from nats.aio.subscription import Subscription
 
-    from lyra.core.agent_config import ModelConfig
+    from lyra.core.agent.agent_config import ModelConfig
 
 log = logging.getLogger(__name__)
 

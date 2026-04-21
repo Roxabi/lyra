@@ -3,6 +3,7 @@
 `active` must be one of 'graph' | 'grid'. Default is 'graph'.
 JS in assets/app.js re-syncs this from localStorage/hash on load.
 """
+
 from __future__ import annotations
 
 
@@ -18,5 +19,5 @@ def render_toggle(active: str = "graph") -> str:
         f'aria-pressed="{g_pressed}">Graph</button>\n'
         f'  <button type="button" data-view="grid" class="grid{t_active}" '
         f'aria-pressed="{t_pressed}">Table</button>\n'
-        '</div>\n'
+        "</div>\n"
     )

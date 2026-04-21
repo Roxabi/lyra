@@ -11,6 +11,12 @@ from pathlib import Path
 
 import pytest
 
+import lyra.bootstrap.config as config_mod
+from lyra.bootstrap.config import (
+    _load_circuit_config,
+    _load_raw_config,
+)
+
 
 class TestLoadCircuitConfigDefaults:
     """Missing config file → 4 CBs with default thresholds (SC-16)."""
@@ -21,8 +27,6 @@ class TestLoadCircuitConfigDefaults:
         """SC-16: Missing lyra.toml → 4 CBs with failure_threshold=5, recovery_timeout=60."""  # noqa: E501
         # Arrange — point LYRA_CONFIG at a nonexistent file
         monkeypatch.setenv("LYRA_CONFIG", str(tmp_path / "nonexistent.toml"))
-        import lyra.bootstrap.config as config_mod
-
         monkeypatch.setattr(
             config_mod,
             "_validate_config_path",
@@ -30,11 +34,6 @@ class TestLoadCircuitConfigDefaults:
         )
 
         # Act
-        from lyra.bootstrap.config import (
-            _load_circuit_config,  # noqa: PLC0415
-            _load_raw_config,  # noqa: PLC0415
-        )
-
         raw = _load_raw_config()
         registry, admin_ids = _load_circuit_config(raw)
 
@@ -59,11 +58,6 @@ class TestLoadCircuitConfigDefaults:
         monkeypatch.chdir(tmp_path)
 
         # Act
-        from lyra.bootstrap.config import (
-            _load_circuit_config,  # noqa: PLC0415
-            _load_raw_config,  # noqa: PLC0415
-        )
-
         raw = _load_raw_config()
         registry, admin_ids = _load_circuit_config(raw)
 
@@ -93,8 +87,6 @@ class TestLoadCircuitConfigTomlOverrides:
             "user_ids = ['telegram:tg:user:42']\n"
         )
         monkeypatch.setenv("LYRA_CONFIG", str(config))
-        import lyra.bootstrap.config as config_mod
-
         monkeypatch.setattr(
             config_mod,
             "_validate_config_path",
@@ -102,11 +94,6 @@ class TestLoadCircuitConfigTomlOverrides:
         )
 
         # Act
-        from lyra.bootstrap.config import (
-            _load_circuit_config,  # noqa: PLC0415
-            _load_raw_config,  # noqa: PLC0415
-        )
-
         raw = _load_raw_config()
         registry, admin_ids = _load_circuit_config(raw)
 
@@ -133,8 +120,6 @@ class TestLoadCircuitConfigTomlOverrides:
             "[admin]\nuser_ids = ['telegram:tg:user:1', 'discord:dc:user:2']\n"
         )
         monkeypatch.setenv("LYRA_CONFIG", str(config))
-        import lyra.bootstrap.config as config_mod
-
         monkeypatch.setattr(
             config_mod,
             "_validate_config_path",
@@ -142,11 +127,6 @@ class TestLoadCircuitConfigTomlOverrides:
         )
 
         # Act
-        from lyra.bootstrap.config import (  # noqa: PLC0415
-            _load_circuit_config,
-            _load_raw_config,
-        )
-
         raw = _load_raw_config()
         _, admin_ids = _load_circuit_config(raw)
 
@@ -163,8 +143,6 @@ class TestLoadCircuitConfigTomlOverrides:
         config = tmp_path / "lyra.toml"
         config.write_text("[circuit_breaker.hub]\nrecovery_timeout = 120\n")
         monkeypatch.setenv("LYRA_CONFIG", str(config))
-        import lyra.bootstrap.config as config_mod
-
         monkeypatch.setattr(
             config_mod,
             "_validate_config_path",
@@ -172,11 +150,6 @@ class TestLoadCircuitConfigTomlOverrides:
         )
 
         # Act
-        from lyra.bootstrap.config import (
-            _load_circuit_config,  # noqa: PLC0415
-            _load_raw_config,  # noqa: PLC0415
-        )
-
         raw = _load_raw_config()
         registry, admin_ids = _load_circuit_config(raw)
 

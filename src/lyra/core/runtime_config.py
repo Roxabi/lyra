@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
+from pydantic_core import PydanticUndefinedType
 
 if TYPE_CHECKING:
     from lyra.core.agent import Agent
@@ -92,8 +93,6 @@ class RuntimeConfig(BaseModel):
 
     def save(self, path: Path) -> None:
         """Write only non-default values to a flat TOML file."""
-        from pydantic_core import PydanticUndefinedType  # noqa: PLC0415
-
         data: dict[str, object] = {}
         for key in _VALID_PARAMS:
             field_info = RuntimeConfig.model_fields.get(key)

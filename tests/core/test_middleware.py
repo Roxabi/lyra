@@ -7,6 +7,7 @@ no Hub required for most tests.
 from __future__ import annotations
 
 import dataclasses
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from lyra.core.hub.message_pipeline import Action, PipelineResult, ResumeStatus
@@ -25,6 +26,7 @@ from lyra.core.hub.middleware_stages import (
 from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
 from lyra.core.hub.path_validation import resolve_context
 from lyra.core.message import Platform, Response
+from lyra.infrastructure.stores.turn_store import TurnStore
 from tests.core.conftest import _make_hub, make_inbound_message
 
 _DROP = PipelineResult(action=Action.DROP)
@@ -591,7 +593,7 @@ class TestResolveContextMiddleware:
             async def increment_resume_count(self, sid: str) -> None:
                 pass
 
-        hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
+        hub._turn_store = cast(TurnStore, _FakeTurnStore())
 
         ctx = PipelineContext(hub=hub)
         _base = make_inbound_message(scope_id="chat:42")
@@ -624,7 +626,7 @@ class TestResolveContextMiddleware:
             async def increment_resume_count(self, sid: str) -> None:
                 pass
 
-        hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
+        hub._turn_store = cast(TurnStore, _FakeTurnStore())
 
         ctx = PipelineContext(hub=hub)
         _base = make_inbound_message(scope_id="chat:42")
@@ -730,7 +732,7 @@ class TestNotifySessionFallthroughMiddleware:
             async def increment_resume_count(self, sid: str) -> None:
                 pass
 
-        hub._turn_store = _FakeTurnStore()  # type: ignore[assignment]
+        hub._turn_store = cast(TurnStore, _FakeTurnStore())
 
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}

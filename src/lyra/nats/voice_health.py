@@ -54,8 +54,10 @@ class VoiceWorkerRegistry:
     def _coerce_int(value: object) -> int:
         if value is None:
             return 0
+        if not isinstance(value, (int, float, str, bytes, bytearray)):
+            return 0
         try:
-            return int(value)  # type: ignore[arg-type]  # best-effort JSON coercion
+            return int(value)
         except (TypeError, ValueError):
             return 0
 

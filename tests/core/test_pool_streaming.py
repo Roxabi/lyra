@@ -69,7 +69,7 @@ class EmptyStreamingAgent:
         _msg: InboundMessage,
         _pool: Pool,
         *,
-        on_intermediate=None,  # noqa: ARG002
+        _on_intermediate=None,
     ) -> collections.abc.AsyncIterator[TextRenderEvent]:
         async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
             if False:  # pragma: no cover
@@ -359,7 +359,7 @@ class TestPoolStreaming:
                 _msg: InboundMessage,
                 _pool: Pool,
                 *,
-                on_intermediate=None,  # noqa: ARG002
+                _on_intermediate=None,
             ) -> collections.abc.AsyncIterator[TextRenderEvent]:
                 async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
                     yield TextRenderEvent(text="first", is_final=False)
@@ -427,7 +427,7 @@ class TestPoolStreaming:
                 _msg: InboundMessage,
                 _pool: Pool,
                 *,
-                on_intermediate=None,  # noqa: ARG002
+                _on_intermediate=None,
             ) -> collections.abc.AsyncIterator[TextRenderEvent]:
                 async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
                     yield TextRenderEvent(text="hello", is_final=True)

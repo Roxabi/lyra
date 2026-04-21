@@ -125,7 +125,7 @@ class RateLimitMiddleware:
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
-        from .hub import RoutingKey  # noqa: PLC0415
+        from .hub import RoutingKey  # noqa: PLC0415  # justified: .hub cycle
 
         key = RoutingKey(Platform(msg.platform), msg.bot_id, msg.scope_id)
         ctx.key = key

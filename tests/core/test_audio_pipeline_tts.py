@@ -16,6 +16,7 @@ import pytest
 
 from lyra.core.agent_config import AgentTTSConfig
 from lyra.core.hub import Hub
+from lyra.core.hub.hub_protocol import ChannelAdapter
 from lyra.core.message import InboundMessage, Platform, Response
 from lyra.core.pool import Pool
 from lyra.core.render_events import RenderEvent
@@ -458,8 +459,8 @@ class TestDispatchStreamingTTSFallback:
         hub.dispatch_audio = AsyncMock()
         hub.dispatch_response = AsyncMock()
 
-        adapter = MockAdapter()
-        hub.adapter_registry[(Platform.TELEGRAM, "main")] = adapter  # type: ignore[assignment]
+        adapter: ChannelAdapter = cast(ChannelAdapter, MockAdapter())
+        hub.adapter_registry[(Platform.TELEGRAM, "main")] = adapter
 
         msg = InboundMessage(
             id="msg-streaming-1",

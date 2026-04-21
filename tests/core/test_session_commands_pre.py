@@ -114,7 +114,7 @@ class TestProcessorPreCalledBeforeLLM:
                 msg: InboundMessage,
                 _pool,
                 *,
-                on_intermediate=None,  # noqa: ARG002
+                _on_intermediate=None,
             ):
                 received_texts.append(msg.text)
                 return Response(content="Title: Example\nTags: test\n\nA nice summary.")

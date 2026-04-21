@@ -55,9 +55,7 @@ def test_resolver_resolves_stub_type() -> None:
     so deserialize can reconstruct the nested dataclass from a raw dict.
     """
     # Arrange
-    from roxabi_nats_test_stub import (
-        StubInner,  # noqa: PLC0415  # type: ignore[import-not-found]
-    )
+    from roxabi_nats_test_stub import StubInner  # noqa: PLC0415, I001  # justified: top-level import would resolve _StubOuter hints for empty-resolver isolation tests  # type: ignore[import-not-found]
 
     r = _TypeHintResolver([("roxabi_nats_test_stub", "StubInner")])
     payload = serialize(_StubOuter(name="x", inner=StubInner()))
@@ -183,9 +181,7 @@ def test_hints_cache_isolated_across_resolvers() -> None:
     Empty resolver leaves inner uncoerced (NameError fallback → {}).  Non-empty
     resolver reconstructs StubInner.  Order: non-empty first, then empty.
     """
-    from roxabi_nats_test_stub import (
-        StubInner,  # noqa: PLC0415  # type: ignore[import-not-found]
-    )
+    from roxabi_nats_test_stub import StubInner  # noqa: PLC0415, I001  # justified: top-level import would resolve _StubOuter hints for empty-resolver isolation tests  # type: ignore[import-not-found]
 
     r_non_empty = _TypeHintResolver([("roxabi_nats_test_stub", "StubInner")])
     r_empty = _TypeHintResolver(())
@@ -211,9 +207,7 @@ def test_hints_cache_no_poisoning_when_empty_runs_first() -> None:
     cache key prevents this; the test asserts the second resolver still sees
     correct coercion regardless of ordering.
     """
-    from roxabi_nats_test_stub import (
-        StubInner,  # noqa: PLC0415  # type: ignore[import-not-found]
-    )
+    from roxabi_nats_test_stub import StubInner  # noqa: PLC0415, I001  # justified: top-level import would resolve _StubOuter hints for empty-resolver isolation tests  # type: ignore[import-not-found]
 
     r_empty = _TypeHintResolver(())
     r_non_empty = _TypeHintResolver([("roxabi_nats_test_stub", "StubInner")])

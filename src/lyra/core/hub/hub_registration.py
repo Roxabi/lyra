@@ -43,8 +43,8 @@ class HubRegistrationMixin:
 
         @property
         def pools(self) -> dict[str, Pool]: ...
-        def set_debounce_ms(self, ms: int) -> None: ...  # noqa: ARG002
-        def set_cancel_on_new_message(self, enabled: bool) -> None: ...  # noqa: ARG002
+        def set_debounce_ms(self, ms: int) -> None: ...  # noqa: ARG002  # justified: TYPE_CHECKING forward decl for real method on Hub
+        def set_cancel_on_new_message(self, enabled: bool) -> None: ...  # noqa: ARG002  # justified: TYPE_CHECKING forward decl for real method on Hub
 
     def register_agent(self, agent: AgentBase) -> None:
         """Register an agent implementation by name."""

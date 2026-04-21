@@ -8,6 +8,8 @@ resume via three paths, and returns ``SUBMIT_TO_POOL``.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
+from typing import cast
 
 from ..message import (
     InboundMessage,
@@ -82,7 +84,10 @@ class SubmitToPoolMiddleware:
         # Register session persistence callback once.
         _update_fn = msg.platform_meta.get("_session_update_fn")
         if callable(_update_fn) and not pool.has_session_update_fn():
-            pool.register_session_callbacks(update_fn=_update_fn)  # type: ignore[arg-type]
+            _typed_update_fn = cast(
+                "Callable[[InboundMessage, str, str], Awaitable[None]]", _update_fn
+            )
+            pool.register_session_callbacks(update_fn=_typed_update_fn)
 
         try:
             status = await resolve_context(msg, pool, pool.pool_id, ctx)

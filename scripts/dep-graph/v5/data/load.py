@@ -12,7 +12,15 @@ from .derive import (
     epic_keys,
     lane_by_code,
 )
-from .model import EpicMeta, GraphData, Lane
+from .model import (
+    COLUMN_GROUPS,
+    MILESTONES,
+    EpicMeta,
+    GraphData,
+    Lane,
+    parse_column_groups,
+    parse_milestones,
+)
 
 FORGE = Path.home() / ".roxabi/forge/lyra/visuals"
 LAYOUT_PATH = FORGE / "lyra-v2-dependency-graph.layout.json"
@@ -61,11 +69,24 @@ def load_from_dicts(layout: dict[str, Any], gh: dict[str, Any]) -> GraphData:
     depth = compute_depth(issues)
     visible = compute_visible(issues, primary_repo)
 
+    column_groups = (
+        parse_column_groups(layout["column_groups"])
+        if "column_groups" in layout
+        else list(COLUMN_GROUPS)
+    )
+    milestones = (
+        parse_milestones(layout["milestones"])
+        if "milestones" in layout
+        else list(MILESTONES)
+    )
+
     data = GraphData(
         meta=layout["meta"],
         lanes=lanes,
         lane_by_code=lane_by_code(lanes),
         issues=issues,
+        column_groups=column_groups,
+        milestones=milestones,
         epic_keys=ekeys,
         visible=visible,
         depth_by_key=depth,

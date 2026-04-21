@@ -13,7 +13,7 @@ from typing import Any
 
 from ..data import layout_graph as lg
 from ..data.derive import tasks_for_graph
-from ..data.model import MS_NAME_BY_CODE, GraphData
+from ..data.model import GraphData
 
 # Title truncation inside the pill before hover-expand.
 TITLE_CHARS = 28
@@ -125,13 +125,19 @@ def _render_edges(
     )
 
 
-def _render_msrows(bands: list[dict[str, Any]], container_h: int) -> str:
+def _render_msrows(
+    bands: list[dict[str, Any]],
+    container_h: int,
+    data: GraphData,
+) -> str:
     extents = lg.ms_vertical_extents(bands)
-    ordered = sorted(extents.items(), key=lambda kv: lg.ms_idx(kv[0]))
+    ms_codes = data.ms_codes
+    ms_name_by_code = data.ms_name_by_code
+    ordered = sorted(extents.items(), key=lambda kv: lg.ms_idx(kv[0], ms_codes))
     rows: list[str] = []
     seps: list[str] = []
     for ms, (top_pct, bot_pct) in ordered:
-        name = MS_NAME_BY_CODE.get(ms, "")
+        name = ms_name_by_code.get(ms, "")
         top_px = round(top_pct / 100 * container_h)
         height_px = round((bot_pct - top_pct) / 100 * container_h)
         rows.append(
@@ -151,10 +157,13 @@ def _render_msrows(bands: list[dict[str, Any]], container_h: int) -> str:
 
 def render(data: GraphData, *, active: bool = True) -> str:
     tasks = tasks_for_graph(data)
-    node_records, bands, _ = lg.layout_grid(tasks)
+    lane_order = [code for _, _, codes in data.column_groups for code in codes]
+    node_records, bands, _ = lg.layout_grid(
+        tasks, lane_order=lane_order, ms_codes=data.ms_codes,
+    )
     container_h = lg.container_height(bands)
 
-    msrows = _render_msrows(bands, container_h)
+    msrows = _render_msrows(bands, container_h, data)
     edges = _render_edges(tasks, node_records)
     nodes = _render_nodes(node_records)
     labels = _render_ilabels(node_records)

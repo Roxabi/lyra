@@ -11,8 +11,6 @@ from typing import Any
 from ..components.card import render_card
 from ..data.derive import sort_cards_in_cell, status_of
 from ..data.model import (
-    COLUMN_GROUPS,
-    MILESTONES,
     NO_LANE,
     NO_MS,
     GraphData,
@@ -105,7 +103,7 @@ def _render_col_headers(data: GraphData, with_no_lane: bool) -> list[str]:
             '<div class="col-epics"><span class="col-epic">No lane</span></div>'
             '</div>'
         )
-    for col_label, col_tone, codes in COLUMN_GROUPS:
+    for col_label, col_tone, codes in data.column_groups:
         epics: list[str] = []
         for c in codes:
             m = data.lane_by_code[c]
@@ -142,7 +140,7 @@ def _render_ms_row(
             f'{_render_sentinel_cell(cards, data)}'
             f'</div>'
         )
-    for col_label, _, codes in COLUMN_GROUPS:
+    for col_label, _, codes in data.column_groups:
         by_lane: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for code in codes:
             for iss in data.matrix.get((ms_key, code), []):
@@ -159,7 +157,7 @@ def _render_rows(data: GraphData, with_no_lane: bool) -> list[str]:
     rows: list[str] = []
     if _has_no_ms(data):
         rows.append(_render_ms_row(NO_MS, "—", "No milestone", data, with_no_lane))
-    for ms_key, ms_code, ms_name in MILESTONES:
+    for ms_key, ms_code, ms_name in data.milestones:
         rows.append(_render_ms_row(ms_key, ms_code, ms_name, data, with_no_lane))
     return rows
 
@@ -169,7 +167,7 @@ def render(data: GraphData, *, active: bool = False) -> str:
     with_no_lane = _has_no_lane(data)
     col_headers = _render_col_headers(data, with_no_lane)
     rows = _render_rows(data, with_no_lane)
-    n_cols = len(COLUMN_GROUPS) + (1 if with_no_lane else 0)
+    n_cols = len(data.column_groups) + (1 if with_no_lane else 0)
     return (
         f'<section class="view view-grid{active_cls}" data-view="grid">\n'
         f'<div class="lane-swim-grid" style="--cols: {n_cols};">\n'

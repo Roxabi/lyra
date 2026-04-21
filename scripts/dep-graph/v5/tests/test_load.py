@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from v5.data.load import load_from_dicts
-from v5.data.model import GraphData
+from v5.data.model import COLUMN_GROUPS, MILESTONES, GraphData
 
 
 class TestLoadFromDicts:
@@ -104,3 +104,59 @@ class TestLoadFromDicts:
         data = load_from_dicts(layout, gh)
         assert data.meta["title"] == "Lyra v2 dep graph"
         assert data.meta["date"] == "2026-04-20"
+
+
+class TestLayoutDrivenMatrixConfig:
+    """layout.json milestones + column_groups override module defaults."""
+
+    def test_defaults_when_absent(self, layout, gh):
+        # Fixture layout has neither 'milestones' nor 'column_groups' keys
+        data = load_from_dicts(layout, gh)
+        assert data.column_groups == list(COLUMN_GROUPS)
+        assert data.milestones == list(MILESTONES)
+
+    def test_column_groups_override(self, layout, gh):
+        custom = dict(layout)
+        custom["column_groups"] = [
+            {"label": "ALPHA", "tone": "a1", "lane_codes": ["a1", "a2"]},
+            {"label": "BETA",  "tone": "b",  "lane_codes": ["b"]},
+        ]
+        data = load_from_dicts(custom, gh)
+        assert data.column_groups == [
+            ("ALPHA", "a1", ["a1", "a2"]),
+            ("BETA",  "b",  ["b"]),
+        ]
+        # Defaults must stay untouched on module
+        assert len(COLUMN_GROUPS) == 15
+
+    def test_milestones_override(self, layout, gh):
+        custom = dict(layout)
+        custom["milestones"] = [
+            {"label": "Phase one", "code": "P1", "short": "Phase 1"},
+            {"label": "Phase two", "code": "P2", "short": "Phase 2"},
+        ]
+        data = load_from_dicts(custom, gh)
+        assert data.milestones == [
+            ("Phase one", "P1", "Phase 1"),
+            ("Phase two", "P2", "Phase 2"),
+        ]
+        assert data.ms_codes == ["P1", "P2"]
+        assert data.ms_name_by_code == {"P1": "Phase 1", "P2": "Phase 2"}
+
+    def test_partial_override_keeps_other_default(self, layout, gh):
+        custom = dict(layout)
+        custom["milestones"] = [
+            {"label": "Only one", "code": "X", "short": "X"},
+        ]
+        data = load_from_dicts(custom, gh)
+        assert len(data.milestones) == 1
+        # column_groups still the default
+        assert data.column_groups == list(COLUMN_GROUPS)
+
+    def test_empty_override_lists_yield_empty_matrix_config(self, layout, gh):
+        custom = dict(layout)
+        custom["column_groups"] = []
+        custom["milestones"] = []
+        data = load_from_dicts(custom, gh)
+        assert data.column_groups == []
+        assert data.milestones == []

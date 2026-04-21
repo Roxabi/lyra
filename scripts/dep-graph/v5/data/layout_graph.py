@@ -19,7 +19,9 @@ from typing import Any
 
 from .model import COLUMN_GROUPS, MS_CODES
 
-# ─── Lane ordering (determines within-band tie-break) ───────────────────────
+# Default lane ordering (determines within-band tie-break). Computed from the
+# module-level defaults; callers that need a non-default order pass `lane_order`
+# explicitly into layout_grid / ms_idx.
 LANE_ORDER: list[str] = [code for _, _, codes in COLUMN_GROUPS for code in codes]
 
 # ─── Positioning constants ──────────────────────────────────────────────────
@@ -37,16 +39,18 @@ MAX_CELL_WIDTH_PCT = 4.0  # cap so small milestones don't stretch to full width
 
 # ─── Pure helpers ───────────────────────────────────────────────────────────
 
-def _lane_idx(lane_code: str) -> int:
+def _lane_idx(lane_code: str, lane_order: list[str] | None = None) -> int:
+    order = lane_order if lane_order is not None else LANE_ORDER
     try:
-        return LANE_ORDER.index(lane_code)
+        return order.index(lane_code)
     except ValueError:
-        return len(LANE_ORDER)
+        return len(order)
 
 
-def ms_idx(ms: str | None) -> int:
-    if ms in MS_CODES:
-        return MS_CODES.index(ms)
+def ms_idx(ms: str | None, ms_codes: list[str] | None = None) -> int:
+    codes = ms_codes if ms_codes is not None else MS_CODES
+    if ms in codes:
+        return codes.index(ms)
     return 99
 
 
@@ -160,11 +164,17 @@ def _place_ms_band(band_tasks: list[dict[str, Any]], ctx: _Placement) -> None:
 
 def layout_grid(
     tasks: list[dict[str, Any]],
+    *,
+    lane_order: list[str] | None = None,
+    ms_codes: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int]]:
     """Returns (node_records, band_records, grid_size_per_ms).
 
     node record:  {task, x, y, lane_tone}
     band record:  {ms, depth, y, tasks, count}
+
+    `lane_order` / `ms_codes` override the module-level defaults when the
+    caller has layout.json-driven config.
     """
     by_ms: dict[str, dict[int, list[dict[str, Any]]]] = defaultdict(
         lambda: defaultdict(list),
@@ -179,7 +189,7 @@ def layout_grid(
 
     cell_of_num: dict[int, int] = {}
     x_of_num: dict[int, float] = {}
-    for ms in sorted(by_ms.keys(), key=ms_idx):
+    for ms in sorted(by_ms.keys(), key=lambda m: ms_idx(m, ms_codes)):
         ctx = _Placement(
             all_tasks=tasks,
             ms=ms,
@@ -190,13 +200,13 @@ def layout_grid(
         for depth in sorted(by_ms[ms].keys()):
             band_tasks = sorted(
                 by_ms[ms][depth],
-                key=lambda t: (_lane_idx(t["lane"]), t.get("num", 0)),
+                key=lambda t: (_lane_idx(t["lane"], lane_order), t.get("num", 0)),
             )
             _place_ms_band(band_tasks, ctx)
 
     sorted_band_keys: list[tuple[str, int]] = sorted(
         {(t.get("milestone") or "M9", t.get("depth", 0)) for t in tasks},
-        key=lambda k: (ms_idx(k[0]), k[1]),
+        key=lambda k: (ms_idx(k[0], ms_codes), k[1]),
     )
     n_bands = len(sorted_band_keys)
     step_y = (Y_BOT - Y_TOP) / max(n_bands - 1, 1)

@@ -11,7 +11,7 @@ from pathlib import Path
 from .components.header import render_footer
 from .components.toggle import render_toggle
 from .components.toolbar import render_toolbar
-from .data.model import COLUMN_GROUPS, MILESTONES, GraphData
+from .data.model import GraphData
 from .views import graph as graph_view
 from .views import grid as grid_view
 
@@ -41,7 +41,7 @@ def _read_assets(names: tuple[str, ...]) -> str:
 def _subtitle(data: GraphData) -> str:
     c = data.counts
     return (
-        f"{len(MILESTONES)} milestones × {len(COLUMN_GROUPS)} columns · "
+        f"{len(data.milestones)} milestones × {len(data.column_groups)} columns · "
         f"{c.get('ready', 0)} ready · {c.get('blocked', 0)} blocked · "
         f"{c.get('done', 0)} done · {data.total} total · "
         f"toggle Graph/Table · hover a card to trace its dep chain"

@@ -51,7 +51,30 @@ python -m dep_graph.cli build \
 
 See `layout.schema.json` for the full JSON Schema (Draft 7).
 
-Key fields:
+### Matrix config (optional): `milestones` + `column_groups`
+
+The v5 grid view renders a milestone × column_group matrix. Defaults live in `v5/data/model.py` (`MILESTONES`, `COLUMN_GROUPS`) and cover the current lyra roadmap (M0–M10 + Final, 15 columns a1–o). Override either list from `layout.json` to drive the matrix from config — useful when lane/milestone shape drifts on GitHub and you'd rather bump the layout than edit Python.
+
+Both keys are optional and independent (set one, the other, or both). When absent, the module defaults apply.
+
+```json
+{
+  "milestones": [
+    {"label": "M0  NATS hardening", "code": "M0", "short": "NATS hardening"},
+    {"label": "M1  Containerize",   "code": "M1", "short": "Containerize"}
+  ],
+  "column_groups": [
+    {"label": "NATS",      "tone": "a1", "lane_codes": ["a1", "a2", "a3"]},
+    {"label": "CONTAINER", "tone": "b",  "lane_codes": ["b"]}
+  ]
+}
+```
+
+- `milestones[].label` must match the GitHub milestone title with em-dashes stripped to double-space (same rule as the hardcoded defaults). `code` is the short code (`M0`), `short` is the row-header display name.
+- `column_groups[].lane_codes` lists the 1+ lane codes bundled under one column. `tone` is the CSS tone key used for the header color.
+- Visible issues lacking a milestone or lane land in sentinel `NO_MS` row / `NO_LANE` column — auto-hidden when empty, rendered when non-empty.
+
+### Other key fields
 
 ```json
 {

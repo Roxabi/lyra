@@ -52,6 +52,28 @@ NO_MS: str = "__nomilestone__"
 NO_LANE: str = "__nolane__"
 
 
+# ─── Layout-driven config parsers ───────────────────────────────────────────
+
+def parse_column_groups(
+    raw: list[dict[str, Any]],
+) -> list[tuple[str, str, list[str]]]:
+    """Parse layout.json column_groups[] → internal tuple form."""
+    return [
+        (item["label"], item["tone"], list(item["lane_codes"]))
+        for item in raw
+    ]
+
+
+def parse_milestones(
+    raw: list[dict[str, Any]],
+) -> list[tuple[str, str, str]]:
+    """Parse layout.json milestones[] → internal tuple form."""
+    return [
+        (item["label"], item["code"], item["short"])
+        for item in raw
+    ]
+
+
 # ─── Domain dataclasses ─────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -77,6 +99,13 @@ class GraphData:
     lane_by_code: dict[str, Lane]
     # Raw issue dicts keyed by "owner/repo#N" — shape matches gh.json.
     issues: dict[str, dict[str, Any]]
+    # Effective matrix config — overridable via layout.json, else module defaults.
+    column_groups: list[tuple[str, str, list[str]]] = field(
+        default_factory=lambda: list(COLUMN_GROUPS)
+    )
+    milestones: list[tuple[str, str, str]] = field(
+        default_factory=lambda: list(MILESTONES)
+    )
     # Cell matrix: (ms_label, lane_code) → [issue dicts], excludes epics.
     matrix: dict[tuple[str, str], list[dict[str, Any]]] = field(default_factory=dict)
     epic_keys: set[str] = field(default_factory=set)
@@ -94,6 +123,14 @@ class GraphData:
     @property
     def primary_repo(self) -> str:
         return self.meta["repos"][0]
+
+    @property
+    def ms_codes(self) -> list[str]:
+        return [code for _, code, _ in self.milestones]
+
+    @property
+    def ms_name_by_code(self) -> dict[str, str]:
+        return {code: name for _, code, name in self.milestones}
 
 
 def ref_key(ref: dict[str, Any]) -> str:

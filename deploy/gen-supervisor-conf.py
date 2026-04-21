@@ -47,6 +47,21 @@ def validate_command_override(value: str) -> bool:
     return bool(value) and bool(re.match(r"^[A-Za-z0-9/_.\- ]+$", value))
 
 
+def validate_agent_name(name: str) -> bool:
+    """Validate agent name — alphanumerics, underscore, hyphen only.
+
+    For `lyra-adapter` entries, `name` is appended verbatim to the
+    supervisord ``command=`` line (via ``run_adapter.sh <name>``), which
+    supervisord feeds to /bin/sh. The repo-authored trust boundary of
+    `agents.yml` already constrains who can set this, but the same
+    shell-metachar discipline as `validate_command_override` applies as
+    defense-in-depth.
+    """
+    import re
+
+    return bool(name) and bool(re.match(r"^[A-Za-z0-9_-]+$", name))
+
+
 HUB_NAME = "hub"
 ROLES: frozenset[str] = frozenset({"hub", "lyra-adapter", "external-satellite"})
 
@@ -147,6 +162,9 @@ def generate_conf(
     name: str, agent: dict[str, Any], defaults: dict[str, Any], ctx: dict[str, str]
 ) -> str:
     """Generate a supervisor [program:...] config block."""
+    if not validate_agent_name(name):
+        raise ValueError(f"Invalid agent name (shell-metachar or empty): {name!r}")
+
     program = f"lyra_{name}"
 
     # Merge defaults with agent overrides

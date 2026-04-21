@@ -233,3 +233,17 @@ def test_command_override_validation_chain_still_enforced(tmp_path: Path) -> Non
     err = _run_dry(p, expect_fail=True)
     # Assert
     assert "Invalid command_override" in err and "'sat'" in err
+
+
+# Agent-name validation (defense-in-depth, same allowlist style as
+# validate_env_key / validate_command_override).
+
+
+def test_invalid_agent_name_raises(tmp_path: Path) -> None:
+    # Arrange — name with a shell metachar would land on the command= line
+    # for a lyra-adapter agent via `run_adapter.sh <name>`.
+    p = _write_agents(tmp_path, {"telegram; rm -rf /": {"role": "lyra-adapter"}})
+    # Act
+    err = _run_dry(p, expect_fail=True)
+    # Assert
+    assert "Invalid agent name" in err and "'telegram; rm -rf /'" in err

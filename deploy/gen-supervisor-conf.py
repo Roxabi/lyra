@@ -46,6 +46,47 @@ def validate_command_override(value: str) -> bool:
     # Must be non-empty and entirely within a safe character class
     return bool(value) and bool(re.match(r"^[A-Za-z0-9/_.\- ]+$", value))
 
+
+HUB_NAME = "hub"
+ROLES: frozenset[str] = frozenset({"hub", "lyra-adapter", "external-satellite"})
+
+
+def resolve_role(name: str, agent: dict[str, Any]) -> str:
+    """Resolve + validate the launcher-dispatch role for an agent entry.
+
+    If `role` is present, validate it is in ROLES and that cross-checks hold.
+    If absent, infer: command_override present → external-satellite; else
+    name == HUB_NAME → hub; else → lyra-adapter.
+
+    Raises ValueError with agent name on any misconfig.
+    """
+    has_override = "command_override" in agent
+    if "role" in agent:
+        role = agent["role"]
+        if role not in ROLES:
+            raise ValueError(
+                f"unknown role {role!r} (agent {name!r}); "
+                f"expected one of: {', '.join(sorted(ROLES))}"
+            )
+        if role == "external-satellite" and not has_override:
+            raise ValueError(
+                f"role=external-satellite requires command_override (agent {name!r})"
+            )
+        if role == "lyra-adapter" and has_override:
+            raise ValueError(
+                f"role=lyra-adapter must not set command_override (agent {name!r})"
+            )
+        if role == "hub" and name != HUB_NAME:
+            raise ValueError(f"role=hub requires name=={HUB_NAME!r} (got {name!r})")
+        return role
+    # Inference fallback (intentionally retained for backward-compat, see #807 spec)
+    if has_override:
+        return "external-satellite"
+    if name == HUB_NAME:
+        return "hub"
+    return "lyra-adapter"
+
+
 # Template defaults matching existing conf.d/*.conf structure
 DEFAULTS: dict[str, Any] = {
     "autostart": False,
@@ -111,20 +152,18 @@ def generate_conf(
     # Merge defaults with agent overrides
     cfg = {**defaults, **agent}
 
-    # Determine command:
-    #   1. explicit command_override in agents.yml — used verbatim (for external-satellite
-    #      programs like imagecli nats-serve that are not lyra CLI subcommands).
-    #   2. name == "hub" — deploy/supervisor/scripts/run_hub.sh.
-    #   3. default — deploy/supervisor/scripts/run_adapter.sh <name>.
-    if "command_override" in agent:
+    role = resolve_role(name, agent)
+
+    if role == "external-satellite":
         cmd_path = agent["command_override"]
         if not validate_command_override(cmd_path):
             raise ValueError(
-                f"Invalid command_override for {name!r} (shell-metachar or empty): {cmd_path!r}"
+                f"Invalid command_override for {name!r}"
+                f" (shell-metachar or empty): {cmd_path!r}"
             )
-    elif name == "hub":
+    elif role == "hub":
         cmd_path = RUN_HUB.format(home=ctx["home"])
-    else:
+    else:  # lyra-adapter
         cmd_path = f"{RUN_ADAPTER.format(home=ctx['home'])} {name}"
 
     lines = [f"[program:{program}]"]

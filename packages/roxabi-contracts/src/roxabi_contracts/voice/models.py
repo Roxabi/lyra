@@ -31,7 +31,7 @@ class TtsRequest(ContractEnvelope):
     engine: str | None = None
     accent: str | None = None
     personality: str | None = None
-    speed: float | None = None
+    speed: str | None = None
     emotion: str | None = None
     exaggeration: float | None = None
     cfg_weight: float | None = None

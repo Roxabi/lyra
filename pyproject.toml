@@ -134,6 +134,7 @@ exclude = [".claude/worktrees", "deploy"]
 select = ["E", "F", "I", "C901", "PLR0913", "PLR0915"]
 
 [tool.ruff.lint.per-file-ignores]
+"scripts/corpus/tests/*.py" = ["E501"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

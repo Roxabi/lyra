@@ -41,6 +41,36 @@ query($owner: String!, $name: String!, $cursor: String, $since: DateTime) {
 """
 
 
+REPOS_QUERY = """
+query($org: String!, $cursor: String) {
+  organization(login: $org) {
+    repositories(
+      first: 100
+      after: $cursor
+      isArchived: false
+      orderBy: { field: NAME, direction: ASC }
+    ) {
+      pageInfo { hasNextPage endCursor }
+      nodes { name owner { login } isArchived }
+    }
+  }
+  rateLimit { cost remaining resetAt }
+}
+"""
+
+
+STUB_ISSUE_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      number title state url createdAt updatedAt closedAt
+    }
+  }
+  rateLimit { cost remaining resetAt }
+}
+"""
+
+
 def _build_variable_flags(variables: dict[str, Any]) -> list[str]:
     """Build -F / -f flags for `gh api graphql` from a variables dict.
 

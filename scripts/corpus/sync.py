@@ -12,7 +12,13 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
-from scripts.corpus.graphql import ISSUES_QUERY, gh_graphql
+from scripts.corpus.graphql import (
+    ISSUES_QUERY,
+    REPOS_QUERY,
+    STUB_ISSUE_QUERY,
+    GraphQLError,
+    gh_graphql,
+)
 
 _BARE_INT = re.compile(r"^\d+$")
 _SHORT_FORM = re.compile(r"^#(\d+)$")
@@ -192,3 +198,100 @@ def run_repo_sync(
     conn.commit()
 
     return {"pages": pages, "issues": total_issues}
+
+
+def enumerate_org_repos(org: str) -> list[tuple[str, str]]:
+    """Return list of (owner, name) for every non-archived repo in the org."""
+    repos: list[tuple[str, str]] = []
+    cursor: str | None = None
+    while True:
+        response = gh_graphql(REPOS_QUERY, {"org": org, "cursor": cursor})
+        log_rate_limit(response["data"]["rateLimit"])
+        page = response["data"]["organization"]["repositories"]
+        for node in page["nodes"]:
+            repos.append((node["owner"]["login"], node["name"]))
+        if not page["pageInfo"]["hasNextPage"]:
+            break
+        cursor = page["pageInfo"]["endCursor"]
+    return repos
+
+
+def closed_hop_pass(conn: sqlite3.Connection) -> int:
+    """Find edge rows whose endpoints are missing from issues and stub-fetch them.
+
+    Select DISTINCT keys from edges (src_key ∪ dst_key) that don't appear in issues.
+    For each missing key, fetch minimal metadata via GraphQL and INSERT with is_stub=1.
+
+    Returns the number of stubs inserted.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT k FROM ("
+        "  SELECT src_key AS k FROM edges "
+        "  UNION SELECT dst_key AS k FROM edges"
+        ") WHERE k NOT IN (SELECT key FROM issues)"
+    ).fetchall()
+    inserted = 0
+    for (key,) in rows:
+        owner_repo, _, number_str = key.rpartition("#")
+        if not owner_repo or not number_str.isdigit():
+            continue  # malformed key — defensive
+        owner, _, name = owner_repo.partition("/")
+        try:
+            response = gh_graphql(STUB_ISSUE_QUERY, {
+                "owner": owner, "name": name, "number": int(number_str),
+            })
+        except GraphQLError:
+            # Orphan — repo outside Roxabi or access denied. Per spec:
+            # "Stored as-is in edges; stub fetched if accessible, else logged as orphan"
+            print(f"[corpus] orphan reference: {key}", file=sys.stderr)
+            continue
+        rl = response.get("rateLimit") or response["data"]["rateLimit"]
+        log_rate_limit(rl)
+        node = response["data"]["repository"]["issue"]
+        if node is None:
+            print(f"[corpus] orphan reference: {key}", file=sys.stderr)
+            continue
+        stub = {
+            "key": key,
+            "repo": owner_repo,
+            "number": node["number"],
+            "title": node["title"],
+            "state": node["state"].lower(),
+            "url": node["url"],
+            "created_at": node["createdAt"],
+            "updated_at": node["updatedAt"],
+            "closed_at": node["closedAt"],
+            "milestone": None,
+            "is_stub": 1,
+        }
+        upsert_issue(conn, stub)
+        inserted += 1
+    conn.commit()
+    return inserted
+
+
+def run_sync(conn: sqlite3.Connection, org: str) -> dict[str, int]:
+    """Org-wide sync: enumerate repos, per-repo sync with since cursor, closed-hop pass.
+
+    Returns counts: {"repos": N, "pages": N, "issues": N, "stubs": N, "errors": N}.
+    """
+    repos = enumerate_org_repos(org)
+    total: dict[str, int] = {
+        "repos": len(repos), "pages": 0, "issues": 0, "stubs": 0, "errors": 0,
+    }
+    for owner, name in repos:
+        row = conn.execute(
+            "SELECT last_synced_at FROM sync_state WHERE repo = ?",
+            (f"{owner}/{name}",),
+        ).fetchone()
+        since = row[0] if row else None
+        try:
+            counts = run_repo_sync(conn, owner, name, since=since)
+        except GraphQLError as e:
+            print(f"[corpus] skipping {owner}/{name}: {e}", file=sys.stderr)
+            total["errors"] += 1
+            continue
+        total["pages"] += counts["pages"]
+        total["issues"] += counts["issues"]
+    total["stubs"] = closed_hop_pass(conn)
+    return total

@@ -1,13 +1,16 @@
 """Tests for scripts.corpus.sync — V2 sync helpers.
 
 Covers canonical_key normalisation, upsert_edges dedup on repeat calls,
-and log_rate_limit stderr format.
+log_rate_limit stderr format, and closed_hop_pass stub insertion.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from scripts.corpus.schema import bootstrap, connect
 from scripts.corpus.sync import (
@@ -102,3 +105,59 @@ def test_rate_limit_log(capsys) -> None:
         r"\[corpus\] cost=3 remaining=4997 reset=2026-04-21T10:00:00Z",
         captured.err,
     ), f"Expected structured rate-limit line in stderr, got: {captured.err!r}"
+
+
+def test_closed_hop_triggers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """closed_hop_pass must fetch stubs for referenced-but-missing blocker keys."""
+    from scripts.corpus.sync import closed_hop_pass  # noqa: PLC0415
+
+    # Arrange
+    db_path = tmp_path / "corpus.db"
+    bootstrap(db_path)
+    conn = connect(db_path)
+
+    # One open issue in Roxabi/lyra, blocked by a key that is NOT yet in issues.
+    upsert_issue(conn, {
+        "key": "Roxabi/lyra#100",
+        "repo": "Roxabi/lyra",
+        "number": 100,
+        "title": "needs closed ancestor",
+        "state": "open",
+        "url": "https://github.com/Roxabi/lyra/issues/100",
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-02T00:00:00Z",
+        "closed_at": None,
+        "milestone": None,
+        "is_stub": 0,
+    })
+    upsert_edges(conn, "Roxabi/lyra#100",
+                 blocked_by=["Roxabi/lyra#42"], blocking=[])
+    conn.commit()
+
+    # Mock gh_graphql so closed_hop_pass receives a canned response for #42.
+    def fake_gh_graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        return {"data": {"repository": {"issue": {
+            "number": 42,
+            "title": "ancient closed blocker",
+            "state": "CLOSED",
+            "url": "https://github.com/Roxabi/lyra/issues/42",
+            "createdAt": "2025-06-01T00:00:00Z",
+            "updatedAt": "2025-06-15T00:00:00Z",
+            "closedAt": "2025-06-15T00:00:00Z",
+        }}}, "rateLimit": {"cost": 1, "remaining": 4999, "resetAt": "2026-04-21T10:00:00Z"}}
+    monkeypatch.setattr("scripts.corpus.sync.gh_graphql", fake_gh_graphql)
+
+    # Act
+    closed_hop_pass(conn)
+
+    # Assert — stub row exists with is_stub=1
+    row = conn.execute(
+        "SELECT key, state, is_stub, title FROM issues WHERE key = ?",
+        ("Roxabi/lyra#42",),
+    ).fetchone()
+    conn.close()
+    assert row is not None, "closed_hop_pass should have upserted Roxabi/lyra#42"
+    assert row[0] == "Roxabi/lyra#42"
+    assert row[1] == "closed"
+    assert row[2] == 1
+    assert row[3] == "ancient closed blocker"

@@ -30,26 +30,38 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
-    if args.repo is None:
-        print(
-            "ERROR: --repo OWNER/NAME is required in V2 (org-wide sync lands in V3)",
-            file=sys.stderr,
-        )
-        return 1
-    if not re.match(r"^[\w.-]+/[\w.-]+$", args.repo):
-        print(f"ERROR: --repo must be OWNER/NAME, got: {args.repo!r}", file=sys.stderr)
-        return 1
-    owner, name = args.repo.split("/", 1)
     db_path = Path(args.db)
     schema.bootstrap(db_path)
     conn = schema.connect(db_path)
     try:
-        row = conn.execute(
-            "SELECT last_synced_at FROM sync_state WHERE repo = ?",
-            (f"{owner}/{name}",),
-        ).fetchone()
-        since = row[0] if row else None
-        counts = sync.run_repo_sync(conn, owner, name, since=since)
+        if args.repo is not None:
+            if not re.match(r"^[\w.-]+/[\w.-]+$", args.repo):
+                print(
+                    f"ERROR: --repo must be OWNER/NAME, got: {args.repo!r}",
+                    file=sys.stderr,
+                )
+                return 1
+            owner, name = args.repo.split("/", 1)
+            row = conn.execute(
+                "SELECT last_synced_at FROM sync_state WHERE repo = ?",
+                (f"{owner}/{name}",),
+            ).fetchone()
+            since = row[0] if row else None
+            counts = sync.run_repo_sync(conn, owner, name, since=since)
+            print(
+                f"Synced {counts['issues']} issues across {counts['pages']} pages"
+                f" from {owner}/{name}"
+            )
+            return 0
+        else:
+            totals = sync.run_sync(conn, "Roxabi")
+            print(
+                f"Synced {totals['issues']} issues across {totals['pages']} pages"
+                f" from {totals['repos']} repos;"
+                f" {totals['stubs']} closed-hop stubs;"
+                f" {totals['errors']} repo errors."
+            )
+            return 1 if totals["errors"] > 0 else 0
     except FileNotFoundError:
         print(
             "ERROR: gh CLI not found or not authenticated — run `gh auth login`",
@@ -61,11 +73,6 @@ def cmd_sync(args: argparse.Namespace) -> int:
         return 1
     finally:
         conn.close()
-    print(
-        f"Synced {counts['issues']} issues across {counts['pages']} pages"
-        f" from {owner}/{name}"
-    )
-    return 0
 
 
 def cmd_stats(args: argparse.Namespace) -> int:

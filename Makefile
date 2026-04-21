@@ -278,14 +278,16 @@ endef
 .PHONY: corpus
 
 corpus:
-	@case "$(_LYRA_CMD)" in \
-		init)    $(call corpus_run,init) ;; \
-		sync)    $(call corpus_run,sync) ;; \
-		stats)   $(call corpus_run,stats) ;; \
-		""|all)  $(call corpus_run,sync) ;; \
-		*)       echo "Unknown action: $(_LYRA_CMD)"; \
-		         echo "Use: init | sync | stats | (empty for sync)"; \
-		         exit 1 ;; \
+	@action="$(firstword $(_LYRA_CMD))"; \
+	repo_flag=""; \
+	if [ -n "$(REPO)" ]; then repo_flag="--repo $(REPO)"; fi; \
+	case "$$action" in \
+		init|stats)    $(call corpus_run,$$action) ;; \
+		sync)          $(call corpus_run,sync $$repo_flag) ;; \
+		""|all)        $(call corpus_run,sync $$repo_flag) ;; \
+		*)             echo "Unknown action: $$action"; \
+		               echo "Use: init | sync [REPO=OWNER/NAME] | stats | (empty for sync)"; \
+		               exit 1 ;; \
 	esac
 
 # ── Supervisor config generation ─────────────────────────────────────────────

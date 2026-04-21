@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from lyra.core.agent_config import Complexity
+from lyra.core.agent.agent_config import Complexity
 from lyra.llm.smart_routing import SmartRoutingDecorator
 
 from .conftest import _make_config, _make_inner, make_model_cfg

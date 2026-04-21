@@ -17,7 +17,7 @@ class TestAgentTTSConfig:
     """T08 -- AgentTTSConfig dataclass must exist with all-optional fields."""
 
     def test_agent_tts_config_all_optional(self):
-        from lyra.core.agent_config import AgentTTSConfig
+        from lyra.core.agent.agent_config import AgentTTSConfig
 
         cfg = AgentTTSConfig()
         assert cfg.engine is None
@@ -26,7 +26,7 @@ class TestAgentTTSConfig:
         assert cfg.accent is None
 
     def test_agent_stt_config_all_optional(self):
-        from lyra.core.agent_config import AgentSTTConfig
+        from lyra.core.agent.agent_config import AgentSTTConfig
 
         cfg = AgentSTTConfig()
         assert cfg.language_detection_threshold is None
@@ -38,7 +38,7 @@ class TestAgentRowToConfigTTSSTT:
     """T09 -- agent_row_to_config parses voice_json into Agent.voice."""
 
     def _make_row(self, voice_json=None):
-        from lyra.core.agent_models import AgentRow
+        from lyra.core.agent.agent_models import AgentRow
 
         return AgentRow(
             name="x",
@@ -49,7 +49,7 @@ class TestAgentRowToConfigTTSSTT:
 
     def test_voice_json_with_tts_section(self):
         """voice_json with tts data is parsed into Agent.voice.tts."""
-        from lyra.core.agent_db_loader import agent_row_to_config
+        from lyra.core.agent.agent_db_loader import agent_row_to_config
 
         voice_data = {
             "tts": {"engine": "qwen-fast", "voice": "Ono_Anna", "language": "French"},
@@ -64,7 +64,7 @@ class TestAgentRowToConfigTTSSTT:
 
     def test_voice_json_with_stt_section(self):
         """voice_json with stt data is parsed into Agent.voice.stt."""
-        from lyra.core.agent_db_loader import agent_row_to_config
+        from lyra.core.agent.agent_db_loader import agent_row_to_config
 
         voice_data = {
             "tts": {},
@@ -79,7 +79,7 @@ class TestAgentRowToConfigTTSSTT:
 
     def test_no_voice_json_produces_none(self):
         """Agent without voice_json -> .voice is None."""
-        from lyra.core.agent_db_loader import agent_row_to_config
+        from lyra.core.agent.agent_db_loader import agent_row_to_config
 
         row = self._make_row(voice_json=None)
         agent = agent_row_to_config(row)
@@ -91,8 +91,8 @@ class TestAgentRowToConfigTTSNewFields:
 
     def test_tts_exaggeration_and_cfg_weight(self) -> None:
         """voice_json with exaggeration + cfg_weight is parsed into float fields."""
-        from lyra.core.agent_db_loader import agent_row_to_config
-        from lyra.core.agent_models import AgentRow
+        from lyra.core.agent.agent_db_loader import agent_row_to_config
+        from lyra.core.agent.agent_models import AgentRow
 
         voice_data = {"tts": {"exaggeration": 0.7, "cfg_weight": 0.3}, "stt": {}}
         row = AgentRow(

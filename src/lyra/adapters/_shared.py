@@ -35,13 +35,13 @@ from lyra.adapters._shared_streaming import (
 # Re-exports from _shared_audio — importers can use either module.
 from lyra.adapters._shared_text import chunk_text, sanitize_filename, truncate_caption
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.message import InboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, Platform
 
 if TYPE_CHECKING:
     from lyra.adapters.outbound_listener import OutboundListener
-    from lyra.core.bus import Bus
-    from lyra.core.messages import MessageManager
-    from lyra.core.render_events import ToolSummaryRenderEvent
+    from lyra.core.messaging.bus import Bus
+    from lyra.core.messaging.messages import MessageManager
+    from lyra.core.messaging.render_events import ToolSummaryRenderEvent
 
 __all__ = [
     "AUDIO_MIME_TYPES",

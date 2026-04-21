@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from lyra.core import Hub
-from lyra.core.message import InboundMessage, Platform
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Platform
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------

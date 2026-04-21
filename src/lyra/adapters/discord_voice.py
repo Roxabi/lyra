@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 import discord
 
-from lyra.core.message import OutboundAudioChunk
+from lyra.core.messaging.message import OutboundAudioChunk
 
 log = logging.getLogger(__name__)
 

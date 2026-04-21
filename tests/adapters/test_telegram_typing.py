@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.render_events import TextRenderEvent
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.render_events import TextRenderEvent
 
 # ---------------------------------------------------------------------------
 # T1.4 — Unit tests for _typing_loop
@@ -122,7 +122,7 @@ async def test_send_cancels_typing_task() -> None:
     import asyncio
 
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.message import InboundMessage, OutboundMessage
+    from lyra.core.messaging.message import InboundMessage, OutboundMessage
 
     # Arrange
     bot = AsyncMock()
@@ -187,7 +187,7 @@ async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
     import asyncio
 
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage
 
     # Arrange
     bot = AsyncMock()

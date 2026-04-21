@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.turn_store import TurnStore
 
-from .agent_config import ModelConfig
+from ..agent.agent_config import ModelConfig
 from .cli_pool_lifecycle import CliPoolLifecycleMixin
 from .cli_pool_session import CliPoolSessionMixin
 from .cli_pool_streaming import CliPoolStreamingMixin
@@ -32,7 +32,8 @@ from .cli_protocol import (
     send_and_read,
 )
 
-# Re-export private names that tests reference via `from lyra.core.cli_pool import …`
+# Re-export private names that tests reference via
+# `from lyra.core.cli.cli_pool import …`
 __all__ = [
     "CliPool",
     "CliResult",

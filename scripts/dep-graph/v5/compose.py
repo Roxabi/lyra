@@ -3,6 +3,7 @@
 Concatenates assets/*.css into a single <style> and assets/*.js into a
 single <script>. Imports views and components to build the body.
 """
+
 from __future__ import annotations
 
 import html
@@ -18,8 +19,12 @@ from .views import grid as grid_view
 ASSETS = Path(__file__).resolve().parent / "assets"
 
 CSS_FILES = (
-    "tokens.css", "base.css", "toggle.css",
-    "card.css", "grid.css", "graph.css",
+    "tokens.css",
+    "base.css",
+    "toggle.css",
+    "card.css",
+    "grid.css",
+    "graph.css",
 )
 JS_FILES = ("hover.js", "app.js")
 
@@ -67,12 +72,12 @@ def build_html(data: GraphData, active: str = "graph") -> str:
     js = _read_assets(JS_FILES)
     header = (
         '<header class="page-header">\n'
-        f'  <div>\n'
-        f'    <h1>{_title_html()}</h1>\n'
+        f"  <div>\n"
+        f"    <h1>{_title_html()}</h1>\n"
         f'    <div class="subtitle">{html.escape(_subtitle(data))}</div>\n'
-        '  </div>\n'
-        f'  {render_toggle(active)}'
-        '</header>\n'
+        "  </div>\n"
+        f"  {render_toggle(active)}"
+        "</header>\n"
     )
     toolbar = render_toolbar()
     grid_html = grid_view.render(data, active=(active == "grid"))

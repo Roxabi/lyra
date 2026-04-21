@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .agent_config import ModelConfig
+from ..agent.agent_config import ModelConfig
 from .cli_protocol import _read_stderr_snippet, build_cmd
 
 log = logging.getLogger(__name__)

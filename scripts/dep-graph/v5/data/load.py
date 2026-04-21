@@ -1,4 +1,5 @@
 """Load layout.json + gh.json, derive matrix + counts, return GraphData."""
+
 from __future__ import annotations
 
 import json

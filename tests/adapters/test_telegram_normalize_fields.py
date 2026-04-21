@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.message import InboundMessage
+from lyra.core.messaging.message import InboundMessage
 
 # ---------------------------------------------------------------------------
 # T3 — _normalize() builds correct TelegramContext for private chat
@@ -449,7 +449,7 @@ def test_two_users_same_group_share_pool_id() -> None:
     """Two users in the same group → same scope_id → same pool_id (#592)."""
     from lyra.adapters.telegram import TelegramAdapter
     from lyra.core.hub.hub_protocol import RoutingKey
-    from lyra.core.message import Platform
+    from lyra.core.messaging.message import Platform
 
     adapter = TelegramAdapter(
         bot_id="main",

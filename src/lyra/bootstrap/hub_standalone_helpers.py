@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING
 
 from lyra.bootstrap.config import _build_agent_overrides, _load_pairing_config
 from lyra.bootstrap.lifecycle_helpers import teardown_buses, teardown_dispatchers
-from lyra.core.agent_loader import agent_row_to_config
+from lyra.core.agent.agent_loader import agent_row_to_config
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 
 if TYPE_CHECKING:
     from lyra.core.agent import Agent
-    from lyra.core.cli_pool import CliPool
+    from lyra.core.cli.cli_pool import CliPool
     from lyra.core.hub.hub import Hub
     from lyra.infrastructure.stores.agent_store import AgentStore
     from lyra.infrastructure.stores.auth_store import AuthStore

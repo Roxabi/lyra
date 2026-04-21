@@ -9,7 +9,7 @@ import pytest
 
 from lyra.bootstrap.nats_wiring import wire_nats_telegram_proxies
 from lyra.config import TelegramBotConfig
-from lyra.core.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
 

@@ -12,8 +12,8 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from lyra.core.memory_freshness import is_stale
-from lyra.core.memory_types import SessionSnapshot
+from lyra.core.memory.memory_freshness import is_stale
+from lyra.core.memory.memory_types import SessionSnapshot
 
 log = logging.getLogger(__name__)
 

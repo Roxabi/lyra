@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     OutboundMessage,
     Response,
     RoutingContext,

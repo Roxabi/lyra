@@ -439,7 +439,7 @@ show_intermediate = false
         await json_agent_store.seed_from_toml(toml_file)
 
         # Modify the row in store
-        from lyra.core.agent_models import AgentRow
+        from lyra.core.agent.agent_models import AgentRow
 
         existing = json_agent_store.get("force-agent")
         assert existing is not None

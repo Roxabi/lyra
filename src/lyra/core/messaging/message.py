@@ -6,7 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
 
 from lyra.core.audio_payload import AudioPayload
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.core.commands.command_parser import CommandContext

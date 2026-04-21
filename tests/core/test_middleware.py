@@ -25,7 +25,7 @@ from lyra.core.hub.middleware_stages import (
 )
 from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
 from lyra.core.hub.path_validation import resolve_context
-from lyra.core.message import Platform, Response
+from lyra.core.messaging.message import Platform, Response
 from lyra.infrastructure.stores.turn_store import TurnStore
 from tests.core.conftest import _make_hub, make_inbound_message
 

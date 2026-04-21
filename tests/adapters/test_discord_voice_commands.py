@@ -14,8 +14,8 @@ from lyra.adapters.discord_voice import (
     VoiceDependencyError,
     VoiceMode,
 )
-from lyra.core.message import OutboundAudioChunk
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import OutboundAudioChunk
 
 # ---------------------------------------------------------------------------
 # File-local helpers

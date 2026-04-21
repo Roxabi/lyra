@@ -18,7 +18,7 @@ from .agent_config import (
 )
 
 if TYPE_CHECKING:
-    from .commands.command_router import CommandConfig
+    from ..commands.command_router import CommandConfig
 
 log = logging.getLogger(__name__)
 
@@ -123,7 +123,7 @@ def _build_stt_from_dict(stt_data: dict) -> AgentSTTConfig:
 
 def _build_commands_from_dict(commands_data: dict) -> dict:
     """Build a commands dict from a parsed dict."""
-    from .commands.command_router import CommandConfig  # local: avoids cycle
+    from ..commands.command_router import CommandConfig  # local: avoids cycle
 
     commands = {}
     for cmd_name, cmd_data in commands_data.items():

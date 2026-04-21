@@ -9,16 +9,16 @@ import discord
 
 from lyra.adapters._shared import push_to_hub_guarded
 from lyra.core.audio_payload import AudioPayload
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     Platform,
     RoutingContext,
 )
-from lyra.core.scope import user_scoped
+from lyra.core.messaging.scope import user_scoped
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.trust import TrustLevel
+    from lyra.core.auth.trust import TrustLevel
 
 log = logging.getLogger(__name__)
 

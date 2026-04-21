@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from lyra.bootstrap.hub_builder import build_cli_pool, register_agents
 from lyra.core.agent import Agent
-from lyra.core.agent_config import ModelConfig
+from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
 

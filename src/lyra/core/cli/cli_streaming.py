@@ -11,9 +11,9 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 
+from ..messaging.events import LlmEvent
 from .cli_protocol import CliProtocolOptions, _read_stderr_snippet
 from .cli_streaming_parser import CliStreamingParser
-from .events import LlmEvent
 
 log = logging.getLogger(__name__)
 

@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.cli_pool import CliPool, _ProcessEntry
+from lyra.core.cli.cli_pool import CliPool, _ProcessEntry
 from lyra.core.hub import Hub
-from lyra.core.message import Platform
+from lyra.core.messaging.message import Platform
 from lyra.core.pool import Pool
 
 if TYPE_CHECKING:

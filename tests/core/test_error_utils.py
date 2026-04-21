@@ -6,7 +6,7 @@ import logging
 from unittest.mock import MagicMock
 
 from lyra.core.error_utils import safe_error_response
-from lyra.core.message import GENERIC_ERROR_REPLY, Response
+from lyra.core.messaging.message import GENERIC_ERROR_REPLY, Response
 
 
 class TestSafeErrorResponse:

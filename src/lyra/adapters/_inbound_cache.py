@@ -13,7 +13,7 @@ import asyncio
 import logging
 import time
 
-from lyra.core.message import InboundMessage
+from lyra.core.messaging.message import InboundMessage
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict

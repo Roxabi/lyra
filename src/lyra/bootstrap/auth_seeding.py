@@ -14,7 +14,7 @@ from lyra.config import (
     TelegramBotConfig,
     load_multibot_config,
 )
-from lyra.core.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.infrastructure.stores.auth_store import AuthStore
 

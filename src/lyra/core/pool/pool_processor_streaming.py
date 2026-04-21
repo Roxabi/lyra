@@ -10,11 +10,11 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..message import InboundMessage
+    from ..messaging.message import InboundMessage
     from .pool import Pool
 
-from ..message import OutboundMessage, Response
-from ..render_events import RenderEvent, TextRenderEvent
+from ..messaging.message import OutboundMessage, Response
+from ..messaging.render_events import RenderEvent, TextRenderEvent
 
 log = logging.getLogger(__name__)
 

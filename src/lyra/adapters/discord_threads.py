@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage
     from lyra.core.stores.thread_store import ThreadStore
 
 log = logging.getLogger(__name__)

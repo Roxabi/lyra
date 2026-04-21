@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.message import InboundMessage, Platform
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Platform
 from roxabi_nats._serialize import serialize
 
 
@@ -379,7 +379,7 @@ async def test_reaper_evicts_stale_entries(caplog) -> None:
     listener._cache._ts[fresh_id] = time.monotonic()
 
     # Wire up _stream_outbound and a mock task for the stale entry
-    from lyra.core.message import OutboundMessage
+    from lyra.core.messaging.message import OutboundMessage
 
     listener._stream_outbound[stale_id] = OutboundMessage(
         content=["x"], buttons=[], metadata={}
@@ -530,7 +530,7 @@ async def test_stream_error_no_queue_cleans_cache() -> None:
     import time
 
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.core.message import OutboundMessage
+    from lyra.core.messaging.message import OutboundMessage
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -674,7 +674,7 @@ async def test_stream_error_queue_full_records_tombstone_without_exception() -> 
 async def test_send_version_mismatch_drops_and_increments_counter() -> None:
     """send envelope with schema_version > expected is dropped; counter incremented."""
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.core.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
+    from lyra.core.messaging.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -703,7 +703,7 @@ async def test_send_version_mismatch_drops_and_increments_counter() -> None:
 async def test_stream_start_version_mismatch_drops_and_increments_counter() -> None:
     """stream_start envelope with schema_version > expected is dropped; counter incremented."""  # noqa: E501
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.core.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
+    from lyra.core.messaging.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -734,7 +734,7 @@ async def test_attachment_version_mismatch_drops_and_increments_counter() -> Non
     import base64
 
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
-    from lyra.core.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
+    from lyra.core.messaging.message import SCHEMA_VERSION_OUTBOUND_MESSAGE
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -808,8 +808,8 @@ async def test_version_mismatch_counter_flows_from_listener() -> None:
 
     from lyra.adapters.nats_outbound_listener import NatsOutboundListener
     from lyra.adapters.nats_stream_decoder import decode_stream_events
-    from lyra.core.message import Platform
-    from lyra.core.render_events import TextRenderEvent
+    from lyra.core.messaging.message import Platform
+    from lyra.core.messaging.render_events import TextRenderEvent
 
     # Arrange
     nc = AsyncMock()

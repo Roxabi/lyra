@@ -11,6 +11,7 @@ Positioning rule:
   4. Depth d > 0: desired cell = mean of parent cells (current or prior ms).
   5. Two-sweep L/R collision resolution, clamped to grid bounds.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -33,11 +34,12 @@ ROW_HEIGHT_PX = 44
 CONTAINER_CHROME_PX = 40
 CONTAINER_HEIGHT_SCALE = 1.0
 
-MIN_CELL_GAP = 2          # ≥ 1 blank cell between nodes in a band
+MIN_CELL_GAP = 2  # ≥ 1 blank cell between nodes in a band
 MAX_CELL_WIDTH_PCT = 4.0  # cap so small milestones don't stretch to full width
 
 
 # ─── Pure helpers ───────────────────────────────────────────────────────────
+
 
 def _lane_idx(lane_code: str, lane_order: list[str] | None = None) -> int:
     order = lane_order if lane_order is not None else LANE_ORDER
@@ -122,6 +124,7 @@ def _uniform_cells(n: int, grid_size: int) -> list[int]:
 
 
 # ─── Layout ─────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class _Placement:
@@ -217,19 +220,23 @@ def layout_grid(
         band_y = Y_TOP + i * step_y
         band_tasks = sorted(by_ms[ms][depth], key=lambda t: cell_of_num[t["num"]])
         for t in band_tasks:
-            node_records.append({
-                "task": t,
-                "x": x_of_num[t["num"]],
+            node_records.append(
+                {
+                    "task": t,
+                    "x": x_of_num[t["num"]],
+                    "y": band_y,
+                    "lane_tone": t["lane"],
+                }
+            )
+        band_records.append(
+            {
+                "ms": ms,
+                "depth": depth,
                 "y": band_y,
-                "lane_tone": t["lane"],
-            })
-        band_records.append({
-            "ms": ms,
-            "depth": depth,
-            "y": band_y,
-            "tasks": band_tasks,
-            "count": len(band_tasks),
-        })
+                "tasks": band_tasks,
+                "count": len(band_tasks),
+            }
+        )
 
     return node_records, band_records, grid_size_per_ms
 

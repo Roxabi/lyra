@@ -98,7 +98,9 @@ def normalize_title(raw: str, rules: list[dict] | None) -> str:
 
     Rules use Python regex; `$N` back-references are converted to `\\N`.
     """
-    compiled = _compile_rules(rules) + _COMPILED_BUILTINS if rules else _COMPILED_BUILTINS
+    compiled = (
+        _compile_rules(rules) + _COMPILED_BUILTINS if rules else _COMPILED_BUILTINS
+    )
     t = raw
     for pattern, replacement in compiled:
         t = pattern.sub(replacement, t).strip()

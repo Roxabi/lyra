@@ -9,13 +9,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent import Agent
-from lyra.core.agent_config import ModelConfig
-from lyra.core.message import (
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import (
     Attachment,
     InboundMessage,
 )
 from lyra.core.pool import Pool
-from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
 from lyra.stt import STTService, TranscriptionResult
 

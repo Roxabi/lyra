@@ -1,4 +1,5 @@
 """Issue-card component. Shared by grid and graph views."""
+
 from __future__ import annotations
 
 import html
@@ -28,7 +29,7 @@ def _dep_chip(refs: list[dict[str, Any]], arrow: str, issues: dict[str, dict]) -
     return (
         f'<span class="dep-chip dep-{direction}">'
         f'<span class="dep-arrow">{arrow}</span>'
-        f'{"".join(pills)}</span>'
+        f"{''.join(pills)}</span>"
     )
 
 
@@ -52,17 +53,12 @@ def render_card(  # noqa: PLR0913
     short = title if len(title) <= 52 else title[:51] + "…"
     url = f"https://github.com/{repo}/issues/{num}"
     size = iss.get("size") or ""
-    size_pill = (
-        f'<span class="card-size">{html.escape(size)}</span>' if size else ""
-    )
+    size_pill = f'<span class="card-size">{html.escape(size)}</span>' if size else ""
     blocked_by = iss.get("blocked_by", [])
     blocking = iss.get("blocking", [])
     blocked_keys = ",".join(ref_key(b) for b in blocked_by)
     blocking_keys = ",".join(ref_key(b) for b in blocking)
-    dep_chips = (
-        _dep_chip(blocked_by, "←", issues)
-        + _dep_chip(blocking, "→", issues)
-    )
+    dep_chips = _dep_chip(blocked_by, "←", issues) + _dep_chip(blocking, "→", issues)
     dep_row = f'<div class="dep-row">{dep_chips}</div>' if dep_chips else ""
     style_attr = f' style="{style}"' if style else ""
     return (
@@ -74,8 +70,8 @@ def render_card(  # noqa: PLR0913
         f'<span class="card-dot" aria-hidden="true"></span>'
         f'<span class="card-num">#{num}</span>'
         f'<span class="card-title">{short}</span>'
-        f'{size_pill}'
-        f'</div>'
-        f'{dep_row}'
-        f'</a>'
+        f"{size_pill}"
+        f"</div>"
+        f"{dep_row}"
+        f"</a>"
     )

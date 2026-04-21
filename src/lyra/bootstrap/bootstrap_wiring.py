@@ -16,11 +16,11 @@ from lyra.config import (
     TelegramBotConfig,
     TelegramMultiConfig,
 )
-from lyra.core.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
-from lyra.core.message import Platform
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.message import Platform
+from lyra.core.messaging.messages import MessageManager
 from lyra.core.stores.thread_store import ThreadStore
 from lyra.errors import MissingCredentialsError
 from lyra.infrastructure.stores.agent_store import AgentStore

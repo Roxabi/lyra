@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ..memory import SessionSnapshot
 
 from ..debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
-from ..message import InboundMessage, OutboundMessage
+from ..messaging.message import InboundMessage, OutboundMessage
 from .pool_context import PoolContext as PoolContext
 from .pool_observer import PoolObserver
 from .pool_processor import PoolProcessor

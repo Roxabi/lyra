@@ -11,7 +11,11 @@ import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from io import BytesIO
 
-from lyra.core.message import InboundMessage, OutboundAudio, OutboundAudioChunk
+from lyra.core.messaging.message import (
+    InboundMessage,
+    OutboundAudio,
+    OutboundAudioChunk,
+)
 
 log = logging.getLogger(__name__)
 

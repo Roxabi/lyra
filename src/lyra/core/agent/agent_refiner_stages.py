@@ -9,7 +9,7 @@ import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.core.agent_refiner import RefinementContext, RefinementPatch
+    from lyra.core.agent.agent_refiner import RefinementContext, RefinementPatch
 
 __all__ = [
     "build_system_prompt",

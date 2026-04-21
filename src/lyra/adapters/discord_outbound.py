@@ -18,11 +18,11 @@ from lyra.adapters.discord_formatting import (
     render_buttons,
     render_text,
 )
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
 )
-from lyra.core.render_events import ToolSummaryRenderEvent
+from lyra.core.messaging.render_events import ToolSummaryRenderEvent
 
 if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
@@ -141,7 +141,7 @@ async def send(  # noqa: C901 — attachment loop adds branches
 
 def _build_tool_embed(event: ToolSummaryRenderEvent) -> "discord.Embed":
     """Build a Discord embed from a ToolSummaryRenderEvent."""
-    from lyra.core.tool_recap_format import format_tool_lines
+    from lyra.core.messaging.tool_recap_format import format_tool_lines
 
     title = format_tool_summary_header(event)
     color = discord.Color.green() if event.is_complete else discord.Color.blue()

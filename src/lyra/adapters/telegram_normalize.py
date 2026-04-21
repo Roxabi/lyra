@@ -7,13 +7,13 @@ from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
 from lyra.core.audio_payload import AudioPayload
-from lyra.core.message import (
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import (
     Attachment,
     InboundMessage,
     Platform,
     RoutingContext,
 )
-from lyra.core.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter

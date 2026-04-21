@@ -10,15 +10,15 @@ import dataclasses
 import logging
 from typing import Any
 
+from ..auth.trust import TrustLevel
 from ..commands.command_parser import CommandParser
-from ..message import (
+from ..messaging.message import (
     GENERIC_ERROR_REPLY,
     InboundMessage,
     Platform,
     Response,
 )
 from ..trace import TraceContext
-from ..trust import TrustLevel
 from .middleware import Next, PipelineContext
 from .pipeline_events import CommandDispatched, MessageDropped
 from .pipeline_types import (

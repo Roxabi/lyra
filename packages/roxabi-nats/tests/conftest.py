@@ -37,9 +37,7 @@ def _register_stub_fixture() -> None:
     path = Path(__file__).parent / "_stub_fixture.py"
     spec = importlib.util.spec_from_file_location("roxabi_nats_test_stub", path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(
-            "failed to build import spec for roxabi_nats_test_stub"
-        )
+        raise RuntimeError("failed to build import spec for roxabi_nats_test_stub")
     mod = importlib.util.module_from_spec(spec)
     sys.modules["roxabi_nats_test_stub"] = mod
     spec.loader.exec_module(mod)

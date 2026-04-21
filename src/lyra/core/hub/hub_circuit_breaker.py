@@ -13,8 +13,8 @@ from lyra.errors import ProviderError
 
 if TYPE_CHECKING:
     from ..circuit_breaker import CircuitRegistry
-    from ..message import InboundMessage, OutboundMessage, Response
-    from ..messages import MessageManager
+    from ..messaging.message import InboundMessage, OutboundMessage, Response
+    from ..messaging.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class HubCircuitBreakerMixin:
             if self._msg_manager
             else f"Lyra is currently unavailable. Please try again in {retry_secs}s."
         )
-        from ..message import Response
+        from ..messaging.message import Response
 
         try:
             await self.dispatch_response(msg, Response(content=_unavail))

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.processor_registry import (
+from lyra.core.processors.processor_registry import (
     BaseProcessor,
     ProcessorRegistry,
     registry,

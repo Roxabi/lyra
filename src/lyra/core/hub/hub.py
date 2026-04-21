@@ -5,11 +5,11 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from ..authenticator import Authenticator
-from ..bus import Bus
-from ..identity import Identity
-from ..inbound_bus import LocalBus
-from ..message import InboundMessage, Platform
+from ..auth.authenticator import Authenticator
+from ..auth.identity import Identity
+from ..messaging.bus import Bus
+from ..messaging.inbound_bus import LocalBus
+from ..messaging.message import InboundMessage, Platform
 from ..pool import Pool
 from ..tts_dispatch import AudioPipeline
 from .hub_circuit_breaker import HubCircuitBreakerMixin
@@ -38,9 +38,9 @@ if TYPE_CHECKING:
     from ...tts import TtsProtocol
     from ..agent import AgentBase
     from ..circuit_breaker import CircuitRegistry
-    from ..cli_pool import CliPool
+    from ..cli.cli_pool import CliPool
     from ..memory import MemoryManager
-    from ..messages import MessageManager
+    from ..messaging.messages import MessageManager
     from ..stores.message_index import MessageIndex
     from ..stores.pairing import PairingManager
     from ..stores.prefs_store import PrefsStore

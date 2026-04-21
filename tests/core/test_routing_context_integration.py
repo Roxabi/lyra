@@ -15,13 +15,13 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     OutboundMessage,
     Platform,
     Response,
     RoutingContext,
 )
-from lyra.core.render_events import TextRenderEvent
+from lyra.core.messaging.render_events import TextRenderEvent
 
 from .conftest import _RC_DC, _RC_TG, make_routing_inbound
 

@@ -211,7 +211,7 @@ def patch_agent(
         raise typer.Exit(1)
 
     async def _run() -> None:
-        from lyra.core.agent_refiner import RefinementPatch
+        from lyra.core.agent.agent_refiner import RefinementPatch
 
         store = await _connect_store()
         try:
@@ -237,7 +237,11 @@ def patch_agent(
 @agent_app.command(name="refine")
 def refine(name: str = typer.Argument(..., help="Agent name to refine.")) -> None:
     """Interactively refine an agent profile via LLM-guided session."""
-    from lyra.core.agent_refiner import AgentRefiner, RefinementCancelled, TerminalIO
+    from lyra.core.agent.agent_refiner import (
+        AgentRefiner,
+        RefinementCancelled,
+        TerminalIO,
+    )
 
     async def _run() -> None:
         store = await _connect_store()

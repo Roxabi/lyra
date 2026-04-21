@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.authenticator import Authenticator
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.authenticator import Authenticator
+from lyra.core.auth.trust import TrustLevel
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 

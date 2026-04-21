@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from lyra.core.guard import BlockedGuard, GuardChain, Rejection
-from lyra.core.identity import Identity
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.guard import BlockedGuard, GuardChain, Rejection
+from lyra.core.auth.identity import Identity
+from lyra.core.auth.trust import TrustLevel
 
 
 def _id(trust: TrustLevel, *, admin: bool = False) -> Identity:

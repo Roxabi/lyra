@@ -10,7 +10,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from .agent_config import ModelConfig
+from ..agent.agent_config import ModelConfig
 from .cli_pool_worker import _ProcessEntry
 from .cli_protocol import StreamingIterator, send_and_read_stream
 

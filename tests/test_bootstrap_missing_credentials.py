@@ -16,7 +16,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
-from lyra.core.authenticator import Authenticator as AuthMiddleware
+from lyra.core.auth.authenticator import Authenticator as AuthMiddleware
 from lyra.errors import MissingCredentialsError
 from tests.conftest import make_fake_stores, patch_bootstrap_common
 

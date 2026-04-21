@@ -6,6 +6,7 @@ from layout_graph.layout_grid. Each task produces one .gg-node (dot) and one
 viewBox="0 0 100 100" stretched to fill. Milestone row-headers on the left
 gutter are positioned by pixel.
 """
+
 from __future__ import annotations
 
 import html
@@ -27,17 +28,9 @@ def _truncate(s: str, limit: int = TITLE_CHARS) -> str:
 def _chain_attrs(t: dict[str, Any]) -> str:
     """data-iss / data-blockedby / data-blocking attribute string."""
     key = t["key"]
-    blockers = ",".join(
-        f"{b['repo']}#{b['issue']}" for b in t.get("blockers", [])
-    )
-    unblocks = ",".join(
-        f"{u['repo']}#{u['issue']}" for u in t.get("unblocks", [])
-    )
-    return (
-        f'data-iss="{key}" '
-        f'data-blockedby="{blockers}" '
-        f'data-blocking="{unblocks}"'
-    )
+    blockers = ",".join(f"{b['repo']}#{b['issue']}" for b in t.get("blockers", []))
+    unblocks = ",".join(f"{u['repo']}#{u['issue']}" for u in t.get("unblocks", []))
+    return f'data-iss="{key}" data-blockedby="{blockers}" data-blocking="{unblocks}"'
 
 
 def _status_cls(status: str) -> str:
@@ -87,7 +80,7 @@ def _render_ilabels(node_records: list[dict[str, Any]]) -> str:
             f'<span class="gg-ldot" aria-hidden="true"></span>'
             f'<span class="gg-ilabel-num">#{num}</span>'
             f'<span class="gg-ilabel-title">{html.escape(title)}</span>'
-            f'</a>'
+            f"</a>"
         )
     return "\n    ".join(parts)
 
@@ -121,7 +114,7 @@ def _render_edges(
     return (
         '<svg class="graph-svg" viewBox="0 0 100 100" '
         'preserveAspectRatio="none" aria-hidden="true">\n      '
-        f'{inner}\n    </svg>'
+        f"{inner}\n    </svg>"
     )
 
 
@@ -144,7 +137,7 @@ def _render_msrows(
             f'<div class="gg-msrow" style="top:{top_px}px; height:{height_px}px;">'
             f'<div class="gg-msrow-code">{html.escape(ms)}</div>'
             f'<div class="gg-msrow-name">{html.escape(name)}</div>'
-            f'</div>'
+            f"</div>"
         )
     for i in range(1, len(ordered)):
         prev_bot = ordered[i - 1][1][1]
@@ -158,7 +151,9 @@ def _render_msrows(
 def render(data: GraphData, *, active: bool = True) -> str:
     tasks = tasks_for_graph(data)
     node_records, bands, _ = lg.layout_grid(
-        tasks, lane_order=data.lane_order, ms_codes=data.ms_codes,
+        tasks,
+        lane_order=data.lane_order,
+        ms_codes=data.ms_codes,
     )
     container_h = lg.container_height(bands)
 
@@ -172,12 +167,12 @@ def render(data: GraphData, *, active: bool = True) -> str:
         f'<section class="view view-graph{active_cls}" data-view="graph">\n'
         f'<div class="graph-wrap" style="height:{container_h}px;" '
         f'role="img" aria-label="Lyra v2 dependency graph — DAG view">\n'
-        f'  {msrows}\n'
+        f"  {msrows}\n"
         f'  <div class="graph-stage">\n'
-        f'    {edges}\n'
-        f'    {nodes}\n'
-        f'    {labels}\n'
-        '  </div>\n'
-        '</div>\n'
-        '</section>\n'
+        f"    {edges}\n"
+        f"    {nodes}\n"
+        f"    {labels}\n"
+        "  </div>\n"
+        "</div>\n"
+        "</section>\n"
     )

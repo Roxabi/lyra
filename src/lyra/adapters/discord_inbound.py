@@ -17,8 +17,8 @@ from lyra.adapters.discord_threads import (
     persist_thread_session,
     retrieve_thread_session,
 )
-from lyra.core.message import InboundMessage, Platform
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Platform
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -193,7 +193,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     _dm_session_id: str | None = None
     if _is_dm and adapter._turn_store is not None:
         from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         _pool_id = RoutingKey(
             Platform.DISCORD, adapter._bot_id, f"channel:{message.channel.id}"

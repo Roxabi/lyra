@@ -219,8 +219,8 @@ class TestNatsBusSanitization:
 
     def test_handler_sanitizes_platform_meta(self) -> None:
         """NatsBus handler strips unknown keys via dataclasses.replace."""
-        from lyra.core.message import InboundMessage, Platform
-        from lyra.core.trust import TrustLevel
+        from lyra.core.auth.trust import TrustLevel
+        from lyra.core.messaging.message import InboundMessage, Platform
         from roxabi_nats._serialize import deserialize, serialize
 
         msg = InboundMessage(

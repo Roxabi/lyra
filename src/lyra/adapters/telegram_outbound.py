@@ -13,11 +13,11 @@ from lyra.adapters.telegram_formatting import (
     _render_text,
     _validate_inbound,
 )
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
 )
-from lyra.core.render_events import ToolSummaryRenderEvent
+from lyra.core.messaging.render_events import ToolSummaryRenderEvent
 
 if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
@@ -151,7 +151,7 @@ async def send(
 
 def _format_tool_summary(event: ToolSummaryRenderEvent) -> str:
     """Format a ToolSummaryRenderEvent as human-readable Telegram text."""
-    from lyra.core.tool_recap_format import format_tool_lines
+    from lyra.core.messaging.tool_recap_format import format_tool_lines
 
     header = "🔧 Done ✅" if event.is_complete else "🔧 Working…"
     body = "\n".join(format_tool_lines(event))

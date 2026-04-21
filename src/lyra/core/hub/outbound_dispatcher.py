@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
 from ..circuit_breaker import CircuitBreaker, CircuitRegistry
-from ..message import (
+from ..messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -33,7 +33,7 @@ from .outbound_errors import (
 
 if TYPE_CHECKING:
     from lyra.core.hub import ChannelAdapter
-    from lyra.core.render_events import RenderEvent
+    from lyra.core.messaging.render_events import RenderEvent
 
 log = logging.getLogger(__name__)
 

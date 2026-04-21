@@ -22,7 +22,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from ..agent_models import AgentRow, AgentRuntimeStateRow
+from ..agent.agent_models import AgentRow, AgentRuntimeStateRow
 
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.agent_store import AgentStore

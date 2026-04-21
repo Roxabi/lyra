@@ -1,4 +1,4 @@
-"""Tests for lyra.core.agent_commands — CommandReloadManager hash verification."""
+"""Tests for lyra.core.agent.agent_commands — CommandReloadManager hash verification."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lyra.core.agent_commands import CommandReloadManager, _file_sha256
+from lyra.core.agent.agent_commands import CommandReloadManager, _file_sha256
 
 # ---------------------------------------------------------------------------
 # _file_sha256

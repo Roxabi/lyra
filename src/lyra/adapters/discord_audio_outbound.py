@@ -20,7 +20,7 @@ from lyra.adapters._shared import (
     truncate_caption,
 )
 from lyra.adapters.discord_formatting import _validate_inbound
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,

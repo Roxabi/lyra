@@ -12,9 +12,9 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.messages import MessageManager
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.stores.pairing_config import PairingConfig
-from lyra.core.tool_display_config import ToolDisplayConfig
 
 log = logging.getLogger(__name__)
 

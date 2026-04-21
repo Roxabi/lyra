@@ -6,8 +6,8 @@ import asyncio
 
 import pytest
 
-from lyra.core.agent_refiner import RefinementPatch
-from lyra.core.agent_refiner_stages import extract_patch
+from lyra.core.agent.agent_refiner import RefinementPatch
+from lyra.core.agent.agent_refiner_stages import extract_patch
 
 
 @pytest.fixture(autouse=True)

@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.messages import MessageManager
 
 TOML_PATH = (
     Path(__file__).resolve().parent.parent.parent

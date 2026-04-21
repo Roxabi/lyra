@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from lyra.core import Hub, Response
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundMessage,

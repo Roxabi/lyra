@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from lyra.core.authenticator import _ALLOW_ALL, _DENY_ALL, Authenticator
-from lyra.core.identity import Identity
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.authenticator import _ALLOW_ALL, _DENY_ALL, Authenticator
+from lyra.core.auth.identity import Identity
+from lyra.core.auth.trust import TrustLevel
 
 
 class TestResolve:

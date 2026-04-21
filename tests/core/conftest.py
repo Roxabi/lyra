@@ -14,14 +14,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.agent_config import ModelConfig
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.cli_pool import _ProcessEntry
+from lyra.core.cli.cli_pool import _ProcessEntry
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
 from lyra.core.commands.command_router import CommandRouter
 from lyra.core.hub import Hub
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     Attachment,
     InboundMessage,
     OutboundAttachment,
@@ -32,10 +33,9 @@ from lyra.core.message import (
     Response,
     RoutingContext,
 )
+from lyra.core.messaging.render_events import RenderEvent
 from lyra.core.pool import Pool
-from lyra.core.render_events import RenderEvent
 from lyra.core.stores.pairing import PairingConfig, PairingManager
-from lyra.core.trust import TrustLevel
 from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
 
@@ -200,7 +200,7 @@ def make_echo_plugin_dir(tmpdir: Path) -> Path:
         'handler = "cmd_echo"\n'
     )
     (plugin_dir / "handlers.py").write_text(
-        "from lyra.core.message import Response, InboundMessage\n"
+        "from lyra.core.messaging.message import Response, InboundMessage\n"
         "from lyra.core.pool import Pool\n"
         "async def cmd_echo(\n"
         "    msg: InboundMessage, pool: Pool, args: list[str]\n"
@@ -288,7 +288,7 @@ async def push_to_hub(hub: Hub, msg: InboundMessage) -> None:
     Registers the platform and starts the bus feeders if needed, then
     enqueues via the ``Bus`` Protocol's ``put()`` method.
     """
-    from lyra.core.inbound_bus import LocalBus
+    from lyra.core.messaging.inbound_bus import LocalBus
 
     platform = Platform(msg.platform)
     bus = hub.inbound_bus

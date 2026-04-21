@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ..commands.command_loader import CommandLoader
     from .agent_config import Agent
-    from .commands.command_loader import CommandLoader
 
 log = logging.getLogger(__name__)
 

@@ -15,13 +15,13 @@ from collections import deque
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
-from lyra.core.agent_config import Complexity, ModelConfig, SmartRoutingConfig
-from lyra.core.events import LlmEvent
+from lyra.core.agent.agent_config import Complexity, ModelConfig, SmartRoutingConfig
+from lyra.core.messaging.events import LlmEvent
 from lyra.core.smart_routing_protocol import RoutingDecision
 from lyra.llm.base import LlmProvider, LlmResult
 
 if TYPE_CHECKING:
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage
 
 log = logging.getLogger(__name__)
 

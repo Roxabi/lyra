@@ -15,7 +15,7 @@ import logging
 
 import pytest
 
-from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
+from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
 from lyra.nats.render_event_codec import NatsRenderEventCodec
 
 

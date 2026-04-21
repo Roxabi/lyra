@@ -11,16 +11,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .message import InboundMessage, Response
+from ..messaging.message import InboundMessage, Response
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from .circuit_breaker import CircuitRegistry
-    from .commands.command_loader import CommandLoader
-    from .messages import MessageManager
-    from .runtime_config import RuntimeConfigHolder
-    from .smart_routing_protocol import SmartRoutingProtocol
+    from ..circuit_breaker import CircuitRegistry
+    from ..messaging.messages import MessageManager
+    from ..runtime_config import RuntimeConfigHolder
+    from ..smart_routing_protocol import SmartRoutingProtocol
+    from .command_loader import CommandLoader
 
 
 def require_admin(msg: InboundMessage) -> "Response | None":
@@ -62,7 +62,7 @@ def help_command(  # noqa: PLR0913
     # passthroughs=None → show all (backward compat); empty frozenset → show none.
     try:
         importlib.import_module("lyra.core.processors")  # trigger self-registration
-        from lyra.core.processor_registry import registry as _proc_registry
+        from lyra.core.processors.processor_registry import registry as _proc_registry
 
         proc_descs = _proc_registry.descriptions()
         if proc_descs:

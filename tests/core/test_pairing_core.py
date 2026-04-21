@@ -12,13 +12,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.stores.pairing import (
     PairingConfig,
     PairingError,
     PairingManager,
     _sha256,
 )
-from lyra.core.trust import TrustLevel
 
 from .conftest import (
     _PAIRING_ADMIN_ID as _ADMIN_ID,

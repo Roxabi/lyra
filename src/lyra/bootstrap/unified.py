@@ -34,11 +34,11 @@ from lyra.bootstrap.embedded_nats import ensure_nats
 from lyra.bootstrap.lockfile import acquire_lockfile, release_lockfile
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent
-from lyra.core.agent_loader import agent_row_to_config
-from lyra.core.cli_pool import CliPool
+from lyra.core.agent.agent_loader import agent_row_to_config
+from lyra.core.cli.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
-from lyra.core.message import InboundMessage
+from lyra.core.messaging.message import InboundMessage
 from lyra.core.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.queue_groups import HUB_INBOUND

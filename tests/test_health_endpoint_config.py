@@ -37,7 +37,7 @@ class TestConfigEndpoint:
         from lyra.agents.anthropic_agent import AnthropicAgent
         from lyra.bootstrap.health import create_health_app
         from lyra.core.agent import Agent
-        from lyra.core.agent_config import ModelConfig
+        from lyra.core.agent.agent_config import ModelConfig
         from lyra.core.runtime_config import RuntimeConfig
         from lyra.llm.base import LlmResult
 
@@ -182,7 +182,7 @@ class TestHealthReaperFields:
         from unittest.mock import MagicMock
 
         from lyra.bootstrap.health import create_health_app
-        from lyra.core.cli_pool import CliPool
+        from lyra.core.cli.cli_pool import CliPool
 
         cli_pool = CliPool()
         # Simulate a running reaper task
@@ -207,7 +207,7 @@ class TestHealthReaperFields:
         from unittest.mock import MagicMock
 
         from lyra.bootstrap.health import create_health_app
-        from lyra.core.cli_pool import CliPool
+        from lyra.core.cli.cli_pool import CliPool
 
         cli_pool = CliPool()
         mock_task = MagicMock()

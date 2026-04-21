@@ -11,8 +11,8 @@ from lyra.adapters._shared import push_to_hub_guarded
 from lyra.adapters.telegram_audio import _download_audio
 from lyra.adapters.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram_normalize import _make_scope_id, normalize_audio
-from lyra.core.message import InboundMessage, Platform
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Platform
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -72,7 +72,7 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
     _meta_updates: dict[str, Any] = {}
     if adapter._turn_store is not None:
         from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         _pool_id = RoutingKey(
             Platform.TELEGRAM, adapter._bot_id, hub_msg.scope_id

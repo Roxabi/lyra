@@ -23,10 +23,10 @@ from lyra.bootstrap.config import (
 )
 from lyra.core.agent import Agent
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.cli_pool import CliPool
+from lyra.core.cli.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
-from lyra.core.message import InboundMessage
+from lyra.core.messaging.message import InboundMessage
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.queue_groups import HUB_INBOUND
@@ -34,7 +34,7 @@ from lyra.stt import STTProtocol
 from lyra.tts import TtsProtocol
 
 if TYPE_CHECKING:
-    from lyra.core.messages import MessageManager
+    from lyra.core.messaging.messages import MessageManager
     from lyra.core.stores.pairing import PairingManager
     from lyra.core.stores.prefs_store import PrefsStore
     from lyra.llm.drivers.nats_driver import NatsLlmDriver

@@ -12,7 +12,7 @@ import discord
 if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.outbound_listener import OutboundListener
-    from lyra.core.bus import Bus
+    from lyra.core.messaging.bus import Bus
     from lyra.infrastructure.stores.turn_store import TurnStore
 
 from lyra.adapters import discord_audio  # noqa: I001
@@ -37,16 +37,16 @@ from lyra.adapters.discord_voice_commands import (
     register_voice_app_commands as _register_voice_app_commands,
 )
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.guard import BlockedGuard, GuardChain
-from lyra.core.trust import TrustLevel
-from lyra.core.message import (
+from lyra.core.auth.guard import BlockedGuard, GuardChain
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
     OutboundAudioChunk,
     OutboundMessage,
 )
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.messages import MessageManager
 from lyra.core.stores.thread_store import ThreadStore
 
 log = logging.getLogger(__name__)

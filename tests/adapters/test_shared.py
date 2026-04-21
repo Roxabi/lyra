@@ -8,7 +8,7 @@ from lyra.adapters._shared import (
     format_tool_summary_header,
     send_with_retry,
 )
-from lyra.core.render_events import ToolSummaryRenderEvent
+from lyra.core.messaging.render_events import ToolSummaryRenderEvent
 
 
 class TestChunkText:

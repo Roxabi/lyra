@@ -1,4 +1,5 @@
 """Pure derivations over loaded issue data: depth, status, counts, task list."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -47,15 +48,14 @@ def status_of(iss: dict[str, Any], issues: dict[str, dict[str, Any]]) -> str:
     if iss["state"] == "closed":
         return "done"
     open_blockers = [
-        b for b in iss.get("blocked_by", [])
+        b
+        for b in iss.get("blocked_by", [])
         if issues.get(ref_key(b), {}).get("state") != "closed"
     ]
     return "blocked" if open_blockers else "ready"
 
 
-def compute_visible(
-    issues: dict[str, dict[str, Any]], primary_repo: str
-) -> set[str]:
+def compute_visible(issues: dict[str, dict[str, Any]], primary_repo: str) -> set[str]:
     """Visibility set per project-level rule.
 
     · Seed: all open items in primary repo.
@@ -63,7 +63,8 @@ def compute_visible(
     · 1-hop backward (blocked_by) from anything already visible.
     """
     visible: set[str] = {
-        k for k, i in issues.items()
+        k
+        for k, i in issues.items()
         if i.get("repo") == primary_repo and i.get("state") == "open"
     }
 
@@ -137,26 +138,28 @@ def tasks_for_graph(data: GraphData) -> list[dict[str, Any]]:
         if not ms or not lane or key in data.epic_keys or key not in data.visible:
             continue
         lmeta = data.lane_by_code.get(lane)
-        tasks.append({
-            "key": key,
-            "repo": iss["repo"],
-            "num": iss["number"],
-            "title": iss["title"],
-            "url": f"https://github.com/{iss['repo']}/issues/{iss['number']}",
-            "state": iss["state"],
-            "status": status_of(iss, data.issues),
-            "milestone": ms_short.get(ms, ms),
-            "milestone_name": ms_name_by_code.get(ms_short.get(ms, ms), ms),
-            "lane": lane,
-            "lane_name": lmeta.name if lmeta else "",
-            "column": col_of_lane.get(lane, ""),
-            "epic_num": (lmeta.epic.issue if lmeta and lmeta.epic else None),
-            "size": iss.get("size") or None,
-            "depth": data.depth_by_key.get(key, 0),
-            "blockers": iss.get("blocked_by", []),
-            "unblocks": iss.get("blocking", []),
-            "labels": iss.get("labels", []),
-        })
+        tasks.append(
+            {
+                "key": key,
+                "repo": iss["repo"],
+                "num": iss["number"],
+                "title": iss["title"],
+                "url": f"https://github.com/{iss['repo']}/issues/{iss['number']}",
+                "state": iss["state"],
+                "status": status_of(iss, data.issues),
+                "milestone": ms_short.get(ms, ms),
+                "milestone_name": ms_name_by_code.get(ms_short.get(ms, ms), ms),
+                "lane": lane,
+                "lane_name": lmeta.name if lmeta else "",
+                "column": col_of_lane.get(lane, ""),
+                "epic_num": (lmeta.epic.issue if lmeta and lmeta.epic else None),
+                "size": iss.get("size") or None,
+                "depth": data.depth_by_key.get(key, 0),
+                "blockers": iss.get("blocked_by", []),
+                "unblocks": iss.get("blocking", []),
+                "labels": iss.get("labels", []),
+            }
+        )
     tasks.sort(key=lambda t: (t["milestone"], t["column"], t["depth"], t["num"]))
     return tasks
 

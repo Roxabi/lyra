@@ -15,7 +15,7 @@ from lyra.bootstrap.lifecycle_helpers import (
     teardown_buses,
     teardown_dispatchers,
 )
-from lyra.core.cli_pool import CliPool
+from lyra.core.cli.cli_pool import CliPool
 from lyra.core.hub import Hub
 from lyra.core.stores.pairing import PairingManager
 from lyra.nats.nats_channel_proxy import NatsChannelProxy

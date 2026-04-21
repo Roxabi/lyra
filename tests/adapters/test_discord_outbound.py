@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     Button,
     OutboundMessage,
 )
@@ -368,8 +368,8 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
     import discord
 
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.message import InboundMessage, OutboundMessage
-    from lyra.core.trust import TrustLevel
+    from lyra.core.auth.trust import TrustLevel
+    from lyra.core.messaging.message import InboundMessage, OutboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -412,7 +412,7 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
     outbound = OutboundMessage.from_text("")
 
     async def _events():
-        from lyra.core.render_events import TextRenderEvent
+        from lyra.core.messaging.render_events import TextRenderEvent
 
         yield TextRenderEvent(text="hello", is_final=True)
 

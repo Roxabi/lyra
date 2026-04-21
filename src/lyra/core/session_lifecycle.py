@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .agent_config import Agent
+    from .agent.agent_config import Agent
     from .memory import MemoryManager, SessionSnapshot
     from .pool import Pool
 

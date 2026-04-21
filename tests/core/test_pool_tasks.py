@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
 from tests.core.conftest import FastAgent, SlowAgent, _drain, make_msg
 

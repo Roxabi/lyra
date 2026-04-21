@@ -14,8 +14,8 @@ from datetime import datetime, timezone
 
 from nats.aio.client import Client as NATS
 
-from lyra.core.message import InboundMessage, Platform
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.nats.nats_bus import NatsBus
 from tests.nats.conftest import requires_nats_server
 

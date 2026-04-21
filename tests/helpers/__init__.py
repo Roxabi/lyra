@@ -22,7 +22,7 @@ def reload_processors() -> None:
     import lyra.core.processors.search
     import lyra.core.processors.summarize
     import lyra.core.processors.vault_add
-    from lyra.core.processor_registry import registry
+    from lyra.core.processors.processor_registry import registry
 
     registry.clear()
     importlib.reload(lyra.core.processors.explain)

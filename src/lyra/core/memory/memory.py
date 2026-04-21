@@ -18,12 +18,12 @@ from roxabi_vault import AsyncMemoryDB
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
-from lyra.core.memory_freshness import age_str, is_stale
-from lyra.core.memory_schema import apply_schema_compat
-from lyra.core.memory_types import FRESHNESS_TTL_DAYS, SessionSnapshot
-from lyra.core.memory_upserts import MemoryManagerUpserts
+from lyra.core.memory.memory_freshness import age_str, is_stale
+from lyra.core.memory.memory_schema import apply_schema_compat
+from lyra.core.memory.memory_types import FRESHNESS_TTL_DAYS, SessionSnapshot
+from lyra.core.memory.memory_upserts import MemoryManagerUpserts
 
-# Re-export so `from lyra.core.memory import SessionSnapshot` keeps working.
+# Re-export so `from lyra.core.memory.memory import SessionSnapshot` keeps working.
 __all__ = [
     "FRESHNESS_TTL_DAYS",
     "MemoryManager",

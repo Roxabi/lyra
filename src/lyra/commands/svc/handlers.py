@@ -6,7 +6,7 @@ import logging
 import re
 
 from lyra.core.error_utils import safe_error_response
-from lyra.core.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
 from lyra.integrations.base import ServiceControlFailed, ServiceManager
 from lyra.integrations.supervisor import SupervisorctlManager

@@ -22,8 +22,8 @@ from typing import TYPE_CHECKING
 from lyra.adapters._shared_streaming import PlatformCallbacks, StreamingSession
 
 if TYPE_CHECKING:
-    from lyra.core.message import InboundMessage, OutboundMessage
-    from lyra.core.render_events import RenderEvent
+    from lyra.core.messaging.message import InboundMessage, OutboundMessage
+    from lyra.core.messaging.render_events import RenderEvent
 
 __all__ = ["OutboundAdapterBase"]
 

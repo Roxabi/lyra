@@ -16,8 +16,8 @@ import pytest
 
 from lyra.adapters._shared_streaming import PlatformCallbacks, StreamingSession
 from lyra.adapters.nats_stream_decoder import StreamChunkTimeout, decode_stream_events
-from lyra.core.message import GENERIC_ERROR_REPLY, OutboundMessage
-from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
+from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
+from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
 
 # ---------------------------------------------------------------------------
 # Helpers

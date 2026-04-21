@@ -1,4 +1,5 @@
 """Canonical domain model for v5. Loaded once, consumed by both views."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,21 +11,21 @@ from typing import Any
 # Tuple positions are load-bearing: parse_column_groups and every consumer
 # unpacks by position; do not reorder without updating all call sites.
 COLUMN_GROUPS: list[tuple[str, str, list[str]]] = [
-    ("NATS",      "a1", ["a1", "a2", "a3"]),
-    ("CONTAINER", "b",  ["b"]),
-    ("LLM",       "c1", ["c1", "c2", "c3"]),
-    ("OBS",       "d",  ["d"]),
-    ("HUB",       "e",  ["e"]),
-    ("PLUGINS",   "f",  ["f"]),
-    ("VOICE",     "g",  ["g"]),
-    ("DEPLOY",    "h",  ["h"]),
-    ("VAULT",     "i",  ["i"]),
-    ("MEMORY",    "a1", ["j"]),
-    ("IDENTITY",  "a2", ["k"]),
-    ("TOOLS",     "c1", ["l"]),
-    ("OMNI",      "g",  ["m"]),
-    ("SOCIAL",    "f",  ["n"]),
-    ("FINAL",     "e",  ["o"]),
+    ("NATS", "a1", ["a1", "a2", "a3"]),
+    ("CONTAINER", "b", ["b"]),
+    ("LLM", "c1", ["c1", "c2", "c3"]),
+    ("OBS", "d", ["d"]),
+    ("HUB", "e", ["e"]),
+    ("PLUGINS", "f", ["f"]),
+    ("VOICE", "g", ["g"]),
+    ("DEPLOY", "h", ["h"]),
+    ("VAULT", "i", ["i"]),
+    ("MEMORY", "a1", ["j"]),
+    ("IDENTITY", "a2", ["k"]),
+    ("TOOLS", "c1", ["l"]),
+    ("OMNI", "g", ["m"]),
+    ("SOCIAL", "f", ["n"]),
+    ("FINAL", "e", ["o"]),
 ]
 
 # Milestones — (full_label, code, short_display).
@@ -33,18 +34,18 @@ COLUMN_GROUPS: list[tuple[str, str, list[str]]] = [
 # NOTE: full_label matches GitHub title with em-dashes stripped (double-space).
 #       short_display is the row-header label used by the grid view (indexed by ms_name_by_code).
 MILESTONES: list[tuple[str, str, str]] = [
-    ("M0  NATS hardening",               "M0",  "NATS hardening"),
-    ("M1  NATS maturity  containerize",  "M1",  "NATS maturity / containerize"),
-    ("M2  LLM stack modernization",      "M2",  "LLM stack modernization"),
-    ("M3  Observability",                "M3",  "Observability"),
-    ("M4  Hub statelessness",            "M4",  "Hub statelessness"),
-    ("M5  Plugin layer",                 "M5",  "Plugin layer"),
-    ("M6  Memory",                       "M6",  "Memory"),
-    ("M7  Identity",                     "M7",  "Identity"),
-    ("M8  Tools",                        "M8",  "Tools"),
-    ("M9  Voice-to-Voice (Omni)",        "M9",  "Voice-to-Voice (Omni)"),
-    ("M10  Social Media Bricks",         "M10", "Social Media Bricks"),
-    ("Final Initiatives",                "FIN", "Final Initiatives"),
+    ("M0  NATS hardening", "M0", "NATS hardening"),
+    ("M1  NATS maturity  containerize", "M1", "NATS maturity / containerize"),
+    ("M2  LLM stack modernization", "M2", "LLM stack modernization"),
+    ("M3  Observability", "M3", "Observability"),
+    ("M4  Hub statelessness", "M4", "Hub statelessness"),
+    ("M5  Plugin layer", "M5", "Plugin layer"),
+    ("M6  Memory", "M6", "Memory"),
+    ("M7  Identity", "M7", "Identity"),
+    ("M8  Tools", "M8", "Tools"),
+    ("M9  Voice-to-Voice (Omni)", "M9", "Voice-to-Voice (Omni)"),
+    ("M10  Social Media Bricks", "M10", "Social Media Bricks"),
+    ("Final Initiatives", "FIN", "Final Initiatives"),
 ]
 
 MS_CODES: list[str] = [code for _, code, _ in MILESTONES]
@@ -59,27 +60,23 @@ NO_LANE: str = "__nolane__"
 
 # ─── Layout-driven config parsers ───────────────────────────────────────────
 
+
 def parse_column_groups(
     raw: list[dict[str, Any]],
 ) -> list[tuple[str, str, list[str]]]:
     """Parse layout.json column_groups[] → internal tuple form."""
-    return [
-        (item["label"], item["tone"], list(item["lane_codes"]))
-        for item in raw
-    ]
+    return [(item["label"], item["tone"], list(item["lane_codes"])) for item in raw]
 
 
 def parse_milestones(
     raw: list[dict[str, Any]],
 ) -> list[tuple[str, str, str]]:
     """Parse layout.json milestones[] → internal tuple form."""
-    return [
-        (item["label"], item["code"], item["short"])
-        for item in raw
-    ]
+    return [(item["label"], item["code"], item["short"]) for item in raw]
 
 
 # ─── Domain dataclasses ─────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class EpicMeta:
@@ -99,6 +96,7 @@ class Lane:
 @dataclass
 class GraphData:
     """Canonical loaded state. All rendering reads from this."""
+
     meta: dict[str, Any]
     lanes: list[Lane]
     lane_by_code: dict[str, Lane]

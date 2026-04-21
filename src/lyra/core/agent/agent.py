@@ -13,22 +13,22 @@ if TYPE_CHECKING:
     from lyra.stt import STTProtocol
     from lyra.tts import TtsProtocol
 
-    from .memory import MemoryManager
-    from .render_events import RenderEvent
+    from ..memory.memory import MemoryManager
+    from ..messaging.render_events import RenderEvent
 
+from ..auth.trust import TrustLevel
+from ..circuit_breaker import CircuitRegistry
+from ..commands.command_loader import CommandLoader
+from ..commands.command_router import CommandRouter
+from ..messaging.message import InboundMessage, Response
+from ..messaging.messages import MessageManager
+from ..pool import Pool
+from ..session_lifecycle import MODEL_CONTEXT_TOKENS, SessionManager
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent  # noqa: F401 — Agent re-exported
 from .agent_db_loader import (
     agent_row_to_config as agent_row_to_config,  # noqa: F401
 )
-from .circuit_breaker import CircuitRegistry
-from .commands.command_loader import CommandLoader
-from .commands.command_router import CommandRouter
-from .message import InboundMessage, Response
-from .messages import MessageManager
-from .pool import Pool
-from .session_lifecycle import MODEL_CONTEXT_TOKENS, SessionManager
-from .trust import TrustLevel
 
 log = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ class AgentBase(ABC, SessionManager):
         if row is None or row.updated_at == self._last_db_updated_at:
             return
         try:
-            from .agent_db_loader import agent_row_to_config
+            from .agent_db_loader import agent_row_to_config  # noqa: PLC0415
 
             new_config = agent_row_to_config(row, self._instance_overrides)
             if new_config != self.config:

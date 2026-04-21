@@ -17,8 +17,8 @@ from lyra.adapters.discord_voice import (
     VoiceSession,
     VoiceSessionManager,
 )
-from lyra.core.message import InboundMessage, OutboundAudioChunk
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, OutboundAudioChunk
 
 # ---------------------------------------------------------------------------
 # File-local helpers

@@ -6,9 +6,9 @@ import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from lyra.core.agent_config import ModelConfig
-from lyra.core.cli_pool import CliPool
-from lyra.core.events import LlmEvent
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.cli.cli_pool import CliPool
+from lyra.core.messaging.events import LlmEvent
 from lyra.llm.base import LlmResult
 
 log = logging.getLogger(__name__)

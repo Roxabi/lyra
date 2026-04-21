@@ -11,8 +11,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from lyra.core.identity import Identity
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.identity import Identity
+from lyra.core.auth.trust import TrustLevel
 
 __all__ = ["BlockedGuard", "Guard", "GuardChain", "Rejection"]
 

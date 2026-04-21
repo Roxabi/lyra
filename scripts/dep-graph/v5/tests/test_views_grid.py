@@ -1,4 +1,5 @@
 """Tests for v5.views.grid — grid view HTML output."""
+
 from __future__ import annotations
 
 import pytest
@@ -9,7 +10,9 @@ from v5.views import grid
 
 
 def _sentinel_cols(data) -> int:
-    return 1 if any(lane == NO_LANE and v for (_, lane), v in data.matrix.items()) else 0
+    return (
+        1 if any(lane == NO_LANE and v for (_, lane), v in data.matrix.items()) else 0
+    )
 
 
 def _sentinel_rows(data) -> int:
@@ -102,7 +105,7 @@ class TestGridRenderLayoutOverride:
         custom = dict(layout)
         custom["column_groups"] = [
             {"label": "ALPHA", "tone": "a1", "lane_codes": ["a1"]},
-            {"label": "BETA",  "tone": "b",  "lane_codes": ["b"]},
+            {"label": "BETA", "tone": "b", "lane_codes": ["b"]},
         ]
         data = load_from_dicts(custom, gh)
         result = grid.render(data)
@@ -133,7 +136,8 @@ class TestGridRenderLayoutOverride:
         result = grid.render(data)
         # 1 custom col + any sentinel lane col
         expected_headers = 1 + (
-            1 if any(lane == NO_LANE and v for (_, lane), v in data.matrix.items())
+            1
+            if any(lane == NO_LANE and v for (_, lane), v in data.matrix.items())
             else 0
         )
         assert result.count('class="col-header"') == expected_headers

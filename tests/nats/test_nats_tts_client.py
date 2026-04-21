@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent_config import AgentTTSConfig
+from lyra.core.agent.agent_config import AgentTTSConfig
 from lyra.nats.nats_tts_client import _TTS_CONFIG_FIELDS, NatsTtsClient
 from lyra.nats.voice_health import WorkerStats
 from lyra.tts import TtsUnavailableError

@@ -9,18 +9,18 @@ from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
 
 if TYPE_CHECKING:
-    from lyra.core.cli_pool import CliPool
+    from lyra.core.cli.cli_pool import CliPool
     from lyra.llm.base import LlmProvider
 
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent
-from lyra.core.agent_config import ModelConfig
-from lyra.core.message import (
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import (
     InboundMessage,
     Response,
 )
 from lyra.core.pool import Pool
-from lyra.core.trust import TrustLevel
 from lyra.llm.base import LlmResult
 
 # ---------------------------------------------------------------------------

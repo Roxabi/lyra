@@ -6,7 +6,7 @@ enabling follow-up questions.
 
 Usage — define a new processor::
 
-    from lyra.core.processor_registry import BaseProcessor, register
+    from lyra.core.processors.processor_registry import BaseProcessor, register
 
     @register("/my-cmd", description="Do something cool: /my-cmd <url>")
     class MyCmdProcessor(BaseProcessor):
@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.core.message import InboundMessage, Response
+    from lyra.core.messaging.message import InboundMessage, Response
     from lyra.integrations.base import SessionTools
 
 log = logging.getLogger(__name__)
@@ -135,5 +135,5 @@ class ProcessorRegistry:
 registry = ProcessorRegistry()
 
 # Convenience re-export so callers can write:
-#   from lyra.core.processor_registry import register
+#   from lyra.core.processors.processor_registry import register
 register = registry.register

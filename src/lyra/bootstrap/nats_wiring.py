@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING
 from nats.aio.client import Client as NATS
 
 from lyra.config import DiscordBotConfig, TelegramBotConfig
-from lyra.core.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub
 from lyra.core.hub.hub_protocol import RoutingKey
 from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
-from lyra.core.message import Platform
+from lyra.core.messaging.message import Platform
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 if TYPE_CHECKING:

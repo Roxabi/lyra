@@ -23,15 +23,15 @@ from __future__ import annotations
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 
-from lyra.core.events import LlmEvent, TextLlmEvent, ToolUseLlmEvent
-from lyra.core.render_events import (
+from lyra.core.messaging.events import LlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.messaging.render_events import (
     FileEditSummary,
     RenderEvent,
     SilentCounts,
     TextRenderEvent,
     ToolSummaryRenderEvent,
 )
-from lyra.core.tool_display_config import ToolDisplayConfig
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 
 
 class StreamProcessor:

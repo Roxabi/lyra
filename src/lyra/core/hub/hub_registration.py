@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..message import InboundMessage, Platform
+from ..messaging.message import InboundMessage, Platform
 from .hub_protocol import Binding, ChannelAdapter, RoutingKey
 
 if TYPE_CHECKING:
@@ -16,9 +16,9 @@ if TYPE_CHECKING:
     from lyra.infrastructure.stores.turn_store import TurnStore
 
     from ..agent import AgentBase
-    from ..authenticator import Authenticator
-    from ..bus import Bus
+    from ..auth.authenticator import Authenticator
     from ..memory import MemoryManager
+    from ..messaging.bus import Bus
     from ..pool import Pool
     from ..stores.message_index import MessageIndex
     from .outbound_dispatcher import OutboundDispatcher

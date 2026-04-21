@@ -22,7 +22,7 @@ from lyra.tts.engine_selector import (
 from lyra.tts.text_normalization import normalize_text_for_tts
 
 if TYPE_CHECKING:
-    from lyra.core.agent_config import AgentTTSConfig
+    from lyra.core.agent.agent_config import AgentTTSConfig
     from lyra.integrations.base import AudioConverter
 
 

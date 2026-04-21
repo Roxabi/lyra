@@ -13,7 +13,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.message import (
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -21,8 +22,7 @@ from lyra.core.message import (
     OutboundMessage,
     Platform,
 )
-from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
-from lyra.core.trust import TrustLevel
+from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 # ---------------------------------------------------------------------------

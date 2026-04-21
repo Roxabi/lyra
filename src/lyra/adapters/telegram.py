@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict
 if TYPE_CHECKING:
     from lyra.adapters._shared_streaming import PlatformCallbacks
     from lyra.adapters.outbound_listener import OutboundListener
-    from lyra.core.bus import Bus
+    from lyra.core.messaging.bus import Bus
     from lyra.infrastructure.stores.turn_store import TurnStore
 
 from lyra.adapters import telegram_audio  # noqa: I001
@@ -39,16 +39,16 @@ from lyra.adapters.telegram_outbound import (
     send as _send_impl,
 )
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.guard import BlockedGuard, GuardChain
-from lyra.core.trust import TrustLevel
-from lyra.core.message import (
+from lyra.core.auth.guard import BlockedGuard, GuardChain
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
     OutboundAudioChunk,
     OutboundMessage,
 )
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.messages import MessageManager
 
 log = logging.getLogger(__name__)
 

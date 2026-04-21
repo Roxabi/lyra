@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from nats.aio.msg import Msg
 
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     SCHEMA_VERSION_OUTBOUND_MESSAGE,
     OutboundAttachment,
     OutboundAudio,

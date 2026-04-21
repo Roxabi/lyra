@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
-from .commands.command_router import CommandConfig
+from ..commands.command_router import CommandConfig
 
 _VALID_BACKENDS: frozenset[str] = frozenset(
     {"claude-cli", "ollama", "anthropic-sdk", "litellm"}

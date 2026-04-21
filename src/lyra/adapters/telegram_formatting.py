@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from lyra.adapters._shared import ATTACHMENT_EXTS_BASE, chunk_text
-from lyra.core.message import InboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, Platform
 
 log = logging.getLogger("lyra.adapters.telegram")
 

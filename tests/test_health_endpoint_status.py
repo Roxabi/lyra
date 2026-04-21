@@ -13,13 +13,13 @@ from datetime import datetime, timezone
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     Platform,
 )
-from lyra.core.trust import TrustLevel
 from tests.conftest import AUTH_HEADERS, HEALTH_SECRET
 from tests.core.conftest import push_to_hub
 

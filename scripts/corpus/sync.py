@@ -4,6 +4,7 @@ This module holds pure helpers used by the V2 per-repo sync loop (T13) and
 the V3 org-wide orchestrator (T20). No network I/O here — transport lives
 in scripts.corpus.graphql.
 """
+
 from __future__ import annotations
 
 import re
@@ -251,9 +252,14 @@ def closed_hop_pass(conn: sqlite3.Connection) -> int:
             continue  # malformed key — defensive
         owner, _, name = owner_repo.partition("/")
         try:
-            response = gh_graphql(STUB_ISSUE_QUERY, {
-                "owner": owner, "name": name, "number": int(number_str),
-            })
+            response = gh_graphql(
+                STUB_ISSUE_QUERY,
+                {
+                    "owner": owner,
+                    "name": name,
+                    "number": int(number_str),
+                },
+            )
         except GraphQLError:
             # Orphan — repo outside Roxabi or access denied. Per spec:
             # "Stored as-is in edges; stub fetched if accessible, else logged as orphan"
@@ -290,7 +296,11 @@ def run_sync(conn: sqlite3.Connection, org: str) -> dict[str, int]:
     """
     repos = enumerate_org_repos(org)
     total: dict[str, int] = {
-        "repos": len(repos), "pages": 0, "issues": 0, "stubs": 0, "errors": 0,
+        "repos": len(repos),
+        "pages": 0,
+        "issues": 0,
+        "stubs": 0,
+        "errors": 0,
     }
     for owner, name in repos:
         row = conn.execute(

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
 from lyra.core.commands.command_router import CommandRouter
-from lyra.core.message import InboundMessage
-from lyra.core.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage
 from lyra.llm.smart_routing import SmartRoutingDecorator
 
 from .conftest import _make_config, _make_inner, make_model_cfg

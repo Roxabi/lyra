@@ -23,8 +23,8 @@ from unittest.mock import AsyncMock
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 from lyra.adapters.outbound_listener import OutboundListener
 from lyra.core.audio_payload import AudioPayload
-from lyra.core.message import InboundMessage, Platform
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Platform
 
 # Module-level static structural check. mypy/pyright verify that
 # NatsOutboundListener (the class object) is assignable to

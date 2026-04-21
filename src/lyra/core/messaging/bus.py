@@ -7,9 +7,9 @@ implement the same Protocol without touching Hub internals.
 
 Usage::
 
-    from lyra.core.bus import Bus
-    from lyra.core.inbound_bus import LocalBus
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.bus import Bus
+    from lyra.core.messaging.inbound_bus import LocalBus
+    from lyra.core.messaging.message import InboundMessage
 
     bus: Bus[InboundMessage] = LocalBus(name="inbound")
 """

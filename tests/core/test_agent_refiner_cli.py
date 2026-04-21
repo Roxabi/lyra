@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent_models import AgentRow
-from lyra.core.agent_refiner import (
+from lyra.core.agent.agent_models import AgentRow
+from lyra.core.agent.agent_refiner import (
     AgentRefiner,
     RefinementCancelled,
     RefinementPatch,
@@ -339,7 +339,7 @@ class TestRefineCommand:
                 side_effect=fake_connect,
             ),
             mock_patch(
-                "lyra.core.agent_refiner.AgentRefiner.run_session",
+                "lyra.core.agent.agent_refiner.AgentRefiner.run_session",
                 return_value=RefinementPatch(fields={"model": "claude-opus-4-6"}),
             ),
         ):
@@ -372,7 +372,7 @@ class TestRefineCommand:
                 side_effect=fake_connect,
             ),
             mock_patch(
-                "lyra.core.agent_refiner.AgentRefiner.run_session",
+                "lyra.core.agent.agent_refiner.AgentRefiner.run_session",
                 side_effect=RefinementCancelled(),
             ),
         ):

@@ -25,13 +25,13 @@ import pytest
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_router import CommandRouter
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
     Response,
 )
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.messages import MessageManager
 from lyra.core.pool import Pool
 
 from .conftest import make_echo_plugin_dir, make_message, make_router, push_to_hub
@@ -180,7 +180,7 @@ class TestHotReloadUpdatesCommands:
             ) -> Response:
                 return Response(content="ok")
 
-        from lyra.core.agent_config import ModelConfig
+        from lyra.core.agent.agent_config import ModelConfig
 
         (tmp_path / "plugins").mkdir()
         plugins_dir = make_echo_plugin_dir(tmp_path / "plugins")

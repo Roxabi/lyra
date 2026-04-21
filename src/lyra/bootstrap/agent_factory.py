@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING
 from lyra.bootstrap.bot_agent_map import resolve_bot_agent_map  # noqa: F401
 from lyra.bootstrap.config import LlmConfig
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.agent_config import SmartRoutingConfig
+from lyra.core.agent.agent_config import SmartRoutingConfig
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.cli_pool import CliPool
-from lyra.core.messages import MessageManager
+from lyra.core.cli.cli_pool import CliPool
+from lyra.core.messaging.messages import MessageManager
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry

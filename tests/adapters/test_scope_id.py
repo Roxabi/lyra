@@ -91,7 +91,7 @@ def test_discord_two_users_same_guild_channel_same_pool_id() -> None:
     RED: scope_ids differ → pool_ids differ.
     """
     from lyra.core.hub.hub_protocol import RoutingKey
-    from lyra.core.message import Platform
+    from lyra.core.messaging.message import Platform
 
     adapter = _make_discord_adapter()
 

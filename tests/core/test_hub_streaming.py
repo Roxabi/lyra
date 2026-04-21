@@ -9,13 +9,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core import Agent, AgentBase, Hub, Pool
 from lyra.core.hub.hub_protocol import ChannelAdapter
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
     Response,
 )
-from lyra.core.render_events import RenderEvent, TextRenderEvent
+from lyra.core.messaging.render_events import RenderEvent, TextRenderEvent
 from lyra.tts import TTSService
 from tests.core.conftest import MockAdapter, make_inbound_message, push_to_hub
 

@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from .agent_config import Agent
     from .agent_models import AgentRow
 
+from ..persona import compose_system_prompt_from_json
 from .agent_builder import (
     _assemble_agent,
     _build_commands_from_dict,
@@ -26,7 +27,6 @@ from .agent_config import (
     ModelConfig,
     SmartRoutingConfig,
 )
-from .persona import compose_system_prompt_from_json
 
 log = logging.getLogger(__name__)
 

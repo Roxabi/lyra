@@ -19,7 +19,7 @@ from lyra.adapters.nats_stream_decoder import (
 from lyra.adapters.nats_stream_decoder import (
     handle_stream_error as _handle_stream_error_impl,
 )
-from lyra.core.message import InboundMessage, OutboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, OutboundMessage, Platform
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict as _deserialize_dict

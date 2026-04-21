@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
 
 __all__ = ["Identity"]
 

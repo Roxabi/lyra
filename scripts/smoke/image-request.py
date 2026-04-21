@@ -12,6 +12,7 @@ Env:
     NATS_URL               Defaults to nats://127.0.0.1:4222
     NATS_NKEY_SEED_PATH    Optional; enables nkey auth (path to seed file)
 """
+
 from __future__ import annotations
 
 import argparse

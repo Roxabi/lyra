@@ -1,4 +1,5 @@
 """Tests for v5/assets/ — static CSS and JS files."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,6 +24,7 @@ JS_FILES = [
 
 # ─── Basic existence + content ───────────────────────────────────────────────
 
+
 class TestAssetFilesNonEmpty:
     @pytest.mark.parametrize("name", CSS_FILES + JS_FILES)
     def test_file_is_non_empty(self, name):
@@ -39,6 +41,7 @@ class TestAssetFilesNonEmpty:
 
 # ─── CSS: no Python f-string leakage ─────────────────────────────────────────
 
+
 class TestCssNoFStringLeakage:
     @pytest.mark.parametrize("name", CSS_FILES)
     def test_no_double_braces(self, name):
@@ -50,28 +53,43 @@ class TestCssNoFStringLeakage:
 
 # ─── JS: syntactic plausibility (balanced braces/parens) ─────────────────────
 
+
 class TestJsBalancedBrackets:
     @pytest.mark.parametrize("name", JS_FILES)
     def test_balanced_parens(self, name):
         content = (ASSETS_DIR / name).read_text()
-        assert content.count("(") == content.count(")"), \
+        assert content.count("(") == content.count(")"), (
             f"{name}: unbalanced parentheses"
+        )
 
     @pytest.mark.parametrize("name", JS_FILES)
     def test_balanced_braces(self, name):
         content = (ASSETS_DIR / name).read_text()
-        assert content.count("{") == content.count("}"), \
+        assert content.count("{") == content.count("}"), (
             f"{name}: unbalanced curly braces"
+        )
 
 
 # ─── tokens.css defines all lane tokens used by grid.css and card.css ────────
+
 
 class TestTokensDefinesAllLanes:
     def test_tokens_has_all_lane_variables(self):
         tokens = (ASSETS_DIR / "tokens.css").read_text()
         expected_lanes = [
-            "a1", "a2", "a3", "b", "c1", "c2", "c3",
-            "d", "e", "f", "g", "h", "i",
+            "a1",
+            "a2",
+            "a3",
+            "b",
+            "c1",
+            "c2",
+            "c3",
+            "d",
+            "e",
+            "f",
+            "g",
+            "h",
+            "i",
         ]
         for lane in expected_lanes:
             token = f"--lane-{lane}"

@@ -217,9 +217,9 @@ class TestStandaloneHubPipeline:
         import asyncio
 
         import nats as nats_lib
+        from lyra.core.auth.trust import TrustLevel
         from lyra.core.hub import Hub
-        from lyra.core.message import InboundMessage, Platform
-        from lyra.core.trust import TrustLevel
+        from lyra.core.messaging.message import InboundMessage, Platform
         from lyra.nats.nats_bus import NatsBus
         from roxabi_nats._serialize import serialize
 
@@ -299,11 +299,11 @@ class TestStandaloneHubPipeline:
         from unittest.mock import MagicMock
 
         import nats as nats_lib
-        from lyra.core.authenticator import Authenticator
+        from lyra.core.auth.authenticator import Authenticator
+        from lyra.core.auth.identity import Identity
+        from lyra.core.auth.trust import TrustLevel
         from lyra.core.hub import Hub
-        from lyra.core.identity import Identity
-        from lyra.core.message import InboundMessage, Platform
-        from lyra.core.trust import TrustLevel
+        from lyra.core.messaging.message import InboundMessage, Platform
         from lyra.nats.nats_bus import NatsBus
         from roxabi_nats._serialize import serialize
 

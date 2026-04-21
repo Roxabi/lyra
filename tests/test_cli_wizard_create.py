@@ -10,7 +10,7 @@ from click.testing import Result
 from typer.testing import CliRunner
 
 from lyra.cli import agent_app as app
-from lyra.core.agent_seeder import _parse_toml
+from lyra.core.agent.agent_seeder import _parse_toml
 
 # ---------------------------------------------------------------------------
 # Helpers

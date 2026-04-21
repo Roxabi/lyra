@@ -7,10 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.config import TelegramBotConfig
-from lyra.core.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator
+from lyra.core.auth.trust import (
+    TrustLevel,  # noqa: F401 — used in Authenticator(default=)
+)
 from lyra.core.hub.hub import Hub
-from lyra.core.message import Platform
-from lyra.core.trust import TrustLevel  # noqa: F401 — used in Authenticator(default=)
+from lyra.core.messaging.message import Platform
 
 # ---------------------------------------------------------------------------
 # Finding I: wire_telegram_adapters registers the authenticator on the hub

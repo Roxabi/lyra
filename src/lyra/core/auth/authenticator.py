@@ -10,8 +10,8 @@ import logging
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from lyra.core.identity import Identity
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.identity import Identity
+from lyra.core.auth.trust import TrustLevel
 
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.auth_store import AuthStore

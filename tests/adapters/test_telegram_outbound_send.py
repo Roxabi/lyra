@@ -12,11 +12,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.message import (  # noqa: F401
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import (  # noqa: F401
     InboundMessage,
     OutboundMessage,
 )
-from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # T7 — send() calls bot.send_message(chat_id, text)

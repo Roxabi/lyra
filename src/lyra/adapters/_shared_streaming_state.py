@@ -12,8 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from lyra.adapters.nats_stream_decoder import StreamChunkTimeout
-from lyra.core.message import GENERIC_ERROR_REPLY
-from lyra.core.render_events import TextRenderEvent
+from lyra.core.messaging.message import GENERIC_ERROR_REPLY
+from lyra.core.messaging.render_events import TextRenderEvent
 
 log = logging.getLogger(__name__)
 

@@ -10,7 +10,7 @@ import json
 import logging
 from collections import deque
 
-from .events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from ..messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 log = logging.getLogger(__name__)
 

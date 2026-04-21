@@ -23,7 +23,7 @@ from lyra.adapters.telegram_formatting import (
     TELEGRAM_CAPTION_MAX,
     _validate_inbound,
 )
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,

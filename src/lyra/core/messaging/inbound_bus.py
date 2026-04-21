@@ -8,9 +8,9 @@ another platform's messages.
 
 Usage::
 
-    from lyra.core.bus import Bus
-    from lyra.core.inbound_bus import LocalBus
-    from lyra.core.message import InboundMessage, Platform
+    from lyra.core.messaging.bus import Bus
+    from lyra.core.messaging.inbound_bus import LocalBus
+    from lyra.core.messaging.message import InboundMessage, Platform
 
     bus: Bus[InboundMessage] = LocalBus(name="inbound")
     bus.register(Platform.TELEGRAM, maxsize=100)

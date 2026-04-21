@@ -6,8 +6,8 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.cli_protocol import StreamingIterator, send_and_read_stream
-from lyra.core.events import ResultLlmEvent, TextLlmEvent
+from lyra.core.cli.cli_protocol import StreamingIterator, send_and_read_stream
+from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
 
 from .conftest import (
     ASSISTANT_INTERMEDIATE_LINE,

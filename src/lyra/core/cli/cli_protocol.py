@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from .cli_non_streaming import read_until_result, send_and_read
     from .cli_streaming import StreamingIterator, send_and_read_stream
 
-from .agent_config import ModelConfig
+from ..agent.agent_config import ModelConfig
 
 log = logging.getLogger(__name__)
 

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from lyra.adapters.cli import CLIAdapter
-from lyra.core.message import InboundMessage
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage
 
 
 def test_on_input_returns_inbound_message() -> None:

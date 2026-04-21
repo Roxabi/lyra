@@ -49,7 +49,7 @@ messages and upgrades to a more capable model for complex ones.
 
 ## LlmEvent types (defined in `core/events.py`)
 
-Events emitted by streaming drivers. The types live in `lyra.core.events` so
+Events emitted by streaming drivers. The types live in `lyra.core.messaging.events` so
 that `core/` can consume them without importing `llm/` — preserving the
 unidirectional `llm → core` dependency (enforced by `import-linter`).
 
@@ -62,7 +62,7 @@ unidirectional `llm → core` dependency (enforced by `import-linter`).
 `LlmEvent = TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent` — use this union type
 for annotations. All event classes are `frozen=True` — never mutate after construction.
 
-Import canonically from `lyra.core.events`. The `lyra.llm` package does **not**
+Import canonically from `lyra.core.messaging.events`. The `lyra.llm` package does **not**
 re-export these types — doing so would make the canonical location invisible to
 tooling (`import-linter` checks statements, not re-exports). `cost_usd` is always
 `None` for `ClaudeCliDriver` (not present in its NDJSON output).

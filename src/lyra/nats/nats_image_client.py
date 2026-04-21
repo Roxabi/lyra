@@ -198,9 +198,7 @@ class NatsImageClient:
             return ImageResponse.model_validate_json(raw)
         except ValidationError as exc:
             self._cb.record_failure()
-            raise ImageUnavailableError(
-                "Image reply failed schema validation"
-            ) from exc
+            raise ImageUnavailableError("Image reply failed schema validation") from exc
 
     async def _send(self, payload: bytes) -> ImageResponse:
         """Send payload to the image request subject."""
@@ -252,9 +250,7 @@ class NatsImageClient:
         """
         preferred = self._registry.pick_least_loaded()
         if preferred is None:
-            raise ImageUnavailableError(
-                "Image: no live worker (heartbeat stale >15s)"
-            )
+            raise ImageUnavailableError("Image: no live worker (heartbeat stale >15s)")
         if self._cb.is_open():
             raise ImageUnavailableError(
                 "Image circuit open — adapter temporarily unavailable"

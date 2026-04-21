@@ -8,9 +8,9 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from ..messaging.message import InboundMessage, Response
+from ..pool import Pool
 from .builtin_commands import require_admin
-from .message import InboundMessage, Response
-from .pool import Pool
 
 
 async def cmd_folder(

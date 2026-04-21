@@ -10,8 +10,8 @@ from pathlib import Path
 
 from lyra.adapters.nats_outbound_listener import NatsOutboundListener
 from lyra.bootstrap.signal_handlers import setup_shutdown_event
-from lyra.core.bus import Bus
-from lyra.core.message import InboundMessage, Platform
+from lyra.core.messaging.bus import Bus
+from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.infrastructure.stores.credential_store import CredentialStore, LyraKeyring
 from lyra.nats.queue_groups import adapter_outbound
 from roxabi_nats import nats_connect

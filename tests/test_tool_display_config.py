@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from lyra.bootstrap.config import _load_tool_display_config
-from lyra.core.tool_display_config import ToolDisplayConfig
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 
 # ---------------------------------------------------------------------------
 # ToolDisplayConfig() — default construction

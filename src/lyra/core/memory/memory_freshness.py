@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from lyra.core.memory_types import FRESHNESS_TTL_DAYS
+from lyra.core.memory.memory_types import FRESHNESS_TTL_DAYS
 
 
 def is_stale(entry: dict) -> bool:

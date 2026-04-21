@@ -7,12 +7,12 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from lyra.core.agent_refiner_stages import build_system_prompt, extract_patch
+from lyra.core.agent.agent_refiner_stages import build_system_prompt, extract_patch
 
 if TYPE_CHECKING:
     from anthropic.types import MessageParam
 
-    from lyra.core.agent_models import AgentRow
+    from lyra.core.agent.agent_models import AgentRow
     from lyra.infrastructure.stores.agent_store import AgentStore
 
 __all__ = [

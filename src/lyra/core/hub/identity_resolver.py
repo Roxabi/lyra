@@ -12,13 +12,13 @@ import dataclasses
 import logging
 from typing import TYPE_CHECKING
 
-from ..identity import Identity
-from ..message import InboundMessage, Platform
-from ..trust import TrustLevel
+from ..auth.identity import Identity
+from ..auth.trust import TrustLevel
+from ..messaging.message import InboundMessage, Platform
 from .hub_protocol import Binding, RoutingKey
 
 if TYPE_CHECKING:
-    from ..authenticator import Authenticator
+    from ..auth.authenticator import Authenticator
 
 log = logging.getLogger(__name__)
 

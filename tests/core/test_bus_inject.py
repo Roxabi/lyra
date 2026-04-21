@@ -19,8 +19,8 @@ import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.inbound_bus import LocalBus
-from lyra.core.message import InboundMessage, Platform
+from lyra.core.messaging.inbound_bus import LocalBus
+from lyra.core.messaging.message import InboundMessage, Platform
 from tests.helpers.messages import make_text_message
 
 # ---------------------------------------------------------------------------

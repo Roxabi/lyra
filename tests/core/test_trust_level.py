@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # TestTrustLevel

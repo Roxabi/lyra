@@ -113,8 +113,8 @@ class CommandRouter:
             for cmd, desc in _proc_registry.descriptions().items():
                 if cmd in self._passthroughs:
                     result.append((cmd, desc, False))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("Could not load processor commands: %s", exc)
         return sorted(result)
 
     def prepare(self, msg: InboundMessage) -> InboundMessage:

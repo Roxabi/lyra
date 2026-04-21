@@ -6,12 +6,15 @@ Stateless functions that receive dependencies as arguments and return Response.
 from __future__ import annotations
 
 import importlib
+import logging
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..messaging.message import InboundMessage, Response
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -69,8 +72,8 @@ def help_command(  # noqa: PLR0913
             for cmd_name, desc in sorted(proc_descs.items()):
                 if passthroughs is None or cmd_name in passthroughs:
                     lines.append(f"  {cmd_name} — {desc or '(no description)'}")
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("Could not load processor descriptions: %s", exc)
     plugin_handlers = command_loader.get_commands(enabled_plugins)
     plugin_cmds = [cmd for cmd in sorted(plugin_handlers) if cmd not in builtins]
     if plugin_cmds:

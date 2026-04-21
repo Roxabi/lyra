@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -59,7 +60,7 @@ async def get_last_session(db: aiosqlite.Connection, pool_id: str) -> str | None
         ) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
-    except Exception:
+    except sqlite3.Error:
         log.exception("get_last_session failed (pool=%s)", pool_id)
         return None
 
@@ -76,7 +77,7 @@ async def get_session_pool_id(db: aiosqlite.Connection, session_id: str) -> str 
         ) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
-    except Exception:
+    except sqlite3.Error:
         log.exception("get_session_pool_id failed (session=%s)", session_id)
         return None
 
@@ -90,7 +91,7 @@ async def get_cli_session(db: aiosqlite.Connection, session_id: str) -> str | No
         ) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
-    except Exception:
+    except sqlite3.Error:
         log.exception("get_cli_session failed (session=%s)", session_id)
         return None
 
@@ -121,7 +122,7 @@ async def get_cli_session_by_pool(db: aiosqlite.Connection, pool_id: str) -> str
         ) as cur:
             row = await cur.fetchone()
         return row[0] if row else None
-    except Exception:
+    except sqlite3.Error:
         log.exception("get_cli_session_by_pool failed (pool=%s)", pool_id)
         return None
 

@@ -106,7 +106,7 @@ class NatsSttClient:
     async def _on_heartbeat(self, msg) -> None:
         try:
             data = json.loads(msg.data)
-        except Exception:
+        except json.JSONDecodeError:
             log.debug("stt_client: heartbeat parse error", exc_info=True)
             return
         worker_id = data.get("worker_id")

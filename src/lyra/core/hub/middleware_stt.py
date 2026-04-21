@@ -30,8 +30,6 @@ log = logging.getLogger(__name__)
 
 MAX_TRANSCRIPT_LEN = 2000
 
-# Module-level outcome counters (Slice 1 — no metrics backend yet).
-# TODO(#534-slice2): wire to a proper metrics/counter module.
 _STT_STAGE_OUTCOMES: dict[str, int] = {
     "success": 0,
     "unsupported": 0,

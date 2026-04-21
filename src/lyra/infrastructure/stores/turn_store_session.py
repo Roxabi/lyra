@@ -75,6 +75,7 @@ class TurnStoreSessionMixin:
             await db.commit()
         except Exception:
             log.exception("TurnStore.set_cli_session failed (session=%s)", session_id)
+            return
 
     async def get_cli_session(self, session_id: str) -> str | None:
         """Return the CLI session ID for a Lyra session, or None."""
@@ -103,6 +104,7 @@ class TurnStoreSessionMixin:
             log.exception(
                 "TurnStore.increment_resume_count failed (session=%s)", session_id
             )
+            return
 
     async def end_session(self, session_id: str) -> None:
         """Stamp ended_at on *session_id*. No-op if already stamped."""
@@ -117,3 +119,4 @@ class TurnStoreSessionMixin:
             await db.commit()
         except Exception:
             log.exception("TurnStore.end_session failed (session=%s)", session_id)
+            return

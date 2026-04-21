@@ -92,7 +92,13 @@ def resolve_role(name: str, agent: dict[str, Any]) -> str:
                 f"role=lyra-adapter must not set command_override (agent {name!r})"
             )
         if role == "hub" and name != HUB_NAME:
-            raise ValueError(f"role=hub requires name=={HUB_NAME!r} (got {name!r})")
+            raise ValueError(
+                f"role=hub requires name {HUB_NAME!r}, got {name!r} (agent {name!r})"
+            )
+        if role == "hub" and has_override:
+            raise ValueError(
+                f"role=hub must not set command_override (agent {name!r})"
+            )
         return role
     # Inference fallback (intentionally retained for backward-compat, see #807 spec)
     if has_override:

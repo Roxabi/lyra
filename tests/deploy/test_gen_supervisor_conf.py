@@ -172,7 +172,22 @@ def test_resolve_role_raises_hub_on_wrong_name(tmp_path: Path) -> None:
     # Act
     err = _run_dry(p, expect_fail=True)
     # Assert
-    assert "name=='hub'" in err and "got 'side_hub'" in err
+    assert "role=hub requires name 'hub'" in err and "got 'side_hub'" in err
+
+
+def test_resolve_role_raises_hub_with_override(tmp_path: Path) -> None:
+    # Parity with test_resolve_role_raises_lyra_adapter_with_override:
+    # the hub branch dispatches to run_hub.sh and never honors a stray
+    # `command_override`, so the entry is rejected at validation time.
+    # Arrange
+    p = _write_agents(
+        tmp_path,
+        {"hub": {"role": "hub", "command_override": "x"}},
+    )
+    # Act
+    err = _run_dry(p, expect_fail=True)
+    # Assert
+    assert "role=hub must not set command_override" in err and "agent 'hub'" in err
 
 
 # T6 — inference when role is absent

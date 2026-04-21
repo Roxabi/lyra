@@ -272,7 +272,7 @@ Path validation uses `Path.resolve()` to canonicalize before the `relative_to` c
 
 - **ADR-035** — NATS subject naming convention. `lyra.image.generate.request` and `lyra.image.heartbeat` follow the `<namespace>.<capability>.<action>.<verb>` and `<namespace>.<capability>.<verb>` shapes respectively.
 - **ADR-044** — lyra ↔ voicecli NATS voice contract. The canonical contract ADR shape. This ADR follows its structure exactly: subjects table, payload encoding, `contract_version`, request/reply schemas, error codes, heartbeat, max-payload, sanitization contract.
-- **ADR-046** — nkey provisioning is declarative. Invariant 2 (IDENTITIES is the single source of truth) requires the `image-worker` nkey identity to be added to `gen-nkeys.sh` before the hub client ships. The `image-worker` identity is noted as "to provision" in ADR-047's subject ownership table.
+- **ADR-046** — nkey provisioning is declarative. Invariant 2 (IDENTITIES is the single source of truth) requires the `image-worker` nkey identity to be added to `gen-nkeys.sh` before the hub client ships. The `image-worker` identity is now provisioned; ADR-047's subject ownership table reflects Status: Shipped.
 - **ADR-047** — NATS connector ownership pattern. This ADR is the lyra-owned half of the image domain. The satellite-owned half is `imagecli/src/imagecli/nats/adapter.py` (shipped by imageCLI#50). Rule 4 of ADR-047 requires this ADR to declare the max-payload cap — done in the Max payload section above.
 
 ## References
@@ -282,3 +282,5 @@ Path validation uses `Path.resolve()` to canonicalize before the `relative_to` c
 - Satellite implementation: `imageCLI/src/imagecli/nats/adapter.py` (shipped by imageCLI#50, closed 2026-04-15)
 - Hub client: `src/lyra/nats/nats_image_client.py` (new — ships with #754)
 - NATS server config: `deploy/nats/nats-container.conf` (`max_payload: 52428800`)
+- nkey identity: `image-worker` (added to `IDENTITIES` in `deploy/nats/gen-nkeys.sh` per ADR-046 Invariant 2)
+- Supervisor entry: `imagecli_gen` in `deploy/supervisor/conf.d/` (satellite process managed by lyra's supervisord)

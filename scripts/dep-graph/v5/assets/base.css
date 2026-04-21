@@ -12,10 +12,23 @@ body {
   line-height: 1.4;
 }
 
+/* ─── Sticky header container ─────────────────────────────────── */
+.sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  padding: 16px 0 12px;
+  margin: -24px -24px 0;
+  padding-left: 24px;
+  padding-right: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
 /* ─── Page header ─────────────────────────────────────────────── */
 header.page-header {
   max-width: 100%;
-  margin: 0 auto 20px;
+  margin: 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
@@ -41,7 +54,7 @@ h1 .accent { color: var(--accent); }
   display: flex;
   gap: 10px;
   align-items: center;
-  padding: 10px 0;
+  padding: 10px 0 0;
   flex-wrap: wrap;
 }
 .toolbar .filters {

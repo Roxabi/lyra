@@ -101,8 +101,11 @@ def build_html(data: GraphData, active: str = "graph") -> str:
 </head>
 <body class="group-epic view-{active}-active">
 
+<div class="sticky-head">
 {header}
 {toolbar}
+</div>
+
 {graph_html}
 {grid_html}
 {footer}

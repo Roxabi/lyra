@@ -65,12 +65,18 @@ body {
 }
 header {
   max-width: 100%;
-  margin: 0 auto 18px;
+  margin: 0 auto;
+  padding: 16px 0 14px;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   gap: 24px;
   flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
 h1 {
   font-size: 22px;

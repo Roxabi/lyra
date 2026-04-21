@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import (
     Button,
     OutboundMessage,
@@ -29,7 +28,6 @@ def _make_discord_adapter():
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
 
@@ -52,7 +50,6 @@ async def test_own_message_is_filtered() -> None:
         bot_id="main",
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -86,7 +83,6 @@ async def test_send_reply_on_mention() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -117,7 +113,6 @@ async def test_send_reply_on_no_mention() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -148,7 +143,6 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     sent_msg = SimpleNamespace(id=888)
@@ -181,7 +175,6 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     sent_msg = SimpleNamespace(id=7777)
@@ -214,7 +207,6 @@ async def test_send_no_reply_message_id_on_failure() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -376,7 +368,6 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
     import discord
 
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.authenticator import _ALLOW_ALL
     from lyra.core.message import InboundMessage, OutboundMessage
     from lyra.core.trust import TrustLevel
 
@@ -384,7 +375,6 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     # Use a message with no message_id so should_reply=False (avoids reply() path)

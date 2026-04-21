@@ -9,8 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
-
 # ---------------------------------------------------------------------------
 # Tests for Discord auto_thread (issue #127)
 # ---------------------------------------------------------------------------
@@ -35,7 +33,6 @@ class TestDiscordAutoThread:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=True,
-            auth=_ALLOW_ALL,
         )
         bot_user = SimpleNamespace(id=999, bot=True)
         adapter._bot_user = bot_user
@@ -87,7 +84,6 @@ class TestDiscordAutoThread:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=True,
-            auth=_ALLOW_ALL,
         )
         bot_user = SimpleNamespace(id=999, bot=True)
         adapter._bot_user = bot_user
@@ -130,7 +126,6 @@ class TestDiscordAutoThread:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=False,
-            auth=_ALLOW_ALL,
         )
         bot_user = SimpleNamespace(id=999, bot=True)
         adapter._bot_user = bot_user
@@ -169,7 +164,6 @@ class TestDiscordAutoThread:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=True,
-            auth=_ALLOW_ALL,
         )
         bot_user = SimpleNamespace(id=999, bot=True)
         adapter._bot_user = bot_user
@@ -210,7 +204,6 @@ class TestDiscordAutoThread:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=True,
-            auth=_ALLOW_ALL,
         )
         bot_user = SimpleNamespace(id=999, bot=True)
         adapter._bot_user = bot_user
@@ -324,7 +317,6 @@ class TestPersistThreadClaimFailurePath:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=True,
-            auth=_ALLOW_ALL,
         )
         bot_user = SimpleNamespace(id=999, bot=True)
         adapter._bot_user = bot_user

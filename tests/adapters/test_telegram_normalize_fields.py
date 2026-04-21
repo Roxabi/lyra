@@ -12,7 +12,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import InboundMessage
 
 # ---------------------------------------------------------------------------
@@ -28,7 +27,7 @@ def test_normalize_private_chat_context() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
 
     aiogram_msg = SimpleNamespace(
@@ -67,7 +66,7 @@ def test_is_mention_false_in_private_chat() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
 
     aiogram_msg = SimpleNamespace(
@@ -92,7 +91,7 @@ def test_is_mention_true_when_entity_at_offset_zero() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     adapter._bot_username = "lyra_bot"  # simulate resolve_identity()
 
@@ -125,7 +124,7 @@ def test_token_not_in_logs(caplog: pytest.LogCaptureFixture) -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
 
     aiogram_msg = SimpleNamespace(
@@ -158,7 +157,7 @@ def test_normalize_captures_message_id() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -191,7 +190,7 @@ def test_normalize_message_id_none_when_absent() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -225,7 +224,7 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=456, type="supergroup"),
@@ -256,7 +255,7 @@ def test_normalize_empty_text() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -286,7 +285,7 @@ def test_normalize_sets_reply_to_id_when_reply_present() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     reply_msg = SimpleNamespace(message_id=77)
     aiogram_msg = SimpleNamespace(
@@ -313,7 +312,7 @@ def test_normalize_reply_to_id_none_when_no_reply() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     aiogram_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -344,7 +343,7 @@ def test_normalize_group_chat_user_scoped_scope_id() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     adapter._bot_username = "lyra_bot"
 
@@ -373,7 +372,7 @@ def test_normalize_group_chat_no_mention_shared_scope() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
 
     aiogram_msg = SimpleNamespace(
@@ -400,7 +399,7 @@ def test_normalize_forum_topic_shared_scope_id() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     adapter._bot_username = "lyra_bot"
 
@@ -428,7 +427,7 @@ def test_normalize_private_chat_scope_id_unchanged() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
 
     aiogram_msg = SimpleNamespace(
@@ -456,7 +455,7 @@ def test_two_users_same_group_share_pool_id() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     adapter._bot_username = "lyra_bot"
 

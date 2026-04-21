@@ -11,8 +11,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
-
 pytestmark = pytest.mark.asyncio
 
 
@@ -79,7 +77,6 @@ async def test_discord_dm_injects_thread_session_id() -> None:
         bot_id="main",
         inbound_bus=mock_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
         turn_store=fake_turn_store,  # type: ignore[arg-type]
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
@@ -122,7 +119,6 @@ async def test_discord_dm_no_turn_store_does_not_inject() -> None:
         bot_id="main",
         inbound_bus=mock_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
         # No turn_store
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
@@ -149,7 +145,6 @@ async def test_discord_dm_turn_store_attribute_stored() -> None:
         bot_id="main",
         inbound_bus=mock_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
         turn_store=fake_turn_store,  # type: ignore[arg-type]
     )
 

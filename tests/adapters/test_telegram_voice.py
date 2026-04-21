@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.adapters.telegram import TelegramAdapter
-from lyra.core.authenticator import _ALLOW_ALL
 
 
 def _make_voice_msg(  # noqa: PLR0913 — test factory with optional overrides
@@ -58,7 +57,7 @@ def _make_adapter() -> tuple[TelegramAdapter, MagicMock]:
         bot_id="main",
         token="tok",
         inbound_bus=inbound_bus,
-        auth=_ALLOW_ALL,
+        
     )
     bot_mock = AsyncMock()
     bot_mock.send_chat_action = AsyncMock()

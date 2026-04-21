@@ -284,13 +284,10 @@ class TestTelegramAdapterRenderAudio:
     """
 
     def _make_adapter(self) -> TelegramAdapter:
-        from lyra.core.authenticator import _ALLOW_ALL
-
         adapter = TelegramAdapter(
             bot_id="main",
             token="test-token",
             inbound_bus=MagicMock(),
-            auth=_ALLOW_ALL,
         )
         adapter.bot = AsyncMock()
         return adapter

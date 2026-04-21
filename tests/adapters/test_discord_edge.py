@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messages import MessageManager
 from lyra.core.trust import TrustLevel
@@ -78,7 +77,6 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
         bot_id="main",
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -127,7 +125,6 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
         circuit_registry=registry,
-        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -166,7 +163,6 @@ async def test_on_message_notifies_user_when_hub_circuit_open_dm() -> None:
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
         circuit_registry=registry,
-        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -278,7 +274,6 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
         msg_manager=mm,
-        auth=_ALLOW_ALL,
     )
     bot_user = SimpleNamespace(id=999, bot=True)
     adapter._bot_user = bot_user
@@ -318,7 +313,6 @@ def test_normalize_empty_text() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
     discord_msg = SimpleNamespace(

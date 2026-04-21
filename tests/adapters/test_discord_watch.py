@@ -9,8 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
-
 
 class TestWatchChannels:
     """Watch channel feature: messages in designated channels bypass mention filter."""
@@ -28,7 +26,6 @@ class TestWatchChannels:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=True,
-            auth=_ALLOW_ALL,
             watch_channels=frozenset({333}),
         )
         bot_user = SimpleNamespace(id=999, bot=True)
@@ -73,7 +70,6 @@ class TestWatchChannels:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=True,
-            auth=_ALLOW_ALL,
             watch_channels=frozenset({333}),
         )
         bot_user = SimpleNamespace(id=999, bot=True)
@@ -121,7 +117,6 @@ class TestWatchChannels:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=True,
-            auth=_ALLOW_ALL,
             watch_channels=frozenset({999}),  # different channel
         )
         bot_user = SimpleNamespace(id=999, bot=True)
@@ -156,7 +151,6 @@ class TestWatchChannels:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=False,
-            auth=_ALLOW_ALL,
             watch_channels=frozenset({333}),
         )
         bot_user = SimpleNamespace(id=999, bot=True)
@@ -202,7 +196,6 @@ class TestWatchChannels:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=True,
-            auth=_ALLOW_ALL,
             watch_channels=frozenset({333}),
         )
         bot_user = SimpleNamespace(id=999, bot=True)
@@ -242,7 +235,6 @@ class TestWatchChannels:
             inbound_bus=inbound_bus,
             intents=discord.Intents.none(),
             auto_thread=True,
-            auth=_ALLOW_ALL,
             watch_channels=frozenset({333}),
         )
         bot_user = SimpleNamespace(id=999, bot=True)

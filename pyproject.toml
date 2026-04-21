@@ -87,6 +87,11 @@ packages = ["src/lyra"]
 asyncio_mode = "auto"
 testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests", "scripts/corpus/tests"]
 addopts = "--import-mode=importlib -n auto"
+filterwarnings = [
+    "ignore:'audioop' is deprecated:DeprecationWarning",
+    "ignore:websockets.legacy is deprecated:DeprecationWarning",
+    "ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning",
+]
 
 [tool.coverage.run]
 branch = true

@@ -36,7 +36,6 @@ from lyra.adapters.discord_voice_commands import (
     handle_voice_command as _handle_voice_command_impl,
     register_voice_app_commands as _register_voice_app_commands,
 )
-from lyra.core.authenticator import _DENY_ALL, Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.guard import BlockedGuard, GuardChain
 from lyra.core.trust import TrustLevel
@@ -72,7 +71,6 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         msg_manager: MessageManager | None = None,
         auto_thread: bool = True,
         thread_hot_hours: int = 36,
-        auth: Authenticator = _DENY_ALL,
         thread_store: ThreadStore | None = None,
         watch_channels: frozenset[int] = frozenset(),
         turn_store: "TurnStore | None" = None,
@@ -83,22 +81,12 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         super().__init__(intents=intents)
         self.tree = discord.app_commands.CommandTree(self)
         _register_voice_app_commands(self.tree, self)
-        if auth is not _DENY_ALL:
-            import warnings
-
-            warnings.warn(
-                "DiscordAdapter(auth=...) is deprecated after C3 — "
-                "use hub.register_authenticator() instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         self._inbound_bus = inbound_bus
         self._bot_id = bot_id
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._auto_thread = auto_thread
         self._thread_hot_hours = thread_hot_hours
-        self._auth: Authenticator = auth
         self._guard_chain: GuardChain = GuardChain([BlockedGuard()])
         self._max_audio_bytes: int = int(
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)

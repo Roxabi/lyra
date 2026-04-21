@@ -11,7 +11,6 @@ import pytest
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.core.audio_payload import AudioPayload
-from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import InboundMessage
 
 
@@ -54,7 +53,6 @@ def _make_adapter() -> DiscordAdapter:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
 
@@ -129,7 +127,6 @@ async def test_on_message_enqueues_audio_on_inbound_bus() -> None:
         bot_id="main",
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     # Use a valid OGG magic header so the magic-byte check passes.
@@ -195,7 +192,6 @@ async def test_on_message_audio_invalid_magic_bytes_sends_reply() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     attachment_obj = SimpleNamespace(
@@ -222,7 +218,6 @@ async def test_on_message_audio_too_large_sends_reply() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     attachment_obj = SimpleNamespace(
@@ -249,7 +244,6 @@ async def test_on_message_does_not_call_normalize_audio_for_non_audio() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     image_attachment = SimpleNamespace(
@@ -289,7 +283,6 @@ async def test_on_message_returns_after_audio_skips_text_path() -> None:
         bot_id="main",
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     attachment_obj = SimpleNamespace(

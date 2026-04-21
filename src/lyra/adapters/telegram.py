@@ -38,7 +38,6 @@ from lyra.adapters.telegram_outbound import (
     build_streaming_callbacks as _build_streaming_callbacks,
     send as _send_impl,
 )
-from lyra.core.authenticator import _DENY_ALL, Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.guard import BlockedGuard, GuardChain
 from lyra.core.trust import TrustLevel
@@ -94,19 +93,9 @@ class TelegramAdapter(OutboundAdapterBase):
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        auth: Authenticator = _DENY_ALL,
         turn_store: "TurnStore | None" = None,
     ) -> None:
         super().__init__()  # no-op today, future-proofs cooperative chain
-        if auth is not _DENY_ALL:
-            import warnings
-
-            warnings.warn(
-                "TelegramAdapter(auth=...) is deprecated after C3 — "
-                "use hub.register_authenticator() instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         self._bot_id = bot_id
         self._token = token
         self._webhook_secret = webhook_secret
@@ -118,7 +107,6 @@ class TelegramAdapter(OutboundAdapterBase):
         self._inbound_bus = inbound_bus
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
-        self._auth: Authenticator = auth
         self._guard_chain: GuardChain = GuardChain([BlockedGuard()])
         self._turn_store: "TurnStore | None" = turn_store
         _raw_tmp = os.environ.get("LYRA_AUDIO_TMP") or None

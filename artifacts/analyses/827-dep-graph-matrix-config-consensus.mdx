@@ -1,0 +1,84 @@
+---
+title: "PR #842 post-review policy — Expert Consensus"
+issue: 827
+status: consensus-reached
+date: 2026-04-21
+panel: architect, backend-dev, tester
+confidence: high
+---
+
+## Problem
+
+PR #842 closes acceptance criterion 3a of #827 by making `milestones[]` and `column_groups[]` optional `layout.json` keys overriding Python defaults. Code review surfaced 0 blockers + 4 non-blocking design calls + 3 coverage gaps. All 4 design calls share one policy axis: **how defensive should this internal dev-tool config pipeline be?** Panel convened to settle the policy and the coverage implications.
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | soundness, maintainability, cohesion, forward-compat |
+| backend-dev | Python idioms, API clarity, implementation complexity |
+| tester | coverage strategy, test quality, regression protection |
+
+## Consensus Ruling
+
+**Meta-policy:** The dev-tool's `layout.json` is dev-authored and runs locally; `make dep-graph validate` (jsonschema) is the declared validation gate. Per lyra's global patterns ("Don't add error handling for scenarios that can't happen"), defensive guards inside the data-loading pipeline are YAGNI. Fail-fast at render time is the correct design signal.
+
+### Design findings
+
+| # | Finding | Ruling | Vote |
+|---|---------|--------|------|
+| F2 | `layout_graph.py` module-level `LANE_ORDER` / `MS_CODES` fallbacks | **A — keep** | 2-1 (tester dissent) |
+| F3 | `parse_*` bare `KeyError` on malformed input | **C — do nothing** | unanimous |
+| F8 | `data.lane_by_code[c]` fail-fast on absent lane | **A — document fail-fast with a test** | unanimous |
+| F9 | `GraphData` dual defaults (`default_factory` + explicit assign) | **A — remove `default_factory`, require fields** | unanimous |
+
+### Coverage findings
+
+| # | Gap | Ruling | Vote |
+|---|-----|--------|------|
+| F5 | `graph.render` with custom `milestones` override | **Must add** | unanimous |
+| F6 | `layout_grid(tasks, lane_order=..., ms_codes=...)` kwargs | **Add narrow unit tests** | 2-1 (backend-dev=YAGNI) |
+| F7 | `test_schema.py` fixture populating new keys | **Skip (YAGNI)** | 2-1 (tester=Should, weak) |
+
+## Rationale
+
+The panel converged on "trust the system boundary" as the governing principle:
+
+- **F3 unanimous C:** `jsonschema.validate` is already the declared gate via `make dep-graph validate`. Adding `isinstance` guards inside parsers duplicates validation and hides the gate's role. Raw `KeyError` with traceback is adequate for a dev audience.
+- **F8 unanimous A:** absent-lane is a `layout.json` authoring bug; silent `.get()` would produce malformed HTML. A test locking the `KeyError` contract prevents a "helpful" future soft-fail refactor.
+- **F9 unanimous A:** `default_factory` serves only direct-instantiation tests; `load_from_dicts` always sets the fields. Single source of truth wins. Tests can pass `list(COLUMN_GROUPS)` / `list(MILESTONES)` explicitly when they want defaults.
+- **F2 majority A:** module-level defaults ARE the defaults, not a separate source of truth. Forcing kwargs on callers adds coupling; only one caller exists (`graph.render`) and it already passes them.
+
+### Coverage follows from rulings
+
+F8 mandates a test; F5 exercises the override path end-to-end through the untested graph view; F6 pins the kwargs contract with cheap unit tests that also cover F8's absent-lane case. F7 is declined — the schema-layer test is an orthogonal concern and no schema bug exists.
+
+## Alternatives
+
+| Option | Proposer | Rejected because |
+|--------|----------|------------------|
+| F2-B: remove module fallbacks | tester | 2/3 panel viewed it as YAGNI; breaks direct test calls for zero production benefit |
+| F3-A: `ValueError` guards | (none voted for) | duplicates jsonschema |
+| F3-B: auto-validate in `load_from_dicts` | (none voted for) | adds runtime dep to hot path |
+| F8-B: soft-fail with `.get()` | (none voted for) | silently produces broken HTML |
+| F9-B: `__post_init__` assertion | (none voted for) | keeps dual paths, just asserts |
+| F7: schema fixture | tester (weak) | schema layer test is secondary; no regression risk |
+
+## Dissent
+
+- **F2 (tester):** testability concern — fallbacks enable tests to "pass" using stale defaults, hiding override-path coverage gaps. Majority noted this is mitigated by F6 (explicit kwarg tests) being added under the same consensus.
+
+## Implementation Notes
+
+Apply in order as a single commit:
+
+1. **F9** — in `v5/data/model.py`, change `column_groups: list[...] = field(default_factory=lambda: list(COLUMN_GROUPS))` to `column_groups: list[...]` (required); same for `milestones`. Update `conftest.py` and any direct-instantiation tests to pass explicit values.
+2. **F5** — in `v5/tests/test_views_graph.py`, add `TestGraphRenderLayoutOverride` class: custom 2-milestone layout → `graph.render(data)` → assert custom codes appear in `gg-msrow` output.
+3. **F6** — in `v5/tests/test_layout_graph.py`, add narrow unit tests for `layout_grid(tasks, lane_order=X, ms_codes=Y)` and `ms_idx("P1", ["P1", "P2"])`.
+4. **F8** — add a single test: `column_groups` override lists a lane absent from `lanes[]` → `grid.render(data)` raises `KeyError`.
+
+Then final push + `reviewed` label + PR comment. Skip F2/F3/F7 — no code changes.
+
+## Next
+
+Return to `/fix` Phase 6 (apply 1b1 decisions) with this ruling → Phase 7 final push + label → Phase 8 PR comment → `/dev` advances to `cleanup`.

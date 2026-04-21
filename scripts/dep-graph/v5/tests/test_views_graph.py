@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 from v5.data.derive import tasks_for_graph
+from v5.data.load import load_from_dicts
 from v5.views import graph
 
 
@@ -129,3 +130,47 @@ class TestGraphRender:
         # ms_short values (M0, M1, ...) should be in the rendered output
         for ms_short in active_ms:
             assert ms_short in result
+
+
+class TestGraphRenderLayoutOverride:
+    """graph.render honors layout.json milestones + column_groups overrides."""
+
+    def test_custom_milestones_appear_in_msrow(self, layout, gh):
+        # Remap the fixture's milestone labels to custom codes.
+        mapped = {
+            "M0  NATS hardening":              ("P0", "Phase zero"),
+            "M1  NATS maturity  containerize": ("P1", "Phase one"),
+            "M2  LLM stack modernization":     ("P2", "Phase two"),
+            "M3  Observability":               ("P3", "Phase three"),
+            "M4  Hub statelessness":           ("P4", "Phase four"),
+        }
+        custom = dict(layout)
+        custom["milestones"] = [
+            {"label": label, "code": code, "short": short}
+            for label, (code, short) in mapped.items()
+        ]
+        data = load_from_dicts(custom, gh)
+        result = graph.render(data)
+        # ms_short in tasks_for_graph is keyed off milestone label → code
+        tasks = tasks_for_graph(data)
+        active_codes = {t["milestone"] for t in tasks}
+        # Codes must now be P-prefixed (overrides took effect)
+        for code in active_codes:
+            assert code.startswith("P"), f"expected override code, got {code}"
+            assert code in result
+
+    def test_custom_column_groups_affect_lane_ordering(self, layout, gh):
+        # Reorder the default lanes via an explicit column_groups override.
+        custom = dict(layout)
+        custom["column_groups"] = [
+            # Put 'b' before 'a1' — reverse of the default order.
+            {"label": "CONTAINER", "tone": "b", "lane_codes": ["b"]},
+            {"label": "NATS",      "tone": "a1", "lane_codes": ["a1"]},
+        ]
+        data = load_from_dicts(custom, gh)
+        # lane_order property reflects the override
+        assert data.lane_order == ["b", "a1"]
+        # Rendering succeeds end-to-end (graph.render passes lane_order
+        # through to layout_grid, honoring the override)
+        result = graph.render(data)
+        assert '<section class="view view-graph' in result

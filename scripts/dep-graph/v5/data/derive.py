@@ -5,9 +5,6 @@ from collections import defaultdict
 from typing import Any
 
 from .model import (
-    COLUMN_GROUPS,
-    MILESTONES,
-    MS_NAME_BY_CODE,
     NO_LANE,
     NO_MS,
     GraphData,
@@ -127,8 +124,11 @@ def tasks_for_graph(data: GraphData) -> list[dict[str, Any]]:
     Keys match what v4/v4.5 layout math expects: num, title, url, state,
     status, milestone, lane, size, depth, blockers, unblocks.
     """
-    col_of_lane = {c: label for label, _, codes in COLUMN_GROUPS for c in codes}
-    ms_short = {k: short for k, short, _ in MILESTONES}
+    col_of_lane = {c: label for label, _, codes in data.column_groups for c in codes}
+    # full_label → code (first → second tuple field)
+    ms_short = {k: short for k, short, _ in data.milestones}
+    # code → short display label (via property)
+    ms_name_by_code = data.ms_name_by_code
 
     tasks: list[dict[str, Any]] = []
     for key, iss in data.issues.items():
@@ -146,7 +146,7 @@ def tasks_for_graph(data: GraphData) -> list[dict[str, Any]]:
             "state": iss["state"],
             "status": status_of(iss, data.issues),
             "milestone": ms_short.get(ms, ms),
-            "milestone_name": MS_NAME_BY_CODE.get(ms_short.get(ms, ms), ms),
+            "milestone_name": ms_name_by_code.get(ms_short.get(ms, ms), ms),
             "lane": lane,
             "lane_name": lmeta.name if lmeta else "",
             "column": col_of_lane.get(lane, ""),

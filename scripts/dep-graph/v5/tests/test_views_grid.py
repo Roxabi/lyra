@@ -1,6 +1,9 @@
 """Tests for v5.views.grid — grid view HTML output."""
 from __future__ import annotations
 
+import pytest
+
+from v5.data.load import load_from_dicts
 from v5.data.model import COLUMN_GROUPS, MILESTONES, NO_LANE, NO_MS
 from v5.views import grid
 
@@ -90,3 +93,63 @@ class TestGridRender:
     def test_data_view_attribute(self, graph_data):
         result = grid.render(graph_data)
         assert 'data-view="grid"' in result
+
+
+class TestGridRenderLayoutOverride:
+    """Grid view honors layout.json milestones + column_groups overrides."""
+
+    def test_custom_column_groups_render_labels(self, layout, gh):
+        custom = dict(layout)
+        custom["column_groups"] = [
+            {"label": "ALPHA", "tone": "a1", "lane_codes": ["a1"]},
+            {"label": "BETA",  "tone": "b",  "lane_codes": ["b"]},
+        ]
+        data = load_from_dicts(custom, gh)
+        result = grid.render(data)
+        assert "ALPHA" in result
+        assert "BETA" in result
+        # Default label gone
+        assert "CONTAINER" not in result
+
+    def test_custom_milestones_render_rows(self, layout, gh):
+        custom = dict(layout)
+        custom["milestones"] = [
+            {"label": "Phase one", "code": "P1", "short": "Phase 1"},
+        ]
+        data = load_from_dicts(custom, gh)
+        result = grid.render(data)
+        assert "P1" in result
+        assert "Phase 1" in result
+        # Exactly one configured row plus any sentinel (NO_MS) row.
+        expected_rows = 1 + _sentinel_rows(data)
+        assert result.count('class="grid-row"') == expected_rows
+
+    def test_custom_cols_count_reflects_override(self, layout, gh):
+        custom = dict(layout)
+        custom["column_groups"] = [
+            {"label": "ONE", "tone": "a1", "lane_codes": ["a1"]},
+        ]
+        data = load_from_dicts(custom, gh)
+        result = grid.render(data)
+        # 1 custom col + any sentinel lane col
+        expected_headers = 1 + (
+            1 if any(lane == NO_LANE and v for (_, lane), v in data.matrix.items())
+            else 0
+        )
+        assert result.count('class="col-header"') == expected_headers
+
+    def test_absent_lane_code_fails_fast(self, layout, gh):
+        """column_groups referencing a lane not in lanes[] → KeyError at render.
+
+        Locks the fail-fast contract documented in the PR #842 consensus: a
+        layout authoring bug must surface immediately rather than silently
+        producing a broken header.
+        """
+        custom = dict(layout)
+        custom["column_groups"] = [
+            # 'z99' is not declared in layout["lanes"] — render must raise.
+            {"label": "BROKEN", "tone": "a1", "lane_codes": ["z99"]},
+        ]
+        data = load_from_dicts(custom, gh)
+        with pytest.raises(KeyError):
+            grid.render(data)

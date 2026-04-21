@@ -19,6 +19,7 @@
 #        sudo ./deploy/nats/gen-nkeys.sh --regenerate --yes # non-interactive regenerate
 #        sudo ./deploy/nats/gen-nkeys.sh --regen-authconf   # re-render auth.conf from EXISTING seeds (no key rotation)
 #             ./deploy/nats/gen-nkeys.sh --template-only    # write auth.conf skeleton to stdout (no root needed)
+#             ./deploy/nats/gen-nkeys.sh --validate-supervisor   # verify each owner==lyra identity has its seed wired into a supervisor conf or quadlet container
 #
 # Idempotent — skips if auth.conf already exists. Delete auth.conf + seeds dir to regenerate.
 # Override seeds location: SEEDS_DIR=/custom/path sudo ./gen-nkeys.sh
@@ -69,7 +70,7 @@ load_matrix() {
     || error "unsupported acl-matrix.json version: ${v} (expected \"1\")"
 
   # Validate all identities and populate arrays
-  declare -gA PUB_ALLOW SUB_ALLOW
+  declare -gA PUB_ALLOW SUB_ALLOW OWNER
   IDENTITIES=()
 
   local valid_owners="lyra voicecli imagecli reserved"
@@ -93,6 +94,7 @@ load_matrix() {
       '.identities[$n].publish | map("\"" + . + "\"") | join(",")' "${MATRIX_JSON}")
     SUB_ALLOW[$name]=$(jq -r --arg n "${name}" \
       '.identities[$n].subscribe | map("\"" + . + "\"") | join(",")' "${MATRIX_JSON}")
+    OWNER[$name]=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
   done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
 }
 
@@ -114,6 +116,37 @@ emit_user() {
 USER
 }
 
+# ── validate_supervisor ────────────────────────────────────────────────────────
+# Checks that every owner==lyra identity has NATS_NKEY_SEED_PATH wired into at
+# least one supervisor conf or quadlet container file. No root required.
+validate_supervisor() {
+  local -a missing=()
+  local name count
+  local SCRIPT_DIR
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local REPO_ROOT
+  REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+  local SUPERVISOR_GLOB="${REPO_ROOT}/deploy/supervisor/conf.d/*.conf"
+  local QUADLET_GLOB="${REPO_ROOT}/deploy/quadlet/*.container"
+  local lyra_count=0
+  for name in "${IDENTITIES[@]}"; do
+    [ "${OWNER[$name]}" = "lyra" ] || continue
+    lyra_count=$((lyra_count + 1))
+    # Match both supervisor (quoted) and quadlet (unquoted) forms:
+    #   environment=...,NATS_NKEY_SEED_PATH=".../<name>.seed"
+    #   Environment=NATS_NKEY_SEED_PATH=/run/secrets/<name>.seed
+    count=$({ grep -lE "NATS_NKEY_SEED_PATH=[\"']?[^\"'[:space:],]*${name}\.seed" \
+                   $SUPERVISOR_GLOB $QUADLET_GLOB 2>/dev/null || true; } | wc -l)
+    if [ "$count" -eq 0 ]; then
+      missing+=("$name")
+    fi
+  done
+  if [ ${#missing[@]} -gt 0 ]; then
+    error "no supervisor/quadlet wiring for owner=lyra identities: ${missing[*]}"
+  fi
+  info "validated ${lyra_count} lyra-owned identities across supervisor + quadlet"
+}
+
 # ── flag parsing ───────────────────────────────────────────────────────────────
 SHOW_ONLY=false
 FIX_PERMS=false
@@ -121,21 +154,29 @@ TEMPLATE_ONLY=false
 REGENERATE=false
 REGEN_AUTHCONF=false
 AUTO_YES=false
+VALIDATE_SUPERVISOR=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --show)            SHOW_ONLY=true;      shift ;;
-    --fix-perms)       FIX_PERMS=true;      shift ;;
-    --template-only)   TEMPLATE_ONLY=true;  shift ;;
-    --regenerate)      REGENERATE=true;     shift ;;
-    --regen-authconf)  REGEN_AUTHCONF=true; shift ;;
-    --yes)             AUTO_YES=true;       shift ;;
+    --show)                SHOW_ONLY=true;           shift ;;
+    --fix-perms)           FIX_PERMS=true;           shift ;;
+    --template-only)       TEMPLATE_ONLY=true;       shift ;;
+    --regenerate)          REGENERATE=true;           shift ;;
+    --regen-authconf)      REGEN_AUTHCONF=true;      shift ;;
+    --yes)                 AUTO_YES=true;             shift ;;
+    --validate-supervisor) VALIDATE_SUPERVISOR=true;  shift ;;
     *) error "Unknown option: $1" ;;
   esac
 done
 
 # ── load ACL matrix ───────────────────────────────────────────────────────────
 load_matrix
+
+# ── validate-supervisor mode — no root required ────────────────────────────────
+if $VALIDATE_SUPERVISOR; then
+  validate_supervisor
+  exit 0
+fi
 
 # ── auth.conf renderer (shared by --template-only and regenerate paths) ──────
 # Accepts the name of an associative array of pubkeys as $1. Writes the full

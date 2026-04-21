@@ -1,0 +1,44 @@
+---
+title: Remove deprecated auth= constructor parameter
+issue: 847
+status: approved
+tier: F-lite
+date: 2026-04-21
+---
+
+## Problem
+
+Commit C3 (#456) moved trust resolution to the Hub side, introducing `hub.register_authenticator()` as the canonical auth registration pattern. The old `auth=` constructor parameter on `TelegramAdapter` and `DiscordAdapter` was kept as a backwards-compat shim with a DeprecationWarning.
+
+This backwards-compat is no longer needed. The deprecated parameter and its warning code should be removed to clean up the codebase and eliminate deprecation noise in test output.
+
+Additionally, upstream-only deprecation warnings (`audioop`, `websockets.legacy`) should be suppressed in pytest config since Lyra cannot fix these — they're library-level issues.
+
+## Who
+
+- **Primary:** Developers maintaining the adapter layer — cleaner code, less deprecation noise
+- **Secondary:** CI/CD pipeline — cleaner test output, no spurious warnings
+
+## Constraints
+
+- **Files affected:** ~17 files (2 adapters + 15 test files)
+- **Mechanical changes:** Auth flow unchanged, only parameter removal and test migration
+- **Low risk:** No behavioral changes, only API cleanup
+- **Upstream warnings:** `audioop` (discord.py, Python 3.13), `websockets.legacy` (uvicorn/discord.py) — suppress, not fix
+
+## Out of Scope
+
+- Changing the auth flow logic (Hub-side trust resolution remains unchanged)
+- Fixing upstream deprecation warnings in discord.py or uvicorn
+- Any NATS or distributed auth changes
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (adapters/tests), mechanical changes, no architecture changes.
+
+Signals observed:
+- Issue label: P3-low, Size: M
+- Single domain: adapters + tests
+- Well-defined file list (~17 files)
+- No unknowns or architectural decisions needed
+- Mechanical refactoring (parameter removal + test migration)

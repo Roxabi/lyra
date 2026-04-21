@@ -147,19 +147,18 @@ echo "PASS: all 7 assertions (a–g) — 10 identities × {pub,sub} × set equal
 
 # ── #754 image domain integration — assert image-worker + amended hub ACL ──
 # Contract: ADR-050 (lyra ↔ imagecli). See artifacts/specs/754-lyra-image-domain-integration-spec.mdx §Slice 3.
-
-# Re-invoke template-only to get fresh output for the new assertions.
-output=$(./deploy/nats/gen-nkeys.sh --template-only)
+# Reuses $OUT (written at line 30) and the brace-depth-guarded
+# extract_block helper above — see B9 rationale for why the guard matters.
 
 # ── (#754-1) image-worker block must be present ───────────────────────────────
-echo "$output" | grep -qE '# image-worker$' \
+grep -qE '# image-worker$' "$OUT" \
   || { echo "FAIL: image-worker block missing"; exit 1; }
 echo "PASS (#754-1): image-worker block present"
 
 # ── (#754-2) image-worker publish allow-list ───────────────────────────────────
 # Expected: lyra.image.heartbeat + _INBOX.> + _inbox.> (defensive inbox entries
 # mirror voice-tts/voice-stt for reply-path robustness; see #804 review fix).
-iw_block=$(echo "$output" | awk '/# image-worker$/,/^    }$/')
+iw_block=$(extract_block image-worker)
 [ -n "$iw_block" ] || { echo "FAIL: could not extract image-worker block"; exit 1; }
 
 # Must contain lyra.image.heartbeat in the publish line
@@ -193,7 +192,7 @@ extra_sub=$(echo "$iw_sub_line" | grep -oE '"lyra\.[^"]+"' | grep -v '"lyra\.ima
 echo "PASS (#754-3): image-worker subscribe allow-list == [\"lyra.image.generate.request\"]"
 
 # ── (#754-4) hub publish gained lyra.image.generate.request ──────────────────
-hub_block=$(echo "$output" | awk '/# hub$/,/^    }$/')
+hub_block=$(extract_block hub)
 [ -n "$hub_block" ] || { echo "FAIL: could not extract hub block"; exit 1; }
 
 echo "$hub_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' \
@@ -210,12 +209,7 @@ echo "PASS (#754-5): hub subscribe allow-list includes lyra.image.heartbeat"
 # ── (#754-6) no other identity may access lyra.image.* ───────────────────────
 OTHER_IDENTITIES=(telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor)
 for other_id in "${OTHER_IDENTITIES[@]}"; do
-  other_block=$(echo "$output" | awk -v target="# ${other_id}" '
-    /\{/ { depth++ }
-    index($0, target) > 0 && !inblock { inblock = 1; entry_depth = depth }
-    inblock { print }
-    /\}/ { if (inblock && depth == entry_depth) { exit } ; depth-- }
-  ')
+  other_block=$(extract_block "$other_id")
   [ -n "$other_block" ] || { echo "FAIL: could not extract block for ${other_id}"; exit 1; }
   leak=$(echo "$other_block" | grep -oE '"lyra\.image\.[^"]+"' || true)
   [ -z "$leak" ] \

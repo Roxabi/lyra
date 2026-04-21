@@ -171,6 +171,8 @@ class NatsAdapterBase(ABC):
         }
 
     async def _heartbeat_loop(self) -> None:
+        # only called when _heartbeat_subject is set
+        subject: str = self._heartbeat_subject or ""
         while self._nc and not self._nc.is_closed:
             if not self._nc.is_connected:
                 await asyncio.sleep(1.0)
@@ -178,7 +180,7 @@ class NatsAdapterBase(ABC):
             try:
                 payload = self.heartbeat_payload()
                 await self._nc.publish(
-                    self._heartbeat_subject,  # type: ignore[arg-type]
+                    subject,
                     json.dumps(payload).encode(),
                 )
             except Exception:

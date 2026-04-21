@@ -14,10 +14,12 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     import pynvml  # type: ignore[import-untyped]
+
+    from lyra.core.agent_config import AgentTTSConfig
 else:
     try:
         import pynvml  # type: ignore[import-untyped]
@@ -131,7 +133,7 @@ class TtsAdapterStandalone(NatsAdapterBase):
 
                 result: SynthesisResult = await self._tts_service.synthesize(
                     text,
-                    agent_tts=agent_tts,  # type: ignore[arg-type]  # duck-typed stand-in
+                    agent_tts=cast("AgentTTSConfig | None", agent_tts),
                     **synth_kwargs,
                 )
 

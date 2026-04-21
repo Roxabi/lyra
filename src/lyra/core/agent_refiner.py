@@ -5,11 +5,13 @@ from __future__ import annotations
 import dataclasses
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from lyra.core.agent_refiner_stages import build_system_prompt, extract_patch
 
 if TYPE_CHECKING:
+    from anthropic.types import MessageParam
+
     from lyra.core.agent_models import AgentRow
     from lyra.infrastructure.stores.agent_store import AgentStore
 
@@ -139,7 +141,7 @@ class SdkLlmProvider:
             model=self._model,
             max_tokens=2048,
             system=system,
-            messages=messages,  # type: ignore[arg-type]  # anthropic SDK expects MessageParam
+            messages=cast("list[MessageParam]", messages),
         )
         for block in response.content:
             if hasattr(block, "text"):

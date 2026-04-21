@@ -1,0 +1,58 @@
+---
+title: "Extract acl-matrix.json as SSoT for subject/identity matrix"
+issue: 717
+status: approved
+tier: F-lite
+date: 2026-04-21
+---
+
+## Problem
+
+The NATS subject → identity ACL matrix lives in three places that must stay mutually consistent:
+
+1. **Prose** in `artifacts/specs/706-per-role-nkeys-acls-spec.mdx` §Data Model.
+2. **Executable bash** in `deploy/nats/gen-nkeys.sh` — `PUB_ALLOW` / `SUB_ALLOW` associative arrays + the `IDENTITIES=(…)` list.
+3. **Identity names** hardcoded in `deploy/supervisor/conf.d/lyra_{hub,telegram,discord,tts,stt}.conf` (via `NATS_NKEY_SEED_PATH`) and `deploy/quadlet/lyra-{hub,telegram,discord}.container`.
+
+Drift risk is asymmetric:
+- Adding a subject to the spec but forgetting the bash arrays → silent ACL gap (the existing test catches this only when kept in sync manually).
+- Adding an identity but forgetting the supervisor/quadlet wiring → process starts with no seed and fails at connect time (fail-loud, but still avoidable).
+- The spec and script have already diverged once (`lyra.voice.tts.request` vs `.request.>`) and gained a post-ship correction footnote that the script silently absorbed.
+
+An upcoming follow-up (#737 `lyra ops verify`) needs a single machine-readable source to check against at runtime.
+
+## Who
+
+- **Primary:** operator running Lyra on Machine 1 (`roxabituwer`). Runs `gen-nkeys.sh --regenerate` and `--validate-supervisor` before a reload, trusts the script to match what the spec promises.
+- **Secondary:**
+  - Anyone editing the ACL matrix in the future — one file to change, not three.
+  - `lyra ops verify` (#737) — machine-readable source of truth to compare auth.conf against running processes.
+  - `roxabi-nats` SDK plugin work (ADR-045) — a declared schema for identity + ACL shape makes adding plugin identities mechanical.
+
+## Constraints
+
+- `gen-nkeys.sh --template-only` must keep working without root / without `jq` being a hard dependency if possible — but `jq` is already pulled in for other tooling in this repo, so it is an acceptable requirement (the script is bash-only today).
+- `tests/nats/test_gen_nkeys_acls.sh` must keep passing without sudo and without filesystem writes outside stdout/tmp.
+- The generated `auth.conf` **must be byte-identical** to the current output for unchanged identities (guarded by the existing test's set-equality assertions).
+- No runtime client code touches the matrix — Python stays untouched.
+- Spec narrative and footnotes (`[^ready]`, `[^health]`, `[^inbox]`, `[^monitor]`, `[^inbox-fix]`) must remain in the mdx — they are design history, not contract.
+
+## Out of Scope
+
+- Migrating clients/drivers to read the JSON — this is a deploy-side refactor only.
+- Changing the ACL matrix contents — pure extraction, byte-identical auth.conf.
+- Implementing #737 `lyra ops verify` — this issue only ships the JSON it will consume.
+- Per-identity `inbox_prefix` tightening — tracked separately (alluded to in the #706 `[^inbox-fix]` footnote).
+- Plugin ACL schema (deferred to ADR-045).
+- Regenerating nkey seeds — this refactor does not force a rotation.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (deploy/NATS tooling), no new architecture.
+
+Signals:
+- Label `size:F-lite` on issue.
+- Affects `deploy/nats/{gen-nkeys.sh, acl-matrix.json (new)}`, `tests/nats/test_gen_nkeys_acls.sh`, the #706 spec mdx (CI guard only), plus a CI check script — ≤6 files.
+- No new subsystem; bash + existing test harness.
+- One decision locked: spec stays hand-maintained with a **CI drift-check** that renders a table from JSON and diffs it against the spec block.
+- One decision locked: `--validate-supervisor` uses a per-identity `owner` field in the JSON (values: `lyra` / `voicecli` / `imagecli` / `external` / `reserved`), greps both `deploy/supervisor/conf.d/*.conf` **and** `deploy/quadlet/*.container` for each `lyra`-owned identity's `NATS_NKEY_SEED_PATH`. Generalizes to #737.

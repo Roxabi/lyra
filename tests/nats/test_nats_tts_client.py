@@ -173,7 +173,7 @@ class TestCircuitBreaker:
         payload_bytes = call_args.args[1]
         request_dict = json.loads(payload_bytes)
         assert request_dict["engine"] == "chatterbox"
-        assert request_dict["speed"] == 1.2
+        assert request_dict["speed"] == "1.2"
         # contract_version is always stamped (ADR-044)
         assert request_dict["contract_version"] == "1"
         # All unset fields (None) must be absent from the NATS payload

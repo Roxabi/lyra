@@ -19,6 +19,7 @@ import time
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from typing import cast
 
 from nats.aio.client import Client as NATS
 
@@ -171,8 +172,8 @@ class NatsAdapterBase(ABC):
         }
 
     async def _heartbeat_loop(self) -> None:
-        # only called when _heartbeat_subject is set
-        subject: str = self._heartbeat_subject or ""
+        # caller guarantees _heartbeat_subject is set (see start() guard)
+        subject = cast(str, self._heartbeat_subject)
         while self._nc and not self._nc.is_closed:
             if not self._nc.is_connected:
                 await asyncio.sleep(1.0)

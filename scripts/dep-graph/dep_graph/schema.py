@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from jsonschema import Draft7Validator
 
@@ -30,8 +30,8 @@ def _load_schema() -> dict:
     global _schema_cache
     if _schema_cache is None:
         _schema_cache = json.loads(_SCHEMA_PATH.read_text())
-    assert _schema_cache is not None
-    return _schema_cache
+    # cast (not assert) — assert is stripped under `python -O`
+    return cast(dict, _schema_cache)
 
 
 def _assert_repo(ref: Any, path: str, allowed_repos: set[str]) -> None:

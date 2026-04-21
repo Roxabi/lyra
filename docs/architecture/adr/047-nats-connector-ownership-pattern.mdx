@@ -134,7 +134,7 @@ Every domain that moves from "TBD" to shipped requires:
 
 ### imageCLI migration state
 
-imageCLI#50 shipped a satellite-owned worker via the SDK on 2026-04-15. `imagecli nats-serve` subscribes to `lyra.image.generate.request` using `NatsAdapterBase`. Remaining lyra-side work: contract ADR for `lyra.image.*`, `src/lyra/nats/nats_image_client.py`, `image-worker` nkey + ACL in `gen-nkeys.sh`. File new lyra-side ticket.
+imageCLI#50 shipped a satellite-owned worker via the SDK on 2026-04-15. `imagecli nats-serve` subscribes to `lyra.image.generate.request` using `NatsAdapterBase`. Lyra-side work completed via #754: contract ADR-050, `src/lyra/nats/nats_image_client.py` hub client, `image-worker` nkey, `imagecli_gen` supervisor entry. See ADR-050 References.
 
 ### Enforcement
 
@@ -172,7 +172,7 @@ The allowlist is narrow (1–2 files per satellite). This is the enforcement mec
 1. **voiceCLI#69** — adopt `roxabi-nats` v0.1.0 SDK. Retire `voicecli/nats/base.py`, `voicecli/nats/connect.py`, duplicate validators/serializers. **Keep** `voicecli/nats/{stt,tts}_adapter.py` as the designated adapter modules. Size S. Open.
 2. **lyra#658 / #690 / #691** slices — delete `src/lyra/bootstrap/{stt,tts}_adapter_standalone.py`, `lyra adapter stt/tts` subcommands, `lyra_{stt,tts}.conf`. Strip voicecli imports from `src/lyra/{stt,tts}/__init__.py`. Drop `voicecli` from lyra's `pyproject.toml`. In flight. Size F-lite.
 3. **CI grep-gate** on satellite repos — forbid `lyra.*` subject literals outside the designated adapter module per satellite. A satellite-local allowlist (one file path per satellite) makes the exception explicit. File new tickets in each satellite repo. Size S each.
-4. **imageCLI#50** already closed as COMPLETED 2026-04-15 under this pattern. Lyra-side remainder: contract ADR for `lyra.image.*`, `src/lyra/nats/nats_image_client.py`, `image-worker` nkey + ACL in `gen-nkeys.sh`. File new lyra-side ticket. Size S.
+4. **imageCLI#50** already closed as COMPLETED 2026-04-15 under this pattern. Lyra-side work closed by #754 (ADR-050 contract, hub client, nkey, supervisor entry — see ADR-050 References).
 5. **Memory over NATS (roxabi-vault)** — deferred until its contract ADR is scoped.
 
 ### Neutral

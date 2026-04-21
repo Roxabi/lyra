@@ -1,0 +1,54 @@
+---
+title: document command-selection taxonomy via role enum in agents.yml
+issue: 807
+status: approved
+tier: F-lite
+date: 2026-04-21
+---
+
+## Problem
+
+`deploy/gen-supervisor-conf.py` selects the launcher script for each agent via three code branches, with no schema enforcement in `agents.yml`:
+
+1. `command_override` explicit → use it verbatim (external satellite case)
+2. `name == "hub"` → `run_hub.sh`
+3. default → `run_adapter.sh <name>`
+
+The taxonomy lives in code conditions, not in the data model. A future external-satellite entry (e.g. `voicecli_stt` post-#690) that forgets `command_override` falls through silently to case 3, generating `run_adapter.sh voicecli_stt` — a launcher that does not exist for that process. Failure mode is a broken supervisord conf with no authoring-time signal.
+
+This was deferred from the #804 code review (architect verdict, 72%): the reviewer flagged the implicit taxonomy as a footgun once external satellites multiply beyond the current single case.
+
+## Who
+
+- **Primary:** Lyra maintainer adding/editing entries in `deploy/agents.yml` — gets a descriptive validation error instead of a silent mis-generation.
+- **Secondary:** `make gen-conf` + supervisord startup — fail fast at generation time, not at container launch.
+
+## Constraints
+
+- Backward-compatible: existing entries without `role` default to `lyra-adapter` (the current majority case).
+- `role: external-satellite` ⇒ `command_override` must be present; validator raises a descriptive error otherwise.
+- Schema change stays in `deploy/gen-supervisor-conf.py` — no new dependency, no separate schema file.
+- Tests run under existing pytest setup; no new test infra.
+
+## Out of Scope
+
+- Runtime behavior of supervisord or agents — purely a generation-time schema change.
+- Enum values beyond `hub | lyra-adapter | external-satellite` — no `worker`, `sidecar`, etc.
+- Migration of non-Lyra satellites (voicecli, imagecli) into `agents.yml` — that is #690's domain.
+- Changes to `run_hub.sh` / `run_adapter.sh`.
+
+## Complexity
+
+**Tier: F-lite** — scope is clear, single domain (deploy tooling), no unknowns, but the schema/validator design and error message shape deserve a spec before implementation.
+
+Signals observed:
+- 3–5 files touched (`deploy/gen-supervisor-conf.py`, `deploy/agents.yml`, test file, possibly a README line).
+- Single domain: devops/infra.
+- No new architecture, no new dependency.
+- Non-trivial validation logic + test cases → warrants spec.
+
+## References
+
+- #754 — supervisord conf generator foundation
+- #804 — code review that deferred this
+- #690 — future external satellites (`voicecli_stt`, etc.) that make this urgent

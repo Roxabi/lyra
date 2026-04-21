@@ -3,106 +3,73 @@
 
 # CLAUDE.md — Instructions for Claude Code
 
+Let:
+  A := ~/.lyra/auth.db | T := TOML seed | P := CLAUDE.md path
+
 ## Project
 
-**Lyra by Roxabi** — Personal AI agent engine (hub-and-spoke, asyncio, multi-channel).
-See `docs/ARCHITECTURE.md` for full context.
+**Lyra** — AI agent engine (hub-spoke, asyncio, multi-channel)
+→ `docs/ARCHITECTURE.md`
 
 ## TL;DR
 
-- **Project:** Lyra
-- **Before work:** Use `/dev #N` as the single entry point — it determines tier (S / F-lite / F-full) and drives the full lifecycle
-- **Decisions:** → see global patterns (@~/.claude/shared/global-patterns.md)
-- **Never** use `--force`/`--hard`/`--amend`
-- **Always** use appropriate skill even without slash command
+- Entry: `/dev #N` → tier (S/F-lite/F-full) → lifecycle
+- Decisions → global-patterns.md
+- ¬`--force` | ¬`--hard` | ¬`--amend`
 
 ## Key files
 
 | File | Role |
-|------|------|
-| `docs/ARCHITECTURE.md` | Architecture + technical decisions |
-| `docs/architecture/architecture-patterns.md` | **Standard patterns** — Clean, Hexagonal, Kernel rules |
-| `docs/architecture/target-architecture.md` | **Implementation truth** — Hexagonal/Ports & Adapters |
-| `docs/CONFIGURATION.md` | All config files, their purpose, load order, and system vs instance split |
-| `docs/ROADMAP.md` | Roadmap and priorities |
-| `docs/GETTING-STARTED.md` | Machine 1 setup guide |
-| `docs/agent-management.md` | `~/.lyra/auth.db` seed flow + `lyra agent` CLI |
-| `artifacts/` | Frames, specs, plans, analyses, explorations (dev-core) |
-| `deploy/provision.sh` | Machine 1 post-install provisioning script |
-| `deploy/quadlet/` | Podman Quadlet units (`.container`, `.volume`, `.network`) — systemd-integrated containers; `lyra-nats-auth.volume` for NATS public auth.conf |
-| `deploy/nats/nats-container.conf` | NATS config for container deployment (no TLS, 0.0.0.0 bind) |
-| `scripts/dep-graph/` | GitHub-driven dep-graph generator (`dep_graph/` package + `layout.schema.json`). Run via `make dep-graph [fetch\|build\|audit\|validate\|open]`. Artifacts (layout.json, gh.json cache, HTML output) live in `~/.roxabi/forge/lyra/visuals/`. Precursor to roxabi-dashboard. |
-| `scripts/corpus/` | Roxabi-org issue corpus sync (GraphQL → SQLite). Run via `make corpus [init\|sync\|stats]` (single repo: `REPO=Roxabi/lyra`). DB lives at `~/.roxabi/corpus.db`: tables `issues`, `labels`, `edges`, `sync_state`. Foundation for roxabi-dashboard and dep-graph v5. Phase 1 = #829. |
-| `packages/roxabi-nats/` | NATS transport SDK (uv workspace subpackage) — adapter_base, connect, circuit_breaker, readiness, serialization. Extracted per ADR-045. |
-| `packages/roxabi-contracts/` | Shared Pydantic schemas for cross-project NATS contracts (uv workspace subpackage). v0.1.0 ships `ContractEnvelope` only; per-domain submodules (voice, image, memory, llm) added in later tags. Pure Pydantic runtime; transport via `[testing]` extra only. Extracted per ADR-049. |
-| `deploy/agents.yml` | Declarative agent registry for supervisord conf.d generation. Run `make gen-conf` to regenerate. |
-| `deploy/gen-supervisor-conf.py` | Python generator: agents.yml → supervisord conf.d/*.conf. |
+|---|---|
+| `docs/ARCHITECTURE.md` | Architecture + decisions |
+| `docs/architecture/*.md` | Standard + target patterns |
+| `docs/CONFIGURATION.md` | Config files, load order |
+| `docs/agent-management.md` | A seed flow + CLI |
+| `artifacts/` | Frames, specs, plans (dev-core) |
+| `deploy/quadlet/` | Podman Quadlet units |
+| `scripts/dep-graph/` | Dep-graph generator → `~/.roxabi/forge/lyra/visuals/` |
+| `scripts/corpus/` | Issue sync (GraphQL → SQLite) → `~/.roxabi/corpus.db` |
+| `packages/roxabi-nats/` | NATS transport SDK (ADR-045) |
+| `packages/roxabi-contracts/` | NATS contract schemas (ADR-049) |
+| `deploy/agents.yml` | Agent registry → supervisord conf |
 
-## Local infrastructure
+## Agent management
 
-Machine data (IPs, partitions, configs) lives in **`local/machines.md`** (gitignored, not versioned).
+Agents ∈ A (SQLite) | T files = seed only → `lyra agent init` before use
+Search: `~/.lyra/agents/` (override) → `src/lyra/agents/` (default)
+`cwd` → `config.toml [defaults]` (¬T)
 
-Check this file for:
-- Machine IPs and hostnames
-- Disk layouts
-- Useful SSH commands
-- Active services
-
-```bash
-# Connect to Machine 1 (Hub)
-ssh mickael@192.168.1.16
-```
-
-## Machines
-
-- **Machine 1** (`roxabituwer`, `192.168.1.16`) — Hub, Ubuntu Server 24.04, RTX 3080, 24/7
-- **Machine 2** (`ROXABITOWER`) — AI Server, Pop!_OS, RTX 5070Ti, on-demand
-
-## Agent management (invariants)
-
-Agents live in **`~/.lyra/auth.db`** (SQLite). TOML files are seed sources only — they must be imported into the DB via `lyra agent init` before startup uses them.
-
-TOML search order: `~/.lyra/agents/` (user overrides) → `src/lyra/agents/` (bundled defaults).
-
-`cwd` is machine-specific → `config.toml [defaults]`, NOT in agent TOML. TOML edits → `lyra agent init --force` + restart.
-
-→ [`docs/agent-management.md`](docs/agent-management.md) — full `lyra agent` CLI (`init | list | show | edit | validate | create | assign | unassign | delete`), workspaces, DB schema.
+→ `docs/agent-management.md` — CLI: `init | list | show | edit | validate | create | delete`
 
 ## Conventions
 
-- Language: English for all docs, code and commits
-- Commits: Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
-- Issues: via `dev-core` workflow (`/dev #N`)
+- EN for docs/code/commits
+- Commits: Conventional (`feat:`, `fix:`, `chore`)
+- Issues: `/dev #N`
 
-## CLAUDE.md hygiene (hard rule)
+## CLAUDE.md hygiene
 
-**When you add, remove, or rename a file/package, update the relevant CLAUDE.md immediately.**
+File/rename → update P immediately
 
-CLAUDE.md locations (one per package, single level — no nested sub-CLAUDE.md):
-- `CLAUDE.md` — project root (this file)
-- `src/lyra/core/CLAUDE.md` — hub, stores, pool, commands infra + all flat modules
-- `src/lyra/adapters/CLAUDE.md` — Telegram, Discord, CLI, NATS adapters
-- `src/lyra/agents/CLAUDE.md` — agent implementations
-- `src/lyra/commands/CLAUDE.md` — plugin commands
-- `src/lyra/llm/CLAUDE.md` — LLM drivers and providers
+| P | Scope |
+|---|---|
+| `CLAUDE.md` | project root |
+| `src/lyra/core/CLAUDE.md` | hub, stores, pool |
+| `src/lyra/adapters/CLAUDE.md` | Telegram, Discord, CLI, NATS |
+| `src/lyra/agents/CLAUDE.md` | agent impls |
+| `src/lyra/commands/CLAUDE.md` | plugin commands |
+| `src/lyra/llm/CLAUDE.md` | LLM drivers |
 
-Rules:
-- New file added → add it to the file table in the appropriate CLAUDE.md
-- File deleted → remove its entry
-- File moved → update source and destination CLAUDE.md
-- New package/subdir under `src/lyra/` → add to the nearest CLAUDE.md (do NOT create a new nested CLAUDE.md)
+Rules: add/delete/move → update P | new `src/lyra/` subdir → nearest P (¬nested)
 
-## Production entry points (NATS three-process mode)
+## Production entry points (NATS 3-process)
 
-Lyra runs as three separate supervisor processes on Machine 1:
-
-| Supervisor program | CLI command | Bootstrap function |
-|-------------------|-------------|-------------------|
+| Program | CLI | Bootstrap |
+|---|---|---|
 | `lyra_hub` | `lyra hub` | `_bootstrap_hub_standalone()` |
 | `lyra_telegram` | `lyra adapter telegram` | `_bootstrap_adapter_standalone()` |
 | `lyra_discord` | `lyra adapter discord` | `_bootstrap_adapter_standalone()` |
 
-Scripts: `run_hub.sh` and `run_adapter.sh` in `deploy/supervisor/scripts/` (lyra's own supervisord, managed via `lyra.service`).
-NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub) · `lyra.outbound.<platform>.<bot_id>` (hub→adapter).
+Topics: `lyra.inbound.<platform>.<bot_id>` | `lyra.outbound.<platform>.<bot_id>`
 
-The unified single-process mode (`lyra start` → `_bootstrap_unified`) runs hub + adapters in one process with NATS. Auto-starts embedded nats-server when NATS_URL is not set.
+Unified: `lyra start` → hub + adapters in 1 process + embedded NATS

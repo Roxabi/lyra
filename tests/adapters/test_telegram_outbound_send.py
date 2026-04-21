@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import (  # noqa: F401
     InboundMessage,
     OutboundMessage,
@@ -38,7 +37,7 @@ async def test_send_calls_bot_send_message() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     adapter.bot = bot
 
@@ -92,7 +91,7 @@ async def test_send_skips_when_platform_context_is_not_telegram(
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     adapter.bot = bot
 
@@ -143,7 +142,7 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     adapter.bot = bot
 

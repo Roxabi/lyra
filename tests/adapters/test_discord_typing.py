@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.message import OutboundMessage
 from lyra.core.render_events import TextRenderEvent
 
@@ -68,7 +67,6 @@ async def test_start_typing_creates_background_task() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     mock_channel = AsyncMock()
     mock_channel.typing = AsyncMock()
@@ -95,7 +93,6 @@ async def test_cancel_typing_cancels_task() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     mock_channel = AsyncMock()
     mock_channel.typing = AsyncMock()
@@ -119,7 +116,6 @@ async def test_send_cancels_typing_task_at_start() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -153,7 +149,6 @@ async def test_send_streaming_cancels_typing_task_at_start() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     mock_placeholder = AsyncMock()
@@ -207,7 +202,6 @@ async def test_on_message_does_not_cancel_typing_when_message_queued() -> None:
         bot_id="main",
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -254,7 +248,6 @@ async def test_on_message_cancels_typing_when_message_dropped_queue_full() -> No
         bot_id="main",
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 

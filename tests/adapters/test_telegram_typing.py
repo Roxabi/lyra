@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.render_events import TextRenderEvent
 from lyra.core.trust import TrustLevel
 
@@ -135,7 +134,7 @@ async def test_send_cancels_typing_task() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     adapter.bot = bot
 
@@ -200,7 +199,7 @@ async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
+        
     )
     adapter.bot = bot
 

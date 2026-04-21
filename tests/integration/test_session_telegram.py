@@ -10,8 +10,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
-
 pytestmark = pytest.mark.asyncio
 
 
@@ -80,7 +78,6 @@ def _make_telegram_adapter(fake_turn_store=None, mock_bus=None):
         bot_id="main",
         token="test-token-secret",
         inbound_bus=mock_bus,
-        auth=_ALLOW_ALL,
     )
     if fake_turn_store is not None:
         kwargs["turn_store"] = fake_turn_store
@@ -158,7 +155,6 @@ async def test_telegram_no_turn_store_no_injection() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=mock_bus,
-        auth=_ALLOW_ALL,
     )
     adapter.bot = AsyncMock()
     adapter.bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
@@ -188,7 +184,6 @@ async def test_telegram_turn_store_attribute_stored() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=mock_bus,
-        auth=_ALLOW_ALL,
         turn_store=fake_turn_store,  # type: ignore[arg-type]
     )
 

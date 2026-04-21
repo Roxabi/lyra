@@ -157,9 +157,8 @@ def _render_msrows(
 
 def render(data: GraphData, *, active: bool = True) -> str:
     tasks = tasks_for_graph(data)
-    lane_order = [code for _, _, codes in data.column_groups for code in codes]
     node_records, bands, _ = lg.layout_grid(
-        tasks, lane_order=lane_order, ms_codes=data.ms_codes,
+        tasks, lane_order=data.lane_order, ms_codes=data.ms_codes,
     )
     container_h = lg.container_height(bands)
 

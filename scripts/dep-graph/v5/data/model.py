@@ -7,6 +7,8 @@ from typing import Any
 # ─── Static configuration (project-level) ───────────────────────────────────
 
 # Column grouping — each tuple is (label, tone_key, [lane_codes]).
+# Tuple positions are load-bearing: parse_column_groups and every consumer
+# unpacks by position; do not reorder without updating all call sites.
 COLUMN_GROUPS: list[tuple[str, str, list[str]]] = [
     ("NATS",      "a1", ["a1", "a2", "a3"]),
     ("CONTAINER", "b",  ["b"]),
@@ -25,8 +27,11 @@ COLUMN_GROUPS: list[tuple[str, str, list[str]]] = [
     ("FINAL",     "e",  ["o"]),
 ]
 
-# Milestones — (full label, code, short name).
-# NOTE: full label matches GitHub title with em-dashes stripped (double-space).
+# Milestones — (full_label, code, short_display).
+# Tuple positions are load-bearing: parse_milestones and every consumer
+# unpacks by position; do not reorder without updating all call sites.
+# NOTE: full_label matches GitHub title with em-dashes stripped (double-space).
+#       short_display is the row-header label used by the grid view (indexed by ms_name_by_code).
 MILESTONES: list[tuple[str, str, str]] = [
     ("M0  NATS hardening",               "M0",  "NATS hardening"),
     ("M1  NATS maturity  containerize",  "M1",  "NATS maturity / containerize"),
@@ -130,7 +135,18 @@ class GraphData:
 
     @property
     def ms_name_by_code(self) -> dict[str, str]:
+        """Map milestone code → short display label (position 2 of the tuple).
+
+        Name kept for backward-compat with the module-level `MS_NAME_BY_CODE`
+        constant; despite "name", the value is the short display string used
+        by row headers, not the full milestone label.
+        """
         return {code: name for _, code, name in self.milestones}
+
+    @property
+    def lane_order(self) -> list[str]:
+        """Flat lane-code order derived from column_groups (tie-break for graph layout)."""
+        return [code for _, _, codes in self.column_groups for code in codes]
 
 
 def ref_key(ref: dict[str, Any]) -> str:

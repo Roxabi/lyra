@@ -125,7 +125,9 @@ def tasks_for_graph(data: GraphData) -> list[dict[str, Any]]:
     status, milestone, lane, size, depth, blockers, unblocks.
     """
     col_of_lane = {c: label for label, _, codes in data.column_groups for c in codes}
+    # full_label → code (first → second tuple field)
     ms_short = {k: short for k, short, _ in data.milestones}
+    # code → short display label (via property)
     ms_name_by_code = data.ms_name_by_code
 
     tasks: list[dict[str, Any]] = []

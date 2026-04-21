@@ -118,8 +118,9 @@ class TestGridRenderLayoutOverride:
         result = grid.render(data)
         assert "P1" in result
         assert "Phase 1" in result
-        # Only one milestone row (+ possible sentinel) — not the 12 defaults
-        assert "M0" not in result or result.count('class="grid-row"') <= 2
+        # Exactly one configured row plus any sentinel (NO_MS) row.
+        expected_rows = 1 + _sentinel_rows(data)
+        assert result.count('class="grid-row"') == expected_rows
 
     def test_custom_cols_count_reflects_override(self, layout, gh):
         custom = dict(layout)

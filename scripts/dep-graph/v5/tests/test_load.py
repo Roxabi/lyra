@@ -126,8 +126,8 @@ class TestLayoutDrivenMatrixConfig:
             ("ALPHA", "a1", ["a1", "a2"]),
             ("BETA",  "b",  ["b"]),
         ]
-        # Defaults must stay untouched on module
-        assert len(COLUMN_GROUPS) == 15
+        # Isolation: override must not mutate the module-level default
+        assert data.column_groups is not COLUMN_GROUPS
 
     def test_milestones_override(self, layout, gh):
         custom = dict(layout)

@@ -1,7 +1,9 @@
 [Unit]
 Description=Lyra Discord adapter
+# After= orders startup; no Requires=/BindsTo= so a hub restart does not
+# propagate a stop to the adapter. Adapters reconnect to NATS on their own
+# once the hub is back; tearing them down blocks auto-recovery.
 After=lyra-hub.service
-Requires=lyra-hub.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 

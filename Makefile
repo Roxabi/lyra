@@ -1,3 +1,8 @@
+# Recipes use bash for brace expansion + pipefail (`rm -f .../lyra*.{a,b,c}`,
+# `podman save | ssh … | podman load`). Default /bin/sh is dash on Debian/Ubuntu,
+# which silently skips unmatched brace expansions.
+SHELL := /bin/bash -o pipefail
+
 SUPERVISOR_HUB ?= $(HOME)/projects
 HUB_SERVICES   := lyra telegram discord
 -include $(SUPERVISOR_HUB)/hub.mk
@@ -32,7 +37,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: build push lyra telegram discord monitor register quadlet-install deploy remote update nats-setup nats-install nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
+.PHONY: build push lyra telegram discord monitor register quadlet-install deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
 # ── Container image build + transfer ─────────────────────────────────────────
 

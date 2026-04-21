@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 from nats.aio.client import Client as NATS
 
-from lyra.bootstrap.lockfile import acquire_lockfile as _acquire_lockfile
-from lyra.bootstrap.lockfile import release_lockfile as _release_lockfile
+from lyra.bootstrap.infra.lockfile import acquire_lockfile as _acquire_lockfile
+from lyra.bootstrap.infra.lockfile import release_lockfile as _release_lockfile
 from tests.nats.conftest import requires_nats_server
 
 # ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ class TestNatsUrlGuard:
         raw_config = _test_config()
 
         # Act / Assert — must exit before touching NATS
-        from lyra.bootstrap.hub_standalone import _bootstrap_hub_standalone
+        from lyra.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
 
         with pytest.raises(SystemExit) as exc_info:
             await _bootstrap_hub_standalone(raw_config)
@@ -121,7 +121,7 @@ class TestHealthEndpoint:
         # Arrange
         import httpx
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.hub import Hub
 
         hub = Hub()
@@ -145,7 +145,7 @@ class TestHealthEndpoint:
         # Arrange — write a known health secret to tmp_path
         import httpx
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.hub import Hub
 
         secret = "test-secret-abc"
@@ -180,7 +180,7 @@ class TestHealthEndpoint:
         # Arrange
         import httpx
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.hub import Hub
 
         hub = Hub()

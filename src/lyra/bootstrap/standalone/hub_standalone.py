@@ -8,31 +8,31 @@ import os
 import sys
 from pathlib import Path
 
-from lyra.bootstrap.agent_factory import _resolve_bot_agent_map
 from lyra.bootstrap.auth_seeding import build_bot_auths, seed_auth_store
 from lyra.bootstrap.bootstrap_stores import open_stores
-from lyra.bootstrap.config import MessageIndexConfig
-from lyra.bootstrap.health import create_health_app
-from lyra.bootstrap.hub_builder import (
+from lyra.bootstrap.factory.agent_factory import _resolve_bot_agent_map
+from lyra.bootstrap.factory.config import MessageIndexConfig
+from lyra.bootstrap.factory.hub_builder import (
     build_cli_pool,
     build_hub,
     build_inbound_bus,
     register_agents,
 )
-from lyra.bootstrap.hub_standalone_helpers import (
+from lyra.bootstrap.factory.llm_overlay import init_nats_llm
+from lyra.bootstrap.factory.voice_overlay import init_nats_stt, init_nats_tts
+from lyra.bootstrap.infra.health import create_health_app
+from lyra.bootstrap.infra.lockfile import acquire_lockfile, release_lockfile
+from lyra.bootstrap.infra.notify import notify_startup
+from lyra.bootstrap.lifecycle.lifecycle_helpers import setup_signal_handlers
+from lyra.bootstrap.standalone.hub_standalone_helpers import (
     build_pairing_manager,
     load_agent_configs,
     shutdown_hub_runtime,
 )
-from lyra.bootstrap.lifecycle_helpers import setup_signal_handlers
-from lyra.bootstrap.llm_overlay import init_nats_llm
-from lyra.bootstrap.lockfile import acquire_lockfile, release_lockfile
-from lyra.bootstrap.nats_wiring import (
+from lyra.bootstrap.wiring.nats_wiring import (
     wire_nats_discord_proxies,
     wire_nats_telegram_proxies,
 )
-from lyra.bootstrap.notify import notify_startup
-from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import start_readiness_responder
@@ -114,7 +114,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             )
         first_agent_config = agent_configs[next(iter(sorted(agent_configs)))]
 
-        from lyra.bootstrap.config import _load_messages
+        from lyra.bootstrap.factory.config import _load_messages
 
         msg_manager = _load_messages(language=first_agent_config.i18n_language)
 
@@ -204,7 +204,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         if _stop is None:
             setup_signal_handlers(stop)
 
-        from lyra.bootstrap.utils import watchdog
+        from lyra.bootstrap.factory.utils import watchdog
 
         tasks = [
             asyncio.create_task(hub.run(), name="hub"),

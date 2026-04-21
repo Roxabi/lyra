@@ -13,8 +13,8 @@ import pytest
 
 import lyra.__main__ as main_mod
 import lyra.bootstrap.bootstrap_stores as stores_mod
-import lyra.bootstrap.bootstrap_wiring as wiring_mod
-import lyra.bootstrap.unified as unified_mod
+import lyra.bootstrap.factory.unified as unified_mod
+import lyra.bootstrap.wiring.bootstrap_wiring as wiring_mod
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.auth.authenticator import Authenticator as AuthMiddleware

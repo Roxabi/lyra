@@ -22,7 +22,7 @@ from lyra.core.messaging.message import Platform
 @pytest.mark.asyncio
 async def test_wire_telegram_adapters_registers_authenticator() -> None:
     """wire_telegram_adapters() must call hub.register_authenticator() with the auth."""
-    from lyra.bootstrap.bootstrap_wiring import wire_telegram_adapters
+    from lyra.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
     from lyra.core.circuit_breaker import CircuitRegistry
 
     # Arrange — real Hub so register_authenticator actually records the call
@@ -49,7 +49,7 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
     mock_adapter_instance.resolve_identity = AsyncMock()
 
     with patch(
-        "lyra.bootstrap.bootstrap_wiring.TelegramAdapter",
+        "lyra.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
         return_value=mock_adapter_instance,
     ):
         # Act
@@ -75,7 +75,7 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
 @pytest.mark.asyncio
 async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
     """wire_telegram_adapters() does NOT create NatsOutboundListener (dev mode only)."""
-    from lyra.bootstrap.bootstrap_wiring import wire_telegram_adapters
+    from lyra.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
     from lyra.core.circuit_breaker import CircuitRegistry
 
     hub = Hub()
@@ -90,7 +90,7 @@ async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
     mock_adapter_instance._outbound_listener = None
 
     with patch(
-        "lyra.bootstrap.bootstrap_wiring.TelegramAdapter",
+        "lyra.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
         return_value=mock_adapter_instance,
     ):
         adapters, _ = await wire_telegram_adapters(
@@ -110,7 +110,7 @@ async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
 @pytest.mark.asyncio
 async def test_wire_telegram_adapters_skips_missing_agent_mapping() -> None:
     """wire_telegram_adapters() skips bots not in bot_agent_map without raising."""
-    from lyra.bootstrap.bootstrap_wiring import wire_telegram_adapters
+    from lyra.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
     from lyra.core.circuit_breaker import CircuitRegistry
 
     # Arrange

@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import lyra.__main__ as main_mod
-import lyra.bootstrap.agent_factory as agent_factory_mod
-import lyra.bootstrap.unified as unified_mod
+import lyra.bootstrap.factory.agent_factory as agent_factory_mod
+import lyra.bootstrap.factory.unified as unified_mod
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from tests.conftest import patch_auth_config_test

@@ -393,19 +393,19 @@ class TestMiddlewarePipelineEmission:
 
 class TestEventBusConfig:
     def test_default_queue_maxsize(self) -> None:
-        from lyra.bootstrap.config import EventBusConfig
+        from lyra.bootstrap.factory.config import EventBusConfig
 
         cfg = EventBusConfig()
         assert cfg.queue_maxsize == 1000
 
     def test_load_with_explicit_value(self) -> None:
-        from lyra.bootstrap.config import _load_event_bus_config
+        from lyra.bootstrap.factory.config import _load_event_bus_config
 
         cfg = _load_event_bus_config({"event_bus": {"queue_maxsize": 42}})
         assert cfg.queue_maxsize == 42
 
     def test_load_with_empty_config(self) -> None:
-        from lyra.bootstrap.config import _load_event_bus_config
+        from lyra.bootstrap.factory.config import _load_event_bus_config
 
         cfg = _load_event_bus_config({})
         assert cfg.queue_maxsize == 1000

@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from lyra.bootstrap.utils import watchdog
+from lyra.bootstrap.factory.utils import watchdog
 
 
 @pytest.fixture()

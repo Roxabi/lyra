@@ -8,15 +8,9 @@ import os
 import sys
 from pathlib import Path
 
-from lyra.bootstrap.agent_factory import _resolve_agents, _resolve_bot_agent_map
-from lyra.bootstrap.bootstrap_lifecycle import run_lifecycle
 from lyra.bootstrap.bootstrap_stores import open_stores
-from lyra.bootstrap.bootstrap_wiring import (
-    _build_bot_auths,
-    wire_discord_adapters,
-    wire_telegram_adapters,
-)
-from lyra.bootstrap.config import (
+from lyra.bootstrap.factory.agent_factory import _resolve_agents, _resolve_bot_agent_map
+from lyra.bootstrap.factory.config import (
     MessageIndexConfig,
     _build_agent_overrides,
     _load_circuit_config,
@@ -30,8 +24,14 @@ from lyra.bootstrap.config import (
     _load_pairing_config,
     _load_pool_config,
 )
-from lyra.bootstrap.embedded_nats import ensure_nats
-from lyra.bootstrap.lockfile import acquire_lockfile, release_lockfile
+from lyra.bootstrap.infra.embedded_nats import ensure_nats
+from lyra.bootstrap.infra.lockfile import acquire_lockfile, release_lockfile
+from lyra.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
+from lyra.bootstrap.wiring.bootstrap_wiring import (
+    _build_bot_auths,
+    wire_discord_adapters,
+    wire_telegram_adapters,
+)
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_loader import agent_row_to_config
@@ -159,8 +159,11 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 await pm.connect()
                 set_pairing_manager(pm)
 
-            from lyra.bootstrap.llm_overlay import init_nats_llm
-            from lyra.bootstrap.voice_overlay import init_nats_stt, init_nats_tts
+            from lyra.bootstrap.factory.llm_overlay import init_nats_llm
+            from lyra.bootstrap.factory.voice_overlay import (
+                init_nats_stt,
+                init_nats_tts,
+            )
 
             stt_service = init_nats_stt(nc)
             if stt_service is not None:

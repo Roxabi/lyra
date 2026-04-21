@@ -1,4 +1,4 @@
-"""Tests for lyra.bootstrap.config._validate_config_path and _load_raw_config."""
+"""Tests for bootstrap.factory.config._validate_config_path and _load_raw_config."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.bootstrap.config import _load_raw_config, _validate_config_path
+from lyra.bootstrap.factory.config import _load_raw_config, _validate_config_path
 
 
 class TestValidateConfigPath:

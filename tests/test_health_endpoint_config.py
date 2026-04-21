@@ -27,7 +27,7 @@ class TestConfigEndpoint:
     ) -> None:
         """AnthropicAgent registered as lyra_default → 200 with all expected keys."""
         # Arrange
-        import lyra.bootstrap.health as health_mod
+        import lyra.bootstrap.infra.health as health_mod
 
         monkeypatch.setattr(
             health_mod, "_read_secret", lambda name: "test-config-secret"
@@ -35,7 +35,7 @@ class TestConfigEndpoint:
         from unittest.mock import AsyncMock, MagicMock
 
         from lyra.agents.anthropic_agent import AnthropicAgent
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.agent import Agent
         from lyra.core.agent.agent_config import ModelConfig
         from lyra.core.runtime_config import RuntimeConfig
@@ -92,12 +92,12 @@ class TestConfigEndpoint:
     ) -> None:
         """No agent (or non-AnthropicAgent) registered → 404."""
         # Arrange
-        import lyra.bootstrap.health as health_mod
+        import lyra.bootstrap.infra.health as health_mod
 
         monkeypatch.setattr(
             health_mod, "_read_secret", lambda name: "test-config-secret"
         )
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         test_hub = Hub()
         app = create_health_app(test_hub)
@@ -116,11 +116,11 @@ class TestConfigEndpoint:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#207: /config without auth returns 401."""
-        import lyra.bootstrap.health as health_mod
+        import lyra.bootstrap.infra.health as health_mod
 
         secret = "test-config-secret"
         monkeypatch.setattr(health_mod, "_read_secret", lambda name: secret)
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(Hub())
         transport = ASGITransport(app=app)
@@ -133,11 +133,11 @@ class TestConfigEndpoint:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#207: /config with wrong token returns 401."""
-        import lyra.bootstrap.health as health_mod
+        import lyra.bootstrap.infra.health as health_mod
 
         secret = "test-config-secret"
         monkeypatch.setattr(health_mod, "_read_secret", lambda name: secret)
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(Hub())
         transport = ASGITransport(app=app)
@@ -159,13 +159,13 @@ class TestHealthReaperFields:
 
     @pytest.fixture(autouse=True)
     def set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import lyra.bootstrap.health as health_mod
+        import lyra.bootstrap.infra.health as health_mod
 
         monkeypatch.setattr(health_mod, "_read_secret", lambda name: HEALTH_SECRET)
 
     async def test_reaper_fields_absent_when_no_cli_pool(self, hub: Hub) -> None:
         """No cli_pool → reaper keys omitted entirely from response."""
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         assert hub.cli_pool is None
         app = create_health_app(hub)
@@ -181,7 +181,7 @@ class TestHealthReaperFields:
         """cli_pool with active reaper → reaper_alive=True."""
         from unittest.mock import MagicMock
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.cli.cli_pool import CliPool
 
         cli_pool = CliPool()
@@ -206,7 +206,7 @@ class TestHealthReaperFields:
         """cli_pool started but no sweep yet → reaper_alive=True, age=None."""
         from unittest.mock import MagicMock
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.cli.cli_pool import CliPool
 
         cli_pool = CliPool()

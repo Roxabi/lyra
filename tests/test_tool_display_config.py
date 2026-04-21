@@ -7,7 +7,7 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from lyra.bootstrap.config import _load_tool_display_config
+from lyra.bootstrap.factory.config import _load_tool_display_config
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 
 # ---------------------------------------------------------------------------

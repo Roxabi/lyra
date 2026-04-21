@@ -9,8 +9,8 @@ from typing import Any
 
 import uvicorn
 
-from lyra.bootstrap.health import create_health_app
-from lyra.bootstrap.lifecycle_helpers import (
+from lyra.bootstrap.infra.health import create_health_app
+from lyra.bootstrap.lifecycle.lifecycle_helpers import (
     setup_signal_handlers,
     teardown_buses,
     teardown_dispatchers,
@@ -57,7 +57,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     if _stop is None:
         setup_signal_handlers(stop)
 
-    from lyra.bootstrap.utils import watchdog
+    from lyra.bootstrap.factory.utils import watchdog
 
     tasks = [
         asyncio.create_task(hub.run(), name="hub"),

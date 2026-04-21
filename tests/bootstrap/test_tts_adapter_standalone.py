@@ -20,7 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 _SOURCE = (
-    Path(__file__).parent.parent.parent / "src/lyra/bootstrap/tts_adapter_standalone.py"
+    Path(__file__).parent.parent.parent
+    / "src/lyra/bootstrap/standalone/tts_adapter_standalone.py"
 )
 
 
@@ -57,7 +58,9 @@ def test_bootstrap_tts_adapter_standalone_signature() -> None:
 
     This test passes before and after migration — the public signature is unchanged.
     """
-    from lyra.bootstrap.tts_adapter_standalone import _bootstrap_tts_adapter_standalone
+    from lyra.bootstrap.standalone.tts_adapter_standalone import (
+        _bootstrap_tts_adapter_standalone,
+    )
 
     assert inspect.iscoroutinefunction(_bootstrap_tts_adapter_standalone), (
         "_bootstrap_tts_adapter_standalone must be a coroutine function"
@@ -86,7 +89,9 @@ def test_tts_adapter_standalone_class_exists() -> None:
     from roxabi_nats import NatsAdapterBase
 
     try:
-        from lyra.bootstrap.tts_adapter_standalone import TtsAdapterStandalone
+        from lyra.bootstrap.standalone.tts_adapter_standalone import (
+            TtsAdapterStandalone,
+        )
     except ImportError as exc:
         pytest.fail(
             f"TtsAdapterStandalone not found in tts_adapter_standalone — "
@@ -103,7 +108,9 @@ class TestTtsAdapterReplyContractVersion:
 
     def _make_adapter(self, synth_result=None, synth_raises=None):
         """Build TtsAdapterStandalone with a stubbed TTSService.synthesize."""
-        from lyra.bootstrap.tts_adapter_standalone import TtsAdapterStandalone
+        from lyra.bootstrap.standalone.tts_adapter_standalone import (
+            TtsAdapterStandalone,
+        )
         from lyra.tts import TTSConfig
 
         mock_tts_service = MagicMock()
@@ -114,11 +121,11 @@ class TestTtsAdapterReplyContractVersion:
 
         with (
             patch(
-                "lyra.bootstrap.tts_adapter_standalone.load_tts_config",
+                "lyra.bootstrap.standalone.tts_adapter_standalone.load_tts_config",
                 return_value=TTSConfig(engine="chatterbox"),
             ),
             patch(
-                "lyra.bootstrap.tts_adapter_standalone.TTSService",
+                "lyra.bootstrap.standalone.tts_adapter_standalone.TTSService",
                 return_value=mock_tts_service,
             ),
         ):
@@ -178,15 +185,17 @@ class TestTtsHeartbeatPayload:
 
         with (
             patch(
-                "lyra.bootstrap.tts_adapter_standalone.load_tts_config",
+                "lyra.bootstrap.standalone.tts_adapter_standalone.load_tts_config",
                 return_value=TTSConfig(engine="chatterbox"),
             ),
             patch(
-                "lyra.bootstrap.tts_adapter_standalone.TTSService",
+                "lyra.bootstrap.standalone.tts_adapter_standalone.TTSService",
                 return_value=mock_tts_service,
             ),
         ):
-            from lyra.bootstrap.tts_adapter_standalone import TtsAdapterStandalone
+            from lyra.bootstrap.standalone.tts_adapter_standalone import (
+                TtsAdapterStandalone,
+            )
 
             adapter = TtsAdapterStandalone({})
 
@@ -238,7 +247,7 @@ class TestTtsHeartbeatPayload:
         """_get_vram_info() returns (0, 0) when pynvml is unavailable."""
         adapter = self._make_adapter()
         with patch(
-            "lyra.bootstrap.tts_adapter_standalone.TtsAdapterStandalone._get_vram_info",
+            "lyra.bootstrap.standalone.tts_adapter_standalone.TtsAdapterStandalone._get_vram_info",
             return_value=(0, 0),
         ):
             payload = adapter.heartbeat_payload()
@@ -249,7 +258,7 @@ class TestTtsHeartbeatPayload:
         """_get_vram_info() returns real MB values when pynvml succeeds."""
         adapter = self._make_adapter()
         with patch(
-            "lyra.bootstrap.tts_adapter_standalone.TtsAdapterStandalone._get_vram_info",
+            "lyra.bootstrap.standalone.tts_adapter_standalone.TtsAdapterStandalone._get_vram_info",
             return_value=(4096, 10240),
         ):
             payload = adapter.heartbeat_payload()

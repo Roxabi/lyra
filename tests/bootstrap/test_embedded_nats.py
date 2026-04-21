@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.bootstrap.embedded_nats import EmbeddedNats
+from lyra.bootstrap.infra.embedded_nats import EmbeddedNats
 
 
 class TestEmbeddedNatsStart:
@@ -16,7 +16,8 @@ class TestEmbeddedNatsStart:
     async def test_binary_not_found_raises(self) -> None:
         """FileNotFoundError when nats-server is not on PATH."""
         en = EmbeddedNats()
-        with patch("lyra.bootstrap.embedded_nats.shutil.which", return_value=None):
+        _which = "lyra.bootstrap.infra.embedded_nats.shutil.which"
+        with patch(_which, return_value=None):
             with pytest.raises(FileNotFoundError, match="nats-server binary not found"):
                 await en.start()
 
@@ -28,14 +29,14 @@ class TestEmbeddedNatsStart:
         mock_proc.returncode = None
 
         which_patch = patch(
-            "lyra.bootstrap.embedded_nats.shutil.which",
+            "lyra.bootstrap.infra.embedded_nats.shutil.which",
             return_value="/usr/bin/nats-server",
         )
         exec_patch = patch(
-            "lyra.bootstrap.embedded_nats.asyncio.create_subprocess_exec",
+            "lyra.bootstrap.infra.embedded_nats.asyncio.create_subprocess_exec",
             return_value=mock_proc,
         )
-        atexit_patch = patch("lyra.bootstrap.embedded_nats.atexit.register")
+        atexit_patch = patch("lyra.bootstrap.infra.embedded_nats.atexit.register")
         with which_patch, exec_patch as mock_exec, atexit_patch as mock_atexit:
             await en.start()
 
@@ -64,7 +65,7 @@ class TestEmbeddedNatsWaitReady:
         mock_writer.wait_closed = AsyncMock()
 
         with patch(
-            "lyra.bootstrap.embedded_nats.asyncio.open_connection",
+            "lyra.bootstrap.infra.embedded_nats.asyncio.open_connection",
             return_value=(MagicMock(), mock_writer),
         ):
             await en.wait_ready(timeout=1.0)
@@ -77,7 +78,7 @@ class TestEmbeddedNatsWaitReady:
         en.process.returncode = None
 
         with patch(
-            "lyra.bootstrap.embedded_nats.asyncio.open_connection",
+            "lyra.bootstrap.infra.embedded_nats.asyncio.open_connection",
             side_effect=OSError("refused"),
         ):
             with pytest.raises(RuntimeError, match="not ready within"):
@@ -114,7 +115,7 @@ class TestEmbeddedNatsStop:
         en.process = mock_proc
         en._atexit_registered = True
 
-        with patch("lyra.bootstrap.embedded_nats.atexit.unregister"):
+        with patch("lyra.bootstrap.infra.embedded_nats.atexit.unregister"):
             await en.stop()
 
         mock_proc.terminate.assert_called_once()
@@ -138,7 +139,7 @@ class TestEmbeddedNatsStop:
         en.process = mock_proc
         en._atexit_registered = True
 
-        with patch("lyra.bootstrap.embedded_nats.atexit.unregister"):
+        with patch("lyra.bootstrap.infra.embedded_nats.atexit.unregister"):
             # After kill, switch to fast wait
             original_kill = mock_proc.kill
 
@@ -164,7 +165,7 @@ class TestEmbeddedNatsStop:
         en.process = mock_proc
         en._atexit_registered = True
 
-        with patch("lyra.bootstrap.embedded_nats.atexit.unregister"):
+        with patch("lyra.bootstrap.infra.embedded_nats.atexit.unregister"):
             await en.stop()
 
 

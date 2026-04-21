@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 
 from nats.aio.client import Client as NATS
 
-from lyra.bootstrap.agent_factory import _resolve_agents
-from lyra.bootstrap.config import (
+from lyra.bootstrap.factory.agent_factory import _resolve_agents
+from lyra.bootstrap.factory.config import (
     InboundBusConfig,
     _load_cli_pool_config,
     _load_debouncer_config,

@@ -61,6 +61,9 @@ jobs:
             exit 1
           fi
 
+      - name: Check ACL matrix spec drift
+        run: bash scripts/check-acl-matrix-spec.sh
+
       - name: Enforce import layers
         run: uv run lint-imports
 

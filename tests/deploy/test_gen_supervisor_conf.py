@@ -28,6 +28,9 @@ def _run_dry(tmp_agents: Path, *, expect_fail: bool = False) -> str:
         timeout=10,
     )
     if expect_fail:
+        assert result.returncode != 0, (
+            f"Expected failure but exit=0; stderr={result.stderr}"
+        )
         return result.stderr
     if result.returncode != 0:
         import pytest as _pytest
@@ -180,8 +183,10 @@ def test_resolve_role_infers_hub_from_name(tmp_path: Path) -> None:
     p = _write_agents(tmp_path, {"hub": {"priority": 100}})
     # Act
     out = _run_dry(p)
-    # Assert
-    assert "run_hub.sh" in out and "run_adapter.sh hub" not in out
+    # Assert — inference routes to the hub launcher and nothing else.
+    assert "run_hub.sh" in out
+    assert "run_adapter.sh" not in out
+    assert "command=" in out
 
 
 def test_resolve_role_infers_lyra_adapter_default(tmp_path: Path) -> None:
@@ -189,8 +194,11 @@ def test_resolve_role_infers_lyra_adapter_default(tmp_path: Path) -> None:
     p = _write_agents(tmp_path, {"telegram": {"priority": 200}})
     # Act
     out = _run_dry(p)
-    # Assert
+    # Assert — inference routes to the adapter launcher with the agent name,
+    # never to the hub launcher.
     assert "run_adapter.sh telegram" in out
+    assert "run_hub.sh" not in out
+    assert "command=" in out
 
 
 def test_resolve_role_infers_external_satellite_from_command_override(
@@ -203,8 +211,11 @@ def test_resolve_role_infers_external_satellite_from_command_override(
     )
     # Act
     out = _run_dry(p)
-    # Assert
+    # Assert — inference picks the override verbatim; neither the hub nor
+    # adapter launcher may appear on the command line.
     assert "command=foo bar" in out
+    assert "run_adapter.sh" not in out
+    assert "run_hub.sh" not in out
 
 
 # T7 — validate_command_override pass-through

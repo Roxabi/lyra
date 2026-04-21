@@ -105,12 +105,11 @@ class GraphData:
     # Raw issue dicts keyed by "owner/repo#N" — shape matches gh.json.
     issues: dict[str, dict[str, Any]]
     # Effective matrix config — overridable via layout.json, else module defaults.
-    column_groups: list[tuple[str, str, list[str]]] = field(
-        default_factory=lambda: list(COLUMN_GROUPS)
-    )
-    milestones: list[tuple[str, str, str]] = field(
-        default_factory=lambda: list(MILESTONES)
-    )
+    # Required: load_from_dicts always sets these explicitly; direct-instantiation
+    # callers must pass `list(COLUMN_GROUPS)` / `list(MILESTONES)` when they want
+    # defaults. Single source of truth — no default_factory divergence risk.
+    column_groups: list[tuple[str, str, list[str]]]
+    milestones: list[tuple[str, str, str]]
     # Cell matrix: (ms_label, lane_code) → [issue dicts], excludes epics.
     matrix: dict[tuple[str, str], list[dict[str, Any]]] = field(default_factory=dict)
     epic_keys: set[str] = field(default_factory=set)

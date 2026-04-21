@@ -137,6 +137,8 @@ class TestGraphData:
             lanes=[],
             lane_by_code={},
             issues={},
+            column_groups=list(COLUMN_GROUPS),
+            milestones=list(MILESTONES),
         )
         assert data.primary_repo == "Roxabi/lyra"
 
@@ -146,6 +148,8 @@ class TestGraphData:
             lanes=[],
             lane_by_code={},
             issues={},
+            column_groups=list(COLUMN_GROUPS),
+            milestones=list(MILESTONES),
         )
         assert data.matrix == {}
         assert data.epic_keys == set()

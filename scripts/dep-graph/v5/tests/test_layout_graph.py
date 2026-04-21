@@ -47,6 +47,20 @@ class TestMsIdx:
     def test_ordering_preserved(self):
         assert ms_idx("M0") < ms_idx("M1") < ms_idx("M2") < ms_idx("M5")
 
+    def test_custom_ms_codes_override_defaults(self):
+        # With explicit ms_codes, the function honors the override instead of MS_CODES.
+        assert ms_idx("P1", ["P0", "P1", "P2"]) == 1
+        assert ms_idx("P0", ["P0", "P1", "P2"]) == 0
+        assert ms_idx("P2", ["P0", "P1", "P2"]) == 2
+
+    def test_custom_ms_codes_unknown_returns_99(self):
+        # A default-list code not in the custom list → 99.
+        assert ms_idx("M0", ["P0", "P1"]) == 99
+
+    def test_empty_ms_codes_list(self):
+        # Explicit empty list treats everything as unknown.
+        assert ms_idx("M0", []) == 99
+
 
 # ─── edge_path ───────────────────────────────────────────────────────────────
 
@@ -244,3 +258,55 @@ class TestMsVerticalExtents:
         m0_top, _ = extents["M0"]
         m1_top, _ = extents["M1"]
         assert m0_top != m1_top
+
+
+class TestLayoutGridKwargs:
+    """layout_grid honors explicit lane_order / ms_codes (overrides over defaults)."""
+
+    def test_custom_ms_codes_band_ordering(self):
+        # Two milestones, custom codes. Bands must order per the ms_codes list.
+        tasks = [
+            _make_task(1, "P0", "a1", 0),
+            _make_task(2, "P1", "a1", 0),
+        ]
+        _, bands, _ = layout_grid(tasks, ms_codes=["P0", "P1"])
+        # band order follows ms_codes order (P0 before P1)
+        ms_seen = [b["ms"] for b in bands]
+        assert ms_seen == ["P0", "P1"]
+
+    def test_reversed_ms_codes_reverses_band_order(self):
+        tasks = [
+            _make_task(1, "P0", "a1", 0),
+            _make_task(2, "P1", "a1", 0),
+        ]
+        _, bands, _ = layout_grid(tasks, ms_codes=["P1", "P0"])
+        ms_seen = [b["ms"] for b in bands]
+        assert ms_seen == ["P1", "P0"]
+
+    def test_custom_lane_order_affects_depth_0_placement(self):
+        # Two tasks at depth 0, same milestone. lane_order determines
+        # within-band tie-break → cell index mirrors the custom order.
+        tasks = [
+            _make_task(1, "P0", "a1", 0),
+            _make_task(2, "P0", "b", 0),
+        ]
+        # Default-ish lane_order: 'a1' before 'b'.
+        nodes_default, _, _ = layout_grid(
+            tasks, lane_order=["a1", "b"], ms_codes=["P0"],
+        )
+        # Reversed order — 'b' before 'a1'.
+        nodes_reversed, _, _ = layout_grid(
+            tasks, lane_order=["b", "a1"], ms_codes=["P0"],
+        )
+        x_by_num_default = {n["task"]["num"]: n["x"] for n in nodes_default}
+        x_by_num_reversed = {n["task"]["num"]: n["x"] for n in nodes_reversed}
+        # In default order task #1 (a1) is left of #2 (b); reversed flips.
+        assert x_by_num_default[1] < x_by_num_default[2]
+        assert x_by_num_reversed[2] < x_by_num_reversed[1]
+
+    def test_kwargs_default_to_module_when_none(self):
+        # Omitting kwargs uses module-level LANE_ORDER / MS_CODES.
+        tasks = [_make_task(1, "M0", "a1", 0)]
+        nodes, bands, _ = layout_grid(tasks)
+        assert len(nodes) == 1
+        assert bands[0]["ms"] == "M0"

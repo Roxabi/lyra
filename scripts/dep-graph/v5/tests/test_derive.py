@@ -11,7 +11,7 @@ from v5.data.derive import (
     status_of,
     tasks_for_graph,
 )
-from v5.data.model import EpicMeta, GraphData, Lane
+from v5.data.model import COLUMN_GROUPS, MILESTONES, EpicMeta, GraphData, Lane
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -55,6 +55,8 @@ def _minimal_data(issues: dict, epic_ks: set | None = None) -> GraphData:
         lanes=lanes,
         lane_by_code=lbc,
         issues=issues,
+        column_groups=list(COLUMN_GROUPS),
+        milestones=list(MILESTONES),
         epic_keys=epic_ks or set(),
         visible=set(issues.keys()),
         depth_by_key=compute_depth(issues),

@@ -1,6 +1,8 @@
 """Tests for v5.views.grid — grid view HTML output."""
 from __future__ import annotations
 
+import pytest
+
 from v5.data.load import load_from_dicts
 from v5.data.model import COLUMN_GROUPS, MILESTONES, NO_LANE, NO_MS
 from v5.views import grid
@@ -135,3 +137,19 @@ class TestGridRenderLayoutOverride:
             else 0
         )
         assert result.count('class="col-header"') == expected_headers
+
+    def test_absent_lane_code_fails_fast(self, layout, gh):
+        """column_groups referencing a lane not in lanes[] → KeyError at render.
+
+        Locks the fail-fast contract documented in the PR #842 consensus: a
+        layout authoring bug must surface immediately rather than silently
+        producing a broken header.
+        """
+        custom = dict(layout)
+        custom["column_groups"] = [
+            # 'z99' is not declared in layout["lanes"] — render must raise.
+            {"label": "BROKEN", "tone": "a1", "lane_codes": ["z99"]},
+        ]
+        data = load_from_dicts(custom, gh)
+        with pytest.raises(KeyError):
+            grid.render(data)

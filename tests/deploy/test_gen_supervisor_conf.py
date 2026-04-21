@@ -142,7 +142,7 @@ def test_resolve_role_raises_on_unknown_value(tmp_path: Path) -> None:
 
 def test_resolve_role_raises_external_satellite_without_override(
     tmp_path: Path,
-) -> None:  # noqa: E501
+) -> None:
     # Arrange
     p = _write_agents(tmp_path, {"sat": {"role": "external-satellite"}})
     # Act
@@ -195,7 +195,7 @@ def test_resolve_role_infers_lyra_adapter_default(tmp_path: Path) -> None:
 
 def test_resolve_role_infers_external_satellite_from_command_override(
     tmp_path: Path,
-) -> None:  # noqa: E501
+) -> None:
     # Arrange
     p = _write_agents(
         tmp_path,

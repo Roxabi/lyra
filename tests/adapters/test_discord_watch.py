@@ -10,7 +10,6 @@ import discord
 import pytest
 
 
-
 class TestWatchChannels:
     """Watch channel feature: messages in designated channels bypass mention filter."""
 

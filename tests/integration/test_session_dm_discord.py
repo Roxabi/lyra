@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-
 pytestmark = pytest.mark.asyncio
 
 

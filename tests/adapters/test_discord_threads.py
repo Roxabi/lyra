@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Tests for Discord auto_thread (issue #127)
 # ---------------------------------------------------------------------------

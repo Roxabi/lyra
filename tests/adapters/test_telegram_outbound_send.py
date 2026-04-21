@@ -37,7 +37,6 @@ async def test_send_calls_bot_send_message() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        
     )
     adapter.bot = bot
 
@@ -91,7 +90,6 @@ async def test_send_skips_when_platform_context_is_not_telegram(
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        
     )
     adapter.bot = bot
 
@@ -142,7 +140,6 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        
     )
     adapter.bot = bot
 

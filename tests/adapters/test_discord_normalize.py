@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # T2 — _normalize() builds correct DiscordContext
 # ---------------------------------------------------------------------------

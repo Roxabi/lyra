@@ -241,7 +241,6 @@ def _make_telegram_adapter() -> TelegramAdapter:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        
     )
     return adapter
 

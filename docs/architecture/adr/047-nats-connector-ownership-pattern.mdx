@@ -109,14 +109,14 @@ If `voicecli_{stt,tts}` fails post-cutover: re-enable `lyra_{stt,tts}` from `con
 
 ### Subject and nkey ownership table
 
-| Domain | Subjects | Queue group | lyra nkey identity | Satellite adapter module |
-|---|---|---|---|---|
-| STT | `lyra.voice.stt.request`, `lyra.voice.stt.heartbeat` | `STT_WORKERS` | `stt-adapter` | `voicecli/src/voicecli/nats/stt_adapter.py` |
-| TTS | `lyra.voice.tts.request`, `lyra.voice.tts.heartbeat` | `TTS_WORKERS` | `tts-adapter` | `voicecli/src/voicecli/nats/tts_adapter.py` |
-| Image | `lyra.image.generate.request`, `lyra.image.heartbeat` | `IMAGE_WORKERS` | image-worker [^img-shipped] | `imagecli/src/imagecli/nats/adapter.py` |
-| Memory | TBD — requires contract ADR | TBD | TBD | `roxabi-vault` TBD |
+| Domain | Subjects | Queue group | lyra nkey identity | Satellite adapter module | Status |
+|---|---|---|---|---|---|
+| STT | `lyra.voice.stt.request`, `lyra.voice.stt.heartbeat` | `STT_WORKERS` | `stt-adapter` | `voicecli/src/voicecli/nats/stt_adapter.py` | Partial |
+| TTS | `lyra.voice.tts.request`, `lyra.voice.tts.heartbeat` | `TTS_WORKERS` | `tts-adapter` | `voicecli/src/voicecli/nats/tts_adapter.py` | Partial |
+| Image | `lyra.image.generate.request`, `lyra.image.heartbeat` | `IMAGE_WORKERS` | `image-worker` | `imagecli/src/imagecli/nats/adapter.py` | Shipped |
+| Memory | TBD — requires contract ADR | TBD | TBD | `roxabi-vault` TBD | TBD |
 
-[^img-shipped]: Shipped via #754 (ADR-050 contract + `src/lyra/nats/nats_image_client.py` hub publisher + `image-worker` nkey + `imagecli_gen` supervisor entry). Satellite shipped via imageCLI#50 (2026-04-15).
+Status legend: **Shipped** — contract ADR accepted, hub client merged, satellite module live, nkey identity provisioned. **Partial** — contract ADR accepted and satellite module live, but lyra-side migration still in flight (tracked by open issues). **TBD** — contract ADR not yet written. Per-row shipping details (issue numbers, supervisor entries, nkey provisioning commits) live in the corresponding contract ADR's References section (ADR-044 for STT/TTS, ADR-050 for Image).
 
 ### Contract ADR requirement
 

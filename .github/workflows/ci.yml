@@ -31,9 +31,14 @@ jobs:
         run: |
           ARCH=$(dpkg --print-architecture)
           TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
+          TMPDIR=$(mktemp -d)
           curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
-            | tar -xz -C /tmp
-          sudo install -m 755 /tmp/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server /usr/local/bin/nats-server
+            -o "${TMPDIR}/${TARBALL}"
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
+            -o "${TMPDIR}/SHA256SUMS"
+          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
+          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
           nats-server --version
 
       - name: Install uv

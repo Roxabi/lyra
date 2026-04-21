@@ -85,7 +85,7 @@ packages = ["src/lyra"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests"]
+testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests", "scripts/corpus/tests"]
 addopts = "--import-mode=importlib -n auto"
 
 [tool.coverage.run]
@@ -98,7 +98,7 @@ show_missing = true
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-contracts/src"]
+include = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-contracts/src", "scripts/corpus"]
 venvPath = "."
 venv = ".venv"
 # ── Permanent policy ──────────────────────────────────────────────────────────
@@ -134,6 +134,7 @@ exclude = [".claude/worktrees", "deploy"]
 select = ["E", "F", "I", "C901", "PLR0913", "PLR0915"]
 
 [tool.ruff.lint.per-file-ignores]
+"scripts/corpus/tests/*.py" = ["E501"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

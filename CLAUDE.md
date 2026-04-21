@@ -32,6 +32,7 @@ See `docs/ARCHITECTURE.md` for full context.
 | `deploy/quadlet/` | Podman Quadlet units (`.container`, `.volume`, `.network`) — systemd-integrated containers; `lyra-nats-auth.volume` for NATS public auth.conf |
 | `deploy/nats/nats-container.conf` | NATS config for container deployment (no TLS, 0.0.0.0 bind) |
 | `scripts/dep-graph/` | GitHub-driven dep-graph generator (`dep_graph/` package + `layout.schema.json`). Run via `make dep-graph [fetch\|build\|audit\|validate\|open]`. Artifacts (layout.json, gh.json cache, HTML output) live in `~/.roxabi/forge/lyra/visuals/`. Precursor to roxabi-dashboard. |
+| `scripts/corpus/` | Roxabi-org issue corpus sync (GraphQL → SQLite). Run via `make corpus [init\|sync\|stats]` (single repo: `REPO=Roxabi/lyra`). DB lives at `~/.roxabi/corpus.db`: tables `issues`, `labels`, `edges`, `sync_state`. Foundation for roxabi-dashboard and dep-graph v5. Phase 1 = #829. |
 | `packages/roxabi-nats/` | NATS transport SDK (uv workspace subpackage) — adapter_base, connect, circuit_breaker, readiness, serialization. Extracted per ADR-045. |
 | `packages/roxabi-contracts/` | Shared Pydantic schemas for cross-project NATS contracts (uv workspace subpackage). v0.1.0 ships `ContractEnvelope` only; per-domain submodules (voice, image, memory, llm) added in later tags. Pure Pydantic runtime; transport via `[testing]` extra only. Extracted per ADR-049. |
 | `deploy/agents.yml` | Declarative agent registry for supervisord conf.d generation. Run `make gen-conf` to regenerate. |

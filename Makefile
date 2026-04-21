@@ -15,7 +15,7 @@ endif
 # Sub-command parsing for multi-word targets (remote, monitor, deploy).
 # These are NOT in HUB_SERVICES because their sub-commands can collide
 # with real target names (e.g. `make remote telegram reload`).
-_LYRA_MULTI := monitor deploy remote dep-graph
+_LYRA_MULTI := monitor deploy remote dep-graph corpus
 ifneq (,$(filter $(_LYRA_MULTI),$(firstword $(MAKECMDGOALS))))
   _LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
   _IS_LYRA_SUBCMD := true
@@ -265,6 +265,29 @@ dep-graph:
 		*)        echo "Unknown action: $(_LYRA_CMD)"; \
 		          echo "Use: fetch | build | legacy | audit | validate | migrate | open | (empty for fetch + build)"; \
 		          exit 1 ;; \
+	esac
+
+# ── Corpus sync ──────────────────────────────────────────────────────────────
+
+CORPUS_DIR := $(HOME)/projects/lyra/scripts/corpus
+
+define corpus_run
+	uv run python -m scripts.corpus.cli $(1)
+endef
+
+.PHONY: corpus
+
+corpus:
+	@action="$(firstword $(_LYRA_CMD))"; \
+	repo_flag=""; \
+	if [ -n "$(REPO)" ]; then repo_flag="--repo $(REPO)"; fi; \
+	case "$$action" in \
+		init|stats)    $(call corpus_run,$$action) ;; \
+		sync)          $(call corpus_run,sync $$repo_flag) ;; \
+		""|all)        $(call corpus_run,sync $$repo_flag) ;; \
+		*)             echo "Unknown action: $$action"; \
+		               echo "Use: init | sync [REPO=OWNER/NAME] | stats | (empty for sync)"; \
+		               exit 1 ;; \
 	esac
 
 # ── Supervisor config generation ─────────────────────────────────────────────

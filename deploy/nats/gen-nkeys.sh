@@ -240,9 +240,8 @@ apply_permissions() {
   mkdir -p "${SEEDS_DIR}"
   chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}"
   chmod 0700 "${SEEDS_DIR}"
-  # T1.5: extended to 7 identities; #689 adds voice-tts, voice-stt (9 total); #754 adds image-worker (10 total)
-  # TODO(#717): drive from acl-matrix.json identities list — out of scope for this refactor
-  for seed in hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker image-worker monitor; do
+  # Iterates IDENTITIES populated by load_matrix from acl-matrix.json — SSoT per #717.
+  for seed in "${IDENTITIES[@]}"; do
     if [ -f "${SEEDS_DIR}/${seed}.seed" ]; then
       chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}/${seed}.seed"
       chmod 0600 "${SEEDS_DIR}/${seed}.seed"

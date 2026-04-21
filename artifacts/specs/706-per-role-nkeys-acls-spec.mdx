@@ -87,14 +87,14 @@ Derived from the audit (see §Audit Provenance). `PUB` = identity publishes to t
 | `lyra.inbound.discord.>` | SUB | — | PUB | — | — | — | — |
 | `lyra.outbound.telegram.>` | PUB | SUB | — | — | — | — | — |
 | `lyra.outbound.discord.>` | PUB | — | SUB | — | — | — | — |
-| `lyra.system.ready` [^ready] | SUB | PUB | PUB | — | — | — | — |
+| `lyra.system.ready` [^ready] | SUB | PUB | PUB | PUB | PUB | — | — |
 | `lyra.voice.tts.request` | PUB | — | — | SUB | — | — | — |
 | `lyra.voice.tts.heartbeat` | SUB | — | — | PUB | — | — | — |
 | `lyra.voice.stt.request` | PUB | — | — | — | SUB | — | — |
 | `lyra.voice.stt.heartbeat` | SUB | — | — | — | PUB | — | — |
 | `lyra.llm.request` | PUB | — | — | — | — | SUB | — |
 | `lyra.llm.health.*` [^health] | SUB | — | — | — | — | PUB | — |
-| `_INBOX.>` [^inbox] | SUB | — | — | — | — | — | — |
+| `_INBOX.>` [^inbox] | SUB | SUB | SUB | SUB | SUB | — | — |
 | `lyra.monitor.>` (reserved) [^monitor] | — | — | — | — | — | — | PUB+SUB |
 <!-- acl-matrix:end -->
 

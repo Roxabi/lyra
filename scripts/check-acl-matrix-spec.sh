@@ -107,48 +107,6 @@ cell_value() {
 }
 
 # ---------------------------------------------------------------------------
-# Special overrides: cells where JSON ACL exists but spec intentionally shows —
-# because that identity's permission on this subject is out of #706 scope.
-# Rather than encoding exceptions in the logic, we compare rendered vs spec
-# and let the diff show any real discrepancy. The spec is ground truth for
-# the 7-identity matrix; if the spec shows — and JSON agrees → fine.
-# If spec shows PUB/SUB and JSON disagrees → drift.
-#
-# The key insight: for system.ready, only hub/telegram/discord are in scope;
-# for _INBOX.>, only hub is in scope. The pub/sub subjects for those rows
-# are correct per row, so json_has will return false for out-of-scope identities
-# that don't have exactly that subject in their arrays.
-#
-# tts-adapter: publishes "lyra.system.ready" — this WILL show as PUB for that
-# row and differ from spec's "—". We need scope guards.
-# ---------------------------------------------------------------------------
-# Scope table: "row_index:identity" pairs that are out of scope (force —).
-# Row indices are 0-based matching ROWS array order.
-OUT_OF_SCOPE=(
-  # lyra.system.ready (row 4): tts-adapter and stt-adapter publish it but
-  # spec shows — because #706 does not track voice satellite system.ready pub.
-  "4:tts-adapter"
-  "4:stt-adapter"
-  # _INBOX.> (row 11): adapters subscribe but spec shows — (not in #706 scope)
-  "11:telegram-adapter"
-  "11:discord-adapter"
-  "11:tts-adapter"
-  "11:stt-adapter"
-)
-
-is_out_of_scope() {
-  local row_idx="$1"
-  local identity="$2"
-  local entry
-  for entry in "${OUT_OF_SCOPE[@]}"; do
-    if [[ "$entry" == "${row_idx}:${identity}" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-# ---------------------------------------------------------------------------
 # Render the table from JSON
 # ---------------------------------------------------------------------------
 render_table() {
@@ -167,7 +125,6 @@ render_table() {
   echo "$sep"
 
   # Data rows
-  local row_idx=0
   for row in "${ROWS[@]}"; do
     local display="${row%%|*}"
     local rest="${row#*|}"
@@ -176,15 +133,10 @@ render_table() {
     local line="| ${display} |"
     for id in "${IDENTITIES[@]}"; do
       local val
-      if is_out_of_scope "$row_idx" "$id"; then
-        val="—"
-      else
-        val=$(cell_value "$id" "$pub_subject" "$sub_subject")
-      fi
+      val=$(cell_value "$id" "$pub_subject" "$sub_subject")
       line+=" ${val} |"
     done
     echo "$line"
-    (( row_idx++ )) || true
   done
 }
 

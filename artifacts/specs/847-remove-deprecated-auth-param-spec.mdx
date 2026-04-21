@@ -1,0 +1,109 @@
+---
+title: Remove deprecated auth= constructor parameter
+description: Remove auth= param from adapters, migrate tests, suppress upstream warnings
+---
+
+## Context
+
+Commit C3 (#456) moved trust resolution to the Hub side, introducing `hub.register_authenticator()` as the canonical auth registration pattern. The old `auth=` constructor parameter on `TelegramAdapter` and `DiscordAdapter` was kept as a backwards-compat shim with a DeprecationWarning.
+
+This backwards-compat is no longer needed. The deprecated parameter and its warning code should be removed to clean up the codebase and eliminate deprecation noise in test output.
+
+Additionally, upstream-only deprecation warnings (`audioop`, `websockets.legacy`) should be suppressed in pytest config since Lyra cannot fix these — they're library-level issues.
+
+**Promoted from:** [Frame: Remove deprecated auth= constructor parameter](../frames/847-remove-deprecated-auth-param-frame.mdx)
+
+## Goal
+
+Remove the deprecated `auth=` constructor parameter from TelegramAdapter and DiscordAdapter, migrate all tests to the `hub.register_authenticator()` pattern, and suppress upstream-only deprecation warnings in pytest config.
+
+## Users & Use Cases
+
+- **Developers:** Cleaner codebase, no deprecation warnings from Lyra code
+- **Future maintainers:** No mixed signals about canonical auth pattern (`hub.register_authenticator()`)
+- **CI/CD pipeline:** Cleaner test output, no spurious warnings
+
+## Expected Behavior
+
+### Happy path
+
+1. Developer instantiates `TelegramAdapter` or `DiscordAdapter` without `auth` parameter
+2. Auth is registered via `hub.register_authenticator(platform, bot_id, auth)` before adapter starts
+3. Adapter retrieves auth from hub when needed
+4. Tests run without any DeprecationWarning from Lyra code
+5. Upstream warnings (audioop, websockets) are suppressed in pytest output
+
+### Edge cases
+
+| Case | Handling |
+|------|----------|
+| Old code still using `auth=` param | Compile-time error — param removed |
+| Test using `auth=_ALLOW_ALL` | Migrate to hub.register_authenticator pattern |
+| Test directly sets `adapter._auth` | Remove `_auth` assignment; inject auth via hub mock if needed |
+| Auth not registered before adapter starts | Existing behavior — deny-all fallback |
+
+## Breadboard
+
+### Code Affordances
+
+| ID | Handler | Wiring | Logic |
+|----|---------|--------|-------|
+| N1 | `TelegramAdapter.__init__` | Constructor | Remove `auth` param, warning code, `self._auth` |
+| N2 | `DiscordAdapter.__init__` | Constructor | Remove `auth` param, warning code, `self._auth` |
+| N3 | Test files (18 files) | Individual tests + conftest.py | Replace `auth=_ALLOW_ALL` with `hub.register_authenticator()` call |
+| N4 | pytest config | pyproject.toml | Add filterwarnings for upstream deprecations |
+| N5 | Direct assignment tests | `test_routing_context_integration.py`, `test_discord_voice_commands.py` | Remove `adapter._auth = _ALLOW_ALL` assignments; inject via hub mock if needed |
+
+**Note:** `_ALLOW_ALL` constant remains in `authenticator.py` as a legitimate test helper for use with `hub.register_authenticator()`.
+
+### Data Stores
+
+| ID | Store | Type | Accessed by |
+|----|-------|------|-------------|
+| S1 | Hub.authenticators | In-memory dict | N3 (registration), adapters (lookup) |
+
+## Slices
+
+| Slice | Description | Affordances | Demo |
+|-------|-------------|-------------|------|
+| V1 | Remove auth param from adapters | N1, N2 | Adapters compile without `auth` param |
+| V2 | Migrate test files (18 files) | N3, N5 | Tests run without `auth=_ALLOW_ALL` or direct `_auth` assignment |
+| V3 | Suppress upstream warnings | N4 | pytest output clean of audioop/websockets warnings |
+| V4 | Full test suite pass | N1–N5 | All tests pass, 0 Lyra deprecation warnings |
+
+## Constraints
+
+- **Files affected:** 20 files (2 adapters + 18 test files)
+- **Mechanical changes:** Auth flow unchanged, only parameter removal and test migration
+- **Low risk:** No behavioral changes, only API cleanup
+- **Upstream warnings:** `audioop` (discord.py, Python 3.13), `websockets.legacy` (uvicorn/discord.py) — suppress, not fix
+
+## Non-goals
+
+- Changing the auth flow logic (Hub-side trust resolution remains unchanged)
+- Fixing upstream deprecation warnings in discord.py or uvicorn
+- Any NATS or distributed auth changes
+
+## Technical Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Remove param entirely (not deprecation cycle) | Internal API, no external consumers |
+| Use `hub.register_authenticator()` in tests | Matches production pattern, canonical approach |
+| Suppress upstream warnings in pytest config | Cannot fix library code, reduces noise |
+
+## Success Criteria
+
+- [ ] `TelegramAdapter.__init__` does not accept `auth` parameter
+- [ ] `DiscordAdapter.__init__` does not accept `auth` parameter
+- [ ] No `warnings.warn(..., DeprecationWarning)` in `TelegramAdapter` or `DiscordAdapter` constructors
+- [ ] `self._auth` attribute removed from both adapter classes
+- [ ] No `auth=_ALLOW_ALL` pattern in test files
+- [ ] No direct `adapter._auth = ...` assignments in test files
+- [ ] All tests pass
+- [ ] pytest output shows 0 deprecation warnings from Lyra code
+- [ ] Upstream warnings (audioop, websockets.legacy, websockets.server) are suppressed in pytest config
+
+## Open Questions
+
+None — scope is clear from issue body.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from ..config import PoolConfig
@@ -104,31 +105,13 @@ class PoolManager:
     def set_debounce_ms(self, ms: int) -> None:
         """Update debounce window on all live pools and future pools."""
         self._hub._debounce_ms = ms
-        # Update config for future pools (frozen dataclass → new instance)
-        self._pool_config = PoolConfig(
-            turn_timeout=self._pool_config.turn_timeout,
-            debounce_ms=ms,
-            turn_timeout_ceiling=self._pool_config.turn_timeout_ceiling,
-            max_sdk_history=self._pool_config.max_sdk_history,
-            safe_dispatch_timeout=self._pool_config.safe_dispatch_timeout,
-            max_merged_chars=self._pool_config.max_merged_chars,
-            cancel_on_new_message=self._pool_config.cancel_on_new_message,
-        )
+        self._pool_config = replace(self._pool_config, debounce_ms=ms)
         for pool in self.pools.values():
             pool.debounce_ms = ms
 
     def set_cancel_on_new_message(self, enabled: bool) -> None:
         """Toggle cancel-in-flight on all live pools and future pools."""
         self._hub._cancel_on_new_message = enabled
-        # Update config for future pools (frozen dataclass → new instance)
-        self._pool_config = PoolConfig(
-            turn_timeout=self._pool_config.turn_timeout,
-            debounce_ms=self._pool_config.debounce_ms,
-            turn_timeout_ceiling=self._pool_config.turn_timeout_ceiling,
-            max_sdk_history=self._pool_config.max_sdk_history,
-            safe_dispatch_timeout=self._pool_config.safe_dispatch_timeout,
-            max_merged_chars=self._pool_config.max_merged_chars,
-            cancel_on_new_message=enabled,
-        )
+        self._pool_config = replace(self._pool_config, cancel_on_new_message=enabled)
         for pool in self.pools.values():
             pool.cancel_on_new_message = enabled

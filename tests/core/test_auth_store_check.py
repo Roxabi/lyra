@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from lyra.core.auth.trust import TrustLevel
+from tests.conftest import yield_once
 from tests.core.conftest import make_auth_store
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ class TestAuthStoreCheck:
                 "expired-evict", TrustLevel.TRUSTED, past, "invite", "code-hash"
             )
             store.check("expired-evict")  # triggers eviction (schedules async task)
-            await asyncio.sleep(0)  # yield to event loop so revoke() task runs
+            await yield_once()  # yield to event loop so revoke() task runs
             assert store._db is not None
             async with store._db.execute(
                 "SELECT id FROM grants WHERE identity_key = ?", ("expired-evict",)

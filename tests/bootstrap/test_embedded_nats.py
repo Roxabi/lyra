@@ -129,8 +129,10 @@ class TestEmbeddedNatsStop:
         mock_proc.terminate = MagicMock()
         mock_proc.kill = MagicMock()
 
+        slow_wait_done = asyncio.Event()
+
         async def slow_wait():
-            await asyncio.sleep(10)
+            await slow_wait_done.wait()  # explicit: blocks until killed
 
         async def fast_wait():
             pass

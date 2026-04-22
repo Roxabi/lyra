@@ -1,0 +1,116 @@
+---
+title: "Review Findings — Expert Consensus"
+issue: 861
+status: consensus-reached
+date: 2026-04-22
+panel: architect, devops, tester
+confidence: high
+---
+
+## Problem
+
+PR #879 (event-based test coordination) received 4 non-blocking review findings requiring consensus on disposition.
+
+## Panel
+
+| Agent | Focus |
+|-------|-------|
+| architect | Architecture soundness, maintainability, scalability |
+| devops | CI/infra impact, test reliability |
+| tester | Test quality, flakiness prevention |
+
+## Consensus Recommendations
+
+### Finding 1: Local inline events — Leave as-is
+
+**Rationale:** The `asyncio.Event()` + `await event.wait()` pattern is self-documenting. Comments like `# explicit: never completes, tests timeout` make intent clear at usage site. A shared fixture would add indirection without real benefit for a 2-line idiom.
+
+**Trade-offs:**
+- Local naming preserves semantic context (`never_returns` vs `never_completes`)
+- No import coupling across test files
+- Future tests copy-paste pattern directly without fixture discovery friction
+
+**Action:** No action required.
+
+---
+
+### Finding 2: Duplicate `_drain` functions — Consolidate
+
+**Rationale:** Two identical `_drain` helpers with different timeout defaults (both 2.0s in practice) is DRY violation. Consolidation to `tests/conftest.py` with `TIMEOUT_IO` default provides single source of truth.
+
+**Trade-offs:**
+- Single source of truth for drain semantics
+- `TIMEOUT_IO = 2.0` already defined in root conftest
+- Future test files discover via import from root conftest
+
+**Action:** Create follow-up issue for consolidation. Not blocking current PR.
+
+---
+
+### Finding 3: Consecutive `yield_once()` calls — Document inline
+
+**Rationale:** Consecutive `yield_once()` calls at `test_discord_typing.py:100-108` represent start→cancel sequence, each needing a yield for the event loop to process. This is legitimate async test coordination, not timing uncertainty.
+
+**Trade-offs:**
+- Documentation clarifies intent without refactoring risk
+- Consecutive yields for multi-step async operations are a valid pattern
+- Converting to event coordination would over-engineer simple sequential calls
+
+**Action:** Add inline comments explaining why multiple yields are needed.
+
+---
+
+### Finding 4: Remaining `sleep(N>0)` patterns — Defer to follow-up
+
+**Rationale:** PR #879's stated scope is "replace `asyncio.sleep(N)` with event-based coordination for flaky tests." The remaining sleeps (0.05, 0.1, 0.15) are in different files with different contexts. Converting all now risks scope creep and introduces new flakiness vectors.
+
+**Trade-offs:**
+- Focused PR with clear scope = easier review + safer merge
+- Follow-up can address each file with appropriate test patterns per context
+- Some sleeps may actually need real timing for integration tests
+
+**Action:** Document in PR body with file list for follow-up. Create follow-up issue.
+
+---
+
+## Dissent
+
+**Finding 2 (devops):** Preferred "leave as-is" — argued both functions already have same 2.0s default and helper location follows test locality principle. Majority overruled on DRY grounds: consolidation prevents timeout drift.
+
+---
+
+## Alternatives
+
+| Finding | Rejected Option | Reason |
+|---------|-----------------|--------|
+| 1 | Add `never_completes_event()` fixture | Inline pattern with comment is more discoverable |
+| 2 | Leave as-is | Duplication hides bugs; one version can rot |
+| 3 | Use explicit event coordination | Would over-engineer simple sequential async calls |
+| 4 | Convert all now | Scope creep risks regressions in stable areas |
+
+---
+
+## Implementation Notes
+
+1. **Finding 2** — Consolidate `_drain` to `tests/conftest.py`:
+   - Use `TIMEOUT_IO = 2.0` as default
+   - Update imports in `tests/core/conftest.py` and `tests/fixtures/agent_harness.py`
+   - Remove duplicate definitions
+
+2. **Finding 3** — Add comments at `test_discord_typing.py`:
+   ```python
+   await yield_once()  # allow event loop to process _start_typing
+   # ... action ...
+   await yield_once()  # allow event loop to process _cancel_typing
+   ```
+
+3. **Finding 4** — PR body should note:
+   > Remaining `asyncio.sleep(N>0)` patterns are out of scope for this PR. These include timing tests (debounce windows), mock side effects, and integration tests requiring real delays. Follow-up issue will address each category.
+
+---
+
+## Next
+
+- Apply Finding 2 (consolidate `_drain`) and Finding 3 (add comments) as follow-up fix
+- Post updated review comment to PR #879
+- Proceed to merge

@@ -9,6 +9,7 @@ import pytest
 
 from lyra.core.debouncer import MessageDebouncer
 from lyra.core.messaging.message import InboundMessage
+from tests.conftest import TIMEOUT_FAST, TIMEOUT_IO
 from tests.core.conftest import make_debouncer_msg
 
 # ---------------------------------------------------------------------------
@@ -27,7 +28,7 @@ class TestCollect:
         msg = make_debouncer_msg("hello")
         inbox.put_nowait(msg)
 
-        result = await asyncio.wait_for(debouncer.collect(inbox), timeout=2.0)
+        result = await asyncio.wait_for(debouncer.collect(inbox), timeout=TIMEOUT_IO)
         assert result == [msg]
 
     @pytest.mark.asyncio
@@ -45,7 +46,7 @@ class TestCollect:
         inbox.put_nowait(m2)
         inbox.put_nowait(m3)
 
-        result = await asyncio.wait_for(debouncer.collect(inbox), timeout=2.0)
+        result = await asyncio.wait_for(debouncer.collect(inbox), timeout=TIMEOUT_IO)
         assert len(result) == 3
         assert result == [m1, m2, m3]
 
@@ -57,7 +58,7 @@ class TestCollect:
         msg = make_debouncer_msg("fast")
         inbox.put_nowait(msg)
 
-        result = await asyncio.wait_for(debouncer.collect(inbox), timeout=0.5)
+        result = await asyncio.wait_for(debouncer.collect(inbox), timeout=TIMEOUT_FAST)
         assert result == [msg]
 
     @pytest.mark.asyncio
@@ -70,7 +71,7 @@ class TestCollect:
         inbox.put_nowait(m1)
         inbox.put_nowait(m2)
 
-        result = await asyncio.wait_for(debouncer.collect(inbox), timeout=0.5)
+        result = await asyncio.wait_for(debouncer.collect(inbox), timeout=TIMEOUT_FAST)
         assert len(result) == 2
 
     @pytest.mark.asyncio
@@ -90,6 +91,6 @@ class TestCollect:
 
         asyncio.create_task(_delay_put())
 
-        result = await asyncio.wait_for(debouncer.collect(inbox), timeout=2.0)
+        result = await asyncio.wait_for(debouncer.collect(inbox), timeout=TIMEOUT_IO)
         assert len(result) == 1
         assert result[0] is m1

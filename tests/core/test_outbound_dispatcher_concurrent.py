@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 from lyra.core.messaging.message import InboundMessage, OutboundMessage
+from tests.conftest import yield_once
 
 from .conftest import make_dispatcher_msg
 
@@ -144,7 +145,7 @@ async def test_scope_locks_cleanup() -> None:
 
     # Wait for queue to drain so locks are released before stop().
     await dispatcher._queue.join()
-    await asyncio.sleep(0)  # yield to event loop for scope task cleanup
+    await yield_once()  # yield to event loop for scope task cleanup
 
     # Act
     await dispatcher.stop()

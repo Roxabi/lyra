@@ -7,6 +7,7 @@ import asyncio
 import pytest
 
 from lyra.bootstrap.factory.utils import watchdog
+from tests.conftest import yield_once
 
 
 @pytest.fixture()
@@ -27,7 +28,7 @@ async def test_watchdog_returns_on_stop_event(stop: asyncio.Event) -> None:
         await asyncio.Event().wait()
 
     async def _set_stop_soon() -> None:
-        await asyncio.sleep(0)  # yield once so watchdog enters the loop
+        await yield_once()  # yield once so watchdog enters the loop
         stop.set()
 
     task = asyncio.create_task(_hang_forever(), name="forever")
@@ -97,7 +98,7 @@ async def test_watchdog_triggers_shutdown_on_unexpected_cancel(
         await asyncio.Event().wait()
 
     async def _cancel_soon(t: asyncio.Task[None]) -> None:
-        await asyncio.sleep(0)  # yield once so watchdog enters the loop
+        await yield_once()  # yield once so watchdog enters the loop
         t.cancel()
 
     task = asyncio.create_task(_hang_forever(), name="to-cancel")
@@ -120,7 +121,7 @@ async def test_watchdog_first_crash_among_many(stop: asyncio.Event) -> None:
         await asyncio.Event().wait()
 
     async def _crash_soon() -> None:
-        await asyncio.sleep(0)  # yield once so watchdog enters the loop
+        await yield_once()  # yield once so watchdog enters the loop
         raise RuntimeError("first down")
 
     healthy = asyncio.create_task(_hang_forever(), name="healthy")
@@ -153,7 +154,7 @@ async def test_watchdog_cleans_up_sentinel_on_crash(stop: asyncio.Event) -> None
     await asyncio.wait_for(watchdog([task], stop), timeout=2.0)
 
     # Give the event loop a tick to process cancellations.
-    await asyncio.sleep(0)
+    await yield_once()
 
     # No lingering tasks named watchdog-stop-sentinel.
     for t in asyncio.all_tasks():
@@ -170,7 +171,7 @@ async def test_watchdog_empty_task_list_waits_for_stop(stop: asyncio.Event) -> N
     """With no tasks, watchdog should wait for the stop event instead of returning."""
 
     async def _set_stop_soon() -> None:
-        await asyncio.sleep(0)
+        await yield_once()
         stop.set()
 
     asyncio.create_task(_set_stop_soon())

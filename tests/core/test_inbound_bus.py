@@ -13,6 +13,7 @@ from lyra.core.messaging.message import (
     InboundMessage,
     Platform,
 )
+from tests.conftest import TIMEOUT_FAST
 
 
 def _make_msg(platform: Platform = Platform.TELEGRAM) -> InboundMessage:
@@ -87,7 +88,7 @@ class TestInboundBusFeeder:
             await bus.put(Platform.TELEGRAM, msg)
 
             # Wait for feeder to forward to staging
-            received = await asyncio.wait_for(bus.get(), timeout=0.5)
+            received = await asyncio.wait_for(bus.get(), timeout=TIMEOUT_FAST)
             assert received is msg
         finally:
             await bus.stop()

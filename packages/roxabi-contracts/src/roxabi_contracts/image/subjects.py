@@ -29,7 +29,7 @@ class _Subjects:
         "lyra.image.generate.request"
     )
     image_heartbeat: Literal["lyra.image.heartbeat"] = "lyra.image.heartbeat"
-    image_workers: Literal["IMAGE_WORKERS"] = "IMAGE_WORKERS"
+    image_workers: Literal["image_workers"] = "image_workers"
 
 
 SUBJECTS = _Subjects()

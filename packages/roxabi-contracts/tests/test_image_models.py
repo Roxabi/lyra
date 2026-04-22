@@ -72,7 +72,7 @@ def _ok_response_payload() -> dict[str, Any]:
                 "service": "image",
                 "host": "h",
                 "subject": "lyra.image.generate.request",
-                "queue_group": "IMAGE_WORKERS",
+                "queue_group": "image_workers",
                 "ts": 1.0,
             },
         ),

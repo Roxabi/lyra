@@ -20,7 +20,7 @@ def test_image_heartbeat_subject() -> None:
 
 
 def test_queue_group_constant() -> None:
-    assert SUBJECTS.image_workers == "IMAGE_WORKERS"
+    assert SUBJECTS.image_workers == "image_workers"
 
 
 def test_per_worker_helper() -> None:

@@ -134,6 +134,7 @@ class FakeImageWorker:
             width=tiny_png_width,
             height=tiny_png_height,
             engine=req.engine,
-            seed_used=req.seed if req.seed is not None else 0,
+            # seed_used=-1 signals "no seed provided" (auto/random); 0 is a valid seed
+            seed_used=req.seed if req.seed is not None else -1,
         )
         await self._nc.publish(msg.reply, reply.model_dump_json().encode())

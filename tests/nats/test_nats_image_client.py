@@ -15,10 +15,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.nats.nats_image_client import (
-    ImageResponse,
     ImageUnavailableError,
     NatsImageClient,
 )
+from roxabi_contracts.image import ImageResponse
 
 # ---------------------------------------------------------------------------
 # Module-level helpers
@@ -57,7 +57,7 @@ def _heartbeat_bytes(
         "service": "image",
         "host": "test-host",
         "subject": "lyra.image.generate.request",
-        "queue_group": "IMAGE_WORKERS",
+        "queue_group": "image_workers",
         "ts": time.time(),
         "engine_loaded": "flux2-klein",
         "active_requests": active,

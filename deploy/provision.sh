@@ -92,9 +92,50 @@ fi
 has_sufficient_subids() {
   awk -F: -v u="$ADMIN_USER" '$1 == u && $3 >= 65536 {found=1} END {exit !found}' "$1"
 }
+# Compute next-free range per file from the current high-water mark so we never
+# overlap with another user's allocation. `usermod --add-subuids` does no
+# overlap check (man page is explicit); on a host with pre-existing entries
+# (LDAP, container hosts, other humans with rootless containers) a hardcoded
+# range silently aliases another account's UID — a privilege-escalation path
+# from inside any rootless container. UID and GID subordinate namespaces are
+# independent, so HWM is computed per file to avoid cross-namespace waste.
+# Floor of 65536 keeps us clear of the normal UID space on systems with real
+# UIDs in the 100000+ band.
+next_free_subid_start() {
+  local file="$1" hwm
+  # Missing file is fine (fresh install); unreadable-but-present is not —
+  # swallowing the error would silently fall through to the 65536 floor and
+  # could collide with an existing allocation.
+  if [[ -e "$file" && ! -r "$file" ]]; then
+    error "Cannot read $file (check permissions)."
+  fi
+  hwm=$(awk -F: '{print $2 + $3}' "$file" 2>/dev/null | sort -n | tail -1)
+  # Guard against garbage lines (truncated write, manual edit) — non-integer
+  # output from awk would break the arithmetic below or bypass the floor check.
+  [[ "$hwm" =~ ^[0-9]+$ ]] || hwm=""
+  if [[ -n "$hwm" && "$hwm" -gt 65535 ]]; then
+    echo "$hwm"
+  else
+    echo 65536
+  fi
+}
+# NOTE (TOCTOU wontfix): the HWM read and subsequent `usermod` write are not
+# atomic against a concurrent `usermod`/`useradd`. A true fence would require
+# shadow-utils' own lock, which does not honor external flock. On a single-admin
+# machine running one provisioner the window is unreachable; revisit if
+# provision.sh is ever run concurrently (multi-host, parallel CI, etc.).
 if ! has_sufficient_subids /etc/subuid || ! has_sufficient_subids /etc/subgid; then
-  warn "subuid/subgid ranges missing or too small for $ADMIN_USER — adding 100000-165535."
-  sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$ADMIN_USER"
+  uid_start=$(next_free_subid_start /etc/subuid)
+  gid_start=$(next_free_subid_start /etc/subgid)
+  uid_end=$((uid_start + 65535))
+  gid_end=$((gid_start + 65535))
+  # 32-bit UID space guard — usermod rejects ranges above 2^32-1.
+  if (( uid_end > 4294967295 || gid_end > 4294967295 )); then
+    error "subuid/subgid space exhausted (uid_end=${uid_end}, gid_end=${gid_end})"
+  fi
+  warn "subuid/subgid ranges missing or too small for $ADMIN_USER — adding subuid ${uid_start}-${uid_end}, subgid ${gid_start}-${gid_end}."
+  sudo usermod --add-subuids "${uid_start}-${uid_end}" --add-subgids "${gid_start}-${gid_end}" "$ADMIN_USER" \
+    || error "Failed to configure subuid/subgid for $ADMIN_USER"
   # Re-run migrate in case podman already has stale rootless state.
   # Guard against silent storage remap on partial re-runs: if the admin user
   # already has rootless images or named volumes, `podman system migrate` can

@@ -1,0 +1,74 @@
+---
+title: "subuid/subgid review follow-ups — Expert Consensus"
+issue: 825
+status: consensus-reached
+date: 2026-04-22
+panel: architect, security-auditor, devops
+confidence: high
+---
+
+## Problem
+
+PR #869 (issue #825) replaces a hardcoded `100000-165535` subuid/subgid range in `deploy/provision.sh` with an HWM-computed next-free range. Two blockers from the initial review were auto-applied in PR #869: per-namespace HWM, `usermod` exit check, 32-bit UID space overflow guard.
+
+Four non-blocking findings remained; panel was convened to recommend apply / defer / skip per finding on this security-hardening PR whose original scope was explicitly deferred to a single-admin machine (`roxabituwer`).
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | arch soundness, maintainability, long-term invariants |
+| security-auditor | attack surface, threat model for the deployment context |
+| devops | ops payback for a run-once-per-install provisioning script |
+
+## Findings and votes
+
+| # | Finding | Architect | Security | Devops | Consensus |
+|---|---------|-----------|----------|--------|-----------|
+| 1 | Non-contiguous overlap detection (C=72%) | apply | defer | skip | **Defer → #875** |
+| 2 | TOCTOU between HWM read and usermod write (C=70%) | skip | skip | skip | **Skip (wontfix, documented inline)** |
+| 3 | `awk ... 2>/dev/null` swallows perm errors (C=78%) | apply | apply | defer | **Apply in PR #869** |
+| 4 | Re-run idempotency warn (C=75%) | defer | defer | defer | **Defer → #876** |
+
+## Consensus
+
+### F1 — Non-contiguous overlap: Defer (→ #875)
+
+**Rationale:** HWM protects against the single highest-ending entry. Out-of-order / manually-edited entries could hide an overlap. On a single-admin host where `/etc/subuid` is managed exclusively by `usermod`, the malformed-file vector requires manual misconfiguration that doesn't exist today. Architect's argument (closes HWM invariant gap) is valid long-term but security + devops both cite no current payback. Ship follow-up issue to capture the improvement.
+
+### F2 — TOCTOU: Skip (wontfix)
+
+**Rationale:** Unanimous. Reviewer's own admission: shadow-utils does not honor external `flock`. Any shell-level fix is security theater that gives a false safety signal. On a single-admin machine with one provisioner, no concurrent `usermod` exists. Better to record a wontfix comment in code than to file a ticket that invites a future implementer to add an ineffective flock.
+
+### F3 — awk error swallow: Apply now
+
+**Rationale:** 2-of-3 apply (devops agrees on substance, disagrees on timing). This is the only finding with a concrete silent-failure path on the target machine: an unreadable `/etc/subuid` (chmod drift, SELinux denial) currently falls through to the 65536 floor silently and could alias uid 0. Fix is a 3-line preflight: `[[ -e && ! -r ]] → error`. Consistency of intent — the whole PR exists to prevent silent wrong-range assignment.
+
+### F4 — Re-run idempotency warn: Defer (→ #876)
+
+**Rationale:** Unanimous. `has_sufficient_subids` is intentionally permissive to preserve idempotency. A badly-placed prior entry still satisfying count is an edge that surfaces via the `podman info` smoke test already present downstream in `provision.sh`. Warn-only overlap scan is legitimate but adds scope; revisit when `AGENT_USER` subuid provisioning is added.
+
+## Alternatives considered
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| Apply all 4 now | architect (F1) | Over-engineers for scenarios the issue body explicitly deferred to "another host class" / multi-user. |
+| TOCTOU flock fix | (none — security flagged it, but panel rejected) | Shadow-utils ignores external flock; false safety signal. |
+| Hard-fail idempotency on overlap | (rejected) | Breaks idempotent re-provision for no benefit on single-admin. Warn is the correct signal level, deferred. |
+| Skip F3 awk fix | devops (timing) | Silent fall-through to floor=65536 contradicts the PR's stated intent. Cost is ≤5 lines. |
+
+## Dissent
+
+- **Architect on F1** (apply now): the HWM invariant is incomplete without overlap detection; deferring leaves a silent-failure class on re-provision with a manually-edited file. Recorded — majority overruled on single-admin context but the concern is captured in #875.
+- **Devops on F3** (defer): agreed the fix is correct but argued timing; conceded in panel context given unanimous security + architect alignment.
+
+## Implementation Notes
+
+1. F3: add `[[ -e "$file" && ! -r "$file" ]]` preflight inside `next_free_subid_start`; call `error` on unreadable-but-present.
+2. F2: add a multi-line `# NOTE (TOCTOU wontfix):` block above the call site explaining the shadow-utils limitation and the single-admin constraint that makes the race unreachable.
+3. F1 → #875, F4 → #876. Both link back to #825 and PR #869.
+
+## Next
+
+- Apply F2 + F3 changes in the ongoing `/fix` pass on PR #869.
+- Re-run `/code-review` after fix commits to close the loop (≤2 iteration cap).

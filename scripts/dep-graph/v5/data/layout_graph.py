@@ -18,7 +18,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from .model import COLUMN_GROUPS, MS_CODES
+from .model import COLUMN_GROUPS, MS_CODES, NO_LANE, NO_MS
 
 # Default lane ordering (determines within-band tie-break). Computed from the
 # module-level defaults; callers that need a non-default order pass `lane_order`
@@ -51,6 +51,8 @@ def _lane_idx(lane_code: str, lane_order: list[str] | None = None) -> int:
 
 def ms_idx(ms: str | None, ms_codes: list[str] | None = None) -> int:
     codes = ms_codes if ms_codes is not None else MS_CODES
+    if ms == NO_MS or ms == "—":
+        return -1  # Place "No milestone" row first
     if ms in codes:
         return codes.index(ms)
     return 99
@@ -220,12 +222,14 @@ def layout_grid(
         band_y = Y_TOP + i * step_y
         band_tasks = sorted(by_ms[ms][depth], key=lambda t: cell_of_num[t["num"]])
         for t in band_tasks:
+            # Convert NO_LANE to "accent" for default coloring
+            lane_tone = t["lane"] if t["lane"] != NO_LANE else "accent"
             node_records.append(
                 {
                     "task": t,
                     "x": x_of_num[t["num"]],
                     "y": band_y,
-                    "lane_tone": t["lane"],
+                    "lane_tone": lane_tone,
                 }
             )
         band_records.append(

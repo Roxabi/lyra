@@ -159,7 +159,10 @@ class TestGraphRenderLayoutOverride:
         tasks = tasks_for_graph(data)
         active_codes = {t["milestone"] for t in tasks}
         # Codes must now be P-prefixed (overrides took effect)
+        # Exclude "—" (no-milestone sentinel) from the check
         for code in active_codes:
+            if code == "—":
+                continue
             assert code.startswith("P"), f"expected override code, got {code}"
             assert code in result
 

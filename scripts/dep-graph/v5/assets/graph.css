@@ -102,6 +102,7 @@
 .view-graph .gg-node[data-tone="g"]  { color: var(--lane-g); }
 .view-graph .gg-node[data-tone="h"]  { color: var(--lane-h); }
 .view-graph .gg-node[data-tone="i"]  { color: var(--lane-i); }
+.view-graph .gg-node[data-tone="accent"] { color: var(--accent); }
 
 /* ─── Inline pill label (sits just below the dot) ──────────── */
 .view-graph .gg-ilabel {
@@ -186,6 +187,7 @@
 .view-graph .gg-ilabel[data-tone="g"]  { color: var(--lane-g); }
 .view-graph .gg-ilabel[data-tone="h"]  { color: var(--lane-h); }
 .view-graph .gg-ilabel[data-tone="i"]  { color: var(--lane-i); }
+.view-graph .gg-ilabel[data-tone="accent"] { color: var(--accent); }
 
 /* ─── SVG edges ─────────────────────────────────────────────── */
 .view-graph .graph-svg {
@@ -217,6 +219,7 @@
 .view-graph .gg-edge[data-tone="g"]  { stroke: var(--lane-g); }
 .view-graph .gg-edge[data-tone="h"]  { stroke: var(--lane-h); }
 .view-graph .gg-edge[data-tone="i"]  { stroke: var(--lane-i); }
+.view-graph .gg-edge[data-tone="accent"] { stroke: var(--accent); }
 
 /* ─── Hover-chain highlight (within graph) ─────────────────── */
 body.hl-active .view-graph .gg-node,

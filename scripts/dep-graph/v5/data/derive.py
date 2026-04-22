@@ -120,7 +120,7 @@ def build_matrix(
 
 def tasks_for_graph(data: GraphData) -> list[dict[str, Any]]:
     """Flat task list for graph-view layout. One entry per non-epic issue
-    that has both a milestone and a lane.
+    that has a lane (milestone is optional — NO_MS sentinel used for display).
 
     Keys match what v4/v4.5 layout math expects: num, title, url, state,
     status, milestone, lane, size, depth, blockers, unblocks.
@@ -133,11 +133,14 @@ def tasks_for_graph(data: GraphData) -> list[dict[str, Any]]:
 
     tasks: list[dict[str, Any]] = []
     for key, iss in data.issues.items():
-        ms = iss.get("milestone")
-        lane = iss.get("lane_label")
-        if not ms or not lane or key in data.epic_keys or key not in data.visible:
+        ms = iss.get("milestone") or NO_MS
+        lane = iss.get("lane_label") or NO_LANE
+        if key in data.epic_keys or key not in data.visible:
             continue
-        lmeta = data.lane_by_code.get(lane)
+        lmeta = data.lane_by_code.get(lane) if lane != NO_LANE else None
+        # Use display code "—" for NO_MS sentinel, matching grid/graph row header
+        ms_code = "—" if ms == NO_MS else ms_short.get(ms, ms)
+        ms_name = "No milestone" if ms == NO_MS else ms_name_by_code.get(ms_short.get(ms, ms), ms)
         tasks.append(
             {
                 "key": key,
@@ -147,8 +150,8 @@ def tasks_for_graph(data: GraphData) -> list[dict[str, Any]]:
                 "url": f"https://github.com/{iss['repo']}/issues/{iss['number']}",
                 "state": iss["state"],
                 "status": status_of(iss, data.issues),
-                "milestone": ms_short.get(ms, ms),
-                "milestone_name": ms_name_by_code.get(ms_short.get(ms, ms), ms),
+                "milestone": ms_code,
+                "milestone_name": ms_name,
                 "lane": lane,
                 "lane_name": lmeta.name if lmeta else "",
                 "column": col_of_lane.get(lane, ""),

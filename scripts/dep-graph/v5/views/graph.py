@@ -14,7 +14,7 @@ from typing import Any
 
 from ..data import layout_graph as lg
 from ..data.derive import tasks_for_graph
-from ..data.model import GraphData
+from ..data.model import GraphData, NO_MS
 
 # Title truncation inside the pill before hover-expand.
 TITLE_CHARS = 28
@@ -130,13 +130,19 @@ def _render_msrows(
     rows: list[str] = []
     seps: list[str] = []
     for ms, (top_pct, bot_pct) in ordered:
-        name = ms_name_by_code.get(ms, "")
+        # Handle NO_MS sentinel or "—" display code for "No milestone" row
+        if ms == NO_MS or ms == "—":
+            display_code = "—"
+            display_name = "No milestone"
+        else:
+            display_code = ms
+            display_name = ms_name_by_code.get(ms, "")
         top_px = round(top_pct / 100 * container_h)
         height_px = round((bot_pct - top_pct) / 100 * container_h)
         rows.append(
             f'<div class="gg-msrow" style="top:{top_px}px; height:{height_px}px;">'
-            f'<div class="gg-msrow-code">{html.escape(ms)}</div>'
-            f'<div class="gg-msrow-name">{html.escape(name)}</div>'
+            f'<div class="gg-msrow-code">{html.escape(display_code)}</div>'
+            f'<div class="gg-msrow-name">{html.escape(display_name)}</div>'
             f"</div>"
         )
     for i in range(1, len(ordered)):

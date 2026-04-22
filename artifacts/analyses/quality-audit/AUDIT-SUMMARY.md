@@ -1,9 +1,11 @@
 # Code Quality Audit Summary
 
 **Project:** Lyra AI Agent Engine
-**Date:** 2026-04-22
+**Date:** 2026-04-22 (refreshed 2026-04-22 — cross-referenced with `~/.roxabi/lyra-nats-truth/`)
 **Files Analyzed:** 282 source files, 261 test files
 **Lines of Code:** ~15,000 (source), ~8,000 (tests)
+
+> **Refresh note:** findings that land on code scheduled for deletion (per NATS-truth M2 Stream 1 / Lane A decoupling) are marked `[DEFERRED — drops with #N]` and excluded from effort totals. See "Deprecation cross-reference" section below.
 
 ---
 
@@ -33,10 +35,11 @@
 
 ### Test Coverage
 
-3. **Zero coverage on production agents** (`agents/simple_agent.py`, `agents/anthropic_agent.py`)
-   - Core production code paths completely untested
+3. **Zero coverage on `agents/simple_agent.py`**
+   - CLI-subprocess agent path (lyra_cli stream #628) — untested
    - **Risk:** Silent regressions in agent behavior
-   - **Effort:** 8 hours (integration tests)
+   - **Effort:** 6 hours (integration tests)
+   - ~~`agents/anthropic_agent.py`~~ `[DEFERRED — drops with #666 (AnthropicSdkDriver removal, epic #663)]`
 
 ---
 
@@ -120,9 +123,9 @@
    - Extract orchestration phases
    - **Effort:** 4 hours
 
-3. **`sdk.py::complete()`** (130 lines) - `llm/drivers/sdk.py:54`
-   - Extract tool-use loop, error handling
-   - **Effort:** 3 hours
+3. ~~**`sdk.py::complete()`** (130 lines) - `llm/drivers/sdk.py:54`~~ `[DEFERRED — file deleted by #666]`
+   - AnthropicSdkDriver replaced by LiteLLMDriver (#665 in flight)
+   - **Effort saved:** 3 hours
 
 4. **`simple_agent.py::process()`** (108 lines) - `agents/simple_agent.py:186`
    - Extract streaming, error handling, voice handling
@@ -134,13 +137,14 @@
 
 ### Code Smells - DRY Violations
 
-6. **Session command registration** duplicated in `SimpleAgent` and `AnthropicAgent`
-   - Extract to AgentBase mixin
-   - **Effort:** 2 hours
+6. ~~**Session command registration** duplicated in `SimpleAgent` and `AnthropicAgent`~~ `[DEFERRED — AnthropicAgent drops with #666]`
+   - Revisit after #666: if duplication persists in SimpleAgent + future agents, extract then
+   - **Effort saved:** 2 hours
 
 7. **NATS voice client patterns** - STT/TTS/Image clients share ~90 lines of duplicated code
    - Create `NatsVoiceClientBase` class
    - **Effort:** 4 hours
+   - ⚠️ Scope review: lyra-side keeps only publishers (`nats_<domain>_client.py`). Satellites migrate to `roxabi-contracts` per ADR-049 Phase 1. Verify dedup target is still 3 clients in lyra after #658/#690/#691 land.
 
 8. **Stale-resume retry logic** duplicated in `cli_pool.py` and `cli_pool_streaming.py`
    - Extract shared helper
@@ -220,17 +224,18 @@
 
 ## Metrics Dashboard
 
-| Domain | Issues | P0 | P1 | P2 | P3 |
-|--------|--------|----|----|----|----|
-| Architecture | 14 | 0 | 4 | 6 | 4 |
-| Security | 12 | 2 | 2 | 0 | 8 |
-| Code Smells | 35 | 3 | 7 | 14 | 11 |
-| Type Safety | 28 | 0 | 0 | 11 | 17 |
-| Async Patterns | 16 | 0 | 3 | 8 | 5 |
-| Error Handling | 18 | 0 | 0 | 12 | 6 |
-| Test Quality | 22 | 1 | 3 | 8 | 10 |
-| Tech Debt | 15 | 0 | 0 | 7 | 8 |
-| **Total** | **160** | **6** | **19** | **66** | **69** |
+| Domain | Issues | P0 | P1 | P2 | P3 | Deferred |
+|--------|--------|----|----|----|----|----------|
+| Architecture | 14 | 0 | 4 | 6 | 4 | 0 |
+| Security | 12 | 2 | 2 | 0 | 8 | 0 |
+| Code Smells | 35 | 3 | 7 | 12 | 11 | 2 |
+| Type Safety | 28 | 0 | 0 | 11 | 17 | 0 |
+| Async Patterns | 16 | 0 | 3 | 8 | 5 | 0 |
+| Error Handling | 18 | 0 | 0 | 12 | 6 | 0 |
+| Test Quality | 22 | 1 | 3 | 8 | 10 | 0 |
+| Tech Debt | 15 | 0 | 0 | 7 | 8 | 0 |
+| **Active Total** | **158** | **6** | **19** | **64** | **69** | **—** |
+| **Deferred** | **2** | — | — | 2 | — | #666 |
 
 ---
 
@@ -251,7 +256,7 @@
 | # | Action | Effort | Impact |
 |---|--------|--------|--------|
 | 6 | Complete ADR-048 migration (core stores → infrastructure) | 4h | Medium |
-| 7 | Add integration tests for SimpleAgent | 8h | High |
+| 7 | Add integration tests for SimpleAgent | 6h | High |
 | 8 | Extract HubConfig dataclass | 4h | Medium |
 | 9 | Fix flaky test patterns (sleep → events) | 4h | Medium |
 | 10 | Add pool eviction synchronization | 2h | Medium |
@@ -299,6 +304,32 @@
 | 8 | Fix health endpoint path traversal | 30m | Security |
 | 9 | Add exception context capture in middleware | 30m | Debuggability |
 | 10 | Document God class facades as intentional | 30m | Maintainability |
+
+---
+
+## Deprecation Cross-Reference
+
+Validated against `~/.roxabi/lyra-nats-truth/` on 2026-04-22. Findings that target code scheduled for deletion are deferred — fixing them is wasted work.
+
+| Audit finding | Target file | Drops with | Effort saved |
+|---|---|---|---|
+| P0 #3 (part) — AnthropicAgent 0% coverage | `agents/anthropic_agent.py` | #666 (epic #663) | 2h |
+| P2 #3 — `sdk.py::complete()` 130-line refactor | `llm/drivers/sdk.py` | #666 (file deleted) | 3h |
+| P2 #6 — Session cmd dedup (SimpleAgent/AnthropicAgent) | `agents/anthropic_agent.py` | #666 (dup disappears) | 2h |
+
+**Total effort saved by deferring:** 7h.
+
+### Findings verified as still valid post-deprecation
+
+- `agents/simple_agent.py` (all findings) — CLI-subprocess path, part of lyra_cli stream #628
+- `bootstrap/standalone/adapter_standalone.py` — telegram/discord bootstrap; distinct from `{stt,tts}_adapter_standalone.py` deleted by lyra#690
+- NATS voice client dedup (P2 #7) — scope narrows after #658/#690/#691 but lyra-side publishers remain
+
+### Adjacent deprecations (not in audit, flagged for awareness)
+
+- `scripts/deploy.sh`, `lyra.service`, `deploy/supervisor/` — Lane H (#693, #701)
+- `src/lyra/bootstrap/{stt,tts}_adapter_standalone.py`, `lyra_{stt,tts}.conf` — lyra#690
+- `roxabi_nats.adapter_base.CONTRACT_VERSION` → migrates to `roxabi_contracts.envelope` (ADR-049, removed at `roxabi-nats/v0.3.0`)
 
 ---
 

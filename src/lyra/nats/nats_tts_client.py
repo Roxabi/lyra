@@ -23,6 +23,7 @@ from lyra.nats.worker_registry import WorkerRegistry
 from lyra.tts import SynthesisResult, TtsUnavailableError
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import (
+    SUBJECTS,
     TtsRequest,
     TtsResponse,
     per_worker_tts,
@@ -36,11 +37,52 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+_TTS_TIMEOUT_DEFAULT = 30.0
+_TTS_TIMEOUT_MIN = 1.0
+_TTS_TIMEOUT_MAX = 300.0
+
+
+def _parse_tts_timeout(timeout: float | None) -> float:
+    """Resolve TTS timeout: explicit arg > LYRA_TTS_TIMEOUT env var > 30s default.
+
+    Accepts values in [1.0, 300.0] seconds; falls back to 30s on invalid input.
+    """
+    import os
+
+    if timeout is not None:
+        value = timeout
+    else:
+        raw = os.environ.get("LYRA_TTS_TIMEOUT", str(_TTS_TIMEOUT_DEFAULT))
+        try:
+            value = float(raw)
+        except ValueError:
+            log.warning(
+                "LYRA_TTS_TIMEOUT=%r is not a valid float; using %.0fs",
+                raw,
+                _TTS_TIMEOUT_DEFAULT,
+            )
+            return _TTS_TIMEOUT_DEFAULT
+    if not (_TTS_TIMEOUT_MIN <= value <= _TTS_TIMEOUT_MAX):
+        log.warning(
+            "TTS timeout %.1fs out of range [%.0f, %.0f]; using %.0fs",
+            value,
+            _TTS_TIMEOUT_MIN,
+            _TTS_TIMEOUT_MAX,
+            _TTS_TIMEOUT_DEFAULT,
+        )
+        return _TTS_TIMEOUT_DEFAULT
+    return value
+
+
+def _is_no_responders(exc: Exception) -> bool:
+    """Detect NATS NoRespondersError."""
+    return isinstance(exc, NoRespondersError)
+
 
 class NatsTtsClient:
-    def __init__(self, nc: NATS, *, timeout: float = 30.0) -> None:
+    def __init__(self, nc: NATS, *, timeout: float | None = None) -> None:
         self._nc = nc
-        self._timeout = timeout
+        self._timeout = _parse_tts_timeout(timeout)
         self._cb = NatsCircuitBreaker()
         self._registry = WorkerRegistry()
         self._hb_sub = None  # set by start
@@ -49,7 +91,7 @@ class NatsTtsClient:
         """Subscribe to heartbeat subject. Called once after nc is connected."""
         if self._hb_sub is None:
             self._hb_sub = await self._nc.subscribe(
-                "lyra.voice.tts.heartbeat", cb=self._on_heartbeat
+                SUBJECTS.tts_heartbeat, cb=self._on_heartbeat
             )
 
     async def _on_heartbeat(self, msg) -> None:
@@ -91,10 +133,6 @@ class NatsTtsClient:
             self._cb.record_failure()
             raise TtsUnavailableError("TTS reply failed schema validation") from exc
 
-    def _is_no_responders(self, exc: Exception) -> bool:
-        """Detect NATS NoRespondersError (non-subclassable via isinstance)."""
-        return isinstance(exc, NoRespondersError)
-
     async def _walk_registry(self, payload: bytes) -> TtsResponse:
         """Walk workers in score order, trying each until success or exhaustion.
 
@@ -124,7 +162,7 @@ class NatsTtsClient:
                 last_exc = exc
                 continue
             except Exception as exc:
-                if self._is_no_responders(exc):
+                if _is_no_responders(exc):
                     self._registry.mark_stale(worker.worker_id)
                     last_exc = exc
                     continue

@@ -91,6 +91,9 @@ filterwarnings = [
     "ignore:websockets.legacy is deprecated:DeprecationWarning",
     "ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning",
 ]
+markers = [
+    "nats_integration: NATS integration tests requiring Docker Compose",
+]
 
 [tool.coverage.run]
 branch = true

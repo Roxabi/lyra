@@ -1,0 +1,44 @@
+---
+title: Per-identity NATS inbox prefix to retire _INBOX.> wildcard (ADR-051)
+issue: 715
+status: approved
+tier: F-lite
+date: 2026-04-22
+---
+
+## Problem
+
+Every identity in `deploy/nats/acl-matrix.json` currently holds the wildcard `_INBOX.>` in its subscribe or publish allow-list. The grant exists because `NatsLlmDriver.stream()` uses a manual inbox subscription (not `nc.request()`) and because adapters act as requesters during readiness probes.
+
+Consequence: any leaked seed today = bus-wide wiretap. An attacker authenticating as any identity can subscribe to `_INBOX.>` and read every request/reply inbox on the bus — LLM responses, TTS/STT audio payloads, readiness replies, and future request/reply traffic. Current posture is bounded (seeds 0600, owned by LYRA_USER), but the ACL surface is systemic, not hub-local.
+
+ADR-051 adopts `inbox_prefix=_INBOX.<identity>` at connect time. This transparently narrows every ephemeral inbox to `_INBOX.<identity>.<nuid>` — no change to streaming logic, no protocol change on worker side. ACL grants narrow from `_INBOX.>` to `_INBOX.<identity>.>` for every identity.
+
+## Who
+
+- **Primary:** Lyra hub + adapters (hub, telegram, discord) connecting to NATS via `roxabi_nats.nats_connect`.
+- **Secondary:** Satellite workers (voiceCLI, imageCLI) — tracked in per-satellite PRs per ADR-047; sequencing gated by this PR.
+
+## Constraints
+
+- `nats-py 2.14` `nc.request()` returns a single `Msg` — ¬compatible with LLM token-streaming. Inbox-prefix narrowing preserves manual-subscription protocol without collapsing worker reply semantics.
+- `roxabi_nats.nats_connect` already forwards `**extra` to nats-py (ADR-045) — no SDK code change required.
+- Rollout sequencing: satellite PR merged & deployed → lyra ACL narrowed → `auth.conf` regenerated → NATS reloaded. Out-of-order rollout breaks satellite connects.
+- Empirical verification required: `sudo ./deploy/nats/gen-nkeys.sh --regen-authconf` + `systemctl reload nats` on Machine 1, confirming server rejects `_INBOX.>` subscribe for hub (Subscription Violation in logs).
+- ADR-051 supersedes #717 (adapter inbox tightening subsumed).
+
+## Out of Scope
+
+- Satellite connect-site updates in voiceCLI / imageCLI — separate per-satellite PRs.
+- JetStream migration of LLM streaming — orthogonal future improvement (ADR-051 §Options Considered §Option A).
+- Retirement of defensive `_inbox.>` lowercase drift guard beyond this PR's ACL matrix.
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (NATS ACL + bootstrap connect sites), well-understood mechanism (inbox_prefix kwarg already supported upstream), acceptance criteria enumerated in issue. No new architecture; execution is surgical updates across 3 connect sites + ACL matrix + tests + empirical verification.
+
+Signals observed:
+- Single domain (NATS transport / bootstrap).
+- Label `size:F-lite` set by triage.
+- Files scoped: 2 bootstrap modules, 1 ACL matrix JSON, 1 spec doc (706), 2 test files, 1 ADR (already drafted).
+- Dependency chain on satellite rollout is operational sequencing, not architectural unknown.

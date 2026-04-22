@@ -17,7 +17,7 @@ from lyra.core.messaging.message import (
 )
 from lyra.core.pool import Pool
 from lyra.llm.base import LlmResult
-from lyra.stt import STTService, TranscriptionResult
+from lyra.stt import STTProtocol, TranscriptionResult
 
 # ---------------------------------------------------------------------------
 # Message factories
@@ -91,9 +91,9 @@ def make_config() -> Agent:
 
 def make_mock_stt(
     result: TranscriptionResult | None = None, raises: Exception | None = None
-) -> STTService:
-    """Return a MagicMock standing in for STTService with transcribe pre-configured."""
-    stt = MagicMock(spec=STTService)
+) -> STTProtocol:
+    """Return a MagicMock standing in for STTProtocol with transcribe pre-configured."""
+    stt = MagicMock(spec=STTProtocol)
     if raises is not None:
         stt.transcribe = AsyncMock(side_effect=raises)
     else:

@@ -25,7 +25,7 @@ from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, OutboundAudio, Response
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig
-from lyra.tts import TTSService
+from lyra.tts import TtsProtocol
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -98,7 +98,7 @@ class TestHandleVoiceCommand:
             config=_make_agent_config(),
             provider=_make_mock_provider(),
             runtime_config=RuntimeConfig(),
-            tts=cast(TTSService | None, tts),
+            tts=cast(TtsProtocol | None, tts),
         )
 
     def test_returns_rewritten_message_with_voice_modality(self) -> None:
@@ -153,7 +153,7 @@ class TestAnthropicAgentVoiceCommand:
             config=_make_agent_config(),
             provider=_make_mock_provider(),
             runtime_config=RuntimeConfig(),
-            tts=cast(TTSService | None, tts),
+            tts=cast(TtsProtocol | None, tts),
         )
 
     @pytest.mark.asyncio
@@ -239,7 +239,7 @@ class TestSimpleAgentVoiceCommand:
             config=_make_agent_config(),
             provider=_make_mock_provider(),
             runtime_config=RuntimeConfig(),
-            tts=cast(TTSService | None, tts),
+            tts=cast(TtsProtocol | None, tts),
         )
 
     @pytest.mark.asyncio

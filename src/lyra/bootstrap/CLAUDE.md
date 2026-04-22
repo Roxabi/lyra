@@ -10,12 +10,10 @@ No business logic lives here — all domain behaviour is in `core/`.
 
 ```
 bootstrap/
-  standalone/         # NATS-connected standalone entry points (5 files + __init__)
+  standalone/         # NATS-connected standalone entry points (3 files + __init__)
     adapter_standalone.py          # _bootstrap_adapter_standalone
     hub_standalone.py              # _bootstrap_hub_standalone
     hub_standalone_helpers.py      # load_agent_configs, build_pairing_manager, shutdown_hub_runtime
-    stt_adapter_standalone.py      # SttAdapterStandalone, _bootstrap_stt_adapter_standalone
-    tts_adapter_standalone.py      # TtsAdapterStandalone, _bootstrap_tts_adapter_standalone
 
   wiring/             # Adapter and NATS wiring helpers (2 files + __init__)
     bootstrap_wiring.py            # wire_telegram_adapters, wire_discord_adapters, _build_bot_auths

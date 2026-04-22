@@ -24,7 +24,7 @@ from lyra.core.pool import Pool
 from tests.core.conftest import FakeSTT, MockAdapter
 
 if TYPE_CHECKING:
-    from lyra.stt import STTService
+    from lyra.stt import STTProtocol
 
 # ---------------------------------------------------------------------------
 # T2: synthesize_and_dispatch_audio forwards agent_tts
@@ -36,7 +36,7 @@ class TestSynthesizeDispatchAgentTTS:
 
     @pytest.mark.asyncio()
     async def test_agent_tts_forwarded_to_synthesize(self):
-        """When agent_tts is passed, it reaches TTSService.synthesize()."""
+        """When agent_tts is passed, it reaches TtsProtocol.synthesize()."""
         from lyra.tts import SynthesisResult
 
         agent_tts = AgentTTSConfig(engine="agent_eng", voice="agent_vox")
@@ -50,7 +50,7 @@ class TestSynthesizeDispatchAgentTTS:
             )
         )
 
-        hub = Hub(stt=cast("STTService", FakeSTT()))
+        hub = Hub(stt=cast("STTProtocol", FakeSTT()))
         hub._tts = mock_tts
         object.__setattr__(hub, "dispatch_audio", AsyncMock())
 
@@ -90,7 +90,7 @@ class TestSynthesizeDispatchAgentTTS:
             )
         )
 
-        hub = Hub(stt=cast("STTService", FakeSTT()))
+        hub = Hub(stt=cast("STTProtocol", FakeSTT()))
         hub._tts = mock_tts
         object.__setattr__(hub, "dispatch_audio", AsyncMock())
 
@@ -149,7 +149,7 @@ class TestResolveAgentTTS:
         )
         fake_agent = FakeAgent(cfg)
 
-        hub = Hub(stt=cast("STTService", FakeSTT()))
+        hub = Hub(stt=cast("STTProtocol", FakeSTT()))
         hub.agent_registry["test-agent"] = fake_agent
 
         # Register a binding: platform=telegram, bot=main, scope=chat:42 → test-agent
@@ -187,7 +187,7 @@ class TestResolveAgentTTS:
 
     def test_resolve_agent_tts_returns_none_without_binding(self):
         """resolve_agent_tts returns None when no binding matches the message."""
-        hub = Hub(stt=cast("STTService", FakeSTT()))
+        hub = Hub(stt=cast("STTProtocol", FakeSTT()))
 
         msg = InboundMessage(
             id="msg-resolve-2",
@@ -248,7 +248,7 @@ class TestDispatchResponseAgentTTSE2E:
         fake_agent = FakeAgent(cfg)
 
         # Build hub with mock TTS
-        hub = Hub(stt=cast("STTService", FakeSTT()))
+        hub = Hub(stt=cast("STTProtocol", FakeSTT()))
         mock_tts = MagicMock()
         mock_tts.synthesize = AsyncMock(
             return_value=SynthesisResult(

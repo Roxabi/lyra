@@ -51,23 +51,6 @@ agents:
     priority: 200
     nkey: discord-adapter.seed
 
-  stt:
-    role: lyra-adapter
-    command: lyra adapter stt
-    priority: 200
-    nkey: stt-adapter.seed
-    env:
-      LYRA_STT_ENABLED: "1"
-
-  tts:
-    role: lyra-adapter
-    command: lyra adapter tts
-    priority: 200
-    nkey: tts-adapter.seed
-    env:
-      LYRA_TTS_ENABLED: "1"
-      LYRA_TTS_ENGINE: "chatterbox"
-
 # Satellite-owned workers (imageCLI, future llmCLI, forge, idna) are NOT listed here.
 # They ship their own supervisor confs in their own repos and register on dev's hub
 # supervisor (~/projects/conf.d/) via `make register`. Prod supervisor only loads

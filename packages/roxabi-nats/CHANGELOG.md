@@ -4,6 +4,14 @@ All notable changes to the `roxabi-nats` package are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1](https://github.com/Roxabi/lyra/compare/roxabi-nats/v0.2.0...roxabi-nats/v0.2.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* **nats:** thread inbox_prefix through NatsAdapterBase for voiceCLI satellites ([ead4fec](https://github.com/Roxabi/lyra/commit/ead4fec12246d387adcded91b6a4a8adb1efe311))
+* **nats:** thread inbox_prefix through NatsAdapterBase for voiceCLI satellites ([5c1ea64](https://github.com/Roxabi/lyra/commit/5c1ea64817c988ce3c65a013e0d8cf9934804013))
+
 ## [0.2.0](https://github.com/Roxabi/lyra/compare/roxabi-nats/v0.1.0...roxabi-nats/v0.2.0) (2026-04-17)
 
 

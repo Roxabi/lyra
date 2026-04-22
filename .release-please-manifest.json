@@ -1,5 +1,5 @@
 {
   ".": "0.2.0",
-  "packages/roxabi-nats": "0.2.0",
+  "packages/roxabi-nats": "0.2.1",
   "packages/roxabi-contracts": "0.2.0"
 }

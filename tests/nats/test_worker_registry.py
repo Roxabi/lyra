@@ -1,4 +1,4 @@
-"""Tests for VoiceWorkerRegistry — scoring, selection, freshness pruning."""
+"""Tests for WorkerRegistry — scoring, selection, freshness pruning."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ import time
 
 import pytest
 
-from lyra.nats.voice_health import (
+from lyra.nats.worker_registry import (
     DEFAULT_ACTIVE_WEIGHT,
     DEFAULT_VRAM_WEIGHT,
     MAX_WORKERS,
-    VoiceWorkerRegistry,
+    WorkerRegistry,
     WorkerStats,
 )
 
@@ -23,7 +23,7 @@ def _hb(worker_id: str, **kwargs: int) -> dict:
 
 class TestRecordHeartbeat:
     def test_upserts_worker(self) -> None:
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         reg.record_heartbeat(_hb("w1", vram_used_mb=1000, vram_total_mb=16000))
         alive = reg.alive_workers()
         assert len(alive) == 1
@@ -33,7 +33,7 @@ class TestRecordHeartbeat:
         assert alive[0].active_requests == 0
 
     def test_missing_worker_id_is_ignored(self) -> None:
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         reg.record_heartbeat({"vram_used_mb": 1000})
         reg.record_heartbeat({"worker_id": ""})
         reg.record_heartbeat({"worker_id": None})  # type: ignore[dict-item]
@@ -41,14 +41,14 @@ class TestRecordHeartbeat:
 
     def test_invalid_worker_id_rejected(self) -> None:
         """Subject-injection guard: wildcard / space chars rejected at ingress."""
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         for bad_id in ("*.evil", "foo.>", "has space", "pipe|bad", ">"):
             reg.record_heartbeat({"worker_id": bad_id})
         assert reg.alive_workers() == []
 
     def test_cap_drops_new_ids_at_max(self) -> None:
         """Hard cap drops new worker ids past ``MAX_WORKERS``; existing ones update."""
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         for i in range(MAX_WORKERS):
             reg.record_heartbeat({"worker_id": f"w-{i}"})
         assert len(reg.alive_workers()) == MAX_WORKERS
@@ -61,7 +61,7 @@ class TestRecordHeartbeat:
         assert w0.active_requests == 42
 
     def test_coerces_numeric_fields(self) -> None:
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         reg.record_heartbeat(
             {
                 "worker_id": "w1",
@@ -76,7 +76,7 @@ class TestRecordHeartbeat:
         assert alive[0].active_requests == 0
 
     def test_updates_existing_worker(self) -> None:
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         reg.record_heartbeat(_hb("w1", active_requests=0))
         reg.record_heartbeat(_hb("w1", active_requests=3))
         alive = reg.alive_workers()
@@ -86,7 +86,7 @@ class TestRecordHeartbeat:
 
 class TestPruning:
     def test_evicts_entries_older_than_ttl_times_two(self) -> None:
-        reg = VoiceWorkerRegistry(hb_ttl=15.0)
+        reg = WorkerRegistry(hb_ttl=15.0)
         reg._workers["ancient"] = WorkerStats(
             worker_id="ancient",
             last_heartbeat=time.monotonic() - 35.0,
@@ -108,7 +108,7 @@ class TestPruning:
         assert "fresh" in reg._workers
 
     def test_alive_only_returns_within_ttl(self) -> None:
-        reg = VoiceWorkerRegistry(hb_ttl=15.0)
+        reg = WorkerRegistry(hb_ttl=15.0)
         reg._workers["fresh"] = WorkerStats(
             worker_id="fresh",
             last_heartbeat=time.monotonic() - 5.0,
@@ -123,7 +123,7 @@ class TestPruning:
 
 class TestScoring:
     def test_score_formula_active_plus_vram_pct(self) -> None:
-        reg = VoiceWorkerRegistry(
+        reg = WorkerRegistry(
             active_weight=DEFAULT_ACTIVE_WEIGHT, vram_weight=DEFAULT_VRAM_WEIGHT
         )
         w = WorkerStats(
@@ -137,7 +137,7 @@ class TestScoring:
         assert reg.score(w) == pytest.approx(225.0)
 
     def test_score_when_vram_total_zero(self) -> None:
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         w = WorkerStats(
             worker_id="w",
             last_heartbeat=time.monotonic(),
@@ -151,11 +151,11 @@ class TestScoring:
 
 class TestSelection:
     def test_pick_none_when_no_workers(self) -> None:
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         assert reg.pick_least_loaded() is None
 
     def test_pick_only_fresh_worker(self) -> None:
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         reg._workers["stale"] = WorkerStats(
             worker_id="stale",
             last_heartbeat=time.monotonic() - 20.0,
@@ -165,7 +165,7 @@ class TestSelection:
         assert pick is not None and pick.worker_id == "fresh"
 
     def test_pick_lowest_vram_pct_when_tied_active(self) -> None:
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         reg.record_heartbeat(_hb("heavy", vram_used_mb=12000, vram_total_mb=16000))
         reg.record_heartbeat(_hb("light", vram_used_mb=2000, vram_total_mb=16000))
         pick = reg.pick_least_loaded()
@@ -173,7 +173,7 @@ class TestSelection:
 
     def test_active_requests_dominate_vram(self) -> None:
         """A fuller-VRAM but idle worker beats a lighter-VRAM busy worker."""
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         reg.record_heartbeat(
             _hb("busy-light", vram_used_mb=2000, vram_total_mb=16000, active_requests=1)
         )
@@ -192,17 +192,17 @@ class TestSelection:
 
     def test_deterministic_tiebreak_by_worker_id(self) -> None:
         """When scores tie, the lexically smallest worker_id wins."""
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         reg.record_heartbeat(_hb("worker-b"))
         reg.record_heartbeat(_hb("worker-a"))
         pick = reg.pick_least_loaded()
         assert pick is not None and pick.worker_id == "worker-a"
 
     def test_any_alive_true_when_one_fresh(self) -> None:
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         reg.record_heartbeat(_hb("w"))
         assert reg.any_alive() is True
 
     def test_any_alive_false_when_empty(self) -> None:
-        reg = VoiceWorkerRegistry()
+        reg = WorkerRegistry()
         assert reg.any_alive() is False

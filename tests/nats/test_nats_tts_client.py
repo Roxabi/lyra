@@ -11,7 +11,7 @@ import pytest
 
 from lyra.core.agent.agent_config import AgentTTSConfig
 from lyra.nats.nats_tts_client import _TTS_CONFIG_FIELDS, NatsTtsClient
-from lyra.nats.voice_health import WorkerStats
+from lyra.nats.worker_registry import WorkerStats
 from lyra.tts import TtsUnavailableError
 
 
@@ -398,7 +398,7 @@ class TestTtsClientFreshness:
         assert result.audio_bytes == b"audio"
 
     # NOTE: registry-level aliveness / pruning semantics are covered by
-    # ``tests/nats/test_voice_health.py`` — no need to duplicate here.
+    # ``tests/nats/test_worker_registry.py`` — no need to duplicate here.
 
 
 class TestTtsLoadAwareRouting:

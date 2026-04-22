@@ -18,8 +18,9 @@ from lyra.commands.add_vault.handlers import (
 )
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_parser import CommandContext
+from lyra.core.exceptions import VaultWriteFailed
 from lyra.core.messaging.message import InboundMessage
-from lyra.integrations.base import SessionTools, VaultWriteFailed
+from lyra.integrations.base import SessionTools
 
 # ---------------------------------------------------------------------------
 # Helpers

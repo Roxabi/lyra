@@ -14,13 +14,13 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
+from lyra.core.exceptions import VaultWriteFailed
 from lyra.core.messaging.message import Response
 from lyra.core.processors._scraping import (
     ScrapingProcessor,
     _extract_and_validate_url,
 )
 from lyra.core.processors.processor_registry import register
-from lyra.integrations.base import VaultWriteFailed
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage

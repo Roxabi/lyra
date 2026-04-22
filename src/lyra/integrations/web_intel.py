@@ -16,7 +16,7 @@ import os
 from asyncio.subprocess import PIPE
 from pathlib import Path
 
-from lyra.integrations.base import ScrapeFailed
+from lyra.core.exceptions import ScrapeFailed
 
 log = logging.getLogger(__name__)
 

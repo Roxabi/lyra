@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.integrations.base import VaultProvider, VaultWriteFailed
+from lyra.core.exceptions import VaultWriteFailed
+from lyra.integrations.base import VaultProvider
 from lyra.integrations.vault_cli import VaultCli
 
 

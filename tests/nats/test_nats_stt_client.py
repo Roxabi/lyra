@@ -595,8 +595,8 @@ class TestLoadAwareRouting:
         assert subject == "lyra.voice.stt.request.stt-idle-but-fuller"
 
     @pytest.mark.asyncio
-    async def test_fallback_to_queue_group_on_timeout(self, tmp_path: Path) -> None:
-        """Per-worker timeout falls back once to the queue-group subject."""
+    async def test_timeout_walks_to_second_worker(self, tmp_path: Path) -> None:
+        """Per-worker timeout marks worker stale and walks to second worker."""
         mock_nc = AsyncMock()
         call_subjects: list[str] = []
 
@@ -609,32 +609,37 @@ class TestLoadAwareRouting:
 
         mock_nc.request = AsyncMock(side_effect=request_mock)
         client = NatsSttClient(nc=mock_nc)
-        _inject_fresh_worker(client, "stt-tower-01")
+        _inject_fresh_worker(client, "stt-01")
+        _inject_fresh_worker(client, "stt-02")
         wav = tmp_path / "a.wav"
         wav.write_bytes(b"\x00" * 16)
         result = await client.transcribe(wav)
         assert result.text == "hi"
+        # First worker timed out, second succeeded
         assert call_subjects == [
-            "lyra.voice.stt.request.stt-tower-01",
-            "lyra.voice.stt.request",
+            "lyra.voice.stt.request.stt-01",
+            "lyra.voice.stt.request.stt-02",
         ]
-        # First timeout should not trip the CB (fallback succeeded).
+        # First worker should be marked stale
+        assert "stt-01" not in [w.worker_id for w in client._registry.alive_workers()]
+        # No CB failure since second worker succeeded
         assert client._cb._failures == 0
 
     @pytest.mark.asyncio
-    async def test_fallback_timeout_raises_and_records_failure(
+    async def test_single_worker_timeout_raises_and_records_failure(
         self, tmp_path: Path
     ) -> None:
-        """If both preferred AND queue-group timeout, raise + record failure once."""
+        """Single worker timeout -> all workers unresponsive + record failure once."""
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(side_effect=TimeoutError())
         client = NatsSttClient(nc=mock_nc)
-        _inject_fresh_worker(client, "stt-tower-01")
+        _inject_fresh_worker(client, "stt-01")
         wav = tmp_path / "a.wav"
         wav.write_bytes(b"\x00" * 16)
-        with pytest.raises(STTUnavailableError, match="timeout"):
+        with pytest.raises(STTUnavailableError, match="all workers unresponsive"):
             await client.transcribe(wav)
-        assert mock_nc.request.await_count == 2
+        # Only 1 request (per-worker), no queue-group fallback
+        assert mock_nc.request.await_count == 1
         assert client._cb._failures == 1
 
 
@@ -711,3 +716,187 @@ class TestMalformedReply:
 
         assert isinstance(exc_info.value.__cause__, ValidationError)
         assert client._cb._failures == initial_failures + 1
+
+
+class TestWalkRegistry:
+    """Tests for _walk_registry method (ADR-052 registry-authoritative routing).
+
+    _walk_registry iterates over ordered_by_score() candidates, requesting each
+    until one succeeds. On timeout/NoRespondersError, mark_stale() is called
+    before walking to the next candidate. After all candidates exhausted,
+    raises STTUnavailableError chained from the last exception.
+    """
+
+    @staticmethod
+    def _ok_reply() -> MagicMock:
+        payload = json.dumps(
+            {
+                "contract_version": "1",
+                "trace_id": "tst-trace",
+                "issued_at": "2026-04-19T00:00:00+00:00",
+                "ok": True,
+                "request_id": "r-ok",
+                "text": "hello",
+                "language": "en",
+                "duration_seconds": 1.0,
+            }
+        ).encode()
+        reply = MagicMock()
+        reply.data = payload
+        return reply
+
+    @pytest.mark.asyncio
+    async def test_single_worker_success(self) -> None:
+        """One worker in registry, successful reply -> returns SttResponse."""
+        # Arrange
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(return_value=self._ok_reply())
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client, "stt-01")
+        payload = b'{"test": true}'
+
+        # Act
+        result = await client._walk_registry(payload)
+
+        # Assert
+        assert result.ok is True
+        assert result.text == "hello"
+        mock_nc.request.assert_awaited_once()
+        subject = mock_nc.request.call_args.args[0]
+        assert subject == "lyra.voice.stt.request.stt-01"
+
+    @pytest.mark.asyncio
+    async def test_timeout_walks_to_second(self) -> None:
+        """W1 times out -> mark_stale called -> W2 succeeds."""
+        # Arrange
+        mock_nc = AsyncMock()
+        call_count = 0
+
+        async def request_mock(subject: str, payload: bytes, timeout: float):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise TimeoutError()
+            return self._ok_reply()
+
+        mock_nc.request = AsyncMock(side_effect=request_mock)
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client, "stt-01")
+        _inject_fresh_worker(client, "stt-02")
+        payload = b'{"test": true}'
+
+        # Act
+        result = await client._walk_registry(payload)
+
+        # Assert
+        assert result.ok is True
+        assert mock_nc.request.await_count == 2
+        # Verify mark_stale was called on W1
+        assert "stt-01" not in [w.worker_id for w in client._registry.alive_workers()]
+
+    @pytest.mark.asyncio
+    async def test_no_responders_walks_to_second(self) -> None:
+        """W1 raises NoRespondersError -> mark_stale called -> W2 succeeds."""
+        # Arrange
+        from nats.errors import NoRespondersError
+
+        mock_nc = AsyncMock()
+        call_count = 0
+
+        async def request_mock(subject: str, payload: bytes, timeout: float):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise NoRespondersError()
+            return self._ok_reply()
+
+        mock_nc.request = AsyncMock(side_effect=request_mock)
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client, "stt-01")
+        _inject_fresh_worker(client, "stt-02")
+        payload = b'{"test": true}'
+
+        # Act
+        result = await client._walk_registry(payload)
+
+        # Assert
+        assert result.ok is True
+        assert mock_nc.request.await_count == 2
+        # Verify mark_stale was called on W1
+        assert "stt-01" not in [w.worker_id for w in client._registry.alive_workers()]
+
+    @pytest.mark.asyncio
+    async def test_all_fail_raises_unavailable(self) -> None:
+        """All workers fail -> raises STTUnavailableError chained from last."""
+        # Arrange
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(side_effect=TimeoutError())
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client, "stt-01")
+        _inject_fresh_worker(client, "stt-02")
+        payload = b'{"test": true}'
+
+        # Act / Assert
+        with pytest.raises(
+            STTUnavailableError, match="all workers unresponsive"
+        ) as exc_info:
+            await client._walk_registry(payload)
+
+        # Verify the exception is chained from the last TimeoutError
+        assert isinstance(exc_info.value.__cause__, TimeoutError)
+        assert mock_nc.request.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_empty_registry_raises_immediately(self) -> None:
+        """ordered_by_score() returns [] -> raises STTUnavailableError immediately."""
+        # Arrange
+        mock_nc = AsyncMock()
+        client = NatsSttClient(nc=mock_nc)
+        # No workers injected -> registry is empty
+        payload = b'{"test": true}'
+
+        # Act / Assert
+        with pytest.raises(STTUnavailableError, match="no live worker"):
+            await client._walk_registry(payload)
+
+        # No NATS request should be made
+        mock_nc.request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_once_per_exhaustion(self) -> None:
+        """record_failure() called once after walk exhaustion, not per candidate."""
+        # Arrange
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(side_effect=TimeoutError())
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client, "stt-01")
+        _inject_fresh_worker(client, "stt-02")
+        payload = b'{"test": true}'
+
+        # Act
+        with pytest.raises(STTUnavailableError):
+            await client._walk_registry(payload)
+
+        # Assert - CB failure recorded exactly once (after full exhaustion)
+        assert client._cb._failures == 1
+        assert mock_nc.request.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_logs_last_error_type(self, caplog: pytest.LogCaptureFixture) -> None:
+        """WARNING log includes type(last_exc).__name__ on exhaustion."""
+        # Arrange
+        mock_nc = AsyncMock()
+        mock_nc.request = AsyncMock(side_effect=TimeoutError())
+        client = NatsSttClient(nc=mock_nc)
+        _inject_fresh_worker(client, "stt-01")
+        payload = b'{"test": true}'
+
+        # Act
+        with pytest.raises(STTUnavailableError):
+            await client._walk_registry(payload)
+
+        # Assert - log should mention the exception type
+        assert any(
+            "TimeoutError" in record.message and record.levelname == "WARNING"
+            for record in caplog.records
+        )

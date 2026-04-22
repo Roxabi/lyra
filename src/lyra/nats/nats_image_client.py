@@ -179,8 +179,8 @@ class NatsImageClient:
             return
         # Receive-side match for the PUBLISH-path safe-chars enforcement; blocks
         # wildcard-bearing ids (e.g. "evil.worker.*") from polluting the registry
-        # for up to the 15 s heartbeat-stale window. Mirrors voice canonical at
-        # nats_tts_client.py:70-82.
+        # for up to the 15 s heartbeat-stale window. Mirrors the heartbeat guard
+        # in nats_tts_client.py:70-82.
         try:
             validate_worker_id(worker_id)
         except ValueError:

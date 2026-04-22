@@ -34,53 +34,57 @@ COMPOSE_PROJECT = "lyra-test"
 def docker_compose():
     """Start Docker Compose for the test session.
 
-    Spins up NATS + STT stub workers. Teardown on session exit.
-    Yields the compose project name for targeted scale operations.
+    In CI, the workflow starts Docker Compose before running tests.
+    Locally, this fixture handles setup/teardown.
     """
-    # Ensure fresh state
-    subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE_FILE), "down", "-v"],
-        capture_output=True,
-        check=False,
-    )
+    in_ci = os.getenv("CI") == "true"
 
-    # Start base services (NATS + single stt-stub + tts-stub)
-    subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE_FILE), "up", "-d"],
-        capture_output=True,
-        check=True,
-        env={**os.environ, "COMPOSE_PROJECT_NAME": COMPOSE_PROJECT},
-    )
-
-    # Wait for NATS healthcheck
-    max_wait = 30
-    for _ in range(max_wait):
-        result = subprocess.run(
-            ["docker", "compose", "-f", str(COMPOSE_FILE), "ps", "--format=json"],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "COMPOSE_PROJECT_NAME": COMPOSE_PROJECT},
-        )
-        if result.returncode == 0 and "healthy" in result.stdout:
-            break
-        time.sleep(1)
-    else:
+    if not in_ci:
+        # Ensure fresh state (local only)
         subprocess.run(
-            ["docker", "compose", "-f", str(COMPOSE_FILE), "logs"],
+            ["docker", "compose", "-f", str(COMPOSE_FILE), "down", "-v"],
             capture_output=True,
+            check=False,
+        )
+
+        # Start base services (NATS + single stt-stub + tts-stub)
+        subprocess.run(
+            ["docker", "compose", "-f", str(COMPOSE_FILE), "up", "-d"],
+            capture_output=True,
+            check=True,
             env={**os.environ, "COMPOSE_PROJECT_NAME": COMPOSE_PROJECT},
         )
-        raise RuntimeError("Docker Compose services failed to become healthy")
+
+        # Wait for NATS healthcheck
+        max_wait = 30
+        for _ in range(max_wait):
+            result = subprocess.run(
+                ["docker", "compose", "-f", str(COMPOSE_FILE), "ps", "--format=json"],
+                capture_output=True,
+                text=True,
+                env={**os.environ, "COMPOSE_PROJECT_NAME": COMPOSE_PROJECT},
+            )
+            if result.returncode == 0 and "healthy" in result.stdout:
+                break
+            time.sleep(1)
+        else:
+            subprocess.run(
+                ["docker", "compose", "-f", str(COMPOSE_FILE), "logs"],
+                capture_output=True,
+                env={**os.environ, "COMPOSE_PROJECT_NAME": COMPOSE_PROJECT},
+            )
+            raise RuntimeError("Docker Compose services failed to become healthy")
 
     yield COMPOSE_PROJECT
 
-    # Teardown
-    subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE_FILE), "down", "-v"],
-        capture_output=True,
-        check=False,
-        env={**os.environ, "COMPOSE_PROJECT_NAME": COMPOSE_PROJECT},
-    )
+    if not in_ci:
+        # Teardown (local only)
+        subprocess.run(
+            ["docker", "compose", "-f", str(COMPOSE_FILE), "down", "-v"],
+            capture_output=True,
+            check=False,
+            env={**os.environ, "COMPOSE_PROJECT_NAME": COMPOSE_PROJECT},
+        )
 
 
 @pytest.fixture

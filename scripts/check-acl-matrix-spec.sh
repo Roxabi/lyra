@@ -57,7 +57,11 @@ ROWS=(
   '`lyra.voice.stt.heartbeat`|lyra.voice.stt.heartbeat|lyra.voice.stt.heartbeat'
   '`lyra.llm.request`|lyra.llm.request|lyra.llm.request'
   '`lyra.llm.health.*` [^health]|lyra.llm.health.*|lyra.llm.health.*'
-  '`_INBOX.>` [^inbox]|_INBOX.>|_INBOX.>'
+  '`_INBOX.hub.>` [^inbox]|_INBOX.hub.>|_INBOX.hub.>'
+  '`_INBOX.telegram-adapter.>` [^inbox]|_INBOX.telegram-adapter.>|_INBOX.telegram-adapter.>'
+  '`_INBOX.discord-adapter.>` [^inbox]|_INBOX.discord-adapter.>|_INBOX.discord-adapter.>'
+  '`_INBOX.tts-adapter.>` [^inbox]|_INBOX.tts-adapter.>|_INBOX.tts-adapter.>'
+  '`_INBOX.stt-adapter.>` [^inbox]|_INBOX.stt-adapter.>|_INBOX.stt-adapter.>'
   '`lyra.monitor.>` (reserved) [^monitor]|lyra.monitor.>|lyra.monitor.>'
 )
 

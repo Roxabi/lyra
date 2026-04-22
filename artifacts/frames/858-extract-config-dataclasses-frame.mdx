@@ -1,0 +1,57 @@
+---
+title: refactor(core): extract HubConfig + PoolConfig + RouterConfig dataclasses
+issue: 858
+status: approved
+tier: F-lite
+date: 2026-04-22
+---
+
+## Problem
+
+Three core classes have constructor parameter explosions that block testability:
+
+| Class | File | Params |
+|---|---|---|
+| `Hub.__init__` | `core/hub/hub.py:74-96` | **21** |
+| `Pool.__init__` | `core/pool/pool.py:32` | **13** |
+| `CommandRouter.__init__` | `core/commands/command_router.py:46` | **14** |
+
+**Impact:** Constructing a Hub in tests requires 21 positional args — this is the actual blocker for #851 (agent test harness). Same applies to Pool and CommandRouter in unit tests.
+
+**Trigger:** 2026-04-22 code quality audit §P1 Code Smells #8-10, confirmed by external reviews (architect-review M-03/W-01, product-review Q7/O1, nats-truth action-plan §31).
+
+## Who
+
+- **Primary:** Developers writing unit/integration tests for Hub, Pool, CommandRouter
+- **Secondary:** Future maintainers refactoring core classes
+
+## Constraints
+
+- ~1 day effort
+- No behavior change — only signature restructuring
+- External API surface unchanged (Hub/Pool/CommandRouter methods stay identical)
+- Must unblock #851 (agent test harness)
+
+## Out of Scope
+
+- Pydantic config models in `bootstrap/factory/config.py` — these stay as-is (config file parsing)
+- Adding new config options — only grouping existing params
+- Changing test fixtures — tests will be updated to use new constructors
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (core), 5-6 files affected:
+
+- `core/hub/hub.py` (Hub constructor)
+- `core/pool/pool.py` (Pool constructor)
+- `core/commands/command_router.py` (CommandRouter constructor)
+- `bootstrap/factory/hub_builder.py` (construction sites)
+- New file for config dataclasses (likely `core/config.py` or `core/hub/config.py`)
+- Tests (minimal updates)
+
+**Signals:**
+- Labels: `refactor`, `P1-high`, `graph:lane/e`
+- Clear problem statement with measurable outcome (param count reduction)
+- Single domain (core)
+- No architecture changes — just grouping params into dataclasses
+- External consensus across 3 reviews

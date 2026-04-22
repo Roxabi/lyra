@@ -1,0 +1,59 @@
+---
+title: "Corpus Sync — Cloud-Native Architecture"
+issue: 866
+status: draft
+tier: pending-investigation
+date: 2026-04-22
+---
+
+## Problem
+
+The corpus sync currently targets a local SQLite file (`~/.roxabi/corpus.db`) with scheduled polling. This creates:
+- **Local-only access** — tools must run on same machine
+- **No API** — direct DB access only
+- **No web UI** — no frontend can consume the data
+- **Manual sync** — cron/timer required
+
+A cloud-native approach would enable:
+- Real-time webhook updates (zero API quota)
+- REST API for any consumer (CLI, web, other tools)
+- Optional frontend for browsing/searching issues
+- Access from any machine
+
+## Who
+
+- **Primary:** Mickael — wants the corpus accessible beyond `roxabituwer`
+- **Secondary:** `roxabi-dashboard` (future) — would consume the API
+- **Tertiary:** CI/CD pipelines — could query corpus for issue metadata
+
+## Constraints
+
+- **Free tier only** — no paid infrastructure
+- **Simple auth** — leverage GitHub OAuth if possible
+- **SQLite compatibility** — D1 is SQLite, should match existing schema
+- **Low latency** — edge deployment for webhook responsiveness
+- **No lock-in** — must be able to export/sync back to local if needed
+
+## Out of Scope
+
+- Migrating existing `dep-graph` tool immediately (can be gradual)
+- Full `roxabi-dashboard` implementation (separate effort)
+- Mobile app
+
+## Open Questions
+
+1. **Frontend location** — Cloudflare Pages vs local-only vs skip?
+2. **Authentication model** — GitHub OAuth? API keys? Public read?
+3. **Local sync strategy** — keep local corpus.db or go cloud-only?
+4. **Write permissions** — webhook only, or allow user edits via API?
+5. **Existing tools migration** — when/how do CLI tools switch to API?
+
+## Complexity
+
+**Tier: TBD** — awaiting investigation results
+
+Signals:
+- Multi-service (Worker + D1 + Pages + Auth)
+- New domain (Cloudflare ecosystem)
+- Security implications (auth, webhook validation)
+- But well-defined scope and free-tier constraints limit options

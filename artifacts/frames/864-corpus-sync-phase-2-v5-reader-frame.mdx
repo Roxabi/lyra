@@ -1,0 +1,49 @@
+---
+title: "Corpus sync Phase 2 — v5 reader on corpus.db (tree ∪ shared_subtree)"
+issue: 864
+status: approved
+tier: F-lite
+date: 2026-04-22
+---
+
+## Problem
+
+Phase 1 (#829, landed) built `~/.roxabi/corpus.db` — the org-wide issue corpus — but no reader consumes it yet. The v5 dep-graph still loads `~/.roxabi/forge/lyra/visuals/lyra-v2-dependency-graph.gh.json` and applies the single-primary-repo visibility rule (`compute_visible`: open-in-primary + forward cascade + 1-hop backward). Cross-repo chains that are more than one hop from a lyra issue — e.g. the voiceCLI `#69 → #53/55/80/81/85 → #83` lane — sit in the corpus but never reach the renderer.
+
+Phase 2 flips v5's data source to the corpus and generalises visibility to `tree(repo) ∪ shared_subtree(Q, P)`: the full dep-tree of the selected project `P`, plus any subtree from another project `Q` that shares at least one node with `P`. The single-repo golden output must stay byte-identical so this change is safe to land before the toolbar dropdown (Phase 3) exists.
+
+## Who
+
+- **Primary:** Mickael — needs cross-project chains to render when the selected project is `Roxabi/lyra` today, and any other Roxabi repo tomorrow.
+- **Secondary:** Phase 3 (toolbar dropdown + overlap renderer) — consumes the same `compute_visible(corpus, P)` entry point this phase defines; and the future `roxabi-dashboard`, which will reuse this reader against the same corpus.
+
+## Constraints
+
+- **Backend reader only:** no toolbar, no project-select UI, no overlap styling. `P` is hard-coded to `Roxabi/lyra` behind a single constant for Phase 3 to flip.
+- **Golden-output invariant:** with `P = Roxabi/lyra` and an empty `Q` set (or `Q ∩ P = ∅` for every `Q`), the set produced by the new `compute_visible` must equal the current one on the current `gh.json` snapshot. CI/local test proves it.
+- **Single data source:** v5 reads corpus.db exclusively — `gh.json` is no longer loaded by `load.py`. The cache file stays on disk (other tools may read it) but is not referenced by v5.
+- **Schema compatibility:** corpus.db row shape (Phase 1 schema) must project into the existing `issues[key] = {...}` dict shape that `derive.py`/`model.py` already consume; a thin adapter is fine, a rewrite of downstream math is not.
+- **Set semantics:** `tree(P)` := open-in-P seeded full transitive closure over `blocking` ∪ `blocked_by` (any state, any repo). `shared_subtree(Q, P)` := for each other repo `Q`, the transitive closure in `Q` of `Q ∩ tree(P)` (i.e. walk Q's dep edges starting from any node already in the P-tree).
+- **Edge source:** use the canonical `blocks` edge table from Phase 1 and derive `blocked_by` via reverse index — consistent with #829's edge-canonicalisation rule.
+- **Tests:** keep the existing v5 derive/view tests green; add cases covering (a) tree closure beyond 1-hop backward, (b) shared_subtree via one shared node, (c) empty-Q golden invariant.
+
+## Out of Scope
+
+- Toolbar project-select dropdown and overlap/shared-node renderer — **Phase 3**.
+- Cron/timer for scheduled corpus sync — **Phase 4**.
+- Extraction to `roxabi-dashboard` — **Phase 5**.
+- Changes to `dep_graph/` (legacy path) — unaffected; stays on `gh.json`.
+- Deleting or migrating `lyra-v2-dependency-graph.gh.json` on disk — left as-is for now.
+- Multi-primary-repo support in the UI (would require Phase 3).
+- Schema changes to corpus.db — consume Phase 1's schema as-is; any gap is a Phase-1 follow-up.
+
+## Complexity
+
+**Tier: F-lite** — single domain (Python backend inside `scripts/dep-graph/v5/`), clear scope, no architectural unknowns. The hard part is the set-algebra correctness + golden invariant, not the plumbing.
+
+Signals:
+- Files touched ≈ 4–6: `data/load.py` (source swap), `data/derive.py` (`compute_visible` rewrite), optional new `data/corpus.py` adapter, tests under `tests/`, plus the corpus read module wiring.
+- Technical risk: medium — set semantics must be provably equivalent to the old rule in the single-repo case; SQL projection is straightforward.
+- Architectural impact: medium — defines the reader entry point Phase 3 will plug into.
+- Unknowns: minimal — corpus schema is known (Phase 1), v5 internals are known.
+- Domain breadth: backend only, no UI.

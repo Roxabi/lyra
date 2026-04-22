@@ -1,0 +1,60 @@
+---
+title: "Test Coverage Fixes — Expert Consensus"
+issue: 851
+status: consensus-reached
+date: 2026-04-22
+panel: architect, tester, product-lead
+confidence: high
+---
+
+## Problem
+
+Code review identified 5 test coverage improvements for the agent integration harness. Need consensus on which to apply before merge.
+
+## Panel
+
+| Agent | Focus |
+|-------|-------|
+| architect | Arch soundness, test infrastructure reliability |
+| tester | Test coverage, edge cases, test quality |
+| product-lead | Time-to-market, value vs effort |
+
+## Consensus Recommendation
+
+**Apply:** #1 (FakeTts edge cases), #2 (FakeStt.last_audio), #4 (misleading test name)
+**Defer:** #3 (stream empty queue)
+**Skip:** #5 (messages parameter)
+
+### Rationale
+
+- **#1, #2:** Fakes are test infrastructure — unvalidated fakes undermine harness confidence. Architect + Tester agree.
+- **#4:** Zero risk rename, improves clarity for future maintainers. Unanimous.
+- **#3:** Legitimate edge case but low priority; defer to post-ship backlog.
+- **#5:** 70% confidence, optional API surface, no evidence of real-world need.
+
+## Trade-offs
+
+- Test infrastructure reliability vs test count increase
+- Quick clarity wins (#4) vs diminishing returns on mock internals
+- Ship velocity vs polish — majority chose balanced approach (3 fixes, ~15-20 lines)
+
+## Alternatives
+
+| Option | Proposed by | Rejected because |
+|--------|-------------|------------------|
+| Apply all 5 | Tester | Product-lead: time-to-market impact on non-blocking fixes |
+| Apply only #4 | Product-lead | Architect/Tester: fake validation is valuable |
+| Skip all | — | Unanimous: #4 is zero-risk improvement |
+
+## Dissent
+
+- **Product-lead** dissented on #1, #2: "Fake internals don't affect prod; diminishing returns on mock coverage."
+- Recorded and acknowledged. Domain experts (architect + tester) consider fake validation valuable.
+
+## Implementation Notes
+
+Effort: ~15-20 lines of test code across 2 test files.
+
+## Next
+
+Apply fixes #1, #2, #4 → commit → update PR → merge.

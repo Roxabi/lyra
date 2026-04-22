@@ -38,7 +38,6 @@ from lyra.core.pool import Pool
 from lyra.core.stores.pairing import PairingConfig, PairingManager
 from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
-from tests.conftest import yield_once
 
 # ---------------------------------------------------------------------------
 # MessageManager shared constants
@@ -698,13 +697,6 @@ def _make_hub(**kwargs: Any) -> Hub:
         "telegram:main:*",
     )
     return hub
-
-
-async def _drain(pool: Pool, *, timeout: float = 2.0) -> None:
-    """Yield to the event loop then wait for the current task to finish."""
-    await yield_once()
-    if pool._current_task is not None:
-        await asyncio.wait_for(pool._current_task, timeout=timeout)
 
 
 class SlowAgent:

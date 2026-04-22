@@ -14,8 +14,8 @@ import pytest
 
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from tests.conftest import TIMEOUT_IO, yield_once
-from tests.core.conftest import FastAgent, SlowAgent, _drain, make_msg
+from tests.conftest import TIMEOUT_IO, _drain, yield_once
+from tests.core.conftest import FastAgent, SlowAgent, make_msg
 
 # ---------------------------------------------------------------------------
 # File-local agent doubles

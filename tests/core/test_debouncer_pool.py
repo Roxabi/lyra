@@ -11,11 +11,10 @@ import pytest
 
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from tests.conftest import TIMEOUT_SLOW
+from tests.conftest import TIMEOUT_SLOW, _drain
 from tests.core.conftest import (
     RecordingAgent,
     SlowAgent,
-    _drain,
     _make_ctx_mock,
     make_debouncer_msg,
 )

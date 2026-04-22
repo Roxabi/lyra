@@ -20,6 +20,7 @@ from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.auth.authenticator import Authenticator as AuthMiddleware
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.pool import Pool
 from roxabi_nats import _version_check as _vc_mod
 
 
@@ -50,6 +51,13 @@ TIMEOUT_SLOW = 5.0  # Multi-step coordination, CI variance buffer
 async def yield_once() -> None:
     """Yield control to the event loop once. Replaces asyncio.sleep(0)."""
     await asyncio.sleep(0)
+
+
+async def _drain(pool: Pool, *, timeout: float = TIMEOUT_IO) -> None:
+    """Yield to the event loop then wait for the current task to finish."""
+    await yield_once()
+    if pool._current_task is not None:
+        await asyncio.wait_for(pool._current_task, timeout=timeout)
 
 
 AUTH_HEADERS = {"authorization": f"Bearer {HEALTH_SECRET}"}

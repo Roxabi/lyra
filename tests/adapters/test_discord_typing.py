@@ -98,10 +98,10 @@ async def test_cancel_typing_cancels_task() -> None:
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     adapter._start_typing(333)
-    await yield_once()
+    await yield_once()  # allow event loop to process _start_typing task spawn
 
     adapter._cancel_typing(333)
-    await yield_once()
+    await yield_once()  # allow event loop to process _cancel_typing task cleanup
 
     assert 333 not in adapter._typing_tasks
 

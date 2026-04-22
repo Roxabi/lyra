@@ -1,3 +1,5 @@
 # File size exemptions (≤300 lines per file)
 # Each entry must have a tracking issue.
 # Format: <path>  # <lines> lines — <issue> <description>
+src/lyra/core/pool/pool.py  # 326 lines — #858 backward-compat param overrides
+src/lyra/core/commands/command_router.py  # 303 lines — #858 backward-compat param overrides

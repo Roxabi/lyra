@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..config import RouterConfig
 from ..messaging.message import InboundMessage, Response
 from ..pool.pool import Pool
 from . import builtin_commands, workspace_commands
@@ -22,7 +23,6 @@ from .command_patterns import (
     format_unknown_command,
     is_admin_only,
     is_bare_url,
-    load_pattern_configs,
     rewrite_bare_url,
 )
 
@@ -43,16 +43,18 @@ BuiltinHandler = Callable[
 class CommandRouter:
     """Routes slash commands to plugin handlers or built-in handlers."""
 
-    def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
+    def __init__(  # noqa: PLR0913
         self,
         command_loader: CommandLoader,
         enabled_plugins: list[str],
-        builtins: dict[str, CommandConfig] | None = None,
         circuit_registry: "CircuitRegistry | None" = None,
         msg_manager: "MessageManager | None" = None,
         runtime_config_holder: "RuntimeConfigHolder | None" = None,
         runtime_config_path: Path | None = None,
         smart_routing_decorator: "SmartRoutingProtocol | None" = None,
+        config: RouterConfig | None = None,
+        # Backward-compat: individual params override config (deprecated)
+        builtins: dict[str, CommandConfig] | None = None,
         on_debounce_change: Callable[[int], None] | None = None,
         on_cancel_change: Callable[[bool], None] | None = None,
         workspaces: dict[str, Path] | None = None,
@@ -60,25 +62,28 @@ class CommandRouter:
         pattern_configs: dict[str, dict] | None = None,
         session_driver: object = None,
     ) -> None:
+        cfg: RouterConfig = config if config is not None else RouterConfig()
+        # Allow individual param overrides for backward compat
         self._command_loader = command_loader
         self._enabled_plugins = enabled_plugins
+        default_builtins = cfg.builtins or dict(DEFAULT_BUILTINS)
         self._builtins: dict[str, CommandConfig] = (
-            builtins if builtins is not None else dict(DEFAULT_BUILTINS)
+            builtins if builtins is not None else default_builtins
         )
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._runtime_config_holder = runtime_config_holder
         self._runtime_config_path = runtime_config_path
         self._smart_routing = smart_routing_decorator
-        self._on_debounce_change = on_debounce_change
-        self._on_cancel_change = on_cancel_change
+        self._on_debounce_change = on_debounce_change or cfg.on_debounce_change
+        self._on_cancel_change = on_cancel_change or cfg.on_cancel_change
         self._workspaces: dict[str, Path] = workspaces or {}
-        self._patterns: dict[str, bool] = patterns or {}
+        self._patterns: dict[str, bool] = patterns or cfg.patterns
         self._pattern_configs: dict[str, dict] = (
-            pattern_configs if pattern_configs is not None else load_pattern_configs()
+            pattern_configs if pattern_configs is not None else cfg.pattern_configs
         )
         self._passthroughs: set[str] = set()
-        self._session_driver: object = session_driver
+        self._session_driver: object = session_driver or cfg.session_driver
         self._session_handlers: dict[str, SessionCommandEntry] = {}
         self._builtin_handlers = self._build_builtin_handlers()
         check_command_conflicts(

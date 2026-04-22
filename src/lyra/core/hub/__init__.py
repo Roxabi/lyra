@@ -1,3 +1,5 @@
+from ..config import HubConfig as HubConfig
+from ..config import PoolConfig as PoolConfig
 from .hub import Hub as Hub
 from .hub_protocol import ChannelAdapter as ChannelAdapter
 from .hub_protocol import RoutingKey as RoutingKey
@@ -30,6 +32,7 @@ __all__ = [
     "AudioDispatch",
     "ChannelAdapter",
     "Hub",
+    "HubConfig",
     "IdentityResolver",
     "MiddlewarePipeline",
     "OutboundDispatcher",
@@ -37,6 +40,7 @@ __all__ = [
     "PipelineMiddleware",
     "PipelineContext",
     "PipelineResult",
+    "PoolConfig",
     "RoutingKey",
     "TtsDispatch",
     "build_default_pipeline",

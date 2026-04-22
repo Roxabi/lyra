@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from ..auth.authenticator import Authenticator
 from ..auth.identity import Identity
+from ..config import HubConfig, PoolConfig
 from ..messaging.bus import Bus
 from ..messaging.inbound_bus import LocalBus
 from ..messaging.message import InboundMessage, Platform
@@ -73,32 +74,84 @@ class Hub(
 
     def __init__(  # noqa: PLR0913
         self,
-        rate_limit: int = RATE_LIMIT,
-        rate_window: int = RATE_WINDOW,
-        pool_ttl: float = POOL_TTL,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         pairing_manager: "PairingManager | None" = None,
         stt: "STTProtocol | None" = None,
         tts: "TtsProtocol | None" = None,
-        debounce_ms: int = 0,
-        cancel_on_new_message: bool = False,
         prefs_store: "PrefsStore | None" = None,
-        turn_timeout: float | None = None,
-        max_sdk_history: int = MAX_SDK_HISTORY,
-        safe_dispatch_timeout: float = SAFE_DISPATCH_TIMEOUT,
-        staging_maxsize: int = STAGING_MAXSIZE,
-        platform_queue_maxsize: int = PLATFORM_QUEUE_MAXSIZE,
-        queue_depth_threshold: int = QUEUE_DEPTH_THRESHOLD,
-        max_merged_chars: int = MAX_MERGED_CHARS,
         event_bus: "PipelineEventBus | None" = None,
         inbound_bus: "Bus[InboundMessage] | None" = None,
+        config: HubConfig | None = None,
+        # Backward-compat: individual params override config (deprecated)
+        rate_limit: int | None = None,
+        rate_window: int | None = None,
+        pool_ttl: float | None = None,
+        debounce_ms: int | None = None,
+        cancel_on_new_message: bool | None = None,
+        turn_timeout: float | None = None,
+        max_sdk_history: int | None = None,
+        safe_dispatch_timeout: float | None = None,
+        staging_maxsize: int | None = None,
+        platform_queue_maxsize: int | None = None,
+        queue_depth_threshold: int | None = None,
+        max_merged_chars: int | None = None,
     ) -> None:
-        self._platform_queue_maxsize = platform_queue_maxsize
+        base_cfg: HubConfig = config if config is not None else HubConfig()
+        # Merge backward-compat overrides
+        cfg = HubConfig(
+            rate_limit=rate_limit if rate_limit is not None else base_cfg.rate_limit,
+            rate_window=rate_window
+            if rate_window is not None
+            else base_cfg.rate_window,
+            pool_ttl=pool_ttl if pool_ttl is not None else base_cfg.pool_ttl,
+            debounce_ms=debounce_ms
+            if debounce_ms is not None
+            else base_cfg.debounce_ms,
+            cancel_on_new_message=(
+                cancel_on_new_message
+                if cancel_on_new_message is not None
+                else base_cfg.cancel_on_new_message
+            ),
+            turn_timeout=turn_timeout
+            if turn_timeout is not None
+            else base_cfg.turn_timeout,
+            max_sdk_history=(
+                max_sdk_history
+                if max_sdk_history is not None
+                else base_cfg.max_sdk_history
+            ),
+            safe_dispatch_timeout=(
+                safe_dispatch_timeout
+                if safe_dispatch_timeout is not None
+                else base_cfg.safe_dispatch_timeout
+            ),
+            staging_maxsize=(
+                staging_maxsize
+                if staging_maxsize is not None
+                else base_cfg.staging_maxsize
+            ),
+            platform_queue_maxsize=(
+                platform_queue_maxsize
+                if platform_queue_maxsize is not None
+                else base_cfg.platform_queue_maxsize
+            ),
+            queue_depth_threshold=(
+                queue_depth_threshold
+                if queue_depth_threshold is not None
+                else base_cfg.queue_depth_threshold
+            ),
+            max_merged_chars=(
+                max_merged_chars
+                if max_merged_chars is not None
+                else base_cfg.max_merged_chars
+            ),
+        )
+        self._platform_queue_maxsize = cfg.platform_queue_maxsize
         self.inbound_bus: Bus[InboundMessage] = inbound_bus or LocalBus(
             name="inbound",
-            staging_maxsize=staging_maxsize,
-            queue_depth_threshold=queue_depth_threshold,
+            staging_maxsize=cfg.staging_maxsize,
+            queue_depth_threshold=cfg.queue_depth_threshold,
         )
         self.outbound_dispatchers: dict[tuple[Platform, str], OutboundDispatcher] = {}
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
@@ -110,22 +163,30 @@ class Hub(
         self._message_index: MessageIndex | None = None
         self._stt: STTProtocol | None = stt
         self._tts_value: TtsProtocol | None = tts
-        self._pool_ttl = pool_ttl
-        self._debounce_ms = debounce_ms
-        self._cancel_on_new_message = cancel_on_new_message
-        self._rate_limiter = RateLimiter(rate_limit, rate_window)
+        self._pool_ttl = cfg.pool_ttl
+        self._debounce_ms = cfg.debounce_ms
+        self._cancel_on_new_message = cfg.cancel_on_new_message
+        self._rate_limiter = RateLimiter(cfg.rate_limit, cfg.rate_window)
         self._start_time: float = time.monotonic()
         self._memory: MemoryManager | None = None
         self._memory_tasks: set[asyncio.Task] = set()
         self._turn_store: TurnStore | None = None
-        self._turn_timeout = turn_timeout
+        self._turn_timeout = cfg.turn_timeout
         self._prefs_store: PrefsStore | None = prefs_store
-        self._max_sdk_history = max_sdk_history
-        self._safe_dispatch_timeout = safe_dispatch_timeout
-        self._max_merged_chars = max_merged_chars
+        self._max_sdk_history = cfg.max_sdk_history
+        self._safe_dispatch_timeout = cfg.safe_dispatch_timeout
+        self._max_merged_chars = cfg.max_merged_chars
         self.cli_pool: CliPool | None = None
         self._event_bus: PipelineEventBus | None = event_bus
-        self._pool_manager = PoolManager(self)
+        self._pool_config = PoolConfig(
+            turn_timeout=cfg.turn_timeout,
+            debounce_ms=cfg.debounce_ms,
+            max_sdk_history=cfg.max_sdk_history,
+            safe_dispatch_timeout=cfg.safe_dispatch_timeout,
+            max_merged_chars=cfg.max_merged_chars,
+            cancel_on_new_message=cfg.cancel_on_new_message,
+        )
+        self._pool_manager = PoolManager(self, self._pool_config)
         self._audio_pipeline = AudioPipeline(self)
         self._authenticators: dict[tuple[Platform, str], Authenticator] = {}
         self._alias_store: IdentityAliasStore | None = None

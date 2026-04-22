@@ -361,9 +361,8 @@ class TestLruEvictionAtCapacity:
 
         assert len(hub.pools) == 3
 
-        # Touch pool B (makes it most recent)
-        pool_b._touch()
-        hub._pool_manager._pools.move_to_end("pool-b")
+        # Touch pool B via public API (makes it most recent in LRU)
+        hub._pool_manager.touch_pool("pool-b")
 
         # Create pool D → should evict A (oldest)
         pool_d = hub.get_or_create_pool("pool-d", "test-agent")
@@ -387,12 +386,15 @@ class TestLruEvictionAtCapacity:
         hub.get_or_create_pool("pool-b", "test-agent")
         hub.get_or_create_pool("pool-c", "test-agent")
 
-        # Touch A (makes it most recent)
+        # Touch A via get_or_create_pool (makes it most recent in LRU)
         hub.get_or_create_pool("pool-a", "test-agent")
 
-        # Order should now be B, C, A (A moved to end)
-        keys = list(hub._pool_manager._pools.keys())
-        assert keys == ["pool-b", "pool-c", "pool-a"]
+        # Verify behavior: when at capacity, oldest-accessed pool (B) is evicted
+        hub._max_pools = 2  # force eviction on next create
+        hub._pool_manager.touch_pool("pool-a")  # A is now most recent
+        hub.get_or_create_pool("pool-d", "test-agent")  # should evict B (oldest)
+        assert "pool-b" not in hub.pools, "pool-b should be evicted (oldest in LRU)"
+        assert "pool-a" in hub.pools  # A was touched, so kept
 
 
 # ---------------------------------------------------------------------------

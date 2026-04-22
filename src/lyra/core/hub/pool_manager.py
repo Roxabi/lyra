@@ -112,6 +112,10 @@ class PoolManager:
         if pool is None:
             return None
 
+        # Hybrid threading model: threading.Lock guards _pools dict mutations.
+        # asyncio.create_task is safe here because it only schedules the task
+        # (non-blocking) — the task runs on the event loop after lock release.
+        # Lock protects the OrderedDict, not the async flush callback.
         if pool.user_id:  # skip zero-message pools
             agent = self._hub.agent_registry.get(pool.agent_name)
             if agent is not None and hasattr(agent, "flush_session"):
@@ -160,3 +164,13 @@ class PoolManager:
         with self._lock:
             for pool in self._pools.values():
                 pool.cancel_on_new_message = enabled
+
+    def touch_pool(self, pool_id: str) -> bool:
+        """Touch a pool to update its LRU position. Returns True if pool exists."""
+        with self._lock:
+            if pool_id in self._pools:
+                pool = self._pools[pool_id]
+                pool._touch()
+                self._pools.move_to_end(pool_id)
+                return True
+            return False

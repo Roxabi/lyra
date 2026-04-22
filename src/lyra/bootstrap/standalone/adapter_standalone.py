@@ -38,6 +38,8 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
     if not nats_url:
         sys.exit("NATS_URL required for standalone adapter mode")
 
+    platform_enum = Platform(platform)
+
     try:
         nc = await nats_connect(nats_url, inbox_prefix=f"_INBOX.{platform}-adapter")
         log.info(
@@ -46,8 +48,6 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
         )
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
-
-    platform_enum = Platform(platform)
 
     from lyra.nats.nats_bus import NatsBus
 

@@ -47,10 +47,11 @@ def audit_matrix_inbox_drift(
 def format_drift_finding(finding: tuple[str, str, str]) -> str:
     """Human-readable single-line rendering of a drift triple."""
     identity, grant, direction = finding
-    return (
-        f"DRIFT: {identity}.{direction} still grants {grant}"
-        f" — should be _INBOX.{identity}.>"
-    )
+    if direction == "publish":
+        verb = "publishes on"
+    else:
+        verb = "subscribes to"
+    return f"DRIFT: {identity} still {verb} {grant} — should be _INBOX.{identity}.>"
 
 
 def emit_drift_report(identities: dict[str, dict], echo) -> bool:

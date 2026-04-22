@@ -469,12 +469,15 @@ class TestAdapterStandaloneInboxPrefix:
         mock_nc = AsyncMock()
         mock_nc.is_connected = True
         mock_nc.close = AsyncMock()
-        mock_nats_connect = AsyncMock(return_value=mock_nc)
 
-        # Raise immediately after connect so we don't need to stub deep platform logic
-        mock_platform_enum = MagicMock(
+        # Raise immediately after connect so we don't need to stub deep platform logic.
+        # Platform validation now runs before nats_connect (fail-fast), so the sentinel
+        # is on nats_connect itself rather than Platform.
+        mock_nats_connect = AsyncMock(
             side_effect=SystemExit("test-sentinel: stop after connect")
         )
+
+        mock_platform_enum = MagicMock(return_value=MagicMock())
 
         with (
             patch(
@@ -490,7 +493,7 @@ class TestAdapterStandaloneInboxPrefix:
                 _bootstrap_adapter_standalone,
             )
 
-            # Act — exits at Platform(platform) after connect; that's expected
+            # Act — exits at nats_connect after Platform validation; that's expected
             with pytest.raises(SystemExit, match="test-sentinel"):
                 await _bootstrap_adapter_standalone(raw_config, platform)
 

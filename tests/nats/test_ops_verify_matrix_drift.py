@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from lyra.cli_ops import _load_matrix
-from lyra.ops_audit import audit_matrix_inbox_drift
+from lyra.ops_audit import audit_matrix_inbox_drift, format_drift_finding
 
 # ---------------------------------------------------------------------------
 # Test 1 — clean fixture: all lyra-owned identities use scoped subjects
@@ -126,6 +126,25 @@ def test_audit_multiple_drifts() -> None:
     identities_found = {(f[0], f[2]) for f in findings}
     assert ("hub", "publish") in identities_found
     assert ("discord-adapter", "subscribe") in identities_found
+
+
+# ---------------------------------------------------------------------------
+# Tests for format_drift_finding — direction-aware messages
+# ---------------------------------------------------------------------------
+
+
+def test_format_drift_finding_publish() -> None:
+    msg = format_drift_finding(("hub", "_INBOX.>", "publish"))
+    assert msg == "DRIFT: hub still publishes on _INBOX.> — should be _INBOX.hub.>"
+
+
+def test_format_drift_finding_subscribe() -> None:
+    msg = format_drift_finding(("telegram-adapter", "_INBOX.>", "subscribe"))
+    expected = (
+        "DRIFT: telegram-adapter still subscribes to _INBOX.>"
+        " — should be _INBOX.telegram-adapter.>"
+    )
+    assert msg == expected
 
 
 # ---------------------------------------------------------------------------

@@ -54,7 +54,7 @@ push:                  ## save image and load on $(DEPLOY_HOST) via ssh
 
 # ── Service control (Quadlet units via systemd --user) ───────────────────────
 
-LYRA_UNITS := lyra-hub lyra-telegram lyra-discord
+LYRA_UNITS := lyra_hub lyra_telegram lyra_discord
 
 # $(call lyra_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl or supervisorctl.
 # Uses supervisorctl if LYRA_SUPERVISORCTL_PATH is set, else systemctl (default install).
@@ -90,12 +90,12 @@ endif
 
 telegram:
 ifndef _IS_LYRA_SUBCMD
-	$(call lyra_sctl,lyra-telegram)
+	$(call lyra_sctl,lyra_telegram)
 endif
 
 discord:
 ifndef _IS_LYRA_SUBCMD
-	$(call lyra_sctl,lyra-discord)
+	$(call lyra_sctl,lyra_discord)
 endif
 
 # ── Monitor (systemd timer, not supervisor) ──────────────────────────────────

@@ -1,0 +1,39 @@
+[Unit]
+Description=Lyra Telegram adapter
+# After= orders startup; no Requires=/BindsTo= so a hub restart does not
+# propagate a stop to the adapter. Adapters reconnect to NATS on their own
+# once the hub is back; tearing them down blocks auto-recovery.
+After=lyra-hub.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+# Image digest pinning for localhost/lyra:latest tracks on a follow-up issue
+# (CI tag-by-SHA strategy).
+Image=localhost/lyra:latest
+ContainerName=lyra-telegram
+Network=lyra.network
+# Hardening — defense in depth (see issue #652).
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+# Scoped env file — copy from .env.telegram.example, fill in bot token only.
+# NATS_URL and NATS_NKEY_SEED_PATH are set inline below.
+EnvironmentFile=%h/projects/lyra/.env.telegram
+Environment=NATS_URL=nats://lyra-nats:4222
+Volume=lyra-nkey-telegram-adapter.volume:/run/secrets/telegram-adapter.seed:ro,z
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/telegram-adapter.seed
+Volume=lyra-data.volume:/home/lyra/.lyra:ro,z
+Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
+Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
+Volume=lyra-config.volume:/app/config.toml:ro,z
+Exec=lyra adapter telegram
+
+[Service]
+Restart=on-failure
+RestartSec=5
+# Cap at 2 full cores — prevents a runaway worker from starving hub + NATS.
+CPUQuota=200%
+
+[Install]
+WantedBy=default.target

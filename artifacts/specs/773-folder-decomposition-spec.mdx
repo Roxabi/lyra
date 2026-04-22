@@ -1,0 +1,212 @@
+---
+title: "refactor(arch): V4 — decompose oversized folders"
+description: "Decompose core/, adapters/, bootstrap/ to meet 12-file cap; defer core/hub/"
+issue: 773
+status: approved
+tier: F-full
+date: 2026-04-21
+promoted-from: artifacts/analyses/773-folder-decomposition-analysis.mdx
+---
+
+## Context
+
+**Promoted from:** [Analysis: V4 — decompose oversized folders](../analyses/773-folder-decomposition-analysis.mdx)
+
+Follow-up to #760 (file-size exemption elimination). V1–V3 merged in #772. V4 (folder decomposition) was deferred due to blast radius (~150+ import updates). This spec covers 3 folders: `core/` (flat files), `adapters/`, `bootstrap/`. `core/hub/` deferred to follow-up issue.
+
+**Precedent:** #395 successfully decomposed `core/` into `stores/`, `hub/`, `pool/`, `commands/` using scripted approach with AST-aware import updates.
+
+## Goal
+
+3 folders (`core/` flat, `adapters/`, `bootstrap/`) contain ≤12 files per folder. `tools/folder_exemptions.txt` reduced to `core/hub/` only. Navigation is intuitive — module boundaries explicit in directory structure.
+
+## Users & Use Cases
+
+- **Primary:** Maintainers (Mickael) — navigate large folders quickly
+- **Secondary:** AI coding agents — structural orientation without full directory scan
+
+## Expected Behavior
+
+### Happy path
+
+1. Developer opens `src/lyra/core/` → sees 5 subdirs (agent/, cli/, memory/, messaging/, auth/) + flat utilities ≤12 files
+2. Developer opens `src/lyra/adapters/` → sees 4 subdirs (discord/, telegram/, nats/, shared/)
+3. Developer opens `src/lyra/bootstrap/` → sees 5 subdirs (standalone/, wiring/, lifecycle/, factory/, infra/)
+4. All imports use new paths, verified by pyright + lint-imports
+
+### Edge cases
+
+- **Relative import depth:** Files moved from flat to subdir need `.` → `..` depth adjustment
+- **Cross-subdir imports:** `from .agent` in cli/ → `from ..agent` (one level up)
+- **Layer constraints:** `.importlinter` may need path updates for new subfolders
+
+## Data Model & Consumers
+
+### Package structure after decomposition
+
+```
+src/lyra/
+├── core/
+│   ├── agent/      (NEW — 12 files)
+│   ├── cli/        (NEW — 9 files)
+│   ├── memory/     (NEW — 5 files)
+│   ├── messaging/  (NEW — 9 files)
+│   ├── auth/       (NEW — 4 files)
+│   ├── processors/ (EXISTING + 2 files moved in)
+│   ├── commands/   (EXISTING + 2 files moved in)
+│   ├── stores/     (EXISTING — unchanged)
+│   ├── hub/        (EXISTING — deferred to follow-up)
+│   ├── pool/       (EXISTING — unchanged)
+│   └── *.py        (≤9 flat utility files)
+├── adapters/
+│   ├── discord/    (EXISTING + 10 files moved in = 13 total)
+│   ├── telegram/   (NEW — 6 files)
+│   ├── nats/       (NEW — 3 files)
+│   └── shared/     (NEW — 10 files)
+└── bootstrap/
+    ├── standalone/ (NEW — 5 files)
+    ├── wiring/     (NEW — 2 files)
+    ├── lifecycle/  (NEW — 3 files)
+    ├── factory/    (NEW — 8 files)
+    └── infra/      (NEW — 4 files)
+```
+
+### File → subfolder mapping
+
+**`core/` flat files (52) → subfolders:**
+
+| Subfolder | Files | Count |
+|-----------|-------|-------|
+| `agent/` | agent, agent_builder, agent_commands, agent_config, agent_db_loader, agent_loader, agent_models, agent_refiner, agent_refiner_stages, agent_schema, agent_seeder, persona | 12 |
+| `cli/` | cli_non_streaming, cli_pool, cli_pool_lifecycle, cli_pool_session, cli_pool_streaming, cli_pool_worker, cli_protocol, cli_streaming, cli_streaming_parser | 9 |
+| `memory/` | memory, memory_freshness, memory_schema, memory_types, memory_upserts | 5 |
+| `messaging/` | message, messages, bus, events, inbound_bus, render_events, tool_display_config, tool_recap_format, scope | 9 |
+| `auth/` | authenticator, identity, trust, guard | 4 |
+| **Flat remaining** | audio_payload, builtin_commands, circuit_breaker, debouncer, error_utils, processor_registry, runtime_config, session_lifecycle, smart_routing_protocol, stream_processor, trace, tts_dispatch, workspace_commands | 13 |
+
+**Resolution for flat remaining (13):**
+- `processor_registry`, `stream_processor` → move to existing `processors/`
+- `builtin_commands`, `workspace_commands` → move to existing `commands/`
+- Remaining 9: accept as shared utilities (≤12 goal met if above moves happen)
+
+**`adapters/` (30 flat + 3 existing in discord/) → subfolders:**
+
+| Subfolder | Files | Count |
+|-----------|-------|-------|
+| `discord/` | adapter.py, lifecycle.py (existing) + discord, discord_audio, discord_audio_outbound, discord_config, discord_formatting, discord_inbound, discord_normalize, discord_outbound, discord_threads, discord_voice, discord_voice_commands (moved) | 13 |
+| `telegram/` | telegram, telegram_audio, telegram_formatting, telegram_inbound, telegram_normalize, telegram_outbound | 6 |
+| `nats/` | nats_envelope_handlers, nats_outbound_listener, nats_stream_decoder | 3 |
+| `shared/` | _base_outbound, _inbound_cache, _shared, _shared_audio, _shared_streaming, _shared_streaming_emitter, _shared_streaming_state, _shared_text, cli, outbound_listener | 10 |
+
+**Note:** `adapters/discord/` already exists with `adapter.py`, `lifecycle.py`, `__init__.py`. Flat `discord_*` files move into it.
+
+**`bootstrap/` (25) → subfolders:**
+
+| Subfolder | Files | Count |
+|-----------|-------|-------|
+| `standalone/` | adapter_standalone, hub_standalone, hub_standalone_helpers, stt_adapter_standalone, tts_adapter_standalone | 5 |
+| `wiring/` | bootstrap_wiring, nats_wiring | 2 |
+| `lifecycle/` | bootstrap_lifecycle, lifecycle_helpers, signal_handlers | 3 |
+| `factory/` | agent_factory, bot_agent_map, hub_builder, llm_overlay, voice_overlay, unified, config, utils | 8 |
+| `infra/` | embedded_nats, health, lockfile, notify | 4 |
+| **Flat remaining** | auth_seeding, bootstrap_stores, notify | 3 |
+
+**Resolution:** `auth_seeding`, `bootstrap_stores` could move to `stores/` but 3 flat files is acceptable.
+
+### Consumer summary
+
+| Consumer | Imports from | Updates needed |
+|----------|--------------|----------------|
+| `core/` internal | flat → subdirs | relative depth ±1 |
+| `adapters/` | `core.agent`, `core.memory` | absolute path unchanged |
+| `bootstrap/` | `core.*`, `adapters.*` | absolute path unchanged |
+| `tests/` | all src paths | mirror src moves |
+| `.importlinter` | layer paths | may need updates |
+
+## Breadboard
+
+### Code Affordances
+
+| ID | Handler | Trigger | Logic |
+|----|---------|---------|-------|
+| N1 | `git mv` files to subdir | Slice start | Move files preserving history |
+| N2 | Write `__init__.py` | N1 complete | Re-export key symbols |
+| N3 | Fix relative imports | N2 complete | AST-based depth adjustment |
+| N4 | Update absolute imports | N3 complete | External consumers |
+| N5 | Update tests | N4 complete | Mirror src paths |
+
+### Data Stores
+
+| ID | Store | Type | Purpose |
+|----|-------|------|---------|
+| S1 | `folder_exemptions.txt` | File | Track violations |
+| S2 | `.importlinter` | Config | Layer constraints |
+
+## Slices
+
+| Slice | Description | Affordances | Gate |
+|-------|-------------|-------------|------|
+| S1 | Decompose `core/` flat → 5 subdirs | N1–N5 for core | pyright + pytest + lint-imports green |
+| S2 | Decompose `adapters/` → 4 subdirs | N1–N5 for adapters | pyright + pytest + lint-imports green |
+| S3 | Decompose `bootstrap/` → 5 subdirs | N1–N5 for bootstrap | pyright + pytest + lint-imports green |
+| S4 | Clean up exemptions | Update `folder_exemptions.txt` | exemptions reduced to `core/hub/` only |
+
+## Constraints
+
+- **One subfolder at a time:** Each commit = one decomposition slice
+- **AST-based import rewriting:** No manual sed/grep
+- **Green gates after each slice:** pyright, pytest, lint-imports
+- **Timebox:** 3 days, 4–5 commits
+
+## Non-goals
+
+- `core/hub/` decomposition (deferred to follow-up issue)
+- Functional changes (pure refactoring)
+- `tests/` folder decomposition (follows src structure)
+
+## Technical Decisions
+
+1. **Existing subdirs unchanged:** `processors/`, `stores/`, `hub/`, `pool/`, `commands/` stay in place
+2. **Orphan resolution:** Move `processor_registry`, `stream_processor` → `processors/`; move `builtin_commands`, `workspace_commands` → `commands/`
+3. **Flat utilities accepted:** Up to 9 shared utility files remain flat in `core/` (≤12 goal met)
+4. **Test co-location:** Tests updated in lockstep with source moves
+
+## Success Criteria
+
+### core/ decomposition
+
+- [ ] `src/lyra/core/agent/` exists with 12 files + `__init__.py`
+- [ ] `src/lyra/core/cli/` exists with 9 files + `__init__.py`
+- [ ] `src/lyra/core/memory/` exists with 5 files + `__init__.py`
+- [ ] `src/lyra/core/messaging/` exists with 9 files + `__init__.py`
+- [ ] `src/lyra/core/auth/` exists with 4 files + `__init__.py`
+- [ ] `src/lyra/core/processors/` contains `processor_registry.py`, `stream_processor.py` (moved in)
+- [ ] `src/lyra/core/commands/` contains `builtin_commands.py`, `workspace_commands.py` (moved in)
+- [ ] `src/lyra/core/` contains ≤12 flat `.py` files (excluding `__init__.py`)
+
+### adapters/ decomposition
+
+- [ ] `src/lyra/adapters/discord/` exists with 13 files + `__init__.py` (3 existing + 10 moved)
+- [ ] `src/lyra/adapters/telegram/` exists with 6 files + `__init__.py`
+- [ ] `src/lyra/adapters/nats/` exists with 3 files + `__init__.py`
+- [ ] `src/lyra/adapters/shared/` exists with 10 files + `__init__.py`
+
+### bootstrap/ decomposition
+
+- [ ] `src/lyra/bootstrap/standalone/` exists with 5 files + `__init__.py`
+- [ ] `src/lyra/bootstrap/wiring/` exists with 2 files + `__init__.py`
+- [ ] `src/lyra/bootstrap/lifecycle/` exists with 3 files + `__init__.py`
+- [ ] `src/lyra/bootstrap/factory/` exists with 8 files + `__init__.py`
+- [ ] `src/lyra/bootstrap/infra/` exists with 4 files + `__init__.py`
+
+### Quality gates
+
+- [ ] `tools/folder_exemptions.txt` contains only `src/lyra/core/hub` entry
+- [ ] `uv run pyright` reports 0 errors
+- [ ] `uv run pytest` passes with 0 regressions
+- [ ] `uv run lint-imports` passes (layer constraints satisfied)
+- [ ] Follow-up issue created for `core/hub/` decomposition
+
+## Open Questions
+
+None — all ambiguities resolved in mapping above.

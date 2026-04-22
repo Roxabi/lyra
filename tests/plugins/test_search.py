@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.commands.search.handlers import cmd_search
-from lyra.core.message import InboundMessage, Response
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Response
 from lyra.integrations.base import SessionTools
 
 

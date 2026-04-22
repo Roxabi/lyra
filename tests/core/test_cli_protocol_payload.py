@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import json
 
-from lyra.core.cli_pool import _ProcessEntry
-from lyra.core.cli_protocol import send_and_read, send_and_read_stream
+from lyra.core.cli.cli_pool import _ProcessEntry
+from lyra.core.cli.cli_protocol import send_and_read, send_and_read_stream
 
 from .conftest_cli_pool import (
     ASSISTANT_LINE,

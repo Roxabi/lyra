@@ -153,7 +153,8 @@ def _encode(obj: Any) -> Any:
     """
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         result: dict[str, Any] = {}
-        for f in dataclasses.fields(obj):  # type: ignore[arg-type]
+        # obj is a dataclass instance (narrowed by is_dataclass + not type check)
+        for f in dataclasses.fields(obj):
             value = getattr(obj, f.name)
             encoded_value = _encode(value)
             # Strip callables from dict fields (platform_meta pattern)
@@ -286,7 +287,8 @@ def _decode_dataclass(
     hints = _get_hints(dc_type, resolver)
 
     kwargs: dict[str, Any] = {}
-    for f in dataclasses.fields(dc_type):  # type: ignore[arg-type]
+    # dc_type is a dataclass type; fields() accepts type[DataclassInstance]
+    for f in dataclasses.fields(dc_type):
         if f.name not in d:
             # Field absent in payload — omit; rely on default or default_factory
             continue

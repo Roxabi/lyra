@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -21,9 +22,14 @@ def check_process(service_name: str) -> CheckResult:
     supervisorctl is not available.
     """
     now = datetime.now(timezone.utc)
-    sctl = (
-        Path.home() / "projects" / "lyra" / "deploy" / "supervisor" / "supervisorctl.sh"
-    )
+    override = os.environ.get("LYRA_SUPERVISORCTL_PATH")
+    if override:
+        sctl = Path(override).expanduser()
+    else:
+        sctl = (
+            Path.home() / "projects" / "lyra" / "deploy" / "supervisor"
+            / "supervisorctl.sh"
+        )
 
     if sctl.exists():
         try:

@@ -5,20 +5,20 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from lyra.core.agent_models import (
+from lyra.core.agent.agent_models import (
     VALID_AGENT_STATUSES,
     AgentRow,
     AgentRuntimeStateRow,
     BotAgentMapRow,
     _utc_now_iso,
 )
-from lyra.core.agent_schema import (
+from lyra.core.agent.agent_schema import (
     _CREATE_AGENT_RUNTIME_STATE,
     _CREATE_AGENTS,
     _SELECT_AGENTS,
     _UPSERT_AGENT,
 )
-from lyra.core.agent_seeder import seed_from_toml as _seed_from_toml
+from lyra.core.agent.agent_seeder import seed_from_toml as _seed_from_toml
 from lyra.core.stores.agent_store_migrations import run_agent_migrations
 
 from .bot_agent_map import BotAgentMapStore

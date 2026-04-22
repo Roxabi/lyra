@@ -16,7 +16,7 @@ import pytest
 from lyra.core.hub import Hub
 from lyra.core.hub.message_pipeline import Action, PipelineResult
 from lyra.core.hub.middleware import MiddlewarePipeline
-from lyra.core.message import InboundMessage, OutboundAudio, Response
+from lyra.core.messaging.message import InboundMessage, OutboundAudio, Response
 from tests.core.conftest import make_inbound_message, push_to_hub
 
 # ---------------------------------------------------------------------------

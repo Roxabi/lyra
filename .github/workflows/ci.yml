@@ -8,6 +8,12 @@ on:
     branches: [main, staging]
   pull_request:
     branches: [main, staging]
+  workflow_dispatch: {}  # dispatch resolves from default branch — per-branch re-triggers require the branch to contain a compatible ci.yml
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Cancel only on feature branches; protected branches (main, staging) run to completion so every merge-commit SHA has a recorded status.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/staging' }}
 
 jobs:
   ci:
@@ -19,6 +25,22 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get install -y portaudio19-dev
 
+      - name: Install nats-server
+        env:
+          NATS_VERSION: "2.10.22"
+        run: |
+          ARCH=$(dpkg --print-architecture)
+          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
+            -o "${TMPDIR}/${TARBALL}"
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
+            -o "${TMPDIR}/SHA256SUMS"
+          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
+          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
+          nats-server --version
+
       - name: Install uv
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v7
 
@@ -27,6 +49,20 @@ jobs:
 
       - name: Check file length
         run: bash tools/check_file_length.sh
+
+      - name: Check duplicate test basenames
+        run: bash tools/check_duplicate_test_basenames.sh
+
+      - name: Check supervisor conf drift (agents.yml is source of truth)
+        run: |
+          uv run deploy/gen-supervisor-conf.py
+          if ! git diff --exit-code -- 'deploy/supervisor/conf.d/*.conf'; then
+            echo "::error::deploy/supervisor/conf.d/*.conf is out of sync with agents.yml — run 'make gen-conf' and commit the result"
+            exit 1
+          fi
+
+      - name: Check ACL matrix spec drift
+        run: bash scripts/check-acl-matrix-spec.sh
 
       - name: Enforce import layers
         run: uv run lint-imports
@@ -37,20 +73,14 @@ jobs:
       - name: Typecheck
         run: uv run pyright
 
-      - name: Test with coverage
-        run: uv run pytest
+      - name: Coverage — lyra
+        run: uv run pytest tests/ --cov=lyra --cov-branch --cov-report=term-missing --cov-fail-under=50
 
-      - name: Test dep-graph sub-project
-        working-directory: scripts/dep-graph
-        run: |
-          uv sync --frozen
-          uv run pytest tests/
+      - name: Coverage — roxabi_nats
+        run: uv run pytest packages/roxabi-nats/tests --cov=roxabi_nats --cov-branch --cov-report=term-missing --cov-fail-under=70
 
-      - name: Validate dep-graph schema
-        working-directory: scripts/dep-graph
-        run: |
-          uv run python -c "from dep_graph.schema import validate_layout_dict; print('Schema module OK')"
-          # TODO: Add `uv run dep-graph validate` once layout.json is in repo
+      - name: Coverage — roxabi_contracts
+        run: uv run pytest packages/roxabi-contracts/tests --cov=roxabi_contracts --cov-branch --cov-report=term-missing --cov-fail-under=80
 
   integration:
     needs: [ci]
@@ -69,21 +99,8 @@ jobs:
         run: docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 60
 
       - name: Run integration tests
-        run: NATS_URL=nats://localhost:4222 uv run pytest tests/integration/ -v --no-cov
+        run: NATS_URL=nats://localhost:4222 uv run pytest tests/integration/ -v
 
       - name: Tear down Docker environment
         if: always()
         run: docker compose -f docker/docker-compose.test.yml down -v
-
-  secrets:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 0
-
-      - name: TruffleHog secret scan
-        uses: trufflesecurity/trufflehog@47e7b7cd74f578e1e3145d48f669f22fd1330ca6 # v3.94.3
-        with:
-          extra_args: --only-verified

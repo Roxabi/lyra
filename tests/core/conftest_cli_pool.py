@@ -6,7 +6,7 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.agent_config import ModelConfig
+from lyra.core.agent.agent_config import ModelConfig
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -36,9 +36,11 @@ def make_fake_proc(stdout_lines: list[bytes]) -> MagicMock:
     # termination: wait() blocks forever for alive processes (the spawn
     # early-liveness check uses wait_for with a short timeout — it must
     # timeout for alive procs, not return immediately).
+    _never_stops = asyncio.Event()
+
     async def _wait() -> int:
         if proc.returncode is None:
-            await asyncio.sleep(3600)  # block — will be cancelled by wait_for
+            await _never_stops.wait()  # explicit: block forever, cancelled by wait_for
         return proc.returncode or 0
 
     proc.terminate = MagicMock(side_effect=lambda: setattr(proc, "returncode", 0))
@@ -82,4 +84,4 @@ RESULT_LINE = _ndjson(
     }
 )
 
-_PATCH_TARGET = "lyra.core.cli_pool.asyncio.create_subprocess_exec"
+_PATCH_TARGET = "lyra.core.cli.cli_pool.asyncio.create_subprocess_exec"

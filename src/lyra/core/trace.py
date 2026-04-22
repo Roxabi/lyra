@@ -5,6 +5,11 @@ Provides:
   that propagate transparently through asyncio await chains.
 - ``TraceIdFilter`` — a ``logging.Filter`` that reads both context vars and
   injects them into every ``LogRecord``.  Defensive: never raises.
+- ``TelegramTokenFilter`` — a ``logging.Filter`` that redacts Telegram bot
+  tokens from log messages. ``httpx``'s default ``INFO`` log for every
+  request includes the full URL, which for Telegram looks like
+  ``POST https://api.telegram.org/bot<TOKEN>/sendMessage`` — the token is
+  a credential and must not reach disk.
 - ``JsonFormatter`` — emits one JSON object per line from an explicit field
   allowlist. No ``LogRecord.__dict__`` dump.
 """
@@ -13,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from contextvars import ContextVar, Token
 
@@ -71,6 +77,37 @@ class TraceIdFilter(logging.Filter):
             record.pool_id = _pool_id.get("")  # type: ignore[attr-defined]
         except Exception:
             record.pool_id = ""  # type: ignore[attr-defined]
+        return True
+
+
+class TelegramTokenFilter(logging.Filter):
+    """Redact Telegram bot tokens from log messages.
+
+    Telegram bot HTTP endpoints embed the token in the URL path
+    (``/bot<token>/<method>``), and ``httpx`` logs the full URL at INFO
+    level by default. The token grants full control over the bot — it must
+    never appear in persisted logs, crash reports, or log-shipping
+    pipelines.
+
+    Matches ``bot<digits>:<alphanumeric-with-hyphens-underscores>`` and
+    replaces the token segment with ``<REDACTED>``. Always returns
+    ``True`` — the record is never suppressed. Defensive: never raises.
+    """
+
+    # Bot tokens: 1234567890:AAEhBP0av28...Z (numeric id, colon, ~35 char secret)
+    _TOKEN_RE = re.compile(r"bot(\d+):[A-Za-z0-9_-]+")
+    _REDACTED_SUB = r"bot\1:<REDACTED>"
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            # Format the message once (% args interpolation) then redact.
+            msg = record.getMessage()
+            redacted = self._TOKEN_RE.sub(self._REDACTED_SUB, msg)
+            if redacted != msg:
+                record.msg = redacted
+                record.args = None
+        except Exception:
+            pass  # never block logging on a filter error
         return True
 
 

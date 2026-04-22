@@ -41,3 +41,26 @@ artifacts:
   specs: artifacts/specs
   frames: artifacts/frames
   plans: artifacts/plans
+
+quality_gates:
+  file_length:
+    enabled: true
+    max_lines: 300
+    globs: ["src/**/*.py"]
+    exemptions_file: tools/file_exemptions.txt
+
+  folder_size:
+    enabled: true
+    max_files: 12
+    globs: ["src/**"]
+    exemptions_file: tools/folder_exemptions.txt
+
+  duplicate_test_basenames:
+    enabled: true
+    script: tools/check_duplicate_test_basenames.sh
+    source: pyproject.toml [tool.pytest.ini_options].testpaths
+
+  import_layers:
+    enabled: true
+    stage: pre-push
+    config: .importlinter

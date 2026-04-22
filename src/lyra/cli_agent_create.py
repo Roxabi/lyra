@@ -169,9 +169,6 @@ def create(
         sr_models=sr_models,
         plugins=plugins,
     )
-    # TODO(#268): wire create to DB (store.upsert) instead of TOML file.
-    # Spec criterion: "create writes to DB and does not create a TOML file."
-    # Deferred — existing test suite validates TOML-write UX; DB-write path is S4.
     toml_path.write_text(toml_content)
     typer.echo(f"Created {toml_path}")
     typer.echo("")

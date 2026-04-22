@@ -19,8 +19,8 @@ from io import BytesIO
 
 import pytest
 
-from lyra.adapters._shared import sanitize_filename, truncate_caption
-from lyra.core.message import OutboundAttachment
+from lyra.adapters.shared._shared import sanitize_filename, truncate_caption
+from lyra.core.messaging.message import OutboundAttachment
 
 from .conftest import make_dc_attach_msg, make_tg_attach_adapter, make_tg_attach_msg
 

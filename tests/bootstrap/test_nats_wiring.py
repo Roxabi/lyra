@@ -1,4 +1,4 @@
-"""Tests for lyra.bootstrap.nats_wiring — wire_nats_telegram_proxies."""
+"""Tests for lyra.bootstrap.wiring.nats_wiring — wire_nats_telegram_proxies."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.bootstrap.nats_wiring import wire_nats_telegram_proxies
+from lyra.bootstrap.wiring.nats_wiring import wire_nats_telegram_proxies
 from lyra.config import TelegramBotConfig
-from lyra.core.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
 
@@ -41,7 +41,9 @@ class TestWireNatsTelegramProxies:
         bot_agent_map: dict[tuple[str, str], str] = {}
 
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.bootstrap.nats_wiring"):
+        with caplog.at_level(
+            logging.WARNING, logger="lyra.bootstrap.wiring.nats_wiring"
+        ):  # noqa: E501
             proxies, dispatchers = wire_nats_telegram_proxies(
                 hub=hub,
                 nc=fake_nc,

@@ -13,12 +13,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
 from lyra.core.commands.command_router import CommandRouter
-from lyra.core.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from lyra.core.trust import TrustLevel
 from lyra.integrations.base import SessionTools
 from lyra.llm.base import LlmProvider, LlmResult
 
@@ -72,7 +72,7 @@ async def _stub_vault_add(msg, driver, tools, args, timeout):  # noqa: ARG001
         return Response(content="Usage: /vault-add <url>")
     url = args[0]
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
-    from lyra.core.agent_config import ModelConfig
+    from lyra.core.agent.agent_config import ModelConfig
 
     model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
@@ -91,7 +91,7 @@ async def _stub_explain(msg, driver, tools, args, timeout):  # noqa: ARG001
         return Response(content="Usage: /explain <url>")
     url = args[0]
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
-    from lyra.core.agent_config import ModelConfig
+    from lyra.core.agent.agent_config import ModelConfig
 
     model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
@@ -110,7 +110,7 @@ async def _stub_summarize(msg, driver, tools, args, timeout):  # noqa: ARG001
         return Response(content="Usage: /summarize <url>")
     url = args[0]
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
-    from lyra.core.agent_config import ModelConfig
+    from lyra.core.agent.agent_config import ModelConfig
 
     model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
@@ -327,7 +327,8 @@ class TestSessionTimeout:
         driver = make_mock_driver()
 
         async def slow_handler(msg, driver, tools, args, timeout):  # noqa: ARG001
-            await asyncio.sleep(10)
+            _never_completes = asyncio.Event()
+            await _never_completes.wait()  # explicit: never completes, tests timeout
             return Response(content="never")
 
         router = CommandRouter(

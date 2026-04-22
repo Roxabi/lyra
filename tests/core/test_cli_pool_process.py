@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.agent_config import ModelConfig
-from lyra.core.cli_pool import CliPool, _ProcessEntry
-from lyra.core.cli_protocol import read_until_result
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.cli.cli_pool import CliPool, _ProcessEntry
+from lyra.core.cli.cli_protocol import read_until_result
 
 from .conftest_cli_pool import (
     _PATCH_TARGET,
@@ -211,7 +211,7 @@ class TestCliPoolSend:
         with patch(_PATCH_TARGET, new=AsyncMock(return_value=proc)):
             await pool.send("pool-1", "first", config_a)
 
-            with caplog.at_level(logging.WARNING, logger="lyra.core.cli_pool"):
+            with caplog.at_level(logging.WARNING, logger="lyra.core.cli.cli_pool"):
                 await pool.send("pool-1", "second", config_b)
 
         assert any("mismatch" in r.message.lower() for r in caplog.records)

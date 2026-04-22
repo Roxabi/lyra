@@ -1,0 +1,44 @@
+---
+title: PoolManager bounded + LRU eviction + iteration lock
+issue: 859
+status: approved
+tier: F-lite
+date: 2026-04-22
+---
+
+## Problem
+
+Two related issues in `core/hub/pool_manager.py:70-77`:
+
+1. **Race condition** — iterating `self.pools.items()` while calling `pop()` is not atomic. Narrow window but real under reaper + new-message simultaneity.
+2. **Unbounded growth** (architect S-01 / D-05) — TTL-only eviction; memory grows without cap under high concurrent-scope load until TTL fires.
+
+Both fixes touch the same eviction code path — bundling avoids churn.
+
+## Who
+
+- **Primary:** Hub process — stability under production load scaling
+- **Secondary:** DevOps — monitoring memory pressure, on-call during OOM events
+
+## Constraints
+
+- Bundle both fixes in single PR (same code path)
+- ~1 day effort: 2h race fix + 4h LRU + tests
+- Must not break existing TTL eviction semantics
+- VoiceWorkerRegistry race (P1 Async #7) — consider lock-hygiene pass
+
+## Out of Scope
+
+- Memory pressure trigger (future enhancement)
+- Full reaper rewrite
+- VoiceWorkerRegistry fix (separate issue, but may share lock pattern)
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (core/pool_manager.py), bounded effort (~1 day), no architectural unknowns.
+
+Signals:
+- Single file target (pool_manager.py)
+- Existing code path modification (eviction)
+- Well-defined acceptance criteria from audit
+- P1-high priority suggests focused, time-boxed work

@@ -4,8 +4,13 @@
 # Seeds (private keys) → ~/.lyra/nkeys/     owned by LYRA_USER, 0600 — no system access needed
 # auth.conf (public keys) → /etc/nats/nkeys/ owned by root:nats,  0640 — read by nats-server
 #
-# Creates 7 user nkey seeds: hub, telegram-adapter, discord-adapter,
-#                             tts-adapter, stt-adapter, llm-worker, monitor
+# Creates 10 user nkey seeds: hub, telegram-adapter, discord-adapter,
+#                              tts-adapter, stt-adapter, voice-tts, voice-stt,
+#                              llm-worker, image-worker, monitor
+#
+# ACL matrix (identities + publish/subscribe allow-lists) is sourced from
+# deploy/nats/acl-matrix.json — do not edit inline; update the JSON instead.
+# Requires jq >= 1.6 on $PATH.
 #
 # Usage: sudo ./deploy/nats/gen-nkeys.sh
 #        sudo ./deploy/nats/gen-nkeys.sh --fix-perms        # re-apply permissions without regenerating
@@ -14,6 +19,7 @@
 #        sudo ./deploy/nats/gen-nkeys.sh --regenerate --yes # non-interactive regenerate
 #        sudo ./deploy/nats/gen-nkeys.sh --regen-authconf   # re-render auth.conf from EXISTING seeds (no key rotation)
 #             ./deploy/nats/gen-nkeys.sh --template-only    # write auth.conf skeleton to stdout (no root needed)
+#             ./deploy/nats/gen-nkeys.sh --validate-supervisor   # verify each owner==lyra identity has its seed wired into a supervisor conf or quadlet container
 #
 # Idempotent — skips if auth.conf already exists. Delete auth.conf + seeds dir to regenerate.
 # Override seeds location: SEEDS_DIR=/custom/path sudo ./gen-nkeys.sh
@@ -32,52 +38,65 @@ info()  { echo -e "${GREEN}[+]${NC} $1" >&2; }
 warn()  { echo -e "${YELLOW}[!]${NC} $1" >&2; }
 error() { echo -e "${RED}[x]${NC} $1" >&2; exit 1; }
 
-# ── ACL matrix (T1.2) ─────────────────────────────────────────────────────────
-# Source of truth: artifacts/specs/706-per-role-nkeys-acls-spec.mdx §Data Model
-# If spec matrix changes, update these arrays — they are the executable copy.
-# TODO(ADR-045): when roxabi-nats SDK lands, extend with plugin identity entries
-#                scoped to "lyra.plugin.<name>.>" — see spec §Out-of-scope.
-declare -A PUB_ALLOW SUB_ALLOW
+MATRIX_JSON="$(dirname "${BASH_SOURCE[0]}")/acl-matrix.json"
 
-PUB_ALLOW[hub]='"lyra.outbound.telegram.>","lyra.outbound.discord.>","lyra.voice.tts.request.>","lyra.voice.stt.request.>","lyra.llm.request"'
-# NOTE: "_INBOX.>" is broader than this role needs — required because
-# NatsLlmDriver.stream() uses a manual inbox subscription. Tightening tracked
-# in issue #715 (migrate to nc.request() → drop "_INBOX.>" from this list).
-SUB_ALLOW[hub]='"lyra.inbound.telegram.>","lyra.inbound.discord.>","lyra.voice.tts.heartbeat","lyra.voice.stt.heartbeat","lyra.llm.health.*","lyra.system.ready","_INBOX.>"'
+# ── load_matrix ───────────────────────────────────────────────────────────────
+# Reads deploy/nats/acl-matrix.json and populates PUB_ALLOW, SUB_ALLOW, IDENTITIES.
+# Aborts with a clear error if jq is missing/too old, JSON is absent/malformed,
+# .version != "1", or any identity has an invalid schema.
+load_matrix() {
+  # Assert jq on $PATH
+  command -v jq >/dev/null 2>&1 \
+    || error "jq is required (apt-get install -y jq) — not found on \$PATH"
 
-PUB_ALLOW[telegram-adapter]='"lyra.inbound.telegram.>","lyra.system.ready"'
-SUB_ALLOW[telegram-adapter]='"lyra.outbound.telegram.>"'
+  # Assert jq >= 1.6
+  local jqver
+  jqver=$(jq --version 2>/dev/null | sed 's/^jq-//')
+  local jq_major jq_minor
+  jq_major=$(echo "${jqver}" | cut -d. -f1)
+  jq_minor=$(echo "${jqver}" | cut -d. -f2)
+  if [ "${jq_major}" -lt 1 ] || { [ "${jq_major}" -eq 1 ] && [ "${jq_minor}" -lt 6 ]; }; then
+    error "jq >= 1.6 required (found: ${jqver})"
+  fi
 
-PUB_ALLOW[discord-adapter]='"lyra.inbound.discord.>","lyra.system.ready"'
-SUB_ALLOW[discord-adapter]='"lyra.outbound.discord.>"'
+  # Assert MATRIX_JSON exists
+  [ -f "${MATRIX_JSON}" ] \
+    || error "ACL matrix not found: ${MATRIX_JSON}"
 
-# tts-adapter / stt-adapter: lyra-side voice satellites (retired in #690 cutover).
-# Readiness probe via nc.request('lyra.system.ready') needs pub on system.ready
-# + sub on _INBOX.*.* for reply. Uppercase + lowercase forms included because
-# nats-py historically emits lowercase inboxes and NATS subjects are case-sensitive.
-PUB_ALLOW[tts-adapter]='"lyra.voice.tts.heartbeat","lyra.system.ready"'
-SUB_ALLOW[tts-adapter]='"lyra.voice.tts.request","lyra.voice.tts.request.>","_INBOX.>","_inbox.>"'
+  # Assert .version == "1"
+  local v
+  v=$(jq -r '.version' "${MATRIX_JSON}")
+  [ "${v}" = "1" ] \
+    || error "unsupported acl-matrix.json version: ${v} (expected \"1\")"
 
-PUB_ALLOW[stt-adapter]='"lyra.voice.stt.heartbeat","lyra.system.ready"'
-SUB_ALLOW[stt-adapter]='"lyra.voice.stt.request","lyra.voice.stt.request.>","_INBOX.>","_inbox.>"'
+  # Validate all identities and populate arrays
+  declare -gA PUB_ALLOW SUB_ALLOW OWNER
+  IDENTITIES=()
 
-# voice-tts: voicecli nats-serve worker on Machine 1 (#689)
-# NB: voicecli.nats.base.AdapterBase subscribes to heartbeat_subject
-#     (no-op callback) in addition to publishing — ACL must allow both.
-PUB_ALLOW[voice-tts]='"lyra.voice.tts.heartbeat","_INBOX.>"'
-SUB_ALLOW[voice-tts]='"lyra.voice.tts.request","lyra.voice.tts.request.>","lyra.voice.tts.heartbeat"'
+  local valid_owners="lyra voicecli imagecli reserved"
+  while IFS= read -r name; do
+    IDENTITIES+=("${name}")
 
-# voice-stt: voicecli nats-serve worker on Machine 1 (#689)
-PUB_ALLOW[voice-stt]='"lyra.voice.stt.heartbeat","_INBOX.>"'
-SUB_ALLOW[voice-stt]='"lyra.voice.stt.request","lyra.voice.stt.request.>","lyra.voice.stt.heartbeat"'
+    for field in owner description publish subscribe; do
+      local has
+      has=$(jq -r --arg n "${name}" --arg f "${field}" \
+        'if .identities[$n] | has($f) then "yes" else "no" end' "${MATRIX_JSON}")
+      [ "${has}" = "yes" ] \
+        || error "acl-matrix.json: identity '${name}' missing field '${field}'"
+    done
 
-PUB_ALLOW[llm-worker]='"lyra.llm.health.*"'
-SUB_ALLOW[llm-worker]='"lyra.llm.request"'
+    local o
+    o=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
+    echo " ${valid_owners} " | grep -qw "${o}" \
+      || error "acl-matrix.json: identity '${name}' has invalid owner '${o}'"
 
-PUB_ALLOW[monitor]='"lyra.monitor.>"'
-SUB_ALLOW[monitor]='"lyra.monitor.>"'
-
-IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor)
+    PUB_ALLOW[$name]=$(jq -r --arg n "${name}" \
+      '.identities[$n].publish | map("\"" + . + "\"") | join(",")' "${MATRIX_JSON}")
+    SUB_ALLOW[$name]=$(jq -r --arg n "${name}" \
+      '.identities[$n].subscribe | map("\"" + . + "\"") | join(",")' "${MATRIX_JSON}")
+    OWNER[$name]=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
+  done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
+}
 
 # ── emit_user (T1.3) ──────────────────────────────────────────────────────────
 # Writes one authorization users[] entry block to stdout.
@@ -97,6 +116,37 @@ emit_user() {
 USER
 }
 
+# ── validate_supervisor ────────────────────────────────────────────────────────
+# Checks that every owner==lyra identity has NATS_NKEY_SEED_PATH wired into at
+# least one supervisor conf or quadlet container file. No root required.
+validate_supervisor() {
+  local -a missing=()
+  local name count
+  local SCRIPT_DIR
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local REPO_ROOT
+  REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+  local SUPERVISOR_GLOB="${REPO_ROOT}/deploy/supervisor/conf.d/*.conf"
+  local QUADLET_GLOB="${REPO_ROOT}/deploy/quadlet/*.container"
+  local lyra_count=0
+  for name in "${IDENTITIES[@]}"; do
+    [ "${OWNER[$name]}" = "lyra" ] || continue
+    lyra_count=$((lyra_count + 1))
+    # Match both supervisor (quoted) and quadlet (unquoted) forms:
+    #   environment=...,NATS_NKEY_SEED_PATH=".../<name>.seed"
+    #   Environment=NATS_NKEY_SEED_PATH=/run/secrets/<name>.seed
+    count=$({ grep -lE "NATS_NKEY_SEED_PATH=[\"']?[^\"'[:space:],]*${name}\.seed" \
+                   $SUPERVISOR_GLOB $QUADLET_GLOB 2>/dev/null || true; } | wc -l)
+    if [ "$count" -eq 0 ]; then
+      missing+=("$name")
+    fi
+  done
+  if [ ${#missing[@]} -gt 0 ]; then
+    error "no supervisor/quadlet wiring for owner=lyra identities: ${missing[*]}"
+  fi
+  info "validated ${lyra_count} lyra-owned identities across supervisor + quadlet"
+}
+
 # ── flag parsing ───────────────────────────────────────────────────────────────
 SHOW_ONLY=false
 FIX_PERMS=false
@@ -104,18 +154,29 @@ TEMPLATE_ONLY=false
 REGENERATE=false
 REGEN_AUTHCONF=false
 AUTO_YES=false
+VALIDATE_SUPERVISOR=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --show)            SHOW_ONLY=true;      shift ;;
-    --fix-perms)       FIX_PERMS=true;      shift ;;
-    --template-only)   TEMPLATE_ONLY=true;  shift ;;
-    --regenerate)      REGENERATE=true;     shift ;;
-    --regen-authconf)  REGEN_AUTHCONF=true; shift ;;
-    --yes)             AUTO_YES=true;       shift ;;
+    --show)                SHOW_ONLY=true;           shift ;;
+    --fix-perms)           FIX_PERMS=true;           shift ;;
+    --template-only)       TEMPLATE_ONLY=true;       shift ;;
+    --regenerate)          REGENERATE=true;           shift ;;
+    --regen-authconf)      REGEN_AUTHCONF=true;      shift ;;
+    --yes)                 AUTO_YES=true;             shift ;;
+    --validate-supervisor) VALIDATE_SUPERVISOR=true;  shift ;;
     *) error "Unknown option: $1" ;;
   esac
 done
+
+# ── load ACL matrix ───────────────────────────────────────────────────────────
+load_matrix
+
+# ── validate-supervisor mode — no root required ────────────────────────────────
+if $VALIDATE_SUPERVISOR; then
+  validate_supervisor
+  exit 0
+fi
 
 # ── auth.conf renderer (shared by --template-only and regenerate paths) ──────
 # Accepts the name of an associative array of pubkeys as $1. Writes the full
@@ -179,8 +240,8 @@ apply_permissions() {
   mkdir -p "${SEEDS_DIR}"
   chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}"
   chmod 0700 "${SEEDS_DIR}"
-  # T1.5: extended to 7 identities; #689 adds voice-tts, voice-stt (9 total)
-  for seed in hub telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor; do
+  # Iterates IDENTITIES populated by load_matrix from acl-matrix.json — SSoT per #717.
+  for seed in "${IDENTITIES[@]}"; do
     if [ -f "${SEEDS_DIR}/${seed}.seed" ]; then
       chown "${LYRA_USER}:${LYRA_USER}" "${SEEDS_DIR}/${seed}.seed"
       chmod 0600 "${SEEDS_DIR}/${seed}.seed"
@@ -466,6 +527,7 @@ STT_PUB=$(generate_nkey "stt-adapter")
 VOICE_TTS_PUB=$(generate_nkey "voice-tts")
 VOICE_STT_PUB=$(generate_nkey "voice-stt")
 WORKER_PUB=$(generate_nkey "llm-worker")
+IMAGE_WORKER_PUB=$(generate_nkey "image-worker")
 MONITOR_PUB=$(generate_nkey "monitor")
 
 # ── write auth.conf via render_auth_conf (T1.6) ───────────────────────────────
@@ -478,6 +540,7 @@ declare -A PUBKEYS=(
   [voice-tts]="${VOICE_TTS_PUB}"
   [voice-stt]="${VOICE_STT_PUB}"
   [llm-worker]="${WORKER_PUB}"
+  [image-worker]="${IMAGE_WORKER_PUB}"
   [monitor]="${MONITOR_PUB}"
 )
 render_auth_conf PUBKEYS > "${AUTH_CONF}"
@@ -500,5 +563,6 @@ info "  stt-adapter.seed       NATS_NKEY_SEED_PATH=${SEEDS_DIR}/stt-adapter.seed
 info "  voice-tts.seed         NATS_NKEY_SEED_PATH=${SEEDS_DIR}/voice-tts.seed   (voicecli nats-serve tts)"
 info "  voice-stt.seed         NATS_NKEY_SEED_PATH=${SEEDS_DIR}/voice-stt.seed   (voicecli nats-serve stt)"
 info "  llm-worker.seed        NATS_NKEY_SEED_PATH=${SEEDS_DIR}/llm-worker.seed"
+info "  image-worker.seed      NATS_NKEY_SEED_PATH=${SEEDS_DIR}/image-worker.seed  (imagecli nats-serve)"
 info "  monitor.seed           NATS_NKEY_SEED_PATH=${SEEDS_DIR}/monitor.seed"
 warn "Supervisor confs already reference ~/.lyra/nkeys/ — no changes needed."

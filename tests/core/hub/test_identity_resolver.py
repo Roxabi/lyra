@@ -7,11 +7,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from lyra.core.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.hub.hub_protocol import Binding, RoutingKey
 from lyra.core.hub.identity_resolver import IdentityResolver
-from lyra.core.message import InboundMessage, Platform
-from lyra.core.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Platform
 
 # ---------------------------------------------------------------------------
 # Fixtures

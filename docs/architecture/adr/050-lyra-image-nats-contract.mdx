@@ -1,0 +1,286 @@
+---
+title: "ADR-050: lyra ↔ imagecli NATS image contract"
+description: "Freeze the request/reply and heartbeat payloads exchanged between lyra (hub) and imagecli (satellite) over NATS. Declare max-payload cap and enumerate user-controlled-fields sanitization contract."
+---
+
+## Status
+
+Accepted
+
+## Context
+
+imageCLI#50 (closed 2026-04-15) shipped `imagecli nats-serve`, a satellite process that subscribes to `lyra.image.generate.request` using `NatsAdapterBase` from `roxabi-nats`. The satellite is fully operational; it is the lyra-side contract documentation that is missing.
+
+ADR-047 (§ imageCLI migration state) explicitly notes the remaining lyra-side work: contract ADR for `lyra.image.*`, `src/lyra/nats/nats_image_client.py`, and the `image-worker` nkey in `gen-nkeys.sh`. This ADR delivers the first item.
+
+As with the voice domain (ADR-044), the wire contract must be frozen so that both sides can evolve safely. This ADR freezes the subjects, payload schemas, error codes, max-payload cap, and sanitization obligations for all `lyra.image.*` traffic.
+
+### Heartbeat subject reconciliation
+
+Issue #754 originally referenced the heartbeat subject as `lyra.image.generate.heartbeat`. The shipped satellite at `imagecli/src/imagecli/nats/adapter.py:18` defines:
+
+```python
+HEARTBEAT_SUBJECT = "lyra.image.heartbeat"
+```
+
+This ADR aligns to the **shipped subject** (`lyra.image.heartbeat`). The `generate` segment is omitted because heartbeats are worker-level liveness signals, not tied to a single verb. This is consistent with the naming convention in ADR-035 and the voicecli heartbeat pattern in ADR-044.
+
+Cross-references: imageCLI#50 (satellite implementation), `artifacts/specs/754-lyra-image-domain-integration-spec.mdx` (lyra-side spec).
+
+## Decision
+
+### Subjects
+
+| Subject | Type | Direction | Producer | Consumer | Purpose |
+|---|---|---|---|---|---|
+| `lyra.image.generate.request` | request-reply | hub → satellite | `NatsImageClient` (hub) | `ImageNatsAdapter.handle` (satellite) | Generate image from prompt |
+| `lyra.image.heartbeat` | fire-and-forget | satellite → hub | `ImageNatsAdapter` (satellite) | `NatsImageClient._on_heartbeat` (hub) | Liveness + capacity |
+
+Queue group (load balancing across satellite replicas): `IMAGE_WORKERS`. Replies use the NATS request-reply inbox; no dedicated reply subject.
+
+### Payload encoding
+
+UTF-8 JSON. Binary image data is base64-encoded in-payload (`image_b64`) or, when the encoded length exceeds the satellite's conservative ceiling, replaced by an absolute `file_path` on a shared filesystem. NATS `max_payload` is set to **50 MB** (`52428800`) in `deploy/nats/nats-container.conf`, covering audio, images, and video payloads across all domains. The satellite enforces a **750 KB base64 ceiling** independently of the server cap (see Max payload section below).
+
+### `contract_version` — additive, one-way
+
+Every payload listed below carries `contract_version: "1"` as a top-level string field.
+
+- **Producers (hub or satellite) MUST emit it** on every outgoing request, reply, and heartbeat.
+- **Consumers MUST ignore unknown values.** A consumer reading a payload uses `.get("contract_version")` (or simply does not read it at all); it MUST NOT reject or error on any value. `"1"`, `"2"`, `"whatever"`, or missing — all are accepted.
+- The field is **additive**, not a handshake. A `"2"` sender and a `"1"` reader continue to work as long as no other field has been removed or reinterpreted between versions. When an incompatible change is needed, it ships as a new subject (or a new ADR), not a bumped version.
+- The goal is **observability** — logs and metrics on both sides can filter by version, and operators can diagnose mismatches on the wire without guessing.
+
+### Request — `lyra.image.generate.request`
+
+```json
+{
+  "contract_version": "1",
+  "trace_id": "7f3a9c12-1b4e-4e8a-a2d5-0f9e2c3b1a7d",
+  "issued_at": "2026-04-19T14:32:00.123456+00:00",
+  "request_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+  "prompt": "a serene mountain lake at golden hour, photorealistic",
+  "engine": "flux2-klein",
+  "negative_prompt": "blurry, oversaturated",
+  "width": 1024,
+  "height": 1024,
+  "steps": 50,
+  "guidance": 4.0,
+  "seed": 42,
+  "format": "png",
+  "output_mode": "b64",
+  "lora_path": null,
+  "lora_scale": null,
+  "trigger": null,
+  "embedding_path": null
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|:---:|---|
+| `contract_version` | string | ✓ | Always `"1"` for this ADR |
+| `trace_id` | string (uuid4) | ✓ | End-to-end trace correlation; emitted by hub, echoed in reply |
+| `issued_at` | string (ISO-8601 datetime) | ✓ | UTC timestamp of request creation |
+| `request_id` | string (uuid4) | ✓ | Unique per request; echoed back in all replies |
+| `prompt` | string | ✓ | User-supplied generation prompt; see sanitization contract |
+| `engine` | string | ✓ | Engine name (e.g. `flux2-klein`); validated against satellite registry |
+| `negative_prompt` | string \| null | — | Negative conditioning; forwarded verbatim with length cap |
+| `width` | integer \| null | — | Output width in pixels; satellite enforces ≤ 4096 |
+| `height` | integer \| null | — | Output height in pixels; satellite enforces ≤ 4096 |
+| `steps` | integer \| null | — | Denoising steps; satellite enforces ≤ 200 |
+| `guidance` | float \| null | — | Classifier-free guidance scale |
+| `seed` | integer \| null | — | RNG seed for reproducibility; null → random |
+| `format` | enum `png` \| `jpeg` \| `webp` | — | Output image format; default `png` |
+| `output_mode` | enum `b64` \| `file` | — | Preferred delivery mode; default `b64`; satellite may downgrade to `file` on size |
+| `lora_path` | string \| null | — | Absolute path to LoRA weights; satellite enforces allowlist |
+| `lora_scale` | float \| null | — | LoRA conditioning scale |
+| `trigger` | string \| null | — | LoRA trigger word; forwarded verbatim with length cap |
+| `embedding_path` | string \| null | — | Absolute path to textual embedding; satellite enforces allowlist |
+
+### Reply — success
+
+```json
+{
+  "contract_version": "1",
+  "trace_id": "7f3a9c12-1b4e-4e8a-a2d5-0f9e2c3b1a7d",
+  "issued_at": "2026-04-19T14:32:03.456789+00:00",
+  "request_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+  "ok": true,
+  "image_b64": "iVBORw0KGgoAAAANSUhEUgAA...",
+  "mime_type": "image/png",
+  "width": 1024,
+  "height": 1024,
+  "engine": "flux2-klein",
+  "seed_used": 42
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|:---:|---|
+| `contract_version` | string | ✓ | Always `"1"` |
+| `trace_id` | string | ✓ | Echoed from request |
+| `issued_at` | string | ✓ | UTC timestamp of reply creation |
+| `request_id` | string | ✓ | Echoed from request |
+| `ok` | boolean | ✓ | Always `true` on success path |
+| `image_b64` | string (base64) | — | Mutually exclusive with `file_path`; present when encoded size ≤ 750 KB |
+| `file_path` | string | — | Mutually exclusive with `image_b64`; absolute satellite-resolved path; present when `output_mode: "file"` or base64 ceiling exceeded |
+| `mime_type` | string | ✓ | e.g. `image/png`, `image/jpeg`, `image/webp` |
+| `width` | integer | ✓ | Actual output width |
+| `height` | integer | ✓ | Actual output height |
+| `engine` | string | ✓ | Engine that produced the image |
+| `seed_used` | integer | ✓ | Actual seed used; 0 when satellite cannot extract it from the engine |
+
+Exactly one of `image_b64` or `file_path` MUST be present on a success reply. Both present or both absent is a malformed reply.
+
+### Reply — error
+
+```json
+{
+  "contract_version": "1",
+  "trace_id": "7f3a9c12-1b4e-4e8a-a2d5-0f9e2c3b1a7d",
+  "issued_at": "2026-04-19T14:32:01.000000+00:00",
+  "request_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+  "ok": false,
+  "error": "unknown_engine",
+  "error_detail": "flux99-nonexistent"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|:---:|---|
+| `contract_version` | string | ✓ | Always `"1"` |
+| `trace_id` | string | ✓ | Echoed from request |
+| `issued_at` | string | ✓ | UTC timestamp of reply creation |
+| `request_id` | string | ✓ | Echoed from request |
+| `ok` | boolean | ✓ | Always `false` on error path |
+| `error` | string | ✓ | Snake_case error code; see error codes table |
+| `error_detail` | string \| null | — | Optional human-readable detail; sanitized — MUST NOT leak internal paths, stack traces, or model internals |
+
+### Error codes
+
+| Code | Trigger | Notes |
+|---|---|---|
+| `missing_required_field` | `prompt` or `engine` absent; `width`/`height` > 4096; `steps` > 200; `lora_path` or `embedding_path` outside allowlist | Consolidates validation failures. Tokens are for logs and metrics, not control flow. |
+| `unknown_engine` | Engine name not found in satellite registry | |
+| `engine_load_failed` | Engine import error or initialization failure | e.g. missing torch extension |
+| `insufficient_resources` | Preflight VRAM/RAM check fails; `InsufficientResourcesError` or `MemoryError` during load | |
+| `generation_failed` | Runtime error during image generation or response encoding | Catch-all for unclassified failures |
+
+The hub raises `ImageUnavailableError` (or equivalent) on `ok: false` regardless of the specific `error` value — the token is for logs and metrics, not for branching control flow.
+
+### Heartbeat — `lyra.image.heartbeat`
+
+```json
+{
+  "contract_version": "1",
+  "trace_id": "00000000-0000-0000-0000-000000000000",
+  "issued_at": "2026-04-19T14:32:10.000000+00:00",
+  "worker_id": "image-roxabituwer-1713531130",
+  "service": "image_workers",
+  "host": "roxabituwer",
+  "subject": "lyra.image.generate.request",
+  "queue_group": "IMAGE_WORKERS",
+  "ts": 1713531130.0,
+  "engine_loaded": "flux2-klein",
+  "active_requests": 0,
+  "vram_used_mb": 8192,
+  "vram_total_mb": 10240
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|:---:|---|
+| `contract_version` | string | ✓ | Always `"1"` |
+| `trace_id` | string | ✓ | Populated by `NatsAdapterBase.heartbeat_payload`; zero UUID is acceptable for heartbeats |
+| `issued_at` | string | ✓ | UTC timestamp of heartbeat emission |
+| `worker_id` | string | ✓ | Unique per process; hub indexes freshness by this key; drop heartbeat if absent |
+| `service` | string | ✓ | Populated by `NatsAdapterBase.heartbeat_payload` |
+| `host` | string | ✓ | Populated by `NatsAdapterBase.heartbeat_payload` |
+| `subject` | string | ✓ | Always `lyra.image.generate.request` |
+| `queue_group` | string | ✓ | Always `IMAGE_WORKERS` |
+| `ts` | float | ✓ | Unix timestamp (seconds) of emission |
+| `engine_loaded` | string \| null | — | Currently loaded engine name; null if no engine warmed |
+| `active_requests` | integer \| null | — | In-flight request count; hub uses this for load-picking when multiple workers are alive |
+| `vram_used_mb` | integer | — | **Optional** — satellite may not populate if pynvml is unavailable; hub MUST NOT treat absence as an error |
+| `vram_total_mb` | integer | — | **Optional** — same caveat as `vram_used_mb` |
+
+**Cadence.** Satellites emit a heartbeat every **5 s** (`heartbeat_interval=5.0` in `ImageNatsAdapter.__init__`). The hub marks a worker alive if a heartbeat landed within the last **15 s** (`_HB_TTL`); older entries are pruned after `2 × _HB_TTL`. No worker alive → hub raises an error before dispatching any request.
+
+A heartbeat with a missing `worker_id` is dropped with a warning log and does not update freshness. The hub uses `active_requests` (not `vram_used_mb`) as the primary load-picking signal — VRAM telemetry is informational.
+
+### Max payload (ADR-047 Rule 4 compliance)
+
+The NATS server is configured with `max_payload: 52428800` (50 MB) in `deploy/nats/nats-container.conf`. This cap covers audio, images, and video traffic across all lyra domains.
+
+ADR-047 Rule 4 states: "Default 1 MB. Domains with legitimate binary payloads (audio, image) MUST declare the cap in their contract ADR." This ADR hereby declares the 50 MB server cap for the image domain.
+
+The satellite additionally enforces a **conservative base64 ceiling of 750 KB** in `imagecli/src/imagecli/nats/adapter.py:254–310`:
+
+- Base64 overhead is approximately 4/3, so 750 KB of base64 corresponds to roughly 562 KB of raw image bytes.
+- When the encoded length exceeds 750 KB, the satellite automatically downgrades to `file_path` mode regardless of the requested `output_mode`. It writes the image to `images/images_out/nats_{request_id[:8]}.{fmt}` relative to the satellite CWD, then replies with the absolute path from `Path.resolve()`.
+- `file_path` mode requires a **shared filesystem** between hub and worker. This holds today — hub and imageCLI satellite both run on Machine 1 (`roxabituwer`). Any future hub/worker split to separate hosts will require replacing the `file_path` fallback with an alternative binary transfer mechanism. This dependency is flagged as a known architectural constraint.
+- The hub MUST treat `file_path` as satellite-resolved and hub-opaque: no validation, no traversal, no path normalization. The hub reads the file at the given path to deliver the image to the user.
+
+### User-controlled fields (sanitization contract)
+
+The satellite (`imagecli/src/imagecli/nats/adapter.py:66–129`) owns sanitization of all user-supplied content. The hub forwards fields verbatim; the hub MUST NOT attempt to sanitize satellite inputs.
+
+| Field | Trust level | Sanitization owner | Enforcement |
+|---|---|---|---|
+| `prompt` | Untrusted (user input) | Satellite | Engine receives as-is; length cap applied before dispatch |
+| `negative_prompt` | Untrusted (user input) | Satellite | Same as `prompt` |
+| `trigger` | Untrusted (user input) | Satellite | Same as `prompt`; passed to engine as LoRA trigger word |
+| `lora_path` | Untrusted (user input) | Satellite | MUST be absolute; MUST resolve under `~/ComfyUI/models/{loras,lora}`; validated in `_validate_path` → `missing_required_field` on violation |
+| `embedding_path` | Untrusted (user input) | Satellite | MUST be absolute; MUST resolve under `~/ComfyUI/models/embeddings`; validated in `_validate_path` → `missing_required_field` on violation |
+| `width` | Untrusted (user input) | Satellite | MUST be ≤ 4096; validated in `_validate_request` → `missing_required_field` on violation |
+| `height` | Untrusted (user input) | Satellite | MUST be ≤ 4096; same enforcement |
+| `steps` | Untrusted (user input) | Satellite | MUST be ≤ 200; same enforcement |
+
+Path validation uses `Path.resolve()` to canonicalize before the `relative_to` check — symlinks and `..` traversal attempts are blocked. The satellite error detail MUST NOT leak the resolved path or the allowlist directory structure to the caller; sanitized messages only.
+
+## Rationale
+
+**Why NATS at all.** Image generation is GPU-bound and requires a heavy separate venv (torch, diffusers, ComfyUI). Making it a request-reply service over NATS lets it run on the same host (or a different one) without the hub importing imageCLI's dependencies. It gives load balancing via queue groups, liveness tracking via heartbeats, and zero-downtime worker replacement — all on the messaging layer. This is the same rationale as the voice domain (ADR-044).
+
+**Why these subjects.** `lyra.image.generate.request` follows the `<namespace>.<capability>.<action>.<verb>` shape from ADR-035. The heartbeat subject uses `lyra.image.heartbeat` (no `generate` qualifier) because it is a worker-level liveness signal, not scoped to a single verb. This matches the shipped satellite code (`adapter.py:18`) and is consistent with future additional image-domain verbs (e.g. `lyra.image.upscale.request`) sharing the same worker heartbeat.
+
+**Why `contract_version` additive not a handshake.** A handshake would require hub and satellite to negotiate on connect, reintroducing the kind of coupling the NATS migration is trying to eliminate. An additive string makes the contract self-describing on the wire without any state on either side. When a breaking change is needed, it ships as a new subject or a new ADR — not a wire negotiation. This is the same decision as ADR-044.
+
+**Why "1" as a string, not 1 as an integer.** String comparison works uniformly across any language binding. Mixing numeric and string types in the same field across version bumps is a source of subtle bugs. Future major bumps (`"2"`, `"3"`) ship with a new ADR; fractional bumps (`"1.1"`) are not defined.
+
+## Consequences
+
+### Positive
+
+- The lyra ↔ imagecli contract is frozen and greppable. Any payload change is visible as an ADR amendment.
+- `contract_version` gives operators and log aggregators a cheap way to filter by wire version without inspecting each payload.
+- The `file_path` fallback extends the effective binary-domain ceiling beyond the 750 KB conservative base64 limit — large images are deliverable as long as a shared filesystem exists.
+- Error codes are stable tokens; hub error-handling and metrics do not need to change when a new generation engine adds a new failure mode.
+
+### Negative
+
+- `file_path` mode couples hub and worker to a shared filesystem. If the image satellite is ever moved to a different host from the hub, the `file_path` path will need to be replaced with a different delivery mechanism (object storage, sidecar stream, or a larger NATS payload).
+- Every producer path must remember to stamp `contract_version`. A missing field is only caught by tests or downstream grep; there is no runtime enforcement.
+
+### Neutral
+
+- `contract_version` adds one string field per payload. Wire overhead is negligible.
+- The 50 MB NATS server cap is a shared resource limit across all lyra domains; image-domain traffic does not require a dedicated server configuration change.
+- Schema enforcement remains in the satellite's `_validate_request` and tests; this ADR does not introduce a runtime validator on the hub side.
+
+## Relation to other ADRs
+
+- **ADR-035** — NATS subject naming convention. `lyra.image.generate.request` and `lyra.image.heartbeat` follow the `<namespace>.<capability>.<action>.<verb>` and `<namespace>.<capability>.<verb>` shapes respectively.
+- **ADR-044** — lyra ↔ voicecli NATS voice contract. The canonical contract ADR shape. This ADR follows its structure exactly: subjects table, payload encoding, `contract_version`, request/reply schemas, error codes, heartbeat, max-payload, sanitization contract.
+- **ADR-046** — nkey provisioning is declarative. Invariant 2 (IDENTITIES is the single source of truth) requires the `image-worker` nkey identity to be added to `gen-nkeys.sh` before the hub client ships. The `image-worker` identity is now provisioned; ADR-047's subject ownership table reflects Status: Shipped.
+- **ADR-047** — NATS connector ownership pattern. This ADR is the lyra-owned half of the image domain. The satellite-owned half is `imagecli/src/imagecli/nats/adapter.py` (shipped by imageCLI#50). Rule 4 of ADR-047 requires this ADR to declare the max-payload cap — done in the Max payload section above.
+
+## References
+
+- Spec: [`artifacts/specs/754-lyra-image-domain-integration-spec.mdx`](../../../artifacts/specs/754-lyra-image-domain-integration-spec.mdx)
+- Issue: [#754](https://github.com/Roxabi/lyra/issues/754)
+- Satellite implementation: `imageCLI/src/imagecli/nats/adapter.py` (shipped by imageCLI#50, closed 2026-04-15)
+- Hub client: `src/lyra/nats/nats_image_client.py` (new — ships with #754)
+- NATS server config: `deploy/nats/nats-container.conf` (`max_payload: 52428800`)
+- nkey identity: `image-worker` (added to `IDENTITIES` in `deploy/nats/gen-nkeys.sh` per ADR-046 Invariant 2)
+- Supervisor entry: `imagecli_gen` in `deploy/supervisor/conf.d/` (satellite process managed by lyra's supervisord)

@@ -135,7 +135,7 @@ class TestCommandMetadata:
         (plugin_dir / "handlers.py").write_text(
             textwrap.dedent("""\
                 async def cmd_echo(msg, pool, args):
-                    from lyra.core.message import Response
+                    from lyra.core.messaging.message import Response
                     return Response(content=" ".join(args))
             """)
         )
@@ -169,7 +169,7 @@ class TestGetCommandDescriptions:
         (plugin_dir / "handlers.py").write_text(
             textwrap.dedent("""\
                 async def cmd_foo(msg, pool, args):
-                    from lyra.core.message import Response
+                    from lyra.core.messaging.message import Response
                     return Response(content="foo")
             """)
         )

@@ -11,8 +11,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
-
 pytestmark = pytest.mark.asyncio
 
 
@@ -68,7 +66,9 @@ def _make_dm_message(channel_id: int = 555, user_id: int = 42) -> SimpleNamespac
 async def test_discord_dm_injects_thread_session_id() -> None:
     """DiscordAdapter with turn_store injects thread_session_id for DMs."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord_inbound import handle_message as discord_handle_message
+    from lyra.adapters.discord.discord_inbound import (
+        handle_message as discord_handle_message,
+    )
 
     mock_bus = MagicMock()
     mock_bus.put_nowait = MagicMock()
@@ -79,7 +79,6 @@ async def test_discord_dm_injects_thread_session_id() -> None:
         bot_id="main",
         inbound_bus=mock_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
         turn_store=fake_turn_store,  # type: ignore[arg-type]
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
@@ -112,7 +111,9 @@ async def test_discord_dm_no_turn_store_does_not_inject() -> None:
     simply do not inject thread_session_id.
     """
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord_inbound import handle_message as discord_handle_message
+    from lyra.adapters.discord.discord_inbound import (
+        handle_message as discord_handle_message,
+    )
 
     mock_bus = MagicMock()
     mock_bus.put_nowait = MagicMock()
@@ -122,7 +123,6 @@ async def test_discord_dm_no_turn_store_does_not_inject() -> None:
         bot_id="main",
         inbound_bus=mock_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
         # No turn_store
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
@@ -149,7 +149,6 @@ async def test_discord_dm_turn_store_attribute_stored() -> None:
         bot_id="main",
         inbound_bus=mock_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
         turn_store=fake_turn_store,  # type: ignore[arg-type]
     )
 

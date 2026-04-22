@@ -15,8 +15,9 @@ if TYPE_CHECKING:
 
     from ..memory import SessionSnapshot
 
-from ..debouncer import DEFAULT_DEBOUNCE_MS, MessageDebouncer
-from ..message import InboundMessage, OutboundMessage
+from ..config import PoolConfig
+from ..debouncer import MessageDebouncer
+from ..messaging.message import InboundMessage, OutboundMessage
 from .pool_context import PoolContext as PoolContext
 from .pool_observer import PoolObserver
 from .pool_processor import PoolProcessor
@@ -34,44 +35,75 @@ class Pool:
         pool_id: str,
         agent_name: str,
         ctx: PoolContext,
+        config: PoolConfig | None = None,
+        # Backward-compat: individual params override config (deprecated)
         turn_timeout: float | None = TURN_TIMEOUT_DEFAULT,
-        debounce_ms: int = DEFAULT_DEBOUNCE_MS,
+        debounce_ms: int | None = None,
         turn_timeout_ceiling: float | None = None,
-        max_sdk_history: int = 50,
-        safe_dispatch_timeout: float = 10.0,
-        max_merged_chars: int = 4096,
-        cancel_on_new_message: bool = False,
-    ) -> None:
+        max_sdk_history: int | None = None,
+        safe_dispatch_timeout: float | None = None,
+        max_merged_chars: int | None = None,
+        cancel_on_new_message: bool | None = None,
+    ) -> None:  # noqa: PLR0913
+        cfg: PoolConfig = config if config is not None else PoolConfig()
+        # Allow individual param overrides for backward compat
+        tt_default = turn_timeout != TURN_TIMEOUT_DEFAULT
+        effective_turn_timeout = turn_timeout if tt_default else cfg.turn_timeout
+        effective_debounce_ms = (
+            debounce_ms if debounce_ms is not None else cfg.debounce_ms
+        )
+        effective_ceiling = (
+            turn_timeout_ceiling
+            if turn_timeout_ceiling is not None
+            else cfg.turn_timeout_ceiling
+        )
+        effective_max_sdk = (
+            max_sdk_history if max_sdk_history is not None else cfg.max_sdk_history
+        )
+        effective_safe_dispatch = (
+            safe_dispatch_timeout
+            if safe_dispatch_timeout is not None
+            else cfg.safe_dispatch_timeout
+        )
+        effective_max_merged = (
+            max_merged_chars if max_merged_chars is not None else cfg.max_merged_chars
+        )
+        effective_cancel = (
+            cancel_on_new_message
+            if cancel_on_new_message is not None
+            else cfg.cancel_on_new_message
+        )
+
         self.pool_id = pool_id
         self.agent_name = agent_name
         self.history: list[InboundMessage] = []
         self.sdk_history: deque[dict] = deque()
-        self.max_sdk_history: int = max_sdk_history
-        self._safe_dispatch_timeout: float = safe_dispatch_timeout
+        self.max_sdk_history: int = effective_max_sdk
+        self._safe_dispatch_timeout: float = effective_safe_dispatch
         self._session_reset_fn: Callable[[], Awaitable[None]] | None = None
         self._session_resume_fn: Callable[[str], Awaitable[bool]] | None = None
         self._on_resume_fn: Callable[[str], Awaitable[None]] | None = None  # set once
         self._switch_workspace_fn: Callable[[Path], Awaitable[None]] | None = None
         self._ctx = ctx
         # Ceiling clamp: use ceiling as default, clamp agent override to ceiling
-        if turn_timeout is not None and turn_timeout_ceiling is not None:
-            if turn_timeout > turn_timeout_ceiling:
+        if effective_turn_timeout is not None and effective_ceiling is not None:
+            if effective_turn_timeout > effective_ceiling:
                 log.warning(
                     "[pool:%s] turn_timeout %.0fs > ceiling %.0fs — clamped",
                     pool_id,
-                    turn_timeout,
-                    turn_timeout_ceiling,
+                    effective_turn_timeout,
+                    effective_ceiling,
                 )
-                turn_timeout = turn_timeout_ceiling
-            self._turn_timeout = turn_timeout
-        elif turn_timeout is not None:
-            self._turn_timeout = turn_timeout
-        elif turn_timeout_ceiling is not None:
-            self._turn_timeout = turn_timeout_ceiling
+                effective_turn_timeout = effective_ceiling
+            self._turn_timeout = effective_turn_timeout
+        elif effective_turn_timeout is not None:
+            self._turn_timeout = effective_turn_timeout
+        elif effective_ceiling is not None:
+            self._turn_timeout = effective_ceiling
         else:
             self._turn_timeout = None
-        self._debouncer = MessageDebouncer(debounce_ms, max_merged_chars)
-        self._cancel_on_new_message: bool = cancel_on_new_message
+        self._debouncer = MessageDebouncer(effective_debounce_ms, effective_max_merged)
+        self._cancel_on_new_message: bool = effective_cancel
         self._inbox: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._current_task: asyncio.Task | None = None
         self._inflight_stream_outbound: OutboundMessage | None = None

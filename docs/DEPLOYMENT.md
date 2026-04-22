@@ -302,9 +302,10 @@ Restart adapters first so the hub is last to reconnect:
 
 ```bash
 make telegram reload && make discord reload
-make lyra-tts reload && make lyra-stt reload
 make lyra reload     # hub last
 ```
+
+> Voice workers (TTS/STT) live in the voicecli project and are reloaded via its own Makefile targets — no longer managed here.
 
 New ACLs take effect on the next publish/subscribe; existing subscriptions opened before the reload continue to receive until the client reconnects.
 

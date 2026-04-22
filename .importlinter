@@ -22,17 +22,19 @@ ignore_imports =
     lyra.core.stores.prefs_store -> lyra.infrastructure.stores.sqlite_base
     lyra.core.stores.prefs_store -> lyra.infrastructure.stores.identity_alias_store
     # Downward TYPE_CHECKING imports (ADR-048 transition)
-    lyra.core.agent_refiner -> lyra.infrastructure.stores.agent_store
-    lyra.core.authenticator -> lyra.infrastructure.stores.auth_store
-    lyra.core.authenticator -> lyra.infrastructure.stores.identity_alias_store
-    lyra.core.agent -> lyra.infrastructure.stores.agent_store
-    lyra.core.memory -> lyra.infrastructure.stores.identity_alias_store
+    lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store
+    lyra.core.auth.authenticator -> lyra.infrastructure.stores.auth_store
+    lyra.core.auth.authenticator -> lyra.infrastructure.stores.identity_alias_store
+    lyra.core.agent.agent -> lyra.infrastructure.stores.agent_store
+    lyra.core.memory.memory -> lyra.infrastructure.stores.identity_alias_store
     lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store
+    lyra.core.hub.hub_registration -> lyra.infrastructure.stores.identity_alias_store
     # TurnStore moved to infrastructure per ADR-048 (#760 review fix f2)
     lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store
+    lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store
     lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store
-    lyra.core.cli_pool -> lyra.infrastructure.stores.turn_store
-    lyra.core.cli_pool_session -> lyra.infrastructure.stores.turn_store
+    lyra.core.cli.cli_pool -> lyra.infrastructure.stores.turn_store
+    lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store
     lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store
     lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store
 

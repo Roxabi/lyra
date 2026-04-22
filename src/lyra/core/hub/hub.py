@@ -5,12 +5,12 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from ..agent import AgentBase
-from ..authenticator import Authenticator
-from ..bus import Bus
-from ..identity import Identity
-from ..inbound_bus import LocalBus
-from ..message import InboundMessage, Platform
+from ..auth.authenticator import Authenticator
+from ..auth.identity import Identity
+from ..config import HubConfig, PoolConfig
+from ..messaging.bus import Bus
+from ..messaging.inbound_bus import LocalBus
+from ..messaging.message import InboundMessage, Platform
 from ..pool import Pool
 from ..tts_dispatch import AudioPipeline
 from .hub_circuit_breaker import HubCircuitBreakerMixin
@@ -22,6 +22,7 @@ from .hub_protocol import (  # noqa: F401 — public re-export
     RoutingKey,
 )
 from .hub_rate_limit import RateLimiter
+from .hub_registration import HubRegistrationMixin
 from .hub_shutdown import HubShutdownMixin
 from .identity_resolver import IdentityResolver
 from .middleware import build_default_pipeline
@@ -36,10 +37,11 @@ if TYPE_CHECKING:
 
     from ...stt import STTProtocol
     from ...tts import TtsProtocol
+    from ..agent import AgentBase
     from ..circuit_breaker import CircuitRegistry
-    from ..cli_pool import CliPool
+    from ..cli.cli_pool import CliPool
     from ..memory import MemoryManager
-    from ..messages import MessageManager
+    from ..messaging.messages import MessageManager
     from ..stores.message_index import MessageIndex
     from ..stores.pairing import PairingManager
     from ..stores.prefs_store import PrefsStore
@@ -50,7 +52,11 @@ log = logging.getLogger(__name__)
 
 
 class Hub(
-    HubShutdownMixin, HubCircuitBreakerMixin, HubPoolDelegationMixin, HubDispatchMixin
+    HubShutdownMixin,
+    HubCircuitBreakerMixin,
+    HubPoolDelegationMixin,
+    HubDispatchMixin,
+    HubRegistrationMixin,
 ):
     """Central hub: Bus + OutboundDispatchers + adapter registry + pools."""
 
@@ -68,32 +74,88 @@ class Hub(
 
     def __init__(  # noqa: PLR0913
         self,
-        rate_limit: int = RATE_LIMIT,
-        rate_window: int = RATE_WINDOW,
-        pool_ttl: float = POOL_TTL,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         pairing_manager: "PairingManager | None" = None,
         stt: "STTProtocol | None" = None,
         tts: "TtsProtocol | None" = None,
-        debounce_ms: int = 0,
-        cancel_on_new_message: bool = False,
         prefs_store: "PrefsStore | None" = None,
-        turn_timeout: float | None = None,
-        max_sdk_history: int = MAX_SDK_HISTORY,
-        safe_dispatch_timeout: float = SAFE_DISPATCH_TIMEOUT,
-        staging_maxsize: int = STAGING_MAXSIZE,
-        platform_queue_maxsize: int = PLATFORM_QUEUE_MAXSIZE,
-        queue_depth_threshold: int = QUEUE_DEPTH_THRESHOLD,
-        max_merged_chars: int = MAX_MERGED_CHARS,
         event_bus: "PipelineEventBus | None" = None,
         inbound_bus: "Bus[InboundMessage] | None" = None,
+        config: HubConfig | None = None,
+        # Backward-compat: individual params override config (deprecated)
+        rate_limit: int | None = None,
+        rate_window: int | None = None,
+        pool_ttl: float | None = None,
+        debounce_ms: int | None = None,
+        cancel_on_new_message: bool | None = None,
+        turn_timeout: float | None = None,
+        max_sdk_history: int | None = None,
+        safe_dispatch_timeout: float | None = None,
+        staging_maxsize: int | None = None,
+        platform_queue_maxsize: int | None = None,
+        queue_depth_threshold: int | None = None,
+        max_merged_chars: int | None = None,
+        max_pools: int | None = None,
     ) -> None:
-        self._platform_queue_maxsize = platform_queue_maxsize
+        base_cfg: HubConfig = config if config is not None else HubConfig()
+        # Merge backward-compat overrides
+        cfg = HubConfig(
+            rate_limit=rate_limit if rate_limit is not None else base_cfg.rate_limit,
+            rate_window=rate_window
+            if rate_window is not None
+            else base_cfg.rate_window,
+            pool_ttl=pool_ttl if pool_ttl is not None else base_cfg.pool_ttl,
+            debounce_ms=debounce_ms
+            if debounce_ms is not None
+            else base_cfg.debounce_ms,
+            cancel_on_new_message=(
+                cancel_on_new_message
+                if cancel_on_new_message is not None
+                else base_cfg.cancel_on_new_message
+            ),
+            turn_timeout=turn_timeout
+            if turn_timeout is not None
+            else base_cfg.turn_timeout,
+            max_sdk_history=(
+                max_sdk_history
+                if max_sdk_history is not None
+                else base_cfg.max_sdk_history
+            ),
+            safe_dispatch_timeout=(
+                safe_dispatch_timeout
+                if safe_dispatch_timeout is not None
+                else base_cfg.safe_dispatch_timeout
+            ),
+            staging_maxsize=(
+                staging_maxsize
+                if staging_maxsize is not None
+                else base_cfg.staging_maxsize
+            ),
+            platform_queue_maxsize=(
+                platform_queue_maxsize
+                if platform_queue_maxsize is not None
+                else base_cfg.platform_queue_maxsize
+            ),
+            queue_depth_threshold=(
+                queue_depth_threshold
+                if queue_depth_threshold is not None
+                else base_cfg.queue_depth_threshold
+            ),
+            max_merged_chars=(
+                max_merged_chars
+                if max_merged_chars is not None
+                else base_cfg.max_merged_chars
+            ),
+            max_pools=max_pools if max_pools is not None else base_cfg.max_pools,
+        )
+        if cfg.max_pools <= 0:
+            raise ValueError(f"max_pools must be > 0, got {cfg.max_pools}")
+        self._platform_queue_maxsize = cfg.platform_queue_maxsize
         self.inbound_bus: Bus[InboundMessage] = inbound_bus or LocalBus(
             name="inbound",
-            staging_maxsize=staging_maxsize,
-            queue_depth_threshold=queue_depth_threshold,
+            staging_maxsize=cfg.staging_maxsize,
+            queue_depth_threshold=cfg.queue_depth_threshold,
         )
         self.outbound_dispatchers: dict[tuple[Platform, str], OutboundDispatcher] = {}
         self.adapter_registry: dict[tuple[Platform, str], ChannelAdapter] = {}
@@ -105,22 +167,31 @@ class Hub(
         self._message_index: MessageIndex | None = None
         self._stt: STTProtocol | None = stt
         self._tts_value: TtsProtocol | None = tts
-        self._pool_ttl = pool_ttl
-        self._debounce_ms = debounce_ms
-        self._cancel_on_new_message = cancel_on_new_message
-        self._rate_limiter = RateLimiter(rate_limit, rate_window)
+        self._pool_ttl = cfg.pool_ttl
+        self._debounce_ms = cfg.debounce_ms
+        self._cancel_on_new_message = cfg.cancel_on_new_message
+        self._rate_limiter = RateLimiter(cfg.rate_limit, cfg.rate_window)
         self._start_time: float = time.monotonic()
         self._memory: MemoryManager | None = None
         self._memory_tasks: set[asyncio.Task] = set()
         self._turn_store: TurnStore | None = None
-        self._turn_timeout = turn_timeout
+        self._turn_timeout = cfg.turn_timeout
         self._prefs_store: PrefsStore | None = prefs_store
-        self._max_sdk_history = max_sdk_history
-        self._safe_dispatch_timeout = safe_dispatch_timeout
-        self._max_merged_chars = max_merged_chars
+        self._max_sdk_history = cfg.max_sdk_history
+        self._safe_dispatch_timeout = cfg.safe_dispatch_timeout
+        self._max_merged_chars = cfg.max_merged_chars
+        self._max_pools = cfg.max_pools
         self.cli_pool: CliPool | None = None
         self._event_bus: PipelineEventBus | None = event_bus
-        self._pool_manager = PoolManager(self)
+        self._pool_config = PoolConfig(
+            turn_timeout=cfg.turn_timeout,
+            debounce_ms=cfg.debounce_ms,
+            max_sdk_history=cfg.max_sdk_history,
+            safe_dispatch_timeout=cfg.safe_dispatch_timeout,
+            max_merged_chars=cfg.max_merged_chars,
+            cancel_on_new_message=cfg.cancel_on_new_message,
+        )
+        self._pool_manager = PoolManager(self, self._pool_config)
         self._audio_pipeline = AudioPipeline(self)
         self._authenticators: dict[tuple[Platform, str], Authenticator] = {}
         self._alias_store: IdentityAliasStore | None = None
@@ -155,70 +226,6 @@ class Hub(
     def pools(self) -> dict[str, Pool]:
         return self._pool_manager.pools
 
-    def register_agent(self, agent: AgentBase) -> None:
-        """Register an agent implementation by name."""
-        self.agent_registry[agent.name] = agent
-        if self._memory is not None and hasattr(agent, "_memory"):
-            agent._memory = self._memory
-        if hasattr(agent, "_task_registry"):
-            agent._task_registry = self._memory_tasks
-        router = getattr(agent, "command_router", None)
-        if router is not None and hasattr(router, "_on_debounce_change"):
-            router._on_debounce_change = self.set_debounce_ms
-        if router is not None and hasattr(router, "_on_cancel_change"):
-            router._on_cancel_change = self.set_cancel_on_new_message
-
-    def set_memory(self, manager: MemoryManager) -> None:
-        self._memory = manager
-        for agent in self.agent_registry.values():
-            if hasattr(agent, "_memory"):
-                agent._memory = manager
-
-    def set_turn_store(self, store: TurnStore) -> None:
-        self._turn_store = store
-        for pool in self.pools.values():
-            pool._observer.register_turn_store(store)
-
-    def set_message_index(self, store: MessageIndex) -> None:
-        self._message_index = store
-        for pool in self.pools.values():
-            pool._observer.register_message_index(store)
-
-    def set_alias_store(self, store: IdentityAliasStore) -> None:
-        self._alias_store = store
-        if self._memory is not None and hasattr(self._memory, "set_alias_store"):
-            self._memory.set_alias_store(store)
-
-    def register_adapter(
-        self,
-        platform: Platform,
-        bot_id: str,
-        adapter: ChannelAdapter,
-    ) -> None:
-        self.adapter_registry[(platform, bot_id)] = adapter
-        self.inbound_bus.register(
-            platform, maxsize=self._platform_queue_maxsize, bot_id=bot_id
-        )
-
-    def register_outbound_dispatcher(
-        self,
-        platform: Platform,
-        bot_id: str,
-        dispatcher: OutboundDispatcher,
-    ) -> None:
-        self.outbound_dispatchers[(platform, bot_id)] = dispatcher
-
-    def register_authenticator(
-        self, platform: Platform, bot_id: str, auth: Authenticator
-    ) -> None:
-        """Register the Authenticator for a (platform, bot_id) pair (C3)."""
-        self._authenticators[(platform, bot_id)] = auth
-
-    def _get_authenticator(
-        self, platform: Platform, bot_id: str
-    ) -> "Authenticator | None":
-        return self._authenticators.get((platform, bot_id))
-
     def resolve_identity(
         self, user_id: str | None, platform: str, bot_id: str
     ) -> Identity:
@@ -228,31 +235,6 @@ class Hub(
     def _resolve_message_trust(self, msg: InboundMessage) -> InboundMessage:
         """Re-resolve trust level on the Hub side (C3 — trust re-resolution)."""
         return self._identity_resolver.resolve_message_trust(msg)
-
-    def register_binding(
-        self,
-        platform: Platform,
-        bot_id: str,
-        scope_id: str,
-        agent_name: str,
-        pool_id: str,
-    ) -> None:
-        for ek, eb in self.bindings.items():
-            if (
-                ek.platform == platform
-                and ek.bot_id == bot_id
-                and ek.scope_id != scope_id
-                and eb.pool_id == pool_id
-            ):
-                raise ValueError(
-                    f"pool_id {pool_id!r} is already bound to scope_id "
-                    f"{ek.scope_id!r} on {platform}:{bot_id}. "
-                    "Each pool must serve at most one scope per (platform, bot_id)."
-                )
-        self.bindings[RoutingKey(platform, bot_id, scope_id)] = Binding(
-            agent_name=agent_name,
-            pool_id=pool_id,
-        )
 
     def resolve_binding(self, msg: InboundMessage) -> Binding | None:
         """Resolve binding: exact key, then wildcard fallback, else None."""

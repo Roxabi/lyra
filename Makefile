@@ -1,5 +1,10 @@
+# Recipes use bash for brace expansion + pipefail (`rm -f .../lyra*.{a,b,c}`,
+# `podman save | ssh … | podman load`). Default /bin/sh is dash on Debian/Ubuntu,
+# which silently skips unmatched brace expansions.
+SHELL := /bin/bash -o pipefail
+
 SUPERVISOR_HUB ?= $(HOME)/projects
-HUB_SERVICES   := lyra telegram discord lyra-stt lyra-tts
+HUB_SERVICES   := lyra telegram discord
 -include $(SUPERVISOR_HUB)/hub.mk
 
 # Fallback SVC_CMD parsing — used when hub.mk is not present (e.g. prod).
@@ -15,7 +20,7 @@ endif
 # Sub-command parsing for multi-word targets (remote, monitor, deploy).
 # These are NOT in HUB_SERVICES because their sub-commands can collide
 # with real target names (e.g. `make remote telegram reload`).
-_LYRA_MULTI := monitor deploy remote dep-graph
+_LYRA_MULTI := monitor deploy remote
 ifneq (,$(filter $(_LYRA_MULTI),$(firstword $(MAKECMDGOALS))))
   _LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
   _IS_LYRA_SUBCMD := true
@@ -26,47 +31,71 @@ endif
 
 DEPLOY_HOST := $(shell grep '^DEPLOY_HOST=' .env 2>/dev/null | cut -d= -f2)
 DEPLOY_DIR := $(shell grep '^DEPLOY_DIR=' .env 2>/dev/null | cut -d= -f2)
+LYRA_SUPERVISORCTL_PATH := $(shell grep '^LYRA_SUPERVISORCTL_PATH=' .env 2>/dev/null | cut -d= -f2)
 
 define require_machine1
 	@[ -n "$(DEPLOY_HOST)" ] || { echo "Error: DEPLOY_HOST not set in .env"; exit 1; }
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: lyra telegram discord lyra-stt lyra-tts monitor register quadlet-install deploy remote update nats-setup nats-install nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
+.PHONY: build push lyra telegram discord monitor register quadlet-install deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
-# ── Supervisor services ──────────────────────────────────────────────────────
+# ── Container image build + transfer ─────────────────────────────────────────
 
-LYRA_PROGRAMS := lyra_hub lyra_telegram lyra_discord
-ifneq ($(shell grep -s '^LYRA_STT_ENABLED=1' .env),)
-  LYRA_PROGRAMS += lyra_stt
-endif
-ifneq ($(shell grep -s '^LYRA_TTS_ENABLED=1' .env),)
-  LYRA_PROGRAMS += lyra_tts
-endif
+LYRA_IMAGE := localhost/lyra:latest
+
+build:                 ## build lyra image locally (localhost/lyra:latest)
+	podman build -f Dockerfile -t $(LYRA_IMAGE) .
+
+push:                  ## save image and load on $(DEPLOY_HOST) via ssh
+	$(require_machine1)
+	@echo "Transferring $(LYRA_IMAGE) → $(DEPLOY_HOST)..."
+	podman save $(LYRA_IMAGE) | ssh $(DEPLOY_HOST) "podman load"
+
+# ── Service control (Quadlet units via systemd --user) ───────────────────────
+
+LYRA_UNITS := lyra_hub lyra_telegram lyra_discord
+
+# $(call lyra_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl or supervisorctl.
+# Uses supervisorctl if LYRA_SUPERVISORCTL_PATH is set, else systemctl (default install).
+# Defaults (empty SVC_CMD) to `start`. `logs`/`errors` tail the first unit.
+define lyra_sctl
+	@if [ -n "$(LYRA_SUPERVISORCTL_PATH)" ]; then \
+		case "$(SVC_CMD)" in \
+			reload|"")      $(LYRA_SUPERVISORCTL_PATH) restart $(1) ;; \
+			start)          $(LYRA_SUPERVISORCTL_PATH) start $(1) ;; \
+			stop)           $(LYRA_SUPERVISORCTL_PATH) stop $(1) ;; \
+			status)         $(LYRA_SUPERVISORCTL_PATH) status $(1) || true ;; \
+			logs)           $(LYRA_SUPERVISORCTL_PATH) tail -f $(firstword $(1)) ;; \
+			errlogs|errors) $(LYRA_SUPERVISORCTL_PATH) tail -f $(firstword $(1)) stderr ;; \
+			*) echo "Unknown action: $(SVC_CMD). Use: start|stop|status|reload|logs|errors"; exit 1 ;; \
+		esac; \
+	else \
+		case "$(SVC_CMD)" in \
+			reload)         systemctl --user restart $(1) ;; \
+			start|"")       systemctl --user start   $(1) ;; \
+			stop)           systemctl --user stop    $(1) ;; \
+			status)         systemctl --user status  $(1) || true ;; \
+			logs)           journalctl --user -u $(firstword $(1)) -f ;; \
+			errlogs|errors) journalctl --user -u $(firstword $(1)) -f -p err ;; \
+			*) echo "Unknown action: $(SVC_CMD). Use: start|stop|status|reload|logs|errors"; exit 1 ;; \
+		esac; \
+	fi
+endef
 
 lyra:
 ifndef _IS_LYRA_SUBCMD
-	$(call lyra_svc,$(LYRA_PROGRAMS))
+	$(call lyra_sctl,$(LYRA_UNITS))
 endif
 
 telegram:
 ifndef _IS_LYRA_SUBCMD
-	$(call lyra_svc,lyra_telegram)
+	$(call lyra_sctl,lyra_telegram)
 endif
 
 discord:
 ifndef _IS_LYRA_SUBCMD
-	$(call lyra_svc,lyra_discord)
-endif
-
-lyra-stt:
-ifndef _IS_LYRA_SUBCMD
-	$(call lyra_svc,lyra_stt)
-endif
-
-lyra-tts:
-ifndef _IS_LYRA_SUBCMD
-	$(call lyra_svc,lyra_tts)
+	$(call lyra_sctl,lyra_discord)
 endif
 
 # ── Monitor (systemd timer, not supervisor) ──────────────────────────────────
@@ -90,12 +119,10 @@ QUADLET_DIR      := $(HOME)/.config/containers/systemd
 
 register:
 	@echo "Registering lyra with supervisor hub..."
-	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord lyra-stt lyra-tts monitor remote deploy
+	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord monitor remote deploy
 	$(call hub-link-conf,lyra_hub,deploy/supervisor/conf.d/lyra_hub.conf)
 	$(call hub-link-conf,lyra_telegram,deploy/supervisor/conf.d/lyra_telegram.conf)
 	$(call hub-link-conf,lyra_discord,deploy/supervisor/conf.d/lyra_discord.conf)
-	$(call hub-link-conf,lyra_stt,deploy/supervisor/conf.d/lyra_stt.conf)
-	$(call hub-link-conf,lyra_tts,deploy/supervisor/conf.d/lyra_tts.conf)
 	@mkdir -p "$(HOME)/.local/state/lyra/logs"
 	$(hub_reread)
 	@echo ""
@@ -117,47 +144,27 @@ register:
 
 quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + reload
 	@mkdir -p "$(QUADLET_DIR)"
-	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container}
-	@cp deploy/quadlet/lyra.network                "$(QUADLET_DIR)/lyra.network"
-	@cp deploy/quadlet/lyra-data.volume            "$(QUADLET_DIR)/lyra-data.volume"
-	@cp deploy/quadlet/lyra-config.volume          "$(QUADLET_DIR)/lyra-config.volume"
-	@cp deploy/quadlet/lyra-nkey-hub.volume        "$(QUADLET_DIR)/lyra-nkey-hub.volume"
-	@cp deploy/quadlet/lyra-nkey-llm-worker.volume "$(QUADLET_DIR)/lyra-nkey-llm-worker.volume"
-	@cp deploy/quadlet/lyra-nkey-monitor.volume    "$(QUADLET_DIR)/lyra-nkey-monitor.volume"
-	@cp deploy/quadlet/lyra-nkey-tts-adapter.volume "$(QUADLET_DIR)/lyra-nkey-tts-adapter.volume"
-	@cp deploy/quadlet/lyra-nkey-stt-adapter.volume "$(QUADLET_DIR)/lyra-nkey-stt-adapter.volume"
-	@cp deploy/quadlet/lyra-nats-auth.volume       "$(QUADLET_DIR)/lyra-nats-auth.volume"
-	@cp deploy/quadlet/nats.container              "$(QUADLET_DIR)/nats.container"
-	@cp deploy/quadlet/hub.container               "$(QUADLET_DIR)/hub.container"
+	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container} "$(QUADLET_DIR)/nats.container"
+	@cp deploy/quadlet/lyra.network                    "$(QUADLET_DIR)/lyra.network"
+	@cp deploy/quadlet/lyra-data.volume                "$(QUADLET_DIR)/lyra-data.volume"
+	@cp deploy/quadlet/lyra-logs.volume                "$(QUADLET_DIR)/lyra-logs.volume"
+	@cp deploy/quadlet/lyra-config.volume              "$(QUADLET_DIR)/lyra-config.volume"
+	@cp deploy/quadlet/lyra-nkey-hub.volume            "$(QUADLET_DIR)/lyra-nkey-hub.volume"
+	@cp deploy/quadlet/lyra-nkey-llm-worker.volume     "$(QUADLET_DIR)/lyra-nkey-llm-worker.volume"
+	@cp deploy/quadlet/lyra-nkey-monitor.volume        "$(QUADLET_DIR)/lyra-nkey-monitor.volume"
+	@cp deploy/quadlet/lyra-nkey-telegram-adapter.volume "$(QUADLET_DIR)/lyra-nkey-telegram-adapter.volume"
+	@cp deploy/quadlet/lyra-nkey-discord-adapter.volume  "$(QUADLET_DIR)/lyra-nkey-discord-adapter.volume"
+	@cp deploy/quadlet/lyra-nats-auth.volume           "$(QUADLET_DIR)/lyra-nats-auth.volume"
+	@cp deploy/quadlet/nats.container                  "$(QUADLET_DIR)/nats.container"
+	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"
+	@cp deploy/quadlet/lyra-telegram.container         "$(QUADLET_DIR)/lyra-telegram.container"
+	@cp deploy/quadlet/lyra-discord.container          "$(QUADLET_DIR)/lyra-discord.container"
 	@systemctl --user daemon-reload
 	@echo "Quadlet units installed."
 
-# ── Supervisor config reload ──────────────────────────────────────────────────
+# ── Supervisor config reload (remote prod only until cutover #611) ──────────
 
 SCTL := $(or $(SUPERVISORCTL),$(CURDIR)/deploy/supervisor/supervisorctl.sh)
-LYRA_START := $(CURDIR)/deploy/supervisor/start.sh
-
-# Ensure supervisord is running (for standalone prod use without hub.mk).
-define ensure_lyra_supervisor
-	@if ! $(SCTL) status >/dev/null 2>&1; then \
-		echo "supervisord not running, starting..."; \
-		$(LYRA_START) > /dev/null; \
-	fi
-endef
-
-# Local supervisorctl dispatch — mirrors svc.sh but uses SCTL directly.
-define lyra_svc
-	$(ensure_lyra_supervisor)
-	@case "$(SVC_CMD)" in \
-		reload)         $(SCTL) restart $(1) ;; \
-		start)          $(SCTL) start   $(1) ;; \
-		stop)           $(SCTL) stop    $(1) ;; \
-		logs)           $(SCTL) tail -f $(1) ;; \
-		errlogs|errors) $(SCTL) tail -f $(1) stderr ;; \
-		status|"")      $(SCTL) status  $(1) ;; \
-		*) echo "Unknown action: $(SVC_CMD)"; exit 1 ;; \
-	esac
-endef
 
 update:
 	@$(SCTL) reread && $(SCTL) update
@@ -234,32 +241,9 @@ typecheck:
 format:
 	uv run ruff format .
 
-# ── Dep graph ────────────────────────────────────────────────────────────────
-# Multi-action target — see _LYRA_MULTI list at top of file.
-# Sub-actions: fetch | build | audit | validate | open | (empty = full rebuild)
-
-DEP_GRAPH_DIR := $(HOME)/projects/lyra/scripts/dep-graph
-DEP_GRAPH_OUT := $(HOME)/.roxabi/forge/lyra/visuals/lyra-v2-dependency-graph.html
-
-define dep_graph_run
-	cd $(DEP_GRAPH_DIR) && uv run --project $(HOME)/projects/lyra python -m dep_graph.cli $(1)
-endef
-
-.PHONY: dep-graph
-
-dep-graph:
-	@case "$(_LYRA_CMD)" in \
-		fetch)    $(call dep_graph_run,fetch) ;; \
-		build)    $(call dep_graph_run,build) ;; \
-		audit)    $(call dep_graph_run,audit) ;; \
-		validate) $(call dep_graph_run,validate) ;; \
-		migrate)  $(call dep_graph_run,migrate) ;; \
-		open)     xdg-open $(DEP_GRAPH_OUT) 2>/dev/null || open $(DEP_GRAPH_OUT) 2>/dev/null || echo "Open $(DEP_GRAPH_OUT) manually" ;; \
-		""|all)   $(call dep_graph_run,fetch) && $(call dep_graph_run,build) ;; \
-		*)        echo "Unknown action: $(_LYRA_CMD)"; \
-		          echo "Use: fetch | build | audit | validate | migrate | open | (empty for full rebuild)"; \
-		          exit 1 ;; \
-	esac
+# dep-graph and corpus migrated to roxabi-dashboard (2026-04-22).
+# Run via dashboard: `uv run --project ../roxabi-dashboard roxabi-corpus sync`
+# Graph API: GET http://localhost:8000/api/graph
 
 # ── Supervisor config generation ─────────────────────────────────────────────
 

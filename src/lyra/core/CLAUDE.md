@@ -16,41 +16,45 @@ Outbound (platform) ←──────────────── Outbound
 
 | Subdir | Purpose |
 |--------|---------|
+| `agent/` | `Agent`, `AgentBuilder`, `AgentRefiner`, `Persona`, agent loaders/seeders/schema |
+| `auth/` | `Authenticator`, `Identity`, `Trust`, `Guard`, `GuardChain` |
+| `cli/` | Claude CLI subprocess protocol (`CliPool` mixins, streaming, parser, non-streaming) |
+| `commands/` | Internal command routing infra + built-in/workspace command handlers (NOT plugin commands) |
 | `hub/` | Message routing, outbound dispatch, pool lifecycle orchestration |
-| `stores/` | Store protocols + factory functions (implementations moved to `lyra.infrastructure.stores`) |
+| `memory/` | `MemoryManager`, memory types, freshness, schema, upserts |
+| `messaging/` | `Message`, `Bus`, `LocalBus`, `LlmEvent`, `RenderEvent`, scope, tool-display config |
 | `pool/` | Pool primitives — lifecycle, per-message processing, session observation |
-| `commands/` | Internal command routing infra (NOT plugin commands) |
+| `processors/` | Stream processing, processor registry, plugin-style processor implementations |
+| `stores/` | Store protocols + factory functions (implementations moved to `lyra.infrastructure.stores`) |
 
 ## Domain event types
 
-`events.py` defines `LlmEvent` (`TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent`) —
-the streaming protocol shared between `llm/` drivers and `core/stream_processor`.
+`messaging/events.py` defines `LlmEvent` (`TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent`) —
+the streaming protocol shared between `llm/` drivers and `core/processors/stream_processor`.
 Placed here (not in `llm/`) so `llm → core` stays unidirectional. See
 `src/lyra/llm/CLAUDE.md` for the event field reference.
 
-`render_events.py` defines the platform-agnostic render events that
+`messaging/render_events.py` defines the platform-agnostic render events that
 `StreamProcessor` emits downstream to adapters.
 
 ## CLI subprocess protocol
 
-The `cli_*.py` files handle the Claude CLI subprocess protocol:
+The `cli/` subdir holds the Claude CLI subprocess protocol:
 
-- `cli_protocol.py` — Public API re-exports (`StreamingIterator`, `send_and_read_stream`, etc.)
-- `cli_streaming.py` — Async I/O layer: `StreamingIterator` handles timeout, EOF, process death
-- `cli_streaming_parser.py` — Pure JSON parsing: `CliStreamingParser` converts NDJSON lines to `LlmEvent` objects (no I/O, fully testable in isolation)
-- `cli_non_streaming.py` — Non-streaming protocol (`read_until_result`, `send_and_read`)
-- `cli_pool.py` — Process pool management (`_ProcessEntry`, `CliPool`); inherits lifecycle, streaming, session, and worker mixins
-- `cli_pool_lifecycle.py` — `CliPoolLifecycleMixin`: `start`, `stop`, `drain`, `get_reaper_status` (#760)
-- `cli_pool_streaming.py` — `CliPoolStreamingMixin`: `send_streaming`, stale-resume guard (#760)
-- `cli_pool_session.py` — `CliPoolSessionMixin`: TurnStore wiring, CLI session persistence for `--resume`
+- `cli/cli_protocol.py` — Public API re-exports (`StreamingIterator`, `send_and_read_stream`, etc.)
+- `cli/cli_streaming.py` — Async I/O layer: `StreamingIterator` handles timeout, EOF, process death
+- `cli/cli_streaming_parser.py` — Pure JSON parsing: `CliStreamingParser` converts NDJSON lines to `LlmEvent` objects (no I/O, fully testable in isolation)
+- `cli/cli_non_streaming.py` — Non-streaming protocol (`read_until_result`, `send_and_read`)
+- `cli/cli_pool.py` — Process pool management (`_ProcessEntry`, `CliPool`); inherits lifecycle, streaming, session, and worker mixins
+- `cli/cli_pool_lifecycle.py` — `CliPoolLifecycleMixin`: `start`, `stop`, `drain`, `get_reaper_status` (#760)
+- `cli/cli_pool_streaming.py` — `CliPoolStreamingMixin`: `send_streaming`, stale-resume guard (#760)
+- `cli/cli_pool_session.py` — `CliPoolSessionMixin`: TurnStore wiring, CLI session persistence for `--resume`
 
 ## Non-obvious placement decisions
 
 **`pool_manager.py` and `pipeline_types.py` are in `hub/`** — both import `Hub` at runtime; placing them in `pool/` would create a circular import. `message_pipeline.py` is a backward-compatibility shim that re-exports from `pipeline_types.py`.
 
-**`builtin_commands.py` and `workspace_commands.py` are flat in `core/`** — not in `commands/`. The `commands/` subdir is routing infra only; built-in handlers live at the `core/` level.
-
-**`commands/` vs `src/lyra/commands/`** — `core/commands/` is the router/loader/registry plumbing. User-facing plugin commands (echo, search, pairing…) live in the top-level `src/lyra/commands/`.
+**`commands/` vs `src/lyra/commands/`** — `core/commands/` is the router/loader/registry plumbing + built-in handlers (`builtin_commands`, `workspace_commands`). User-facing plugin commands (echo, search, pairing…) live in the top-level `src/lyra/commands/`.
 
 **`pairing_config.py`** is a sibling dataclass with no DB logic — it is not a store.
 
@@ -67,7 +71,7 @@ Narrow interface `Pool` requires from its owner. Test seam: inject a mock to uni
 ### RoutingKey (`hub/hub_protocol.py`)
 `NamedTuple(platform, bot_id, scope_id)`. Always call `.to_pool_id()` — never build pool ID strings manually (ADR-001 §4).
 
-### Guard / GuardChain (`guard.py`)
+### Guard / GuardChain (`auth/guard.py`)
 `Guard` protocol has one method: `check(identity) -> Rejection | None`. Compose via `GuardChain`. Never raise from `check()` — return a `Rejection`.
 
 ## Store pattern

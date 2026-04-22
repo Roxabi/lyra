@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from lyra.core.agent_config import ModelConfig
+from lyra.core.agent.agent_config import ModelConfig
 
 
 class TestModelConfig:
@@ -30,7 +30,7 @@ class TestModelConfig:
         assert cfg.backend == "litellm"
 
     def test_valid_backends_contains_litellm(self) -> None:
-        from lyra.core.agent_config import _VALID_BACKENDS
+        from lyra.core.agent.agent_config import _VALID_BACKENDS
 
         assert "litellm" in _VALID_BACKENDS
 

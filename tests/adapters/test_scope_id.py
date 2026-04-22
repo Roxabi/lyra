@@ -20,8 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 
 from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.telegram_normalize import _make_scope_id
-from lyra.core.authenticator import _ALLOW_ALL
+from lyra.adapters.telegram.telegram_normalize import _make_scope_id
 
 # ---------------------------------------------------------------------------
 # Discord — two users in same guild channel
@@ -33,7 +32,6 @@ def _make_discord_adapter() -> DiscordAdapter:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
     return adapter
@@ -92,7 +90,7 @@ def test_discord_two_users_same_guild_channel_same_pool_id() -> None:
     RED: scope_ids differ → pool_ids differ.
     """
     from lyra.core.hub.hub_protocol import RoutingKey
-    from lyra.core.message import Platform
+    from lyra.core.messaging.message import Platform
 
     adapter = _make_discord_adapter()
 

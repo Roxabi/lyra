@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ..agent import AgentBase
-from ..message import InboundMessage
+from ..messaging.message import InboundMessage
 from ..pool import Pool
 from .pipeline_events import (
     MessageReceived,

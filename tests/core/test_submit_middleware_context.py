@@ -150,7 +150,8 @@ class TestReplyToResumePipeline:
         hub._message_index = cast("MessageIndex", mi)
 
         pool = hub.get_or_create_pool(pool_id, "lyra")
-        pool._current_task = asyncio.create_task(asyncio.sleep(10))
+        _busy_task_never_completes = asyncio.Event()
+        pool._current_task = asyncio.create_task(_busy_task_never_completes.wait())
 
         resumed: list[str] = []
 
@@ -287,7 +288,8 @@ class TestResolveContextMessageIndex:
         hub = _make_hub()
         hub._message_index = cast("MessageIndex", mi)
         pool = hub.get_or_create_pool(pool_id, "lyra")
-        pool._current_task = asyncio.create_task(asyncio.sleep(10))
+        _busy_task_never_completes = asyncio.Event()
+        pool._current_task = asyncio.create_task(_busy_task_never_completes.wait())
 
         resumed: list[str] = []
 
@@ -452,7 +454,8 @@ class TestResolveContextResumeStatus:
         pool_id = "telegram:main:chat:42"
         hub = _make_hub()
         pool = hub.get_or_create_pool(pool_id, "lyra")
-        pool._current_task = asyncio.create_task(asyncio.sleep(10))
+        _busy_task_never_completes = asyncio.Event()
+        pool._current_task = asyncio.create_task(_busy_task_never_completes.wait())
 
         _base = make_inbound_message(scope_id="chat:42")
         _meta = {**_base.platform_meta, "thread_session_id": "tss-busy"}
@@ -734,7 +737,7 @@ class TestNotifySessionFallthrough:
         msg = dataclasses.replace(_base, platform_meta=_meta)
 
         from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         key = RoutingKey(Platform("telegram"), "main", "chat:42")
         ctx = _make_ctx(hub)
@@ -780,7 +783,7 @@ class TestNotifySessionFallthrough:
         msg = dataclasses.replace(_base, platform_meta=_meta)
 
         from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         key = RoutingKey(Platform("telegram"), "main", "chat:42")
         ctx = _make_ctx(hub)
@@ -813,7 +816,7 @@ class TestNotifySessionFallthrough:
         msg = make_inbound_message(scope_id="chat:42")
 
         from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         key = RoutingKey(Platform("telegram"), "main", "chat:42")
         ctx = _make_ctx(hub)

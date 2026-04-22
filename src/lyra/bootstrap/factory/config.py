@@ -1,0 +1,292 @@
+"""Bootstrap config helpers — raw config loading and parsing."""
+
+from __future__ import annotations
+
+import logging
+import os
+import re
+import tomllib
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
+
+from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.messaging.messages import MessageManager
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
+from lyra.core.stores.pairing_config import PairingConfig
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Pydantic config section models (#411)
+# ---------------------------------------------------------------------------
+
+
+class CliPoolConfig(BaseModel):
+    """Typed [cli_pool] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    idle_ttl: int = 1200
+    default_timeout: int = 1200
+    turn_timeout: float | None = None
+    reaper_interval: int = 60
+    kill_timeout: float = 5.0
+    read_buffer_bytes: int = 1024 * 1024
+    stdin_drain_timeout: float = 10.0
+    max_idle_retries: int = 3
+    intermediate_timeout: float = 5.0
+
+
+class HubConfig(BaseModel):
+    """Typed [hub] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    pool_ttl: float = 604800.0
+    rate_limit: int = 20
+    rate_window: int = 60
+
+
+class PoolConfig(BaseModel):
+    """Typed [pool] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    max_sdk_history: int = 50
+    safe_dispatch_timeout: float = 10.0
+
+
+class LlmConfig(BaseModel):
+    """Typed [llm] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    max_retries: int = 3
+    backoff_base: float = 1.0
+
+
+class InboundBusConfig(BaseModel):
+    """Typed [inbound_bus] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    queue_depth_threshold: int = 100
+    staging_maxsize: int = 500
+    platform_queue_maxsize: int = 100
+
+
+class DebouncerConfig(BaseModel):
+    """Typed [debouncer] config section."""
+
+    model_config = ConfigDict(frozen=True)
+
+    default_debounce_ms: int = 300
+    max_merged_chars: int = 4096
+    cancel_on_new_message: bool = False
+
+
+class LoggingConfig(BaseModel):
+    """Typed [logging] config section (#270)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    json_file: bool = True
+    level: str = "info"
+
+
+class EventBusConfig(BaseModel):
+    """Typed [event_bus] config section (#432)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    queue_maxsize: int = 1000
+
+
+class MessageIndexConfig(BaseModel):
+    """Typed [message_index] config section (#417)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    retention_days: int = 90
+
+
+class AgentOverrideConfig(BaseModel):
+    """Typed output of _build_agent_overrides().
+
+    Uses extra="ignore" — only cwd, persona, workspaces are consumed; extra keys
+    are silently discarded.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    cwd: str | None = None
+    persona: str | None = None
+    workspaces: dict[str, str] = {}
+
+
+def _validate_config_path(path_str: str) -> str:
+    """Validate that a config file path is within the trusted base (user home).
+
+    Raises ValueError if the resolved path is outside Path.home().
+    """
+    resolved = Path(path_str).expanduser().resolve()
+    trusted_base = Path.home()
+    if not resolved.is_relative_to(trusted_base):
+        raise ValueError(
+            f"Config path {resolved!r} is outside trusted base {trusted_base!r}. "
+            "Set the env var to a path under your home directory."
+        )
+    return str(resolved)
+
+
+_CB_DEFAULTS: dict[str, int] = {"failure_threshold": 5, "recovery_timeout": 60}
+_CB_SERVICES = ("anthropic", "claude-cli", "telegram", "discord", "hub")
+_ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")
+
+
+def _load_raw_config(config_path: str | None = None) -> dict[str, Any]:
+    """Open and parse config.toml once; return the raw dict.
+
+    Resolution: explicit arg → $LYRA_CONFIG → $LYRA_VAULT_DIR/config.toml
+    → cwd/config.toml → empty dict.
+    """
+    env_path = os.environ.get("LYRA_CONFIG")
+    if config_path:
+        candidates = [config_path]
+    elif env_path:
+        candidates = [_validate_config_path(env_path)]
+    else:
+        vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+        candidates = [str(vault_dir / "config.toml"), "config.toml"]
+    for path in candidates:
+        try:
+            with open(path, "rb") as f:
+                raw = tomllib.load(f)
+            log.info("Loaded config from %s", path)
+            return raw
+        except FileNotFoundError:
+            continue
+    log.info("No config.toml found (tried: %s) — using defaults", ", ".join(candidates))
+    return {}
+
+
+def _build_agent_overrides(raw: dict[str, Any], name: str) -> AgentOverrideConfig:
+    """Build instance-level overrides for an agent from config.toml.
+
+    Merges [defaults] with [agents.<name>], with agent-specific values winning.
+    Provides machine-specific fallbacks for cwd, persona, and workspaces that
+    are not versioned in agents/*.toml.
+    """
+    defaults: dict[str, Any] = raw.get("defaults", {})
+    agent_specific: dict[str, Any] = raw.get("agents", {}).get(name, {})
+    merged = {**defaults, **agent_specific}
+    # workspaces need a deep merge: defaults provide base, agent-specific keys win
+    ws_defaults: dict[str, str] = defaults.get("workspaces", {})
+    ws_agent: dict[str, str] = agent_specific.get("workspaces", {})
+    if ws_defaults or ws_agent:
+        merged["workspaces"] = {**ws_defaults, **ws_agent}
+    return AgentOverrideConfig.model_validate(merged)
+
+
+def _load_circuit_config(
+    raw: dict[str, Any],
+) -> tuple[CircuitRegistry, frozenset[str]]:
+    """Load [circuit_breaker.*] and [admin] sections. Missing sections → defaults."""
+    cb_section: dict[str, Any] = raw.get("circuit_breaker", {})
+    registry = CircuitRegistry()
+    for name in _CB_SERVICES:
+        cfg: dict[str, int] = {**_CB_DEFAULTS, **cb_section.get(name, {})}
+        registry.register(
+            CircuitBreaker(
+                name=name,
+                failure_threshold=cfg["failure_threshold"],
+                recovery_timeout=cfg["recovery_timeout"],
+            )
+        )
+
+    admin_ids: frozenset[str] = frozenset(raw.get("admin", {}).get("user_ids", []))
+    for aid in admin_ids:
+        if not _ADMIN_ID_PATTERN.match(aid):
+            log.warning(
+                "Admin ID %r does not match expected format "
+                "(tg|dc):user:<digits> — verify config.toml [admin].user_ids",
+                aid,
+            )
+    return registry, admin_ids
+
+
+def _load_pairing_config(raw: dict[str, Any]) -> PairingConfig:
+    """Load [pairing] section from raw config dict. Missing section → all defaults."""
+    pairing_section: dict[str, Any] = raw.get("pairing", {})
+    return PairingConfig.model_validate(pairing_section)
+
+
+def _load_tool_display_config(raw: dict[str, Any]) -> ToolDisplayConfig:
+    """Load [tool_display] section. Missing section → all defaults."""
+    section: dict[str, Any] = raw.get("tool_display", {})
+    return ToolDisplayConfig.model_validate(section)
+
+
+def _load_cli_pool_config(raw: dict[str, Any]) -> CliPoolConfig:
+    """Load [cli_pool] section from raw config dict. Missing keys → defaults."""
+    return CliPoolConfig.model_validate(raw.get("cli_pool", {}))
+
+
+def _load_hub_config(raw: dict[str, Any]) -> HubConfig:
+    """Load [hub] section from raw config dict. Missing keys → defaults."""
+    return HubConfig.model_validate(raw.get("hub", {}))
+
+
+def _load_pool_config(raw: dict[str, Any]) -> PoolConfig:
+    """Load [pool] section from raw config dict. Missing keys → defaults."""
+    return PoolConfig.model_validate(raw.get("pool", {}))
+
+
+def _load_llm_config(raw: dict[str, Any]) -> LlmConfig:
+    """Load [llm] section from raw config dict. Missing keys → defaults."""
+    return LlmConfig.model_validate(raw.get("llm", {}))
+
+
+def _load_inbound_bus_config(raw: dict[str, Any]) -> InboundBusConfig:
+    """Load [inbound_bus] section from raw config dict. Missing keys → defaults."""
+    return InboundBusConfig.model_validate(raw.get("inbound_bus", {}))
+
+
+def _load_debouncer_config(raw: dict[str, Any]) -> DebouncerConfig:
+    """Load [debouncer] section from raw config dict. Missing keys → defaults."""
+    return DebouncerConfig.model_validate(raw.get("debouncer", {}))
+
+
+def _load_logging_config(raw: dict[str, Any]) -> LoggingConfig:
+    """Load [logging] section from raw config dict. Missing keys → defaults."""
+    return LoggingConfig.model_validate(raw.get("logging", {}))
+
+
+def _load_event_bus_config(raw: dict[str, Any]) -> EventBusConfig:
+    """Load [event_bus] section from raw config dict. Missing keys → defaults."""
+    return EventBusConfig.model_validate(raw.get("event_bus", {}))
+
+
+def _load_messages(language: str = "en") -> MessageManager:
+    """Load MessageManager.
+
+    Resolution: $LYRA_MESSAGES_CONFIG → cwd/messages.toml → bundled config.
+    """
+    bundled = Path(__file__).resolve().parent.parent / "config" / "messages.toml"
+    env_messages = os.environ.get("LYRA_MESSAGES_CONFIG")
+    path_str = env_messages or (
+        "messages.toml" if Path("messages.toml").exists() else str(bundled)
+    )
+    if not path_str.endswith(".toml"):
+        log.warning(
+            "LYRA_MESSAGES_CONFIG %r does not end with .toml — ignoring, using bundled",
+            path_str,
+        )
+        path_str = str(bundled)
+    if env_messages and path_str.endswith(".toml"):
+        path_str = _validate_config_path(path_str)
+    log.info("Loaded messages from %s", path_str)
+    return MessageManager(path_str, language=language)

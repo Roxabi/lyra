@@ -5,7 +5,8 @@
   "packages": {
     ".": {
       "component": "lyra",
-      "package-name": "lyra"
+      "package-name": "lyra",
+      "tag-separator": "/"
     },
     "packages/roxabi-nats": {
       "release-type": "python",

@@ -10,10 +10,11 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-from lyra.core.bus import Bus
+from lyra.core.config import HubConfig
 from lyra.core.hub import Hub
-from lyra.core.inbound_bus import LocalBus
-from lyra.core.message import InboundMessage, Platform
+from lyra.core.messaging.bus import Bus
+from lyra.core.messaging.inbound_bus import LocalBus
+from lyra.core.messaging.message import InboundMessage, Platform
 from tests.core.conftest import MockAdapter
 
 # ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ class TestRegisterAdapterBotId:
         hub.register_adapter(Platform.TELEGRAM, "mybot", MockAdapter())
         mock_bus.register.assert_called_once_with(
             Platform.TELEGRAM,
-            maxsize=Hub.PLATFORM_QUEUE_MAXSIZE,
+            maxsize=HubConfig().platform_queue_maxsize,
             bot_id="mybot",
         )
 
@@ -86,7 +87,7 @@ class TestRegisterAdapterBotId:
         hub.register_adapter(Platform.TELEGRAM, "bot1", MockAdapter())
         mock_bus.register.assert_called_once_with(
             Platform.TELEGRAM,
-            maxsize=Hub.PLATFORM_QUEUE_MAXSIZE,
+            maxsize=HubConfig().platform_queue_maxsize,
             bot_id="bot1",
         )
 
@@ -98,10 +99,10 @@ class TestRegisterAdapterBotId:
         hub.register_adapter(Platform.TELEGRAM, "bot2", MockAdapter())
         assert mock_bus.register.call_count == 2
         mock_bus.register.assert_any_call(
-            Platform.TELEGRAM, maxsize=Hub.PLATFORM_QUEUE_MAXSIZE, bot_id="bot1"
+            Platform.TELEGRAM, maxsize=HubConfig().platform_queue_maxsize, bot_id="bot1"
         )
         mock_bus.register.assert_any_call(
-            Platform.TELEGRAM, maxsize=Hub.PLATFORM_QUEUE_MAXSIZE, bot_id="bot2"
+            Platform.TELEGRAM, maxsize=HubConfig().platform_queue_maxsize, bot_id="bot2"
         )
 
 

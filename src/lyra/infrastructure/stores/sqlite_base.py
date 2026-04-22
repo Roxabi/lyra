@@ -5,13 +5,35 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+import weakref
 from pathlib import Path
 
 import aiosqlite
 
 log = logging.getLogger(__name__)
 
-__all__ = ["SqliteStore"]
+__all__ = ["SqliteStore", "close_all_sqlite_stores"]
+
+#: Weak set of open SqliteStore instances for cleanup during test teardown.
+#: Weak references allow stores to be garbage-collected normally; the set only
+#: prevents the _cleanup fixture from missing stores that are still referenced.
+_open_stores: weakref.WeakSet[SqliteStore] = weakref.WeakSet()
+
+
+async def close_all_sqlite_stores() -> None:
+    """Close all tracked SqliteStore instances.
+
+    Called by pytest fixture during event loop teardown to prevent aiosqlite
+    thread-blocking issues when the loop closes before connections.
+    """
+    # Copy to avoid modification during iteration
+    stores = list(_open_stores)
+    for store in stores:
+        try:
+            if store._db is not None:
+                await store.close()
+        except Exception:
+            log.debug("Error closing SqliteStore during cleanup", exc_info=True)
 
 
 class SqliteStore:
@@ -62,6 +84,7 @@ class SqliteStore:
         if self._db is not None:
             return
         self._db = await aiosqlite.connect(self._db_path)
+        _open_stores.add(self)  # track for pytest cleanup
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute("PRAGMA busy_timeout=30000")
         for stmt in ddl or []:

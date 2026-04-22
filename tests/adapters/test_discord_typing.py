@@ -10,9 +10,9 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
-from lyra.core.message import OutboundMessage
-from lyra.core.render_events import TextRenderEvent
+from lyra.core.messaging.message import OutboundMessage
+from lyra.core.messaging.render_events import TextRenderEvent
+from tests.conftest import yield_once
 
 from .conftest import make_dc_inbound_msg
 
@@ -35,7 +35,7 @@ async def test_discord_typing_worker_uses_typing_context_manager() -> None:
         return mock_channel
 
     task = asyncio.create_task(_discord_typing_worker(resolve, channel_id=123))
-    await asyncio.sleep(0)  # yield to let the worker call typing()
+    await yield_once()  # yield to let the worker call typing()
     task.cancel()
     try:
         await task
@@ -60,7 +60,6 @@ async def test_discord_typing_worker_handles_exception_gracefully() -> None:
 @pytest.mark.asyncio
 async def test_start_typing_creates_background_task() -> None:
     """_start_typing() creates a task in _typing_tasks for the given channel."""
-    import asyncio
 
     from lyra.adapters.discord import DiscordAdapter
 
@@ -68,26 +67,24 @@ async def test_start_typing_creates_background_task() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     mock_channel = AsyncMock()
     mock_channel.typing = AsyncMock()
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     adapter._start_typing(333)
-    await asyncio.sleep(0)  # let task start
+    await yield_once()  # let task start
 
     assert 333 in adapter._typing_tasks
     assert not adapter._typing_tasks[333].done()
 
     adapter._cancel_typing(333)
-    await asyncio.sleep(0)
+    await yield_once()
 
 
 @pytest.mark.asyncio
 async def test_cancel_typing_cancels_task() -> None:
     """_cancel_typing() cancels the background task and removes it from the dict."""
-    import asyncio
 
     from lyra.adapters.discord import DiscordAdapter
 
@@ -95,17 +92,16 @@ async def test_cancel_typing_cancels_task() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     mock_channel = AsyncMock()
     mock_channel.typing = AsyncMock()
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     adapter._start_typing(333)
-    await asyncio.sleep(0)
+    await yield_once()  # allow event loop to process _start_typing task spawn
 
     adapter._cancel_typing(333)
-    await asyncio.sleep(0)
+    await yield_once()  # allow event loop to process _cancel_typing task cleanup
 
     assert 333 not in adapter._typing_tasks
 
@@ -119,7 +115,6 @@ async def test_send_cancels_typing_task_at_start() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     mock_message = AsyncMock()
@@ -153,7 +148,6 @@ async def test_send_streaming_cancels_typing_task_at_start() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     mock_placeholder = AsyncMock()
@@ -207,7 +201,6 @@ async def test_on_message_does_not_cancel_typing_when_message_queued() -> None:
         bot_id="main",
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -234,10 +227,8 @@ async def test_on_message_does_not_cancel_typing_when_message_queued() -> None:
     assert not adapter._typing_tasks[333].done()
 
     # Cleanup
-    import asyncio as _asyncio
-
     adapter._cancel_typing(333)
-    await _asyncio.sleep(0)
+    await yield_once()
 
 
 @pytest.mark.asyncio
@@ -254,7 +245,6 @@ async def test_on_message_cancels_typing_when_message_dropped_queue_full() -> No
         bot_id="main",
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 

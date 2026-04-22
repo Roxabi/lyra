@@ -16,13 +16,13 @@ from datetime import datetime, timezone
 import pytest
 from nats.aio.client import Client as NATS
 
-from lyra.core.bus import Bus
-from lyra.core.message import (
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.bus import Bus
+from lyra.core.messaging.message import (
     Attachment,
     InboundMessage,
     Platform,
 )
-from lyra.core.trust import TrustLevel
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats._serialize import deserialize, serialize

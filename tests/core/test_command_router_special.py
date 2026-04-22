@@ -26,7 +26,7 @@ from lyra.core.agent import Agent, AgentBase
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
 from lyra.core.commands.command_router import CommandRouter
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
@@ -379,15 +379,17 @@ class TestSessionCommands:
     async def test_session_command_timeout_returns_timeout_message(
         self, tmp_path: Path
     ) -> None:
-        import asyncio as _asyncio
+        import asyncio
 
         from lyra.integrations.base import SessionTools
 
         router = make_router(tmp_path)
         router._session_driver = MagicMock()
 
+        never_fires = asyncio.Event()
+
         async def slow_handler(msg, driver, tools, args, timeout):
-            await _asyncio.sleep(10)
+            await never_fires.wait()  # intentional: never completes, tests timeout
             return Response(content="never")
 
         tools = SessionTools(scraper=MagicMock(), vault=MagicMock())
@@ -424,7 +426,7 @@ class TestSessionCommands:
     def test_help_includes_session_commands_section(self, tmp_path: Path) -> None:
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.core.builtin_commands import help_command
+        from lyra.core.commands.builtin_commands import help_command
         from lyra.integrations.base import SessionTools
 
         router = make_router(tmp_path)
@@ -448,8 +450,12 @@ class TestSessionCommands:
         self, tmp_path: Path
     ) -> None:
         """Processor cmds gated by passthroughs in /help (#359)."""
-        from lyra.core.builtin_commands import help_command
-        from lyra.core.processor_registry import BaseProcessor, ProcessorEntry, registry
+        from lyra.core.commands.builtin_commands import help_command
+        from lyra.core.processors.processor_registry import (
+            BaseProcessor,
+            ProcessorEntry,
+            registry,
+        )
 
         # Hermetic: register fake processors, clean up after.
         registry._entries["/fake-a"] = ProcessorEntry(
@@ -502,7 +508,11 @@ class TestSessionCommands:
     @pytest.mark.asyncio
     async def test_help_dispatch_passes_passthroughs(self, tmp_path: Path) -> None:
         """Router dispatch /help passes passthroughs to help_command (#359)."""
-        from lyra.core.processor_registry import BaseProcessor, ProcessorEntry, registry
+        from lyra.core.processors.processor_registry import (
+            BaseProcessor,
+            ProcessorEntry,
+            registry,
+        )
 
         registry._entries["/fake-pt"] = ProcessorEntry(
             processor_cls=type("PT", (BaseProcessor,), {}), description="Fake PT"

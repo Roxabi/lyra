@@ -21,7 +21,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .message import InboundMessage
+    from .messaging.message import InboundMessage
 
 log = logging.getLogger(__name__)
 

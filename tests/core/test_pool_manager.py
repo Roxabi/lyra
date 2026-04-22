@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.cli_pool import CliPool, _ProcessEntry
+from lyra.core.cli.cli_pool import CliPool, _ProcessEntry
 from lyra.core.hub import Hub
-from lyra.core.message import Platform
+from lyra.core.messaging.message import Platform
 from lyra.core.pool import Pool
 
 if TYPE_CHECKING:
@@ -285,3 +285,183 @@ class TestEvictionSessionPreserve:
         await hub._pool_manager.flush_pool("pool-1")
 
         cli_pool._sync_evict_entry.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Thread Safety — Lock Tests
+# ---------------------------------------------------------------------------
+
+
+class TestLockSafetyConcurrentMutation:
+    """Concurrent pop + iterate must not raise RuntimeError."""
+
+    def test_concurrent_pop_and_iterate_no_runtime_error(self):
+        """100 threads (50 iterate + 50 pop) — no RuntimeError, final count OK."""
+        hub = _make_hub()
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        # Create initial pools
+        for i in range(50):
+            hub.get_or_create_pool(f"pool-{i}", "test-agent")
+
+        errors: list[Exception] = []
+
+        def iterate_pools():
+            try:
+                for _ in range(100):
+                    _ = list(hub.pools.keys())
+            except Exception as e:
+                errors.append(e)
+
+        def pop_pools():
+            try:
+                for i in range(50, 100):
+                    hub.get_or_create_pool(f"pool-{i}", "test-agent")
+            except Exception as e:
+                errors.append(e)
+
+        import threading
+
+        threads = [
+            threading.Thread(target=iterate_pools) for _ in range(50)
+        ] + [threading.Thread(target=pop_pools) for _ in range(50)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"Exceptions raised: {errors}"
+        assert len(hub.pools) <= hub._max_pools
+
+
+# ---------------------------------------------------------------------------
+# LRU Eviction Tests
+# ---------------------------------------------------------------------------
+
+
+class TestLruEvictionAtCapacity:
+    """LRU eviction when at max_pools capacity."""
+
+    def test_evicts_oldest_at_capacity(self):
+        """When at max_pools, next create evicts oldest (leftmost in OrderedDict)."""
+        hub = _make_hub()
+        hub._max_pools = 3  # override default
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        # Create pools A, B, C (in order)
+        pool_a = hub.get_or_create_pool("pool-a", "test-agent")
+        pool_a.user_id = "user-a"
+        pool_b = hub.get_or_create_pool("pool-b", "test-agent")
+        pool_b.user_id = "user-b"
+        pool_c = hub.get_or_create_pool("pool-c", "test-agent")
+        pool_c.user_id = "user-c"
+
+        assert len(hub.pools) == 3
+
+        # Touch pool B via public API (makes it most recent in LRU)
+        hub._pool_manager.touch_pool("pool-b")
+
+        # Create pool D → should evict A (oldest)
+        pool_d = hub.get_or_create_pool("pool-d", "test-agent")
+        pool_d.user_id = "user-d"
+
+        assert "pool-a" not in hub.pools, "pool-a should be evicted (LRU)"
+        assert "pool-b" in hub.pools
+        assert "pool-c" in hub.pools
+        assert "pool-d" in hub.pools
+        assert len(hub.pools) == 3
+
+    def test_lru_order_preserved_after_touch(self):
+        """Touch updates LRU order — touched pool moves to end."""
+        hub = _make_hub()
+        hub._max_pools = 3
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        # Create A, B, C
+        hub.get_or_create_pool("pool-a", "test-agent")
+        hub.get_or_create_pool("pool-b", "test-agent")
+        hub.get_or_create_pool("pool-c", "test-agent")
+
+        # Touch A via get_or_create_pool (makes it most recent in LRU)
+        hub.get_or_create_pool("pool-a", "test-agent")
+
+        # Verify behavior: when at capacity, oldest-accessed pool (B) is evicted
+        hub._max_pools = 2  # force eviction on next create
+        hub._pool_manager.touch_pool("pool-a")  # A is now most recent
+        hub.get_or_create_pool("pool-d", "test-agent")  # should evict B (oldest)
+        assert "pool-b" not in hub.pools, "pool-b should be evicted (oldest in LRU)"
+        assert "pool-a" in hub.pools  # A was touched, so kept
+
+
+# ---------------------------------------------------------------------------
+# Max Pools Bound Tests
+# ---------------------------------------------------------------------------
+
+
+class TestMaxPoolsNeverExceeded:
+    """Pool count never exceeds max_pools."""
+
+    def test_high_load_never_exceeds_max_pools(self):
+        """100 threads creating pools — count never exceeds max_pools."""
+        hub = _make_hub()
+        hub._max_pools = 10
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        import threading
+
+        barrier = threading.Barrier(100)
+
+        def create_pool(i: int):
+            barrier.wait()
+            hub.get_or_create_pool(f"pool-{i}", "test-agent")
+
+        threads = [threading.Thread(target=create_pool, args=(i,)) for i in range(100)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(hub.pools) <= 10, f"pool count {len(hub.pools)} exceeds max_pools=10"
+
+    def test_sequential_creation_respects_cap(self):
+        """Sequential creation at capacity triggers eviction."""
+        hub = _make_hub()
+        hub._max_pools = 2
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        hub.get_or_create_pool("pool-1", "test-agent")
+        hub.get_or_create_pool("pool-2", "test-agent")
+        assert len(hub.pools) == 2
+
+        # Third pool → evicts oldest
+        hub.get_or_create_pool("pool-3", "test-agent")
+        assert len(hub.pools) == 2
+        assert "pool-1" not in hub.pools
+
+
+# ---------------------------------------------------------------------------
+# Validation Tests
+# ---------------------------------------------------------------------------
+
+
+class TestMaxPoolsValidation:
+    """max_pools <= 0 raises ValueError at Hub init."""
+
+    def test_zero_max_pools_raises_valueerror(self):
+        with pytest.raises(ValueError, match="max_pools must be > 0"):
+            Hub(max_pools=0)
+
+    def test_negative_max_pools_raises_valueerror(self):
+        with pytest.raises(ValueError, match="max_pools must be > 0"):
+            Hub(max_pools=-1)
+
+    def test_positive_max_pools_works(self):
+        hub = Hub(max_pools=100)
+        assert hub._max_pools == 100
+

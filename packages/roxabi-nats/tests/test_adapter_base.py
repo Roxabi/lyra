@@ -738,46 +738,46 @@ class TestDispatch:
         """Non-JSON bytes → handle() is never called."""
         # Arrange
         adapter = self._make_adapter()
-        adapter.handle = AsyncMock()  # type: ignore[method-assign]
         msg = MagicMock()
         msg.data = b"not json at all"
 
         # Act
-        await adapter._dispatch(msg)
+        with patch.object(adapter, "handle", new_callable=AsyncMock) as mock_handle:
+            await adapter._dispatch(msg)
 
-        # Assert
-        adapter.handle.assert_not_called()
+            # Assert
+            mock_handle.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_invalid_envelope_does_not_call_handle(self) -> None:
         """Valid JSON but wrong schema_version → handle() is never called."""
         # Arrange
         adapter = self._make_adapter()
-        adapter.handle = AsyncMock()  # type: ignore[method-assign]
         msg = MagicMock()
         msg.data = b'{"schema_version": 99, "text": "hello"}'
 
         # Act
-        await adapter._dispatch(msg)
+        with patch.object(adapter, "handle", new_callable=AsyncMock) as mock_handle:
+            await adapter._dispatch(msg)
 
-        # Assert
-        adapter.handle.assert_not_called()
+            # Assert
+            mock_handle.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_valid_message_calls_handle_with_msg_and_payload(self) -> None:
         """Valid JSON + valid envelope → handle called with msg and parsed payload."""
         # Arrange
         adapter = self._make_adapter()
-        adapter.handle = AsyncMock()  # type: ignore[method-assign]
         msg = MagicMock()
         raw_payload = {"schema_version": 1, "text": "hello"}
         msg.data = b'{"schema_version": 1, "text": "hello"}'
 
         # Act
-        await adapter._dispatch(msg)
+        with patch.object(adapter, "handle", new_callable=AsyncMock) as mock_handle:
+            await adapter._dispatch(msg)
 
-        # Assert
-        adapter.handle.assert_awaited_once_with(msg, raw_payload)
+            # Assert
+            mock_handle.assert_awaited_once_with(msg, raw_payload)
 
 
 # ---------------------------------------------------------------------------
@@ -1040,10 +1040,9 @@ class TestHeartbeatShutdown:
             task_cancelled = True
             return original_cancel(*args, **kwargs)
 
-        task.cancel = _tracking_cancel  # type: ignore[method-assign]
-
         # Act
-        await adapter._shutdown()
+        with patch.object(task, "cancel", side_effect=_tracking_cancel):
+            await adapter._shutdown()
 
         # Assert — drain was called after task was cancelled
         assert drain_called_after_cancel == [True]

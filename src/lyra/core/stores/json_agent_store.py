@@ -19,8 +19,8 @@ import json
 import logging
 from pathlib import Path
 
-from ..agent_models import VALID_AGENT_STATUSES, AgentRow, AgentRuntimeStateRow
-from ..agent_seeder import seed_from_toml as _seed_from_toml
+from ..agent.agent_models import VALID_AGENT_STATUSES, AgentRow, AgentRuntimeStateRow
+from ..agent.agent_seeder import seed_from_toml as _seed_from_toml
 
 log = logging.getLogger(__name__)
 

@@ -232,8 +232,8 @@ class TestTurnStoreIntegrationWithPool:
         text: str = "hello",
         msg_id: str = "m1",
     ):
-        from lyra.core.message import InboundMessage
-        from lyra.core.trust import TrustLevel
+        from lyra.core.auth.trust import TrustLevel
+        from lyra.core.messaging.message import InboundMessage
 
         return InboundMessage(
             id=msg_id,
@@ -281,7 +281,7 @@ class TestTurnStoreIntegrationWithPool:
 
     async def test_process_one_logs_assistant_turn(self) -> None:
         """_process_one() logs an assistant turn after dispatching a Response."""
-        from lyra.core.message import OutboundMessage, Response
+        from lyra.core.messaging.message import OutboundMessage, Response
         from lyra.core.pool import Pool
 
         store = TurnStore(":memory:")

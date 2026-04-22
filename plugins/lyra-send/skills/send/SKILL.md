@@ -5,7 +5,7 @@ description: >
   Send a message, image, or voice note to a user via Lyra bots (Telegram or Discord).
   Trigger phrases: "send on telegram", "send image via lyra", "send voice note",
   "send to discord", "notify user on telegram", "push message to telegram".
-allowed-tools: Bash, AskUserQuestion
+allowed-tools: Bash
 ---
 
 # Lyra Send
@@ -32,13 +32,13 @@ Parse $ARGUMENTS if present:
 - Token 2: type → `message`, `image`, or `voice`
 - Remaining tokens: content (text) or path
 
-Missing pieces → `AskUserQuestion` for each:
+Missing pieces → use DP protocol (load `${CLAUDE_PLUGIN_ROOT}/../shared/references/decision-presentation.md`):
 
-| Missing | Question | Options |
-|---------|----------|---------|
-| platform | "Which platform?" | **Telegram** · **Discord** |
-| type | "What to send?" | **Message** · **Image** · **Voice** |
-| content | "What's the content / file path?" | free text |
+| Missing | Pattern | Prompt |
+|---------|---------|--------|
+| platform | DP(A) | "Which platform?" — **Telegram** · **Discord** |
+| type | DP(A) | "What to send?" — **Message** · **Image** · **Voice** |
+| content | DP(B) | "What's the content / file path?" (plain input) |
 
 ## Step 2 — Get Target User / Channel ID
 
@@ -103,7 +103,7 @@ for meta_raw, content, ts in rows:
 EOF
 ```
 
-Show the results to the user and ask which ID to use via `AskUserQuestion`.
+Show the results to the user and ask which ID to use via DP(A).
 If only one result → use it directly without asking.
 
 Store as `TARGET_ID`.

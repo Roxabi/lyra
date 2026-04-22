@@ -1,0 +1,90 @@
+---
+title: Quick-win cleanup of inline lint/type ignores (buckets 1-5)
+issue: 828
+status: approved
+tier: F-lite
+date: 2026-04-20
+---
+
+## Problem
+
+The codebase carries **394 inline ignores across 171 files** (47 unique `noqa:` / `type: ignore[...]` kinds). An Explore-agent audit classified the top 12 buckets by ROI. Five buckets — **60 ignores / ~15% of total** — are low-risk, mechanical refactors using stdlib primitives. Left alone, they erode lint signal and mask real regressions.
+
+**Why now:** clusters are small (≤17 per bucket), edits are same-class and independent, and a cleaner baseline unblocks the structural-debt frame (`PLR0913`, `C901`, `attr-defined` — 147 ignores).
+
+**Observable impact:**
+- 60 inline ignores suppressing lint/type checks across tests **and** src
+- Lint noise normalises ignores → future code accumulates more
+- Cleaner baseline makes structural-debt scoping easier next
+
+## Who
+
+- **Primary:** developers maintaining lyra — clearer mocks, stricter fixtures, typed APIs
+- **Secondary:** future contributors — fewer "why is this ignored?" questions during review
+
+## Scope
+
+**In scope (5 buckets, 60 ignores, tests + src):**
+
+| # | Bucket | Total | Tests | Src / scripts | Strategy |
+|---|---|---|---|---|---|
+| 1 | `type: ignore[arg-type]` | 17 | 10 | 7 | Replace fakes with `MagicMock` / tighten type annotations / strict ABC |
+| 2 | `noqa: ARG002` (unused params) | 10 | 4 | 6 | `functools.partial`, wrapper closures, or `_` prefix where valid |
+| 3 | `type: ignore[assignment]` | 10 | 7 | 3 | `unittest.mock.patch` decorator; narrow `Any` types where justified |
+| 4 | `type: ignore[method-assign]` | 7 | 7 | 0 | `@patch.object(..., autospec=True)` |
+| 5 | `noqa: PLC0415` (import in func) | 16 | 12 | 4 | Move to fixtures/helpers/module-level; justify true lazy-imports via `TYPE_CHECKING` |
+
+**Affected paths (~25 files):**
+
+Tests:
+- `tests/integration/{test_session_reply_to,test_session_telegram,test_session_dm_discord,test_session_clear}.py`
+- `tests/core/{test_middleware,test_pool_streaming,test_session_commands_pre,test_pipeline_event_bus,test_audio_pipeline_tts,test_sqlite_base_wal}.py`
+- `tests/adapters/{test_discord_auth,test_streaming_session}.py`
+- `tests/bootstrap/{test_tts_adapter_standalone,test_stt_adapter_standalone}.py`
+- `tests/test_circuit_config.py`, `tests/nats/test_nats_bus.py`
+- `packages/roxabi-nats/tests/{test_adapter_base,test_readiness,test_type_hint_resolver}.py`
+- `packages/roxabi-contracts/tests/test_voice_testing_doubles.py`
+
+Src + scripts:
+- `packages/roxabi-nats/src/roxabi_nats/{_serialize,adapter_base}.py`
+- `src/lyra/nats/{nats_bus,voice_health}.py`
+- `src/lyra/bootstrap/{stt_adapter_standalone,tts_adapter_standalone}.py`
+- `src/lyra/core/{agent_refiner,inbound_bus,runtime_config}.py`
+- `src/lyra/core/hub/{middleware_submit,middleware_stages,hub_registration}.py`
+- `src/lyra/llm/drivers/nats_driver.py`
+- `src/lyra/adapters/telegram_formatting.py`
+- `scripts/dep-graph/dep_graph/schema.py`
+
+## Constraints
+
+- **No behavior change:** pure refactor; public APIs untouched; green `make validate`
+- **No coverage regressions:** pytest green, coverage ≥ pre-PR
+- **No new runtime deps:** stdlib `unittest.mock` + existing `pytest` fixtures
+- **Bucket-independent:** per-bucket commits inside one bundled PR; each bucket bisect-able
+- **If a src ignore cannot be removed mechanically** → move it to `justified` list with a 1-line reason (do not silently keep)
+- **Time budget:** ~10-12h total (revised up from 8h for src edits)
+
+## Out of Scope
+
+- Structural buckets: `PLR0913` (68), `C901` (37), `attr-defined` (42) — own frame
+- Justified buckets: `E501` (47), `E402` (33), `F401` (16), `BLE001` (12) — keep as-is
+- Source-code refactors (mixin → Protocol, ctor → dataclass) — blocked on design decisions
+- Changing lint config / thresholds
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (lint hygiene), no unknowns, same-class edits.
+
+**Signals observed:**
+- Single cross-cutting concern: remove mechanical ignores
+- No new patterns: stdlib primitives already used elsewhere
+- No unknowns: every ignore enumerated with file:line
+- File count (~25) exceeds F-lite 10-file heuristic, but all edits are same-pattern — does not warrant F-full process weight
+- Bucket-independent → 5 bisectable commits in 1 PR
+
+**Expected outcome:** 1 bundled PR, 5 per-bucket commits, zero ignores of the listed kinds, `make validate` green.
+
+## Revision log
+
+- **2026-04-20 rev1:** initial draft as "test-only", 58 ignores.
+- **2026-04-20 rev2:** grep verified 19 src ignores + 1 in scripts were missed; expanded scope to 60 total (tests + src + script). Counts reconciled per-bucket. Approach remains mechanical — same stdlib primitives apply to src callsites.

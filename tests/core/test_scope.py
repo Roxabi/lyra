@@ -1,8 +1,8 @@
-"""Tests for lyra.core.scope — user_scoped() helper (#356)."""
+"""Tests for lyra.core.messaging.scope — user_scoped() helper (#356)."""
 
 from __future__ import annotations
 
-from lyra.core.scope import user_scoped
+from lyra.core.messaging.scope import user_scoped
 
 
 def test_user_scoped_appends_user_id() -> None:

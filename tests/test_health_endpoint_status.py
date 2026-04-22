@@ -6,21 +6,20 @@ Classes: TestHealthUnauthenticated, TestHealthEndpoint, TestHubTimestamps.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from datetime import datetime, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     Platform,
 )
-from lyra.core.trust import TrustLevel
-from tests.conftest import AUTH_HEADERS, HEALTH_SECRET
+from tests.conftest import AUTH_HEADERS, HEALTH_SECRET, yield_once
 from tests.core.conftest import push_to_hub
 
 # ---------------------------------------------------------------------------
@@ -34,7 +33,7 @@ class TestHealthUnauthenticated:
     ) -> None:
         """#207: Unauthenticated /health returns only {"ok": true}."""
         monkeypatch.delenv("LYRA_HEALTH_SECRET", raising=False)
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -48,7 +47,7 @@ class TestHealthUnauthenticated:
         self, hub: Hub, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#207: Wrong Bearer token still returns minimal response."""
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -66,7 +65,7 @@ class TestHealthUnauthenticated:
     ) -> None:
         """#207: When LYRA_HEALTH_SECRET is unset, always minimal."""
         monkeypatch.delenv("LYRA_HEALTH_SECRET", raising=False)
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -82,7 +81,7 @@ class TestHealthUnauthenticated:
         self, hub: Hub, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#207: LYRA_HEALTH_SECRET='' still returns minimal response."""
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -101,13 +100,13 @@ class TestHealthUnauthenticated:
 class TestHealthEndpoint:
     @pytest.fixture(autouse=True)
     def set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import lyra.bootstrap.health as health_mod
+        import lyra.bootstrap.infra.health as health_mod
 
         monkeypatch.setattr(health_mod, "_read_secret", lambda name: HEALTH_SECRET)
 
     async def test_health_returns_json(self, hub: Hub) -> None:
         """SC-2: /health/detail returns JSON with expected keys."""
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -127,7 +126,7 @@ class TestHealthEndpoint:
 
     async def test_health_queue_size_reflects_staging(self, hub: Hub) -> None:
         """SC-2: queue_size reflects the staging queue depth."""
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         msg = InboundMessage(
             id="msg-health-1",
@@ -149,7 +148,7 @@ class TestHealthEndpoint:
             trust_level=TrustLevel.TRUSTED,
         )
         await push_to_hub(hub, msg)
-        await asyncio.sleep(0)  # let feeder task move message to staging
+        await yield_once()  # let feeder task move message to staging
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -163,7 +162,7 @@ class TestHealthEndpoint:
         """S2-6: /health/detail reports per-platform queue depths."""
         from unittest.mock import MagicMock
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 
         hub.register_adapter(Platform.TELEGRAM, "main", MagicMock())
@@ -205,7 +204,7 @@ class TestHealthEndpoint:
 
     async def test_health_uptime_positive(self, hub: Hub) -> None:
         """SC-2: uptime_s is a positive number."""
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -219,7 +218,7 @@ class TestHealthEndpoint:
         self, hub: Hub
     ) -> None:
         """SC-2: last_message_age_s is null when no messages have been processed."""
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -231,7 +230,7 @@ class TestHealthEndpoint:
 
     async def test_health_last_message_age_after_processing(self, hub: Hub) -> None:
         """SC-3: last_message_age_s reflects time since last processed message."""
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         hub._outbound_router._last_processed_at = time.monotonic()
 
@@ -246,7 +245,7 @@ class TestHealthEndpoint:
 
     async def test_health_circuits_all_closed(self, hub: Hub) -> None:
         """SC-2: circuits shows state for all registered circuits."""
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -264,7 +263,7 @@ class TestHealthEndpoint:
         self, hub: Hub, circuit_registry: CircuitRegistry
     ) -> None:
         """SC-2: circuits reflects open circuit state."""
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         cb = circuit_registry.get("anthropic")
         assert cb is not None
@@ -291,7 +290,7 @@ class TestNatsHealthProbe:
 
     @pytest.fixture(autouse=True)
     def set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import lyra.bootstrap.health as health_mod
+        import lyra.bootstrap.infra.health as health_mod
 
         monkeypatch.setattr(health_mod, "_read_secret", lambda name: HEALTH_SECRET)
 
@@ -300,7 +299,7 @@ class TestNatsHealthProbe:
     ) -> None:
         """No NATS_URL → no `nats` and no `status` keys in the response."""
         monkeypatch.delenv("NATS_URL", raising=False)
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)  # nc omitted — mirrors unified mode
         transport = ASGITransport(app=app)
@@ -323,7 +322,7 @@ class TestNatsHealthProbe:
         nc = MagicMock()
         nc.is_connected = True
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, nc=nc)
         transport = ASGITransport(app=app)
@@ -345,7 +344,7 @@ class TestNatsHealthProbe:
         nc = MagicMock()
         nc.is_connected = False
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, nc=nc)
         transport = ASGITransport(app=app)
@@ -361,7 +360,7 @@ class TestNatsHealthProbe:
     ) -> None:
         """NATS_URL set but nc=None (caller didn't wire it) → unreachable."""
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -388,12 +387,12 @@ class TestNatsHealthProbe:
         # PropertyMock models the real @property semantics on nats-py client.
         type(nc).is_connected = PropertyMock(side_effect=RuntimeError("boom"))
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, nc=nc)
         transport = ASGITransport(app=app)
 
-        with caplog.at_level(_logging.DEBUG, logger="lyra.bootstrap.health"):
+        with caplog.at_level(_logging.DEBUG, logger="lyra.bootstrap.infra.health"):
             async with AsyncClient(
                 transport=transport, base_url="http://test"
             ) as client:
@@ -404,7 +403,7 @@ class TestNatsHealthProbe:
         assert data["status"] == "degraded"
         assert any(
             "_probe_nats" in r.getMessage()
-            and r.name == "lyra.bootstrap.health"
+            and r.name == "lyra.bootstrap.infra.health"
             and r.levelno == _logging.DEBUG
             for r in caplog.records
         )

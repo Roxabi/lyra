@@ -15,13 +15,13 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     OutboundMessage,
     Platform,
     Response,
     RoutingContext,
 )
-from lyra.core.render_events import TextRenderEvent
+from lyra.core.messaging.render_events import TextRenderEvent
 
 from .conftest import _RC_DC, _RC_TG, make_routing_inbound
 
@@ -33,13 +33,11 @@ from .conftest import _RC_DC, _RC_TG, make_routing_inbound
 class TestTelegramNormalizeRouting:
     def test_routing_populated(self) -> None:
         from lyra.adapters.telegram import TelegramAdapter
-        from lyra.core.authenticator import _ALLOW_ALL
 
         adapter = TelegramAdapter(
             bot_id="main",
             token="fake",
             inbound_bus=MagicMock(),
-            auth=_ALLOW_ALL,
         )
 
         raw = SimpleNamespace(
@@ -68,13 +66,11 @@ class TestTelegramNormalizeRouting:
 
     def test_routing_with_topic(self) -> None:
         from lyra.adapters.telegram import TelegramAdapter
-        from lyra.core.authenticator import _ALLOW_ALL
 
         adapter = TelegramAdapter(
             bot_id="main",
             token="fake",
             inbound_bus=MagicMock(),
-            auth=_ALLOW_ALL,
         )
 
         raw = SimpleNamespace(
@@ -101,13 +97,11 @@ class TestTelegramNormalizeRouting:
     def test_routing_platform_meta_is_copy(self) -> None:
         """RoutingContext.platform_meta must not alias InboundMessage.platform_meta."""
         from lyra.adapters.telegram import TelegramAdapter
-        from lyra.core.authenticator import _ALLOW_ALL
 
         adapter = TelegramAdapter(
             bot_id="main",
             token="fake",
             inbound_bus=MagicMock(),
-            auth=_ALLOW_ALL,
         )
 
         raw = SimpleNamespace(
@@ -140,13 +134,11 @@ class TestTelegramNormalizeRouting:
 class TestDiscordNormalizeRouting:
     def test_routing_populated(self) -> None:
         from lyra.adapters.discord import DiscordAdapter
-        from lyra.core.authenticator import _ALLOW_ALL
 
         adapter = DiscordAdapter.__new__(DiscordAdapter)
         adapter._bot_id = "main"
         adapter._bot_user = None
         adapter._mention_re = None
-        adapter._auth = _ALLOW_ALL
 
         channel = MagicMock(spec=[])
         channel.id = 789

@@ -31,7 +31,7 @@ class TtsRequest(ContractEnvelope):
     engine: str | None = None
     accent: str | None = None
     personality: str | None = None
-    speed: float | None = None
+    speed: str | None = None
     emotion: str | None = None
     exaggeration: float | None = None
     cfg_weight: float | None = None
@@ -60,9 +60,7 @@ class TtsResponse(ContractEnvelope):
     @model_validator(mode="after")
     def _enforce_success_invariant(self) -> Self:
         if self.ok and (
-            self.audio_b64 is None
-            or self.mime_type is None
-            or self.duration_ms is None
+            self.audio_b64 is None or self.mime_type is None or self.duration_ms is None
         ):
             raise ValueError(
                 "TtsResponse with ok=True must carry audio_b64, mime_type, "
@@ -102,9 +100,7 @@ class SttResponse(ContractEnvelope):
     @model_validator(mode="after")
     def _enforce_success_invariant(self) -> Self:
         if self.ok and (
-            self.text is None
-            or self.language is None
-            or self.duration_seconds is None
+            self.text is None or self.language is None or self.duration_seconds is None
         ):
             raise ValueError(
                 "SttResponse with ok=True must carry text, language, and "

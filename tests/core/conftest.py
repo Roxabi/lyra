@@ -14,14 +14,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.agent_config import ModelConfig
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.cli_pool import _ProcessEntry
+from lyra.core.cli.cli_pool import _ProcessEntry
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
 from lyra.core.commands.command_router import CommandRouter
+from lyra.core.config import PoolConfig, RouterConfig
 from lyra.core.hub import Hub
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     Attachment,
     InboundMessage,
     OutboundAttachment,
@@ -32,10 +34,9 @@ from lyra.core.message import (
     Response,
     RoutingContext,
 )
+from lyra.core.messaging.render_events import RenderEvent
 from lyra.core.pool import Pool
-from lyra.core.render_events import RenderEvent
 from lyra.core.stores.pairing import PairingConfig, PairingManager
-from lyra.core.trust import TrustLevel
 from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
 
@@ -200,7 +201,7 @@ def make_echo_plugin_dir(tmpdir: Path) -> Path:
         'handler = "cmd_echo"\n'
     )
     (plugin_dir / "handlers.py").write_text(
-        "from lyra.core.message import Response, InboundMessage\n"
+        "from lyra.core.messaging.message import Response, InboundMessage\n"
         "from lyra.core.pool import Pool\n"
         "async def cmd_echo(\n"
         "    msg: InboundMessage, pool: Pool, args: list[str]\n"
@@ -221,8 +222,9 @@ def make_router(
     loader.load("echo")
     effective = enabled if enabled is not None else ["echo"]
     _patterns = patterns if patterns is not None else {"bare_url": True}
+    router_config = RouterConfig(patterns=_patterns)
     return CommandRouter(
-        command_loader=loader, enabled_plugins=effective, patterns=_patterns
+        command_loader=loader, enabled_plugins=effective, config=router_config
     )
 
 
@@ -288,7 +290,7 @@ async def push_to_hub(hub: Hub, msg: InboundMessage) -> None:
     Registers the platform and starts the bus feeders if needed, then
     enqueues via the ``Bus`` Protocol's ``put()`` method.
     """
-    from lyra.core.inbound_bus import LocalBus
+    from lyra.core.messaging.inbound_bus import LocalBus
 
     platform = Platform(msg.platform)
     bus = hub.inbound_bus
@@ -601,8 +603,7 @@ def pool(ctx_mock: MagicMock) -> Pool:
         pool_id="test:main:chat:1",
         agent_name="test_agent",
         ctx=ctx_mock,
-        turn_timeout=60.0,
-        debounce_ms=0,
+        config=PoolConfig(turn_timeout=60.0, debounce_ms=0),
     )
 
 
@@ -613,8 +614,7 @@ def fast_pool(ctx_mock: MagicMock) -> Pool:
         pool_id="test:main:chat:1",
         agent_name="test_agent",
         ctx=ctx_mock,
-        turn_timeout=0.05,
-        debounce_ms=0,
+        config=PoolConfig(turn_timeout=0.05, debounce_ms=0),
     )
 
 
@@ -699,17 +699,13 @@ def _make_hub(**kwargs: Any) -> Hub:
     return hub
 
 
-async def _drain(pool: Pool, *, timeout: float = 2.0) -> None:
-    """Yield to the event loop then wait for the current task to finish."""
-    await asyncio.sleep(0)
-    if pool._current_task is not None:
-        await asyncio.wait_for(pool._current_task, timeout=timeout)
-
-
 class SlowAgent:
     """Agent whose process() never returns within test timeouts."""
 
     name = "test_agent"
+
+    def __init__(self, shutdown_event: asyncio.Event | None = None) -> None:
+        self._shutdown = shutdown_event if shutdown_event else asyncio.Event()
 
     def is_backend_alive(self, pool_id: str) -> bool:
         return True
@@ -724,7 +720,7 @@ class SlowAgent:
         *,
         on_intermediate=None,
     ) -> Response:
-        await asyncio.sleep(10)  # never finishes in test
+        await self._shutdown.wait()  # explicit: never completes in test
         return Response(content="done")
 
 

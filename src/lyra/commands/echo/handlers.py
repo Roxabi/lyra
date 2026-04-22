@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lyra.core.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
 
 

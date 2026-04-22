@@ -7,7 +7,7 @@ import logging
 import logging.handlers
 from contextvars import copy_context
 
-from lyra.bootstrap.config import LoggingConfig, _load_logging_config
+from lyra.bootstrap.factory.config import LoggingConfig, _load_logging_config
 from lyra.core.trace import JsonFormatter, TraceContext, TraceIdFilter
 
 # ──────────────────────────────────────────────────────────────────────

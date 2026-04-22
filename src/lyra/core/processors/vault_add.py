@@ -14,16 +14,16 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from lyra.core.message import Response
-from lyra.core.processor_registry import register
+from lyra.core.exceptions import VaultWriteFailed
+from lyra.core.messaging.message import Response
 from lyra.core.processors._scraping import (
     ScrapingProcessor,
     _extract_and_validate_url,
 )
-from lyra.integrations.base import VaultWriteFailed
+from lyra.core.processors.processor_registry import register
 
 if TYPE_CHECKING:
-    from lyra.core.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class VaultAddProcessor(ScrapingProcessor):
 
     async def post(self, msg: "InboundMessage", response: "Response") -> "Response":
         # B3: re-extract URL from original msg — no self._url needed
-        url, err = _extract_and_validate_url(msg)
+        url, err = await _extract_and_validate_url(msg)
         if err or not url:
             return response
 

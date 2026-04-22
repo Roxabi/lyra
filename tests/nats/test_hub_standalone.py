@@ -4,18 +4,21 @@ Covers:
 - NATS_URL guard (SystemExit when env var missing)
 - Lockfile lifecycle (acquire / release / stale PID / live PID block)
 - Health endpoint basic response (no NATS required)
+- inbox_prefix kwarg passed to nats_connect (ADR-051, #715)
 """
 
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nats.aio.client import Client as NATS
 
-from lyra.bootstrap.lockfile import acquire_lockfile as _acquire_lockfile
-from lyra.bootstrap.lockfile import release_lockfile as _release_lockfile
+from lyra.bootstrap.infra.lockfile import acquire_lockfile as _acquire_lockfile
+from lyra.bootstrap.infra.lockfile import release_lockfile as _release_lockfile
 from tests.nats.conftest import requires_nats_server
 
 # ---------------------------------------------------------------------------
@@ -33,7 +36,7 @@ class TestNatsUrlGuard:
         raw_config = _test_config()
 
         # Act / Assert — must exit before touching NATS
-        from lyra.bootstrap.hub_standalone import _bootstrap_hub_standalone
+        from lyra.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
 
         with pytest.raises(SystemExit) as exc_info:
             await _bootstrap_hub_standalone(raw_config)
@@ -121,7 +124,7 @@ class TestHealthEndpoint:
         # Arrange
         import httpx
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.hub import Hub
 
         hub = Hub()
@@ -145,7 +148,7 @@ class TestHealthEndpoint:
         # Arrange — write a known health secret to tmp_path
         import httpx
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.hub import Hub
 
         secret = "test-secret-abc"
@@ -180,7 +183,7 @@ class TestHealthEndpoint:
         # Arrange
         import httpx
 
-        from lyra.bootstrap.health import create_health_app
+        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.hub import Hub
 
         hub = Hub()
@@ -217,9 +220,9 @@ class TestStandaloneHubPipeline:
         import asyncio
 
         import nats as nats_lib
+        from lyra.core.auth.trust import TrustLevel
         from lyra.core.hub import Hub
-        from lyra.core.message import InboundMessage, Platform
-        from lyra.core.trust import TrustLevel
+        from lyra.core.messaging.message import InboundMessage, Platform
         from lyra.nats.nats_bus import NatsBus
         from roxabi_nats._serialize import serialize
 
@@ -299,11 +302,11 @@ class TestStandaloneHubPipeline:
         from unittest.mock import MagicMock
 
         import nats as nats_lib
-        from lyra.core.authenticator import Authenticator
+        from lyra.core.auth.authenticator import Authenticator
+        from lyra.core.auth.identity import Identity
+        from lyra.core.auth.trust import TrustLevel
         from lyra.core.hub import Hub
-        from lyra.core.identity import Identity
-        from lyra.core.message import InboundMessage, Platform
-        from lyra.core.trust import TrustLevel
+        from lyra.core.messaging.message import InboundMessage, Platform
         from lyra.nats.nats_bus import NatsBus
         from roxabi_nats._serialize import serialize
 
@@ -380,6 +383,127 @@ class TestStandaloneHubPipeline:
             await inbound_bus.stop()
             if hub_nc.is_connected:
                 await hub_nc.drain()
+
+
+# ---------------------------------------------------------------------------
+# T4 — hub_standalone passes inbox_prefix to nats_connect (ADR-051, #715)
+# ---------------------------------------------------------------------------
+
+
+class TestHubStandaloneInboxPrefix:
+    async def test_bootstrap_hub_standalone_passes_inbox_prefix(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Bootstrap calls nats_connect with inbox_prefix='_INBOX.hub' (ADR-051)."""
+        # Arrange
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+        raw_config = _test_config()
+
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = True
+        mock_nats_connect = AsyncMock(return_value=mock_nc)
+
+        # Fake open_stores context manager — raises immediately so the test
+        # doesn't need to wire the full bootstrap pipeline.
+        @asynccontextmanager
+        async def _fake_open_stores(*_args, **_kwargs):
+            raise SystemExit("test-sentinel: stop after connect")
+            yield  # pragma: no cover — required for asynccontextmanager shape
+
+        with (
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.nats_connect",
+                mock_nats_connect,
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.acquire_lockfile",
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.release_lockfile",
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.open_stores",
+                _fake_open_stores,
+            ),
+        ):
+            from lyra.bootstrap.standalone.hub_standalone import (
+                _bootstrap_hub_standalone,
+            )
+
+            # Act — exits at open_stores; that's fine, we only need the connect call
+            with pytest.raises(SystemExit, match="test-sentinel"):
+                await _bootstrap_hub_standalone(raw_config)
+
+        # Assert — nats_connect called once with the hub inbox prefix
+        mock_nats_connect.assert_awaited_once()
+        call_kwargs = mock_nats_connect.call_args.kwargs
+        assert call_kwargs.get("inbox_prefix") == "_INBOX.hub", (
+            f"Expected inbox_prefix='_INBOX.hub', got {call_kwargs!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# T10b — adapter_standalone passes platform inbox_prefix (ADR-051, #715)
+# ---------------------------------------------------------------------------
+
+
+class TestAdapterStandaloneInboxPrefix:
+    @pytest.mark.parametrize(
+        ("platform", "expected_prefix"),
+        [
+            ("telegram", "_INBOX.telegram-adapter"),
+            ("discord", "_INBOX.discord-adapter"),
+        ],
+    )
+    async def test_bootstrap_adapter_standalone_passes_platform_inbox_prefix(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        platform: str,
+        expected_prefix: str,
+    ) -> None:
+        """Adapter bootstrap passes per-platform inbox_prefix (ADR-051)."""
+        # Arrange
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+        raw_config = _test_config()
+
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = True
+        mock_nc.close = AsyncMock()
+
+        # Raise immediately after connect so we don't need to stub deep platform logic.
+        # Platform validation now runs before nats_connect (fail-fast), so the sentinel
+        # is on nats_connect itself rather than Platform.
+        mock_nats_connect = AsyncMock(
+            side_effect=SystemExit("test-sentinel: stop after connect")
+        )
+
+        mock_platform_enum = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "lyra.bootstrap.standalone.adapter_standalone.nats_connect",
+                mock_nats_connect,
+            ),
+            patch(
+                "lyra.bootstrap.standalone.adapter_standalone.Platform",
+                mock_platform_enum,
+            ),
+        ):
+            from lyra.bootstrap.standalone.adapter_standalone import (
+                _bootstrap_adapter_standalone,
+            )
+
+            # Act — exits at nats_connect after Platform validation; that's expected
+            with pytest.raises(SystemExit, match="test-sentinel"):
+                await _bootstrap_adapter_standalone(raw_config, platform)
+
+        # Assert — nats_connect called with platform-derived inbox prefix
+        mock_nats_connect.assert_awaited_once()
+        call_kwargs = mock_nats_connect.call_args.kwargs
+        assert call_kwargs.get("inbox_prefix") == expected_prefix, (
+            f"platform={platform!r}: expected inbox_prefix={expected_prefix!r},"
+            f" got {call_kwargs!r}"
+        )
 
 
 # ---------------------------------------------------------------------------

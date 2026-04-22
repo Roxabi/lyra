@@ -31,6 +31,83 @@ def validate_env_value(value: str) -> bool:
     # Reject newlines and quotes that could break INI format
     return not any(c in value for c in "\n\r\"'")
 
+
+def validate_command_override(value: str) -> bool:
+    """Validate command_override — printable ASCII, no shell metacharacters.
+
+    Accepts: alphanumerics, `/` (paths), `.`, `-`, `_`, spaces (argv split).
+    Rejects: newlines, quotes, `;`, `&`, `|`, backticks, `$`, `(`, `)`, `<`, `>`.
+    This is the same philosophy as validate_env_value, tightened for the
+    fact that the value lands verbatim on a supervisord ``command=`` line
+    which is fed to /bin/sh on program start.
+    """
+    import re
+
+    # Must be non-empty and entirely within a safe character class
+    return bool(value) and bool(re.match(r"^[A-Za-z0-9/_.\- ]+$", value))
+
+
+def validate_agent_name(name: str) -> bool:
+    """Validate agent name — alphanumerics, underscore, hyphen only.
+
+    For `lyra-adapter` entries, `name` is appended verbatim to the
+    supervisord ``command=`` line (via ``run_adapter.sh <name>``), which
+    supervisord feeds to /bin/sh. The repo-authored trust boundary of
+    `agents.yml` already constrains who can set this, but the same
+    shell-metachar discipline as `validate_command_override` applies as
+    defense-in-depth.
+    """
+    import re
+
+    return bool(name) and bool(re.match(r"^[A-Za-z0-9_-]+$", name))
+
+
+HUB_NAME = "hub"
+ROLES: frozenset[str] = frozenset({"hub", "lyra-adapter", "external-satellite"})
+
+
+def resolve_role(name: str, agent: dict[str, Any]) -> str:
+    """Resolve + validate the launcher-dispatch role for an agent entry.
+
+    If `role` is present, validate it is in ROLES and that cross-checks hold.
+    If absent, infer: command_override present → external-satellite; else
+    name == HUB_NAME → hub; else → lyra-adapter.
+
+    Raises ValueError with agent name on any misconfig.
+    """
+    has_override = "command_override" in agent
+    if "role" in agent:
+        role = agent["role"]
+        if role not in ROLES:
+            raise ValueError(
+                f"unknown role {role!r} (agent {name!r}); "
+                f"expected one of: {', '.join(sorted(ROLES))}"
+            )
+        if role == "external-satellite" and not has_override:
+            raise ValueError(
+                f"role=external-satellite requires command_override (agent {name!r})"
+            )
+        if role == "lyra-adapter" and has_override:
+            raise ValueError(
+                f"role=lyra-adapter must not set command_override (agent {name!r})"
+            )
+        if role == "hub" and name != HUB_NAME:
+            raise ValueError(
+                f"role=hub requires name {HUB_NAME!r}, got {name!r} (agent {name!r})"
+            )
+        if role == "hub" and has_override:
+            raise ValueError(
+                f"role=hub must not set command_override (agent {name!r})"
+            )
+        return role
+    # Inference fallback (intentionally retained for backward-compat, see #807 spec)
+    if has_override:
+        return "external-satellite"
+    if name == HUB_NAME:
+        return "hub"
+    return "lyra-adapter"
+
+
 # Template defaults matching existing conf.d/*.conf structure
 DEFAULTS: dict[str, Any] = {
     "autostart": False,
@@ -91,15 +168,26 @@ def generate_conf(
     name: str, agent: dict[str, Any], defaults: dict[str, Any], ctx: dict[str, str]
 ) -> str:
     """Generate a supervisor [program:...] config block."""
+    if not validate_agent_name(name):
+        raise ValueError(f"Invalid agent name (shell-metachar or empty): {name!r}")
+
     program = f"lyra_{name}"
 
     # Merge defaults with agent overrides
     cfg = {**defaults, **agent}
 
-    # Determine command: hub uses run_hub.sh, adapters use run_adapter.sh <name>
-    if name == "hub":
+    role = resolve_role(name, agent)
+
+    if role == "external-satellite":
+        cmd_path = agent["command_override"]
+        if not validate_command_override(cmd_path):
+            raise ValueError(
+                f"Invalid command_override for {name!r}"
+                f" (shell-metachar or empty): {cmd_path!r}"
+            )
+    elif role == "hub":
         cmd_path = RUN_HUB.format(home=ctx["home"])
-    else:
+    else:  # lyra-adapter
         cmd_path = f"{RUN_ADAPTER.format(home=ctx['home'])} {name}"
 
     lines = [f"[program:{program}]"]

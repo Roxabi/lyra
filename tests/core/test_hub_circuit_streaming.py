@@ -12,7 +12,7 @@ from lyra.core.circuit_breaker import CircuitBreaker
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
@@ -221,7 +221,7 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
     string (not the hardcoded fallback) when agent.process() raises."""
     from pathlib import Path
 
-    from lyra.core.messages import MessageManager
+    from lyra.core.messaging.messages import MessageManager
 
     TOML_PATH = (
         Path(__file__).resolve().parent.parent.parent

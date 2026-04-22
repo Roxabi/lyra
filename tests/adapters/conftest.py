@@ -16,10 +16,9 @@ import pytest
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
-from lyra.core.authenticator import _ALLOW_ALL
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.message import InboundMessage
-from lyra.core.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage
 
 # ---------------------------------------------------------------------------
 # Shared test helpers for adapter tests
@@ -242,7 +241,6 @@ def _make_telegram_adapter() -> TelegramAdapter:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=MagicMock(),
-        auth=_ALLOW_ALL,
     )
     return adapter
 

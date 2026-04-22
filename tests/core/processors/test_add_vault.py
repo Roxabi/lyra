@@ -16,10 +16,11 @@ from lyra.commands.add_vault.handlers import (
     _NOTE_TYPE,
     cmd_add_vault,
 )
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_parser import CommandContext
-from lyra.core.message import InboundMessage
-from lyra.core.trust import TrustLevel
-from lyra.integrations.base import SessionTools, VaultWriteFailed
+from lyra.core.exceptions import VaultWriteFailed
+from lyra.core.messaging.message import InboundMessage
+from lyra.integrations.base import SessionTools
 
 # ---------------------------------------------------------------------------
 # Helpers

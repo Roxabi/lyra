@@ -10,14 +10,19 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from lyra.core.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.messaging.events import (
+    LlmEvent,
+    ResultLlmEvent,
+    TextLlmEvent,
+    ToolUseLlmEvent,
+)
 from lyra.llm.base import LlmResult
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
     from nats.aio.subscription import Subscription
 
-    from lyra.core.agent_config import ModelConfig
+    from lyra.core.agent.agent_config import ModelConfig
 
 log = logging.getLogger(__name__)
 
@@ -84,8 +89,9 @@ class NatsLlmDriver:
         }
         return any(now - ts <= self.HB_TTL for ts in self._worker_freshness.values())
 
-    def is_alive(self, pool_id: str) -> bool:  # noqa: ARG002 — pool_id unused (driver is stateless per-pool)
+    def is_alive(self, pool_id: str) -> bool:
         """Return True when NATS is connected and at least one worker is fresh."""
+        del pool_id  # LlmProvider protocol slot; driver is stateless per-pool
         return self._nc.is_connected and self._any_worker_alive()
 
     async def complete(  # noqa: PLR0913

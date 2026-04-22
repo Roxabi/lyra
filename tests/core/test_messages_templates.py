@@ -10,7 +10,7 @@ Covers:
 
 from __future__ import annotations
 
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.messages import MessageManager
 
 from .conftest import MESSAGES_TOML_PATH
 

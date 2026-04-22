@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.integrations.base import ScrapeFailed, ScrapeProvider
+from lyra.core.exceptions import ScrapeFailed
+from lyra.integrations.base import ScrapeProvider
 from lyra.integrations.web_intel import WebIntelScraper
 
 

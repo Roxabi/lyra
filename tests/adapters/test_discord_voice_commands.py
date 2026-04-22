@@ -9,14 +9,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.discord_voice import (
+from lyra.adapters.discord.voice import (
     VoiceAlreadyActiveError,
     VoiceDependencyError,
     VoiceMode,
 )
-from lyra.core.authenticator import _ALLOW_ALL
-from lyra.core.message import OutboundAudioChunk
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import OutboundAudioChunk
 
 # ---------------------------------------------------------------------------
 # File-local helpers
@@ -355,7 +354,6 @@ class TestOnMessageVoiceCommandWiring:
             bot_id="main",
             inbound_bus=inbound_bus,
         )
-        adapter._auth = _ALLOW_ALL  # permit the message
         # Mock _handle_voice_command to return True (simulates voice command handled)
         adapter._handle_voice_command = AsyncMock(return_value=True)
 

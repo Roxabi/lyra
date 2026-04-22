@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from lyra.core.agent import AgentBase
     from lyra.core.hub.hub_protocol import ChannelAdapter
 from lyra.core.circuit_breaker import CircuitBreaker
-from lyra.core.message import (
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,

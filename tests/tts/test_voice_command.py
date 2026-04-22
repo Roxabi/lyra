@@ -20,11 +20,11 @@ from lyra.adapters.telegram import TelegramAdapter
 from lyra.agents.anthropic_agent import AnthropicAgent
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent
-from lyra.core.agent_config import ModelConfig
-from lyra.core.message import InboundMessage, OutboundAudio, Response
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, OutboundAudio, Response
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig
-from lyra.core.trust import TrustLevel
 from lyra.tts import TTSService
 
 # ---------------------------------------------------------------------------
@@ -284,13 +284,10 @@ class TestTelegramAdapterRenderAudio:
     """
 
     def _make_adapter(self) -> TelegramAdapter:
-        from lyra.core.authenticator import _ALLOW_ALL
-
         adapter = TelegramAdapter(
             bot_id="main",
             token="test-token",
             inbound_bus=MagicMock(),
-            auth=_ALLOW_ALL,
         )
         adapter.bot = AsyncMock()
         return adapter

@@ -21,7 +21,7 @@ class TestAdapterOutbound:
 
     def test_accepts_enum_value_via_str(self) -> None:
         # Regression: Platform enum is str-subclass; callers pass .value explicitly.
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         subject = adapter_outbound(Platform.TELEGRAM.value, "abc")
         assert subject == "adapter-outbound-telegram-abc"

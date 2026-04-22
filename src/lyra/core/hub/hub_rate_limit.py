@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections import deque
 
-from ..message import InboundMessage
+from ..messaging.message import InboundMessage
 
 
 class RateLimiter:

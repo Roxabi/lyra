@@ -17,24 +17,6 @@ from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
 
-class ScrapeFailed(Exception):
-    """Raised when the scraper fails or is not available."""
-
-    def __init__(
-        self, reason: Literal["not_available", "timeout", "subprocess_error"]
-    ) -> None:
-        self.reason = reason
-        super().__init__(reason)
-
-
-class VaultWriteFailed(Exception):
-    """Raised when the vault write fails or is not available."""
-
-    def __init__(self, reason: str = "") -> None:
-        self.reason = reason
-        super().__init__(reason)
-
-
 @runtime_checkable
 class ScrapeProvider(Protocol):
     """Async scraper: fetch URL → return text content."""

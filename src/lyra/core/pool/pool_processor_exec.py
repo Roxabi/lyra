@@ -14,10 +14,10 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..agent import AgentBase
-    from ..message import InboundMessage
+    from ..messaging.message import InboundMessage
     from .pool import Pool
 
-from ..message import GENERIC_ERROR_REPLY, OutboundMessage, Response
+from ..messaging.message import GENERIC_ERROR_REPLY, OutboundMessage, Response
 from .pool_processor_streaming import (
     build_streaming_capture,
     build_streaming_turn_logger,
@@ -133,7 +133,9 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
             # so this is effectively free (one dict lookup) on every call.
             # registers processors via @register decorators
             importlib.import_module("lyra.core.processors")
-            from lyra.core.processor_registry import registry as _proc_registry
+            from lyra.core.processors.processor_registry import (
+                registry as _proc_registry,
+            )
 
             _cmd_name = f"{msg.command.prefix}{msg.command.name}"
             _processor = _proc_registry.build(_cmd_name, _session_tools)

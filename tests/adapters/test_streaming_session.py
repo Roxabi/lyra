@@ -8,15 +8,17 @@ All tests use mock PlatformCallbacks — no platform SDK imports required.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters._shared_streaming import PlatformCallbacks, StreamingSession
-from lyra.adapters.nats_stream_decoder import StreamChunkTimeout, decode_stream_events
-from lyra.core.message import GENERIC_ERROR_REPLY, OutboundMessage
-from lyra.core.render_events import TextRenderEvent, ToolSummaryRenderEvent
+from lyra.adapters.nats.nats_stream_decoder import decode_stream_events
+from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
+from lyra.core.exceptions import StreamChunkTimeout
+from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
+from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -378,7 +380,7 @@ async def test_had_tool_events_reply_id_last_chunk_only():
         send_call_count += 1
         return 100 + send_call_count
 
-    cb.send_message = _send_message  # type: ignore[assignment]
+    cb.send_message = cast(Callable[[str], Awaitable[int | None]], _send_message)
 
     session = StreamingSession(cb, outbound=outbound)
     await session.run(
@@ -455,7 +457,7 @@ async def test_decode_stream_events_timeout_raises_stream_chunk_timeout():
     gen = decode_stream_events("test-stream-id", q)
 
     # Patch _CHUNK_TIMEOUT_SECONDS to 0.01s so the test doesn't wait 120s
-    import lyra.adapters.nats_stream_decoder as _mod
+    import lyra.adapters.nats.nats_stream_decoder as _mod
 
     original = _mod._CHUNK_TIMEOUT_SECONDS
     _mod._CHUNK_TIMEOUT_SECONDS = 0.01

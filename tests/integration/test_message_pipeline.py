@@ -30,7 +30,7 @@ import pytest
 
 from lyra.core.hub.message_pipeline import Action
 from lyra.core.hub.middleware import build_default_pipeline
-from lyra.core.message import Platform
+from lyra.core.messaging.message import Platform
 from tests.core.conftest import (
     _make_hub,
     _MockAdapter,

@@ -4,14 +4,13 @@
     "compress@roxabi-marketplace": true,
     "1b1@roxabi-marketplace": true,
     "web-intel@roxabi-marketplace": true,
-    "cv@roxabi-marketplace": true,
-    "get-invoice-details@roxabi-marketplace": true,
+    "cv@roxabi-marketplace": false,
+    "get-invoice-details@roxabi-marketplace": false,
     "image-prompt-generator@roxabi-marketplace": true,
-    "linkedin-post-generator@roxabi-marketplace": true,
+    "linkedin-post-generator@roxabi-marketplace": false,
     "roxabi-vault@roxabi-vault-marketplace": true,
     "typescript-lsp@claude-plugins-official": true,
-    "pyright-lsp@claude-plugins-official": true,
-    "gitnexus@roxabi-marketplace": true
+    "pyright-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "roxabi-marketplace": {

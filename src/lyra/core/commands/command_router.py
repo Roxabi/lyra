@@ -10,9 +10,10 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .. import builtin_commands, workspace_commands
-from ..message import InboundMessage, Response
+from ..config import RouterConfig
+from ..messaging.message import InboundMessage, Response
 from ..pool.pool import Pool
+from . import builtin_commands, workspace_commands
 from .command_config import DEFAULT_BUILTINS, CommandConfig, SessionCommandEntry
 from .command_loader import AsyncHandler, CommandLoader
 from .command_parser import CommandContext
@@ -22,7 +23,6 @@ from .command_patterns import (
     format_unknown_command,
     is_admin_only,
     is_bare_url,
-    load_pattern_configs,
     rewrite_bare_url,
 )
 
@@ -31,29 +31,30 @@ if TYPE_CHECKING:
     from lyra.core.smart_routing_protocol import SmartRoutingProtocol
 
     from ..circuit_breaker import CircuitRegistry
-    from ..messages import MessageManager
+    from ..messaging.messages import MessageManager
 
 log = logging.getLogger(__name__)
 
-# Type alias for builtin handler (sync or async)
 BuiltinHandler = Callable[
     [list, InboundMessage, Pool | None], Response | Awaitable[Response] | None
-]
+]  # noqa: E501
 
 
 class CommandRouter:
     """Routes slash commands to plugin handlers or built-in handlers."""
 
-    def __init__(  # noqa: PLR0913 — DI constructor, each arg is a required dependency
+    def __init__(  # noqa: PLR0913
         self,
         command_loader: CommandLoader,
         enabled_plugins: list[str],
-        builtins: dict[str, CommandConfig] | None = None,
         circuit_registry: "CircuitRegistry | None" = None,
         msg_manager: "MessageManager | None" = None,
         runtime_config_holder: "RuntimeConfigHolder | None" = None,
         runtime_config_path: Path | None = None,
         smart_routing_decorator: "SmartRoutingProtocol | None" = None,
+        config: RouterConfig | None = None,
+        # Backward-compat: individual params override config (deprecated)
+        builtins: dict[str, CommandConfig] | None = None,
         on_debounce_change: Callable[[int], None] | None = None,
         on_cancel_change: Callable[[bool], None] | None = None,
         workspaces: dict[str, Path] | None = None,
@@ -61,25 +62,28 @@ class CommandRouter:
         pattern_configs: dict[str, dict] | None = None,
         session_driver: object = None,
     ) -> None:
+        cfg: RouterConfig = config if config is not None else RouterConfig()
+        # Allow individual param overrides for backward compat
         self._command_loader = command_loader
         self._enabled_plugins = enabled_plugins
+        default_builtins = cfg.builtins or dict(DEFAULT_BUILTINS)
         self._builtins: dict[str, CommandConfig] = (
-            builtins if builtins is not None else dict(DEFAULT_BUILTINS)
+            builtins if builtins is not None else default_builtins
         )
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._runtime_config_holder = runtime_config_holder
         self._runtime_config_path = runtime_config_path
         self._smart_routing = smart_routing_decorator
-        self._on_debounce_change = on_debounce_change
-        self._on_cancel_change = on_cancel_change
+        self._on_debounce_change = on_debounce_change or cfg.on_debounce_change
+        self._on_cancel_change = on_cancel_change or cfg.on_cancel_change
         self._workspaces: dict[str, Path] = workspaces or {}
-        self._patterns: dict[str, bool] = patterns or {}
+        self._patterns: dict[str, bool] = patterns or cfg.patterns
         self._pattern_configs: dict[str, dict] = (
-            pattern_configs if pattern_configs is not None else load_pattern_configs()
+            pattern_configs if pattern_configs is not None else cfg.pattern_configs
         )
         self._passthroughs: set[str] = set()
-        self._session_driver: object = session_driver
+        self._session_driver: object = session_driver or cfg.session_driver
         self._session_handlers: dict[str, SessionCommandEntry] = {}
         self._builtin_handlers = self._build_builtin_handlers()
         check_command_conflicts(
@@ -88,10 +92,7 @@ class CommandRouter:
 
     @classmethod
     def builtin_metadata(cls) -> list[tuple[str, str, bool]]:
-        """Return (name, description, admin_only) for default builtins only.
-
-        Class method — usable without instantiation (e.g., from CLI).
-        """
+        """Return (name, description, admin_only) for default builtins only."""
         return [
             (name, cfg.description, is_admin_only(cfg.description))
             for name, cfg in DEFAULT_BUILTINS.items()
@@ -110,13 +111,15 @@ class CommandRouter:
         # Processor commands — only include those registered as passthroughs.
         try:
             importlib.import_module("lyra.core.processors")
-            from lyra.core.processor_registry import registry as _proc_registry
+            from lyra.core.processors.processor_registry import (
+                registry as _proc_registry,
+            )
 
             for cmd, desc in _proc_registry.descriptions().items():
                 if cmd in self._passthroughs:
                     result.append((cmd, desc, False))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("Could not load processor commands: %s", exc)
         return sorted(result)
 
     def prepare(self, msg: InboundMessage) -> InboundMessage:
@@ -148,9 +151,9 @@ class CommandRouter:
     ) -> None:
         """Register a session command handler.
 
-        Deprecated: prefer ``@register`` from ``lyra.core.processor_registry``.
+        Deprecated: prefer ``@register`` from ``lyra.core.processors.processor_registry``.
         *name* must not include the leading slash. Raises ``ValueError`` on clash.
-        """
+        """  # noqa: E501
         full_name = f"/{name}"
         if full_name in self._builtins:
             raise ValueError(f"Session command {full_name!r} clashes with a builtin.")

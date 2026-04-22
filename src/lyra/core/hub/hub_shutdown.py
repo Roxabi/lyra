@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
     from ..circuit_breaker import CircuitRegistry
     from ..memory import MemoryManager
-    from ..message import Platform
-    from ..messages import MessageManager
+    from ..messaging.message import Platform
+    from ..messaging.messages import MessageManager
     from ..pool import Pool
     from ..stores.message_index import MessageIndex
     from .hub_protocol import ChannelAdapter
@@ -49,7 +49,7 @@ class HubShutdownMixin:
         Called just before cli_pool.stop() during graceful shutdown.
         Fire-and-forget with a 3s total timeout so it never blocks teardown.
         """
-        from ..message import Platform
+        from ..messaging.message import Platform
         from .outbound_errors import try_notify_user
 
         _RESTART_MSG = (

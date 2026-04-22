@@ -7,14 +7,14 @@ from __future__ import annotations
 
 import logging
 
-from lyra.bootstrap.bootstrap_wiring import _build_bot_auths
-from lyra.bootstrap.config import _load_circuit_config
+from lyra.bootstrap.factory.config import _load_circuit_config
+from lyra.bootstrap.wiring.bootstrap_wiring import _build_bot_auths
 from lyra.config import (
     DiscordBotConfig,
     TelegramBotConfig,
     load_multibot_config,
 )
-from lyra.core.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.infrastructure.stores.auth_store import AuthStore
 

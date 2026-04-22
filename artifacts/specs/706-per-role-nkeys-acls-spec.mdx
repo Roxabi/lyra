@@ -4,6 +4,7 @@ issue: 706
 status: approved
 tier: F-lite
 date: 2026-04-15
+updated: 2026-04-22
 promoted-from: artifacts/frames/706-per-role-nkeys-acls-frame.mdx
 ---
 
@@ -78,28 +79,36 @@ classDiagram
 
 ### Subject → Identity ACL matrix
 
-Derived from the audit (see §Audit Provenance). `PUB` = identity publishes to this subject. `SUB` = identity subscribes. Reply subjects (NATS `_INBOX.>`) are granted automatically by `allow_responses: true` — they do **not** appear in the matrix.
+Derived from the audit (see §Audit Provenance). `PUB` = identity publishes to this subject. `SUB` = identity subscribes. Per-identity inbox subjects (`_INBOX.<identity>.>`) are listed explicitly; `allow_responses: true` covers the replier side only and does not replace the explicit inbox subscribe grant (see `[^inbox-fix]`).
 
+<!-- acl-matrix:begin -->
 | Subject | hub | telegram-adapter | discord-adapter | tts-adapter | stt-adapter | llm-worker | monitor |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | `lyra.inbound.telegram.>` | SUB | PUB | — | — | — | — | — |
 | `lyra.inbound.discord.>` | SUB | — | PUB | — | — | — | — |
 | `lyra.outbound.telegram.>` | PUB | SUB | — | — | — | — | — |
 | `lyra.outbound.discord.>` | PUB | — | SUB | — | — | — | — |
-| `lyra.system.ready` [^ready] | SUB | PUB | PUB | — | — | — | — |
+| `lyra.system.ready` [^ready] | SUB | PUB | PUB | PUB | PUB | — | — |
 | `lyra.voice.tts.request` | PUB | — | — | SUB | — | — | — |
 | `lyra.voice.tts.heartbeat` | SUB | — | — | PUB | — | — | — |
 | `lyra.voice.stt.request` | PUB | — | — | — | SUB | — | — |
 | `lyra.voice.stt.heartbeat` | SUB | — | — | — | PUB | — | — |
 | `lyra.llm.request` | PUB | — | — | — | — | SUB | — |
 | `lyra.llm.health.*` [^health] | SUB | — | — | — | — | PUB | — |
-| `_INBOX.>` [^inbox] | SUB | — | — | — | — | — | — |
+| `_INBOX.hub.>` [^inbox] | SUB | — | — | — | — | — | — |
+| `_INBOX.telegram-adapter.>` [^inbox] | — | SUB | — | — | — | — | — |
+| `_INBOX.discord-adapter.>` [^inbox] | — | — | SUB | — | — | — | — |
+| `_INBOX.tts-adapter.>` [^inbox] | — | — | — | SUB | — | — | — |
+| `_INBOX.stt-adapter.>` [^inbox] | — | — | — | — | SUB | — | — |
 | `lyra.monitor.>` (reserved) [^monitor] | — | — | — | — | — | — | PUB+SUB |
+<!-- acl-matrix:end -->
 
 [^ready]: Readiness probe uses request/reply. Adapter publishes `lyra.system.ready` with `reply=<ephemeral>`; hub subscribes, responds via `msg.respond()`. The reply subject is covered by `allow_responses: true` on the hub.
 [^health]: Code uses single-token wildcard `*` (`lyra.llm.health.*`) not `>` — matches `lyra.llm.health.<driver>` today; tightening to `.*` prevents a future multi-segment publish from silently landing via a `>`-based ACL.
-[^inbox]: The `NatsLlmDriver.stream()` path in `src/lyra/llm/drivers/nats_driver.py:200` uses a manual inbox subscription (`self._nc.new_inbox()` + `subscribe(inbox)`) rather than `nc.request()`. `allow_responses: true` only covers auto-managed inboxes from `nc.request()`, so the hub needs `_INBOX.>` in its subscribe allow-list explicitly for LLM streaming to work. Other clients (adapters, workers) do not need this — they are responders via `msg.respond()`, which is covered by `allow_responses: true`.
+[^inbox]: Each lyra-owned identity connects with `inbox_prefix="_INBOX.<identity>"` (ADR-051), so nats-py's `new_inbox()` returns `_INBOX.<identity>.<nuid>` and the scoped ACL covers both `nc.request()` and manual inbox subscribe paths. The `NatsLlmDriver._stream_gen()` path (`self._nc.new_inbox()` + `subscribe(inbox)`) is unmodified — only the prefix narrows. See `[^inbox-fix]` for history.
 [^monitor]: Monitor has no code today (seed + ACL exist only to reserve the namespace). Kept in scope to avoid a second `gen-nkeys.sh --regenerate` + reload cycle when the monitor service lands.
+
+[^inbox-fix]: **Resolved by ADR-051 (#715).** The original `_INBOX.>` grant was required because adapters acting as requesters (e.g. readiness probe via `nc.request()`) need subscribe permission on their own reply inbox, and `allow_responses: true` only covers the *replier* side. ADR-051 resolves this by setting `inbox_prefix="_INBOX.<identity>"` at `nats_connect()` time: nats-py's `new_inbox()` derives every ephemeral inbox from `self._inbox_prefix`, so all inboxes for a given identity land under `_INBOX.<identity>.<nuid>` and the narrowed per-identity ACL covers them. This replaces the bus-wide `_INBOX.>` grant and makes the `allow_responses` vs. requester-subscribe distinction moot — both paths are covered by the same scoped grant without any code change to `_stream_gen()` or the readiness probe. Supersedes #717.
 
 ### Consumer map (who uses which subjects)
 
@@ -126,11 +135,11 @@ The matrix above is authoritative. The table below is a per-identity rollup — 
 
 | Identity | Publishes | Subscribes | Uses `allow_responses` | Status |
 |---|---|---|:-:|---|
-| hub | `lyra.outbound.telegram.>`, `lyra.outbound.discord.>`, `lyra.voice.tts.request`, `lyra.voice.stt.request`, `lyra.llm.request` | `lyra.inbound.telegram.>`, `lyra.inbound.discord.>`, `lyra.voice.tts.heartbeat`, `lyra.voice.stt.heartbeat`, `lyra.llm.health.*`, `lyra.system.ready`, `_INBOX.>` | ✓ (requester) | This issue |
-| telegram-adapter | `lyra.inbound.telegram.>`, `lyra.system.ready` | `lyra.outbound.telegram.>` | ✓ | This issue |
-| discord-adapter | `lyra.inbound.discord.>`, `lyra.system.ready` | `lyra.outbound.discord.>` | ✓ | This issue |
-| tts-adapter | `lyra.voice.tts.heartbeat` | `lyra.voice.tts.request` | ✓ (responder) | This issue |
-| stt-adapter | `lyra.voice.stt.heartbeat` | `lyra.voice.stt.request` | ✓ (responder) | This issue |
+| hub | `lyra.outbound.telegram.>`, `lyra.outbound.discord.>`, `lyra.voice.tts.request`, `lyra.voice.stt.request`, `lyra.llm.request` | `lyra.inbound.telegram.>`, `lyra.inbound.discord.>`, `lyra.voice.tts.heartbeat`, `lyra.voice.stt.heartbeat`, `lyra.llm.health.*`, `lyra.system.ready`, `_INBOX.hub.>` [^inbox-fix] | ✓ (requester) | This issue |
+| telegram-adapter | `lyra.inbound.telegram.>`, `lyra.system.ready` | `lyra.outbound.telegram.>`, `_INBOX.telegram-adapter.>` [^inbox-fix] | ✓ | This issue |
+| discord-adapter | `lyra.inbound.discord.>`, `lyra.system.ready` | `lyra.outbound.discord.>`, `_INBOX.discord-adapter.>` [^inbox-fix] | ✓ | This issue |
+| tts-adapter | `lyra.voice.tts.heartbeat` | `lyra.voice.tts.request`, `_INBOX.tts-adapter.>` [^inbox-fix] | ✓ (responder) | This issue |
+| stt-adapter | `lyra.voice.stt.heartbeat` | `lyra.voice.stt.request`, `_INBOX.stt-adapter.>` [^inbox-fix] | ✓ (responder) | This issue |
 | llm-worker | `lyra.llm.health.*` | `lyra.llm.request` | ✓ (responder) | This issue |
 | monitor | `lyra.monitor.>` | `lyra.monitor.>` | ✓ | Reserved (no code; ACL is namespace squat — see footnote) |
 | plugin (`lyra.plugin.<name>.>`) | `lyra.plugin.<name>.>` | `lyra.plugin.<name>.>` | ✓ | **Deferred to ADR-045** |
@@ -191,7 +200,7 @@ The matrix above is authoritative. The table below is a per-identity rollup — 
 - [ ] `gen-nkeys.sh --regenerate` generates 7 seeds: `hub`, `telegram-adapter`, `discord-adapter`, `tts-adapter`, `stt-adapter`, `llm-worker`, `monitor` — each at `$SEEDS_DIR/<name>.seed` with mode 0600, owned by `$LYRA_USER`.
 - [ ] Generated `auth.conf` contains exactly 7 `users[]` entries; each entry has an `nkey`, a `permissions { publish { allow: [...] } subscribe { allow: [...] } allow_responses: true }` block.
 - [ ] The publish allow-list for each identity matches that identity's matrix row exactly (set equality, order-insensitive).
-- [ ] The subscribe allow-list for each identity matches that identity's matrix row exactly, including the hub's `_INBOX.>` subscription.
+- [ ] The subscribe allow-list for each identity matches that identity's matrix row exactly, including the hub's `_INBOX.hub.>` subscription (narrowed per ADR-051 / #715).
 - [ ] `plugin` nkey identity is **not** generated; auth.conf header comment references ADR-045 and says "plugin ACL deferred".
 
 ### Supervisor wiring
@@ -215,6 +224,6 @@ The matrix above is authoritative. The table below is a per-identity rollup — 
 
 > **Out of scope:** Plugin role ACL implementation. Expected shape for when ADR-045 lands: each plugin gets its own nkey (`<project>.seed`), permissions scoped to `lyra.plugin.<project>.>` for both publish and subscribe, `allow_responses: true`. The hub will need to add `SUB lyra.plugin.>` (or a scoped pattern) when plugins start calling into it — out of scope here.
 >
-> **Out of scope:** Per-identity `inbox_prefix` (scoped reply inboxes). Using `allow_responses: true` with the default `_INBOX.>` prefix means any authenticated identity could *subscribe* to any inbox if they guess the subject. Mitigation: reply inboxes are random UUIDs (unguessable in practice) and `allow_responses` limits responders to one reply per request within a 2-minute window. Tightening to per-identity `inbox_prefix` is a follow-up issue.
+> **Resolved in #715 / ADR-051:** Per-identity `inbox_prefix` (scoped reply inboxes). The bus-wide `_INBOX.>` grant has been retired for all lyra-owned identities (hub, telegram-adapter, discord-adapter, tts-adapter, stt-adapter); each now connects with `inbox_prefix="_INBOX.<identity>"` and holds only `_INBOX.<identity>.>` in its ACL. Satellite identities (voice-tts, voice-stt, image-worker) are narrowed in per-satellite follow-up PRs per ADR-047.
 >
 > **Out of scope:** Quadlet-path verification. `deploy/quadlet/hub.container` and `lyra-adapter@.container` already wire `NATS_NKEY_SEED_PATH` correctly; the quadlet path is tested only indirectly via the supervisor-path rollout on Machine 1.

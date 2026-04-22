@@ -13,6 +13,39 @@ roxabi-contracts = {
 }
 ```
 
+## Satellite pin freshness (Renovate)
+
+Satellites pin `roxabi-contracts` (and `roxabi-nats`) by git tag. Without an automated pin-freshness rule, pins silently drift as new tags are cut and the SDK → satellite → hub triangle ships mixed versions. Every satellite repo MUST add the following Renovate rule to `renovate.json`:
+
+```json5
+// renovate.json — satellite repos (voiceCLI, imageCLI, roxabi-vault, …)
+{
+  "packageRules": [{
+    "matchDatasources": ["git-refs"],
+    "matchSourceUrls": ["https://github.com/Roxabi/lyra"],
+    "matchPackageNames": ["roxabi-nats", "roxabi-contracts"],
+    "groupName": "roxabi sdk",
+    "schedule": ["before 6am on monday"]
+  }]
+}
+```
+
+### Why `matchDatasources: ["git-refs"]` is mandatory
+
+Renovate resolves git-sourced `uv` pins through the **`git-refs`** datasource, NOT the default `pypi` datasource. Omit this field and the rule silently does not fire — Renovate matches nothing, no PR is opened, and the pin stays stale indefinitely. This is the single most common misconfiguration; prominent so it is not repeated.
+
+### Why both packages in one rule
+
+`roxabi-nats` (transport) and `roxabi-contracts` (schemas) form a single coordinated SDK. Grouping them under `groupName: "roxabi sdk"` prevents partial upgrades — e.g., bumping `roxabi-contracts` past a `CONTRACT_VERSION` migration while leaving `roxabi-nats` on an older release, which would produce a version mismatch at envelope parse time. One grouped PR per week per satellite keeps the two coordinates in lockstep.
+
+### Why the weekly Monday schedule
+
+`before 6am on monday` gives a satellite a **stability window**: a contributor merging on Friday has the weekend before the next Renovate wave, and the Monday-morning PR lands before the week's work begins. Batching also avoids PR noise — SDK tags may cut mid-week but satellites see them consolidated once, not piecemeal.
+
+### End-state
+
+Renovate reads the `tag = "..."` pin in `[tool.uv.sources]`, observes a newer tag on the upstream repo, and opens a PR each Monday. Without this rule, pin freshness is purely documentation and drift becomes inevitable (ADR-049 §Satellite pin freshness).
+
 ## Public API contract
 
 The stable external contract is defined by `__all__` in `roxabi_contracts/__init__.py`. v0.1.0 ships:
@@ -75,3 +108,28 @@ from roxabi_contracts.voice.fixtures import silence_wav_16khz, sample_transcript
 
 `scipy` is declared in `[project.optional-dependencies].testing` and is
 only pulled when a consumer requests the `[testing]` extra.
+
+## Test doubles
+
+`roxabi_contracts.voice.testing` provides in-process replacements for a real
+voiceCLI satellite (`FakeTtsWorker`, `FakeSttWorker`) — intended for lyra hub
+tests and voiceCLI adapter tests that need to exercise the NATS request/reply
+cycle without a GPU or real model.
+
+Install with the `[testing]` optional extra:
+
+```bash
+uv pip install "roxabi-contracts[testing]"
+```
+
+Three non-bypassable guards prevent production contamination
+(see [ADR-049 §Test-double pattern](../../docs/architecture/adr/049-roxabi-contracts-shared-schema-package.mdx)):
+
+1. **Import-time gate.** `voice.testing` imports `nats` at module top. A
+   bare `roxabi-contracts` install (no `[testing]` extra) fails with
+   `ModuleNotFoundError: No module named 'nats'` before any runtime code runs.
+2. **Environment assertion.** `__init__` raises `RuntimeError` when
+   `LYRA_ENV=production`. No override flag.
+3. **Loopback-only URL.** `start()` raises `ValueError` on any non-loopback
+   NATS URL (`127.0.0.1`, `localhost`, `::1`, `0:0:0:0:0:0:0:1` are the only
+   accepted hosts). No override.

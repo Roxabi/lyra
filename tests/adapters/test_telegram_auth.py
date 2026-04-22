@@ -16,8 +16,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # File-local helpers
@@ -212,14 +212,16 @@ class TestTelegramAdapterInbound:
 
         _fake_audio = MagicMock(read_bytes=lambda: b"audio", unlink=MagicMock())
         _fake_dl = AsyncMock(return_value=(_fake_audio, 5.0))
-        with patch("lyra.adapters.telegram_inbound._download_audio", new=_fake_dl):
+        with patch(
+            "lyra.adapters.telegram.telegram_inbound._download_audio", new=_fake_dl
+        ):  # noqa: E501
             with patch(  # noqa: E501
-                "lyra.adapters.telegram_inbound.normalize_audio"
+                "lyra.adapters.telegram.telegram_inbound.normalize_audio"
             ) as mock_norm_audio:
                 mock_norm_audio.return_value = MagicMock()
                 _fake_push = AsyncMock()
                 with patch(
-                    "lyra.adapters.telegram_inbound.push_to_hub_guarded",
+                    "lyra.adapters.telegram.telegram_inbound.push_to_hub_guarded",
                     new=_fake_push,
                 ):
                     await adapter._on_voice_message(voice_msg)

@@ -9,8 +9,8 @@ import logging
 
 import pytest
 
-from lyra.core.authenticator import Authenticator as AuthMiddleware
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.authenticator import Authenticator as AuthMiddleware
+from lyra.core.auth.trust import TrustLevel
 from lyra.infrastructure.stores.auth_store import AuthStore
 
 # ---------------------------------------------------------------------------

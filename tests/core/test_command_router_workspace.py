@@ -10,7 +10,7 @@ import pytest
 
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_router import CommandRouter
-from lyra.core.message import Response
+from lyra.core.messaging.message import Response
 from lyra.core.pool import Pool
 
 from .conftest import make_message

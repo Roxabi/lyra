@@ -10,18 +10,18 @@ import json
 
 import pytest
 
-from lyra.core.message import (
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundMessage,
 )
-from lyra.core.render_events import (
+from lyra.core.messaging.render_events import (
     FileEditSummary,
     SilentCounts,
     TextRenderEvent,
     ToolSummaryRenderEvent,
 )
-from lyra.core.trust import TrustLevel
 from roxabi_nats._serialize import deserialize, serialize
 
 # ---------------------------------------------------------------------------

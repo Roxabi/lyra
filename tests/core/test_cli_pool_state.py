@@ -6,9 +6,9 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from lyra.core.agent_config import ModelConfig
-from lyra.core.cli_pool import CliPool, _ProcessEntry
-from lyra.core.cli_protocol import CliResult
+from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.cli.cli_pool import CliPool, _ProcessEntry
+from lyra.core.cli.cli_protocol import CliResult
 
 from .conftest_cli_pool import (
     _PATCH_TARGET,
@@ -35,7 +35,7 @@ class TestCliPoolSpawnCwd:
             await pool.send("pool-cwd", "hello", DEFAULT_MODEL)
 
         _args, kwargs = mock_spawn.call_args
-        from lyra.core.cli_pool import _LYRA_ROOT
+        from lyra.core.cli.cli_pool import _LYRA_ROOT
 
         assert kwargs["cwd"] == str(_LYRA_ROOT)
 
@@ -177,11 +177,11 @@ class TestEagerCleanupOnTerminated:
         entry = _ProcessEntry(proc=proc, pool_id="p1", model_config=DEFAULT_MODEL)
         pool._entries["p1"] = entry
 
-        from lyra.core.cli_protocol import CliResult
+        from lyra.core.cli.cli_protocol import CliResult
 
         terminated_result = CliResult(error="Process terminated unexpectedly")
         with patch(
-            "lyra.core.cli_pool.send_and_read",
+            "lyra.core.cli.cli_pool.send_and_read",
             new=AsyncMock(return_value=terminated_result),
         ):
             result = await pool.send("p1", "hello", DEFAULT_MODEL)
@@ -195,10 +195,10 @@ class TestEagerCleanupOnTerminated:
         entry = _ProcessEntry(proc=proc, pool_id="p2", model_config=DEFAULT_MODEL)
         pool._entries["p2"] = entry
 
-        from lyra.core.cli_protocol import CliResult
+        from lyra.core.cli.cli_protocol import CliResult
 
         with patch(
-            "lyra.core.cli_pool.send_and_read",
+            "lyra.core.cli.cli_pool.send_and_read",
             new=AsyncMock(return_value=CliResult(error="Timeout: no output for 900s")),
         ):
             result = await pool.send("p2", "hello", DEFAULT_MODEL)
@@ -273,7 +273,7 @@ class TestKillPreservesSession:
 
         terminated_result = CliResult(error="Process terminated unexpectedly")
         with patch(
-            "lyra.core.cli_pool.send_and_read",
+            "lyra.core.cli.cli_pool.send_and_read",
             new=AsyncMock(return_value=terminated_result),
         ):
             await pool.send("p1", "hello", DEFAULT_MODEL)

@@ -15,13 +15,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from lyra.bootstrap.config import (
+from lyra.bootstrap.factory.config import (
     LoggingConfig,
     _load_logging_config,
     _load_raw_config,
 )
-from lyra.bootstrap.unified import _bootstrap_unified
-from lyra.core.trace import JsonFormatter, TraceIdFilter
+from lyra.bootstrap.factory.unified import _bootstrap_unified
+from lyra.core.trace import JsonFormatter, TelegramTokenFilter, TraceIdFilter
 from lyra.errors import KeyringError, MissingCredentialsError
 
 log = logging.getLogger(__name__)
@@ -67,6 +67,10 @@ def _setup_logging(log_config: LoggingConfig | None = None) -> None:
     log_file = log_dir / f"{stamp}_lyra.log"
 
     trace_filter = TraceIdFilter()
+    # Redact Telegram bot tokens — httpx logs full request URLs (incl. token)
+    # at INFO. Must run on every handler so both console and file output are
+    # covered. Attached BEFORE formatting.
+    telegram_token_filter = TelegramTokenFilter()
 
     file_handler = RotatingFileHandler(
         log_file,
@@ -78,10 +82,12 @@ def _setup_logging(log_config: LoggingConfig | None = None) -> None:
     else:
         file_handler.setFormatter(logging.Formatter(fmt))
     file_handler.addFilter(trace_filter)
+    file_handler.addFilter(telegram_token_filter)
 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter(fmt))
     console_handler.addFilter(trace_filter)
+    console_handler.addFilter(telegram_token_filter)
 
     root = logging.getLogger()
     if root.handlers:
@@ -89,6 +95,7 @@ def _setup_logging(log_config: LoggingConfig | None = None) -> None:
     level = getattr(logging, log_config.level.upper(), logging.INFO)
     root.setLevel(level)
     root.addFilter(trace_filter)
+    root.addFilter(telegram_token_filter)
     root.addHandler(file_handler)
     root.addHandler(console_handler)
 

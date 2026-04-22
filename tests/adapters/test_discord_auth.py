@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # Auth helper
@@ -138,9 +138,9 @@ class TestHubTrustResolution:
 
     def test_resolves_trust_from_authenticator(self) -> None:
         """Hub re-resolves trust on dequeued message."""
-        from lyra.core.authenticator import Authenticator
+        from lyra.core.auth.authenticator import Authenticator
         from lyra.core.hub.hub import Hub
-        from lyra.core.message import InboundMessage, Platform
+        from lyra.core.messaging.message import InboundMessage, Platform
 
         store = MagicMock()
         store.check.return_value = TrustLevel.TRUSTED
@@ -170,7 +170,7 @@ class TestHubTrustResolution:
     def test_no_authenticator_returns_message_unchanged(self) -> None:
         """Hub returns message unchanged when no authenticator registered."""
         from lyra.core.hub.hub import Hub
-        from lyra.core.message import InboundMessage
+        from lyra.core.messaging.message import InboundMessage
 
         hub = Hub()
 
@@ -209,7 +209,7 @@ class TestTrustGuardMiddleware:
         from lyra.core.hub.message_pipeline import _DROP
         from lyra.core.hub.middleware import PipelineContext
         from lyra.core.hub.middleware_stages import TrustGuardMiddleware
-        from lyra.core.message import InboundMessage
+        from lyra.core.messaging.message import InboundMessage
 
         mw = TrustGuardMiddleware()
         next_fn = AsyncMock()
@@ -234,7 +234,7 @@ class TestTrustGuardMiddleware:
 
         from lyra.core.hub.middleware import PipelineContext
         from lyra.core.hub.middleware_stages import TrustGuardMiddleware
-        from lyra.core.message import InboundMessage
+        from lyra.core.messaging.message import InboundMessage
 
         mw = TrustGuardMiddleware()
         sentinel = object()
@@ -263,7 +263,7 @@ class TestHubTrustResolutionEdgeCases:
     """Edge cases for Hub._resolve_message_trust()."""
 
     def _make_msg(self, **kwargs):
-        from lyra.core.message import InboundMessage
+        from lyra.core.messaging.message import InboundMessage
 
         defaults = dict(
             id="test-edge",
@@ -285,10 +285,10 @@ class TestHubTrustResolutionEdgeCases:
         """Empty string user_id → auth.resolve() is called with None."""
         from unittest.mock import MagicMock
 
-        from lyra.core.authenticator import Authenticator
+        from lyra.core.auth.authenticator import Authenticator
+        from lyra.core.auth.identity import Identity
         from lyra.core.hub.hub import Hub
-        from lyra.core.identity import Identity
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         # Arrange
         auth = MagicMock(spec=Authenticator)
@@ -310,9 +310,9 @@ class TestHubTrustResolutionEdgeCases:
 
     def test_invalid_platform_returns_message_unchanged(self) -> None:
         """Invalid platform string causes early return — message object is unchanged."""
-        from lyra.core.authenticator import Authenticator
+        from lyra.core.auth.authenticator import Authenticator
         from lyra.core.hub.hub import Hub
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         # Arrange
         store = MagicMock()
@@ -338,9 +338,9 @@ class TestHubTrustResolutionEdgeCases:
         """
         from unittest.mock import MagicMock
 
-        from lyra.core.authenticator import Authenticator
+        from lyra.core.auth.authenticator import Authenticator
         from lyra.core.hub.hub import Hub
-        from lyra.core.message import Platform
+        from lyra.core.messaging.message import Platform
 
         # Arrange
         auth = MagicMock(spec=Authenticator)

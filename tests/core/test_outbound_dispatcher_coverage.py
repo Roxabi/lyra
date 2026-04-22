@@ -19,8 +19,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
 from lyra.core.hub.outbound_errors import _SCOPE_REAP_THRESHOLD
-from lyra.core.message import InboundMessage, OutboundMessage, RoutingContext
-from lyra.core.render_events import TextRenderEvent
+from lyra.core.messaging.message import InboundMessage, OutboundMessage, RoutingContext
+from lyra.core.messaging.render_events import TextRenderEvent
+from tests.conftest import TIMEOUT_IO
 
 from .conftest import make_dispatcher_msg
 
@@ -232,7 +233,7 @@ async def test_transient_error_retried_and_succeeds() -> None:
         msg = make_dispatcher_msg()
         with patch("asyncio.sleep", new=fast_sleep):
             dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
-            await asyncio.wait_for(done_event.wait(), timeout=2.0)
+            await asyncio.wait_for(done_event.wait(), timeout=TIMEOUT_IO)
 
         assert call_count == 2
     finally:
@@ -359,7 +360,7 @@ class TestRetryExhaustion:
             ):
                 dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
                 # Act — wait until try_notify_user fires (exhaustion complete)
-                await asyncio.wait_for(done_event.wait(), timeout=2.0)
+                await asyncio.wait_for(done_event.wait(), timeout=TIMEOUT_IO)
 
             # Assert
             assert adapter.send.await_count == 4  # 1 initial + 3 retries

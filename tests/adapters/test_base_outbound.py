@@ -11,10 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters._base_outbound import OutboundAdapterBase
-from lyra.adapters._shared_streaming import PlatformCallbacks
-from lyra.core.message import InboundMessage, OutboundMessage
-from lyra.core.render_events import RenderEvent, TextRenderEvent
+from lyra.adapters.shared._base_outbound import OutboundAdapterBase
+from lyra.adapters.shared._shared_streaming import PlatformCallbacks
+from lyra.core.messaging.message import InboundMessage, OutboundMessage
+from lyra.core.messaging.render_events import RenderEvent, TextRenderEvent
 from tests.adapters.conftest import make_tg_msg
 
 # ---------------------------------------------------------------------------

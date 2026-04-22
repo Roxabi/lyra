@@ -2,11 +2,8 @@
 # Each entry must have a tracking issue.
 # Format: <path>  # <count> files — <issue> <description>
 #
-# V4 of #760 (folder decomposition) tracked in #773. File-size elimination is
-# complete in #760; the folder overages below will be reduced by splitting
-# into subfolders under #773 (very high blast radius on imports — ~150+ files).
+# V4 of #760 completed under #773 — core/, adapters/, bootstrap/ decomposed
+# into cohesive subdirs. core/hub/ deferred to V5 (follow-up issue).
 
-src/lyra/core           # 53 files — #773 V4 folder decomposition
-src/lyra/adapters       # 30 files — #773 V4 folder decomposition
-src/lyra/bootstrap      # 24 files — #773 V4 folder decomposition
-src/lyra/core/hub       # 26 files — #773 V4 folder decomposition
+src/lyra/core           # 13 files — #858 config dataclass extraction
+src/lyra/core/hub       # 26 files — V5 hub decomposition (follow-up to #773)

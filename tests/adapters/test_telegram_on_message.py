@@ -12,9 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messages import MessageManager
+from lyra.core.messaging.messages import MessageManager
 
 TOML_PATH = (
     Path(__file__).resolve().parent.parent.parent
@@ -63,7 +62,6 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=inbound_bus,
-        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 
@@ -106,7 +104,6 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
         token="test-token-secret",
         inbound_bus=inbound_bus,
         msg_manager=mm,
-        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 
@@ -143,7 +140,6 @@ async def test_on_message_drops_bot_text_message() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=inbound_bus,
-        auth=_ALLOW_ALL,
     )
     bot_msg = SimpleNamespace(
         chat=SimpleNamespace(id=123, type="private"),
@@ -183,7 +179,6 @@ async def test_on_message_drops_and_notifies_when_hub_circuit_open() -> None:
         token="test-token-secret",
         inbound_bus=inbound_bus,
         circuit_registry=registry,
-        auth=_ALLOW_ALL,
     )
     adapter.bot = bot
 

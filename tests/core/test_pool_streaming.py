@@ -12,9 +12,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response
+from lyra.core.messaging.render_events import TextRenderEvent
 from lyra.core.pool import Pool
-from lyra.core.render_events import TextRenderEvent
+from tests.conftest import TIMEOUT_IO
 from tests.core.conftest import _make_ctx_mock, make_msg
 
 # ---------------------------------------------------------------------------
@@ -69,7 +70,7 @@ class EmptyStreamingAgent:
         _msg: InboundMessage,
         _pool: Pool,
         *,
-        on_intermediate=None,  # noqa: ARG002
+        _on_intermediate=None,
     ) -> collections.abc.AsyncIterator[TextRenderEvent]:
         async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
             if False:  # pragma: no cover
@@ -90,7 +91,7 @@ async def _consume_and_dispatch_cb(
     async for _ in chunks:
         pass
     if outbound is not None:
-        from lyra.core.message import OutboundMessage as _OM
+        from lyra.core.messaging.message import OutboundMessage as _OM
 
         if isinstance(outbound, _OM):
             cb = outbound.metadata.pop("_on_dispatched", None)
@@ -241,7 +242,7 @@ class TestPoolStreaming:
 
         pool.submit(msg)
         if pool._current_task:
-            await asyncio.wait_for(pool._current_task, timeout=2.0)
+            await asyncio.wait_for(pool._current_task, timeout=TIMEOUT_IO)
 
         ctx.dispatch_streaming.assert_awaited_once()
 
@@ -257,7 +258,7 @@ class TestPoolStreaming:
 
         pool.submit(msg)
         if pool._current_task:
-            await asyncio.wait_for(pool._current_task, timeout=2.0)
+            await asyncio.wait_for(pool._current_task, timeout=TIMEOUT_IO)
 
         ctx.dispatch_streaming.assert_awaited_once()
         ctx.record_circuit_success.assert_called()
@@ -283,7 +284,7 @@ class TestPoolStreaming:
 
         pool.submit(msg)
         if pool._current_task:
-            await asyncio.wait_for(pool._current_task, timeout=2.0)
+            await asyncio.wait_for(pool._current_task, timeout=TIMEOUT_IO)
 
         ctx.dispatch_response.assert_awaited()
         response_arg: Response = ctx.dispatch_response.call_args[0][1]
@@ -316,7 +317,7 @@ class TestPoolStreaming:
         msg = make_msg("log content test")
         pool.submit(msg)
         if pool._current_task:
-            await asyncio.wait_for(pool._current_task, timeout=2.0)
+            await asyncio.wait_for(pool._current_task, timeout=TIMEOUT_IO)
 
         assert logged == ["hello world"], f"expected full content, got {logged!r}"
 
@@ -342,7 +343,7 @@ class TestPoolStreaming:
         msg = make_msg("empty stream test")
         pool.submit(msg)
         if pool._current_task:
-            await asyncio.wait_for(pool._current_task, timeout=2.0)
+            await asyncio.wait_for(pool._current_task, timeout=TIMEOUT_IO)
 
         assert logged == [""], f"expected empty string, got {logged!r}"
 
@@ -359,7 +360,7 @@ class TestPoolStreaming:
                 _msg: InboundMessage,
                 _pool: Pool,
                 *,
-                on_intermediate=None,  # noqa: ARG002
+                _on_intermediate=None,
             ) -> collections.abc.AsyncIterator[TextRenderEvent]:
                 async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
                     yield TextRenderEvent(text="first", is_final=False)
@@ -389,7 +390,7 @@ class TestPoolStreaming:
         msg = make_msg("supersede test")
         pool.submit(msg)
         if pool._current_task:
-            await asyncio.wait_for(pool._current_task, timeout=2.0)
+            await asyncio.wait_for(pool._current_task, timeout=TIMEOUT_IO)
 
         # Assert: full content captured (no mid-stream cancel in this test path)
         assert logged == ["firstsecond"], f"expected full content, got {logged!r}"
@@ -427,7 +428,7 @@ class TestPoolStreaming:
                 _msg: InboundMessage,
                 _pool: Pool,
                 *,
-                on_intermediate=None,  # noqa: ARG002
+                _on_intermediate=None,
             ) -> collections.abc.AsyncIterator[TextRenderEvent]:
                 async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
                     yield TextRenderEvent(text="hello", is_final=True)
@@ -447,7 +448,7 @@ class TestPoolStreaming:
         msg = make_msg("session id test")
         pool.submit(msg)
         if pool._current_task:
-            await asyncio.wait_for(pool._current_task, timeout=2.0)
+            await asyncio.wait_for(pool._current_task, timeout=TIMEOUT_IO)
 
         assert pool.session_id == "session-from-iterator", (
             f"expected session_id from original iterator, got {pool.session_id!r}"

@@ -3,6 +3,7 @@
     "roxabi-nats",
     "lyra",
     "aiohttp",
+    "grandalf",
     "fastembed",
     "numpy",
     "packaging",

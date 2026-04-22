@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from ..message import (
+    from ..messaging.message import (
         InboundMessage,
         OutboundAttachment,
         OutboundAudio,
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
         OutboundMessage,
         Response,
     )
-    from ..render_events import RenderEvent
+    from ..messaging.render_events import RenderEvent
     from .hub_protocol import ChannelAdapter
     from .message_pipeline import PipelineResult
     from .outbound_dispatcher import OutboundDispatcher

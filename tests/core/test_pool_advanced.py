@@ -12,10 +12,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.message import InboundMessage, Response
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from lyra.core.trust import TrustLevel
-from tests.core.conftest import _drain, make_msg
+from tests.conftest import _drain
+from tests.core.conftest import make_msg
 
 # ---------------------------------------------------------------------------
 # File-local helper
@@ -218,7 +219,7 @@ class TestPoolSnapshot:
     @pytest.mark.anyio
     async def test_snapshot_returns_session_snapshot(self, pool: Pool) -> None:
         """snapshot() returns a SessionSnapshot with correct identity fields."""
-        from lyra.core.memory import SessionSnapshot
+        from lyra.core.memory.memory import SessionSnapshot
 
         await pool.append(_make_inbound(user_id="u1", platform="telegram"))
         snap = pool.snapshot("lyra")

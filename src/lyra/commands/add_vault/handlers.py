@@ -12,8 +12,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from lyra.core.message import InboundMessage, Response
-from lyra.integrations.base import SessionTools, VaultWriteFailed
+from lyra.core.exceptions import VaultWriteFailed
+from lyra.core.messaging.message import InboundMessage, Response
+from lyra.integrations.base import SessionTools
 
 if TYPE_CHECKING:
     from lyra.llm.base import LlmProvider

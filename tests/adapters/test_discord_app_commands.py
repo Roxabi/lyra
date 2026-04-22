@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from lyra.adapters.discord_voice_commands import (
+from lyra.adapters.discord.voice.discord_voice_commands import (
     VOICE_COMMANDS,
     register_voice_app_commands,
 )
@@ -168,7 +168,9 @@ class TestOnReadySync:
 class TestTextFallbackPreserved:
     @pytest.mark.asyncio()
     async def test_text_join_still_works(self) -> None:
-        from lyra.adapters.discord_voice_commands import handle_voice_command
+        from lyra.adapters.discord.voice.discord_voice_commands import (
+            handle_voice_command,
+        )
 
         adapter = MagicMock()
         adapter._vsm.get.return_value = None  # not in channel
@@ -186,7 +188,9 @@ class TestTextFallbackPreserved:
 
     @pytest.mark.asyncio()
     async def test_text_leave_still_works(self) -> None:
-        from lyra.adapters.discord_voice_commands import handle_voice_command
+        from lyra.adapters.discord.voice.discord_voice_commands import (
+            handle_voice_command,
+        )
 
         adapter = MagicMock()
         adapter._vsm.get.return_value = MagicMock()  # in channel

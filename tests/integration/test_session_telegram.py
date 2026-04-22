@@ -10,8 +10,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.authenticator import _ALLOW_ALL
-
 pytestmark = pytest.mark.asyncio
 
 
@@ -80,7 +78,6 @@ def _make_telegram_adapter(fake_turn_store=None, mock_bus=None):
         bot_id="main",
         token="test-token-secret",
         inbound_bus=mock_bus,
-        auth=_ALLOW_ALL,
     )
     if fake_turn_store is not None:
         kwargs["turn_store"] = fake_turn_store
@@ -95,7 +92,9 @@ def _make_telegram_adapter(fake_turn_store=None, mock_bus=None):
 
 async def test_telegram_private_injects_thread_session_id() -> None:
     """TelegramAdapter with turn_store injects thread_session_id for private chats."""
-    from lyra.adapters.telegram_inbound import handle_message as telegram_handle_message
+    from lyra.adapters.telegram.telegram_inbound import (
+        handle_message as telegram_handle_message,
+    )
 
     mock_bus = MagicMock()
     mock_bus.put_nowait = MagicMock()
@@ -145,7 +144,9 @@ async def test_telegram_no_turn_store_no_injection() -> None:
     Currently this trivially passes (no injection exists). It becomes a meaningful
     regression guard once injection is added.
     """
-    from lyra.adapters.telegram_inbound import handle_message as telegram_handle_message
+    from lyra.adapters.telegram.telegram_inbound import (
+        handle_message as telegram_handle_message,
+    )
 
     mock_bus = MagicMock()
     mock_bus.put_nowait = MagicMock()
@@ -158,7 +159,6 @@ async def test_telegram_no_turn_store_no_injection() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=mock_bus,
-        auth=_ALLOW_ALL,
     )
     adapter.bot = AsyncMock()
     adapter.bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
@@ -188,7 +188,6 @@ async def test_telegram_turn_store_attribute_stored() -> None:
         bot_id="main",
         token="test-token-secret",
         inbound_bus=mock_bus,
-        auth=_ALLOW_ALL,
         turn_store=fake_turn_store,  # type: ignore[arg-type]
     )
 

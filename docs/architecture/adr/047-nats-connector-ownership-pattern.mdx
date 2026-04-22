@@ -109,12 +109,14 @@ If `voicecli_{stt,tts}` fails post-cutover: re-enable `lyra_{stt,tts}` from `con
 
 ### Subject and nkey ownership table
 
-| Domain | Subjects | Queue group | lyra nkey identity | Satellite adapter module |
-|---|---|---|---|---|
-| STT | `lyra.voice.stt.request`, `lyra.voice.stt.heartbeat` | `STT_WORKERS` | `stt-adapter` | `voicecli/src/voicecli/nats/stt_adapter.py` |
-| TTS | `lyra.voice.tts.request`, `lyra.voice.tts.heartbeat` | `TTS_WORKERS` | `tts-adapter` | `voicecli/src/voicecli/nats/tts_adapter.py` |
-| Image | `lyra.image.generate.request` | `IMAGE_WORKERS` | `image-worker` (to provision) | `imagecli/src/imagecli/nats/adapter.py` |
-| Memory | TBD — requires contract ADR | TBD | TBD | `roxabi-vault` TBD |
+| Domain | Subjects | Queue group | lyra nkey identity | Satellite adapter module | Status |
+|---|---|---|---|---|---|
+| STT | `lyra.voice.stt.request`, `lyra.voice.stt.heartbeat` | `STT_WORKERS` | `stt-adapter` | `voicecli/src/voicecli/nats/stt_adapter.py` | Partial |
+| TTS | `lyra.voice.tts.request`, `lyra.voice.tts.heartbeat` | `TTS_WORKERS` | `tts-adapter` | `voicecli/src/voicecli/nats/tts_adapter.py` | Partial |
+| Image | `lyra.image.generate.request`, `lyra.image.heartbeat` | `IMAGE_WORKERS` | `image-worker` | `imagecli/src/imagecli/nats/adapter.py` | Shipped |
+| Memory | TBD — requires contract ADR | TBD | TBD | `roxabi-vault` TBD | TBD |
+
+Status legend: **Shipped** — contract ADR accepted, hub client merged, satellite module live, nkey identity provisioned. **Partial** — contract ADR accepted and satellite module live, but lyra-side migration still in flight (tracked by open issues). **TBD** — contract ADR not yet written. Per-row shipping details (issue numbers, supervisor entries, nkey provisioning commits) live in the corresponding contract ADR's References section (ADR-044 for STT/TTS, ADR-050 for Image).
 
 ### Contract ADR requirement
 
@@ -132,7 +134,7 @@ Every domain that moves from "TBD" to shipped requires:
 
 ### imageCLI migration state
 
-imageCLI#50 shipped a satellite-owned worker via the SDK on 2026-04-15. `imagecli nats-serve` subscribes to `lyra.image.generate.request` using `NatsAdapterBase`. Remaining lyra-side work: contract ADR for `lyra.image.*`, `src/lyra/nats/nats_image_client.py`, `image-worker` nkey + ACL in `gen-nkeys.sh`. File new lyra-side ticket.
+imageCLI#50 shipped a satellite-owned worker via the SDK on 2026-04-15. `imagecli nats-serve` subscribes to `lyra.image.generate.request` using `NatsAdapterBase`. Lyra-side work completed via #754: contract ADR-050, `src/lyra/nats/nats_image_client.py` hub client, `image-worker` nkey, `imagecli_gen` supervisor entry. See ADR-050 References.
 
 ### Enforcement
 
@@ -170,7 +172,7 @@ The allowlist is narrow (1–2 files per satellite). This is the enforcement mec
 1. **voiceCLI#69** — adopt `roxabi-nats` v0.1.0 SDK. Retire `voicecli/nats/base.py`, `voicecli/nats/connect.py`, duplicate validators/serializers. **Keep** `voicecli/nats/{stt,tts}_adapter.py` as the designated adapter modules. Size S. Open.
 2. **lyra#658 / #690 / #691** slices — delete `src/lyra/bootstrap/{stt,tts}_adapter_standalone.py`, `lyra adapter stt/tts` subcommands, `lyra_{stt,tts}.conf`. Strip voicecli imports from `src/lyra/{stt,tts}/__init__.py`. Drop `voicecli` from lyra's `pyproject.toml`. In flight. Size F-lite.
 3. **CI grep-gate** on satellite repos — forbid `lyra.*` subject literals outside the designated adapter module per satellite. A satellite-local allowlist (one file path per satellite) makes the exception explicit. File new tickets in each satellite repo. Size S each.
-4. **imageCLI#50** already closed as COMPLETED 2026-04-15 under this pattern. Lyra-side remainder: contract ADR for `lyra.image.*`, `src/lyra/nats/nats_image_client.py`, `image-worker` nkey + ACL in `gen-nkeys.sh`. File new lyra-side ticket. Size S.
+4. **imageCLI#50** already closed as COMPLETED 2026-04-15 under this pattern. Lyra-side work closed by #754 (ADR-050 contract, hub client, nkey, supervisor entry — see ADR-050 References).
 5. **Memory over NATS (roxabi-vault)** — deferred until its contract ADR is scoped.
 
 ### Neutral
@@ -186,3 +188,4 @@ The allowlist is narrow (1–2 files per satellite). This is the enforcement mec
 - **ADR-044** — lyra ↔ voicecli NATS voice contract. The canonical contract ADR. Every new domain follows its structure.
 - **ADR-045** — roxabi-nats SDK extraction. The boundary is transport-vs-domain: `roxabi_nats` is pure transport; all `lyra.*` knowledge — contract text and hub-side publisher — stays in lyra even though the worker process lives in the satellite repo.
 - **ADR-046** — nkey provisioning is declarative. Invariant 2 (IDENTITIES is the single source of truth) requires each new worker identity to appear in `gen-nkeys.sh` before its worker ships. ADR-046 is the authoritative security-boundary document. ADR-047 reinforces the per-role nkey model structurally but does not define the enforcement mechanism. Subject-level ACLs remain the actual security boundary.
+- **ADR-050** — lyra ↔ imagecli NATS image contract. The image-domain analogue of ADR-044; landed under this ownership pattern.

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..message import InboundMessage, Response
+    from ..messaging.message import InboundMessage, Response
     from ..pool import Pool
 
 # Type alias for the optional trace hook.

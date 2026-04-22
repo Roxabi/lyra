@@ -6,8 +6,8 @@ Post: pass-through (response goes straight to history).
 
 from __future__ import annotations
 
-from lyra.core.processor_registry import register
 from lyra.core.processors._scraping import ScrapingProcessor
+from lyra.core.processors.processor_registry import register
 
 _INSTRUCTION = (
     "Please explain the following web content in plain language "

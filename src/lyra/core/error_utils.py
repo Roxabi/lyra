@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from lyra.core.message import GENERIC_ERROR_REPLY, Response
+from lyra.core.messaging.message import GENERIC_ERROR_REPLY, Response
 
 if TYPE_CHECKING:
     import logging

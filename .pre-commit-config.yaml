@@ -1,40 +1,47 @@
 repos:
-  - repo: local
-    hooks:
-      - id: lint
-        name: lint
-        entry: uv run ruff check .
-        language: system
-        pass_filenames: false
-      - id: typecheck
-        name: typecheck
-        entry: uv run pyright
-        language: system
-        pass_filenames: false
-      - id: check-file-length
-        name: check-file-length
-        entry: tools/check_file_length.sh
-        language: system
-        pass_filenames: false
-      - id: check-folder-size
-        name: check-folder-size
-        entry: tools/check_folder_size.sh
-        language: system
-        pass_filenames: false
-      - id: import-layers
-        name: import-layers
-        entry: uv run lint-imports
-        language: system
-        pass_filenames: false
-      - id: trufflehog
-        name: trufflehog secret scan
-        entry: 'bash -c "[ -d .git ] && trufflehog git file://. --fail || true"'
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
-      - id: license
-        name: license check
-        entry: uv run tools/license_check.py
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
+- repo: local
+  hooks:
+  - id: lint
+    name: lint
+    entry: uv run ruff check .
+    language: system
+    pass_filenames: false
+  - id: typecheck
+    name: typecheck
+    entry: uv run pyright
+    language: system
+    pass_filenames: false
+  - id: check-file-length
+    name: check-file-length
+    entry: tools/check_file_length.sh
+    language: system
+    pass_filenames: false
+  - id: check-folder-size
+    name: check-folder-size
+    entry: tools/check_folder_size.sh
+    language: system
+    pass_filenames: false
+  - id: check-duplicate-test-basenames
+    name: check-duplicate-test-basenames
+    entry: tools/check_duplicate_test_basenames.sh
+    language: system
+    pass_filenames: false
+  - id: import-layers
+    name: import-layers
+    entry: uv run lint-imports
+    language: system
+    pass_filenames: false
+  - id: trufflehog
+    name: trufflehog secret scan
+    entry: bash -c "[ -d .git ] && trufflehog git file://. --fail || true"
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push
+  - id: license
+    name: license check
+    entry: uv run tools/license_check.py
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push

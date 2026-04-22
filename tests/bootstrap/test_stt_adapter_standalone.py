@@ -22,7 +22,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 _SOURCE = (
-    Path(__file__).parent.parent.parent / "src/lyra/bootstrap/stt_adapter_standalone.py"
+    Path(__file__).parent.parent.parent
+    / "src/lyra/bootstrap/standalone/stt_adapter_standalone.py"
 )
 
 
@@ -59,7 +60,9 @@ def test_bootstrap_stt_adapter_standalone_signature() -> None:
 
     This test passes before and after migration — the public signature is unchanged.
     """
-    from lyra.bootstrap.stt_adapter_standalone import _bootstrap_stt_adapter_standalone
+    from lyra.bootstrap.standalone.stt_adapter_standalone import (
+        _bootstrap_stt_adapter_standalone,
+    )
 
     assert inspect.iscoroutinefunction(_bootstrap_stt_adapter_standalone), (
         "_bootstrap_stt_adapter_standalone must be a coroutine function"
@@ -88,7 +91,9 @@ def test_stt_adapter_standalone_class_exists() -> None:
     from roxabi_nats import NatsAdapterBase
 
     try:
-        from lyra.bootstrap.stt_adapter_standalone import SttAdapterStandalone
+        from lyra.bootstrap.standalone.stt_adapter_standalone import (
+            SttAdapterStandalone,
+        )
     except ImportError as exc:
         pytest.fail(
             f"SttAdapterStandalone not found in stt_adapter_standalone — "
@@ -105,7 +110,9 @@ class TestSttAdapterReplyContractVersion:
 
     def _make_adapter(self, transcribe_result=None, transcribe_raises=None):
         """Build SttAdapterStandalone with a stubbed STTService.transcribe."""
-        from lyra.bootstrap.stt_adapter_standalone import SttAdapterStandalone
+        from lyra.bootstrap.standalone.stt_adapter_standalone import (
+            SttAdapterStandalone,
+        )
         from lyra.stt import STTConfig
 
         mock_cfg = STTConfig(model_size="large-v3-turbo")
@@ -117,11 +124,11 @@ class TestSttAdapterReplyContractVersion:
 
         with (
             patch(
-                "lyra.bootstrap.stt_adapter_standalone.load_stt_config",
+                "lyra.bootstrap.standalone.stt_adapter_standalone.load_stt_config",
                 return_value=mock_cfg,
             ),
             patch(
-                "lyra.bootstrap.stt_adapter_standalone.STTService",
+                "lyra.bootstrap.standalone.stt_adapter_standalone.STTService",
                 return_value=mock_stt_service,
             ),
         ):
@@ -135,10 +142,10 @@ class TestSttAdapterReplyContractVersion:
         async def capture_reply(msg, data: bytes) -> None:
             captured["payload"] = json.loads(data)
 
-        adapter.reply = capture_reply  # type: ignore[method-assign]
         mock_msg = MagicMock()
         mock_msg.reply = "_INBOX.test"
-        await adapter.handle(mock_msg, payload)
+        with patch.object(adapter, "reply", side_effect=capture_reply):
+            await adapter.handle(mock_msg, payload)
         return captured["payload"]
 
     @pytest.mark.asyncio
@@ -183,7 +190,7 @@ def test_mime_to_ext_still_accessible() -> None:
 
     This test passes before and after migration — the helper is kept at module level.
     """
-    from lyra.bootstrap.stt_adapter_standalone import _mime_to_ext
+    from lyra.bootstrap.standalone.stt_adapter_standalone import _mime_to_ext
 
     assert _mime_to_ext("audio/ogg") == ".ogg", (
         "_mime_to_ext('audio/ogg') must return '.ogg'"
@@ -204,7 +211,9 @@ class TestSttHeartbeatPayload:
 
     def _make_adapter(self):
         """Build SttAdapterStandalone with mocked STTService."""
-        from lyra.bootstrap.stt_adapter_standalone import SttAdapterStandalone
+        from lyra.bootstrap.standalone.stt_adapter_standalone import (
+            SttAdapterStandalone,
+        )
         from lyra.stt import STTConfig
 
         mock_cfg = STTConfig(model_size="large-v3-turbo")
@@ -212,11 +221,11 @@ class TestSttHeartbeatPayload:
 
         with (
             patch(
-                "lyra.bootstrap.stt_adapter_standalone.load_stt_config",
+                "lyra.bootstrap.standalone.stt_adapter_standalone.load_stt_config",
                 return_value=mock_cfg,
             ),
             patch(
-                "lyra.bootstrap.stt_adapter_standalone.STTService",
+                "lyra.bootstrap.standalone.stt_adapter_standalone.STTService",
                 return_value=mock_stt_service,
             ),
         ):
@@ -295,7 +304,7 @@ class TestSttHeartbeatPayload:
         """_get_vram_info() returns (0, 0) when pynvml is unavailable."""
         adapter = self._make_adapter()
         with patch(
-            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone._get_vram_info",
+            "lyra.bootstrap.standalone.stt_adapter_standalone.SttAdapterStandalone._get_vram_info",
             return_value=(0, 0),
         ):
             payload = adapter.heartbeat_payload()
@@ -306,7 +315,7 @@ class TestSttHeartbeatPayload:
         """_get_vram_info() returns real MB values when pynvml succeeds."""
         adapter = self._make_adapter()
         with patch(
-            "lyra.bootstrap.stt_adapter_standalone.SttAdapterStandalone._get_vram_info",
+            "lyra.bootstrap.standalone.stt_adapter_standalone.SttAdapterStandalone._get_vram_info",
             return_value=(4096, 10240),
         ):
             payload = adapter.heartbeat_payload()

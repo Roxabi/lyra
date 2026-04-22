@@ -35,7 +35,7 @@ class TestBootstrapCallsSeedAuthStore:
             # Raise to abort further bootstrap — we only need to verify the call
             raise RuntimeError("test-sentinel: abort after seed")
 
-        import lyra.bootstrap.hub_standalone as hub_standalone_mod
+        import lyra.bootstrap.standalone.hub_standalone as hub_standalone_mod
 
         monkeypatch.setattr(hub_standalone_mod, "seed_auth_store", fake_seed)
 
@@ -77,7 +77,7 @@ class TestBootstrapCallsSeedAuthStore:
             "discord": {"bots": []},
         }
 
-        from lyra.bootstrap.hub_standalone import _bootstrap_hub_standalone
+        from lyra.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
 
         # Act — expect the sentinel to bubble up
         with pytest.raises(RuntimeError, match="test-sentinel"):

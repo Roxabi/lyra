@@ -14,8 +14,8 @@ from lyra.core import (
     Hub,
     Pool,
 )
-from lyra.core.inbound_bus import LocalBus
-from lyra.core.message import (
+from lyra.core.messaging.inbound_bus import LocalBus
+from lyra.core.messaging.message import (
     InboundMessage,
     Platform,
 )
@@ -92,7 +92,7 @@ class TestAgent:
 
 class TestHubInit:
     def test_inbound_bus_exists(self) -> None:
-        from lyra.core.inbound_bus import LocalBus
+        from lyra.core.messaging.inbound_bus import LocalBus
 
         hub = Hub()
         assert Hub.BUS_SIZE == 100

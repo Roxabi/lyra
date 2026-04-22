@@ -19,6 +19,7 @@ import time
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from typing import Any, cast
 
 from nats.aio.client import Client as NATS
 
@@ -64,6 +65,7 @@ class NatsAdapterBase(ABC):
         heartbeat_subject: str | None = None,
         heartbeat_interval: float = 5.0,
         type_registry: Sequence[tuple[str, str]] | None = None,
+        inbox_prefix: str | None = None,
     ):
         validate_nats_token(subject, kind="subject")
         validate_nats_token(queue_group, kind="queue_group")
@@ -73,6 +75,12 @@ class NatsAdapterBase(ABC):
         self.schema_version = schema_version
         self.timeout = timeout
         self.drain_timeout = drain_timeout
+        # Per-identity inbox prefix (ADR-051): scopes the nats-py request/reply
+        # inbox subscription to _INBOX.<identity>.> instead of the default
+        # _INBOX.>. Required for any adapter connecting under an ACL that
+        # narrows inbox grants per identity. Value is forwarded to
+        # nats.connect() via nats_connect() at run() time.
+        self._inbox_prefix = inbox_prefix
         self._nc: NATS | None = None
         self._drop_count: dict[str, int] = {}
         self._started_at: float | None = None
@@ -92,7 +100,10 @@ class NatsAdapterBase(ABC):
         )
 
     async def run(self, nats_url: str, stop: asyncio.Event | None = None) -> None:
-        nc = await nats_connect(nats_url)
+        connect_kwargs: dict[str, Any] = {}
+        if self._inbox_prefix is not None:
+            connect_kwargs["inbox_prefix"] = self._inbox_prefix
+        nc = await nats_connect(nats_url, **connect_kwargs)
         self._nc = nc
         await self._wait_ready()
         await nc.subscribe(self.subject, queue=self.queue_group, cb=self._dispatch)
@@ -171,6 +182,8 @@ class NatsAdapterBase(ABC):
         }
 
     async def _heartbeat_loop(self) -> None:
+        # caller guarantees _heartbeat_subject is set (see start() guard)
+        subject = cast(str, self._heartbeat_subject)
         while self._nc and not self._nc.is_closed:
             if not self._nc.is_connected:
                 await asyncio.sleep(1.0)
@@ -178,7 +191,7 @@ class NatsAdapterBase(ABC):
             try:
                 payload = self.heartbeat_payload()
                 await self._nc.publish(
-                    self._heartbeat_subject,  # type: ignore[arg-type]
+                    subject,
                     json.dumps(payload).encode(),
                 )
             except Exception:

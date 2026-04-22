@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from ..tts import TtsUnavailableError
-from .message import (
+from .messaging.message import (
     InboundMessage,
     OutboundAudio,
     OutboundMessage,
@@ -23,7 +23,7 @@ from .message import (
 )
 
 if TYPE_CHECKING:
-    from lyra.core.agent_config import AgentTTSConfig
+    from lyra.core.agent.agent_config import AgentTTSConfig
 
     from .hub import Hub
 

@@ -11,8 +11,7 @@ import pytest
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.core.audio_payload import AudioPayload
-from lyra.core.authenticator import _ALLOW_ALL
-from lyra.core.message import InboundMessage
+from lyra.core.messaging.message import InboundMessage
 
 
 def _make_audio_attachment(content_type: str = "audio/ogg") -> SimpleNamespace:
@@ -54,7 +53,6 @@ def _make_adapter() -> DiscordAdapter:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
 
@@ -65,7 +63,7 @@ def _make_adapter() -> DiscordAdapter:
 
 def test_normalize_audio_attachment_fields() -> None:
     """normalize_audio returns InboundMessage(modality='voice') with correct fields."""
-    from lyra.core.trust import TrustLevel
+    from lyra.core.auth.trust import TrustLevel
 
     adapter = _make_adapter()
     msg = _make_discord_msg(attachments=[_make_audio_attachment("audio/ogg")])
@@ -91,7 +89,7 @@ def test_normalize_audio_attachment_fields() -> None:
 
 def test_normalize_audio_channel_scope_id() -> None:
     """Regular channel → scope_id='channel:<id>:user:<user_id>' (user-scoped)."""
-    from lyra.core.trust import TrustLevel
+    from lyra.core.auth.trust import TrustLevel
 
     adapter = _make_adapter()
     msg = _make_discord_msg()
@@ -104,7 +102,7 @@ def test_normalize_audio_channel_scope_id() -> None:
 
 def test_normalize_audio_thread_scope_id() -> None:
     """Thread channel → scope_id='thread:<id>'."""
-    from lyra.core.trust import TrustLevel
+    from lyra.core.auth.trust import TrustLevel
 
     adapter = _make_adapter()
     msg = _make_discord_msg(channel_type="thread", thread_id=555)
@@ -129,7 +127,6 @@ async def test_on_message_enqueues_audio_on_inbound_bus() -> None:
         bot_id="main",
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     # Use a valid OGG magic header so the magic-byte check passes.
@@ -195,7 +192,6 @@ async def test_on_message_audio_invalid_magic_bytes_sends_reply() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     attachment_obj = SimpleNamespace(
@@ -222,7 +218,6 @@ async def test_on_message_audio_too_large_sends_reply() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     attachment_obj = SimpleNamespace(
@@ -249,7 +244,6 @@ async def test_on_message_does_not_call_normalize_audio_for_non_audio() -> None:
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     image_attachment = SimpleNamespace(
@@ -289,7 +283,6 @@ async def test_on_message_returns_after_audio_skips_text_path() -> None:
         bot_id="main",
         inbound_bus=inbound_bus,
         intents=discord.Intents.none(),
-        auth=_ALLOW_ALL,
     )
 
     attachment_obj = SimpleNamespace(

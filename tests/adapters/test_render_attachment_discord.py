@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from lyra.core.message import InboundMessage, OutboundAttachment
-from lyra.core.trust import TrustLevel
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, OutboundAttachment
 
 from .conftest import (
     make_dc_attach_adapter,

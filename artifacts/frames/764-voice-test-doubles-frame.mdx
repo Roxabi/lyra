@@ -1,0 +1,55 @@
+---
+title: "feat(contracts): test doubles — FakeTtsWorker + FakeSttWorker with three guards"
+issue: 764
+status: approved
+tier: F-lite
+date: 2026-04-18
+---
+
+## Problem
+
+ADR-049 §Test-double pattern promises in-process E2E testing for voice flows: lyra's `test_nats_tts_client_e2e.py` should drive the full publish/reply cycle without a real voiceCLI worker, a GPU, or loaded Qwen/Whisper models. Today that promise is unfulfilled — `roxabi_contracts.voice.testing` does not exist, so every voice E2E has to either mock the client (masking transport/contract drift) or spin up the real satellite (slow, GPU-bound, not CI-friendly).
+
+PR #777 (issue #763) landed the voice domain schemas on staging (`TtsRequest`, `SttRequest`, subjects, fixtures). The `[testing]` extra is already declared in `packages/roxabi-contracts/pyproject.toml` (`nats-py>=2.6`, `roxabi-nats`, `scipy>=1.11`). This issue ships the test-double layer itself: `FakeTtsWorker` and `FakeSttWorker`, wired with three independent, non-bypassable safety guards so the fakes cannot silently shadow a production worker and serve corrupted replies.
+
+## Who
+
+- **Primary:** contracts maintainer implementing the fakes + guards; reviewers verifying each guard fires independently.
+- **Secondary:**
+  - lyra E2E authors (`test_nats_tts_client_e2e.py` and future voice integration tests) — they will import `FakeTtsWorker` once this lands.
+  - voiceCLI satellite test authors — they get a symmetric fake for hub-less tests.
+  - security reviewers — the three-guard design is explicitly a defense-in-depth review item.
+
+## Constraints
+
+- API surface fixed by ADR-049 §Test-double pattern:
+  `__init__(nats_url: str = "nats://127.0.0.1:4222", reply_fixture: bytes | None = None)`, `async start()`, `async stop()`, `calls: list[TtsRequest]` (symmetric for `FakeSttWorker` with `list[SttRequest]`).
+- **Guard 1 — `[testing]` extra:** `voice/testing.py` must import `nats` (via `nats-py`) at module top-level so that importing without the `[testing]` extra fails with `ModuleNotFoundError: nats` **before** any runtime code executes. This is the strongest guard — it bites at import, not instantiation.
+- **Guard 2 — env assertion:** `FakeTtsWorker.__init__` and `FakeSttWorker.__init__` raise `RuntimeError("Fake{Tts,Stt}Worker cannot run in production")` when `os.environ.get("LYRA_ENV") == "production"`. No override flag. No escape hatch. Adversarial CI scenarios run with `LYRA_ENV=ci_adversarial` or similar.
+- **Guard 3 — loopback URL:** `FakeTtsWorker.connect()` (or whichever method establishes the connection — naming TBD in spec) refuses any NATS URL whose host is not `127.0.0.1` or `localhost`. Raises `ValueError`. No override. Closes the accidental-prod-queue-group-shadowing class of bugs even when `LYRA_ENV` is misconfigured.
+- Guards are **independent**: each fires regardless of the state of the others. A unit test asserts each guard triggers in isolation (e.g., Guard 2 fires even when Guard 3 would pass; Guard 3 fires even when `LYRA_ENV` is unset).
+- `calls: list[TtsRequest]` / `list[SttRequest]` — records every request received, for test assertions.
+- `reply_fixture` is the bytes reply for TTS (a WAV blob, default: `silence_wav_16khz` from `voice.fixtures`) and the transcript reply for STT. If `None`, sensible fixture defaults from `voice.fixtures`.
+- `tests/test_voice_testing_doubles.py` — each guard tested independently; `calls` list verified; fixture reply round-trip verified. Must run with the `[testing]` extra installed.
+- pyright clean on `packages/roxabi-contracts/src` (matches #763's bar).
+- Package-root imports stay pure Pydantic — `voice/testing.py` is only imported by consumers that pulled the `[testing]` extra. `voice/__init__.py` MUST NOT re-export `testing` at the package root.
+- Blocked-by #763 is resolved (PR #777 merged; `voice/models.py`, `voice/subjects.py`, `voice/fixtures.py` present on staging).
+
+## Out of Scope
+
+- Migrating lyra's `test_nats_tts_client_e2e.py` to actually use `FakeTtsWorker` — separate follow-up. This issue ships the double and its own guard tests; downstream adoption is elsewhere.
+- Image / memory / llm test doubles — separate issues under Epic #761.
+- Integration with an actual NATS broker beyond what the fake's loopback-bound connection needs for its own tests.
+- Publishing a new `roxabi-contracts` tag — happens after the SDK's Phase 1 lands.
+- Debating the guard design itself. ADR-049 locked the three-guard approach; this issue implements it. Any deviation requires an ADR amendment first.
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (`packages/roxabi-contracts`), no new architecture, ≤3 files (`voice/testing.py`, `tests/test_voice_testing_doubles.py`, possibly a small update to `voice/__init__.py` for an explicit `__all__` boundary). Label `size:F-lite` confirms.
+
+Signals observed:
+- Single package, single domain: `packages/roxabi-contracts` only.
+- Contract fully specified by ADR-049 — no design unknowns, only implementation detail (method naming, subject wiring).
+- Dependencies resolved: #763 merged, `[testing]` extra already declared.
+- Additive: no existing code modified on the consumer side in this issue.
+- Security-sensitive: three-guard design requires careful per-guard independence testing, but the test surface is small (≤3 tests per fake × 2 fakes ≈ 6 focused tests + round-trip).

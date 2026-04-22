@@ -1,6 +1,6 @@
 [project]
 name = "roxabi-nats"
-version = "0.2.0"
+version = "0.2.1"
 description = "NATS transport SDK for Lyra and Roxabi plugin ecosystem"
 readme = "README.md"
 license = { text = "MIT" }

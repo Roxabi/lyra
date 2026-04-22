@@ -77,9 +77,7 @@ class _ConcreteProcessor(ScrapingProcessor):
 
 
 class TestExtractAndValidateUrl:
-    def test_valid_http_url_returns_url_and_no_error(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_http_url_returns_error_https_only(self) -> None:
         # Arrange
         msg = make_msg(
             text="/explain http://example.com",
@@ -88,17 +86,14 @@ class TestExtractAndValidateUrl:
         )
 
         # Act
-        import logging
-
-        with caplog.at_level(logging.WARNING):
-            url, err = _extract_and_validate_url(msg)
+        url, err = await _extract_and_validate_url(msg)
 
         # Assert
-        assert url == "http://example.com"
-        assert err is None
-        assert "HTTP URL requested" in caplog.text
+        assert url == ""
+        assert err is not None
+        assert "HTTPS only" in err
 
-    def test_valid_https_url_returns_url_and_no_error(self) -> None:
+    async def test_valid_https_url_returns_url_and_no_error(self) -> None:
         # Arrange
         msg = make_msg(
             text="/explain https://example.com/path?q=1",
@@ -107,13 +102,13 @@ class TestExtractAndValidateUrl:
         )
 
         # Act
-        url, err = _extract_and_validate_url(msg)
+        url, err = await _extract_and_validate_url(msg)
 
         # Assert
         assert url == "https://example.com/path?q=1"
         assert err is None
 
-    def test_file_scheme_returns_error(self) -> None:
+    async def test_file_scheme_returns_error(self) -> None:
         # Arrange
         msg = make_msg(
             text="/explain file:///etc/passwd",
@@ -122,14 +117,14 @@ class TestExtractAndValidateUrl:
         )
 
         # Act
-        url, err = _extract_and_validate_url(msg)
+        url, err = await _extract_and_validate_url(msg)
 
         # Assert
         assert url == ""
         assert err is not None
-        assert "http://" in err or "https://" in err
+        assert "HTTPS only" in err
 
-    def test_empty_args_returns_usage_error(self) -> None:
+    async def test_empty_args_returns_usage_error(self) -> None:
         # Arrange
         msg = make_msg(
             text="/explain",
@@ -138,36 +133,36 @@ class TestExtractAndValidateUrl:
         )
 
         # Act
-        url, err = _extract_and_validate_url(msg)
+        url, err = await _extract_and_validate_url(msg)
 
         # Assert
         assert url == ""
         assert err is not None
         assert "Usage:" in err
 
-    def test_no_command_falls_back_to_text(self) -> None:
+    async def test_no_command_falls_back_to_text(self) -> None:
         # Arrange — message with no command but text is a valid URL
         msg = make_msg(text="https://example.com")
 
         # Act
-        url, err = _extract_and_validate_url(msg)
+        url, err = await _extract_and_validate_url(msg)
 
         # Assert
         assert url == "https://example.com"
         assert err is None
 
-    def test_no_command_plain_text_returns_error(self) -> None:
+    async def test_no_command_plain_text_returns_error(self) -> None:
         # Arrange — no command, text is not a URL
         msg = make_msg(text="just some text")
 
         # Act
-        url, err = _extract_and_validate_url(msg)
+        url, err = await _extract_and_validate_url(msg)
 
         # Assert
         assert url == ""
         assert err is not None
 
-    def test_command_name_appears_in_usage_error(self) -> None:
+    async def test_command_name_appears_in_usage_error(self) -> None:
         # Arrange
         msg = make_msg(
             text="/summarize",
@@ -176,7 +171,7 @@ class TestExtractAndValidateUrl:
         )
 
         # Act
-        _, err = _extract_and_validate_url(msg)
+        _, err = await _extract_and_validate_url(msg)
 
         # Assert
         assert err is not None
@@ -352,66 +347,86 @@ class TestRejectsPrivateIps:
             command_args=url,
         )
 
-    def test_rejects_192_168(self) -> None:
-        _, err = _extract_and_validate_url(self._make_cmd_msg("http://192.168.1.1"))
+    async def test_rejects_192_168(self) -> None:
+        _, err = await _extract_and_validate_url(
+            self._make_cmd_msg("https://192.168.1.1")
+        )
         assert err is not None
         assert self._ERROR_FRAGMENT in err
 
-    def test_rejects_192_168_subnet(self) -> None:
-        _, err = _extract_and_validate_url(self._make_cmd_msg("http://192.168.100.200"))
+    async def test_rejects_192_168_subnet(self) -> None:
+        _, err = await _extract_and_validate_url(
+            self._make_cmd_msg("https://192.168.100.200")
+        )
         assert err is not None
         assert self._ERROR_FRAGMENT in err
 
-    def test_rejects_10_x(self) -> None:
-        _, err = _extract_and_validate_url(self._make_cmd_msg("http://10.0.0.1"))
+    async def test_rejects_10_x(self) -> None:
+        _, err = await _extract_and_validate_url(self._make_cmd_msg("https://10.0.0.1"))
         assert err is not None
         assert self._ERROR_FRAGMENT in err
 
-    def test_rejects_10_deep(self) -> None:
-        _, err = _extract_and_validate_url(self._make_cmd_msg("http://10.255.255.255"))
+    async def test_rejects_10_deep(self) -> None:
+        _, err = await _extract_and_validate_url(
+            self._make_cmd_msg("https://10.255.255.255")
+        )
         assert err is not None
         assert self._ERROR_FRAGMENT in err
 
-    def test_rejects_172_16(self) -> None:
-        _, err = _extract_and_validate_url(self._make_cmd_msg("http://172.16.0.1"))
+    async def test_rejects_172_16(self) -> None:
+        _, err = await _extract_and_validate_url(
+            self._make_cmd_msg("https://172.16.0.1")
+        )
         assert err is not None
         assert self._ERROR_FRAGMENT in err
 
-    def test_rejects_172_31(self) -> None:
-        _, err = _extract_and_validate_url(self._make_cmd_msg("http://172.31.255.255"))
+    async def test_rejects_172_31(self) -> None:
+        _, err = await _extract_and_validate_url(
+            self._make_cmd_msg("https://172.31.255.255")
+        )
         assert err is not None
         assert self._ERROR_FRAGMENT in err
 
-    def test_rejects_127_0_0_1(self) -> None:
-        _, err = _extract_and_validate_url(self._make_cmd_msg("http://127.0.0.1"))
+    async def test_rejects_127_0_0_1(self) -> None:
+        _, err = await _extract_and_validate_url(
+            self._make_cmd_msg("https://127.0.0.1")
+        )
         assert err is not None
         assert self._ERROR_FRAGMENT in err
 
-    def test_rejects_localhost(self) -> None:
-        _, err = _extract_and_validate_url(self._make_cmd_msg("http://localhost"))
+    async def test_rejects_localhost(self) -> None:
+        _, err = await _extract_and_validate_url(
+            self._make_cmd_msg("https://localhost")
+        )
         assert err is not None
         assert self._ERROR_FRAGMENT in err
 
-    def test_rejects_169_254_link_local(self) -> None:
-        _, err = _extract_and_validate_url(self._make_cmd_msg("http://169.254.169.254"))
+    async def test_rejects_169_254_link_local(self) -> None:
+        _, err = await _extract_and_validate_url(
+            self._make_cmd_msg("https://169.254.169.254")
+        )
         assert err is not None
         assert self._ERROR_FRAGMENT in err
 
-    def test_rejects_returns_empty_url(self) -> None:
-        url, _ = _extract_and_validate_url(self._make_cmd_msg("http://127.0.0.1"))
+    async def test_rejects_returns_empty_url(self) -> None:
+        url, _ = await _extract_and_validate_url(
+            self._make_cmd_msg("https://127.0.0.1")
+        )
         assert url == ""
 
-    def test_public_ip_is_allowed(self) -> None:
+    async def test_public_ip_is_allowed(self) -> None:
         # 93.184.216.34 is example.com — a real public IP; no DNS needed since
         # we pass a bare IP string that resolves instantly via getaddrinfo.
-        url, err = _extract_and_validate_url(self._make_cmd_msg("http://93.184.216.34"))
+        url, err = await _extract_and_validate_url(
+            self._make_cmd_msg("https://93.184.216.34")
+        )
         assert err is None
-        assert url == "http://93.184.216.34"
+        assert url == "https://93.184.216.34"
 
-    def test_rejects_hostname_resolving_to_loopback_via_mock(self) -> None:
+    async def test_rejects_hostname_resolving_to_loopback_via_mock(self) -> None:
         """_extract_and_validate_url rejects a hostname that resolves to 127.0.0.1.
 
-        Uses a mock to avoid real DNS — verifies the socket.getaddrinfo path
+        Uses a mock to avoid real DNS — verifies the asyncio.to_thread path
         inside _is_private_ip() regardless of actual DNS resolution.
         """
         # socket.getaddrinfo returns a list of 5-tuples; the address is in [4]
@@ -419,11 +434,11 @@ class TestRejectsPrivateIps:
             (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))
         ]
         with patch(
-            "lyra.core.processors._scraping.socket.getaddrinfo",
+            "lyra.core.processors._scraping.asyncio.to_thread",
             return_value=loopback_addrinfo,
         ):
-            _, err = _extract_and_validate_url(
-                self._make_cmd_msg("http://internal.corp.example")
+            _, err = await _extract_and_validate_url(
+                self._make_cmd_msg("https://internal.corp.example")
             )
 
         assert err is not None

@@ -78,7 +78,7 @@ class VaultAddProcessor(ScrapingProcessor):
 
     async def post(self, msg: "InboundMessage", response: "Response") -> "Response":
         # B3: re-extract URL from original msg — no self._url needed
-        url, err = _extract_and_validate_url(msg)
+        url, err = await _extract_and_validate_url(msg)
         if err or not url:
             return response
 

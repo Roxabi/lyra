@@ -6,6 +6,7 @@ into the message. This ABC extracts the shared logic so it lives in one place.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import html
 import ipaddress
@@ -26,17 +27,16 @@ log = logging.getLogger(__name__)
 _SAFE_SCRAPE_MAX_CHARS = 32_000  # B5: prompt-injection + DoS guard
 
 
-def _is_private_ip(hostname: str) -> bool:
+async def _is_private_ip(hostname: str) -> bool:
     """Return True if *hostname* resolves to any private/reserved IP address.
 
     Checks against RFC-1918, loopback, link-local, multicast, and other
     reserved ranges to prevent SSRF attacks targeting internal services.
 
-    May perform a DNS lookup; callers should treat this as a potentially
-    blocking operation.
+    DNS lookup is performed via asyncio.to_thread to avoid blocking the event loop.
     """
     try:
-        results = socket.getaddrinfo(hostname, None)
+        results = await asyncio.to_thread(socket.getaddrinfo, hostname, None)
     except socket.gaierror:
         # Unresolvable hostname — treat as safe to pass through; the scraper
         # will fail on its own with a connection error.
@@ -62,10 +62,10 @@ def _is_private_ip(hostname: str) -> bool:
     return False
 
 
-def _extract_and_validate_url(msg: "InboundMessage") -> tuple[str, str | None]:
+async def _extract_and_validate_url(msg: "InboundMessage") -> tuple[str, str | None]:
     """Return (url, error_text_or_None).
 
-    B4+B6: validates that a URL is present and uses http/https scheme.
+    B4+B6: validates that a URL is present and uses https scheme only.
     B8 (SSRF): rejects URLs whose hostname resolves to private/LAN addresses.
     Returns (url, None) on success, ("", error_message) on failure.
     """
@@ -74,18 +74,19 @@ def _extract_and_validate_url(msg: "InboundMessage") -> tuple[str, str | None]:
         if msg.command and msg.command.args
         else msg.text.strip()
     )
-    if not url or not url.startswith(("http://", "https://")):
+    if not url:
         cmd = f"/{msg.command.name}" if msg.command else "this command"
-        return "", f"Usage: {cmd} <url>  (must start with http:// or https://)"
+        return "", f"Usage: {cmd} <url>"
+
+    if not url.startswith("https://"):
+        cmd = f"/{msg.command.name}" if msg.command else "this command"
+        return "", f"Usage: {cmd} <url>  (HTTPS only, http:// is not allowed)"
 
     parsed = urlparse(url)
     hostname = parsed.hostname or ""
-    if _is_private_ip(hostname):
+    if await _is_private_ip(hostname):
         cmd = f"/{msg.command.name}" if msg.command else "cmd"
         return "", f"Usage: {cmd} <url> (no private/LAN IP addresses allowed)"
-
-    if url.startswith("http://"):
-        log.warning("ScrapingProcessor: HTTP URL requested (not HTTPS): %s", url)
 
     return url, None
 
@@ -120,7 +121,7 @@ class ScrapingProcessor(BaseProcessor):
         ...
 
     async def pre(self, msg: "InboundMessage") -> "InboundMessage":
-        url, err = _extract_and_validate_url(msg)
+        url, err = await _extract_and_validate_url(msg)
         if err:
             return dataclasses.replace(msg, text=err)
 

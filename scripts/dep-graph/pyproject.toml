@@ -22,7 +22,7 @@ packages = ["dep_graph", "v5"]
 [tool.pytest.ini_options]
 testpaths = ["tests", "v5/tests"]
 addopts = "--import-mode=importlib"
-pythonpath = ["."]
+pythonpath = [".", "../.."]
 markers = [
     "integration: tests requiring local fixture files (not run in CI by default)",
 ]

@@ -5,8 +5,8 @@ exercising the WorkerRegistry scoring and fallback logic.
 
 Requires Docker Compose (started via session-scoped fixture).
 Marker: @pytest.mark.nats_integration
-Run: docker compose -f docker/docker-compose.test.yml up -d \
-    && pytest -m nats_integration
+Run: docker compose -f docker/docker-compose.test.yml up -d
+      pytest -m nats_integration
 """
 
 from __future__ import annotations
@@ -143,12 +143,20 @@ class TestLoadAwareSTTRouting:
         # Scale up a second STT worker with high VRAM
         subprocess.run(
             [
-                "docker", "compose", "-f", str(COMPOSE_FILE),
-                "run", "-d",
-                "--name", "lyra-test-stt-heavy",
-                "-e", "STT_STUB_WORKER_ID=stt-tuwer-01",
-                "-e", "STT_STUB_VRAM_USED_MB=12000",
-                "-e", "STT_STUB_VRAM_TOTAL_MB=16384",
+                "docker",
+                "compose",
+                "-f",
+                str(COMPOSE_FILE),
+                "run",
+                "-d",
+                "--name",
+                "lyra-test-stt-heavy",
+                "-e",
+                "STT_STUB_WORKER_ID=stt-tuwer-01",
+                "-e",
+                "STT_STUB_VRAM_USED_MB=12000",
+                "-e",
+                "STT_STUB_VRAM_TOTAL_MB=16384",
                 "stt-stub",
             ],
             capture_output=True,

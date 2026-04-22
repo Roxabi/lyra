@@ -204,7 +204,7 @@ A heartbeat with a missing `worker_id` is dropped with a warning log and does no
 ### Negative
 
 - Every producer path has to remember to stamp `contract_version`. A missing field is only caught by tests or by a downstream grep; there is no runtime enforcement.
-- The hub still carries the in-process `STTService` / `TTSService` path through S3. Until S4 deletes them, the contract has two implementations (NATS and direct) that must stay behavioural-equivalent.
+- ~~The hub still carries the in-process `STTService` / `TTSService` path through S3. Until S4 deletes them, the contract has two implementations (NATS and direct) that must stay behavioural-equivalent.~~ **S4 complete (#690)** — the in-process path and satellite bootstrap files are deleted; only the NATS path remains.
 
 ### Neutral
 
@@ -224,6 +224,6 @@ A heartbeat with a missing `worker_id` is dropped with a warning log and does no
 - Code:
   - `src/lyra/nats/nats_stt_client.py` — hub STT client
   - `src/lyra/nats/nats_tts_client.py` — hub TTS client
-  - `src/lyra/bootstrap/stt_adapter_standalone.py` — STT satellite
-  - `src/lyra/bootstrap/tts_adapter_standalone.py` — TTS satellite
   - `src/lyra/nats/adapter_base.py` — `NatsAdapterBase.heartbeat_payload` base fields
+  - ~~`src/lyra/bootstrap/stt_adapter_standalone.py` — STT satellite~~ (deleted in S4)
+  - ~~`src/lyra/bootstrap/tts_adapter_standalone.py` — TTS satellite~~ (deleted in S4)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wrapper for lyra adapter daemon — sources .env before launching.
-# Usage: run_adapter.sh telegram|discord|stt|tts
+# Usage: run_adapter.sh telegram|discord
 #
 # IMPORTANT: .env values must NOT override per-program supervisor env.
 # We snapshot supervisor-set vars, source .env for shared defaults, then

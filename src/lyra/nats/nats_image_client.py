@@ -19,34 +19,31 @@ from nats.aio.client import Client as NATS
 from pydantic import ValidationError
 
 from lyra.nats.worker_registry import WorkerRegistry
-from roxabi_contracts.envelope import CONTRACT_VERSION, ContractEnvelope
-from roxabi_contracts.voice.subjects import validate_worker_id
+from roxabi_contracts.envelope import CONTRACT_VERSION
+from roxabi_contracts.image import (
+    SUBJECTS,
+    ImageHeartbeat,
+    ImageRequest,
+    ImageResponse,
+    validate_worker_id,
+)
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 log = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Subject namespace
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class _Subjects:
-    """Frozen namespace of image-domain subject strings.
-
-    Attribute access is pyright-checked: typos fail at type-check time
-    rather than silently routing to a wrong subject.
-    """
-
-    image_request: Literal["lyra.image.generate.request"] = (
-        "lyra.image.generate.request"
-    )
-    image_heartbeat: Literal["lyra.image.heartbeat"] = "lyra.image.heartbeat"
-    image_workers: Literal["IMAGE_WORKERS"] = "IMAGE_WORKERS"
-
-
-SUBJECTS = _Subjects()
+# Re-export so existing call sites keep working (``from
+# lyra.nats.nats_image_client import ImageRequest``). The canonical
+# import is ``from roxabi_contracts.image import ...``.
+__all__ = [
+    "ImageGenParams",
+    "ImageHeartbeat",
+    "ImageRequest",
+    "ImageResponse",
+    "ImageUnavailableError",
+    "NatsImageClient",
+    "SUBJECTS",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -56,62 +53,6 @@ SUBJECTS = _Subjects()
 
 class ImageUnavailableError(Exception):
     """Raised when the image domain cannot satisfy the request."""
-
-
-# ---------------------------------------------------------------------------
-# Pydantic models
-# ---------------------------------------------------------------------------
-
-
-class ImageRequest(ContractEnvelope):
-    """Outbound image generation request payload."""
-
-    request_id: str
-    prompt: str
-    engine: str
-    negative_prompt: str | None = None
-    width: int | None = None
-    height: int | None = None
-    steps: int | None = None
-    guidance: float | None = None
-    seed: int | None = None
-    format: Literal["png", "jpeg", "webp"] = "png"
-    output_mode: Literal["b64", "file"] = "b64"
-    lora_path: str | None = None
-    lora_scale: float | None = None
-    trigger: str | None = None
-    embedding_path: str | None = None
-
-
-class ImageResponse(ContractEnvelope):
-    """Inbound image generation response payload."""
-
-    request_id: str
-    ok: bool
-    image_b64: str | None = None
-    file_path: str | None = None
-    mime_type: str | None = None
-    width: int | None = None
-    height: int | None = None
-    engine: str | None = None
-    seed_used: int | None = None
-    error: str | None = None
-    error_detail: str | None = None
-
-
-class ImageHeartbeat(ContractEnvelope):
-    """Inbound heartbeat from an image worker satellite."""
-
-    worker_id: str
-    service: str
-    host: str
-    subject: str
-    queue_group: str
-    ts: float
-    engine_loaded: str | None = None
-    active_requests: int | None = None
-    vram_used_mb: int | None = None
-    vram_total_mb: int | None = None
 
 
 # ---------------------------------------------------------------------------

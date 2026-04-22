@@ -1,9 +1,9 @@
-"""Voice worker registry + load-aware scoring.
+"""Worker registry + load-aware scoring.
 
-Consumes heartbeat payloads from STT/TTS adapters, maintains a live-worker
+Consumes heartbeat payloads from domain adapters, maintains a live-worker
 registry scored by ``(active_requests, vram_used_pct)``, and exposes selection
-helpers used by the hub-side clients (``NatsSttClient`` / ``NatsTtsClient``) to
-pick the least-loaded worker before routing a request.
+helpers used by hub-side clients to pick the least-loaded worker before
+routing a request.
 
 Scoring: ``score = active_requests * active_weight + vram_used_pct * vram_weight``.
 Lower is better. Workers without VRAM data (``vram_total_mb=0``) contribute only
@@ -37,7 +37,7 @@ class WorkerStats:
     active_requests: int = 0
 
 
-class VoiceWorkerRegistry:
+class WorkerRegistry:
     def __init__(
         self,
         *,
@@ -77,7 +77,7 @@ class VoiceWorkerRegistry:
             validate_nats_token(worker_id, kind="worker_id")
         except ValueError:
             log.warning(
-                "voice_health: rejecting heartbeat with invalid worker_id=%r",
+                "worker_registry: rejecting heartbeat with invalid worker_id=%r",
                 worker_id,
             )
             return
@@ -85,7 +85,7 @@ class VoiceWorkerRegistry:
         # ids past the cap is dropped (not silently, one log per incident).
         if worker_id not in self._workers and len(self._workers) >= MAX_WORKERS:
             log.warning(
-                "voice_health: registry full (%d workers); dropping new id=%r",
+                "worker_registry: registry full (%d workers); dropping new id=%r",
                 MAX_WORKERS,
                 worker_id,
             )

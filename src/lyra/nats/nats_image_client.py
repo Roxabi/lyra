@@ -1,6 +1,6 @@
 """NatsImageClient — hub-side NATS request-reply client for image generation.
 
-Maintains a ``VoiceWorkerRegistry`` populated from heartbeats, and routes each
+Maintains a ``WorkerRegistry`` populated from heartbeats, and routes each
 generation request to the least-loaded worker via the queue-group subject
 ``lyra.image.generate.request``. Falls back to ``ImageUnavailableError`` when
 the registry is stale, the circuit breaker is open, or the adapter times out.
@@ -18,7 +18,7 @@ from uuid import uuid4
 from nats.aio.client import Client as NATS
 from pydantic import ValidationError
 
-from lyra.nats.voice_health import VoiceWorkerRegistry
+from lyra.nats.worker_registry import WorkerRegistry
 from roxabi_contracts.envelope import CONTRACT_VERSION, ContractEnvelope
 from roxabi_contracts.voice.subjects import validate_worker_id
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
@@ -151,7 +151,7 @@ class NatsImageClient:
         self._nc = nc
         self._timeout = timeout
         self._cb = NatsCircuitBreaker()
-        self._registry = VoiceWorkerRegistry()
+        self._registry = WorkerRegistry()
         self._hb_sub = None  # set by start
 
     async def start(self) -> None:
@@ -179,8 +179,8 @@ class NatsImageClient:
             return
         # Receive-side match for the PUBLISH-path safe-chars enforcement; blocks
         # wildcard-bearing ids (e.g. "evil.worker.*") from polluting the registry
-        # for up to the 15 s heartbeat-stale window. Mirrors voice canonical at
-        # nats_tts_client.py:70-82.
+        # for up to the 15 s heartbeat-stale window. Mirrors the heartbeat guard
+        # in nats_tts_client.py:70-82.
         try:
             validate_worker_id(worker_id)
         except ValueError:

@@ -1,4 +1,4 @@
-"""Load layout.json + gh.json, derive matrix + counts, return GraphData."""
+"""Load layout.json + corpus.db, derive matrix + counts, return GraphData."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .corpus import load_issues
 from .derive import (
     build_matrix,
     compute_depth,
@@ -23,9 +24,8 @@ from .model import (
     parse_milestones,
 )
 
-FORGE = Path.home() / ".roxabi/forge/lyra/visuals"
-LAYOUT_PATH = FORGE / "lyra-v2-dependency-graph.layout.json"
-CACHE_PATH = FORGE / "lyra-v2-dependency-graph.gh.json"
+LAYOUT_PATH = Path.home() / ".roxabi/forge/lyra/visuals/lyra-v2-dependency-graph.layout.json"
+PRIMARY_REPO = "Roxabi/lyra"
 
 
 def _parse_lane(raw: dict[str, Any]) -> Lane:
@@ -47,19 +47,22 @@ def _parse_lane(raw: dict[str, Any]) -> Lane:
 
 def load(
     layout_path: Path | None = None,
-    cache_path: Path | None = None,
+    db_path: Path | None = None,
 ) -> GraphData:
+    """Load GraphData from layout.json + corpus.db.
+
+    Args:
+        layout_path: Path to layout.json. Defaults to LAYOUT_PATH.
+        db_path: Path to corpus.db. Defaults to DEFAULT_DB (in corpus module).
+                 Raises FileNotFoundError with a `make corpus-sync` hint if missing.
+    """
     layout_path = layout_path or LAYOUT_PATH
-    cache_path = cache_path or CACHE_PATH
     try:
         layout_raw = layout_path.read_text()
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"layout not found: {layout_path}") from exc
-    try:
-        cache_raw = cache_path.read_text()
-    except FileNotFoundError as exc:
-        raise FileNotFoundError(f"gh cache not found: {cache_path}") from exc
-    return load_from_dicts(json.loads(layout_raw), json.loads(cache_raw))
+    issues = load_issues(db_path)
+    return load_from_dicts(json.loads(layout_raw), {"issues": issues})
 
 
 def load_from_dicts(layout: dict[str, Any], gh: dict[str, Any]) -> GraphData:

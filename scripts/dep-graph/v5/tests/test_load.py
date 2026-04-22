@@ -1,11 +1,151 @@
-"""Tests for v5.data.load — load_from_dicts and parse logic."""
+"""Tests for v5.data.load — load_from_dicts, parse logic, and corpus.db-based load().
+
+RED state for corpus-based load() tests: T5 has not landed yet.
+Tests asserting the new load() contract (db_path param, PRIMARY_REPO constant,
+removal of FORGE/CACHE_PATH) will FAIL until T5 is implemented.
+
+Tests for load_from_dicts() are orthogonal and must stay GREEN.
+"""
 
 from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
 
 import pytest
 
 from v5.data.load import load_from_dicts
 from v5.data.model import COLUMN_GROUPS, MILESTONES, GraphData
+from v5.tests.conftest import LAYOUT
+
+
+# ─── Helpers ────────────────────────────────────────────────────────────────
+
+
+def _bootstrap_corpus(db_path: Path) -> None:
+    """Bootstrap an empty corpus DB schema via scripts.corpus.schema."""
+    from scripts.corpus.schema import bootstrap
+
+    bootstrap(db_path)
+
+
+def _seed_open_lyra_issue(db_path: Path, number: int, lane: str) -> None:
+    """Insert one open Roxabi/lyra issue with a graph:lane label."""
+    conn = sqlite3.connect(db_path)
+    try:
+        key = f"Roxabi/lyra#{number}"
+        conn.execute(
+            """INSERT INTO issues (key, repo, number, title, state, milestone, is_stub)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (key, "Roxabi/lyra", number, f"Issue {number}", "open", "M0 alpha", 0),
+        )
+        conn.execute(
+            "INSERT INTO labels (issue_key, name) VALUES (?, ?)",
+            (key, f"graph:lane/{lane}"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _write_layout(tmp_path: Path) -> Path:
+    """Write the shared LAYOUT fixture to a JSON file and return its path."""
+    layout_path = tmp_path / "layout.json"
+    layout_path.write_text(json.dumps(LAYOUT))
+    return layout_path
+
+
+# ─── Module-level constant tests ────────────────────────────────────────────
+
+
+class TestLoadModuleConstants:
+    def test_primary_repo_constant_exists(self) -> None:
+        """PRIMARY_REPO module constant must be 'Roxabi/lyra' (T5 contract)."""
+        # Arrange / Act
+        import v5.data.load as loadmod
+
+        # Assert
+        assert loadmod.PRIMARY_REPO == "Roxabi/lyra"
+
+    def test_forge_constant_removed(self) -> None:
+        """FORGE module constant must be absent after T5 lands."""
+        # Arrange / Act
+        import v5.data.load as loadmod
+
+        # Assert
+        assert not hasattr(loadmod, "FORGE")
+
+    def test_cache_path_constant_removed(self) -> None:
+        """CACHE_PATH module constant must be absent after T5 lands."""
+        # Arrange / Act
+        import v5.data.load as loadmod
+
+        # Assert
+        assert not hasattr(loadmod, "CACHE_PATH")
+
+
+# ─── load() — corpus.db contract ────────────────────────────────────────────
+
+
+class TestLoadCorpusContract:
+    def test_load_empty_corpus_returns_empty_graph_data(
+        self, tmp_path: Path
+    ) -> None:
+        """load() with empty corpus DB returns GraphData with issues == {} and no matrix cells."""
+        # Arrange
+        from v5.data.load import load
+
+        db_path = tmp_path / "corpus.db"
+        _bootstrap_corpus(db_path)
+        layout_path = _write_layout(tmp_path)
+
+        # Act
+        result = load(layout_path=layout_path, db_path=db_path)
+
+        # Assert
+        assert isinstance(result, GraphData)
+        assert result.issues == {}
+        assert result.visible == set()
+        assert result.total == 0
+
+    def test_load_seeded_corpus_visible_contains_open_lyra_issue(
+        self, tmp_path: Path
+    ) -> None:
+        """load() with seeded corpus includes open Roxabi/lyra issue in visible set."""
+        # Arrange
+        from v5.data.load import load
+
+        db_path = tmp_path / "corpus.db"
+        _bootstrap_corpus(db_path)
+        _seed_open_lyra_issue(db_path, number=1, lane="a1")
+        _seed_open_lyra_issue(db_path, number=2, lane="b")
+        layout_path = _write_layout(tmp_path)
+
+        # Act
+        result = load(layout_path=layout_path, db_path=db_path)
+
+        # Assert — at least one open primary-repo issue is in visible
+        assert len(result.visible) > 0
+        # "Roxabi/lyra#1" is open and has a lane label → must be in visible
+        assert "Roxabi/lyra#1" in result.visible
+
+    def test_load_missing_db_raises_file_not_found_with_hint(
+        self, tmp_path: Path
+    ) -> None:
+        """load() with non-existent db_path raises FileNotFoundError mentioning make corpus-sync."""
+        # Arrange
+        from v5.data.load import load
+
+        layout_path = _write_layout(tmp_path)
+        db_path = tmp_path / "nope.db"
+
+        # Act / Assert
+        with pytest.raises(FileNotFoundError, match="make corpus-sync"):
+            load(layout_path=layout_path, db_path=db_path)
+
+
+# ─── load_from_dicts() — unchanged contract ─────────────────────────────────
 
 
 class TestLoadFromDicts:

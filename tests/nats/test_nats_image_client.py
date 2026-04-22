@@ -35,6 +35,10 @@ def _ok_reply_b64(request_id: str = "r1") -> bytes:
         "request_id": request_id,
         "image_b64": base64.b64encode(b"fake-image-bytes").decode(),
         "mime_type": "image/png",
+        "width": 512,
+        "height": 512,
+        "engine": "flux2-klein",
+        "seed_used": 42,
     }
     return json.dumps(payload).encode()
 

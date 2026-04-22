@@ -16,7 +16,7 @@ import logging
 import re
 from asyncio.subprocess import PIPE
 
-from lyra.integrations.base import VaultWriteFailed
+from lyra.core.exceptions import VaultWriteFailed
 
 _SAFE_CLI_ARG_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 

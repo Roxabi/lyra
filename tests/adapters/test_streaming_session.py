@@ -14,11 +14,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.nats.nats_stream_decoder import (
-    StreamChunkTimeout,
-    decode_stream_events,
-)
+from lyra.adapters.nats.nats_stream_decoder import decode_stream_events
 from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
+from lyra.core.exceptions import StreamChunkTimeout
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
 from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
 

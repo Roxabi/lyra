@@ -15,8 +15,8 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from lyra.core.exceptions import ScrapeFailed
 from lyra.core.processors.processor_registry import BaseProcessor
-from lyra.integrations.base import ScrapeFailed
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage

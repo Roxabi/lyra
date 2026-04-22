@@ -108,7 +108,9 @@ def _seed_dir(tmp_path: Path, names: list[str]) -> Path:
     d = tmp_path / "nkeys"
     d.mkdir()
     for n in names:
-        (d / f"{n}.seed").write_text("SUFAKEKEYDATA")
+        seed = d / f"{n}.seed"
+        seed.write_text("SUFAKEKEYDATA")
+        seed.chmod(0o600)
     return d
 
 
@@ -147,7 +149,7 @@ def test_verify_all_pass(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     # Each identity: deny only its `lyra.verify.deny.<name>` probe.
     deny = [{"lyra.verify.deny.hub"}, {"lyra.verify.deny.monitor"}]
-    with patch("lyra.cli_ops.nats_connect", _patched_connect(deny)):
+    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             lyra_app,
             [
@@ -176,7 +178,7 @@ def test_verify_pub_failure_reports_first_offender(
         {"lyra.outbound.telegram.verify", "lyra.verify.deny.hub"},
         {"lyra.verify.deny.monitor"},
     ]
-    with patch("lyra.cli_ops.nats_connect", _patched_connect(deny)):
+    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             lyra_app,
             [
@@ -190,13 +192,16 @@ def test_verify_pub_failure_reports_first_offender(
         )
     assert result.exit_code == 1
     assert "FAIL hub pub lyra.outbound.telegram.verify" in result.stdout
+    # Summary line still reports counts after the FAIL row.
+    assert "2/3 pub checks passed" in result.stdout
+    assert "2/2 deny checks passed" in result.stdout
 
 
 def test_verify_deny_failure(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     # Server *accepts* the verify-deny probe → deny check fails.
     deny = [set(), set()]
-    with patch("lyra.cli_ops.nats_connect", _patched_connect(deny)):
+    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             lyra_app,
             [
@@ -215,7 +220,7 @@ def test_verify_deny_failure(tmp_path: Path, matrix_two: Path) -> None:
 def test_verify_skips_when_seed_missing(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub"])  # monitor.seed missing
     deny = [{"lyra.verify.deny.hub"}]
-    with patch("lyra.cli_ops.nats_connect", _patched_connect(deny)):
+    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             lyra_app,
             [
@@ -235,7 +240,7 @@ def test_verify_skips_when_seed_missing(tmp_path: Path, matrix_two: Path) -> Non
 def test_verify_only_filter(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     deny = [{"lyra.verify.deny.monitor"}]
-    with patch("lyra.cli_ops.nats_connect", _patched_connect(deny)):
+    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             lyra_app,
             [
@@ -270,6 +275,100 @@ def test_verify_only_unknown_identity(tmp_path: Path, matrix_two: Path) -> None:
     )
     assert result.exit_code != 0
     assert "ghost" in result.output
+
+
+def test_verify_handles_empty_publish_list(tmp_path: Path) -> None:
+    """Identity with `publish: []` reports 0/0 pub but still runs the deny probe."""
+    matrix = tmp_path / "matrix.json"
+    _write_matrix(matrix, {"silent": {"publish": [], "subscribe": []}})
+    seeds = _seed_dir(tmp_path, ["silent"])
+    deny = [{"lyra.verify.deny.silent"}]
+    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
+        result = runner.invoke(
+            lyra_app,
+            [
+                "ops",
+                "verify",
+                "--matrix",
+                str(matrix),
+                "--seeds-dir",
+                str(seeds),
+            ],
+        )
+    assert result.exit_code == 0, result.stdout
+    assert (
+        "1 identities, 0/0 pub checks passed, 1/1 deny checks passed" in result.stdout
+    )
+
+
+class _FakeNatsDelayed(_FakeNats):
+    """Variant that fires the error_cb during flush(), not publish()."""
+
+    def __init__(self, deny_subjects: set[str] | None = None) -> None:
+        super().__init__(deny_subjects)
+        self._pending: list[str] = []
+
+    async def publish(self, subject: str, data: bytes) -> None:
+        self.published.append(subject)
+        if subject in self._deny:
+            self._pending.append(subject)
+
+    async def flush(self, timeout: float = 2.0) -> None:  # noqa: ARG002
+        if self._error_cb is not None:
+            for subj in self._pending:
+                await self._error_cb(
+                    Exception(f'nats: Permissions Violation for Publish to "{subj}"')
+                )
+        self._pending.clear()
+
+
+def test_verify_handles_post_flush_error_arrival(
+    tmp_path: Path, matrix_two: Path
+) -> None:
+    """Permission error arriving on the next event-loop tick is still caught."""
+    seeds = _seed_dir(tmp_path, ["hub", "monitor"])
+    deny = [{"lyra.verify.deny.hub"}, {"lyra.verify.deny.monitor"}]
+    iterator = iter(deny)
+
+    async def _factory(url, **kwargs):  # noqa: ARG001
+        fake = _FakeNatsDelayed(next(iterator, set()))
+        fake.set_error_cb(kwargs.get("error_cb"))
+        return fake
+
+    with patch("lyra.cli_ops.nats.connect", side_effect=_factory):
+        result = runner.invoke(
+            lyra_app,
+            [
+                "ops",
+                "verify",
+                "--matrix",
+                str(matrix_two),
+                "--seeds-dir",
+                str(seeds),
+            ],
+        )
+    assert result.exit_code == 0, result.stdout
+    assert "2/2 deny checks passed" in result.stdout
+
+
+def test_verify_rejects_seed_outside_seeds_dir(tmp_path: Path) -> None:
+    """Identity name with `..` must not escape seeds-dir."""
+    matrix = tmp_path / "matrix.json"
+    _write_matrix(matrix, {"../escape": {"publish": ["lyra.foo"], "subscribe": []}})
+    seeds = _seed_dir(tmp_path, [])
+    result = runner.invoke(
+        lyra_app,
+        [
+            "ops",
+            "verify",
+            "--matrix",
+            str(matrix),
+            "--seeds-dir",
+            str(seeds),
+        ],
+    )
+    assert result.exit_code != 0
+    assert "outside seeds-dir" in result.output
 
 
 def test_verify_acl_matrix_repo_loads() -> None:

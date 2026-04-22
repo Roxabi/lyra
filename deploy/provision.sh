@@ -92,9 +92,27 @@ fi
 has_sufficient_subids() {
   awk -F: -v u="$ADMIN_USER" '$1 == u && $3 >= 65536 {found=1} END {exit !found}' "$1"
 }
+# Compute next-free range from current high-water mark across both files so we
+# never overlap with another user's allocation. `usermod --add-subuids` does no
+# overlap check (man page is explicit); on a host with pre-existing entries
+# (LDAP, container hosts, other humans with rootless containers) a hardcoded
+# range silently aliases another account's UID — a privilege-escalation path
+# from inside any rootless container. Floor of 65536 keeps us clear of the
+# normal UID space on systems with real UIDs in the 100000+ band.
+next_free_subid_start() {
+  local hwm
+  hwm=$(awk -F: '{print $2 + $3}' /etc/subuid /etc/subgid 2>/dev/null | sort -n | tail -1)
+  if [[ -n "$hwm" && "$hwm" -gt 65535 ]]; then
+    echo "$hwm"
+  else
+    echo 65536
+  fi
+}
 if ! has_sufficient_subids /etc/subuid || ! has_sufficient_subids /etc/subgid; then
-  warn "subuid/subgid ranges missing or too small for $ADMIN_USER — adding 100000-165535."
-  sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$ADMIN_USER"
+  start=$(next_free_subid_start)
+  end=$((start + 65535))
+  warn "subuid/subgid ranges missing or too small for $ADMIN_USER — adding ${start}-${end}."
+  sudo usermod --add-subuids "${start}-${end}" --add-subgids "${start}-${end}" "$ADMIN_USER"
   # Re-run migrate in case podman already has stale rootless state.
   # Guard against silent storage remap on partial re-runs: if the admin user
   # already has rootless images or named volumes, `podman system migrate` can

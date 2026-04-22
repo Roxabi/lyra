@@ -45,7 +45,7 @@ jobs:
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v7
 
       - name: Install dependencies
-        run: uv sync --frozen --all-extras --group dev
+        run: uv sync --frozen --group dev
 
       - name: Check file length
         run: bash tools/check_file_length.sh

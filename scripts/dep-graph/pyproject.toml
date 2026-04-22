@@ -22,7 +22,10 @@ packages = ["dep_graph", "v5"]
 [tool.pytest.ini_options]
 testpaths = ["tests", "v5/tests"]
 addopts = "--import-mode=importlib"
-pythonpath = ["."]
+# "." = scripts/dep-graph (dep_graph + v5 imports).
+# "../.." = repo root, required so v5/tests/test_corpus.py + test_load.py can
+# `from scripts.corpus.schema import bootstrap` to seed sqlite fixtures.
+pythonpath = [".", "../.."]
 markers = [
     "integration: tests requiring local fixture files (not run in CI by default)",
 ]

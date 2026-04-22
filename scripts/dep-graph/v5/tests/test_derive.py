@@ -12,7 +12,7 @@ from v5.data.derive import (
     status_of,
     tasks_for_graph,
 )
-from v5.data.model import COLUMN_GROUPS, MILESTONES, EpicMeta, GraphData, Lane
+from v5.data.model import COLUMN_GROUPS, MILESTONES, EpicMeta, GraphData, Lane, ref_key
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -247,7 +247,9 @@ class TestComputeVisible:
         visible = compute_visible(issues, "Roxabi/lyra")
         assert "Roxabi/voiceCLI#10" in visible
 
-    def test_backward_is_one_hop_only(self):
+    def test_backward_full_closure_same_repo(self):
+        # New rule: full backward closure within tree(P) — grand (#20) is reached
+        # because #10 is in tree(P) and #10 is blocked_by #20 (same repo, no hop cap).
         grand = _make_issue(20, state="closed")
         blocker = _make_issue(
             10,
@@ -262,7 +264,7 @@ class TestComputeVisible:
         issues = _issues(grand, blocker, iss)
         visible = compute_visible(issues, "Roxabi/lyra")
         assert "Roxabi/lyra#10" in visible
-        assert "Roxabi/lyra#20" not in visible
+        assert "Roxabi/lyra#20" in visible
 
 
 # ─── build_matrix ────────────────────────────────────────────────────────────
@@ -274,7 +276,7 @@ class TestBuildMatrix:
         task = _make_issue(1)
         issues = _issues(epic, task)
         data = _minimal_data(issues, epic_ks={"Roxabi/lyra#100"})
-        matrix, counts, total = build_matrix(data)
+        matrix, _counts, total = build_matrix(data)
         assert total == 1
         # Epic should not be in matrix
         for cell_issues in matrix.values():
@@ -445,3 +447,215 @@ class TestLaneByCode:
 
     def test_empty_lanes(self):
         assert lane_by_code([]) == {}
+
+
+# ─── compute_visible — new algebra (T8 RED tests) ────────────────────────────
+#
+# These tests pin the contract for the new rule:
+#   compute_visible = tree(P) ∪ ⋃_Q shared_subtree(Q, P)
+#
+# All four MUST fail against the current (old) implementation.
+
+
+class TestComputeVisibleNewAlgebra:
+    @staticmethod
+    def _ref(repo: str, n: int) -> dict:
+        """Compact ref builder: {repo, issue}."""
+        return {"repo": repo, "issue": n}
+
+    def test_tree_full_backward_closure(self):
+        # Old rule: 1-hop backward — stops at {A, B}.
+        # New rule: full backward closure through tree(P) — must reach C.
+        #
+        # A#1 open, blocked_by B#2
+        # B#2 closed, blocked_by C#3, blocking A#1
+        # C#3 closed, blocking B#2
+        repo = "Roxabi/lyra"
+        a = _make_issue(
+            1,
+            state="open",
+            repo=repo,
+            blocked_by=[self._ref(repo, 2)],
+        )
+        b = _make_issue(
+            2,
+            state="closed",
+            repo=repo,
+            blocked_by=[self._ref(repo, 3)],
+            blocking=[self._ref(repo, 1)],
+        )
+        c = _make_issue(
+            3,
+            state="closed",
+            repo=repo,
+            blocking=[self._ref(repo, 2)],
+        )
+        issues = _issues(a, b, c)
+
+        visible = compute_visible(issues, repo)
+
+        assert visible >= {f"{repo}#1", f"{repo}#2", f"{repo}#3"}
+
+    def test_shared_subtree_empty_when_disjoint(self):
+        # voiceCLI issues have no edge touching lyra — shared_subtree is empty.
+        # Only lyra#1 (open, no edges) should be visible.
+        lyra = "Roxabi/lyra"
+        voice = "Roxabi/voiceCLI"
+        l1 = _make_issue(1, state="open", repo=lyra)
+        v10 = _make_issue(10, state="open", repo=voice)
+        v11 = _make_issue(
+            11,
+            state="closed",
+            repo=voice,
+            blocking=[self._ref(voice, 10)],
+        )
+        issues = _issues(l1, v10, v11)
+
+        visible = compute_visible(issues, lyra)
+
+        assert visible == {f"{lyra}#1"}
+
+    def test_shared_subtree_qlocal_closure(self):
+        # lyra#1 is blocked by voiceCLI#10.
+        # voiceCLI#10 is blocked by voiceCLI#11, which is blocked by voiceCLI#12.
+        # The Q-local chain (#10 → #11 → #12) should all be pulled in via
+        # shared_subtree — the old 1-hop backward rule would stop at #10.
+        lyra = "Roxabi/lyra"
+        voice = "Roxabi/voiceCLI"
+        l1 = _make_issue(
+            1,
+            state="open",
+            repo=lyra,
+            blocked_by=[self._ref(voice, 10)],
+        )
+        v10 = _make_issue(
+            10,
+            state="closed",
+            repo=voice,
+            blocking=[self._ref(lyra, 1)],
+            blocked_by=[self._ref(voice, 11)],
+        )
+        v11 = _make_issue(
+            11,
+            state="closed",
+            repo=voice,
+            blocking=[self._ref(voice, 10)],
+            blocked_by=[self._ref(voice, 12)],
+        )
+        v12 = _make_issue(
+            12,
+            state="closed",
+            repo=voice,
+            blocking=[self._ref(voice, 11)],
+        )
+        issues = _issues(l1, v10, v11, v12)
+
+        visible = compute_visible(issues, lyra)
+
+        assert visible >= {
+            f"{lyra}#1",
+            f"{voice}#10",
+            f"{voice}#11",
+            f"{voice}#12",
+        }
+
+    def test_superset_contains_voicecli_chain(self):
+        # Approximates the real lyra graph:
+        #   lyra has several open issues; one is transitively blocked by
+        #   voiceCLI#83.  voiceCLI#69 (open) blocks voiceCLI#83, forming a
+        #   Q-local sub-chain that must appear in the new visible set.
+        #
+        # The inline _old_compute_visible helper mirrors the CURRENT rule so we
+        # can prove: old_visible ⊆ new_visible (nothing regresses).
+        lyra = "Roxabi/lyra"
+        voice = "Roxabi/voiceCLI"
+
+        # lyra issues
+        l1 = _make_issue(1, state="open", repo=lyra)
+        l2 = _make_issue(2, state="open", repo=lyra)
+        l3 = _make_issue(
+            3,
+            state="open",
+            repo=lyra,
+            blocked_by=[self._ref(lyra, 4)],
+        )
+        l4 = _make_issue(
+            4,
+            state="closed",
+            repo=lyra,
+            blocking=[self._ref(lyra, 3)],
+            blocked_by=[self._ref(voice, 83)],
+        )
+        l5 = _make_issue(5, state="open", repo=lyra)
+
+        # voiceCLI sub-chain: #69 → #83 (69 blocks 83)
+        v83 = _make_issue(
+            83,
+            state="closed",
+            repo=voice,
+            blocking=[self._ref(lyra, 4)],
+            blocked_by=[self._ref(voice, 69)],
+        )
+        v69 = _make_issue(
+            69,
+            state="open",
+            repo=voice,
+            blocking=[self._ref(voice, 83)],
+        )
+
+        issues = _issues(l1, l2, l3, l4, l5, v83, v69)
+
+        new_visible = compute_visible(issues, lyra)
+
+        # Named chain must be present
+        assert f"{voice}#83" in new_visible
+        assert f"{voice}#69" in new_visible
+
+        # Superset invariant: old rule ⊆ new rule
+        def _old_compute_visible(iss: dict, primary: str) -> set[str]:
+            """Inline replica of the CURRENT (old) 1-hop-backward rule."""
+            vis: set[str] = {
+                k
+                for k, i in iss.items()
+                if i.get("repo") == primary and i.get("state") == "open"
+            }
+            stk = list(vis)
+            while stk:
+                for r in iss.get(stk.pop(), {}).get("blocking", []):
+                    rk = ref_key(r)
+                    if rk in iss and rk not in vis:
+                        vis.add(rk)
+                        stk.append(rk)
+            for k in list(vis):
+                for r in iss.get(k, {}).get("blocked_by", []):
+                    rk = ref_key(r)
+                    if rk in iss:
+                        vis.add(rk)
+            return vis
+
+        old_visible = _old_compute_visible(issues, lyra)
+        assert old_visible <= new_visible
+
+    def test_cycle_does_not_infinite_loop(self):
+        # A ↔ B cycle (each blocks the other). The closure visited-set
+        # guard must terminate without RecursionError.
+        lyra = "Roxabi/lyra"
+        a = _make_issue(
+            1,
+            state="open",
+            repo=lyra,
+            blocking=[self._ref(lyra, 2)],
+            blocked_by=[self._ref(lyra, 2)],
+        )
+        b = _make_issue(
+            2,
+            state="closed",
+            repo=lyra,
+            blocking=[self._ref(lyra, 1)],
+            blocked_by=[self._ref(lyra, 1)],
+        )
+        issues = _issues(a, b)
+
+        visible = compute_visible(issues, lyra)
+
+        assert visible == {f"{lyra}#1", f"{lyra}#2"}

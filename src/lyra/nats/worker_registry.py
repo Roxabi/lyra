@@ -124,3 +124,21 @@ class WorkerRegistry:
         if not alive:
             return None
         return min(alive, key=lambda w: (self.score(w), w.worker_id))
+
+    def ordered_by_score(self) -> list[WorkerStats]:
+        """Return alive workers sorted ascending by (score, worker_id).
+
+        Same tiebreaker as pick_least_loaded(). Returns [] when no alive workers.
+        """
+        alive = self.alive_workers()
+        return sorted(alive, key=lambda w: (self.score(w), w.worker_id))
+
+    def mark_stale(self, worker_id: str) -> None:
+        """Mark a worker as stale by setting last_heartbeat to 0.0.
+
+        Does NOT delete the entry from _workers. Idempotent. Safe to call on
+        unknown worker_id (no-op). Worker is re-admitted automatically on next
+        record_heartbeat.
+        """
+        if worker_id in self._workers:
+            self._workers[worker_id].last_heartbeat = 0.0

@@ -1,0 +1,161 @@
+---
+title: "ADR-052: Registry-authoritative voice routing"
+description: Eliminate dual load-balancer disagreement by making WorkerRegistry the single source of routing truth for hub-side voice clients, removing NATS queue-group fallback entirely.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Hub-side voice clients (`NatsSttClient`, `NatsTtsClient`) historically routed requests through two load balancers in series:
+
+1. **Registry-first selection** — `WorkerRegistry.pick_least_loaded()` chose the least-loaded worker from its heartbeat-driven view of alive workers.
+2. **NATS queue-group fallback** — If the registry-selected worker timed out or returned no response, the request was re-published to a queue-group subject (e.g., `lyra.voice.stt.request`) where any subscribed worker could pick it up.
+
+These two views could disagree:
+
+- **Heartbeat lag** — A worker that stopped sending heartbeats but remained TCP-connected to NATS would be evicted from the registry (heartbeat TTL: 15s) but still hold an active queue-group subscription.
+- **Partitioned worker** — A worker isolated from the hub by a network partition would stop sending heartbeats, but the NATS server might still route messages to its queue-group subscription until the TCP connection timed out.
+- **Hung worker** — A worker process that deadlocked after publishing a heartbeat would appear alive in the registry but would not respond to requests; the queue-group fallback could re-route to the same hung worker.
+
+The fallback mechanism could route to the same dead worker the registry had just selected, defeating the purpose of the fallback. Worse, when the registry's view and the queue-group's view diverged, routing became non-deterministic — the same request could succeed or fail depending on which worker held the queue-group subscription at the exact moment of fallback.
+
+PR #811's CI tests reproduced this race deterministically: a worker that stopped heartbeating but remained subscribed to the queue-group would receive fallback requests despite being marked stale in the registry, causing intermittent `STTUnavailableError`/`TtsUnavailableError` failures.
+
+## Decision
+
+**WorkerRegistry is the single source of routing truth.**
+
+On request failure (timeout or `NoRespondersError`), hub-side clients walk the registry-ordered candidate list themselves, trying each worker in turn until one succeeds or all are exhausted. The NATS queue-group fallback is removed entirely.
+
+### Rule
+
+Hub-side voice clients (`NatsSttClient`, `NatsTtsClient`, `NatsImageClient`) MUST route requests exclusively via `WorkerRegistry.ordered_by_score()`. The `_walk_registry()` method iterates candidates in ascending score order, sending each request to the per-worker subject (`lyra.voice.{stt,tts}.request.<worker_id>`). No fallback to queue-group subjects is permitted.
+
+### Eviction and re-admission
+
+- **`mark_stale(worker_id)`** — Called on timeout or `NoRespondersError`. Sets `last_heartbeat = 0.0`, immediately excluding the worker from `alive_workers()` and `ordered_by_score()`. Does NOT delete the entry from `_workers`.
+- **Idempotent** — Safe to call multiple times; no state change after first call.
+- **Re-admission** — The next heartbeat from that worker updates `last_heartbeat` to the current time, re-admitting it to the alive set automatically. No manual intervention required.
+
+### Circuit-breaker behavior
+
+`NatsCircuitBreaker.record_failure()` is called once per walk exhaustion (all candidates tried, none succeeded), not per candidate. This prevents a single bad worker from driving the circuit-breaker into the open state. The circuit-breaker remains at the client level, protecting against systemic NATS transport failures.
+
+### Per-worker subjects
+
+Requests are published to per-worker subjects:
+
+| Service | Per-worker subject pattern |
+|---|---|
+| STT | `lyra.voice.stt.request.<worker_id>` |
+| TTS | `lyra.voice.tts.request.<worker_id>` |
+| Image | `lyra.image.request.<worker_id>` |
+
+Workers subscribe to their specific subject (not a queue-group wildcard). This ensures that a request routed to `<worker_id>` is delivered only to that worker, not load-balanced across the queue group.
+
+## Rationale
+
+**Why single-registry routing.** The registry's heartbeat-driven view is authoritative because it reflects worker health as observed by the hub. A worker that stops heartbeating is, by definition, not accepting new work — regardless of whether its NATS subscription is still active. Routing to a worker that cannot send heartbeats is incorrect; routing to a worker that can send heartbeats but cannot process requests will result in a timeout, after which it is marked stale.
+
+**Why remove queue-group fallback.** Queue-group fallback was designed for load-balancing, not for fault-tolerance. When the registry and queue-group views disagree, fallback can route to the same dead worker the registry rejected, or to a different worker that is also stale. The fallback adds complexity without solving the underlying problem: the registry must be authoritative, and clients must walk the candidate list themselves.
+
+**Why `mark_stale` mutates instead of deleting.** Deleting the entry would lose the worker_id → WorkerStats mapping. A subsequent heartbeat from that worker would need to re-insert a new entry, which is equivalent to mutation but loses any accumulated metadata (e.g., score history if added later). Mutation also simplifies the re-admission path: `record_heartbeat()` already upserts, so a stale worker is automatically re-admitted when its heartbeat resumes.
+
+**Why circuit-breaker failure is recorded once per walk.** Recording a failure per candidate would cause the circuit-breaker to open after `N` candidate failures, where `N` is the circuit-breaker's failure threshold. A walk that exhausts 5 candidates would record 5 failures, potentially opening the circuit-breaker even when the transport layer is healthy (only the workers are stale). Recording once per walk exhaustion correctly signals "all known workers failed," which is the condition that warrants circuit-breaker protection.
+
+## Consequences
+
+### Positive
+
+- **No dual-LB disagreement.** The registry's view is the only view. Routing is deterministic: given the same registry state, the same request will be routed to the same worker.
+- **Clean worker exit handled correctly.** A worker that exits cleanly unsubscribes from its per-worker subject. The hub receives `NoRespondersError`, triggers a walk to the next candidate. No stale routing.
+- **Simpler mental model.** One load balancer, one source of truth. No "what if the queue-group thinks differently" edge cases.
+
+### Negative
+
+- **Heartbeat stoppage while TCP-connected causes loud failures.** If heartbeats stop flowing (worker process deadlocked, partitioned from the hub's heartbeat listener) while the worker remains TCP-connected to NATS, the worker is marked stale and excluded from routing. Requests fail loudly with `STTUnavailableError`/`TtsUnavailableError` rather than falling back to the queue group. This trade-off is accepted: a worker that cannot send heartbeats is, by definition, not healthy.
+
+### Neutral
+
+- **Per-worker subscription model.** Workers must subscribe to their specific per-worker subject (`lyra.voice.stt.request.<worker_id>`), not a queue-group wildcard. This is already the case for the current implementation; the ADR formalizes it as a rule.
+
+### Follow-up
+
+VoiceCLI worker-side queue-group subscriptions will be retired in a later PR. Workers currently subscribe to both their per-worker subject and the queue-group subject (for fallback compatibility). After this ADR, the queue-group subscription is redundant and should be removed.
+
+## Implementation notes
+
+### `ordered_by_score()`
+
+Returns alive workers sorted ascending by `(score, worker_id)`:
+
+```python
+def ordered_by_score(self) -> list[WorkerStats]:
+    alive = self.alive_workers()
+    return sorted(alive, key=lambda w: (self.score(w), w.worker_id))
+```
+
+The `worker_id` tiebreaker ensures deterministic order when scores are equal.
+
+### `mark_stale()`
+
+Mutates `last_heartbeat` to `0.0`, excluding the worker from `alive_workers()` (which filters by `now - last_heartbeat <= hb_ttl`):
+
+```python
+def mark_stale(self, worker_id: str) -> None:
+    if worker_id in self._workers:
+        self._workers[worker_id].last_heartbeat = 0.0
+```
+
+Safe to call on unknown `worker_id` (no-op). Idempotent. Re-admission occurs automatically on the next `record_heartbeat()` call for that worker.
+
+### `_walk_registry()` (hub-side client)
+
+```python
+async def _walk_registry(self, payload: bytes) -> Response:
+    candidates = self._registry.ordered_by_score()
+    if not candidates:
+        raise UnavailableError("no live worker")
+
+    last_exc: Exception | None = None
+    for worker in candidates:
+        target = per_worker_subject(worker.worker_id)
+        try:
+            reply = await self._nc.request(target, payload, timeout=self._timeout)
+            return self._parse_reply(reply.data)
+        except TimeoutError:
+            self._registry.mark_stale(worker.worker_id)
+            last_exc = TimeoutError()
+            continue
+        except Exception as exc:
+            if self._is_no_responders(exc):
+                self._registry.mark_stale(worker.worker_id)
+                last_exc = exc
+                continue
+            # Terminal failure — propagate
+            raise
+
+    # All exhausted
+    self._cb.record_failure()
+    raise UnavailableError("all workers unresponsive") from last_exc
+```
+
+## Relation to other ADRs
+
+- **ADR-044** — lyra ↔ voicecli NATS voice contract. Defines the request/reply payload structure. This ADR modifies the routing behavior without changing the wire contract.
+- **ADR-035** — NATS subject naming convention. Per-worker subjects follow the `<namespace>.<capability>.<service>.<verb>.<worker_id>` pattern.
+- **ADR-039** — STT/TTS NATS adapter decoupling. Establishes the satellite-bootstrap pattern. Workers publish heartbeats; the hub consumes them via `WorkerRegistry`.
+- **ADR-045** — roxabi-nats SDK extraction. `WorkerRegistry` is part of lyra's NATS client layer, not the shared SDK.
+
+## References
+
+- Issue: [#813](https://github.com/Roxabi/lyra/issues/813) — Registry-authoritative voice routing
+- PR: [#811](https://github.com/Roxabi/lyra/pull/811) — CI reproduction of dual-LB race
+- Code:
+  - `src/lyra/nats/worker_registry.py` — `WorkerRegistry`, `ordered_by_score()`, `mark_stale()`
+  - `src/lyra/nats/nats_stt_client.py` — `NatsSttClient._walk_registry()`
+  - `src/lyra/nats/nats_tts_client.py` — `NatsTtsClient._walk_registry()`
+  - `tests/nats/test_worker_registry.py` — Tests for `ordered_by_score()`, `mark_stale()`

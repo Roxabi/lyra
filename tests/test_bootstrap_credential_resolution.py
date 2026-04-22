@@ -23,6 +23,7 @@ from tests.conftest import (
     _FakeTgAdapter,
     make_fake_stores,
     patch_bootstrap_common,
+    yield_once,
 )
 
 # ---------------------------------------------------------------------------
@@ -60,7 +61,8 @@ class TestCredentialResolution:
 
         class CapturingTgAdapter(_FakeTgAdapter):
             def __init__(self, **kwargs: object) -> None:
-                super().__init__(**kwargs)
+                shutdown = kwargs.pop("shutdown_event", None)  # type: ignore[assignment]
+                super().__init__(shutdown_event=shutdown, **kwargs)  # type: ignore[arg-type]
                 captured_kwargs.append(dict(kwargs))
 
         monkeypatch.setattr(wiring_mod, "TelegramAdapter", CapturingTgAdapter)
@@ -121,7 +123,7 @@ class TestCredentialResolution:
             async def start(self, token: str) -> None:
                 started_with.append(token)
                 # Yield control so the test doesn't hang waiting for this task
-                await asyncio.sleep(0)
+                await yield_once()
 
         monkeypatch.setattr(
             wiring_mod,

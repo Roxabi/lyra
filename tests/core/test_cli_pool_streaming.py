@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -13,6 +12,7 @@ from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.cli.cli_pool import CliPool, _ProcessEntry
 from lyra.core.cli.cli_protocol import StreamingIterator
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from tests.conftest import yield_once
 
 from .conftest_cli_pool import (
     _PATCH_TARGET,
@@ -69,7 +69,7 @@ class TestOnReapCallback:
 
         # Run one reaper iteration manually
         pool._last_sweep_at = None
-        await asyncio.sleep(0)  # let event loop tick
+        await yield_once()  # let event loop tick
 
         # Simulate the reaper logic inline (to avoid sleeping 60s)
         pool._last_sweep_at = time.monotonic()

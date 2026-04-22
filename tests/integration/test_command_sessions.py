@@ -327,7 +327,8 @@ class TestSessionTimeout:
         driver = make_mock_driver()
 
         async def slow_handler(msg, driver, tools, args, timeout):  # noqa: ARG001
-            await asyncio.sleep(10)
+            _never_completes = asyncio.Event()
+            await _never_completes.wait()  # explicit: never completes, tests timeout
             return Response(content="never")
 
         router = CommandRouter(

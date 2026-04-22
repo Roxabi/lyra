@@ -12,6 +12,7 @@ import pytest
 
 from lyra.core.messaging.message import OutboundMessage
 from lyra.core.messaging.render_events import TextRenderEvent
+from tests.conftest import yield_once
 
 from .conftest import make_dc_inbound_msg
 
@@ -34,7 +35,7 @@ async def test_discord_typing_worker_uses_typing_context_manager() -> None:
         return mock_channel
 
     task = asyncio.create_task(_discord_typing_worker(resolve, channel_id=123))
-    await asyncio.sleep(0)  # yield to let the worker call typing()
+    await yield_once()  # yield to let the worker call typing()
     task.cancel()
     try:
         await task
@@ -59,7 +60,6 @@ async def test_discord_typing_worker_handles_exception_gracefully() -> None:
 @pytest.mark.asyncio
 async def test_start_typing_creates_background_task() -> None:
     """_start_typing() creates a task in _typing_tasks for the given channel."""
-    import asyncio
 
     from lyra.adapters.discord import DiscordAdapter
 
@@ -73,19 +73,18 @@ async def test_start_typing_creates_background_task() -> None:
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     adapter._start_typing(333)
-    await asyncio.sleep(0)  # let task start
+    await yield_once()  # let task start
 
     assert 333 in adapter._typing_tasks
     assert not adapter._typing_tasks[333].done()
 
     adapter._cancel_typing(333)
-    await asyncio.sleep(0)
+    await yield_once()
 
 
 @pytest.mark.asyncio
 async def test_cancel_typing_cancels_task() -> None:
     """_cancel_typing() cancels the background task and removes it from the dict."""
-    import asyncio
 
     from lyra.adapters.discord import DiscordAdapter
 
@@ -99,10 +98,10 @@ async def test_cancel_typing_cancels_task() -> None:
     adapter.get_channel = MagicMock(return_value=mock_channel)
 
     adapter._start_typing(333)
-    await asyncio.sleep(0)
+    await yield_once()
 
     adapter._cancel_typing(333)
-    await asyncio.sleep(0)
+    await yield_once()
 
     assert 333 not in adapter._typing_tasks
 
@@ -228,10 +227,8 @@ async def test_on_message_does_not_cancel_typing_when_message_queued() -> None:
     assert not adapter._typing_tasks[333].done()
 
     # Cleanup
-    import asyncio as _asyncio
-
     adapter._cancel_typing(333)
-    await _asyncio.sleep(0)
+    await yield_once()
 
 
 @pytest.mark.asyncio

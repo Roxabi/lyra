@@ -14,6 +14,7 @@ import pytest
 
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
+from tests.conftest import yield_once
 from tests.core.conftest import FastAgent, SlowAgent, _drain, make_msg
 
 # ---------------------------------------------------------------------------
@@ -266,7 +267,7 @@ class TestPoolCancel:
         msg = make_msg()
 
         pool.submit(msg)
-        await asyncio.sleep(0)  # let process_loop start and reach wait_for
+        await yield_once()  # let process_loop start and reach wait_for
         pool.cancel()
 
         if pool._current_task is not None:
@@ -309,7 +310,7 @@ class TestPoolExceptionHandling:
 
         pool.submit(msg1)
 
-        await asyncio.sleep(0)
+        await yield_once()
 
         ctx_mock._agents["test_agent"] = fast_agent
         pool.submit(msg2)

@@ -79,7 +79,7 @@ hub = Hub(config=HubConfig())  # defaults apply
 
 | Case | Handling |
 |------|----------|
-| Caller passes both old params AND config | **Error:** raise `ValueError` — mutually exclusive |
+| Caller passes both old params AND config | **Merge:** old params override config values (backward-compat path, deprecated) |
 | config object is None | Use `HubConfig()` defaults — no None allowed |
 | `RouterConfig.pattern_configs` lazy load | Use `field(default_factory=load_pattern_configs)` to avoid I/O at import time |
 

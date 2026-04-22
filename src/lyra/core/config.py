@@ -7,7 +7,11 @@ Placed at core/ level to avoid circular imports between hub/, pool/, and command
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from lyra.core.commands.command_config import CommandConfig
 
 
 @dataclass(frozen=True)
@@ -47,7 +51,7 @@ class PoolConfig:
     cancel_on_new_message: bool = False
 
 
-def _default_pattern_configs() -> dict:
+def _default_pattern_configs() -> dict[str, dict]:
     """Lazy-load pattern configs to avoid circular import at module load."""
     from lyra.core.commands.command_patterns import load_pattern_configs
 
@@ -61,10 +65,10 @@ class RouterConfig:
     Groups builtin commands, workspaces, and pattern configs.
     """
 
-    builtins: dict = field(default_factory=dict)
-    workspaces: dict = field(default_factory=dict)
-    patterns: dict = field(default_factory=dict)
-    pattern_configs: dict = field(default_factory=_default_pattern_configs)
+    builtins: dict[str, "CommandConfig"] = field(default_factory=dict)
+    workspaces: dict[str, Path] = field(default_factory=dict)
+    patterns: dict[str, bool] = field(default_factory=dict)
+    pattern_configs: dict[str, dict] = field(default_factory=_default_pattern_configs)
     on_debounce_change: Callable[[int], None] | None = None
     on_cancel_change: Callable[[bool], None] | None = None
-    session_driver: object = None
+    session_driver: Any = None

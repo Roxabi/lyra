@@ -1,59 +1,58 @@
 ---
-title: "Corpus Sync — Cloud-Native Architecture"
+title: "Corpus Live Access — operations dashboard (API + webhook + tunnel)"
 issue: 866
-status: draft
-tier: pending-investigation
+status: approved
+tier: F-full
 date: 2026-04-22
 ---
 
 ## Problem
 
-The corpus sync currently targets a local SQLite file (`~/.roxabi/corpus.db`) with scheduled polling. This creates:
-- **Local-only access** — tools must run on same machine
-- **No API** — direct DB access only
-- **No web UI** — no frontend can consume the data
-- **Manual sync** — cron/timer required
+The corpus (`~/.roxabi/corpus.db`) is only reachable on the machine running `scripts/corpus/`.
+No API exists, so nothing outside that machine can query issue data without a direct DB read.
+Three related needs are converging:
 
-A cloud-native approach would enable:
-- Real-time webhook updates (zero API quota)
-- REST API for any consumer (CLI, web, other tools)
-- Optional frontend for browsing/searching issues
-- Access from any machine
+1. **Live API** over the corpus — consumable by tools, scripts, and a frontend.
+2. **Operations cockpit** (`roxabi-dashboard` rewrite) — corpus is the first view; agent health, CI, and dep-graph follow in later phases.
+3. **Fast dev loop** — the existing reconciler (`scripts/corpus/`) already handles bulk sync; adding a webhook layer closes the freshness gap and removes the need for high-frequency polling.
+
+The problem is not "go cloud" — M₂ already holds the data. The problem is that the data has no service layer in front of it.
 
 ## Who
 
-- **Primary:** Mickael — wants the corpus accessible beyond `roxabituwer`
-- **Secondary:** `roxabi-dashboard` (future) — would consume the API
-- **Tertiary:** CI/CD pipelines — could query corpus for issue metadata
+- **Primary:** Mickael — needs corpus data accessible via API on M₂ (dev) and eventually M₁ (24/7 prod).
+- **Secondary:** `roxabi-dashboard` — new rewrite will consume the API as its first data source.
+- **Tertiary:** CLI tooling and scripts that today read corpus.db directly on-box.
 
 ## Constraints
 
-- **Free tier only** — no paid infrastructure
-- **Simple auth** — leverage GitHub OAuth if possible
-- **SQLite compatibility** — D1 is SQLite, should match existing schema
-- **Low latency** — edge deployment for webhook responsiveness
-- **No lock-in** — must be able to export/sync back to local if needed
+- **Local-first** — corpus.db lives on M₂ (or M₁); no managed cloud DB required or wanted.
+- **Zero inbound ports** — Cloudflare Tunnel handles public exposure; no firewall rules, no port forwarding.
+- **Supervisor pattern** — `cloudflared` runs as a separate process under existing project supervisord (`deploy/supervisor/conf.d/`), not embedded in the app.
+- **Existing reconciler stays** — `scripts/corpus/` GraphQL sync remains the canonical backfill mechanism; webhook is an incremental layer on top.
+- **Path configurable** — `CORPUS_DB_PATH` env var, default `~/.roxabi/corpus.db`.
+- **Designed for M₂→M₁ migration** — no hard-coded hostnames; switching machines = rsync db + flip tunnel target.
+- **Cross-repo dependency** — the FastAPI app belongs in the new `roxabi-dashboard` repo (corpus.db consumer), not in lyra. This issue tracks the lyra side (DB schema, reconciler wiring, webhook contract); dashboard repo is a dependency.
 
 ## Out of Scope
 
-- Migrating existing `dep-graph` tool immediately (can be gradual)
-- Full `roxabi-dashboard` implementation (separate effort)
-- Mobile app
+- User OAuth / Cloudflare Access (revisit when a write-capable endpoint lands).
+- Multi-org GitHub aggregation (single Roxabi org only in MVP).
+- Other data sources: dep-graph of non-lyra repos, vault, CI/CD, agent health.
+- Frontend polish, mobile, offline mode.
+- `roxabi-dashboard` repo setup / frontend implementation detail (tracked in dashboard repo).
 
 ## Open Questions
 
-1. **Frontend location** — Cloudflare Pages vs local-only vs skip?
-2. **Authentication model** — GitHub OAuth? API keys? Public read?
-3. **Local sync strategy** — keep local corpus.db or go cloud-only?
-4. **Write permissions** — webhook only, or allow user edits via API?
-5. **Existing tools migration** — when/how do CLI tools switch to API?
+1. **Dashboard repo bootstrap** — does `roxabi-dashboard` need a `pre-rewrite` tag before reset, or has that already been done? (Low urgency — can happen in parallel.)
+2. **Webhook registration** — GitHub org webhook must be created manually; one-time step. Document in ADR or runbook?
 
-## Complexity
+## Signals
 
-**Tier: TBD** — awaiting investigation results
+- Multi-component: FastAPI, `cloudflared` daemon, supervisord unit, SQLite upsert, reconciler cron wiring.
+- New domain for lyra: outward-facing HTTP service + public tunnel.
+- Security surface: HMAC validation, tunnel config, future auth.
+- Cross-repo: lyra owns corpus.db + reconciler; `roxabi-dashboard` owns the API + frontend.
+- M₂ → M₁ migration path must be trivial by design.
 
-Signals:
-- Multi-service (Worker + D1 + Pages + Auth)
-- New domain (Cloudflare ecosystem)
-- Security implications (auth, webhook validation)
-- But well-defined scope and free-tier constraints limit options
+**Tier: F-full** — multi-domain, new architecture (tunnel + service layer), cross-repo dependency.

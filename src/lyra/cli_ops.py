@@ -21,6 +21,7 @@ import typer
 from nats.aio.client import Client as NATS
 
 import nats
+from lyra.ops_audit import emit_drift_report
 from roxabi_nats.connect import _build_tls_context
 
 ops_app = typer.Typer(name="ops", help="Operational sanity checks.")
@@ -242,9 +243,10 @@ def verify(
             raise typer.BadParameter(f"unknown identity name(s): {', '.join(unknown)}")
         identities = {n: identities[n] for n in only}
 
+    drift = emit_drift_report(identities, typer.echo)
     results = asyncio.run(_verify_all(resolved_url, identities, seeds_path))
     exit_code = _print_report(results)
-    raise typer.Exit(exit_code)
+    raise typer.Exit(max(exit_code, 1 if drift else 0))
 
 
 def _seed_path_for(seeds_dir: Path, name: str) -> Path:
@@ -281,14 +283,11 @@ def _print_report(results: list[IdentityResult]) -> int:
     for r in skipped:
         typer.echo(f"SKIP {r.identity}: {r.skipped_reason}")
 
-    if failed:
-        # `failed` is filtered by `first_failure`, so this is always non-None.
-        first = failed[0].first_failure
-        if first is not None:
-            typer.echo(
-                f"FAIL {first.identity} {first.kind} {first.subject} — "
-                f"expected {first.expected!r}, got {first.actual!r}"
-            )
+    if failed and (first := failed[0].first_failure):
+        typer.echo(
+            f"FAIL {first.identity} {first.kind} {first.subject} — "
+            f"expected {first.expected!r}, got {first.actual!r}"
+        )
 
     typer.echo(
         f"{len(results)} identities, "

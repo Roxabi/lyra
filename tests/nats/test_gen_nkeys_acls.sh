@@ -219,3 +219,73 @@ echo "PASS (#754-6): no other identity has lyra.image.* access"
 
 echo ""
 echo "PASS (#754): image-worker ACL + amended hub ACL assertions (5 checks)"
+
+# ── #715 / ADR-051 — per-identity inbox prefix assertions ────────────────────
+# For each lyra-owned identity the generated auth.conf MUST contain the
+# scoped prefix form and MUST NOT contain the bare wildcard in any allow-list.
+#
+# Scope:
+#   Lyra-owned (narrowed this PR): hub, telegram-adapter, discord-adapter,
+#                                   tts-adapter, stt-adapter
+#   Satellite (out of scope this PR, unchanged): voice-tts, voice-stt, image-worker
+#
+# Lowercase _inbox.<identity>.> is required for tts-adapter and stt-adapter
+# because both rows carried _inbox.> defensively (nats-py case sensitivity).
+
+LYRA_IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter)
+
+for identity in "${LYRA_IDENTITIES[@]}"; do
+  id_block=$(extract_block "$identity")
+  [ -n "$id_block" ] || { echo "FAIL (#715): could not extract block for ${identity}"; exit 1; }
+
+  # Assert scoped inbox subject present in subscribe allow-list
+  scoped_inbox="_INBOX.${identity}.>"
+  echo "$id_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
+    | grep -qF "\"${scoped_inbox}\"" \
+    || { echo "FAIL (#715): ${identity} subscribe must contain \"${scoped_inbox}\""; exit 1; }
+
+  # Assert bare wildcard _INBOX.> NOT present in subscribe allow-list
+  echo "$id_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
+    | grep -qF '"_INBOX.>"' \
+    && { echo "FAIL (#715): ${identity} subscribe must NOT contain bare \"_INBOX.>\""; exit 1; } || true
+
+  echo "PASS (#715): ${identity} subscribe has \"${scoped_inbox}\" (no bare _INBOX.>)"
+done
+
+# tts-adapter and stt-adapter: lowercase _inbox.<identity>.> must also be present
+for identity in tts-adapter stt-adapter; do
+  id_block=$(extract_block "$identity")
+
+  scoped_inbox_lc="_inbox.${identity}.>"
+  echo "$id_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
+    | grep -qF "\"${scoped_inbox_lc}\"" \
+    || { echo "FAIL (#715): ${identity} subscribe must contain lowercase \"${scoped_inbox_lc}\""; exit 1; }
+
+  # Assert bare lowercase wildcard _inbox.> NOT present in subscribe allow-list
+  echo "$id_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
+    | grep -qF '"_inbox.>"' \
+    && { echo "FAIL (#715): ${identity} subscribe must NOT contain bare \"_inbox.>\""; exit 1; } || true
+
+  echo "PASS (#715): ${identity} subscribe has lowercase \"${scoped_inbox_lc}\" (no bare _inbox.>)"
+done
+
+# Satellite rows must still work (unchanged allow-lists — their _INBOX.> is in publish)
+# voice-tts and voice-stt: _INBOX.> in publish is still present (out of scope this PR)
+for identity in voice-tts voice-stt; do
+  id_block=$(extract_block "$identity")
+  [ -n "$id_block" ] || { echo "FAIL (#715): could not extract block for ${identity}"; exit 1; }
+  echo "$id_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' \
+    | grep -qF '"_INBOX.>"' \
+    || { echo "FAIL (#715-satellite): ${identity} publish must still contain \"_INBOX.>\" (out of scope this PR)"; exit 1; }
+  echo "PASS (#715-satellite): ${identity} publish still has \"_INBOX.>\" (satellite, out of scope)"
+done
+
+# image-worker: _INBOX.> and _inbox.> in publish are still present (out of scope this PR)
+iw_b=$(extract_block image-worker)
+echo "$iw_b" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' \
+  | grep -qF '"_INBOX.>"' \
+  || { echo "FAIL (#715-satellite): image-worker publish must still contain \"_INBOX.>\" (out of scope this PR)"; exit 1; }
+echo "PASS (#715-satellite): image-worker publish still has \"_INBOX.>\" (satellite, out of scope)"
+
+echo ""
+echo "PASS (#715/ADR-051): per-identity inbox prefix assertions (5 lyra + 3 satellite)"

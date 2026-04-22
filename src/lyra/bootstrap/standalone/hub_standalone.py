@@ -64,7 +64,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
     acquire_lockfile()
 
     try:
-        nc = await nats_connect(nats_url)
+        nc = await nats_connect(nats_url, inbox_prefix="_INBOX.hub")
         log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")

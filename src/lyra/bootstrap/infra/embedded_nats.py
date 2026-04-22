@@ -176,7 +176,7 @@ async def ensure_nats(
         log.info("Using external NATS at %s", scrub_nats_url(nats_url))
 
     try:
-        nc = await nats_connect(nats_url)
+        nc = await nats_connect(nats_url, inbox_prefix="_INBOX.hub")
         log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
     except Exception as exc:
         if embedded:

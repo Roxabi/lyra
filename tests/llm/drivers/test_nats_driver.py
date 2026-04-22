@@ -38,7 +38,7 @@ def make_driver(nc: AsyncMock | None = None, timeout: float = 5.0) -> NatsLlmDri
     if nc is None:
         nc = AsyncMock()
         nc.is_connected = True
-        nc.new_inbox = MagicMock(return_value="_INBOX.test.abc123")
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.abc123")
     return NatsLlmDriver(nc=nc, timeout=timeout)
 
 
@@ -224,7 +224,7 @@ class TestStreamHappyPath:
         # Arrange
         nc = AsyncMock()
         nc.is_connected = True
-        nc.new_inbox = MagicMock(return_value="_INBOX.test.x")
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.aabbccdd")
 
         chunks = [
             {"event_type": "text", "text": "Hello", "done": False},
@@ -285,11 +285,70 @@ class TestStreamHappyPath:
         assert events[2].is_error is False
         assert events[2].duration_ms == 500
 
+    async def test_stream_inbox_subject_uses_hub_prefix(self) -> None:
+        """stream() subscribes to an inbox subject under _INBOX.hub.* (ADR-051)."""
+        # Arrange — new_inbox returns a hub-prefixed inbox
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.00aabbcc")
+
+        captured_subject: list[str] = []
+
+        async def fake_subscribe(subject, cb=None):
+            captured_subject.append(subject)
+            return AsyncMock()
+
+        nc.subscribe = AsyncMock(side_effect=fake_subscribe)
+        nc.publish = AsyncMock()
+
+        driver = make_driver(nc)
+
+        async def collect():
+            events = []
+            gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
+            task = asyncio.create_task(_drain(gen, events))
+            await asyncio.sleep(0)
+            # Terminate the stream so the task completes cleanly
+            await captured_cb_holder[0](
+                make_chunk_msg(
+                    {
+                        "event_type": "result",
+                        "is_error": False,
+                        "duration_ms": 0,
+                        "done": True,
+                    }
+                )
+            )
+            await task
+
+        captured_cb_holder: list = [None]
+
+        async def fake_subscribe_capture(subject, cb=None):
+            captured_subject.append(subject)
+            captured_cb_holder[0] = cb
+            return AsyncMock()
+
+        nc.subscribe = AsyncMock(side_effect=fake_subscribe_capture)
+
+        async def _drain(gen, events):
+            async for ev in gen:
+                events.append(ev)
+
+        # Act
+        await collect()
+
+        # Assert — subscription subject starts with _INBOX.hub.
+        assert len(captured_subject) == 1
+        inbox_subject = captured_subject[0]
+        assert inbox_subject.startswith("_INBOX.hub."), (
+            f"Expected inbox subject to start with '_INBOX.hub.', got {inbox_subject!r}"
+        )
+
     async def test_stream_request_has_stream_true(self) -> None:
         # Arrange
         nc = AsyncMock()
         nc.is_connected = True
-        nc.new_inbox = MagicMock(return_value="_INBOX.test.y")
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.eeff0011")
 
         captured_cb: Any = None
 
@@ -344,7 +403,7 @@ class TestStreamCancellation:
         # Arrange
         nc = AsyncMock()
         nc.is_connected = True
-        nc.new_inbox = MagicMock(return_value="_INBOX.test.cancel")
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.cc112233")
 
         sub_mock = AsyncMock()
 
@@ -567,7 +626,7 @@ class TestStreamInboxTimeout:
         # Arrange — very short timeout so wait_for expires immediately
         nc = AsyncMock()
         nc.is_connected = True
-        nc.new_inbox = MagicMock(return_value="_INBOX.test.timeout")
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.dd334455")
 
         sub_mock = AsyncMock()
 
@@ -605,7 +664,7 @@ class TestStreamDefensiveBranches:
         # Arrange — "ping" chunk followed by result chunk
         nc = AsyncMock()
         nc.is_connected = True
-        nc.new_inbox = MagicMock(return_value="_INBOX.test.unknown")
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.ee556677")
 
         chunks = [
             {"event_type": "ping", "done": False},
@@ -649,7 +708,7 @@ class TestStreamDefensiveBranches:
         # Arrange — text chunk with done=True (no result chunk)
         nc = AsyncMock()
         nc.is_connected = True
-        nc.new_inbox = MagicMock(return_value="_INBOX.test.synth")
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.ff778899")
 
         chunks = [
             {"event_type": "text", "text": "hi", "done": True},

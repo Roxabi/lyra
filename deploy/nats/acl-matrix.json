@@ -3,7 +3,7 @@
   "identities": {
     "hub": {
       "owner": "lyra",
-      "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image workers. _INBOX.> required for NatsLlmDriver.stream() manual inbox subscription (tighten in #715).",
+      "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image workers. Inbox narrowed to _INBOX.hub.> per ADR-051 per-identity prefix invariant.",
       "publish": [
         "lyra.outbound.telegram.>",
         "lyra.outbound.discord.>",
@@ -19,37 +19,37 @@
         "lyra.voice.stt.heartbeat",
         "lyra.llm.health.*",
         "lyra.system.ready",
-        "_INBOX.>",
+        "_INBOX.hub.>",
         "lyra.image.heartbeat"
       ]
     },
     "telegram-adapter": {
       "owner": "lyra",
-      "description": "Telegram bot adapter — _INBOX.> required for readiness probe via nc.request() on lyra.system.ready; allow_responses covers replier side only, not requester inbox. Tighten to per-identity inbox prefix tracked in #717.",
+      "description": "Telegram bot adapter — inbox narrowed to _INBOX.telegram-adapter.> per ADR-051 per-identity prefix invariant.",
       "publish": [
         "lyra.inbound.telegram.>",
         "lyra.system.ready"
       ],
       "subscribe": [
         "lyra.outbound.telegram.>",
-        "_INBOX.>"
+        "_INBOX.telegram-adapter.>"
       ]
     },
     "discord-adapter": {
       "owner": "lyra",
-      "description": "Discord bot adapter — same readiness-probe _INBOX.> requirement as telegram-adapter.",
+      "description": "Discord bot adapter — inbox narrowed to _INBOX.discord-adapter.> per ADR-051 per-identity prefix invariant.",
       "publish": [
         "lyra.inbound.discord.>",
         "lyra.system.ready"
       ],
       "subscribe": [
         "lyra.outbound.discord.>",
-        "_INBOX.>"
+        "_INBOX.discord-adapter.>"
       ]
     },
     "tts-adapter": {
       "owner": "lyra",
-      "description": "Lyra-side TTS voice satellite (retired in #690 cutover). Readiness probe via nc.request('lyra.system.ready') needs _INBOX.>/_inbox.> — both forms included because nats-py historically emits lowercase inboxes and NATS subjects are case-sensitive.",
+      "description": "Lyra-side TTS voice satellite (retired in #690 cutover). Inbox narrowed to _INBOX.tts-adapter.> and _inbox.tts-adapter.> per ADR-051; both case variants retained for nats-py case-sensitivity compatibility.",
       "publish": [
         "lyra.voice.tts.heartbeat",
         "lyra.system.ready"
@@ -57,13 +57,13 @@
       "subscribe": [
         "lyra.voice.tts.request",
         "lyra.voice.tts.request.>",
-        "_INBOX.>",
-        "_inbox.>"
+        "_INBOX.tts-adapter.>",
+        "_inbox.tts-adapter.>"
       ]
     },
     "stt-adapter": {
       "owner": "lyra",
-      "description": "Lyra-side STT voice satellite (retired in #690 cutover). Same readiness-probe _INBOX.>/_inbox.> requirement as tts-adapter.",
+      "description": "Lyra-side STT voice satellite (retired in #690 cutover). Inbox narrowed to _INBOX.stt-adapter.> and _inbox.stt-adapter.> per ADR-051; both case variants retained for nats-py case-sensitivity compatibility.",
       "publish": [
         "lyra.voice.stt.heartbeat",
         "lyra.system.ready"
@@ -71,13 +71,13 @@
       "subscribe": [
         "lyra.voice.stt.request",
         "lyra.voice.stt.request.>",
-        "_INBOX.>",
-        "_inbox.>"
+        "_INBOX.stt-adapter.>",
+        "_inbox.stt-adapter.>"
       ]
     },
     "voice-tts": {
       "owner": "voicecli",
-      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). AdapterBase subscribes to heartbeat_subject (no-op callback) in addition to publishing — ACL must allow both pub and sub on heartbeat.",
+      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). AdapterBase subscribes to heartbeat_subject (no-op callback) in addition to publishing — ACL must allow both pub and sub on heartbeat. Inbox narrowing to _INBOX.voice-tts.> is sequenced behind the voiceCLI connect-site PR per ADR-047 rule 4.",
       "publish": [
         "lyra.voice.tts.heartbeat",
         "_INBOX.>"
@@ -90,7 +90,7 @@
     },
     "voice-stt": {
       "owner": "voicecli",
-      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Same heartbeat pub+sub pattern as voice-tts.",
+      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Same heartbeat pub+sub pattern as voice-tts. Inbox narrowing to _INBOX.voice-stt.> is sequenced behind the voiceCLI connect-site PR per ADR-047 rule 4.",
       "publish": [
         "lyra.voice.stt.heartbeat",
         "_INBOX.>"
@@ -113,7 +113,7 @@
     },
     "image-worker": {
       "owner": "imagecli",
-      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). _INBOX.>/_inbox.> defensively included for reply-path robustness, mirroring voice-tts/voice-stt — allow_responses alone may not cover every nats-server version's reply publish path.",
+      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). _INBOX.>/_inbox.> defensively included for reply-path robustness, mirroring voice-tts/voice-stt — allow_responses alone may not cover every nats-server version's reply publish path. Inbox narrowing to _INBOX.image-worker.> is sequenced behind the imageCLI connect-site PR per ADR-047 rule 4.",
       "publish": [
         "lyra.image.heartbeat",
         "_INBOX.>",

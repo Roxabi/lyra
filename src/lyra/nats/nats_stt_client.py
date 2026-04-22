@@ -1,6 +1,6 @@
 """NatsSttClient — hub-side NATS request-reply client for STT.
 
-Maintains a ``VoiceWorkerRegistry`` populated from heartbeats, and routes each
+Maintains a ``WorkerRegistry`` populated from heartbeats, and routes each
 transcription to the least-loaded worker via its per-worker subject
 ``lyra.voice.stt.request.{worker_id}``. Falls back once to the queue-group
 subject (``lyra.voice.stt.request``) if the targeted worker times out.
@@ -21,7 +21,7 @@ from uuid import uuid4
 from nats.aio.client import Client as NATS
 from pydantic import ValidationError
 
-from lyra.nats.voice_health import VoiceWorkerRegistry
+from lyra.nats.worker_registry import WorkerRegistry
 from lyra.stt import (
     STTNoiseError,
     STTUnavailableError,
@@ -93,7 +93,7 @@ class NatsSttClient:
         self._detection_segments = language_detection_segments
         self._detection_fallback = language_fallback
         self._cb = NatsCircuitBreaker()
-        self._registry = VoiceWorkerRegistry()
+        self._registry = WorkerRegistry()
         self._hb_sub = None  # set by start
 
     async def start(self) -> None:

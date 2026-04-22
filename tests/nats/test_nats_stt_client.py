@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.nats.nats_stt_client import NatsSttClient
-from lyra.nats.voice_health import WorkerStats
+from lyra.nats.worker_registry import WorkerStats
 from lyra.stt import STTNoiseError, STTUnavailableError
 
 
@@ -408,7 +408,7 @@ class TestSttClientFreshness:
         assert result.text == "resumed"
 
     # NOTE: registry-level aliveness / pruning semantics are covered by
-    # ``tests/nats/test_voice_health.py`` — no need to duplicate here.
+    # ``tests/nats/test_worker_registry.py`` — no need to duplicate here.
 
 
 class TestTranscribeResponseParsing:

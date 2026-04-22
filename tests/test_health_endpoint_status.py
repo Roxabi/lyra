@@ -6,7 +6,6 @@ Classes: TestHealthUnauthenticated, TestHealthEndpoint, TestHubTimestamps.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from datetime import datetime, timezone
 
@@ -20,7 +19,7 @@ from lyra.core.messaging.message import (
     InboundMessage,
     Platform,
 )
-from tests.conftest import AUTH_HEADERS, HEALTH_SECRET
+from tests.conftest import AUTH_HEADERS, HEALTH_SECRET, yield_once
 from tests.core.conftest import push_to_hub
 
 # ---------------------------------------------------------------------------
@@ -149,7 +148,7 @@ class TestHealthEndpoint:
             trust_level=TrustLevel.TRUSTED,
         )
         await push_to_hub(hub, msg)
-        await asyncio.sleep(0)  # let feeder task move message to staging
+        await yield_once()  # let feeder task move message to staging
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)

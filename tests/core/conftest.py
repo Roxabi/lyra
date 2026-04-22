@@ -699,17 +699,13 @@ def _make_hub(**kwargs: Any) -> Hub:
     return hub
 
 
-async def _drain(pool: Pool, *, timeout: float = 2.0) -> None:
-    """Yield to the event loop then wait for the current task to finish."""
-    await asyncio.sleep(0)
-    if pool._current_task is not None:
-        await asyncio.wait_for(pool._current_task, timeout=timeout)
-
-
 class SlowAgent:
     """Agent whose process() never returns within test timeouts."""
 
     name = "test_agent"
+
+    def __init__(self, shutdown_event: asyncio.Event | None = None) -> None:
+        self._shutdown = shutdown_event if shutdown_event else asyncio.Event()
 
     def is_backend_alive(self, pool_id: str) -> bool:
         return True
@@ -724,7 +720,7 @@ class SlowAgent:
         *,
         on_intermediate=None,
     ) -> Response:
-        await asyncio.sleep(10)  # never finishes in test
+        await self._shutdown.wait()  # explicit: never completes in test
         return Response(content="done")
 
 

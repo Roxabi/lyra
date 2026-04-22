@@ -50,12 +50,15 @@ class FakeSTT:
 
 
 class SlowSTT:
-    """STT that sleeps indefinitely — for timeout testing."""
+    """STT that never completes — for timeout testing."""
 
     timeout_ms: int = 30000
 
+    def __init__(self, shutdown_event: asyncio.Event | None = None) -> None:
+        self._shutdown = shutdown_event if shutdown_event else asyncio.Event()
+
     async def transcribe(self, path: Any) -> FakeTranscription:
-        await asyncio.sleep(9999)
+        await self._shutdown.wait()  # explicit: never completes in test
         return FakeTranscription(text="never")
 
 

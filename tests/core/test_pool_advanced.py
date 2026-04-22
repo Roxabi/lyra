@@ -15,7 +15,8 @@ import pytest
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from tests.core.conftest import _drain, make_msg
+from tests.conftest import _drain
+from tests.core.conftest import make_msg
 
 # ---------------------------------------------------------------------------
 # File-local helper

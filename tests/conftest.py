@@ -20,6 +20,7 @@ from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.auth.authenticator import Authenticator as AuthMiddleware
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.pool import Pool
 from roxabi_nats import _version_check as _vc_mod
 
 
@@ -40,6 +41,25 @@ def _reset_version_check_log_state() -> None:
 # ---------------------------------------------------------------------------
 
 HEALTH_SECRET = "test-health-secret"
+
+# Timeout constants for event-based coordination
+TIMEOUT_FAST = 0.5  # In-memory operations
+TIMEOUT_IO = 2.0  # Single network round-trip
+TIMEOUT_SLOW = 5.0  # Multi-step coordination, CI variance buffer
+
+
+async def yield_once() -> None:
+    """Yield control to the event loop once. Replaces asyncio.sleep(0)."""
+    await asyncio.sleep(0)
+
+
+async def _drain(pool: Pool, *, timeout: float = TIMEOUT_IO) -> None:
+    """Yield to the event loop then wait for the current task to finish."""
+    await yield_once()
+    if pool._current_task is not None:
+        await asyncio.wait_for(pool._current_task, timeout=timeout)
+
+
 AUTH_HEADERS = {"authorization": f"Bearer {HEALTH_SECRET}"}
 
 
@@ -84,16 +104,26 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 class _FakeDp:
+    """Fake Dispatcher that blocks until explicitly stopped.
+
+    Uses an event that never fires (unless test sets it) instead of arbitrary sleep.
+    """
+
+    def __init__(self, shutdown_event: asyncio.Event | None = None) -> None:
+        self._shutdown = shutdown_event if shutdown_event else asyncio.Event()
+
     async def start_polling(self, bot: object, **kwargs: object) -> None:
-        await asyncio.sleep(1_000)
+        await self._shutdown.wait()  # explicit: wait for teardown signal
 
 
 class _FakeTgAdapter:
-    dp = _FakeDp()
     bot = MagicMock()
 
-    def __init__(self, **kwargs: object) -> None:
+    def __init__(
+        self, shutdown_event: asyncio.Event | None = None, **kwargs: object
+    ) -> None:
         self._bot_id = kwargs.get("bot_id", "main")
+        self.dp = _FakeDp(shutdown_event)
 
     async def send(self, msg: object, response: object) -> None:
         pass
@@ -103,14 +133,21 @@ class _FakeTgAdapter:
 
 
 class _FakeDcAdapter:
-    def __init__(self, **kwargs: object) -> None:
-        pass
+    """Fake Discord adapter that blocks until explicitly stopped.
+
+    Uses an event that never fires (unless test sets it) instead of arbitrary sleep.
+    """
+
+    def __init__(
+        self, shutdown_event: asyncio.Event | None = None, **kwargs: object
+    ) -> None:
+        self._shutdown = shutdown_event if shutdown_event else asyncio.Event()
 
     async def start(self, token: str) -> None:
-        await asyncio.sleep(1_000)
+        await self._shutdown.wait()  # explicit: wait for teardown signal
 
     async def close(self) -> None:
-        pass
+        self._shutdown.set()  # signal stop if still waiting
 
     async def send(self, msg: object, response: object) -> None:
         pass
@@ -269,7 +306,8 @@ def patch_all(
 
     class CapturingDcAdapter(_FakeDcAdapter):
         def __init__(self, **kwargs: object) -> None:
-            super().__init__(**kwargs)
+            shutdown = kwargs.pop("shutdown_event", None)  # type: ignore[assignment]
+            super().__init__(shutdown_event=shutdown, **kwargs)  # type: ignore[arg-type]
 
     mock_tg_auth, mock_dc_auth = MagicMock(), MagicMock()
     _auth_results = iter([mock_tg_auth, mock_dc_auth])

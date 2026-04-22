@@ -14,7 +14,8 @@ import pytest
 
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from tests.core.conftest import FastAgent, SlowAgent, _drain, make_msg
+from tests.conftest import TIMEOUT_IO, _drain, yield_once
+from tests.core.conftest import FastAgent, SlowAgent, make_msg
 
 # ---------------------------------------------------------------------------
 # File-local agent doubles
@@ -193,7 +194,7 @@ class TestPoolTimeout:
         msg = make_msg()
 
         fast_pool.submit(msg)
-        await _drain(fast_pool, timeout=2.0)
+        await _drain(fast_pool, timeout=TIMEOUT_IO)
 
         ctx_mock.dispatch_response.assert_awaited_once()
         _args = ctx_mock.dispatch_response.call_args
@@ -213,7 +214,7 @@ class TestPoolTimeout:
 
         with caplog.at_level(logging.ERROR, logger="lyra.core.pool_processor"):
             fast_pool.submit(msg)
-            await _drain(fast_pool, timeout=2.0)
+            await _drain(fast_pool, timeout=TIMEOUT_IO)
 
         assert any("backend process died" in r.message for r in caplog.records)
 
@@ -228,7 +229,7 @@ class TestPoolTimeout:
 
         with caplog.at_level(logging.ERROR, logger="lyra.core.pool_processor"):
             fast_pool.submit(msg)
-            await _drain(fast_pool, timeout=2.0)
+            await _drain(fast_pool, timeout=TIMEOUT_IO)
 
         assert not any("backend process died" in r.message for r in caplog.records)
 
@@ -243,7 +244,7 @@ class TestPoolTimeout:
         initial_history_len = len(fast_pool.history)
 
         fast_pool.submit(msg)
-        await _drain(fast_pool, timeout=2.0)
+        await _drain(fast_pool, timeout=TIMEOUT_IO)
 
         assert len(fast_pool.history) == initial_history_len
 
@@ -266,7 +267,7 @@ class TestPoolCancel:
         msg = make_msg()
 
         pool.submit(msg)
-        await asyncio.sleep(0)  # let process_loop start and reach wait_for
+        await yield_once()  # let process_loop start and reach wait_for
         pool.cancel()
 
         if pool._current_task is not None:
@@ -309,7 +310,7 @@ class TestPoolExceptionHandling:
 
         pool.submit(msg1)
 
-        await asyncio.sleep(0)
+        await yield_once()
 
         ctx_mock._agents["test_agent"] = fast_agent
         pool.submit(msg2)

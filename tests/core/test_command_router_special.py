@@ -379,15 +379,17 @@ class TestSessionCommands:
     async def test_session_command_timeout_returns_timeout_message(
         self, tmp_path: Path
     ) -> None:
-        import asyncio as _asyncio
+        import asyncio
 
         from lyra.integrations.base import SessionTools
 
         router = make_router(tmp_path)
         router._session_driver = MagicMock()
 
+        never_fires = asyncio.Event()
+
         async def slow_handler(msg, driver, tools, args, timeout):
-            await _asyncio.sleep(10)
+            await never_fires.wait()  # intentional: never completes, tests timeout
             return Response(content="never")
 
         tools = SessionTools(scraper=MagicMock(), vault=MagicMock())

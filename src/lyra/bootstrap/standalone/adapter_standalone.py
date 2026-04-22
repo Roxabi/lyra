@@ -39,7 +39,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
         sys.exit("NATS_URL required for standalone adapter mode")
 
     try:
-        nc = await nats_connect(nats_url)
+        nc = await nats_connect(nats_url, inbox_prefix=f"_INBOX.{platform}-adapter")
         log.info(
             "adapter_standalone: connected to NATS at %s",
             scrub_nats_url(nats_url),

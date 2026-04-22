@@ -49,3 +49,39 @@ async def test_g3_non_loopback_raises_when_g2_unset() -> None:
     w = FakeImageWorker(nats_url="nats://10.0.0.5:4222")
     with pytest.raises(ValueError, match="loopback"):
         await w.start()
+
+
+@pytest.mark.parametrize(
+    "prod_value",
+    ["production", "PRODUCTION", "Production", "pRoDuCtIoN"],
+)
+def test_g2_prod_env_case_insensitive(
+    prod_value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Guard 2 uses casefold — every case variant of 'production' must fire."""
+    monkeypatch.setenv("LYRA_ENV", prod_value)
+    with pytest.raises(RuntimeError, match="cannot run in production"):
+        FakeImageWorker()
+
+
+async def test_start_twice_raises() -> None:
+    """start() is not idempotent — a double-start is a programmer error.
+
+    Guard 3 fires first (loopback check) so we point at a non-loopback URL
+    to exit before ``nats_connect``. Reaching the ``_nc is not None`` branch
+    would require a real NATS server; the guard short-circuits earlier.
+
+    Instead, we seed ``_nc`` manually to simulate "already started" state
+    and verify the RuntimeError fires instead of a silent second connect.
+    """
+    w = FakeImageWorker(nats_url="nats://127.0.0.1:4222")
+    w._nc = object()  # type: ignore[assignment]  # simulate started state
+    with pytest.raises(RuntimeError, match="already started"):
+        await w.start()
+
+
+async def test_stop_is_idempotent_when_never_started() -> None:
+    """stop() on a fresh worker is a no-op — never raises."""
+    w = FakeImageWorker(nats_url="nats://127.0.0.1:4222")
+    await w.stop()  # no start(), no exception
+    await w.stop()  # second stop, still no exception

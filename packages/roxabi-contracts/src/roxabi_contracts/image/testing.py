@@ -8,6 +8,12 @@ Guard 1 (import-time): nats-py is imported at module top; installing
     ModuleNotFoundError at import.
 Guard 2 (env): __init__ raises RuntimeError when LYRA_ENV == "production".
 Guard 3 (loopback): start() raises ValueError on non-loopback NATS URL.
+
+Dependency direction: this module depends on ``roxabi_nats`` (via the
+``nats_connect`` helper). The reverse direction is forbidden —
+``roxabi_nats`` must not import from ``roxabi_contracts.image.testing``
+(or any ``.testing`` submodule) to keep the transport layer free of
+test-only code paths.
 """
 
 from __future__ import annotations

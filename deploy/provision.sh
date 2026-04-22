@@ -96,8 +96,23 @@ if ! has_sufficient_subids /etc/subuid || ! has_sufficient_subids /etc/subgid; t
   warn "subuid/subgid ranges missing or too small for $ADMIN_USER — adding 100000-165535."
   sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$ADMIN_USER"
   # Re-run migrate in case podman already has stale rootless state.
-  sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-    podman system migrate 2>/dev/null || true
+  # Guard against silent storage remap on partial re-runs: if the admin user
+  # already has rootless images, `podman system migrate` can orphan existing
+  # volumes, and `2>/dev/null || true` would swallow the failure. Require an
+  # explicit FORCE_MIGRATE=1 opt-in when prior state is detected.
+  if sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+       podman images -q 2>/dev/null | grep -q .; then
+    if [[ "${FORCE_MIGRATE:-0}" != "1" ]]; then
+      warn "Rootless storage for $ADMIN_USER already has images; skipping migrate."
+      warn "Set FORCE_MIGRATE=1 to re-run migrate (may orphan existing volumes)."
+    else
+      sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+        podman system migrate
+    fi
+  else
+    sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+      podman system migrate 2>/dev/null || true
+  fi
   info "subuid/subgid added for $ADMIN_USER (≥65536 IDs)."
 else
   info "subuid/subgid already configured for $ADMIN_USER (≥65536 IDs)."

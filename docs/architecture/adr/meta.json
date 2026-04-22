@@ -46,6 +46,8 @@
     "046-nkey-provisioning-declarative-authconf",
     "047-nats-connector-ownership-pattern",
     "048-lyra-infrastructure-layer-for-persistence",
-    "049-roxabi-contracts-shared-schema-package"
+    "049-roxabi-contracts-shared-schema-package",
+    "050-lyra-image-nats-contract",
+    "051-per-identity-nats-inbox-prefix"
   ]
 }

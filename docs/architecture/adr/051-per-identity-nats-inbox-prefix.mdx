@@ -1,0 +1,224 @@
+---
+title: "ADR-051: Per-identity NATS inbox prefix as a security invariant"
+description: Eliminate bus-wide _INBOX.> ACL grants by assigning each NATS identity a scoped inbox_prefix at connect time, so that an identity's ephemeral inboxes are confined to _INBOX.<identity>.> and a leaked seed cannot be used to read other identities' request-reply traffic.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Issue #715 identified that the hub's subscribe ACL in `deploy/nats/acl-matrix.json` includes
+the wildcard `_INBOX.>`. This grant was introduced to allow `NatsLlmDriver._stream_gen()` to
+call `self._nc.new_inbox()` + `self._nc.subscribe(inbox, cb=...)` — the multi-chunk streaming
+path that receives live LLM tokens on an ephemeral reply subject.
+
+The security consequence: any process that authenticates with the hub's nkey seed can subscribe
+to `_INBOX.>` and intercept every request-reply inbox on the bus — LLM answers, TTS audio
+payloads, readiness probes, and any future request/reply traffic. Inspection of `acl-matrix.json`
+shows that `_INBOX.>` is not limited to the hub; it appears on every identity in the matrix
+(telegram-adapter, discord-adapter, tts-adapter, stt-adapter, voice-tts, voice-stt, image-worker),
+making a leaked seed for any identity a bus-wide wiretap.
+
+Two options were evaluated during #715 implementation:
+
+**Option 1 (issue preferred):** Switch `NatsLlmDriver._stream_gen()` to `nc.request()` with a
+callback, relying on `allow_responses: true` to drop `_INBOX.>` entirely.
+
+Investigation: `nats-py 2.14` `nc.request()` returns a single `Msg` — it cannot receive a
+multi-message stream. `allow_responses: true` grants the *replier* the right to publish back to
+the request's reply subject; it does not give the *requester* the right to subscribe to an inbox.
+The spec footnote in `artifacts/specs/706-per-role-nkeys-acls-spec.mdx [^inbox-fix]` explicitly
+documents that adapters with `allow_responses: true` still needed `_INBOX.>` for their request
+side. Option 1 literal does not close the ACL gap without either buffering the full LLM response
+before replying (losing live streaming UX) or rewriting the streaming contract.
+
+**Option 2 (chosen):** Set `inbox_prefix="<identity>"` at `nats.connect()` time. nats-py's
+`new_inbox()` uses `self._inbox_prefix` internally; overriding it at connect time transparently
+scopes every ephemeral inbox the identity creates to `_INBOX.<identity>.<uuid>`. The ACL grant
+narrows from `_INBOX.>` to `_INBOX.<identity>.>` — the identity can only see its own inboxes.
+
+The fix requires no changes to `_stream_gen()` itself, no changes to the nats-py version, and no
+protocol change on the worker side. Lyra's `roxabi_nats.connect.nats_connect` already accepts
+`**extra` which is forwarded to nats-py `connect()` (ADR-045), so `inbox_prefix` flows through
+without SDK changes.
+
+The vulnerability is systemic across all identities. A hub-only fix leaves every other identity
+with bus-wide inbox visibility. The correct scope is system-wide: every identity that holds
+`_INBOX.>` today receives a scoped prefix, and the bus-wide grant is retired.
+
+## Options Considered
+
+### Option A: Switch LLM streaming to JetStream ordered consumers
+
+Replace the manual inbox + subscribe streaming path in `NatsLlmDriver._stream_gen()` with a
+JetStream push consumer using `deliver_subject` scoped to a stream. The worker publishes chunks
+to a stream; the hub consumes via an ordered push consumer.
+
+- **Pros:** Adds replay, persistence, and back-pressure to LLM streaming. Inbox ACL is
+  irrelevant to JetStream consumers; `_INBOX.>` can eventually be dropped for the LLM path.
+- **Cons:** Does not fix the ACL hole for non-LLM inbox users (readiness probes, TTS, future
+  request/reply domains). Requires redesigning the llm-worker reply protocol — worker must publish
+  to a named stream subject instead of replying to the inbox. Requires contract ADR for the
+  streaming domain. Large scope; does not close #715 in the near term. Live token streaming is
+  preserved only if push-consumer delivery latency is acceptable.
+
+### Option B: Per-identity inbox prefix (bus-wide) — recommended
+
+Assign each NATS identity a distinct `inbox_prefix` at connect time. The `roxabi_nats.nats_connect`
+wrapper adds `inbox_prefix` as a per-identity parameter, derived from the identity name. ACL grants
+narrow from `_INBOX.>` to `_INBOX.<identity>.>`. No code changes below `nats_connect` call sites.
+
+- **Pros:** Closes the ACL gap for every identity in one consistent change. No protocol change on
+  worker side; no change to streaming logic. Enforcement is at connect time — difficult to regress.
+  Aligns with ADR-046 Invariant 2 (IDENTITIES is SSoT) by making inbox prefix part of each
+  identity's connect contract. JetStream migration (Option A) remains orthogonal and can be
+  pursued separately.
+- **Cons:** Every identity's `nats_connect` call site must supply the correct prefix, and
+  `acl-matrix.json` must be updated to match. Cross-satellite change: voiceCLI and imageCLI
+  connect sites require a PR per satellite (satellite-owned workers, ADR-047 rule 4).
+
+### Option C: Hub-local inbox prefix only
+
+Apply `inbox_prefix="_INBOX.hub"` only to the hub's connect call; leave other identities with
+`_INBOX.>` for now.
+
+- **Pros:** Minimal blast radius; closes the most critical vector (hub seed has the broadest
+  implicit trust).
+- **Cons:** Leaves all satellite identities with bus-wide inbox visibility. A leaked adapter or
+  worker seed remains a bus-wide wiretap. Inconsistent model — future identities have no clear
+  convention to follow. Defers systemic fix to unknown later date.
+
+## Decision
+
+**Option B — per-identity inbox prefix, applied system-wide.**
+
+### Rule
+
+Every NATS identity connecting through `roxabi_nats.nats_connect` MUST supply `inbox_prefix`
+equal to `_INBOX.<identity-name>`. Example: hub identity connects with
+`inbox_prefix="_INBOX.hub"`.
+
+`acl-matrix.json` subscribe grants are updated to replace `_INBOX.>` with
+`_INBOX.<identity>.>` for every identity. The bus-wide `_INBOX.>` grant is retired from all
+roles.
+
+### Scope
+
+All identities currently holding `_INBOX.>` in `acl-matrix.json`:
+
+| Identity | Current grant | Narrowed grant |
+|---|---|---|
+| `hub` | `_INBOX.>` | `_INBOX.hub.>` |
+| `telegram-adapter` | `_INBOX.>` | `_INBOX.telegram-adapter.>` |
+| `discord-adapter` | `_INBOX.>` | `_INBOX.discord-adapter.>` |
+| `tts-adapter` | `_INBOX.>` | `_INBOX.tts-adapter.>` |
+| `stt-adapter` | `_INBOX.>` | `_INBOX.stt-adapter.>` |
+| `voice-tts` | `_INBOX.>` (publish) | `_INBOX.voice-tts.>` (publish) |
+| `voice-stt` | `_INBOX.>` (publish) | `_INBOX.voice-stt.>` (publish) |
+| `image-worker` | `_INBOX.>` + `_inbox.>` (publish) | `_INBOX.image-worker.>` + `_inbox.image-worker.>` (publish) |
+
+The lowercase `_inbox.>` variants (tts-adapter, stt-adapter, image-worker) follow the same
+narrowing pattern.
+
+### SDK contract (ADR-045 boundary)
+
+`roxabi_nats.nats_connect` is the canonical connect entry point for all lyra identities. It
+already forwards `**extra` to `nats.connect()`. No SDK code change is required; the
+`inbox_prefix` kwarg is a caller-supplied parameter. Each call site passes its identity-specific
+prefix. The SDK README MUST document `inbox_prefix` as a required-by-convention parameter for
+any identity that holds an inbox ACL grant.
+
+### Relation to ADR-046 (nkey provisioning)
+
+ADR-046 Invariant 2 establishes IDENTITIES in `gen-nkeys.sh` as the SSoT. The per-identity
+inbox prefix is part of each identity's configuration contract alongside its publish/subscribe
+subjects. Operators regenerating `auth.conf` via `--regen-authconf` MUST use the narrowed
+`_INBOX.<identity>.>` subjects, not `_INBOX.>`. The `lyra ops verify` command (ADR-046 Invariant
+5) SHOULD flag any `_INBOX.>` ACL remaining in a generated `auth.conf` as a drift error.
+
+### nats-py behavior note
+
+`nats.aio.client.Client.new_inbox()` returns `f"{self._inbox_prefix}.{NUID().next()}"`. Setting
+`inbox_prefix="_INBOX.hub"` at connect time makes every ephemeral inbox — including those created
+by `nc.request()` for single-reply uses — land under `_INBOX.hub.*`. The hub's complete-path
+(`NatsLlmDriver.complete()` via `nc.request()`) and stream-path (`_stream_gen()` via
+`new_inbox()` + `subscribe()`) are both covered by the same ACL grant. No code change to either
+path is required.
+
+### Satellite identity connect sites (ADR-047 boundary)
+
+Satellite workers (voiceCLI, imageCLI) own their connect call sites in their designated adapter
+modules. Each satellite MUST update its `nats_connect` call to supply the correct
+`inbox_prefix`. This requires a per-satellite PR:
+
+- `voicecli/src/voicecli/nats/stt_adapter.py` → `inbox_prefix="_INBOX.voice-stt"`
+- `voicecli/src/voicecli/nats/tts_adapter.py` → `inbox_prefix="_INBOX.voice-tts"`
+- `imagecli/src/imagecli/nats/adapter.py` → `inbox_prefix="_INBOX.image-worker"`
+
+Satellite PRs and the lyra `acl-matrix.json` update MUST land atomically per identity (coordinated
+deploy), or the narrowed ACL must be deployed after the connect-site update to avoid a window
+where the identity connects with the new prefix but the old ACL denies its inbox subscribe.
+
+### Future identities
+
+Any new identity added to IDENTITIES (ADR-046 Invariant 2) MUST include `inbox_prefix` in its
+connect call from the start. The `_INBOX.>` wildcard is not available for new identities.
+
+## Consequences
+
+### Positive
+
+- A leaked seed for any identity can no longer be used to subscribe to other identities'
+  request-reply traffic. The blast radius of a credential compromise is bounded to the
+  compromised identity's own inbox namespace.
+- The pattern is enforced at connect time, not at ACL generation time. An identity that
+  connects without `inbox_prefix` retains whatever prefix nats-py defaults to, which will fail
+  the narrowed ACL — misconfiguration surfaces immediately as an auth error, not a silent
+  permission escalation.
+- Aligns with ADR-046 Invariant 4 (fail-fast on misconfiguration rather than silent degradation).
+- No protocol changes on worker side; no streaming UX regression.
+- JetStream LLM streaming migration (Option A) remains a valid, independently-scoped future
+  improvement. This ADR does not block it.
+
+### Negative
+
+- Cross-satellite coordination required: voiceCLI and imageCLI connect sites must be updated
+  in sync with `acl-matrix.json` and `auth.conf` rollout. Requires per-satellite PRs tracked in
+  separate issues.
+- Any connect site that omits `inbox_prefix` will break when the narrowed ACL is live.
+  Rollout order must be: (1) update connect site → (2) update `acl-matrix.json` →
+  (3) regenerate `auth.conf` → (4) reload NATS.
+- The lowercase `_inbox.>` variant (nats-py historically emitted lowercase subjects on some
+  versions) requires a matching `_inbox.<identity>.>` grant until all deployed nats-py versions
+  are confirmed to use uppercase. tts-adapter, stt-adapter, and image-worker entries in
+  `acl-matrix.json` currently include the lowercase variant defensively; this pattern continues
+  with the scoped prefix.
+
+### Neutral
+
+- `NatsLlmDriver._stream_gen()` is unchanged. The multi-chunk streaming mechanism is not
+  affected; only the inbox subject prefix narrows.
+- The `monitor` identity has no inbox grant today and is not affected by this ADR.
+- Adapter inbox tightening (formerly an implicit follow-up noted in `acl-matrix.json` and spec `706` footnote `[^inbox-fix]`) is now scoped into this ADR.
+
+## Relation to other ADRs
+
+- **ADR-045** — roxabi-nats SDK extraction. `nats_connect` already accepts `**extra`; no SDK
+  change required. SDK README update needed to document `inbox_prefix` convention.
+- **ADR-046** — nkey provisioning is declarative. Narrowed `_INBOX.<identity>.>` subjects must
+  appear in the IDENTITIES manifest and be rendered into `auth.conf` by `--regen-authconf`.
+  `lyra ops verify` (Invariant 5) SHOULD flag retained `_INBOX.>` as a drift error.
+- **ADR-047** — NATS connector ownership. Satellite workers own their connect call sites.
+  Per-satellite PRs required for voiceCLI and imageCLI. Identity-specific prefix is part of each
+  adapter module's configuration contract.
+- **ADR-035** — NATS subject naming convention. `_INBOX.*` subjects are nats-py internal; they
+  do not follow the `lyra.<domain>.<action>` convention but are still ACL-governed.
+
+## References
+
+- Issue: [#715](https://github.com/Roxabi/lyra/issues/715) (NATS inbox ACL hardening — system-wide, per ADR-051)
+- Spec: `artifacts/specs/706-per-role-nkeys-acls-spec.mdx`
+- ACL matrix: `deploy/nats/acl-matrix.json`
+- nats-py source: `nats.aio.client.Client.new_inbox()` + `Client._inbox_prefix`

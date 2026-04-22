@@ -21,6 +21,7 @@ from lyra.core.cli.cli_pool import _ProcessEntry
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
 from lyra.core.commands.command_router import CommandRouter
+from lyra.core.config import PoolConfig, RouterConfig
 from lyra.core.hub import Hub
 from lyra.core.messaging.message import (
     Attachment,
@@ -221,8 +222,9 @@ def make_router(
     loader.load("echo")
     effective = enabled if enabled is not None else ["echo"]
     _patterns = patterns if patterns is not None else {"bare_url": True}
+    router_config = RouterConfig(patterns=_patterns)
     return CommandRouter(
-        command_loader=loader, enabled_plugins=effective, patterns=_patterns
+        command_loader=loader, enabled_plugins=effective, config=router_config
     )
 
 
@@ -601,8 +603,7 @@ def pool(ctx_mock: MagicMock) -> Pool:
         pool_id="test:main:chat:1",
         agent_name="test_agent",
         ctx=ctx_mock,
-        turn_timeout=60.0,
-        debounce_ms=0,
+        config=PoolConfig(turn_timeout=60.0, debounce_ms=0),
     )
 
 
@@ -613,8 +614,7 @@ def fast_pool(ctx_mock: MagicMock) -> Pool:
         pool_id="test:main:chat:1",
         agent_name="test_agent",
         ctx=ctx_mock,
-        turn_timeout=0.05,
-        debounce_ms=0,
+        config=PoolConfig(turn_timeout=0.05, debounce_ms=0),
     )
 
 

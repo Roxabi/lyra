@@ -20,6 +20,7 @@ from ..auth.trust import TrustLevel
 from ..circuit_breaker import CircuitRegistry
 from ..commands.command_loader import CommandLoader
 from ..commands.command_router import CommandRouter
+from ..config import RouterConfig
 from ..messaging.message import InboundMessage, Response
 from ..messaging.messages import MessageManager
 from ..pool import Pool
@@ -150,14 +151,21 @@ class AgentBase(ABC, SessionManager):
             self._rebuild_command_router()
 
     def _rebuild_command_router(self) -> None:
+        router_kwargs = self._build_router_kwargs()
+        router_config = RouterConfig(
+            patterns=self.config.patterns,
+            workspaces=router_kwargs.get("workspaces", {}),
+            on_debounce_change=router_kwargs.get("on_debounce_change"),
+            on_cancel_change=router_kwargs.get("on_cancel_change"),
+            session_driver=router_kwargs.get("session_driver"),
+        )
         self.command_router = CommandRouter(
             self._command_loader,
             self._command_mgr.effective_commands,
+            config=router_config,
             circuit_registry=self._circuit_registry,
             msg_manager=self._msg_manager,
             smart_routing_decorator=self._smart_routing_decorator,
-            patterns=self.config.patterns,
-            **self._build_router_kwargs(),
         )
 
     def _build_router_kwargs(self) -> dict:

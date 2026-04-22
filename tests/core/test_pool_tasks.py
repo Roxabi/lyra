@@ -14,7 +14,7 @@ import pytest
 
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from tests.conftest import yield_once
+from tests.conftest import TIMEOUT_IO, yield_once
 from tests.core.conftest import FastAgent, SlowAgent, _drain, make_msg
 
 # ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ class TestPoolTimeout:
         msg = make_msg()
 
         fast_pool.submit(msg)
-        await _drain(fast_pool, timeout=2.0)
+        await _drain(fast_pool, timeout=TIMEOUT_IO)
 
         ctx_mock.dispatch_response.assert_awaited_once()
         _args = ctx_mock.dispatch_response.call_args
@@ -214,7 +214,7 @@ class TestPoolTimeout:
 
         with caplog.at_level(logging.ERROR, logger="lyra.core.pool_processor"):
             fast_pool.submit(msg)
-            await _drain(fast_pool, timeout=2.0)
+            await _drain(fast_pool, timeout=TIMEOUT_IO)
 
         assert any("backend process died" in r.message for r in caplog.records)
 
@@ -229,7 +229,7 @@ class TestPoolTimeout:
 
         with caplog.at_level(logging.ERROR, logger="lyra.core.pool_processor"):
             fast_pool.submit(msg)
-            await _drain(fast_pool, timeout=2.0)
+            await _drain(fast_pool, timeout=TIMEOUT_IO)
 
         assert not any("backend process died" in r.message for r in caplog.records)
 
@@ -244,7 +244,7 @@ class TestPoolTimeout:
         initial_history_len = len(fast_pool.history)
 
         fast_pool.submit(msg)
-        await _drain(fast_pool, timeout=2.0)
+        await _drain(fast_pool, timeout=TIMEOUT_IO)
 
         assert len(fast_pool.history) == initial_history_len
 

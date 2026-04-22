@@ -11,6 +11,7 @@ import pytest
 
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
+from tests.conftest import TIMEOUT_SLOW
 from tests.core.conftest import (
     RecordingAgent,
     SlowAgent,
@@ -165,7 +166,7 @@ class TestPoolCancelInFlight:
         # Submit second message while agent is in-flight → cancel + re-dispatch.
         pool.submit(make_debouncer_msg("actually explain Y"))
 
-        await _drain(pool, timeout=5.0)
+        await _drain(pool, timeout=TIMEOUT_SLOW)
 
         # Agent called twice: first cancelled, second with combined.
         assert call_count == 2

@@ -70,6 +70,27 @@ class TestFakeTts:
 
         assert tts.called is True  # Call was recorded before raise
 
+    @pytest.mark.asyncio
+    async def test_fake_tts_handles_empty_text(self) -> None:
+        """Should handle empty text gracefully."""
+        tts = FakeTts()
+
+        result = await tts.synthesize("")
+
+        assert tts.called is True
+        assert tts.last_text == ""
+        assert result.audio_bytes == tts._audio_bytes
+
+    @pytest.mark.asyncio
+    async def test_fake_tts_handles_none_voice(self) -> None:
+        """Should handle None voice gracefully."""
+        tts = FakeTts()
+
+        result = await tts.synthesize("Test text", voice=None)
+
+        assert tts.last_voice == ""
+        assert result.audio_bytes == tts._audio_bytes
+
 
 class TestFakeStt:
     """Tests for FakeStt driver."""
@@ -101,6 +122,34 @@ class TestFakeStt:
 
         assert stt.called is True
         assert stt.last_path == "/path/to/audio.wav"
+
+    @pytest.mark.asyncio
+    async def test_fake_stt_records_audio_bytes(self) -> None:
+        """Should record audio bytes from file path."""
+        import tempfile
+
+        stt = FakeStt()
+
+        # Create a temp file with fake audio bytes
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(b"fake audio data here")
+            temp_path = f.name
+
+        try:
+            await stt.transcribe(temp_path)
+
+            assert stt.last_audio == b"fake audio data here"
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_fake_stt_handles_missing_file(self) -> None:
+        """Should handle missing file gracefully (empty bytes)."""
+        stt = FakeStt()
+
+        await stt.transcribe("/nonexistent/audio.wav")
+
+        assert stt.last_audio == b""  # Graceful fallback
 
     @pytest.mark.asyncio
     async def test_fake_stt_raises_when_configured(self) -> None:

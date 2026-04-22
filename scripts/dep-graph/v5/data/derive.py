@@ -93,7 +93,10 @@ def _bfs(
     """BFS over blocking ∪ blocked_by edges.
 
     If restrict_to_repo is not None, only follows edges into nodes whose
-    repo matches (used for shared_subtree Q-local closure).
+    repo matches (used for shared_subtree Q-local closure). The caller
+    must ensure every seed key already satisfies that constraint — the
+    restrict filter applies to destinations discovered during traversal,
+    not to the initial seed.
     """
     closure = set(seed)
     stack = list(seed)

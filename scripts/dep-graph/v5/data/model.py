@@ -115,6 +115,9 @@ class GraphData:
     # Rule: tree(P) ∪ ⋃_Q shared_subtree(Q, P).
     #   tree(P): full BFS closure (blocking ∪ blocked_by) seeded by open P issues.
     #   shared_subtree(Q, P): Q-local BFS from Q ∩ tree(P) — pulls sibling deps.
+    # Note: this is a strict superset of the pre-#864 rule (open-in-P + forward
+    # cascade + 1-hop backward). Single-repo graphs may now show previously-
+    # hidden closed-blocker chains that were cut off at the 1-hop boundary.
     visible: set[str] = field(default_factory=set)
     # Topological depth (counts all blockers, open + closed).
     depth_by_key: dict[str, int] = field(default_factory=dict)

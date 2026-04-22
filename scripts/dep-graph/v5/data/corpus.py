@@ -10,6 +10,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from scripts.corpus.schema import connect as _connect_corpus
+
 DEFAULT_DB = Path.home() / ".roxabi" / "corpus.db"
 
 LANE_LABEL_PREFIX = "graph:lane/"
@@ -33,7 +35,10 @@ def load_issues(db_path: Path | None = None) -> dict[str, dict[str, Any]]:
             f"corpus.db not found at {resolved}. Run `make corpus-sync` to populate it."
         )
 
-    conn = sqlite3.connect(resolved)
+    # Use schema.connect for the single source of truth on connection pragmas
+    # (foreign_keys = ON). The adapter is read-only today; using the same
+    # connection contract prevents pragma drift if a write path is ever added.
+    conn = _connect_corpus(resolved)
     try:
         labels_by_key = _fetch_labels(conn)
         blocking_by_key, blocked_by_key = _fetch_edges(conn)
@@ -132,7 +137,10 @@ def _fetch_issues(
             is_stub,
         ) = row
 
-        labels = labels_by_key.get(key, [])
+        # Copy the label list so downstream mutation of the projected dict's
+        # `labels` cannot alias back into labels_by_key (which feeds derived
+        # fields below).
+        labels = list(labels_by_key.get(key, []))
         lane_label, size = _project_lane_size(labels)
 
         result[key] = {

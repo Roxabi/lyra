@@ -68,7 +68,10 @@ def load(
 def load_from_dicts(layout: dict[str, Any], gh: dict[str, Any]) -> GraphData:
     lanes = [_parse_lane(raw) for raw in layout["lanes"]]
     issues = gh.get("issues", {})
-    primary_repo = layout["meta"]["repos"][0]
+    # Phase 3 will promote PRIMARY_REPO to a parameter (toolbar dropdown).
+    # Until then this constant is the single flip point; layout["meta"]["repos"]
+    # stays in the schema for Phase 3 to enumerate available projects.
+    primary_repo = PRIMARY_REPO
     ekeys = epic_keys(layout["lanes"], primary_repo)
     depth = compute_depth(issues)
     visible = compute_visible(issues, primary_repo)

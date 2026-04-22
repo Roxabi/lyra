@@ -108,6 +108,7 @@ class TestLoadCorpusContract:
         assert result.issues == {}
         assert result.visible == set()
         assert result.total == 0
+        assert result.matrix == {}
 
     def test_load_seeded_corpus_visible_contains_open_lyra_issue(
         self, tmp_path: Path
@@ -226,10 +227,17 @@ class TestLoadFromDicts:
         # issue 3 blocked by 2 → depth 2
         assert data.depth_by_key.get("Roxabi/lyra#3") == 2
 
-    def test_missing_repos_key_raises(self):
-        bad_layout = {"meta": {}, "lanes": []}
-        with pytest.raises((KeyError, IndexError)):
-            load_from_dicts(bad_layout, {"issues": {}})
+    def test_load_uses_primary_repo_constant_not_meta_repos(self):
+        # load_from_dicts no longer reads layout.meta.repos — it uses the
+        # PRIMARY_REPO module constant. meta.repos stays in the schema for
+        # Phase 3's toolbar dropdown to enumerate available projects.
+        from v5.data.load import PRIMARY_REPO
+
+        layout_without_repos = {"meta": {}, "lanes": []}
+        result = load_from_dicts(layout_without_repos, {"issues": {}})
+        # Visibility computed against PRIMARY_REPO; empty-issues corpus → empty set.
+        assert result.visible == set()
+        assert PRIMARY_REPO == "Roxabi/lyra"
 
     def test_missing_lanes_key_raises(self):
         bad_layout = {"meta": {"repos": ["Roxabi/lyra"]}}

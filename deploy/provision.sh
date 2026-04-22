@@ -110,8 +110,11 @@ if ! has_sufficient_subids /etc/subuid || ! has_sufficient_subids /etc/subgid; t
         podman system migrate
     fi
   else
+    # No prior rootless state detected — migrate is safe to run loud so real
+    # failures (e.g. broken graph driver, missing newuidmap) surface under
+    # `set -euo pipefail` instead of being silently swallowed.
     sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-      podman system migrate 2>/dev/null || true
+      podman system migrate
   fi
   info "subuid/subgid added for $ADMIN_USER (≥65536 IDs)."
 else

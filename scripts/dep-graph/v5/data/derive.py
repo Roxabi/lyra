@@ -56,33 +56,59 @@ def status_of(iss: dict[str, Any], issues: dict[str, dict[str, Any]]) -> str:
 
 
 def compute_visible(issues: dict[str, dict[str, Any]], primary_repo: str) -> set[str]:
-    """Visibility set per project-level rule.
+    """Visibility = tree(P) ∪ ⋃_{Q != P} shared_subtree(Q, P).
 
-    · Seed: all open items in primary repo.
-    · Forward cascade (blocking), any state, any repo.
-    · 1-hop backward (blocked_by) from anything already visible.
+    tree(P): seed = open issues in P; BFS closure over blocking ∪ blocked_by,
+             any state, any repo (no hop cap).
+    shared_subtree(Q, P): for each repo Q != P, BFS closure within Q of
+             (Q ∩ tree(P)) over Q-local edges (blocking ∪ blocked_by).
     """
-    visible: set[str] = {
+    seed = {
         k
         for k, i in issues.items()
         if i.get("repo") == primary_repo and i.get("state") == "open"
     }
+    tree = _bfs(issues, seed, restrict_to_repo=None)
 
-    stack = list(visible)
-    while stack:
-        for ref in issues.get(stack.pop(), {}).get("blocking", []):
-            rk = ref_key(ref)
-            if rk in issues and rk not in visible:
-                visible.add(rk)
-                stack.append(rk)
-
-    for k in list(visible):
-        for ref in issues.get(k, {}).get("blocked_by", []):
-            rk = ref_key(ref)
-            if rk in issues:
-                visible.add(rk)
-
+    visible = set(tree)
+    other_repos = {
+        i.get("repo")
+        for i in issues.values()
+        if i.get("repo") and i.get("repo") != primary_repo
+    }
+    for q in other_repos:
+        shared = {k for k in tree if issues[k].get("repo") == q}
+        if not shared:
+            continue
+        visible |= _bfs(issues, shared, restrict_to_repo=q)
     return visible
+
+
+def _bfs(
+    issues: dict[str, dict[str, Any]],
+    seed: set[str],
+    *,
+    restrict_to_repo: str | None,
+) -> set[str]:
+    """BFS over blocking ∪ blocked_by edges.
+
+    If restrict_to_repo is not None, only follows edges into nodes whose
+    repo matches (used for shared_subtree Q-local closure).
+    """
+    closure = set(seed)
+    stack = list(seed)
+    while stack:
+        current = issues.get(stack.pop(), {})
+        for field in ("blocking", "blocked_by"):
+            for ref in current.get(field, []):
+                rk = ref_key(ref)
+                if rk not in issues or rk in closure:
+                    continue
+                if restrict_to_repo is not None and issues[rk].get("repo") != restrict_to_repo:
+                    continue
+                closure.add(rk)
+                stack.append(rk)
+    return closure
 
 
 def epic_keys(layout_lanes: list[dict[str, Any]], primary_repo: str) -> set[str]:

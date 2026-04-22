@@ -24,6 +24,7 @@ import typer
 
 from lyra.cli_agent import agent_app  # noqa: F401 — re-exported for tests
 from lyra.cli_bot import bot_app
+from lyra.cli_ops import ops_app
 from lyra.cli_setup import setup_app
 from lyra.cli_voice_smoke import voice_smoke_app
 
@@ -57,6 +58,7 @@ lyra_app.add_typer(config_app, name="config")
 lyra_app.add_typer(bot_app, name="bot")
 lyra_app.add_typer(setup_app, name="setup")
 lyra_app.add_typer(voice_smoke_app, name="voice-smoke")
+lyra_app.add_typer(ops_app, name="ops")
 
 hub_app = typer.Typer(name="hub", help="Run standalone Hub process (requires NATS).")
 lyra_app.add_typer(hub_app, name="hub")

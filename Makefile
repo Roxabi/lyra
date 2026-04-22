@@ -31,6 +31,7 @@ endif
 
 DEPLOY_HOST := $(shell grep '^DEPLOY_HOST=' .env 2>/dev/null | cut -d= -f2)
 DEPLOY_DIR := $(shell grep '^DEPLOY_DIR=' .env 2>/dev/null | cut -d= -f2)
+LYRA_SUPERVISORCTL_PATH := $(shell grep '^LYRA_SUPERVISORCTL_PATH=' .env 2>/dev/null | cut -d= -f2)
 
 define require_machine1
 	@[ -n "$(DEPLOY_HOST)" ] || { echo "Error: DEPLOY_HOST not set in .env"; exit 1; }
@@ -55,18 +56,31 @@ push:                  ## save image and load on $(DEPLOY_HOST) via ssh
 
 LYRA_UNITS := lyra-hub lyra-telegram lyra-discord
 
-# $(call lyra_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl/journalctl.
+# $(call lyra_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl or supervisorctl.
+# Uses supervisorctl if LYRA_SUPERVISORCTL_PATH is set, else systemctl (default install).
 # Defaults (empty SVC_CMD) to `start`. `logs`/`errors` tail the first unit.
 define lyra_sctl
-	@case "$(SVC_CMD)" in \
-		reload)         systemctl --user restart $(1) ;; \
-		start|"")       systemctl --user start   $(1) ;; \
-		stop)           systemctl --user stop    $(1) ;; \
-		status)         systemctl --user status  $(1) || true ;; \
-		logs)           journalctl --user -u $(firstword $(1)) -f ;; \
-		errlogs|errors) journalctl --user -u $(firstword $(1)) -f -p err ;; \
-		*) echo "Unknown action: $(SVC_CMD). Use: start|stop|status|reload|logs|errors"; exit 1 ;; \
-	esac
+	@if [ -n "$(LYRA_SUPERVISORCTL_PATH)" ]; then \
+		case "$(SVC_CMD)" in \
+			reload|"")      $(LYRA_SUPERVISORCTL_PATH) restart $(1) ;; \
+			start)          $(LYRA_SUPERVISORCTL_PATH) start $(1) ;; \
+			stop)           $(LYRA_SUPERVISORCTL_PATH) stop $(1) ;; \
+			status)         $(LYRA_SUPERVISORCTL_PATH) status $(1) || true ;; \
+			logs)           $(LYRA_SUPERVISORCTL_PATH) tail -f $(firstword $(1)) ;; \
+			errlogs|errors) $(LYRA_SUPERVISORCTL_PATH) tail -f $(firstword $(1)) stderr ;; \
+			*) echo "Unknown action: $(SVC_CMD). Use: start|stop|status|reload|logs|errors"; exit 1 ;; \
+		esac; \
+	else \
+		case "$(SVC_CMD)" in \
+			reload)         systemctl --user restart $(1) ;; \
+			start|"")       systemctl --user start   $(1) ;; \
+			stop)           systemctl --user stop    $(1) ;; \
+			status)         systemctl --user status  $(1) || true ;; \
+			logs)           journalctl --user -u $(firstword $(1)) -f ;; \
+			errlogs|errors) journalctl --user -u $(firstword $(1)) -f -p err ;; \
+			*) echo "Unknown action: $(SVC_CMD). Use: start|stop|status|reload|logs|errors"; exit 1 ;; \
+		esac; \
+	fi
 endef
 
 lyra:

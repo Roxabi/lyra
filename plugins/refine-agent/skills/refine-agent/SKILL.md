@@ -34,7 +34,7 @@ changes, and applies them via `lyra agent patch`.
 lyra agent list
 ```
 
-Ask user (AskUserQuestion): "Which agent would you like to refine?" with agent names as
+Ask user via DP(A): "Which agent would you like to refine?" with agent names as
 **bold** options.
 
 Verify α exists:
@@ -83,7 +83,7 @@ Agent: {α}
   Plugins:     {enabled plugins or "none"}
 ```
 
-Ask user (AskUserQuestion): "What would you like to change?"
+Ask user via DP(A): "What would you like to change?"
 Options: **persona**, **voice (TTS/STT)**, **passthroughs**, **model**, **other field**,
 **done**.
 

@@ -2,7 +2,7 @@
 name: lyra-debug
 description: 'Debug Lyra on production — check status, pull logs, diagnose root cause, suggest fix. Triggers: "debug lyra" | "lyra debug" | "check lyra" | "lyra status" | "lyra down" | "why is lyra not responding".'
 version: 0.1.0
-allowed-tools: Bash, Read, Glob, Grep, ToolSearch, AskUserQuestion
+allowed-tools: Bash, Read, Glob, Grep
 ---
 
 # Lyra Debug
@@ -105,7 +105,7 @@ Present diagnosis as:
 
 ## Phase 5 — Remediation
 
-Present fix options via AskUserQuestion. Common fixes:
+Present fix options via DP(A) (load `${CLAUDE_PLUGIN_ROOT}/../shared/references/decision-presentation.md`). Common fixes:
 
 | Fix | Command | When |
 |-----|---------|------|

@@ -24,6 +24,7 @@ class HubConfig:
     rate_limit: int = 20
     rate_window: int = 60
     pool_ttl: float = 604800.0  # 7 days
+    max_pools: int = 500  # hard cap on pool count
     debounce_ms: int = 0
     cancel_on_new_message: bool = False
     turn_timeout: float | None = None

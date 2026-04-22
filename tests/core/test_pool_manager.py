@@ -285,3 +285,165 @@ class TestEvictionSessionPreserve:
         await hub._pool_manager.flush_pool("pool-1")
 
         cli_pool._sync_evict_entry.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# T5: Thread Safety — Concurrent Mutation
+# ---------------------------------------------------------------------------
+
+
+class TestLockSafetyConcurrentMutation:
+    """Concurrent pop + iterate must not raise RuntimeError (OrderedDict safety)."""
+
+    def test_concurrent_pop_and_iterate_no_runtime_error(self) -> None:
+        """Spawn 100 threads: 50 iterating, 50 popping — no RuntimeError."""
+        import threading
+
+        hub = _make_hub()
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        # Create initial pools
+        for i in range(100):
+            hub.get_or_create_pool(f"pool-{i}", "test-agent")
+
+        errors: list[Exception] = []
+        barrier = threading.Barrier(100)
+
+        def iterate_pools() -> None:
+            barrier.wait()
+            try:
+                # This would raise RuntimeError if lock doesn't protect iteration
+                for _ in hub._pool_manager.pools.items():
+                    pass
+            except RuntimeError as e:
+                errors.append(e)
+
+        def pop_pools() -> None:
+            barrier.wait()
+            try:
+                # Pop from various positions
+                for i in range(50, 100):
+                    hub._pool_manager._pools.pop(f"pool-{i}", None)
+            except RuntimeError as e:
+                errors.append(e)
+
+        threads = [
+            threading.Thread(target=iterate_pools) for _ in range(50)
+        ] + [threading.Thread(target=pop_pools) for _ in range(50)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0, f"RuntimeError(s) raised: {errors}"
+        # Final count should be consistent (50 remaining after pops)
+        assert len(hub._pool_manager.pools) == 50
+
+
+# ---------------------------------------------------------------------------
+# T6: LRU Eviction at Capacity
+# ---------------------------------------------------------------------------
+
+
+class TestLruEvictionAtCapacity:
+    """Fill-to-cap + create triggers LRU eviction of oldest pool."""
+
+    def test_evicts_oldest_at_capacity(self) -> None:
+        """Create A, B, C; touch B; create D → evict A (oldest)."""
+        hub = Hub(max_pools=3)
+        hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        # Create pools A, B, C in order (A is oldest)
+        hub.get_or_create_pool("pool-A", "test-agent")
+        hub.get_or_create_pool("pool-B", "test-agent")
+        hub.get_or_create_pool("pool-C", "test-agent")
+        assert len(hub._pool_manager._pools) == 3
+
+        # Touch B to make it most recent (move to end of OrderedDict)
+        hub.get_or_create_pool("pool-B", "test-agent")
+        # OrderedDict order now: A (oldest), C, B (newest)
+
+        # Create D → should evict A (leftmost/oldest)
+        hub.get_or_create_pool("pool-D", "test-agent")
+
+        assert "pool-A" not in hub._pool_manager._pools, "A should be evicted"
+        assert "pool-B" in hub._pool_manager._pools
+        assert "pool-C" in hub._pool_manager._pools
+        assert "pool-D" in hub._pool_manager._pools
+        assert len(hub._pool_manager._pools) == 3
+
+    def test_lru_order_preserved_after_touch(self) -> None:
+        """Verify OrderedDict order after touches."""
+        hub = Hub(max_pools=5)
+        hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
+
+        # Create A, B, C
+        hub.get_or_create_pool("pool-A", "test-agent")
+        hub.get_or_create_pool("pool-B", "test-agent")
+        hub.get_or_create_pool("pool-C", "test-agent")
+
+        # Touch A → moves to end
+        hub.get_or_create_pool("pool-A", "test-agent")
+
+        # Order should now be: B, C, A
+        keys = list(hub._pool_manager._pools.keys())
+        assert keys == ["pool-B", "pool-C", "pool-A"]
+
+
+# ---------------------------------------------------------------------------
+# T7: Max Pools Never Exceeded
+# ---------------------------------------------------------------------------
+
+
+class TestMaxPoolsNeverExceeded:
+    """Pool count never exceeds max_pools under high load."""
+
+    def test_high_load_never_exceeds_max_pools(self) -> None:
+        """Spawn 100 threads creating pools, assert len(pools) <= 10 always."""
+        import threading
+
+        hub = Hub(max_pools=10)
+        hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        max_observed = 0
+        lock = threading.Lock()
+        barrier = threading.Barrier(100)
+
+        def create_pool(i: int) -> None:
+            nonlocal max_observed
+            barrier.wait()
+            hub.get_or_create_pool(f"pool-{i}", "test-agent")
+            with lock:
+                current = len(hub._pool_manager._pools)
+                if current > max_observed:
+                    max_observed = current
+
+        threads = [threading.Thread(target=create_pool, args=(i,)) for i in range(100)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert max_observed <= 10, f"max_pools exceeded: {max_observed} > 10"
+        assert len(hub._pool_manager._pools) <= 10
+
+    def test_sequential_creation_respects_cap(self) -> None:
+        """Sequential creation also respects max_pools."""
+        hub = Hub(max_pools=3)
+        hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        for i in range(100):
+            hub.get_or_create_pool(f"pool-{i}", "test-agent")
+            assert len(hub._pool_manager._pools) <= 3
+
+        # Only 3 most recent pools remain (97, 98, 99 after LRU evictions)
+        assert len(hub._pool_manager._pools) == 3

@@ -96,6 +96,7 @@ class Hub(
         platform_queue_maxsize: int | None = None,
         queue_depth_threshold: int | None = None,
         max_merged_chars: int | None = None,
+        max_pools: int | None = None,
     ) -> None:
         base_cfg: HubConfig = config if config is not None else HubConfig()
         # Merge backward-compat overrides
@@ -146,7 +147,10 @@ class Hub(
                 if max_merged_chars is not None
                 else base_cfg.max_merged_chars
             ),
+            max_pools=max_pools if max_pools is not None else base_cfg.max_pools,
         )
+        if cfg.max_pools <= 0:
+            raise ValueError(f"max_pools must be > 0, got {cfg.max_pools}")
         self._platform_queue_maxsize = cfg.platform_queue_maxsize
         self.inbound_bus: Bus[InboundMessage] = inbound_bus or LocalBus(
             name="inbound",
@@ -176,6 +180,7 @@ class Hub(
         self._max_sdk_history = cfg.max_sdk_history
         self._safe_dispatch_timeout = cfg.safe_dispatch_timeout
         self._max_merged_chars = cfg.max_merged_chars
+        self._max_pools = cfg.max_pools
         self.cli_pool: CliPool | None = None
         self._event_bus: PipelineEventBus | None = event_bus
         self._pool_config = PoolConfig(

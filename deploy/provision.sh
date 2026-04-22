@@ -110,6 +110,9 @@ next_free_subid_start() {
     error "Cannot read $file (check permissions)."
   fi
   hwm=$(awk -F: '{print $2 + $3}' "$file" 2>/dev/null | sort -n | tail -1)
+  # Guard against garbage lines (truncated write, manual edit) — non-integer
+  # output from awk would break the arithmetic below or bypass the floor check.
+  [[ "$hwm" =~ ^[0-9]+$ ]] || hwm=""
   if [[ -n "$hwm" && "$hwm" -gt 65535 ]]; then
     echo "$hwm"
   else

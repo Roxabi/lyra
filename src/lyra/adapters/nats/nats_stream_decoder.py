@@ -18,18 +18,14 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, AsyncGenerator
 
+from lyra.core.exceptions import StreamChunkTimeout
+
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import RenderEvent
 
 log = logging.getLogger(__name__)
 
 _CHUNK_TIMEOUT_SECONDS = 120.0
-
-
-class StreamChunkTimeout(TimeoutError):
-    """Raised when the outbound chunk queue was idle past _CHUNK_TIMEOUT_SECONDS."""
-
-
 _MAX_TERMINATED_STREAMS = 500
 
 

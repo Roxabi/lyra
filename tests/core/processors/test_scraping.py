@@ -11,6 +11,7 @@ import pytest
 
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_parser import CommandContext
+from lyra.core.exceptions import ScrapeFailed
 from lyra.core.messaging.message import InboundMessage
 from lyra.core.processors._scraping import (
     _SAFE_SCRAPE_MAX_CHARS,
@@ -18,7 +19,7 @@ from lyra.core.processors._scraping import (
     _extract_and_validate_url,
     _scrape_with_fallback,
 )
-from lyra.integrations.base import ScrapeFailed, SessionTools
+from lyra.integrations.base import SessionTools
 
 # ---------------------------------------------------------------------------
 # Helpers

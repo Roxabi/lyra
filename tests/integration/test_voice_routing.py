@@ -14,17 +14,32 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import socket
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
 
-# Marker for CI filtering
-pytestmark = pytest.mark.nats_integration
-
 NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
 COMPOSE_FILE = Path("docker/docker-compose.test.yml")
+
+
+def _nats_available() -> bool:
+    """Check if NATS server is reachable."""
+    try:
+        host, port = NATS_URL.replace("nats://", "").split(":")
+        with socket.create_connection((host, int(port)), timeout=2):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+# Skip all tests in this module if NATS isn't available
+pytestmark = [
+    pytest.mark.nats_integration,
+    pytest.mark.skipif(not _nats_available(), reason="NATS server not available"),
+]
 HB_SUBJECT = "lyra.voice.stt.heartbeat"
 STT_REQUEST_SUBJECT = "lyra.voice.stt.request"
 COMPOSE_PROJECT = "lyra-test"

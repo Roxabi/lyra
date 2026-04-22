@@ -77,28 +77,26 @@
     },
     "voice-tts": {
       "owner": "voicecli",
-      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). AdapterBase subscribes to heartbeat_subject (no-op callback) in addition to publishing — ACL must allow both pub and sub on heartbeat. Inbox narrowing to _INBOX.voice-tts.> is sequenced behind the voiceCLI connect-site PR per ADR-047 rule 4.",
+      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Publishes heartbeat + readiness probe, subscribes to TTS requests. allow_responses covers reply path.",
       "publish": [
         "lyra.voice.tts.heartbeat",
-        "_INBOX.>"
+        "lyra.system.ready"
       ],
       "subscribe": [
         "lyra.voice.tts.request",
-        "lyra.voice.tts.request.>",
-        "lyra.voice.tts.heartbeat"
+        "lyra.voice.tts.request.>"
       ]
     },
     "voice-stt": {
       "owner": "voicecli",
-      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Same heartbeat pub+sub pattern as voice-tts. Inbox narrowing to _INBOX.voice-stt.> is sequenced behind the voiceCLI connect-site PR per ADR-047 rule 4.",
+      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Publishes heartbeat + readiness probe, subscribes to STT requests. allow_responses covers reply path.",
       "publish": [
         "lyra.voice.stt.heartbeat",
-        "_INBOX.>"
+        "lyra.system.ready"
       ],
       "subscribe": [
         "lyra.voice.stt.request",
-        "lyra.voice.stt.request.>",
-        "lyra.voice.stt.heartbeat"
+        "lyra.voice.stt.request.>"
       ]
     },
     "llm-worker": {

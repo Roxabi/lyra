@@ -20,7 +20,7 @@ endif
 # Sub-command parsing for multi-word targets (remote, monitor, deploy).
 # These are NOT in HUB_SERVICES because their sub-commands can collide
 # with real target names (e.g. `make remote telegram reload`).
-_LYRA_MULTI := monitor deploy remote dep-graph corpus
+_LYRA_MULTI := monitor deploy remote
 ifneq (,$(filter $(_LYRA_MULTI),$(firstword $(MAKECMDGOALS))))
   _LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
   _IS_LYRA_SUBCMD := true
@@ -227,61 +227,9 @@ typecheck:
 format:
 	uv run ruff format .
 
-# ── Dep graph ────────────────────────────────────────────────────────────────
-# Multi-action target — see _LYRA_MULTI list at top of file.
-# Default (no sub-action) = fetch + v5 build.
-# Sub-actions: fetch | build | legacy | audit | validate | migrate | open
-
-DEP_GRAPH_DIR := $(HOME)/projects/lyra/scripts/dep-graph
-DEP_GRAPH_OUT := $(HOME)/.roxabi/forge/lyra/visuals/lyra-v2-dependency-graph-v5.1.html
-
-define dep_graph_run
-	cd $(DEP_GRAPH_DIR) && uv run --project $(HOME)/projects/lyra python -m dep_graph.cli $(1)
-endef
-
-define dep_graph_v5
-	cd $(DEP_GRAPH_DIR) && uv run --project $(HOME)/projects/lyra python -m v5.build
-endef
-
-.PHONY: dep-graph
-
-dep-graph:
-	@case "$(_LYRA_CMD)" in \
-		fetch)    $(call dep_graph_run,fetch) ;; \
-		build)    $(call dep_graph_v5) ;; \
-		legacy)   $(call dep_graph_run,build) ;; \
-		audit)    $(call dep_graph_run,audit) ;; \
-		validate) $(call dep_graph_run,validate) ;; \
-		migrate)  $(call dep_graph_run,migrate) ;; \
-		open)     xdg-open $(DEP_GRAPH_OUT) 2>/dev/null || open $(DEP_GRAPH_OUT) 2>/dev/null || echo "Open $(DEP_GRAPH_OUT) manually" ;; \
-		""|all)   $(call dep_graph_run,fetch) && $(call dep_graph_v5) ;; \
-		*)        echo "Unknown action: $(_LYRA_CMD)"; \
-		          echo "Use: fetch | build | legacy | audit | validate | migrate | open | (empty for fetch + build)"; \
-		          exit 1 ;; \
-	esac
-
-# ── Corpus sync ──────────────────────────────────────────────────────────────
-
-CORPUS_DIR := $(HOME)/projects/lyra/scripts/corpus
-
-define corpus_run
-	uv run python -m scripts.corpus.cli $(1)
-endef
-
-.PHONY: corpus
-
-corpus:
-	@action="$(firstword $(_LYRA_CMD))"; \
-	repo_flag=""; \
-	if [ -n "$(REPO)" ]; then repo_flag="--repo $(REPO)"; fi; \
-	case "$$action" in \
-		init|stats)    $(call corpus_run,$$action) ;; \
-		sync)          $(call corpus_run,sync $$repo_flag) ;; \
-		""|all)        $(call corpus_run,sync $$repo_flag) ;; \
-		*)             echo "Unknown action: $$action"; \
-		               echo "Use: init | sync [REPO=OWNER/NAME] | stats | (empty for sync)"; \
-		               exit 1 ;; \
-	esac
+# dep-graph and corpus migrated to roxabi-dashboard (2026-04-22).
+# Run via dashboard: `uv run --project ../roxabi-dashboard roxabi-corpus sync`
+# Graph API: GET http://localhost:8000/api/graph
 
 # ── Supervisor config generation ─────────────────────────────────────────────
 

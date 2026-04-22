@@ -8,7 +8,6 @@ dependencies = [
     "cryptography>=46.0.7",
     "pydantic>=2.12.5",
     "pyyaml>=6.0",  # YAML parsing for deploy/gen-supervisor-conf.py
-    "jinja2>=3.1.0",  # Template rendering for dep-graph HTML
     # Adapters
     "aiogram>=3.27.0",       # Telegram — asyncio-native, tracks Bot API same-day
     "discord.py[voice]>=2.7.1",  # Discord — gateway WebSocket + voice support (voice extra pulls pynacl + davey for crypto; keep updated)
@@ -85,7 +84,7 @@ packages = ["src/lyra"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests", "scripts/corpus/tests"]
+testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests"]
 addopts = "--import-mode=importlib -n auto"
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning",
@@ -103,7 +102,7 @@ show_missing = true
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-contracts/src", "scripts/corpus"]
+include = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-contracts/src"]
 venvPath = "."
 venv = ".venv"
 # ── Permanent policy ──────────────────────────────────────────────────────────
@@ -137,9 +136,6 @@ exclude = [".claude/worktrees", "deploy"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "C901", "PLR0913", "PLR0915"]
-
-[tool.ruff.lint.per-file-ignores]
-"scripts/corpus/tests/*.py" = ["E501"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

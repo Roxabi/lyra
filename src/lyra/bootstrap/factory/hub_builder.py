@@ -24,6 +24,7 @@ from lyra.bootstrap.factory.config import (
 from lyra.core.agent import Agent
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli.cli_pool import CliPool
+from lyra.core.config import HubConfig
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.messaging.message import InboundMessage
@@ -77,27 +78,31 @@ def build_hub(  # noqa: PLR0913 — construction requires all deps
     event_bus_cfg = _load_event_bus_config(raw_config)
     event_bus = PipelineEventBus(maxsize=event_bus_cfg.queue_maxsize)
 
-    hub = Hub(
-        circuit_registry=circuit_registry,
-        msg_manager=msg_manager,
-        pairing_manager=pairing_manager,
-        stt=stt_service,
-        tts=tts_service,
-        debounce_ms=debouncer_cfg.default_debounce_ms,
-        cancel_on_new_message=debouncer_cfg.cancel_on_new_message,
-        prefs_store=prefs_store,
-        turn_timeout=cli_pool_cfg.turn_timeout,
-        pool_ttl=hub_cfg.pool_ttl,
+    hub_config = HubConfig(
         rate_limit=hub_cfg.rate_limit,
         rate_window=hub_cfg.rate_window,
+        pool_ttl=hub_cfg.pool_ttl,
+        debounce_ms=debouncer_cfg.default_debounce_ms,
+        cancel_on_new_message=debouncer_cfg.cancel_on_new_message,
+        turn_timeout=cli_pool_cfg.turn_timeout,
         max_sdk_history=pool_cfg.max_sdk_history,
         safe_dispatch_timeout=pool_cfg.safe_dispatch_timeout,
         staging_maxsize=inbound_bus_cfg.staging_maxsize,
         platform_queue_maxsize=inbound_bus_cfg.platform_queue_maxsize,
         queue_depth_threshold=inbound_bus_cfg.queue_depth_threshold,
         max_merged_chars=debouncer_cfg.max_merged_chars,
+    )
+
+    hub = Hub(
+        circuit_registry=circuit_registry,
+        msg_manager=msg_manager,
+        pairing_manager=pairing_manager,
+        stt=stt_service,
+        tts=tts_service,
+        prefs_store=prefs_store,
         event_bus=event_bus,
         inbound_bus=inbound_bus,
+        config=hub_config,
     )
     return hub
 

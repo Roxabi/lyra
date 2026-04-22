@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from ..config import PoolConfig
 from ..pool import Pool
 
 if TYPE_CHECKING:
@@ -18,8 +20,9 @@ log = logging.getLogger(__name__)
 class PoolManager:
     """Manages pool lifecycle: creation, stale eviction, explicit flush."""
 
-    def __init__(self, hub: Hub) -> None:
+    def __init__(self, hub: Hub, pool_config: PoolConfig) -> None:
         self._hub = hub
+        self._pool_config = pool_config
         self.pools: dict[str, Pool] = {}
         self._last_eviction_check: float = 0.0
 
@@ -35,12 +38,7 @@ class PoolManager:
                 pool_id=pool_id,
                 agent_name=agent_name,
                 ctx=self._hub,
-                debounce_ms=self._hub._debounce_ms,
-                turn_timeout_ceiling=self._hub._turn_timeout,
-                max_sdk_history=self._hub._max_sdk_history,
-                safe_dispatch_timeout=self._hub._safe_dispatch_timeout,
-                max_merged_chars=self._hub._max_merged_chars,
-                cancel_on_new_message=self._hub._cancel_on_new_message,
+                config=self._pool_config,
             )
             if self._hub._turn_store is not None:
                 new_pool._observer.register_turn_store(self._hub._turn_store)
@@ -107,11 +105,13 @@ class PoolManager:
     def set_debounce_ms(self, ms: int) -> None:
         """Update debounce window on all live pools and future pools."""
         self._hub._debounce_ms = ms
+        self._pool_config = replace(self._pool_config, debounce_ms=ms)
         for pool in self.pools.values():
             pool.debounce_ms = ms
 
     def set_cancel_on_new_message(self, enabled: bool) -> None:
         """Toggle cancel-in-flight on all live pools and future pools."""
         self._hub._cancel_on_new_message = enabled
+        self._pool_config = replace(self._pool_config, cancel_on_new_message=enabled)
         for pool in self.pools.values():
             pool.cancel_on_new_message = enabled

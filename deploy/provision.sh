@@ -103,6 +103,12 @@ has_sufficient_subids() {
 # UIDs in the 100000+ band.
 next_free_subid_start() {
   local file="$1" hwm
+  # Missing file is fine (fresh install); unreadable-but-present is not —
+  # swallowing the error would silently fall through to the 65536 floor and
+  # could collide with an existing allocation.
+  if [[ -e "$file" && ! -r "$file" ]]; then
+    error "Cannot read $file (check permissions)."
+  fi
   hwm=$(awk -F: '{print $2 + $3}' "$file" 2>/dev/null | sort -n | tail -1)
   if [[ -n "$hwm" && "$hwm" -gt 65535 ]]; then
     echo "$hwm"
@@ -110,6 +116,11 @@ next_free_subid_start() {
     echo 65536
   fi
 }
+# NOTE (TOCTOU wontfix): the HWM read and subsequent `usermod` write are not
+# atomic against a concurrent `usermod`/`useradd`. A true fence would require
+# shadow-utils' own lock, which does not honor external flock. On a single-admin
+# machine running one provisioner the window is unreachable; revisit if
+# provision.sh is ever run concurrently (multi-host, parallel CI, etc.).
 if ! has_sufficient_subids /etc/subuid || ! has_sufficient_subids /etc/subgid; then
   uid_start=$(next_free_subid_start /etc/subuid)
   gid_start=$(next_free_subid_start /etc/subgid)

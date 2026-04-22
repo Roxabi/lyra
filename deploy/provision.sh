@@ -96,8 +96,30 @@ if ! has_sufficient_subids /etc/subuid || ! has_sufficient_subids /etc/subgid; t
   warn "subuid/subgid ranges missing or too small for $ADMIN_USER — adding 100000-165535."
   sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$ADMIN_USER"
   # Re-run migrate in case podman already has stale rootless state.
-  sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-    podman system migrate 2>/dev/null || true
+  # Guard against silent storage remap on partial re-runs: if the admin user
+  # already has rootless images or named volumes, `podman system migrate` can
+  # orphan data (volume files keep their old subuid ownership after the user
+  # namespace is rebased). Require an explicit FORCE_MIGRATE=1 opt-in when
+  # prior state is detected; otherwise hard-fail so the operator cannot miss
+  # the signal in a `curl | bash` run where warnings scroll off screen.
+  if sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+       sh -c 'podman images -q 2>/dev/null | grep -q . \
+              || podman volume ls -q 2>/dev/null | grep -q .'; then
+    if [[ "${FORCE_MIGRATE:-0}" != "1" ]]; then
+      warn "Rootless storage for $ADMIN_USER already has images or volumes."
+      warn "subuid range was just changed; migrating would risk orphaning existing data."
+      error "Refusing to run \`podman system migrate\`. Set FORCE_MIGRATE=1 to proceed knowingly."
+    else
+      sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+        podman system migrate
+    fi
+  else
+    # No prior rootless state detected — migrate is safe to run loud so real
+    # failures (e.g. broken graph driver, missing newuidmap) surface under
+    # `set -euo pipefail` instead of being silently swallowed.
+    sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+      podman system migrate
+  fi
   info "subuid/subgid added for $ADMIN_USER (≥65536 IDs)."
 else
   info "subuid/subgid already configured for $ADMIN_USER (≥65536 IDs)."

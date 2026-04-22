@@ -30,6 +30,8 @@ def load_issues(db_path: Path | None = None) -> dict[str, dict[str, Any]]:
     the DB does not exist.
     """
     resolved = db_path if db_path is not None else DEFAULT_DB
+    # TOCTOU window between .exists() and connect() is acceptable for a
+    # local ~/.roxabi/corpus.db — no remote-mount concern today.
     if not resolved.exists():
         raise FileNotFoundError(
             f"corpus.db not found at {resolved}. Run `make corpus-sync` to populate it."
@@ -50,12 +52,15 @@ def load_issues(db_path: Path | None = None) -> dict[str, dict[str, Any]]:
 def _project_lane_size(labels: list[str]) -> tuple[str | None, str | None]:
     """Project lane_label + size from a label list.
 
-    SINGLE SWAP POINT for the roxabi-plugins#119 taxonomy migration. Once the
-    Roxabi Hub Project V2 has issues enrolled and corpus.db grows `lane` / `size`
-    columns, follow-up issue #872 flips this one function to read those columns
-    directly and drops the label-prefix logic.
+    SINGLE SWAP POINT for the cross-repo taxonomy migration:
+      1. `Roxabi/roxabi-plugins#119` enrolls every issue in the Roxabi Hub
+         Project V2 and backfills the Lane/Size single-select fields.
+      2. `Roxabi/lyra#872` then extends corpus.db with `lane` / `size`
+         columns pulled from `projectV2.items`, and flips the body of this
+         function to read those columns instead of the label prefixes.
 
-    Do NOT inline this function into load_issues — the indirection is the point.
+    Do NOT inline this function into load_issues — the indirection is the
+    point; the whole migration is one function's worth of code change.
     """
     lane: str | None = None
     size: str | None = None
@@ -85,8 +90,14 @@ def _fetch_labels(conn: sqlite3.Connection) -> dict[str, list[str]]:
 
 
 def _key_to_ref(key: str) -> dict[str, Any]:
-    """Parse `owner/repo#N` into an IssueRef dict `{repo, issue}`."""
-    repo, num = key.rsplit("#", 1)
+    """Parse `owner/repo#N` into an IssueRef dict `{repo, issue}`.
+
+    Raises ValueError with the offending key in the message on malformed
+    input (e.g. missing `#`), instead of an opaque unpack error.
+    """
+    repo, sep, num = key.rpartition("#")
+    if not sep or not repo:
+        raise ValueError(f"malformed corpus key (expected 'owner/repo#N'): {key!r}")
     return {"repo": repo, "issue": int(num)}
 
 

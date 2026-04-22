@@ -62,6 +62,12 @@ def test_project_lane_size_returns_none_when_absent() -> None:
     assert size is None
 
 
+def test_project_lane_size_empty_labels() -> None:
+    """Degenerate case: empty label list → (None, None) — exercised for
+    every issue with no labels in _fetch_issues."""
+    assert _project_lane_size([]) == (None, None)
+
+
 # ─── Integration: load_issues ────────────────────────────────────────────────
 
 
@@ -171,3 +177,62 @@ def test_missing_db_hints_make_corpus_sync(tmp_path: Path) -> None:
     # Act / Assert
     with pytest.raises(FileNotFoundError, match="make corpus-sync"):
         load_issues(db_path)
+
+
+def test_load_issues_is_stub_true_projection(tmp_path: Path) -> None:
+    """is_stub=1 in SQLite → is_stub: True in projected dict."""
+    # Arrange
+    from scripts.corpus.schema import bootstrap
+
+    db_path = tmp_path / "corpus.db"
+    bootstrap(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """INSERT INTO issues (key, repo, number, title, state, is_stub)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("Roxabi/lyra#1", "Roxabi/lyra", 1, "stub", "closed", 1),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Act
+    issues = load_issues(db_path)
+
+    # Assert
+    assert issues["Roxabi/lyra#1"]["is_stub"] is True
+
+
+def test_load_issues_dangling_edge_produces_orphan_ref(tmp_path: Path) -> None:
+    """Edge whose dst_key has no issues row → src.blocking still lists the
+    orphan ref (downstream compute_visible filters on `rk in issues`)."""
+    # Arrange
+    from scripts.corpus.schema import bootstrap
+
+    db_path = tmp_path / "corpus.db"
+    bootstrap(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """INSERT INTO issues (key, repo, number, title, state, is_stub)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("Roxabi/lyra#1", "Roxabi/lyra", 1, "A", "open", 0),
+        )
+        # Edge points at a key that has no issues row.
+        conn.execute(
+            "INSERT INTO edges (src_key, dst_key) VALUES (?, ?)",
+            ("Roxabi/lyra#1", "Roxabi/voiceCLI#999"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Act
+    issues = load_issues(db_path)
+
+    # Assert — orphan ref present on src side; no phantom issues entry.
+    assert issues["Roxabi/lyra#1"]["blocking"] == [
+        {"repo": "Roxabi/voiceCLI", "issue": 999}
+    ]
+    assert "Roxabi/voiceCLI#999" not in issues

@@ -68,7 +68,7 @@ def compute_visible(issues: dict[str, dict[str, Any]], primary_repo: str) -> set
         for k, i in issues.items()
         if i.get("repo") == primary_repo and i.get("state") == "open"
     }
-    tree = _bfs(issues, seed, restrict_to_repo=None)
+    tree = _closure(issues, seed, restrict_to_repo=None)
 
     visible = set(tree)
     other_repos = {
@@ -80,17 +80,18 @@ def compute_visible(issues: dict[str, dict[str, Any]], primary_repo: str) -> set
         shared = {k for k in tree if issues[k].get("repo") == q}
         if not shared:
             continue
-        visible |= _bfs(issues, shared, restrict_to_repo=q)
+        visible |= _closure(issues, shared, restrict_to_repo=q)
     return visible
 
 
-def _bfs(
+def _closure(
     issues: dict[str, dict[str, Any]],
     seed: set[str],
     *,
     restrict_to_repo: str | None,
 ) -> set[str]:
-    """BFS over blocking ∪ blocked_by edges.
+    """Closure over blocking ∪ blocked_by edges (LIFO traversal; order
+    doesn't matter for set semantics).
 
     If restrict_to_repo is not None, only follows edges into nodes whose
     repo matches (used for shared_subtree Q-local closure). The caller

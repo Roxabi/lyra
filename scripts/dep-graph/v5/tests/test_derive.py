@@ -457,12 +457,12 @@ class TestLaneByCode:
 # All four MUST fail against the current (old) implementation.
 
 
-def _ref(repo: str, n: int) -> dict:
-    """Compact ref builder: {repo, issue}."""
-    return {"repo": repo, "issue": n}
-
-
 class TestComputeVisibleNewAlgebra:
+    @staticmethod
+    def _ref(repo: str, n: int) -> dict:
+        """Compact ref builder: {repo, issue}."""
+        return {"repo": repo, "issue": n}
+
     def test_tree_full_backward_closure(self):
         # Old rule: 1-hop backward — stops at {A, B}.
         # New rule: full backward closure through tree(P) — must reach C.
@@ -475,20 +475,20 @@ class TestComputeVisibleNewAlgebra:
             1,
             state="open",
             repo=repo,
-            blocked_by=[_ref(repo, 2)],
+            blocked_by=[self._ref(repo, 2)],
         )
         b = _make_issue(
             2,
             state="closed",
             repo=repo,
-            blocked_by=[_ref(repo, 3)],
-            blocking=[_ref(repo, 1)],
+            blocked_by=[self._ref(repo, 3)],
+            blocking=[self._ref(repo, 1)],
         )
         c = _make_issue(
             3,
             state="closed",
             repo=repo,
-            blocking=[_ref(repo, 2)],
+            blocking=[self._ref(repo, 2)],
         )
         issues = _issues(a, b, c)
 
@@ -507,7 +507,7 @@ class TestComputeVisibleNewAlgebra:
             11,
             state="closed",
             repo=voice,
-            blocking=[_ref(voice, 10)],
+            blocking=[self._ref(voice, 10)],
         )
         issues = _issues(l1, v10, v11)
 
@@ -526,27 +526,27 @@ class TestComputeVisibleNewAlgebra:
             1,
             state="open",
             repo=lyra,
-            blocked_by=[_ref(voice, 10)],
+            blocked_by=[self._ref(voice, 10)],
         )
         v10 = _make_issue(
             10,
             state="closed",
             repo=voice,
-            blocking=[_ref(lyra, 1)],
-            blocked_by=[_ref(voice, 11)],
+            blocking=[self._ref(lyra, 1)],
+            blocked_by=[self._ref(voice, 11)],
         )
         v11 = _make_issue(
             11,
             state="closed",
             repo=voice,
-            blocking=[_ref(voice, 10)],
-            blocked_by=[_ref(voice, 12)],
+            blocking=[self._ref(voice, 10)],
+            blocked_by=[self._ref(voice, 12)],
         )
         v12 = _make_issue(
             12,
             state="closed",
             repo=voice,
-            blocking=[_ref(voice, 11)],
+            blocking=[self._ref(voice, 11)],
         )
         issues = _issues(l1, v10, v11, v12)
 
@@ -577,14 +577,14 @@ class TestComputeVisibleNewAlgebra:
             3,
             state="open",
             repo=lyra,
-            blocked_by=[_ref(lyra, 4)],
+            blocked_by=[self._ref(lyra, 4)],
         )
         l4 = _make_issue(
             4,
             state="closed",
             repo=lyra,
-            blocking=[_ref(lyra, 3)],
-            blocked_by=[_ref(voice, 83)],
+            blocking=[self._ref(lyra, 3)],
+            blocked_by=[self._ref(voice, 83)],
         )
         l5 = _make_issue(5, state="open", repo=lyra)
 
@@ -593,14 +593,14 @@ class TestComputeVisibleNewAlgebra:
             83,
             state="closed",
             repo=voice,
-            blocking=[_ref(lyra, 4)],
-            blocked_by=[_ref(voice, 69)],
+            blocking=[self._ref(lyra, 4)],
+            blocked_by=[self._ref(voice, 69)],
         )
         v69 = _make_issue(
             69,
             state="open",
             repo=voice,
-            blocking=[_ref(voice, 83)],
+            blocking=[self._ref(voice, 83)],
         )
 
         issues = _issues(l1, l2, l3, l4, l5, v83, v69)
@@ -635,3 +635,27 @@ class TestComputeVisibleNewAlgebra:
 
         old_visible = _old_compute_visible(issues, lyra)
         assert old_visible <= new_visible
+
+    def test_cycle_does_not_infinite_loop(self):
+        # A ↔ B cycle (each blocks the other). The closure visited-set
+        # guard must terminate without RecursionError.
+        lyra = "Roxabi/lyra"
+        a = _make_issue(
+            1,
+            state="open",
+            repo=lyra,
+            blocking=[self._ref(lyra, 2)],
+            blocked_by=[self._ref(lyra, 2)],
+        )
+        b = _make_issue(
+            2,
+            state="closed",
+            repo=lyra,
+            blocking=[self._ref(lyra, 1)],
+            blocked_by=[self._ref(lyra, 1)],
+        )
+        issues = _issues(a, b)
+
+        visible = compute_visible(issues, lyra)
+
+        assert visible == {f"{lyra}#1", f"{lyra}#2"}

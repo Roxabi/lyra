@@ -145,6 +145,22 @@ class TestLoadCorpusContract:
         with pytest.raises(FileNotFoundError, match="make corpus-sync"):
             load(layout_path=layout_path, db_path=db_path)
 
+    def test_load_missing_layout_raises_file_not_found(
+        self, tmp_path: Path
+    ) -> None:
+        """load() with non-existent layout_path raises FileNotFoundError
+        mentioning `layout not found` — distinct from the corpus-db error."""
+        # Arrange
+        from v5.data.load import load
+
+        db_path = tmp_path / "corpus.db"
+        _bootstrap_corpus(db_path)
+        layout_path = tmp_path / "missing.json"
+
+        # Act / Assert
+        with pytest.raises(FileNotFoundError, match="layout not found"):
+            load(layout_path=layout_path, db_path=db_path)
+
 
 # ─── load_from_dicts() — unchanged contract ─────────────────────────────────
 

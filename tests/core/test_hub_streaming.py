@@ -17,6 +17,7 @@ from lyra.core.messaging.message import (
 )
 from lyra.core.messaging.render_events import RenderEvent, TextRenderEvent
 from lyra.tts import TTSService
+from tests.conftest import TIMEOUT_FAST, TIMEOUT_SLOW
 from tests.core.conftest import MockAdapter, make_inbound_message, push_to_hub
 
 
@@ -288,10 +289,14 @@ class TestDispatchStreaming:
         try:
             # dispatch_streaming returns immediately (non-blocking for voice
             # with dispatcher); TTS fires as a background task.
-            await asyncio.wait_for(hub.dispatch_streaming(msg, gen()), timeout=5.0)
+            await asyncio.wait_for(
+                hub.dispatch_streaming(msg, gen()), timeout=TIMEOUT_SLOW
+            )
             # Wait for the dispatcher to consume the stream and TTS to fire.
             if hub._memory_tasks:
-                await asyncio.wait_for(asyncio.gather(*hub._memory_tasks), timeout=5.0)
+                await asyncio.wait_for(
+                    asyncio.gather(*hub._memory_tasks), timeout=TIMEOUT_SLOW
+                )
         finally:
             await dispatcher.stop()
 
@@ -348,7 +353,7 @@ class TestHubRunStreaming:
         await push_to_hub(hub, msg)
 
         try:
-            await asyncio.wait_for(hub.run(), timeout=0.5)
+            await asyncio.wait_for(hub.run(), timeout=TIMEOUT_FAST)
         except asyncio.TimeoutError:
             pass
 

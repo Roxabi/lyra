@@ -147,9 +147,7 @@ class FakeClaudeCliDriver:
 
         result = self._queue.pop(0)
         if result.error:
-            yield ResultLlmEvent(
-                is_error=True, duration_ms=0, error_text=result.error
-            )
+            yield ResultLlmEvent(is_error=True, duration_ms=0, error_text=result.error)
             return
 
         # Yield text as a single chunk, then result event

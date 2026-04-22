@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
+from tests.conftest import _drain
+
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent
 from lyra.core.auth.trust import TrustLevel
@@ -73,13 +75,6 @@ def _make_ctx_mock(agents: dict | None = None) -> MagicMock:
     ctx.record_circuit_failure = MagicMock()
     ctx._agents = _agents
     return ctx
-
-
-async def _drain(pool: Pool, *, timeout: float = 2.0) -> None:
-    """Yield to the event loop then wait for the current task to finish."""
-    await asyncio.sleep(0)
-    if pool._current_task is not None:
-        await asyncio.wait_for(pool._current_task, timeout=timeout)
 
 
 @dataclass

@@ -82,18 +82,6 @@ jobs:
       - name: Coverage — roxabi_contracts
         run: uv run pytest packages/roxabi-contracts/tests --cov=roxabi_contracts --cov-branch --cov-report=term-missing --cov-fail-under=80
 
-      - name: Test dep-graph sub-project
-        working-directory: scripts/dep-graph
-        run: |
-          uv sync --frozen
-          uv run pytest tests/
-
-      - name: Validate dep-graph schema
-        working-directory: scripts/dep-graph
-        run: |
-          uv run python -c "from dep_graph.schema import validate_layout_dict; print('Schema module OK')"
-          # TODO: Add `uv run dep-graph validate` once layout.json is in repo
-
   integration:
     needs: [ci]
     runs-on: ubuntu-latest

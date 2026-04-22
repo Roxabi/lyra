@@ -24,6 +24,7 @@ import pytest
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from lyra.llm.drivers.nats_driver import HB_TTL, NatsLlmDriver
+from tests.conftest import yield_once
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -262,7 +263,7 @@ class TestStreamHappyPath:
             gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
             # Feed chunks into the subscription after publishing
             task = asyncio.create_task(_drain(gen, events))
-            await asyncio.sleep(0)  # yield so task starts
+            await yield_once()  # yield so task starts
             for chunk in chunks:
                 await captured_cb(make_chunk_msg(chunk))
             await task
@@ -366,7 +367,7 @@ class TestStreamHappyPath:
             events = []
             gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
             task = asyncio.create_task(_drain(gen, events))
-            await asyncio.sleep(0)
+            await yield_once()
             # Send a done result chunk
             await captured_cb(
                 make_chunk_msg(
@@ -418,7 +419,7 @@ class TestStreamCancellation:
         async def run_and_cancel():
             gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
             task = asyncio.create_task(_consume(gen))
-            await asyncio.sleep(0)  # let task start waiting on queue
+            await yield_once()  # let task start waiting on queue
             task.cancel()
             try:
                 await task
@@ -687,7 +688,7 @@ class TestStreamDefensiveBranches:
             events: list = []
             gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
             task = asyncio.create_task(_drain(gen, events))
-            await asyncio.sleep(0)
+            await yield_once()
             for chunk in chunks:
                 await captured_cb(make_chunk_msg(chunk))
             await task
@@ -730,7 +731,7 @@ class TestStreamDefensiveBranches:
             events: list = []
             gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
             task = asyncio.create_task(_drain(gen, events))
-            await asyncio.sleep(0)
+            await yield_once()
             for chunk in chunks:
                 await captured_cb(make_chunk_msg(chunk))
             await task

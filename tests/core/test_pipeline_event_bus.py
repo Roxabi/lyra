@@ -23,6 +23,7 @@ from lyra.core.hub.pipeline_events import (
     PoolSubmitted,
     StageCompleted,
 )
+from tests.conftest import yield_once
 from tests.core.conftest import _make_hub, make_inbound_message
 
 
@@ -226,7 +227,7 @@ class TestAuditConsumer:
 
         # Start consumer, let it block on empty queue, then cancel
         task = asyncio.create_task(consumer.run())
-        await asyncio.sleep(0)  # consumer is now awaiting queue.get()
+        await yield_once()  # consumer is now awaiting queue.get()
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task

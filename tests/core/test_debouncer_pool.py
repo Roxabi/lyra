@@ -11,10 +11,10 @@ import pytest
 
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
+from tests.conftest import TIMEOUT_SLOW, _drain
 from tests.core.conftest import (
     RecordingAgent,
     SlowAgent,
-    _drain,
     _make_ctx_mock,
     make_debouncer_msg,
 )
@@ -129,6 +129,9 @@ class TestPoolCancelInFlight:
         agent = RecordingAgent()
         call_count = 0
         started = asyncio.Event()
+        never_returns = (
+            asyncio.Event()
+        )  # never set — simulates slow/infinite processing
         original_process = agent.process
 
         async def _slow_then_fast(
@@ -139,7 +142,7 @@ class TestPoolCancelInFlight:
             if call_count == 1:
                 # Signal that the first call has started, then block.
                 started.set()
-                await asyncio.sleep(10)
+                await never_returns.wait()  # explicit: never completes
                 return Response(content="should not reach")
             # Second call: fast — combined message
             return await original_process(msg, pool, on_intermediate=on_intermediate)
@@ -162,7 +165,7 @@ class TestPoolCancelInFlight:
         # Submit second message while agent is in-flight → cancel + re-dispatch.
         pool.submit(make_debouncer_msg("actually explain Y"))
 
-        await _drain(pool, timeout=5.0)
+        await _drain(pool, timeout=TIMEOUT_SLOW)
 
         # Agent called twice: first cancelled, second with combined.
         assert call_count == 2

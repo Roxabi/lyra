@@ -100,7 +100,8 @@ async def test_pending_session_id_set_when_pool_busy() -> None:
     pool = _make_pool("telegram:main:chat:42")
 
     # Make pool appear busy
-    pool._current_task = asyncio.create_task(asyncio.sleep(100))
+    _busy_task_never_completes = asyncio.Event()
+    pool._current_task = asyncio.create_task(_busy_task_never_completes.wait())
 
     try:
         message_index = _FakeMessageIndex({"msg-old": "session-abc"})

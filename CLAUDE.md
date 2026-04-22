@@ -27,8 +27,6 @@ Let:
 | `docs/agent-management.md` | A seed flow + CLI |
 | `artifacts/` | Frames, specs, plans (dev-core) |
 | `deploy/quadlet/` | Podman Quadlet units |
-| `scripts/dep-graph/` | Dep-graph generator → `~/.roxabi/forge/lyra/visuals/` |
-| `scripts/corpus/` | Issue sync (GraphQL → SQLite) → `~/.roxabi/corpus.db` |
 | `packages/roxabi-nats/` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/` | NATS contract schemas (ADR-049) |
 | `deploy/agents.yml` | Agent registry → supervisord conf |

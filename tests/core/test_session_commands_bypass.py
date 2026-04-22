@@ -15,6 +15,7 @@ from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
 from lyra.core.processors.processor_registry import BaseProcessor, registry
 from lyra.integrations.base import SessionTools
+from tests.conftest import yield_once
 from tests.helpers import reload_processors
 
 
@@ -107,7 +108,7 @@ def _make_ctx(agent) -> MagicMock:
 async def _drain(pool: Pool, *, timeout: float = 3.0) -> None:
     import asyncio
 
-    await asyncio.sleep(0)
+    await yield_once()
     if pool._current_task is not None:
         await asyncio.wait_for(pool._current_task, timeout=timeout)
 

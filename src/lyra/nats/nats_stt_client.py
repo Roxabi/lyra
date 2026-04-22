@@ -1,9 +1,9 @@
 """NatsSttClient — hub-side NATS request-reply client for STT.
 
 Maintains a ``WorkerRegistry`` populated from heartbeats, and routes each
-transcription to the least-loaded worker via its per-worker subject
-``lyra.voice.stt.request.{worker_id}``. Falls back once to the queue-group
-subject (``lyra.voice.stt.request``) if the targeted worker times out.
+transcription to workers in score order via per-worker subject
+``lyra.voice.stt.request.{worker_id}``. Walks the registry on timeout or
+NoRespondersError, marking stale workers and trying the next candidate.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from typing import NoReturn
 from uuid import uuid4
 
 from nats.aio.client import Client as NATS
+from nats.errors import NoRespondersError
 from pydantic import ValidationError
 
 from lyra.nats.worker_registry import WorkerRegistry
@@ -73,6 +74,11 @@ def _parse_stt_timeout(timeout: float | None) -> float:
         )
         return _STT_TIMEOUT_DEFAULT
     return value
+
+
+def _is_no_responders(exc: Exception) -> bool:
+    """Check if the exception is a NATS NoRespondersError."""
+    return isinstance(exc, NoRespondersError)
 
 
 class NatsSttClient:
@@ -141,10 +147,47 @@ class NatsSttClient:
             self._cb.record_failure()
             raise STTUnavailableError("STT reply failed schema validation") from exc
 
-    async def transcribe(self, path: Path | str) -> TranscriptionResult:
-        preferred = self._registry.pick_least_loaded()
-        if preferred is None:
+    async def _walk_registry(self, payload: bytes) -> SttResponse:
+        """Iterate over workers in score order until one succeeds.
+
+        On TimeoutError/NoRespondersError: mark worker stale, continue to next.
+        On other exceptions: raise via _raise_nats_failure (terminal).
+        After exhaustion: record_failure once, raise STTUnavailableError chained
+        from last exception.
+        """
+        candidates = self._registry.ordered_by_score()
+        if not candidates:
             raise STTUnavailableError("STT: no live worker (heartbeat stale >15s)")
+
+        payload_kb = len(payload) / 1024
+        last_exc: Exception | None = None
+
+        for worker in candidates:
+            target = per_worker_stt(worker.worker_id)
+            try:
+                reply = await self._nc.request(target, payload, timeout=self._timeout)
+                return self._parse_reply(reply.data)
+            except TimeoutError:
+                self._registry.mark_stale(worker.worker_id)
+                last_exc = TimeoutError()
+                continue
+            except Exception as exc:
+                if _is_no_responders(exc):
+                    self._registry.mark_stale(worker.worker_id)
+                    last_exc = exc
+                    continue
+                # Terminal: other exceptions go through failure path
+                self._raise_nats_failure(exc, payload_kb)
+
+        # All candidates exhausted
+        log.warning(
+            "STT: all workers unresponsive, last error type=%s",
+            type(last_exc).__name__ if last_exc else "None",
+        )
+        self._cb.record_failure()
+        raise STTUnavailableError("STT: all workers unresponsive") from last_exc
+
+    async def transcribe(self, path: Path | str) -> TranscriptionResult:
         if self._cb.is_open():
             raise STTUnavailableError(
                 "STT circuit open — adapter temporarily unavailable"
@@ -165,7 +208,7 @@ class NatsSttClient:
             language_fallback=self._detection_fallback,
         )
         payload = request.model_dump_json(exclude_none=True).encode("utf-8")
-        resp = await self._request_with_fallback(payload, preferred.worker_id)
+        resp = await self._walk_registry(payload)
         if not resp.ok:
             self._cb.record_failure()
             raise STTUnavailableError(resp.error or "STT transcription failed")
@@ -189,41 +232,6 @@ class NatsSttClient:
             )
             raise STTNoiseError(f"Noise transcript: {result.text!r}")
         return result
-
-    async def _request_with_fallback(
-        self, payload: bytes, worker_id: str
-    ) -> SttResponse:
-        """Send to per-worker subject; on timeout, fall back once to queue group.
-
-        Raises ``STTUnavailableError`` on final failure (after fallback), wrapping
-        the originating exception. Circuit-breaker failures are recorded here.
-        """
-        payload_kb = len(payload) / 1024
-        target = per_worker_stt(worker_id)
-        try:
-            reply = await self._nc.request(target, payload, timeout=self._timeout)
-            return self._parse_reply(reply.data)
-        except TimeoutError:
-            log.warning(
-                "STT: preferred worker %s timed out after %.0fs;"
-                " falling back to queue group",
-                worker_id,
-                self._timeout,
-            )
-        except Exception as exc:
-            self._raise_nats_failure(exc, payload_kb)
-        # Fallback: queue group (round-robin among alive workers).
-        try:
-            reply = await self._nc.request(
-                SUBJECTS.stt_request, payload, timeout=self._timeout
-            )
-            return self._parse_reply(reply.data)
-        except TimeoutError as exc:
-            log.warning("STT adapter timeout after %.0fs", self._timeout)
-            self._cb.record_failure()
-            raise STTUnavailableError("STT adapter timeout") from exc
-        except Exception as exc:
-            self._raise_nats_failure(exc, payload_kb)
 
     def _raise_nats_failure(self, exc: Exception, payload_kb: float) -> NoReturn:
         """Convert a NATS request exception to STTUnavailableError.

@@ -206,3 +206,102 @@ class TestSelection:
     def test_any_alive_false_when_empty(self) -> None:
         reg = WorkerRegistry()
         assert reg.any_alive() is False
+
+
+class TestOrderedByScore:
+    """Tests for ordered_by_score() — returns workers sorted by score ascending."""
+
+    def test_returns_sorted_by_score(self) -> None:
+        """Workers returned in ascending score order."""
+        reg = WorkerRegistry()
+        reg.record_heartbeat(
+            _hb("w-heavy", vram_used_mb=12000, vram_total_mb=16000, active_requests=2)
+        )
+        reg.record_heartbeat(
+            _hb("w-light", vram_used_mb=2000, vram_total_mb=16000, active_requests=0)
+        )
+        reg.record_heartbeat(
+            _hb("w-mid", vram_used_mb=8000, vram_total_mb=16000, active_requests=1)
+        )
+        ordered = reg.ordered_by_score()
+        assert len(ordered) == 3
+        # w-light: 0*100 + 0.125*50 = 6.25
+        # w-mid:   1*100 + 0.5*50   = 125.0
+        # w-heavy: 2*100 + 0.75*50  = 237.5
+        assert ordered[0].worker_id == "w-light"
+        assert ordered[1].worker_id == "w-mid"
+        assert ordered[2].worker_id == "w-heavy"
+
+    def test_returns_empty_when_no_alive(self) -> None:
+        """Returns [] when no alive workers."""
+        reg = WorkerRegistry(hb_ttl=15.0)
+        reg._workers["stale"] = WorkerStats(
+            worker_id="stale",
+            last_heartbeat=time.monotonic() - 20.0,
+        )
+        assert reg.ordered_by_score() == []
+
+    def test_tiebreaker_by_worker_id(self) -> None:
+        """Tied scores sorted by worker_id alphabetically."""
+        reg = WorkerRegistry()
+        # All have same active_requests=0, vram_total_mb=0 → score=0
+        reg.record_heartbeat(_hb("worker-c"))
+        reg.record_heartbeat(_hb("worker-a"))
+        reg.record_heartbeat(_hb("worker-b"))
+        ordered = reg.ordered_by_score()
+        assert len(ordered) == 3
+        assert ordered[0].worker_id == "worker-a"
+        assert ordered[1].worker_id == "worker-b"
+        assert ordered[2].worker_id == "worker-c"
+
+
+class TestMarkStale:
+    """Tests for mark_stale() — manually exclude a worker from alive set."""
+
+    def test_excludes_from_alive_workers(self) -> None:
+        """mark_stale(w) excludes w from alive_workers()."""
+        reg = WorkerRegistry()
+        reg.record_heartbeat(_hb("w1"))
+        reg.record_heartbeat(_hb("w2"))
+        reg.mark_stale("w1")
+        alive = reg.alive_workers()
+        assert len(alive) == 1
+        assert alive[0].worker_id == "w2"
+
+    def test_idempotent(self) -> None:
+        """Calling mark_stale twice on same worker is safe."""
+        reg = WorkerRegistry()
+        reg.record_heartbeat(_hb("w1"))
+        reg.mark_stale("w1")
+        reg.mark_stale("w1")  # Should not raise
+        assert reg.alive_workers() == []
+
+    def test_readmit_on_heartbeat(self) -> None:
+        """mark_stale'd worker re-admitted when heartbeat arrives."""
+        reg = WorkerRegistry()
+        reg.record_heartbeat(_hb("w1"))
+        reg.mark_stale("w1")
+        assert "w1" not in {w.worker_id for w in reg.alive_workers()}
+        # New heartbeat should readmit
+        reg.record_heartbeat(_hb("w1", active_requests=5))
+        alive = reg.alive_workers()
+        assert len(alive) == 1
+        assert alive[0].worker_id == "w1"
+        assert alive[0].active_requests == 5
+
+    def test_does_not_delete_entry(self) -> None:
+        """mark_stale mutates last_heartbeat, does NOT delete from _workers."""
+        reg = WorkerRegistry()
+        reg.record_heartbeat(_hb("w1"))
+        assert "w1" in reg._workers
+        reg.mark_stale("w1")
+        # Entry should still exist (not deleted)
+        assert "w1" in reg._workers
+        # But should not appear in alive_workers()
+        assert "w1" not in {w.worker_id for w in reg.alive_workers()}
+
+    def test_unknown_worker_id_is_safe(self) -> None:
+        """Calling mark_stale on unknown worker_id is safe (no-op)."""
+        reg = WorkerRegistry()
+        reg.mark_stale("nonexistent")  # Should not raise
+        assert reg.alive_workers() == []

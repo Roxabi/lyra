@@ -48,6 +48,7 @@
     "048-lyra-infrastructure-layer-for-persistence",
     "049-roxabi-contracts-shared-schema-package",
     "050-lyra-image-nats-contract",
-    "051-per-identity-nats-inbox-prefix"
+    "051-per-identity-nats-inbox-prefix",
+    "052-voice-registry-authoritative-routing"
   ]
 }

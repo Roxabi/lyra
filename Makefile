@@ -176,7 +176,7 @@ deploy:
 	@echo "Deploying to Machine 1 ($(DEPLOY_HOST))..."
 	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && bash scripts/deploy.sh"
 
-REMOTE_SCTL := ~/projects/lyra/deploy/supervisor/supervisorctl.sh
+REMOTE_SCTL := $(or $(shell grep '^LYRA_SUPERVISORCTL_PATH=' .env 2>/dev/null | cut -d= -f2),~/projects/lyra/deploy/supervisor/supervisorctl.sh)
 
 # make remote [service] [action]
 #   service: lyra or empty → all lyra_* programs | <shortname> → lyra_<shortname>
@@ -188,9 +188,10 @@ remote:
 	SVC="$(word 1,$(_LYRA_CMD))"; ACTION="$(word 2,$(_LYRA_CMD))"; \
 	SCTL=$(REMOTE_SCTL); \
 	CONF=$(DEPLOY_DIR)/deploy/supervisor/conf.d; \
-	rdisc() { grep -rh "^\[program:lyra_" "$$CONF" | tr -d "[]" | cut -d: -f2 | tr "\n" " "; }; \
+	rdisc() { grep -Rh "^\[program:\(lyra_\|voicecli_\)" "$$CONF" | tr -d "[]" | cut -d: -f2 | tr "\n" " "; }; \
 	if   [ -z "$$SVC" ] || [ "$$SVC" = lyra ]; then PROGS=$$(rdisc); FIRST=lyra_hub; \
 	elif [ -f "$$CONF/lyra_$$SVC.conf" ];       then PROGS="lyra_$$SVC"; FIRST="$$PROGS"; \
+	elif [ -f "$$CONF/voicecli_$$SVC.conf" ];   then PROGS="voicecli_$$SVC"; FIRST="$$PROGS"; \
 	else ACTION="$$SVC"; PROGS=$$(rdisc); FIRST=lyra_hub; fi; \
 	case "$${ACTION:-status}" in \
 	  reload)  $$SCTL restart $$PROGS ;; \

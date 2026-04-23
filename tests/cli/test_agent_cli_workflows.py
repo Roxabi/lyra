@@ -204,7 +204,7 @@ class TestAgentValidateDBPath:
         _seed_agent(
             tmp_path / "config.db",
             name="valid-agent",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-sonnet-4-6",
         )
 

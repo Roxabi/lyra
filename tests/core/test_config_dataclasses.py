@@ -17,7 +17,6 @@ class TestHubConfig:
         assert config.debounce_ms == 0
         assert config.cancel_on_new_message is False
         assert config.turn_timeout is None
-        assert config.max_sdk_history == 50
         assert config.safe_dispatch_timeout == 10.0
         assert config.staging_maxsize == 500
         assert config.platform_queue_maxsize == 100
@@ -55,17 +54,15 @@ class TestPoolConfig:
         assert config.turn_timeout is None
         assert config.debounce_ms == 300
         assert config.turn_timeout_ceiling is None
-        assert config.max_sdk_history == 50
         assert config.safe_dispatch_timeout == 10.0
         assert config.max_merged_chars == 4096
         assert config.cancel_on_new_message is False
 
     def test_custom_values(self) -> None:
         """PoolConfig accepts custom values."""
-        config = PoolConfig(debounce_ms=500, turn_timeout=60.0, max_sdk_history=100)
+        config = PoolConfig(debounce_ms=500, turn_timeout=60.0)
         assert config.debounce_ms == 500
         assert config.turn_timeout == 60.0
-        assert config.max_sdk_history == 100
 
     def test_frozen_immutability(self) -> None:
         """PoolConfig is frozen and cannot be modified."""

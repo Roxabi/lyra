@@ -9,7 +9,7 @@ from lyra.llm.base import LlmResult
 
 
 def make_model_cfg(model: str = "claude-sonnet-4-6") -> ModelConfig:
-    return ModelConfig(backend="anthropic-sdk", model=model)
+    return ModelConfig(backend="claude-cli", model=model)
 
 
 def make_ok_result(text: str = "ok") -> LlmResult:

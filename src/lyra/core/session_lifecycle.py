@@ -46,8 +46,8 @@ class SessionManager:
 
     async def _summarize_session(self, pool: "Pool") -> str:
         """Generate session summary. Base: simple truncation. Override for LLM."""
-        turns = list(pool.sdk_history)[-20:]
-        text = "\n".join(str(t.get("content", "")) for t in turns)
+        turns = [msg.text for msg in pool.history[-20:]]
+        text = "\n".join(turns)
         log.warning(
             "_summarize_session not overridden — storing truncated transcript"
             " for pool %s; override with an LLM call for production memory quality",
@@ -77,17 +77,12 @@ class SessionManager:
         """Summarize and truncate pool history when approaching context limit."""
         if self._memory is None:
             return
-        token_est = sum(len(str(t.get("content", ""))) // 4 for t in pool.sdk_history)
-        # Also trigger compaction when sdk_history has many entries (each entry
-        # carries metadata overhead that adds up regardless of content size).
+        token_est = sum(len(msg.text) // 4 for msg in pool.history)
         if token_est <= int(0.8 * self._compact_context_tokens):
             return
         summary = await self._summarize_session(pool)
         snap = pool.snapshot(self.config.memory_namespace)
         await self._memory.upsert_session(snap, summary, status="partial")
-        tail = list(pool.sdk_history)[-COMPACT_TAIL:]
-        pool.sdk_history.clear()
-        pool.sdk_history.extend([{"role": "system", "content": summary}] + tail)
 
     # S7 — concept + preference extraction (issue #83)
 

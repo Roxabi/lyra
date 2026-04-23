@@ -251,7 +251,7 @@ class CommandRouter:
         if session_entry is not None:
             if self._session_driver is None:
                 return Response(
-                    content="Session commands require an anthropic-sdk backend. "
+                    content="Session commands require a session driver. "
                     "No session driver is configured."
                 )
             try:

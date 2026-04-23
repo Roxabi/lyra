@@ -32,7 +32,7 @@ def _invoke_create(agents_dir: Path, input_str: str) -> Result:
 # Default answers for the happy-path wizard prompts.
 # Order matches the expected prompt sequence:
 #   1. Agent name
-#   2. Backend (claude-cli / ollama / anthropic-sdk)
+#   2. Backend (claude-cli / ollama)
 #   3. Model
 #   4. Working directory (blank → skip)
 #   5. Max turns (blank → default)

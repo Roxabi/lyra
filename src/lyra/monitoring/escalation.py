@@ -102,57 +102,18 @@ async def _escalate_via_cli(
     return _parse_diagnosis(text, report)
 
 
-async def _escalate_via_api(
-    report: HealthReport, config: MonitoringConfig
-) -> DiagnosisReport:
-    """Escalate via Anthropic API (requires ANTHROPIC_API_KEY)."""
-    user_message = _build_user_message(report)
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": config.anthropic_api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": config.diagnostic_model,
-                "max_tokens": 256,
-                "system": _DIAGNOSTIC_SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": user_message}],
-            },
-            timeout=30,
-        )
-
-    if resp.status_code != 200:
-        raise RuntimeError(f"Anthropic API returned {resp.status_code}: {resp.text}")
-
-    data = resp.json()
-    text = data["content"][0]["text"]
-    return _parse_diagnosis(text, report)
-
-
 async def escalate_to_llm(
     report: HealthReport, config: MonitoringConfig
 ) -> DiagnosisReport:
-    """Diagnose a health anomaly using an LLM.
+    """Diagnose a health anomaly using an LLM via Claude CLI (OAuth).
 
-    Prefers Claude CLI (no API key needed). Falls back to Anthropic API
-    if the CLI is not installed and ANTHROPIC_API_KEY is set.
-    Raises on any failure — caller handles fallback.
+    Raises RuntimeError if the Claude CLI is not installed.
+    Caller handles fallback to raw alert.
     """
     if shutil.which("claude"):
         return await _escalate_via_cli(report, config)
 
-    if config.anthropic_api_key:
-        log.info("claude CLI not found, falling back to Anthropic API")
-        return await _escalate_via_api(report, config)
-
-    raise RuntimeError(
-        "No LLM backend available: claude CLI not installed "
-        "and ANTHROPIC_API_KEY not set"
-    )
+    raise RuntimeError("No LLM backend available: claude CLI not installed")
 
 
 def _format_diagnosis_message(diagnosis: DiagnosisReport) -> str:

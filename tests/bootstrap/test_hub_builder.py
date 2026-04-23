@@ -24,7 +24,7 @@ class TestBuildCliPool:
                 name="agent_a",
                 system_prompt="prompt",
                 memory_namespace="test",
-                llm_config=ModelConfig(backend="anthropic-sdk"),
+                llm_config=ModelConfig(backend="nats"),
             ),
             "agent_b": Agent(
                 name="agent_b",
@@ -61,13 +61,13 @@ class TestRegisterAgents:
             name="alpha",
             system_prompt="prompt",
             memory_namespace="test",
-            llm_config=ModelConfig(backend="anthropic-sdk"),
+            llm_config=ModelConfig(backend="nats"),
         )
         agent_beta = Agent(
             name="beta",
             system_prompt="prompt",
             memory_namespace="test",
-            llm_config=ModelConfig(backend="anthropic-sdk"),
+            llm_config=ModelConfig(backend="nats"),
         )
         agent_configs: dict[str, Agent] = {"alpha": agent_alpha, "beta": agent_beta}
 

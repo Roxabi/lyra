@@ -540,7 +540,7 @@ class TestCircuitBreakerDrop:
         from lyra.core.hub.hub_protocol import RoutingKey
 
         registry = CircuitRegistry()
-        cb = CircuitBreaker(name="anthropic", failure_threshold=1, recovery_timeout=60)
+        cb = CircuitBreaker(name="claude-cli", failure_threshold=1, recovery_timeout=60)
         registry.register(cb)
         cb.record_failure()
 

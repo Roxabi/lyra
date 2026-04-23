@@ -299,7 +299,8 @@ class TestAgentCompact:
         pool = MagicMock()
         pool.user_id = "u1"
         pool.message_count = 200  # high — above threshold
-        pool.sdk_history = [{"role": "user", "content": "x" * 100} for _ in range(5)]
+        # 5 messages of 100 chars each → ~125 tokens, exceeds 0.8 * 100 threshold
+        pool.history = [MagicMock(text="x" * 100) for _ in range(5)]
 
         await agent.compact(pool)
 

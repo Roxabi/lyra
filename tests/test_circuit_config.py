@@ -218,26 +218,15 @@ class TestLoadPoolConfig:
         from lyra.bootstrap.factory.config import _load_pool_config
 
         result = _load_pool_config({})
-        assert result.max_sdk_history == 50
         assert result.safe_dispatch_timeout == 10.0
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
         from lyra.bootstrap.factory.config import _load_pool_config
 
-        raw = {"pool": {"max_sdk_history": 100, "safe_dispatch_timeout": 30.0}}
+        raw = {"pool": {"safe_dispatch_timeout": 30.0}}
         result = _load_pool_config(raw)
-        assert result.max_sdk_history == 100
         assert result.safe_dispatch_timeout == 30.0
-
-    def test_partial_override_keeps_defaults(self) -> None:
-        """Only max_sdk_history set → safe_dispatch_timeout keeps default."""
-        from lyra.bootstrap.factory.config import _load_pool_config
-
-        raw = {"pool": {"max_sdk_history": 200}}
-        result = _load_pool_config(raw)
-        assert result.max_sdk_history == 200
-        assert result.safe_dispatch_timeout == 10.0
 
 
 # ---------------------------------------------------------------------------

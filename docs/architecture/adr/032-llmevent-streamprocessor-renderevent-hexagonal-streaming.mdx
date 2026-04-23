@@ -3,6 +3,8 @@ title: "ADR-032: LlmEvent → StreamProcessor → RenderEvent — Hexagonal Stre
 description: Replace AsyncIterator[str] end-to-end with a typed event hierarchy (LlmEvent → RenderEvent) and a domain-layer StreamProcessor, closing the six architectural gaps that block real-time tool-call visibility.
 ---
 
+> **Superseded by #666.** `AnthropicSdkDriver` and the `anthropic-sdk` backend have been removed; Lyra is CLI-only. Historical content below is preserved for context.
+
 ## Status
 
 Accepted

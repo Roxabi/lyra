@@ -28,7 +28,6 @@ class HubConfig:
     debounce_ms: int = 0
     cancel_on_new_message: bool = False
     turn_timeout: float | None = None
-    max_sdk_history: int = 50
     safe_dispatch_timeout: float = 10.0
     staging_maxsize: int = 500
     platform_queue_maxsize: int = 100
@@ -46,7 +45,6 @@ class PoolConfig:
     turn_timeout: float | None = None
     debounce_ms: int = 300  # DEFAULT_DEBOUNCE_MS
     turn_timeout_ceiling: float | None = None
-    max_sdk_history: int = 50
     safe_dispatch_timeout: float = 10.0
     max_merged_chars: int = 4096
     cancel_on_new_message: bool = False

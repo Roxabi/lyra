@@ -82,7 +82,7 @@ class TestJsonAgentStoreCRUD:
         # Assert
         assert result is not None
         assert result.name == "lyra-default"
-        assert result.backend == "anthropic-sdk"
+        assert result.backend == "claude-cli"
 
     async def test_get_missing_returns_none(
         self, json_agent_store: JsonAgentStore
@@ -392,7 +392,7 @@ class TestJsonSeedFromToml:
             f"""
 [agent]
 name = "{name}"
-backend = "anthropic-sdk"
+backend = "claude-cli"
 model = "claude-3-5-haiku-20241022"
 max_turns = 5
 tools = []
@@ -460,7 +460,7 @@ show_intermediate = false
         # Assert
         assert count == 1
         row_restored = json_agent_store.get("force-agent")
-        assert row_restored is not None and row_restored.backend == "anthropic-sdk"
+        assert row_restored is not None and row_restored.backend == "claude-cli"
 
     async def test_seed_skips_unparseable(
         self, json_agent_store: JsonAgentStore, tmp_path: Path

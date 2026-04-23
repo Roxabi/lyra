@@ -88,10 +88,10 @@ def validate(  # noqa: C901 -- validation walks multiple config sections
             if row.smart_routing_json:
                 try:
                     sr = _json.loads(row.smart_routing_json)
-                    if sr.get("enabled") and row.backend != "anthropic-sdk":
+                    if sr.get("enabled"):
                         errors_found.append(
-                            f"smart_routing.enabled=true but backend={row.backend!r} "
-                            "(requires anthropic-sdk)"
+                            "smart_routing.enabled=true but smart_routing is no longer "
+                            "supported on any backend"
                         )
                 except Exception:
                     errors_found.append(

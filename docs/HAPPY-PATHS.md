@@ -387,7 +387,6 @@ CommandRouter → builtin /clear handler
     → pool.session_id = str(uuid.uuid4())  # fresh UUID
     → call _session_reset_fn (injected by agent)
       → CliPool: SIGTERM to Claude subprocess, respawn on next message
-      → AnthropicSdkDriver: no-op (stateless API)
   → Response(content="Session cleared")
 ```
 
@@ -464,26 +463,21 @@ Agent.process() → before LLM call:
 
 ## 5. Routing & Resilience
 
-### 5.1 Smart Routing (Complexity-Based Model Selection)
+### 5.1 Smart Routing (Deprecated)
 
-**Trigger:** Any inbound message.
+> **Note:** smart_routing is no longer wired on any backend. The wizard and validator reject `enabled=true`. This path does not execute.
 
-**Flow:**
+**Flow (historical — not active):**
 
 ```
 SmartRoutingDecorator.complete()
-  → classify message complexity:
-    → TRIVIAL:  greetings / very short (≤3 words + greeting pattern) → cheapest model
-    → SIMPLE:   short factual (3–20 words) → lightweight model
-    → MODERATE: medium (20–100 words) OR explanation keywords → mid-tier model
-    → COMPLEX:  long (>100 words) OR code/analysis keywords → most capable model
+  → classify message complexity: TRIVIAL / SIMPLE / MODERATE / COMPLEX
   → look up routing_table[complexity] → model_id
   → override LlmProvider default model if mapping exists
   → decorator stack: SmartRouting → CircuitBreaker → Retry → Driver
-  → driver executes with selected model
 ```
 
-**Output:** Message routed to the appropriate model for its complexity.
+**Current behavior:** `SmartRoutingDecorator` is a pass-through; model selection is fixed per agent config.
 
 ---
 

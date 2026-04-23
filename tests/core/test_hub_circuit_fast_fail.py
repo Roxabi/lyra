@@ -28,11 +28,11 @@ from tests.core.conftest import make_circuit_registry, make_inbound_message, pus
 
 @pytest.mark.asyncio
 async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
-    """SC-07: anthropic OPEN → fast-fail reply sent, agent.process() skipped."""
-    # Arrange — open anthropic circuit
-    open_cb = CircuitBreaker("anthropic", failure_threshold=1, recovery_timeout=60)
+    """SC-07: claude-cli OPEN → fast-fail reply sent, agent.process() skipped."""
+    # Arrange — open claude-cli circuit (replaces former anthropic CB after SDK removal)
+    open_cb = CircuitBreaker("claude-cli", failure_threshold=1, recovery_timeout=60)
     open_cb.record_failure()  # trips to OPEN
-    registry = make_circuit_registry(anthropic=open_cb)
+    registry = make_circuit_registry(**{"claude-cli": open_cb})
 
     hub = Hub(circuit_registry=registry)
 
@@ -105,9 +105,9 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
 async def test_anthropic_circuit_open_includes_retry_after() -> None:
     """SC-07: Fast-fail reply body includes a numeric retry_after value (e.g. '60s')."""
     # Arrange
-    open_cb = CircuitBreaker("anthropic", failure_threshold=1, recovery_timeout=60)
+    open_cb = CircuitBreaker("claude-cli", failure_threshold=1, recovery_timeout=60)
     open_cb.record_failure()
-    registry = make_circuit_registry(anthropic=open_cb)
+    registry = make_circuit_registry(**{"claude-cli": open_cb})
     hub = Hub(circuit_registry=registry)
 
     sent_responses: list[OutboundMessage] = []

@@ -55,7 +55,6 @@ class PoolConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    max_sdk_history: int = 50
     safe_dispatch_timeout: float = 10.0
 
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -206,8 +205,6 @@ class AgentBase(ABC, SessionManager):
             pool._system_prompt = self.config.system_prompt
             return
         pool._system_prompt = await self.build_system_prompt(pool)
-        # compact() owns truncation when memory is wired, so disable deque cap.
-        pool.max_sdk_history = sys.maxsize
 
     async def build_system_prompt(self, pool: "Pool") -> str:
         """Fetch identity anchor + recall block; seed from TOML on first boot."""

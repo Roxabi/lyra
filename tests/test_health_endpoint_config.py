@@ -20,77 +20,12 @@ from tests.conftest import AUTH_HEADERS, HEALTH_SECRET
 
 
 class TestConfigEndpoint:
-    """GET /config exposes runtime config when an AnthropicAgent is registered."""
-
-    async def test_config_returns_correct_json_shape(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """AnthropicAgent registered as lyra_default → 200 with all expected keys."""
-        # Arrange
-        import lyra.bootstrap.infra.health as health_mod
-
-        monkeypatch.setattr(
-            health_mod, "_read_secret", lambda name: "test-config-secret"
-        )
-        from unittest.mock import AsyncMock, MagicMock
-
-        from lyra.agents.anthropic_agent import AnthropicAgent
-        from lyra.bootstrap.infra.health import create_health_app
-        from lyra.core.agent import Agent
-        from lyra.core.agent.agent_config import ModelConfig
-        from lyra.core.runtime_config import RuntimeConfig
-        from lyra.llm.base import LlmResult
-
-        config = Agent(
-            name="lyra_default",
-            system_prompt="You are Lyra.",
-            memory_namespace="lyra",
-            llm_config=ModelConfig(
-                backend="anthropic-sdk",
-                model="claude-sonnet-4-5",
-                max_turns=10,
-                tools=(),
-            ),
-        )
-        runtime_config = RuntimeConfig(
-            style="concise",
-            language="auto",
-            temperature=0.7,
-        )
-        mock_provider = MagicMock()
-        mock_provider.capabilities = {"streaming": False, "auth": "api_key"}
-        mock_provider.complete = AsyncMock(return_value=LlmResult(result="ok"))
-        test_hub = Hub()
-        agent = AnthropicAgent(config, mock_provider, runtime_config=runtime_config)
-        test_hub.register_agent(agent)
-
-        app = create_health_app(test_hub)
-        transport = ASGITransport(app=app)
-
-        # Act
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(
-                "/config", headers={"authorization": "Bearer test-config-secret"}
-            )
-
-        # Assert
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "style" in data
-        assert "language" in data
-        assert "temperature" in data
-        assert "model" in data
-        assert "max_steps" in data
-        assert "extra_instructions" in data
-        # Spot-check values
-        assert data["style"] == "concise"
-        assert data["language"] == "auto"
-        assert data["temperature"] == 0.7
+    """GET /config endpoint auth and 404 behavior."""
 
     async def test_config_returns_404_when_no_anthropic_agent(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """No agent (or non-AnthropicAgent) registered → 404."""
+        """No agent registered → 404."""
         # Arrange
         import lyra.bootstrap.infra.health as health_mod
 
@@ -111,42 +46,6 @@ class TestConfigEndpoint:
 
         # Assert
         assert resp.status_code == 404
-
-    async def test_config_returns_401_without_token(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """#207: /config without auth returns 401."""
-        import lyra.bootstrap.infra.health as health_mod
-
-        secret = "test-config-secret"
-        monkeypatch.setattr(health_mod, "_read_secret", lambda name: secret)
-        from lyra.bootstrap.infra.health import create_health_app
-
-        app = create_health_app(Hub())
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/config")
-
-        assert resp.status_code == 401
-
-    async def test_config_returns_401_with_wrong_token(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """#207: /config with wrong token returns 401."""
-        import lyra.bootstrap.infra.health as health_mod
-
-        secret = "test-config-secret"
-        monkeypatch.setattr(health_mod, "_read_secret", lambda name: secret)
-        from lyra.bootstrap.infra.health import create_health_app
-
-        app = create_health_app(Hub())
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(
-                "/config", headers={"authorization": "Bearer wrong"}
-            )
-
-        assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------

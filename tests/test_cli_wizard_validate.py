@@ -98,18 +98,18 @@ class TestValidate:
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "ghost" in result.output.lower()
 
-    def test_sr_sdk_constraint_satisfied_exits_zero(
+    def test_sr_enabled_any_backend_exits_nonzero(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """anthropic-sdk + SR enabled exits 0."""
+        """smart_routing enabled on any backend is rejected — no backend supports SR."""
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         _seed_agent(
             tmp_path / "config.db",
-            name="sdkagent",
-            backend="anthropic-sdk",
+            name="sragent",
+            backend="claude-cli",
             model="claude-sonnet-4-6",
             smart_routing_json='{"enabled": true}',
         )
 
-        result = runner.invoke(app, ["validate", "sdkagent"])
-        assert result.exit_code == 0, result.output
+        result = runner.invoke(app, ["validate", "sragent"])
+        assert result.exit_code != 0, result.output

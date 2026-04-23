@@ -18,7 +18,7 @@ ReadOnly=true
 DropCapability=all
 User=lyra
 EnvironmentFile=%h/.lyra/env/hub.env
-# hub.env contains only hub-scoped vars (ANTHROPIC_API_KEY, LYRA_HEALTH_SECRET,
+# hub.env contains only hub-scoped vars (LYRA_HEALTH_SECRET,
 # LYRA_LOG_DIR, ROXABI_VAULT_DIR). Adapter tokens (Telegram, Discord, TTS/STT)
 # are excluded — hub does not need them. See deploy/quadlet/hub.env.example.
 # NATS_URL is overridden inline below; cutover = update .env.hub directly.

@@ -160,7 +160,7 @@ Each container reads a **scoped** env file from `~/.lyra/env/`. These files live
 
 | Container | `EnvironmentFile=` | Required vars |
 |---|---|---|
-| `lyra-hub` | `%h/.lyra/env/hub.env` | `ANTHROPIC_API_KEY`, `LYRA_HEALTH_SECRET`, `LYRA_HEALTH_PORT` |
+| `lyra-hub` | `%h/.lyra/env/hub.env` | `LYRA_HEALTH_SECRET`, `LYRA_HEALTH_PORT` |
 | `lyra-telegram` | `%h/.lyra/env/telegram.env` | `TELEGRAM_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` |
 | `lyra-discord` | `%h/.lyra/env/discord.env` | `DISCORD_TOKEN` |
 

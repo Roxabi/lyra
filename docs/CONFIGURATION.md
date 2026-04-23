@@ -261,7 +261,7 @@ The health monitoring cron runs as a **systemd user timer**, separate from the Q
 | `deploy/lyra-monitor.service` | Systemd oneshot — runs `python -m lyra.monitoring` |
 | `deploy/lyra-monitor.timer` | Triggers the service every 5 minutes |
 | `lyra.toml` `[monitoring]` | Thresholds (queue depth, idle hours, disk, model, etc.) |
-| `.env` | Secrets: `TELEGRAM_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_ADMIN_CHAT_ID` |
+| `.env` | Secrets: `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` |
 
 ### Installation
 
@@ -311,8 +311,9 @@ The hub reads `LYRA_STT_ENABLED`/`LYRA_TTS_ENABLED` at startup to probe voice se
 
 ```bash
 TELEGRAM_TOKEN=bot...           # for sending alerts (same bot or dedicated)
-ANTHROPIC_API_KEY=sk-ant-...    # for LLM diagnosis (Layer 2, optional if claude CLI installed)
 TELEGRAM_ADMIN_CHAT_ID=123...   # numeric chat ID for alerts
+# Ensure `claude` CLI is authenticated (`claude login` or its own env var) —
+# Lyra does not read ANTHROPIC_API_KEY directly; the CLI handles its own auth.
 ```
 
 ### Why systemd timer, not a container?

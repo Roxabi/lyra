@@ -6,6 +6,10 @@ re-exported here — it must be imported explicitly as
 ``from roxabi_contracts.voice.fixtures import ...``.
 """
 
+from roxabi_contracts.voice.builders import (
+    build_stt_response,
+    build_tts_response,
+)
 from roxabi_contracts.voice.models import (
     SttRequest,
     SttResponse,
@@ -25,6 +29,8 @@ __all__ = [
     "SttResponse",
     "TtsRequest",
     "TtsResponse",
+    "build_stt_response",
+    "build_tts_response",
     "per_worker_stt",
     "per_worker_tts",
     "validate_worker_id",

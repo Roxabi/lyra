@@ -4,5 +4,6 @@
   "description": "Debug Lyra on production — check status, pull logs, diagnose root cause, suggest fix.",
   "author": {
     "name": "Roxabi"
-  }
+  },
+  "skills": ["./skills/lyra-debug"]
 }

@@ -589,7 +589,7 @@ Installed via `make register` in the lyra repo. Managed via `make monitor status
 ### Configuration
 
 Thresholds: `[monitoring]` section in `lyra.toml`.
-Secrets: `TELEGRAM_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_ADMIN_CHAT_ID` in `.env`.
+Secrets: `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` in `.env`.
 
 ---
 

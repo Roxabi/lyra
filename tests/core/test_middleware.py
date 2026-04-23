@@ -168,7 +168,9 @@ class TestResolveBinding:
         hub = Hub()
         from tests.core.conftest import _MockAdapter
 
-        hub.register_adapter(Platform.TELEGRAM, "main", _MockAdapter())  # type: ignore[arg-type]
+        # justified: test double for ResolveBindingMiddleware —
+        # does not need full ChannelAdapter protocol
+        hub.register_adapter(Platform.TELEGRAM, "main", _MockAdapter())
         hub.register_binding(Platform.TELEGRAM, "main", "*", "ghost", "telegram:main:*")
         mw = ResolveBindingMiddleware()
         ctx = PipelineContext(hub=hub)

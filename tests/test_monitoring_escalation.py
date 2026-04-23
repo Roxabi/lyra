@@ -30,7 +30,6 @@ def config() -> MonitoringConfig:
         health_endpoint_url="http://localhost:8443/health",
         diagnostic_model="claude-haiku-4-5-20251001",
         telegram_token="tg-token",
-        anthropic_api_key="sk-ant-key",
         telegram_admin_chat_id="12345",
         disk_check_path="/",
         service_name="lyra",
@@ -72,40 +71,6 @@ def diagnosis() -> DiagnosisReport:
 
 
 class TestEscalateToLLM:
-    async def test_calls_anthropic_api_fallback(
-        self, config: MonitoringConfig, failed_report: HealthReport
-    ) -> None:
-        """SC-7: escalate_to_llm falls back to API when CLI not available."""
-        from lyra.monitoring.escalation import escalate_to_llm
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "content": [
-                {
-                    "type": "text",
-                    "text": '{"severity":"warning","diagnosis":"Process down",'
-                    '"suggested_remediation":"Restart service"}',
-                }
-            ]
-        }
-
-        with (
-            patch("lyra.monitoring.escalation.shutil.which", return_value=None),
-            patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls,
-        ):
-            mock_client = AsyncMock()
-            mock_client.post.return_value = mock_response
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
-
-            result = await escalate_to_llm(failed_report, config)
-
-        assert isinstance(result, DiagnosisReport)
-        assert result.severity == "warning"
-        assert result.diagnosis == "Process down"
-
     async def test_prefers_cli_over_api(
         self, config: MonitoringConfig, failed_report: HealthReport
     ) -> None:
@@ -140,25 +105,14 @@ class TestEscalateToLLM:
         assert result.severity == "critical"
         assert result.diagnosis == "Service crashed"
 
-    async def test_raises_on_api_error(
+    async def test_raises_when_cli_not_installed(
         self, config: MonitoringConfig, failed_report: HealthReport
     ) -> None:
-        """SC-9: escalate_to_llm raises on Anthropic API failure."""
-        import httpx
-
+        """SC-9: escalate_to_llm raises RuntimeError when the claude CLI is missing."""
         from lyra.monitoring.escalation import escalate_to_llm
 
-        with (
-            patch("lyra.monitoring.escalation.shutil.which", return_value=None),
-            patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls,
-        ):
-            mock_client = AsyncMock()
-            mock_client.post.side_effect = httpx.ConnectError("API unreachable")
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
-
-            with pytest.raises(Exception):
+        with patch("lyra.monitoring.escalation.shutil.which", return_value=None):
+            with pytest.raises(RuntimeError, match="claude CLI not installed"):
                 await escalate_to_llm(failed_report, config)
 
 
@@ -300,7 +254,7 @@ class TestRunFallbackChain:
             "lyra.monitoring.checks.subprocess.run",
             lambda *a, **kw: MagicMock(
                 returncode=0,
-                stdout="lyra_telegram                    RUNNING   pid 1234, uptime 1:00:00\n",  # noqa: E501
+                stdout="lyra-telegram                    RUNNING   pid 1234, uptime 1:00:00\n",  # noqa: E501
             ),
         )
 
@@ -310,7 +264,7 @@ class TestRunFallbackChain:
             "queue_size": 0,
             "last_message_age_s": 10.0,
             "uptime_s": 100.0,
-            "circuits": {"anthropic": {"state": "closed"}},
+            "circuits": {"claude-cli": {"state": "closed"}},
         }
 
         with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_cls:
@@ -329,7 +283,12 @@ class TestRunFallbackChain:
         _mock_config,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Anomaly + LLM fails → raw Telegram sent → exit 1."""
+        """Anomaly + CLI unavailable → raw Telegram sent → exit 1.
+
+        After SDK removal escalate_to_llm raises immediately when claude CLI is
+        not installed (no HTTP fallback to Anthropic API).  The _run() fallback
+        chain catches the RuntimeError and calls send_telegram_raw_alert.
+        """
         from lyra.monitoring.__main__ import _run
 
         # Process check fails → anomaly
@@ -343,6 +302,7 @@ class TestRunFallbackChain:
         call_log: list[str] = []
 
         with (
+            # CLI not installed → escalate_to_llm raises RuntimeError immediately
             patch("lyra.monitoring.escalation.shutil.which", return_value=None),
             patch("lyra.monitoring.checks.httpx.AsyncClient") as checks_cls,
             patch("lyra.monitoring.escalation.httpx.AsyncClient") as esc_cls,
@@ -354,17 +314,8 @@ class TestRunFallbackChain:
             mc_checks.__aexit__ = AsyncMock(return_value=False)
             checks_cls.return_value = mc_checks
 
-            # Escalation: LLM fails, then Telegram succeeds
-            call_count = 0
-
+            # Telegram raw alert succeeds
             async def mock_post(*args, **kwargs):
-                nonlocal call_count
-                call_count += 1
-                url = args[0] if args else kwargs.get("url", "")
-                if "anthropic" in str(url):
-                    call_log.append("llm_called")
-                    raise httpx.ConnectError("API down")
-                # Telegram raw alert
                 call_log.append("telegram_raw")
                 resp = MagicMock()
                 resp.status_code = 200
@@ -379,7 +330,6 @@ class TestRunFallbackChain:
             code = await _run()
 
         assert code == 1
-        assert "llm_called" in call_log
         assert "telegram_raw" in call_log
 
     async def test_both_fail_log_only(

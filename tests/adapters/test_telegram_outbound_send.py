@@ -192,7 +192,7 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
 
     # Arrange — circuit is OPEN but adapter should still send (CB check in dispatcher)
     registry = CircuitRegistry()
-    for name in ("anthropic", "telegram", "discord", "hub"):
+    for name in ("claude-cli", "telegram", "discord", "hub"):
         cb = CircuitBreaker(name, failure_threshold=1, recovery_timeout=60)
         if name == "telegram":
             cb.record_failure()  # trips to OPEN

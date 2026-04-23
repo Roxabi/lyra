@@ -24,7 +24,7 @@ class TestBuildCliPool:
                 name="agent_a",
                 system_prompt="prompt",
                 memory_namespace="test",
-                llm_config=ModelConfig(backend="anthropic-sdk"),
+                llm_config=ModelConfig(backend="nats"),
             ),
             "agent_b": Agent(
                 name="agent_b",
@@ -54,20 +54,20 @@ class TestRegisterAgents:
         """register_agents calls hub.register_agent once per resolved agent."""
         # Arrange
         circuit_registry = CircuitRegistry()
-        circuit_registry.register(CircuitBreaker(name="anthropic"))
+        circuit_registry.register(CircuitBreaker(name="claude-cli"))
         hub = Hub(circuit_registry=circuit_registry)
 
         agent_alpha = Agent(
             name="alpha",
             system_prompt="prompt",
             memory_namespace="test",
-            llm_config=ModelConfig(backend="anthropic-sdk"),
+            llm_config=ModelConfig(backend="nats"),
         )
         agent_beta = Agent(
             name="beta",
             system_prompt="prompt",
             memory_namespace="test",
-            llm_config=ModelConfig(backend="anthropic-sdk"),
+            llm_config=ModelConfig(backend="nats"),
         )
         agent_configs: dict[str, Agent] = {"alpha": agent_alpha, "beta": agent_beta}
 

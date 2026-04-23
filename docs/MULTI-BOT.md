@@ -131,7 +131,7 @@ Key fields:
 |-------|---------|
 | `name` | Must match the filename (without `.toml`) |
 | `memory_namespace` | Isolates SQLite memory — different bots never share memories |
-| `backend` | `claude-cli` or `anthropic-sdk` |
+| `backend` | `claude-cli` |
 | `model` | Model identifier passed to the backend |
 | `model.cwd` | Working directory for the Claude subprocess |
 | `[workspaces]` | Named directory shortcuts exposed as `/keyname` slash commands |
@@ -140,7 +140,7 @@ Multiple bots can share an agent file (same persona, same memory namespace). Dis
 
 ### smart_routing constraint
 
-`smart_routing` (complexity-based model selection) only works with `backend = "anthropic-sdk"`. If the agent uses `backend = "claude-cli"`, smart_routing must be disabled or absent from the config. `aryl_default` uses `claude-cli`, so it does not enable smart_routing.
+`smart_routing` is deprecated and no longer wired on any backend. The validator rejects `enabled = true`. Keep `smart_routing` absent or set `enabled = false`.
 
 ---
 
@@ -250,7 +250,7 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
 2. **Create the agent TOML** (if using a new persona)
    - Copy `src/lyra/agents/lyra_default.toml` to `src/lyra/agents/<name>.toml`
    - Edit `name`, `memory_namespace`, `model`, and `[prompt]`
-   - If using `backend = "claude-cli"`, do not enable `smart_routing`
+   - Do not enable `smart_routing` (`enabled = false` or omit the section)
 
 3. **Add environment variables** to `.env`
    ```bash
@@ -304,7 +304,7 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
 
 | Constraint | Detail |
 |------------|--------|
-| `smart_routing` requires `anthropic-sdk` | Does not work with `claude-cli` backend |
+| `smart_routing` is deprecated | Validator rejects `enabled = true` on any backend |
 | `bot_id` must be unique per platform | Two Telegram bots cannot share the same `bot_id` |
 | `auth_bots` entry required per bot | A bot without a matching auth entry is silently skipped at startup — add `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` entry or the bot will not start. The process exits only if ALL bots lack auth. |
 | `CliPool` is shared | All bots share the subprocess pool — heavy concurrent use increases subprocess contention |

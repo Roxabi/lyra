@@ -19,7 +19,7 @@ class TestAgentRowToConfigTTSSTT:
 
         return AgentRow(
             name="row-agent",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             voice_json=voice_json,
         )
@@ -132,7 +132,7 @@ class TestAgentRowToConfigPatterns:
 
         row = AgentRow(
             name="r",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             patterns_json=json.dumps({"bare_url": False}),
         )
@@ -147,7 +147,7 @@ class TestAgentRowToConfigPatterns:
 
         row = AgentRow(
             name="s",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             patterns_json=None,
         )
@@ -162,7 +162,7 @@ class TestAgentRowToConfigPatterns:
 
         row = AgentRow(
             name="t",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             patterns_json=json.dumps(["bare_url"]),
         )

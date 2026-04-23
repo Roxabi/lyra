@@ -9,16 +9,44 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage, Platform
 
 # ---------------------------------------------------------------------------
 # Auth helper
 # ---------------------------------------------------------------------------
+
+
+def _make_inbound_message(
+    platform: Platform = Platform.DISCORD,
+    chat_id: str = "123",
+    user_id: str = "456",
+    text: str = "hello",
+    trust_level: TrustLevel = TrustLevel.PUBLIC,
+    **overrides: Any,
+) -> InboundMessage:
+    """Build a minimal InboundMessage with sensible defaults for tests."""
+    scope_id = overrides.pop("scope_id", f"chat:{chat_id}")
+    return InboundMessage(
+        id=overrides.pop("id", "test-msg"),
+        platform=platform.value,
+        bot_id=overrides.pop("bot_id", "main"),
+        scope_id=scope_id,
+        user_id=user_id,
+        user_name=overrides.pop("user_name", "Alice"),
+        is_mention=overrides.pop("is_mention", False),
+        text=text,
+        text_raw=overrides.pop("text_raw", text),
+        trust_level=trust_level,
+        is_admin=overrides.pop("is_admin", False),
+        **overrides,
+    )
 
 
 def _make_discord_msg_ns(user_id: int = 42, roles: list | None = None) -> object:
@@ -206,9 +234,9 @@ class TestTrustGuardMiddleware:
         """Message with BLOCKED trust level is dropped; next() not called."""
         from unittest.mock import AsyncMock
 
-        from lyra.core.hub.message_pipeline import _DROP
         from lyra.core.hub.middleware import PipelineContext
-        from lyra.core.hub.middleware_stages import TrustGuardMiddleware
+        from lyra.core.hub.middleware.middleware_stages import TrustGuardMiddleware
+        from lyra.core.hub.pipeline.message_pipeline import _DROP
         from lyra.core.messaging.message import InboundMessage
 
         mw = TrustGuardMiddleware()
@@ -233,7 +261,7 @@ class TestTrustGuardMiddleware:
         from unittest.mock import AsyncMock
 
         from lyra.core.hub.middleware import PipelineContext
-        from lyra.core.hub.middleware_stages import TrustGuardMiddleware
+        from lyra.core.hub.middleware.middleware_stages import TrustGuardMiddleware
         from lyra.core.messaging.message import InboundMessage
 
         mw = TrustGuardMiddleware()
@@ -262,25 +290,6 @@ class TestTrustGuardMiddleware:
 class TestHubTrustResolutionEdgeCases:
     """Edge cases for Hub._resolve_message_trust()."""
 
-    def _make_msg(self, **kwargs):
-        from lyra.core.messaging.message import InboundMessage
-
-        defaults = dict(
-            id="test-edge",
-            platform="telegram",
-            bot_id="main",
-            scope_id="tg:user:42",
-            user_id="tg:user:42",
-            user_name="Alice",
-            is_mention=False,
-            text="hello",
-            text_raw="hello",
-            trust_level=TrustLevel.PUBLIC,
-            is_admin=False,
-        )
-        defaults.update(kwargs)
-        return InboundMessage(**defaults)  # type: ignore[arg-type]
-
     def test_empty_user_id_passed_as_none_to_auth_resolve(self) -> None:
         """Empty string user_id → auth.resolve() is called with None."""
         from unittest.mock import MagicMock
@@ -299,7 +308,7 @@ class TestHubTrustResolutionEdgeCases:
         hub = Hub()
         hub.register_authenticator(Platform.TELEGRAM, "main", auth)
 
-        msg = self._make_msg(user_id="")
+        msg = _make_inbound_message(platform=Platform.TELEGRAM, user_id="")
 
         # Act
         hub._resolve_message_trust(msg)
@@ -322,7 +331,9 @@ class TestHubTrustResolutionEdgeCases:
         hub = Hub()
         hub.register_authenticator(Platform.TELEGRAM, "main", auth)
 
-        msg = self._make_msg(platform="badplatform")
+        msg = _make_inbound_message(platform=Platform.TELEGRAM, id="test-edge")
+        # Override platform with invalid value
+        object.__setattr__(msg, "platform", "badplatform")
 
         # Act
         result = hub._resolve_message_trust(msg)
@@ -349,7 +360,7 @@ class TestHubTrustResolutionEdgeCases:
         hub = Hub()
         hub.register_authenticator(Platform.TELEGRAM, "main", auth)
 
-        msg = self._make_msg()
+        msg = _make_inbound_message(platform=Platform.TELEGRAM)
 
         # Act / Assert
         with pytest.raises(RuntimeError, match="store unavailable"):

@@ -169,7 +169,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
         # Act 2 — SttMiddleware processes the voice message
         # ------------------------------------------------------------------
         from lyra.core.hub.middleware import PipelineContext
-        from lyra.core.hub.middleware_stt import SttMiddleware
+        from lyra.core.hub.middleware.middleware_stt import SttMiddleware
 
         ctx = PipelineContext(hub=hub)
 
@@ -179,7 +179,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
             updated_msg: InboundMessage, _ctx: PipelineContext
         ) -> Any:
             captured_msgs.append(updated_msg)
-            from lyra.core.hub.message_pipeline import _DROP
+            from lyra.core.hub.pipeline.message_pipeline import _DROP
 
             return _DROP
 
@@ -218,7 +218,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
     async def test_voice_message_stt_unavailable_drops_cleanly(self) -> None:
         """SttMiddleware drops voice message cleanly when hub._stt is None."""
         from lyra.core.hub.middleware import PipelineContext
-        from lyra.core.hub.middleware_stt import SttMiddleware
+        from lyra.core.hub.middleware.middleware_stt import SttMiddleware
 
         hub = _make_hub_mock(stt=None)  # STT not configured
         voice_msg = _make_voice_message()
@@ -228,7 +228,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
 
         async def _capture_next(msg: InboundMessage, _ctx: PipelineContext) -> Any:
             next_called.append(True)
-            from lyra.core.hub.message_pipeline import _DROP
+            from lyra.core.hub.pipeline.message_pipeline import _DROP
 
             return _DROP
 
@@ -246,7 +246,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
         import asyncio
 
         from lyra.core.hub.middleware import PipelineContext
-        from lyra.core.hub.middleware_stt import SttMiddleware
+        from lyra.core.hub.middleware.middleware_stt import SttMiddleware
 
         class _TimeoutSTT:
             timeout_ms: int = 30000
@@ -262,7 +262,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
 
         async def _capture_next(msg: InboundMessage, _ctx: PipelineContext) -> Any:
             next_called.append(True)
-            from lyra.core.hub.message_pipeline import _DROP
+            from lyra.core.hub.pipeline.message_pipeline import _DROP
 
             return _DROP
 

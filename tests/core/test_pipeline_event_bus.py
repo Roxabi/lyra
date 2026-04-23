@@ -5,17 +5,18 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+from typing import Any
 
 import pytest
 
-from lyra.core.hub.audit_consumer import AuditConsumer
 from lyra.core.hub.event_bus import PipelineEventBus
-from lyra.core.hub.message_pipeline import Action, PipelineResult
 from lyra.core.hub.middleware import (
     MiddlewarePipeline,
     PipelineContext,
 )
-from lyra.core.hub.pipeline_events import (
+from lyra.core.hub.pipeline.audit_consumer import AuditConsumer
+from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult
+from lyra.core.hub.pipeline.pipeline_events import (
     CommandDispatched,
     MessageDropped,
     MessageReceived,
@@ -27,16 +28,23 @@ from tests.conftest import yield_once
 from tests.core.conftest import _make_hub, make_inbound_message
 
 
-def _make_event(**overrides: str) -> MessageReceived:
-    defaults: dict[str, str] = {
-        "msg_id": "test-1",
-        "stage": "inbound",
-        "platform": "telegram",
-        "user_id": "u1",
-        "scope_id": "s1",
-    }
-    defaults.update(overrides)
-    return MessageReceived(**defaults)  # type: ignore[arg-type]
+def _make_message_received(
+    msg_id: str = "test-1",
+    stage: str = "inbound",
+    platform: str = "telegram",
+    user_id: str = "u1",
+    scope_id: str = "s1",
+    **overrides: Any,
+) -> MessageReceived:
+    """Build a minimal MessageReceived event with sensible defaults for tests."""
+    return MessageReceived(
+        msg_id=msg_id,
+        stage=stage,
+        platform=platform,
+        user_id=user_id,
+        scope_id=scope_id,
+        **overrides,
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -46,7 +54,7 @@ def _make_event(**overrides: str) -> MessageReceived:
 
 class TestPipelineEvents:
     def test_events_are_frozen(self) -> None:
-        event = _make_event()
+        event = _make_message_received()
         with pytest.raises(dataclasses.FrozenInstanceError):
             event.msg_id = "changed"  # type: ignore[misc]
 
@@ -61,7 +69,7 @@ class TestPipelineEvents:
             assert issubclass(cls, PipelineEvent)
 
     def test_asdict_produces_dict(self) -> None:
-        event = _make_event()
+        event = _make_message_received()
         d = dataclasses.asdict(event)
         assert d["msg_id"] == "test-1"
         assert d["platform"] == "telegram"
@@ -76,12 +84,12 @@ class TestPipelineEvents:
 class TestPipelineEventBus:
     def test_emit_no_subscribers(self) -> None:
         bus = PipelineEventBus()
-        bus.emit(_make_event())  # no error
+        bus.emit(_make_message_received())  # no error
 
     def test_emit_single_subscriber(self) -> None:
         bus = PipelineEventBus()
         q = bus.subscribe()
-        bus.emit(_make_event())
+        bus.emit(_make_message_received())
         assert q.qsize() == 1
         event = q.get_nowait()
         assert isinstance(event, MessageReceived)
@@ -92,7 +100,7 @@ class TestPipelineEventBus:
         q1 = bus.subscribe()
         q2 = bus.subscribe()
         q3 = bus.subscribe()
-        bus.emit(_make_event())
+        bus.emit(_make_message_received())
         assert q1.qsize() == 1
         assert q2.qsize() == 1
         assert q3.qsize() == 1
@@ -100,8 +108,8 @@ class TestPipelineEventBus:
     def test_queue_full_drops_event(self) -> None:
         bus = PipelineEventBus(maxsize=1)
         q = bus.subscribe()
-        bus.emit(_make_event(msg_id="first"))
-        bus.emit(_make_event(msg_id="second"))  # dropped
+        bus.emit(_make_message_received(msg_id="first"))
+        bus.emit(_make_message_received(msg_id="second"))  # dropped
         assert q.qsize() == 1
         event = q.get_nowait()
         assert event.msg_id == "first"
@@ -112,8 +120,8 @@ class TestPipelineEventBus:
         # Reset last warn time to ensure warning fires
         bus._last_warn.clear()
         with caplog.at_level(logging.WARNING):
-            bus.emit(_make_event())
-            bus.emit(_make_event())  # triggers warning
+            bus.emit(_make_message_received())
+            bus.emit(_make_message_received())  # triggers warning
         assert any("queue full" in r.message for r in caplog.records), (
             f"Expected queue full warning, got: {[r.message for r in caplog.records]}"
         )
@@ -125,10 +133,10 @@ class TestPipelineEventBus:
         bus.subscribe()  # subscriber needed to trigger QueueFull
         bus._last_warn.clear()
         with caplog.at_level(logging.WARNING):
-            bus.emit(_make_event())
+            bus.emit(_make_message_received())
             # Emit 5 more — all dropped, but only 1 warning
             for _ in range(5):
-                bus.emit(_make_event())
+                bus.emit(_make_message_received())
         warn_count = sum(1 for r in caplog.records if "queue full" in r.message)
         assert warn_count == 1
 
@@ -136,7 +144,7 @@ class TestPipelineEventBus:
         """Plugin-like external code can subscribe and receive events."""
         bus = PipelineEventBus()
         q = bus.subscribe()
-        bus.emit(_make_event())
+        bus.emit(_make_message_received())
         event = q.get_nowait()
         assert isinstance(event, MessageReceived)
         assert event.platform == "telegram"
@@ -145,10 +153,10 @@ class TestPipelineEventBus:
         bus = PipelineEventBus(maxsize=1)
         q_slow = bus.subscribe()
         q_fast = bus.subscribe()
-        bus.emit(_make_event(msg_id="first"))
+        bus.emit(_make_message_received(msg_id="first"))
         # q_slow is now full
         _ = q_fast.get_nowait()  # drain fast subscriber
-        bus.emit(_make_event(msg_id="second"))
+        bus.emit(_make_message_received(msg_id="second"))
         # q_slow dropped second, q_fast got it
         assert q_fast.qsize() == 1
         assert q_fast.get_nowait().msg_id == "second"
@@ -177,7 +185,7 @@ class TestAuditConsumer:
         q = bus.subscribe()
         consumer = AuditConsumer(q)
 
-        bus.emit(_make_event(msg_id="audit-1", stage="inbound"))
+        bus.emit(_make_message_received(msg_id="audit-1", stage="inbound"))
 
         with caplog.at_level(logging.INFO):
             task = asyncio.create_task(consumer.run())
@@ -203,9 +211,9 @@ class TestAuditConsumer:
         q = bus.subscribe()
         consumer = AuditConsumer(q)
 
-        bus.emit(_make_event(msg_id="e1"))
-        bus.emit(_make_event(msg_id="e2"))
-        bus.emit(_make_event(msg_id="e3"))
+        bus.emit(_make_message_received(msg_id="e1"))
+        bus.emit(_make_message_received(msg_id="e2"))
+        bus.emit(_make_message_received(msg_id="e3"))
 
         with caplog.at_level(logging.INFO):
             task = asyncio.create_task(consumer.run())
@@ -233,7 +241,7 @@ class TestAuditConsumer:
             await task
 
         # After cancel, items added to the queue are not processed
-        bus.emit(_make_event(msg_id="post-cancel"))
+        bus.emit(_make_message_received(msg_id="post-cancel"))
         assert q.qsize() == 1  # event sits unprocessed — no drain
 
 
@@ -247,7 +255,7 @@ class TestPipelineContextEmit:
         """ctx.emit() is a no-op when event_bus=None — no exception."""
         hub = _make_hub()
         ctx = PipelineContext(hub=hub, event_bus=None)
-        ctx.emit(_make_event())  # must not raise
+        ctx.emit(_make_message_received())  # must not raise
 
     def test_emit_forwards_to_bus(self) -> None:
         """ctx.emit() forwards event to bus when configured."""
@@ -255,7 +263,7 @@ class TestPipelineContextEmit:
         bus = PipelineEventBus()
         q = bus.subscribe()
         ctx = PipelineContext(hub=hub, event_bus=bus)
-        ctx.emit(_make_event(msg_id="ctx-test"))
+        ctx.emit(_make_message_received(msg_id="ctx-test"))
         assert q.qsize() == 1
         assert q.get_nowait().msg_id == "ctx-test"
 
@@ -363,7 +371,7 @@ class TestMiddlewarePipelineEmission:
 
     async def test_real_drop_stage_emits_events(self) -> None:
         """ValidatePlatformMiddleware emits MessageDropped for unknown platform."""
-        from lyra.core.hub.middleware_stages import (
+        from lyra.core.hub.middleware.middleware_stages import (
             ValidatePlatformMiddleware,
         )
 

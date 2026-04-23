@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..pool import Pool
-    from .pool_manager import PoolManager
+    from .pipeline import PoolManager
 
 
 class HubPoolDelegationMixin:

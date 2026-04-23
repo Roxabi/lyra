@@ -1,0 +1,222 @@
+---
+title: "ADR-053: Deployment topology and container-image hardening"
+description: Makes Lyra the reference implementation of the roxabi ecosystem migration from supervisord to Podman Quadlet, closes five coupled security and operational gaps, and establishes patterns to be lifted to roxabi-boilerplate once validated in prod.
+---
+
+## Status
+
+Proposed
+
+## Context
+
+Lyra now ships three deployment tiers:
+
+| Tier | Runtime | Entry point | Docs |
+|---|---|---|---|
+| Dev | Single process, embedded NATS | `lyra start` | — |
+| Simple prod | supervisord + 3 host processes + host `nats.service` | `scripts/deploy.sh` | `docs/DEPLOYMENT.md` |
+| Advanced prod | Podman Quadlet, 4 rootless containers on `lyra.network` | `scripts/deploy-quadlet.sh` | `docs/DEPLOYMENT-quadlet.md` |
+
+A Q2 2026 audit (architect + devops + security) of the Quadlet path surfaced five gaps that cannot be fixed in isolation — each change couples to at least one other. Fixing them in separate PRs without a recorded design intent creates contradictory half-states (e.g., UID pinned in the Dockerfile but `User=` absent in the units). This ADR bundles the five decisions into one design pass.
+
+**Why they are coupled:**
+
+- Tier strategy and naming divergence both stem from running two naming schemes in parallel — resolving tier strategy first determines how far to invest in naming alignment.
+- Digest pinning and UID pinning are both "runtime attributes must be enforced at the unit layer, not inferred from the image" — they share the same enforcement pattern and the same consequence: deploys that skip the enforcement script are unsafe.
+- Secrets relocation is the last surface still "default unsafe" after the other four are closed — moving it completes the hardening pass.
+
+See the security audit attached to spec [TBD].
+
+## Decision
+
+### 1. Tier strategy: Quadlet as ecosystem-wide strategic target; Lyra as reference implementation
+
+**Quadlet** (`deploy/quadlet/`) is the strategic target for every roxabi project running on M₁ (`roxabituwer`, Ubuntu 26.04 LTS, Podman 5.x). This ADR makes Lyra the reference implementation of that migration. The patterns defined here — unit layout, deploy script, Makefile dispatcher, nkey volumes, NATS coexistence topology — are lifted to `roxabi-boilerplate` once validated in production.
+
+**Supervisord** (`deploy/supervisor/`) is legacy-with-a-migration-path. It is not abandoned: it continues to run for projects that have not yet migrated. No new production features are added to the supervisord path beyond maintenance fixes (log rotation, conf renames). Supervisord retires when the last roxabi project on M₁ has migrated to Quadlet — triggered by ecosystem adoption, not a calendar date.
+
+**Dev** tier (`lyra start` — single process, embedded NATS) is unchanged.
+
+**Ecosystem migration order:**
+
+| Project | Quadlet status |
+|---|---|
+| `lyra` | This ADR — migrating now |
+| `voiceCLI`, `imageCLI`, `llmCLI`, `2ndBrain` | Next wave — migration planned, not yet scheduled |
+| `idna`, `roxabi-forge`, `roxabi-intel`, `roxabi-live` | Deferred — may migrate later |
+| Endgame | Quadlet everywhere on M₁; supervisord retires |
+
+Rationale: the two paths share Python source and NATS contracts, so the marginal cost of keeping supervisord alive during the migration window is one conf.d directory and a `scripts/deploy.sh`. Forcing a deadline has no upside; the retire trigger is ecosystem readiness, not this ADR.
+
+### 2. Naming normalization: hyphens across both tiers
+
+Supervisord program names are renamed to match Quadlet unit names:
+
+| Current | After |
+|---|---|
+| `[program:lyra_hub]` | `[program:lyra-hub]` |
+| `[program:lyra_telegram]` | `[program:lyra-telegram]` |
+| `[program:lyra_discord]` | `[program:lyra-discord]` |
+
+Files affected:
+- `deploy/supervisor/conf.d/lyra_hub.conf` → `lyra-hub.conf`
+- `deploy/supervisor/conf.d/lyra_telegram.conf` → `lyra-telegram.conf`
+- `deploy/supervisor/conf.d/lyra_discord.conf` → `lyra-discord.conf`
+- `deploy/supervisor/conf.d/*.conf` — update `[program:...]` stanza names
+- Log file names inside each conf update accordingly (`lyra_hub.log` → `lyra-hub.log`)
+
+Quadlet unit names already use hyphens (`ContainerName=lyra-hub`, service `lyra-hub.service`) — no change required there.
+
+Makefile impact: `Makefile` lines 57–59 currently branch on `LYRA_SUPERVISORCTL_PATH` to emit either `lyra_hub` or `lyra-hub`. After the rename, both tiers use the same name; the conditionals are removed.
+
+```makefile
+# Before (lines 57-59):
+LYRA_HUB_UNIT      := $(if $(LYRA_SUPERVISORCTL_PATH),lyra_hub,lyra-hub)
+LYRA_TELEGRAM_UNIT := $(if $(LYRA_SUPERVISORCTL_PATH),lyra_telegram,lyra-telegram)
+LYRA_DISCORD_UNIT  := $(if $(LYRA_SUPERVISORCTL_PATH),lyra_discord,lyra-discord)
+
+# After:
+LYRA_HUB_UNIT      := lyra-hub
+LYRA_TELEGRAM_UNIT := lyra-telegram
+LYRA_DISCORD_UNIT  := lyra-discord
+```
+
+Migration note: supervisord does not auto-reload conf files. On the next `make register` run on M₁ (production machine), supervisord reads the new conf. Old programs (`lyra_hub` etc.) must be stopped and removed from supervisord's internal state before the new names take effect — a one-time `supervisorctl stop lyra_hub lyra_telegram lyra_discord && supervisorctl reread && supervisorctl update` sequence.
+
+### 3. Image digest pinning (supply-chain hardening)
+
+`localhost/lyra:latest` is a floating tag. A `podman load` of a tampered image silently replaces it; the next service restart then runs the compromised image with live NATS nkeys and adapter tokens in scope.
+
+**Enforcement pattern:**
+
+1. Post-build: `scripts/deploy-quadlet.sh` captures the image ID immediately after `podman build`:
+   ```
+   podman inspect --format '{{.Id}}' localhost/lyra:latest > .image-digest
+   ```
+2. Pre-restart: the script reads `.image-digest` and compares it against the running image ID. If they differ, the script aborts with a non-zero exit and prints a diagnostic. The operator must re-run the build to reconcile.
+
+`.container` files retain `Image=localhost/lyra:latest` for ergonomics. The script is the enforcement point; the unit file is not the source of truth for identity.
+
+`.image-digest` is added to `.gitignore` (it is machine-local build state, not a tracked artifact).
+
+Files affected: `scripts/deploy-quadlet.sh`, `.gitignore`.
+
+### 4. Container UID pinning + explicit `User=`
+
+The current `Dockerfile` (line 20) creates the `lyra` user with a system-assigned UID (`useradd -m lyra`, no `-u`). The UID assigned depends on the base image's `/etc/passwd` state at build time. A base image update that adds a new system account can shift the assigned UID, causing volume-mounted files owned by the old UID to be unreadable by the new container — and, across multi-container deployments, causing one container's files to appear owned by a different container's UID.
+
+**Change:**
+
+```dockerfile
+# Dockerfile — replace:
+RUN useradd -m lyra
+# with:
+RUN useradd -u 1500 -m lyra
+```
+
+Additionally, add `User=lyra` to each `.container` file. Currently no `User=` directive exists; Podman defaults to the image's declared `USER` (already `USER lyra` at Dockerfile line 28), but making it explicit in the unit guards against future Dockerfile edits that inadvertently drop the `USER` instruction.
+
+Files affected: `Dockerfile`, `deploy/quadlet/lyra-hub.container`, `deploy/quadlet/lyra-telegram.container`, `deploy/quadlet/lyra-discord.container`.
+
+UID 1500 is chosen to be above the typical system account range (1000 is the first human user on most Debian/Ubuntu systems) and below 65534 (nobody). It does not conflict with any known reserved range on `roxabituwer`.
+
+### 5. Secrets file location: out of the git working tree
+
+Current location of environment files:
+```
+~/projects/lyra/.env.hub
+~/projects/lyra/.env.telegram
+~/projects/lyra/.env.discord
+```
+
+These sit inside the git working tree. A mistyped `git add -f` or an IDE "stage all" gesture commits live credentials.
+
+**New location:** `~/.lyra/env/` — aligns with the existing agent DB (`~/.lyra/auth.db`) and nkey seed paths (`~/.lyra/nkeys/`). Using `~/.config/lyra/` would introduce a second config root alongside `~/.lyra/`, splitting the mental model. `~/.lyra/` is already the established runtime state directory for this project.
+
+```
+~/.lyra/env/hub.env
+~/.lyra/env/telegram.env
+~/.lyra/env/discord.env
+```
+
+Update `EnvironmentFile=` in each `.container` file:
+```ini
+# Before:
+EnvironmentFile=%h/projects/lyra/.env.hub
+# After:
+EnvironmentFile=%h/.lyra/env/hub.env
+```
+
+The documented contract moves to example files committed to the repo:
+```
+deploy/quadlet/hub.env.example
+deploy/quadlet/telegram.env.example
+deploy/quadlet/discord.env.example
+```
+
+`scripts/deploy-quadlet.sh` adds a pre-flight check: if `~/.lyra/env/<name>.env` does not exist, the script aborts with instructions to copy from the example file.
+
+Files affected: `deploy/quadlet/lyra-hub.container`, `deploy/quadlet/lyra-telegram.container`, `deploy/quadlet/lyra-discord.container`, `scripts/deploy-quadlet.sh`, `deploy/quadlet/*.env.example` (new). Old `deploy/quadlet/.env.*.example` files are removed; `docs/DEPLOYMENT-quadlet.md` is updated.
+
+## 6. Ecosystem Implications
+
+This section flags cross-project concerns that surface once a second project begins migrating to Quadlet. Lyra does not resolve these — they require a future ecosystem-level ADR (in `roxabi-production` or equivalent), triggered when voiceCLI starts its migration. They are enumerated here so the Lyra patterns are designed with awareness of them.
+
+**Image registry namespace.** Lyra uses `localhost/lyra:latest`. If all projects follow `localhost/<name>:latest`, namespace collisions are unlikely but the convention should be codified. A shared prefix (`localhost/roxabi-<name>:latest`) is one option; per-project images with no shared prefix is another.
+
+**Shared vs per-project NATS.** Lyra runs its own `nats.container` on `lyra.network`. When voiceCLI migrates, it may need NATS too. Options: each project runs a NATS container (simple, isolated, more processes), or projects share one NATS container managed outside any single project (efficient, but adds a coordination dependency). The coexistence topology in this ADR (Quadlet NATS on 4223, host NATS on 4222) is Lyra-scoped; it does not pre-decide this question.
+
+**Shared vs per-project Podman network.** Lyra defines `lyra.network`. A second project would define its own. If projects need to communicate directly (e.g., voiceCLI TTS called by Lyra via container-to-container), they would need to share a network or proxy through NATS. The current design does not require cross-project direct networking; NATS is the intended integration bus.
+
+**Environment file pattern generalization.** Lyra uses `~/.lyra/env/<service>.env`. The natural generalization is `~/.<project>/env/<service>.env` per project, or a shared `~/.roxabi/env/<project>/<service>.env`. The per-project convention is consistent with the existing `~/.lyra/auth.db` and `~/.lyra/nkeys/` precedent; whether to centralize under `~/.roxabi/` is an ecosystem-level choice.
+
+These questions are out of scope for this ADR. They are tracked in follow-up 10.
+
+## Alternatives Considered
+
+### A. Deprecate supervisord on a fixed timeline (e.g., 6-month horizon)
+
+Rejected. The cost of maintaining supervisord during the migration window is near-zero (conf.d + deploy.sh, no new features). Forcing a calendar deadline adds operational risk for other roxabi projects that have not yet migrated — the code path is identical; only the process supervisor changes. Supervisord retires when the last project migrates, not before.
+
+### B. Pin image digest directly in `.container` files (`Image=localhost/lyra@sha256:...`)
+
+Rejected. This requires regenerating and committing all three `.container` files on every deploy. It couples the unit files (infrastructure as code, tracked in git) to build artifacts (machine-local, ephemeral). The deploy-script enforcement point (Decision 3) gives equivalent security without committing build state. If a CI/CD pipeline with tagged SHA images materializes later, the `.container` files can be updated at that point.
+
+### C. Use `podman secret` instead of `EnvironmentFile`
+
+Deferred. `podman secret` with Quadlet requires Podman 4.5+ and the `Secret=` directive in `.container` files. The mechanism is sound and may be preferred long-term. It is deferred because: (a) migrating to `podman secret` does not close the git-working-tree risk faster than moving to `~/.lyra/env/`; (b) it introduces a new provisioning step (`podman secret create`) that `scripts/deploy-quadlet.sh` would need to manage; (c) the current priority is closing the accidental-commit surface, not adopting a new secrets backend. A follow-up issue should evaluate this as a Phase 2 hardening step.
+
+### D. Lyra-only Quadlet adoption (no ecosystem commitment)
+
+Rejected. The patterns introduced in this ADR (unit layout, deploy script, Makefile dispatcher, nkey volumes, NATS coexistence) are explicitly scoped as a reference implementation for the ecosystem migration. Treating this as a Lyra-only local decision would forgo the boilerplate lift (follow-up 9) and leave the next-wave projects without a validated starting point. The ecosystem commitment is the point.
+
+## Consequences
+
+### Positive
+
+- Single naming convention across both tiers — one `grep lyra-hub` finds logs, systemd units, and supervisord status.
+- Supply-chain attack surface (rogue image load) is detected before the next restart rather than after.
+- Fixed UID prevents cross-container file ownership drift on volume-mounted data.
+- Secrets are structurally separated from the git working tree — no git hook or `.gitignore` rule needed to prevent accidental commit.
+- Makefile unit conditionals are removed — simpler `make start/stop/status` invocations, both tiers behave identically from the operator's perspective.
+
+### Negative
+
+- Supervisord operators must run a one-time stop/reread/update sequence on M₁ when the conf rename lands — services are briefly unavailable.
+- `~/.lyra/env/` must be created and populated on every new deployment environment; the deploy script guards against this but it is a new manual step.
+- UID 1500 must remain stable — if a future base image or system policy assigns UID 1500 to another account, volume-mounted data will be inaccessible until UID is re-aligned.
+
+### Follow-ups
+
+The following implementation issues are out of scope for this ADR and should be triaged separately:
+
+1. **Implement supervisord conf rename** — rename `lyra_hub/telegram/discord.conf` → `lyra-hub/telegram/discord.conf`, update `[program:]` stanzas and log paths; update `docs/DEPLOYMENT.md`.
+2. **Simplify Makefile UNIT conditionals** — remove `LYRA_HUB_UNIT` / `LYRA_TELEGRAM_UNIT` / `LYRA_DISCORD_UNIT` conditionals post-rename.
+3. **Implement image digest pinning in `scripts/deploy-quadlet.sh`** — post-build capture + pre-restart verify + abort on mismatch; add `.image-digest` to `.gitignore`.
+4. **Pin UID 1500 in Dockerfile + add `User=lyra` to `.container` files** — `useradd -u 1500 -m lyra` in `Dockerfile`; `User=lyra` in all three `.container` files.
+5. **Relocate secrets to `~/.lyra/env/`** — update `EnvironmentFile=` paths in `.container` files; add `deploy/quadlet/.env.*.example`; update `scripts/deploy-quadlet.sh` pre-flight; update `docs/DEPLOYMENT-quadlet.md`; remove `~/projects/lyra/.env.*` from repo.
+6. **`make remote` systemd target** — adding remote `make start/stop` over SSH via systemd units is a separate operational concern; track independently.
+7. **NATS port 4223 → 4222 transition** — during the ecosystem migration window, M₁ runs two NATS instances in coexistence: the host `nats.service` on 4222 (used by supervisord-managed projects that have not yet migrated) and the Quadlet NATS container on 4223 (used by Lyra). Port 4223 is an intentional coexistence topology for this migration window, not a temporary hack. Drop to 4222 when Quadlet NATS is the only NATS on M₁ — i.e., all supervisord-managed projects that use NATS have migrated. Track as a follow-up issue triggered by that transition point.
+8. **Evaluate `podman secret` as Phase 2 secrets backend** — follow-up to Alternative C above; assess ergonomics and provisioning impact after Decision 5 lands.
+9. **Lift Quadlet patterns to `roxabi-boilerplate`** — after Lyra prod validation, extract unit layout, deploy script structure, Makefile dispatcher, nkey volume pattern, and NATS coexistence topology into the boilerplate for reuse by the next-wave projects.
+10. **Cross-project Quadlet ADR (shared registry / NATS / network)** — triggered by voiceCLI migration. Resolve ecosystem-level questions enumerated in §6: image registry namespace, shared vs per-project NATS, shared vs per-project network, `~/.lyra/env/` pattern generalization. Land in `roxabi-production` or equivalent cross-project decision record.

@@ -1,0 +1,51 @@
+---
+title: "refactor(nats): transcribe() takes bytes not Path"
+issue: 852
+status: approved
+tier: F-lite
+date: 2026-04-23
+---
+
+## Problem
+
+`NatsSttClient.transcribe()` accepts a `Path | str` parameter, which it resolves and reads internally. This creates a path-traversal security surface flagged in the 2026-04-22 code quality audit as P0. While current callers are not attacker-controlled, the signature is a leaky public surface that could be misused.
+
+The SDK already base64-encodes bytes internally (line 196-203). All current callers have bytes in hand and write them to tempfiles just to pass a path to `transcribe()`. This is wasted I/O.
+
+## Who
+
+- **Primary:** Lyra hub developers — simpler calling code, no tempfile dance
+- **Secondary:** Security auditors — path-traversal surface eliminated
+
+## Constraints
+
+- Must align with ADR-049 bytes-first wire format in `roxabi-contracts`
+- Part of Lane A2 — roxabi-nats SDK v0.2 (#734), Phase 2 contract migration
+- Backward compatibility: callers must be updated in same PR
+
+## Out of Scope
+
+- **TTS/Image client signature changes** — these are already text-based (no Path parameter), already safe
+- Contract schema changes — `SttRequest` already expects `audio_b64` and `mime_type`
+- Worker-side changes — voiceCLI already receives bytes on the wire
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (NATS/STT), ~4-5 files, no unknowns.
+
+**Signals:**
+- Single domain (STT/NATS)
+- Clear acceptance criteria (signature change + caller updates)
+- No architectural unknowns
+- Security-driven with well-defined remediation
+
+## Scope Details
+
+**Files to modify:**
+1. `src/lyra/nats/nats_stt_client.py` — signature change: `transcribe(audio: bytes, mime: str)`
+2. `src/lyra/core/hub/middleware_stt.py` — caller update
+3. Callers identified via grep (STT only)
+
+**Symmetric clients verified safe:**
+- `nats_tts_client.py`: `synthesize(text: str)` — no path, already safe
+- `nats_image_client.py`: `generate(prompt: str)` — no path, already safe

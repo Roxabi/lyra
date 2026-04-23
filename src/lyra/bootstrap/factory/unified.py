@@ -166,11 +166,9 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             )
 
             stt_service = init_nats_stt(nc)
-            if stt_service is not None:
-                await stt_service.start()
+            await stt_service.start()
             tts_service = init_nats_tts(nc)
-            if tts_service is not None:
-                await tts_service.start()
+            await tts_service.start()
             nats_llm_driver = await init_nats_llm(nc)
             cli_pool_cfg = _load_cli_pool_config(raw_config)
             hub_cfg = _load_hub_config(raw_config)
@@ -193,7 +191,6 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 pool_ttl=hub_cfg.pool_ttl,
                 rate_limit=hub_cfg.rate_limit,
                 rate_window=hub_cfg.rate_window,
-                max_sdk_history=pool_cfg.max_sdk_history,
                 safe_dispatch_timeout=pool_cfg.safe_dispatch_timeout,
                 staging_maxsize=inbound_bus_cfg.staging_maxsize,
                 platform_queue_maxsize=inbound_bus_cfg.platform_queue_maxsize,

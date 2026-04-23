@@ -360,7 +360,6 @@ Every inbound message carries a 3-tuple routing key. Scope is extracted by the a
 | Resource | Scope |
 |----------|-------|
 | ProviderRegistry | Per-agent |
-| SmartRoutingDecorator | Per-agent |
 | Memory namespace (SQLite) | Per-agent |
 | System prompt / persona | Per-agent |
 | CliPool (subprocess pool) | Shared across all agents |
@@ -656,7 +655,7 @@ client = AsyncOpenAI(
 
 - **Python + asyncio** — Go/Rust/Zig/Node eliminated. Python AI ecosystem is unbeatable, asyncio is sufficient for 1-5 I/O-bound users.
 - **2 machines** — Machine 1 autonomous (hub + TTS + embeddings), Machine 2 on demand (heavy LLM). Eliminates VRAM contention.
-- **Cloud LLM by default** — LlmProvider protocol (#123 ✅) with two drivers: `ClaudeCliDriver` (CLI subprocess) and `AnthropicSdkDriver` (direct API). Smart routing (#134 ✅) selects model by complexity. NATS standalone mode (hub + adapters as separate processes on Machine 1) ✅ done (#458). Local LLM on Machine 2 via NATS worker = Phase 2 (#51).
+- **Cloud LLM by default** — LlmProvider protocol (#123 ✅) with drivers: `ClaudeCliDriver` (CLI subprocess) and `NatsLlmDriver` (remote worker). NATS standalone mode (hub + adapters as separate processes on Machine 1) ✅ done (#458). Local LLM on Machine 2 via NATS worker = Phase 2 (#51).
 - **SQLite** — No Postgres. SQLite + WAL mode + `aiosqlite` amply covers personal use.
 
 ### Resolved decisions (Phase 1b completions)
@@ -668,14 +667,14 @@ client = AsyncOpenAI(
 - **scope_id replaces user_id in RoutingKey** (#125) — `RoutingKey(platform, bot_id, scope_id)`. Scope extracted from platform context: `chat:NNN`, `thread:NNN`, `channel:NNN`, etc.
 - **fastembed ONNX replaces sentence-transformers** (#82) — Non-blocking ONNX runtime, no `run_in_executor` needed. Hybrid BM25 (FTS5) + cosine (sqlite-vec).
 - **LLM circuit breaker** (#104) — Timeout + retry logic for Anthropic SDK calls. Graceful degradation on failure.
-- **LlmProvider protocol** (#123 ✅) — Multi-driver abstraction: `AnthropicSdkDriver`, `ClaudeCliDriver`. Smart routing (#134 ✅) selects model by complexity. OllamaDriver planned for Phase 2.
+- **LlmProvider protocol** (#123 ✅) — Multi-driver abstraction: `ClaudeCliDriver`, `NatsLlmDriver`. OllamaDriver/LiteLLM planned for Phase 2.
 - **Auth: Authenticator + GuardChain** (#151 ✅, refactored in #313/#314) — Per-adapter auth with trust levels (owner/trusted/public/blocked). Config-driven via TOML. Originally a monolithic `AuthMiddleware`; refactored into `Authenticator` (identity resolver in `authenticator.py`) and `GuardChain` (composable guard pipeline in `guard.py`). Note: `[admin].user_ids` grants cross-platform admin commands to those users across ALL bots, whereas per-bot `owner_users` in `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` sets the trust level for that specific bot only.
 - **RoutingContext + outbound verification** (#152 ✅) — Every outbound response carries a RoutingContext; adapters verify channel + bot_id before sending.
 - **PoolContext protocol** (#204 ✅) — Decouples Pool from Hub via a protocol interface.
 - **TTL eviction for Hub.pools** (#205 ✅) — Prevents memory leak from stale pools.
 - **Message normalization** (#139 ✅) — Full bus envelope: InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment. Per-adapter render functions.
 - **Runtime agent config** (#135 ✅) — Live tuning via `!config` command, no restart needed.
-- **Voice STT** (#80 ✅) — STTService delegates to voicecli library (faster-whisper + personal vocab from `~/.voicecli/voicecli.vocab`), InboundAudioBus, audio consumer loop in Hub.
+- **Voice STT** (#80 ✅, #690 ✅) — STT via NATS to voicecli workers (faster-whisper + personal vocab). InboundAudioBus, audio consumer loop in Hub. In-process STTService removed in #690.
 - **Normalized STT/TTS env vars + circuit breaker** (#598 ✅) — `LYRA_STT_MODEL` replaces `STT_MODEL_SIZE` (deprecated fallback kept for one cycle); `LYRA_TTS_ENGINE` replaces `TTS_ENGINE` (same fallback). `LYRA_STT_ENABLED` / `LYRA_TTS_ENABLED` (default `false`) gate each service independently — TTS no longer requires STT. `LYRA_VOICE_RESPONSES` removed (superseded by `LYRA_TTS_ENABLED`). `NatsCircuitBreaker` (`src/lyra/nats/circuit_breaker.py`) applied to both `NatsSttClient` and `NatsTtsClient`: 3 failures → open for 60 s, prevents log spam when adapters are down. `probe_voice_services()` in `voice_overlay.py` warns at boot if STT/TTS adapters are unreachable.
 - **Typing indicator redesign** (#229 ✅) — `TelegramAdapter` and `DiscordAdapter` start typing at message receipt (`_on_message`); long-running requests keep the indicator alive via a background task. Typing is cancelled **after** the last chunk is confirmed sent — in `send()` after the send loop, and in `send_streaming()` after the final edit — ensuring the indicator stays active until the message is visible.
 - **Outbound send reliability** — `OutboundDispatcher` retries transient send failures (network errors, 5xx, rate-limit 429) up to 3 times with exponential backoff (1 s / 2 s / 4 s). After all retries are exhausted, the user receives a plaintext error notification (`"⚠️ I encountered an error sending my response. Please try again."`). When the platform circuit breaker is open, the user is notified once per 60 s per scope (`"⚠️ I'm temporarily unavailable. Please try again in a moment."`). Non-retryable errors (4xx client errors) fail immediately.
@@ -715,11 +714,11 @@ What is built in Phase 1 / 1b:
 - Hub: per-channel queues + bindings + pools + adapter registry (#112 epic ✅)
 - Memory level 0 (working, L0 compaction ✅ #83) + level 3 (semantic ✅: #78/#81/#82)
 - Telegram + Discord adapters (✅)
-- LLM: Claude CLI subprocess (✅), Anthropic SDK driver (#76 ✅), LlmProvider protocol (#123 ✅), smart routing (#134 ✅)
+- LLM: Claude CLI subprocess (✅), LlmProvider protocol (#123 ✅)
 - Agent identity + persona (#75 ✅), runtime config (#135 ✅)
 - Message normalization (#139 ✅): InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment
 - Auth: Authenticator + GuardChain (#151 ✅, refactored #313/#314), RoutingContext + outbound verification (#152 ✅)
-- Voice: STTService + STTConfig (#80 ✅), InboundAudioBus, audio consumer loop · TTS shipped: OGG/Opus (ffmpeg libopus, 48kHz mono), `SynthesisResult` with `duration_ms` + `waveform_b64` (256-byte amplitude array), language ISO→Qwen normalization, Discord `IS_VOICE_MESSAGE` (8192) flag for native voice bubble
+- Voice: STT/TTS via NATS to voicecli workers (#80 ✅, #690 ✅), InboundAudioBus, audio consumer loop · TTS: OGG/Opus (ffmpeg libopus, 48kHz mono), `SynthesisResult` with `duration_ms` + `waveform_b64`, language ISO→Qwen normalization, Discord `IS_VOICE_MESSAGE` (8192) flag
 - Hub hardening: PoolContext protocol (#204 ✅), TTL eviction (#205 ✅), async I/O audio loop (#203 ✅)
 - DX: complexity/size limits (#196 ✅), pytest-cov + coverage gate (#211 ✅)
 - Security: hmac.compare_digest (#212 ✅), two-tier /health (#207 ✅), symlink plugin_loader fix (#215 ✅)

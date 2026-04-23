@@ -369,10 +369,7 @@ class TestSessionCommands:
         pool = MagicMock(spec=Pool)
         response = await router.dispatch(msg, pool=pool)
         assert response is not None
-        assert (
-            "anthropic-sdk" in response.content.lower()
-            or "session" in response.content.lower()
-        )
+        assert "session" in response.content.lower()
         async_handler.assert_not_called()
 
     @pytest.mark.asyncio

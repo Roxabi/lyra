@@ -76,22 +76,6 @@ class LlmProvider(Protocol):
 
 ### LLM Adapters — partiellement streamés
 
-**`AnthropicSdkDriver`** (`llm/drivers/sdk.py`) — ⚠️ buffer complet
-```python
-async def complete(…, on_intermediate=None) -> LlmResult:
-    # Tool-use loop (max 4 turns)
-    for _turn in range(max_turns):
-        async with client.messages.stream(…) as stream:
-            async for delta in stream.text_stream:
-                turn_text += delta     # accumulé en mémoire
-        if stop_reason != "tool_use":
-            break
-    return LlmResult(result=accumulated_text)
-```
-- `on_intermediate` existe dans la signature mais **n'est jamais appelé avec les tool_use**
-- Les `tool_use` blocks sont traités en interne dans la boucle, jamais exposés
-- Retourne uniquement le texte final agrégé
-
 **`ClaudeCliDriver`** (`llm/drivers/cli.py`) — ⚠️ stream text only
 - Lit le NDJSON subprocess
 - Passe les blocs `type=="text"` au callback `on_intermediate`
@@ -126,7 +110,6 @@ RenderEvent (TextRenderEvent | ToolSummaryEvent)  ❌ non défini
 OutboundMessage.ToolSummaryContent                ❌ non défini
 ChannelAdapter.send_streaming(AsyncIter[RenderEvent]) ❌ prend str
 Config tool_display (seuils, show flags)          ❌ non défini
-AnthropicSdkDriver expose tool_use events         ❌ buffered
 ClaudeCliDriver expose tool_use events            ❌ filtré
 ```
 
@@ -139,7 +122,7 @@ InboundMessage
     ↓
 Hub → MessagePipeline → Pool
     ↓
-AnthropicAgent._process_llm()
+SimpleAgent._process_llm()
     ↓
 LlmProvider.complete()          ← buffer complet, tool_use invisible
     ↓

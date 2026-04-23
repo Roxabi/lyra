@@ -74,7 +74,7 @@ async def _stub_vault_add(msg, driver, tools, args, timeout):  # noqa: ARG001
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
     from lyra.core.agent.agent_config import ModelConfig
 
-    model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
+    model_cfg = ModelConfig(backend="claude-cli", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
         "session:vault-add",
         "",
@@ -93,7 +93,7 @@ async def _stub_explain(msg, driver, tools, args, timeout):  # noqa: ARG001
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
     from lyra.core.agent.agent_config import ModelConfig
 
-    model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
+    model_cfg = ModelConfig(backend="claude-cli", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
         "session:explain",
         "",
@@ -112,7 +112,7 @@ async def _stub_summarize(msg, driver, tools, args, timeout):  # noqa: ARG001
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
     from lyra.core.agent.agent_config import ModelConfig
 
-    model_cfg = ModelConfig(backend="anthropic-sdk", model="claude-haiku-4-5-20251001")
+    model_cfg = ModelConfig(backend="claude-cli", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
         "session:summarize",
         "",
@@ -164,7 +164,6 @@ def make_router_with_session(
 
 def make_pool() -> MagicMock:
     pool = MagicMock(spec=Pool)
-    pool.sdk_history = []
     pool.history = []
     return pool
 
@@ -269,24 +268,22 @@ class TestSearchPlugin:
 
 
 class TestPoolHistoryUnchanged:
-    """AC-7: Session commands do not modify pool.sdk_history or pool.history."""
+    """AC-7: Session commands do not modify pool.history."""
 
     @pytest.mark.asyncio
-    async def test_sdk_history_unchanged_after_session_command(
+    async def test_history_unchanged_after_session_command(
         self, tmp_path: Path
     ) -> None:
         driver = make_mock_driver()
         tools, _, _ = make_mock_tools()
         router = make_router_with_session(tmp_path, driver=driver, tools=tools)
         pool = make_pool()
-        pool.sdk_history = [{"role": "user", "content": "earlier msg"}]
         pool.history = ["earlier msg"]
 
         msg = make_message("/vault-add https://example.com")
         await router.dispatch(msg, pool=pool)
 
         # Pool history must be identical to before the command
-        assert pool.sdk_history == [{"role": "user", "content": "earlier msg"}]
         assert pool.history == ["earlier msg"]
 
 

@@ -33,7 +33,7 @@ TOML_PATH = (
 def _make_open_registry(service: str) -> CircuitRegistry:
     """Build a CircuitRegistry with the named circuit tripped OPEN."""
     registry = CircuitRegistry()
-    for name in ("anthropic", "telegram", "discord", "hub"):
+    for name in ("claude-cli", "telegram", "discord", "hub"):
         cb = CircuitBreaker(name, failure_threshold=1, recovery_timeout=60)
         if name == service:
             cb.record_failure()  # trips to OPEN

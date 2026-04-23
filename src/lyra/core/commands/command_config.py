@@ -37,7 +37,6 @@ DEFAULT_BUILTINS: dict[str, CommandConfig] = {
     for name, desc in [
         ("help", "List available commands"),
         ("circuit", "Show circuit breaker status (admin-only)"),
-        ("routing", "Show smart routing decisions (admin-only)"),
         ("stop", "Cancel the current processing turn"),
         ("config", "Show/set runtime config (admin-only)"),
         ("clear", "Clear conversation history"),

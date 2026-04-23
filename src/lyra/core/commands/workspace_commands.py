@@ -72,7 +72,6 @@ async def cmd_clear(pool: Pool | None) -> Response:
     """Clear conversation history and reset session."""
     if pool is None:
         return Response(content="No active session to clear.")
-    pool.sdk_history.clear()
     pool.history.clear()
     await pool.reset_session()
     return Response(content="Conversation history cleared. Starting fresh.")

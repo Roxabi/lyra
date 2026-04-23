@@ -49,6 +49,7 @@
     "049-roxabi-contracts-shared-schema-package",
     "050-lyra-image-nats-contract",
     "051-per-identity-nats-inbox-prefix",
-    "052-voice-registry-authoritative-routing"
+    "052-voice-registry-authoritative-routing",
+    "053-deployment-topology-and-container-hardening"
   ]
 }

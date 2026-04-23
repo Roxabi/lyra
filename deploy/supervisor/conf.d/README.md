@@ -8,9 +8,9 @@ Loaded on **both** dev (roxabitower) and prod (roxabituwer) since both machines 
 
 | Program | Purpose | Notes |
 |---------|---------|-------|
-| `lyra_hub` | Hub process (NATS-connected) | Requires NATS |
-| `lyra_telegram` | Telegram adapter | Requires NATS |
-| `lyra_discord` | Discord adapter | Requires NATS |
+| `lyra-hub` | Hub process (NATS-connected) | Requires NATS |
+| `lyra-telegram` | Telegram adapter | Requires NATS |
+| `lyra-discord` | Discord adapter | Requires NATS |
 | `lyra_stt` | STT NATS bridge in lyra's venv (calls voicecli worker) | Requires NATS + voicecli worker |
 | `lyra_tts` | TTS NATS bridge in lyra's venv (calls voicecli worker) | Requires NATS + voicecli worker |
 

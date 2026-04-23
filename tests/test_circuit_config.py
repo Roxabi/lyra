@@ -38,7 +38,7 @@ class TestLoadCircuitConfigDefaults:
         registry, admin_ids = _load_circuit_config(raw)
 
         # Assert — all four default services present with correct defaults
-        for name in ("anthropic", "telegram", "discord", "hub"):
+        for name in ("claude-cli", "telegram", "discord", "hub"):
             cb = registry[name]
             assert cb.failure_threshold == 5, (
                 f"{name}: expected failure_threshold=5, got {cb.failure_threshold}"
@@ -62,7 +62,7 @@ class TestLoadCircuitConfigDefaults:
         registry, admin_ids = _load_circuit_config(raw)
 
         # Assert — defaults apply
-        for name in ("anthropic", "telegram", "discord", "hub"):
+        for name in ("claude-cli", "telegram", "discord", "hub"):
             cb = registry[name]
             assert cb.failure_threshold == 5
             assert cb.recovery_timeout == 60
@@ -76,11 +76,11 @@ class TestLoadCircuitConfigTomlOverrides:
     def test_load_circuit_config_overrides_from_toml(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """SC-16: TOML config overrides anthropic thresholds; other services keep defaults."""  # noqa: E501
+        """SC-16: TOML config overrides claude-cli thresholds; other services keep defaults."""  # noqa: E501
         # Arrange
         config = tmp_path / "lyra.toml"
         config.write_text(
-            "[circuit_breaker.anthropic]\n"
+            "[circuit_breaker.claude-cli]\n"
             "failure_threshold = 2\n"
             "recovery_timeout = 30\n"
             "[admin]\n"
@@ -97,9 +97,9 @@ class TestLoadCircuitConfigTomlOverrides:
         raw = _load_raw_config()
         registry, admin_ids = _load_circuit_config(raw)
 
-        # Assert — anthropic overridden
-        assert registry["anthropic"].failure_threshold == 2
-        assert registry["anthropic"].recovery_timeout == 30
+        # Assert — claude-cli overridden
+        assert registry["claude-cli"].failure_threshold == 2
+        assert registry["claude-cli"].recovery_timeout == 30
 
         # Assert — other services keep defaults
         assert registry["telegram"].failure_threshold == 5
@@ -218,26 +218,15 @@ class TestLoadPoolConfig:
         from lyra.bootstrap.factory.config import _load_pool_config
 
         result = _load_pool_config({})
-        assert result.max_sdk_history == 50
         assert result.safe_dispatch_timeout == 10.0
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
         from lyra.bootstrap.factory.config import _load_pool_config
 
-        raw = {"pool": {"max_sdk_history": 100, "safe_dispatch_timeout": 30.0}}
+        raw = {"pool": {"safe_dispatch_timeout": 30.0}}
         result = _load_pool_config(raw)
-        assert result.max_sdk_history == 100
         assert result.safe_dispatch_timeout == 30.0
-
-    def test_partial_override_keeps_defaults(self) -> None:
-        """Only max_sdk_history set → safe_dispatch_timeout keeps default."""
-        from lyra.bootstrap.factory.config import _load_pool_config
-
-        raw = {"pool": {"max_sdk_history": 200}}
-        result = _load_pool_config(raw)
-        assert result.max_sdk_history == 200
-        assert result.safe_dispatch_timeout == 10.0
 
 
 # ---------------------------------------------------------------------------

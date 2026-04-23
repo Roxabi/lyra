@@ -14,9 +14,9 @@ Rotation replaces the seed file (private key material) for one or more identitie
 
 | Identity (seed file) | Supervisor program | Log path |
 |---|---|---|
-| `hub.seed` | `lyra_hub` | `~/.local/state/lyra/logs/lyra_hub.log` |
-| `telegram-adapter.seed` | `lyra_telegram` | `~/.local/state/lyra/logs/lyra_telegram.log` |
-| `discord-adapter.seed` | `lyra_discord` | `~/.local/state/lyra/logs/lyra_discord.log` |
+| `hub.seed` | `lyra-hub` | `~/.local/state/lyra/logs/lyra-hub.log` |
+| `telegram-adapter.seed` | `lyra-telegram` | `~/.local/state/lyra/logs/lyra-telegram.log` |
+| `discord-adapter.seed` | `lyra-discord` | `~/.local/state/lyra/logs/lyra-discord.log` |
 | `tts-adapter.seed` | `lyra_tts` | `~/.local/state/lyra/logs/lyra_tts.log` |
 | `stt-adapter.seed` | `lyra_stt` | `~/.local/state/lyra/logs/lyra_stt.log` |
 | `voice-tts.seed` | `voicecli_tts` | `~/.local/state/voicecli/logs/voicecli_tts.log` |
@@ -154,7 +154,7 @@ Update `RELOAD_TS` after a restart if you use this path.
 
 Restart affected programs in this order: workers first, adapters second, hub last. Workers and adapters first — they are reconnect-tolerant (circuit breaker in roxabi-nats) and can queue at NATS while the hub is briefly down. Hub last — it is the sole consumer of inbound queues; restarting it last minimises the window where inbound messages could fill NATS queues with no consumer.
 
-Only restart programs that use a rotated identity. If only `telegram-adapter` was rotated, restart only `lyra_telegram`. If `hub` was rotated, restart all programs.
+Only restart programs that use a rotated identity. If only `telegram-adapter` was rotated, restart only `lyra-telegram`. If `hub` was rotated, restart all programs.
 
 **5.1 voicecli workers** (if `voice-tts.seed` or `voice-stt.seed` was rotated):
 
@@ -172,8 +172,8 @@ supervisorctl restart lyra_imagecli_gen
 **5.3 Lyra adapters** (if any adapter seed was rotated):
 
 ```bash
-supervisorctl restart lyra_telegram
-supervisorctl restart lyra_discord
+supervisorctl restart lyra-telegram
+supervisorctl restart lyra-discord
 supervisorctl restart lyra_tts
 supervisorctl restart lyra_stt
 ```
@@ -181,7 +181,7 @@ supervisorctl restart lyra_stt
 **5.4 Lyra hub** (if `hub.seed` was rotated):
 
 ```bash
-supervisorctl restart lyra_hub
+supervisorctl restart lyra-hub
 ```
 
 After each restart, wait for the program to reach `RUNNING` state before restarting the next one:
@@ -213,16 +213,16 @@ Supervisord splits stdout and stderr. Python auth errors go to the `_error.log` 
 
 ```bash
 # Hub
-tail -30 ~/.local/state/lyra/logs/lyra_hub.log | grep -i "nats\|connected\|ready"
-tail -30 ~/.local/state/lyra/logs/lyra_hub_error.log | grep -i "nats\|auth\|error"
+tail -30 ~/.local/state/lyra/logs/lyra-hub.log | grep -i "nats\|connected\|ready"
+tail -30 ~/.local/state/lyra/logs/lyra-hub-error.log | grep -i "nats\|auth\|error"
 
 # Telegram adapter
-tail -30 ~/.local/state/lyra/logs/lyra_telegram.log | grep -i "nats\|connected\|ready"
-tail -30 ~/.local/state/lyra/logs/lyra_telegram_error.log | grep -i "nats\|auth\|error"
+tail -30 ~/.local/state/lyra/logs/lyra-telegram.log | grep -i "nats\|connected\|ready"
+tail -30 ~/.local/state/lyra/logs/lyra-telegram-error.log | grep -i "nats\|auth\|error"
 
 # Discord adapter
-tail -30 ~/.local/state/lyra/logs/lyra_discord.log | grep -i "nats\|connected\|ready"
-tail -30 ~/.local/state/lyra/logs/lyra_discord_error.log | grep -i "nats\|auth\|error"
+tail -30 ~/.local/state/lyra/logs/lyra-discord.log | grep -i "nats\|connected\|ready"
+tail -30 ~/.local/state/lyra/logs/lyra-discord-error.log | grep -i "nats\|auth\|error"
 
 # imagecli gen worker (if image-worker.seed was rotated)
 tail -30 ~/.local/state/lyra/logs/lyra_imagecli_gen.log | grep -i "nats\|connected\|ready"
@@ -308,14 +308,14 @@ supervisorctl status voicecli_tts voicecli_stt
 supervisorctl restart lyra_imagecli_gen
 supervisorctl status lyra_imagecli_gen
 
-supervisorctl restart lyra_telegram
-supervisorctl restart lyra_discord
+supervisorctl restart lyra-telegram
+supervisorctl restart lyra-discord
 supervisorctl restart lyra_tts
 supervisorctl restart lyra_stt
-supervisorctl status lyra_telegram lyra_discord lyra_tts lyra_stt
+supervisorctl status lyra-telegram lyra-discord lyra_tts lyra_stt
 
-supervisorctl restart lyra_hub
-supervisorctl status lyra_hub
+supervisorctl restart lyra-hub
+supervisorctl status lyra-hub
 ```
 
 **7.5 Re-run verification** (Step 6) to confirm the rollback restored service. Then escalate: the rotation failed, the compromised seed is live again, and the compromise signal must be reassessed before the next attempt.

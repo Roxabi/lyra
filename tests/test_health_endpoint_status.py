@@ -163,7 +163,7 @@ class TestHealthEndpoint:
         from unittest.mock import MagicMock
 
         from lyra.bootstrap.infra.health import create_health_app
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         hub.register_adapter(Platform.TELEGRAM, "main", MagicMock())
         tg_dispatcher = OutboundDispatcher(
@@ -254,7 +254,7 @@ class TestHealthEndpoint:
 
         data = resp.json()
         circuits = data["circuits"]
-        for name in ("anthropic", "telegram", "discord", "hub"):
+        for name in ("claude-cli", "telegram", "discord", "hub"):
             assert name in circuits
             assert circuits[name]["state"] == "closed"
             assert circuits[name]["retry_after"] is None
@@ -265,7 +265,7 @@ class TestHealthEndpoint:
         """SC-2: circuits reflects open circuit state."""
         from lyra.bootstrap.infra.health import create_health_app
 
-        cb = circuit_registry.get("anthropic")
+        cb = circuit_registry.get("claude-cli")
         assert cb is not None
         for _ in range(5):
             cb.record_failure()
@@ -276,8 +276,8 @@ class TestHealthEndpoint:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
 
         data = resp.json()
-        assert data["circuits"]["anthropic"]["state"] == "open"
-        assert data["circuits"]["anthropic"]["retry_after"] is not None
+        assert data["circuits"]["claude-cli"]["state"] == "open"
+        assert data["circuits"]["claude-cli"]["retry_after"] is not None
 
 
 # ---------------------------------------------------------------------------

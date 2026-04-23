@@ -1,4 +1,4 @@
-"""Tests for /voice command handling in AnthropicAgent, SimpleAgent,
+"""Tests for /voice command handling in SimpleAgent,
 and Telegram adapter MIME routing (V4 of issue #167).
 
 /voice <prompt> rewrites the message as a voice-modality LLM request:
@@ -12,12 +12,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lyra.adapters.telegram import TelegramAdapter
-from lyra.agents.anthropic_agent import AnthropicAgent
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
@@ -25,7 +24,7 @@ from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, OutboundAudio, Response
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig
-from lyra.tts import TTSService
+from lyra.tts import TtsProtocol
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -64,7 +63,7 @@ def _make_agent_config() -> Agent:
         system_prompt="You are Lyra.",
         memory_namespace="lyra",
         llm_config=ModelConfig(
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
         ),
     )
@@ -93,12 +92,12 @@ def _make_tts_mock() -> AsyncMock:
 class TestHandleVoiceCommand:
     """AgentBase._handle_voice_command() rewrites /voice messages."""
 
-    def _make_agent(self, tts: object | None = None) -> AnthropicAgent:
-        return AnthropicAgent(
+    def _make_agent(self, tts: object | None = None) -> SimpleAgent:
+        return SimpleAgent(
             config=_make_agent_config(),
             provider=_make_mock_provider(),
             runtime_config=RuntimeConfig(),
-            tts=cast(TTSService | None, tts),
+            tts=cast(TtsProtocol | None, tts),
         )
 
     def test_returns_rewritten_message_with_voice_modality(self) -> None:
@@ -141,92 +140,6 @@ class TestHandleVoiceCommand:
 
 
 # ---------------------------------------------------------------------------
-# AnthropicAgent.process() integration
-# ---------------------------------------------------------------------------
-
-
-class TestAnthropicAgentVoiceCommand:
-    """AnthropicAgent: /voice rewrites message and passes to LLM pipeline."""
-
-    def _make_agent(self, tts: object | None = None) -> AnthropicAgent:
-        return AnthropicAgent(
-            config=_make_agent_config(),
-            provider=_make_mock_provider(),
-            runtime_config=RuntimeConfig(),
-            tts=cast(TTSService | None, tts),
-        )
-
-    @pytest.mark.asyncio
-    async def test_voice_command_passes_to_llm_with_voice_modality(self) -> None:
-        """/voice hello → LLM is called with modality="voice", no direct TTS."""
-        tts = _make_tts_mock()
-        agent = self._make_agent(tts=tts)
-        msg = _make_message("/voice hello")
-        pool = _make_pool()
-        sentinel = Response(content="llm voice reply")
-
-        with patch.object(agent, "_process_llm", return_value=sentinel) as mock_llm:
-            response = await agent.process(msg, pool)
-
-        mock_llm.assert_awaited_once()
-        called_msg = mock_llm.call_args[0][0]
-        assert called_msg.modality == "voice"
-        assert called_msg.text_raw == "hello"
-        assert response.content == "llm voice reply"
-        tts.synthesize.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_non_voice_message_not_intercepted(self) -> None:
-        """Regular messages are passed to LLM unmodified."""
-        tts = _make_tts_mock()
-        agent = self._make_agent(tts=tts)
-        msg = _make_message("hello")
-        pool = _make_pool()
-        sentinel = Response(content="sentinel_llm_reply")
-
-        with patch.object(agent, "_process_llm", return_value=sentinel) as mock_llm:
-            response = await agent.process(msg, pool)
-
-        called_msg = mock_llm.call_args[0][0]
-        assert called_msg.modality is None
-        assert response.content == "sentinel_llm_reply"
-        tts.synthesize.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_voice_command_bare_no_args_falls_through_unmodified(self) -> None:
-        """Bare '/voice' with no args goes to LLM as-is (modality unchanged)."""
-        tts = _make_tts_mock()
-        agent = self._make_agent(tts=tts)
-        msg = _make_message("/voice")
-        pool = _make_pool()
-        sentinel = Response(content="llm_handled_bare_voice")
-
-        with patch.object(agent, "_process_llm", return_value=sentinel) as mock_llm:
-            response = await agent.process(msg, pool)
-
-        called_msg = mock_llm.call_args[0][0]
-        assert called_msg.modality is None
-        tts.synthesize.assert_not_awaited()
-        assert response.content == "llm_handled_bare_voice"
-
-    @pytest.mark.asyncio
-    async def test_voice_command_with_no_tts_falls_through_unmodified(self) -> None:
-        """When tts=None, /voice hello is passed to LLM unmodified (no rewrite)."""
-        agent = self._make_agent(tts=None)
-        msg = _make_message("/voice hello")
-        pool = _make_pool()
-        sentinel = Response(content="llm_handled_voice")
-
-        with patch.object(agent, "_process_llm", return_value=sentinel) as mock_llm:
-            response = await agent.process(msg, pool)
-
-        called_msg = mock_llm.call_args[0][0]
-        assert called_msg.modality is None
-        assert called_msg.text == "/voice hello"
-        assert response.content == "llm_handled_voice"
-
-
-# ---------------------------------------------------------------------------
 # SimpleAgent /voice pre-router
 # ---------------------------------------------------------------------------
 
@@ -239,7 +152,7 @@ class TestSimpleAgentVoiceCommand:
             config=_make_agent_config(),
             provider=_make_mock_provider(),
             runtime_config=RuntimeConfig(),
-            tts=cast(TTSService | None, tts),
+            tts=cast(TtsProtocol | None, tts),
         )
 
     @pytest.mark.asyncio

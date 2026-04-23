@@ -137,10 +137,10 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
     except asyncio.CancelledError:
         pass
 
-    # Assert
-    ant_status = registry["anthropic"].get_status()
+    # Assert — hub records failure on claude-cli CB after SDK removal
+    ant_status = registry["claude-cli"].get_status()
     assert ant_status.failure_count >= 1, (
-        f"Expected anthropic failure_count >= 1, got {ant_status.failure_count}"
+        f"Expected claude-cli failure_count >= 1, got {ant_status.failure_count}"
     )
 
 

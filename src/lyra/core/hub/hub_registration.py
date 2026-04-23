@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ..messaging.bus import Bus
     from ..pool import Pool
     from ..stores.message_index import MessageIndex
-    from .outbound_dispatcher import OutboundDispatcher
+    from .outbound import OutboundDispatcher
 
 
 class HubRegistrationMixin:

@@ -172,14 +172,14 @@ persona = "lyra_default"          # loads system prompt from ~/.roxabi-vault
 show_intermediate = false
 
 [model]
-backend = "claude-cli"            # "claude-cli" | "anthropic-sdk" | "ollama"
+backend = "claude-cli"            # "claude-cli" | "ollama" (future) | "litellm" (future)
 model = "claude-sonnet-4-6"
 max_turns = 10
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 # Bash and Write omitted intentionally — prevents prompt injection → RCE
 # cwd is NOT set here — machine-specific, lives in config.toml [defaults]
 
-[agent.smart_routing]             # requires backend = "anthropic-sdk"
+[agent.smart_routing]             # deprecated — validator rejects enabled = true
 enabled = false
 
 [agent.smart_routing.models]
@@ -291,7 +291,7 @@ min_disk_free_gb        = 1                              # alert if free disk dr
 health_endpoint_url     = "http://localhost:8443/health/detail"
 diagnostic_model        = "claude-haiku-4-5-20251001"    # model used for LLM diagnosis
 disk_check_path         = "/"                            # filesystem path to check
-service_name            = "lyra_telegram"                # supervisor service name to inspect
+service_name            = "lyra-telegram"                # supervisor service name to inspect
 ```
 
 ### Voice (optional)

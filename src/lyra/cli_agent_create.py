@@ -39,29 +39,15 @@ def _prompt_location() -> Path:
     return _user_agents_dir()
 
 
-def _prompt_sr_subconfig(
-    backend: str,
-) -> tuple[bool, int | None, list[str], dict[str, str]]:
+def _prompt_sr_subconfig() -> tuple[bool, int | None, list[str], dict[str, str]]:
     sr_user = typer.confirm("Enable smart routing?", default=False)
     if not sr_user:
         return False, None, [], {}
-    if backend == "claude-cli":
-        typer.echo(
-            "Warning: smart routing requires backend=anthropic-sdk — "
-            "forcing smart_routing.enabled to false."
-        )
-        return False, None, [], {}
-    history: int = typer.prompt("SR history size", default=50, type=int)
-    high_raw = typer.prompt("SR high-complexity commands (blank = none)", default="")
-    high_cmds = [c.strip() for c in high_raw.split(",") if c.strip()]
-    sr_models = {
-        tier: m.strip()
-        for tier in ("trivial", "simple", "moderate", "complex")
-        if (
-            m := typer.prompt(f"SR model for {tier} tier (blank = skip)", default="")
-        ).strip()
-    }
-    return True, history, high_cmds, sr_models
+    typer.echo(
+        "Warning: smart_routing is no longer supported on any backend — "
+        "forcing smart_routing.enabled to false."
+    )
+    return False, None, [], {}
 
 
 def _build_toml(  # noqa: PLR0913
@@ -136,9 +122,7 @@ def create(
         typer.echo(f"Error: agent {name!r} already exists at {toml_path}")
         raise typer.Exit(1)
 
-    backend = typer.prompt(
-        "Backend", type=click.Choice(["claude-cli", "anthropic-sdk"])
-    )
+    backend = typer.prompt("Backend", type=click.Choice(["claude-cli"]))
     model = typer.prompt("Model", default="claude-sonnet-4-5")
     cwd_raw = typer.prompt(
         "Working directory (blank = inherit from config.toml [defaults])", default=""
@@ -150,7 +134,7 @@ def create(
     tools = _parse_tools(tools_raw)
     persona_raw = typer.prompt("Persona name (blank to skip)", default="")
     show_intermediate = typer.confirm("Show intermediate turns?", default=False)
-    sr_enabled, sr_history, sr_high_cmds, sr_models = _prompt_sr_subconfig(backend)
+    sr_enabled, sr_history, sr_high_cmds, sr_models = _prompt_sr_subconfig()
     plugins_raw = typer.prompt("Plugins (blank = none, or comma-separated)", default="")
     plugins = [p.strip() for p in plugins_raw.split(",") if p.strip()]
 

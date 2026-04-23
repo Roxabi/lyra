@@ -174,7 +174,7 @@ class TestVerifyRoutingDirect:
     """Direct unit tests for _verify_routing (no async queue needed)."""
 
     def test_none_passes(self) -> None:
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         d = OutboundDispatcher(
             platform_name="telegram", adapter=MagicMock(), bot_id="main"
@@ -182,7 +182,7 @@ class TestVerifyRoutingDirect:
         assert d._verify_routing(None) is True
 
     def test_matching_passes(self) -> None:
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         d = OutboundDispatcher(
             platform_name="telegram", adapter=MagicMock(), bot_id="main"
@@ -190,7 +190,7 @@ class TestVerifyRoutingDirect:
         assert d._verify_routing(_RC_TG) is True
 
     def test_platform_mismatch_fails(self) -> None:
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         d = OutboundDispatcher(
             platform_name="telegram", adapter=MagicMock(), bot_id="main"
@@ -198,7 +198,7 @@ class TestVerifyRoutingDirect:
         assert d._verify_routing(_RC_DC) is False
 
     def test_bot_id_mismatch_fails(self) -> None:
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         rc = RoutingContext(platform="telegram", bot_id="other", scope_id="chat:123")
         d = OutboundDispatcher(
@@ -214,7 +214,7 @@ class TestVerifyRoutingDirect:
 
 class TestDispatcherRoutingIntegration:
     async def test_matching_routing_passes(self) -> None:
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         adapter = MagicMock()
         adapter.send = AsyncMock()
@@ -233,7 +233,7 @@ class TestDispatcherRoutingIntegration:
             await dispatcher.stop()
 
     async def test_mismatched_platform_drops(self) -> None:
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         adapter = MagicMock()
         adapter.send = AsyncMock()
@@ -255,7 +255,7 @@ class TestDispatcherRoutingIntegration:
             await dispatcher.stop()
 
     async def test_mismatched_bot_id_drops(self) -> None:
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         adapter = MagicMock()
         adapter.send = AsyncMock()
@@ -278,7 +278,7 @@ class TestDispatcherRoutingIntegration:
 
     async def test_none_routing_passes(self) -> None:
         """Backward compat: no routing context → message is delivered."""
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         adapter = MagicMock()
         adapter.send = AsyncMock()
@@ -297,7 +297,7 @@ class TestDispatcherRoutingIntegration:
 
     async def test_streaming_mismatched_routing_drops_and_drains(self) -> None:
         """Streaming with mismatched routing: message dropped, iterator drained."""
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         adapter = MagicMock()
         adapter.send_streaming = AsyncMock()

@@ -1,4 +1,4 @@
-"""RuntimeConfig — mutable overlay for AnthropicAgent parameters (issue #135)."""
+"""RuntimeConfig — mutable overlay for agent runtime parameters (issue #135)."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ _VALID_PARAMS = {
 
 
 class EffectiveConfig(BaseModel):
-    """Resolved configuration used by AnthropicAgent for a single process() call."""
+    """Resolved configuration used by the agent for a single process() call."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -50,7 +50,7 @@ class EffectiveConfig(BaseModel):
 
 
 class RuntimeConfig(BaseModel):
-    """Mutable overlay for AnthropicAgent parameters.
+    """Mutable overlay for agent runtime parameters.
 
     Fields mirror _VALID_PARAMS. Defaults produce no-op overlay behaviour.
     """
@@ -261,7 +261,7 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:  # noqa
 
 
 class RuntimeConfigHolder:
-    """Mutable single-cell container shared by AnthropicAgent and CommandRouter.
+    """Mutable single-cell container shared by the agent and CommandRouter.
 
     Both hold the *same* holder instance. Mutations replace `holder.value`
     (a new RuntimeConfig), so all readers see the updated config immediately.

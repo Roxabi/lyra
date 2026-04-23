@@ -17,9 +17,10 @@ Network=lyra.network
 NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
-# Scoped env file — copy from .env.telegram.example, fill in bot token only.
+User=lyra
+# Scoped env file — copy from telegram.env.example, fill in bot token only.
 # NATS_URL and NATS_NKEY_SEED_PATH are set inline below.
-EnvironmentFile=%h/projects/lyra/.env.telegram
+EnvironmentFile=%h/.lyra/env/telegram.env
 Environment=NATS_URL=nats://lyra-nats:4222
 Volume=lyra-nkey-telegram-adapter.volume:/run/secrets/telegram-adapter.seed:ro,z
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/telegram-adapter.seed

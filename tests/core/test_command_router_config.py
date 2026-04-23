@@ -197,12 +197,11 @@ class TestClearCommand:
     """/clear and /new clear history and call pool.reset_session()."""
 
     @pytest.mark.asyncio
-    async def test_clear_clears_sdk_history(self, tmp_path: Path) -> None:
-        """/clear empties pool.sdk_history."""
+    async def test_clear_clears_history(self, tmp_path: Path) -> None:
+        """/clear empties pool.history."""
         router = make_router(tmp_path)
         msg = make_message(content="/clear")
         pool_mock = MagicMock(spec=Pool)
-        pool_mock.sdk_history = MagicMock()
         pool_mock.history = MagicMock()
 
         async def _noop() -> None:
@@ -210,7 +209,6 @@ class TestClearCommand:
 
         pool_mock.reset_session = _noop
         await router.dispatch(msg, pool=pool_mock)
-        pool_mock.sdk_history.clear.assert_called_once()
         pool_mock.history.clear.assert_called_once()
 
     @pytest.mark.asyncio
@@ -225,7 +223,6 @@ class TestClearCommand:
             reset_called = True
 
         pool_mock = MagicMock(spec=Pool)
-        pool_mock.sdk_history = MagicMock()
         pool_mock.history = MagicMock()
         pool_mock.reset_session = _reset
         await router.dispatch(msg, pool=pool_mock)
@@ -243,7 +240,6 @@ class TestClearCommand:
             reset_called = True
 
         pool_mock = MagicMock(spec=Pool)
-        pool_mock.sdk_history = MagicMock()
         pool_mock.history = MagicMock()
         pool_mock.reset_session = _reset
         await router.dispatch(msg, pool=pool_mock)
@@ -268,7 +264,6 @@ class TestClearCommand:
             pass
 
         pool_mock = MagicMock(spec=Pool)
-        pool_mock.sdk_history = MagicMock()
         pool_mock.history = MagicMock()
         pool_mock.reset_session = _noop
         response = await router.dispatch(msg, pool=pool_mock)

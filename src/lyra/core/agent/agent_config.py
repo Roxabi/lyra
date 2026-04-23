@@ -8,9 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from ..commands.command_router import CommandConfig
 
-_VALID_BACKENDS: frozenset[str] = frozenset(
-    {"claude-cli", "ollama", "anthropic-sdk", "litellm"}
-)
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama", "litellm"})
 _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
 
 _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
@@ -159,8 +157,8 @@ class SmartRoutingConfig(BaseModel):
 class AgentTTSConfig(BaseModel):
     """Per-agent TTS defaults.
 
-    All fields optional — None means use voicecli global defaults.
-    Passed per-call to TTSService.synthesize() at voice generation time.
+    All fields optional — None means use global defaults.
+    Passed per-call to TtsProtocol.synthesize() at voice generation time.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -185,7 +183,7 @@ class AgentTTSConfig(BaseModel):
 class AgentSTTConfig(BaseModel):
     """Per-agent STT detection params.
 
-    All fields optional — None means use voicecli global defaults.
+    All fields optional — None means use global defaults.
     Merged into STTConfig at startup in __main__.py.
     """
 

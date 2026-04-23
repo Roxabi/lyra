@@ -127,11 +127,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
         # STT / TTS via NATS clients (hub talks to voicecli adapters over NATS)
         stt_service = init_nats_stt(nc)
-        if stt_service is not None:
-            await stt_service.start()
+        await stt_service.start()
         tts_service = init_nats_tts(nc)
-        if tts_service is not None:
-            await tts_service.start()
+        await tts_service.start()
         nats_llm_driver = await init_nats_llm(nc)
 
         hub = build_hub(
@@ -212,7 +210,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         ]
 
         if hub._event_bus is not None:
-            from lyra.core.hub.audit_consumer import AuditConsumer
+            from lyra.core.hub.pipeline.audit_consumer import AuditConsumer
 
             _audit_queue = hub._event_bus.subscribe()
             _audit_consumer = AuditConsumer(_audit_queue)

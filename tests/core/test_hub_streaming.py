@@ -16,7 +16,7 @@ from lyra.core.messaging.message import (
     Response,
 )
 from lyra.core.messaging.render_events import RenderEvent, TextRenderEvent
-from lyra.tts import TTSService
+from lyra.tts import TtsProtocol
 from tests.conftest import TIMEOUT_FAST, TIMEOUT_SLOW
 from tests.core.conftest import MockAdapter, make_inbound_message, push_to_hub
 
@@ -113,7 +113,7 @@ class TestDispatchStreaming:
 
     async def test_voice_streaming_streams_text_and_triggers_tts(self) -> None:
         """Voice modality: text streams to user, then TTS fires as background task."""
-        hub = Hub(tts=cast(TTSService, MagicMock()))
+        hub = Hub(tts=cast(TtsProtocol, MagicMock()))
         _mock_synth = AsyncMock()
         object.__setattr__(
             hub._audio_pipeline,
@@ -155,7 +155,7 @@ class TestDispatchStreaming:
 
     async def test_voice_streaming_empty_text_no_tts(self) -> None:
         """Voice modality with empty/whitespace text does not trigger TTS."""
-        hub = Hub(tts=cast(TTSService, MagicMock()))
+        hub = Hub(tts=cast(TtsProtocol, MagicMock()))
         _mock_synth = AsyncMock()
         object.__setattr__(
             hub._audio_pipeline,
@@ -212,7 +212,7 @@ class TestDispatchStreaming:
 
     async def test_voice_streaming_legacy_adapter_fallback(self) -> None:
         """Voice + legacy adapter (no send_streaming): collects text, TTS."""
-        hub = Hub(tts=cast(TTSService, MagicMock()))
+        hub = Hub(tts=cast(TtsProtocol, MagicMock()))
         _mock_synth = AsyncMock()
         object.__setattr__(
             hub._audio_pipeline,
@@ -252,9 +252,9 @@ class TestDispatchStreaming:
         self,
     ) -> None:
         """Voice + dispatcher path: text streams via dispatcher, TTS after."""
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
-        hub = Hub(tts=cast(TTSService, MagicMock()))
+        hub = Hub(tts=cast(TtsProtocol, MagicMock()))
         _mock_synth = AsyncMock()
         object.__setattr__(
             hub._audio_pipeline,

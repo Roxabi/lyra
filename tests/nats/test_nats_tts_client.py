@@ -636,9 +636,7 @@ class TestWalkRegistry:
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
-    async def test_logs_last_error_type(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_logs_last_error_type(self, caplog: pytest.LogCaptureFixture) -> None:
         """WARNING log includes type(last_exc).__name__."""
         # Arrange
         import logging

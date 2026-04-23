@@ -4,25 +4,25 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import shutil
+import subprocess
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol
 
 from lyra.core.agent.agent_refiner_stages import build_system_prompt, extract_patch
 
 if TYPE_CHECKING:
-    from anthropic.types import MessageParam
-
     from lyra.core.agent.agent_models import AgentRow
     from lyra.infrastructure.stores.agent_store import AgentStore
 
 __all__ = [
     "AgentRefiner",
+    "CliLlmProvider",
     "LlmProvider",
     "REFINABLE_FIELDS",
     "RefinementCancelled",
     "RefinementContext",
     "RefinementPatch",
-    "SdkLlmProvider",
     "TerminalIO",
 ]
 
@@ -122,31 +122,28 @@ class LlmProvider(Protocol):
         ...
 
 
-class SdkLlmProvider:
-    """Anthropic SDK-based LLM provider (sync)."""
-
-    def __init__(
-        self,
-        api_key: str,
-        # Haiku: lowest latency/cost for interactive CLI session
-        model: str = "claude-haiku-4-5-20251001",
-    ) -> None:
-        import anthropic
-
-        self._client = anthropic.Anthropic(api_key=api_key)
-        self._model = model
+class CliLlmProvider:
+    """LlmProvider backed by the Claude CLI (`claude --print`)."""
 
     def chat(self, system: str, messages: list[dict[str, Any]]) -> str:
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=2048,
-            system=system,
-            messages=cast("list[MessageParam]", messages),
+        """Shell out to `claude --print` and return stdout."""
+        parts = [system] if system else []
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            parts.append(f"{role}: {content}" if role else content)
+        prompt = "\n\n".join(parts)
+
+        result = subprocess.run(
+            ["claude", "--print", prompt],
+            capture_output=True,
+            text=True,
         )
-        for block in response.content:
-            if hasattr(block, "text"):
-                return block.text  # type: ignore[union-attr]  # ContentBlock with text attr
-        return ""
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"claude CLI exited {result.returncode}: {result.stderr.strip()}"
+            )
+        return result.stdout.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -283,13 +280,10 @@ class AgentRefiner:
     # ------------------------------------------------------------------
 
     def _resolve_driver(self) -> LlmProvider:
-        """Auto-detect LLM provider from environment."""
-        import os
-
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if api_key:
-            return SdkLlmProvider(api_key=api_key)
+        """Auto-resolve to CLI-backed provider if claude is on $PATH."""
+        if shutil.which("claude"):
+            return CliLlmProvider()
         raise RuntimeError(
-            "No LLM provider configured for agent refiner.\n"
-            "Set ANTHROPIC_API_KEY or pass a driver= to AgentRefiner()."
+            "lyra agent refine requires the 'claude' CLI to be installed and "
+            "authenticated. Run 'claude' once to log in, then retry."
         )

@@ -19,12 +19,12 @@ class TestCheckProcess:
             "lyra.monitoring.checks.subprocess.run",
             lambda *a, **kw: MagicMock(
                 returncode=0,
-                stdout="lyra_telegram                    RUNNING   pid 1234, uptime 1:00:00\n",  # noqa: E501
+                stdout="lyra-telegram                    RUNNING   pid 1234, uptime 1:00:00\n",  # noqa: E501
             ),
         )
         from lyra.monitoring.checks import check_process
 
-        result = check_process("lyra_telegram")
+        result = check_process("lyra-telegram")
         assert result.passed is True
         assert result.name == "process"
         assert "RUNNING" in result.detail
@@ -35,12 +35,12 @@ class TestCheckProcess:
             "lyra.monitoring.checks.subprocess.run",
             lambda *a, **kw: MagicMock(
                 returncode=3,
-                stdout="lyra_telegram                    STOPPED   Mar 30 12:00 PM\n",
+                stdout="lyra-telegram                    STOPPED   Mar 30 12:00 PM\n",
             ),
         )
         from lyra.monitoring.checks import check_process
 
-        result = check_process("lyra_telegram")
+        result = check_process("lyra-telegram")
         assert result.passed is False
 
     def test_fallback_to_systemctl(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -99,7 +99,7 @@ class TestCheckCircuits:
 
         health_json = {
             "circuits": {
-                "anthropic": {"state": "closed"},
+                "claude-cli": {"state": "closed"},
                 "telegram": {"state": "closed"},
             }
         }
@@ -113,7 +113,7 @@ class TestCheckCircuits:
 
         health_json = {
             "circuits": {
-                "anthropic": {"state": "open"},
+                "claude-cli": {"state": "open"},
                 "telegram": {"state": "closed"},
             }
         }

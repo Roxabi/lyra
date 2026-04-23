@@ -6,7 +6,7 @@ import asyncio
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -71,7 +71,7 @@ AUTH_HEADERS = {"authorization": f"Bearer {HEALTH_SECRET}"}
 @pytest.fixture()
 def circuit_registry() -> CircuitRegistry:
     registry = CircuitRegistry()
-    for name in ("anthropic", "telegram", "discord", "hub"):
+    for name in ("claude-cli", "telegram", "discord", "hub"):
         registry.register(CircuitBreaker(name=name))
     return registry
 
@@ -306,8 +306,8 @@ def patch_all(
 
     class CapturingDcAdapter(_FakeDcAdapter):
         def __init__(self, **kwargs: object) -> None:
-            shutdown = kwargs.pop("shutdown_event", None)  # type: ignore[assignment]
-            super().__init__(shutdown_event=shutdown, **kwargs)  # type: ignore[arg-type]
+            shutdown = cast("asyncio.Event | None", kwargs.pop("shutdown_event", None))
+            super().__init__(shutdown_event=shutdown, **kwargs)
 
     mock_tg_auth, mock_dc_auth = MagicMock(), MagicMock()
     _auth_results = iter([mock_tg_auth, mock_dc_auth])

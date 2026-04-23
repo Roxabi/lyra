@@ -66,23 +66,24 @@ class TestValidate:
         assert "error" not in result.output.lower()
         assert "invalid" not in result.output.lower()
 
-    def test_sr_cli_mismatch_warns_exits_nonzero(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    @pytest.mark.parametrize("backend", ["claude-cli", "nats", "ollama"])
+    def test_sr_enabled_exits_nonzero_on_any_backend(
+        self, backend: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """sr+cli mismatch emits error and exits non-zero."""
-        # Arrange -- claude-cli backend with smart_routing enabled (mismatch)
+        """smart_routing enabled is rejected on any backend — validator is backend-agnostic."""  # noqa: E501
+        # Arrange -- any backend with smart_routing enabled should fail validation
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         _seed_agent(
             tmp_path / "config.db",
             name="mismatch",
-            backend="claude-cli",
+            backend=backend,
             smart_routing_json='{"enabled": true}',
         )
 
         # Act
         result = runner.invoke(app, ["validate", "mismatch"])
 
-        # Assert -- exits non-zero (error, not warning) because DB validate is strict
+        # Assert -- exits non-zero (error) because DB validate is strict
         assert result.exit_code != 0, result.output
 
     def test_nonexistent_exits_nonzero(
@@ -97,19 +98,3 @@ class TestValidate:
         # Assert
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "ghost" in result.output.lower()
-
-    def test_sr_sdk_constraint_satisfied_exits_zero(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """anthropic-sdk + SR enabled exits 0."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
-        _seed_agent(
-            tmp_path / "config.db",
-            name="sdkagent",
-            backend="anthropic-sdk",
-            model="claude-sonnet-4-6",
-            smart_routing_json='{"enabled": true}',
-        )
-
-        result = runner.invoke(app, ["validate", "sdkagent"])
-        assert result.exit_code == 0, result.output

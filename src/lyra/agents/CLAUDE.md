@@ -16,18 +16,14 @@ live in `core/`, not here.
 | Class | File | Backend |
 |-------|------|---------|
 | `SimpleAgent` | `simple_agent.py` | Any `LlmProvider` (default: `ClaudeCliDriver`) |
-| `AnthropicAgent` | `anthropic_agent.py` | `AnthropicSdkDriver` only |
 
-Both extend `AgentBase` (defined in `core/agent.py`). `AgentBase` provides:
+`SimpleAgent` extends `AgentBase` (defined in `core/agent.py`). `AgentBase` provides:
 - `CommandRouter` and `CommandLoader` setup
 - `SessionManager` mixin (context compaction, session resume)
 - Hot-reload support: TOML + persona file changes are picked up on next message
 
 **SimpleAgent** is the standard agent for `backend = "claude-cli"`. It supports
 streaming via `ClaudeCliDriver` and handles STT transcription and TTS synthesis.
-
-**AnthropicAgent** is for `backend = "anthropic-sdk"`. It returns a complete
-`Response` (no streaming) and passes conversation history via the Messages API.
 
 ## TOML → DB seeding flow
 
@@ -56,14 +52,14 @@ persona = "lyra_default"       # persona file name (without .md)
 show_intermediate = true       # show ⏳ intermediate tool-use turns
 
 [model]
-backend = "claude-cli"         # "claude-cli" | "anthropic-sdk" | "ollama" (future)
+backend = "claude-cli"         # "claude-cli" | "ollama" (future) | "litellm" (future)
 model = "claude-sonnet-4-6"    # model identifier passed to the backend
 tools = ["Read", "Grep", ...]  # allowed tools (empty = backend defaults)
 skip_permissions = true        # skip Claude Code permission prompts (claude-cli only)
 # max_turns = 10               # cap agentic turns (None/omit = unlimited)
 
 [agent.smart_routing]
-enabled = false                # only works with backend = "anthropic-sdk"
+enabled = false                # smart_routing is deprecated and no longer wired
 
 [plugins]
 enabled = ["echo", "search"]   # plugin names to enable for this agent
@@ -106,4 +102,4 @@ in `config.toml [defaults]`, NOT in agent TOML.
   `Agent.llm_config` (populated from DB/TOML).
 - Do NOT set `cwd` in agent TOML — it is machine-specific and belongs in `config.toml`.
 - Do NOT add platform-specific code to agent implementations — adapters handle that.
-- Do NOT enable smart routing with `backend = "claude-cli"` — unsupported combination.
+- Do NOT enable smart routing — `smart_routing` is deprecated and rejected by the validator on all backends.

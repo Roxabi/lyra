@@ -62,7 +62,7 @@ Session commands are used when a command needs injected service dependencies.
 ## Command routing order
 
 `CommandRouter` dispatches in this priority order:
-1. **Built-in commands** (`/help`, `/stop`, `/circuit`, `/routing`, `/config`,
+1. **Built-in commands** (`/help`, `/stop`, `/circuit`, `/config`,
    `/clear`, `/new`, `/folder`, `/workspace`) — always available, admin-gated where noted
 2. **Session commands** — registered by agents via `register_session_command()`
 3. **Plugin commands** — discovered from `commands/` subdirectories via `CommandLoader`
@@ -119,7 +119,7 @@ the command requires admin access. Read `msg.is_admin` (set by `Authenticator`).
 - Do NOT import from `adapters/` inside a command handler — commands are
   platform-agnostic.
 - Do NOT create plugin names that conflict with built-in command names (`help`,
-  `stop`, `circuit`, `routing`, `config`, `clear`, `new`, `workspace`, `folder`).
+  `stop`, `circuit`, `config`, `clear`, `new`, `workspace`, `folder`).
 - Do NOT block the event loop in a handler — all I/O must be `await`-ed.
 - Do NOT register the same command name in both `plugin.toml` and via
   `register_session_command()` — the router will use the built-in/session version.

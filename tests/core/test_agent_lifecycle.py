@@ -263,6 +263,9 @@ class TestAgentCompact:
 
         pool = MagicMock()
         pool.message_count = 2  # below threshold
+        pool.user_id = "u1"
+        # No TurnStore — forces fallback to pool.history (empty → token_est=0).
+        pool._turn_store = None
 
         await agent.compact(pool)  # FAILS: method doesn't exist yet
 
@@ -298,8 +301,21 @@ class TestAgentCompact:
 
         pool = MagicMock()
         pool.user_id = "u1"
+        pool.pool_id = "pool:test"
         pool.message_count = 200  # high — above threshold
-        pool.sdk_history = [{"role": "user", "content": "x" * 100} for _ in range(5)]
+        # TurnStore mock returns 5 turns of 100 chars each (both roles).
+        # 5 * (100 // 4) = 125 tokens, exceeds 0.8 * 100 threshold.
+        mock_turn_store = AsyncMock()
+        mock_turn_store.get_turns = AsyncMock(
+            return_value=[
+                {"role": "user", "content": "x" * 100},
+                {"role": "assistant", "content": "x" * 100},
+                {"role": "user", "content": "x" * 100},
+                {"role": "assistant", "content": "x" * 100},
+                {"role": "user", "content": "x" * 100},
+            ]
+        )
+        pool._turn_store = mock_turn_store
 
         await agent.compact(pool)
 

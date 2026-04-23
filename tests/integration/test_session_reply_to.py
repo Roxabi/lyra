@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.hub.path_validation import resolve_context
-from lyra.core.messaging.message import InboundMessage
+from lyra.core.hub.middleware.path_validation import resolve_context
+from lyra.core.messaging.message import InboundMessage, Platform
 
 pytestmark = pytest.mark.asyncio
 
@@ -18,6 +19,33 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _make_inbound_message(
+    platform: Platform = Platform.TELEGRAM,
+    chat_id: str = "42",
+    user_id: str = "tg:user:42",
+    text: str = "hello",
+    trust_level: TrustLevel = TrustLevel.PUBLIC,
+    **overrides: Any,
+) -> InboundMessage:
+    """Build a minimal InboundMessage with sensible defaults for tests."""
+    scope_id = overrides.pop("scope_id", f"chat:{chat_id}")
+    return InboundMessage(
+        id=overrides.pop("id", "msg-1"),
+        platform=platform.value,
+        bot_id=overrides.pop("bot_id", "main"),
+        scope_id=scope_id,
+        user_id=user_id,
+        user_name=overrides.pop("user_name", "Alice"),
+        is_mention=overrides.pop("is_mention", False),
+        text=text,
+        text_raw=overrides.pop("text_raw", text),
+        timestamp=overrides.pop("timestamp", datetime.now(timezone.utc)),
+        trust_level=trust_level,
+        reply_to_id=overrides.pop("reply_to_id", None),
+        **overrides,
+    )
 
 
 def _make_pool(pool_id: str = "telegram:main:chat:42"):
@@ -31,25 +59,6 @@ def _make_pool(pool_id: str = "telegram:main:chat:42"):
     ctx.record_circuit_success = MagicMock()
     ctx.record_circuit_failure = MagicMock()
     return Pool(pool_id, "lyra", ctx)
-
-
-def _make_msg(**kwargs) -> InboundMessage:
-    defaults = dict(
-        id="msg-1",
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:42",
-        user_id="tg:user:42",
-        user_name="Alice",
-        is_mention=False,
-        text="hello",
-        text_raw="hello",
-        timestamp=datetime.now(timezone.utc),
-        trust_level=TrustLevel.PUBLIC,
-        reply_to_id=None,
-    )
-    defaults.update(kwargs)
-    return InboundMessage(**defaults)  # type: ignore[arg-type]
 
 
 class _FakeMessageIndex:
@@ -109,10 +118,10 @@ async def test_pending_session_id_set_when_pool_busy() -> None:
 
         fake_hub = _FakeHub(pool, message_index=message_index, turn_store=turn_store)
 
-        msg = _make_msg(
+        msg = _make_inbound_message(
             id="msg-new",
             reply_to_id="msg-old",
-            platform="telegram",
+            platform=Platform.TELEGRAM,
             bot_id="main",
             scope_id="chat:42",
         )
@@ -169,9 +178,9 @@ async def test_process_loop_fires_pending_session_id() -> None:
     # Make get_agent() raise so process_loop exits quickly after the resume step
     pool._ctx.get_agent = MagicMock(side_effect=RuntimeError("stop here"))
 
-    msg = _make_msg(
+    msg = _make_inbound_message(
         id="msg-1",
-        platform="telegram",
+        platform=Platform.TELEGRAM,
         bot_id="main",
         scope_id="chat:42",
     )
@@ -205,9 +214,9 @@ async def test_process_loop_does_not_call_on_resume_fn_when_resume_rejected() ->
 
     pool._ctx.get_agent = MagicMock(side_effect=RuntimeError("stop here"))
 
-    msg = _make_msg(
+    msg = _make_inbound_message(
         id="msg-1",
-        platform="telegram",
+        platform=Platform.TELEGRAM,
         bot_id="main",
         scope_id="chat:42",
     )

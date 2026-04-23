@@ -1,0 +1,255 @@
+---
+title: "Corpus — add Lane/Size/Priority/Status columns from projectV2 + swap dep-graph reader"
+issue: 872
+status: approved
+tier: F-full
+repo: roxabi-live
+promoted_from: artifacts/analyses/872-corpus-projectv2-fields-analysis.mdx
+date: 2026-04-23
+parent_issues:
+  - Roxabi/lyra#829
+  - Roxabi/lyra#864
+---
+
+## Context
+
+`corpus.db` stores issue metadata from GraphQL but does not capture GitHub Project V2
+single-select fields (Lane, Size, Priority, Status). The dep-graph v5 reader
+(`dep_graph/v5/data/corpus.py:_project_lane_size`) compensates by inferring lane and
+size from label prefixes (`graph:lane/`, `size:`). That fallback was always temporary —
+it was explicitly marked as a SINGLE SWAP POINT pending this issue. With
+`roxabi-plugins#119` (enrollment + backfill) closed, the hub project now has full
+coverage; the label-projection path is dead weight and a maintenance trap.
+
+Priority and Status are unavailable entirely in `corpus.db`, blocking downstream
+consumers (v6 API, dashboards) from reading them without a second round-trip.
+
+All touched files live in `roxabi-live`. The PR body uses `closes Roxabi/lyra#872` so
+issue closure fires automatically on merge.
+
+## Goal
+
+Persist all four Project V2 single-select fields (Lane, Size, Priority, Status) in
+`corpus.db` via GraphQL, and replace the label-inference path in the v5 dep-graph reader
+with direct column reads — eliminating the label fallback entirely.
+
+## Non-goals
+
+- Dropping `layout.json` from v5 (separate decision, not part of #872).
+- Deleting `graph:*/size:*` labels from GitHub issues (label cleanup, separate issue).
+- Migrating the v6 API or any corpus consumer beyond the v5 dep-graph reader.
+- Changing the `edges` table or `sync_state` schema.
+- Adding SQL indexes on `priority` or `status` (no SQL filter path exists yet).
+
+## API / Schema Changes
+
+### schema.py — four new TEXT columns
+
+`SCHEMA_VERSION` bumped 2 → 3. `_migrate()` gains four `ALTER TABLE issues ADD COLUMN`
+calls, each in its own `try/except sqlite3.OperationalError` block guarded by the
+existing `"duplicate column"` pattern:
+
+```
+lane     TEXT   -- Project V2 Lane option name (e.g. "a1", "standalone")
+priority TEXT   -- Project V2 Priority option name (e.g. "P1", "P2 - Medium")
+size     TEXT   -- Project V2 Size option name (e.g. "M", "L")
+status   TEXT   -- Project V2 Status option name (e.g. "In Progress", "Done")
+```
+
+All four default to `NULL`. Existing rows remain valid; columns are hydrated on the next
+`make corpus-sync` pass (lazy migration — corpus is a local cache, one sync cycle with
+NULLs is acceptable).
+
+### graphql.py — ISSUES_QUERY extended
+
+`ISSUES_QUERY` gains a `projectItems(first: 5)` fragment on each issue node:
+
+```graphql
+projectItems(first: 5) {
+  nodes {
+    project {
+      id
+    }
+    fieldValues(first: 20) {
+      nodes {
+        ... on ProjectV2ItemFieldSingleSelectValue {
+          name
+          field {
+            ... on ProjectV2FieldCommon {
+              name
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+`first: 5` on `projectItems` covers issues enrolled in multiple boards without the
+fragility of `first: 1`. `first: 20` on `fieldValues` covers all custom fields in
+typical V2 boards.
+
+### sync.py — _parse_project_fields + upsert_issue + closed_hop_pass
+
+New helper `_parse_project_fields(node: dict, canonical_project_id: str | None) -> dict`
+filters by canonical project ID and returns `{"lane": ..., "priority": ..., "size": ...,
+"status": ...}` (all four `None` when unmatched or `canonical_project_id` is `None`).
+
+`upsert_issue` extended from 11 to 15 positional keys in docstring, INSERT tuple, and
+ON CONFLICT SET clause.
+
+`closed_hop_pass` stub dict (currently lines 291–303) gains four `None` keys:
+`"lane": None, "priority": None, "size": None, "status": None`. Omitting these would
+cause a `KeyError` on every closed-hop path — this is the highest-probability silent
+breakage risk in the PR.
+
+### dep_graph/v5/data/corpus.py — _project_lane_size renamed to _project_fields
+
+`_project_lane_size(labels: list[str])` replaced by
+`_project_fields(lane, priority, size, status)` returning
+`{"lane_label": lane, "priority": priority, "size": size, "status": status}`.
+
+The key `lane_label` is preserved (v5 consumers already reference `issue["lane_label"]`
+per `test_corpus.py` line 122 — renaming would break all v5 consumers).
+
+`_fetch_issues` SELECT extended from 11 to 15 columns:
+```
+..., is_stub, lane, priority, size, status FROM issues
+```
+
+`LANE_LABEL_PREFIX`, `SIZE_LABEL_PREFIX` constants and the full body of
+`_project_lane_size` deleted. No feature flag — `roxabi-plugins#119` confirmed complete
+hub enrollment.
+
+### CORPUS_PROJECT_IDS env var
+
+Single env var loaded at `sync.py` module level into `_CORPUS_PROJECT_IDS: dict[str, str]`.
+
+Format: `owner/repo:project_node_id` pairs, comma-separated:
+
+```
+CORPUS_PROJECT_IDS=Roxabi/lyra:PVT_kwDOB8J6DM4BQrDj,Roxabi/llmCLI:PVT_kwDOB8J6DM4BU-5r,Roxabi/voiceCLI:PVT_kwDOB8J6DM4BQrEv,Roxabi/imageCLI:PVT_kwDOB8J6DM4BQzJC
+```
+
+| Repo | Project ID |
+|------|-----------|
+| Roxabi/lyra | PVT_kwDOB8J6DM4BQrDj |
+| Roxabi/llmCLI | PVT_kwDOB8J6DM4BU-5r |
+| Roxabi/voiceCLI | PVT_kwDOB8J6DM4BQrEv |
+| Roxabi/imageCLI | PVT_kwDOB8J6DM4BQzJC |
+
+When the env var is absent or a repo is not listed, `_parse_project_fields` returns all
+four `None` (safe — no crash, no fallback to deleted label path). When `projectItems`
+nodes exist but none match the configured ID, log a `stderr` warning (signals
+misconfiguration vs. genuine non-enrollment).
+
+### file_exemptions.txt
+
+`sync.py` is currently exempt at 320 lines (actual line count is 339). Adding
+`_parse_project_fields()` (~20 lines), extending `upsert_issue` (+8 lines), and updating
+`run_repo_sync` (+5 lines) brings the file to approximately 372 lines. The exemption
+entry must be updated with the new line count and a reference to issue #872 before the PR
+passes the file-length gate.
+
+## Acceptance Criteria
+
+- [ ] **AC-1** — `schema.py` `SCHEMA_VERSION` equals 3; running `bootstrap()` on a v2 DB
+  (missing the four columns) adds `lane`, `priority`, `size`, `status` to the `issues`
+  table without error; calling `bootstrap()` a second time on the same DB is idempotent
+  (duplicate-column guard fires, no exception raised).
+- [ ] **AC-2** — After `make corpus-sync` with `CORPUS_PROJECT_IDS` set,
+  `SELECT lane, priority, size, status FROM issues LIMIT 5` returns at least one row with
+  non-NULL values for issues enrolled in the Roxabi Hub project.
+- [ ] **AC-3** — `_project_fields(lane, priority, size, status)` returns a dict with keys
+  `lane_label`, `priority`, `size`, `status` populated from column arguments. No
+  reference to `LANE_LABEL_PREFIX` or `SIZE_LABEL_PREFIX` exists anywhere in
+  `dep_graph/v5/data/corpus.py` (enforced by CI grep check).
+- [ ] **AC-4** — `load_issues()` projected dict includes all four keys `lane_label`,
+  `size`, `priority`, `status`, sourced from DB columns (not labels).
+- [ ] **AC-5** — `closed_hop_pass` stub dict contains `"lane": None`, `"priority": None`,
+  `"size": None`, `"status": None`; the closed-hop sync path completes without `KeyError`.
+- [ ] **AC-6** — New test `test_migrate_adds_projectv2_columns` seeds a v2 DB, calls
+  `bootstrap()`, asserts all four columns exist via `PRAGMA table_info(issues)`.
+- [ ] **AC-7** — New test `test_run_repo_sync_hydrates_projectv2_fields` mocks
+  `gh_graphql` returning a `projectItems` payload; asserts lane/priority/size/status
+  columns are written with correct values.
+- [ ] **AC-8** — New test `test_run_repo_sync_null_project_fields_on_no_enrollment` mocks
+  `projectItems { nodes: [] }`; asserts all four columns store `NULL` without error.
+- [ ] **AC-9** — `_project_fields(None, None, None, None)` returns a dict where all
+  values are `None`; `_project_fields("a1", "P1", "M", "In Progress")` returns the exact
+  dict `{"lane_label": "a1", "priority": "P1", "size": "M", "status": "In Progress"}`.
+- [ ] **AC-10** — `test_load_issues_projects_all_fields` seeds `lane`, `size`, `priority`,
+  `status` as DB column values (not labels) and asserts the projected dict contains the
+  correct values for all four keys.
+- [ ] **AC-11** — `uv run ruff check` and `uv run pyright` are clean on all touched files.
+- [ ] **AC-12** — `make corpus-sync` completes without GraphQL errors on a live run; the
+  `rateLimit.cost` logged per page remains below 20.
+- [ ] **AC-13** — `tools/file_exemptions.txt` entry for `sync.py` is updated to reflect
+  the new line count (approximately 372) with a note referencing issue #872.
+
+## Slices
+
+Single PR targeting `roxabi-live`. Internal commits may be phased as V1 → V2 → V3 for
+reviewability; the PR is the unit of deployment.
+
+| Slice | Scope | Demo |
+|-------|-------|------|
+| **V1 — Schema** | `schema.py`: `SCHEMA_VERSION` 2→3, four `ALTER TABLE` calls in `_migrate()`; `tests/corpus/test_schema.py`: two new migration tests | `bootstrap()` on v2 DB adds four columns; idempotent on v3 DB |
+| **V2 — GraphQL + sync hydration** | `graphql.py`: `ISSUES_QUERY` + `projectItems` fragment; `sync.py`: `_parse_project_fields()` helper, `upsert_issue` extended 11→15, `run_repo_sync` hydrates fields, `closed_hop_pass` stub dict gains four `None` keys, `CORPUS_PROJECT_IDS` env var loading; `tests/corpus/test_sync.py`: three new hydration tests; `tools/file_exemptions.txt` updated | `make corpus-sync` writes non-NULL values to new columns for enrolled repos |
+| **V3 — Reader swap + fallback deletion** | `dep_graph/v5/data/corpus.py`: `_project_lane_size` → `_project_fields`, `_fetch_issues` SELECT +4 cols, projected dict +2 keys, `LANE_LABEL_PREFIX` / `SIZE_LABEL_PREFIX` constants deleted; `tests/dep_graph/v5/test_corpus.py`: remove 4 label-behavior tests, add 2 unit tests, update integration test | `load_issues()` returns `priority` and `status` keys; no label-prefix constants remain |
+
+## Test Plan
+
+### Unit tests
+
+| Test | File | Asserts |
+|------|------|---------|
+| `test_migrate_adds_projectv2_columns` | `tests/corpus/test_schema.py` | `bootstrap()` on v2 DB → four columns in `PRAGMA table_info` |
+| `test_migrate_idempotent_on_v3` | `tests/corpus/test_schema.py` | `bootstrap()` twice on v3 DB → no exception |
+| `test_upsert_issue_stores_projectv2_fields` | `tests/corpus/test_sync.py` | Full 15-key dict → SELECT returns correct non-NULL values |
+| `test_run_repo_sync_hydrates_projectv2_fields` | `tests/corpus/test_sync.py` | Mocked `gh_graphql` with `projectItems` payload → columns written |
+| `test_run_repo_sync_null_project_fields_on_no_enrollment` | `tests/corpus/test_sync.py` | `projectItems { nodes: [] }` → all four columns `NULL`, no error |
+| `test_project_fields_reads_columns` | `tests/dep_graph/v5/test_corpus.py` | `_project_fields("a1","P1","M","In Progress")` → exact dict |
+| `test_project_fields_none_columns` | `tests/dep_graph/v5/test_corpus.py` | `_project_fields(None,None,None,None)` → all values `None` |
+
+### Integration tests
+
+| Test | File | Asserts |
+|------|------|---------|
+| `test_load_issues_projects_all_fields` | `tests/dep_graph/v5/test_corpus.py` | Seeds `lane`/`size`/`priority`/`status` columns directly; `load_issues()` returns correct projected dict for all four keys |
+
+### Static checks (CI)
+
+- `grep -r LANE_LABEL_PREFIX dep_graph/v5/data/corpus.py` → empty (AC-3 enforcement)
+- `grep -r SIZE_LABEL_PREFIX dep_graph/v5/data/corpus.py` → empty (AC-3 enforcement)
+- `uv run ruff check` on all touched files
+- `uv run pyright` on all touched files
+
+### Manual smoke test
+
+```bash
+CORPUS_PROJECT_IDS=Roxabi/lyra:PVT_kwDOB8J6DM4BQrDj,... make corpus-sync
+sqlite3 ~/.roxabi/corpus.db \
+  "SELECT lane, priority, size, status FROM issues WHERE lane IS NOT NULL LIMIT 5"
+```
+
+## Rollout
+
+1. Merge PR in `roxabi-live` — body contains `closes Roxabi/lyra#872`.
+2. `_migrate()` runs automatically on next `bootstrap()` call (triggered by `make corpus-sync`).
+3. Set `CORPUS_PROJECT_IDS` in `.env` with all four repo:project_id pairs before running sync.
+4. Run `make corpus-sync` — new columns hydrate lazily from live GraphQL.
+5. No fallback retention: label-projection path is deleted in V3; if `CORPUS_PROJECT_IDS`
+   is unset, all four columns store `NULL` for all repos (safe, no crash).
+6. No data migration script required — corpus is a local cache; one sync cycle with NULLs
+   is the accepted downtime window.
+
+## Out of Scope
+
+- Dropping `layout.json` from the v5 dep-graph (separate decision).
+- Deleting `graph:lane/*` and `size:*` labels from GitHub issues (label cleanup, separate issue).
+- v6 API or any corpus consumer beyond the v5 dep-graph reader (follow-on).
+- `edges` table or `sync_state` schema changes.
+- SQL indexes on `priority` or `status` (no SQL filter path exists; revisit for v6).
+- GraphQL throttle changes (5000 pts/hr budget is generous for incremental syncs at expected cost &lt; 20/page).

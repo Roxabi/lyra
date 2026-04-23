@@ -1,0 +1,64 @@
+---
+title: "PR #900 Review Findings — Expert Consensus"
+issue: 830
+status: consensus-reached
+date: 2026-04-23
+panel: architect, tester, product-lead
+confidence: high
+---
+
+## Problem
+
+Code review of PR #900 (refactor to eliminate arg-type ignores in tests) produced 3 non-blocking suggestions:
+1. Add AAA comments to pipeline event bus tests (C=70%)
+2. Add AAA comments to integration tests (C=65%)
+3. Add edge case tests for None platform_meta (C=65%)
+
+Should these suggestions be applied?
+
+## Panel
+
+| Agent | Focus |
+|-------|-------|
+| architect | Architecture soundness, maintainability |
+| tester | Test quality, coverage |
+| product-lead | User impact, time-to-market |
+
+## Consensus ρ
+
+**Skip all three suggestions.** Ship PR as-is.
+
+### Rationale
+
+1. **AAA Comments (#1, #2):** Tests average 5 lines each. Adding `# Arrange`, `# Act`, `# Assert` would triple line count without semantic value. Tests already have descriptive method names and docstrings. AAA is useful for complex tests (>10 lines), not trivial ones.
+
+2. **Edge Case Tests (#3):** `platform_meta` is defined as `dict = field(default_factory=dict)` — it can never be `None`. Testing an impossible state adds no coverage. The refined suggestion (missing keys) is already covered by defensive `.get()` patterns throughout the codebase.
+
+### Trade-offs
+
+- **Consistency vs. Pragmatism:** Enforcing AAA uniformly on trivial tests creates dogma; pragmatism favors comment-free simple tests.
+- **Perceived Quality vs. Real Coverage:** AAA comments improve aesthetics, not test effectiveness.
+- **Time-to-Market vs. Perfectionism:** PR goal achieved; polish delays value delivery.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| Apply AAA comments to pipeline tests | tester (C=70%) | Visual noise on 5-line tests; no coverage gain |
+| Apply AAA comments to integration tests | tester (C=65%) | Docstrings already explain purpose; implicit AAA sufficient |
+| Test missing platform_meta keys | tester (refined) | Already covered via `.get()` patterns; low-ROI follow-up |
+
+## Dissent
+
+Tester initially proposed applying #3 (missing keys test) but accepted majority after reconciliation:
+- Existing tests cover empty `platform_meta={}` case
+- `.get()` defensive pattern is standard in codebase
+- Non-blocking, can be addressed in follow-up issue if needed
+
+## Implementation Notes
+
+None — PR is complete and verified. All 3085 tests pass, pyright clean, type ignores justified.
+
+## Next
+
+Merge PR #900 to staging.

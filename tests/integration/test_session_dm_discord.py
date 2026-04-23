@@ -5,11 +5,20 @@ into inbound message.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.core.messaging.bus import Bus
+    from lyra.core.messaging.message import InboundMessage
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
+
+from lyra.infrastructure.stores.turn_store import TurnStore
 
 pytestmark = pytest.mark.asyncio
 
@@ -58,6 +67,24 @@ def _make_dm_message(channel_id: int = 555, user_id: int = 42) -> SimpleNamespac
     )
 
 
+def _make_discord_adapter(
+    bot_id: str = "main",
+    inbound_bus: "Bus[InboundMessage] | None" = None,
+    turn_store: "TurnStore | None" = None,
+) -> "DiscordAdapter":
+    """Build a DiscordAdapter with optional turn_store injection."""
+    from lyra.adapters.discord import DiscordAdapter
+
+    mock_bus = inbound_bus if inbound_bus is not None else MagicMock()
+
+    return DiscordAdapter(
+        bot_id=bot_id,
+        inbound_bus=mock_bus,
+        intents=discord.Intents.none(),
+        turn_store=turn_store,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -65,7 +92,6 @@ def _make_dm_message(channel_id: int = 555, user_id: int = 42) -> SimpleNamespac
 
 async def test_discord_dm_injects_thread_session_id() -> None:
     """DiscordAdapter with turn_store injects thread_session_id for DMs."""
-    from lyra.adapters.discord import DiscordAdapter
     from lyra.adapters.discord.discord_inbound import (
         handle_message as discord_handle_message,
     )
@@ -75,11 +101,9 @@ async def test_discord_dm_injects_thread_session_id() -> None:
     mock_bus.put = AsyncMock()
     fake_turn_store = _FakeTurnStore("prior-session-id")
 
-    adapter = DiscordAdapter(
-        bot_id="main",
+    adapter = _make_discord_adapter(
         inbound_bus=mock_bus,
-        intents=discord.Intents.none(),
-        turn_store=fake_turn_store,  # type: ignore[arg-type]
+        turn_store=cast("TurnStore", fake_turn_store),
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -110,7 +134,6 @@ async def test_discord_dm_no_turn_store_does_not_inject() -> None:
     Verifies backward compatibility — adapters without turn_store still work and
     simply do not inject thread_session_id.
     """
-    from lyra.adapters.discord import DiscordAdapter
     from lyra.adapters.discord.discord_inbound import (
         handle_message as discord_handle_message,
     )
@@ -119,12 +142,7 @@ async def test_discord_dm_no_turn_store_does_not_inject() -> None:
     mock_bus.put_nowait = MagicMock()
     mock_bus.put = AsyncMock()
 
-    adapter = DiscordAdapter(
-        bot_id="main",
-        inbound_bus=mock_bus,
-        intents=discord.Intents.none(),
-        # No turn_store
-    )
+    adapter = _make_discord_adapter(inbound_bus=mock_bus)
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
     fake_dm = _make_dm_message(channel_id=555, user_id=42)
@@ -140,16 +158,10 @@ async def test_discord_dm_no_turn_store_does_not_inject() -> None:
 
 async def test_discord_dm_turn_store_attribute_stored() -> None:
     """DiscordAdapter must expose _turn_store after construction."""
-    from lyra.adapters.discord import DiscordAdapter
-
-    mock_bus = MagicMock()
     fake_turn_store = _FakeTurnStore("session-xyz")
 
-    adapter = DiscordAdapter(
-        bot_id="main",
-        inbound_bus=mock_bus,
-        intents=discord.Intents.none(),
-        turn_store=fake_turn_store,  # type: ignore[arg-type]
+    adapter = _make_discord_adapter(
+        turn_store=cast("TurnStore", fake_turn_store),
     )
 
     assert adapter._turn_store is fake_turn_store, (

@@ -174,7 +174,7 @@ systemctl --user daemon-reload
 - Phase 0 complete (M₂ dry run passed)
 - M₁ has Podman 5.x from apt (ships with Ubuntu 26.04 LTS — no manual install needed)
 - Linger enabled: `loginctl enable-linger $USER`
-- `~/.lyra/env/hub.env`, `telegram.env`, `discord.env` created and populated on M₁ (migrated from `~/projects/lyra/.env.*`)
+- `~/.lyra/env/hub.env` created with `LYRA_HEALTH_SECRET` set (copy from `deploy/quadlet/hub.env.example`); tokens already present in `~/.lyra/config.db` (verified via `lyra secrets list` or equivalent — since #417, tokens live in `config.db`, not env files)
 - nkeys at `~/.lyra/nkeys/` are intact (no regen needed; Quadlet volumes mount same files)
 - `lyra-stack.service` in `~/.config/systemd/user/default.target.wants/` investigated — confirm if it is a manual stub or a conflict with `lyra.service`
 

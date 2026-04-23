@@ -17,14 +17,16 @@ Network=lyra.network
 NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
-User=lyra
-# Scoped env file — copy from discord.env.example, fill in bot token only.
-# NATS_URL and NATS_NKEY_SEED_PATH are set inline below.
-EnvironmentFile=%h/.lyra/env/discord.env
+# ADR-054 Decision 2: UserNS=keep-id maps container UID to host UID 1000 (mickael),
+# which owns ~/.lyra/*. Replaces User=lyra (UID 1500) which could not read host files.
+UserNS=keep-id
+# ADR-054 Decision 4: bot tokens come from config.db via LyraKeyring (since #417).
+# No EnvironmentFile needed for tokens — discord.env.example deleted.
 Environment=NATS_URL=nats://lyra-nats:4222
 Volume=lyra-nkey-discord-adapter.volume:/run/secrets/discord-adapter.seed:ro,z
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/discord-adapter.seed
-Volume=lyra-data.volume:/home/lyra/.lyra:ro,z
+# ADR-054 Decision 3: rw (adapters write discord.db, message_index.db, auth.db pairings).
+Volume=lyra-data.volume:/home/lyra/.lyra:z
 Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
 Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
 Volume=lyra-config.volume:/app/config.toml:ro,z

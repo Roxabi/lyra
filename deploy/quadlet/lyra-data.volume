@@ -1,5 +1,12 @@
 [Unit]
-Description=Lyra data volume (auth.db, keyring, agents)
+Description=Lyra data bind-mount (config.db, keyring.key, agents, auth.db)
+# Bind-mount of %h/.lyra — exposes config.db (Fernet-encrypted bot tokens),
+# keyring.key, auth.db, and all agent state to the containers.
+# Rationale: ADR-054 Decision 1 — tokens live in config.db since #417 (auth.db split);
+# named volume approach (ADR-053) left host files unexposed, causing credential lookup failure.
 
 [Volume]
+Type=none
+Device=%h/.lyra
+Options=bind
 Label=app=lyra

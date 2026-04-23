@@ -7,6 +7,8 @@ description: Makes Lyra the reference implementation of the roxabi ecosystem mig
 
 Accepted (2026-04-24)
 
+**Superseded in part by ADR-054 (2026-04-24):** Decisions 4 (Container UID pinning + explicit `User=`) and 5 (Secrets file location) are superseded by ADR-054. The `User=lyra` directive introduced in Decision 4 prevented containers from reading host files owned by UID 1000; the env-file token model from Decision 5 was already obsolete as of #417 (March 2026). Decisions 1, 2, and 3 remain in force unchanged.
+
 ## Context
 
 Lyra now ships three deployment tiers:

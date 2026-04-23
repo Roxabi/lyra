@@ -8,9 +8,9 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.4 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
-# Install dependencies (no voice extras — no GPU in Docker)
+# Install dependencies
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-extra voice
+RUN uv sync --frozen --no-dev
 
 COPY src/ src/
 

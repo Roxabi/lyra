@@ -73,12 +73,6 @@ if [ -d "$VOICE_DIR/.git" ]; then
         timeout 30 git pull origin staging 2>&1 | tee -a "$LOG_FILE"
         timeout 60 uv sync --frozen 2>&1 | tee -a "$LOG_FILE"
         VOICE_UPDATED=true
-
-        # Also update voiceCLI inside Lyra's .venv so the library stays in sync
-        log "Re-syncing voiceCLI in Lyra..."
-        cd "$LYRA_DIR"
-        timeout 60 uv sync --all-extras --upgrade-package voicecli 2>&1 | tee -a "$LOG_FILE"
-        LYRA_UPDATED=true
     fi
 fi
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Poll journalctl for NATS permission violations after an ACL reload.
+# Stream journalctl for NATS permission violations after an ACL reload.
 #
 # Usage: scripts/check-nats-acls.sh [--since <timestamp>] [--window <seconds>]
 # Env:   NATS_UNIT=nats.service   (override systemd unit name; matches deploy/nats/nats.service)
@@ -31,15 +31,19 @@ else
   exit 2
 fi
 
-DEADLINE=$(( $(date +%s) + WINDOW ))
-while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-  if journalctl -u "$NATS_UNIT" --since "$SINCE" --no-pager 2>/dev/null \
-       | grep -q 'Permissions Violation'; then
-    echo "FAIL: Permissions Violation detected in $NATS_UNIT since $SINCE" >&2
-    journalctl -u "$NATS_UNIT" --since "$SINCE" --no-pager | grep 'Permissions Violation' | tail -20
-    exit 1
-  fi
-  sleep 2
-done
+# Stream the journal and exit on the first match via `grep -m 1`. `timeout
+# --preserve-status` caps the wait at WINDOW seconds; when no match arrives,
+# grep exits non-zero and `|| true` keeps the script at rc 0.
+match=$(NATS_UNIT="$NATS_UNIT" SINCE="$SINCE" \
+  timeout --preserve-status "$WINDOW" bash -c '
+    journalctl -f -u "$NATS_UNIT" --since "$SINCE" 2>/dev/null \
+      | grep --line-buffered -m 1 "Permissions Violation"
+  ' || true)
+
+if [ -n "$match" ]; then
+  echo "FAIL: Permissions Violation detected in $NATS_UNIT since $SINCE" >&2
+  echo "$match" >&2
+  exit 1
+fi
 echo "OK: no Permissions Violation in $NATS_UNIT over ${WINDOW}s window"
 exit 0

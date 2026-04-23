@@ -256,12 +256,17 @@ is required when voice adapters come up later.
 
 ### Supervisor Programs
 
-Two new supervisor configs in `deploy/supervisor/conf.d/`:
+> **Note (#886):** `deploy/supervisor/` has been removed. Tenant conf files now live at
+> `deploy/conf.d/` (registered into the machine-level supervisord at `~/projects/conf.d/`).
+> For Quadlet deployments (ADR-053), these programs run as systemd units, not supervisord
+> programs. The paths below reflect the state at the time this ADR was written.
 
-- `lyra_stt.conf` — `command=run_stt_adapter.sh`, `autostart=false`, `autorestart=true`
-- `lyra_tts.conf` — `command=run_tts_adapter.sh`, `autostart=false`, `autorestart=true`
+Two new supervisor configs in `deploy/conf.d/` (formerly `deploy/supervisor/conf.d/`):
 
-Scripts in `supervisor/scripts/run_stt_adapter.sh` and `run_tts_adapter.sh` use the
+- `lyra-stt.conf` — `command=deploy/scripts/run_stt_adapter.sh`, `autostart=false`, `autorestart=true`
+- `lyra-tts.conf` — `command=deploy/scripts/run_tts_adapter.sh`, `autostart=false`, `autorestart=true`
+
+Scripts in `deploy/scripts/run_stt_adapter.sh` and `run_tts_adapter.sh` use the
 lyra venv (not voicecli's venv), consistent with how the existing adapters bootstrap.
 The lyra package must list voicecli as a dependency for the adapter entry points to work.
 
@@ -305,8 +310,8 @@ to those inboxes.
 | `src/lyra/nats/nats_stt_client.py` | New — hub-side NATS client implementing STTProtocol |
 | `src/lyra/nats/nats_tts_client.py` | New — hub-side NATS client implementing TtsProtocol |
 | `src/lyra/core/audio_pipeline.py` | Catch `STTUnavailableError`; no other changes needed |
-| `deploy/supervisor/conf.d/lyra_stt.conf` | New supervisor program |
-| `deploy/supervisor/conf.d/lyra_tts.conf` | New supervisor program |
+| `deploy/conf.d/lyra-stt.conf` | New supervisor program (formerly `deploy/supervisor/conf.d/lyra_stt.conf`, removed in #886) |
+| `deploy/conf.d/lyra-tts.conf` | New supervisor program (formerly `deploy/supervisor/conf.d/lyra_tts.conf`, removed in #886) |
 | `supervisor/scripts/run_stt_adapter.sh` | New launch script |
 | `supervisor/scripts/run_tts_adapter.sh` | New launch script |
 

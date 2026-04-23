@@ -12,7 +12,7 @@ Proposed
 Production (`roxabituwer`) runs a 60s systemd timer invoking `lyra/scripts/deploy.sh`. The script hardcodes repo paths, branch names, program names, and restart sequences for lyra and voiceCLI. Adding a new auto-deployed project requires editing this file in the lyra repo — the wrong place. Two known bugs compound the problem:
 
 - **M16**: `timeout 30 git fetch 2>&1 | tee` swallows the `timeout` exit code (124); deploy proceeds with a stale ref when fetch times out.
-- **M8**: Two supervisor `conf.d/` trees (`supervisor/conf.d/` and `deploy/supervisor/conf.d/`) risk silent drift.
+- **M8**: Two supervisor `conf.d/` trees (`supervisor/conf.d/` and `deploy/supervisor/conf.d/`) risk silent drift. *(Resolved in #886: the lyra-owned `deploy/supervisor/` tree was removed; tenant confs now live in `deploy/conf.d/` only.)*
 
 The NATS evolution path (M1: `lyra_cli` + `lyra_llm`; M2: `lyra_harness`; M3: zero-downtime rolling hub deploy) adds 3+ new supervisor programs and eventual Quadlet units. Each addition today means editing `deploy.sh`.
 

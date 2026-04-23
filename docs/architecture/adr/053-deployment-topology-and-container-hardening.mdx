@@ -33,7 +33,7 @@ See the security audit attached to spec [TBD].
 
 **Quadlet** (`deploy/quadlet/`) is the strategic target for every roxabi project running on M₁ (`roxabituwer`, Ubuntu 26.04 LTS, Podman 5.x). This ADR makes Lyra the reference implementation of that migration. The patterns defined here — unit layout, deploy script, Makefile dispatcher, nkey volumes, NATS coexistence topology — are lifted to `roxabi-boilerplate` once validated in production.
 
-**Supervisord** (`deploy/supervisor/`) is legacy-with-a-migration-path. It is not abandoned: it continues to run for projects that have not yet migrated. No new production features are added to the supervisord path beyond maintenance fixes (log rotation, conf renames). Supervisord retires when the last roxabi project on M₁ has migrated to Quadlet — triggered by ecosystem adoption, not a calendar date.
+**Supervisord** — Lyra is now a tenant on the machine-level supervisord at `~/projects/supervisord.conf`. The lyra-owned `deploy/supervisor/` directory was removed in #886; tenant conf files live in `deploy/conf.d/` (registered into `~/projects/conf.d/`). For projects not yet on Quadlet, the machine-level supervisord continues to run. Supervisord retires when the last roxabi project on M₁ has migrated to Quadlet — triggered by ecosystem adoption, not a calendar date.
 
 **Dev** tier (`lyra start` — single process, embedded NATS) is unchanged.
 
@@ -58,11 +58,11 @@ Supervisord program names are renamed to match Quadlet unit names:
 | `[program:lyra_telegram]` | `[program:lyra-telegram]` |
 | `[program:lyra_discord]` | `[program:lyra-discord]` |
 
-Files affected:
-- `deploy/supervisor/conf.d/lyra_hub.conf` → `lyra-hub.conf`
-- `deploy/supervisor/conf.d/lyra_telegram.conf` → `lyra-telegram.conf`
-- `deploy/supervisor/conf.d/lyra_discord.conf` → `lyra-discord.conf`
-- `deploy/supervisor/conf.d/*.conf` — update `[program:...]` stanza names
+Files affected (note: `deploy/supervisor/` was removed in #886; the canonical tenant conf location is now `deploy/conf.d/`):
+- `deploy/conf.d/lyra-hub.conf` (formerly `deploy/supervisor/conf.d/lyra_hub.conf`)
+- `deploy/conf.d/lyra-telegram.conf` (formerly `lyra_telegram.conf`)
+- `deploy/conf.d/lyra-discord.conf` (formerly `lyra_discord.conf`)
+- All `[program:...]` stanza names use hyphens
 - Log file names inside each conf update accordingly (`lyra_hub.log` → `lyra-hub.log`)
 
 Quadlet unit names already use hyphens (`ContainerName=lyra-hub`, service `lyra-hub.service`) — no change required there.

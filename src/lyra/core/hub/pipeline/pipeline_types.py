@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..messaging.message import InboundMessage, Response
-    from ..pool import Pool
+    from ...messaging.message import InboundMessage, Response
+    from ...pool import Pool
 
 # Type alias for the optional trace hook.
 # Called with (stage, event, **payload) at key pipeline decision points.

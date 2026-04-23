@@ -10,11 +10,11 @@ from collections import OrderedDict
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ..config import PoolConfig
-from ..pool import Pool
+from ...config import PoolConfig
+from ...pool import Pool
 
 if TYPE_CHECKING:
-    from .hub import Hub
+    from ..hub import Hub
 
 log = logging.getLogger(__name__)
 

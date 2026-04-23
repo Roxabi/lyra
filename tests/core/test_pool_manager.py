@@ -323,9 +323,9 @@ class TestLockSafetyConcurrentMutation:
 
         import threading
 
-        threads = [
-            threading.Thread(target=iterate_pools) for _ in range(50)
-        ] + [threading.Thread(target=pop_pools) for _ in range(50)]
+        threads = [threading.Thread(target=iterate_pools) for _ in range(50)] + [
+            threading.Thread(target=pop_pools) for _ in range(50)
+        ]
 
         for t in threads:
             t.start()
@@ -464,4 +464,3 @@ class TestMaxPoolsValidation:
     def test_positive_max_pools_works(self):
         hub = Hub(max_pools=100)
         assert hub._max_pools == 100
-

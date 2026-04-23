@@ -19,8 +19,8 @@ if TYPE_CHECKING:
     from ..pool import Pool
     from ..stores.message_index import MessageIndex
     from .hub_protocol import ChannelAdapter
-    from .outbound_dispatcher import OutboundDispatcher
-    from .pool_manager import PoolManager
+    from .outbound import OutboundDispatcher
+    from .pipeline import PoolManager
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class HubShutdownMixin:
         Fire-and-forget with a 3s total timeout so it never blocks teardown.
         """
         from ..messaging.message import Platform
-        from .outbound_errors import try_notify_user
+        from .outbound.outbound_errors import try_notify_user
 
         _RESTART_MSG = (
             "\u26a0\ufe0f I was restarted mid-response"

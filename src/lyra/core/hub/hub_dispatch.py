@@ -24,9 +24,8 @@ if TYPE_CHECKING:
     )
     from ..messaging.render_events import RenderEvent
     from .hub_protocol import ChannelAdapter
-    from .message_pipeline import PipelineResult
-    from .outbound_dispatcher import OutboundDispatcher
-    from .outbound_router import OutboundRouter
+    from .outbound import OutboundDispatcher, OutboundRouter
+    from .pipeline.message_pipeline import PipelineResult
 
 log = logging.getLogger(__name__)
 
@@ -114,7 +113,7 @@ class HubDispatchMixin:
         result: PipelineResult,
     ) -> None:
         """Dispatch a pipeline result: send command response or submit to pool."""
-        from .message_pipeline import Action
+        from .pipeline.pipeline_types import Action
 
         if result.action == Action.COMMAND_HANDLED:
             if result.response and (result.response.content or result.response.audio):

@@ -4,6 +4,6 @@
 #
 # V4 of #760 completed under #773 — core/, adapters/, bootstrap/ decomposed
 # into cohesive subdirs. core/hub/ deferred to V5 (follow-up issue).
+# V5 completed under #848 — core/hub/ decomposed into middleware/, outbound/, pipeline/.
 
 src/lyra/core           # 13 files — #858 config dataclass extraction
-src/lyra/core/hub       # 26 files — V5 hub decomposition (follow-up to #773)

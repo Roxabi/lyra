@@ -17,9 +17,9 @@ if TYPE_CHECKING:
 
 import pytest
 
-from lyra.core.hub.message_pipeline import ResumeStatus
 from lyra.core.hub.middleware import PipelineContext
-from lyra.core.hub.path_validation import resolve_context
+from lyra.core.hub.middleware.path_validation import resolve_context
+from lyra.core.hub.pipeline.message_pipeline import ResumeStatus
 from roxabi_nats._sanitize import PLATFORM_META_ALLOWLIST, sanitize_platform_meta
 from tests.core.conftest import _make_hub, make_inbound_message
 
@@ -368,7 +368,9 @@ class TestScopeValidation:
         )
 
         # Act
-        with caplog.at_level(logging.DEBUG, logger="lyra.core.hub.path_validation"):
+        with caplog.at_level(
+            logging.DEBUG, logger="lyra.core.hub.middleware.path_validation"
+        ):
             status = await resolve_context(msg, pool, pool_id, ctx)
 
         # Assert

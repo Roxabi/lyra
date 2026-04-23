@@ -13,11 +13,11 @@ import asyncio
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
-from ..messaging.message import InboundMessage, OutboundMessage, Response
-from ..messaging.render_events import RenderEvent, TextRenderEvent
+from ...messaging.message import InboundMessage, OutboundMessage, Response
+from ...messaging.render_events import RenderEvent, TextRenderEvent
 
 if TYPE_CHECKING:
-    from ..tts_dispatch import AudioPipeline
+    from ...tts_dispatch import AudioPipeline
 
 
 class TtsDispatch:

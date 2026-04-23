@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 
-from ..auth.trust import TrustLevel
-from ..messaging.message import InboundMessage, Platform
-from ..trace import TraceContext
+from ...auth.trust import TrustLevel
+from ...messaging.message import InboundMessage, Platform
+from ...trace import TraceContext
+from ..pipeline.pipeline_events import MessageDropped
+from ..pipeline.pipeline_types import DROP, Action, PipelineResult
 from .middleware import Next, PipelineContext
-from .pipeline_events import MessageDropped
-from .pipeline_types import DROP, Action, PipelineResult
 
 log = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class RateLimitMiddleware:
         ctx: PipelineContext,
         next: Next,
     ) -> PipelineResult:
-        from .hub import RoutingKey  # noqa: PLC0415  # justified: .hub cycle
+        from ..hub import RoutingKey  # noqa: PLC0415  # justified: .hub cycle
 
         key = RoutingKey(Platform(msg.platform), msg.bot_id, msg.scope_id)
         ctx.key = key

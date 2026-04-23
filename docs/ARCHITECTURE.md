@@ -397,14 +397,14 @@ One pool per conversation scope. Contains:
 
 **Why `threading.Lock` and not `asyncio.Lock`:** pool creation and LRU touch are called from synchronous code paths (sync setters, property accessors, internal rebalance). An `asyncio.Lock` would force those call sites to become `async` with no benefit — the critical sections are dict ops that never `await`.
 
-**Why `asyncio.create_task` is safe under the sync lock:** `create_task` only *schedules* the coroutine onto the event loop; it does not run it. The scheduling call is non-blocking, so holding `_lock` during the call is fine. The flush coroutine itself runs after the lock is released, on the event loop, without touching `_pools`.
+**Why `asyncio.create_task` is safe under the sync lock:** `create_task` only *schedules* the coroutine onto the event loop; it does not run it. The scheduling call is non-blocking, so holding `_lock` during the call is fine. The flush coroutine itself runs after the lock is released, on the event loop, without touching `_pools`. This is safe only because `_evict_pool_locked` is invoked from within a running coroutine (the event loop thread); a background-thread caller would need `loop.call_soon_threadsafe` instead.
 
 **Invariants:**
 
 1. Every read/write of `_pools` goes through `_lock`.
-2. Eviction drops the pool from `_pools` **before** scheduling `flush_session`, so a racing `get_or_create_pool(pool_id)` creates a fresh pool instead of returning a dead one.
-3. `flush_session` tasks are held in `Hub._memory_tasks` with a done-callback that discards them — prevents GC from cancelling in-flight flushes.
-4. `set_*` runtime setters mutate the `HubConfig`/`PoolConfig` snapshots and iterate `_pools` under `_lock` — all live pools observe the new value atomically.
+2. TTL/stale eviction drops the pool from `_pools` **before** scheduling `flush_session`, so a racing `get_or_create_pool(pool_id)` creates a fresh pool instead of returning a dead one. LRU eviction (capacity cap) takes a different code path: `_evict_lru_locked` pops via `popitem`, then `_evict_pool_locked` finds the pool already gone and returns early — no flush is scheduled and the pool is silently discarded.
+3. `flush_session` tasks are held in `Hub._memory_tasks` with a done-callback that discards them — strong refs keep the tasks ineligible for GC so the event loop never destroys a pending task (without this, CPython would emit `RuntimeWarning: Task was destroyed but it is pending` and the done-callback would not fire).
+4. `set_*` runtime setters mutate the `HubConfig`/`PoolConfig` snapshots **before** acquiring `_lock`, then iterate `_pools` under the lock. The per-pool iteration is atomic, but the hub-level snapshot update is written before the lock is taken — a narrow window exists where the hub config and some live pools briefly disagree.
 
 **Call-site rule:** never call an `async` method while holding `_lock`. Either drop the lock first (see `flush_pool` at line 142) or schedule the coroutine via `create_task` and let it run lock-free.
 

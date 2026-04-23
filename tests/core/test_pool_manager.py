@@ -48,8 +48,16 @@ class _AgentNoFlush:
         self.name = name
 
 
-def _make_hub(pool_ttl: float = 3600.0, debounce_ms: int = 0) -> Hub:
-    hub = Hub(pool_ttl=pool_ttl, debounce_ms=debounce_ms)
+def _make_hub(
+    pool_ttl: float = 3600.0,
+    debounce_ms: int = 0,
+    cancel_on_new_message: bool = False,
+) -> Hub:
+    hub = Hub(
+        pool_ttl=pool_ttl,
+        debounce_ms=debounce_ms,
+        cancel_on_new_message=cancel_on_new_message,
+    )
     hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
     return hub
 
@@ -161,16 +169,16 @@ class TestSetCancelOnNewMessage:
     """set_cancel_on_new_message() — update on live pools and hub default."""
 
     def test_updates_hub_default(self):
-        hub = Hub(cancel_on_new_message=False)
-        hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
-        assert hub._cancel_on_new_message is False
+        hub = _make_hub(cancel_on_new_message=False)
 
         hub.set_cancel_on_new_message(True)
         assert hub._cancel_on_new_message is True
+        # Verify the PoolConfig snapshot handed to future pools is also updated,
+        # not just the hub-level attribute.
+        assert hub._pool_manager._pool_config.cancel_on_new_message is True
 
     def test_updates_existing_pools(self):
-        hub = Hub(cancel_on_new_message=False)
-        hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
+        hub = _make_hub(cancel_on_new_message=False)
         agent = _StubAgent()
         hub.register_agent(cast("AgentBase", agent))
 
@@ -184,8 +192,7 @@ class TestSetCancelOnNewMessage:
         assert pool2.cancel_on_new_message is True
 
     def test_new_pools_use_updated_value(self):
-        hub = Hub(cancel_on_new_message=False)
-        hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
+        hub = _make_hub(cancel_on_new_message=False)
         agent = _StubAgent()
         hub.register_agent(cast("AgentBase", agent))
 

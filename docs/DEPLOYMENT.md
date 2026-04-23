@@ -1,23 +1,23 @@
 # Deployment — Machine 1 (Production)
 
-Running Lyra as a managed service on Machine 1 (Ubuntu Server 24.04).
+Running Lyra as a managed service on Machine 1 (Ubuntu Server 24.04). For the advanced containerized path, see [DEPLOYMENT-quadlet.md](DEPLOYMENT-quadlet.md).
 
 ## Overview
 
-Lyra runs as **three separate processes** managed by **supervisord**. All daemons (lyra_hub, lyra_telegram, lyra_discord, voicecli_tts, voicecli_stt) are managed by a single supervisord instance. A **systemd user unit** (`lyra.service`) with linger ensures everything auto-starts on boot — no login session required.
+Lyra runs as **three separate processes** managed by **supervisord**. All daemons (lyra-hub, lyra-telegram, lyra-discord, voicecli_tts, voicecli_stt) are managed by a single supervisord instance. A **systemd user unit** (`lyra.service`) with linger ensures everything auto-starts on boot — no login session required.
 
 ```
 Machine 1 (roxabituwer, 192.168.1.16)
 ├── systemd: nats.service         (NATS server — independent, always-on)
 ├── systemd user unit: lyra.service (auto-start, linger enabled)
 │   └── supervisord (lyra)
-│       ├── lyra_hub      ← hub process (NatsBus, pool, LLM, memory)
-│       ├── lyra_telegram ← Telegram adapter (thin NATS client)
-│       └── lyra_discord  ← Discord adapter (thin NATS client)
+│       ├── lyra-hub      ← hub process (NatsBus, pool, LLM, memory)
+│       ├── lyra-telegram ← Telegram adapter (thin NATS client)
+│       └── lyra-discord  ← Discord adapter (thin NATS client)
 ├── program configs: ~/projects/lyra/deploy/supervisor/conf.d/
-│   ├── lyra_hub.conf
-│   ├── lyra_telegram.conf
-│   └── lyra_discord.conf
+│   ├── lyra-hub.conf
+│   ├── lyra-telegram.conf
+│   └── lyra-discord.conf
 ├── working directory: ~/projects/lyra/
 ├── env file: ~/projects/lyra/.env
 └── logs: ~/.local/state/lyra/logs/ (rotating, 10 MB × 3-5 files per program)
@@ -38,7 +38,7 @@ This runs `scripts/deploy.sh` on Machine 1. The script checks **two repos indepe
 
 | Repo | Branch | Services restarted on change |
 |------|--------|------------------------------|
-| `lyra` | `origin/staging` | `lyra_hub`, `lyra_telegram`, `lyra_discord` |
+| `lyra` | `origin/staging` | `lyra-hub`, `lyra-telegram`, `lyra-discord` |
 | `voiceCLI` | `origin/staging` | `voicecli_tts`, `voicecli_stt` |
 
 **Smart restart** — only the services whose repo changed are restarted. If neither repo has new commits, the script exits without touching supervisor.
@@ -93,7 +93,7 @@ All three NATS env vars are set automatically by `make nats-setup`. The nkey see
 
 ## Multi-Bot Deployment
 
-Multiple bots are configured in `config.toml` — no supervisor changes needed. The three-process topology (`lyra_hub`, `lyra_telegram`, `lyra_discord`) is fixed regardless of how many bots are configured.
+Multiple bots are configured in `config.toml` — no supervisor changes needed. The three-process topology (`lyra-hub`, `lyra-telegram`, `lyra-discord`) is fixed regardless of how many bots are configured.
 
 ### Environment variables
 
@@ -118,15 +118,15 @@ The `.env` file grows by two to three lines per additional bot. No other infrast
 
 ### Resource considerations
 
-All bots share the `lyra_hub` process and a single `CliPool` (Claude CLI subprocess pool). Adapter processes (`lyra_telegram`, `lyra_discord`) are lightweight thin NATS clients. Implications:
+All bots share the `lyra-hub` process and a single `CliPool` (Claude CLI subprocess pool). Adapter processes (`lyra-telegram`, `lyra-discord`) are lightweight thin NATS clients. Implications:
 
-- **CPU / RAM**: each additional bot adds a small constant overhead (auth middleware, one Pool per conversation scope). At personal-use scale this is negligible — expect under 50 MB additional RAM per bot, all in `lyra_hub`.
-- **CliPool contention**: simultaneous long-running LLM requests from multiple bots compete for subprocess slots in the shared pool in `lyra_hub`. `CliPool` has no pool-size configuration — the only mitigations are reducing load or running a separate Hub process per bot.
-- **Crash scope**: an unhandled exception in `lyra_hub` takes down all bot routing at once. The adapter processes survive independently. Supervisor's `autorestart=true` brings everything back automatically.
+- **CPU / RAM**: each additional bot adds a small constant overhead (auth middleware, one Pool per conversation scope). At personal-use scale this is negligible — expect under 50 MB additional RAM per bot, all in `lyra-hub`.
+- **CliPool contention**: simultaneous long-running LLM requests from multiple bots compete for subprocess slots in the shared pool in `lyra-hub`. `CliPool` has no pool-size configuration — the only mitigations are reducing load or running a separate Hub process per bot.
+- **Crash scope**: an unhandled exception in `lyra-hub` takes down all bot routing at once. The adapter processes survive independently. Supervisor's `autorestart=true` brings everything back automatically.
 
 ### Supervisor: no changes needed
 
-The three supervisor programs (`lyra_hub`, `lyra_telegram`, `lyra_discord`) remain fixed — adding bots only changes `config.toml`. Changes take effect on restart.
+The three supervisor programs (`lyra-hub`, `lyra-telegram`, `lyra-discord`) remain fixed — adding bots only changes `config.toml`. Changes take effect on restart.
 
 ```bash
 # Restart all three Lyra processes after updating config.toml or .env
@@ -136,7 +136,7 @@ make lyra reload
 Verify all bots started cleanly:
 
 ```bash
-make lyra logs      # tail lyra_hub stdout
+make lyra logs      # tail lyra-hub stdout
 # Look for lines like:
 # INFO lyra.bootstrap.hub_standalone: Registered Telegram bot bot_id='lyra'
 # INFO lyra.bootstrap.hub_standalone: Registered Telegram bot bot_id='aryl'

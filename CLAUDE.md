@@ -64,9 +64,9 @@ Rules: add/delete/move → update P | new `src/lyra/` subdir → nearest P (¬ne
 
 | Program | CLI | Bootstrap |
 |---|---|---|
-| `lyra_hub` | `lyra hub` | `_bootstrap_hub_standalone()` |
-| `lyra_telegram` | `lyra adapter telegram` | `_bootstrap_adapter_standalone()` |
-| `lyra_discord` | `lyra adapter discord` | `_bootstrap_adapter_standalone()` |
+| `lyra-hub` | `lyra hub` | `_bootstrap_hub_standalone()` |
+| `lyra-telegram` | `lyra adapter telegram` | `_bootstrap_adapter_standalone()` |
+| `lyra-discord` | `lyra adapter discord` | `_bootstrap_adapter_standalone()` |
 
 Topics: `lyra.inbound.<platform>.<bot_id>` | `lyra.outbound.<platform>.<bot_id>`
 

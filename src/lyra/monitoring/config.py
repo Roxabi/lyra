@@ -34,7 +34,7 @@ class MonitoringConfig(BaseModel):
     health_endpoint_url: str = "http://localhost:8443/health/detail"
     diagnostic_model: str = "claude-haiku-4-5-20251001"
     disk_check_path: str = "/"
-    service_name: str = "lyra_telegram"
+    service_name: str = "lyra-telegram"
     health_secret: str = ""
 
     # Secrets (from env vars)

@@ -396,7 +396,7 @@ Tool call latency is **incompressible** regardless of model. But vs pipeline:
 
 ### Current State
 
-All daemons managed by the machine-level supervisord at `~/projects/supervisord.conf` (Lyra as tenant via `~/projects/conf.d/`). The former per-project supervisor at `deploy/supervisor/` has been retired (#886).
+All daemons managed by the machine-level supervisord at `~/projects/supervisord.conf` (Lyra as tenant via `~/projects/conf.d/`). The former per-project supervisor has been retired (#886).
 
 **ROXABITOWER (local, RTX 5070 Ti 16 GB, on-demand)**:
 

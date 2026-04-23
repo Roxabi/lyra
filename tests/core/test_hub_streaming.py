@@ -252,7 +252,7 @@ class TestDispatchStreaming:
         self,
     ) -> None:
         """Voice + dispatcher path: text streams via dispatcher, TTS after."""
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         hub = Hub(tts=cast(TtsProtocol, MagicMock()))
         _mock_synth = AsyncMock()

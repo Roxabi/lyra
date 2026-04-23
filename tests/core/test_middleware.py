@@ -10,21 +10,21 @@ import dataclasses
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from lyra.core.hub.message_pipeline import Action, PipelineResult, ResumeStatus
 from lyra.core.hub.middleware import (
     MiddlewarePipeline,
     PipelineContext,
     build_default_pipeline,
 )
-from lyra.core.hub.middleware_stages import (
+from lyra.core.hub.middleware.middleware_stages import (
     CommandMiddleware,
     CreatePoolMiddleware,
     RateLimitMiddleware,
     ResolveBindingMiddleware,
     ValidatePlatformMiddleware,
 )
-from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
-from lyra.core.hub.path_validation import resolve_context
+from lyra.core.hub.middleware.middleware_submit import SubmitToPoolMiddleware
+from lyra.core.hub.middleware.path_validation import resolve_context
+from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult, ResumeStatus
 from lyra.core.messaging.message import Platform, Response
 from lyra.infrastructure.stores.turn_store import TurnStore
 from tests.core.conftest import _make_hub, make_inbound_message
@@ -748,7 +748,7 @@ class TestNotifySessionFallthroughMiddleware:
         async def _fake_notify(platform, _a, _o, text, **_kw):
             notify_calls.append((platform, text))
 
-        _patch = "lyra.core.hub.outbound_errors.try_notify_user"
+        _patch = "lyra.core.hub.outbound.outbound_errors.try_notify_user"
         mw = SubmitToPoolMiddleware()
         with patch(_patch, side_effect=_fake_notify):
             result = await mw(msg, ctx, _make_next())

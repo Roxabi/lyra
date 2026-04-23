@@ -66,7 +66,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
 
     # Wire audit consumer for pipeline telemetry (#432).
     if hub._event_bus is not None:
-        from lyra.core.hub.audit_consumer import AuditConsumer
+        from lyra.core.hub.pipeline.audit_consumer import AuditConsumer
 
         _audit_queue = hub._event_bus.subscribe()
         _audit_consumer = AuditConsumer(_audit_queue)

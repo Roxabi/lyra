@@ -17,10 +17,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
-from ..messaging.message import InboundMessage
+from ...messaging.message import InboundMessage
 
 if TYPE_CHECKING:
-    from ..messaging.message import (
+    from ...messaging.message import (
         OutboundAttachment,
         OutboundAudio,
         OutboundAudioChunk,

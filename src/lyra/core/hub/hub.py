@@ -26,8 +26,8 @@ from .hub_registration import HubRegistrationMixin
 from .hub_shutdown import HubShutdownMixin
 from .identity_resolver import IdentityResolver
 from .middleware import build_default_pipeline
-from .outbound_router import OutboundRouter
-from .pool_manager import PoolManager
+from .outbound import OutboundRouter
+from .pipeline import PoolManager
 
 if TYPE_CHECKING:
     from collections import deque
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
     from ..stores.pairing import PairingManager
     from ..stores.prefs_store import PrefsStore
     from .event_bus import PipelineEventBus
-    from .outbound_dispatcher import OutboundDispatcher
+    from .outbound import OutboundDispatcher
 
 log = logging.getLogger(__name__)
 

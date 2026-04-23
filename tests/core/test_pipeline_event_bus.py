@@ -8,14 +8,14 @@ import logging
 
 import pytest
 
-from lyra.core.hub.audit_consumer import AuditConsumer
 from lyra.core.hub.event_bus import PipelineEventBus
-from lyra.core.hub.message_pipeline import Action, PipelineResult
 from lyra.core.hub.middleware import (
     MiddlewarePipeline,
     PipelineContext,
 )
-from lyra.core.hub.pipeline_events import (
+from lyra.core.hub.pipeline.audit_consumer import AuditConsumer
+from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult
+from lyra.core.hub.pipeline.pipeline_events import (
     CommandDispatched,
     MessageDropped,
     MessageReceived,
@@ -363,7 +363,7 @@ class TestMiddlewarePipelineEmission:
 
     async def test_real_drop_stage_emits_events(self) -> None:
         """ValidatePlatformMiddleware emits MessageDropped for unknown platform."""
-        from lyra.core.hub.middleware_stages import (
+        from lyra.core.hub.middleware.middleware_stages import (
             ValidatePlatformMiddleware,
         )
 

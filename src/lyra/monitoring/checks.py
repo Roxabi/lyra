@@ -27,7 +27,11 @@ def check_process(service_name: str) -> CheckResult:
         sctl = Path(override).expanduser()
     else:
         sctl = (
-            Path.home() / "projects" / "lyra" / "deploy" / "supervisor"
+            Path.home()
+            / "projects"
+            / "lyra"
+            / "deploy"
+            / "supervisor"
             / "supervisorctl.sh"
         )
 

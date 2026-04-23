@@ -163,7 +163,7 @@ class TestHealthEndpoint:
         from unittest.mock import MagicMock
 
         from lyra.bootstrap.infra.health import create_health_app
-        from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         hub.register_adapter(Platform.TELEGRAM, "main", MagicMock())
         tg_dispatcher = OutboundDispatcher(

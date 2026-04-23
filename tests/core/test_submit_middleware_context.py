@@ -8,10 +8,10 @@ import dataclasses
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
-from lyra.core.hub.message_pipeline import Action, PipelineResult, ResumeStatus
 from lyra.core.hub.middleware import PipelineContext
-from lyra.core.hub.middleware_submit import SubmitToPoolMiddleware
-from lyra.core.hub.path_validation import resolve_context
+from lyra.core.hub.middleware.middleware_submit import SubmitToPoolMiddleware
+from lyra.core.hub.middleware.path_validation import resolve_context
+from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult, ResumeStatus
 from tests.core.conftest import _make_hub, make_inbound_message
 
 if TYPE_CHECKING:
@@ -750,7 +750,7 @@ class TestNotifySessionFallthrough:
         async def _fake_notify(platform: str, _a, _o, text: str, **_kw) -> None:
             notify_calls.append((platform, text))
 
-        _patch = "lyra.core.hub.outbound_errors.try_notify_user"
+        _patch = "lyra.core.hub.outbound.outbound_errors.try_notify_user"
 
         async def _noop_next(_m, _c):
             return PipelineResult(action=Action.SUBMIT_TO_POOL, pool=pool)
@@ -796,7 +796,7 @@ class TestNotifySessionFallthrough:
         async def _fake_notify(*_args, **_kw) -> None:
             notify_calls.append(_args)
 
-        _patch = "lyra.core.hub.outbound_errors.try_notify_user"
+        _patch = "lyra.core.hub.outbound.outbound_errors.try_notify_user"
 
         async def _noop_next(_m, _c):
             return PipelineResult(action=Action.SUBMIT_TO_POOL, pool=pool)
@@ -829,7 +829,7 @@ class TestNotifySessionFallthrough:
         async def _fake_notify(*_args, **_kw) -> None:
             notify_calls.append(_args)
 
-        _patch = "lyra.core.hub.outbound_errors.try_notify_user"
+        _patch = "lyra.core.hub.outbound.outbound_errors.try_notify_user"
 
         async def _noop_next(_m, _c):
             return PipelineResult(action=Action.SUBMIT_TO_POOL, pool=pool)

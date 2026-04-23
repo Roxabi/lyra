@@ -103,7 +103,7 @@ class TestAgentI18nLanguage:
 
         row = AgentRow(
             name="nolangage",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
         )
 
@@ -120,7 +120,7 @@ class TestAgentI18nLanguage:
 
         row = AgentRow(
             name="frenchagent",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             fallback_language="fr",
         )
@@ -138,7 +138,7 @@ class TestAgentI18nLanguage:
 
         row = AgentRow(
             name="enagent",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             fallback_language="en",
         )

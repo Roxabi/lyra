@@ -38,8 +38,8 @@ class TestProviderRegistry:
         driver = make_mock_driver()
 
         # Act
-        registry.register("anthropic-sdk", driver)
-        result = registry.get("anthropic-sdk")
+        registry.register("claude-cli", driver)
+        result = registry.get("claude-cli")
 
         # Assert
         assert result is driver
@@ -61,7 +61,7 @@ class TestProviderRegistry:
         # Arrange
         registry = ProviderRegistry()
         registry.register("claude-cli", make_mock_driver())
-        registry.register("anthropic-sdk", make_mock_driver())
+        registry.register("nats", make_mock_driver())
 
         # Act / Assert
         with pytest.raises(KeyError) as exc_info:
@@ -70,5 +70,5 @@ class TestProviderRegistry:
         error_msg = str(exc_info.value)
         assert "ollama" in error_msg
         # Registered backends are no longer leaked in the error message
-        assert "anthropic-sdk" not in error_msg
         assert "claude-cli" not in error_msg
+        assert "nats" not in error_msg

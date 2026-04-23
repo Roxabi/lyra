@@ -8,9 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from ..commands.command_router import CommandConfig
 
-_VALID_BACKENDS: frozenset[str] = frozenset(
-    {"claude-cli", "ollama", "anthropic-sdk", "litellm"}
-)
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama", "litellm"})
 _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
 
 _WORKSPACE_BUILTIN_CONFLICTS = frozenset(

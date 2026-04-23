@@ -30,7 +30,6 @@ Three concrete drivers in `drivers/`:
 
 | Driver | Backend | `capabilities["streaming"]` | `capabilities["auth"]` |
 |--------|---------|---------------------------|----------------------|
-| `AnthropicSdkDriver` | Anthropic Messages API (HTTP) | `False` — buffers full response | `"api_key"` |
 | `ClaudeCliDriver` | Claude Code subprocess (`CliPool`) | `True` — native NDJSON stream | `"oauth_only"` |
 | `NatsLlmDriver` | Remote LLM worker over NATS request-reply | `True` — ephemeral inbox streaming | `"nats"` |
 
@@ -73,16 +72,15 @@ tooling (`import-linter` checks statements, not re-exports). `cost_usd` is alway
 heuristics (regex + word count). Complexity levels: `TRIVIAL`, `SIMPLE`, `MODERATE`,
 `COMPLEX`.
 
-Smart routing only works with `backend = "anthropic-sdk"`. It is incompatible with
-`backend = "claude-cli"` because the CLI driver controls its own session and model
-selection internally.
+Smart routing is deprecated and no longer wired on any backend. The validator rejects
+`enabled = true`. `SmartRoutingDecorator` remains in the stack as a pass-through.
 
-Configure in agent TOML under `[agent.smart_routing]`. Default: `enabled = false`.
+Configure in agent TOML under `[agent.smart_routing]`. Keep `enabled = false` (the default).
 
 ## ProviderRegistry (`registry.py`)
 
 A simple dict-based registry: `register(backend, driver)` and `get(backend)`.
-Backends are registered by name: `"claude-cli"`, `"anthropic-sdk"`, `"litellm"` (future).
+Backends are registered by name: `"claude-cli"`, `"litellm"` (future).
 `get()` raises `KeyError` for unknown backends — callers must handle this.
 
 ## Conventions
@@ -103,6 +101,5 @@ Backends are registered by name: `"claude-cli"`, `"anthropic-sdk"`, `"litellm"` 
 - Do NOT add new fields to `LlmEvent` subclasses without checking all consumers
   (especially `StreamProcessor` in `core/`).
 - Do NOT mutate `LlmEvent` objects after construction — they are frozen dataclasses.
-- Do NOT enable smart routing with `backend = "claude-cli"` — it is silently ignored
-  and will produce unexpected behaviour.
+- Do NOT set `smart_routing.enabled = true` — the validator rejects it on all backends.
 - Do NOT construct the decorator stack in `llm/` — that belongs in `bootstrap/`.

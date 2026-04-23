@@ -23,7 +23,7 @@ class TestCheckHttpHealth:
             "queue_size": 5,
             "last_message_age_s": 30.0,
             "uptime_s": 3600.0,
-            "circuits": {"anthropic": {"state": "closed"}},
+            "circuits": {"claude-cli": {"state": "closed"}},
         }
 
         with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:

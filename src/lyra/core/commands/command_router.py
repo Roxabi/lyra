@@ -28,7 +28,6 @@ from .command_patterns import (
 
 if TYPE_CHECKING:
     from lyra.core.runtime_config import RuntimeConfigHolder
-    from lyra.core.smart_routing_protocol import SmartRoutingProtocol
 
     from ..circuit_breaker import CircuitRegistry
     from ..messaging.messages import MessageManager
@@ -51,7 +50,6 @@ class CommandRouter:
         msg_manager: "MessageManager | None" = None,
         runtime_config_holder: "RuntimeConfigHolder | None" = None,
         runtime_config_path: Path | None = None,
-        smart_routing_decorator: "SmartRoutingProtocol | None" = None,
         config: RouterConfig | None = None,
         # Backward-compat: individual params override config (deprecated)
         builtins: dict[str, CommandConfig] | None = None,
@@ -74,7 +72,6 @@ class CommandRouter:
         self._msg_manager = msg_manager
         self._runtime_config_holder = runtime_config_holder
         self._runtime_config_path = runtime_config_path
-        self._smart_routing = smart_routing_decorator
         self._on_debounce_change = on_debounce_change or cfg.on_debounce_change
         self._on_cancel_change = on_cancel_change or cfg.on_cancel_change
         self._workspaces: dict[str, Path] = workspaces or {}
@@ -196,9 +193,6 @@ class CommandRouter:
             "/circuit": lambda a, m, p: builtin_commands.circuit_status(
                 m, self._circuit_registry
             ),
-            "/routing": lambda a, m, p: builtin_commands.routing_status(
-                m, self._smart_routing
-            ),
             "/stop": _stop,
             "/config": lambda a, m, p: builtin_commands.config_command(
                 m,
@@ -251,7 +245,7 @@ class CommandRouter:
         if session_entry is not None:
             if self._session_driver is None:
                 return Response(
-                    content="Session commands require an anthropic-sdk backend. "
+                    content="Session commands require a session driver. "
                     "No session driver is configured."
                 )
             try:

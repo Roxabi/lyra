@@ -130,11 +130,11 @@ class MockAdapter:
 
 
 def make_circuit_registry(**overrides) -> CircuitRegistry:
-    """Build a CircuitRegistry with default CBs for all 4 services."""
+    """Build a CircuitRegistry with default CBs for all services."""
     registry = CircuitRegistry()
     defaults = {
-        "anthropic": CircuitBreaker(
-            "anthropic", failure_threshold=3, recovery_timeout=60
+        "claude-cli": CircuitBreaker(
+            "claude-cli", failure_threshold=3, recovery_timeout=60
         ),
         "telegram": CircuitBreaker(
             "telegram", failure_threshold=5, recovery_timeout=30
@@ -440,7 +440,7 @@ def make_agent_row(name: str = "test-agent") -> AgentRow:
     """Return a minimal valid AgentRow for the given name."""
     return AgentRow(
         name=name,
-        backend="anthropic-sdk",
+        backend="claude-cli",
         model="claude-3-5-haiku-20241022",
         max_turns=10,
         tools_json="[]",

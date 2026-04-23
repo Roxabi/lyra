@@ -37,23 +37,6 @@ class LlmProvider(Protocol):
     async def stream(…) -> AsyncIterator[LlmEvent]: ...  # nouveau
 ```
 
-Implémenter dans `AnthropicSdkDriver` :
-```python
-# llm/drivers/sdk.py
-async def stream(self, pool_id, text, model_cfg, system_prompt, *, messages=None):
-    async with self._client.messages.stream(…) as s:
-        async for event in s:
-            if event.type == "content_block_delta" and event.delta.type == "text_delta":
-                yield TextLlmEvent(text=event.delta.text)
-            elif event.type == "content_block_start" and event.content_block.type == "tool_use":
-                yield ToolUseLlmEvent(
-                    tool_name=event.content_block.name,
-                    tool_id=event.content_block.id,
-                    input={}  # complété au content_block_stop
-                )
-    yield ResultLlmEvent(is_error=False, duration_ms=…, cost_usd=…)
-```
-
 Implémenter dans `ClaudeCliDriver` :
 ```python
 # llm/drivers/cli.py — lire content[] du NDJSON
@@ -79,7 +62,7 @@ async def stream(self, …):
 ```
 
 **Complexité :** M
-**Fichiers :** `llm/base.py`, `llm/drivers/sdk.py`, `llm/drivers/cli.py`
+**Fichiers :** `llm/base.py`, `llm/drivers/cli.py`
 **Rétro-compatibilité :** `complete()` reste intact — migration optionnelle
 
 ---
@@ -260,7 +243,6 @@ Phase 1 — Types (S, aucun risque)
 
 Phase 2 — LLM drivers (M, isolé)
   ├─ llm/base.py                   ajouter stream() au Protocol
-  ├─ llm/drivers/sdk.py            implémenter stream()
   └─ llm/drivers/cli.py            implémenter stream()
 
 Phase 3 — Domain Core (M-L, cœur)
@@ -286,6 +268,5 @@ Phase 5 — Config + wiring (S)
 ### Tests à écrire
 
 - `StreamProcessor` : 10-15 cas (1 edit, 5 edits, 12 edits, 80 tools, multi-fichiers, text seul, bash, read silencieux)
-- `AnthropicSdkDriver.stream()` : mock Anthropic SDK, vérifier séquence LlmEvents
 - `ClaudeCliDriver.stream()` : mock NDJSON, vérifier parsing tool_use blocks
 - `TelegramOutbound.send_streaming()` : mock bot API, vérifier editMessage throttlé

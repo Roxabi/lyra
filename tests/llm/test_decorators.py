@@ -191,7 +191,7 @@ class TestCircuitBreakerDecorator:
         """cb.is_open() == True → LlmResult(ok=False) returned; inner never called."""
         # Arrange
         cb = MagicMock(spec=CircuitBreaker)
-        cb.name = "anthropic"
+        cb.name = "claude-cli"
         cb.is_open.return_value = True
         cb.get_status.return_value = MagicMock(retry_after=30.0)
 
@@ -211,7 +211,7 @@ class TestCircuitBreakerDecorator:
         """On ok result, cb.record_success() is called; record_failure is not."""
         # Arrange
         cb = MagicMock(spec=CircuitBreaker)
-        cb.name = "anthropic"
+        cb.name = "claude-cli"
         cb.is_open.return_value = False
 
         inner = _make_inner([make_ok_result()])
@@ -229,7 +229,7 @@ class TestCircuitBreakerDecorator:
         """On error result, cb.record_failure() is called; record_success is not."""
         # Arrange
         cb = MagicMock(spec=CircuitBreaker)
-        cb.name = "anthropic"
+        cb.name = "claude-cli"
         cb.is_open.return_value = False
 
         inner = _make_inner([make_error_result("sdk down")])

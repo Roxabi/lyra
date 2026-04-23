@@ -99,7 +99,7 @@ class TestCheckCircuits:
 
         health_json = {
             "circuits": {
-                "anthropic": {"state": "closed"},
+                "claude-cli": {"state": "closed"},
                 "telegram": {"state": "closed"},
             }
         }
@@ -113,7 +113,7 @@ class TestCheckCircuits:
 
         health_json = {
             "circuits": {
-                "anthropic": {"state": "open"},
+                "claude-cli": {"state": "open"},
                 "telegram": {"state": "closed"},
             }
         }

@@ -133,32 +133,4 @@ def create_health_app(  # noqa: C901 — optional sections (nats/reaper/circuits
             result["reaper_last_sweep_age"] = reaper_status["last_sweep_age"]
         return result
 
-    @app.get("/config")
-    async def config_endpoint(
-        authorization: str = Header(default=""),
-        agent: str = "lyra_default",
-    ) -> dict:
-        config_secret = _read_secret("config_secret")
-        if not config_secret or not hmac.compare_digest(
-            authorization, f"Bearer {config_secret}"
-        ):
-            raise HTTPException(status_code=401, detail="unauthorized")
-        from lyra.agents.anthropic_agent import AnthropicAgent
-
-        agent_obj = hub.agent_registry.get(agent)
-        if not isinstance(agent_obj, AnthropicAgent):
-            raise HTTPException(
-                status_code=404,
-                detail="runtime config not available for this agent backend",
-            )
-        rc = agent_obj.runtime_config
-        return {
-            "style": rc.style,
-            "language": rc.language,
-            "temperature": rc.temperature,
-            "model": rc.model,
-            "max_steps": rc.max_steps,
-            "extra_instructions": rc.extra_instructions,
-        }
-
     return app

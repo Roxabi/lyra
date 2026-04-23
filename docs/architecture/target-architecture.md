@@ -63,7 +63,7 @@ Everything specific (Telegram, Discord, Claude, Anthropic SDK) is an **Adapter**
                            │ implement
 ┌──────────────────────────▼──────────────────────────────────────┐
 │                       LLM ADAPTERS                              │
-│      AnthropicSdkDriver │ ClaudeCliDriver │ NatsLlmDriver       │
+│           ClaudeCliDriver │ NatsLlmDriver │ LiteLlmDriver        │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ LlmEvent stream
 ┌──────────────────────────▼──────────────────────────────────────┐
@@ -300,9 +300,9 @@ Three drivers implement `LlmProvider`:
 
 | Driver | Backend | Streaming | Auth |
 |--------|---------|-----------|------|
-| `AnthropicSdkDriver` | Anthropic Messages API | ❌ buffers full response | `api_key` |
 | `ClaudeCliDriver` | Claude Code subprocess | ✅ native NDJSON stream | `oauth_only` |
 | `NatsLlmDriver` | Remote LLM worker over NATS | ✅ ephemeral inbox | `nats` |
+| `LiteLlmDriver` | LiteLLM proxy (future) | ✅ | `api_key` |
 
 ### Decorator Stack
 
@@ -344,5 +344,5 @@ Every hub↔adapter envelope carries `schema_version: int`.
 | `StreamingSession` | ✅ Implemented |
 | `PlatformCallbacks` | ✅ Implemented |
 | `OutboundAdapterBase` | ✅ Implemented |
-| Drivers (3) | ✅ AnthropicSdk, ClaudeCli, NatsLlm |
+| Drivers (2 + 1 planned) | ✅ ClaudeCli, NatsLlm | LiteLlm (future) |
 | Decorator stack | ✅ CircuitBreaker → SmartRouting → Retry |

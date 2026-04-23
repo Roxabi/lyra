@@ -70,7 +70,7 @@ def _parse_toml(path: Path) -> AgentRow | None:  # noqa: PLR0915 — TOML parsin
     def _m(key: str, default: Any = None) -> Any:
         return model_section.get(key) or agent_section.get(key, default)
 
-    backend = _m("backend", "anthropic-sdk")
+    backend = _m("backend", "claude-cli")
     model = _m("model", "claude-3-5-haiku-20241022")
     _mt = _m("max_turns", None)
     max_turns = None if not _mt else int(_mt)  # 0 or absent → None (unlimited)

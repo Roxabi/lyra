@@ -65,7 +65,6 @@ class Hub(
     RATE_LIMIT = 20
     RATE_WINDOW = 60
     POOL_TTL: float = 604800.0  # 7 days
-    MAX_SDK_HISTORY = 50  # [pool] max_sdk_history
     SAFE_DISPATCH_TIMEOUT: float = 10.0  # [pool] safe_dispatch_timeout
     STAGING_MAXSIZE = 500  # [inbound_bus] staging_maxsize
     PLATFORM_QUEUE_MAXSIZE = 100  # [inbound_bus] platform_queue_maxsize
@@ -90,7 +89,6 @@ class Hub(
         debounce_ms: int | None = None,
         cancel_on_new_message: bool | None = None,
         turn_timeout: float | None = None,
-        max_sdk_history: int | None = None,
         safe_dispatch_timeout: float | None = None,
         staging_maxsize: int | None = None,
         platform_queue_maxsize: int | None = None,
@@ -117,11 +115,6 @@ class Hub(
             turn_timeout=turn_timeout
             if turn_timeout is not None
             else base_cfg.turn_timeout,
-            max_sdk_history=(
-                max_sdk_history
-                if max_sdk_history is not None
-                else base_cfg.max_sdk_history
-            ),
             safe_dispatch_timeout=(
                 safe_dispatch_timeout
                 if safe_dispatch_timeout is not None
@@ -177,7 +170,6 @@ class Hub(
         self._turn_store: TurnStore | None = None
         self._turn_timeout = cfg.turn_timeout
         self._prefs_store: PrefsStore | None = prefs_store
-        self._max_sdk_history = cfg.max_sdk_history
         self._safe_dispatch_timeout = cfg.safe_dispatch_timeout
         self._max_merged_chars = cfg.max_merged_chars
         self._max_pools = cfg.max_pools
@@ -186,7 +178,6 @@ class Hub(
         self._pool_config = PoolConfig(
             turn_timeout=cfg.turn_timeout,
             debounce_ms=cfg.debounce_ms,
-            max_sdk_history=cfg.max_sdk_history,
             safe_dispatch_timeout=cfg.safe_dispatch_timeout,
             max_merged_chars=cfg.max_merged_chars,
             cancel_on_new_message=cfg.cancel_on_new_message,

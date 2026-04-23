@@ -23,8 +23,6 @@ dependencies = [
     # roxabi-nats (packages/roxabi-nats/pyproject.toml is the canonical
     # source). See issue #731.
     "roxabi-nats",
-    # Agent backends
-    "anthropic>=0.49",
     "typer>=0.24.1",
     "tomli-w>=1.0",
     "telegramify-markdown>=1.1.0",

@@ -71,7 +71,7 @@ AUTH_HEADERS = {"authorization": f"Bearer {HEALTH_SECRET}"}
 @pytest.fixture()
 def circuit_registry() -> CircuitRegistry:
     registry = CircuitRegistry()
-    for name in ("anthropic", "telegram", "discord", "hub"):
+    for name in ("claude-cli", "telegram", "discord", "hub"):
         registry.register(CircuitBreaker(name=name))
     return registry
 

@@ -8,7 +8,6 @@ from __future__ import annotations
 import importlib
 import logging
 from collections.abc import Mapping
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,7 +21,6 @@ if TYPE_CHECKING:
     from ..circuit_breaker import CircuitRegistry
     from ..messaging.messages import MessageManager
     from ..runtime_config import RuntimeConfigHolder
-    from ..smart_routing_protocol import SmartRoutingProtocol
     from .command_loader import CommandLoader
 
 
@@ -103,31 +101,6 @@ def circuit_status(
             state_str = f"{status.state.value.upper():<10} (ok)"
         lines.append(f"  {name:<12} {state_str}")
     lines.append("─" * 38)
-    return Response(content="\n".join(lines))
-
-
-def routing_status(
-    msg: InboundMessage,
-    smart_routing: "SmartRoutingProtocol | None",
-) -> Response:
-    """Show smart routing decisions (admin-only)."""
-    if denied := require_admin(msg):
-        return denied
-    if smart_routing is None:
-        return Response(content="Smart routing not configured.")
-    history = smart_routing.history
-    if not history:
-        return Response(content="No routing decisions yet.")
-    lines = ["Smart Routing — Recent Decisions", "─" * 60]
-    for decision in reversed(history):
-        ts = datetime.fromtimestamp(decision.timestamp, tz=timezone.utc)
-        ts_str = ts.strftime("%H:%M:%S")
-        lines.append(
-            f"  {ts_str}  {decision.complexity.value:<8}  "
-            f"{decision.routed_model:<30}  {decision.message_preview}"
-        )
-    lines.append("─" * 60)
-    lines.append(f"  Showing {len(history)} decisions")
     return Response(content="\n".join(lines))
 
 

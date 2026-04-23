@@ -1,0 +1,42 @@
+---
+title: feat(contracts): add response builder helper for NATS workers
+issue: 896
+status: approved
+tier: F-lite
+date: 2026-04-23
+---
+
+## Problem
+
+voiceCLI adapters were using a custom `build_reply()` that omitted required `ContractEnvelope` fields (`trace_id`, `issued_at`). This caused schema validation failures in production when NATS workers processed STT/TTS responses.
+
+The root cause: response construction is error-prone when done manually across multiple adapters. Each adapter must remember to include all required envelope fields.
+
+## Who
+
+- **Primary:** NATS worker developers (voiceCLI adapters, future Lyra voice workers) — need reliable response construction
+- **Secondary:** DevOps/debuggers — need consistent trace_id propagation for log correlation
+
+## Constraints
+
+- Must live in `roxabi-contracts/voice/` (contracts package ownership)
+- Must handle both `SttResponse` and `TtsResponse` schemas
+- `trace_id` fallback: from payload, else `request_id`
+- `issued_at`: auto-set to UTC now
+- voiceCLI adoption blocked by this issue (separate PR)
+
+## Out of Scope
+
+- Lyra voice workers (future — will consume this helper)
+- Modifying existing schemas (`SttResponse`, `TtsResponse`)
+- Error handling patterns beyond basic error field
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain, ~3 files, no architectural unknowns.
+
+Signals:
+- ≤3 files: builders.py, __init__.py, test_builders.py
+- Single package: roxabi-contracts
+- Example code provided in issue body
+- Straightforward implementation with clear interface

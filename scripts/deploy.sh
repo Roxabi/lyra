@@ -100,36 +100,36 @@ fi
 if [ -f "$HOME/projects/lyra/deploy/supervisor/supervisord.pid" ] && kill -0 "$(cat "$HOME/projects/lyra/deploy/supervisor/supervisord.pid")" 2>/dev/null; then
     if [ "$LYRA_UPDATED" = true ]; then
         log "Restarting Lyra (hub first, then adapters)..."
-        "$SCTL" restart lyra_hub 2>&1 | tee -a "$LOG_FILE"
+        "$SCTL" restart lyra-hub 2>&1 | tee -a "$LOG_FILE"
         # Readiness loop: gates adapter startup — adapters must not start until hub is stable.
-        log "Waiting for lyra_hub to reach RUNNING..."
+        log "Waiting for lyra-hub to reach RUNNING..."
         HUB_READY=false
         i=1
         while [ "$i" -le 12 ]; do
             sleep 3
-            HUB_STATE=$("$SCTL" status lyra_hub 2>&1 | grep -oE 'RUNNING|STARTING|FATAL|STOPPED|EXITED|BACKOFF' | head -1) || true
+            HUB_STATE=$("$SCTL" status lyra-hub 2>&1 | grep -oE 'RUNNING|STARTING|FATAL|STOPPED|EXITED|BACKOFF' | head -1) || true
             if [ "$HUB_STATE" = "RUNNING" ]; then
                 # Stabilization hold: re-check after 2s to filter STARTING→RUNNING→BACKOFF flaps
                 sleep 2
-                HUB_STATE=$("$SCTL" status lyra_hub 2>&1 | grep -oE 'RUNNING|STARTING|FATAL|STOPPED|EXITED|BACKOFF' | head -1) || true
+                HUB_STATE=$("$SCTL" status lyra-hub 2>&1 | grep -oE 'RUNNING|STARTING|FATAL|STOPPED|EXITED|BACKOFF' | head -1) || true
                 if [ "$HUB_STATE" = "RUNNING" ]; then
-                    log "lyra_hub is RUNNING — starting adapters"
+                    log "lyra-hub is RUNNING — starting adapters"
                     HUB_READY=true
                     break
                 fi
-                log "lyra_hub flapped (attempt $i/12)"
+                log "lyra-hub flapped (attempt $i/12)"
                 i=$(( i + 1 ))
                 continue
             fi
-            log "lyra_hub state: ${HUB_STATE:-unknown} (attempt $i/12)"
+            log "lyra-hub state: ${HUB_STATE:-unknown} (attempt $i/12)"
             i=$(( i + 1 ))
         done
         if [ "$HUB_READY" = false ]; then
-            log "ERROR: lyra_hub did not reach RUNNING after 60s — stopping adapters and aborting"
-            "$SCTL" stop lyra_telegram lyra_discord 2>&1 | tee -a "$LOG_FILE"
+            log "ERROR: lyra-hub did not reach RUNNING after 60s — stopping adapters and aborting"
+            "$SCTL" stop lyra-telegram lyra-discord 2>&1 | tee -a "$LOG_FILE"
             exit 1
         fi
-        "$SCTL" restart lyra_telegram lyra_discord 2>&1 | tee -a "$LOG_FILE"
+        "$SCTL" restart lyra-telegram lyra-discord 2>&1 | tee -a "$LOG_FILE"
     fi
 
     if [ "$VOICE_UPDATED" = true ]; then

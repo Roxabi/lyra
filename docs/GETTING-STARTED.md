@@ -362,9 +362,9 @@ make ps
 
 You should see:
 ```
-lyra_hub         RUNNING   pid 12344, uptime 0:00:10
-lyra_telegram    RUNNING   pid 12345, uptime 0:00:10
-lyra_discord     RUNNING   pid 12346, uptime 0:00:10
+lyra-hub         RUNNING   pid 12344, uptime 0:00:10
+lyra-telegram    RUNNING   pid 12345, uptime 0:00:10
+lyra-discord     RUNNING   pid 12346, uptime 0:00:10
 voicecli_tts     RUNNING   pid 12347, uptime 0:00:10
 voicecli_stt     RUNNING   pid 12348, uptime 0:00:10
 ```
@@ -437,7 +437,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 
 **Daily commands** (from `~/projects/lyra`):
 ```bash
-make ps              # status of all services (lyra_hub + lyra_telegram + lyra_discord)
+make ps              # status of all services (lyra-hub + lyra-telegram + lyra-discord)
 make lyra reload     # restart hub + both adapters
 make lyra logs       # tail lyra_hub stdout
 make deploy          # pull latest + run tests + restart (from Machine 2)

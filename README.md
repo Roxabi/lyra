@@ -22,22 +22,22 @@ It's for developers who want a persistent personal AI without giving up ownershi
 ## How it works
 
 1. **Channel adapters** (Telegram, Discord) run as separate processes. They normalize incoming messages and publish them over NATS (`lyra.inbound.<platform>.<bot_id>`).
-2. **The Hub** (`lyra_hub` process) subscribes to NATS, routes each message to the right agent via typed `(platform, bot_id, scope_id)` bindings — one pool per conversation scope (chat, thread, channel).
+2. **The Hub** (`lyra-hub` process) subscribes to NATS, routes each message to the right agent via typed `(platform, bot_id, scope_id)` bindings — one pool per conversation scope (chat, thread, channel).
 3. **The Agent** processes the message, calls the LLM, and publishes the response over NATS (`lyra.outbound.<platform>.<bot_id>`). The adapter's `NatsOutboundListener` delivers it to the platform.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph AP["lyra_telegram process"]
+    subgraph AP["lyra-telegram process"]
         TG["Telegram<br/>aiogram v3 · polling"]
         TGOL["NatsOutboundListener"]
     end
-    subgraph DP["lyra_discord process"]
+    subgraph DP["lyra-discord process"]
         DC["Discord<br/>discord.py v2 · gateway"]
         DCOL["NatsOutboundListener"]
     end
-    subgraph HP["lyra_hub process"]
+    subgraph HP["lyra-hub process"]
         BUS["NatsBus<br/>lyra.inbound.*"]
         HUB["Hub<br/>resolve_binding()"]
         P1["Pool<br/>asyncio.Task"]
@@ -229,11 +229,11 @@ DEPLOY_DIR=~/projects/lyra            # project path on production
 
 | Command | Description |
 |---------|-------------|
-| `make lyra` | Start hub + both adapters (lyra_hub, lyra_telegram, lyra_discord) |
+| `make lyra` | Start hub + both adapters (lyra-hub, lyra-telegram, lyra-discord) |
 | `make lyra stop` | Stop all three Lyra processes |
 | `make lyra reload` | Restart all three Lyra processes |
 | `make lyra status` | Status of all three Lyra processes |
-| `make lyra logs` | Tail lyra_hub stdout |
+| `make lyra logs` | Tail lyra-hub stdout |
 | `make telegram` | telegram adapter only (start\|stop\|reload\|logs\|errors) |
 | `make discord` | discord adapter only (start\|stop\|reload\|logs\|errors) |
 | `make deploy` | Deploy to Machine 1 (pull main + test + restart) |

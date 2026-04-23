@@ -17,7 +17,8 @@ COPY src/ src/
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.12.10-slim AS runtime
 
-RUN useradd -m lyra
+# UID 1500 pinned per ADR-053 (Quadlet container UID stability)
+RUN useradd -u 1500 -m lyra
 
 COPY --from=builder --chown=lyra:lyra /app /app
 

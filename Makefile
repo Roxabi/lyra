@@ -54,7 +54,10 @@ push:                  ## save image and load on $(DEPLOY_HOST) via ssh
 
 # ── Service control (Quadlet units via systemd --user) ───────────────────────
 
-LYRA_UNITS := lyra_hub lyra_telegram lyra_discord
+LYRA_HUB_UNIT      := lyra-hub
+LYRA_TELEGRAM_UNIT := lyra-telegram
+LYRA_DISCORD_UNIT  := lyra-discord
+LYRA_UNITS         := $(LYRA_HUB_UNIT) $(LYRA_TELEGRAM_UNIT) $(LYRA_DISCORD_UNIT)
 
 # $(call lyra_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl or supervisorctl.
 # Uses supervisorctl if LYRA_SUPERVISORCTL_PATH is set, else systemctl (default install).
@@ -90,12 +93,12 @@ endif
 
 telegram:
 ifndef _IS_LYRA_SUBCMD
-	$(call lyra_sctl,lyra_telegram)
+	$(call lyra_sctl,$(LYRA_TELEGRAM_UNIT))
 endif
 
 discord:
 ifndef _IS_LYRA_SUBCMD
-	$(call lyra_sctl,lyra_discord)
+	$(call lyra_sctl,$(LYRA_DISCORD_UNIT))
 endif
 
 # ── Monitor (systemd timer, not supervisor) ──────────────────────────────────
@@ -120,9 +123,9 @@ QUADLET_DIR      := $(HOME)/.config/containers/systemd
 register:
 	@echo "Registering lyra with supervisor hub..."
 	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord monitor remote deploy
-	$(call hub-link-conf,lyra_hub,deploy/supervisor/conf.d/lyra_hub.conf)
-	$(call hub-link-conf,lyra_telegram,deploy/supervisor/conf.d/lyra_telegram.conf)
-	$(call hub-link-conf,lyra_discord,deploy/supervisor/conf.d/lyra_discord.conf)
+	$(call hub-link-conf,lyra-hub,deploy/supervisor/conf.d/lyra-hub.conf)
+	$(call hub-link-conf,lyra-telegram,deploy/supervisor/conf.d/lyra-telegram.conf)
+	$(call hub-link-conf,lyra-discord,deploy/supervisor/conf.d/lyra-discord.conf)
 	@mkdir -p "$(HOME)/.local/state/lyra/logs"
 	$(hub_reread)
 	@echo ""
@@ -176,33 +179,49 @@ deploy:
 	@echo "Deploying to Machine 1 ($(DEPLOY_HOST))..."
 	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && bash scripts/deploy.sh"
 
-REMOTE_SCTL := $(or $(shell grep '^LYRA_SUPERVISORCTL_PATH=' .env 2>/dev/null | cut -d= -f2),~/projects/lyra/deploy/supervisor/supervisorctl.sh)
-
 # make remote [service] [action]
-#   service: lyra or empty → all lyra_* programs | <shortname> → lyra_<shortname>
+#   service: lyra or empty → all lyra-* programs | <shortname> → lyra-<shortname>
 #   action:  reload | start | stop | status (default) | logs | errors | update
-#   Single SSH call — service/action disambiguation happens on the remote.
+#   Single SSH call — service/action disambiguation + supervisor/systemd branch happen on the remote.
+#   Option A: remote sources its own .env to detect LYRA_SUPERVISORCTL_PATH; no local .env variable needed.
 remote:
 	$(require_machine1)
 	@ssh $(DEPLOY_HOST) '\
+	set -eu; \
+	RENV=$(DEPLOY_DIR)/.env; \
+	REMOTE_SCTL=$$(grep "^LYRA_SUPERVISORCTL_PATH=" "$$RENV" 2>/dev/null | cut -d= -f2); \
+	USE_SCTL=false; \
+	if [ -n "$$REMOTE_SCTL" ]; then USE_SCTL=true; fi; \
 	SVC="$(word 1,$(_LYRA_CMD))"; ACTION="$(word 2,$(_LYRA_CMD))"; \
-	SCTL=$(REMOTE_SCTL); \
 	CONF=$(DEPLOY_DIR)/deploy/supervisor/conf.d; \
-	rdisc() { grep -Rh "^\[program:\(lyra_\|voicecli_\)" "$$CONF" | tr -d "[]" | cut -d: -f2 | tr "\n" " "; }; \
-	if   [ -z "$$SVC" ] || [ "$$SVC" = lyra ]; then PROGS=$$(rdisc); FIRST=lyra_hub; \
-	elif [ -f "$$CONF/lyra_$$SVC.conf" ];       then PROGS="lyra_$$SVC"; FIRST="$$PROGS"; \
+	rdisc() { grep -Rh "^\[program:\(lyra-\|voicecli_\)" "$$CONF" | tr -d "[]" | cut -d: -f2 | tr "\n" " "; }; \
+	if   [ -z "$$SVC" ] || [ "$$SVC" = lyra ]; then PROGS=$$(rdisc); FIRST=lyra-hub; \
+	elif [ -f "$$CONF/lyra-$$SVC.conf" ];       then PROGS="lyra-$$SVC"; FIRST="$$PROGS"; \
 	elif [ -f "$$CONF/voicecli_$$SVC.conf" ];   then PROGS="voicecli_$$SVC"; FIRST="$$PROGS"; \
-	else ACTION="$$SVC"; PROGS=$$(rdisc); FIRST=lyra_hub; fi; \
-	case "$${ACTION:-status}" in \
-	  reload)  $$SCTL restart $$PROGS ;; \
-	  start)   $$SCTL start $$PROGS ;; \
-	  stop)    $$SCTL stop $$PROGS ;; \
-	  status)  $$SCTL status $$PROGS ;; \
-	  update)  $$SCTL reread && $$SCTL update ;; \
-	  logs)    $$SCTL tail -f $$FIRST ;; \
-	  errors)  $$SCTL tail -f $$FIRST stderr ;; \
-	  *)       echo "Unknown action: $$ACTION"; exit 1 ;; \
-	esac'
+	else ACTION="$$SVC"; PROGS=$$(rdisc); FIRST=lyra-hub; fi; \
+	if [ "$$USE_SCTL" = true ]; then \
+	  case "$${ACTION:-status}" in \
+	    reload)  $$REMOTE_SCTL restart $$PROGS ;; \
+	    start)   $$REMOTE_SCTL start $$PROGS ;; \
+	    stop)    $$REMOTE_SCTL stop $$PROGS ;; \
+	    status)  $$REMOTE_SCTL status $$PROGS ;; \
+	    update)  $$REMOTE_SCTL reread && $$REMOTE_SCTL update ;; \
+	    logs)    $$REMOTE_SCTL tail -f $$FIRST ;; \
+	    errors)  $$REMOTE_SCTL tail -f $$FIRST stderr ;; \
+	    *)       echo "Unknown action: $$ACTION"; exit 1 ;; \
+	  esac; \
+	else \
+	  case "$${ACTION:-status}" in \
+	    reload)  systemctl --user restart $$PROGS ;; \
+	    start)   systemctl --user start   $$PROGS ;; \
+	    stop)    systemctl --user stop    $$PROGS ;; \
+	    status)  systemctl --user status  $$PROGS || true ;; \
+	    update)  echo "update is supervisord-only; use quadlet-install for Quadlet hosts" ;; \
+	    logs)    journalctl --user -u $$FIRST -f ;; \
+	    errors)  journalctl --user -u $$FIRST -f -p err ;; \
+	    *)       echo "Unknown action: $$ACTION"; exit 1 ;; \
+	  esac; \
+	fi'
 
 # ── Dev tools ────────────────────────────────────────────────────────────────
 

@@ -54,7 +54,7 @@ class TestRegisterAgents:
         """register_agents calls hub.register_agent once per resolved agent."""
         # Arrange
         circuit_registry = CircuitRegistry()
-        circuit_registry.register(CircuitBreaker(name="anthropic"))
+        circuit_registry.register(CircuitBreaker(name="claude-cli"))
         hub = Hub(circuit_registry=circuit_registry)
 
         agent_alpha = Agent(

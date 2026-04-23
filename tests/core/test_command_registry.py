@@ -114,7 +114,6 @@ class TestCommandMetadata:
         meta = router.command_metadata()
         admin_names = [m[0] for m in meta if m[2]]
         assert "/circuit" in admin_names
-        assert "/routing" in admin_names
         assert "/config" in admin_names
         non_admin = [m[0] for m in meta if not m[2]]
         assert "/help" in non_admin

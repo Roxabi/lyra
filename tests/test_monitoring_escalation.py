@@ -264,7 +264,7 @@ class TestRunFallbackChain:
             "queue_size": 0,
             "last_message_age_s": 10.0,
             "uptime_s": 100.0,
-            "circuits": {"anthropic": {"state": "closed"}},
+            "circuits": {"claude-cli": {"state": "closed"}},
         }
 
         with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_cls:

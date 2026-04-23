@@ -13,6 +13,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 MODEL_CONTEXT_TOKENS = 200_000
+# COMPACT_THRESHOLD is calibrated against full-conversation token counts (user +
+# assistant turns). The pre-#666 AnthropicSdkDriver included both roles; this
+# threshold is restored to the same accounting by deriving the estimate from
+# TurnStore (which logs both roles) rather than pool.history (user-only).
 COMPACT_THRESHOLD = int(0.8 * MODEL_CONTEXT_TOKENS)
 COMPACT_TAIL = 10
 
@@ -46,7 +50,14 @@ class SessionManager:
 
     async def _summarize_session(self, pool: "Pool") -> str:
         """Generate session summary. Base: simple truncation. Override for LLM."""
-        turns = [msg.text for msg in pool.history[-20:]]
+        turn_store = pool._turn_store
+        if turn_store is not None and pool.user_id:
+            # Fetch both user and assistant turns from TurnStore (newest first).
+            raw = await turn_store.get_turns(pool.pool_id, pool.user_id, limit=20)
+            # Reverse to chronological order and format with role prefix.
+            turns = [f"{t['role']}: {t['content']}" for t in reversed(raw)]
+        else:
+            turns = [msg.text for msg in pool.history[-20:]]
         text = "\n".join(turns)
         log.warning(
             "_summarize_session not overridden — storing truncated transcript"
@@ -77,7 +88,14 @@ class SessionManager:
         """Summarize and truncate pool history when approaching context limit."""
         if self._memory is None:
             return
-        token_est = sum(len(msg.text) // 4 for msg in pool.history)
+        turn_store = pool._turn_store
+        if turn_store is not None and pool.user_id:
+            # Derive token estimate from TurnStore — includes both user and
+            # assistant turns, restoring pre-#666 full-conversation accounting.
+            raw = await turn_store.get_turns(pool.pool_id, pool.user_id, limit=500)
+            token_est = sum(len(t["content"]) // 4 for t in raw)
+        else:
+            token_est = sum(len(msg.text) // 4 for msg in pool.history)
         if token_est <= int(0.8 * self._compact_context_tokens):
             return
         summary = await self._summarize_session(pool)

@@ -93,7 +93,7 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
     from lyra.adapters.telegram import TelegramAdapter
 
     registry = CircuitRegistry()
-    for name in ("anthropic", "telegram", "discord", "hub"):
+    for name in ("claude-cli", "telegram", "discord", "hub"):
         registry.register(
             CircuitBreaker(name, failure_threshold=3, recovery_timeout=60)
         )
@@ -118,7 +118,7 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
     data = response.json()
     assert "services" in data
     services = data["services"]
-    for name in ("anthropic", "telegram", "discord", "hub"):
+    for name in ("claude-cli", "telegram", "discord", "hub"):
         assert name in services, f"Missing circuit '{name}' in /status response"
         assert "state" in services[name]
 

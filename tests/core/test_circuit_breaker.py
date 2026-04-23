@@ -156,19 +156,19 @@ def test_circuit_open_error():
 
 def test_registry_register_and_get():
     registry = CircuitRegistry()
-    cb = CircuitBreaker("anthropic")
+    cb = CircuitBreaker("claude-cli")
     registry.register(cb)
-    assert registry["anthropic"] is cb
-    assert registry.get("anthropic") is cb
+    assert registry["claude-cli"] is cb
+    assert registry.get("claude-cli") is cb
     assert registry.get("nonexistent") is None
 
 
 def test_registry_get_all_status():
     registry = CircuitRegistry()
-    registry.register(CircuitBreaker("anthropic", failure_threshold=1))
+    registry.register(CircuitBreaker("claude-cli", failure_threshold=1))
     registry.register(CircuitBreaker("telegram"))
     all_status = registry.get_all_status()
-    assert "anthropic" in all_status
+    assert "claude-cli" in all_status
     assert "telegram" in all_status
     assert all(isinstance(s, CircuitStatus) for s in all_status.values())
 

@@ -108,6 +108,8 @@ class TestSimpleAgentAudioBranch:
         cli_pool.complete.assert_not_called()
 
     async def test_audio_transcription_exception(self) -> None:
+        # Contract: SimpleAgent catches transcription exceptions and returns an error
+        # Response (does not re-raise to the pool).
         """AUDIO with transcription exception: error Response, no crash."""
         # Arrange
         stt = make_mock_stt(raises=RuntimeError("transcription failed"))

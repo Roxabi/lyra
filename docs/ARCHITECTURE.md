@@ -385,6 +385,29 @@ One pool per conversation scope. Contains:
 - Assigned agent
 - `asyncio.Task` (`_process_loop`) — sequential within scope, parallel across scopes
 
+#### PoolManager threading model
+
+`PoolManager` (`src/lyra/core/hub/pipeline/pool_manager.py`) is a **hybrid sync/async** coordinator. It owns an `OrderedDict[str, Pool]` and must support both synchronous callers (LRU touch, runtime-config setters like `set_debounce_ms`, `set_cancel_on_new_message`) and asynchronous flush paths (eviction → `agent.flush_session`).
+
+| Concern | Primitive | Scope |
+|---|---|---|
+| `_pools` dict mutation + iteration | `threading.Lock` (`_lock`) | All pool add/remove/touch/iterate |
+| Async flush on eviction | `asyncio.create_task` | Scheduled inside lock, runs after release |
+| Task-set cleanup | `_memory_tasks: set[asyncio.Task]` on `Hub` | Strong refs + done-callback drain |
+
+**Why `threading.Lock` and not `asyncio.Lock`:** pool creation and LRU touch are called from synchronous code paths (sync setters, property accessors, internal rebalance). An `asyncio.Lock` would force those call sites to become `async` with no benefit — the critical sections are dict ops that never `await`.
+
+**Why `asyncio.create_task` is safe under the sync lock:** `create_task` only *schedules* the coroutine onto the event loop; it does not run it. The scheduling call is non-blocking, so holding `_lock` during the call is fine. The flush coroutine itself runs after the lock is released, on the event loop, without touching `_pools`.
+
+**Invariants:**
+
+1. Every read/write of `_pools` goes through `_lock`.
+2. Eviction drops the pool from `_pools` **before** scheduling `flush_session`, so a racing `get_or_create_pool(pool_id)` creates a fresh pool instead of returning a dead one.
+3. `flush_session` tasks are held in `Hub._memory_tasks` with a done-callback that discards them — prevents GC from cancelling in-flight flushes.
+4. `set_*` runtime setters mutate the `HubConfig`/`PoolConfig` snapshots and iterate `_pools` under `_lock` — all live pools observe the new value atomically.
+
+**Call-site rule:** never call an `async` method while holding `_lock`. Either drop the lock first (see `flush_pool` at line 142) or schedule the coroutine via `create_task` and let it run lock-free.
+
 ### Agents
 
 **Model: stateless singleton.** An agent is an immutable config (prompt, permissions, namespace). All mutable state lives in the Pool. No race condition since the agent never writes to `self.*`.

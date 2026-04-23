@@ -1,7 +1,10 @@
 """Tests for response builder helpers."""
 
+import json
+
 import pytest
 
+from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import build_stt_response, build_tts_response
 
 # === STT Builder Tests ===
@@ -25,7 +28,7 @@ def test_build_stt_response_success():
     data = json.loads(json_str)
 
     # Envelope fields
-    assert data["contract_version"] == "1"
+    assert data["contract_version"] == CONTRACT_VERSION
     assert data["trace_id"] == "trace-abc"
     assert "issued_at" in data
 
@@ -74,7 +77,7 @@ def test_build_tts_response_success():
     data = json.loads(json_str)
 
     # Envelope fields
-    assert data["contract_version"] == "1"
+    assert data["contract_version"] == CONTRACT_VERSION
     assert data["trace_id"] == "req-789"  # Falls back to request_id
     assert "issued_at" in data
 
@@ -170,3 +173,22 @@ def test_missing_request_id_raises_keyerror_tts():
             mime_type="audio/wav",
             duration_ms=1000,
         )
+
+
+def test_build_tts_response_success_with_waveform():
+    """TTS builder passes through optional waveform_b64 field."""
+    payload = {"request_id": "req-wave"}
+
+    json_str = build_tts_response(
+        payload,
+        ok=True,
+        audio_b64="base64encodedaudio",
+        mime_type="audio/wav",
+        duration_ms=1500,
+        waveform_b64="base64encodedwaveform",
+    )
+
+    data = json.loads(json_str)
+
+    assert data["ok"] is True
+    assert data["waveform_b64"] == "base64encodedwaveform"

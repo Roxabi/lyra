@@ -107,6 +107,10 @@ class NatsSttClient:
                 SUBJECTS.stt_heartbeat, cb=self._on_heartbeat
             )
 
+    def is_available(self) -> bool:
+        """Check if any STT workers are registered via heartbeats."""
+        return self._registry.any_alive()
+
     async def _on_heartbeat(self, msg) -> None:
         try:
             data = json.loads(msg.data)

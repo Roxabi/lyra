@@ -1,23 +1,20 @@
 # Deployment — Podman Quadlet (Machine 1)
 
-See also: [DEPLOYMENT.md](DEPLOYMENT.md) for the deployment overview and day-to-day operations.
+See also: [DEPLOYMENT.md](DEPLOYMENT.md) for the simple/supervisord path (default).
 
-Production deployment for Machine 1 (`roxabituwer`, Ubuntu 26.04 LTS) using rootless Podman Quadlet units managed by systemd `--user`. This is the current production path as of #611.
-
-> **Legacy note:** The pre-#611 supervisord stack has been removed from the repo (#886).
-> It is no longer the default or recommended path.
+Advanced deployment path for Machine 1 (`roxabituwer`, Ubuntu 26.04 LTS) using rootless Podman Quadlet units managed by systemd `--user`. Both paths are permanently supported — choose based on your requirements.
 
 ## Which path should I pick?
 
 | Tier | Topology | Audience |
 |---|---|---|
 | Dev | `lyra start` — 1 process, embedded NATS | local hacking |
-| Prod (Quadlet) | 4 containers on `lyra.network` | **default — this doc** |
+| Simple prod (supervisord) | 3 processes + host NATS | default self-host, newcomers |
+| Advanced prod (Quadlet) — this doc | 4 containers on `lyra.network` | isolated/reproducible deploys |
 
-**Use Quadlet** (this doc) for production — OCI isolation, reproducible images, rootless
-containers, systemd-native lifecycle management.
+**Use supervisord** ([DEPLOYMENT.md](DEPLOYMENT.md)) if you are self-hosting for the first time or want the simplest operational model. It is the default and requires no container tooling.
 
-**Dev mode** (`lyra start`) is for local hacking only — no NATS server required, single process.
+**Use Quadlet** (this doc) when you need OCI isolation, reproducible images, rootless containers, or multi-host portability. Both paths run on Machine 1 indefinitely — there is no requirement to migrate.
 
 ## 1. Overview
 
@@ -156,15 +153,13 @@ Note: adapters declare `After=lyra-hub.service` but no `Requires=` — a hub res
 
 ## 7. Env + secrets
 
-**Credential source (since #417, March 2026):** Bot tokens (Telegram, Discord) are Fernet-encrypted in `~/.lyra/config.db` (table `bot_secrets`) and decrypted at runtime by `LyraKeyring` using `~/.lyra/keyring.key`. The standalone adapter bootstrap (`src/lyra/bootstrap/standalone/adapter_standalone.py`) reads from `config.db` directly — no env var is needed or read for tokens.
-
-**What the env file is for:** only `lyra-hub` reads an env file, and only for operational vars:
+Each container reads a **scoped** env file from `~/.lyra/env/`. These files live **outside the git working tree** to prevent accidental credential commits.
 
 | Container | `EnvironmentFile=` | Required vars |
 |---|---|---|
-| `lyra-hub` | `%h/.lyra/env/hub.env` | `LYRA_HEALTH_SECRET`, `LYRA_HEALTH_PORT` |
-| `lyra-telegram` | — | (tokens come from `config.db`) |
-| `lyra-discord` | — | (tokens come from `config.db`) |
+| `lyra-hub` | `%h/.lyra/env/hub.env` | `ANTHROPIC_API_KEY`, `LYRA_HEALTH_SECRET`, `LYRA_HEALTH_PORT` |
+| `lyra-telegram` | `%h/.lyra/env/telegram.env` | `TELEGRAM_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` |
+| `lyra-discord` | `%h/.lyra/env/discord.env` | `DISCORD_TOKEN` |
 
 `%h` expands to `$HOME` in Quadlet unit files.
 
@@ -173,19 +168,17 @@ Note: adapters declare `After=lyra-hub.service` but no `Requires=` — a hub res
 ```bash
 mkdir -p ~/.lyra/env && chmod 700 ~/.lyra/env
 cp deploy/quadlet/hub.env.example ~/.lyra/env/hub.env
-chmod 600 ~/.lyra/env/hub.env
-# fill in LYRA_HEALTH_SECRET with a random string
+cp deploy/quadlet/telegram.env.example ~/.lyra/env/telegram.env
+cp deploy/quadlet/discord.env.example ~/.lyra/env/discord.env
+chmod 600 ~/.lyra/env/*.env
+# edit each file with real values
 ```
 
-Bot tokens do not need to be set here. Verify they are present in `config.db` before starting:
+Example files documenting all supported variables are committed to the repo under `deploy/quadlet/*.env.example`.
 
-```bash
-uv run lyra secrets list   # or equivalent CLI to inspect config.db entries
-```
+`scripts/deploy-quadlet.sh` verifies that all three files exist and have mode `600` before restarting containers. If a file is missing or has wrong permissions the deploy aborts with a remediation message.
 
-**Keyring rotation:** after rotating `~/.lyra/keyring.key`, restart all three containers — hub, telegram, and discord — to force `LyraKeyring` to re-read the new key from disk.
-
-**Dev tier:** `lyra start` (single process, embedded NATS) reads `~/projects/lyra/.env` — a single unsplit file documented in [DEPLOYMENT.md §2](DEPLOYMENT.md). Quadlet credential model is independent of dev tier.
+**Dev tier:** `lyra start` (single process, embedded NATS) reads `~/projects/lyra/.env` — a single unsplit file documented in [DEPLOYMENT.md §2](DEPLOYMENT.md). The split `~/.lyra/env/*.env` files are Quadlet-only; dev tier is unaffected by this layout.
 
 `NATS_URL` and `NATS_NKEY_SEED_PATH` are set inline in each `.container` file — they do not belong in the scoped env files:
 
@@ -226,18 +219,6 @@ The canonical update flow on Machine 1 is `scripts/deploy-quadlet.sh`, which pul
 ```bash
 # From Machine 2 — rebuild, push, and restart on Machine 1
 make deploy-quadlet
-```
-
-`scripts/deploy-quadlet.sh` is a thin wrapper: it sets Lyra-specific variables and delegates all logic to the shared deploy library at `~/.local/lib/roxabi/deploy-lib.sh`. Install the library once:
-
-```bash
-make quadlet-install-deploy-lib
-```
-
-The library is pinned at install time (commit SHA stamped in the header). To upgrade after a Lyra update:
-
-```bash
-make quadlet-upgrade-lib
 ```
 
 Manual fallback (run on Machine 1):

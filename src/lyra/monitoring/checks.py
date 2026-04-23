@@ -26,12 +26,7 @@ def check_process(service_name: str) -> CheckResult:
     if override:
         sctl = Path(override).expanduser()
     else:
-        sctl = (
-            Path.home()
-            / "projects"
-            / "scripts"
-            / "supervisorctl.sh"
-        )
+        sctl = Path.home() / "projects" / "scripts" / "supervisorctl.sh"
 
     if sctl.exists():
         try:

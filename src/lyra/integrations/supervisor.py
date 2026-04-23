@@ -19,9 +19,7 @@ from lyra.integrations.base import ServiceControlFailed
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_SUPERVISORCTL = (
-    Path.home() / "projects" / "scripts" / "supervisorctl.sh"
-)
+_DEFAULT_SUPERVISORCTL = Path.home() / "projects" / "scripts" / "supervisorctl.sh"
 
 _TRUSTED_BASE = Path.home() / "projects"
 

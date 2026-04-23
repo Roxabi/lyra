@@ -27,7 +27,7 @@ defaults:
   # Paths are templated: {home}, {project_dir}, {logs_dir}
   directory: "{project_dir}"
   stdout_logfile: "{logs_dir}/{program}.log"
-  stderr_logfile: "{logs_dir}/{program}_error.log"
+  stderr_logfile: "{logs_dir}/{program}-error.log"
 
 agents:
   hub:

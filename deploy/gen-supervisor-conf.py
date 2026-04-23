@@ -171,7 +171,7 @@ def generate_conf(
     if not validate_agent_name(name):
         raise ValueError(f"Invalid agent name (shell-metachar or empty): {name!r}")
 
-    program = f"lyra_{name}"
+    program = f"lyra-{name}"
 
     # Merge defaults with agent overrides
     cfg = {**defaults, **agent}
@@ -249,10 +249,10 @@ def cleanup_orphaned_configs(
     if not output_dir.exists():
         return []
 
-    expected_files = {f"lyra_{name}.conf" for name in expected_names}
+    expected_files = {f"lyra-{name}.conf" for name in expected_names}
     removed: list[Path] = []
 
-    for conf_file in output_dir.glob("lyra_*.conf"):
+    for conf_file in output_dir.glob("lyra-*.conf"):
         if conf_file.name not in expected_files:
             if dry_run:
                 print(f"Would remove orphaned: {conf_file}")
@@ -327,7 +327,7 @@ def main() -> int:
             print(f"--- {name} ---")
             print(conf_content)
         else:
-            output_path = output_dir / f"lyra_{name}.conf"
+            output_path = output_dir / f"lyra-{name}.conf"
             with open(output_path, "w") as f:
                 f.write(conf_content)
             print(f"Generated: {output_path}")

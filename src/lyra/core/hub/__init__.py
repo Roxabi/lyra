@@ -21,16 +21,23 @@ from .outbound import OutboundDispatcher as OutboundDispatcher
 from .outbound import OutboundRouter as OutboundRouter
 from .outbound import TtsDispatch as TtsDispatch
 from .pipeline import (
+    DROP as DROP,
+)
+from .pipeline import (
     Action as Action,
 )
 from .pipeline import (
     PipelineResult as PipelineResult,
+)
+from .pipeline import (
+    ResumeStatus as ResumeStatus,
 )
 
 __all__ = [
     "Action",
     "AudioDispatch",
     "ChannelAdapter",
+    "DROP",
     "Hub",
     "HubConfig",
     "IdentityResolver",
@@ -41,6 +48,7 @@ __all__ = [
     "PipelineContext",
     "PipelineResult",
     "PoolConfig",
+    "ResumeStatus",
     "RoutingKey",
     "TtsDispatch",
     "build_default_pipeline",

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...messaging.message import InboundMessage, Response
-from ..pipeline.message_pipeline import _DROP, PipelineResult
+from ..pipeline.pipeline_types import _DROP, PipelineResult
 
 if TYPE_CHECKING:
     from .middleware import Next, PipelineContext

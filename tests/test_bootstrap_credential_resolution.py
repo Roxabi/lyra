@@ -10,6 +10,7 @@ adapters so no real network or filesystem access is needed.
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -61,8 +62,10 @@ class TestCredentialResolution:
 
         class CapturingTgAdapter(_FakeTgAdapter):
             def __init__(self, **kwargs: object) -> None:
-                shutdown = kwargs.pop("shutdown_event", None)  # type: ignore[assignment]
-                super().__init__(shutdown_event=shutdown, **kwargs)  # type: ignore[arg-type]
+                shutdown = cast(
+                    "asyncio.Event | None", kwargs.pop("shutdown_event", None)
+                )
+                super().__init__(shutdown_event=shutdown, **kwargs)
                 captured_kwargs.append(dict(kwargs))
 
         monkeypatch.setattr(wiring_mod, "TelegramAdapter", CapturingTgAdapter)

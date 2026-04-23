@@ -180,7 +180,7 @@ class TestSerialize:
         # Arrange — no nc needed; we only inspect construction-time state.
         # Act
         bus: NatsBus[InboundMessage] = NatsBus(
-            nc=None,  # type: ignore[arg-type]
+            nc=None,  # type: ignore[arg-type]  # justified: construction-time state check does not require a live NATS connection
             bot_id="main",
             item_type=InboundMessage,
         )

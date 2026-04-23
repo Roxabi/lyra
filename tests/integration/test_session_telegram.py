@@ -5,10 +5,19 @@ into inbound message.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from lyra.adapters.telegram import TelegramAdapter
+    from lyra.core.messaging.bus import Bus
+    from lyra.core.messaging.message import InboundMessage
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from lyra.infrastructure.stores.turn_store import TurnStore
 
 pytestmark = pytest.mark.asyncio
 
@@ -66,23 +75,28 @@ def _make_private_tg_message(
     )
 
 
-def _make_telegram_adapter(fake_turn_store=None, mock_bus=None):
+def _make_telegram_adapter(
+    bot_id: str = "main",
+    token: str = "test-token-secret",
+    inbound_bus: "Bus[InboundMessage] | None" = None,
+    turn_store: "TurnStore | None" = None,
+) -> tuple["TelegramAdapter", MagicMock]:
     """Build a TelegramAdapter with optional turn_store injection."""
     from lyra.adapters.telegram import TelegramAdapter
 
-    if mock_bus is None:
-        mock_bus = MagicMock()
-        mock_bus.put_nowait = MagicMock()
+    mock_bus = inbound_bus if inbound_bus is not None else MagicMock()
+    if inbound_bus is None:
+        mock_bus.put_nowait = MagicMock()  # type: ignore[attr-defined]
 
-    kwargs = dict(
-        bot_id="main",
-        token="test-token-secret",
-        inbound_bus=mock_bus,
+    return (
+        TelegramAdapter(
+            bot_id=bot_id,
+            token=token,
+            inbound_bus=mock_bus,
+            turn_store=turn_store,
+        ),
+        mock_bus,
     )
-    if fake_turn_store is not None:
-        kwargs["turn_store"] = fake_turn_store
-
-    return TelegramAdapter(**kwargs), mock_bus  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +118,8 @@ async def test_telegram_private_injects_thread_session_id() -> None:
     fake_turn_store = _FakeTurnStore("prior-session-id")
 
     adapter, mock_bus = _make_telegram_adapter(
-        fake_turn_store=fake_turn_store, mock_bus=mock_bus
+        inbound_bus=mock_bus,
+        turn_store=cast("TurnStore", fake_turn_store),
     )
 
     # Wire a fake bot so _on_message can call bot.send_message if needed
@@ -152,14 +167,7 @@ async def test_telegram_no_turn_store_no_injection() -> None:
     mock_bus.put_nowait = MagicMock()
     mock_bus.put = AsyncMock()
 
-    # No turn_store — backward compatibility: should construct fine
-    from lyra.adapters.telegram import TelegramAdapter
-
-    adapter = TelegramAdapter(
-        bot_id="main",
-        token="test-token-secret",
-        inbound_bus=mock_bus,
-    )
+    adapter, mock_bus = _make_telegram_adapter(inbound_bus=mock_bus)
     adapter.bot = AsyncMock()
     adapter.bot.get_me = AsyncMock(return_value=SimpleNamespace(username="lyra_bot"))
     adapter._bot_username = "lyra_bot"
@@ -179,17 +187,9 @@ async def test_telegram_no_turn_store_no_injection() -> None:
 
 async def test_telegram_turn_store_attribute_stored() -> None:
     """TelegramAdapter must expose _turn_store after construction."""
-    from lyra.adapters.telegram import TelegramAdapter
-
-    mock_bus = MagicMock()
     fake_turn_store = _FakeTurnStore("session-xyz")
 
-    adapter = TelegramAdapter(
-        bot_id="main",
-        token="test-token-secret",
-        inbound_bus=mock_bus,
-        turn_store=fake_turn_store,  # type: ignore[arg-type]
-    )
+    adapter, _ = _make_telegram_adapter(turn_store=cast("TurnStore", fake_turn_store))
 
     assert adapter._turn_store is fake_turn_store, (
         "TelegramAdapter must store turn_store as _turn_store attribute"

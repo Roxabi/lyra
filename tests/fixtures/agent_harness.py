@@ -232,7 +232,7 @@ async def agent_harness(
 
     agent = agent_cls(
         config=config,
-        provider=driver,  # type: ignore[arg-type]
+        provider=driver,  # type: ignore[arg-type]  # justified: FakeClaudeCliDriver provides subset of ILLMProvider for test isolation
         stt=stt,
         tts=tts,
     )

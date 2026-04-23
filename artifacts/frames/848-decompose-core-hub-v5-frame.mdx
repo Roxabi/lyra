@@ -1,0 +1,41 @@
+---
+title: refactor(arch): decompose core/hub/ (V5)
+issue: 848
+status: approved
+tier: F-lite
+date: 2026-04-23
+---
+
+## Problem
+
+`core/hub/` contains 26 files, violating the 12-file folder cap. This is the last remaining folder exemption in `tools/folder_exemptions.txt`, blocking spec #760 SC-quality-1 (zero exemptions).
+
+The folder has grown organically with mixed concerns: middleware pipeline, outbound dispatching, pool management, and core hub orchestration all coexist. This makes navigation harder and increases cognitive load when modifying hub behavior.
+
+## Who
+
+- **Primary:** Developers maintaining the hub — need predictable file locations for middleware, outbound routing, and pipeline concerns.
+- **Secondary:** Code reviewers — clearer module boundaries speed review cycles.
+
+## Constraints
+
+- Must run RED-GATE after each slice: `uv run pyright`, `uv run pytest tests/`, `uv run lint-imports`, `bash tools/check_folder_size.sh`
+- Must eliminate all entries from `tools/folder_exemptions.txt`
+- Slice-by-slice approach from #773 V4 proven effective
+- No functional changes — pure refactoring
+
+## Out of Scope
+
+- Functional changes to hub behavior
+- Changes to adapters, agents, or other core/ subpackages
+- Addressing `src/lyra/core/` exemption (tracked in #858)
+
+## Complexity
+
+**Tier: F-lite** — Clear scope (one folder), single domain (backend architecture), suggested boundaries already identified in issue body.
+
+**Signals:**
+- Single domain: backend architecture
+- Clear boundaries: middleware/, outbound/, pipeline/, core/
+- Follow-up to #773 V4 (same pattern, proven approach)
+- No unknowns: decomposition targets known

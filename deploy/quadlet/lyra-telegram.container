@@ -19,7 +19,7 @@ ReadOnly=true
 DropCapability=all
 # ADR-054 Decision 2: UserNS=keep-id maps container UID to host UID 1000 (mickael),
 # which owns ~/.lyra/*. Replaces User=lyra (UID 1500) which could not read host files.
-UserNS=keep-id
+UserNS=keep-id:uid=1500,gid=1500
 # ADR-054 Decision 4: bot tokens come from config.db via LyraKeyring (since #417).
 # No EnvironmentFile needed for tokens — telegram.env.example deleted.
 Environment=NATS_URL=nats://lyra-nats:4222

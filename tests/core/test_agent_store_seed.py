@@ -28,7 +28,7 @@ class TestSeedFromToml:
             f"""
 [agent]
 name = "{name}"
-backend = "anthropic-sdk"
+backend = "claude-cli"
 model = "claude-3-5-haiku-20241022"
 max_turns = 5
 tools = []
@@ -104,7 +104,7 @@ show_intermediate = false
             # Assert
             assert count == 1
             row_restored = store.get("force-agent")
-            assert row_restored is not None and row_restored.backend == "anthropic-sdk"
+            assert row_restored is not None and row_restored.backend == "claude-cli"
         finally:
             await store.close()
 
@@ -132,7 +132,7 @@ show_intermediate = false
                 """
 [model]
 name = "model-named-agent"
-backend = "anthropic-sdk"
+backend = "claude-cli"
 model = "claude-3-5-haiku-20241022"
 max_turns = 5
 tools = []
@@ -159,7 +159,7 @@ tools = []
             toml_file.write_text(
                 """
 [agent]
-backend = "anthropic-sdk"
+backend = "claude-cli"
 model = "claude-3-5-haiku-20241022"
 """,
                 encoding="utf-8",
@@ -192,7 +192,7 @@ class TestBotMapExtra:
             await store.upsert(
                 AgentRow(
                     name="agent-a",
-                    backend="anthropic-sdk",
+                    backend="claude-cli",
                     model="claude-3-5-haiku-20241022",
                     source="db",
                 )
@@ -200,7 +200,7 @@ class TestBotMapExtra:
             await store.upsert(
                 AgentRow(
                     name="agent-b",
-                    backend="anthropic-sdk",
+                    backend="claude-cli",
                     model="claude-3-5-haiku-20241022",
                     source="db",
                 )
@@ -223,7 +223,7 @@ class TestBotMapExtra:
         await store1.upsert(
             AgentRow(
                 name="mapped-agent",
-                backend="anthropic-sdk",
+                backend="claude-cli",
                 model="claude-3-5-haiku-20241022",
                 source="db",
             )
@@ -261,7 +261,7 @@ class TestVoiceJsonColumns:
         }
         row = AgentRow(
             name="tts-agent",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             voice_json=json.dumps(voice_data),
         )
@@ -297,7 +297,7 @@ class TestVoiceJsonColumns:
         voice_data = {"tts": {"voice": "en-GB-2"}, "stt": {}}
         row = AgentRow(
             name="reconnect-voice-agent",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             voice_json=json.dumps(voice_data),
             source="db",
@@ -328,7 +328,7 @@ class TestVoiceJsonColumns:
                 """
 [agent]
 name = "tts-seeded-agent"
-backend = "anthropic-sdk"
+backend = "claude-cli"
 model = "claude-3-5-haiku-20241022"
 max_turns = 5
 
@@ -372,7 +372,7 @@ language_fallback = "en"
                 """
 [agent]
 name = "plain-agent"
-backend = "anthropic-sdk"
+backend = "claude-cli"
 model = "claude-3-5-haiku-20241022"
 """,
                 encoding="utf-8",

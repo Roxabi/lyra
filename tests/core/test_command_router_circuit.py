@@ -34,7 +34,7 @@ from lyra.core.messaging.message import InboundMessage, Response
 def make_registry_with_open(open_service: str) -> CircuitRegistry:
     """Build a CircuitRegistry where one named circuit has been tripped open."""
     registry = CircuitRegistry()
-    for name in ("anthropic", "telegram", "discord", "hub"):
+    for name in ("claude-cli", "telegram", "discord", "hub"):
         cb = CircuitBreaker(name, failure_threshold=1, recovery_timeout=60)
         if name == open_service:
             cb.record_failure()
@@ -93,7 +93,7 @@ class TestCircuitCommandAdminCheck:
     async def test_circuit_command_denied_for_non_admin(self) -> None:
         """SC-15: Non-admin sender -> 'This command is admin-only.'"""
         registry = CircuitRegistry()
-        registry.register(CircuitBreaker("anthropic"))
+        registry.register(CircuitBreaker("claude-cli"))
         router = make_circuit_router(registry=registry)
         msg = make_circuit_msg(user_id="tg:user:42")  # is_admin=False by default
 
@@ -106,7 +106,7 @@ class TestCircuitCommandAdminCheck:
     async def test_circuit_command_returns_table_for_admin(self) -> None:
         """SC-15: Admin sender -> gets formatted status table with all circuits."""
         registry = CircuitRegistry()
-        for name in ("anthropic", "telegram", "discord", "hub"):
+        for name in ("claude-cli", "telegram", "discord", "hub"):
             registry.register(CircuitBreaker(name))
         router = make_circuit_router(registry=registry)
         msg = make_circuit_msg(user_id="tg:user:42", is_admin=True)
@@ -115,7 +115,7 @@ class TestCircuitCommandAdminCheck:
 
         assert isinstance(response, Response)
         assert "Circuit Status" in response.content
-        assert "anthropic" in response.content
+        assert "claude-cli" in response.content
         assert "telegram" in response.content
         assert "discord" in response.content
         assert "hub" in response.content
@@ -124,7 +124,7 @@ class TestCircuitCommandAdminCheck:
     async def test_circuit_command_denied_when_not_admin(self) -> None:
         """SC-15: msg.is_admin=False -> /circuit denied (fail-closed)."""
         registry = CircuitRegistry()
-        registry.register(CircuitBreaker("anthropic"))
+        registry.register(CircuitBreaker("claude-cli"))
         router = make_circuit_router(registry=registry)
         msg = make_circuit_msg(user_id="tg:user:42")  # is_admin=False by default
 
@@ -140,14 +140,14 @@ class TestCircuitCommandOpenState:
     @pytest.mark.asyncio
     async def test_circuit_command_shows_retry_after_for_open_circuit(self) -> None:
         """SC-15: OPEN circuit shows 'retry in Xs' in the table."""
-        registry = make_registry_with_open("anthropic")
+        registry = make_registry_with_open("claude-cli")
         router = make_circuit_router(registry=registry)
         msg = make_circuit_msg(user_id="tg:user:42", is_admin=True)
 
         response = await router.dispatch(msg)
 
         assert isinstance(response, Response)
-        assert "anthropic" in response.content
+        assert "claude-cli" in response.content
         assert "retry in" in response.content.lower()
 
 

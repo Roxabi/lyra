@@ -37,7 +37,7 @@ class HubCircuitBreakerMixin:
         """Return True if the circuit is open and a fast-fail reply was sent."""
         if self.circuit_registry is None:
             return False
-        cb = self.circuit_registry.get("anthropic")
+        cb = self.circuit_registry.get("claude-cli")
         if cb is None or not cb.is_open():
             return False
         status = cb.get_status()
@@ -58,7 +58,7 @@ class HubCircuitBreakerMixin:
 
     def record_circuit_success(self) -> None:
         if self.circuit_registry is not None:
-            for name in ("anthropic", "hub"):
+            for name in ("claude-cli", "hub"):
                 cb = self.circuit_registry.get(name)
                 if cb is not None:
                     cb.record_success()
@@ -69,6 +69,6 @@ class HubCircuitBreakerMixin:
             if _hub_cb is not None:
                 _hub_cb.record_failure()
             if isinstance(exc, ProviderError):
-                _ant_cb = self.circuit_registry.get("anthropic")
-                if _ant_cb is not None:
-                    _ant_cb.record_failure()
+                _cli_cb = self.circuit_registry.get("claude-cli")
+                if _cli_cb is not None:
+                    _cli_cb.record_failure()

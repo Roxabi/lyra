@@ -39,7 +39,6 @@ class MonitoringConfig(BaseModel):
 
     # Secrets (from env vars)
     telegram_token: str = Field(default="", repr=False)
-    anthropic_api_key: str = Field(default="", repr=False)
     telegram_admin_chat_id: str = Field(default="", repr=False)
 
     @field_validator("quiet_start", "quiet_end")
@@ -97,7 +96,6 @@ def load_monitoring_config(config_path: str | None = None) -> MonitoringConfig:
 
     # Load secrets from env vars
     telegram_token = os.environ.get("TELEGRAM_TOKEN", "")
-    anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     telegram_admin_chat_id = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
     health_secret = os.environ.get("LYRA_HEALTH_SECRET", "")
 
@@ -105,8 +103,6 @@ def load_monitoring_config(config_path: str | None = None) -> MonitoringConfig:
         raise ValueError(
             "TELEGRAM_TOKEN environment variable is required for monitoring"
         )
-    # ANTHROPIC_API_KEY is optional — monitoring prefers Claude CLI (OAuth).
-    # Only required if claude CLI is not installed.
     if not telegram_admin_chat_id:
         raise ValueError(
             "TELEGRAM_ADMIN_CHAT_ID environment variable is required for monitoring"
@@ -116,7 +112,6 @@ def load_monitoring_config(config_path: str | None = None) -> MonitoringConfig:
         {
             **monitoring_section,
             "telegram_token": telegram_token,
-            "anthropic_api_key": anthropic_api_key,
             "telegram_admin_chat_id": telegram_admin_chat_id,
             "health_secret": health_secret,
         }

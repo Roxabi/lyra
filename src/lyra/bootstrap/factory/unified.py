@@ -193,7 +193,6 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
                 pool_ttl=hub_cfg.pool_ttl,
                 rate_limit=hub_cfg.rate_limit,
                 rate_window=hub_cfg.rate_window,
-                max_sdk_history=pool_cfg.max_sdk_history,
                 safe_dispatch_timeout=pool_cfg.safe_dispatch_timeout,
                 staging_maxsize=inbound_bus_cfg.staging_maxsize,
                 platform_queue_maxsize=inbound_bus_cfg.platform_queue_maxsize,

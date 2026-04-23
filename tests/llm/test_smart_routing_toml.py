@@ -17,7 +17,7 @@ name = "test"
 memory_namespace = "test"
 
 [model]
-backend = "anthropic-sdk"
+backend = "claude-cli"
 model = "claude-sonnet-4-6"
 
 [agent.smart_routing]

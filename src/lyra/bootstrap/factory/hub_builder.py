@@ -85,7 +85,6 @@ def build_hub(  # noqa: PLR0913 — construction requires all deps
         debounce_ms=debouncer_cfg.default_debounce_ms,
         cancel_on_new_message=debouncer_cfg.cancel_on_new_message,
         turn_timeout=cli_pool_cfg.turn_timeout,
-        max_sdk_history=pool_cfg.max_sdk_history,
         safe_dispatch_timeout=pool_cfg.safe_dispatch_timeout,
         staging_maxsize=inbound_bus_cfg.staging_maxsize,
         platform_queue_maxsize=inbound_bus_cfg.platform_queue_maxsize,

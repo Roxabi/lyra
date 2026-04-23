@@ -77,7 +77,7 @@ class TestAgentCRUD:
         # Assert
         assert result is not None
         assert result.name == "lyra-default"
-        assert result.backend == "anthropic-sdk"
+        assert result.backend == "claude-cli"
 
     async def test_get_missing_returns_none(self, agent_store: AgentStore) -> None:
         # Act
@@ -349,7 +349,7 @@ class TestAgentStoreReconnect:
         await store1.connect()
         row = AgentRow(
             name="reconnect-agent",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             source="db",
         )
@@ -365,7 +365,7 @@ class TestAgentStoreReconnect:
             # Assert — cache must have been warmed from DB
             assert result is not None
             assert result.name == "reconnect-agent"
-            assert result.backend == "anthropic-sdk"
+            assert result.backend == "claude-cli"
             assert result.model == "claude-3-5-haiku-20241022"
         finally:
             await store2.close()

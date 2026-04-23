@@ -101,11 +101,6 @@ async def _consume_and_dispatch_cb(
                     await result
 
 
-# ---------------------------------------------------------------------------
-# extend_sdk_history — trim to max_sdk_history
-# ---------------------------------------------------------------------------
-
-
 class TestPoolSwitchWorkspace:
     @pytest.mark.asyncio
     async def test_switch_workspace_calls_fn_with_cwd(self, tmp_path: Path) -> None:
@@ -123,57 +118,21 @@ class TestPoolSwitchWorkspace:
         await pool.switch_workspace(tmp_path)
 
         assert called_with == [tmp_path]
-        assert list(pool.sdk_history) == []
         assert pool.history == []
 
     @pytest.mark.asyncio
     async def test_switch_workspace_noop_when_fn_is_none(self, tmp_path: Path) -> None:
-        """switch_workspace is a no-op when _switch_workspace_fn is None (SDK)."""
+        """switch_workspace is a no-op when _switch_workspace_fn is None."""
         ctx = MagicMock()
         ctx.get_message.return_value = None
         pool = Pool("pool-sdk", "agent", ctx)
         pool.history = [MagicMock()]
-        pool.sdk_history.append({"role": "user", "content": "hello"})
 
         # _switch_workspace_fn is None by default
         await pool.switch_workspace(tmp_path)
 
-        # History must NOT be cleared (no-op for SDK backends — B7 fix)
+        # History must NOT be cleared (no-op when no workspace fn)
         assert len(pool.history) == 1
-        assert len(pool.sdk_history) == 1
-
-
-class TestExtendSdkHistory:
-    """Pool.extend_sdk_history() trims sdk_history to max_sdk_history."""
-
-    def test_extend_sdk_history_trims_to_max(self, pool: Pool) -> None:
-        """Adding more entries than max_sdk_history trims the oldest entries."""
-        pool.max_sdk_history = 3
-        initial = [{"role": "user", "content": f"msg{i}"} for i in range(3)]
-        pool.extend_sdk_history(initial)
-
-        pool.extend_sdk_history(
-            [
-                {"role": "user", "content": "new1"},
-                {"role": "user", "content": "new2"},
-            ]
-        )
-
-        assert len(pool.sdk_history) == 3
-        contents = [entry["content"] for entry in pool.sdk_history]
-        assert "msg0" not in contents
-        assert "msg1" not in contents
-        assert "new1" in contents
-        assert "new2" in contents
-
-    def test_extend_sdk_history_no_trim_when_under_max(self, pool: Pool) -> None:
-        """extend_sdk_history() keeps all entries when under the cap."""
-        pool.max_sdk_history = 10
-        messages = [{"role": "user", "content": f"msg{i}"} for i in range(5)]
-
-        pool.extend_sdk_history(messages)
-
-        assert len(pool.sdk_history) == 5
 
 
 # ---------------------------------------------------------------------------

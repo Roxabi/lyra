@@ -4,7 +4,6 @@ import asyncio
 import logging
 import time
 import uuid
-from collections import deque
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,7 +39,6 @@ class Pool:
         turn_timeout: float | None = TURN_TIMEOUT_DEFAULT,
         debounce_ms: int | None = None,
         turn_timeout_ceiling: float | None = None,
-        max_sdk_history: int | None = None,
         safe_dispatch_timeout: float | None = None,
         max_merged_chars: int | None = None,
         cancel_on_new_message: bool | None = None,
@@ -56,9 +54,6 @@ class Pool:
             turn_timeout_ceiling
             if turn_timeout_ceiling is not None
             else cfg.turn_timeout_ceiling
-        )
-        effective_max_sdk = (
-            max_sdk_history if max_sdk_history is not None else cfg.max_sdk_history
         )
         effective_safe_dispatch = (
             safe_dispatch_timeout
@@ -77,8 +72,6 @@ class Pool:
         self.pool_id = pool_id
         self.agent_name = agent_name
         self.history: list[InboundMessage] = []
-        self.sdk_history: deque[dict] = deque()
-        self.max_sdk_history: int = effective_max_sdk
         self._safe_dispatch_timeout: float = effective_safe_dispatch
         self._session_reset_fn: Callable[[], Awaitable[None]] | None = None
         self._session_resume_fn: Callable[[str], Awaitable[bool]] | None = None
@@ -290,15 +283,8 @@ class Pool:
         """Switch workspace cwd; no-op for SDK-backed agents (CLI concept only)."""
         if self._switch_workspace_fn is None:
             return
-        self.sdk_history.clear()
         self.history.clear()
         await self._switch_workspace_fn(cwd)
-
-    def extend_sdk_history(self, new_messages: list[dict]) -> None:
-        """Append messages from an exchange and trim to cap."""
-        self.sdk_history.extend(new_messages)
-        while len(self.sdk_history) > self.max_sdk_history:
-            self.sdk_history.popleft()
 
     # S1 — session identity mutators (issue #83)
 
@@ -322,5 +308,5 @@ class Pool:
             session_start=self.session_start,
             session_end=datetime.now(UTC),
             message_count=self.message_count,
-            source_turns=len(self.sdk_history),
+            source_turns=self.message_count,
         )

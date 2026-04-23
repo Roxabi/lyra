@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import logging
-import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -53,7 +52,6 @@ class AgentBase(ABC, SessionManager):
         msg_manager: MessageManager | None = None,
         stt: "STTProtocol | None" = None,
         tts: "TtsProtocol | None" = None,
-        smart_routing_decorator: Any | None = None,
         compact_context_tokens: int = MODEL_CONTEXT_TOKENS,
         instance_overrides: dict | None = None,
         agent_store: "AgentStore | None" = None,
@@ -68,7 +66,6 @@ class AgentBase(ABC, SessionManager):
         self._msg_manager = msg_manager
         self._stt = stt  # ADR-013: agent owns temp file cleanup
         self._tts = tts
-        self._smart_routing_decorator = smart_routing_decorator
         self._plugins_dir = plugins_dir or _COMMANDS_DIR
         self._command_loader = CommandLoader(self._plugins_dir)
         self._command_mgr = CommandReloadManager(
@@ -165,7 +162,6 @@ class AgentBase(ABC, SessionManager):
             config=router_config,
             circuit_registry=self._circuit_registry,
             msg_manager=self._msg_manager,
-            smart_routing_decorator=self._smart_routing_decorator,
         )
 
     def _build_router_kwargs(self) -> dict:
@@ -206,8 +202,6 @@ class AgentBase(ABC, SessionManager):
             pool._system_prompt = self.config.system_prompt
             return
         pool._system_prompt = await self.build_system_prompt(pool)
-        # compact() owns truncation when memory is wired, so disable deque cap.
-        pool.max_sdk_history = sys.maxsize
 
     async def build_system_prompt(self, pool: "Pool") -> str:
         """Fetch identity anchor + recall block; seed from TOML on first boot."""

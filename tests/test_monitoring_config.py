@@ -45,7 +45,6 @@ class TestMonitoringConfigDefaults:
         config = load_monitoring_config()
 
         assert config.telegram_token == "tg-token-123"
-        assert config.anthropic_api_key == "sk-ant-key-456"
         assert config.telegram_admin_chat_id == "99999"
 
 
@@ -132,7 +131,6 @@ class TestMonitoringConfigValidation:
                 quiet_start="9:00",
                 quiet_end="08:00",
                 telegram_token="fake",
-                anthropic_api_key="fake",
                 telegram_admin_chat_id="12345",
             )
 
@@ -145,6 +143,5 @@ class TestMonitoringConfigValidation:
                 quiet_start="00:00",
                 quiet_end="8:00",
                 telegram_token="fake",
-                anthropic_api_key="fake",
                 telegram_admin_chat_id="12345",
             )

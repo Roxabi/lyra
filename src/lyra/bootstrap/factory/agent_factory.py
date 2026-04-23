@@ -3,21 +3,18 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import TYPE_CHECKING
 
 # Re-exported for backward compatibility (tests import these from agent_factory)
 from lyra.bootstrap.factory.bot_agent_map import resolve_bot_agent_map  # noqa: F401
 from lyra.bootstrap.factory.config import LlmConfig
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.agent.agent_config import SmartRoutingConfig
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.messaging.messages import MessageManager
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
-from lyra.llm.smart_routing import SmartRoutingDecorator
 from lyra.stt import STTProtocol
 from lyra.tts import TtsProtocol
 
@@ -50,10 +47,9 @@ def _build_shared_base_providers(
 ) -> dict[str, LlmProvider]:
     """Build ``{backend: base LlmProvider}`` reusable across all agents.
 
-    ``claude-cli`` (ClaudeCliDriver), ``anthropic-sdk`` (CircuitBreaker ->
-    Retry -> AnthropicSdkDriver), ``nats`` (Retry -> NatsLlmDriver, only when
-    ``nats_llm_driver`` is provided). Callers layer ``SmartRoutingDecorator``
-    per agent via ``_build_per_agent_registry``.
+    ``claude-cli`` (ClaudeCliDriver), ``nats`` (Retry -> NatsLlmDriver, only
+    when ``nats_llm_driver`` is provided). Callers layer decorators per agent
+    via ``_build_per_agent_registry``.
     """
     from lyra.llm.decorators import CircuitBreakerDecorator, RetryDecorator
 
@@ -70,24 +66,6 @@ def _build_shared_base_providers(
             providers["claude-cli"] = cli_driver
         log.info("Shared base: built claude-cli driver (decorated)")
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if api_key:
-        from lyra.llm.drivers.sdk import AnthropicSdkDriver
-
-        sdk_driver = AnthropicSdkDriver(api_key)
-        retry: LlmProvider = RetryDecorator(
-            sdk_driver,
-            max_retries=llm_cfg.max_retries,
-            backoff_base=llm_cfg.backoff_base,
-        )
-
-        anthropic_cb = circuit_registry.get("anthropic")
-        if anthropic_cb is not None:
-            providers["anthropic-sdk"] = CircuitBreakerDecorator(retry, anthropic_cb)
-        else:
-            providers["anthropic-sdk"] = retry
-        log.info("Shared base: built anthropic-sdk driver (decorated)")
-
     if nats_llm_driver is not None:
         providers["nats"] = RetryDecorator(
             nats_llm_driver,
@@ -101,58 +79,36 @@ def _build_shared_base_providers(
 
 def _build_per_agent_registry(
     shared_providers: dict[str, LlmProvider],
-    smart_routing_config: SmartRoutingConfig | None = None,
-) -> tuple[ProviderRegistry, SmartRoutingDecorator | None]:
+) -> ProviderRegistry:
     """Build a per-agent ProviderRegistry on top of shared driver instances.
 
     ``shared_providers`` is the dict returned by ``_build_shared_base_providers``.
-    For each backend, the provider is registered as-is unless
-    ``smart_routing_config`` is set *and* the backend is ``"anthropic-sdk"``,
-    in which case a fresh ``SmartRoutingDecorator`` wraps the shared base
-    (preserving per-agent routing history and config).
-
-    Stack (when smart routing enabled):
-        CircuitBreaker -> SmartRouting -> Retry -> Driver
-
-    Returns ``(registry, routing_decorator_or_None)``.
+    For each backend, the provider is registered as-is.
     """
     registry = ProviderRegistry()
-    routing_decorator: SmartRoutingDecorator | None = None
 
     for backend, base_provider in shared_providers.items():
-        if backend == "anthropic-sdk" and smart_routing_config is not None:
-            from lyra.llm.smart_routing import SmartRoutingDecorator as SRD
+        registry.register(backend, base_provider)
 
-            # SmartRouting wraps the base (CB -> SmartRouting -> Retry -> Driver).
-            # The CB is already baked into base_provider; SRD sits on top.
-            routing_decorator = SRD(base_provider, smart_routing_config)
-            registry.register(backend, routing_decorator)
-        else:
-            registry.register(backend, base_provider)
-
-    return registry, routing_decorator
+    return registry
 
 
 def _build_provider_registry(
     circuit_registry: CircuitRegistry,
     cli_pool: CliPool | None,
-    smart_routing_config: SmartRoutingConfig | None = None,
     llm_cfg: LlmConfig | None = None,  # None → LlmConfig() (defaults)
-) -> tuple[ProviderRegistry, SmartRoutingDecorator | None]:
+) -> ProviderRegistry:
     """Build and return a ProviderRegistry with all configured drivers.
 
     Convenience wrapper used by the legacy single-agent bootstrap path.
     For multi-agent startup use ``_build_shared_base_providers`` +
     ``_build_per_agent_registry`` to avoid rebuilding the driver stack per
     agent.
-
-    Returns (registry, smart_routing_decorator_or_None) so the routing
-    decorator's history is accessible to the /routing admin command.
     """
     shared = _build_shared_base_providers(
         circuit_registry, cli_pool, llm_cfg or LlmConfig()
     )
-    return _build_per_agent_registry(shared, smart_routing_config)
+    return _build_per_agent_registry(shared)
 
 
 def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each agent dependency
@@ -163,33 +119,10 @@ def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each
     stt: STTProtocol | None = None,
     tts: TtsProtocol | None = None,
     provider_registry: ProviderRegistry | None = None,
-    smart_routing_decorator: SmartRoutingDecorator | None = None,
     agent_store: AgentStore | None = None,
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.llm_config.backend
-    if backend == "anthropic-sdk":
-        from lyra.agents.anthropic_agent import AnthropicAgent
-
-        if provider_registry is not None:
-            provider = provider_registry.get("anthropic-sdk")
-        else:
-            from lyra.llm.drivers.sdk import AnthropicSdkDriver
-
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
-            if not api_key:
-                raise SystemExit("Missing required env var: ANTHROPIC_API_KEY")
-            provider = AnthropicSdkDriver(api_key)
-        return AnthropicAgent(
-            config,
-            provider,
-            circuit_registry=circuit_registry,
-            msg_manager=msg_manager,
-            stt=stt,
-            tts=tts,
-            smart_routing_decorator=smart_routing_decorator,
-            agent_store=agent_store,
-        )
     if backend in ("claude-cli", "ollama", "nats"):
         if backend == "nats":
             if provider_registry is None:
@@ -241,10 +174,9 @@ def _resolve_agents(  # noqa: PLR0913
     """Create all uniquely named agents referenced by bot configs.
 
     Builds the shared driver layer once (``_build_shared_base_providers``),
-    then layers a per-agent ``ProviderRegistry`` (and ``SmartRoutingDecorator``
-    when configured) on top so that each agent's routing settings are respected
-    independently — without reconstructing the underlying SDK client or circuit
-    breaker for every agent.
+    then layers a per-agent ``ProviderRegistry`` on top so that each agent's
+    settings are respected independently — without reconstructing the underlying
+    SDK client or circuit breaker for every agent.
 
     Accepts pre-loaded agent configs to avoid duplicate I/O.
     Returns a dict mapping agent_name to AgentBase instance.
@@ -267,23 +199,7 @@ def _resolve_agents(  # noqa: PLR0913
             agent_config.llm_config.model,
             agent_config.llm_config.backend,
         )
-        # Layer per-agent decorators (SmartRoutingDecorator) on top of the
-        # shared base so each agent's routing config is applied independently.
-        sr_config = agent_config.smart_routing
-        if (
-            sr_config is not None
-            and sr_config.enabled
-            and agent_config.llm_config.backend != "anthropic-sdk"
-        ):
-            log.warning(
-                "agent %r: smart_routing.enabled=true but backend=%r — "
-                "smart routing only applies to anthropic-sdk",
-                name,
-                agent_config.llm_config.backend,
-            )
-        per_agent_registry, per_agent_routing = _build_per_agent_registry(
-            shared_providers, smart_routing_config=sr_config
-        )
+        per_agent_registry = _build_per_agent_registry(shared_providers)
         agent = _create_agent(
             agent_config,
             cli_pool,
@@ -292,7 +208,6 @@ def _resolve_agents(  # noqa: PLR0913
             stt=stt_service,
             tts=tts_service,
             provider_registry=per_agent_registry,
-            smart_routing_decorator=per_agent_routing,
             agent_store=agent_store,
         )
         agents[name] = agent

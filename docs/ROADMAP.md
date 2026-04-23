@@ -17,7 +17,7 @@
 |-------|------|--------|---------|
 | **0** | #101 | ✅ Done | Bot core parity: pairing, circuit breaker, TOML templates, plugin system |
 | **1** | — | ✅ Done | Hub: asyncio bus, adapters (Telegram/Discord), SimpleAgent, command router |
-| **1b** | #73 | ✅ Done | Agent core: persona ✅, SDK agent ✅, parity audit ✅, memory foundation ✅, hub refactor ✅, command sessions ✅, architecture refactoring ✅ |
+| **1b** | #73 | ✅ Done | Agent core: persona ✅, parity audit ✅, memory foundation ✅, hub refactor ✅, command sessions ✅, architecture refactoring ✅, dropped SDK driver (#666) ✅ |
 | **Voice** | #74 | 🔓 Unblocked | TTS + STT integration — unblocked since #76 shipped |
 | **2** | #60 | Partial | NATS standalone mode ✅ done (#458); Machine 2 LLM worker coordination = planned |
 | **3** | #61 | Frozen | Atomic SLMs + cognitive pipeline |
@@ -33,7 +33,7 @@
 | # | Issue | Size | Status |
 |---|-------|------|--------|
 | #139 | Message & Media Normalization — typed bus envelope for all adapters | L | ✅ Done |
-| #123 | LlmProvider protocol — AnthropicSdkDriver + ClaudeCliDriver | L | ✅ Done |
+| #123 | LlmProvider protocol — ClaudeCliDriver + NatsLlmDriver | L | ✅ Done |
 | #134 | LLM smart routing — complexity-based model selection | M | ✅ Done |
 | #135 | Runtime agent config — `!config` live tuning without restart | S | ✅ Done |
 | #151 | AuthMiddleware + TrustLevel per adapter | M | ✅ Done |
@@ -73,21 +73,19 @@
 |---|-------|
 | #112 | Hub refactor epic (#125 scope_id, #126 per-channel queues, #127 per-session Task) |
 | #75 | Agent identity / persona system |
-| #76 | Direct Anthropic SDK agent (replace CLI subprocess) |
 | #77 | 2ndBrain feature parity audit |
 | #78 | Vault as semantic memory backend (Level 3) |
 | #81 | roxabi-memory package foundation (schema v2, FTS5/BM25, namespacing) |
 | #82 | Hybrid search — fastembed ONNX + sqlite-vec |
 | #84 | Vault-migrate skill — v2 schema + fastembed import |
 | #103 | Unified pairing system (Telegram + Discord) |
-| #104 | LLM circuit breaker for Anthropic SDK calls |
 | #105 | TOML message template system with i18n |
 | #106 | Directory-based plugin system (MVP) |
 | #111 | Bash pre-check layer before LLM monitoring calls |
 | #125 | Hub: scope_id routing — replace user_id in RoutingKey |
 | #126 | Hub: per-channel inbound/outbound queues + OutboundDispatcher |
 | #127 | Hub: per-session Task + Discord thread auto-creation |
-| #123 | LlmProvider protocol — ClaudeCliDriver + AnthropicSdkDriver |
+| #123 | LlmProvider protocol — ClaudeCliDriver + NatsLlmDriver |
 | #134 | LLM smart routing — complexity-based model selection |
 | #135 | Runtime agent config — `!config` live tuning |
 | #139 | Message & Media Normalization — typed bus envelope |

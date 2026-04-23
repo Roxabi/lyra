@@ -42,7 +42,7 @@ class TestAgentRowToConfigTTSSTT:
 
         return AgentRow(
             name="x",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             voice_json=voice_json,
         )
@@ -97,7 +97,7 @@ class TestAgentRowToConfigTTSNewFields:
         voice_data = {"tts": {"exaggeration": 0.7, "cfg_weight": 0.3}, "stt": {}}
         row = AgentRow(
             name="x",
-            backend="anthropic-sdk",
+            backend="claude-cli",
             model="claude-3-5-haiku-20241022",
             voice_json=json.dumps(voice_data),
         )

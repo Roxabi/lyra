@@ -29,7 +29,7 @@ def make_row(**kwargs) -> AgentRow:
     """Minimal AgentRow for testing."""
     defaults: dict[str, Any] = dict(
         name="lyra_default",
-        backend="anthropic-sdk",
+        backend="claude-cli",
         model="claude-haiku-4-5-20251001",
         persona_json='{"identity": {"display_name": "Lyra"}}',
         voice_json='{"tts": {"voice": "echo"}, "stt": {}}',

@@ -360,7 +360,6 @@ Every inbound message carries a 3-tuple routing key. Scope is extracted by the a
 | Resource | Scope |
 |----------|-------|
 | ProviderRegistry | Per-agent |
-| SmartRoutingDecorator | Per-agent |
 | Memory namespace (SQLite) | Per-agent |
 | System prompt / persona | Per-agent |
 | CliPool (subprocess pool) | Shared across all agents |
@@ -656,7 +655,7 @@ client = AsyncOpenAI(
 
 - **Python + asyncio** — Go/Rust/Zig/Node eliminated. Python AI ecosystem is unbeatable, asyncio is sufficient for 1-5 I/O-bound users.
 - **2 machines** — Machine 1 autonomous (hub + TTS + embeddings), Machine 2 on demand (heavy LLM). Eliminates VRAM contention.
-- **Cloud LLM by default** — LlmProvider protocol (#123 ✅) with two drivers: `ClaudeCliDriver` (CLI subprocess) and `AnthropicSdkDriver` (direct API). Smart routing (#134 ✅) selects model by complexity. NATS standalone mode (hub + adapters as separate processes on Machine 1) ✅ done (#458). Local LLM on Machine 2 via NATS worker = Phase 2 (#51).
+- **Cloud LLM by default** — LlmProvider protocol (#123 ✅) with drivers: `ClaudeCliDriver` (CLI subprocess) and `NatsLlmDriver` (remote worker). NATS standalone mode (hub + adapters as separate processes on Machine 1) ✅ done (#458). Local LLM on Machine 2 via NATS worker = Phase 2 (#51).
 - **SQLite** — No Postgres. SQLite + WAL mode + `aiosqlite` amply covers personal use.
 
 ### Resolved decisions (Phase 1b completions)
@@ -668,7 +667,7 @@ client = AsyncOpenAI(
 - **scope_id replaces user_id in RoutingKey** (#125) — `RoutingKey(platform, bot_id, scope_id)`. Scope extracted from platform context: `chat:NNN`, `thread:NNN`, `channel:NNN`, etc.
 - **fastembed ONNX replaces sentence-transformers** (#82) — Non-blocking ONNX runtime, no `run_in_executor` needed. Hybrid BM25 (FTS5) + cosine (sqlite-vec).
 - **LLM circuit breaker** (#104) — Timeout + retry logic for Anthropic SDK calls. Graceful degradation on failure.
-- **LlmProvider protocol** (#123 ✅) — Multi-driver abstraction: `AnthropicSdkDriver`, `ClaudeCliDriver`. Smart routing (#134 ✅) selects model by complexity. OllamaDriver planned for Phase 2.
+- **LlmProvider protocol** (#123 ✅) — Multi-driver abstraction: `ClaudeCliDriver`, `NatsLlmDriver`. OllamaDriver/LiteLLM planned for Phase 2.
 - **Auth: Authenticator + GuardChain** (#151 ✅, refactored in #313/#314) — Per-adapter auth with trust levels (owner/trusted/public/blocked). Config-driven via TOML. Originally a monolithic `AuthMiddleware`; refactored into `Authenticator` (identity resolver in `authenticator.py`) and `GuardChain` (composable guard pipeline in `guard.py`). Note: `[admin].user_ids` grants cross-platform admin commands to those users across ALL bots, whereas per-bot `owner_users` in `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` sets the trust level for that specific bot only.
 - **RoutingContext + outbound verification** (#152 ✅) — Every outbound response carries a RoutingContext; adapters verify channel + bot_id before sending.
 - **PoolContext protocol** (#204 ✅) — Decouples Pool from Hub via a protocol interface.
@@ -715,7 +714,7 @@ What is built in Phase 1 / 1b:
 - Hub: per-channel queues + bindings + pools + adapter registry (#112 epic ✅)
 - Memory level 0 (working, L0 compaction ✅ #83) + level 3 (semantic ✅: #78/#81/#82)
 - Telegram + Discord adapters (✅)
-- LLM: Claude CLI subprocess (✅), Anthropic SDK driver (#76 ✅), LlmProvider protocol (#123 ✅), smart routing (#134 ✅)
+- LLM: Claude CLI subprocess (✅), LlmProvider protocol (#123 ✅)
 - Agent identity + persona (#75 ✅), runtime config (#135 ✅)
 - Message normalization (#139 ✅): InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment
 - Auth: Authenticator + GuardChain (#151 ✅, refactored #313/#314), RoutingContext + outbound verification (#152 ✅)

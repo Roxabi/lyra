@@ -33,21 +33,6 @@ class TestAgentFactory:
         agent = agent_factory_mod._create_agent(config, cli_pool)
         assert isinstance(agent, SimpleAgent)
 
-    def test_sdk_backend_creates_anthropic_agent(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
-        from lyra.agents.anthropic_agent import AnthropicAgent
-
-        config = Agent(
-            name="test",
-            system_prompt="",
-            memory_namespace="test",
-            llm_config=ModelConfig(backend="anthropic-sdk"),
-        )
-        agent = agent_factory_mod._create_agent(config, None)
-        assert isinstance(agent, AnthropicAgent)
-
     def test_unknown_backend_raises(self) -> None:
         config = Agent(
             name="test",

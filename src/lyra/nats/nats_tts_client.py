@@ -94,6 +94,10 @@ class NatsTtsClient:
                 SUBJECTS.tts_heartbeat, cb=self._on_heartbeat
             )
 
+    def is_available(self) -> bool:
+        """Check if any TTS workers are registered via heartbeats."""
+        return self._registry.any_alive()
+
     async def _on_heartbeat(self, msg) -> None:
         try:
             data = json.loads(msg.data)

@@ -28,15 +28,12 @@ def _deprecated_env(old_var: str, new_var: str) -> str | None:
     return val
 
 
-def init_nats_stt(nc: "NATS") -> "NatsSttClient | None":
-    """Initialise NATS STT client if LYRA_STT_ENABLED=1."""
-    if os.environ.get("LYRA_STT_ENABLED", "0") != "1":
-        if os.environ.get("STT_MODEL_SIZE") and not os.environ.get("LYRA_STT_ENABLED"):
-            log.warning(
-                "STT_MODEL_SIZE is set but LYRA_STT_ENABLED=1 is absent"
-                " — STT is disabled; add LYRA_STT_ENABLED=1 to enable"
-            )
-        return None
+def init_nats_stt(nc: "NATS") -> "NatsSttClient":
+    """Initialise NATS STT client with heartbeat-based worker discovery.
+
+    Always creates the client; workers are discovered via heartbeats.
+    The client is available only when workers are registered.
+    """
     from lyra.nats.nats_stt_client import NatsSttClient
 
     model = (
@@ -45,18 +42,20 @@ def init_nats_stt(nc: "NATS") -> "NatsSttClient | None":
         or "large-v3-turbo"
     )
     client = NatsSttClient(nc=nc, model=model)
-    log.info("STT enabled via NATS (model=%s)", model)
+    log.info("STT client created (model=%s) — availability via heartbeat", model)
     return client
 
 
-def init_nats_tts(nc: "NATS") -> "NatsTtsClient | None":
-    """Initialise NATS TTS client if LYRA_TTS_ENABLED=1 (independent of STT)."""
-    if os.environ.get("LYRA_TTS_ENABLED", "0") != "1":
-        return None
+def init_nats_tts(nc: "NATS") -> "NatsTtsClient":
+    """Initialise NATS TTS client with heartbeat-based worker discovery.
+
+    Always creates the client; workers are discovered via heartbeats.
+    The client is available only when workers are registered.
+    """
     from lyra.nats.nats_tts_client import NatsTtsClient
 
     client = NatsTtsClient(nc=nc)
-    log.info("TTS enabled via NATS")
+    log.info("TTS client created — availability via heartbeat")
     return client
 
 

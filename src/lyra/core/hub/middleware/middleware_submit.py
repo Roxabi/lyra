@@ -11,20 +11,20 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import cast
 
-from ..messaging.message import (
+from ...messaging.message import (
     InboundMessage,
     Platform,
 )
-from .middleware import Next, PipelineContext
-from .path_validation import resolve_context
-from .pipeline_events import MessageDropped, PoolSubmitted
-from .pipeline_types import (
+from ..pipeline.pipeline_events import MessageDropped, PoolSubmitted
+from ..pipeline.pipeline_types import (
     DROP,
     SESSION_FALLTHROUGH_MSG,
     Action,
     PipelineResult,
     ResumeStatus,
 )
+from .middleware import Next, PipelineContext
+from .path_validation import resolve_context
 
 log = logging.getLogger(__name__)
 
@@ -123,7 +123,7 @@ class SubmitToPoolMiddleware:
         self, msg: InboundMessage, ctx: PipelineContext
     ) -> None:
         """Send a pre-response notice when Path 2 resume fails."""
-        from .outbound_errors import try_notify_user
+        from ..outbound.outbound_errors import try_notify_user
 
         try:
             platform = Platform(msg.platform)

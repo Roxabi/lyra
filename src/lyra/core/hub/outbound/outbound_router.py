@@ -18,22 +18,22 @@ import time
 from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
-from ..messaging.message import InboundMessage, OutboundMessage, Platform, Response
+from ...messaging.message import InboundMessage, OutboundMessage, Platform, Response
 from .outbound_audio import AudioDispatch
 from .outbound_streaming import StreamingDispatch
 from .outbound_tts import TtsDispatch
 
 if TYPE_CHECKING:
-    from ..circuit_breaker import CircuitRegistry
-    from ..messaging.message import (
+    from ...circuit_breaker import CircuitRegistry
+    from ...messaging.message import (
         OutboundAttachment,
         OutboundAudio,
         OutboundAudioChunk,
     )
-    from ..messaging.messages import MessageManager
-    from ..messaging.render_events import RenderEvent
-    from ..tts_dispatch import AudioPipeline
-    from .hub_protocol import ChannelAdapter
+    from ...messaging.messages import MessageManager
+    from ...messaging.render_events import RenderEvent
+    from ...tts_dispatch import AudioPipeline
+    from ..hub_protocol import ChannelAdapter
     from .outbound_dispatcher import OutboundDispatcher
 
 # Re-export for API preservation

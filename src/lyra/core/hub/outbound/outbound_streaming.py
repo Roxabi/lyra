@@ -13,13 +13,13 @@ import time
 from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING
 
-from ..messaging.message import InboundMessage, OutboundMessage, Platform
-from ..messaging.render_events import TextRenderEvent
+from ...messaging.message import InboundMessage, OutboundMessage, Platform
+from ...messaging.render_events import TextRenderEvent
 
 if TYPE_CHECKING:
-    from ..messaging.render_events import RenderEvent
-    from ..tts_dispatch import AudioPipeline
-    from .hub_protocol import ChannelAdapter
+    from ...messaging.render_events import RenderEvent
+    from ...tts_dispatch import AudioPipeline
+    from ..hub_protocol import ChannelAdapter
     from .outbound_dispatcher import OutboundDispatcher
     from .outbound_tts import TtsDispatch
 

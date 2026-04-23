@@ -21,23 +21,23 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ..agent import AgentBase
-from ..messaging.message import InboundMessage
-from ..pool import Pool
-from .pipeline_events import (
+from ...agent import AgentBase
+from ...messaging.message import InboundMessage
+from ...pool import Pool
+from ..pipeline.pipeline_events import (
     MessageReceived,
     PipelineEvent,
     StageCompleted,
 )
-from .pipeline_types import (
+from ..pipeline.pipeline_types import (
     DROP,
     PipelineResult,
     TraceHook,
 )
 
 if TYPE_CHECKING:
-    from .event_bus import PipelineEventBus
-    from .hub import Binding, Hub, RoutingKey
+    from ..event_bus import PipelineEventBus
+    from ..hub import Binding, Hub, RoutingKey
 
 log = logging.getLogger(__name__)
 

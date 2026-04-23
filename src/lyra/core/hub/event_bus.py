@@ -13,7 +13,7 @@ import asyncio
 import logging
 import time
 
-from .pipeline_events import PipelineEvent
+from .pipeline.pipeline_events import PipelineEvent
 
 log = logging.getLogger(__name__)
 

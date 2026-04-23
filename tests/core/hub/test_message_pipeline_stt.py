@@ -19,9 +19,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.hub.message_pipeline import _DROP, Action, PipelineResult
 from lyra.core.hub.middleware import PipelineContext
-from lyra.core.hub.middleware_stt import SttMiddleware
+from lyra.core.hub.middleware.middleware_stt import SttMiddleware
+from lyra.core.hub.pipeline.message_pipeline import _DROP, Action, PipelineResult
 from tests.helpers.messages import make_text_message, make_voice_message
 
 # ---------------------------------------------------------------------------

@@ -212,7 +212,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         ]
 
         if hub._event_bus is not None:
-            from lyra.core.hub.audit_consumer import AuditConsumer
+            from lyra.core.hub.pipeline.audit_consumer import AuditConsumer
 
             _audit_queue = hub._event_bus.subscribe()
             _audit_consumer = AuditConsumer(_audit_queue)

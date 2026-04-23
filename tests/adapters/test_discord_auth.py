@@ -206,9 +206,9 @@ class TestTrustGuardMiddleware:
         """Message with BLOCKED trust level is dropped; next() not called."""
         from unittest.mock import AsyncMock
 
-        from lyra.core.hub.message_pipeline import _DROP
         from lyra.core.hub.middleware import PipelineContext
-        from lyra.core.hub.middleware_stages import TrustGuardMiddleware
+        from lyra.core.hub.middleware.middleware_stages import TrustGuardMiddleware
+        from lyra.core.hub.pipeline.message_pipeline import _DROP
         from lyra.core.messaging.message import InboundMessage
 
         mw = TrustGuardMiddleware()
@@ -233,7 +233,7 @@ class TestTrustGuardMiddleware:
         from unittest.mock import AsyncMock
 
         from lyra.core.hub.middleware import PipelineContext
-        from lyra.core.hub.middleware_stages import TrustGuardMiddleware
+        from lyra.core.hub.middleware.middleware_stages import TrustGuardMiddleware
         from lyra.core.messaging.message import InboundMessage
 
         mw = TrustGuardMiddleware()

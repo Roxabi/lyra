@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import logging
 
-from ..messaging.message import InboundMessage
-from ..pool import Pool
+from ...messaging.message import InboundMessage
+from ...pool import Pool
+from ..pipeline.pipeline_types import ResumeStatus
 from .middleware import PipelineContext
-from .pipeline_types import ResumeStatus
 
 log = logging.getLogger(__name__)
 

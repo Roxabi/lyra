@@ -6,12 +6,12 @@ import dataclasses
 import logging
 from typing import Any
 
-from ..commands.command_parser import CommandParser
-from ..messaging.message import GENERIC_ERROR_REPLY, InboundMessage, Response
-from ..trace import TraceContext
+from ...commands.command_parser import CommandParser
+from ...messaging.message import GENERIC_ERROR_REPLY, InboundMessage, Response
+from ...trace import TraceContext
+from ..pipeline.pipeline_events import CommandDispatched, MessageDropped
+from ..pipeline.pipeline_types import DROP, Action, PipelineResult
 from .middleware import Next, PipelineContext
-from .pipeline_events import CommandDispatched, MessageDropped
-from .pipeline_types import DROP, Action, PipelineResult
 
 log = logging.getLogger(__name__)
 _command_parser = CommandParser()

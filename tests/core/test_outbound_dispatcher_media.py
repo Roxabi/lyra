@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.circuit_breaker import CircuitBreaker
-from lyra.core.hub.outbound_dispatcher import OutboundDispatcher
+from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 from lyra.core.messaging.message import (
     OutboundAttachment,
     OutboundAudio,

@@ -1,0 +1,103 @@
+---
+title: Retire deploy/supervisor/ — lyra is now a tenant, not a host
+issue: 886
+status: approved
+tier: F-lite
+frame: artifacts/frames/886-retire-deploy-supervisor-frame.mdx
+date: 2026-04-24
+---
+
+## Context
+
+Source: [frame](../frames/886-retire-deploy-supervisor-frame.mdx). Prod migrated 2026-04-22 to the machine-level supervisord at `~/projects/`. The repo still ships host scaffolding under `deploy/supervisor/`, creating ownership confusion. ADR-047 + `lyra-nats-truth §14` require lyra to be a tenant only.
+
+Current on-disk state (hyphen rename from commit 7c05850 already applied):
+
+```
+deploy/supervisor/
+├── .gitignore
+├── supervisord.conf          # host file — delete
+├── start.sh                  # host file — delete
+├── supervisorctl.sh          # host file — delete
+├── scripts/                  # host helpers — delete (5 files)
+│   ├── run.sh
+│   ├── run_hub.sh
+│   ├── run_adapter.sh
+│   ├── start.sh
+│   └── stop.sh
+└── conf.d/                   # tenant confs — keep, relocate
+    ├── README.md
+    ├── lyra-hub.conf
+    ├── lyra-telegram.conf
+    └── lyra-discord.conf
+```
+
+Note: deprecated `lyra_tts.conf` / `lyra_stt.conf` named in the issue body are already absent — voiceCLI owns tts/stt satellites now.
+
+## Goal
+
+Remove host scaffolding from the repo; keep lyra's three tenant confs as reference at `deploy/conf.d/`, with a README that points operators at the machine-level supervisord.
+
+## Users
+
+- **Primary:** Mickael / ops deploying lyra onto a Roxabi host.
+- **Secondary:** Contributors and AI agents reading `deploy/` to understand lyra's runtime.
+
+## Expected Behavior
+
+1. `deploy/supervisor/` no longer exists.
+2. `deploy/conf.d/` contains the three tenant confs (`lyra-hub.conf`, `lyra-telegram.conf`, `lyra-discord.conf`) plus a `README.md` that:
+   - Names lyra as a tenant (¬host).
+   - Points at `~/projects/supervisord.conf` as the host.
+   - Gives the exact copy-in step (`cp deploy/conf.d/*.conf ~/projects/conf.d/`).
+   - References ADR-041 / ADR-047 / `lyra-nats-truth §14`.
+3. Docs (`CONFIGURATION.md`, `DEPLOYMENT.md`, `GETTING-STARTED.md`, `PROD-MIGRATION-STRATEGY.md`, ADR-041, ADR-039, ADR-043, ADR-050, ADR-053, `voice-to-voice-analysis.md`) no longer reference `deploy/supervisor/supervisord.conf`, `deploy/supervisor/start.sh`, or `deploy/supervisor/scripts/`. Where a systemd example was shown, it now targets `~/projects/scripts/start.sh --all`.
+4. `Makefile`, `deploy/gen-supervisor-conf.py`, `deploy/provision.sh`, `scripts/deploy.sh`, `deploy/lyra.service`, `deploy/agents.yml`, `deploy/nats/gen-nkeys.sh`, `tests/deploy/test_supervisor_scripts.sh`, `src/lyra/integrations/supervisor.py`, `src/lyra/monitoring/checks.py`, `.github/workflows/ci.yml` — each reference to `deploy/supervisor/` is updated, neutralised, or deleted without breaking the surrounding behavior.
+5. `grep -rn "deploy/supervisor" --exclude-dir=.git --exclude-dir=artifacts` returns no results outside historical artifacts.
+
+## Breadboard
+
+### Affordance table
+
+| ID | Surface | Action | Target |
+|----|---------|--------|--------|
+| F1 | `deploy/supervisor/supervisord.conf` | delete | — |
+| F2 | `deploy/supervisor/start.sh` | delete | — |
+| F3 | `deploy/supervisor/supervisorctl.sh` | delete | — |
+| F4 | `deploy/supervisor/scripts/` | delete (dir) | — |
+| F5 | `deploy/supervisor/.gitignore` | delete (dir gone) | — |
+| F6 | `deploy/supervisor/conf.d/lyra-hub.conf` | git mv | `deploy/conf.d/lyra-hub.conf` |
+| F7 | `deploy/supervisor/conf.d/lyra-telegram.conf` | git mv | `deploy/conf.d/lyra-telegram.conf` |
+| F8 | `deploy/supervisor/conf.d/lyra-discord.conf` | git mv | `deploy/conf.d/lyra-discord.conf` |
+| F9 | `deploy/supervisor/conf.d/README.md` | rewrite + move | `deploy/conf.d/README.md` |
+| D1 | docs/*, ADRs | path scrub | refs → machine-level paths |
+| D2 | `Makefile` | audit + update targets that point at deleted paths | — |
+| D3 | `deploy/gen-supervisor-conf.py` | audit: update output dir, or delete if obsoleted | — |
+| D4 | `deploy/provision.sh`, `scripts/deploy.sh`, `deploy/lyra.service` | update to target machine-level start.sh | — |
+| D5 | `tests/deploy/test_supervisor_scripts.sh` | delete ∨ rewrite to cover new layout | — |
+| D6 | `.github/workflows/ci.yml` | scrub refs to `deploy/supervisor/` | — |
+| D7 | `src/lyra/monitoring/checks.py`, `src/lyra/integrations/supervisor.py` | audit hardcoded paths | — |
+
+### Wiring
+
+F1–F5 (host deletion) + F6–F9 (tenant relocation) are independent on-disk edits. D1–D7 are the repo-wide reference scrub that must complete before the grep acceptance check passes.
+
+## Slices
+
+| # | Slice | Covers | Demo |
+|---|-------|--------|------|
+| 1 | **Relocate tenant confs** — `git mv` F6–F9, rewrite README (F9) | F6, F7, F8, F9 | `ls deploy/conf.d/` shows 3 confs + README |
+| 2 | **Delete host scaffolding** — remove F1–F5, deleting `deploy/supervisor/` entirely | F1, F2, F3, F4, F5 | `test ! -d deploy/supervisor/` |
+| 3 | **Repo-wide reference scrub** — apply D1–D7 | D1, D2, D3, D4, D5, D6, D7 | `grep -rn "deploy/supervisor" ...` returns only historical artifact matches |
+
+Slice order: 1 → 2 → 3. Slice 3 finishes only after 1 + 2 complete so edits point at final paths.
+
+## Success Criteria
+
+- [ ] `deploy/supervisor/` directory does not exist in the repo.
+- [ ] `deploy/conf.d/lyra-hub.conf`, `lyra-telegram.conf`, `lyra-discord.conf` exist with identical content to their pre-move versions.
+- [ ] `deploy/conf.d/README.md` exists and (a) states lyra is a tenant, (b) names `~/projects/supervisord.conf` as host, (c) gives the copy-in command, (d) references ADR-041 / ADR-047 / `lyra-nats-truth §14`.
+- [ ] `grep -rn "deploy/supervisor" --exclude-dir=.git --exclude-dir=artifacts` returns zero matches.
+- [ ] Every doc/config/script listed in Expected Behavior #3 + #4 has been edited (or deleted) and still functions in its role (docs readable, scripts executable where applicable, CI valid).
+- [ ] `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright`, `uv run pytest` all pass.
+- [ ] `systemd` example in docs points at `~/projects/scripts/start.sh --all` (not `deploy/supervisor/start.sh`).

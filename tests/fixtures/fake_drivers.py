@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from lyra.core.agent.agent_config import ModelConfig
@@ -65,18 +64,14 @@ class FakeStt:
     preset_transcript: str = "Hello world"
     called: bool = False
     last_audio: bytes = field(default_factory=bytes)
-    last_path: Path | str | None = None
+    last_mime: str = ""
     raise_on_transcribe: Exception | None = None
 
-    async def transcribe(self, path: Path | str) -> TranscriptionResult:
+    async def transcribe(self, audio: bytes, mime: str) -> TranscriptionResult:
         """Return preset transcript or raise if configured."""
         self.called = True
-        self.last_path = path
-
-        try:
-            self.last_audio = Path(path).read_bytes()
-        except Exception:
-            self.last_audio = b""
+        self.last_audio = audio
+        self.last_mime = mime
 
         if self.raise_on_transcribe:
             raise self.raise_on_transcribe

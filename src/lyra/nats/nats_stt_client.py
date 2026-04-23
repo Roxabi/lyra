@@ -8,13 +8,11 @@ NoRespondersError, marking stale workers and trying the next candidate.
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import logging
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import NoReturn
 from uuid import uuid4
 
@@ -187,20 +185,17 @@ class NatsSttClient:
         self._cb.record_failure()
         raise STTUnavailableError("STT: all workers unresponsive") from last_exc
 
-    async def transcribe(self, path: Path | str) -> TranscriptionResult:
+    async def transcribe(self, audio: bytes, mime: str) -> TranscriptionResult:
         if self._cb.is_open():
             raise STTUnavailableError(
                 "STT circuit open — adapter temporarily unavailable"
             )
-        resolved = Path(path).resolve()
-        audio_bytes = await asyncio.to_thread(resolved.read_bytes)
-        mime = _mime_from_suffix(resolved.suffix)
         request = SttRequest(
             contract_version=CONTRACT_VERSION,
             trace_id=str(uuid4()),
             issued_at=datetime.now(timezone.utc),
             request_id=str(uuid4()),
-            audio_b64=base64.b64encode(audio_bytes).decode("ascii"),
+            audio_b64=base64.b64encode(audio).decode("ascii"),
             mime_type=mime,
             model=self._model,
             language_detection_threshold=self._detection_threshold,
@@ -255,13 +250,3 @@ class NatsSttClient:
         raise STTUnavailableError("STT adapter unreachable") from exc
 
 
-def _mime_from_suffix(suffix: str) -> str:
-    return {
-        ".ogg": "audio/ogg",
-        ".mp3": "audio/mpeg",
-        ".wav": "audio/wav",
-        ".m4a": "audio/mp4",
-        ".webm": "audio/webm",
-        ".flac": "audio/flac",
-        ".opus": "audio/ogg",
-    }.get(suffix.lower(), "audio/ogg")

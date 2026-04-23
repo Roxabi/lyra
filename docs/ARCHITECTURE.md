@@ -29,7 +29,7 @@
 |---------|---------|-------------------|---------------|
 | `voiceCLI` | `voicecli` | `generate`, `generate_async`, `clone`, `clone_async`, `transcribe`, `transcribe_async`, `list_engines`, `list_voices` | `voicecli` |
 | `imageCLI` | `imagecli` | `generate`, `get_engine`, `list_engines`, `preflight_check`, `load_config`, `parse_prompt_file` | `imagecli` |
-| `lyra` | `lyra` | Hub, Agent, Pool, InboundMessage, OutboundMessage, ChannelAdapter (internal SDK — not public) | daemon via supervisord |
+| `lyra` | `lyra` | Hub, Agent, Pool, InboundMessage, OutboundMessage, ChannelAdapter (internal SDK — not public) | daemon via Podman Quadlet |
 | `2ndBrain` | `knowledge` | Vault read/write/search (internal SDK) | `knowledge_bot` daemon |
 
 ### Rules
@@ -470,10 +470,10 @@ stateDiagram-v2
     Error --> Active : next message arrives (non-fatal — pool recovers)
     Error --> Stopped : circuit breaker open (repeated failures)
 
-    Idle --> Stopped : hub shutdown / supervisord stop
+    Idle --> Stopped : hub shutdown / container stop
     Active --> Stopped : hub shutdown (in-flight turns drained up to 60s)
 
-    Stopped --> Running : supervisor restart → hub.register_agent()
+    Stopped --> Running : container restart → hub.register_agent()
     Stopped --> [*]
     Deleted --> [*]
 
@@ -597,9 +597,9 @@ When Layer 1 detects an anomaly, the failed checks are sent to the Anthropic API
 
 ### Runtime
 
-The monitoring system runs as a **systemd user timer** (`lyra-monitor.timer`), not through supervisor. This is a deliberate split:
+The monitoring system runs as a **systemd user timer** (`lyra-monitor.timer`), separate from the Quadlet containers. This is a deliberate split:
 
-- **Supervisor** manages long-running daemons (lyra_telegram, lyra_discord, voicecli_*)
+- **Podman Quadlet** manages long-running daemons (lyra-hub, lyra-telegram, lyra-discord)
 - **Systemd timer** manages the periodic monitoring cron (oneshot, every 5 minutes)
 
 ```
@@ -645,7 +645,7 @@ Secrets: `TELEGRAM_TOKEN`, `ANTHROPIC_API_KEY`, `TELEGRAM_ADMIN_CHAT_ID` in `.en
 | TTS | voicecli (Qwen-fast) · OGG/Opus output · waveform · Discord voice bubble ✅ |
 | STT | voicecli library (faster-whisper, `large-v3-turbo`) |
 | Embeddings | fastembed ONNX (nomic-embed-text) + sqlite-vec |
-| Process mgmt | supervisord + systemd |
+| Process mgmt | Podman Quadlet (systemd --user) |
 | Internal API | FastAPI |
 | Message bus | NATS (standalone mode: hub + adapters on Machine 1); `NatsBus` + `NatsOutboundListener` |
 

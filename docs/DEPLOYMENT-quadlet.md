@@ -1,20 +1,23 @@
 # Deployment — Podman Quadlet (Machine 1)
 
-See also: [DEPLOYMENT.md](DEPLOYMENT.md) for the simple/supervisord path (default).
+See also: [DEPLOYMENT.md](DEPLOYMENT.md) for the deployment overview and day-to-day operations.
 
-Advanced deployment path for Machine 1 (`roxabituwer`, Ubuntu 26.04 LTS) using rootless Podman Quadlet units managed by systemd `--user`. Both paths are permanently supported — choose based on your requirements.
+Production deployment for Machine 1 (`roxabituwer`, Ubuntu 26.04 LTS) using rootless Podman Quadlet units managed by systemd `--user`. This is the current production path as of #611.
+
+> **Legacy note:** The pre-#611 supervisord stack is archived at `deploy/legacy/supervisor/`
+> for reference. It is no longer the default or recommended path.
 
 ## Which path should I pick?
 
 | Tier | Topology | Audience |
 |---|---|---|
 | Dev | `lyra start` — 1 process, embedded NATS | local hacking |
-| Simple prod (supervisord) | 3 processes + host NATS | default self-host, newcomers |
-| Advanced prod (Quadlet) — this doc | 4 containers on `lyra.network` | isolated/reproducible deploys |
+| Prod (Quadlet) | 4 containers on `lyra.network` | **default — this doc** |
 
-**Use supervisord** ([DEPLOYMENT.md](DEPLOYMENT.md)) if you are self-hosting for the first time or want the simplest operational model. It is the default and requires no container tooling.
+**Use Quadlet** (this doc) for production — OCI isolation, reproducible images, rootless
+containers, systemd-native lifecycle management.
 
-**Use Quadlet** (this doc) when you need OCI isolation, reproducible images, rootless containers, or multi-host portability. Both paths run on Machine 1 indefinitely — there is no requirement to migrate.
+**Dev mode** (`lyra start`) is for local hacking only — no NATS server required, single process.
 
 ## 1. Overview
 

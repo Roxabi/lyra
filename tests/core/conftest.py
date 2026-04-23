@@ -756,7 +756,7 @@ class FakeSTT:
     def __init__(self, text: str = "Hello world") -> None:
         self._text = text
 
-    async def transcribe(self, path):
+    async def transcribe(self, audio, mime):
         return FakeTranscription(text=self._text)
 
 

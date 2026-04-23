@@ -146,8 +146,8 @@
 
 | # | Issue | Priority | Status |
 |---|-------|----------|--------|
-| #133 | Split Lyra adapters into independent supervisor processes | P2 | ✅ Done (#458) |
-| #132 | Document Machine 2 supervisor setup + voice daemons | P2 | Open |
+| #133 | Split Lyra adapters into independent processes (NATS) | P2 | ✅ Done (#458) |
+| #132 | Document Machine 2 voice daemon setup | P2 | Open |
 | #123 | Claude CLI wrapper library — extract 2ndBrain pool design | P2 | Open |
 
 ---

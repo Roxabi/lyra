@@ -15,9 +15,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-import os
-import tempfile
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...messaging.message import InboundMessage, Response
@@ -37,14 +34,6 @@ _STT_STAGE_OUTCOMES: dict[str, int] = {
     "noise": 0,
     "invalid": 0,
     "failed": 0,
-}
-
-_MIME_TO_EXT: dict[str, str] = {
-    "audio/ogg": ".ogg",
-    "audio/mpeg": ".mp3",
-    "audio/mp4": ".m4a",
-    "audio/wav": ".wav",
-    "audio/webm": ".webm",
 }
 
 
@@ -110,29 +99,10 @@ class SttMiddleware:
         timeout_s = getattr(hub._stt, "timeout_ms", 30000) / 1000.0
         if msg.audio is None:  # guaranteed by modality == "voice", guard for -O safety
             return _DROP
-        suffix = _MIME_TO_EXT.get(msg.audio.mime_type, ".ogg")
-
-        def _write_temp(data: bytes, ext: str) -> str:
-            fd, path = tempfile.mkstemp(suffix=ext)
-            try:
-                os.write(fd, data)
-            except BaseException:
-                os.close(fd)
-                Path(path).unlink(missing_ok=True)
-                raise
-            os.close(fd)
-            return path
-
-        tmp_path_str = await asyncio.to_thread(
-            _write_temp,
-            msg.audio.audio_bytes,
-            suffix,
-        )
-        tmp_path = Path(tmp_path_str)
 
         try:
             result = await asyncio.wait_for(
-                hub._stt.transcribe(tmp_path),
+                hub._stt.transcribe(msg.audio.audio_bytes, msg.audio.mime_type),
                 timeout=timeout_s,
             )
         except asyncio.TimeoutError:
@@ -157,8 +127,6 @@ class SttMiddleware:
             await self._dispatch_error(hub, msg, "stt_failed")
             _STT_STAGE_OUTCOMES["failed"] += 1
             return _DROP
-        finally:
-            tmp_path.unlink(missing_ok=True)
 
         # 5. Post-transcription guards (noise filtering is owned by the STT adapter).
         transcript = result.text.strip()

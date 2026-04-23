@@ -7,6 +7,7 @@ Provides helper functions for constructing LLM prompt text from user messages.
 
 from __future__ import annotations
 
+import asyncio
 import html
 import logging
 from pathlib import Path
@@ -78,10 +79,12 @@ async def _build_audio_text(
     Raises:
         STTError: If transcription fails
     """
-    from lyra.stt import is_whisper_noise
+    from lyra.stt import is_whisper_noise, mime_from_suffix
 
     try:
-        stt_result: TranscriptionResult = await stt.transcribe(tmp_path)
+        audio_bytes = await asyncio.to_thread(tmp_path.read_bytes)
+        mime = mime_from_suffix(tmp_path.suffix)
+        stt_result: TranscriptionResult = await stt.transcribe(audio_bytes, mime)
     except Exception as exc:
         raise STTError(str(exc)) from exc
     finally:

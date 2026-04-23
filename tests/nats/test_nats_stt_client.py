@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -12,6 +11,14 @@ import pytest
 from lyra.nats.nats_stt_client import NatsSttClient
 from lyra.nats.worker_registry import WorkerStats
 from lyra.stt import STTNoiseError, STTUnavailableError
+
+# Minimal WAV bytes fixture — just enough to be non-empty audio data
+WAV_BYTES = b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x00\x00"
+
+
+@pytest.fixture()
+def wav_bytes() -> bytes:
+    return WAV_BYTES
 
 
 @pytest.fixture()
@@ -112,66 +119,58 @@ def _seed_worker_with_age(client: NatsSttClient, worker_id: str, age_s: float) -
 
 class TestCircuitBreaker:
     @pytest.mark.asyncio
-    async def test_cb_open_blocks_call(self, tmp_path: Path) -> None:
+    async def test_cb_open_blocks_call(self, wav_bytes: bytes) -> None:
         # Arrange — circuit manually forced open
         mock_nc = AsyncMock()
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
         client._cb._open_until = time.monotonic() + 100.0
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"")
         # Act / Assert
         with pytest.raises(STTUnavailableError, match="circuit open"):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         mock_nc.request.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_failure_records_on_timeout(self, tmp_path: Path) -> None:
+    async def test_failure_records_on_timeout(self, wav_bytes: bytes) -> None:
         # Arrange
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(side_effect=TimeoutError())
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
         # Act
         with pytest.raises(STTUnavailableError):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         # Assert
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
-    async def test_failure_records_on_unreachable(self, tmp_path: Path) -> None:
+    async def test_failure_records_on_unreachable(self, wav_bytes: bytes) -> None:
         # Arrange
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(side_effect=Exception("NATS error"))
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
         # Act
         with pytest.raises(STTUnavailableError):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         # Assert
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
-    async def test_failure_records_on_max_payload(self, tmp_path: Path) -> None:
+    async def test_failure_records_on_max_payload(self, wav_bytes: bytes) -> None:
         # Arrange
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(side_effect=Exception("NATS: max_payload exceeded"))
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
         # Act
         with pytest.raises(STTUnavailableError, match="payload too large"):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         # Assert
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
-    async def test_success_clears_failures(self, tmp_path: Path) -> None:
+    async def test_success_clears_failures(self, wav_bytes: bytes) -> None:
         # Arrange — pre-inject 2 failures
         mock_nc = AsyncMock()
         success_payload = json.dumps(
@@ -192,10 +191,8 @@ class TestCircuitBreaker:
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
         client._cb._failures = 2
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
         # Act
-        result = await client.transcribe(wav_file)
+        result = await client.transcribe(wav_bytes, "audio/wav")
         # Assert
         assert result.text == "hello"
         assert client._cb._failures == 0
@@ -205,7 +202,9 @@ class TestContractVersion:
     """Tests for the `contract_version` additive field (ADR-044)."""
 
     @pytest.mark.asyncio
-    async def test_request_payload_emits_contract_version(self, tmp_path: Path) -> None:
+    async def test_request_payload_emits_contract_version(
+        self, wav_bytes: bytes
+    ) -> None:
         """NatsSttClient.transcribe() stamps contract_version='1' on the request."""
         mock_nc = AsyncMock()
         success_payload = json.dumps(
@@ -225,10 +224,8 @@ class TestContractVersion:
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
 
-        await client.transcribe(wav_file)
+        await client.transcribe(wav_bytes, "audio/wav")
 
         payload_bytes = mock_nc.request.call_args.args[1]
         request_dict = json.loads(payload_bytes)
@@ -236,7 +233,7 @@ class TestContractVersion:
 
     @pytest.mark.asyncio
     async def test_reply_with_unknown_contract_version_is_tolerated(
-        self, tmp_path: Path
+        self, wav_bytes: bytes
     ) -> None:
         """Hub ignores unknown contract_version values on reply (defensive read)."""
         mock_nc = AsyncMock()
@@ -258,10 +255,8 @@ class TestContractVersion:
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
 
-        result = await client.transcribe(wav_file)
+        result = await client.transcribe(wav_bytes, "audio/wav")
 
         assert result.text == "future"
         assert result.language == "en"
@@ -315,30 +310,26 @@ class TestSttClientFreshness:
     """Tests for freshness tracking gate in NatsSttClient."""
 
     @pytest.mark.asyncio
-    async def test_no_workers_ever_raises_unavailable(self, tmp_path: Path) -> None:
+    async def test_no_workers_ever_raises_unavailable(self, wav_bytes: bytes) -> None:
         """transcribe() raises STTUnavailableError when _worker_freshness is empty."""
         mock_nc = AsyncMock()
         client = NatsSttClient(nc=mock_nc)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
         with pytest.raises(STTUnavailableError, match="no live worker"):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         mock_nc.request.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_stale_worker_raises_unavailable(self, tmp_path: Path) -> None:
+    async def test_stale_worker_raises_unavailable(self, wav_bytes: bytes) -> None:
         """transcribe() raises STTUnavailableError when last heartbeat was >15s ago."""
         mock_nc = AsyncMock()
         client = NatsSttClient(nc=mock_nc)
         _seed_worker_with_age(client, "worker-1", 20.0)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
         with pytest.raises(STTUnavailableError, match="no live worker"):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         mock_nc.request.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_fresh_worker_proceeds_to_request(self, tmp_path: Path) -> None:
+    async def test_fresh_worker_proceeds_to_request(self, wav_bytes: bytes) -> None:
         """transcribe() proceeds past freshness gate when a worker is fresh (<15s)."""
         mock_nc = AsyncMock()
         success_payload = json.dumps(
@@ -358,26 +349,24 @@ class TestSttClientFreshness:
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
         _seed_worker_with_age(client, "worker-1", 5.0)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
-        result = await client.transcribe(wav_file)
+        result = await client.transcribe(wav_bytes, "audio/wav")
         assert result.text == "hello world"
         mock_nc.request.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_freshness_gate_before_circuit_breaker(self, tmp_path: Path) -> None:
+    async def test_freshness_gate_before_circuit_breaker(
+        self, wav_bytes: bytes
+    ) -> None:
         """STTUnavailableError from freshness gate does NOT trip circuit breaker."""
         mock_nc = AsyncMock()
         client = NatsSttClient(nc=mock_nc)
         # _worker_freshness is empty — freshness gate fires first
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
         with pytest.raises(STTUnavailableError, match="no live worker"):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         assert client._cb._failures == 0
 
     @pytest.mark.asyncio
-    async def test_heartbeat_resumes_reenables_worker(self, tmp_path: Path) -> None:
+    async def test_heartbeat_resumes_reenables_worker(self, wav_bytes: bytes) -> None:
         """After stale, a new heartbeat re-enables the worker immediately."""
         mock_nc = AsyncMock()
         success_payload = json.dumps(
@@ -398,13 +387,11 @@ class TestSttClientFreshness:
         client = NatsSttClient(nc=mock_nc)
         # First: stale
         _seed_worker_with_age(client, "worker-1", 20.0)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
         with pytest.raises(STTUnavailableError, match="no live worker"):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         # Simulate fresh heartbeat arrives
         _seed_worker_with_age(client, "worker-1", 0.0)
-        result = await client.transcribe(wav_file)
+        result = await client.transcribe(wav_bytes, "audio/wav")
         assert result.text == "resumed"
 
     # NOTE: registry-level aliveness / pruning semantics are covered by
@@ -420,7 +407,7 @@ class TestTranscribeResponseParsing:
     """
 
     @pytest.mark.asyncio
-    async def test_ok_false_raises_unavailable(self, tmp_path: Path) -> None:
+    async def test_ok_false_raises_unavailable(self, wav_bytes: bytes) -> None:
         # Arrange
         mock_nc = AsyncMock()
         error_payload = json.dumps(
@@ -437,16 +424,14 @@ class TestTranscribeResponseParsing:
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
         # Act / Assert
         with pytest.raises(STTUnavailableError, match="transcription failed"):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
     async def test_ok_false_with_error_field_forwards_message(
-        self, tmp_path: Path
+        self, wav_bytes: bytes
     ) -> None:
         """ok=False with a populated `error` field must surface the error string
         in the STTUnavailableError message (not the default "transcription failed")."""
@@ -466,15 +451,13 @@ class TestTranscribeResponseParsing:
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
 
         with pytest.raises(STTUnavailableError, match="cuda oom"):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         assert client._cb._failures == 1
 
     @pytest.mark.asyncio
-    async def test_noise_transcript_raises_noise_error(self, tmp_path: Path) -> None:
+    async def test_noise_transcript_raises_noise_error(self, wav_bytes: bytes) -> None:
         # Arrange — Whisper returns a known noise token
         mock_nc = AsyncMock()
         noise_payload = json.dumps(
@@ -494,11 +477,9 @@ class TestTranscribeResponseParsing:
         mock_nc.request = AsyncMock(return_value=fake_reply)
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
-        wav_file = tmp_path / "test.wav"
-        wav_file.write_bytes(b"\x00" * 64)
         # Act / Assert
         with pytest.raises(STTNoiseError):
-            await client.transcribe(wav_file)
+            await client.transcribe(wav_bytes, "audio/wav")
         # Noise is NOT a CB failure — record_success() runs before the noise check
         assert client._cb._failures == 0
 
@@ -526,32 +507,30 @@ class TestLoadAwareRouting:
 
     @pytest.mark.asyncio
     async def test_single_worker_targets_per_worker_subject(
-        self, tmp_path: Path
+        self, wav_bytes: bytes
     ) -> None:
         """With one worker alive, transcribe() targets ``<SUBJECT>.<worker_id>``."""
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(return_value=self._ok_reply())
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client, "stt-tower-01")
-        wav = tmp_path / "a.wav"
-        wav.write_bytes(b"\x00" * 16)
-        await client.transcribe(wav)
+        await client.transcribe(wav_bytes, "audio/wav")
         subject = mock_nc.request.call_args.args[0]
         assert subject == "lyra.voice.stt.request.stt-tower-01"
 
     @pytest.mark.asyncio
-    async def test_empty_registry_raises_without_request(self, tmp_path: Path) -> None:
+    async def test_empty_registry_raises_without_request(
+        self, wav_bytes: bytes
+    ) -> None:
         """Empty registry → immediate STTUnavailableError, no NATS request attempted."""
         mock_nc = AsyncMock()
         client = NatsSttClient(nc=mock_nc)
-        wav = tmp_path / "a.wav"
-        wav.write_bytes(b"\x00" * 16)
         with pytest.raises(STTUnavailableError, match="no live worker"):
-            await client.transcribe(wav)
+            await client.transcribe(wav_bytes, "audio/wav")
         mock_nc.request.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_picks_least_loaded_by_score(self, tmp_path: Path) -> None:
+    async def test_picks_least_loaded_by_score(self, wav_bytes: bytes) -> None:
         """Two workers: heavy VRAM one is skipped, light one receives the request."""
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(return_value=self._ok_reply())
@@ -562,14 +541,12 @@ class TestLoadAwareRouting:
         _inject_fresh_worker(
             client, "stt-light", vram_used_mb=2400, vram_total_mb=16384
         )
-        wav = tmp_path / "a.wav"
-        wav.write_bytes(b"\x00" * 16)
-        await client.transcribe(wav)
+        await client.transcribe(wav_bytes, "audio/wav")
         subject = mock_nc.request.call_args.args[0]
         assert subject == "lyra.voice.stt.request.stt-light"
 
     @pytest.mark.asyncio
-    async def test_active_requests_dominate_vram(self, tmp_path: Path) -> None:
+    async def test_active_requests_dominate_vram(self, wav_bytes: bytes) -> None:
         """A busy worker (active_requests>0) loses to an idle higher-VRAM worker."""
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(return_value=self._ok_reply())
@@ -588,14 +565,12 @@ class TestLoadAwareRouting:
             vram_total_mb=16384,
             active_requests=0,
         )
-        wav = tmp_path / "a.wav"
-        wav.write_bytes(b"\x00" * 16)
-        await client.transcribe(wav)
+        await client.transcribe(wav_bytes, "audio/wav")
         subject = mock_nc.request.call_args.args[0]
         assert subject == "lyra.voice.stt.request.stt-idle-but-fuller"
 
     @pytest.mark.asyncio
-    async def test_timeout_walks_to_second_worker(self, tmp_path: Path) -> None:
+    async def test_timeout_walks_to_second_worker(self, wav_bytes: bytes) -> None:
         """Per-worker timeout marks worker stale and walks to second worker."""
         mock_nc = AsyncMock()
         call_subjects: list[str] = []
@@ -611,9 +586,7 @@ class TestLoadAwareRouting:
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client, "stt-01")
         _inject_fresh_worker(client, "stt-02")
-        wav = tmp_path / "a.wav"
-        wav.write_bytes(b"\x00" * 16)
-        result = await client.transcribe(wav)
+        result = await client.transcribe(wav_bytes, "audio/wav")
         assert result.text == "hi"
         # First worker timed out, second succeeded
         assert call_subjects == [
@@ -627,17 +600,15 @@ class TestLoadAwareRouting:
 
     @pytest.mark.asyncio
     async def test_single_worker_timeout_raises_and_records_failure(
-        self, tmp_path: Path
+        self, wav_bytes: bytes
     ) -> None:
         """Single worker timeout -> all workers unresponsive + record failure once."""
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(side_effect=TimeoutError())
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client, "stt-01")
-        wav = tmp_path / "a.wav"
-        wav.write_bytes(b"\x00" * 16)
         with pytest.raises(STTUnavailableError, match="all workers unresponsive"):
-            await client.transcribe(wav)
+            await client.transcribe(wav_bytes, "audio/wav")
         # Only 1 request (per-worker), no queue-group fallback
         assert mock_nc.request.await_count == 1
         assert client._cb._failures == 1
@@ -647,15 +618,12 @@ class TestMalformedReply:
     """Pydantic ValidationError on reply MUST surface as STTUnavailableError."""
 
     @pytest.mark.asyncio
-    async def test_malformed_reply_raises_domain_error(self, tmp_path: Path) -> None:
+    async def test_malformed_reply_raises_domain_error(self, wav_bytes: bytes) -> None:
         """ok=True without duration_seconds → SttResponse invariant fails →
         client must translate into STTUnavailableError and record a
         circuit-breaker failure (receive-path anti-drift guard).
         """
         # Arrange
-        audio = tmp_path / "sample.wav"
-        audio.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
-
         mock_nc = AsyncMock()
         # Reply is ok=True but missing duration_seconds — violates
         # SttResponse._enforce_success_invariant (see contracts spec #763
@@ -682,7 +650,7 @@ class TestMalformedReply:
 
         # Act / Assert
         with pytest.raises(STTUnavailableError, match="schema") as exc_info:
-            await client.transcribe(audio)
+            await client.transcribe(wav_bytes, "audio/wav")
 
         # Pin the cause chain to the _parse_reply error-boundary so a future
         # regression where ok=False handling accidentally produces a
@@ -693,13 +661,10 @@ class TestMalformedReply:
         assert client._cb._failures == initial_failures + 1
 
     @pytest.mark.asyncio
-    async def test_malformed_json_raises_domain_error(self, tmp_path: Path) -> None:
+    async def test_malformed_json_raises_domain_error(self, wav_bytes: bytes) -> None:
         """Malformed JSON bytes (not just invariant violations) must also
         surface as STTUnavailableError + CB failure — `_parse_reply` catches
         every pydantic.ValidationError, including JSON-parse errors."""
-        audio = tmp_path / "sample.wav"
-        audio.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
-
         mock_nc = AsyncMock()
         fake_reply = MagicMock()
         fake_reply.data = b"not json {"
@@ -710,7 +675,7 @@ class TestMalformedReply:
         initial_failures = client._cb._failures
 
         with pytest.raises(STTUnavailableError, match="schema") as exc_info:
-            await client.transcribe(audio)
+            await client.transcribe(wav_bytes, "audio/wav")
 
         from pydantic import ValidationError
 

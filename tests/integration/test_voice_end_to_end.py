@@ -91,7 +91,7 @@ class _FakeSTT:
     def __init__(self, transcript: str = _FIXED_TRANSCRIPT) -> None:
         self._transcript = transcript
 
-    async def transcribe(self, path: Any) -> _FakeTranscription:
+    async def transcribe(self, audio: Any, mime: Any) -> _FakeTranscription:
         return _FakeTranscription(text=self._transcript, language="en")
 
 
@@ -251,7 +251,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
         class _TimeoutSTT:
             timeout_ms: int = 30000
 
-            async def transcribe(self, path: Any) -> None:
+            async def transcribe(self, audio: Any, mime: Any) -> None:
                 raise asyncio.TimeoutError
 
         hub = _make_hub_mock(stt=_TimeoutSTT())

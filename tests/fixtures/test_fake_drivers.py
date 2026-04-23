@@ -1,7 +1,5 @@
 """Tests for fake TTS/STT/LLM drivers."""
 
-from pathlib import Path
-
 import pytest
 from tests.fixtures.fake_drivers import (
     FakeClaudeCliDriver,
@@ -107,7 +105,7 @@ class TestFakeStt:
         """Should return configured preset transcript."""
         stt = FakeStt(preset_transcript="Custom transcript")
 
-        result = await stt.transcribe("/fake/audio.wav")
+        result = await stt.transcribe(b"fake audio", "audio/wav")
 
         assert isinstance(result, TranscriptionResult)
         assert result.text == "Custom transcript"
@@ -115,41 +113,32 @@ class TestFakeStt:
 
     @pytest.mark.asyncio
     async def test_fake_stt_records_call(self) -> None:
-        """Should record the path from transcribe call."""
+        """Should record audio and mime from transcribe call."""
         stt = FakeStt()
 
-        await stt.transcribe("/path/to/audio.wav")
+        await stt.transcribe(b"audio data", "audio/wav")
 
         assert stt.called is True
-        assert stt.last_path == "/path/to/audio.wav"
+        assert stt.last_audio == b"audio data"
+        assert stt.last_mime == "audio/wav"
 
     @pytest.mark.asyncio
     async def test_fake_stt_records_audio_bytes(self) -> None:
-        """Should record audio bytes from file path."""
-        import tempfile
-
+        """Should record audio bytes passed directly."""
         stt = FakeStt()
 
-        # Create a temp file with fake audio bytes
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            f.write(b"fake audio data here")
-            temp_path = f.name
+        await stt.transcribe(b"fake audio data here", "audio/wav")
 
-        try:
-            await stt.transcribe(temp_path)
-
-            assert stt.last_audio == b"fake audio data here"
-        finally:
-            Path(temp_path).unlink(missing_ok=True)
+        assert stt.last_audio == b"fake audio data here"
 
     @pytest.mark.asyncio
-    async def test_fake_stt_handles_missing_file(self) -> None:
-        """Should handle missing file gracefully (empty bytes)."""
+    async def test_fake_stt_records_mime(self) -> None:
+        """Should record the mime type passed to transcribe."""
         stt = FakeStt()
 
-        await stt.transcribe("/nonexistent/audio.wav")
+        await stt.transcribe(b"\x00" * 16, "audio/ogg")
 
-        assert stt.last_audio == b""  # Graceful fallback
+        assert stt.last_mime == "audio/ogg"
 
     @pytest.mark.asyncio
     async def test_fake_stt_raises_when_configured(self) -> None:
@@ -157,19 +146,19 @@ class TestFakeStt:
         stt = FakeStt(raise_on_transcribe=RuntimeError("STT unavailable"))
 
         with pytest.raises(RuntimeError, match="STT unavailable"):
-            await stt.transcribe("/fake/audio.wav")
+            await stt.transcribe(b"fake audio", "audio/wav")
 
         assert stt.called is True  # Call was recorded before raise
 
     @pytest.mark.asyncio
-    async def test_fake_stt_accepts_path_object(self) -> None:
-        """Should accept Path object as argument."""
-        stt = FakeStt(preset_transcript="Path test")
+    async def test_fake_stt_accepts_various_mime_types(self) -> None:
+        """Should accept any mime type string."""
+        stt = FakeStt(preset_transcript="mime test")
 
-        result = await stt.transcribe(Path("/some/audio.wav"))
+        result = await stt.transcribe(b"ogg data", "audio/ogg")
 
-        assert result.text == "Path test"
-        assert stt.last_path == Path("/some/audio.wav")
+        assert result.text == "mime test"
+        assert stt.last_mime == "audio/ogg"
 
 
 class TestFakeClaudeCliDriver:

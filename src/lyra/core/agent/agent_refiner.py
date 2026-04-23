@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import shutil
+import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -15,6 +17,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "AgentRefiner",
+    "CliLlmProvider",
     "LlmProvider",
     "REFINABLE_FIELDS",
     "RefinementCancelled",
@@ -117,6 +120,30 @@ class LlmProvider(Protocol):
     def chat(self, system: str, messages: list[dict[str, Any]]) -> str:
         """Single LLM call returning assistant response text."""
         ...
+
+
+class CliLlmProvider:
+    """LlmProvider backed by the Claude CLI (`claude --print`)."""
+
+    def chat(self, system: str, messages: list[dict[str, Any]]) -> str:
+        """Shell out to `claude --print` and return stdout."""
+        parts = [system] if system else []
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            parts.append(f"{role}: {content}" if role else content)
+        prompt = "\n\n".join(parts)
+
+        result = subprocess.run(
+            ["claude", "--print", prompt],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"claude CLI exited {result.returncode}: {result.stderr.strip()}"
+            )
+        return result.stdout.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -253,9 +280,10 @@ class AgentRefiner:
     # ------------------------------------------------------------------
 
     def _resolve_driver(self) -> LlmProvider:
-        """Refiner requires an explicit driver — no auto-resolve after SDK removal."""
+        """Auto-resolve to CLI-backed provider if claude is on $PATH."""
+        if shutil.which("claude"):
+            return CliLlmProvider()
         raise RuntimeError(
-            "No LLM provider configured for agent refiner. "
-            "Pass driver= to AgentRefiner() — the SDK-based auto-resolver was "
-            "removed in #666."
+            "lyra agent refine requires the 'claude' CLI to be installed and "
+            "authenticated. Run 'claude' once to log in, then retry."
         )

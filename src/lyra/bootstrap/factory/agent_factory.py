@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from lyra.bootstrap.factory.bot_agent_map import resolve_bot_agent_map  # noqa: F401
 from lyra.bootstrap.factory.config import LlmConfig
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.agent.agent_config import SmartRoutingConfig
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.messaging.messages import MessageManager
@@ -81,7 +80,6 @@ def _build_shared_base_providers(
 
 def _build_per_agent_registry(
     shared_providers: dict[str, LlmProvider],
-    smart_routing_config: SmartRoutingConfig | None = None,
 ) -> tuple[ProviderRegistry, SmartRoutingDecorator | None]:
     """Build a per-agent ProviderRegistry on top of shared driver instances.
 
@@ -102,7 +100,6 @@ def _build_per_agent_registry(
 def _build_provider_registry(
     circuit_registry: CircuitRegistry,
     cli_pool: CliPool | None,
-    smart_routing_config: SmartRoutingConfig | None = None,
     llm_cfg: LlmConfig | None = None,  # None → LlmConfig() (defaults)
 ) -> tuple[ProviderRegistry, SmartRoutingDecorator | None]:
     """Build and return a ProviderRegistry with all configured drivers.
@@ -118,7 +115,7 @@ def _build_provider_registry(
     shared = _build_shared_base_providers(
         circuit_registry, cli_pool, llm_cfg or LlmConfig()
     )
-    return _build_per_agent_registry(shared, smart_routing_config)
+    return _build_per_agent_registry(shared)
 
 
 def _create_agent(  # noqa: PLR0913 — factory with optional overrides for each agent dependency
@@ -211,11 +208,10 @@ def _resolve_agents(  # noqa: PLR0913
             agent_config.llm_config.model,
             agent_config.llm_config.backend,
         )
-        # Layer per-agent decorators (SmartRoutingDecorator) on top of the
-        # shared base so each agent's routing config is applied independently.
-        sr_config = agent_config.smart_routing
+        # Layer per-agent decorators on top of the shared base so each agent's
+        # routing config is applied independently.
         per_agent_registry, per_agent_routing = _build_per_agent_registry(
-            shared_providers, smart_routing_config=sr_config
+            shared_providers
         )
         agent = _create_agent(
             agent_config,

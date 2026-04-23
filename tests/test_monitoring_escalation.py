@@ -105,25 +105,14 @@ class TestEscalateToLLM:
         assert result.severity == "critical"
         assert result.diagnosis == "Service crashed"
 
-    async def test_raises_on_api_error(
+    async def test_raises_when_cli_not_installed(
         self, config: MonitoringConfig, failed_report: HealthReport
     ) -> None:
-        """SC-9: escalate_to_llm raises on Anthropic API failure."""
-        import httpx
-
+        """SC-9: escalate_to_llm raises RuntimeError when the claude CLI is missing."""
         from lyra.monitoring.escalation import escalate_to_llm
 
-        with (
-            patch("lyra.monitoring.escalation.shutil.which", return_value=None),
-            patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls,
-        ):
-            mock_client = AsyncMock()
-            mock_client.post.side_effect = httpx.ConnectError("API unreachable")
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
-
-            with pytest.raises(Exception):
+        with patch("lyra.monitoring.escalation.shutil.which", return_value=None):
+            with pytest.raises(RuntimeError, match="claude CLI not installed"):
                 await escalate_to_llm(failed_report, config)
 
 

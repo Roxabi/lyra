@@ -136,9 +136,6 @@ def make_circuit_registry(**overrides) -> CircuitRegistry:
         "claude-cli": CircuitBreaker(
             "claude-cli", failure_threshold=3, recovery_timeout=60
         ),
-        "anthropic": CircuitBreaker(
-            "anthropic", failure_threshold=3, recovery_timeout=60
-        ),
         "telegram": CircuitBreaker(
             "telegram", failure_threshold=5, recovery_timeout=30
         ),

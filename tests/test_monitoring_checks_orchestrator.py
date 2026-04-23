@@ -50,7 +50,7 @@ class TestRunChecks:
             "last_message_age_s": 30.0,
             "uptime_s": 3600.0,
             "circuits": {
-                "anthropic": {"state": "closed"},
+                "claude-cli": {"state": "closed"},
                 "telegram": {"state": "closed"},
                 "discord": {"state": "closed"},
                 "hub": {"state": "closed"},

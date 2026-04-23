@@ -142,7 +142,7 @@ def _validate_config_path(path_str: str) -> str:
 
 
 _CB_DEFAULTS: dict[str, int] = {"failure_threshold": 5, "recovery_timeout": 60}
-_CB_SERVICES = ("anthropic", "claude-cli", "telegram", "discord", "hub")
+_CB_SERVICES = ("claude-cli", "telegram", "discord", "hub")
 _ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")
 
 

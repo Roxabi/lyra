@@ -308,5 +308,5 @@ class Pool:
             session_start=self.session_start,
             session_end=datetime.now(UTC),
             message_count=self.message_count,
-            source_turns=0,
+            source_turns=self.message_count,
         )

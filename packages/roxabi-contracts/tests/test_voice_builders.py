@@ -122,6 +122,23 @@ class TestBuildTtsResponse:
         assert data["mime_type"] is None
         assert data["duration_ms"] is None
 
+    def test_build_tts_response_success_with_waveform(self) -> None:
+        """ok=True with waveform_b64 passes through optional field."""
+        payload = {"request_id": "tts-req-wave"}
+
+        json_str = build_tts_response(
+            payload,
+            ok=True,
+            audio_b64=_b64(silence_wav_16khz),
+            mime_type="audio/wav",
+            duration_ms=1500,
+            waveform_b64="base64encodedwaveform",
+        )
+
+        data = json.loads(json_str)
+        assert data["ok"] is True
+        assert data["waveform_b64"] == "base64encodedwaveform"
+
 
 class TestTraceIdFallback:
     """Tests for trace_id fallback behavior."""

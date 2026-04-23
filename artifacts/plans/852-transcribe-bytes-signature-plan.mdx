@@ -2,7 +2,7 @@
 title: "Plan: refactor(nats): transcribe() takes bytes not Path"
 issue: 852
 spec: artifacts/specs/852-transcribe-bytes-signature-spec.mdx
-complexity: 3/10
+complexity: 2/10
 tier: F-lite
 generated: 2026-04-23
 ---
@@ -20,7 +20,6 @@ flowchart TD
     subgraph Caller_Layer
         MW[middleware_stt.py<br/>msg.audio.audio_bytes + mime_type]
         SAP[simple_agent_prompts.py<br/>reads bytes from tmp_path]
-        AA[anthropic_agent.py<br/>reads bytes from tmp_path]
     end
 
     subgraph SDK
@@ -34,7 +33,6 @@ flowchart TD
 
     MW --> NSC
     SAP --> NSC
-    AA --> NSC
     NSC --> SR --> NATS
 ```
 
@@ -57,10 +55,6 @@ flowchart LR
         BAT[_build_audio_text] -->|bytes, mime| T
         BAT --> M
     end
-    subgraph agents/anthropic_agent.py
-        PL[_process_llm] -->|bytes, mime| T
-        PL --> M
-    end
     T --> W
     P -.structural.-> T
 ```
@@ -68,15 +62,15 @@ flowchart LR
 ## Scope Notes
 
 - Spec mentioned `voice_overlay.py`; grep confirms it does not call `transcribe()`. Out of scope.
-- `anthropic_agent.py` is scheduled for removal on another worktree (#666). Apply minimal 3-line adaptation here to keep CI green; full drop handled elsewhere.
+- `anthropic_agent.py` has been removed (#666 landed) — no adaptation needed.
 - `_mime_from_suffix` helper is **relocated** from `nats_stt_client.py` to `lyra.stt` (public util) rather than deleted outright — agents still receive paths from attachments and need mime derivation. This preserves SC2 intent (no Path surface in client) without duplicating a 7-entry dict across 2 callers. Minor deviation from strict spec wording; approved.
 
 ## Agents
 
 | Agent | Task count | Files |
 |---|---|---|
-| backend-dev | 6 | `src/lyra/nats/nats_stt_client.py`, `src/lyra/stt/__init__.py`, `src/lyra/core/hub/middleware/middleware_stt.py`, `src/lyra/agents/simple_agent_prompts.py`, `src/lyra/agents/anthropic_agent.py` |
-| tester | 3 | `tests/nats/test_nats_stt_client.py`, `tests/integration/test_voice_end_to_end.py`, `tests/core/conftest.py`, `tests/core/hub/test_message_pipeline_stt.py`, `tests/agents/test_anthropic_agent.py` |
+| backend-dev | 5 | `src/lyra/nats/nats_stt_client.py`, `src/lyra/stt/__init__.py`, `src/lyra/core/hub/middleware/middleware_stt.py`, `src/lyra/agents/simple_agent_prompts.py` |
+| tester | 2 | `tests/nats/test_nats_stt_client.py`, `tests/integration/test_voice_end_to_end.py`, `tests/core/conftest.py`, `tests/core/hub/test_message_pipeline_stt.py` |
 
 F-lite → single worktree, sequential slices.
 
@@ -144,27 +138,19 @@ F-lite → single worktree, sequential slices.
 - Spec trace: SC5
 - Dependencies: T4
 
-**T8 [GREEN] · backend-dev · difficulty 1**
-- Files: `src/lyra/agents/anthropic_agent.py`
-- Line 154: replace `await self._stt.transcribe(tmp_path)` with 3-line adaptation: read bytes + mime, call `transcribe(bytes, mime)`. Mechanical only — no logic change. File is scheduled for removal in #666.
-- Verify: `uv run pyright src/lyra/agents/anthropic_agent.py`
-- Expected: clean
-- Spec trace: SC5
-- Dependencies: T4
-
-**T9 [GREEN] · tester · difficulty 2**
-- Files: `tests/integration/test_voice_end_to_end.py` (2 fakes), `tests/core/conftest.py` (1 fake), `tests/core/hub/test_message_pipeline_stt.py` (3 fakes), `tests/agents/test_anthropic_agent.py` (mock sites if any call `.transcribe`).
-- Update all fake `async def transcribe(self, path: Any)` signatures to `(self, audio: Any, mime: Any)`. Update any direct `.transcribe(...)` invocations in tests to pass bytes + mime.
-- Verify: `uv run pytest tests/integration tests/core/hub tests/agents -x`
+**T8 [GREEN] · tester · difficulty 2**
+- Files: `tests/integration/test_voice_end_to_end.py` (2 fakes, lines 94, 254), `tests/core/conftest.py` (1 fake, line 759), `tests/core/hub/test_message_pipeline_stt.py` (3 fakes, lines 48/60/70).
+- Update all fake `async def transcribe(self, path: Any)` signatures to `(self, audio: Any, mime: Any)`. Update any direct `.transcribe(...)` invocations to pass bytes + mime.
+- Verify: `uv run pytest tests/integration tests/core/hub -x`
 - Expected: all green
 - Spec trace: SC6
-- Dependencies: T6, T7, T8
+- Dependencies: T6, T7
 
-**T10 [RED-GATE] · tester · difficulty 1**
+**T9 [RED-GATE] · tester · difficulty 1**
 - Verify: `uv run pytest && uv run pyright`
 - Expected: all green — Slice 2 + overall gate
 - Spec trace: SC6, SC7
-- Dependencies: T6, T7, T8, T9
+- Dependencies: T6, T7, T8
 
 ## Task IDs
 

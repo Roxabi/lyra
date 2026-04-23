@@ -18,8 +18,8 @@ from .models import CheckResult, HealthReport
 def check_process(service_name: str) -> CheckResult:
     """Check if a supervisor-managed process is running.
 
-    Uses supervisorctl via deploy/supervisor. Falls back to systemctl if
-    supervisorctl is not available.
+    Uses machine-level supervisorctl at ~/projects/scripts/. Falls back to
+    systemctl if supervisorctl is not available.
     """
     now = datetime.now(timezone.utc)
     override = os.environ.get("LYRA_SUPERVISORCTL_PATH")
@@ -29,9 +29,7 @@ def check_process(service_name: str) -> CheckResult:
         sctl = (
             Path.home()
             / "projects"
-            / "lyra"
-            / "deploy"
-            / "supervisor"
+            / "scripts"
             / "supervisorctl.sh"
         )
 

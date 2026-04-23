@@ -12,7 +12,7 @@ source "$HOME/.local/bin/env" 2>/dev/null || true  # uv
 
 LYRA_DIR="$HOME/projects/lyra"
 VOICE_DIR="$HOME/projects/voiceCLI"
-SCTL="$HOME/projects/lyra/deploy/supervisor/supervisorctl.sh"
+SCTL="$HOME/projects/scripts/supervisorctl.sh"
 LOG_FILE="$HOME/.local/state/lyra/logs/deploy.log"
 FAIL_FILE="$HOME/.local/state/lyra/deploy_failed_shas.txt"
 
@@ -97,7 +97,7 @@ if [ "$LYRA_UPDATED" = false ] && [ "$VOICE_UPDATED" = false ]; then
     exit 0
 fi
 
-if [ -f "$HOME/projects/lyra/deploy/supervisor/supervisord.pid" ] && kill -0 "$(cat "$HOME/projects/lyra/deploy/supervisor/supervisord.pid")" 2>/dev/null; then
+if [ -f "$HOME/projects/supervisord.pid" ] && kill -0 "$(cat "$HOME/projects/supervisord.pid")" 2>/dev/null; then
     if [ "$LYRA_UPDATED" = true ]; then
         log "Restarting Lyra (hub first, then adapters)..."
         "$SCTL" restart lyra-hub 2>&1 | tee -a "$LOG_FILE"
@@ -138,7 +138,7 @@ if [ -f "$HOME/projects/lyra/deploy/supervisor/supervisord.pid" ] && kill -0 "$(
     fi
 else
     log "Starting supervisor (not running)..."
-    "$HOME/projects/lyra/deploy/supervisor/start.sh" 2>&1 | tee -a "$LOG_FILE"
+    "$HOME/projects/scripts/start.sh" --all 2>&1 | tee -a "$LOG_FILE"
 fi
 
 # ── Verify services reached RUNNING ──────────────────────────────────────────

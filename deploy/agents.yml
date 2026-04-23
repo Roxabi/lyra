@@ -1,5 +1,5 @@
 # agents.yml — Declarative agent registry for supervisord conf.d generation
-# Run: make gen-conf  →  generates deploy/supervisor/conf.d/*.conf
+# Run: make gen-conf  →  generates deploy/conf.d/*.conf
 
 schema_version: "1.0"
 

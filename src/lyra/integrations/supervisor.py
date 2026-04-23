@@ -1,10 +1,10 @@
 """SupervisorctlManager — ServiceManager backed by supervisorctl.sh (issue #362).
 
-Wraps the supervisorctl.sh script behind the ServiceManager protocol.
-Path resolution and timeout are encapsulated here.
+Wraps the machine-level ~/projects/scripts/supervisorctl.sh behind the
+ServiceManager protocol. Path resolution and timeout are encapsulated here.
 
 Override script path with LYRA_SUPERVISORCTL_PATH env var.
-Default: ~/projects/lyra/deploy/supervisor/supervisorctl.sh
+Default: ~/projects/scripts/supervisorctl.sh
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from lyra.integrations.base import ServiceControlFailed
 log = logging.getLogger(__name__)
 
 _DEFAULT_SUPERVISORCTL = (
-    Path.home() / "projects" / "lyra" / "deploy" / "supervisor" / "supervisorctl.sh"
+    Path.home() / "projects" / "scripts" / "supervisorctl.sh"
 )
 
 _TRUSTED_BASE = Path.home() / "projects"

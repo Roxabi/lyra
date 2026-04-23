@@ -6,7 +6,7 @@ Usage:
     uv run deploy/gen-supervisor-conf.py [--dry-run] [--output DIR]
 
 Reads deploy/agents.yml and generates supervisor program configs.
-Default output: deploy/supervisor/conf.d/
+Default output: deploy/conf.d/
 """
 
 from __future__ import annotations
@@ -124,8 +124,8 @@ DEFAULTS: dict[str, Any] = {
 }
 
 # Run script mapping: hub → run_hub.sh, others → run_adapter.sh <name>
-RUN_HUB = "{home}/projects/lyra/deploy/supervisor/scripts/run_hub.sh"
-RUN_ADAPTER = "{home}/projects/lyra/deploy/supervisor/scripts/run_adapter.sh"
+RUN_HUB = "{home}/projects/lyra/deploy/scripts/run_hub.sh"
+RUN_ADAPTER = "{home}/projects/lyra/deploy/scripts/run_adapter.sh"
 
 
 def resolve_path(template: str, ctx: dict[str, str], program: str) -> str:
@@ -275,7 +275,7 @@ def main() -> int:
         "--output",
         "-o",
         type=Path,
-        help="Output directory (default: deploy/supervisor/conf.d)",
+        help="Output directory (default: deploy/conf.d)",
     )
     parser.add_argument(
         "--agents-file",
@@ -298,7 +298,7 @@ def main() -> int:
         data = yaml.safe_load(f)
 
     # Determine output directory
-    output_dir = args.output or script_dir / "supervisor" / "conf.d"
+    output_dir = args.output or script_dir / "conf.d"
     if not args.dry_run:
         output_dir.mkdir(parents=True, exist_ok=True)
 

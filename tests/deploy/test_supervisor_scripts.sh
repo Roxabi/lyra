@@ -6,8 +6,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-HUB_SCRIPT="deploy/supervisor/scripts/run_hub.sh"
-ADAPTER_SCRIPT="deploy/supervisor/scripts/run_adapter.sh"
+HUB_SCRIPT="deploy/scripts/run_hub.sh"
+ADAPTER_SCRIPT="deploy/scripts/run_adapter.sh"
 BAD_SEED="/nonexistent/definitely-not-there/seed"
 
 SCRATCH=$(mktemp -d)

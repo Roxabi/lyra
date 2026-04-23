@@ -1,21 +1,21 @@
-"""Response builder helpers for NATS workers.
+"""Response builders for voice-domain NATS contracts.
 
-Provides fail-safe construction of SttResponse and TtsResponse with
-auto-populated envelope fields (contract_version, trace_id, issued_at).
+Convenient factory functions that handle common envelope fields
+(contract_version, trace_id, issued_at) and return JSON-serialized
+response models.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice.models import SttResponse, TtsResponse
 
-__all__ = ["build_stt_response", "build_tts_response"]
 
-
-def build_stt_response(  # noqa: PLR0913
-    payload: dict,
+def build_stt_response(  # noqa: PLR0913 — builder with optional success/error fields
+    payload: dict[str, Any],
     *,
     ok: bool,
     text: str | None = None,
@@ -23,30 +23,31 @@ def build_stt_response(  # noqa: PLR0913
     duration_seconds: float | None = None,
     error: str | None = None,
 ) -> str:
-    """Build a valid SttResponse JSON string with auto-populated envelope fields.
+    """Build an SttResponse JSON string from a request payload.
 
     Args:
-        payload: Request payload dict (must contain 'request_id')
-        ok: Success flag
-        text: Transcribed text (required when ok=True)
-        language: Detected language (required when ok=True)
-        duration_seconds: Audio duration (required when ok=True)
-        error: Error message (set when ok=False)
+        payload: The request payload dict. Must contain 'request_id'.
+            'trace_id' is optional; falls back to request_id.
+        ok: Success flag. When True, text, language, and duration_seconds
+            are required (validated by SttResponse model).
+        text: Transcribed text (required when ok=True).
+        language: Detected language code (required when ok=True).
+        duration_seconds: Audio duration in seconds (required when ok=True).
+        error: Error message (required when ok=False).
 
     Returns:
-        JSON string of SttResponse
+        JSON string of the SttResponse model.
 
     Raises:
-        KeyError: If 'request_id' is missing from payload
+        KeyError: If 'request_id' is missing from payload.
     """
     request_id = payload["request_id"]
     trace_id = payload.get("trace_id") or request_id
-    issued_at = datetime.now(timezone.utc)
 
     response = SttResponse(
         contract_version=CONTRACT_VERSION,
         trace_id=trace_id,
-        issued_at=issued_at,
+        issued_at=datetime.now(timezone.utc),
         ok=ok,
         request_id=request_id,
         text=text,
@@ -57,8 +58,8 @@ def build_stt_response(  # noqa: PLR0913
     return response.model_dump_json()
 
 
-def build_tts_response(  # noqa: PLR0913
-    payload: dict,
+def build_tts_response(  # noqa: PLR0913 — builder with optional success/error fields
+    payload: dict[str, Any],
     *,
     ok: bool,
     audio_b64: str | None = None,
@@ -67,31 +68,32 @@ def build_tts_response(  # noqa: PLR0913
     error: str | None = None,
     waveform_b64: str | None = None,
 ) -> str:
-    """Build a valid TtsResponse JSON string with auto-populated envelope fields.
+    """Build a TtsResponse JSON string from a request payload.
 
     Args:
-        payload: Request payload dict (must contain 'request_id')
-        ok: Success flag
-        audio_b64: Base64-encoded audio (required when ok=True)
-        mime_type: Audio MIME type (required when ok=True)
-        duration_ms: Audio duration in ms (required when ok=True)
-        error: Error message (set when ok=False)
-        waveform_b64: Optional waveform visualization
+        payload: The request payload dict. Must contain 'request_id'.
+            'trace_id' is optional; falls back to request_id.
+        ok: Success flag. When True, audio_b64, mime_type, and duration_ms
+            are required (validated by TtsResponse model).
+        audio_b64: Base64-encoded audio data (required when ok=True).
+        mime_type: Audio MIME type (required when ok=True).
+        duration_ms: Audio duration in milliseconds (required when ok=True).
+        error: Error message (required when ok=False).
+        waveform_b64: Optional base64-encoded waveform visualization.
 
     Returns:
-        JSON string of TtsResponse
+        JSON string of the TtsResponse model.
 
     Raises:
-        KeyError: If 'request_id' is missing from payload
+        KeyError: If 'request_id' is missing from payload.
     """
     request_id = payload["request_id"]
     trace_id = payload.get("trace_id") or request_id
-    issued_at = datetime.now(timezone.utc)
 
     response = TtsResponse(
         contract_version=CONTRACT_VERSION,
         trace_id=trace_id,
-        issued_at=issued_at,
+        issued_at=datetime.now(timezone.utc),
         ok=ok,
         request_id=request_id,
         audio_b64=audio_b64,

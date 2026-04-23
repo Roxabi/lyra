@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -20,12 +19,13 @@ __all__ = [
     "STTConfig",
     "load_stt_config",
     "is_whisper_noise",
+    "mime_from_suffix",
 ]
 
 
 @runtime_checkable
 class STTProtocol(Protocol):
-    async def transcribe(self, path: Path | str) -> "TranscriptionResult": ...
+    async def transcribe(self, audio: bytes, mime: str) -> "TranscriptionResult": ...
 
 
 class STTUnavailableError(Exception):
@@ -66,3 +66,21 @@ def is_whisper_noise(text: str) -> bool:
     """Return True if the text is empty or a known Whisper noise token."""
     stripped = text.strip().lower()
     return not stripped or stripped in WHISPER_NOISE_TOKENS
+
+
+def mime_from_suffix(suffix: str) -> str:
+    """Map a file extension (with leading dot) to its audio MIME type.
+
+    Relocated from lyra.nats.nats_stt_client — callers that receive audio as
+    a file path (e.g. attachment handlers) use this to derive the MIME type
+    before calling STTProtocol.transcribe(audio, mime).
+    """
+    return {
+        ".ogg": "audio/ogg",
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".m4a": "audio/mp4",
+        ".webm": "audio/webm",
+        ".flac": "audio/flac",
+        ".opus": "audio/ogg",
+    }.get(suffix.lower(), "audio/ogg")

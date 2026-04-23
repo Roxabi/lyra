@@ -45,7 +45,7 @@ class FakeSTT:
         self._text = text
         self.timeout_ms = timeout_ms
 
-    async def transcribe(self, path: Any) -> FakeTranscription:
+    async def transcribe(self, audio: Any, mime: Any) -> FakeTranscription:
         return FakeTranscription(text=self._text)
 
 
@@ -57,7 +57,7 @@ class SlowSTT:
     def __init__(self, shutdown_event: asyncio.Event | None = None) -> None:
         self._shutdown = shutdown_event if shutdown_event else asyncio.Event()
 
-    async def transcribe(self, path: Any) -> FakeTranscription:
+    async def transcribe(self, audio: Any, mime: Any) -> FakeTranscription:
         await self._shutdown.wait()  # explicit: never completes in test
         return FakeTranscription(text="never")
 
@@ -67,7 +67,7 @@ class NoisySTT:
 
     timeout_ms: int = 30000
 
-    async def transcribe(self, path: Any) -> FakeTranscription:
+    async def transcribe(self, audio: Any, mime: Any) -> FakeTranscription:
         from lyra.stt import STTNoiseError
 
         raise STTNoiseError("Noise transcript: ''")
@@ -78,7 +78,7 @@ class UnavailableSTT:
 
     timeout_ms: int = 30000
 
-    async def transcribe(self, path: Any) -> FakeTranscription:
+    async def transcribe(self, audio: Any, mime: Any) -> FakeTranscription:
         from lyra.stt import STTUnavailableError
 
         raise STTUnavailableError("model not loaded")
@@ -89,7 +89,7 @@ class ExplodingSTT:
 
     timeout_ms: int = 30000
 
-    async def transcribe(self, path: Any) -> FakeTranscription:
+    async def transcribe(self, audio: Any, mime: Any) -> FakeTranscription:
         raise RuntimeError("GPU exploded")
 
 

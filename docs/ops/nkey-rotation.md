@@ -10,22 +10,23 @@ Rotation replaces the seed file (private key material) for one or more identitie
 
 ---
 
-## Identity → Supervisor Program Map
+## Identity → Systemd Unit Map
 
-| Identity (seed file) | Supervisor program | Log path |
+> Production runs Podman Quadlet units (as of #611). The restart commands in Step 5 use
+> `systemctl --user` accordingly.
+
+| Identity (seed file) | Systemd unit | Log command |
 |---|---|---|
-| `hub.seed` | `lyra-hub` | `~/.local/state/lyra/logs/lyra-hub.log` |
-| `telegram-adapter.seed` | `lyra-telegram` | `~/.local/state/lyra/logs/lyra-telegram.log` |
-| `discord-adapter.seed` | `lyra-discord` | `~/.local/state/lyra/logs/lyra-discord.log` |
-| `tts-adapter.seed` | `lyra_tts` | `~/.local/state/lyra/logs/lyra_tts.log` |
-| `stt-adapter.seed` | `lyra_stt` | `~/.local/state/lyra/logs/lyra_stt.log` |
-| `voice-tts.seed` | `voicecli_tts` | `~/.local/state/voicecli/logs/voicecli_tts.log` |
-| `voice-stt.seed` | `voicecli_stt` | `~/.local/state/voicecli/logs/voicecli_stt.log` |
-| `llm-worker.seed` | _(no supervisor program yet)_ | — |
-| `image-worker.seed` | `lyra_imagecli_gen` | `~/.local/state/lyra/logs/lyra_imagecli_gen.log` |
-| `monitor.seed` | _(no supervisor program yet)_ | — |
-
-Every supervisor program also writes a `<name>_error.log` in the same directory; check both stdout and error logs during verification.
+| `hub.seed` | `lyra-hub.service` | `journalctl --user -u lyra-hub` |
+| `telegram-adapter.seed` | `lyra-telegram.service` | `journalctl --user -u lyra-telegram` |
+| `discord-adapter.seed` | `lyra-discord.service` | `journalctl --user -u lyra-discord` |
+| `tts-adapter.seed` | _(future Quadlet unit)_ | — |
+| `stt-adapter.seed` | _(future Quadlet unit)_ | — |
+| `voice-tts.seed` | `voicecli-tts.service` (voiceCLI project) | `journalctl --user -u voicecli-tts` |
+| `voice-stt.seed` | `voicecli-stt.service` (voiceCLI project) | `journalctl --user -u voicecli-stt` |
+| `llm-worker.seed` | _(no unit yet)_ | — |
+| `image-worker.seed` | _(future Quadlet unit)_ | — |
+| `monitor.seed` | _(no unit yet)_ | — |
 
 All seeds live in `~/.lyra/nkeys/` on Machine 1. Live auth.conf lives at `/etc/nats/nkeys/auth.conf`.
 
@@ -66,11 +67,11 @@ Resolve any missing cert before proceeding. voicecli connection errors during ve
 sudo ./deploy/nats/gen-nkeys.sh --show
 # Verify seed count matches expected 10 identities.
 
-supervisorctl status
-# All programs should be RUNNING before you begin.
+systemctl --user status 'lyra-*.service'
+# All units should be active (running) before you begin.
 ```
 
-If any program is already in a FATAL or BACKOFF state unrelated to this rotation, investigate and resolve before continuing. A degraded baseline makes the verification step ambiguous.
+If any unit is already in a failed state unrelated to this rotation, investigate and resolve before continuing. A degraded baseline makes the verification step ambiguous.
 
 ---
 
@@ -152,43 +153,42 @@ Update `RELOAD_TS` after a restart if you use this path.
 
 ## 5. Rolling Restart Order
 
-Restart affected programs in this order: workers first, adapters second, hub last. Workers and adapters first — they are reconnect-tolerant (circuit breaker in roxabi-nats) and can queue at NATS while the hub is briefly down. Hub last — it is the sole consumer of inbound queues; restarting it last minimises the window where inbound messages could fill NATS queues with no consumer.
+Restart affected units in this order: workers first, adapters second, hub last. Workers and adapters first — they are reconnect-tolerant (circuit breaker in roxabi-nats) and can queue at NATS while the hub is briefly down. Hub last — it is the sole consumer of inbound queues; restarting it last minimises the window where inbound messages could fill NATS queues with no consumer.
 
-Only restart programs that use a rotated identity. If only `telegram-adapter` was rotated, restart only `lyra-telegram`. If `hub` was rotated, restart all programs.
+Only restart units that use a rotated identity. If only `telegram-adapter` was rotated, restart only `lyra-telegram`. If `hub` was rotated, restart all units.
 
-**5.1 voicecli workers** (if `voice-tts.seed` or `voice-stt.seed` was rotated):
+**5.1 voicecli workers** (if `voice-tts.seed` or `voice-stt.seed` was rotated — voiceCLI project):
 
 ```bash
-supervisorctl restart voicecli_tts
-supervisorctl restart voicecli_stt
+# voiceCLI Quadlet units (run from ~/projects/voiceCLI)
+systemctl --user restart voicecli-tts.service
+systemctl --user restart voicecli-stt.service
 ```
 
-**5.2 imagecli gen worker** (if `image-worker.seed` was rotated):
+**5.2 imagecli gen worker** (if `image-worker.seed` was rotated — future Quadlet unit):
 
 ```bash
-supervisorctl restart lyra_imagecli_gen
+systemctl --user restart imagecli-gen.service
 ```
 
 **5.3 Lyra adapters** (if any adapter seed was rotated):
 
 ```bash
-supervisorctl restart lyra-telegram
-supervisorctl restart lyra-discord
-supervisorctl restart lyra_tts
-supervisorctl restart lyra_stt
+systemctl --user restart lyra-telegram.service
+systemctl --user restart lyra-discord.service
 ```
 
 **5.4 Lyra hub** (if `hub.seed` was rotated):
 
 ```bash
-supervisorctl restart lyra-hub
+systemctl --user restart lyra-hub.service
 ```
 
-After each restart, wait for the program to reach `RUNNING` state before restarting the next one:
+After each restart, wait for the unit to reach `active (running)` state before restarting the next one:
 
 ```bash
-supervisorctl status
-# Confirm the restarted program shows RUNNING before continuing.
+systemctl --user status 'lyra-*.service'
+# Confirm the restarted unit shows active (running) before continuing.
 ```
 
 ---
@@ -207,43 +207,34 @@ Expected output on success: `OK: no Permissions Violation in nats.service over 9
 
 If violations are detected, the script prints the offending lines and exits 1. Jump to **Rollback** immediately.
 
-**6.2 Check each restarted service log for a successful NATS connection.**
+**6.2 Check each restarted unit log for a successful NATS connection.**
 
-Supervisord splits stdout and stderr. Python auth errors go to the `_error.log` — check both files for each program.
+All container stdout/stderr goes to journald. Check with `journalctl --user`:
 
 ```bash
 # Hub
-tail -30 ~/.local/state/lyra/logs/lyra-hub.log | grep -i "nats\|connected\|ready"
-tail -30 ~/.local/state/lyra/logs/lyra-hub-error.log | grep -i "nats\|auth\|error"
+journalctl --user -u lyra-hub --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
 
 # Telegram adapter
-tail -30 ~/.local/state/lyra/logs/lyra-telegram.log | grep -i "nats\|connected\|ready"
-tail -30 ~/.local/state/lyra/logs/lyra-telegram-error.log | grep -i "nats\|auth\|error"
+journalctl --user -u lyra-telegram --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
 
 # Discord adapter
-tail -30 ~/.local/state/lyra/logs/lyra-discord.log | grep -i "nats\|connected\|ready"
-tail -30 ~/.local/state/lyra/logs/lyra-discord-error.log | grep -i "nats\|auth\|error"
-
-# imagecli gen worker (if image-worker.seed was rotated)
-tail -30 ~/.local/state/lyra/logs/lyra_imagecli_gen.log | grep -i "nats\|connected\|ready"
-tail -30 ~/.local/state/lyra/logs/lyra_imagecli_gen_error.log | grep -i "nats\|auth\|error"
+journalctl --user -u lyra-discord --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
 
 # voicecli workers (if rotated)
 # Note: voicecli connects via tls://127.0.0.1:4222 — connection errors here may
 # indicate a TLS issue (/etc/nats/certs/ca.crt) rather than an nkey issue.
-tail -30 ~/.local/state/voicecli/logs/voicecli_tts.log | grep -i "nats\|connected\|ready"
-tail -30 ~/.local/state/voicecli/logs/voicecli_tts_error.log | grep -i "nats\|auth\|error"
-tail -30 ~/.local/state/voicecli/logs/voicecli_stt.log | grep -i "nats\|connected\|ready"
-tail -30 ~/.local/state/voicecli/logs/voicecli_stt_error.log | grep -i "nats\|auth\|error"
+journalctl --user -u voicecli-tts --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
+journalctl --user -u voicecli-stt --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
 ```
 
-**6.3 Confirm supervisor program states:**
+**6.3 Confirm unit states:**
 
 ```bash
-supervisorctl status
+systemctl --user status 'lyra-*.service'
 ```
 
-All programs should show `RUNNING`. Any program in `FATAL` or `BACKOFF` immediately after restart indicates an auth failure — see Rollback.
+All units should show `active (running)`. Any unit in `failed` state immediately after restart indicates an auth failure — see Rollback.
 
 **6.4 Send a test message end-to-end:**
 Send a message through Telegram or Discord to the bot and confirm a response arrives. This exercises the full hub → adapter round-trip with the new credentials.
@@ -298,24 +289,19 @@ sudo systemctl reload nats.service
 
 **7.4 Reverse-order restart** (workers first, hub last — same order as Step 5).
 
-Multi-arg `supervisorctl restart a b c` does NOT wait between restarts — the next program may start while the previous is still STARTING. Use one program per line and confirm each reaches RUNNING before continuing.
+Restart one unit at a time and confirm each reaches `active (running)` before continuing.
 
 ```bash
-supervisorctl restart voicecli_tts
-supervisorctl restart voicecli_stt
-supervisorctl status voicecli_tts voicecli_stt
+systemctl --user restart voicecli-tts.service
+systemctl --user restart voicecli-stt.service
+systemctl --user status voicecli-tts.service voicecli-stt.service
 
-supervisorctl restart lyra_imagecli_gen
-supervisorctl status lyra_imagecli_gen
+systemctl --user restart lyra-telegram.service
+systemctl --user restart lyra-discord.service
+systemctl --user status lyra-telegram.service lyra-discord.service
 
-supervisorctl restart lyra-telegram
-supervisorctl restart lyra-discord
-supervisorctl restart lyra_tts
-supervisorctl restart lyra_stt
-supervisorctl status lyra-telegram lyra-discord lyra_tts lyra_stt
-
-supervisorctl restart lyra-hub
-supervisorctl status lyra-hub
+systemctl --user restart lyra-hub.service
+systemctl --user status lyra-hub.service
 ```
 
 **7.5 Re-run verification** (Step 6) to confirm the rollback restored service. Then escalate: the rotation failed, the compromised seed is live again, and the compromise signal must be reassessed before the next attempt.

@@ -1,0 +1,41 @@
+---
+title: Auto-detect TTS/STT availability via heartbeat
+issue: 897
+status: approved
+tier: F-lite
+date: 2026-04-23
+---
+
+## Problem
+
+The hub requires explicit env vars (`LYRA_TTS_ENABLED`, `LYRA_STT_ENABLED`) to enable TTS/STT routing. This is opt-in, not auto-detect. If satellites are running but env vars are missing, the hub won't use them. Conversely, stale env vars can point to non-existent satellites.
+
+Operators must manually sync supervisor configs with satellite deployment state — error-prone and unnecessary since voiceCLI already emits heartbeats.
+
+## Who
+
+- **Primary:** Hub operators running voiceCLI satellites (TTS/STT daemons)
+- **Secondary:** Developers testing voice features locally
+
+## Constraints
+
+- Must integrate with existing voiceCLI heartbeat mechanism (`lyra.voice.tts.heartbeat`, `lyra.voice.stt.heartbeat`)
+- Heartbeat already includes `model_loaded`, `active_requests` fields
+- No NATS subject changes required — reuse existing heartbeat subjects
+- Backward compatible: env vars can remain as fallback/override
+
+## Out of Scope
+
+- New heartbeat fields (e.g., `vram_status`) — future enhancement
+- Load balancing across multiple TTS/STT workers — single satellite per type assumed
+- Changes to voiceCLI heartbeat emission logic
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (voice/NATS), ~6-8 files affected, no architectural unknowns.
+
+**Signals:**
+- Single domain: voice/NATS integration
+- Clear scope: swap env var check for heartbeat subscription
+- Heartbeat mechanism already exists — no new infrastructure
+- Implementation outline provided in issue

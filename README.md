@@ -171,8 +171,8 @@ See [QUICKSTART.md](docs/QUICKSTART.md) for the full walkthrough.
 ## CLI reference
 
 ```bash
-# Production entry points (three-process NATS mode)
-lyra hub                          # start the hub process (used by supervisor)
+# Production entry points (three-process NATS mode — run inside Quadlet containers)
+lyra hub                          # start the hub process
 lyra adapter telegram             # start the Telegram adapter process
 lyra adapter discord              # start the Discord adapter process
 
@@ -274,7 +274,7 @@ docs/         — ARCHITECTURE.md, ROADMAP.md, QUICKSTART.md, 38 ADRs
 | [ROADMAP.md](docs/ROADMAP.md) | Phase 1/2/3 scope, priorities, timeline |
 | [COMMANDS.md](docs/COMMANDS.md) | Command router — slash commands, external tool integration pattern |
 | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Machine 1 (Ubuntu Server) hardware setup |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (supervisord, logs, firewall) |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production service management on Machine 1 (Quadlet, logs, firewall) |
 | [ADRs](docs/architecture/adr/) | 38 architecture decision records with full rationale |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching model, commit conventions, adding adapters and agents |
 

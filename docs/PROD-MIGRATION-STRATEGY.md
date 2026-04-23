@@ -1,6 +1,6 @@
 ---
 title: "Roxabi Ecosystem: Prod Migration + Quadlet Adoption Strategy"
-status: Draft
+status: Phase 1 Complete (#611)
 authors: claude-architect
 date: 2026-04-23
 scope: ecosystem
@@ -166,7 +166,7 @@ systemctl --user daemon-reload
 
 ---
 
-### Phase 1: Lyra Quadlet prod cutover on M₁
+### Phase 1: Lyra Quadlet prod cutover on M₁ ✅ (#611)
 
 **Scope:** Lyra only. Host `nats.service` stays on 4222. Supervisord stays. Lyra Quadlet NATS on 4223 (coexistence topology per ADR-053 §7).
 

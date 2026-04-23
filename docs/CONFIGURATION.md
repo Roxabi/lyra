@@ -250,7 +250,7 @@ startup
 
 ## Monitoring (`lyra-monitor.timer`)
 
-The health monitoring cron runs as a **systemd user timer**, separate from supervisor.
+The health monitoring cron runs as a **systemd user timer**, separate from the Quadlet containers.
 
 > **Config file split:** the monitoring process reads `lyra.toml` (not `config.toml`). Both files respect `$LYRA_CONFIG`, but the hub and monitoring use different defaults when the variable is unset (`config.toml` vs `lyra.toml`). If you set `$LYRA_CONFIG`, it must point to a file that contains both `[monitoring]` and any other sections you need.
 
@@ -291,18 +291,18 @@ min_disk_free_gb        = 1                              # alert if free disk dr
 health_endpoint_url     = "http://localhost:8443/health/detail"
 diagnostic_model        = "claude-haiku-4-5-20251001"    # model used for LLM diagnosis
 disk_check_path         = "/"                            # filesystem path to check
-service_name            = "lyra-telegram"                # supervisor service name to inspect
+service_name            = "lyra-telegram"                # systemd unit name to inspect
 ```
 
 ### Voice (optional)
 
-Enable when running `lyra_stt` / `lyra_tts` supervisor programs:
+Enable when running `voicecli_tts` / `voicecli_stt` via the voiceCLI project:
 
 ```bash
 LYRA_STT_ENABLED=1              # activate NATS STT adapter (default: off)
 LYRA_STT_MODEL=large-v3-turbo   # faster-whisper model size
 LYRA_TTS_ENABLED=1              # activate NATS TTS adapter (default: off)
-# LYRA_TTS_ENGINE set per-adapter in deploy/supervisor/conf.d/lyra_tts.conf
+# LYRA_TTS_ENGINE set per-adapter in the voiceCLI container env
 ```
 
 The hub reads `LYRA_STT_ENABLED`/`LYRA_TTS_ENABLED` at startup to probe voice services via NATS. Deprecated `STT_MODEL_SIZE` and `TTS_ENGINE` still work for one cycle with a warning.
@@ -315,9 +315,9 @@ ANTHROPIC_API_KEY=sk-ant-...    # for LLM diagnosis (Layer 2, optional if claude
 TELEGRAM_ADMIN_CHAT_ID=123...   # numeric chat ID for alerts
 ```
 
-### Why systemd timer, not supervisor?
+### Why systemd timer, not a container?
 
-Monitoring is a **periodic task** (run checks, report, exit) — not a long-running daemon. Systemd timers provide `Persistent=true` (catch up after reboot), precise scheduling, and journalctl integration. The sleep-loop supervisor approach was replaced because it had no scheduling guarantees and no visibility into when the last check ran.
+Monitoring is a **periodic task** (run checks, report, exit) — not a long-running daemon. Systemd timers provide `Persistent=true` (catch up after reboot), precise scheduling, and journalctl integration. A persistent container with a sleep loop would have no scheduling guarantees and no visibility into when the last check ran.
 
 ---
 

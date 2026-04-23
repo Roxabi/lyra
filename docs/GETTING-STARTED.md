@@ -20,7 +20,7 @@ Three ways to run lyra — pick the one that matches your goal.
 | Tier | Goal | Setup |
 |------|------|-------|
 | **1. Library** | Import `lyra` in your own code | `uv add "lyra @ git+https://github.com/Roxabi/lyra.git@staging"` — nothing else |
-| **2. Standalone** | Run lyra on one machine (dev or personal use) | See **Tier 2** below — 5 commands, no supervisord, no separate NATS server |
+| **2. Standalone** | Run lyra on one machine (dev or personal use) | See **Tier 2** below — 5 commands, no containers, no separate NATS server |
 | **3. Full production** | 24/7 hub with adapters, auto-deploy, monitoring | Continue to **Step 1** below — this guide covers Machine 1 hub setup |
 
 ---
@@ -37,7 +37,7 @@ lyra agent init              # seed agents DB from bundled TOML
 lyra start                   # hub + telegram + discord in one process
 ```
 
-No supervisord. No systemd. No `make deploy`. Stop with `Ctrl+C`. For bot token setup see **Step 8 — Configure**.
+No containers. No systemd. No `make deploy`. Stop with `Ctrl+C`. For bot token setup see **Step 8 — Configure**.
 
 Move to Tier 3 (split processes, auto-deploy timer, health monitoring, embedded NATS replaced by a system service) only when you actually need 24/7 uptime. Tier 3 is what this guide covers from **Step 1** onward.
 
@@ -160,7 +160,7 @@ The script handles:
 - `lyra` agent account (restricted shell, no sudo)
 - GitHub SSH host key in `known_hosts`
 - uv (Python package manager)
-- supervisord (process manager)
+- Podman (rootless container runtime — ships natively on Ubuntu 26.04 LTS)
 - Node.js + Claude Code CLI
 - agent-browser (headless browser for Claude Code)
 - Git global config (interactive prompt)
@@ -182,7 +182,7 @@ ssh yourname@<MACHINE_1_IP> "
   df -h /
   systemctl is-active ssh fail2ban
   uv --version
-  supervisord --version
+  podman --version
   claude --version
   ssh -T git@github.com 2>&1 | head -1
 "
@@ -203,22 +203,22 @@ cd ~/projects/lyra && python3 deploy/setup.py
 ```
 
 `make setup` will:
-1. Check prerequisites (git, uv, supervisord, claude, GitHub SSH)
+1. Check prerequisites (git, uv, podman, claude, GitHub SSH)
 2. Clone and install **lyra** (core — always installed)
 3. Prompt for optional modules:
    - **voiceCLI** — TTS/STT (requires NVIDIA GPU, ~3GB)
    - **diagrams** — gallery server with live-reload
    - **imageCLI** — image generation CLI
    - **roxabi-vault** — knowledge vault
-4. `make register` for each daemon service
+4. `make quadlet-install` — install Quadlet units to `~/.config/containers/systemd/`
 5. Create log directories (`~/.local/state/*/logs/`)
-6. Scaffold `.env` and `config.toml` from examples
+6. Scaffold `~/.lyra/env/*.env` from examples
 7. Seed agents into the DB (`lyra agent init`)
 8. Install Claude Code plugins:
    - **Mandatory:** `web-intel`, `agent-browser`, `lyra-send`, `refine-agent`
    - **Conditional:** `voice-cli` (auto-installed if voiceCLI was installed)
    - **Optional (prompted):** `dev-core`, `visual-explainer`, `compress`
-9. Start supervisord
+9. Enable linger + start Quadlet containers
 
 To install all optional modules and plugins without prompts:
 ```bash
@@ -317,18 +317,23 @@ make nats-setup
 
 ## Step 11 — Enable auto-start on boot
 
+Quadlet units start automatically once installed and linger is enabled. No separate `lyra.service`
+wrapper is needed.
+
 ```bash
-# Enable the systemd user unit + linger (runs without login session)
-systemctl --user enable lyra.service
+# Enable linger (allows systemd --user to run without a login session)
 loginctl enable-linger $USER
 
-# Start now
-systemctl --user start lyra
+# Install Quadlet units (already done by make setup; repeat after updates)
+make quadlet-install
+
+# Start all Lyra containers now
+make lyra start
 ```
 
 ## Step 12 — Enable health monitoring
 
-The monitoring system runs as a separate **systemd user timer** (not part of supervisor). It runs every 5 minutes, checks hub health, and sends Telegram alerts on anomalies.
+The monitoring system runs as a **systemd user timer** (separate from the Quadlet containers). It runs every 5 minutes, checks hub health, and sends Telegram alerts on anomalies.
 
 ```bash
 cd ~/projects/lyra
@@ -357,16 +362,19 @@ make monitor status   # check result
 
 ```bash
 cd ~/projects/lyra
-make ps
+make lyra status
 ```
 
-You should see:
+You should see all three units active:
 ```
-lyra-hub         RUNNING   pid 12344, uptime 0:00:10
-lyra-telegram    RUNNING   pid 12345, uptime 0:00:10
-lyra-discord     RUNNING   pid 12346, uptime 0:00:10
-voicecli_tts     RUNNING   pid 12347, uptime 0:00:10
-voicecli_stt     RUNNING   pid 12348, uptime 0:00:10
+lyra-hub.service    active (running)
+lyra-telegram.service  active (running)
+lyra-discord.service   active (running)
+```
+
+Or check the full container list:
+```bash
+podman ps --format "table {{.Names}}\t{{.Status}}"
 ```
 
 Check the monitoring timer:
@@ -428,10 +436,11 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Agent access | `ssh -i ~/.ssh/lyra_agent lyra@<IP>` (optional) |
 | Lyra project | `~/projects/lyra/` |
 | VoiceCLI project | `~/projects/voiceCLI/` (if installed) |
-| Supervisor configs | `~/projects/lyra/deploy/supervisor/` |
+| Quadlet units | `~/.config/containers/systemd/lyra-*.container` |
+| Env files | `~/.lyra/env/hub.env`, `telegram.env`, `discord.env` |
 | Config | `~/projects/lyra/config.toml` |
 | Credentials | `~/.lyra/config.db` (encrypted, via `lyra bot add`) |
-| Logs | `~/.local/state/lyra/logs/` |
+| Logs | `journalctl --user -u lyra-hub` |
 | Diagrams | `~/.roxabi/forge/` (if installed) |
 | Firewall | UFW, SSH only |
 

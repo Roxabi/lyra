@@ -1,0 +1,51 @@
+---
+title: Cross-project container publishing pattern + lyra adoption
+issue: 920
+status: approved
+tier: F-full
+date: 2026-04-24
+---
+
+## Problem
+
+No Roxabi project currently publishes its container image to a registry. Every Quadlet unit (`lyra-hub.container`, `lyra-telegram.container`, `lyra-discord.container`, plus voiceCLI/2ndBrain/imageCLI/llmCLI equivalents) references `Image=localhost/<project>:latest`, which assumes a local `podman build` on every host. In practice this means:
+
+- Production (M₁ `roxabituwer`) has no working voiceCLI image at all — latest tag is `voicecli/v0.2.1` but `ghcr.io/roxabi/voicecli` has nothing published (surfaced in voiceCLI #111).
+- Every deploy requires manual `podman build` on the target host, or a side-channel image copy, with no provenance, no version pinning, and no rollback story.
+- Lyra has the same footgun across all three Quadlet units and cannot be cleanly deployed to M₁ without manual intervention.
+
+Lyra owns the NATS bus and hub-spoke topology — it's the natural home for the canonical **Roxabi container-publishing pattern** that voiceCLI, lyra, 2ndBrain, imageCLI, llmCLI will all adopt. Document once, prove with lyra, replicate elsewhere.
+
+## Who
+
+- **Primary:** Mickael (solo operator) — deploys Lyra + other Roxabi daemons to M₁ and currently blocked by manual image distribution.
+- **Secondary:** Every other Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) that will follow the same pattern once documented.
+
+## Constraints
+
+- Registry: GitHub Container Registry (`ghcr.io/roxabi/<project>`) — already aligned with Roxabi/GitHub org presence.
+- Publish triggers (two, complementary):
+  - Push to `staging` branch → `ghcr.io/roxabi/<project>:staging` (floating, overwritten each push) — lets us exercise the full publish→pull→run loop before cutting a release.
+  - `release-please` tag `<project>/vX.Y.Z` on `main` → `:X.Y.Z` (immutable) + `:X` (floating major) + `:latest`.
+- Runtime: Podman + Quadlet on M₁ (Ubuntu 26.04 LTS, podman 5.x from apt). Must work with rootless user-mode Quadlet units.
+- Must not break local dev on M₂ — `podman build` + `localhost/lyra:latest` workflow should still function as a fallback.
+- Dockerfile must be deterministic (pinned base digest, pinned apt, multi-stage) — no "works today, fails next week" builds.
+- Cross-project adoption: the pattern must be repo-portable (no lyra-specific coupling in the reusable parts).
+
+## Out of Scope
+
+- cosign / sigstore signing (tracked separately).
+- Renovate auto-PR for image bumps.
+- Image digest pinning (`@sha256:…`) in Quadlet — semver pin first, digest pin after cosign lands.
+- Adoption by 2ndBrain, imageCLI, llmCLI — each repo owns its own migration PR once the pattern exists.
+- Rewriting the release-please setup itself (already in place).
+
+## Complexity
+
+**Tier: F-full** — multi-domain (devops/CI + container/infra + docs + cross-project convention), establishes a new canonical pattern that other repos inherit.
+
+Signals:
+- Touches: new `Dockerfile`, new GH Actions workflow (buildx + push), 3 Quadlet units, new `docs/ops/container-publishing.md`, M₁ auth setup doc.
+- New pattern (first registry-published Roxabi image ever) → downstream blast radius across ≥5 repos.
+- Requires deliberate decisions: tag scheme (semver vs. floating major vs. digest), auth distribution, CI trigger coupling to release-please, rootless pull auth on M₁.
+- Unblocks voiceCLI #111 → cross-repo dependency.

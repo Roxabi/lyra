@@ -42,7 +42,11 @@ endef
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
-LYRA_IMAGE ?= ghcr.io/roxabi/lyra:latest
+# Local build tag — used by `make build` and `make push`
+LYRA_IMAGE ?= localhost/lyra:dev
+
+# Registry image reference — used when pulling from CI-published artifacts
+GHCR_IMAGE ?= ghcr.io/roxabi/lyra:latest
 
 build:                 ## build lyra image locally
 	podman build -f Dockerfile -t $(LYRA_IMAGE) .

@@ -9,7 +9,7 @@ StartLimitBurst=5
 # Image digest pinning for localhost/lyra:latest tracks on a follow-up issue
 # (CI tag-by-SHA strategy). Upstream registry images (e.g. nats.container)
 # are pinned by digest directly.
-Image=localhost/lyra:latest
+Image=ghcr.io/roxabi/lyra:staging
 ContainerName=lyra-hub
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).

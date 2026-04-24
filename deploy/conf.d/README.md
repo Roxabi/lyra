@@ -40,4 +40,4 @@ The `command=` lines reference `deploy/scripts/run_hub.sh` and `deploy/scripts/r
 
 - ADR-041 — Supervisor pattern (superseded by ADR-047 for host layout)
 - ADR-047 — Project layering / machine-level supervisord at `~/projects/supervisord.conf`
-- `lyra-nats-truth §14` — Tenant/host separation (planned doc; see `docs/architecture/target-architecture.md` in the interim)
+- `lyra-nats-truth §14` — Cross-project subscribers / tenant-host separation (design doc at `~/.roxabi/lyra-nats-truth/14-cross-project-subscribers.md`, not checked into this repo)

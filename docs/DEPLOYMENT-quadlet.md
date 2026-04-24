@@ -156,13 +156,15 @@ Note: adapters declare `After=lyra-hub.service` but no `Requires=` — a hub res
 
 ## 7. Env + secrets
 
-Each container reads a **scoped** env file from `~/.lyra/env/`. These files live **outside the git working tree** to prevent accidental credential commits.
+**Credential source (since #417, March 2026):** Bot tokens (Telegram, Discord) are Fernet-encrypted in `~/.lyra/config.db` (table `bot_secrets`) and decrypted at runtime by `LyraKeyring` using `~/.lyra/keyring.key`. The standalone adapter bootstrap (`src/lyra/bootstrap/standalone/adapter_standalone.py`) reads from `config.db` directly — no env var is needed or read for tokens.
+
+**What the env file is for:** only `lyra-hub` reads an env file, and only for operational vars:
 
 | Container | `EnvironmentFile=` | Required vars |
 |---|---|---|
 | `lyra-hub` | `%h/.lyra/env/hub.env` | `LYRA_HEALTH_SECRET`, `LYRA_HEALTH_PORT` |
-| `lyra-telegram` | `%h/.lyra/env/telegram.env` | `TELEGRAM_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` |
-| `lyra-discord` | `%h/.lyra/env/discord.env` | `DISCORD_TOKEN` |
+| `lyra-telegram` | — | (tokens come from `config.db`) |
+| `lyra-discord` | — | (tokens come from `config.db`) |
 
 `%h` expands to `$HOME` in Quadlet unit files.
 
@@ -171,17 +173,19 @@ Each container reads a **scoped** env file from `~/.lyra/env/`. These files live
 ```bash
 mkdir -p ~/.lyra/env && chmod 700 ~/.lyra/env
 cp deploy/quadlet/hub.env.example ~/.lyra/env/hub.env
-cp deploy/quadlet/telegram.env.example ~/.lyra/env/telegram.env
-cp deploy/quadlet/discord.env.example ~/.lyra/env/discord.env
-chmod 600 ~/.lyra/env/*.env
-# edit each file with real values
+chmod 600 ~/.lyra/env/hub.env
+# fill in LYRA_HEALTH_SECRET with a random string
 ```
 
-Example files documenting all supported variables are committed to the repo under `deploy/quadlet/*.env.example`.
+Bot tokens do not need to be set here. Verify they are present in `config.db` before starting:
 
-`scripts/deploy-quadlet.sh` verifies that all three files exist and have mode `600` before restarting containers. If a file is missing or has wrong permissions the deploy aborts with a remediation message.
+```bash
+uv run lyra secrets list   # or equivalent CLI to inspect config.db entries
+```
 
-**Dev tier:** `lyra start` (single process, embedded NATS) reads `~/projects/lyra/.env` — a single unsplit file documented in [DEPLOYMENT.md §2](DEPLOYMENT.md). The split `~/.lyra/env/*.env` files are Quadlet-only; dev tier is unaffected by this layout.
+**Keyring rotation:** after rotating `~/.lyra/keyring.key`, restart all three containers — hub, telegram, and discord — to force `LyraKeyring` to re-read the new key from disk.
+
+**Dev tier:** `lyra start` (single process, embedded NATS) reads `~/projects/lyra/.env` — a single unsplit file documented in [DEPLOYMENT.md §2](DEPLOYMENT.md). Quadlet credential model is independent of dev tier.
 
 `NATS_URL` and `NATS_NKEY_SEED_PATH` are set inline in each `.container` file — they do not belong in the scoped env files:
 

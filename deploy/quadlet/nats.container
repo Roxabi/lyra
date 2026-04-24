@@ -15,7 +15,10 @@ DropCapability=all
 # parallel testing. Switch to 4222:4222 once supervisord NATS is retired.
 PublishPort=127.0.0.1:4223:4222
 Volume=%h/projects/lyra/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
-Volume=lyra-nats-auth.volume:/etc/nats/nkeys/auth.conf:ro,z
+# ADR-054 Decision 5 (revised): file-based credentials delivered as Podman secrets
+# (type=mount, tmpfs-backed). Replaces single-file .volume wrappers which failed
+# with "loop device setup" in Podman 5.x. Bootstrap: `make quadlet-secrets-install`.
+Secret=lyra-nats-auth,type=mount,target=/etc/nats/nkeys/auth.conf,mode=0444
 Exec=nats-server -js -c /etc/nats/nats.conf
 
 [Service]

@@ -16,14 +16,17 @@ Network=lyra.network
 NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
-User=lyra
+# ADR-054 Decision 2: UserNS=keep-id maps container UID to host UID 1000 (mickael),
+# which owns ~/.lyra/*. Replaces User=lyra (UID 1500) which could not read host files.
+UserNS=keep-id:uid=1500,gid=1500
 EnvironmentFile=%h/.lyra/env/hub.env
 # hub.env contains only hub-scoped vars (LYRA_HEALTH_SECRET,
 # LYRA_LOG_DIR, ROXABI_VAULT_DIR). Adapter tokens (Telegram, Discord, TTS/STT)
 # are excluded — hub does not need them. See deploy/quadlet/hub.env.example.
 # NATS_URL is overridden inline below; cutover = update .env.hub directly.
 Environment=NATS_URL=nats://lyra-nats:4222
-Volume=lyra-nkey-hub.volume:/run/secrets/hub.seed:ro,z
+# ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
+Secret=lyra-nkey-hub,type=mount,target=hub.seed,mode=0400,uid=1500,gid=1500
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/hub.seed
 Volume=lyra-data.volume:/home/lyra/.lyra:z
 Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z

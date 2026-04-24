@@ -1,9 +1,0 @@
-[Unit]
-Description=Lyra stt-adapter nkey seed (read-only, 0600)
-ConditionPathExists=%h/.lyra/nkeys/stt-adapter.seed
-
-[Volume]
-Device=%h/.lyra/nkeys/stt-adapter.seed
-Type=bind
-Options=bind,ro
-Label=app=lyra

@@ -1,9 +1,0 @@
-[Unit]
-Description=Lyra telegram-adapter nkey seed (read-only, 0600)
-ConditionPathExists=%h/.lyra/nkeys/telegram-adapter.seed
-
-[Volume]
-Device=%h/.lyra/nkeys/telegram-adapter.seed
-Type=bind
-Options=bind,ro
-Label=app=lyra

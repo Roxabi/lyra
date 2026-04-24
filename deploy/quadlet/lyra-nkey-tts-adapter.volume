@@ -1,9 +1,0 @@
-[Unit]
-Description=Lyra tts-adapter nkey seed (read-only, 0600)
-ConditionPathExists=%h/.lyra/nkeys/tts-adapter.seed
-
-[Volume]
-Device=%h/.lyra/nkeys/tts-adapter.seed
-Type=bind
-Options=bind,ro
-Label=app=lyra

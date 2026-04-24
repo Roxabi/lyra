@@ -37,7 +37,10 @@ Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
 Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 # claude CLI credentials — host ~/.claude is bind-mounted read-write so the
 # CLI can refresh tokens. UserNS=keep-id maps UID 1500 → host UID 1000 (mickael).
+# ~/.claude.json is a separate top-level config file the CLI looks up outside
+# of ~/.claude/ — must be bind-mounted inline (same pattern as config.toml).
 Volume=%h/.claude:/home/lyra/.claude:z
+Volume=%h/.claude.json:/home/lyra/.claude.json:z
 # Health endpoint — probed by lyra-monitor via host loopback (localhost:8443).
 # Bind to 0.0.0.0 inside container so PublishPort forwarding reaches uvicorn;
 # host exposure is restricted to 127.0.0.1 by PublishPort below.

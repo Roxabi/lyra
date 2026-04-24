@@ -8,12 +8,14 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.4 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
-# Install dependencies (workspace members needed for uv sync)
+# Install dependencies. src/ must be present before `uv sync` — lyra is
+# installed editable, and uv only links src files that exist at sync time.
+# Copying src/ after would leave the editable install pointing at an empty
+# dist-info (ImportError: No module named 'lyra' at runtime).
 COPY pyproject.toml uv.lock ./
 COPY packages/ packages/
-RUN uv sync --frozen --no-dev
-
 COPY src/ src/
+RUN uv sync --frozen --no-dev
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.12.10-slim AS runtime

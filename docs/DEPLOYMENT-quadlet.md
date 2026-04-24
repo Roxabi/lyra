@@ -228,6 +228,18 @@ The canonical update flow on Machine 1 is `scripts/deploy-quadlet.sh`, which pul
 make deploy-quadlet
 ```
 
+`scripts/deploy-quadlet.sh` is a thin wrapper: it sets Lyra-specific variables and delegates all logic to the shared deploy library at `~/.local/lib/roxabi/deploy-lib.sh`. Install the library once:
+
+```bash
+make quadlet-install-deploy-lib
+```
+
+The library is pinned at install time (commit SHA stamped in the header). To upgrade after a Lyra update:
+
+```bash
+make quadlet-upgrade-lib
+```
+
 Manual fallback (run on Machine 1):
 
 ```bash

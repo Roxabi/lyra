@@ -38,7 +38,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: build push lyra telegram discord monitor register quadlet-install quadlet-secrets-install deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
+.PHONY: build push lyra telegram discord monitor register quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -145,6 +145,8 @@ register:
 	@echo "  Monitor:    run 'make monitor enable' to start the health check timer."
 	@echo "  Secrets:    ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
 
+DEPLOY_LIB_INSTALL_DIR := $(HOME)/.local/lib/roxabi
+
 quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + reload
 	@mkdir -p "$(QUADLET_DIR)"
 	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container} "$(QUADLET_DIR)/nats.container"
@@ -158,6 +160,19 @@ quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + re
 	@systemctl --user daemon-reload
 	@echo "Quadlet units installed."
 	@echo "Next: run 'make quadlet-secrets-install' to (re)create Podman secrets from ~/.lyra/nkeys/."
+	@if [ ! -f "$(DEPLOY_LIB_INSTALL_DIR)/deploy-lib.sh" ]; then \
+		echo ""; \
+		echo "Hint: deploy-lib.sh not found at $(DEPLOY_LIB_INSTALL_DIR)/"; \
+		echo "      Run 'make quadlet-install-deploy-lib' to install the shared deploy library."; \
+	fi
+
+quadlet-install-deploy-lib:  ## install scripts/deploy-lib.sh to ~/.local/lib/roxabi/ with pinned commit
+	@mkdir -p "$(DEPLOY_LIB_INSTALL_DIR)"
+	@sed "s|<commit-sha>|$$(git rev-parse HEAD)|" scripts/deploy-lib.sh > "$(DEPLOY_LIB_INSTALL_DIR)/deploy-lib.sh"
+	@chmod 0644 "$(DEPLOY_LIB_INSTALL_DIR)/deploy-lib.sh"
+	@echo "Installed deploy-lib.sh @ $$(git rev-parse --short HEAD) to $(DEPLOY_LIB_INSTALL_DIR)/"
+
+quadlet-upgrade-lib: quadlet-install-deploy-lib  ## alias — re-copy lib from this checkout
 
 # ADR-054 Decision 5 (revised): file-based credentials (NATS auth.conf + nkey seeds)
 # are delivered to containers as Podman secrets. Source files live in ~/.lyra/nkeys/;

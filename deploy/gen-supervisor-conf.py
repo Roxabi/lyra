@@ -226,7 +226,7 @@ def generate_conf(
 
     # Log files (template resolution)
     stdout_tpl = cfg.get("stdout_logfile", "{logs_dir}/{program}.log")
-    stderr_tpl = cfg.get("stderr_logfile", "{logs_dir}/{program}_error.log")
+    stderr_tpl = cfg.get("stderr_logfile", "{logs_dir}/{program}-error.log")
     lines.append(f"stdout_logfile={resolve_path(stdout_tpl, ctx, program)}")
     lines.append(f"stdout_logfile_maxbytes={cfg['stdout_logfile_maxbytes']}")
     lines.append(f"stdout_logfile_backups={fmt(cfg['stdout_logfile_backups'])}")

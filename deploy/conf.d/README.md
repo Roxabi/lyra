@@ -2,13 +2,27 @@
 
 These three `*.conf` files are lyra's tenant contributions to the machine-level supervisord at `~/projects/supervisord.conf`. Lyra is a tenant on the machine host — it does NOT ship its own supervisor host.
 
-## On each host
+## Registering on a host
 
-Copy the confs into the machine-level conf.d and reload:
+Canonical path — run from the lyra repo root:
 
-    cp deploy/conf.d/*.conf ~/projects/conf.d/
-    ~/projects/scripts/supervisorctl.sh reread
-    ~/projects/scripts/supervisorctl.sh update
+```bash
+cd ~/projects/lyra
+make register          # symlinks deploy/conf.d/*.conf → ~/projects/conf.d/
+```
+
+`make register` creates symlinks so the machine host always picks up conf edits after a `git pull` without an extra copy step.
+
+Fallback (hosts without the hub-mk setup, e.g. bootstrap) — explicit copy from the repo root:
+
+```bash
+cd ~/projects/lyra
+cp deploy/conf.d/*.conf ~/projects/conf.d/
+~/projects/scripts/supervisorctl.sh reread
+~/projects/scripts/supervisorctl.sh update
+```
+
+A `cp` copy is a static snapshot; re-copy after each `git pull` to stay in sync.
 
 ## Files
 
@@ -20,10 +34,10 @@ Copy the confs into the machine-level conf.d and reload:
 
 ## Launcher scripts
 
-The `command=` lines reference `deploy/scripts/run_hub.sh` and `deploy/scripts/run_adapter.sh`. These wrappers source `.env` before exec, with supervisor-set env vars taking precedence (see inline comments in each script).
+The `command=` lines reference `deploy/scripts/run_hub.sh` and `deploy/scripts/run_adapter.sh`. These wrappers source `.env` before `exec`, with supervisor-set env vars taking precedence (see inline comments in each script).
 
 ## References
 
 - ADR-041 — Supervisor pattern (superseded by ADR-047 for host layout)
 - ADR-047 — Project layering / machine-level supervisord at `~/projects/supervisord.conf`
-- `docs/architecture/target-architecture.md` — Tenant/host separation
+- `lyra-nats-truth §14` — Tenant/host separation (planned doc; see `docs/architecture/target-architecture.md` in the interim)

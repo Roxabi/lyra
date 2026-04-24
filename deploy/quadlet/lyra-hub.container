@@ -36,6 +36,9 @@ Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
 # volumes (IsADirectoryError at read time). Inline Volume= does a direct bind.
 Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 # Health endpoint — probed by lyra-monitor via host loopback (localhost:8443).
+# Bind to 0.0.0.0 inside container so PublishPort forwarding reaches uvicorn;
+# host exposure is restricted to 127.0.0.1 by PublishPort below.
+Environment=LYRA_HEALTH_HOST=0.0.0.0
 PublishPort=127.0.0.1:8443:8443
 Exec=lyra hub
 

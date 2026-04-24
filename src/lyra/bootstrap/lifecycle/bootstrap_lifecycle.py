@@ -47,9 +47,10 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
         await d.start()
 
     health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
+    health_host = os.environ.get("LYRA_HEALTH_HOST", "127.0.0.1")
     health_app = create_health_app(hub, nc=nc)
     health_config = uvicorn.Config(
-        health_app, host="127.0.0.1", port=health_port, log_level="warning"
+        health_app, host=health_host, port=health_port, log_level="warning"
     )
     health_server = uvicorn.Server(health_config)
 

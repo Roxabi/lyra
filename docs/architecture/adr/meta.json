@@ -51,6 +51,7 @@
     "051-per-identity-nats-inbox-prefix",
     "052-voice-registry-authoritative-routing",
     "053-deployment-topology-and-container-hardening",
-    "055-quadlet-ecosystem-conventions"
+    "055-quadlet-ecosystem-conventions",
+    "056-container-publishing-workflow-pattern"
   ]
 }

@@ -1,0 +1,67 @@
+---
+title: "ADR-056: Container Publishing Workflow Pattern — Reusable GHA Workflow, Tag Strategy, Secret Scoping"
+description: Establishes the canonical cross-project container publishing pattern for the Roxabi ecosystem via a reusable GitHub Actions workflow in Roxabi/.github, addressing semver tag extraction, action SHA pinning, secret scoping, and Makefile image variable hygiene.
+---
+
+## Status
+
+Accepted (2026-04-24)
+
+**Parent ADR:** ADR-055 (Quadlet Ecosystem Conventions)
+
+## Context
+
+Lyra is the reference implementation for Roxabi's container publishing pattern (issue #920, PR #921). The pattern ships a reusable GHA workflow (`Roxabi/.github/.github/workflows/publish-container.yml`) that 4-5 other Roxabi repos will adopt the same week as Lyra merges. A cross-cutting code review surfaced seven findings before adoption. Because quality defects here compound across every adopter, all findings must be resolved in the reference implementation before any downstream repo references the workflow.
+
+Key constraints:
+- Release-please emits tags in the form `lyra/v0.3.0` (component-prefix format, per config). Bare `v*` is a breaking change to the cross-repo release contract.
+- `ci.yml` already SHA-pins all actions; the reusable workflow must match.
+- The reusable workflow carries `packages: write` — org-wide GHCR access.
+- `secrets: inherit` in the caller will silently widen as Lyra's secret surface grows (Telegram, NATS, API keys).
+
+## Options Considered
+
+### Option A: Merge PR #921 as-is, fix findings post-adoption
+
+- **Pros:** Fastest time-to-merge; unblocks downstream repos immediately.
+- **Cons:** Three blocking defects (semver tags never emit, floating action SHAs on org-wide `packages: write`, undefined ${{ }} evaluation in multiline YAML) are inherited by every adopter. Retrofitting 4-5 repos after the fact costs more than fixing once.
+
+### Option B: Fix all seven findings before merge (recommended)
+
+- **Pros:** Reference implementation is correct before it is referenced; downstream repos inherit a sound pattern; no retroactive patching.
+- **Cons:** Delays merge by one iteration. SHA-pinning introduces an ongoing Renovate/manual-refresh maintenance burden.
+
+## Decision
+
+Option B — resolve all seven findings in the reference implementation (Lyra PR #921) before any downstream repo references the workflow.
+
+Specific resolutions:
+
+| # | Finding | Resolution |
+|---|---------|------------|
+| 1 | Semver parsing breaks on `lyra/v0.3.0` | Add a "strip prefix" step; feed bare version to `type=raw` in metadata-action. ¬change release-please tag format (breaks cross-repo contract). |
+| 2 | Floating action major tags (`@v4`, `@v5`) on workflow with org-wide `packages: write` | SHA-pin all 5 actions; add Renovate config to automate refresh. |
+| 3 | `${{ }}` in multiline `tags:` block — GHA evaluation undefined | Split into 2 metadata+push step pairs, each guarded by step-level `if:` conditions. |
+| 4 | `secrets: inherit` over-scopes the callee | Drop `secrets: inherit`; callee uses only built-in `GITHUB_TOKEN`. |
+| 5 | `@v1` is a mutable branch, not an annotated tag | Switch to annotated tag + CODEOWNERS gate for the reusable workflow ref. |
+| 6 | `LYRA_IMAGE ?= ghcr.io/roxabi/lyra:latest` conflates local build tag with registry name | Separate into `LYRA_IMAGE ?= localhost/lyra:dev` (local) and `GHCR_IMAGE` (registry). |
+| 7 | `release_please_component` required but never consumed | Mark `required: false`, default `""`. |
+
+Findings 1, 2, and 3 are blocking (workflow's core deliverable is broken or carries unacceptable supply-chain risk). Findings 4–7 are pre-merge requirements given this is the reference implementation.
+
+## Consequences
+
+### Positive
+- All downstream adopters inherit a correct, hardened workflow from day one.
+- Secret scoping is minimal-privilege from the start; adding Lyra secrets later does not silently widen the callee's access.
+- SHA-pinned actions are auditable; the org-wide `packages: write` surface is controlled.
+- Tag-emission logic is explicit (split steps) and will not silently emit all tags on staging pushes.
+
+### Negative
+- SHA-pinning adds a maintenance burden: Renovate configuration or a manual refresh process must be owned. Without active maintenance, pins become stale and the security benefit degrades.
+- Annotated tag + CODEOWNERS for the `@v1` ref adds governance overhead to the Roxabi/.github repo.
+- Splitting metadata/push into conditional step pairs increases workflow verbosity.
+
+### Neutral
+- `release_please_component` remains in the workflow interface (reserved for future extensibility) but is now optional with a `""` default, so it does not impose a burden on callers.
+- The strip-prefix step is Lyra-specific logic in the reusable workflow; other repos with different tag formats must supply their own prefix or override the strip pattern via input.

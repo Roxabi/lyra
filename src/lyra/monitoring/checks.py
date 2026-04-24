@@ -22,11 +22,19 @@ def check_process(service_name: str) -> CheckResult:
     systemctl if supervisorctl is not available.
     """
     now = datetime.now(timezone.utc)
+    trusted_base = Path.home() / "projects"
     override = os.environ.get("LYRA_SUPERVISORCTL_PATH")
     if override:
-        sctl = Path(override).expanduser()
+        sctl = Path(override).expanduser().resolve()
+        if not sctl.is_relative_to(trusted_base):
+            return CheckResult(
+                name="process",
+                passed=False,
+                detail=f"LYRA_SUPERVISORCTL_PATH resolves outside {trusted_base}",
+                timestamp=now,
+            )
     else:
-        sctl = Path.home() / "projects" / "scripts" / "supervisorctl.sh"
+        sctl = trusted_base / "scripts" / "supervisorctl.sh"
 
     if sctl.exists():
         try:

@@ -344,25 +344,12 @@ mkdir -p "$UNIT_DIR"
 if [ -f "$UNIT_FILE" ]; then
   info "lyra.service already exists."
 else
-  cat > "$UNIT_FILE" << 'UNIT'
-[Unit]
-Description=Lyra supervisord (hub, telegram, discord)
-After=network-online.target nats.service
-Wants=network-online.target
-Requires=nats.service
-
-[Service]
-Type=forking
-PIDFile=%h/projects/supervisord.pid
-ExecStart=%h/projects/scripts/start.sh --all
-ExecStop=%h/projects/scripts/supervisorctl.sh shutdown
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-UNIT
-  info "lyra.service created."
+  SRC_UNIT="$(dirname "$0")/lyra.service"
+  if [ ! -f "$SRC_UNIT" ]; then
+    error "Source unit not found: $SRC_UNIT"
+  fi
+  cp "$SRC_UNIT" "$UNIT_FILE"
+  info "lyra.service created (copied from $SRC_UNIT)."
 fi
 
 # Linger is already enabled (and verified) in the Podman section above —

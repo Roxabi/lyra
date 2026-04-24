@@ -49,19 +49,19 @@ pre_restart:
     timeout: 120
     on_fail: rollback
 services:
-  - name: lyra_hub
+  - name: lyra-hub
     type: supervisor
     gate:
       kind: state
       value: RUNNING
       stabilize: 2s
       timeout: 60
-  - name: lyra_telegram
-  - name: lyra_discord
+  - name: lyra-telegram
+  - name: lyra-discord
 triggers:
   - in: ~/projects/lyra
     sh: "uv sync --all-extras --upgrade-package voicecli"
-    restart: [lyra_hub, lyra_telegram, lyra_discord]
+    restart: [lyra-hub, lyra-telegram, lyra-discord]
 ```
 
 Minimal manifest (pull-only): `schema: 1` + `branch: staging`. Missing manifest = not auto-deployed (explicit opt-in).

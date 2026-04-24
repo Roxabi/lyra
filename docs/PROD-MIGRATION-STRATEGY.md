@@ -29,7 +29,7 @@ register `.mk` delegation targets.
 
 | Unit | Enabled | Purpose |
 |---|---|---|
-| `lyra.service` | yes (default.target.wants) | Starts Lyra supervisord (hub + adapters) via `deploy/supervisor/start.sh --all`; `Requires=nats.service` |
+| `lyra.service` | yes (default.target.wants) | Starts Lyra supervisord (hub + adapters) via `~/projects/scripts/start.sh --all`; `Requires=nats.service` |
 | `lyra-monitor.service` + `.timer` | yes | One-shot health monitor — `python -m lyra.monitoring`; not a persistent daemon |
 | `lyra-stack.service` | yes (default.target.wants) | Symlink present in default.target.wants — **file content not found on this machine**; likely the future Quadlet target group; investigate on M₁ before Phase 1 |
 | `leviathan-vol-sync.service` | yes | Out of scope — not a Roxabi project daemon |
@@ -204,7 +204,7 @@ systemctl --user start lyra.service
 ```
 
 **Cleanup after stable (>1 week):**
-- Remove `deploy/supervisor/conf.d/lyra-hub.conf`, `lyra-telegram.conf`, `lyra-discord.conf` from M₁ supervisord include path (not from git — kept for rollback reference)
+- Remove `~/projects/conf.d/lyra-hub.conf`, `lyra-telegram.conf`, `lyra-discord.conf` from M₁ supervisord include path
 - Delete old `.env`, `.env.hub`, `.env.telegram`, `.env.discord` from `~/projects/lyra/` on M₁
 
 **Exit criteria:**
@@ -329,7 +329,7 @@ sudo systemctl start nats.service
 6. Optionally uninstall supervisord: `pip uninstall supervisor` (if installed in a venv) — confirm it is not a dependency of any remaining project's venv first
 
 **Cleanup:**
-- Archive `~/projects/conf.d/` (or delete — all project-level conf files already in each project's `deploy/supervisor/conf.d/` for reference)
+- Archive `~/projects/conf.d/` (or delete — project-level conf files are in each project's `deploy/conf.d/`)
 - Remove `~/projects/supervisord.conf`, `~/projects/scripts/start.sh`, `~/projects/scripts/supervisorctl.sh`
 - Update `~/projects/CLAUDE.md` to reflect the new topology
 
@@ -362,7 +362,7 @@ sudo systemctl start nats.service
 - [ ] Remove `~/projects/conf.d/lyra-hub.conf`, `lyra-telegram.conf`, `lyra-discord.conf` from M₁ supervisord path (keep in project repo)
 - [ ] Delete old `~/projects/lyra/.env`, `.env.hub`, `.env.telegram`, `.env.discord` from M₁ working tree
 - [ ] Disable `lyra.service` user unit: `systemctl --user disable lyra.service`
-- [ ] Archive or remove `deploy/supervisor/start.sh`, `supervisorctl.sh` from the Lyra repo once supervisord path is deprecated project-wide
+- [ ] Lyra-owned supervisor files removed from repo in #886; host scripts (`~/projects/scripts/start.sh`, `supervisorctl.sh`) retire when supervisord is fully decommissioned (Phase 5)
 
 ### After Phase 2 (voiceCLI cutover)
 

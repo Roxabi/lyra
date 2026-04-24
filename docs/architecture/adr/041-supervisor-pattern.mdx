@@ -5,7 +5,15 @@ description: Supervisor architecture consolidation — hub aggregator for local 
 
 ## Status
 
-Accepted
+Superseded by [ADR-047](047-nats-connector-ownership-pattern.mdx)
+
+> **Note (#886):** This ADR described a lyra-owned standalone supervisor under
+> `deploy/supervisor/`. That directory has been removed from the repo. Lyra is now a
+> **tenant** on the machine-level supervisord at `~/projects/supervisord.conf`, with conf
+> files at `~/projects/conf.d/` (symlinked from `deploy/conf.d/`). Production is
+> Podman Quadlet (ADR-053). The `ExecStart` path in the systemd unit now targets
+> `~/projects/scripts/start.sh --all`. Historical paths below reflect the state at the
+> time this ADR was written and are retained for context.
 
 ## Context
 

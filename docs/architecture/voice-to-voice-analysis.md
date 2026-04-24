@@ -396,7 +396,7 @@ Tool call latency is **incompressible** regardless of model. But vs pipeline:
 
 ### Current State
 
-All daemons managed by the single supervisord at `~/projects/lyra/deploy/supervisor/`.
+All daemons managed by the machine-level supervisord at `~/projects/supervisord.conf` (Lyra as tenant via `~/projects/conf.d/`). The former per-project supervisor has been retired (#886).
 
 **ROXABITOWER (local, RTX 5070 Ti 16 GB, on-demand)**:
 
@@ -679,7 +679,7 @@ async def synthesize(text: str, voice: str = "Chelsie") -> bytes:
 
 **ROXABITOWER** (existing, unchanged):
 ```ini
-# Already running via ~/projects/lyra/deploy/supervisor/conf.d/
+# Running via ~/projects/conf.d/ (machine-level supervisord; Lyra as tenant)
 [program:voicecli_tts]    # Qwen3-TTS 0.6B, AF_UNIX socket + new HTTP wrapper
 [program:voicecli_stt]    # Faster-Whisper, lazy-load
 ```

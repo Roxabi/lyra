@@ -283,4 +283,4 @@ Path validation uses `Path.resolve()` to canonicalize before the `relative_to` c
 - Hub client: `src/lyra/nats/nats_image_client.py` (new — ships with #754)
 - NATS server config: `deploy/nats/nats-container.conf` (`max_payload: 52428800`)
 - nkey identity: `image-worker` (added to `IDENTITIES` in `deploy/nats/gen-nkeys.sh` per ADR-046 Invariant 2)
-- Supervisor entry: `imagecli_gen` in `deploy/supervisor/conf.d/` (satellite process managed by lyra's supervisord)
+- Supervisor entry: `imagecli_gen` in `deploy/conf.d/` (satellite process managed by machine-level supervisord; formerly `deploy/supervisor/conf.d/`, removed in #886)

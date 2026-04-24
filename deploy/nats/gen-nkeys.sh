@@ -126,7 +126,7 @@ validate_supervisor() {
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   local REPO_ROOT
   REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-  local SUPERVISOR_GLOB="${REPO_ROOT}/deploy/supervisor/conf.d/*.conf"
+  local SUPERVISOR_GLOB="${REPO_ROOT}/deploy/conf.d/lyra-*.conf"
   local QUADLET_GLOB="${REPO_ROOT}/deploy/quadlet/*.container"
   local lyra_count=0
   for name in "${IDENTITIES[@]}"; do

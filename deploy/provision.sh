@@ -353,9 +353,9 @@ Requires=nats.service
 
 [Service]
 Type=forking
-PIDFile=%h/projects/lyra/deploy/supervisor/supervisord.pid
-ExecStart=%h/projects/lyra/deploy/supervisor/start.sh --all
-ExecStop=%h/projects/lyra/deploy/supervisor/supervisorctl.sh shutdown
+PIDFile=%h/projects/supervisord.pid
+ExecStart=%h/projects/scripts/start.sh --all
+ExecStop=%h/projects/scripts/supervisorctl.sh shutdown
 Restart=on-failure
 RestartSec=5
 

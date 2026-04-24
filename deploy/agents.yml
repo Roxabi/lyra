@@ -1,5 +1,5 @@
 # agents.yml — Declarative agent registry for supervisord conf.d generation
-# Run: make gen-conf  →  generates deploy/supervisor/conf.d/*.conf
+# Run: make gen-conf  →  generates deploy/conf.d/*.conf
 
 schema_version: "1.0"
 
@@ -27,7 +27,7 @@ defaults:
   # Paths are templated: {home}, {project_dir}, {logs_dir}
   directory: "{project_dir}"
   stdout_logfile: "{logs_dir}/{program}.log"
-  stderr_logfile: "{logs_dir}/{program}_error.log"
+  stderr_logfile: "{logs_dir}/{program}-error.log"
 
 agents:
   hub:

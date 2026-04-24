@@ -2,8 +2,8 @@
 
 Running Lyra as a managed service on Machine 1 (Ubuntu Server 26.04 LTS) using Podman Quadlet units. For the full Quadlet reference, see [DEPLOYMENT-quadlet.md](DEPLOYMENT-quadlet.md).
 
-> **Legacy note:** Before #611, Lyra ran under supervisord. That stack is archived at
-> `deploy/legacy/supervisor/` for reference. Supervisord is no longer the production path.
+> **Legacy note:** Before #611, Lyra ran under supervisord. That stack has been removed from
+> the repo (#886). Supervisord is no longer the production path.
 
 ## Overview
 

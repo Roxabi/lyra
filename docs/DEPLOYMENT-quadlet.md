@@ -4,8 +4,8 @@ See also: [DEPLOYMENT.md](DEPLOYMENT.md) for the deployment overview and day-to-
 
 Production deployment for Machine 1 (`roxabituwer`, Ubuntu 26.04 LTS) using rootless Podman Quadlet units managed by systemd `--user`. This is the current production path as of #611.
 
-> **Legacy note:** The pre-#611 supervisord stack is archived at `deploy/legacy/supervisor/`
-> for reference. It is no longer the default or recommended path.
+> **Legacy note:** The pre-#611 supervisord stack has been removed from the repo (#886).
+> It is no longer the default or recommended path.
 
 ## Which path should I pick?
 

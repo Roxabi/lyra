@@ -123,9 +123,9 @@ QUADLET_DIR      := $(HOME)/.config/containers/systemd
 register:
 	@echo "Registering lyra with supervisor hub..."
 	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord monitor remote deploy
-	$(call hub-link-conf,lyra-hub,deploy/supervisor/conf.d/lyra-hub.conf)
-	$(call hub-link-conf,lyra-telegram,deploy/supervisor/conf.d/lyra-telegram.conf)
-	$(call hub-link-conf,lyra-discord,deploy/supervisor/conf.d/lyra-discord.conf)
+	$(call hub-link-conf,lyra-hub,deploy/conf.d/lyra-hub.conf)
+	$(call hub-link-conf,lyra-telegram,deploy/conf.d/lyra-telegram.conf)
+	$(call hub-link-conf,lyra-discord,deploy/conf.d/lyra-discord.conf)
 	@mkdir -p "$(HOME)/.local/state/lyra/logs"
 	$(hub_reread)
 	@echo ""
@@ -174,7 +174,7 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 
 # ── Supervisor config reload (remote prod only until cutover #611) ──────────
 
-SCTL := $(or $(SUPERVISORCTL),$(CURDIR)/deploy/supervisor/supervisorctl.sh)
+SCTL := $(or $(SUPERVISORCTL),$(HOME)/projects/scripts/supervisorctl.sh)
 
 update:
 	@$(SCTL) reread && $(SCTL) update
@@ -200,7 +200,7 @@ remote:
 	USE_SCTL=false; \
 	if [ -n "$$REMOTE_SCTL" ]; then USE_SCTL=true; fi; \
 	SVC="$(word 1,$(_LYRA_CMD))"; ACTION="$(word 2,$(_LYRA_CMD))"; \
-	CONF=$(DEPLOY_DIR)/deploy/supervisor/conf.d; \
+	CONF=$(DEPLOY_DIR)/deploy/conf.d; \
 	rdisc() { grep -Rh "^\[program:\(lyra-\|voicecli_\)" "$$CONF" | tr -d "[]" | cut -d: -f2 | tr "\n" " "; }; \
 	if   [ -z "$$SVC" ] || [ "$$SVC" = lyra ]; then PROGS=$$(rdisc); FIRST=lyra-hub; \
 	elif [ -f "$$CONF/lyra-$$SVC.conf" ];       then PROGS="lyra-$$SVC"; FIRST="$$PROGS"; \

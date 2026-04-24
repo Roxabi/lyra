@@ -248,5 +248,3 @@ class NatsSttClient:
         log.warning("STT adapter unreachable: %s: %s", type(exc).__name__, exc)
         self._cb.record_failure()
         raise STTUnavailableError("STT adapter unreachable") from exc
-
-

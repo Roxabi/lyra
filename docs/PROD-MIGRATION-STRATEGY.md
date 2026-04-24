@@ -1,6 +1,6 @@
 ---
 title: "Roxabi Ecosystem: Prod Migration + Quadlet Adoption Strategy"
-status: Draft
+status: Phase 1 Complete (#611)
 authors: claude-architect
 date: 2026-04-23
 scope: ecosystem
@@ -29,7 +29,7 @@ register `.mk` delegation targets.
 
 | Unit | Enabled | Purpose |
 |---|---|---|
-| `lyra.service` | yes (default.target.wants) | Starts Lyra supervisord (hub + adapters) via `deploy/supervisor/start.sh --all`; `Requires=nats.service` |
+| `lyra.service` | yes (default.target.wants) | Starts Lyra supervisord (hub + adapters) via `~/projects/scripts/start.sh --all`; `Requires=nats.service` |
 | `lyra-monitor.service` + `.timer` | yes | One-shot health monitor — `python -m lyra.monitoring`; not a persistent daemon |
 | `lyra-stack.service` | yes (default.target.wants) | Symlink present in default.target.wants — **file content not found on this machine**; likely the future Quadlet target group; investigate on M₁ before Phase 1 |
 | `leviathan-vol-sync.service` | yes | Out of scope — not a Roxabi project daemon |
@@ -166,7 +166,7 @@ systemctl --user daemon-reload
 
 ---
 
-### Phase 1: Lyra Quadlet prod cutover on M₁
+### Phase 1: Lyra Quadlet prod cutover on M₁ ✅ (#611)
 
 **Scope:** Lyra only. Host `nats.service` stays on 4222. Supervisord stays. Lyra Quadlet NATS on 4223 (coexistence topology per ADR-053 §7).
 
@@ -174,7 +174,7 @@ systemctl --user daemon-reload
 - Phase 0 complete (M₂ dry run passed)
 - M₁ has Podman 5.x from apt (ships with Ubuntu 26.04 LTS — no manual install needed)
 - Linger enabled: `loginctl enable-linger $USER`
-- `~/.lyra/env/hub.env`, `telegram.env`, `discord.env` created and populated on M₁ (migrated from `~/projects/lyra/.env.*`)
+- `~/.lyra/env/hub.env` created with `LYRA_HEALTH_SECRET` set (copy from `deploy/quadlet/hub.env.example`); tokens already present in `~/.lyra/config.db` (verified via `lyra secrets list` or equivalent — since #417, tokens live in `config.db`, not env files)
 - nkeys at `~/.lyra/nkeys/` are intact (no regen needed; Quadlet volumes mount same files)
 - `lyra-stack.service` in `~/.config/systemd/user/default.target.wants/` investigated — confirm if it is a manual stub or a conflict with `lyra.service`
 
@@ -204,7 +204,7 @@ systemctl --user start lyra.service
 ```
 
 **Cleanup after stable (>1 week):**
-- Remove `deploy/supervisor/conf.d/lyra-hub.conf`, `lyra-telegram.conf`, `lyra-discord.conf` from M₁ supervisord include path (not from git — kept for rollback reference)
+- Remove `~/projects/conf.d/lyra-hub.conf`, `lyra-telegram.conf`, `lyra-discord.conf` from M₁ supervisord include path
 - Delete old `.env`, `.env.hub`, `.env.telegram`, `.env.discord` from `~/projects/lyra/` on M₁
 
 **Exit criteria:**
@@ -224,7 +224,7 @@ systemctl --user start lyra.service
 - Phase 1 stable (>= 1 week)
 - Cross-project ADR accepted (covering: registry namespace, shared vs per-project NATS, shared network, env file convention, deploy script template)
 - voiceCLI has a `deploy/quadlet/` directory modeled on Lyra's
-- GPU passthrough tested: `AddDevice=/dev/nvidia0` in `.container` files works on M₁ with Podman 5.x rootless (verify separately — rootless GPU passthrough has CDI requirements)
+- GPU passthrough via CDI validated on M₁ (see `docs/runbooks/cdi-gpu-validation.md`, Risk 5 mitigated 2026-04-24). Use `AddDevice=nvidia.com/gpu=all` in `.container` files (CDI syntax, not raw `/dev/nvidia0`).
 
 **Steps:**
 1. Per the cross-project ADR decisions: create `voicecli.network` or join `lyra.network`
@@ -282,11 +282,11 @@ cd ~/projects && supervisorctl -c supervisord.conf start voicecli_tts voicecli_s
 **Entry criteria:**
 - All NATS-using projects (lyra, voiceCLI, roxabi-vault if daemonized) are on Quadlet
 - Cross-project ADR has resolved shared vs per-project NATS — this phase assumes "shared wins"
-- Shared NATS Quadlet unit is in a designated home repo (recommendation: `roxabi-production` or a new `roxabi-infra` repo — not any single project repo)
+- Shared NATS Quadlet unit is in `lyra/deploy/quadlet/nats.container` per ADR-055 D7 (Lyra repo is the ecosystem infra home by origin)
 - All nkey seeds and auth.conf migrated to the shared NATS's volume layout
 
 **Steps:**
-1. Deploy shared `nats.container` on port 4222 (new Quadlet unit, managed outside Lyra's repo)
+1. Deploy shared `nats.container` on port 4222 from `lyra/deploy/quadlet/` (Lyra-owned per ADR-055 D7)
 2. Update `NATS_URL` in all project env files: `nats://shared-nats:4222` (or equivalent on the shared network)
 3. Restart all NATS-using Quadlet services one by one, verify connectivity
 4. Stop and disable system `nats.service`: `sudo systemctl disable --now nats.service`
@@ -329,7 +329,7 @@ sudo systemctl start nats.service
 6. Optionally uninstall supervisord: `pip uninstall supervisor` (if installed in a venv) — confirm it is not a dependency of any remaining project's venv first
 
 **Cleanup:**
-- Archive `~/projects/conf.d/` (or delete — all project-level conf files already in each project's `deploy/supervisor/conf.d/` for reference)
+- Archive `~/projects/conf.d/` (or delete — project-level conf files are in each project's `deploy/conf.d/`)
 - Remove `~/projects/supervisord.conf`, `~/projects/scripts/start.sh`, `~/projects/scripts/supervisorctl.sh`
 - Update `~/projects/CLAUDE.md` to reflect the new topology
 
@@ -362,7 +362,7 @@ sudo systemctl start nats.service
 - [ ] Remove `~/projects/conf.d/lyra-hub.conf`, `lyra-telegram.conf`, `lyra-discord.conf` from M₁ supervisord path (keep in project repo)
 - [ ] Delete old `~/projects/lyra/.env`, `.env.hub`, `.env.telegram`, `.env.discord` from M₁ working tree
 - [ ] Disable `lyra.service` user unit: `systemctl --user disable lyra.service`
-- [ ] Archive or remove `deploy/supervisor/start.sh`, `supervisorctl.sh` from the Lyra repo once supervisord path is deprecated project-wide
+- [ ] Lyra-owned supervisor files removed from repo in #886; host scripts (`~/projects/scripts/start.sh`, `supervisorctl.sh`) retire when supervisord is fully decommissioned (Phase 5)
 
 ### After Phase 2 (voiceCLI cutover)
 
@@ -403,7 +403,7 @@ sudo systemctl start nats.service
 | 2 | **Shared API key leakage across project env files** — Anthropic API key (and other shared credentials) will appear in multiple project env files under `~/.<project>/env/`. A future `grep -r ANTHROPIC` across the home directory finds them all | Medium | Medium | Document in cross-project ADR that env files are per-service, not per-key. Long-term: evaluate `podman secret` as a shared secret store (ADR-053 Alternative C). Immediate: `chmod 600` enforced by deploy scripts for all env files. |
 | 3 | **Rollback from Quadlet to supervisord if Quadlet fails on M₁** — rollback is a manual procedure; if hub goes down and nkey paths are already migrated, supervisord path cannot restart until paths are reverted | Low | High | Keep supervisord conf files in place until Phase 1 is stable for >= 1 week. Document rollback commands verbatim in each phase (see §3). Do not delete `.env.*` files from working tree until rollback window closes. |
 | 4 | **Monitoring gap during cutover** — uptime-kuma monitors host processes; during the switch from supervisord programs to Quadlet units, its health checks may silently stop working if they are keyed on process names or HTTP endpoints that change | Medium | Medium | Before Phase 1: audit uptime-kuma monitors on M₁ for Lyra. Update check URLs/methods to Quadlet-equivalent endpoints. Verify monitoring restores after each phase. |
-| 5 | **Rootless GPU passthrough failure for imageCLI/voiceCLI** — rootless Podman + GPU requires CDI (Container Device Interface) configuration; not all Podman 5.x rootless setups support it out of the box on Ubuntu 26.04 | Medium | High | Validate CDI setup on M₁ before Phase 2. Test `podman run --device nvidia.com/gpu=0 ...` in isolation. If CDI fails, these services may need to remain host-process daemons (plain systemd service, not container) — a policy exception from Quadlet target. |
+| 5 | ~~Rootless GPU passthrough failure for imageCLI/voiceCLI~~ **MITIGATED 2026-04-24** — CDI validated on M₁: driver 580.142, toolkit 1.19.0, Podman 5.7.0, `podman run --device nvidia.com/gpu=all` and Quadlet `AddDevice=nvidia.com/gpu=all` both pass with RTX 3080 visible. Spec persisted at `/etc/cdi/nvidia.yaml` (not tmpfs). Apt hook `/etc/apt/apt.conf.d/99-nvidia-cdi-regenerate` auto-regenerates on driver/toolkit update and aborts apt transaction on failure (no silent-drift risk). Runbook: `docs/runbooks/cdi-gpu-validation.md`. | — | — | — |
 | 6 | **Port collision between idna and roxabi-intel on 8082** — both projects appear to use port 8082; if both are started simultaneously, one will fail | Medium | Low | Investigate on M₁ now (§1 audit note). Assign distinct ports before migration. |
 | 7 | **Disk space: image layer overhead** — each project image adds 200–800 MB of layer storage; 10 projects × 500 MB average = ~5 GB. M₁'s disk capacity is unknown from these files | Low | Medium | Check `df -h` on M₁. Set `podman system prune` in a weekly systemd timer to remove dangling layers. Keep `localhost/<project>:rollback` tag for one generation only. |
 | 8 | **gitnexus daemon status unknown** — if gitnexus runs a background process and is not captured in this audit, it will be orphaned when supervisord is retired | Low | Low | Investigate on M₁: `ps aux | grep gitnexus`. Determine whether it is a Claude Code plugin (ephemeral) or a persistent server. |

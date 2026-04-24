@@ -282,11 +282,11 @@ cd ~/projects && supervisorctl -c supervisord.conf start voicecli_tts voicecli_s
 **Entry criteria:**
 - All NATS-using projects (lyra, voiceCLI, roxabi-vault if daemonized) are on Quadlet
 - Cross-project ADR has resolved shared vs per-project NATS — this phase assumes "shared wins"
-- Shared NATS Quadlet unit is in a designated home repo (recommendation: `roxabi-production` or a new `roxabi-infra` repo — not any single project repo)
+- Shared NATS Quadlet unit is in `lyra/deploy/quadlet/nats.container` per ADR-055 D7 (Lyra repo is the ecosystem infra home by origin)
 - All nkey seeds and auth.conf migrated to the shared NATS's volume layout
 
 **Steps:**
-1. Deploy shared `nats.container` on port 4222 (new Quadlet unit, managed outside Lyra's repo)
+1. Deploy shared `nats.container` on port 4222 from `lyra/deploy/quadlet/` (Lyra-owned per ADR-055 D7)
 2. Update `NATS_URL` in all project env files: `nats://shared-nats:4222` (or equivalent on the shared network)
 3. Restart all NATS-using Quadlet services one by one, verify connectivity
 4. Stop and disable system `nats.service`: `sudo systemctl disable --now nats.service`

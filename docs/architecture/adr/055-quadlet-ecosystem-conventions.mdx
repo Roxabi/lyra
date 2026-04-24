@@ -1,0 +1,401 @@
+---
+title: "ADR-055: Quadlet Ecosystem Conventions — Registry, NATS, Network, Secrets, Deploy"
+description: Resolves seven cross-project design questions that block Phase 2 of the Roxabi ecosystem migration from supervisord to Podman Quadlet. Each decision applies to all roxabi projects on M₁ once they begin Quadlet adoption.
+---
+
+## Status
+
+Proposed (2026-04-24)
+
+**Parent ADR:** ADR-053 (Deployment topology and container-image hardening — Lyra reference implementation)
+**Migration doc:** `docs/PROD-MIGRATION-STRATEGY.md` — Phase 2 entry criterion; §6 enumerates the seven questions resolved here.
+
+---
+
+## Home
+
+This ADR lives in `lyra/docs/architecture/adr/`. Home is permanent.
+
+Lyra is the origin of the Roxabi ecosystem — the infra (NATS server config, auth.conf, nkey issuance, Quadlet patterns, deploy scripts) exists because Lyra needed it. Other projects are downstream consumers. Lyra's repo is the ecosystem infra home by origin, not by convenience. `roxabi-infra` will not be created; this ADR does not move.
+
+It is **not** in `roxabi-production` (video showcase) nor `roxabi-boilerplate` (SaaS Next.js scaffold). Neither is the right domain for infra ADRs.
+
+---
+
+## Context
+
+Let:
+  M₁ := `roxabituwer` (192.168.1.16, Ubuntu 26.04 LTS, rootless Podman 5.x)
+  P₁ := Phase 1 of `docs/PROD-MIGRATION-STRATEGY.md` (Lyra Quadlet prod cutover — complete as of #611)
+  P₂ := Phase 2 (voiceCLI Quadlet migration — blocked on this ADR)
+
+P₁ is complete. Lyra runs four Quadlet containers on `lyra.network`: `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-nats` (port 4223, coexisting with host `nats.service` on 4222). The ADR-053 + ADR-054 design is validated in prod.
+
+P₂ is blocked. voiceCLI is the first project that is not Lyra. It uses NATS (same auth pattern, same nkey convention), has GPU requirements (RTX 3080, CDI validated — Risk 5 mitigated 2026-04-24), and its nkey seeds (`voice-tts.seed`, `voice-stt.seed`) currently live in `~/.lyra/nkeys/` — a cross-project coupling that must be resolved before Quadlet units can be written for it.
+
+ADR-053 §6 enumerated seven questions explicitly deferred to this ADR:
+
+| # | Question |
+|---|---|
+| D1 | Image registry namespace |
+| D2 | Shared vs per-project NATS container |
+| D3 | Shared vs per-project Podman network |
+| D4 | Env file path convention |
+| D5 | Deploy script template |
+| D6 | Upgrade coordination |
+| D7 | Neutral home for shared infra units |
+
+These decisions are cross-project. No single project owns them. They must be settled once, in one document, before any Phase 2 implementation starts.
+
+---
+
+## Decision
+
+### D1 — Image registry namespace: project-named, no `roxabi-` prefix
+
+**Options:**
+
+| Option | Example | Assessment |
+|---|---|---|
+| A. Project name only | `localhost/lyra-hub:latest`, `localhost/voicecli-tts:latest` | Each project owns its namespace; consistent with per-project runtime dirs (`~/.lyra/`, `~/.voicecli/`); no rename cost |
+| B. `roxabi-` prefix | `localhost/roxabi-lyra:latest` | Groups images in `podman images` output; imposes a shared prefix on artifacts that are per-project by nature |
+
+**Chosen:** Option A — `localhost/<project>-<service>:latest` for all projects.
+
+**Rationale:** Container images are per-project artifacts, not shared infra. `~/.lyra/` is Lyra's runtime dir; `localhost/lyra-hub:latest` is Lyra's image. `~/.voicecli/` is voiceCLI's runtime dir; `localhost/voicecli-tts:latest` is voiceCLI's image. The naming follows ownership, not ecosystem branding. The `roxabi-` prefix is reserved for code genuinely extracted as multi-consumer SDKs (ADR-045: `roxabi-nats`, ADR-049: `roxabi-contracts`) — it is not a registry namespace for per-project container images.
+
+`podman images | grep lyra` and `podman images | grep voicecli` are unambiguous per-project filters. A shared prefix provides no operational benefit that project-scoped filters do not already cover. Lyra uses `localhost/lyra-hub:latest`, `localhost/lyra-telegram:latest`, `localhost/lyra-discord:latest`, `localhost/lyra-nats:latest` — already established in prod, no rename needed.
+
+---
+
+### D2 — NATS: shared single container, per-project until Phase 4
+
+**This is the highest-stakes decision.** It determines whether Phase 4 (consolidation) requires a migration or is a no-op.
+
+**Options:**
+
+| Option | Description | Pros | Cons |
+|---|---|---|---|
+| A. Per-project NATS | Each project owns a `nats.container` on its own network | No shared-infra dependency; each project deploys independently | N NATS processes on M₁; auth.conf fragmented; per-project port assignments needed; harder to audit ACLs |
+| B. Shared NATS from day one | One `nats.container` in `lyra/deploy/quadlet/`, port 4222 | Single auth surface; all projects on one bus; aligns with endgame | Requires Phase 4 topology and merged auth.conf before voiceCLI can migrate; blocks P₂ |
+| C. Per-project during migration, shared at Phase 4 | Each project uses its own NATS during migration; Phase 4 consolidates | Projects can migrate independently; shared NATS is deferred to when it is needed | Auth.conf duplication in the interim; migration step at Phase 4 |
+
+**Chosen:** Option C — per-project NATS during migration, shared at Phase 4.
+
+**Rationale:** Option B requires the Phase 4 merged auth.conf and shared network topology to be ready before voiceCLI can start. Blocking P₂ on that setup work is worse than the cost of running two NATS processes for the migration window. Option A (per-project forever) is rejected — fragmented auth surfaces and N NATS processes have no long-term value once the shared model is available.
+
+Option C lets voiceCLI proceed immediately with its own `voicecli-nats.container` (port 4224, continuing the coexistence pattern from Lyra's 4223). Phase 4 then consolidates all NATS-using projects onto one container. The consolidation path is documented in `docs/PROD-MIGRATION-STRATEGY.md` §3 Phase 4 — no new steps required.
+
+**4223 → 4222 consolidation path (Phase 4):**
+
+The host `nats.service` (4222, TLS) and port 4222 are physically exclusive — the shared Quadlet NATS cannot bind 4222 while host NATS is running. Ordering matters:
+
+1. **Prepare auth.conf:** assemble merged auth.conf from all projects' nkey identities in `lyra/deploy/nats/auth.conf`. Dry-run validate: `nats-server --config lyra/deploy/nats/nats.conf --signal reload=dry` (or `--config-check`).
+2. **Update env files:** each NATS-using project changes `NATS_URL` from its per-project endpoint (`tls://127.0.0.1:4223`, `tls://127.0.0.1:4224`, …) to `tls://lyra-nats:4222` on `roxabi.network`. Commit but do not deploy.
+3. **Stop host NATS:** `sudo systemctl disable --now nats.service`. All NATS-using projects are briefly offline.
+4. **Start shared Quadlet NATS:** `systemctl --user start nats.service` — the Quadlet unit from `lyra/deploy/quadlet/nats.container` now binds 4222. Verify with `ss -tlnp | grep 4222`.
+5. **Restart NATS-using containers one by one** with the updated env files. Verify connectivity per project with `nats-cli sub "<project>.>" --count 1 --timeout 5s`.
+6. **Retire per-project `nats.container` units:** stop, disable, remove unit files.
+
+**TLS:** the shared Quadlet NATS reuses the host's existing certs from `/etc/nats/certs/` via volume mount — no regen needed. Client URL is `tls://lyra-nats:4222` (TLS preserved across the migration; no protocol switch). If a future decision drops TLS for intra-Podman-network traffic, that is a separate ADR; this ADR preserves the current posture.
+
+During migration, port assignments are: host 4222 (system NATS), Lyra 4223, voiceCLI 4224; subsequent projects increment. Port assignment is per-project and tracked in each project's `deploy/quadlet/` documentation.
+
+**Auth.conf during migration:** each project's per-project NATS authorizes only its own nkey identities for intra-project traffic. **Cross-project authorizations persist on Lyra's NATS until Phase 4**: voiceCLI workers publish `lyra.voice.*` subjects consumed by Lyra's hub, so `voice-tts` and `voice-stt` nkeys remain in Lyra's auth.conf throughout the migration window. This is duplicated cross-bus authorization, not a collision — the Phase 4 merged auth.conf (Step 1 above) deduplicates.
+
+---
+
+### D3 — Podman network: shared for NATS-communicating projects, isolated for HTTP-only
+
+**Options:**
+
+| Option | Description |
+|---|---|
+| A. One shared `roxabi.network` | All projects on one network |
+| B. Per-project network, no cross-project communication | Projects isolated; NATS is the bus |
+| C. Shared network for NATS-bus participants; isolated networks for stateless HTTP servers | Topology matches communication intent |
+
+**Chosen:** Option C.
+
+**Rationale:** The NATS messaging bus is the intended integration mechanism — not container-to-container direct networking. Projects that talk to each other do so via NATS subjects (ADR-035, ADR-049). For these projects, sharing a network is required when they share a NATS container (Phase 4). For stateless HTTP servers (forge, intel, idna, live), cross-project networking has no benefit and adds an attack surface — each gets its own isolated network.
+
+**Network topology:**
+
+| Project class | Network | Rationale |
+|---|---|---|
+| NATS-using: lyra, voiceCLI, roxabi-vault (if daemonized) | `roxabi.network` (Phase 4) | Must reach shared NATS; may need direct container reach to NATS container |
+| HTTP-only: forge, intel, idna, live, litellm | `<project>.network` | No inter-project networking needed; isolation is free |
+| Monitoring (uptime-kuma) | `monitoring.network` | Needs to probe other containers' health endpoints; consider dedicated bridge |
+
+**Migration window:** projects keep their per-project network until Phase 4 moves them to `roxabi.network`. Lyra currently uses `lyra.network`; voiceCLI will use `voicecli.network`. Both join `roxabi.network` at Phase 4 when shared NATS lands.
+
+---
+
+### D4 — Env file convention: `~/.<project>/env/<service>.env`
+
+**Options:**
+
+| Option | Example | Notes |
+|---|---|---|
+| A. Per-project dir | `~/.lyra/env/hub.env` | Matches existing `~/.lyra/` precedent; each project owns its runtime dir |
+| B. Centralized under `~/.roxabi/` | `~/.roxabi/env/lyra/hub.env` | Single location; simpler grep for audit |
+
+**Chosen:** Option A — `~/.<project>/env/<service>.env` per project.
+
+**Rationale:** `~/.lyra/` is already established as Lyra's runtime state directory (`auth.db`, `keyring.key`, `config.db`, `nkeys/`, `agents/`). ADR-053 Decision 5 moved env files into `~/.lyra/env/` explicitly to consolidate within this existing root. voiceCLI follows `~/.voicecli/env/`, imageCLI follows `~/.imagecli/env/`, etc.
+
+Centralizing under `~/.roxabi/env/` introduces a second runtime root for projects that already have `~/.<project>/`. The symmetry gain is not worth splitting the mental model. If a future secrets manager (e.g., a shared `podman secret` store) requires centralization, that is an O(N) file-move with no logic change — a low-cost migration deferred to when the need is proven.
+
+**nkey seeds across projects (critical):** voiceCLI seeds currently live in `~/.lyra/nkeys/` (`voice-tts.seed`, `voice-stt.seed`). This is a Phase 1 artifact — they were placed there when voiceCLI ran under Lyra's supervisord conf. They must migrate to `~/.voicecli/nkeys/` as part of Phase 2 step 2 (see `docs/PROD-MIGRATION-STRATEGY.md` §3 Phase 2).
+
+**Migration procedure for Phase 2:**
+
+```sh
+# --- Pre-flight ---
+# 1. Stop voiceCLI so no process is authenticating mid-move.
+supervisorctl -c ~/projects/supervisord.conf stop voicecli_tts voicecli_stt
+
+# 2. Confirm which auth.conf currently references these seed paths.
+grep -rn 'voice-tts\.seed\|voice-stt\.seed' /etc/nats/ ~/.lyra/ 2>/dev/null
+
+# --- Migrate ---
+mkdir -p ~/.voicecli/nkeys/
+mv ~/.lyra/nkeys/voice-tts.seed ~/.voicecli/nkeys/voice-tts.seed
+mv ~/.lyra/nkeys/voice-stt.seed ~/.voicecli/nkeys/voice-stt.seed
+
+# 3. Update voiceCLI's auth.conf references to ~/.voicecli/nkeys/ then reload.
+sudo systemctl reload nats.service   # host NATS during migration window
+# (Lyra's auth.conf entries for voice-* stay — cross-bus authorization, see D2.)
+
+# --- Verify ---
+nats sub "voice.>" --count 1 --timeout 5s   # must authenticate; no ACL errors
+
+# --- Restart ---
+supervisorctl -c ~/projects/supervisord.conf start voicecli_tts voicecli_stt
+```
+
+**Rollback** (if verify fails):
+
+```sh
+supervisorctl stop voicecli_tts voicecli_stt
+mv ~/.voicecli/nkeys/voice-tts.seed ~/.lyra/nkeys/
+mv ~/.voicecli/nkeys/voice-stt.seed ~/.lyra/nkeys/
+# Revert voiceCLI auth.conf to ~/.lyra/nkeys/ paths
+sudo systemctl reload nats.service
+supervisorctl start voicecli_tts voicecli_stt
+```
+
+Do not regen nkeys unless rotation is needed — the same seeds work with a path change and an auth.conf update.
+
+**Container UID and seed ownership:** ADR-054 Decision 2 uses `UserNS=keep-id`, mapping container processes to host UID 1000. Seed files owned by `mickael` (UID 1000) are readable without `chown`. New projects should adopt `UserNS=keep-id` by default unless they have a specific reason for a different UID model (document it in their own ADR).
+
+**Podman secret adoption (matching ADR-054):** voiceCLI follows Lyra's precedent — nkey seeds are delivered as Podman secrets, not bind-mounts. Naming convention: `<project>-nats-<identity>`. Bootstrap (run once during initial Quadlet install, **after** the path migration above completes):
+
+```sh
+podman secret create voicecli-nats-tts ~/.voicecli/nkeys/voice-tts.seed
+podman secret create voicecli-nats-stt ~/.voicecli/nkeys/voice-stt.seed
+```
+
+The `voicecli-nats.container` unit references secrets via:
+
+```
+Secret=voicecli-nats-tts,type=mount,target=/etc/nats/nkeys/voice-tts.seed
+Secret=voicecli-nats-stt,type=mount,target=/etc/nats/nkeys/voice-stt.seed
+```
+
+This closes open question 3 from the initial draft — no bind-mount fallback; match ADR-054 uniformly.
+
+---
+
+### D5 — Deploy script: shared library in `lyra/scripts/deploy-lib.sh`, sourced by each project
+
+**Options:**
+
+| Option | Description | Pros | Cons |
+|---|---|---|---|
+| A. Per-project copy of `scripts/deploy-quadlet.sh` | Each project maintains its own | No shared dep | Bug fixes must be applied to N files; drift accumulates |
+| B. Shared shell library in `roxabi-boilerplate`, sourced by each project | One file in scaffold template | Single fix propagates | Wrong domain — `roxabi-boilerplate` is a SaaS Next.js scaffold; deploy infra is unrelated content; scaffold templates ≠ live deploy tooling |
+| C. Shared shell library in `lyra/scripts/deploy-lib.sh`, sourced by each project | One file in the ecosystem origin repo | Single fix propagates; correct domain; no new repo needed | Downstream projects depend on Lyra's repo at deploy time |
+
+**Chosen:** Option C — shared shell library at `lyra/scripts/deploy-lib.sh`.
+
+**Rationale:** The deploy library is infra tooling, not a scaffold template. `roxabi-boilerplate` is a SaaS Next.js project scaffold — placing a Podman Quadlet deploy library there mixes entirely unrelated domains and requires M₁ to have `roxabi-boilerplate` checked out for deploys. Lyra is the ecosystem origin: it defines the patterns that downstream projects adopt. Hosting the shared deploy library in `lyra/scripts/deploy-lib.sh` is consistent with that role. Downstream projects source it via the Lyra git dependency (already available as `~/projects/lyra/`) or copy it at bootstrap time.
+
+**Versioning and installation:**
+
+The shared library is **installed at bootstrap time, not sourced live from Lyra's working tree.** Each project's `make quadlet-install` copies `$LYRA_DIR/scripts/deploy-lib.sh` to `~/.local/lib/roxabi/deploy-lib.sh`, pinning the source commit hash in a comment header:
+
+```sh
+# deploy-lib.sh — installed from lyra @ <commit-sha>
+# DEPLOY_LIB_VERSION=1.0.0
+```
+
+Downstream deploy scripts source the **installed copy**, not Lyra's checkout:
+
+```sh
+# Each project's deploy-quadlet.sh:
+PROJECT=voicecli
+CONTAINERS="voicecli-tts voicecli-stt voicecli-nats"
+IMAGE="localhost/voicecli:latest"
+SECRETS_DIR="$HOME/.voicecli/nkeys"
+source "${LYRA_DEPLOY_LIB:-$HOME/.local/lib/roxabi/deploy-lib.sh}"
+run_deploy "$@"
+```
+
+This decouples deploy-time behavior from Lyra's live checkout state (mid-rebase, feature branch, broken `staging`, etc.). Upgrading the library is an explicit action: `make quadlet-upgrade-lib` re-copies from `$LYRA_DIR/scripts/` and bumps the pinned commit.
+
+`LYRA_DEPLOY_LIB` remains available as an override for non-standard environments (CI runners, alternative checkout paths).
+
+**Interface stability:** breaking changes to the library bump `DEPLOY_LIB_VERSION` (semver major) and require notifying downstream projects to run `make quadlet-upgrade-lib`. This trigger is tracked in D6's coordination table.
+
+**Interim:** until `lyra/scripts/deploy-lib.sh` is extracted, each project copies Lyra's `scripts/deploy-quadlet.sh` and adapts the variables. The shared library is the target, not a blocker for Phase 2.
+
+---
+
+### D6 — Upgrade coordination: independent releases with batch requirement only for shared-infra changes
+
+**Options:**
+
+| Option | Description |
+|---|---|
+| A. Fully independent | Each project releases and deploys on its own schedule, always |
+| B. Batch upgrades | All projects coordinate deploys; any change requires group sign-off |
+| C. Independent releases; batch only for shared-infra breaking changes | Default is independent; coordination triggered by specific events |
+
+**Chosen:** Option C.
+
+**Rationale:** Independent releases are the norm — each project has its own repo, its own branch, its own deploy cycle. Batching all upgrades across 10+ projects is operationally expensive and introduces coupling where none is needed. ADR-049 (roxabi-contracts shared schema package) already governs the one scenario where coordination is mandatory: a breaking NATS contract change requires consuming projects to update before the producer deploys. That mechanism is already in place.
+
+**Coordination triggers (non-exhaustive):**
+
+| Event | Required action |
+|---|---|
+| Shared NATS auth.conf change (new nkey, revoked identity) | All NATS-using containers must be restarted after auth reload |
+| Phase 4: shared NATS container deploy | All NATS-using projects update `NATS_URL` and restart — one coordinated window |
+| `roxabi.network` creation or renaming | All projects on the shared network must update their `Network=` directive |
+| NATS contract version bump (ADR-049 breaking change) | Per ADR-049 protocol |
+| Breaking change to `lyra/scripts/deploy-lib.sh` interface | Bump `DEPLOY_LIB_VERSION` (semver major); notify downstream projects to run `make quadlet-upgrade-lib` before next deploy |
+
+Everything else (bot logic, model changes, non-NATS features) deploys independently.
+
+---
+
+### D7 — Home for shared infra: Lyra repo is the home
+
+**Options:**
+
+| Option | Description | Assessment |
+|---|---|---|
+| A. `roxabi-production` | Existing repo; cross-project scope | Wrong domain — video showcase project; naming is misleading |
+| B. `roxabi-boilerplate` | Existing repo; holds scaffold templates | Wrong domain — SaaS Next.js scaffold; infra units are unrelated content |
+| C. New `roxabi-infra` repo | Explicit scope; no single-project ownership | Requires a new repo with its own CI, deploy tooling, and documentation; defers Phase 4 on repo setup work; ignores the origin relationship |
+| D. Lyra repo | Ecosystem origin; infra already lives here | No new repo; no rename; correct ownership by origin |
+
+**Chosen:** Option D — Lyra repo is the home for shared infra.
+
+**Rationale:** Lyra is the origin of the Roxabi ecosystem. NATS server configuration, auth.conf, nkey issuance, Quadlet patterns, and deploy scripts exist because Lyra needed them. Other projects are downstream consumers of patterns Lyra established. The Linux kernel hosts drivers without being renamed "kernel-platform" — origin justifies hosting without implying sole benefit. The same principle applies here.
+
+Placing shared infra in a new `roxabi-infra` repo would:
+1. Require repo creation, CI setup, deploy tooling, and documentation before Phase 4 can begin.
+2. Create an artificial neutral party where a natural owner already exists.
+3. Rename Lyra's operational role without any functional benefit — a ripple with zero gain.
+
+**Lyra repo holds:**
+- `deploy/quadlet/nats.container` (Phase 4 shared NATS unit, promoted from per-project)
+- `deploy/quadlet/roxabi.network` (shared Podman network)
+- `scripts/deploy-lib.sh` (shared deploy library, D5)
+- `docs/architecture/adr/` — cross-project infra ADRs, permanent home
+
+**Downstream dependency is explicit and correct:** voiceCLI and other projects sourcing `lyra/scripts/deploy-lib.sh` at deploy time is an accurate expression of Lyra's origin role. It is not a hidden coupling — it is the documented contract.
+
+---
+
+## Consequences
+
+### Positive
+
+- Seven previously open design questions are closed — Phase 2 is unblocked.
+- Per-project NATS during migration: voiceCLI can start its Quadlet migration without waiting for Phase 4.
+- Per-project image naming (`localhost/lyra-hub:latest`, `localhost/voicecli-tts:latest`) is settled — no `roxabi-` prefix for container images.
+- nkey seed migration path for voiceCLI is explicit and safe — no regen, just a path move with auth.conf update.
+- `UserNS=keep-id` is the standard UID model for all projects — no per-project UID experimentation.
+- Shared deploy library at `lyra/scripts/deploy-lib.sh` — prevents N-way divergence of deploy logic; no new repo required.
+- Lyra's role as ecosystem infra home is explicit — no future repo creation needed to manage shared infra.
+
+### Negative
+
+- Per-project NATS means a Phase 4 migration step exists for every NATS-using project. With 3–4 projects, this is manageable; at 8+ it would become tedious. Current count: lyra, voiceCLI, roxabi-vault (if daemonized) — acceptable.
+- Downstream projects sourcing `lyra/scripts/deploy-lib.sh` at deploy time introduces a path dependency (`LYRA_DEPLOY_LIB`). If the Lyra checkout is unavailable (fresh machine, offline deploy), the library is missing. Mitigation: the per-project copy is the interim fallback; the library is not a hard runtime dep.
+- Lyra's repo gains cross-project infra responsibility. Scope must be actively maintained — `lyra/deploy/quadlet/` for Lyra units, separate paths for shared units; `lyra/scripts/deploy-lib.sh` is the only shared deploy artifact.
+
+### Implementation issues (open as follow-ups)
+
+The following issues should be opened and tracked:
+
+1. **[Phase 2] Migrate voiceCLI nkey seeds from `~/.lyra/nkeys/` to `~/.voicecli/nkeys/`** — path move + voiceCLI auth.conf update + NATS reload + verification. Do not regen unless rotation is needed.
+2. **[Phase 2] Write voiceCLI Quadlet units** — `voicecli-tts.container`, `voicecli-stt.container`, `voicecli-nats.container` (port 4224), `voicecli.network`, `voicecli-data.volume`. Follow ADR-053 + ADR-054 patterns; add `AddDevice=nvidia.com/gpu=all` (CDI, validated Risk 5) to TTS and STT containers.
+3. **[Phase 2] voiceCLI deploy script** — `scripts/deploy-quadlet.sh` following Lyra's structure; project-scoped variables; image `localhost/voicecli-tts:latest` etc.
+4. **[Phase 2] Extract deploy library to `lyra/scripts/deploy-lib.sh`** — shared shell library; define the project-override interface; update Lyra's deploy script to source it as proof-of-concept.
+5. **[Phase 4] Promote shared `nats.container`** — move to `lyra/deploy/quadlet/nats.container`; port 4222; merged auth.conf covering lyra, voiceCLI, vault nkey identities; start after host `nats.service` is retired.
+6. **[Phase 4] Port consolidation for all NATS-using projects** — update `NATS_URL` in each project's env files from per-project port (4223, 4224, …) to `nats://lyra-nats:4222`; restart containers one by one; verify connectivity.
+7. **[Audit] Confirm imageCLI and llmCLI NATS usage** — determine whether they need to join `roxabi.network` at Phase 4 or can stay on isolated networks. Result affects the Phase 4 auth.conf scope.
+8. **[Audit] Confirm roxabi-vault daemon status** — if not a persistent daemon, remove from NATS-using project list and skip nkey provisioning for Phase 4.
+
+---
+
+## Alternatives Considered
+
+### Alt-A: Shared NATS from day one (D2 Option B)
+
+The migration doc §2c recommends shared `nats.container` immediately. This ADR deviates by choosing per-project NATS during migration.
+
+**Argument for shared-from-day-one:** avoids the Phase 4 migration step entirely; auth.conf is centralized earlier; operational simplicity at steady state.
+
+**Why rejected:** A shared NATS unit requires the Phase 4 network topology and merged auth.conf to be ready before voiceCLI can start. The per-project NATS approach lets voiceCLI start immediately. The Phase 4 migration is a known, bounded cost: update N env files, restart N containers, verify connectivity. With 3–4 NATS-using projects, this is a half-day of work, not a blocker.
+
+### Alt-B: All projects on one `roxabi.network` immediately (D3 Option A)
+
+**Argument:** simpler topology; no network migration at Phase 4 when NATS is consolidated.
+
+**Why rejected:** HTTP-only projects (forge, intel, idna, live) have no reason to share a network with NATS-using projects. An `intel` container on `roxabi.network` can reach `lyra-hub` via direct TCP — unintended cross-project communication surface. The per-class network topology (D3 Option C) matches communication intent and costs nothing at deploy time (Podman networks are cheap to create).
+
+### Alt-C: Env files centralized under `~/.roxabi/env/` (D4 Option B)
+
+**Argument:** single location; one `ls ~/.roxabi/env/` shows all project env files for audit.
+
+**Why rejected:** `~/.lyra/` is the established runtime root for Lyra (ADR-053 Decision 5, accepted and in prod). Deviating from it for future projects creates two conventions. The centralized option's audit benefit is achievable with `ls ~/.*env*` or a dedicated `make env-audit` target — no directory restructure needed.
+
+### Alt-D: Rename Lyra to `roxabi-platform`
+
+**Argument:** Lyra's expanded role as ecosystem origin warrants a name that signals platform responsibility.
+
+**Why rejected:** Renaming triggers a cascading ripple across repos, CI pipelines, supervisord configs, Quadlet unit names, documentation, and issue history — with zero functional benefit. Lyra is the origin; its name reflects that history, not a limitation. The Linux kernel hosts drivers without being called "kernel-platform". Origin justifies hosting; rename does not justify the cost.
+
+### Alt-E: Create `roxabi-infra` repo for shared infra
+
+**Argument:** shared infra (Phase 4 NATS unit, shared network, deploy library) belongs to no single project; a dedicated repo avoids placing downstream prerequisites in Lyra.
+
+**Why rejected:** "Belongs to no single project" is false — Lyra created the patterns, hosts the ADRs, and is already the de-facto home. Creating `roxabi-infra` adds repo setup overhead (CI, deploy tooling, documentation) before Phase 4 work can begin, and introduces an artificial neutral party where a natural owner exists. The downstream dependency on Lyra's repo is an accurate expression of Lyra's origin role, not a hidden coupling. Explicit is better than a new repo that obscures the origin relationship.
+
+---
+
+## Relationship to ADR-053 and Migration Phases
+
+| Phase | ADR-053 scope | ADR-055 scope |
+|---|---|---|
+| Phase 0 (dry run) | Lyra Quadlet on M₂ | N/A |
+| Phase 1 (Lyra prod) | Lyra Quadlet on M₁ — complete | N/A |
+| Phase 2 (voiceCLI) | N/A (deferred in §6) | D1 (image naming), D2 (per-project NATS), D3 (network), D4 (env + nkey migration), D5 (deploy script), D6 (coordination) |
+| Phase 3 (imageCLI, llmCLI, 2ndBrain) | N/A | D1, D3, D4, D5 apply directly |
+| Phase 4 (NATS consolidation) | Follow-up 7 (4223→4222 path) | D2 (shared NATS), D3 (join roxabi.network), D7 (Lyra repo as infra home) |
+| Phase 5 (supervisord retire) | Endgame condition | Unaffected |
+
+ADR-053 remains in force for Decisions 1–3 (Quadlet as strategic target, naming normalization, image digest pinning). ADR-054 remains in force for its decisions (bind-mount layout, `UserNS=keep-id`, Podman secrets for nkeys). ADR-055 extends these patterns ecosystem-wide.
+
+---
+
+## Open Questions
+
+1. **roxabi-vault daemon status** — is it a persistent NATS subscriber that needs Quadlet units, or a CLI/library? Determines Phase 4 auth.conf scope. (Follow-up 8 above.)
+2. **imageCLI NATS usage** — supervisord conf shows `autostart=false`; NATS not confirmed. (Follow-up 7.)
+3. **Port assignment registry** — per-project NATS ports are 4223 (Lyra), 4224 (voiceCLI), etc. Authoritative list: `docs/PROD-MIGRATION-STRATEGY.md` §1c (permanent home in Lyra).

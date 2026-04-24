@@ -112,6 +112,8 @@ nkey seeds are delivered as Podman secrets — not bind-mounts.
 Bootstrap (run once after seed path migration from `~/.lyra/nkeys/` per ADR-055 D4):
 
 ```bash
+chmod 700 ~/.<project>/nkeys/
+chmod 600 ~/.<project>/nkeys/*.seed
 podman secret create --replace <project>-nats-tts ~/.<project>/nkeys/<identity>.seed
 ```
 
@@ -132,7 +134,13 @@ Each project ships `scripts/deploy-quadlet.sh` — a thin wrapper that sets proj
 **Sourcing contract:**
 
 ```sh
-source "${LYRA_DEPLOY_LIB:-$HOME/.local/lib/roxabi/deploy-lib.sh}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_PATH="$HOME/.local/lib/roxabi/deploy-lib.sh"
+[[ -f "$LIB_PATH" ]] || {
+    echo "ERROR: deploy-lib.sh not found at $HOME/.local/lib/roxabi/" >&2
+    exit 1
+}
+source "$LIB_PATH"
 ```
 
 LIB must be installed before the first deploy (`make quadlet-install-deploy-lib` in the lyra checkout).
@@ -153,6 +161,7 @@ source "$HOME/.local/bin/env" 2>/dev/null || true  # uv
 
 PROJECT="imagecli"
 PROJECT_DIR="$HOME/projects/imageCLI"
+PROJECT_BRANCH="staging"
 IMAGE="localhost/imagecli-gen:latest"
 DOCKERFILE="Dockerfile"
 HUB_SERVICE="imagecli-gen"
@@ -161,12 +170,18 @@ ENV_FILES_DIR="$HOME/.imagecli/env"
 ENV_FILES="gen"
 LOG_FILE="$HOME/.local/state/imagecli/logs/deploy.log"
 FAIL_FILE="$HOME/.local/state/imagecli/deploy_failed_shas.txt"
+PROJECT_TEST_CMD=""            # empty = skip tests; set to e.g. "uv run pytest" to enable
 
 # EXTRA_REPOS=""               # no extra repos for imagecli
 
 # ── Source library and run ────────────────────────────────────────────────────
 
-source "${LYRA_DEPLOY_LIB:-$HOME/.local/lib/roxabi/deploy-lib.sh}"
+LIB_PATH="$HOME/.local/lib/roxabi/deploy-lib.sh"
+[[ -f "$LIB_PATH" ]] || {
+    echo "ERROR: deploy-lib.sh not found at $HOME/.local/lib/roxabi/" >&2
+    exit 1
+}
+source "$LIB_PATH"
 run_deploy "$@"
 ```
 
@@ -180,10 +195,11 @@ _mydep_upgrade_hook() {
     timeout 60 uv sync --all-extras --upgrade-package mydep 2>&1 | tee -a "$LOG_FILE"
 }
 
+# Newline-separated; each line: "name:path:hook"
 EXTRA_REPOS="mydep:$HOME/projects/mydep:_mydep_upgrade_hook"
 ```
 
-Format: `<name>:<path>:<hook-function-name>` — hook is called after `git pull` succeeds on that repo.
+Format: newline-separated entries, each `<name>:<path>:<hook-function-name>`. Hook is called after `git pull` succeeds on that repo. Paths must not contain colons.
 
 ---
 
@@ -205,7 +221,7 @@ quadlet-install:  ## install Quadlet units + reload
 	@systemctl --user daemon-reload
 	@echo "Quadlet units installed."
 	@if [ ! -f "$(DEPLOY_LIB_INSTALL_DIR)/deploy-lib.sh" ]; then \
-		echo "Hint: run 'make quadlet-install-deploy-lib' in ~/projects/lyra to install deploy-lib.sh"; \
+		echo "Hint: First-time setup: cd ~/projects/lyra && make quadlet-install-deploy-lib (see §7 step 1)"; \
 	fi
 
 quadlet-secrets-install:  ## create Podman secrets from ~/.<project>/nkeys/
@@ -279,7 +295,7 @@ Everything else (logic, models, non-NATS features) deploys independently.
 | `Permission denied` on seed file | Missing `UserNS=keep-id` — container UID ≠ host UID | Add `UserNS=keep-id` to `.container` unit; `daemon-reload` |
 | Unit not generated after install | `daemon-reload` not run, or Quadlet parse error | `systemctl --user daemon-reload`; check `journalctl --user -u systemd-user-generators -b` |
 | Port collision on NATS start | Another per-project NATS already on that port | Check port table (§3); assign the next unused port |
-| `deploy-lib.sh: not found` | Library not installed, or `LYRA_DEPLOY_LIB` points to wrong path | `cd ~/projects/lyra && make quadlet-install-deploy-lib` |
+| `deploy-lib.sh: not found` | Library not installed at `~/.local/lib/roxabi/deploy-lib.sh` | `cd ~/projects/lyra && make quadlet-install-deploy-lib` |
 | Tests fail after pull — deploy loops | Bad SHA in fail-file preventing retry | Delete `$FAIL_FILE` to force retry once the fix lands on staging |
 | Container exits immediately | Missing env file, missing nkey secret, `config.toml` absent | `podman logs <container>`; cross-check env file and secret list |
 | `daemon-reload` after unit edit has no effect | Edited file in project dir, not in `~/.config/containers/systemd/` | Re-run `make quadlet-install`; `daemon-reload` again |

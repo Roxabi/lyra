@@ -178,7 +178,8 @@ build_image() {
     local dockerfile="${DOCKERFILE:-Dockerfile}"
     local digest_dir="$HOME/.${PROJECT}"
 
-    cd "$PROJECT_DIR"
+    pushd "$PROJECT_DIR" > /dev/null
+    trap 'popd > /dev/null 2>&1 || true' RETURN
 
     log "Tagging current image as rollback..."
     podman tag "${IMAGE}" "${IMAGE%:*}:rollback" 2>/dev/null \

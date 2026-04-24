@@ -38,7 +38,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: build push lyra telegram discord monitor register quadlet-install deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
+.PHONY: build push lyra telegram discord monitor register quadlet-install quadlet-secrets-install deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -152,18 +152,25 @@ quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + re
 	@cp deploy/quadlet/lyra-data.volume                "$(QUADLET_DIR)/lyra-data.volume"
 	@cp deploy/quadlet/lyra-logs.volume                "$(QUADLET_DIR)/lyra-logs.volume"
 	@cp deploy/quadlet/lyra-config.volume              "$(QUADLET_DIR)/lyra-config.volume"
-	@cp deploy/quadlet/lyra-nkey-hub.volume            "$(QUADLET_DIR)/lyra-nkey-hub.volume"
-	@cp deploy/quadlet/lyra-nkey-llm-worker.volume     "$(QUADLET_DIR)/lyra-nkey-llm-worker.volume"
-	@cp deploy/quadlet/lyra-nkey-monitor.volume        "$(QUADLET_DIR)/lyra-nkey-monitor.volume"
-	@cp deploy/quadlet/lyra-nkey-telegram-adapter.volume "$(QUADLET_DIR)/lyra-nkey-telegram-adapter.volume"
-	@cp deploy/quadlet/lyra-nkey-discord-adapter.volume  "$(QUADLET_DIR)/lyra-nkey-discord-adapter.volume"
-	@cp deploy/quadlet/lyra-nats-auth.volume           "$(QUADLET_DIR)/lyra-nats-auth.volume"
 	@cp deploy/quadlet/nats.container                  "$(QUADLET_DIR)/nats.container"
 	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"
 	@cp deploy/quadlet/lyra-telegram.container         "$(QUADLET_DIR)/lyra-telegram.container"
 	@cp deploy/quadlet/lyra-discord.container          "$(QUADLET_DIR)/lyra-discord.container"
 	@systemctl --user daemon-reload
 	@echo "Quadlet units installed."
+	@echo "Next: run 'make quadlet-secrets-install' to (re)create Podman secrets from ~/.lyra/nkeys/."
+
+# ADR-054 Decision 5 (revised): file-based credentials (NATS auth.conf + nkey seeds)
+# are delivered to containers as Podman secrets. Source files live in ~/.lyra/nkeys/;
+# this target imports them into the user's Podman secret store. Idempotent (--replace).
+LYRA_NKEYS_DIR := $(HOME)/.lyra/nkeys
+quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
+	@test -d "$(LYRA_NKEYS_DIR)" || { echo "ERROR: $(LYRA_NKEYS_DIR) not found"; exit 1; }
+	@podman secret create --replace lyra-nats-auth              "$(LYRA_NKEYS_DIR)/auth.conf"
+	@podman secret create --replace lyra-nkey-hub               "$(LYRA_NKEYS_DIR)/hub.seed"
+	@podman secret create --replace lyra-nkey-telegram-adapter  "$(LYRA_NKEYS_DIR)/telegram-adapter.seed"
+	@podman secret create --replace lyra-nkey-discord-adapter   "$(LYRA_NKEYS_DIR)/discord-adapter.seed"
+	@echo "Podman secrets installed. Verify: podman secret ls"
 
 # ── Supervisor config reload (remote prod only until cutover #611) ──────────
 

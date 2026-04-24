@@ -1,9 +1,0 @@
-[Unit]
-Description=Lyra monitor nkey seed (read-only, 0600)
-ConditionPathExists=%h/.lyra/nkeys/monitor.seed
-
-[Volume]
-Device=%h/.lyra/nkeys/monitor.seed
-Type=bind
-Options=bind,ro
-Label=app=lyra

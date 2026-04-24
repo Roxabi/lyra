@@ -25,7 +25,8 @@ EnvironmentFile=%h/.lyra/env/hub.env
 # are excluded — hub does not need them. See deploy/quadlet/hub.env.example.
 # NATS_URL is overridden inline below; cutover = update .env.hub directly.
 Environment=NATS_URL=nats://lyra-nats:4222
-Volume=lyra-nkey-hub.volume:/run/secrets/hub.seed:ro,z
+# ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
+Secret=lyra-nkey-hub,type=mount,target=hub.seed,mode=0400,uid=1500,gid=1500
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/hub.seed
 Volume=lyra-data.volume:/home/lyra/.lyra:z
 Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z

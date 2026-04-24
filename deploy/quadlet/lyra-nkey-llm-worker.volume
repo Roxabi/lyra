@@ -1,9 +1,0 @@
-[Unit]
-Description=Lyra llm-worker nkey seed (read-only, 0600)
-ConditionPathExists=%h/.lyra/nkeys/llm-worker.seed
-
-[Volume]
-Device=%h/.lyra/nkeys/llm-worker.seed
-Type=bind
-Options=bind,ro
-Label=app=lyra

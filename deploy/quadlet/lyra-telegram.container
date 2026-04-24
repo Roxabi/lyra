@@ -12,7 +12,7 @@ StartLimitBurst=5
 # (CI tag-by-SHA strategy).
 Image=localhost/lyra:latest
 ContainerName=lyra-telegram
-Network=lyra.network
+Network=roxabi.network
 # Hardening — defense in depth (see issue #652).
 NoNewPrivileges=true
 ReadOnly=true

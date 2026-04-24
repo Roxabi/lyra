@@ -38,7 +38,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: build push lyra telegram discord monitor register quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
+.PHONY: build push lyra telegram discord monitor register quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -149,11 +149,12 @@ DEPLOY_LIB_INSTALL_DIR := $(HOME)/.local/lib/roxabi
 
 quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + reload
 	@mkdir -p "$(QUADLET_DIR)"
-	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container} "$(QUADLET_DIR)/nats.container"
-	@cp deploy/quadlet/lyra.network                    "$(QUADLET_DIR)/lyra.network"
+	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container} "$(QUADLET_DIR)/nats.container" \
+	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/lyra-nats.container"
+	@cp deploy/quadlet/roxabi.network                  "$(QUADLET_DIR)/roxabi.network"
 	@cp deploy/quadlet/lyra-data.volume                "$(QUADLET_DIR)/lyra-data.volume"
 	@cp deploy/quadlet/lyra-logs.volume                "$(QUADLET_DIR)/lyra-logs.volume"
-	@cp deploy/quadlet/nats.container                  "$(QUADLET_DIR)/nats.container"
+	@cp deploy/quadlet/lyra-nats.container             "$(QUADLET_DIR)/lyra-nats.container"
 	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"
 	@cp deploy/quadlet/lyra-telegram.container         "$(QUADLET_DIR)/lyra-telegram.container"
 	@cp deploy/quadlet/lyra-discord.container          "$(QUADLET_DIR)/lyra-discord.container"
@@ -165,6 +166,9 @@ quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + re
 		echo "Hint: deploy-lib.sh not found at $(DEPLOY_LIB_INSTALL_DIR)/"; \
 		echo "      Run 'make quadlet-install-deploy-lib' to install the shared deploy library."; \
 	fi
+
+quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.lyra/nkeys/auth.conf
+	@./deploy/nats/gen-nkeys.sh --emit-merged-authconf
 
 quadlet-install-deploy-lib:  ## install scripts/deploy-lib.sh to ~/.local/lib/roxabi/ with pinned commit
 	@mkdir -p "$(DEPLOY_LIB_INSTALL_DIR)"

@@ -1,8 +1,7 @@
 [Unit]
-Description=Lyra supervisord (hub, telegram, discord)
+Description=Start machine-level supervisord (Lyra tenant)
 After=network-online.target nats.service
-Requires=nats.service
-Wants=network-online.target
+Wants=network-online.target nats.service
 
 [Service]
 Type=forking

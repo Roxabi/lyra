@@ -327,7 +327,7 @@ Validated against `~/.roxabi/lyra-nats-truth/` on 2026-04-22. Findings that targ
 
 ### Adjacent deprecations (not in audit, flagged for awareness)
 
-- `scripts/deploy.sh`, `lyra.service`, `deploy/supervisor/` — Lane H (#693, #701)
+- `scripts/deploy.sh`, `lyra.service`, `deploy/supervisor/` — Lane H (#693, #701). Note: `deploy/supervisor/` was removed in #886 (tenant confs now live in `deploy/conf.d/`); retained here as a historical reference.
 - `src/lyra/bootstrap/{stt,tts}_adapter_standalone.py`, `lyra_{stt,tts}.conf` — lyra#690
 - `roxabi_nats.adapter_base.CONTRACT_VERSION` → migrates to `roxabi_contracts.envelope` (ADR-049, removed at `roxabi-nats/v0.3.0`)
 

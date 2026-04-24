@@ -333,8 +333,7 @@ def main() -> int:
             print(f"Generated: {output_path}")
 
     # Cleanup orphaned configs (files for agents no longer in agents.yml)
-    if not args.dry_run:
-        cleanup_orphaned_configs(output_dir, set(agents.keys()), dry_run=False)
+    cleanup_orphaned_configs(output_dir, set(agents.keys()), dry_run=args.dry_run)
 
     return 0
 

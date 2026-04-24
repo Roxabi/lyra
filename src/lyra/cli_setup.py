@@ -10,6 +10,8 @@ from typing import Any
 
 import typer
 
+from lyra.commands import PLUGINS_DIR
+
 log = logging.getLogger(__name__)
 
 setup_app = typer.Typer(name="setup", help="One-time platform setup commands.")
@@ -140,8 +142,7 @@ async def _register_all(config_path: str) -> None:
     cred_store = CredentialStore(lyra_dir / "config.db", keyring)
     await cred_store.connect()
 
-    commands_dir = Path(__file__).parent / "commands"
-    command_loader = CommandLoader(commands_dir)
+    command_loader = CommandLoader(PLUGINS_DIR)
 
     errors = 0
     try:

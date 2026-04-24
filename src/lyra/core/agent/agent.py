@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from ..memory.memory import MemoryManager
     from ..messaging.render_events import RenderEvent
 
+from lyra.commands import PLUGINS_DIR
+
 from ..auth.trust import TrustLevel
 from ..circuit_breaker import CircuitRegistry
 from ..commands.command_loader import CommandLoader
@@ -31,8 +33,6 @@ from .agent_db_loader import (
 )
 
 log = logging.getLogger(__name__)
-
-_COMMANDS_DIR = Path(__file__).resolve().parent.parent / "commands"
 
 
 class AgentBase(ABC, SessionManager):
@@ -66,7 +66,7 @@ class AgentBase(ABC, SessionManager):
         self._msg_manager = msg_manager
         self._stt = stt  # ADR-013: agent owns temp file cleanup
         self._tts = tts
-        self._plugins_dir = plugins_dir or _COMMANDS_DIR
+        self._plugins_dir = plugins_dir or PLUGINS_DIR
         self._command_loader = CommandLoader(self._plugins_dir)
         self._command_mgr = CommandReloadManager(
             config, self._command_loader, self._plugins_dir

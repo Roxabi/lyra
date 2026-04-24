@@ -72,14 +72,16 @@ sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 sudo rm -f /var/run/cdi/nvidia.yaml   # prevent dual-spec drift
 ```
 
-**Required apt hook — auto-regenerate + fail loud on driver/toolkit updates:**
+**Required apt hook — auto-regenerate + fail loud *when nvidia changes*:**
 ```bash
 sudo tee /etc/apt/apt.conf.d/99-nvidia-cdi-regenerate >/dev/null <<'HOOK'
-DPkg::Post-Invoke { "if dpkg -l | grep -qE '^ii  nvidia-container-toolkit'; then echo '[nvidia-cdi] regenerating /etc/cdi/nvidia.yaml'; nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml.new && mv /etc/cdi/nvidia.yaml.new /etc/cdi/nvidia.yaml || { echo '[nvidia-cdi] ERROR: CDI regeneration failed'; exit 1; }; fi"; };
+DPkg::Post-Invoke { "STAMP=/var/lib/nvidia-cdi.stamp; CUR=$(dpkg-query -W -f='${Package} ${Version}\n' 'nvidia-container-toolkit' 'nvidia-driver-*' 'libnvidia-*' 2>/dev/null | sort | sha1sum | cut -d' ' -f1); [ -f \"$STAMP\" ] && [ \"$(cat $STAMP)\" = \"$CUR\" ] && exit 0; command -v nvidia-ctk >/dev/null || exit 0; echo '[nvidia-cdi] nvidia packages changed — regenerating /etc/cdi/nvidia.yaml'; mkdir -p /etc/cdi; nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml.new && [ -s /etc/cdi/nvidia.yaml.new ] && mv /etc/cdi/nvidia.yaml.new /etc/cdi/nvidia.yaml && echo \"$CUR\" > \"$STAMP\" || { rm -f /etc/cdi/nvidia.yaml.new; echo '[nvidia-cdi] ERROR: CDI regeneration failed after nvidia update'; exit 1; }"; };
 HOOK
 ```
-This hook writes atomically (`.new` + `mv`) and exits non-zero on failure, which aborts
-the apt transaction — turning a silent stale-spec bug into a visible apt error.
+**Intent:** fail loud *only when nvidia actually changed*. A stamp file (`/var/lib/nvidia-cdi.stamp`)
+holds the hash of installed nvidia package versions; if unchanged, hook exits 0 and unrelated
+apt transactions (e.g. `apt install vim`) are never impacted. On real nvidia updates, the hook
+regenerates atomically (`.new` + `mv`) and aborts apt on failure — preserving no-silent-drift.
 
 **Verify spec is valid:**
 ```bash

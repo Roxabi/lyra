@@ -39,6 +39,11 @@ Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 # CLI can refresh tokens. UserNS=keep-id maps UID 1500 → host UID 1000 (mickael).
 # ~/.claude.json is a separate top-level config file the CLI looks up outside
 # of ~/.claude/ — must be bind-mounted inline (same pattern as config.toml).
+# Both mounts are :rw,z intentionally:
+#   rw  — CLI writes tokens (~/.claude/) and project state (~/.claude.json) at runtime
+#   z   — shared label so host user's own CLI retains access; :Z would isolate
+#         per-container and break host CLI on SELinux-enforcing systems
+# Scalpel mount (credential-only :rw, history :ro) tracked as follow-up.
 Volume=%h/.claude:/home/lyra/.claude:z
 Volume=%h/.claude.json:/home/lyra/.claude.json:z
 # Health endpoint — probed by lyra-monitor via host loopback (localhost:8443).
@@ -53,6 +58,11 @@ Restart=on-failure
 RestartSec=5
 # Cap at 2 full cores — prevents a runaway worker from starving hub + NATS.
 CPUQuota=200%
+# Pre-create ~/.claude.json as empty JSON if absent — prevents Podman from
+# auto-creating the bind-mount source as a directory (IsADirectoryError at
+# CLI read time). Touch alone leaves a 0-byte file that json parsers reject;
+# '{}' is the minimal valid document the CLI can read and then populate.
+ExecStartPre=/bin/bash -c 'test -e %h/.claude.json || echo "{}" > %h/.claude.json'
 
 [Install]
 WantedBy=default.target

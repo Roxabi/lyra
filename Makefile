@@ -145,6 +145,8 @@ register:
 	@echo "  Monitor:    run 'make monitor enable' to start the health check timer."
 	@echo "  Secrets:    ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
 
+DEPLOY_LIB_INSTALL_DIR := $(HOME)/.local/lib/roxabi
+
 quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + reload
 	@mkdir -p "$(QUADLET_DIR)"
 	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container} "$(QUADLET_DIR)/nats.container"
@@ -164,7 +166,6 @@ quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + re
 		echo "      Run 'make quadlet-install-deploy-lib' to install the shared deploy library."; \
 	fi
 
-DEPLOY_LIB_INSTALL_DIR := $(HOME)/.local/lib/roxabi
 quadlet-install-deploy-lib:  ## install scripts/deploy-lib.sh to ~/.local/lib/roxabi/ with pinned commit
 	@mkdir -p "$(DEPLOY_LIB_INSTALL_DIR)"
 	@sed "s|<commit-sha>|$$(git rev-parse HEAD)|" scripts/deploy-lib.sh > "$(DEPLOY_LIB_INSTALL_DIR)/deploy-lib.sh"

@@ -1,15 +1,15 @@
 #!/bin/bash
 # deploy-lib.sh — shared Quadlet deploy library for the Roxabi ecosystem.
 # Installed from lyra @ <commit-sha>
-# DEPLOY_LIB_VERSION=1.0.0
 #
 # Interface: callers set the variables below, then call run_deploy "$@".
 #
 #   PROJECT          — short name, e.g. "lyra", "voicecli"
 #   PROJECT_DIR      — checkout path, e.g. "$HOME/projects/lyra"
-#   EXTRA_REPOS      — space-separated list of extra repos to check (optional)
-#                      Each entry: "<name>:<path>:<upgrade-hook>" where <upgrade-hook>
-#                      is a shell function name called after `git pull` succeeds.
+#   PROJECT_BRANCH   — branch to track, default "staging"
+#   EXTRA_REPOS      — newline-separated entries; each line is "name:path:hook"
+#                      where hook is an optional shell function name. Paths must
+#                      not contain colons. Empty lines are skipped.
 #   IMAGE            — OCI image, e.g. "localhost/lyra:latest"
 #   DOCKERFILE       — path relative to PROJECT_DIR, default "Dockerfile"
 #   HUB_SERVICE      — primary service to start first and gate the rest on (optional)
@@ -19,9 +19,13 @@
 #                      (script verifies "<role>.env" exists with mode 0600)
 #   LOG_FILE         — path to deploy log
 #   FAIL_FILE        — path to SHA skip-list
-#   PROJECT_TEST_CMD — test command to run after pull, default "uv run pytest --tb=short -q"
+#   PROJECT_TEST_CMD — test command to run after pull; empty string = skip tests.
+#                      Example: "uv run pytest --tb=short -q"
 
 set -euo pipefail
+
+readonly DEPLOY_LIB_VERSION="1.0.0"
+deploy_lib_version() { echo "$DEPLOY_LIB_VERSION"; }
 
 # ── Required variable guard ───────────────────────────────────────────────────
 
@@ -37,39 +41,49 @@ _require_var() {
 # Timestamped output to stdout and LOG_FILE.
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "${LOG_FILE:?LOG_FILE is required}"
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    printf '%s\n' "$msg"
+    printf '%s\n' "$msg" >> "${LOG_FILE:?LOG_FILE is required}"
 }
 
+# ── Associative array for repo-update tracking ────────────────────────────────
+declare -gA _REPO_UPDATED
+
 # ── check_repo <name> <dir> <upgrade-hook> ────────────────────────────────────
-# Fetch origin/staging, compare SHAs, handle fail-file, pull, run tests,
+# Fetch origin/$PROJECT_BRANCH, compare SHAs, handle fail-file, pull, run tests,
 # call upgrade-hook on success.
-# Prints "true" to stdout if the repo was updated; nothing on no-op or skip.
 #
-# Sets the variable _REPO_UPDATED_<name> (uppercased) to "true" when updated.
+# Sets _REPO_UPDATED[$name]=true when updated.
 # Callers should read this via _repo_was_updated <name>.
 
 check_repo() {
     local name="$1"
     local dir="$2"
     local upgrade_hook="${3:-}"
+    local branch="${PROJECT_BRANCH:-staging}"
 
-    local test_cmd="${PROJECT_TEST_CMD:-uv run pytest --tb=short -q}"
-    local var_name
-    var_name="REPO_UPDATED_$(echo "$name" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
+    # Validate name to prevent associative-array key injection.
+    if [[ ! "$name" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        echo "ERROR: check_repo: invalid repo name '$name' (must match ^[A-Za-z0-9_-]+\$)" >&2
+        exit 1
+    fi
 
-    eval "${var_name}=false"
+    _REPO_UPDATED["$name"]=false
 
     if [[ ! -d "$dir/.git" ]]; then
         log "WARN: $name: $dir is not a git repository — skipping"
         return 0
     fi
 
-    cd "$dir"
-    timeout 30 git fetch origin staging 2>&1 | tee -a "$LOG_FILE"
+    # Use pushd/popd so the caller's working directory is not mutated.
+    pushd "$dir" > /dev/null
+    trap 'popd > /dev/null 2>&1 || true' RETURN
+
+    timeout 30 git fetch origin "$branch" 2>&1 | tee -a "$LOG_FILE"
 
     local local_sha remote_sha
     local_sha=$(git rev-parse HEAD)
-    remote_sha=$(git rev-parse origin/staging)
+    remote_sha=$(git rev-parse "origin/$branch")
 
     if [[ "$local_sha" == "$remote_sha" ]]; then
         return 0
@@ -86,23 +100,30 @@ check_repo() {
 
     # Reset generated files that may differ between machines (e.g. uv.lock after re-lock).
     git checkout -- uv.lock 2>/dev/null || true
-    timeout 30 git pull origin staging 2>&1 | tee -a "$LOG_FILE"
+    timeout 30 git pull origin "$branch" 2>&1 | tee -a "$LOG_FILE"
     timeout 60 uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
 
     if [[ "$name" == "$PROJECT" ]]; then
         # Only run tests for the primary project repo.
-        if ! timeout 120 $test_cmd 2>&1 | tee -a "$LOG_FILE"; then
-            log "ERROR: $name tests failed for $remote_sha — rolling back and marking SHA as bad."
-            echo "$remote_sha" >> "$FAIL_FILE"
-            git reset --hard "$local_sha" 2>&1 | tee -a "$LOG_FILE"
-            uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
-            exit 1
+        if [[ -n "${PROJECT_TEST_CMD:-}" ]]; then
+            local -a test_cmd_arr
+            read -r -a test_cmd_arr <<< "$PROJECT_TEST_CMD"
+            if ! timeout 120 "${test_cmd_arr[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+                log "ERROR: $name tests failed for $remote_sha — rolling back and marking SHA as bad."
+                echo "$remote_sha" >> "$FAIL_FILE"
+                log "Capturing pre-reset state for forensics:"
+                git diff HEAD 2>&1 | tee -a "$LOG_FILE" || true
+                git status --short 2>&1 | tee -a "$LOG_FILE" || true
+                git reset --keep "$local_sha" 2>&1 | tee -a "$LOG_FILE"
+                uv sync --all-extras --frozen 2>&1 | tee -a "$LOG_FILE"
+                exit 1
+            fi
         fi
         # Clear fail log on success so it does not grow unbounded.
         rm -f "$FAIL_FILE"
     fi
 
-    eval "${var_name}=true"
+    _REPO_UPDATED["$name"]=true
 
     # Run the caller-supplied upgrade hook (e.g. uv sync --upgrade-package voicecli).
     if [[ -n "$upgrade_hook" ]] && declare -f "$upgrade_hook" > /dev/null 2>&1; then
@@ -113,9 +134,7 @@ check_repo() {
 
 # _repo_was_updated <name> — returns 0 (true) if check_repo updated that repo.
 _repo_was_updated() {
-    local var_name
-    var_name="REPO_UPDATED_$(echo "$1" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
-    [[ "${!var_name:-false}" == "true" ]]
+    [[ "${_REPO_UPDATED[${1:-}]:-false}" == "true" ]]
 }
 
 # ── verify_env_files ──────────────────────────────────────────────────────────
@@ -181,9 +200,25 @@ build_image() {
 # healthy loop for all services.
 #
 # EXPECTED_IMAGE_ID must be set (by build_image or the caller).
+# Also reads from $HOME/.<PROJECT>/.image-digest as a belt-and-braces check.
 
 restart_services() {
     _require_var IMAGE
+    _require_var EXPECTED_IMAGE_ID
+
+    # Re-read persisted digest as belt-and-braces verification.
+    local digest_file="$HOME/.${PROJECT}/.image-digest"
+    if [[ -f "$digest_file" ]]; then
+        local persisted_id
+        persisted_id=$(cat "$digest_file")
+        if [[ "$persisted_id" != "$EXPECTED_IMAGE_ID" ]]; then
+            log "ERROR: persisted image digest does not match EXPECTED_IMAGE_ID."
+            log "  Persisted: $persisted_id"
+            log "  Expected:  $EXPECTED_IMAGE_ID"
+            log "  Re-run build_image or clear ${digest_file}."
+            exit 1
+        fi
+    fi
 
     local current_image_id
     current_image_id=$(podman inspect --format '{{.Id}}' "$IMAGE")
@@ -199,12 +234,18 @@ restart_services() {
 
     verify_env_files
 
-    local all_services="${HUB_SERVICE:-} ${ADAPTER_SERVICES:-}"
-    all_services="${all_services# }"  # strip leading space if HUB_SERVICE is empty
+    local -a adapter_services_arr hub_services_arr all_services_arr
+    read -r -a adapter_services_arr <<< "${ADAPTER_SERVICES:-}"
+    [[ -n "${HUB_SERVICE:-}" ]] && hub_services_arr=("$HUB_SERVICE") || hub_services_arr=()
+    all_services_arr=("${hub_services_arr[@]+"${hub_services_arr[@]}"}" "${adapter_services_arr[@]+"${adapter_services_arr[@]}"}")
+
+    if [[ ${#all_services_arr[@]} -eq 0 ]]; then
+        log "WARN: no services configured (HUB_SERVICE + ADAPTER_SERVICES both empty); skipping restart"
+        return 0
+    fi
 
     log "Removing old containers to force new image pickup..."
-    # shellcheck disable=SC2086
-    podman rm -f $all_services 2>/dev/null || true
+    podman rm -f "${all_services_arr[@]}" 2>/dev/null || true
 
     if [[ -n "${HUB_SERVICE:-}" ]]; then
         log "Restarting ${HUB_SERVICE}.service..."
@@ -237,39 +278,34 @@ restart_services() {
 
         if [[ "$hub_ready" == false ]]; then
             log "ERROR: ${HUB_SERVICE}.service did not reach active after 60s — stopping adapters and aborting"
-            if [[ -n "${ADAPTER_SERVICES:-}" ]]; then
-                # shellcheck disable=SC2086
-                systemctl --user stop $ADAPTER_SERVICES 2>&1 | tee -a "$LOG_FILE"
+            if [[ ${#adapter_services_arr[@]} -gt 0 ]]; then
+                systemctl --user stop "${adapter_services_arr[@]}" 2>&1 | tee -a "$LOG_FILE"
             fi
             exit 1
         fi
     fi
 
-    if [[ -n "${ADAPTER_SERVICES:-}" ]]; then
+    if [[ ${#adapter_services_arr[@]} -gt 0 ]]; then
         log "Restarting ${ADAPTER_SERVICES}..."
-        # shellcheck disable=SC2086
-        systemctl --user restart $ADAPTER_SERVICES 2>&1 | tee -a "$LOG_FILE"
+        systemctl --user restart "${adapter_services_arr[@]}" 2>&1 | tee -a "$LOG_FILE"
     fi
 
     # Verify all services reached active.
     log "Verifying services..."
-    local all_units=""
-    [[ -n "${HUB_SERVICE:-}"      ]] && all_units="${HUB_SERVICE}.service"
-    [[ -n "${ADAPTER_SERVICES:-}" ]] && {
-        local svc
-        for svc in $ADAPTER_SERVICES; do
-            all_units="${all_units} ${svc}.service"
-        done
-    }
-    all_units="${all_units# }"
+    local -a all_units_arr=()
+    [[ -n "${HUB_SERVICE:-}" ]] && all_units_arr+=("${HUB_SERVICE}.service")
+    local svc
+    for svc in "${adapter_services_arr[@]+"${adapter_services_arr[@]}"}"; do
+        all_units_arr+=("${svc}.service")
+    done
 
     local healthy=false
-    local i=1
-    while [[ "$i" -le 12 ]]; do
+    local j=1
+    while [[ "$j" -le 12 ]]; do
         sleep 5
         local failed=0
         local unit
-        for unit in $all_units; do
+        for unit in "${all_units_arr[@]}"; do
             local state
             state=$(systemctl --user is-active "$unit" 2>/dev/null || true)
             if [[ "$state" != "active" ]]; then
@@ -280,14 +316,13 @@ restart_services() {
             healthy=true
             break
         fi
-        log "Waiting for services... ($failed not active, attempt $i/12)"
-        i=$(( i + 1 ))
+        log "Waiting for services... ($failed not active, attempt $j/12)"
+        j=$(( j + 1 ))
     done
 
     if [[ "$healthy" == false ]]; then
         log "ERROR: Some services failed to reach active after 60s:"
-        # shellcheck disable=SC2086
-        systemctl --user status $all_units --no-pager --lines=0 2>&1 | tee -a "$LOG_FILE"
+        systemctl --user status "${all_units_arr[@]}" --no-pager --lines=0 2>&1 | tee -a "$LOG_FILE"
         exit 1
     fi
 }
@@ -296,12 +331,13 @@ restart_services() {
 # Top-level orchestrator. Call after setting all required variables.
 #
 # Flow:
-#   1. check_repo for PROJECT_DIR
-#   2. check_repo for each entry in EXTRA_REPOS
-#   3. Early-exit if nothing updated
-#   4. build_image
-#   5. restart_services (includes verify_env_files)
-#   6. Log tags summary
+#   1. verify_env_files (pre-flight)
+#   2. check_repo for PROJECT_DIR
+#   3. check_repo for each entry in EXTRA_REPOS
+#   4. Early-exit if nothing updated
+#   5. build_image
+#   6. restart_services (includes verify_env_files again as defense in depth)
+#   7. Log tags summary
 
 run_deploy() {
     _require_var PROJECT
@@ -312,27 +348,38 @@ run_deploy() {
 
     mkdir -p "$(dirname "$LOG_FILE")"
 
-    # Check primary project repo (always; runs tests).
+    # Pre-flight env-file check before any git operations.
+    verify_env_files
+
+    # Check primary project repo (always; runs tests if PROJECT_TEST_CMD is set).
     check_repo "$PROJECT" "$PROJECT_DIR" ""
 
     # Check extra repos (no tests; caller supplies upgrade hook).
+    # EXTRA_REPOS is newline-separated; each line: "name:path:hook"
     local entry name path hook
-    for entry in ${EXTRA_REPOS:-}; do
-        IFS=':' read -r name path hook <<< "$entry"
+    while IFS= read -r entry; do
+        [[ -z "$entry" ]] && continue
+        name="${entry%%:*}"
+        local rest="${entry#*:}"
+        path="${rest%%:*}"
+        hook=""
+        [[ "$rest" == *:* ]] && hook="${rest#*:}"
+        [[ -z "$path" ]] && { log "WARN: EXTRA_REPOS entry '$entry' has empty path — skipping"; continue; }
         check_repo "$name" "$path" "${hook:-}"
-    done
+    done <<< "${EXTRA_REPOS:-}"
 
     # Early-exit if nothing changed.
     local any_updated=false
     if _repo_was_updated "$PROJECT"; then
         any_updated=true
     fi
-    for entry in ${EXTRA_REPOS:-}; do
-        IFS=':' read -r name _ _ <<< "$entry"
+    while IFS= read -r entry; do
+        [[ -z "$entry" ]] && continue
+        name="${entry%%:*}"
         if _repo_was_updated "$name"; then
             any_updated=true
         fi
-    done
+    done <<< "${EXTRA_REPOS:-}"
 
     if [[ "$any_updated" == false ]]; then
         exit 0
@@ -346,11 +393,14 @@ run_deploy() {
     if _repo_was_updated "$PROJECT"; then
         tags="${tags} ${PROJECT}=$(cd "$PROJECT_DIR" && git rev-parse --short HEAD)"
     fi
-    for entry in ${EXTRA_REPOS:-}; do
-        IFS=':' read -r name path _ <<< "$entry"
+    while IFS= read -r entry; do
+        [[ -z "$entry" ]] && continue
+        name="${entry%%:*}"
+        local rest2="${entry#*:}"
+        path="${rest2%%:*}"
         if _repo_was_updated "$name"; then
             tags="${tags} ${name}=$(cd "$path" && git rev-parse --short HEAD)"
         fi
-    done
+    done <<< "${EXTRA_REPOS:-}"
     log "Deploy complete:${tags}"
 }

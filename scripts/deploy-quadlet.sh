@@ -19,6 +19,7 @@ source "$HOME/.local/bin/env" 2>/dev/null || true  # uv
 
 PROJECT="lyra"
 PROJECT_DIR="$HOME/projects/lyra"
+PROJECT_BRANCH="staging"
 IMAGE="localhost/lyra:latest"
 DOCKERFILE="Dockerfile"
 HUB_SERVICE="lyra-hub"
@@ -27,6 +28,7 @@ ENV_FILES_DIR="$HOME/.lyra/env"
 ENV_FILES="hub telegram discord"
 LOG_FILE="$HOME/.local/state/lyra/logs/deploy.log"
 FAIL_FILE="$HOME/.local/state/lyra/deploy_failed_shas.txt"
+PROJECT_TEST_CMD="uv run pytest --tb=short -q"
 
 # ── voiceCLI extra repo ───────────────────────────────────────────────────────
 # voiceCLI is baked into the lyra image; pulling a new version triggers a rebuild.
@@ -37,9 +39,18 @@ _voicecli_upgrade_hook() {
     timeout 60 uv sync --all-extras --upgrade-package voicecli 2>&1 | tee -a "$LOG_FILE"
 }
 
+# Newline-separated; each line: "name:path:hook"
 EXTRA_REPOS="voiceCLI:$HOME/projects/voiceCLI:_voicecli_upgrade_hook"
 
 # ── Source library and run ────────────────────────────────────────────────────
+# Prefer in-repo copy (dev mode), fall back to installed copy.
 
-source "${LYRA_DEPLOY_LIB:-$HOME/.local/lib/roxabi/deploy-lib.sh}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_PATH="$SCRIPT_DIR/deploy-lib.sh"
+[[ -f "$LIB_PATH" ]] || LIB_PATH="$HOME/.local/lib/roxabi/deploy-lib.sh"
+[[ -f "$LIB_PATH" ]] || {
+    echo "ERROR: deploy-lib.sh not found at $SCRIPT_DIR or $HOME/.local/lib/roxabi/" >&2
+    exit 1
+}
+source "$LIB_PATH"
 run_deploy "$@"

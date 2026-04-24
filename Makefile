@@ -151,7 +151,6 @@ quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + re
 	@cp deploy/quadlet/lyra.network                    "$(QUADLET_DIR)/lyra.network"
 	@cp deploy/quadlet/lyra-data.volume                "$(QUADLET_DIR)/lyra-data.volume"
 	@cp deploy/quadlet/lyra-logs.volume                "$(QUADLET_DIR)/lyra-logs.volume"
-	@cp deploy/quadlet/lyra-config.volume              "$(QUADLET_DIR)/lyra-config.volume"
 	@cp deploy/quadlet/nats.container                  "$(QUADLET_DIR)/nats.container"
 	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"
 	@cp deploy/quadlet/lyra-telegram.container         "$(QUADLET_DIR)/lyra-telegram.container"

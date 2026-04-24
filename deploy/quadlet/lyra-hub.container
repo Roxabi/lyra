@@ -31,7 +31,10 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/hub.seed
 Volume=lyra-data.volume:/home/lyra/.lyra:z
 Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
 Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
-Volume=lyra-config.volume:/app/config.toml:ro,z
+# Inline single-file bind mount — Quadlet .volume units wrapping a single file
+# either fail with loop-device errors or are silently downgraded to empty named
+# volumes (IsADirectoryError at read time). Inline Volume= does a direct bind.
+Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 # Health endpoint — probed by lyra-monitor via host loopback (localhost:8443).
 PublishPort=127.0.0.1:8443:8443
 Exec=lyra hub

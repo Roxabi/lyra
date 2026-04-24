@@ -30,7 +30,8 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/telegram-adapter.seed
 Volume=lyra-data.volume:/home/lyra/.lyra:z
 Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
 Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
-Volume=lyra-config.volume:/app/config.toml:ro,z
+# Inline single-file bind mount — see rationale in lyra-hub.container.
+Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 Exec=lyra adapter telegram
 
 [Service]

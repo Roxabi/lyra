@@ -22,51 +22,33 @@ def mock_nc() -> MagicMock:
 
 
 class TestInitNatsStt:
-    def test_stt_enabled_returns_client_with_model(
+    def test_returns_client_with_model(
         self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange
-        monkeypatch.setenv("LYRA_STT_ENABLED", "1")
         monkeypatch.setenv("LYRA_STT_MODEL", "tiny")
         monkeypatch.delenv("STT_MODEL_SIZE", raising=False)
-        # Act
         client = init_nats_stt(mock_nc)
-        # Assert
         assert isinstance(client, NatsSttClient)
         assert client._model == "tiny"
 
-    def test_stt_disabled_returns_none(
+    def test_always_returns_client(
         self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange
+        """init_nats_stt always returns a NatsSttClient — no flag gate."""
         monkeypatch.delenv("LYRA_STT_ENABLED", raising=False)
-        # Act
+        monkeypatch.delenv("LYRA_STT_MODEL", raising=False)
+        monkeypatch.delenv("STT_MODEL_SIZE", raising=False)
         client = init_nats_stt(mock_nc)
-        # Assert
-        assert client is None
+        assert isinstance(client, NatsSttClient)
 
-    def test_stt_explicit_zero_returns_none(
+    def test_deprecated_fallback_emits_warning(
         self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange
-        monkeypatch.setenv("LYRA_STT_ENABLED", "0")
-        # Act
-        client = init_nats_stt(mock_nc)
-        # Assert
-        assert client is None
-
-    def test_stt_deprecated_fallback_emits_warning(
-        self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Arrange
-        monkeypatch.setenv("LYRA_STT_ENABLED", "1")
         monkeypatch.delenv("LYRA_STT_MODEL", raising=False)
         monkeypatch.setenv("STT_MODEL_SIZE", "medium")
-        # Act
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             client = init_nats_stt(mock_nc)
-        # Assert
         assert isinstance(client, NatsSttClient)
         assert client._model == "medium"
         deprecation_warnings = [
@@ -75,18 +57,14 @@ class TestInitNatsStt:
         assert len(deprecation_warnings) >= 1
         assert "STT_MODEL_SIZE" in str(deprecation_warnings[0].message)
 
-    def test_stt_new_var_wins_over_deprecated(
+    def test_new_var_wins_over_deprecated(
         self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange — both vars set; LYRA_STT_MODEL should win
-        monkeypatch.setenv("LYRA_STT_ENABLED", "1")
         monkeypatch.setenv("LYRA_STT_MODEL", "tiny")
         monkeypatch.setenv("STT_MODEL_SIZE", "large")
-        # Act
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             client = init_nats_stt(mock_nc)
-        # Assert
         assert isinstance(client, NatsSttClient)
         assert client._model == "tiny"
         deprecation_warnings = [
@@ -94,103 +72,48 @@ class TestInitNatsStt:
         ]
         assert deprecation_warnings == []
 
-    def test_stt_model_without_enabled_returns_none(
-        self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Arrange — model present but enable flag absent
-        monkeypatch.setenv("LYRA_STT_MODEL", "large-v3-turbo")
-        monkeypatch.delenv("LYRA_STT_ENABLED", raising=False)
-        # Act
-        client = init_nats_stt(mock_nc)
-        # Assert
-        assert client is None
-
-    def test_stt_independent_of_tts(
-        self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Arrange — STT enabled, TTS not enabled
-        monkeypatch.setenv("LYRA_STT_ENABLED", "1")
-        monkeypatch.setenv("LYRA_STT_MODEL", "tiny")
-        monkeypatch.delenv("LYRA_TTS_ENABLED", raising=False)
-        # Act
-        stt_client = init_nats_stt(mock_nc)
-        tts_client = init_nats_tts(mock_nc)
-        # Assert — STT returned regardless of TTS state
-        assert isinstance(stt_client, NatsSttClient)
-        assert tts_client is None
-
 
 class TestInitNatsTts:
-    def test_tts_enabled_returns_client(
-        self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Arrange
-        monkeypatch.setenv("LYRA_TTS_ENABLED", "1")
-        # Act
+    def test_returns_client(self, mock_nc: MagicMock) -> None:
         client = init_nats_tts(mock_nc)
-        # Assert
         assert isinstance(client, NatsTtsClient)
 
-    def test_tts_disabled_returns_none(
+    def test_always_returns_client(
         self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange
+        """init_nats_tts always returns a NatsTtsClient — no flag gate."""
         monkeypatch.delenv("LYRA_TTS_ENABLED", raising=False)
-        # Act
         client = init_nats_tts(mock_nc)
-        # Assert
-        assert client is None
-
-    def test_tts_independent_of_stt(
-        self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Arrange — TTS enabled, STT not enabled
-        monkeypatch.setenv("LYRA_TTS_ENABLED", "1")
-        monkeypatch.delenv("LYRA_STT_ENABLED", raising=False)
-        # Act
-        tts_client = init_nats_tts(mock_nc)
-        stt_client = init_nats_stt(mock_nc)
-        # Assert — TTS returned regardless of STT state
-        assert isinstance(tts_client, NatsTtsClient)
-        assert stt_client is None
+        assert isinstance(client, NatsTtsClient)
 
 
 class TestProbeVoiceServices:
     @pytest.mark.asyncio
     async def test_stt_unreachable_logs_warning_no_raise(self) -> None:
-        # Arrange
         from nats.errors import NoRespondersError
 
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(side_effect=NoRespondersError())
         fake_stt = MagicMock()
-        # Act / Assert — should not raise
         await probe_voice_services(mock_nc, stt=fake_stt, tts=None)
 
     @pytest.mark.asyncio
     async def test_tts_unreachable_logs_warning_no_raise(self) -> None:
-        # Arrange
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(side_effect=TimeoutError())
         fake_tts = MagicMock()
-        # Act / Assert — should not raise
         await probe_voice_services(mock_nc, stt=None, tts=fake_tts)
 
     @pytest.mark.asyncio
     async def test_skip_none_clients_no_request_called(self) -> None:
-        # Arrange
         mock_nc = AsyncMock()
-        # Act
         await probe_voice_services(mock_nc, stt=None, tts=None)
-        # Assert — nc.request never called when both clients are None
         mock_nc.request.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_generic_exception_is_silently_swallowed(self) -> None:
-        # Arrange
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(side_effect=RuntimeError("boom"))
         fake_stt = MagicMock()
-        # Act / Assert — should not raise
         await probe_voice_services(mock_nc, stt=fake_stt, tts=None)
         mock_nc.request.assert_called_once()

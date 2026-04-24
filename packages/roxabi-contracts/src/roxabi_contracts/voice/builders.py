@@ -13,6 +13,8 @@ from typing import Any
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice.models import SttResponse, TtsResponse
 
+__all__ = ["build_stt_response", "build_tts_response"]
+
 
 def build_stt_response(  # noqa: PLR0913 — builder with optional success/error fields
     payload: dict[str, Any],

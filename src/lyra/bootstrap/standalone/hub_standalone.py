@@ -194,9 +194,10 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         import uvicorn
 
         health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
+        health_host = os.environ.get("LYRA_HEALTH_HOST", "127.0.0.1")
         health_app = create_health_app(hub, nc=nc)
         health_config = uvicorn.Config(
-            health_app, host="127.0.0.1", port=health_port, log_level="warning"
+            health_app, host=health_host, port=health_port, log_level="warning"
         )
         health_server = uvicorn.Server(health_config)
 

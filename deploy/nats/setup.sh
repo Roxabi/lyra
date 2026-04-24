@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# DEPRECATED — host NATS retired by big-bang consolidation (see docs/ops/bigbang-nats-consolidation.md).
+# Kept for rollback reference only. Do NOT run on a post-cutover system.
+#
 # Lyra by Roxabi — NATS setup (install + configure + start)
 #
 # Usage: cd ~/projects/lyra && make nats-setup

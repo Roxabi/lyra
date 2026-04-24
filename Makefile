@@ -38,7 +38,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: build push lyra telegram discord monitor register quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
+.PHONY: build push lyra telegram discord monitor register quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -147,7 +147,16 @@ register:
 
 DEPLOY_LIB_INSTALL_DIR := $(HOME)/.local/lib/roxabi
 
-quadlet-install:  ## install Quadlet units to ~/.config/containers/systemd/ + reload
+quadlet-preflight:  ## advisory pre-flight checks before Quadlet install (non-blocking)
+	@_unprivport=$$(sysctl -n net.ipv4.ip_unprivileged_port_start 2>/dev/null || echo 1024); \
+	if [ "$${_unprivport}" -gt 4222 ]; then \
+		echo "WARNING: net.ipv4.ip_unprivileged_port_start=$${_unprivport} (>4222)."; \
+		echo "         Rootless :4222 binding will fail silently."; \
+		echo "         Fix: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=4222"; \
+		echo "         (or persist in /etc/sysctl.d/99-rootless-ports.conf)"; \
+	fi
+
+quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/containers/systemd/ + reload
 	@mkdir -p "$(QUADLET_DIR)"
 	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container} "$(QUADLET_DIR)/nats.container" \
 	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/lyra-nats.container"

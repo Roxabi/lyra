@@ -5,8 +5,9 @@
 # auth.conf (public keys) → /etc/nats/nkeys/ owned by root:nats,  0640 — read by nats-server
 #
 # Creates 10 user nkey seeds: hub, telegram-adapter, discord-adapter,
-#                              tts-adapter, stt-adapter, voice-tts, voice-stt,
-#                              llm-worker, image-worker, monitor
+#                              tts-adapter [retired: ADR-051; kept for audit_matrix_inbox_drift only],
+#                              stt-adapter [retired: ADR-051; kept for audit_matrix_inbox_drift only],
+#                              voice-tts, voice-stt, llm-worker, image-worker, monitor
 #
 # ACL matrix (identities + publish/subscribe allow-lists) is sourced from
 # deploy/nats/acl-matrix.json — do not edit inline; update the JSON instead.
@@ -104,6 +105,8 @@ load_matrix() {
 # Args: name pubkey
 emit_user() {
   local name="$1" pubkey="$2"
+  [ -z "${pubkey:-}" ] \
+    && error "BUG: render_auth_conf invoked for identity '${name}' with no pubkey"
   cat <<USER
     {
       nkey: "${pubkey}"
@@ -405,6 +408,7 @@ if [ "${EMIT_MERGED_AUTHCONF}" = true ]; then
   if [ -f "${MERGED_AUTH_CONF}" ]; then
     BACKUP_MERGED="${MERGED_AUTH_CONF}.bak.$(date +%Y%m%d-%H%M%S)"
     cp -a "${MERGED_AUTH_CONF}" "${BACKUP_MERGED}"
+    chmod 0600 "${BACKUP_MERGED}"
     info "Backed up existing auth.conf → ${BACKUP_MERGED}"
   fi
 

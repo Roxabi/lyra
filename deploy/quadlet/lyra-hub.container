@@ -39,11 +39,13 @@ Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 # CLI can refresh tokens. UserNS=keep-id maps UID 1500 → host UID 1000 (mickael).
 # ~/.claude.json is a separate top-level config file the CLI looks up outside
 # of ~/.claude/ — must be bind-mounted inline (same pattern as config.toml).
-# Both mounts are :rw,z intentionally:
-#   rw  — CLI writes tokens (~/.claude/) and project state (~/.claude.json) at runtime
-#   z   — shared label so host user's own CLI retains access; :Z would isolate
+# Both mounts are :rw,z by design — host ↔ container share full state
+# (sessions, projects, skills, tokens) so a refresh on either side propagates
+# immediately, mirror-like. Scalpel split (credential-only rw, history ro)
+# was considered and rejected: the whole-dir share is the intended behavior.
+#   rw  — CLI writes tokens + project/session state at runtime
+#   z   — shared SELinux label so host CLI retains access; :Z would isolate
 #         per-container and break host CLI on SELinux-enforcing systems
-# Scalpel mount (credential-only :rw, history :ro) tracked as follow-up.
 Volume=%h/.claude:/home/lyra/.claude:z
 Volume=%h/.claude.json:/home/lyra/.claude.json:z
 # Health endpoint — probed by lyra-monitor via host loopback (localhost:8443).

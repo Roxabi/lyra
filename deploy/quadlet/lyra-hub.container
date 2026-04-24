@@ -11,7 +11,7 @@ StartLimitBurst=5
 # are pinned by digest directly.
 Image=localhost/lyra:latest
 ContainerName=lyra-hub
-Network=lyra.network
+Network=roxabi.network
 # Hardening — defense in depth (see issue #652).
 NoNewPrivileges=true
 ReadOnly=true

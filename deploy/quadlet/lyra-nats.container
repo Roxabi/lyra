@@ -6,14 +6,13 @@ Description=Lyra NATS server
 # Tag 2.10.29-alpine resolved via Docker Hub registry API (see issue #652).
 Image=docker.io/library/nats:2.10.29-alpine@sha256:b83efabe3e7def1e0a4a31ec6e078999bb17c80363f881df35edc70fcb6bb927
 ContainerName=lyra-nats
-Network=lyra.network
+Network=roxabi.network
 # Hardening — defense in depth (see issue #652).
 NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
-# Host 4223 → container 4222: runs alongside supervisord NATS (4222) during
-# parallel testing. Switch to 4222:4222 once supervisord NATS is retired.
-PublishPort=127.0.0.1:4223:4222
+# Sole NATS on the host — host nats.service is retired (big-bang consolidation).
+PublishPort=127.0.0.1:4222:4222
 Volume=%h/projects/lyra/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
 # ADR-054 Decision 5 (revised): file-based credentials delivered as Podman secrets
 # (type=mount, tmpfs-backed). Replaces single-file .volume wrappers which failed

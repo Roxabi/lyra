@@ -163,6 +163,31 @@ systemctl --user list-units 'lyra-*' 'voicecli-*'
 sudo systemctl status nats.service    # inactive (disabled)
 ```
 
+## Rollback (if NATS fails at T+0:06)
+
+Bots are already stopped at this point — rollback is purely recovery; no user-visible regression beyond the cutover window.
+
+```bash
+# 1. Stop any partially-started Quadlet units
+systemctl --user stop 'lyra-*' 'voicecli-*'
+
+# 2. Restore old nats.container from git
+git show HEAD~1:deploy/quadlet/nats.container > /tmp/nats.container
+cp /tmp/nats.container ~/.config/containers/systemd/nats.container
+systemctl --user daemon-reload
+
+# 3. Re-enable host NATS
+sudo systemctl enable --now nats.service
+
+# 4. Revert both PRs on M₁ (lyra + voiceCLI repos)
+#    In each repo: git revert HEAD && make quadlet-install
+git revert HEAD   # lyra
+make quadlet-install
+
+# 5. Restart bots via old Quadlet units
+systemctl --user start lyra-hub.service lyra-telegram.service lyra-discord.service
+```
+
 ## References
 
 - [ADR-055 — Quadlet ecosystem conventions](../architecture/adr/055-quadlet-ecosystem-conventions.mdx) — original staged plan; this doc collapses Phases 3+4 and drops TLS inside `roxabi.network`

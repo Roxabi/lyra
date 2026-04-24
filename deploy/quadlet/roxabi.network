@@ -1,9 +1,9 @@
 [Unit]
-Description=Lyra container bridge network
+Description=Shared Roxabi container bridge network (lyra + voicecli)
 
 [Network]
 Driver=bridge
 # No Internal=true — the hub needs outbound internet (Anthropic API, Telegram).
 # Isolation is achieved via: nkey auth (NATS rejects unauthenticated clients) +
-# PublishPort=127.0.0.1:4223:4222 (NATS port is localhost-only, no LAN exposure).
-Label=app=lyra
+# PublishPort=127.0.0.1:4222:4222 (NATS port is localhost-only, no LAN exposure).
+Label=app=roxabi

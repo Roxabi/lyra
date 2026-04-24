@@ -25,6 +25,7 @@ Let:
 | `docs/architecture/*.md` | Standard + target patterns |
 | `docs/CONFIGURATION.md` | Config files, load order |
 | `docs/agent-management.md` | A seed flow + CLI |
+| `docs/ops/container-publishing.md` | Container publishing pattern (CI → GHCR → Quadlet) |
 | `artifacts/` | Frames, specs, plans (dev-core) |
 | `deploy/quadlet/` | Podman Quadlet units |
 | `packages/roxabi-nats/` | NATS transport SDK (ADR-045) |

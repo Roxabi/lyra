@@ -42,11 +42,12 @@ endef
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
-LYRA_IMAGE := localhost/lyra:latest
+LYRA_IMAGE ?= ghcr.io/roxabi/lyra:latest
 
-build:                 ## build lyra image locally (localhost/lyra:latest)
+build:                 ## build lyra image locally
 	podman build -f Dockerfile -t $(LYRA_IMAGE) .
 
+# Manual fallback — canonical publish path is CI (see .github/workflows/publish.yml).
 push:                  ## save image and load on $(DEPLOY_HOST) via ssh
 	$(require_machine1)
 	@echo "Transferring $(LYRA_IMAGE) → $(DEPLOY_HOST)..."

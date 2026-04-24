@@ -1,0 +1,15 @@
+name: publish
+on:
+  push:
+    branches: [staging]
+    tags: ['lyra/v*']
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    uses: Roxabi/.github/.github/workflows/publish-container.yml@v1
+    secrets: inherit
+    with:
+      image_name: ghcr.io/roxabi/lyra
+      release_please_component: lyra

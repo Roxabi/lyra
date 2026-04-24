@@ -20,6 +20,17 @@ RUN uv sync --frozen --no-dev
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.12.10-slim AS runtime
 
+# Install Node.js 20 (NodeSource) + claude CLI before dropping to non-root
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && npm install -g @anthropic-ai/claude-code \
+ && rm -rf /var/lib/apt/lists/*
+
+# Verify claude is on PATH before we lock down the user
+RUN which claude
+
 # UID 1500 pinned per ADR-053 (Quadlet container UID stability)
 RUN useradd -u 1500 -m lyra
 

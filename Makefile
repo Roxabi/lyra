@@ -176,6 +176,7 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 SCTL := $(or $(SUPERVISORCTL),$(HOME)/projects/scripts/supervisorctl.sh)
 
 update:
+	@test -f "$(SCTL)" || { echo "ERROR: supervisorctl.sh not found at $(SCTL). Run 'make register' (or set SUPERVISORCTL) first."; exit 1; }
 	@$(SCTL) reread && $(SCTL) update
 
 # ── Deploy + remote ──────────────────────────────────────────────────────────

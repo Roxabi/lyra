@@ -32,7 +32,7 @@ def config() -> MonitoringConfig:
         telegram_token="tg-token",
         telegram_admin_chat_id="12345",
         disk_check_path="/",
-        service_name="lyra",
+        service_names=["lyra-hub", "lyra-telegram", "lyra-discord"],
     )
 
 
@@ -252,10 +252,7 @@ class TestRunFallbackChain:
 
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(
-                returncode=0,
-                stdout="lyra-telegram                    RUNNING   pid 1234, uptime 1:00:00\n",  # noqa: E501
-            ),
+            lambda *a, **kw: MagicMock(returncode=0, stdout="active\n"),
         )
 
         mock_resp = MagicMock()

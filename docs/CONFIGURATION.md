@@ -291,7 +291,7 @@ min_disk_free_gb        = 1                              # alert if free disk dr
 health_endpoint_url     = "http://localhost:8443/health/detail"
 diagnostic_model        = "claude-haiku-4-5-20251001"    # model used for LLM diagnosis
 disk_check_path         = "/"                            # filesystem path to check
-service_name            = "lyra-telegram"                # systemd unit name to inspect
+service_names           = ["lyra-hub", "lyra-telegram", "lyra-discord"]  # systemd --user units to inspect
 ```
 
 ### Voice (optional)

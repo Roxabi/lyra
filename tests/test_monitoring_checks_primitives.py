@@ -13,49 +13,71 @@ import pytest
 
 
 class TestCheckProcess:
-    def test_active_supervisor(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """check_process passes for RUNNING supervisor process."""
-        monkeypatch.setattr(
-            "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(
-                returncode=0,
-                stdout="lyra-telegram                    RUNNING   pid 1234, uptime 1:00:00\n",  # noqa: E501
-            ),
-        )
+    def test_active_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """check_process passes when systemctl --user is-active returns 0."""
+        calls: list[list[str]] = []
+
+        def mock_run(cmd, **kw):
+            calls.append(cmd)
+            return MagicMock(returncode=0, stdout="active\n")
+
+        monkeypatch.setattr("lyra.monitoring.checks.subprocess.run", mock_run)
         from lyra.monitoring.checks import check_process
 
-        result = check_process("lyra-telegram")
+        results = check_process(["lyra-telegram"])
+        assert len(results) == 1
+        result = results[0]
         assert result.passed is True
-        assert result.name == "process"
-        assert "RUNNING" in result.detail
+        assert result.name == "process:lyra-telegram"
+        assert result.detail == "active"
+        # Must use systemctl --user, never supervisorctl
+        assert calls[0] == ["systemctl", "--user", "is-active", "lyra-telegram"]
 
-    def test_inactive_supervisor(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """check_process fails for STOPPED supervisor process."""
+    def test_inactive_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """check_process fails when systemctl --user is-active returns non-zero."""
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(
-                returncode=3,
-                stdout="lyra-telegram                    STOPPED   Mar 30 12:00 PM\n",
-            ),
+            lambda *a, **kw: MagicMock(returncode=3, stdout="inactive\n"),
         )
         from lyra.monitoring.checks import check_process
 
-        result = check_process("lyra-telegram")
-        assert result.passed is False
+        results = check_process(["lyra-telegram"])
+        assert len(results) == 1
+        assert results[0].passed is False
 
-    def test_fallback_to_systemctl(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """check_process falls back to systemctl when supervisorctl not found."""
-        from unittest.mock import patch
+    def test_multiple_services(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """check_process returns one CheckResult per service name."""
+        statuses = {"lyra-hub": (0, "active"), "lyra-telegram": (3, "inactive")}
 
-        monkeypatch.setattr(
-            "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=0, stdout="active\n"),
-        )
+        def mock_run(cmd, **kw):
+            name = cmd[-1]
+            code, out = statuses[name]
+            return MagicMock(returncode=code, stdout=out + "\n")
+
+        monkeypatch.setattr("lyra.monitoring.checks.subprocess.run", mock_run)
         from lyra.monitoring.checks import check_process
 
-        with patch("lyra.monitoring.checks.Path.exists", return_value=False):
-            result = check_process("lyra")
-        assert result.passed is True
+        results = check_process(["lyra-hub", "lyra-telegram"])
+        assert len(results) == 2
+        assert results[0].name == "process:lyra-hub"
+        assert results[0].passed is True
+        assert results[1].name == "process:lyra-telegram"
+        assert results[1].passed is False
+
+    def test_no_supervisorctl_invoked(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """supervisorctl must never be called — Lyra is Quadlet-native."""
+        calls: list[list[str]] = []
+
+        def mock_run(cmd, **kw):
+            calls.append(cmd)
+            return MagicMock(returncode=0, stdout="active\n")
+
+        monkeypatch.setattr("lyra.monitoring.checks.subprocess.run", mock_run)
+        from lyra.monitoring.checks import check_process
+
+        check_process(["lyra-hub", "lyra-telegram", "lyra-discord"])
+        for cmd in calls:
+            assert "supervisorctl" not in " ".join(cmd)
 
 
 # ---------------------------------------------------------------------------

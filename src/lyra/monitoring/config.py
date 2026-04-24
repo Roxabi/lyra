@@ -34,7 +34,9 @@ class MonitoringConfig(BaseModel):
     health_endpoint_url: str = "http://localhost:8443/health/detail"
     diagnostic_model: str = "claude-haiku-4-5-20251001"
     disk_check_path: str = "/"
-    service_name: str = "lyra-telegram"
+    service_names: list[str] = Field(
+        default=["lyra-hub", "lyra-telegram", "lyra-discord"]
+    )
     health_secret: str = ""
 
     # Secrets (from env vars)
@@ -48,11 +50,14 @@ class MonitoringConfig(BaseModel):
             raise ValueError(f"must be HH:MM format, got {v!r}")
         return v
 
-    @field_validator("service_name")
+    @field_validator("service_names")
     @classmethod
-    def _validate_service_name(cls, v: str) -> str:
-        if not _SERVICE_NAME_RE.match(v):
-            raise ValueError(f"service_name must match [a-zA-Z0-9_@.-]+, got {v!r}")
+    def _validate_service_names(cls, v: list[str]) -> list[str]:
+        for name in v:
+            if not _SERVICE_NAME_RE.match(name):
+                raise ValueError(
+                    f"service_names entries must match [a-zA-Z0-9_@.-]+, got {name!r}"
+                )
         return v
 
     @field_validator("health_endpoint_url")

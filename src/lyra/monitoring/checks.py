@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import shutil
 import subprocess
 from datetime import datetime, timezone
-from pathlib import Path
 
 import httpx
 
@@ -15,59 +13,42 @@ from .config import MonitoringConfig
 from .models import CheckResult, HealthReport
 
 
-def check_process(service_name: str) -> CheckResult:
-    """Check if a supervisor-managed process is running.
+def check_process(service_names: list[str]) -> list[CheckResult]:
+    """Check if systemd user services are active (Quadlet/systemd-user).
 
-    Uses machine-level supervisorctl at ~/projects/scripts/. Falls back to
-    systemctl if supervisorctl is not available.
+    Queries `systemctl --user is-active <name>` for each service name.
+    Returns one CheckResult per service.
     """
-    now = datetime.now(timezone.utc)
-    trusted_base = Path.home() / "projects"
-    override = os.environ.get("LYRA_SUPERVISORCTL_PATH")
-    if override:
-        sctl = Path(override).expanduser().resolve()
-        if not sctl.is_relative_to(trusted_base):
-            return CheckResult(
-                name="process",
-                passed=False,
-                detail=f"LYRA_SUPERVISORCTL_PATH resolves outside {trusted_base}",
-                timestamp=now,
-            )
-    else:
-        sctl = trusted_base / "scripts" / "supervisorctl.sh"
-
-    if sctl.exists():
+    results: list[CheckResult] = []
+    for service_name in service_names:
+        now = datetime.now(timezone.utc)
         try:
             result = subprocess.run(
-                [str(sctl), "status", service_name],
+                ["systemctl", "--user", "is-active", service_name],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-            output = result.stdout.strip()
-            active = "RUNNING" in output
-            detail = output.split("\n")[0] if output else "unknown"
-            return CheckResult(
-                name="process", passed=active, detail=detail, timestamp=now
+            active = result.returncode == 0
+            detail = result.stdout.strip() if result.stdout.strip() else "unknown"
+            results.append(
+                CheckResult(
+                    name=f"process:{service_name}",
+                    passed=active,
+                    detail=detail,
+                    timestamp=now,
+                )
             )
         except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-            return CheckResult(
-                name="process", passed=False, detail=str(exc), timestamp=now
+            results.append(
+                CheckResult(
+                    name=f"process:{service_name}",
+                    passed=False,
+                    detail=str(exc),
+                    timestamp=now,
+                )
             )
-
-    # Fallback: systemctl
-    try:
-        result = subprocess.run(
-            ["systemctl", "is-active", service_name],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        active = result.returncode == 0
-        detail = result.stdout.strip() if result.stdout else "unknown"
-        return CheckResult(name="process", passed=active, detail=detail, timestamp=now)
-    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-        return CheckResult(name="process", passed=False, detail=str(exc), timestamp=now)
+    return results
 
 
 async def check_http_health(
@@ -241,7 +222,8 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
     checks: list[CheckResult] = []
 
     # Check 1: Process liveness (blocking → offload to thread)
-    checks.append(await asyncio.to_thread(check_process, config.service_name))
+    process_results = await asyncio.to_thread(check_process, config.service_names)
+    checks.extend(process_results)
 
     # Check 2: HTTP health (provides data for checks 3-5)
     http_result, health_json = await check_http_health(

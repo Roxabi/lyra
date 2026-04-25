@@ -93,7 +93,10 @@ async def test_connect_calls_db_connect():
     """MemoryManager.connect() calls the underlying DB connect."""
     from lyra.core.memory.memory import MemoryManager
 
-    with patch("lyra.core.memory.memory.AsyncMemoryDB") as MockDB:
+    with (
+        patch("lyra.core.memory.memory.AsyncMemoryDB") as MockDB,
+        patch("lyra.core.memory.memory.apply_schema_compat") as mock_schema,
+    ):
         mock_db_instance = AsyncMock()
         MockDB.return_value = mock_db_instance
 
@@ -101,6 +104,7 @@ async def test_connect_calls_db_connect():
         await manager.connect()
 
         mock_db_instance.connect.assert_awaited_once()
+        mock_schema.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -108,7 +112,10 @@ async def test_close_calls_db_close():
     """MemoryManager.close() calls the underlying DB close."""
     from lyra.core.memory.memory import MemoryManager
 
-    with patch("lyra.core.memory.memory.AsyncMemoryDB") as MockDB:
+    with (
+        patch("lyra.core.memory.memory.AsyncMemoryDB") as MockDB,
+        patch("lyra.core.memory.memory.apply_schema_compat"),
+    ):
         mock_db_instance = AsyncMock()
         MockDB.return_value = mock_db_instance
 

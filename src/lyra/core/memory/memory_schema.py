@@ -16,16 +16,16 @@ async def apply_schema_compat(db) -> None:  # noqa: ANN001 — aiosqlite Connect
 
     Uses the 12-step SQLite table-rename procedure to rebuild the table.
     """
-    try:
-        async with db.execute("PRAGMA table_info(entries)") as cur:
-            cols = await cur.fetchall()
-        cat_col = next((c for c in cols if c[1] == "category"), None)
-        if cat_col is None:
-            return
-        # col tuple: (cid, name, type, notnull, dflt_value, pk)
-        if cat_col[4] is not None:
-            return
+    async with db.execute("PRAGMA table_info(entries)") as cur:
+        cols = await cur.fetchall()
+    cat_col = next((c for c in cols if c[1] == "category"), None)
+    if cat_col is None:
+        return
+    # col tuple: (cid, name, type, notnull, dflt_value, pk)
+    if cat_col[4] is not None:
+        return
 
+    try:
         await db.execute("PRAGMA foreign_keys = OFF")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS entries_new (
@@ -78,10 +78,11 @@ async def apply_schema_compat(db) -> None:  # noqa: ANN001 — aiosqlite Connect
             " VALUES (new.id, new.title, new.content, new.category, new.type);"
             " END"
         )
-        await db.execute("PRAGMA foreign_keys = ON")
         await db.commit()
     except Exception:
         log.warning(
             "schema compat migration failed; database may be in inconsistent state",
             exc_info=True,
         )
+    finally:
+        await db.execute("PRAGMA foreign_keys = ON")

@@ -24,6 +24,33 @@ class Platform(str, Enum):
 
 
 @dataclass(frozen=True)
+class TelegramMeta:
+    chat_id: int = 0
+    message_id: int | None = None
+    topic_id: int | None = None
+    is_group: bool = False
+    thread_session_id: str | None = None
+
+
+@dataclass(frozen=True)
+class DiscordMeta:
+    channel_id: int = 0
+    message_id: int = 0
+    guild_id: int | None = None
+    thread_id: int | None = None
+    channel_type: str | None = None
+    thread_session_id: str | None = None
+
+
+@dataclass(frozen=True)
+class GenericMeta:
+    pass
+
+
+PlatformMeta = TelegramMeta | DiscordMeta | GenericMeta
+
+
+@dataclass(frozen=True)
 class RoutingContext:
     """Immutable routing envelope carried from inbound to outbound.
 
@@ -40,7 +67,7 @@ class RoutingContext:
     # The inbound message ID to reply to. Reserved for future outbound
     # reply threading; not yet read by adapters (they use platform_meta).
     reply_to_message_id: str | None = None
-    platform_meta: dict = field(default_factory=dict)
+    platform_meta: PlatformMeta = field(default_factory=GenericMeta)
 
 
 @dataclass(frozen=True)
@@ -93,7 +120,7 @@ class InboundMessage:
     locale: str | None = None
     # Whisper-detected spoken language (e.g. "fr") — distinct from locale
     language: str | None = None
-    platform_meta: dict = field(default_factory=dict)
+    platform_meta: PlatformMeta = field(default_factory=GenericMeta)
     routing: RoutingContext | None = None
     command: CommandContext | None = None
     modality: Literal["text", "voice"] | None = None

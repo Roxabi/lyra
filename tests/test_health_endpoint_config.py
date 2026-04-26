@@ -11,6 +11,7 @@ import time
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from lyra.bootstrap.infra.health import Secrets, create_health_app
 from lyra.core.hub import Hub
 from tests.conftest import AUTH_HEADERS, HEALTH_SECRET
 
@@ -22,20 +23,14 @@ from tests.conftest import AUTH_HEADERS, HEALTH_SECRET
 class TestConfigEndpoint:
     """GET /config endpoint auth and 404 behavior."""
 
-    async def test_config_returns_404_when_no_anthropic_agent(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_config_returns_404_when_no_anthropic_agent(self) -> None:
         """No agent registered → 404."""
         # Arrange
-        import lyra.bootstrap.infra.health as health_mod
+        from unittest.mock import Mock
 
-        monkeypatch.setattr(
-            health_mod, "_read_secret", lambda name: "test-config-secret"
-        )
-        from lyra.bootstrap.infra.health import create_health_app
-
+        mock_secrets = Mock(spec=Secrets, health_secret="test-config-secret")
         test_hub = Hub()
-        app = create_health_app(test_hub)
+        app = create_health_app(test_hub, secrets=mock_secrets)
         transport = ASGITransport(app=app)
 
         # Act
@@ -57,17 +52,17 @@ class TestHealthReaperFields:
     """#317 SC-11: /health/detail includes reaper_alive and reaper_last_sweep_age."""
 
     @pytest.fixture(autouse=True)
-    def set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import lyra.bootstrap.infra.health as health_mod
+    def mock_secrets(self) -> Secrets:
+        from unittest.mock import Mock
 
-        monkeypatch.setattr(health_mod, "_read_secret", lambda name: HEALTH_SECRET)
+        return Mock(spec=Secrets, health_secret=HEALTH_SECRET)
 
-    async def test_reaper_fields_absent_when_no_cli_pool(self, hub: Hub) -> None:
+    async def test_reaper_fields_absent_when_no_cli_pool(
+        self, hub: Hub, mock_secrets: Secrets
+    ) -> None:
         """No cli_pool → reaper keys omitted entirely from response."""
-        from lyra.bootstrap.infra.health import create_health_app
-
         assert hub.cli_pool is None
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=mock_secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -76,11 +71,12 @@ class TestHealthReaperFields:
         assert "reaper_alive" not in data
         assert "reaper_last_sweep_age" not in data
 
-    async def test_reaper_fields_with_live_cli_pool(self, hub: Hub) -> None:
+    async def test_reaper_fields_with_live_cli_pool(
+        self, hub: Hub, mock_secrets: Secrets
+    ) -> None:
         """cli_pool with active reaper → reaper_alive=True."""
         from unittest.mock import MagicMock
 
-        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.cli.cli_pool import CliPool
 
         cli_pool = CliPool()
@@ -91,7 +87,7 @@ class TestHealthReaperFields:
         cli_pool._last_sweep_at = time.monotonic() - 30  # 30s ago
         hub.cli_pool = cli_pool
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=mock_secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -101,11 +97,12 @@ class TestHealthReaperFields:
         assert data["reaper_last_sweep_age"] is not None
         assert 25 <= data["reaper_last_sweep_age"] <= 35
 
-    async def test_reaper_fields_before_first_sweep(self, hub: Hub) -> None:
+    async def test_reaper_fields_before_first_sweep(
+        self, hub: Hub, mock_secrets: Secrets
+    ) -> None:
         """cli_pool started but no sweep yet → reaper_alive=True, age=None."""
         from unittest.mock import MagicMock
 
-        from lyra.bootstrap.infra.health import create_health_app
         from lyra.core.cli.cli_pool import CliPool
 
         cli_pool = CliPool()
@@ -115,7 +112,7 @@ class TestHealthReaperFields:
         cli_pool._last_sweep_at = None
         hub.cli_pool = cli_pool
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=mock_secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)

@@ -565,68 +565,70 @@ Key decisions carried forward:
 ## Task Seeding Blueprint
 
 <!-- Used by /implement to seed TaskCreate calls on session start.
-     Format: T{n} | agent | blockedBy | parallel-safe | subject
+     Format: T{n} | agent-instance | blockedBy | subject
      blockedBy refs T-numbers within this list (not session task IDs).
-     Seed in wave order; within a wave all tasks are parallel (∥). -->
+     Agent instances are named (tester-A/B, backend-dev-A/B/C, devops-A/B)
+     so parallel tasks map to distinct spawned agents.
+     Seed in wave order; within a wave all rows are parallel (∥). -->
 
 ### Wave 1 — no deps, 4 agents ∥
 
-| Task | Agent | blockedBy | Subject |
-|------|-------|-----------|---------|
-| T1 | tester | — | Write NatsDriverBase tests |
-| T2 | backend-dev | — | Implement NatsDriverBase |
-| T5 | tester | — | Write cli models tests (roxabi-contracts) |
-| T6 | backend-dev | — | Implement roxabi_contracts/cli/models.py (5 Pydantic models) |
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | tester-A | — | Write NatsDriverBase tests |
+| T2 | backend-dev-A | — | Implement NatsDriverBase |
+| T5 | tester-B | — | Write cli models tests (roxabi-contracts) |
+| T6 | backend-dev-B | — | Implement roxabi_contracts/cli/models.py (5 Pydantic models) |
 
-### Wave 2 — after Wave 1, 2 agents ∥
+### Wave 2 — after Wave 1, 4 agents ∥
 
-| Task | Agent | blockedBy | Subject |
-|------|-------|-----------|---------|
-| T3 | devops | T2 | Re-export NatsDriverBase + bump roxabi-nats 0.2.0→0.3.0 |
-| T7 | devops | T6 | Bump roxabi-contracts version |
-| T4 | tester | T3 | RED-GATE V0: NatsDriverBase tests pass |
-| T8 | tester | T7 | RED-GATE V1: cli models tests pass |
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T3 | devops-A | T2 | Re-export NatsDriverBase + bump roxabi-nats 0.2.0→0.3.0 |
+| T7 | devops-B | T6 | Bump roxabi-contracts version |
+| T4 | tester-A | T3 | RED-GATE V0: NatsDriverBase tests pass |
+| T8 | tester-B | T7 | RED-GATE V1: cli models tests pass |
 
 ### Wave 3 — after T4+T8, 4 agents ∥
 
-| Task | Agent | blockedBy | Subject |
-|------|-------|-----------|---------|
-| T9  | tester | T4, T8 | Write CliPoolNatsWorker tests |
-| T10 | backend-dev | T4, T8 | Implement CliPoolNatsWorker (NatsAdapterBase subclass) |
-| T14 | tester | T4, T8 | Write CliNatsDriver tests |
-| T15 | backend-dev | T4, T8 | Implement CliNatsDriver (NatsDriverBase subclass) |
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T9  | tester-A | T4, T8 | Write CliPoolNatsWorker tests |
+| T10 | backend-dev-A | T4, T8 | Implement CliPoolNatsWorker (NatsAdapterBase subclass) |
+| T14 | tester-B | T4, T8 | Write CliNatsDriver tests |
+| T15 | backend-dev-B | T4, T8 | Implement CliNatsDriver (NatsDriverBase subclass) |
 
-### Wave 4 — after Wave 3, 4 agents ∥
+### Wave 4 — after Wave 3, 7 agents ∥
 
-| Task | Agent | blockedBy | Subject |
-|------|-------|-----------|---------|
-| T11 | backend-dev | T10 | Implement _bootstrap_clipool_standalone() |
-| T12 | backend-dev | T11 | Add `lyra adapter clipool` CLI command |
-| T16 | backend-dev | T15 | Re-export CliNatsDriver from llm/drivers/__init__.py |
-| T17 | backend-dev | T15 | Add build_cli_nats_driver() to hub_builder.py |
-| T18 | backend-dev | T15 | Update agent_factory.py — CliNatsDriver path for claude-cli backend |
-| T19 | backend-dev | T17, T18 | Wire CliNatsDriver in hub_standalone.py |
-| T24 | devops | T8 | Create lyra-clipool.container + clipool.env.example |
-| T26 | devops | T8 | Add clipool-worker nkey ACL to auth.conf + update hub permissions |
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T11 | backend-dev-A | T10 | Implement _bootstrap_clipool_standalone() |
+| T12 | backend-dev-A | T11 | Add `lyra adapter clipool` CLI command |
+| T16 | backend-dev-B | T15 | Re-export CliNatsDriver from llm/drivers/__init__.py |
+| T17 | backend-dev-B | T16 | Add build_cli_nats_driver() to hub_builder.py |
+| T18 | backend-dev-C | T15 | Update agent_factory.py — CliNatsDriver path for claude-cli backend |
+| T19 | backend-dev-B | T17, T18 | Wire CliNatsDriver in hub_standalone.py |
+| T24 | devops-A | T8 | Create lyra-clipool.container + clipool.env.example |
+| T26 | devops-B | T8 | Add clipool-worker nkey ACL to auth.conf + update hub permissions |
 | T27 | doc-writer | T8 | Update container-split.md NATS Topics table |
 
-### Wave 5 — after Wave 4, 2 agents ∥
+### Wave 5 — after Wave 4, 3 agents ∥
 
-| Task | Agent | blockedBy | Subject |
-|------|-------|-----------|---------|
-| T13 | tester | T12 | RED-GATE V2: CliPoolNatsWorker tests pass |
-| T20 | tester | T19 | RED-GATE V3: CliNatsDriver tests pass |
-| T25 | devops | T24 | Remove ~/.claude/ Volume= lines from lyra-hub.container |
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T13 | tester-A | T12 | RED-GATE V2: CliPoolNatsWorker tests pass |
+| T20 | tester-B | T19 | RED-GATE V3: CliNatsDriver tests pass |
+| T25 | devops-A | T24 | Remove ~/.claude/ Volume= lines from lyra-hub.container |
 
 ### Wave 6 — after T13+T20, 2 agents ∥
 
-| Task | Agent | blockedBy | Subject |
-|------|-------|-----------|---------|
-| T21 | tester | T13, T20 | Write unified mode CliPoolNatsWorker test |
-| T22 | backend-dev | T13, T20 | Update unified.py — spawn CliPoolNatsWorker task + wire CliNatsDriver |
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T21 | tester-A | T13, T20 | Write unified mode CliPoolNatsWorker test |
+| T22 | backend-dev-A | T13, T20 | Update unified.py — spawn CliPoolNatsWorker task + wire CliNatsDriver |
 
 ### Wave 7 — after Wave 6, 1 agent
 
-| Task | Agent | blockedBy | Subject |
-|------|-------|-----------|---------|
-| T23 | tester | T22 | RED-GATE V4: unified clipool tests pass |
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T23 | tester-A | T22 | RED-GATE V4: unified clipool tests pass |

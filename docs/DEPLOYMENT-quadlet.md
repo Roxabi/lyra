@@ -221,6 +221,21 @@ For VRAM and firewall monitoring, see [DEPLOYMENT.md §6](DEPLOYMENT.md#6-monito
 
 ## 9. Updating code
 
+### Automatic (recommended)
+
+Since #929, prod uses `podman auto-update` to automatically pull new images from GHCR. The timer fires every 5 minutes:
+
+```bash
+systemctl --user is-active podman-auto-update.timer  # verify timer is active
+podman auto-update --dry-run                          # check pending updates
+```
+
+Containers with `Label=io.containers.autoupdate=registry` pull new digests from `ghcr.io/roxabi/lyra:staging` and restart automatically. No manual intervention after a staging merge.
+
+See [ops/container-publishing.md](ops/container-publishing.md#auto-update-flow) for full details.
+
+### Manual fallback
+
 The canonical update flow on Machine 1 is `scripts/deploy-quadlet.sh`, which pulls staging, rebuilds the image, and restarts containers:
 
 ```bash

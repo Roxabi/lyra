@@ -185,6 +185,35 @@ class TestStream:
         assert result_events[0].is_error is False
 
     @pytest.mark.asyncio
+    async def test_stream_yields_synthetic_result_on_done_non_result_chunk(
+        self,
+    ) -> None:
+        """done=True on a text chunk: text event + synthetic ResultLlmEvent emitted."""
+        # Arrange
+        driver = _make_driver()
+        chunks = [{"event_type": "text", "text": "hello", "done": True}]
+        events = []
+
+        async def _mock_stream_gen(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> AsyncIterator[dict]:
+            for c in chunks:
+                yield c
+
+        # Act
+        with patch.object(driver, "_stream_gen", new=_mock_stream_gen):
+            async for ev in await driver.stream(
+                "pool-1", "hi", _make_model_cfg(), "sys"
+            ):
+                events.append(ev)
+
+        # Assert
+        assert len(events) == 2
+        assert isinstance(events[0], TextLlmEvent)
+        assert isinstance(events[1], ResultLlmEvent)
+        assert events[1].is_error is False
+
+    @pytest.mark.asyncio
     async def test_stream_calls_stream_gen_with_subject_cmd(self) -> None:
         """stream() delegates to _stream_gen using SUBJECT_CMD."""
         # Arrange
@@ -234,6 +263,47 @@ class TestComplete:
         assert isinstance(result, LlmResult)
         assert result.ok is True
         assert result.result == "answer"
+
+    @pytest.mark.asyncio
+    async def test_complete_transport_exception_returns_retryable_error(
+        self,
+    ) -> None:
+        """Transport exception from _request → LlmResult(retryable=True)."""
+        # Arrange
+        driver = _make_driver()
+
+        async def _mock_request(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> dict:
+            raise Exception("NATS connection lost")
+
+        # Act
+        with patch.object(driver, "_request", new=_mock_request):
+            result = await driver.complete("pool-1", "hello", _make_model_cfg(), "sys")
+
+        # Assert
+        assert result.ok is False
+        assert "NATS" in result.error
+        assert result.retryable is True
+
+    @pytest.mark.asyncio
+    async def test_complete_worker_error_retryable_false(self) -> None:
+        """Worker reply with error + retryable=False → LlmResult.retryable is False."""
+        # Arrange
+        driver = _make_driver()
+
+        async def _mock_request(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> dict:
+            return {"error": "quota exhausted", "retryable": False}
+
+        # Act
+        with patch.object(driver, "_request", new=_mock_request):
+            result = await driver.complete("pool-1", "hello", _make_model_cfg(), "sys")
+
+        # Assert
+        assert result.ok is False
+        assert result.retryable is False
 
     @pytest.mark.asyncio
     async def test_complete_on_error(self) -> None:

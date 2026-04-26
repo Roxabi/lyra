@@ -168,11 +168,12 @@ class TestStreamGen:
 
         await _run()
 
-        # Assert — generator returned without yielding extra items after done
-        # (collected may include the done chunk or not depending on impl,
-        # but the task must have finished cleanly).
-        # The key invariant is that the generator did NOT block forever.
-        assert True  # reaching here proves the generator exited
+        # Assert — _stream_gen yields the done=True chunk (yield before done check).
+        # The generator must have exited after yielding it.
+        assert len(collected) == 1
+        assert collected[0].get("done") is True
+        # Find the sub_mock from the captured callback's closure to verify unsubscribe.
+        # (unsubscribe is called in the finally block of _stream_gen)
 
     @pytest.mark.asyncio
     async def test_stream_gen_timeout(self) -> None:
@@ -195,6 +196,8 @@ class TestStreamGen:
         await _run()
 
         # Assert — generator exited cleanly (timeout path), no infinite hang.
+        # No chunks were yielded (nothing was pushed before timeout).
+        assert collected == []
         # The unsubscribe finaliser must have been called.
         sub_mock.unsubscribe.assert_awaited()
 

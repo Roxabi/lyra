@@ -189,6 +189,32 @@ async def test_handle_cmd_nonstream_calls_pool_send() -> None:
     assert publish_subject == "_INBOX.reply"
 
 
+async def test_handle_cmd_send_streaming_exception_publishes_error() -> None:
+    """When pool.send_streaming raises, worker publishes error chunk via _nc.publish."""
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    # Arrange
+    pool = _make_pool()
+    pool.send_streaming = AsyncMock(side_effect=RuntimeError("boom"))
+    worker = CliPoolNatsWorker(pool)
+    nc = AsyncMock()
+    worker._nc = nc
+    msg = _make_nats_msg(subject="lyra.clipool.cmd", reply="_INBOX.test.1")
+    payload = _cmd_payload(stream=True)
+
+    # Act
+    await worker._handle_cmd(msg, payload)
+
+    # Assert — error published directly via _nc.publish (not self.reply)
+    nc.publish.assert_awaited_once()
+    call_args = nc.publish.call_args
+    subject = call_args.args[0]
+    data = json.loads(call_args.args[1])
+    assert subject == "_INBOX.test.1"
+    assert data["is_error"] is True
+    assert data["done"] is True
+
+
 async def test_handle_cmd_publishes_done_chunk_after_stream() -> None:
     """Streaming path publishes a terminal 'done' chunk after iterating events."""
     from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
@@ -219,6 +245,50 @@ async def test_handle_cmd_publishes_done_chunk_after_stream() -> None:
 # ---------------------------------------------------------------------------
 # _handle_control — reset
 # ---------------------------------------------------------------------------
+
+
+async def test_handle_control_parse_failure_replies_error_ack() -> None:
+    """Malformed CliControlCmd payload: worker replies ok=False (does not hang)."""
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    # Arrange
+    pool = _make_pool()
+    worker = CliPoolNatsWorker(pool)
+    nc = AsyncMock()
+    worker._nc = nc
+    msg = _make_nats_msg(subject="lyra.clipool.control", reply="_INBOX.test.ctrl")
+    bad_payload = {"op": "invalid_op_not_in_literal"}  # will fail validation
+
+    # Act
+    await worker._handle_control(msg, bad_payload)
+
+    # Assert — worker replies with ok=False rather than hanging
+    nc.publish.assert_awaited_once()
+    call_args = nc.publish.call_args
+    data = json.loads(call_args.args[1])
+    assert data["ok"] is False
+
+
+async def test_handle_control_dispatch_exception_replies_ok_false() -> None:
+    """When pool.reset raises, _handle_control catches and replies ok=False."""
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    # Arrange
+    pool = _make_pool()
+    pool.reset = AsyncMock(side_effect=RuntimeError("pool reset exploded"))
+    worker = CliPoolNatsWorker(pool)
+    nc = AsyncMock()
+    worker._nc = nc
+    msg = _make_nats_msg(subject="lyra.clipool.control", reply="_INBOX.test.ctrl2")
+    payload = _control_payload(op="reset")
+
+    # Act
+    await worker._handle_control(msg, payload)
+
+    # Assert
+    nc.publish.assert_awaited_once()
+    data = json.loads(nc.publish.call_args.args[1])
+    assert data["ok"] is False
 
 
 async def test_handle_control_reset() -> None:

@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
+from unittest.mock import Mock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from lyra.bootstrap.infra.health import Secrets
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub
@@ -100,16 +102,14 @@ class TestHealthUnauthenticated:
 
 class TestHealthEndpoint:
     @pytest.fixture(autouse=True)
-    def set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import lyra.bootstrap.infra.health as health_mod
-
-        monkeypatch.setattr(health_mod, "_read_secret", lambda name: HEALTH_SECRET)
+    def set_health_secret(self) -> None:
+        self.secrets = Mock(spec=Secrets, health_secret=HEALTH_SECRET)
 
     async def test_health_returns_json(self, hub: Hub) -> None:
         """SC-2: /health/detail returns JSON with expected keys."""
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -146,7 +146,7 @@ class TestHealthEndpoint:
         await push_to_hub(hub, msg)
         await yield_once()  # let feeder task move message to staging
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -184,7 +184,7 @@ class TestHealthEndpoint:
         )
         await hub.inbound_bus.put(Platform.TELEGRAM, msg)
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -197,7 +197,7 @@ class TestHealthEndpoint:
         """SC-2: uptime_s is a positive number."""
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -211,7 +211,7 @@ class TestHealthEndpoint:
         """SC-2: last_message_age_s is null when no messages have been processed."""
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -225,7 +225,7 @@ class TestHealthEndpoint:
 
         hub._outbound_router._last_processed_at = time.monotonic()
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -238,7 +238,7 @@ class TestHealthEndpoint:
         """SC-2: circuits shows state for all registered circuits."""
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -261,7 +261,7 @@ class TestHealthEndpoint:
         for _ in range(5):
             cb.record_failure()
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -280,10 +280,8 @@ class TestNatsHealthProbe:
     """#449: /health/detail surfaces NATS status only when NATS is configured."""
 
     @pytest.fixture(autouse=True)
-    def set_health_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import lyra.bootstrap.infra.health as health_mod
-
-        monkeypatch.setattr(health_mod, "_read_secret", lambda name: HEALTH_SECRET)
+    def set_health_secret(self) -> None:
+        self.secrets = Mock(spec=Secrets, health_secret=HEALTH_SECRET)
 
     async def test_nats_field_absent_when_url_unset(
         self, hub: Hub, monkeypatch: pytest.MonkeyPatch
@@ -292,7 +290,8 @@ class TestNatsHealthProbe:
         monkeypatch.delenv("NATS_URL", raising=False)
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub)  # nc omitted — mirrors unified mode
+        # nc omitted — mirrors unified mode
+        app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -315,7 +314,7 @@ class TestNatsHealthProbe:
 
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub, nc=nc)
+        app = create_health_app(hub, nc=nc, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -337,7 +336,7 @@ class TestNatsHealthProbe:
 
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub, nc=nc)
+        app = create_health_app(hub, nc=nc, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -353,7 +352,7 @@ class TestNatsHealthProbe:
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health/detail", headers=AUTH_HEADERS)
@@ -380,7 +379,7 @@ class TestNatsHealthProbe:
 
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub, nc=nc)
+        app = create_health_app(hub, nc=nc, secrets=self.secrets)
         transport = ASGITransport(app=app)
 
         with caplog.at_level(_logging.DEBUG, logger="lyra.bootstrap.infra.health"):

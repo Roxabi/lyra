@@ -1,0 +1,55 @@
+---
+title: "Raise discord/telegram outbound test coverage from ~47% to ≥60%"
+issue: 932
+status: approved
+tier: F-lite
+date: 2026-04-26
+---
+
+## Problem
+
+The outbound modules for Discord and Telegram have the lowest coverage among
+production-critical adapter code. The audit flagged them at 12%, though current
+measurement shows **48% discord_outbound, 46% telegram_outbound** (29 existing
+tests across 3 files). The gap concentrates in:
+
+1. **Typing workers** — both platforms' typing-indicator loops are untested
+   (retry logic, consecutive-failure bail-out, cancellation)
+2. **Streaming callback closures** — `build_streaming_callbacks()` on both
+   platforms returns ~8 closures; most are never exercised
+3. **Tool embed / tool summary formatting** — discord `_build_tool_embed`,
+   telegram `_format_tool_summary`
+4. **Edge paths in `send()`** — multi-chunk sends, button attachment, reply-to
+   in thread vs channel
+
+These are the final hop before messages reach users — regressions are silent
+and user-facing.
+
+## Who
+
+- **Primary:** Lyra developers — confidence when touching outbound code
+- **Secondary:** End users — fewer silent regressions in message delivery
+
+## Constraints
+
+- Tests must mock platform clients (discord.py / aiogram) — no live API calls
+- Must reuse existing fixture patterns from `tests/adapters/`
+- Must not introduce new `Any` types
+- `discord_audio.py` is stretch scope only — do not block the PR on it
+
+## Out of Scope
+
+- Refactoring outbound modules (coverage first, cleanup later)
+- Integration tests with real platform APIs
+- `discord_audio.py` coverage (stretch — separate issue if needed)
+- Streaming session algorithm coverage (lives in `_shared_streaming_emitter.py`)
+
+## Complexity
+
+**Tier: F-lite** — single domain (adapters), clear scope (2 files), no architectural change.
+
+Signals:
+- All work in `tests/adapters/` — no production code changes
+- Existing test patterns to follow (29 tests already pass)
+- No new dependencies or infrastructure
+- Estimated 8h effort (audit), likely less given 47% baseline vs expected 12%

@@ -1,0 +1,42 @@
+---
+title: Complete ADR-048 core↔infrastructure store migration
+issue: 935
+status: approved
+tier: F-lite
+date: 2026-04-26
+---
+
+## Problem
+
+ADR-048 established `lyra.infrastructure` as the home for SQLite store implementations, but the migration is incomplete. Four files in `core/stores/` still import `SqliteStore` from `infrastructure/`, creating an illegal outward dependency (core → infrastructure). Combined with `infrastructure/stores/agent_store.py` importing from `core/`, this forms a circular dependency between the two layers.
+
+The violation blocks import-linter enforcement and contradicts the layered architecture.
+
+## Who
+
+- **Primary:** Lyra maintainers — blocked from enforcing clean layer boundaries via import-linter
+- **Secondary:** Contributors — confused by inconsistent placement of store implementations
+
+## Constraints
+
+- Must move 4 files from `core/stores/` → `infrastructure/stores/`: `message_index.py`, `prefs_store.py`, `thread_store.py`, `pairing.py`
+- ~84 import sites across `src/lyra/` and `tests/` need updating
+- `core/stores/__init__.py` must only export protocol-safe symbols after migration
+- import-linter must pass with zero layer violations
+- ADR-048 is the governing decision: `docs/architecture/adr/048-lyra-infrastructure-layer-for-persistence.mdx`
+
+## Out of Scope
+
+- Resolving Direction 2 (infrastructure → core imports in `agent_store.py`) — that dependency is inward and legal once Direction 1 is fixed
+- Refactoring store internals or changing SQLite schemas
+- Adding new store abstractions or protocols
+
+## Complexity
+
+**Tier: F-lite** — single-domain refactor with well-defined file list, no architectural decisions needed. The work is mechanical (move files + update imports) with clear success criteria (import-linter passes).
+
+Signals observed:
+- Single domain (layer enforcement)
+- Clear file list (4 files to move, ~84 import sites)
+- No unknowns or new patterns
+- κ=5 from issue complexity annotation

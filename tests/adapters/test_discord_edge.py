@@ -12,6 +12,7 @@ import pytest
 
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.messaging.message import DiscordMeta
 from lyra.core.messaging.messages import MessageManager
 
 from .conftest import attach_typing_cm
@@ -234,13 +235,13 @@ async def test_send_skips_when_discord_circuit_open() -> None:
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
         trust_level=TrustLevel.TRUSTED,
-        platform_meta={
-            "guild_id": 111,
-            "channel_id": 333,
-            "message_id": 555,
-            "thread_id": None,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=111,
+            channel_id=333,
+            message_id=555,
+            thread_id=None,
+            channel_type="text",
+        ),
     )
 
     # Act

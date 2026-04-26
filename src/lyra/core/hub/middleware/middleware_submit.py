@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 
-from ...messaging.callbacks import unwrap_callback
 from ...messaging.message import (
     InboundMessage,
     Platform,
@@ -81,9 +80,12 @@ class SubmitToPoolMiddleware:
 
         pool = ctx.pool
         # Register session persistence callback once.
-        _update_cb = unwrap_callback(msg.platform_meta, "_session_update_fn")
-        if _update_cb is not None and not pool.has_session_update_fn():
-            pool.register_session_callbacks(update_fn=_update_cb.fn)
+        if (
+            msg.session_update_fn is not None
+            and callable(msg.session_update_fn)
+            and not pool.has_session_update_fn()
+        ):
+            pool.register_session_callbacks(update_fn=msg.session_update_fn)
 
         try:
             status = await resolve_context(msg, pool, pool.pool_id, ctx)

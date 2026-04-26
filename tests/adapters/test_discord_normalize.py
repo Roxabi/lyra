@@ -17,7 +17,7 @@ import pytest
 def test_normalize_builds_correct_discord_context() -> None:
     """normalize() on a discord message produces correct platform_meta."""
     from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
-    from lyra.core.messaging.message import InboundMessage
+    from lyra.core.messaging.message import DiscordMeta, InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -41,10 +41,11 @@ def test_normalize_builds_correct_discord_context() -> None:
     assert isinstance(msg, InboundMessage)
     assert msg.platform == "discord"
     assert msg.scope_id == "channel:333"  # guild channels share one pool (#592)
-    assert msg.platform_meta["guild_id"] == 111
-    assert msg.platform_meta["channel_id"] == 333
-    assert msg.platform_meta["message_id"] == 555
-    assert msg.platform_meta["channel_type"] == "text"
+    assert isinstance(msg.platform_meta, DiscordMeta)
+    assert msg.platform_meta.guild_id == 111
+    assert msg.platform_meta.channel_id == 333
+    assert msg.platform_meta.message_id == 555
+    assert msg.platform_meta.channel_type == "text"
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +211,7 @@ def test_mention_prefix_stripped_nickname_variant() -> None:
 def test_normalize_dm_no_guild() -> None:
     """DM messages (guild=None) normalize with guild_id=None — no AttributeError."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.messaging.message import InboundMessage
+    from lyra.core.messaging.message import DiscordMeta, InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -232,9 +233,10 @@ def test_normalize_dm_no_guild() -> None:
     msg = adapter.normalize(discord_msg)
 
     assert isinstance(msg, InboundMessage)
-    assert msg.platform_meta["guild_id"] is None
-    assert msg.platform_meta["channel_id"] == 333
-    assert msg.platform_meta["message_id"] == 555
+    assert isinstance(msg.platform_meta, DiscordMeta)
+    assert msg.platform_meta.guild_id is None
+    assert msg.platform_meta.channel_id == 333
+    assert msg.platform_meta.message_id == 555
 
 
 # ---------------------------------------------------------------------------

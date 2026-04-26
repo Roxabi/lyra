@@ -18,7 +18,7 @@ from tests.conftest import _drain
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
 from lyra.core.pool import Pool
 
 from .fake_drivers import FakeClaudeCliDriver, FakeStt, FakeTts
@@ -113,12 +113,12 @@ class AgentHarness:
             text_raw=text,
             trust_level=TrustLevel.TRUSTED,
             timestamp=datetime.now(timezone.utc),
-            platform_meta={
-                "chat_id": 1,
-                "topic_id": None,
-                "message_id": None,
-                "is_group": False,
-            },
+            platform_meta=TelegramMeta(
+                chat_id=1,
+                topic_id=None,
+                message_id=None,
+                is_group=False,
+            ),
         )
 
         if voice is not None:
@@ -173,12 +173,12 @@ class AgentHarness:
             trust_level=TrustLevel.TRUSTED,
             timestamp=datetime.now(timezone.utc),
             modality="voice",
-            platform_meta={
-                "chat_id": 1,
-                "topic_id": None,
-                "message_id": None,
-                "is_group": False,
-            },
+            platform_meta=TelegramMeta(
+                chat_id=1,
+                topic_id=None,
+                message_id=None,
+                is_group=False,
+            ),
         )
 
         self.pool.submit(msg)

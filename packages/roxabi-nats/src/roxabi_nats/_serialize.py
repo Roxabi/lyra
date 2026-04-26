@@ -4,7 +4,7 @@ Handles encoding/decoding of Lyra dataclasses to/from UTF-8 JSON bytes:
 - Enum  → .value (str/int)
 - datetime → .isoformat()
 - bytes → "b64:<base64>" prefixed string
-- callables stripped from dict fields (platform_meta)
+- callable fields skipped (session_update_fn, similar non-serializable fields)
 - nested dataclasses serialized recursively
 """
 
@@ -82,11 +82,6 @@ def deserialize_dict(
 # ---------------------------------------------------------------------------
 
 
-def _strip_callables(d: dict[str, Any]) -> dict[str, Any]:
-    """Remove callable values from a dict (used for platform_meta)."""
-    return {k: v for k, v in d.items() if not callable(v)}
-
-
 def _get_hints(dc_type: type, resolver: _TypeHintResolver) -> dict[str, Any]:
     """Get type hints for a dataclass, handling TYPE_CHECKING-only imports.
 
@@ -156,11 +151,9 @@ def _encode(obj: Any) -> Any:
         # obj is a dataclass instance (narrowed by is_dataclass + not type check)
         for f in dataclasses.fields(obj):
             value = getattr(obj, f.name)
-            encoded_value = _encode(value)
-            # Strip callables from dict fields (platform_meta pattern)
-            if isinstance(encoded_value, dict):
-                encoded_value = _strip_callables(encoded_value)
-            result[f.name] = encoded_value
+            if callable(value):
+                continue
+            result[f.name] = _encode(value)
         return result
 
     if isinstance(obj, Enum):
@@ -187,6 +180,36 @@ def _encode(obj: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
+def _best_dataclass_candidate(
+    value: dict[str, Any],
+    non_none: list[Any],
+    resolver: _TypeHintResolver,
+) -> Any:
+    """Return the best-matching dataclass type for *value* among *non_none*.
+
+    Uses max field-key overlap; falls back to the first no-field dataclass
+    (e.g. GenericMeta) when no typed candidate has positive overlap.
+    """
+    best: Any = None
+    best_score: int = -1
+    fallback: Any = None
+    for candidate in non_none:
+        if not (dataclasses.is_dataclass(candidate) and isinstance(candidate, type)):
+            continue
+        hints = _get_hints(candidate, resolver)
+        if not hints:
+            if fallback is None:
+                fallback = candidate
+        else:
+            score = len(set(hints) & set(value))
+            if score > best_score:
+                best_score = score
+                best = candidate
+    if best is not None and best_score > 0:
+        return best
+    return fallback
+
+
 def _decode_union(
     value: Any, args: tuple[Any, ...], resolver: _TypeHintResolver
 ) -> Any:
@@ -194,22 +217,15 @@ def _decode_union(
     if value is None:
         return None
     non_none = [a for a in args if a is not type(None)]
-    # bytes: detect "b64:" prefix
     if bytes in non_none and isinstance(value, str) and value.startswith(_B64_PREFIX):
         return base64.b64decode(value[len(_B64_PREFIX) :])
-    # Single non-None candidate: decode as that type
     if len(non_none) == 1:
         return _decode(value, non_none[0], resolver)
-    # Multiple non-None: str | bytes without b64 prefix → keep as str
     if str in non_none and isinstance(value, str):
         return value
-    # Dataclass candidate: try to reconstruct
-    for candidate in non_none:
-        if (
-            dataclasses.is_dataclass(candidate)
-            and isinstance(candidate, type)
-            and isinstance(value, dict)
-        ):
+    if isinstance(value, dict):
+        candidate = _best_dataclass_candidate(value, non_none, resolver)
+        if candidate is not None:
             return _decode_dataclass(value, candidate, resolver)
     return value
 

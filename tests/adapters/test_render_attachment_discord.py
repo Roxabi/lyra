@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, OutboundAttachment
+from lyra.core.messaging.message import DiscordMeta, InboundMessage, OutboundAttachment
 
 from .conftest import (
     make_dc_attach_adapter,
@@ -170,13 +170,13 @@ class TestDiscordRenderAttachment:
             text_raw="hi",
             trust_level=TrustLevel.TRUSTED,
             timestamp=datetime.now(timezone.utc),
-            platform_meta={
-                "guild_id": 1,
-                "channel_id": 99,
-                "message_id": None,
-                "thread_id": None,
-                "channel_type": "text",
-            },
+            platform_meta=DiscordMeta(
+                guild_id=1,
+                channel_id=99,
+                message_id=0,
+                thread_id=None,
+                channel_type="text",
+            ),
         )
 
         with patch.object(adapter, "get_channel", return_value=channel):

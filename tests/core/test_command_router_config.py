@@ -18,7 +18,7 @@ from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
 from lyra.core.commands.command_router import CommandRouter
-from lyra.core.messaging.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
 from lyra.core.pool import Pool
 
 from .conftest import make_message, make_router
@@ -63,12 +63,7 @@ def make_config_msg(
         text=content,
         text_raw=content,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(chat_id=42),
         trust_level=TrustLevel.TRUSTED,
         is_admin=is_admin,
         command=_parser.parse(content),

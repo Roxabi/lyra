@@ -40,6 +40,7 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.auth.guard import BlockedGuard, GuardChain
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (
+    DiscordMeta,
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -129,9 +130,11 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
 
     def _cancel_typing_for(self, inbound: InboundMessage) -> None:
         """Cancel the typing indicator for the channel/thread of *inbound*."""
-        channel_id: int | None = inbound.platform_meta.get("channel_id")
-        thread_id: int | None = inbound.platform_meta.get("thread_id")
-        send_to_id = thread_id if thread_id is not None else channel_id
+        if not isinstance(inbound.platform_meta, DiscordMeta):
+            return
+        channel_id: int = inbound.platform_meta.channel_id
+        thread_id: int | None = inbound.platform_meta.thread_id
+        send_to_id = thread_id if thread_id is not None else (channel_id or None)
         if send_to_id is not None:
             self._cancel_typing(send_to_id)
 

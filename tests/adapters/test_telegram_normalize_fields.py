@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.messaging.message import InboundMessage
+from lyra.core.messaging.message import InboundMessage, TelegramMeta
 
 # ---------------------------------------------------------------------------
 # T3 — _normalize() builds correct TelegramContext for private chat
@@ -46,10 +46,11 @@ def test_normalize_private_chat_context() -> None:
     assert msg.scope_id == "chat:123"
     assert msg.text == "hello"
     assert msg.user_id == "tg:user:42"
-    assert msg.platform_meta["chat_id"] == 123
-    assert msg.platform_meta["topic_id"] is None
-    assert msg.platform_meta["is_group"] is False
-    assert msg.platform_meta["message_id"] == 99
+    assert isinstance(msg.platform_meta, TelegramMeta)
+    assert msg.platform_meta.chat_id == 123
+    assert msg.platform_meta.topic_id is None
+    assert msg.platform_meta.is_group is False
+    assert msg.platform_meta.message_id == 99
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +170,8 @@ def test_normalize_captures_message_id() -> None:
 
     # Assert
     assert isinstance(msg, InboundMessage)
-    assert msg.platform_meta["message_id"] == 777
+    assert isinstance(msg.platform_meta, TelegramMeta)
+    assert msg.platform_meta.message_id == 777
 
 
 def test_normalize_message_id_none_when_absent() -> None:
@@ -201,7 +203,8 @@ def test_normalize_message_id_none_when_absent() -> None:
 
     # Assert
     assert isinstance(msg, InboundMessage)
-    assert msg.platform_meta["message_id"] is None
+    assert isinstance(msg.platform_meta, TelegramMeta)
+    assert msg.platform_meta.message_id is None
 
 
 # ---------------------------------------------------------------------------
@@ -234,9 +237,10 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
 
     # Assert
     assert isinstance(msg, InboundMessage)
-    assert msg.platform_meta["topic_id"] == 99
-    assert msg.platform_meta["message_id"] == 777
-    assert msg.platform_meta["is_group"] is True
+    assert isinstance(msg.platform_meta, TelegramMeta)
+    assert msg.platform_meta.topic_id == 99
+    assert msg.platform_meta.message_id == 777
+    assert msg.platform_meta.is_group is True
     assert msg.scope_id == "chat:456:topic:99"  # groups/topics share pool (#592)
 
 

@@ -18,8 +18,7 @@ from lyra.adapters.discord.discord_threads import (
 )
 from lyra.adapters.shared._shared import AUDIO_MIME_TYPES, push_to_hub_guarded
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.callbacks import TrustedCallback
-from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.core.messaging.message import DiscordMeta, InboundMessage, Platform
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -185,10 +184,8 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         log.exception("Failed to normalize discord message id=%s", message.id)
         return
 
-    # Inject stored session + persistence callback into platform_meta.
-    _meta_updates: dict[str, Any] = {}
-    if _stored_session_id is not None:
-        _meta_updates["thread_session_id"] = _stored_session_id
+    # Inject stored thread_session_id into typed DiscordMeta.
+    _stored_session: str | None = _stored_session_id
 
     # DM session wiring: inject prior session_id + persist callback for DMs.
     _dm_session_id: str | None = None
@@ -206,8 +203,19 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                 "TurnStore.get_last_session failed for DM pool_id=%s", _pool_id
             )
     if _dm_session_id is not None:
-        _meta_updates["thread_session_id"] = _dm_session_id
-    _has_thread_id = hub_msg.platform_meta.get("thread_id") is not None
+        _stored_session = _dm_session_id
+    if _stored_session is not None and isinstance(hub_msg.platform_meta, DiscordMeta):
+        hub_msg = dataclasses.replace(
+            hub_msg,
+            platform_meta=dataclasses.replace(
+                hub_msg.platform_meta, thread_session_id=_stored_session
+            ),
+        )
+    _has_thread_id = (
+        isinstance(hub_msg.platform_meta, DiscordMeta)
+        and hub_msg.platform_meta.thread_id is not None
+    )
+    _dc_session_update_fn = None
     if _is_dm and adapter._turn_store is not None:
         # DM path takes priority over thread-session persistence
         _dm_ts = adapter._turn_store
@@ -217,22 +225,19 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         ) -> None:
             await _dm_ts.start_session(session_id, pool_id)
 
-        _meta_updates["_session_update_fn"] = TrustedCallback(_dm_session_update_fn)
+        _dc_session_update_fn = _dm_session_update_fn
     elif _has_thread_id and adapter._thread_store is not None:
         _ts = adapter._thread_store
         _bid, _cache = adapter._bot_id, adapter._thread_sessions
 
-        async def _session_update_fn(
+        async def _dc_thread_session_update_fn(
             msg: InboundMessage, session_id: str, pool_id: str
         ) -> None:
             await persist_thread_session(_ts, msg, session_id, pool_id, _bid, _cache)
 
-        _meta_updates["_session_update_fn"] = TrustedCallback(_session_update_fn)
-    if _meta_updates:
-        hub_msg = dataclasses.replace(
-            hub_msg,
-            platform_meta={**hub_msg.platform_meta, **_meta_updates},
-        )
+        _dc_session_update_fn = _dc_thread_session_update_fn
+    if _dc_session_update_fn is not None:
+        hub_msg = dataclasses.replace(hub_msg, session_update_fn=_dc_session_update_fn)
 
     log.info(
         "message_received",

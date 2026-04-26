@@ -11,7 +11,7 @@ import pytest
 
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_parser import CommandParser
-from lyra.core.messaging.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
 from lyra.core.pool import Pool
 from lyra.core.processors.processor_registry import registry
 from lyra.integrations.base import SessionTools
@@ -60,12 +60,12 @@ def _make_command_msg(text: str) -> InboundMessage:
         text=text,
         text_raw=text,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=42,
+            topic_id=None,
+            message_id=None,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
         command=cmd_ctx,
     )

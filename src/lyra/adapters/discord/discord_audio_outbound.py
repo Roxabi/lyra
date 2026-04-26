@@ -21,6 +21,7 @@ from lyra.adapters.shared._shared import (
     truncate_caption,
 )
 from lyra.core.messaging.message import (
+    DiscordMeta,
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -198,7 +199,13 @@ async def render_voice_stream(
             inbound.id,
         )
         return
-    guild_id = inbound.platform_meta.get("guild_id")
+    if not isinstance(inbound.platform_meta, DiscordMeta):
+        log.warning(
+            "render_voice_stream: platform_meta is not DiscordMeta for msg id=%s",
+            inbound.id,
+        )
+        return
+    guild_id: int | None = inbound.platform_meta.guild_id
     if guild_id is None:
         log.warning(
             "render_voice_stream: platform_meta missing 'guild_id' for msg id=%s",

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from lyra.core import Hub
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.config import HubConfig
-from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------
@@ -65,12 +65,12 @@ class TestCrossScopeRateLimit:
                 text="hello",
                 text_raw="hello",
                 timestamp=datetime.now(timezone.utc),
-                platform_meta={
-                    "chat_id": int(scope_id.split(":")[-1]),
-                    "topic_id": None,
-                    "message_id": None,
-                    "is_group": False,
-                },
+                platform_meta=TelegramMeta(
+                    chat_id=int(scope_id.split(":")[-1]),
+                    topic_id=None,
+                    message_id=None,
+                    is_group=False,
+                ),
                 trust_level=TrustLevel.TRUSTED,
             )
 
@@ -119,12 +119,12 @@ class TestScopeIsolatedPools:
             text="hello",
             text_raw="hello",
             timestamp=datetime.now(timezone.utc),
-            platform_meta={
-                "chat_id": 100,
-                "topic_id": None,
-                "message_id": None,
-                "is_group": False,
-            },
+            platform_meta=TelegramMeta(
+                chat_id=100,
+                topic_id=None,
+                message_id=None,
+                is_group=False,
+            ),
             trust_level=TrustLevel.TRUSTED,
         )
         msg_b = InboundMessage(
@@ -138,12 +138,12 @@ class TestScopeIsolatedPools:
             text="hello",
             text_raw="hello",
             timestamp=datetime.now(timezone.utc),
-            platform_meta={
-                "chat_id": 200,
-                "topic_id": None,
-                "message_id": None,
-                "is_group": False,
-            },
+            platform_meta=TelegramMeta(
+                chat_id=200,
+                topic_id=None,
+                message_id=None,
+                is_group=False,
+            ),
             trust_level=TrustLevel.TRUSTED,
         )
 

@@ -11,7 +11,7 @@ from lyra.core.auth.authenticator import Authenticator
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.hub.hub_protocol import Binding, RoutingKey
 from lyra.core.hub.identity_resolver import IdentityResolver
-from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -39,7 +39,7 @@ def make_inbound(  # noqa: PLR0913
         text="hello",
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={"chat_id": 42},
+        platform_meta=TelegramMeta(chat_id=42),
         trust_level=trust_level,
         is_admin=is_admin,
         roles=roles,

@@ -122,7 +122,6 @@ class TestTelegramNormalizeRouting:
 
         msg = adapter.normalize(raw)
         assert msg.routing is not None
-        assert msg.routing.platform_meta is not msg.platform_meta
         assert msg.routing.platform_meta == msg.platform_meta
 
 

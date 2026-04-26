@@ -12,9 +12,11 @@ from __future__ import annotations
 import pytest
 
 from lyra.core.messaging.message import (
+    GenericMeta,
     OutboundMessage,
     Response,
     RoutingContext,
+    TelegramMeta,
 )
 
 from .conftest import _RC_DC, _RC_TG, make_routing_inbound
@@ -41,7 +43,7 @@ class TestRoutingContext:
         assert rc.scope_id == "chat:123"
         assert rc.thread_id is None
         assert rc.reply_to_message_id is None
-        assert rc.platform_meta == {}
+        assert rc.platform_meta == GenericMeta()
 
     def test_frozen(self) -> None:
         rc = RoutingContext(platform="telegram", bot_id="main", scope_id="chat:123")
@@ -49,7 +51,7 @@ class TestRoutingContext:
             setattr(rc, "platform", "discord")
 
     def test_with_all_fields(self) -> None:
-        meta = {"chat_id": 123, "topic_id": 456}
+        meta = TelegramMeta(chat_id=123, topic_id=456)
         rc = RoutingContext(
             platform="telegram",
             bot_id="main",

@@ -10,7 +10,12 @@ import discord
 from tabulate import tabulate
 
 from lyra.adapters.shared._shared import AUDIO_MIME_TYPES, chunk_text
-from lyra.core.messaging.message import Attachment, InboundMessage, Platform
+from lyra.core.messaging.message import (
+    Attachment,
+    DiscordMeta,
+    InboundMessage,
+    Platform,
+)
 
 log = logging.getLogger("lyra.adapters.discord")
 
@@ -114,12 +119,18 @@ def _validate_inbound(
     if inbound.platform != Platform.DISCORD.value:
         log.error("%s called with non-discord message id=%s", caller, inbound.id)
         return None
-    channel_id: int | None = inbound.platform_meta.get("channel_id")
-    if channel_id is None:
+    if not isinstance(inbound.platform_meta, DiscordMeta):
+        log.error(
+            "%s: platform_meta is not DiscordMeta for msg id=%s", caller, inbound.id
+        )
+        return None
+    channel_id: int = inbound.platform_meta.channel_id
+    if channel_id == 0:
         log.error(
             "%s: platform_meta missing 'channel_id' for msg id=%s", caller, inbound.id
         )
         return None
-    thread_id: int | None = inbound.platform_meta.get("thread_id")
-    message_id: int | None = inbound.platform_meta.get("message_id")
+    thread_id: int | None = inbound.platform_meta.thread_id
+    raw_msg_id = inbound.platform_meta.message_id
+    message_id: int | None = raw_msg_id if raw_msg_id != 0 else None
     return channel_id, thread_id, message_id

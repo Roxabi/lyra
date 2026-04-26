@@ -8,7 +8,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, OutboundMessage
+from lyra.core.messaging.message import (
+    DiscordMeta,
+    InboundMessage,
+    OutboundMessage,
+    TelegramMeta,
+)
 from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
 
 # ---------------------------------------------------------------------------
@@ -28,12 +33,12 @@ def make_tg_message() -> InboundMessage:
         text="hello",
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=42,
+            topic_id=None,
+            message_id=None,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
 
@@ -50,13 +55,13 @@ def make_dc_message() -> InboundMessage:
         text="hello",
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "guild_id": 1,
-            "channel_id": 100,
-            "message_id": 200,
-            "thread_id": None,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=1,
+            channel_id=100,
+            message_id=200,
+            thread_id=None,
+            channel_type="text",
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
 

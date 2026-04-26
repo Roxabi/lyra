@@ -102,7 +102,10 @@ class TestWatchChannels:
         create_thread_mock.assert_awaited_once()
         inbound_bus.put.assert_awaited_once()
         _platform_arg, hub_msg = inbound_bus.put.call_args[0]
-        assert hub_msg.platform_meta["thread_id"] == 8888
+        from lyra.core.messaging.message import DiscordMeta
+
+        assert isinstance(hub_msg.platform_meta, DiscordMeta)
+        assert hub_msg.platform_meta.thread_id == 8888
 
     @pytest.mark.asyncio
     async def test_non_watch_channel_still_filtered(self) -> None:

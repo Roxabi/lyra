@@ -6,6 +6,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from lyra.core.messaging.message import DiscordMeta
+
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
     from lyra.infrastructure.stores.thread_store import ThreadStore
@@ -48,7 +50,9 @@ async def persist_thread_session(  # noqa: PLR0913 — each arg is a distinct re
     cache: dict[str, tuple[str, str]],
 ) -> None:
     """Persist session_id and pool_id for a thread after a successful turn."""
-    thread_id: int | None = msg.platform_meta.get("thread_id")
+    if not isinstance(msg.platform_meta, DiscordMeta):
+        return
+    thread_id: int | None = msg.platform_meta.thread_id
     if thread_id is None:
         return
     try:

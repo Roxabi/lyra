@@ -11,6 +11,7 @@ import discord
 from lyra.adapters.discord.discord_formatting import extract_attachments
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (
+    DiscordMeta,
     InboundMessage,
     Platform,
     RoutingContext,
@@ -86,21 +87,21 @@ def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing con
         if _reference is not None and _reference.message_id is not None
         else None
     )
-    platform_meta = {
-        "guild_id": raw.guild.id if raw.guild else None,
-        "channel_id": resolved_channel_id,
+    platform_meta = DiscordMeta(
+        guild_id=raw.guild.id if raw.guild else None,
+        channel_id=resolved_channel_id,
         # INVARIANT: always original message id, never thread.id
-        "message_id": raw.id,
-        "thread_id": resolved_thread_id,
-        "channel_type": channel_type,
-    }
+        message_id=raw.id,
+        thread_id=resolved_thread_id,
+        channel_type=channel_type,
+    )
     routing = RoutingContext(
         platform=Platform.DISCORD.value,
         bot_id=adapter._bot_id,
         scope_id=scope_id,
         thread_id=(str(resolved_thread_id) if resolved_thread_id is not None else None),
         reply_to_message_id=str(raw.id),
-        platform_meta=dict(platform_meta),
+        platform_meta=platform_meta,
     )
     return InboundMessage(
         id=(f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}"),

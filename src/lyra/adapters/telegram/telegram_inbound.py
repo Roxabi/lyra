@@ -12,8 +12,7 @@ from lyra.adapters.telegram.telegram_audio import _download_audio
 from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.callbacks import TrustedCallback
-from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -32,7 +31,8 @@ async def _push_to_hub(
     cases (e.g. to clean up a temp audio file). Always returns normally so
     aiogram receives HTTP 200.
     """
-    chat_id = hub_msg.platform_meta.get("chat_id")
+    _meta = hub_msg.platform_meta
+    chat_id = _meta.chat_id if isinstance(_meta, TelegramMeta) else None
 
     async def _send_bp(text: str) -> None:
         if chat_id is None:
@@ -66,25 +66,28 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
 
     # In group chats, only respond when directly mentioned.
     # In private chats, always respond.
-    if hub_msg.platform_meta.get("is_group") and not hub_msg.is_mention:
+    if (
+        isinstance(hub_msg.platform_meta, TelegramMeta)
+        and hub_msg.platform_meta.is_group
+        and not hub_msg.is_mention
+    ):
         return
 
     # Session wiring: inject prior session_id + persist callback.
-    _meta_updates: dict[str, Any] = {}
+    _new_thread_session_id: str | None = None
+    _session_update_fn = None
     if adapter._turn_store is not None:
         from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.messaging.message import Platform
 
         _pool_id = RoutingKey(
             Platform.TELEGRAM, adapter._bot_id, hub_msg.scope_id
         ).to_pool_id()
         try:
-            _last_sid = await adapter._turn_store.get_last_session(_pool_id)
+            _new_thread_session_id = await adapter._turn_store.get_last_session(
+                _pool_id
+            )
         except Exception:
             log.exception("TurnStore.get_last_session failed for pool_id=%s", _pool_id)
-            _last_sid = None
-        if _last_sid is not None:
-            _meta_updates["thread_session_id"] = _last_sid
         _ts = adapter._turn_store
 
         async def _tg_session_update_fn(
@@ -92,12 +95,18 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
         ) -> None:
             await _ts.start_session(session_id, pool_id)
 
-        _meta_updates["_session_update_fn"] = TrustedCallback(_tg_session_update_fn)
-    if _meta_updates:
-        hub_msg = dataclasses.replace(
-            hub_msg,
-            platform_meta={**hub_msg.platform_meta, **_meta_updates},
+        _session_update_fn = _tg_session_update_fn
+
+    _replacements: dict[str, Any] = {}
+    _is_tg_meta = isinstance(hub_msg.platform_meta, TelegramMeta)
+    if _new_thread_session_id is not None and _is_tg_meta:
+        _replacements["platform_meta"] = dataclasses.replace(
+            hub_msg.platform_meta, thread_session_id=_new_thread_session_id
         )
+    if _session_update_fn is not None:
+        _replacements["session_update_fn"] = _session_update_fn
+    if _replacements:
+        hub_msg = dataclasses.replace(hub_msg, **_replacements)
 
     log.info(
         "message_received",

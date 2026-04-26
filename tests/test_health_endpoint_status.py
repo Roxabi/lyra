@@ -18,6 +18,7 @@ from lyra.core.hub import Hub
 from lyra.core.messaging.message import (
     InboundMessage,
     Platform,
+    TelegramMeta,
 )
 from tests.conftest import AUTH_HEADERS, HEALTH_SECRET, yield_once
 from tests.core.conftest import push_to_hub
@@ -139,12 +140,7 @@ class TestHealthEndpoint:
             text_raw="hello",
             timestamp=datetime.now(timezone.utc),
             scope_id="chat:123",
-            platform_meta={
-                "chat_id": 123,
-                "topic_id": None,
-                "message_id": None,
-                "is_group": False,
-            },
+            platform_meta=TelegramMeta(chat_id=123),
             trust_level=TrustLevel.TRUSTED,
         )
         await push_to_hub(hub, msg)
@@ -183,12 +179,7 @@ class TestHealthEndpoint:
             text_raw="hello",
             timestamp=datetime.now(timezone.utc),
             scope_id="chat:123",
-            platform_meta={
-                "chat_id": 123,
-                "topic_id": None,
-                "message_id": None,
-                "is_group": False,
-            },
+            platform_meta=TelegramMeta(chat_id=123),
             trust_level=TrustLevel.TRUSTED,
         )
         await hub.inbound_bus.put(Platform.TELEGRAM, msg)

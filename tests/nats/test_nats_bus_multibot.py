@@ -15,7 +15,12 @@ from datetime import datetime, timezone
 from nats.aio.client import Client as NATS
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.core.messaging.message import (
+    DiscordMeta,
+    InboundMessage,
+    Platform,
+    TelegramMeta,
+)
 from lyra.nats.nats_bus import NatsBus
 from tests.nats.conftest import requires_nats_server
 
@@ -29,21 +34,10 @@ def _make_msg(
 ) -> InboundMessage:
     if platform == Platform.TELEGRAM:
         scope = "chat:1"
-        meta: dict = {
-            "chat_id": 1,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        }
+        meta: TelegramMeta | DiscordMeta = TelegramMeta(chat_id=1)
     else:
         scope = "channel:2"
-        meta = {
-            "guild_id": 1,
-            "channel_id": 2,
-            "message_id": 3,
-            "thread_id": None,
-            "channel_type": "text",
-        }
+        meta = DiscordMeta(guild_id=1, channel_id=2, message_id=3, channel_type="text")
     return InboundMessage(
         id="msg-1",
         platform=platform.value,

@@ -122,7 +122,11 @@ async def test_send_cancels_typing_task() -> None:
     import asyncio
 
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.messaging.message import InboundMessage, OutboundMessage
+    from lyra.core.messaging.message import (
+        InboundMessage,
+        OutboundMessage,
+        TelegramMeta,
+    )
 
     # Arrange
     bot = AsyncMock()
@@ -148,12 +152,12 @@ async def test_send_cancels_typing_task() -> None:
         text="hello",
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 123,
-            "topic_id": None,
-            "message_id": 99,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=123,
+            topic_id=None,
+            message_id=99,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
     outbound = OutboundMessage.from_text("reply")
@@ -186,7 +190,7 @@ async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
     import asyncio
 
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.messaging.message import InboundMessage
+    from lyra.core.messaging.message import InboundMessage, TelegramMeta
 
     # Arrange
     bot = AsyncMock()
@@ -212,12 +216,12 @@ async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
         text="stream this",
         text_raw="stream this",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 456,
-            "topic_id": None,
-            "message_id": 10,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=456,
+            topic_id=None,
+            message_id=10,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
 

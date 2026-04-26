@@ -40,10 +40,9 @@ from pathlib import Path
 # Key is the source file path relative to repo root.
 # Value is a short description of the architectural role.
 EXPECTED_CALL_SITES: dict[str, str] = {
-    # NatsBus._make_handler() sanitizes each inbound message as it arrives from
-    # the NATS wire.  This is the sole sanitization point for all hub-inbound
-    # paths (Slice 2, issue #534: compat shim deleted).
-    "src/lyra/nats/nats_bus.py": "NatsBus._make_handler — wire-boundary sanitization",
+    # Issue #853: platform_meta is now a typed PlatformMeta union (TelegramMeta |
+    # DiscordMeta | GenericMeta). Sanitization is no longer needed — the type
+    # system enforces valid structure at construction time. All call sites removed.
 }
 
 # ---------------------------------------------------------------------------

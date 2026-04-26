@@ -146,7 +146,12 @@ async def test_telegram_private_injects_thread_session_id() -> None:
     else:
         posted = mock_bus.put.call_args[0][1]
 
-    assert posted.platform_meta.get("thread_session_id") == "prior-session-id", (
+    from lyra.core.messaging.message import TelegramMeta
+
+    assert isinstance(posted.platform_meta, TelegramMeta), (
+        f"Expected TelegramMeta, got {posted.platform_meta!r}"
+    )
+    assert posted.platform_meta.thread_session_id == "prior-session-id", (
         f"Expected thread_session_id='prior-session-id', "
         f"got platform_meta={posted.platform_meta!r}"
     )

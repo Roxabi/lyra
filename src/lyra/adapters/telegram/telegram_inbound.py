@@ -95,6 +95,8 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
         ) -> None:
             await _ts.start_session(session_id, pool_id)
 
+        _session_update_fn = _tg_session_update_fn
+
     _replacements: dict[str, Any] = {}
     _is_tg_meta = isinstance(hub_msg.platform_meta, TelegramMeta)
     if _new_thread_session_id is not None and _is_tg_meta:

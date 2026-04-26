@@ -67,7 +67,10 @@ class TestDiscordAutoThread:
         # Assert — inbound_bus.put was called and the InboundMessage has thread_id
         inbound_bus.put.assert_awaited_once()
         _platform_arg, hub_msg = inbound_bus.put.call_args[0]
-        assert hub_msg.platform_meta["thread_id"] == 9999
+        from lyra.core.messaging.message import DiscordMeta
+
+        assert isinstance(hub_msg.platform_meta, DiscordMeta)
+        assert hub_msg.platform_meta.thread_id == 9999
         assert hub_msg.scope_id == "thread:9999"
 
     @pytest.mark.asyncio
@@ -239,7 +242,10 @@ class TestDiscordAutoThread:
         inbound_bus.put.assert_awaited_once()
         _platform_arg, hub_msg = inbound_bus.put.call_args[0]
         assert hub_msg.scope_id == "thread:8888"
-        assert hub_msg.platform_meta["thread_id"] == 8888
+        from lyra.core.messaging.message import DiscordMeta
+
+        assert isinstance(hub_msg.platform_meta, DiscordMeta)
+        assert hub_msg.platform_meta.thread_id == 8888
         assert 8888 in adapter._owned_threads
 
     def test_discord_config_auto_thread_default_true(self) -> None:
@@ -274,8 +280,12 @@ class TestPersistThreadSessionEviction:
         mock_store = MagicMock()
         mock_store.update_session = AsyncMock()
 
+        from lyra.core.messaging.message import DiscordMeta
+
         mock_msg = MagicMock()
-        mock_msg.platform_meta = {"thread_id": 9999}
+        mock_msg.platform_meta = DiscordMeta(
+            guild_id=1, channel_id=1, message_id=1, channel_type="text", thread_id=9999
+        )
 
         # Act
         await persist_thread_session(

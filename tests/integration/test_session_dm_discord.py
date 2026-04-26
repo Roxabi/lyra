@@ -122,7 +122,12 @@ async def test_discord_dm_injects_thread_session_id() -> None:
     else:
         posted = mock_bus.put.call_args[0][1]
 
-    assert posted.platform_meta.get("thread_session_id") == "prior-session-id", (
+    from lyra.core.messaging.message import DiscordMeta
+
+    assert isinstance(posted.platform_meta, DiscordMeta), (
+        f"Expected DiscordMeta, got {posted.platform_meta!r}"
+    )
+    assert posted.platform_meta.thread_session_id == "prior-session-id", (
         f"Expected thread_session_id='prior-session-id', "
         f"got platform_meta={posted.platform_meta!r}"
     )

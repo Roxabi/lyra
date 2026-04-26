@@ -28,6 +28,7 @@ from unittest.mock import patch
 
 import pytest
 
+from lyra.core.config import HubConfig
 from lyra.core.hub.middleware import build_default_pipeline
 from lyra.core.hub.pipeline.message_pipeline import Action
 from lyra.core.messaging.message import Platform
@@ -128,7 +129,7 @@ class TestMessagePipelineTraces:
         steps_first: list[dict[str, Any]] = []
         steps_second: list[dict[str, Any]] = []
 
-        hub = _make_hub(rate_limit=1, rate_window=60)
+        hub = _make_hub(config=HubConfig(rate_limit=1, rate_window=60))
         msg = make_inbound_message()
 
         pipeline1 = build_default_pipeline(

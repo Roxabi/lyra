@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.core.cli.cli_pool import CliPool, _ProcessEntry
+from lyra.core.config import HubConfig
 from lyra.core.hub import Hub
 from lyra.core.messaging.message import Platform
 from lyra.core.pool import Pool
@@ -54,9 +55,11 @@ def _make_hub(
     cancel_on_new_message: bool = False,
 ) -> Hub:
     hub = Hub(
-        pool_ttl=pool_ttl,
-        debounce_ms=debounce_ms,
-        cancel_on_new_message=cancel_on_new_message,
+        config=HubConfig(
+            pool_ttl=pool_ttl,
+            debounce_ms=debounce_ms,
+            cancel_on_new_message=cancel_on_new_message,
+        ),
     )
     hub.inbound_bus.register(Platform.TELEGRAM, maxsize=10)
     return hub
@@ -504,12 +507,12 @@ class TestMaxPoolsValidation:
 
     def test_zero_max_pools_raises_valueerror(self):
         with pytest.raises(ValueError, match="max_pools must be > 0"):
-            Hub(max_pools=0)
+            Hub(config=HubConfig(max_pools=0))
 
     def test_negative_max_pools_raises_valueerror(self):
         with pytest.raises(ValueError, match="max_pools must be > 0"):
-            Hub(max_pools=-1)
+            Hub(config=HubConfig(max_pools=-1))
 
     def test_positive_max_pools_works(self):
-        hub = Hub(max_pools=100)
+        hub = Hub(config=HubConfig(max_pools=100))
         assert hub._max_pools == 100

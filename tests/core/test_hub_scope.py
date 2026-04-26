@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from lyra.core import Hub
 from lyra.core.auth.trust import TrustLevel
+from lyra.core.config import HubConfig
 from lyra.core.messaging.message import InboundMessage, Platform
 from tests.core.conftest import make_inbound_message
 
@@ -50,7 +51,7 @@ class TestCrossScopeRateLimit:
 
     def test_rate_limit_spans_scopes(self) -> None:
         # Arrange — two different scopes for the same user_id
-        hub = Hub(rate_limit=5, rate_window=60)
+        hub = Hub(config=HubConfig(rate_limit=5, rate_window=60))
 
         def make_scoped_message(scope_id: str) -> InboundMessage:
             return InboundMessage(
@@ -178,7 +179,7 @@ class TestRateTimestampsCleanup:
         timestamp — the new one — confirming the stale entry was removed."""
         import unittest.mock
 
-        hub = Hub(rate_window=1)
+        hub = Hub(config=HubConfig(rate_window=1))
         msg = make_inbound_message(platform="telegram", user_id="alice")
 
         # First call — inserts a timestamp for alice's user key

@@ -10,6 +10,7 @@ import dataclasses
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from lyra.core.config import HubConfig
 from lyra.core.hub.middleware import (
     MiddlewarePipeline,
     PipelineContext,
@@ -112,7 +113,7 @@ class TestRateLimit:
 
     async def test_rate_limited_drops(self) -> None:
         mw = RateLimitMiddleware()
-        hub = _make_hub(rate_limit=1, rate_window=60)
+        hub = _make_hub(config=HubConfig(rate_limit=1, rate_window=60))
         ctx = PipelineContext(hub=hub)
         msg = make_inbound_message()
 

@@ -17,10 +17,9 @@ Usage::
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import json
 import logging
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -33,7 +32,6 @@ from lyra.core.messaging.message import (
 )
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver
-from roxabi_nats._sanitize import sanitize_platform_meta
 from roxabi_nats._serialize import deserialize_dict, serialize
 from roxabi_nats._validate import validate_nats_token
 from roxabi_nats._version_check import check_schema_version
@@ -254,12 +252,6 @@ class NatsBus(Generic[T]):
 
         try:
             item = deserialize_dict(payload, self._item_type, resolver=self._resolver)
-            if hasattr(item, "platform_meta"):
-                _item: Any = item
-                item = dataclasses.replace(
-                    _item,
-                    platform_meta=sanitize_platform_meta(_item.platform_meta),
-                )
             self._staging.put_nowait(item)
         except asyncio.QueueFull:
             log.warning(

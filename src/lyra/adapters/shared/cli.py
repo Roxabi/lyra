@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage
+from lyra.core.messaging.message import GenericMeta, InboundMessage
 
 
 class CLIAdapter:
@@ -43,5 +43,5 @@ class CLIAdapter:
             text_raw=text,
             timestamp=now,
             trust_level=TrustLevel.OWNER,
-            platform_meta={},
+            platform_meta=GenericMeta(),
         )

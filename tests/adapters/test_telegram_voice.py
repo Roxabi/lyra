@@ -191,8 +191,8 @@ async def test_voice_too_large_no_reply_when_no_message_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_voice_message_download_error_returns_silently() -> None:
-    """_download_audio raises generic exception → log + return, no enqueue."""
+async def test_voice_message_download_error_sends_reply() -> None:
+    """_download_audio raises generic exception → user gets an error reply."""
     adapter, buses = _make_adapter()
 
     with patch(
@@ -203,7 +203,7 @@ async def test_voice_message_download_error_returns_silently() -> None:
         await adapter._on_voice_message(_make_voice_msg())
 
     buses.inbound_bus.put.assert_not_called()
-    adapter.bot.send_message.assert_not_called()
+    adapter.bot.send_message.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

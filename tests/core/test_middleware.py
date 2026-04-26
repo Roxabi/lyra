@@ -771,3 +771,37 @@ class TestNotifySessionFallthroughMiddleware:
         assert result.action == Action.SUBMIT_TO_POOL
         assert len(notify_calls) == 1
         assert "starting fresh" in notify_calls[0][1]
+
+
+# ──────────────────────────────────────────────────────────────────────
+# SttMiddleware — no msg_manager reply (#945)
+# ──────────────────────────────────────────────────────────────────────
+
+
+async def test_stt_middleware_no_msg_manager_replies() -> None:
+    """SttMiddleware with hub._msg_manager=None sends an error reply and drops."""
+    from lyra.core.audio_payload import AudioPayload
+    from lyra.core.hub.middleware.middleware_stt import SttMiddleware
+
+    hub = _make_hub()
+    hub._msg_manager = None  # simulate unconfigured state
+
+    hub.dispatch_response = AsyncMock()
+
+    mw = SttMiddleware()
+    ctx = PipelineContext(hub=hub)
+
+    msg = make_inbound_message(modality="voice")
+    import dataclasses
+
+    msg = dataclasses.replace(
+        msg,
+        audio=AudioPayload(audio_bytes=b"fake_audio", mime_type="audio/ogg"),
+    )
+
+    next_mock = _make_next()
+
+    result = await mw(msg, ctx, next_mock)
+
+    hub.dispatch_response.assert_called()
+    assert result.action == Action.DROP

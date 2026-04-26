@@ -76,6 +76,9 @@ def build_cmd(
     if model_config.streaming:
         cmd.append("--include-partial-messages")
     if model_config.skip_permissions:
+        log.warning(
+            "SECURITY: --dangerously-skip-permissions enabled for CLI subprocess"
+        )
         cmd.append("--dangerously-skip-permissions")
     if model_config.tools:
         cmd.extend(["--allowedTools", ",".join(model_config.tools)])

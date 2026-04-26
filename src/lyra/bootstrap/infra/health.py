@@ -60,23 +60,9 @@ def _probe_nats(nc: Any | None) -> str | None:
         return "unreachable"
 
 
-def _read_secret(name: str) -> str:
-    """Read a secret from $LYRA_VAULT_DIR/secrets/{name}. Returns '' if missing."""
-    vault_dir = Path(
-        os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
-    ).resolve()
-    path = vault_dir / "secrets" / name
-    try:
-        return path.read_text().strip()
-    except FileNotFoundError:
-        return ""
-    except OSError as exc:
-        log.warning("Could not read secret %r: %s", name, exc)
-        return ""
-
 
 def create_health_app(  # noqa: C901 — optional sections (nats/reaper/circuits)
-    hub: Hub, nc: Any | None = None
+    hub: Hub, nc: Any | None = None, secrets: Secrets | None = None
 ) -> FastAPI:
     """Create a root FastAPI app with /health endpoint for hub monitoring.
 
@@ -88,6 +74,7 @@ def create_health_app(  # noqa: C901 — optional sections (nats/reaper/circuits
     ``status`` of ``ok``/``degraded``. When ``NATS_URL`` is unset both
     fields are omitted.
     """
+    _secrets = secrets or Secrets()
     app = FastAPI(title="Lyra Hub")
 
     @app.get("/health")
@@ -96,7 +83,7 @@ def create_health_app(  # noqa: C901 — optional sections (nats/reaper/circuits
 
     @app.get("/health/detail")
     async def health_detail(authorization: str = Header(default="")) -> dict:
-        health_secret = _read_secret("health_secret")
+        health_secret = _secrets.health_secret
         expected = f"Bearer {health_secret}"
         # Encode both sides to bytes: hmac.compare_digest requires matching
         # types; passing mixed str/bytes raises TypeError (becomes a 500)

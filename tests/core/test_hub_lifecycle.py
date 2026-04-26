@@ -9,6 +9,7 @@ import pytest
 
 from lyra.core import Agent, AgentBase, Hub, Pool
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.config import HubConfig
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.messaging.render_events import RenderEvent
 from tests.core.conftest import make_inbound_message
@@ -28,7 +29,7 @@ class TestPoolTTLEviction:
 
     def test_stale_idle_pool_evicted(self) -> None:
         """An idle pool past TTL is removed on next get_or_create_pool call."""
-        hub = Hub(pool_ttl=60)
+        hub = Hub(config=HubConfig(pool_ttl=60))
         pool = hub.get_or_create_pool("p1", "agent")
         pool._last_active -= 120
         self._force_eviction_eligible(hub)
@@ -38,7 +39,7 @@ class TestPoolTTLEviction:
 
     def test_active_pool_not_evicted(self) -> None:
         """A pool with a running task is never evicted, even past TTL."""
-        hub = Hub(pool_ttl=60)
+        hub = Hub(config=HubConfig(pool_ttl=60))
         pool = hub.get_or_create_pool("p1", "agent")
         pool._last_active -= 120
         pool._current_task = MagicMock()
@@ -49,7 +50,7 @@ class TestPoolTTLEviction:
 
     def test_fresh_pool_not_evicted(self) -> None:
         """A recently active idle pool is kept."""
-        hub = Hub(pool_ttl=60)
+        hub = Hub(config=HubConfig(pool_ttl=60))
         hub.get_or_create_pool("p1", "agent")
         self._force_eviction_eligible(hub)
         hub.get_or_create_pool("p2", "agent")
@@ -58,11 +59,11 @@ class TestPoolTTLEviction:
     def test_pool_ttl_default(self) -> None:
         """Default POOL_TTL is 604800s (7 days) and passes through to _pool_ttl."""
         hub = Hub()
-        assert hub._pool_ttl == Hub.POOL_TTL
+        assert hub._pool_ttl == HubConfig().pool_ttl
 
     def test_done_task_pool_evicted(self) -> None:
         """A pool whose task finished (done()=True) is evicted when stale."""
-        hub = Hub(pool_ttl=60)
+        hub = Hub(config=HubConfig(pool_ttl=60))
         pool = hub.get_or_create_pool("p1", "agent")
         pool._last_active -= 120
         pool._current_task = MagicMock()
@@ -73,7 +74,7 @@ class TestPoolTTLEviction:
 
     def test_multiple_stale_pools_all_evicted(self) -> None:
         """Multiple stale idle pools are evicted in a single pass."""
-        hub = Hub(pool_ttl=60)
+        hub = Hub(config=HubConfig(pool_ttl=60))
         p1 = hub.get_or_create_pool("p1", "agent")
         hub.get_or_create_pool("p2", "agent")
         p3 = hub.get_or_create_pool("p3", "agent")
@@ -88,7 +89,7 @@ class TestPoolTTLEviction:
 
     def test_eviction_throttled(self) -> None:
         """Eviction scan is throttled — skipped if less than TTL/10 elapsed."""
-        hub = Hub(pool_ttl=60)
+        hub = Hub(config=HubConfig(pool_ttl=60))
         pool = hub.get_or_create_pool("p1", "agent")
         pool._last_active -= 120
         # Don't reset throttle — second call is within TTL/10
@@ -99,7 +100,7 @@ class TestPoolTTLEviction:
         """Pool.submit() updates last_active timestamp."""
         import time
 
-        hub = Hub(pool_ttl=60)
+        hub = Hub(config=HubConfig(pool_ttl=60))
         pool = hub.get_or_create_pool("p1", "agent")
         pool._last_active -= 50  # nearly stale
         t0 = time.monotonic()
@@ -184,7 +185,7 @@ class TestHubEvictFlushTask:
     @pytest.mark.asyncio
     async def test_evict_stale_pool_creates_flush_task(self) -> None:
         """Evicting a pool that has at least one message must schedule a flush task."""
-        hub = Hub(pool_ttl=1)
+        hub = Hub(config=HubConfig(pool_ttl=1))
         mock_mm = AsyncMock()
         object.__setattr__(hub, "_memory", mock_mm)
 

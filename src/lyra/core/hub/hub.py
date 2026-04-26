@@ -60,16 +60,7 @@ class Hub(
 ):
     """Central hub: Bus + OutboundDispatchers + adapter registry + pools."""
 
-    # Class-level defaults; production values come from [hub] in config.toml.
     BUS_SIZE = 100
-    RATE_LIMIT = 20
-    RATE_WINDOW = 60
-    POOL_TTL: float = 604800.0  # 7 days
-    SAFE_DISPATCH_TIMEOUT: float = 10.0  # [pool] safe_dispatch_timeout
-    STAGING_MAXSIZE = 500  # [inbound_bus] staging_maxsize
-    PLATFORM_QUEUE_MAXSIZE = 100  # [inbound_bus] platform_queue_maxsize
-    QUEUE_DEPTH_THRESHOLD = 100  # [inbound_bus] queue_depth_threshold
-    MAX_MERGED_CHARS = 4096  # [debouncer] max_merged_chars
 
     def __init__(  # noqa: PLR0913
         self,
@@ -82,66 +73,8 @@ class Hub(
         event_bus: "PipelineEventBus | None" = None,
         inbound_bus: "Bus[InboundMessage] | None" = None,
         config: HubConfig | None = None,
-        # Backward-compat: individual params override config (deprecated)
-        rate_limit: int | None = None,
-        rate_window: int | None = None,
-        pool_ttl: float | None = None,
-        debounce_ms: int | None = None,
-        cancel_on_new_message: bool | None = None,
-        turn_timeout: float | None = None,
-        safe_dispatch_timeout: float | None = None,
-        staging_maxsize: int | None = None,
-        platform_queue_maxsize: int | None = None,
-        queue_depth_threshold: int | None = None,
-        max_merged_chars: int | None = None,
-        max_pools: int | None = None,
     ) -> None:
-        base_cfg: HubConfig = config if config is not None else HubConfig()
-        # Merge backward-compat overrides
-        cfg = HubConfig(
-            rate_limit=rate_limit if rate_limit is not None else base_cfg.rate_limit,
-            rate_window=rate_window
-            if rate_window is not None
-            else base_cfg.rate_window,
-            pool_ttl=pool_ttl if pool_ttl is not None else base_cfg.pool_ttl,
-            debounce_ms=debounce_ms
-            if debounce_ms is not None
-            else base_cfg.debounce_ms,
-            cancel_on_new_message=(
-                cancel_on_new_message
-                if cancel_on_new_message is not None
-                else base_cfg.cancel_on_new_message
-            ),
-            turn_timeout=turn_timeout
-            if turn_timeout is not None
-            else base_cfg.turn_timeout,
-            safe_dispatch_timeout=(
-                safe_dispatch_timeout
-                if safe_dispatch_timeout is not None
-                else base_cfg.safe_dispatch_timeout
-            ),
-            staging_maxsize=(
-                staging_maxsize
-                if staging_maxsize is not None
-                else base_cfg.staging_maxsize
-            ),
-            platform_queue_maxsize=(
-                platform_queue_maxsize
-                if platform_queue_maxsize is not None
-                else base_cfg.platform_queue_maxsize
-            ),
-            queue_depth_threshold=(
-                queue_depth_threshold
-                if queue_depth_threshold is not None
-                else base_cfg.queue_depth_threshold
-            ),
-            max_merged_chars=(
-                max_merged_chars
-                if max_merged_chars is not None
-                else base_cfg.max_merged_chars
-            ),
-            max_pools=max_pools if max_pools is not None else base_cfg.max_pools,
-        )
+        cfg = config if config is not None else HubConfig()
         if cfg.max_pools <= 0:
             raise ValueError(f"max_pools must be > 0, got {cfg.max_pools}")
         self._platform_queue_maxsize = cfg.platform_queue_maxsize

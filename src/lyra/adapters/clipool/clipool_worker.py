@@ -169,7 +169,13 @@ class CliPoolNatsWorker(NatsAdapterBase):
                     done=True,
                 )
                 await self.reply(msg, chunk)
+                return
             # ToolUseLlmEvent — skip; tool use is internal to claude CLI
+        # Iterator exhausted without a ResultLlmEvent — send synthetic terminal chunk.
+        await self.reply(
+            msg,
+            _make_chunk(cmd.pool_id, event_type="result", done=True),
+        )
 
     async def _handle_cmd_blocking(
         self, msg: Any, cmd: CliCmdPayload, model_cfg: ModelConfig

@@ -47,7 +47,7 @@ class TestHealthUnauthenticated:
         assert resp.json() == {"ok": True}
 
     async def test_wrong_token_returns_ok_only(
-        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+        self, hub: Hub
     ) -> None:
         """#207: Wrong Bearer token still returns minimal response."""
         from lyra.bootstrap.infra.health import create_health_app
@@ -81,7 +81,7 @@ class TestHealthUnauthenticated:
         assert resp.json() == {"ok": True}
 
     async def test_empty_secret_env_returns_ok_only(
-        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+        self, hub: Hub
     ) -> None:
         """#207: LYRA_HEALTH_SECRET='' still returns minimal response."""
         from lyra.bootstrap.infra.health import create_health_app

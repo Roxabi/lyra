@@ -12,10 +12,15 @@ import os
 import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from roxabi_contracts.audit import SecurityEvent
+from roxabi_contracts.envelope import CONTRACT_VERSION
+
 from ..agent.agent_config import ModelConfig
+from ..trace import TraceContext
 from .cli_protocol import _read_stderr_snippet, build_cmd
 
 if TYPE_CHECKING:
@@ -177,24 +182,34 @@ class CliPoolWorkerMixin:
         )
         self._entries[pool_id] = entry
         log.info("[pool:%s] spawned (PID=%d)", pool_id, proc.pid)
+
+        if self._audit_sink is not None:
+            tools = model_config.tools
+            task: asyncio.Task[None] = asyncio.create_task(
+                self._audit_sink.emit(SecurityEvent(
+                    contract_version=CONTRACT_VERSION,
+                    trace_id=TraceContext.get_trace_id() or "",
+                    issued_at=datetime.now(UTC),
+                    kind="cli.subprocess.spawned",
+                    pool_id=pool_id,
+                    agent_name=TraceContext.get_agent_name() or "",
+                    skip_permissions=model_config.skip_permissions,
+                    tools_restricted=bool(tools),
+                    tools_allowlist=list(tools),
+                    model=model_config.model or "",
+                    pid=proc.pid,
+                ))
+            )
+            self._audit_tasks.add(task)
+            task.add_done_callback(self._audit_tasks.discard)
+
         return entry
 
     def _maybe_preserve_session(
         self, pool_id: str, entry: _ProcessEntry, *, preserve_session: bool
     ) -> None:
-        """Write or clear _resume_session_ids based on preserve_session.
-
-        Shared by _kill and _sync_evict_entry — single definition of the
-        preservation contract so both callers stay in sync automatically.
-
-        When preserve_session=False (reset/clear/folder), any previously
-        scheduled resume for this pool is discarded so the next spawn starts
-        fresh.
-
-        Note: the session file existence check was removed (#415) because
-        stream-json mode does not flush .jsonl while the subprocess is alive,
-        causing spurious resume failures after restart.
-        """
+        # Session file check removed (#415): stream-json doesn't flush .jsonl
+        # while alive, causing spurious resume failures after restart.
         if preserve_session and entry.session_id:
             self._resume_session_ids[pool_id] = entry.session_id
             # Also persist to disk so the session survives daemon restarts.
@@ -215,16 +230,9 @@ class CliPoolWorkerMixin:
             )
 
     def _sync_evict_entry(self, pool_id: str, *, preserve_session: bool = True) -> None:
-        """Sync counterpart to _kill for use in synchronous eviction paths.
+        """Sync eviction: pops entry without terminating the process.
 
-        Pops the entry and cwd_override immediately within a single synchronous
-        frame (no event-loop yield). If preserve_session=True and entry.session_id
-        is set, stores session_id in _resume_session_ids for one-shot pickup by
-        the next _spawn().
-
-        Does NOT terminate the process — once the entry is removed from _entries,
-        the idle reaper's snapshot will not include this pool_id, so the orphaned
-        process persists until natural idle-timeout or parent exit.
+        Does NOT kill — orphaned process idles out naturally.
         """
         entry = self._entries.pop(pool_id, None)
         self._cwd_overrides.pop(pool_id, None)

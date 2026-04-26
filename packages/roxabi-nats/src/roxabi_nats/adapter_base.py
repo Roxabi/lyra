@@ -129,18 +129,26 @@ class NatsAdapterBase(ABC):
         """
         self._nc = nc
         self._started_at = time.monotonic()
-        await nc.subscribe(self.subject, queue=self.queue_group, cb=self._dispatch)
+        cmd_sub = await nc.subscribe(
+            self.subject, queue=self.queue_group, cb=self._dispatch
+        )
+        subs = [cmd_sub]
         for extra in self._extra_subjects():
-            await nc.subscribe(extra, cb=self._dispatch)
+            subs.append(await nc.subscribe(extra, cb=self._dispatch))
         if self._heartbeat_subject:
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         if stop is None:
             stop = asyncio.Event()
-        await stop.wait()
-        if self._heartbeat_task is not None:
-            self._heartbeat_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._heartbeat_task
+        try:
+            await stop.wait()
+        finally:
+            if self._heartbeat_task is not None:
+                self._heartbeat_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._heartbeat_task
+            for sub in subs:
+                with contextlib.suppress(Exception):
+                    await sub.unsubscribe()
 
     @abstractmethod
     async def handle(self, msg, payload: dict) -> None: ...

@@ -1,0 +1,120 @@
+---
+title: "ADR-057: Security Event Audit Infrastructure"
+description: Port/adapter split for CLI subprocess spawn auditing via NATS JetStream
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Lyra spawns Claude CLI subprocesses via `CliPool`. Every spawn carries security-relevant
+attributes: `skip_permissions` flag, tools allowlist, model, PID, pool_id, agent_name.
+These events need to be durably recorded for audit and incident response.
+
+Three design forces are in tension:
+
+1. **Import layer constraint** — `lyra.core` must not import from `lyra.infrastructure`.
+   `CliPool` lives in `lyra.core.cli`, so the sink interface it depends on cannot
+   reference JetStream or NATS.
+2. **Infrastructure governance** — `infrastructure/CLAUDE.md` requires an ADR for every
+   new subdirectory under `lyra.infrastructure/`.
+3. **Graceful degradation** — NATS JetStream may be unavailable (embedded mode, dev
+   without NATS). The audit path must not crash the runtime.
+
+## Options Considered
+
+### Option A: Define `AuditSink` in `lyra.infrastructure`; pass concrete type to `CliPool`
+
+- **Pros:** Implementation and interface co-located; no indirection.
+- **Cons:** `lyra.core.cli.CliPool` would import from `lyra.infrastructure`, which is a
+  hard layer violation that importlinter enforces and rejects at CI push.
+
+### Option B: Define `AuditSink` protocol in `lyra.core.cli`; implement in `lyra.infrastructure.audit`
+
+- **Pros:** Clean hexagonal port/adapter split. `lyra.core` depends only on the protocol.
+  `lyra.infrastructure` depends on both the protocol and NATS — correct direction.
+  `CliPool` receives the sink via constructor injection; no `if/elif` adapter selection.
+- **Cons:** Protocol lives in `lyra.core.cli` rather than a dedicated `lyra.core.ports`
+  module — acceptable because the protocol is narrow (one method) and local to the
+  CLI subsystem.
+
+### Option C: Use `lyra.nats.audit_sink` as an intermediate layer
+
+- **Pros:** Groups NATS-adjacent abstractions.
+- **Cons:** `AuditSink` has no NATS dependency at the protocol level; placing it in
+  `lyra.nats` would be misleading. The protocol belongs with its consumer, not with
+  its transport.
+
+## Decision
+
+**Option B** is adopted.
+
+- `lyra.core.cli.audit_sink.AuditSink` — `Protocol` with a single `async emit(SecurityEvent) -> None` method. This is the port.
+- `lyra.infrastructure.audit.JetStreamAuditSink` — concrete adapter; publishes to NATS JetStream stream `LYRA_AUDIT`; falls back to `lyra.security` logger when degraded.
+- `SecurityEvent` is a pure Pydantic model in `roxabi_contracts.audit`, inheriting `ContractEnvelope`. No transport imports.
+- `CliPool` accepts `audit_sink: AuditSink | None` at construction time. `None` disables auditing without a code branch inside the pool.
+- Fire-and-forget emission via `asyncio.create_task()` anchored in `CliPool._audit_tasks: set[asyncio.Task[None]]` with a done-callback discard — prevents GC collection before completion.
+
+### JetStream stream configuration
+
+| Field | Value | Rationale |
+|-------|-------|-----------|
+| Name | `LYRA_AUDIT` | Distinct stream for audit; segregated from operational messages |
+| Subjects | `lyra.audit.>` | Wildcard; accommodates future event kinds under this hierarchy |
+| Retention | `LIMITS` | Bounded by age and size; not work-queue semantics |
+| Storage | `FILE` | Survives NATS server restart |
+| Max age | 90 days | Compliance window; operator may override |
+| Max bytes | 1 GiB | Hard cap; oldest messages dropped |
+| Duplicate window | 60 s | Deduplication on NATS level |
+
+### Subject naming
+
+Current publication subject: `lyra.audit.security`.
+
+A future revision should adopt `lyra.audit.security.<pool_id>.<agent_name>` to enable
+server-side JetStream consumer filter expressions. The stream wildcard already covers
+this; only the publish call in `JetStreamAuditSink.emit()` needs updating when that
+filtering use case arises.
+
+### Lifecycle
+
+`JetStreamAuditSink.provision(nc)` is called at bootstrap after the NATS connection
+is established and before `build_cli_pool()`. This ensures the `LYRA_AUDIT` stream
+exists before any subprocess spawns. On shutdown, a `drain()` method (to be added)
+must be called before `nc.close()` to flush in-flight `_audit_tasks`; without it,
+events emitted in the final seconds of operation may be silently dropped.
+
+### Bootstrap coverage
+
+`hub_standalone.py` wires the sink. `bootstrap/factory/unified.py` (`lyra start`)
+must also wire it — this is tracked as a known gap in issue #855 and must be addressed
+before the feature is considered complete.
+
+## Consequences
+
+### Positive
+
+- Import layer compliance maintained; importlinter CI gate continues to pass.
+- Audit is purely additive: `audit_sink=None` (default) is a no-op; existing tests
+  require no changes.
+- Graceful degradation: JetStream unavailability falls back to `lyra.security` logger
+  rather than crashing.
+- `SecurityEvent` schema is owned by `roxabi-contracts`; can be consumed by external
+  tooling without depending on `lyra`.
+
+### Negative
+
+- Unified bootstrap (`lyra start`) does not yet emit audit events — gap until #855
+  is fully closed.
+- No server-side consumer filter by pool/agent today; payload scanning required if
+  per-agent audit trails are needed before subject hierarchy is adopted.
+
+### Neutral
+
+- `infrastructure/audit/` is a new subdirectory; this ADR satisfies the governance
+  requirement in `infrastructure/CLAUDE.md`.
+- `AuditSink` protocol is co-located with `CliPool` in `lyra.core.cli` rather than
+  a shared `lyra.core.ports` module — acceptable at current scale; revisit if more
+  cross-domain ports accumulate.

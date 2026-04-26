@@ -186,19 +186,24 @@ class CliPoolWorkerMixin:
         if self._audit_sink is not None:
             tools = model_config.tools
             task: asyncio.Task[None] = asyncio.create_task(
-                self._audit_sink.emit(SecurityEvent(
-                    contract_version=CONTRACT_VERSION,
-                    trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
-                    issued_at=datetime.now(UTC),
-                    kind="cli.subprocess.spawned",
-                    pool_id=pool_id,
-                    agent_name=TraceContext.get_agent_name() or "",
-                    skip_permissions=model_config.skip_permissions,
-                    tools_restricted=bool(tools),
-                    tools_allowlist=list(tools),
-                    model=model_config.model or "",
-                    pid=proc.pid,
-                ))
+                self._audit_sink.emit(
+                    SecurityEvent(
+                        contract_version=CONTRACT_VERSION,
+                        trace_id=(
+                            TraceContext.get_trace_id()
+                            or f"synthetic-{TraceContext.generate()}"
+                        ),
+                        issued_at=datetime.now(UTC),
+                        kind="cli.subprocess.spawned",
+                        pool_id=pool_id,
+                        agent_name=TraceContext.get_agent_name() or "",
+                        skip_permissions=model_config.skip_permissions,
+                        tools_restricted=bool(tools),
+                        tools_allowlist=list(tools),
+                        model=model_config.model or "unknown",
+                        pid=proc.pid,
+                    )
+                )
             )
             self._audit_tasks.add(task)
             task.add_done_callback(self._audit_tasks.discard)
@@ -230,10 +235,7 @@ class CliPoolWorkerMixin:
             )
 
     def _sync_evict_entry(self, pool_id: str, *, preserve_session: bool = True) -> None:
-        """Sync eviction: pops entry without terminating the process.
-
-        Does NOT kill — orphaned process idles out naturally.
-        """
+        """Sync eviction: pops entry; orphaned process idles out naturally."""
         entry = self._entries.pop(pool_id, None)
         self._cwd_overrides.pop(pool_id, None)
         if entry is None:

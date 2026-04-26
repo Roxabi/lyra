@@ -252,6 +252,10 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             nats_llm_driver=nats_llm_driver,
         )
 
+    # Flush in-flight audit emit tasks before closing NATS (audit uses JetStream).
+    if cli_pool is not None:
+        await cli_pool.drain_audit_tasks()
+
     # Close NATS connection after stores context exits
     try:
         await nc.close()

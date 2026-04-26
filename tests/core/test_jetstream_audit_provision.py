@@ -74,19 +74,20 @@ class TestJetStreamAuditSinkProvision:
     async def test_provision_logs_warning_on_config_mismatch(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """provision() logs WARNING and continues if update_stream raises."""
+        """provision() logs WARNING and marks degraded if update_stream raises."""
         from nats.js.errors import BadRequestError
 
         sink = JetStreamAuditSink()
         js = _make_js()
         js.add_stream = AsyncMock(side_effect=BadRequestError())
-        js.update_stream = AsyncMock(side_effect=Exception("config mismatch"))
+        js.update_stream = AsyncMock(side_effect=Exception("arbitrary error"))
         nc = _make_nc(js)
 
         with caplog.at_level(logging.WARNING):
             await sink.provision(nc)  # must not raise
 
-        assert any("config mismatch" in r.message for r in caplog.records)
+        assert any("AUDIT: stream config mismatch" in r.message for r in caplog.records)
+        assert sink._degraded  # type: ignore[attr-defined]
 
     async def test_provision_marks_degraded_when_jetstream_unavailable(
         self, caplog: pytest.LogCaptureFixture

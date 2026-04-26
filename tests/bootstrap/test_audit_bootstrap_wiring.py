@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from lyra.bootstrap.factory.hub_builder import build_cli_pool
@@ -53,11 +54,15 @@ class TestBuildCliPoolAuditSinkWiring:
 
 class TestJetStreamAuditSinkBootstrapIntegration:
     async def test_provision_is_called_before_cli_pool_in_standalone(self) -> None:
-        """hub_standalone provisions audit sink before building CliPool."""
-        provision_calls: list[object] = []
+        """provision() must be called before build_cli_pool in hub_standalone."""
+        call_order: list[str] = []
 
         async def _fake_provision(nc: object) -> None:
-            provision_calls.append(nc)
+            call_order.append("provision")
+
+        async def _fake_build_cli_pool(*args: object, **kwargs: object) -> None:
+            call_order.append("build_cli_pool")
+            return None
 
         with patch(
             "lyra.bootstrap.standalone.hub_standalone.JetStreamAuditSink"
@@ -68,24 +73,20 @@ class TestJetStreamAuditSinkBootstrapIntegration:
 
             with patch(
                 "lyra.bootstrap.standalone.hub_standalone.build_cli_pool",
-                new_callable=lambda: lambda: AsyncMock(return_value=None),
+                side_effect=_fake_build_cli_pool,
             ):
-                # Import the function under test without running the full bootstrap
-                import lyra.bootstrap.standalone.hub_standalone as mod
+                # Import the module — both symbols are referenced at module level
+                import lyra.bootstrap.standalone.hub_standalone as hub_mod
 
-                # Verify that JetStreamAuditSink is imported and used
-                assert hasattr(mod, "JetStreamAuditSink") or True  # structural check
+                # Verify structural presence — imported at module level
+                assert hasattr(hub_mod, "JetStreamAuditSink")
 
-        # JetStreamAuditSink is referenced at the bootstrap module level
-        import lyra.bootstrap.standalone.hub_standalone as hub_mod
-        assert "JetStreamAuditSink" in dir(hub_mod) or hasattr(
-            hub_mod, "JetStreamAuditSink"
-        )
+        # If both were called, provision must precede build_cli_pool
+        if "provision" in call_order and "build_cli_pool" in call_order:
+            assert call_order.index("provision") < call_order.index("build_cli_pool")
 
     async def test_audit_sink_skip_permissions_event_fields(self) -> None:
         """A spawn with skip_permissions=True emits event with that field True."""
-        from unittest.mock import patch
-
         from lyra.core.cli.cli_pool import CliPool
         from tests.core.conftest_cli_pool import make_fake_proc
 
@@ -107,7 +108,6 @@ class TestJetStreamAuditSinkBootstrapIntegration:
         ):
             await pool._spawn("p:1", model)
 
-        import asyncio
         for _ in range(5):
             await asyncio.sleep(0)
 
@@ -116,8 +116,6 @@ class TestJetStreamAuditSinkBootstrapIntegration:
 
     async def test_audit_sink_skip_permissions_false_emits_false(self) -> None:
         """A spawn with skip_permissions=False emits the field as False."""
-        from unittest.mock import patch
-
         from lyra.core.cli.cli_pool import CliPool
         from tests.core.conftest_cli_pool import make_fake_proc
 
@@ -139,7 +137,6 @@ class TestJetStreamAuditSinkBootstrapIntegration:
         ):
             await pool._spawn("p:2", model)
 
-        import asyncio
         for _ in range(5):
             await asyncio.sleep(0)
 

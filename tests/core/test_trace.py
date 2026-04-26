@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 from contextvars import copy_context
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from lyra.core.hub.middleware import PipelineContext
 from lyra.core.hub.middleware.middleware_stages import (
@@ -209,8 +211,6 @@ class TestTraceMiddleware:
 class TestPoolIdContextVar:
     async def test_create_pool_sets_pool_id_contextvar(self) -> None:
         """CreatePoolMiddleware must set pool_id in TraceContext."""
-        from unittest.mock import MagicMock
-
         from lyra.core.hub.hub import Binding, RoutingKey
         from lyra.core.messaging.message import Platform
 
@@ -293,10 +293,10 @@ class TestTraceContextAgentName:
 
 
 class TestGuardedProcessOneAgentName:
-    async def test_guarded_process_one_sets_agent_name(self) -> None:
+    async def test_guarded_process_one_sets_agent_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """agent_name ContextVar must equal pool.agent_name during execution."""
-        from unittest.mock import AsyncMock, MagicMock
-
         from lyra.core.pool.pool_processor_exec import guarded_process_one
 
         captured: list[str | None] = []
@@ -320,21 +320,17 @@ class TestGuardedProcessOneAgentName:
         msg = MagicMock()
         msg.scope_id = "chat:1"
 
-        import lyra.core.pool.pool_processor_exec as _exec_mod
-
-        original = _exec_mod.process_one
-        _exec_mod.process_one = _fake_process  # type: ignore[assignment]
-        try:
-            await guarded_process_one(msg, agent, pool)
-        finally:
-            _exec_mod.process_one = original  # type: ignore[assignment]
+        monkeypatch.setattr(
+            "lyra.core.pool.pool_processor_exec.process_one", _fake_process
+        )
+        await guarded_process_one(msg, agent, pool)
 
         assert captured == ["test-agent"]
 
-    async def test_guarded_process_one_resets_on_exit(self) -> None:
+    async def test_guarded_process_one_resets_on_exit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """agent_name ContextVar must be None after guarded_process_one returns."""
-        from unittest.mock import AsyncMock, MagicMock
-
         from lyra.core.pool.pool_processor_exec import guarded_process_one
 
         async def _fake_process(*_args: object) -> None:
@@ -355,14 +351,10 @@ class TestGuardedProcessOneAgentName:
         msg = MagicMock()
         msg.scope_id = "chat:2"
 
-        import lyra.core.pool.pool_processor_exec as _exec_mod
-
-        original = _exec_mod.process_one
-        _exec_mod.process_one = _fake_process  # type: ignore[assignment]
-        try:
-            await guarded_process_one(msg, agent, pool)
-        finally:
-            _exec_mod.process_one = original  # type: ignore[assignment]
+        monkeypatch.setattr(
+            "lyra.core.pool.pool_processor_exec.process_one", _fake_process
+        )
+        await guarded_process_one(msg, agent, pool)
 
         assert TraceContext.get_agent_name() is None
 

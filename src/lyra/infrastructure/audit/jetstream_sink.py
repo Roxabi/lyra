@@ -54,7 +54,7 @@ class JetStreamAuditSink:
             storage=StorageType.FILE,
             max_age=90 * 86400,
             max_bytes=1 * 1024**3,
-            duplicate_window=60,
+            duplicate_window=60,  # seconds — nats-py converts to ns internally
         )
         try:
             await js.add_stream(cfg)
@@ -62,7 +62,9 @@ class JetStreamAuditSink:
             try:
                 await js.update_stream(cfg)
             except Exception as exc:
-                log.warning("AUDIT: stream config mismatch — continuing: %s", exc)
+                log.warning("AUDIT: stream config mismatch — marking degraded: %s", exc)
+                self._degraded = True
+                return
         except Exception as exc:
             log.warning(
                 "AUDIT: JetStream not available — emitting to lyra.security logger: %s",
@@ -75,14 +77,14 @@ class JetStreamAuditSink:
 
     async def emit(self, event: SecurityEvent) -> None:
         """Publish event; never raises — falls back to lyra.security logger on error."""
-        payload = event.model_dump_json().encode()
+        json_str = event.model_dump_json()
+        payload = json_str.encode()
         try:
             if self._degraded or self._js is None:
-                _security_log.warning("%s", event.model_dump_json())
+                _security_log.warning("%s", json_str)
                 return
             await self._js.publish(_SUBJECT, payload)
         except Exception as exc:
-            log.warning(
-                "AUDIT: emit failed (%s) — %s", type(exc).__name__,
-                event.model_dump_json(),
+            _security_log.warning(
+                "AUDIT: emit failed (%s) — %s", type(exc).__name__, json_str
             )

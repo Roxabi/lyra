@@ -197,6 +197,22 @@ class CliPool(  # noqa: E501
 
         return CliResult(error="Failed after stale resume retry")
 
+    async def drain_audit_tasks(self, timeout: float = 5.0) -> None:
+        """Flush in-flight audit emit tasks before shutdown."""
+        if self._audit_tasks:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._audit_tasks, return_exceptions=True),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                log.warning(
+                    "drain_audit_tasks: timed out after %.1fs"
+                    " with %d task(s) remaining",
+                    timeout,
+                    len(self._audit_tasks),
+                )
+
     def is_alive(self, pool_id: str) -> bool:
         """Return True if a live process exists for pool_id."""
         entry = self._entries.get(pool_id)

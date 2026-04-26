@@ -17,6 +17,14 @@ from .conftest_cli_pool import make_fake_proc
 _POOL_ID = "telegram:main:chat:99"
 _MODEL = ModelConfig(model="claude-opus-4-6")
 
+
+def test_audit_sink_importable_from_cli_pool() -> None:
+    """AuditSink must be importable from lyra.core.cli.cli_pool."""
+    from lyra.core.cli.cli_pool import AuditSink
+
+    assert AuditSink is not None
+
+
 # Patch target for the subprocess call (asyncio is shared across the mixin).
 _WORKER_PATCH = "lyra.core.cli.cli_pool_worker.asyncio.create_subprocess_exec"
 
@@ -170,6 +178,20 @@ class TestCliSpawnAuditEmit:
         assert event.tools_restricted is True
         assert set(event.tools_allowlist) == {"Read", "Bash"}
 
+    async def test_spawn_emits_empty_agent_name_when_context_unset(self) -> None:
+        """agent_name must be empty string when ContextVar is not set at spawn time."""
+        sink = _make_sink()
+        pool = CliPool(audit_sink=sink)
+        fake_proc = make_fake_proc([])
+
+        # Do NOT set TraceContext.agent_name — verify the fallback
+        with patch(_WORKER_PATCH, return_value=fake_proc):
+            await pool._spawn(_POOL_ID, _MODEL)
+
+        await _drain_tasks()
+        event = sink.emit.call_args[0][0]
+        assert event.agent_name == ""
+
 
 # ---------------------------------------------------------------------------
 # JetStreamAuditSink.emit() — never raises
@@ -207,10 +229,13 @@ class TestJetStreamAuditSinkEmit:
             pid=1,
         )
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger="lyra.security"):
             await sink.emit(event)  # must not raise
 
-        assert any("AUDIT" in r.message for r in caplog.records)
+        # Publish failure routes to lyra.security with "AUDIT: emit failed" prefix
+        security_records = [r for r in caplog.records if r.name == "lyra.security"]
+        assert len(security_records) == 1
+        assert security_records[0].message.startswith("AUDIT: emit failed")
 
     async def test_emit_degraded_logs_to_security_logger(
         self, caplog: pytest.LogCaptureFixture
@@ -244,7 +269,10 @@ class TestJetStreamAuditSinkEmit:
 
         security_records = [r for r in caplog.records if r.name == "lyra.security"]
         assert len(security_records) == 1
+        # Degraded mode must route exclusively to lyra.security
+        assert all(r.name == "lyra.security" for r in security_records)
         import json
+
         payload = json.loads(security_records[0].getMessage())
         assert payload["pid"] == 2
         assert payload["skip_permissions"] is True

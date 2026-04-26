@@ -89,9 +89,7 @@
 
 ### Code Smells - God Classes / Long Parameters
 
-9. **Hub.__init__ has 21 parameters** (`core/hub/hub.py:74-96`)
-   - Critical maintainability issue
-   - **Effort:** 4 hours (extract HubConfig dataclass)
+9. ~~**Hub.__init__ has 21 parameters**~~ — **FIXED** by #933 (removed 12 deprecated individual params; all callers migrated to `config=HubConfig(...)`)
 
 10. **Pool has 13 constructor parameters** (`core/pool/pool.py:32`)
     - Extract PoolConfig dataclass
@@ -312,7 +310,7 @@
 |---|--------|--------|--------|
 | 7 | Complete ADR-048 migration (core stores -> infrastructure) | 4h | Medium |
 | 8 | Add integration tests for SimpleAgent | 6h | High |
-| 9 | Extract HubConfig dataclass | 4h | Medium |
+| ~~9~~ | ~~Extract HubConfig dataclass~~ | ~~4h~~ | ~~Medium~~ | ✅ #933 |
 | 10 | Fix flaky test patterns (sleep -> events) | 4h | Medium |
 | 11 | Add pool eviction synchronization | 2h | Medium |
 | 12 | Wrap blocking DNS in `asyncio.to_thread` | 1h | Medium |

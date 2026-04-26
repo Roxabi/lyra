@@ -1,9 +1,9 @@
 """Per-request trace context, log filter, and JSON formatter (#270).
 
 Provides:
-- ``TraceContext`` — two ``contextvars.ContextVar`` instances (trace_id, pool_id)
-  that propagate transparently through asyncio await chains.
-- ``TraceIdFilter`` — a ``logging.Filter`` that reads both context vars and
+- ``TraceContext`` — three ``contextvars.ContextVar`` instances (trace_id, pool_id,
+  agent_name) that propagate transparently through asyncio await chains.
+- ``TraceIdFilter`` — a ``logging.Filter`` that reads all context vars and
   injects them into every ``LogRecord``.  Defensive: never raises.
 - ``TelegramTokenFilter`` — a ``logging.Filter`` that redacts Telegram bot
   tokens from log messages. ``httpx``'s default ``INFO`` log for every
@@ -24,10 +24,11 @@ from contextvars import ContextVar, Token
 
 _trace_id: ContextVar[str] = ContextVar("trace_id")
 _pool_id: ContextVar[str] = ContextVar("pool_id")
+_agent_name: ContextVar[str] = ContextVar("agent_name")
 
 
 class TraceContext:
-    """Static helpers around the two tracing ContextVars."""
+    """Static helpers around the three tracing ContextVars."""
 
     @staticmethod
     def generate() -> str:
@@ -58,14 +59,26 @@ class TraceContext:
     def reset_pool_id(token: Token[str]) -> None:
         _pool_id.reset(token)
 
+    @staticmethod
+    def get_agent_name() -> str | None:
+        return _agent_name.get(None)
+
+    @staticmethod
+    def set_agent_name(value: str) -> Token[str]:
+        return _agent_name.set(value)
+
+    @staticmethod
+    def reset_agent_name(token: Token[str]) -> None:
+        _agent_name.reset(token)
+
 
 class TraceIdFilter(logging.Filter):
-    """Inject ``trace_id`` and ``pool_id`` from context vars into log records.
+    """Inject trace_id, pool_id, and agent_name from context vars into log records.
 
     Attached to handlers at startup.  Always returns ``True`` — the record
     is never suppressed.  If a context var is unset the corresponding
     attribute is set to ``""`` (empty string) so formatters can rely on
-    ``record.trace_id`` / ``record.pool_id`` existing.
+    ``record.trace_id`` / ``record.pool_id`` / ``record.agent_name`` existing.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -77,6 +90,10 @@ class TraceIdFilter(logging.Filter):
             record.pool_id = _pool_id.get("")  # type: ignore[attr-defined]
         except Exception:
             record.pool_id = ""  # type: ignore[attr-defined]
+        try:
+            record.agent_name = _agent_name.get("")  # type: ignore[attr-defined]
+        except Exception:
+            record.agent_name = ""  # type: ignore[attr-defined]
         return True
 
 
@@ -113,7 +130,7 @@ class TelegramTokenFilter(logging.Filter):
 
 class JsonFormatter(logging.Formatter):
     """Emit one JSON object per line with fields: timestamp, level, logger,
-    message, trace_id, pool_id, exception, stack_info.
+    message, trace_id, pool_id, agent_name, exception, stack_info.
 
     Fields whose value is empty string are omitted from the output to keep
     JSON clean (e.g. ``trace_id`` is absent for startup log lines).
@@ -147,5 +164,9 @@ class JsonFormatter(logging.Formatter):
         pool_id = getattr(record, "pool_id", "")
         if pool_id:
             obj["pool_id"] = pool_id
+
+        agent_name = getattr(record, "agent_name", "")
+        if agent_name:
+            obj["agent_name"] = agent_name
 
         return json.dumps(obj, ensure_ascii=False)

@@ -35,7 +35,7 @@ import pytest
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.inbound_bus import LocalBus
-from lyra.core.messaging.message import InboundMessage
+from lyra.core.messaging.message import InboundMessage, TelegramMeta
 
 # ---------------------------------------------------------------------------
 # Helpers / stubs shared across this module
@@ -65,7 +65,7 @@ def _make_voice_message(  # noqa: PLR0913
         text="",
         text_raw="",
         timestamp=_NOW,
-        platform_meta={"chat_id": 99},
+        platform_meta=TelegramMeta(chat_id=99),
         trust_level=TrustLevel.PUBLIC,
         modality="voice",
         audio=AudioPayload(

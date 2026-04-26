@@ -259,13 +259,13 @@ def _make_discord_msg() -> InboundMessage:
         text="hi",
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "guild_id": 1,
-            "channel_id": 99,
-            "message_id": 55,
-            "thread_id": None,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=1,
+            channel_id=99,
+            message_id=55,
+            thread_id=None,
+            channel_type="text",
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
 
@@ -315,12 +315,12 @@ async def test_streaming_send_placeholder_with_reply() -> None:
         text="hi",
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 123,
-            "message_id": 77,
-            "topic_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=123,
+            message_id=77,
+            topic_id=None,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
     outbound = OutboundMessage.from_text("")
@@ -359,12 +359,12 @@ async def test_streaming_send_placeholder_no_reply() -> None:
         text="hi",
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 123,
-            "message_id": None,
-            "topic_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=123,
+            message_id=None,
+            topic_id=None,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
     outbound = OutboundMessage.from_text("")
@@ -616,12 +616,12 @@ async def test_send_no_reply_to() -> None:
         text="hi",
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 123,
-            "message_id": None,
-            "topic_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=123,
+            message_id=None,
+            topic_id=None,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
     outbound = OutboundMessage.from_text("reply")

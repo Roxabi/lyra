@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
 from lyra.core.pool import Pool
 from tests.conftest import _drain
 from tests.core.conftest import make_msg
@@ -38,12 +38,12 @@ def _make_inbound(
         text=text,
         text_raw=text,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 1,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=1,
+            topic_id=None,
+            message_id=None,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
 

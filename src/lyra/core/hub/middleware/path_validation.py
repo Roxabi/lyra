@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from ...messaging.message import InboundMessage
+from ...messaging.message import DiscordMeta, InboundMessage, TelegramMeta
 from ...pool import Pool
 from ..pipeline.pipeline_types import ResumeStatus
 from .middleware import PipelineContext
@@ -110,7 +110,9 @@ async def _resume_path2(
 ) -> tuple[ResumeStatus | None, bool]:
     """Path 2: thread-session-resume. Returns (status|None, attempted)."""
     hub = ctx.hub
-    thread_session_id: str | None = getattr(msg.platform_meta, "thread_session_id", None)
+    thread_session_id: str | None = None
+    if isinstance(msg.platform_meta, (TelegramMeta, DiscordMeta)):
+        thread_session_id = msg.platform_meta.thread_session_id
     if thread_session_id is None:
         return None, False
 

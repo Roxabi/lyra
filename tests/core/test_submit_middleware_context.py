@@ -198,7 +198,7 @@ class TestReplyToResumePipeline:
         msg = dataclasses.replace(
             _base,
             reply_to_id="tg-msg-55",
-            platform_meta={**_base.platform_meta, "is_group": True},
+            platform_meta=dataclasses.replace(_base.platform_meta, is_group=True),
         )
         ctx = _make_ctx(hub)
 
@@ -362,8 +362,7 @@ class TestResolveContextResumeStatus:
         pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
-        _meta = {**_base.platform_meta, "thread_session_id": "tss-1"}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(_base, platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-1"))
         ctx = _make_ctx(hub)
 
         status = await resolve_context(msg, pool, pool_id, ctx)
@@ -388,8 +387,10 @@ class TestResolveContextResumeStatus:
         pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
-        _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-dead"),
+        )
         ctx = _make_ctx(hub)
 
         status = await resolve_context(msg, pool, pool_id, ctx)
@@ -427,8 +428,10 @@ class TestResolveContextResumeStatus:
         hub._turn_store = cast("TurnStore", _FakeTurnStore())
 
         _base = make_inbound_message(scope_id="chat:42")
-        _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-dead"),
+        )
         ctx = _make_ctx(hub)
 
         status = await resolve_context(msg, pool, pool_id, ctx)
@@ -458,8 +461,10 @@ class TestResolveContextResumeStatus:
         pool._current_task = asyncio.create_task(_busy_task_never_completes.wait())
 
         _base = make_inbound_message(scope_id="chat:42")
-        _meta = {**_base.platform_meta, "thread_session_id": "tss-busy"}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-busy"),
+        )
         ctx = _make_ctx(hub)
 
         try:
@@ -506,12 +511,12 @@ class TestResolveContextResumeStatus:
         _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
         # is_group in platform_meta no longer affects the pipeline path since #356
         # — included here only to document that it is now inert.
-        _meta = {
-            **_base.platform_meta,
-            "thread_session_id": "tss-dead",
-            "is_group": True,
-        }
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-dead", is_group=True
+            ),
+        )
         ctx = _make_ctx(hub)
 
         status = await resolve_context(msg, pool, pool_id, ctx)
@@ -545,8 +550,10 @@ class TestResolveContextResumeStatus:
         hub._turn_store = cast("TurnStore", _FakeTurnStore())
 
         _base = make_inbound_message(scope_id="chat:42:user:tg:user:alice")
-        _meta = {**_base.platform_meta, "is_group": True}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(_base.platform_meta, is_group=True),
+        )
         ctx = _make_ctx(hub)
 
         status = await resolve_context(msg, pool, pool_id, ctx)
@@ -573,8 +580,10 @@ class TestResolveContextResumeStatus:
         hub._turn_store = cast("TurnStore", _WrongPoolTurnStore())
 
         _base = make_inbound_message(scope_id="chat:42")
-        _meta = {**_base.platform_meta, "thread_session_id": "tss-other"}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-other"),
+        )
         ctx = _make_ctx(hub)
 
         status = await resolve_context(msg, pool, pool_id, ctx)
@@ -589,8 +598,12 @@ class TestResolveContextResumeStatus:
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         _base = make_inbound_message(scope_id="chat:42")
-        _meta = {**_base.platform_meta, "thread_session_id": "tss-no-store"}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-no-store"
+            ),
+        )
         ctx = _make_ctx(hub)
 
         status = await resolve_context(msg, pool, pool_id, ctx)

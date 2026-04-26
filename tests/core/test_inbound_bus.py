@@ -10,8 +10,10 @@ import pytest
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.inbound_bus import LocalBus
 from lyra.core.messaging.message import (
+    DiscordMeta,
     InboundMessage,
     Platform,
+    TelegramMeta,
 )
 from tests.conftest import TIMEOUT_FAST
 
@@ -19,16 +21,16 @@ from tests.conftest import TIMEOUT_FAST
 def _make_msg(platform: Platform = Platform.TELEGRAM) -> InboundMessage:
     if platform == Platform.TELEGRAM:
         scope = "chat:123"
-        meta = {"chat_id": 123, "topic_id": None, "message_id": None, "is_group": False}
+        meta: TelegramMeta | DiscordMeta = TelegramMeta(chat_id=123, topic_id=None, message_id=None, is_group=False)
     else:
         scope = "channel:2"
-        meta = {
-            "guild_id": 1,
-            "channel_id": 2,
-            "message_id": 3,
-            "thread_id": None,
-            "channel_type": "text",
-        }
+        meta = DiscordMeta(
+            guild_id=1,
+            channel_id=2,
+            message_id=3,
+            thread_id=None,
+            channel_type="text",
+        )
     return InboundMessage(
         id="msg-1",
         platform=platform.value,

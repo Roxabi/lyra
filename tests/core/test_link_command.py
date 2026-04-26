@@ -10,7 +10,7 @@ import pytest
 
 from lyra.commands.identity.handlers import cmd_link, cmd_unlink
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage
+from lyra.core.messaging.message import InboundMessage, TelegramMeta
 from lyra.core.pool import Pool
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
@@ -36,12 +36,12 @@ def _make_msg(
         text="",
         text_raw="",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=42,
+            topic_id=None,
+            message_id=None,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
         is_admin=is_admin,
     )

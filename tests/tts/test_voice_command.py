@@ -21,7 +21,7 @@ from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, OutboundAudio, Response
+from lyra.core.messaging.message import InboundMessage, OutboundAudio, Response, TelegramMeta
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig
 from lyra.tts import TtsProtocol
@@ -43,12 +43,7 @@ def _make_message(text: str = "hello") -> InboundMessage:
         text=text,
         text_raw=text,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": 99,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(chat_id=42, message_id=99),
         trust_level=TrustLevel.TRUSTED,
     )
 

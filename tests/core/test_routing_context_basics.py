@@ -15,6 +15,7 @@ from lyra.core.messaging.message import (
     OutboundMessage,
     Response,
     RoutingContext,
+    TelegramMeta,
 )
 
 from .conftest import _RC_DC, _RC_TG, make_routing_inbound
@@ -49,7 +50,7 @@ class TestRoutingContext:
             setattr(rc, "platform", "discord")
 
     def test_with_all_fields(self) -> None:
-        meta = {"chat_id": 123, "topic_id": 456}
+        meta = TelegramMeta(chat_id=123, topic_id=456)
         rc = RoutingContext(
             platform="telegram",
             bot_id="main",

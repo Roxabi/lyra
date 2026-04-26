@@ -65,12 +65,12 @@ class TestCrossScopeRateLimit:
                 text="hello",
                 text_raw="hello",
                 timestamp=datetime.now(timezone.utc),
-                platform_meta={
-                    "chat_id": int(scope_id.split(":")[-1]),
-                    "topic_id": None,
-                    "message_id": None,
-                    "is_group": False,
-                },
+                platform_meta=TelegramMeta(
+                    chat_id=int(scope_id.split(":")[-1]),
+                    topic_id=None,
+                    message_id=None,
+                    is_group=False,
+                ),
                 trust_level=TrustLevel.TRUSTED,
             )
 
@@ -119,12 +119,12 @@ class TestScopeIsolatedPools:
             text="hello",
             text_raw="hello",
             timestamp=datetime.now(timezone.utc),
-            platform_meta={
-                "chat_id": 100,
-                "topic_id": None,
-                "message_id": None,
-                "is_group": False,
-            },
+            platform_meta=TelegramMeta(
+                chat_id=100,
+                topic_id=None,
+                message_id=None,
+                is_group=False,
+            ),
             trust_level=TrustLevel.TRUSTED,
         )
         msg_b = InboundMessage(
@@ -138,12 +138,12 @@ class TestScopeIsolatedPools:
             text="hello",
             text_raw="hello",
             timestamp=datetime.now(timezone.utc),
-            platform_meta={
-                "chat_id": 200,
-                "topic_id": None,
-                "message_id": None,
-                "is_group": False,
-            },
+            platform_meta=TelegramMeta(
+                chat_id=200,
+                topic_id=None,
+                message_id=None,
+                is_group=False,
+            ),
             trust_level=TrustLevel.TRUSTED,
         )
 

@@ -18,7 +18,7 @@ from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messaging.message import DiscordMeta, GenericMeta, InboundMessage, TelegramMeta
+from lyra.core.messaging.message import DiscordMeta, InboundMessage, TelegramMeta
 
 # ---------------------------------------------------------------------------
 # Shared test helpers for adapter tests

@@ -1,0 +1,68 @@
+---
+title: "refactor(core): remove platform_meta dict[str, Any] escape hatch"
+issue: 853
+status: approved
+tier: F-lite
+date: 2026-04-26
+---
+
+## Problem
+
+`InboundMessage.platform_meta` and `RoutingContext.platform_meta` are both typed `dict`
+(effectively `dict[str, Any]`). This field serves two unrelated roles simultaneously:
+
+1. **Data keys** — serializable routing metadata set by adapters at normalization time
+   (`chat_id`, `topic_id`, `message_id`, `channel_id`, `thread_id`, `guild_id`, `is_group`).
+2. **Behavioral key** — a per-message `_session_update_fn` callable (wrapped in
+   `TrustedCallback`) injected by adapters and consumed once in `middleware_submit.py`.
+
+Mixing these roles is a design hazard:
+- A future NATS serialization path will silently drop the callable, causing the session
+  persistence callback to vanish without error.
+- A future deserialization path from an untrusted source enables callback injection
+  (complementary to the NATS boundary issue fixed in #525).
+- The type checker sees `dict` and cannot catch either mistake.
+
+`pool_observer.py` already has `register_session_update_fn` / `has_session_update_fn`
+infrastructure. The callable does not belong on the message — it belongs in wiring
+registered once when the adapter starts.
+
+## Who
+
+- **Primary:** Lyra core developers — type safety and NATS-readiness of the messaging layer.
+- **Secondary:** Future adapters — a typed `PlatformMeta` union makes the contract explicit
+  and prevents new adapters from accidentally adding untyped keys.
+
+## Constraints
+
+- `InboundMessage` is frozen (`frozen=True`) — any change to the field type must be
+  backward-compatible at construction sites in both adapters.
+- `pool_observer.py`'s `register_session_update_fn` is already wired per-message in
+  `pool.py:202`. The refactor must move registration to adapter startup (once per session),
+  not remove the infrastructure.
+- `middleware_stt.py:46` copies `platform_meta` via `dict(msg.platform_meta)` — must remain
+  valid after typing.
+- `cli.py` uses `platform_meta={}` as a zero-value — the typed union must support an empty /
+  no-op variant.
+- No behavior change — pure type-safety and wiring refactor.
+
+## Out of Scope
+
+- NATS serialization of `PlatformMeta` (typed encoding/decoding) — `roxabi-contracts` handles
+  this when wire format v2 ships.
+- Sanitization of `platform_meta` at NATS ingress — covered by #525.
+- Adding new platform-specific fields beyond the existing key set.
+- Any change to `RoutingContext.platform_meta` beyond adding the typed union alias
+  (it is internal and lower-traffic).
+
+## Complexity
+
+**Tier: F-lite** — Single domain (core messaging types + adapter normalization), clear
+refactor pattern (~51 call sites), no new architecture. The `pool_observer` wiring already
+exists; this completes the move.
+
+Signals:
+- All consumer call sites use `.get("key")` — straightforward to replace with typed attribute access
+- Two adapter families (Telegram, Discord) with distinct but non-overlapping key sets
+- Callable infrastructure (`register_session_update_fn`) already present in `pool_observer.py`
+- No new patterns required — typed `dataclass` union is idiomatic Python

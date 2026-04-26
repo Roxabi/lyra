@@ -300,6 +300,30 @@ class TestPersistThreadSessionEviction:
         assert "9999" in cache
         assert cache["9999"] == ("new-sess", "new-pool")
 
+    @pytest.mark.asyncio
+    async def test_persist_thread_session_returns_early_for_non_discord_meta(
+        self,
+    ) -> None:
+        """Non-DiscordMeta platform_meta → early return, update_session not called."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from lyra.adapters.discord.discord_threads import persist_thread_session
+        from lyra.core.messaging.message import TelegramMeta
+
+        cache: dict[str, tuple[str, str]] = {}
+        mock_store = MagicMock()
+        mock_store.update_session = AsyncMock()
+
+        mock_msg = MagicMock()
+        mock_msg.platform_meta = TelegramMeta(chat_id=42)
+
+        await persist_thread_session(
+            mock_store, mock_msg, "sess", "pool", "bot1", cache
+        )
+
+        mock_store.update_session.assert_not_called()
+        assert cache == {}
+
 
 # ---------------------------------------------------------------------------
 # Finding G: persist_thread_claim failure path

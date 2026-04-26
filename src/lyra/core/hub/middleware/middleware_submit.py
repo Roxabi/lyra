@@ -80,7 +80,11 @@ class SubmitToPoolMiddleware:
 
         pool = ctx.pool
         # Register session persistence callback once.
-        if msg.session_update_fn is not None and not pool.has_session_update_fn():
+        if (
+            msg.session_update_fn is not None
+            and callable(msg.session_update_fn)
+            and not pool.has_session_update_fn()
+        ):
             pool.register_session_callbacks(update_fn=msg.session_update_fn)
 
         try:

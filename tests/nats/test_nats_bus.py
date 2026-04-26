@@ -340,7 +340,7 @@ class TestNatsBusRoundTrip:
             await subscriber.stop()
 
     async def test_callable_stripped_in_transit(self, nc: NATS) -> None:
-        """put() a message with _session_update_fn; get() on other side strips it."""
+        """put() a message with session_update_fn; get() on other side strips it."""
         # Arrange
         publisher = _make_bus(nc)
         subscriber = _make_bus(nc)
@@ -348,6 +348,11 @@ class TestNatsBusRoundTrip:
         publisher.register(Platform.TELEGRAM)
         subscriber.register(Platform.TELEGRAM)
         await subscriber.start()
+
+        async def _dummy_update(
+            _msg: InboundMessage, _session_id: str, _pool_id: str
+        ) -> None:
+            pass
 
         msg = InboundMessage(
             id="msg-fn",
@@ -362,14 +367,17 @@ class TestNatsBusRoundTrip:
             timestamp=datetime.now(timezone.utc),
             trust_level=TrustLevel.TRUSTED,
             platform_meta=TelegramMeta(chat_id=123),
+            session_update_fn=_dummy_update,
         )
+        assert msg.session_update_fn is not None  # callable is set before transit
 
         try:
             # Act
             await publisher.put(Platform.TELEGRAM, msg)
             received = await asyncio.wait_for(subscriber.get(), timeout=2.0)
 
-            # Assert — typed platform_meta fields preserved across NATS transit
+            # Assert — callable stripped; typed meta fields preserved
+            assert received.session_update_fn is None
             assert isinstance(received.platform_meta, TelegramMeta)
             assert received.platform_meta.chat_id == 123
         finally:

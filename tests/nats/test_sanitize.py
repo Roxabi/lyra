@@ -245,6 +245,63 @@ class TestNatsBusSanitization:
         assert item.platform_meta.chat_id == 123
         assert item.platform_meta.is_group is False
 
+    def test_discord_meta_round_trips(self) -> None:
+        """DiscordMeta round-trips cleanly; max-overlap decode picks DiscordMeta."""
+        from lyra.core.auth.trust import TrustLevel
+        from lyra.core.messaging.message import DiscordMeta, InboundMessage, Platform
+        from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+        from roxabi_nats._serialize import deserialize, serialize
+
+        msg = InboundMessage(
+            id="msg-dc",
+            platform=Platform.DISCORD.value,
+            bot_id="main",
+            scope_id="channel:99",
+            user_id="user:2",
+            user_name="Bob",
+            is_mention=True,
+            text="hi",
+            text_raw="hi",
+            trust_level=TrustLevel.PUBLIC,
+            platform_meta=DiscordMeta(
+                channel_id=99, message_id=42, guild_id=7, channel_type="text"
+            ),
+        )
+        raw = serialize(msg)
+        item = deserialize(raw, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
+        assert isinstance(item.platform_meta, DiscordMeta), (
+            f"Expected DiscordMeta, got {item.platform_meta!r}"
+        )
+        assert item.platform_meta.channel_id == 99
+        assert item.platform_meta.message_id == 42
+        assert item.platform_meta.guild_id == 7
+
+    def test_generic_meta_round_trips(self) -> None:
+        """GenericMeta (no fields) round-trips as GenericMeta, not TelegramMeta."""
+        from lyra.core.auth.trust import TrustLevel
+        from lyra.core.messaging.message import GenericMeta, InboundMessage, Platform
+        from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+        from roxabi_nats._serialize import deserialize, serialize
+
+        msg = InboundMessage(
+            id="msg-gm",
+            platform=Platform.TELEGRAM.value,
+            bot_id="main",
+            scope_id="scope:1",
+            user_id="user:3",
+            user_name="Carol",
+            is_mention=False,
+            text="",
+            text_raw="",
+            trust_level=TrustLevel.PUBLIC,
+            platform_meta=GenericMeta(),
+        )
+        raw = serialize(msg)
+        item = deserialize(raw, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
+        assert isinstance(item.platform_meta, GenericMeta), (
+            f"Expected GenericMeta, got {item.platform_meta!r}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # TestScopeValidation — Path 2 scope-check in SubmitToPoolMiddleware

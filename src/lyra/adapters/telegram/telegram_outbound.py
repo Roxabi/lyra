@@ -16,6 +16,7 @@ from lyra.adapters.telegram.telegram_formatting import (
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
+    TelegramMeta,
 )
 from lyra.core.messaging.render_events import ToolSummaryRenderEvent
 
@@ -129,7 +130,8 @@ async def send(
     keyboard = _render_buttons(outbound.buttons)
     last_idx = len(chunks) - 1
 
-    reply_to: int | None = original_msg.platform_meta.get("message_id")
+    _pm = original_msg.platform_meta
+    reply_to: int | None = _pm.message_id if isinstance(_pm, TelegramMeta) else None
     for i, chunk in enumerate(chunks):
         kwargs: dict = {
             "chat_id": chat_id,
@@ -193,7 +195,8 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         )
 
     chat_id, _, _ = meta
-    reply_to: int | None = original_msg.platform_meta.get("message_id")
+    _pm = original_msg.platform_meta
+    reply_to: int | None = _pm.message_id if isinstance(_pm, TelegramMeta) else None
     _placeholder_text = adapter._msg("stream_placeholder", "\u2026")
 
     async def _send_placeholder() -> tuple[Any, int]:

@@ -13,7 +13,7 @@ from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.callbacks import TrustedCallback
-from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -32,7 +32,8 @@ async def _push_to_hub(
     cases (e.g. to clean up a temp audio file). Always returns normally so
     aiogram receives HTTP 200.
     """
-    chat_id = hub_msg.platform_meta.get("chat_id")
+    _meta = hub_msg.platform_meta
+    chat_id = _meta.chat_id if isinstance(_meta, TelegramMeta) else None
 
     async def _send_bp(text: str) -> None:
         if chat_id is None:
@@ -66,7 +67,11 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
 
     # In group chats, only respond when directly mentioned.
     # In private chats, always respond.
-    if hub_msg.platform_meta.get("is_group") and not hub_msg.is_mention:
+    if (
+        isinstance(hub_msg.platform_meta, TelegramMeta)
+        and hub_msg.platform_meta.is_group
+        and not hub_msg.is_mention
+    ):
         return
 
     # Session wiring: inject prior session_id + persist callback.
@@ -96,7 +101,7 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
     if _meta_updates:
         hub_msg = dataclasses.replace(
             hub_msg,
-            platform_meta={**hub_msg.platform_meta, **_meta_updates},
+            platform_meta={**hub_msg.platform_meta, **_meta_updates},  # type: ignore[arg-type]  # T2.2: write site migration pending
         )
 
     log.info(

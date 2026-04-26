@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from lyra.adapters.shared._shared import ATTACHMENT_EXTS_BASE, chunk_text
-from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
 
 log = logging.getLogger("lyra.adapters.telegram")
 
@@ -80,12 +80,12 @@ def _validate_inbound(
     if inbound.platform != Platform.TELEGRAM.value:
         log.error("%s called with non-telegram message id=%s", caller, inbound.id)
         return None
-    chat_id: int | None = inbound.platform_meta.get("chat_id")
-    if chat_id is None:
+    if not isinstance(inbound.platform_meta, TelegramMeta):
         log.error(
             "%s: platform_meta missing 'chat_id' for msg id=%s", caller, inbound.id
         )
         return None
-    topic_id: int | None = inbound.platform_meta.get("topic_id")
-    message_id: int | None = inbound.platform_meta.get("message_id")
+    chat_id: int = inbound.platform_meta.chat_id
+    topic_id: int | None = inbound.platform_meta.topic_id
+    message_id: int | None = inbound.platform_meta.message_id
     return chat_id, topic_id, message_id

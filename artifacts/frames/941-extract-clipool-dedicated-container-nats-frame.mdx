@@ -1,0 +1,76 @@
+---
+title: Extract CliPool into dedicated container with NATS protocol
+issue: 941
+status: approved
+tier: F-full
+date: 2026-04-26
+---
+
+## Problem
+
+Lyra's 3-container topology (Hub / Adapters / CliPool) is defined in
+`docs/architecture/container-split.md`, but only the Hub↔Adapter link has been
+migrated to NATS. The Hub↔CliPool boundary is still in-process: `ClaudeCliDriver`
+calls `CliPool.send()` directly inside the hub container, which means:
+
+- `~/.claude/` must be mounted into the hub container (wrong security boundary)
+- CliPool can't scale, restart, or deploy independently
+- Session resume state is held in an in-process dict, not durable across hub restarts
+
+This issue closes the last in-process boundary by replacing the hub-side
+`CliPool` method calls with a NATS cmd/reply protocol and extracting CliPool
+into its own container.
+
+## Who
+
+- **Primary:** Infrastructure / platform maintainer (Mickael) — deploys and
+  operates Lyra. Affects container topology, Quadlet unit definitions, and
+  volume bindings.
+- **Secondary:** All Lyra users (Telegram / Discord) — transparent to them if
+  migration preserves session continuity; visible only on failure.
+
+## Constraints
+
+- **Protocol:** NATS cmd/reply on `lyra.clipool.cmd.<pool_id>` /
+  `lyra.clipool.reply.<pool_id>`. Payload schemas need to be defined in
+  `packages/roxabi-contracts/`.
+- **Streaming:** Claude stdout is NDJSON; events must flow incrementally over
+  NATS reply subject (not buffered). Hub currently forwards these as
+  `LlmEvent` objects — that interface must be preserved.
+- **Backpressure / crash:** Mid-stream CliPool failure must surface to Hub as an
+  error event, not a silent hang. Hub must handle partial replies.
+- **Session resume:** Hub sends `--resume <cli_sid>` as a field in the NATS cmd
+  payload. CliPool never touches `~/.lyra/` — all session state lives in
+  `~/.claude/` on the CliPool side.
+- **Volume split:** `~/.claude/` moves from hub mount → clipool mount (rw).
+  Hub retains ro access only for compaction reads (per architecture doc).
+- **Image strategy:** Decide whether CliPool uses the same
+  `ghcr.io/roxabi/lyra` image (different entrypoint) or a dedicated slim image.
+- **Transport SDK:** `packages/roxabi-nats/` is the established NATS SDK —
+  CliPool client must use it, not raw nats.py.
+- **Migration path:** Must not break the existing 3-process unified mode
+  (`lyra start`) during the transition.
+
+## Out of Scope
+
+- Changes to Adapter ↔ Hub NATS protocol (already shipped, not touched)
+- Memory / vault integration changes
+- Multi-instance CliPool load balancing (single pool_id → single container for now)
+- CI/CD publishing pipeline changes (image tagging strategy is a follow-up)
+- L3 session compaction logic changes
+
+## Complexity
+
+**Tier: F-full** — Crosses three domains: NATS contract design
+(`roxabi-contracts`), hub-side driver refactor (`ClaudeCliDriver` → NATS
+client), and new container infrastructure (Quadlet unit, volume split).
+Contains unknowns around streaming over NATS (backpressure, partial-reply
+semantics) that warrant deep analysis before implementation.
+
+Signals observed:
+- Multiple domains: LLM driver, NATS transport, container infra
+- New architectural pattern: streaming NDJSON over NATS reply subjects
+- New Quadlet unit required
+- Volume boundary changes (security implication)
+- Migration must preserve session resume continuity
+- complexity: 8 (from issue)

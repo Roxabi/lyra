@@ -63,6 +63,8 @@ Environment=LYRA_CLAUDE_CWD=/home/lyra/projects
 # Bind to 0.0.0.0 inside container so PublishPort forwarding reaches uvicorn;
 # host exposure is restricted to 127.0.0.1 by PublishPort below.
 Environment=LYRA_HEALTH_HOST=0.0.0.0
+# Cold Qwen3 TTS model load takes ~60s; default 30s fires before model is ready.
+Environment=LYRA_TTS_TIMEOUT=90
 PublishPort=127.0.0.1:8443:8443
 Exec=lyra hub
 

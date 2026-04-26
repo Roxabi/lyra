@@ -153,6 +153,12 @@ class NatsSttClient:
         try:
             return SttResponse.model_validate_json(raw)
         except ValidationError as exc:
+            log.warning(
+                "STT reply validation failed — raw bytes (%d): %r",
+                len(raw),
+                raw[:500],
+                exc_info=True,
+            )
             self._cb.record_failure()
             raise STTUnavailableError("STT reply failed schema validation") from exc
 

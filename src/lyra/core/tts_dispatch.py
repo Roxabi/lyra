@@ -237,8 +237,9 @@ class AudioPipeline:
                 if lang is not None and on_language_detected is not None:
                     on_language_detected(lang)
 
+            tts_text = text.replace("\n", " ")
             result = await self._hub._tts.synthesize(
-                text,
+                tts_text,
                 agent_tts=agent_tts,
                 language=lang,
                 voice=voice,

@@ -13,6 +13,7 @@ from lyra.core.messaging.message import (
     InboundMessage,
     Platform,
     RoutingContext,
+    TelegramMeta,
 )
 
 if TYPE_CHECKING:
@@ -105,21 +106,21 @@ def _build_routing(  # noqa: PLR0913 — groups related metadata fields
     message_id: int | None,
     scope_id: str,
     is_group: bool,
-) -> tuple[dict[str, Any], RoutingContext]:
-    """Build platform_meta dict and RoutingContext for a Telegram message."""
-    platform_meta: dict[str, Any] = {
-        "chat_id": chat_id,
-        "topic_id": topic_id,
-        "message_id": message_id,
-        "is_group": is_group,
-    }
+) -> tuple[TelegramMeta, RoutingContext]:
+    """Build TelegramMeta and RoutingContext for a Telegram message."""
+    platform_meta = TelegramMeta(
+        chat_id=chat_id,
+        topic_id=topic_id,
+        message_id=message_id,
+        is_group=is_group,
+    )
     routing = RoutingContext(
         platform=Platform.TELEGRAM.value,
         bot_id=adapter._bot_id,
         scope_id=scope_id,
         thread_id=str(topic_id) if topic_id is not None else None,
         reply_to_message_id=str(message_id) if message_id is not None else None,
-        platform_meta=dict(platform_meta),
+        platform_meta=platform_meta,
     )
     return platform_meta, routing
 

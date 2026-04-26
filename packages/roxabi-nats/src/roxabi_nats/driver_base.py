@@ -76,8 +76,8 @@ class NatsDriverBase:
         }
         return any(now - ts <= self.HB_TTL for ts in self._worker_freshness.values())
 
-    def is_alive(self, worker_id: str) -> bool:
-        del worker_id
+    def is_alive(self, pool_id: str) -> bool:
+        del pool_id
         return self._nc.is_connected and self._any_worker_alive()
 
     async def _stream_gen(

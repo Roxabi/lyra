@@ -136,9 +136,9 @@ class CliNatsDriver(NatsDriverBase):
         payload = self._build_control_payload(pool_id, "switch_cwd", cwd=str(cwd))
         await self._request(self.SUBJECT_CONTROL, payload)
 
-    def is_alive(self, worker_id: str) -> bool:
+    def is_alive(self, pool_id: str) -> bool:
         """Return True when NATS is connected and a clipool worker is fresh."""
-        del worker_id
+        del pool_id
         return self._nc.is_connected and self._any_worker_alive()
 
     def link_lyra_session(self, pool_id: str, lyra_session_id: str) -> None:

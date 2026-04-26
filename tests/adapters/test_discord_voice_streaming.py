@@ -18,7 +18,7 @@ from lyra.adapters.discord.voice.discord_voice import (
     VoiceSessionManager,
 )
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, OutboundAudioChunk
+from lyra.core.messaging.message import DiscordMeta, GenericMeta, InboundMessage, OutboundAudioChunk, TelegramMeta
 
 # ---------------------------------------------------------------------------
 # File-local helpers
@@ -60,19 +60,19 @@ def _make_voice_session(
 
 
 def _make_discord_inbound(
-    platform_meta: dict | None = None,
+    platform_meta: DiscordMeta | GenericMeta | None = None,
 ) -> InboundMessage:
     """Build a minimal discord InboundMessage for render_voice_stream tests."""
-    meta = (
+    meta: DiscordMeta | GenericMeta = (
         platform_meta
         if platform_meta is not None
-        else {
-            "guild_id": "1",
-            "channel_id": 333,
-            "message_id": 555,
-            "thread_id": None,
-            "channel_type": "text",
-        }
+        else DiscordMeta(
+            guild_id=1,
+            channel_id=333,
+            message_id=555,
+            thread_id=None,
+            channel_type="text",
+        )
     )
     return InboundMessage(
         id="msg-discord",
@@ -251,7 +251,7 @@ class TestRenderVoiceStream:
             inbound_bus=MagicMock(),
         )
         adapter._vsm.stream = AsyncMock()
-        inbound = _make_discord_inbound(platform_meta={"guild_id": "1"})
+        inbound = _make_discord_inbound(platform_meta=DiscordMeta(guild_id=1))
 
         async def chunks() -> AsyncIterator[OutboundAudioChunk]:
             yield _make_chunk()
@@ -286,7 +286,7 @@ class TestRenderVoiceStream:
             text="hello",
             text_raw="hello",
             timestamp=datetime.now(timezone.utc),
-            platform_meta={"chat_id": 42},
+            platform_meta=TelegramMeta(chat_id=42),
             trust_level=TrustLevel.TRUSTED,
         )
 
@@ -311,7 +311,7 @@ class TestRenderVoiceStream:
             inbound_bus=MagicMock(),
         )
         adapter._vsm.stream = AsyncMock()
-        inbound = _make_discord_inbound(platform_meta={})
+        inbound = _make_discord_inbound(platform_meta=GenericMeta())
 
         async def chunks() -> AsyncIterator[OutboundAudioChunk]:
             yield _make_chunk()

@@ -22,6 +22,7 @@ from aiogram.types import BufferedInputFile
 
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (
+    DiscordMeta,
     InboundMessage,
     OutboundAudioChunk,
 )
@@ -280,13 +281,13 @@ async def test_dc_stream_no_reply_target_sends_normally() -> None:
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
         trust_level=TrustLevel.TRUSTED,
-        platform_meta={
-            "guild_id": 1,
-            "channel_id": 99,
-            "message_id": None,
-            "thread_id": None,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=1,
+            channel_id=99,
+            message_id=0,
+            thread_id=None,
+            channel_type="text",
+        ),
     )
 
     ref_msg = AsyncMock()
@@ -296,5 +297,5 @@ async def test_dc_stream_no_reply_target_sends_normally() -> None:
     with patch.object(adapter, "get_channel", return_value=channel):
         await adapter.render_audio_stream(_single_chunk(), inbound)
 
-    # message_id=None means no reply attempted, send directly
+    # message_id=0 means no reply attempted, send directly
     channel.send.assert_awaited_once()

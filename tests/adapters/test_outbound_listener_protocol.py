@@ -24,7 +24,7 @@ from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 from lyra.adapters.shared.outbound_listener import OutboundListener
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
 
 # Module-level static structural check. mypy/pyright verify that
 # NatsOutboundListener (the class object) is assignable to
@@ -51,12 +51,12 @@ def _make_voice_message() -> InboundMessage:
         text="",
         text_raw="",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },  # noqa: E501
+        platform_meta=TelegramMeta(
+            chat_id=42,
+            topic_id=None,
+            message_id=None,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
         modality="voice",
         audio=AudioPayload(

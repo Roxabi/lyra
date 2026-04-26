@@ -24,7 +24,7 @@ from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
 from lyra.core.commands.command_router import CommandConfig, CommandRouter
-from lyra.core.messaging.message import InboundMessage, Response
+from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -69,12 +69,7 @@ def make_circuit_msg(
         text="/circuit",
         text_raw="/circuit",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(chat_id=42),
         trust_level=TrustLevel.TRUSTED,
         is_admin=is_admin,
         command=_parser.parse("/circuit"),

@@ -15,8 +15,10 @@ import pytest
 
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (  # noqa: F401
+    DiscordMeta,
     InboundMessage,
     OutboundMessage,
+    TelegramMeta,
 )
 from lyra.core.messaging.render_events import ToolSummaryRenderEvent
 from tests.adapters.conftest import _make_telegram_adapter, _make_telegram_message
@@ -54,12 +56,12 @@ async def test_send_calls_bot_send_message() -> None:
         text="hello",
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 123,
-            "topic_id": None,
-            "message_id": 99,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=123,
+            topic_id=None,
+            message_id=99,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
     outbound = OutboundMessage.from_text("reply")
@@ -107,13 +109,13 @@ async def test_send_skips_when_platform_context_is_not_telegram(
         text="hello",
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "guild_id": None,
-            "channel_id": 123,
-            "message_id": 456,
-            "thread_id": None,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=None,
+            channel_id=123,
+            message_id=456,
+            thread_id=None,
+            channel_type="text",
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
 
@@ -157,12 +159,12 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
         text="hello",
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 123,
-            "topic_id": None,
-            "message_id": 777,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=123,
+            topic_id=None,
+            message_id=777,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
     outbound = OutboundMessage.from_text("reply")
@@ -223,12 +225,12 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
         text="hello",
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 123,
-            "topic_id": None,
-            "message_id": 1,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=123,
+            topic_id=None,
+            message_id=1,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
 

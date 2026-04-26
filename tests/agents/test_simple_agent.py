@@ -19,6 +19,7 @@ from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (
     InboundMessage,
     Response,
+    TelegramMeta,
 )
 from lyra.core.pool import Pool
 from lyra.llm.base import LlmResult
@@ -40,12 +41,7 @@ def make_inbound_message(text: str = "hello") -> InboundMessage:
         text=text,
         text_raw=text,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(chat_id=42),
         trust_level=TrustLevel.TRUSTED,
     )
 

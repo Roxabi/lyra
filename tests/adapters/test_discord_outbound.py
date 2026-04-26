@@ -10,7 +10,9 @@ import pytest
 
 from lyra.core.messaging.message import (
     Button,
+    DiscordMeta,
     OutboundMessage,
+    TelegramMeta,
 )
 
 from .conftest import attach_typing_cm, make_dc_inbound_msg
@@ -391,13 +393,13 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
         trust_level=TrustLevel.TRUSTED,
-        platform_meta={
-            "guild_id": 111,
-            "channel_id": 333,
-            "message_id": None,  # no reply-to → should_reply=False
-            "thread_id": None,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=111,
+            channel_id=333,
+            message_id=0,  # no reply-to → should_reply=False
+            thread_id=None,
+            channel_type="text",
+        ),
     )
 
     sent_mock = MagicMock()
@@ -453,7 +455,7 @@ async def test_build_streaming_noop_on_non_discord_msg() -> None:
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
         trust_level=TrustLevel.TRUSTED,
-        platform_meta={"chat_id": 1, "message_id": 1},
+        platform_meta=TelegramMeta(chat_id=1, message_id=1),
     )
     outbound = OutboundMessage.from_text("hi")
 
@@ -664,13 +666,13 @@ async def test_send_thread_context_uses_channel_send() -> None:
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
         trust_level=TrustLevel.TRUSTED,
-        platform_meta={
-            "guild_id": 111,
-            "channel_id": 333,
-            "message_id": 555,
-            "thread_id": 777,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=111,
+            channel_id=333,
+            message_id=555,
+            thread_id=777,
+            channel_type="text",
+        ),
     )
 
     outbound = OutboundMessage.from_text("reply in thread")
@@ -712,13 +714,13 @@ async def test_send_thread_context_with_view() -> None:
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
         trust_level=TrustLevel.TRUSTED,
-        platform_meta={
-            "guild_id": 111,
-            "channel_id": 333,
-            "message_id": 555,
-            "thread_id": 777,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=111,
+            channel_id=333,
+            message_id=555,
+            thread_id=777,
+            channel_type="text",
+        ),
     )
 
     outbound = OutboundMessage(content=["pick one"], buttons=[Button("Yes", "yes")])
@@ -759,7 +761,7 @@ async def test_send_invalid_inbound_returns_early() -> None:
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
         trust_level=TrustLevel.TRUSTED,
-        platform_meta={"chat_id": 1, "message_id": 1},
+        platform_meta=TelegramMeta(chat_id=1, message_id=1),
     )
 
     await adapter.send(tg_msg, OutboundMessage.from_text("hi"))

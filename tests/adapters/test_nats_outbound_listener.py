@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
 from roxabi_nats._serialize import serialize
 
 
@@ -28,12 +28,12 @@ def _make_tg_msg(msg_id: str = "msg-1") -> InboundMessage:
         text="hi",
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "message_id": 10,
-            "topic_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=42,
+            message_id=10,
+            topic_id=None,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
 

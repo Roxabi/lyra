@@ -18,7 +18,7 @@ from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messaging.message import InboundMessage
+from lyra.core.messaging.message import DiscordMeta, GenericMeta, InboundMessage, TelegramMeta
 
 # ---------------------------------------------------------------------------
 # Shared test helpers for adapter tests
@@ -39,12 +39,12 @@ def make_tg_msg(
         text="hi",
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "topic_id": topic_id,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=chat_id,
+            message_id=message_id,
+            topic_id=topic_id,
+            is_group=False,
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
 
@@ -61,13 +61,13 @@ def make_dc_msg(channel_id: int = 99, message_id: int = 55) -> InboundMessage:
         text="hi",
         text_raw="hi",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "guild_id": 1,
-            "channel_id": channel_id,
-            "message_id": message_id,
-            "thread_id": None,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=1,
+            channel_id=channel_id,
+            message_id=message_id,
+            thread_id=None,
+            channel_type="text",
+        ),
         trust_level=TrustLevel.TRUSTED,
     )
 
@@ -111,13 +111,13 @@ def make_dc_inbound_msg(
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
         trust_level=TrustLevel.TRUSTED,
-        platform_meta={
-            "guild_id": 111,
-            "channel_id": channel_id,
-            "message_id": message_id,
-            "thread_id": None,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=111,
+            channel_id=channel_id,
+            message_id=message_id,
+            thread_id=None,
+            channel_type="text",
+        ),
     )
 
 
@@ -168,12 +168,12 @@ def make_tg_attach_msg(
         text_raw="hi",
         trust_level=TrustLevel.TRUSTED,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            **({"chat_id": chat_id} if not omit_chat_id else {}),
-            "message_id": message_id,
-            "topic_id": topic_id,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(
+            chat_id=chat_id if not omit_chat_id else 0,
+            message_id=message_id,
+            topic_id=topic_id,
+            is_group=False,
+        ),
     )
 
 
@@ -197,13 +197,13 @@ def make_dc_attach_msg(
         text_raw="hi",
         trust_level=TrustLevel.TRUSTED,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "guild_id": 1,
-            **({"channel_id": channel_id} if not omit_channel_id else {}),
-            "message_id": message_id,
-            "thread_id": thread_id,
-            "channel_type": "text",
-        },
+        platform_meta=DiscordMeta(
+            guild_id=1,
+            channel_id=channel_id if not omit_channel_id else 0,
+            message_id=message_id,
+            thread_id=thread_id,
+            channel_type="text",
+        ),
     )
 
 
@@ -258,7 +258,7 @@ def _make_telegram_message() -> InboundMessage:
         text="hello",
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={"chat_id": 123, "message_id": 1},
+        platform_meta=TelegramMeta(chat_id=123, message_id=1),
         trust_level=TrustLevel.TRUSTED,
     )
 

@@ -14,6 +14,7 @@ from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (
     Attachment,
     InboundMessage,
+    TelegramMeta,
 )
 from lyra.core.pool import Pool
 from lyra.llm.base import LlmResult
@@ -39,12 +40,7 @@ def make_audio_message(url: str) -> InboundMessage:
             Attachment(type="audio", url_or_path_or_bytes=url, mime_type="audio/ogg"),
         ],
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(chat_id=42),
         trust_level=TrustLevel.TRUSTED,
     )
 
@@ -61,12 +57,7 @@ def make_text_message(text: str = "hello") -> InboundMessage:
         text=text,
         text_raw=text,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(chat_id=42),
         trust_level=TrustLevel.TRUSTED,
     )
 

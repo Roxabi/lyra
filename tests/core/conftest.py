@@ -25,6 +25,7 @@ from lyra.core.config import PoolConfig, RouterConfig
 from lyra.core.hub import Hub
 from lyra.core.messaging.message import (
     Attachment,
+    DiscordMeta,
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -33,6 +34,7 @@ from lyra.core.messaging.message import (
     Platform,
     Response,
     RoutingContext,
+    TelegramMeta,
 )
 from lyra.core.messaging.render_events import RenderEvent
 from lyra.core.pool import Pool
@@ -176,12 +178,7 @@ def make_message(
         text=content,
         text_raw=content,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(chat_id=42),
         trust_level=TrustLevel.TRUSTED,
         is_admin=is_admin,
         command=cmd_ctx,
@@ -233,38 +230,29 @@ def make_inbound_message(  # noqa: PLR0913
     bot_id: str = "main",
     user_id: str = "alice",
     scope_id: str | None = None,
-    platform_meta: dict | None = None,
+    platform_meta=None,
     modality: str | None = None,
 ) -> InboundMessage:
     """Build a minimal InboundMessage for hub tests."""
+    from lyra.core.messaging.message import GenericMeta
+
     if platform == "telegram":
         _scope = scope_id if scope_id is not None else "chat:42"
         _meta = (
             platform_meta
             if platform_meta is not None
-            else {
-                "chat_id": 42,
-                "topic_id": None,
-                "message_id": None,
-                "is_group": False,
-            }
+            else TelegramMeta(chat_id=42)
         )
     elif platform == "discord":
         _scope = scope_id if scope_id is not None else "channel:333"
         _meta = (
             platform_meta
             if platform_meta is not None
-            else {
-                "guild_id": 111,
-                "channel_id": 333,
-                "message_id": 555,
-                "thread_id": None,
-                "channel_type": "text",
-            }
+            else DiscordMeta(channel_id=333, message_id=555, guild_id=111, channel_type="text")
         )
     else:
         _scope = scope_id if scope_id is not None else f"{platform}:default"
-        _meta = platform_meta or {}
+        _meta = platform_meta if platform_meta is not None else GenericMeta()
     kwargs: dict = dict(
         id="msg-1",
         platform=platform,
@@ -506,12 +494,7 @@ def make_dispatcher_msg() -> InboundMessage:
         text="hello",
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 123,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(chat_id=123),
         trust_level=TrustLevel.TRUSTED,
     )
 
@@ -543,12 +526,7 @@ def make_debouncer_msg(
         text=text,
         text_raw=text,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 1,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(chat_id=1),
         trust_level=TrustLevel.TRUSTED,
         attachments=attachments or [],
     )
@@ -631,12 +609,7 @@ def make_msg(text: str = "hello") -> InboundMessage:
         text=text,
         text_raw=text,
         timestamp=datetime.now(timezone.utc),
-        platform_meta={
-            "chat_id": 1,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        },
+        platform_meta=TelegramMeta(chat_id=1),
         trust_level=TrustLevel.TRUSTED,
     )
 
@@ -783,7 +756,7 @@ def make_routing_inbound(routing: RoutingContext | None = None) -> InboundMessag
         text_raw="hello",
         timestamp=datetime.now(timezone.utc),
         trust_level=TrustLevel.TRUSTED,
-        platform_meta={"chat_id": 123},
+        platform_meta=TelegramMeta(chat_id=123),
         routing=routing,
     )
 
@@ -829,21 +802,10 @@ def make_pairing_message(  # noqa: PLR0913 — test factory with optional overri
     """Build a minimal InboundMessage for pairing tests."""
     if platform == Platform.DISCORD:
         scope = "channel:1"
-        meta = {
-            "guild_id": guild_id,
-            "channel_id": 1,
-            "message_id": 1,
-            "thread_id": None,
-            "channel_type": "text",
-        }
+        meta = DiscordMeta(channel_id=1, message_id=1, guild_id=guild_id, channel_type="text")
     else:
         scope = "chat:42"
-        meta = {
-            "chat_id": 42,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": is_group,
-        }
+        meta = TelegramMeta(chat_id=42, is_group=is_group)
 
     return InboundMessage(
         id="msg-test-1",

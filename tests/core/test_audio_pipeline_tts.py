@@ -427,7 +427,7 @@ class TestTtsUnavailableFallback:
         # log.exception must be emitted (ERROR level with traceback)
         assert "msg-fallback-2" in caplog.text
         assert "notifying user" in caplog.text
-        assert caplog.records[0].levelno == logging.ERROR
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------

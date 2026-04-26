@@ -10,6 +10,7 @@ import discord
 from lyra.adapters.shared._shared import push_to_hub_guarded
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.messaging.message import (
+    DiscordMeta,
     InboundMessage,
     Platform,
     RoutingContext,
@@ -76,18 +77,18 @@ def normalize_audio(
     if is_guild_channel:
         scope_id = user_scoped(scope_id, user_id)
     timestamp = raw.created_at
-    platform_meta = {
-        "guild_id": raw.guild.id if raw.guild else None,
-        "channel_id": raw.channel.id,
-        "message_id": raw.id,
-    }
+    platform_meta = DiscordMeta(
+        guild_id=raw.guild.id if raw.guild else None,
+        channel_id=raw.channel.id,
+        message_id=raw.id,
+    )
     routing = RoutingContext(
         platform=Platform.DISCORD.value,
         bot_id=bot_id,
         scope_id=scope_id,
         thread_id=str(raw.channel.id) if is_thread else None,
         reply_to_message_id=str(raw.id),
-        platform_meta=dict(platform_meta),
+        platform_meta=platform_meta,
     )
     return InboundMessage(
         id=f"discord:{user_id}:{int(timestamp.timestamp())}:{raw.id}",

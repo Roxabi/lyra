@@ -89,6 +89,11 @@ class Hub(
         self.bindings: dict[RoutingKey, Binding] = {}
         self.circuit_registry: CircuitRegistry | None = circuit_registry
         self._msg_manager: MessageManager | None = msg_manager
+        if msg_manager is None:
+            log.warning(
+                "Hub initialised without a MessageManager"
+                " — STT error replies will use hardcoded fallbacks"
+            )
         self._pairing_manager = pairing_manager
         self._message_index: MessageIndex | None = None
         self._stt: STTProtocol | None = stt

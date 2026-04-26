@@ -23,6 +23,7 @@ _FALLBACKS: dict[str, str] = {
     "stt_noise": "I couldn't make out your voice message, please try again.",
     "stt_unsupported": "Voice messages are not supported — STT is not configured.",
     "stt_failed": "Sorry, I couldn't transcribe your voice message.",
+    "audio_download_failed": "Couldn't retrieve your audio file. Please try again.",
 }
 
 

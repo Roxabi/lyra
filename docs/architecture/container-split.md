@@ -50,7 +50,7 @@
 
 ## Adapters — platform bridges
 
-Stateless except for Discord thread tracking.
+Both adapters write `turns.db` (conversation turns + pool sessions, held open for full lifetime). Discord also writes `discord.db` (thread ownership + session cache).
 
 | Responsibility | Detail |
 |---|---|
@@ -141,15 +141,17 @@ resumes it rather than starting fresh.
 
 ## Volumes
 
-| Volume | Container | Contents |
-|---|---|---|
-| `~/.lyra/auth.db` | Hub | Auth grants, identity aliases |
-| `~/.lyra/config.db` | Hub | Agent registry, bot secrets (encrypted), user prefs |
-| `~/.lyra/turns.db` | Hub | Conversation turns, pool sessions, lyra→cli session map |
-| `~/.lyra/message_index.db` | Hub | reply-to session routing index |
-| `~/.lyra/keyring.key` | Hub | Encryption key for `config.db` secrets |
-| `~/.lyra/discord.db` | Discord adapter | Thread ownership |
-| `~/.claude/` | CliPool | Claude session `.jsonl` files (required for `--resume`) |
+| File | Container(s) | Access | Contents |
+|---|---|---|---|
+| `~/.lyra/auth.db` | Hub | rw | Auth grants, identity aliases |
+| `~/.lyra/config.db` | Hub, Telegram, Discord | Hub: rw · Adapters: ro (startup only) | Agent registry, bot secrets (encrypted), user prefs |
+| `~/.lyra/turns.db` | Hub, Telegram, Discord | rw | Conversation turns, pool sessions, lyra→cli session map |
+| `~/.lyra/message_index.db` | Hub | rw | reply-to session routing index |
+| `~/.lyra/keyring.key` | Hub, Telegram, Discord | Hub: rw · Adapters: ro (startup only) | Encryption key for `config.db` secrets |
+| `~/.lyra/discord.db` | Discord | rw | Thread ownership + session cache |
+| `~/.claude/` | CliPool | rw | Claude session `.jsonl` files (required for `--resume`) |
+
+Adapter mounts are per-file inline binds (not the full `lyra-data.volume`) — adapters never touch `auth.db` or `message_index.db`.
 
 ---
 

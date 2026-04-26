@@ -33,6 +33,9 @@ if TYPE_CHECKING:
     from collections import deque
 
     from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+    from lyra.infrastructure.stores.message_index import MessageIndex
+    from lyra.infrastructure.stores.pairing import PairingManager
+    from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.infrastructure.stores.turn_store import TurnStore
 
     from ...stt import STTProtocol
@@ -42,9 +45,6 @@ if TYPE_CHECKING:
     from ..cli.cli_pool import CliPool
     from ..memory import MemoryManager
     from ..messaging.messages import MessageManager
-    from ..stores.message_index import MessageIndex
-    from ..stores.pairing import PairingManager
-    from ..stores.prefs_store import PrefsStore
     from .event_bus import PipelineEventBus
     from .outbound import OutboundDispatcher
 

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.stores.pairing import (
+from lyra.infrastructure.stores.pairing import (
     PairingConfig,
     PairingError,
     PairingManager,

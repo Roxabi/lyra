@@ -17,7 +17,7 @@ from lyra.bootstrap.lifecycle.lifecycle_helpers import (
 )
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.hub import Hub
-from lyra.core.stores.pairing import PairingManager
+from lyra.infrastructure.stores.pairing import PairingManager
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 log = logging.getLogger(__name__)

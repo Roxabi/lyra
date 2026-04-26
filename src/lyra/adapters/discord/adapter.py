@@ -47,7 +47,7 @@ from lyra.core.messaging.message import (
     OutboundMessage,
 )
 from lyra.core.messaging.messages import MessageManager
-from lyra.core.stores.thread_store import ThreadStore
+from lyra.infrastructure.stores.thread_store import ThreadStore
 
 log = logging.getLogger(__name__)
 

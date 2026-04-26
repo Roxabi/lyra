@@ -13,7 +13,7 @@ from lyra.bootstrap.lifecycle.lifecycle_helpers import (
     teardown_dispatchers,
 )
 from lyra.core.agent.agent_loader import agent_row_to_config
-from lyra.core.stores.pairing import PairingManager, set_pairing_manager
+from lyra.infrastructure.stores.pairing import PairingManager, set_pairing_manager
 
 if TYPE_CHECKING:
     from lyra.core.agent import Agent

@@ -36,8 +36,8 @@ from lyra.tts import TtsProtocol
 
 if TYPE_CHECKING:
     from lyra.core.messaging.messages import MessageManager
-    from lyra.core.stores.pairing import PairingManager
-    from lyra.core.stores.prefs_store import PrefsStore
+    from lyra.infrastructure.stores.pairing import PairingManager
+    from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.llm.drivers.nats_driver import NatsLlmDriver
 
 log = logging.getLogger(__name__)

@@ -15,7 +15,7 @@ from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult, Resu
 from tests.core.conftest import _make_hub, make_inbound_message
 
 if TYPE_CHECKING:
-    from lyra.core.stores.message_index import MessageIndex
+    from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.infrastructure.stores.turn_store import TurnStore
 
 # -------------------------------------------------------------------

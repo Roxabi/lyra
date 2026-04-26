@@ -30,9 +30,11 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/telegram-adapter.seed
 # Per-file bind mounts — adapters only access keyring.key, config.db, and turns.db.
 # Full lyra-data.volume removed (#943) — blast radius reduction on adapter compromise.
 # Inline binds used for single files (named .volume units fail for files; see hub.container note).
+# :z (shared label) not :Z — hub's directory-level lyra-data.volume relabels ~/.lyra/,
+# making :Z (private) incompatible. Shared label is intentional (#943).
 Volume=%h/.lyra/keyring.key:/home/lyra/.lyra/keyring.key:ro,z
 Volume=%h/.lyra/config.db:/home/lyra/.lyra/config.db:ro,z
-Volume=%h/.lyra/turns.db:/home/lyra/.lyra/turns.db:z
+Volume=%h/.lyra/turns.db:/home/lyra/.lyra/turns.db:ro,z
 Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
 Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
 # Inline single-file bind mount — see rationale in lyra-hub.container.
@@ -44,6 +46,9 @@ Restart=on-failure
 RestartSec=5
 # Cap at 2 full cores — prevents a runaway worker from starving hub + NATS.
 CPUQuota=200%
+# Ensure turns.db exists before Podman binds it — missing source path causes
+# Podman to auto-create a directory, breaking SQLite open on first boot.
+ExecStartPre=/bin/bash -c 'test -e %h/.lyra/turns.db || touch %h/.lyra/turns.db'
 
 [Install]
 WantedBy=default.target

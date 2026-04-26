@@ -30,9 +30,11 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/discord-adapter.seed
 # Per-file bind mounts — adapters only access keyring.key, config.db, turns.db, and discord.db.
 # Full lyra-data.volume removed (#943) — blast radius reduction on adapter compromise.
 # Inline binds used for single files (named .volume units fail for files; see hub.container note).
+# :z (shared label) not :Z — hub's directory-level lyra-data.volume relabels ~/.lyra/,
+# making :Z (private) incompatible. Shared label is intentional (#943).
 Volume=%h/.lyra/keyring.key:/home/lyra/.lyra/keyring.key:ro,z
 Volume=%h/.lyra/config.db:/home/lyra/.lyra/config.db:ro,z
-Volume=%h/.lyra/turns.db:/home/lyra/.lyra/turns.db:z
+Volume=%h/.lyra/turns.db:/home/lyra/.lyra/turns.db:ro,z
 Volume=%h/.lyra/discord.db:/home/lyra/.lyra/discord.db:z
 Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
 Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
@@ -45,6 +47,10 @@ Restart=on-failure
 RestartSec=5
 # Cap at 2 full cores — prevents a runaway worker from starving hub + NATS.
 CPUQuota=200%
+# Ensure SQLite files exist before Podman binds them — missing source path causes
+# Podman to auto-create a directory, breaking SQLite open on first boot.
+ExecStartPre=/bin/bash -c 'test -e %h/.lyra/turns.db || touch %h/.lyra/turns.db'
+ExecStartPre=/bin/bash -c 'test -e %h/.lyra/discord.db || touch %h/.lyra/discord.db'
 
 [Install]
 WantedBy=default.target

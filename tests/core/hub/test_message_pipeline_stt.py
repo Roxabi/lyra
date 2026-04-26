@@ -397,3 +397,36 @@ class TestSttMiddleware:
         next_fn.assert_called_once_with(msg, ctx)
         assert result is _SENTINEL_RESULT
         hub.dispatch_response.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _build_stt_reply: platform_meta handling per meta type
+# ---------------------------------------------------------------------------
+
+
+class TestBuildSttReply:
+    """Unit tests for the _build_stt_reply helper."""
+
+    def test_telegram_meta_reply_false_clears_message_id(self) -> None:
+        """TelegramMeta + reply=False → message_id set to None."""
+        from lyra.core.hub.middleware.middleware_stt import _build_stt_reply
+        from lyra.core.messaging.message import TelegramMeta
+
+        msg = make_text_message(
+            platform_meta=TelegramMeta(chat_id=1, message_id=5),
+        )
+        result = _build_stt_reply(msg, reply=False)
+
+        assert isinstance(result.platform_meta, TelegramMeta)
+        assert result.platform_meta.message_id is None
+
+    def test_discord_meta_reply_false_preserves_message_id(self) -> None:
+        """DiscordMeta + reply=False → platform_meta unchanged (no reply concept)."""
+        from lyra.core.hub.middleware.middleware_stt import _build_stt_reply
+        from lyra.core.messaging.message import DiscordMeta
+
+        meta = DiscordMeta(channel_id=10, message_id=5, guild_id=1, channel_type="text")
+        msg = make_text_message(platform_meta=meta)
+        result = _build_stt_reply(msg, reply=False)
+
+        assert result.platform_meta is meta  # unchanged, same object

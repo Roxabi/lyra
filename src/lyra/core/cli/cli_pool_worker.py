@@ -18,6 +18,9 @@ from typing import TYPE_CHECKING, Any
 from ..agent.agent_config import ModelConfig
 from .cli_protocol import _read_stderr_snippet, build_cmd
 
+if TYPE_CHECKING:
+    from .audit_sink import AuditSink
+
 log = logging.getLogger(__name__)
 
 # Explicit env allowlist — only forward safe vars to the claude subprocess.
@@ -93,6 +96,8 @@ class CliPoolWorkerMixin:
         _idle_ttl: int
         _last_sweep_at: float | None
         _on_reap: Callable[[str, str], Coroutine[Any, Any, None]] | None
+        _audit_sink: AuditSink | None
+        _audit_tasks: set[asyncio.Task[None]]
 
     def _build_cmd(
         self,

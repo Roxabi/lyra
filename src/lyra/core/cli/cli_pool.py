@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from lyra.infrastructure.stores.turn_store import TurnStore
 
 from ..agent.agent_config import ModelConfig
+from .audit_sink import AuditSink
 from .cli_pool_lifecycle import CliPoolLifecycleMixin
 from .cli_pool_session import CliPoolSessionMixin
 from .cli_pool_streaming import CliPoolStreamingMixin
@@ -35,6 +36,7 @@ from .cli_protocol import (
 # Re-export private names that tests reference via
 # `from lyra.core.cli.cli_pool import …`
 __all__ = [
+    "AuditSink",
     "CliPool",
     "CliResult",
     "_LYRA_ROOT",
@@ -75,6 +77,7 @@ class CliPool(  # noqa: E501
         stdin_drain_timeout: float = 10.0,
         max_idle_retries: int = 3,
         intermediate_timeout: float = 5.0,
+        audit_sink: AuditSink | None = None,
     ) -> None:
         self._idle_ttl = idle_ttl
         self._default_timeout = default_timeout
@@ -99,6 +102,10 @@ class CliPool(  # noqa: E501
         # Updated by link_lyra_session() before each send, so the
         # _on_session_update callback can record {lyra_sid → cli_sid}.
         self._lyra_sessions: dict[str, str] = {}
+        self._audit_sink: AuditSink | None = audit_sink
+        # Anchors fire-and-forget audit emit tasks so GC cannot collect them
+        # before completion. Done-callback removes each task on completion.
+        self._audit_tasks: set[asyncio.Task[None]] = set()
 
     async def send(  # noqa: C901
         self,

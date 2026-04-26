@@ -158,7 +158,8 @@ class TestTraceMiddleware:
         """trace_id must be available when next() runs."""
         captured_ids: list[str | None] = []
 
-        async def _capturing_next(msg, ctx):
+        async def _capturing_next(*_args: object) -> PipelineResult:
+            del _args
             captured_ids.append(TraceContext.get_trace_id())
             return _PASS
 
@@ -175,7 +176,8 @@ class TestTraceMiddleware:
     async def test_each_call_gets_unique_trace_id(self) -> None:
         ids: list[str | None] = []
 
-        async def _capturing_next(msg, ctx):
+        async def _capturing_next(*_args: object) -> PipelineResult:
+            del _args
             ids.append(TraceContext.get_trace_id())
             return _PASS
 
@@ -214,7 +216,8 @@ class TestPoolIdContextVar:
 
         captured_pool_ids: list[str | None] = []
 
-        async def _capturing_next(msg, ctx):
+        async def _capturing_next(*_args: object) -> PipelineResult:
+            del _args
             captured_pool_ids.append(TraceContext.get_pool_id())
             return _PASS
 
@@ -298,7 +301,8 @@ class TestGuardedProcessOneAgentName:
 
         captured: list[str | None] = []
 
-        async def _fake_process(msg, agent, pool):
+        async def _fake_process(*_args: object) -> None:
+            del _args
             captured.append(TraceContext.get_agent_name())
 
         pool = MagicMock()
@@ -333,8 +337,8 @@ class TestGuardedProcessOneAgentName:
 
         from lyra.core.pool.pool_processor_exec import guarded_process_one
 
-        async def _fake_process(msg, agent, pool):
-            pass
+        async def _fake_process(*_args: object) -> None:
+            del _args
 
         pool = MagicMock()
         pool.agent_name = "test-agent"

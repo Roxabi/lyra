@@ -203,14 +203,18 @@ def _decode_union(
     # Multiple non-None: str | bytes without b64 prefix → keep as str
     if str in non_none and isinstance(value, str):
         return value
-    # Dataclass candidate: try to reconstruct
+    # Dataclass candidate: select by field-overlap scoring.
+    # Empty dataclass (e.g. GenericMeta) matches empty dicts; non-empty
+    # dataclasses match when at least one field key appears in the payload.
     for candidate in non_none:
         if (
             dataclasses.is_dataclass(candidate)
             and isinstance(candidate, type)
             and isinstance(value, dict)
         ):
-            return _decode_dataclass(value, candidate, resolver)
+            hints = _get_hints(candidate, resolver)
+            if not hints or (set(hints) & set(value)):
+                return _decode_dataclass(value, candidate, resolver)
     return value
 
 

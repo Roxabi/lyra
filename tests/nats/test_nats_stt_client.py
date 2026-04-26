@@ -865,3 +865,49 @@ class TestWalkRegistry:
             "TimeoutError" in record.message and record.levelname == "WARNING"
             for record in caplog.records
         )
+
+
+class TestSttClientStop:
+    """Tests for NatsSttClient.stop() lifecycle."""
+
+    @pytest.mark.asyncio
+    async def test_stop_calls_unsubscribe(self) -> None:
+        """stop() calls unsubscribe() on the active subscription."""
+        mock_nc = AsyncMock()
+        mock_sub = AsyncMock()
+        mock_nc.subscribe = AsyncMock(return_value=mock_sub)
+        client = NatsSttClient(nc=mock_nc)
+        await client.start()
+        await client.stop()
+        mock_sub.unsubscribe.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_sets_hb_sub_to_none(self) -> None:
+        """After stop(), _hb_sub is None."""
+        mock_nc = AsyncMock()
+        mock_sub = AsyncMock()
+        mock_nc.subscribe = AsyncMock(return_value=mock_sub)
+        client = NatsSttClient(nc=mock_nc)
+        await client.start()
+        assert client._hb_sub is not None
+        await client.stop()
+        assert client._hb_sub is None
+
+    @pytest.mark.asyncio
+    async def test_stop_is_idempotent(self) -> None:
+        """stop() called twice does not raise and only unsubscribes once."""
+        mock_nc = AsyncMock()
+        mock_sub = AsyncMock()
+        mock_nc.subscribe = AsyncMock(return_value=mock_sub)
+        client = NatsSttClient(nc=mock_nc)
+        await client.start()
+        await client.stop()
+        await client.stop()
+        mock_sub.unsubscribe.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_without_start_is_safe(self) -> None:
+        """stop() before start() (hb_sub is None) does not raise."""
+        mock_nc = AsyncMock()
+        client = NatsSttClient(nc=mock_nc)
+        await client.stop()  # must not raise

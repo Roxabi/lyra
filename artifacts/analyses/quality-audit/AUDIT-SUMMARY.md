@@ -1,7 +1,7 @@
 # Code Quality Audit Summary
 
 **Project:** Lyra AI Agent Engine
-**Date:** 2026-04-25
+**Date:** 2026-04-26 (refreshed: P0 fixes #852, #879, #923)
 **Files Analyzed:** 282 source files, 261 test files
 **Lines of Code:** ~15,000 (source), ~27,000 (tests)
 
@@ -21,10 +21,7 @@
 
 ### Security
 
-1. **Path traversal in STT client** (`nats/nats_stt_client.py:152`)
-   - `Path(path).resolve()` on user-supplied path without boundary validation
-   - **Risk:** Arbitrary file read if path is attacker-controlled
-   - **Effort:** 1 hour
+1. ~~**Path traversal in STT client**~~ — **FIXED** by #852 (API now takes `bytes` not `Path`)
 
 2. **Callback execution from metadata** (`core/hub/middleware_submit.py:85-90`, `_dispatch.py:93-96`)
    - Callbacks extracted from `platform_meta` and executed without source validation
@@ -33,11 +30,7 @@
 
 ### Data Integrity
 
-3. **Schema migration database corruption** (`core/memory/memory_schema.py:19-87`)
-   - `PRAGMA foreign_keys = OFF` at line 29; no `finally` block to restore
-   - Database left in inconsistent state on migration failure
-   - **Risk:** Data corruption, FK constraint violations
-   - **Effort:** 1 hour
+3. ~~**Schema migration database corruption**~~ — **FIXED** by #923 (`finally` block ensures `PRAGMA foreign_keys = ON`)
 
 ### Test Coverage
 
@@ -51,10 +44,7 @@
    - **Risk:** Silent regressions in LLM behavior
    - **Effort:** 4 hours
 
-6. **Flaky test with extreme sleep** (`tests/core/hub/test_message_pipeline_stt.py:58`)
-   - `asyncio.sleep(9999)` blocks test for hours
-   - **Risk:** CI pipeline stalls, false passes
-   - **Effort:** 1 hour
+6. ~~**Flaky test with extreme sleep**~~ — **FIXED** by #879 (event-based sync replaced `asyncio.sleep`)
 
 ---
 
@@ -290,14 +280,16 @@
 | Domain | Issues | P0 | P1 | P2 | P3 |
 |--------|--------|----|----|----|----|
 | Architecture | 14 | 0 | 4 | 6 | 4 |
-| Security | 14 | 2 | 2 | 0 | 10 |
-| Code Smells | 42 | 3 | 3 | 18 | 18 |
+| Security | 14 | 1✓ | 2 | 0 | 10 |
+| Code Smells | 42 | 0 | 3 | 18 | 18 |
 | Type Safety | 28 | 0 | 0 | 3 | 25 |
 | Async Patterns | 16 | 0 | 4 | 4 | 8 |
-| Error Handling | 22 | 1 | 0 | 4 | 17 |
-| Test Quality | 24 | 1 | 2 | 2 | 19 |
+| Error Handling | 22 | 1✓ | 0 | 4 | 17 |
+| Test Quality | 24 | 1✓ | 2 | 2 | 19 |
 | Tech Debt | 19 | 0 | 0 | 2 | 17 |
-| **Total** | **179** | **7** | **15** | **39** | **118** |
+| **Total** | **179** | **4** (3✓) | **15** | **39** | **118** |
+
+✓ = fixed by #852, #879, #923
 
 ---
 
@@ -305,14 +297,14 @@
 
 ### Immediate (This Sprint)
 
-| # | Action | Effort | Impact |
-|---|--------|--------|--------|
-| 1 | Fix STT path traversal vulnerability | 1h | High |
-| 2 | Add callback source validation | 2h | High |
-| 3 | Add schema migration `finally` block | 1h | High |
-| 4 | Fix health endpoint path traversal | 30m | High |
-| 5 | Add audit logging for `skip_permissions` | 2h | High |
-| 6 | Fix extreme test sleep values | 1h | High |
+| # | Action | Effort | Impact | Status |
+|---|--------|--------|--------|--------|
+| 1 | Add callback source validation | 2h | High | — |
+| 2 | Fix health endpoint path traversal | 30m | High | — |
+| 3 | Add audit logging for `skip_permissions` | 2h | High | — |
+| ~~4~~ | ~~Fix STT path traversal vulnerability~~ | ~~1h~~ | ~~High~~ | ✅ #852 |
+| ~~5~~ | ~~Add schema migration `finally` block~~ | ~~1h~~ | ~~High~~ | ✅ #923 |
+| ~~6~~ | ~~Fix extreme test sleep values~~ | ~~1h~~ | ~~High~~ | ✅ #879 |
 
 ### Next Sprint
 
@@ -340,18 +332,18 @@
 
 ## Technical Debt Score
 
-**Score: 71/100** (where 100 = pristine)
+**Score: 75/100** (where 100 = pristine)
 
 | Category | Weight | Score | Weighted | Rationale |
 |----------|--------|-------|----------|-----------|
 | Architecture | 20% | 70 | 14.0 | Layer violations moderate, ADR-048 incomplete |
-| Security | 25% | 82 | 20.5 | Strong posture, 2 P0 issues addressable |
+| Security | 25% | 88 | 22.0 | Strong posture, 3/4 P0 fixed, 1 remaining (callback validation) |
 | Code Quality | 15% | 72 | 10.8 | God classes, long functions, DRY violations |
 | Test Coverage | 25% | 55 | 13.75 | 52.51% line coverage, critical gaps in agents |
 | Maintainability | 15% | 78 | 11.7 | Good docs, some magic numbers, deprecated APIs |
-| **Total** | **100%** | | **70.75** | |
+| **Total** | **100%** | | **72.25** | |
 
-**Interpretation:** The codebase is in good health with strong security practices and maintainable architecture. The primary weakness is test coverage (52.51% line, 37.99% branch) with critical gaps in agent and adapter layers. Addressing the 7 P0 issues and improving test coverage would raise the score to ~80.
+**Interpretation:** Codebase in good health. P0 reduction from 7→4 via #852, #879, #923. Remaining focus: callback validation (2h), test coverage gaps (agents 0%, adapters 12-15%).
 
 ---
 
@@ -362,7 +354,7 @@
 | 1 | Add path validation to `_read_secret()` | 15m | High security fix |
 | 2 | Add return type to `_db_or_raise()` | 15m | Type safety |
 | 3 | Move `StreamChunkTimeout` to core exceptions | 30m | Fix layer violation |
-| 4 | Add `finally` to schema migration | 30m | Data integrity |
+| ~~4~~ | ~~Add `finally` to schema migration~~ | ~~30m~~ | ~~Data integrity~~ ✅ |
 | 5 | Fix `session_driver: object = None` type | 5m | Type safety |
 | 6 | Replace `assert` with explicit validation | 30m | Production safety |
 | 7 | Add `exc_info=True` to adapter exception logs | 30m | Debuggability |
@@ -409,7 +401,7 @@
 - No hardcoded secrets; credentials from env vars
 - SSRF protection via private IP detection
 - Token/credential redaction in logs
-- 2 P0 issues: path traversal vectors
+- 1 P0 remaining: callback validation (path traversal fixed by #852)
 
 **Code Smells (42 issues):**
 - 3 God classes with 17+ methods

@@ -188,7 +188,7 @@ class CliPoolWorkerMixin:
             task: asyncio.Task[None] = asyncio.create_task(
                 self._audit_sink.emit(SecurityEvent(
                     contract_version=CONTRACT_VERSION,
-                    trace_id=TraceContext.get_trace_id() or "",
+                    trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
                     issued_at=datetime.now(UTC),
                     kind="cli.subprocess.spawned",
                     pool_id=pool_id,

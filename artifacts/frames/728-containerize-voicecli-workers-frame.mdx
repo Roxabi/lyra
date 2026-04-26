@@ -1,0 +1,47 @@
+---
+title: "feat(infra): containerize voicecli workers (GPU passthrough)"
+issue: 728
+status: approved
+tier: F-full
+date: 2026-04-26
+---
+
+## Problem
+
+voiceCLI's STT and TTS workers (`voicecli nats-serve stt` / `voicecli nats-serve tts`) currently run as bare-metal supervisord programs on Machine 1. After #691 removed the lyra satellite model (voice path now uses first-class NATS workers) and #724 extracted `roxabi-nats` as a proper SDK, the remaining gap is containerizing these workers under Podman Quadlet — the same pattern being established for lyra adapters (#605).
+
+The previous attempt (#609) is obsolete because it modeled voice as lyra adapters delegating over Unix sockets, a premise that no longer exists. The new problem is fundamentally different: GPU passthrough to containers, VRAM budget shared across multiple GPU consumers (STT, TTS, imageCLI, future LLM worker), and model cache persistence across restarts.
+
+The critical blocker before containerization lands is that #691 (voicecli nats-serve in prod) and #727 (podman bootstrap on Machine 1) must be verified first.
+
+## Who
+
+- **Primary:** Ops/infra (Mickael) — runs and maintains the production services on Machine 1
+- **Secondary:** lyra engine — depends on voiceCLI workers being available via NATS; any regression in `make voice-smoke` is a direct production impact
+
+## Constraints
+
+- GPU passthrough method undecided: CDI (`--device nvidia.com/gpu=all`) vs legacy runtime hook (`--gpus all`) — ADR must resolve this
+- VRAM shared with imageCLI and future LLM workers (Machine 1: RTX 3080, 10GB VRAM); containerization must not worsen current bare-metal scheduling
+- Model cache (Chatterbox TTS, Whisper, etc.) is large — must persist across container restarts; strategy (bind-mount `~/.cache/voicecli/` vs named Quadlet volume) TBD
+- Image ownership: voiceCLI repo (CUDA base + `voicecli nats-serve` entrypoint, mirrors lyra's #610 pattern) vs composite image in this repo — ADR decision
+- Scope boundary: lyra repo provides only Quadlet glue (`.container` units); voiceCLI repo owns the Dockerfile — pending #727 + #610 landing
+- Boot time: model load takes tens of seconds; `Restart=always` + `RestartSec` interaction must not break `make voice-smoke` SLA
+- Blocked by: #691 (voicecli nats-serve prod verification) and #727 (podman bootstrap on Machine 1)
+
+## Out of Scope
+
+- imageCLI containerization — same GPU-passthrough pattern but separate issue
+- Machine 2 LLM worker (#451) — separate NATS inference service, separate GPU
+- voiceCLI networking or NATS config changes — already resolved by #724
+
+## Complexity
+
+**Tier: F-full** — GPU passthrough requires an ADR, image ownership spans two repos (lyra + voiceCLI), multiple open design questions (CDI vs legacy, VRAM sharing, cache strategy), and the cutover involves parallel-running containers alongside supervisord before flipping.
+
+Signals observed:
+- Multiple open design questions requiring ADR before spec can close
+- Cross-repo scope (voiceCLI Dockerfile + lyra Quadlet units)
+- GPU device passthrough — novel pattern not yet proven in this ecosystem
+- VRAM budget analysis needed (3 consumers on a 10GB GPU)
+- Supervisord → Quadlet cutover with rollback path

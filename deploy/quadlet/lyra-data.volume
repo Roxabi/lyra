@@ -1,7 +1,8 @@
 [Unit]
-Description=Lyra data bind-mount (config.db, keyring.key, agents, auth.db)
-# Bind-mount of %h/.lyra — exposes config.db (Fernet-encrypted bot tokens),
-# keyring.key, auth.db, and all agent state to the containers.
+Description=Lyra data bind-mount — Hub only (auth.db, config.db, keyring.key, message_index.db, turns.db)
+# Bind-mount of %h/.lyra — used by the Hub container only (#943).
+# Adapters use per-file inline bind mounts (keyring.key, config.db, turns.db, discord.db)
+# to minimise blast radius on adapter compromise.
 # Rationale: ADR-054 Decision 1 — tokens live in config.db since #417 (auth.db split);
 # named volume approach (ADR-053) left host files unexposed, causing credential lookup failure.
 

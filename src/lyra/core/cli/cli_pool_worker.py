@@ -38,8 +38,11 @@ def _find_project_root() -> Path:
     raise RuntimeError("Could not locate project root (no pyproject.toml found)")
 
 
-# cwd for the claude subprocess — lyra project root
-_LYRA_ROOT = _find_project_root()
+# Default cwd for the claude subprocess.
+# LYRA_CLAUDE_CWD overrides — used in containers where the app root (/app)
+# differs from the workspace claude should operate in (~/projects).
+_env_cwd = os.environ.get("LYRA_CLAUDE_CWD")
+_LYRA_ROOT = Path(_env_cwd) if _env_cwd else _find_project_root()
 
 
 @dataclass

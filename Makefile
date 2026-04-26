@@ -216,8 +216,25 @@ update:
 
 deploy:
 	$(require_machine1)
-	@echo "Deploying to Machine 1 ($(DEPLOY_HOST))..."
-	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && bash scripts/deploy.sh"
+	@echo "Deploying quadlet units to $(DEPLOY_HOST)..."
+	@ssh $(DEPLOY_HOST) '\
+	set -eu; \
+	LYRA_DIR=$(DEPLOY_DIR); \
+	VOICE_DIR=$$(grep "^VOICE_DEPLOY_DIR=" "$$LYRA_DIR/.env" 2>/dev/null | cut -d= -f2); \
+	VOICE_DIR=$${VOICE_DIR:-$$HOME/projects/voiceCLI}; \
+	echo "==> lyra: pulling staging..."; \
+	cd "$$LYRA_DIR" && git pull origin staging; \
+	echo "==> lyra: installing quadlet units..."; \
+	make -C "$$LYRA_DIR" quadlet-install; \
+	if [ -d "$$VOICE_DIR/.git" ]; then \
+	    echo "==> voiceCLI: pulling staging..."; \
+	    cd "$$VOICE_DIR" && git pull origin staging; \
+	    echo "==> voiceCLI: installing quadlet units..."; \
+	    make -C "$$VOICE_DIR" quadlet-install; \
+	fi; \
+	echo ""; \
+	echo "Units installed + daemon-reload done."; \
+	echo "To restart: make remote lyra reload  (or: systemctl --user restart voicecli-tts voicecli-stt)"'
 
 # make remote [service] [action]
 #   service: lyra or empty → all lyra-* programs | <shortname> → lyra-<shortname>

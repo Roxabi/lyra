@@ -25,6 +25,11 @@ caller workflow that feeds project-specific inputs.
   UID/GID 1500 (`lyra`). Never run as root or rely on the default `nobody` UID.
 - **HEALTHCHECK** — must exit 0 on healthy, non-zero on unhealthy. Lyra uses
   `HEALTHCHECK CMD lyra config validate`. The command must be available in the final stage.
+
+  > **Note:** `HEALTHCHECK` requires Docker manifest format (v2 schema 2). OCI image manifests
+  > silently drop this instruction. The reusable workflow sets `oci-mediatypes=false` on the
+  > `docker/build-push-action` step to force Docker v2 schema 2, so `HEALTHCHECK` is preserved
+  > in the published image. No action needed in the Dockerfile or caller workflow.
 - **OCI labels** — do not set `org.opencontainers.image.*` labels in the Dockerfile. They are
   injected at build time by `docker/metadata-action@v5` in the reusable workflow, ensuring labels
   always match the actual pushed tag and commit SHA.
@@ -60,6 +65,8 @@ jobs:
     with:
       image_name: ghcr.io/roxabi/lyra
       release_please_component: lyra
+      # Manifest format (oci-mediatypes=false) is handled by the reusable workflow.
+      # No extra inputs are needed to preserve HEALTHCHECK.
 ```
 
 Callers MUST pin `@v1`, never `@main`. The `main` branch of `Roxabi/.github` may receive
@@ -157,7 +164,9 @@ pruned, so the restart is immediate with no pull required. Confirm with
 Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt this pattern:
 
 1. Add a production-ready `Dockerfile` at the repo root following the conventions above: multi-
-   stage, pinned base image, non-root UID, and a working `HEALTHCHECK`.
+   stage, pinned base image, non-root UID, and a working `HEALTHCHECK`. The reusable workflow
+   automatically forces Docker v2 schema 2 manifest format (`oci-mediatypes=false`), so
+   `HEALTHCHECK` is preserved without any extra configuration in the caller workflow.
 2. Create `.github/workflows/publish.yml` by copying the caller template above. Replace
    `image_name` with `ghcr.io/roxabi/<project>` and `release_please_component` with the
    project's component name. Update the `tags` trigger from `lyra/v*` to `<project>/v*`.

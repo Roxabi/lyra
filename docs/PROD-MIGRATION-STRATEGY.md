@@ -1,6 +1,6 @@
 ---
 title: "Roxabi Ecosystem: Prod Migration + Quadlet Adoption Strategy"
-status: Phase 1 Complete (#611)
+status: Phase 2 Complete (#611 Phase 1, #728 Phase 2)
 authors: claude-architect
 date: 2026-04-23
 scope: ecosystem
@@ -42,8 +42,8 @@ register `.mk` delegation targets.
 | `lyra-hub` | `lyra` | `lyra hub` (via supervisord) | 8443 (health) | `~/.lyra/` | yes (4222, TLS, nkey) | false |
 | `lyra-telegram` | `lyra` | `lyra adapter telegram` | — | `~/.lyra/` | yes | false |
 | `lyra-discord` | `lyra` | `lyra adapter discord` | — | `~/.lyra/` | yes | false |
-| `voicecli_tts` | `voiceCLI` | `run_voicecli.sh tts` | — | `~/.local/state/voicecli/` | yes (4222, TLS, nkey `voice-tts.seed`) | false |
-| `voicecli_stt` | `voiceCLI` | `run_voicecli.sh stt` | — | `~/.local/state/voicecli/` | yes (4222, TLS, nkey `voice-stt.seed`) | false |
+| ~~`voicecli_tts`~~ | ~~`voiceCLI`~~ | ~~retired (#728)~~ | — | — | — | **Retired** — `voicecli-tts.container` Quadlet unit |
+| ~~`voicecli_stt`~~ | ~~`voiceCLI`~~ | ~~retired (#728)~~ | — | — | — | **Retired** — `voicecli-stt.container` Quadlet unit |
 | `imagecli_gen` | `imageCLI` | `supervisor/scripts/run_gen.sh` | — | `~/.local/state/imagecli/` | unknown | false |
 | `forge` | `roxabi-forge` | `~/.roxabi/forge/run.sh` | 8080 | `~/.roxabi/forge/` | no | false |
 | `idna` | `roxabi-idna` | `uv run idna_server.py` | 8082 | `~/.roxabi/` or project dir | no | false |
@@ -214,9 +214,9 @@ systemctl --user start lyra.service
 
 ---
 
-### Phase 2: voiceCLI Quadlet — cross-project ADR trigger
+### Phase 2: voiceCLI Quadlet — cross-project ADR trigger ✅ Complete (#728)
 
-**Scope:** voiceCLI (`voicecli_tts`, `voicecli_stt`). This is the first project that is not Lyra. It uses NATS (same auth.conf, same nkey pattern), has GPU requirements (RTX 3080 passthrough), and is currently partially coupled to Lyra (its nkey seeds live in `~/.lyra/nkeys/` per its supervisord conf).
+**Scope:** voiceCLI (`voicecli_tts`, `voicecli_stt`). Shipped 2026-04-26. Quadlet units (`voicecli-{tts,stt}.container`) live in the voiceCLI repo (`deploy/quadlet/`); image published to `ghcr.io/roxabi/voicecli:staging`; GPU passthrough via CDI (`Device=nvidia.com/gpu=all`); shared `roxabi.network`; supervisord conf files removed.
 
 **Why this phase matters:** Every cross-project design question deferred in ADR-053 §6 surfaces here for the first time. Do not start implementation until the cross-project ADR (ADR-053 follow-up 10) is accepted.
 

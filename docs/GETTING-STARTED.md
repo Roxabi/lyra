@@ -437,6 +437,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Lyra project | `~/projects/lyra/` |
 | VoiceCLI project | `~/projects/voiceCLI/` (if installed) |
 | Quadlet units | `~/.config/containers/systemd/lyra-*.container` |
+| VoiceCLI Quadlet units | `~/.config/containers/systemd/voicecli-*.container` (if voiceCLI installed) |
 | Env files | `~/.lyra/env/hub.env`, `telegram.env`, `discord.env` |
 | Config | `~/projects/lyra/config.toml` |
 | Credentials | `~/.lyra/config.db` (encrypted, via `lyra bot add`) |

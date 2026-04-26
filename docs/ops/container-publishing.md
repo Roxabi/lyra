@@ -126,8 +126,8 @@ containers. No manual intervention is needed after a staging merge.
 | lyra-hub | `ghcr.io/roxabi/lyra:staging` | registry |
 | lyra-telegram | `ghcr.io/roxabi/lyra:staging` | registry |
 | lyra-discord | `ghcr.io/roxabi/lyra:staging` | registry |
-| voicecli-tts | `ghcr.io/roxabi/voicecli:staging` | registry |
-| voicecli-stt | `ghcr.io/roxabi/voicecli:staging` | registry |
+| voicecli-tts | `ghcr.io/roxabi/voicecli-tts:staging` | registry |
+| voicecli-stt | `ghcr.io/roxabi/voicecli-stt:staging` | registry |
 | lyra-nats | pinned by digest | none (pinned) |
 
 ### Verify

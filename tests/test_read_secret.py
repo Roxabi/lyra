@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from lyra.bootstrap.infra.health import Secrets
 
 
@@ -49,16 +51,22 @@ class TestSecrets:
 
         assert result == ""
 
-    def test_permission_error_returns_empty_string(self, tmp_path: Path) -> None:
+    def test_permission_error_returns_empty_string(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """PermissionError (OSError) returns empty string instead of propagating."""
+        import logging
+
         vault_dir = self._setup_secrets_dir(tmp_path)
         secret_file = vault_dir / "secrets" / "locked_secret"
         secret_file.write_text("private")
         secret_file.chmod(0o000)
 
         try:
-            result = Secrets(vault_dir=vault_dir)._read("locked_secret")
+            with caplog.at_level(logging.WARNING, logger="lyra.bootstrap.infra.health"):
+                result = Secrets(vault_dir=vault_dir)._read("locked_secret")
             assert result == ""
+            assert "Could not read secret" in caplog.text
         finally:
             # Restore permissions so tmp_path cleanup works
             secret_file.chmod(0o644)

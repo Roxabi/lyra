@@ -32,13 +32,12 @@ from tests.core.conftest import push_to_hub
 
 class TestHealthUnauthenticated:
     async def test_no_token_returns_ok_only(
-        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+        self, hub: Hub
     ) -> None:
         """#207: Unauthenticated /health returns only {"ok": true}."""
-        monkeypatch.delenv("LYRA_HEALTH_SECRET", raising=False)
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=Mock(spec=Secrets, health_secret=""))
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health")
@@ -64,13 +63,12 @@ class TestHealthUnauthenticated:
         assert data == {"ok": True}
 
     async def test_no_secret_configured_returns_ok_only(
-        self, hub: Hub, monkeypatch: pytest.MonkeyPatch
+        self, hub: Hub
     ) -> None:
-        """#207: When LYRA_HEALTH_SECRET is unset, always minimal."""
-        monkeypatch.delenv("LYRA_HEALTH_SECRET", raising=False)
+        """#207: When no secret is configured, always minimal."""
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=Mock(spec=Secrets, health_secret=""))
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get(
@@ -83,10 +81,10 @@ class TestHealthUnauthenticated:
     async def test_empty_secret_env_returns_ok_only(
         self, hub: Hub
     ) -> None:
-        """#207: LYRA_HEALTH_SECRET='' still returns minimal response."""
+        """#207: Empty health_secret still returns minimal response."""
         from lyra.bootstrap.infra.health import create_health_app
 
-        app = create_health_app(hub)
+        app = create_health_app(hub, secrets=Mock(spec=Secrets, health_secret=""))
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/health", headers={"authorization": "Bearer "})

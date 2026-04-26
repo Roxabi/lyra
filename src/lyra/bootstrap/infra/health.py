@@ -6,6 +6,7 @@ import hmac
 import logging
 import os
 import time
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,27 @@ from fastapi import FastAPI, Header, HTTPException
 from lyra.core.hub import Hub
 
 log = logging.getLogger(__name__)
+
+
+class Secrets:
+    def __init__(self, vault_dir: Path | None = None) -> None:
+        self._vault_dir = vault_dir or Path(
+            os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
+        ).resolve()
+
+    def _read(self, name: str) -> str:
+        path = self._vault_dir / "secrets" / name
+        try:
+            return path.read_text().strip()
+        except FileNotFoundError:
+            return ""
+        except OSError as exc:
+            log.warning("Could not read secret %r: %s", name, exc)
+            return ""
+
+    @cached_property
+    def health_secret(self) -> str:
+        return self._read("health_secret")
 
 
 def _probe_nats(nc: Any | None) -> str | None:

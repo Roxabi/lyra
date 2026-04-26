@@ -153,7 +153,9 @@ def register_agents(  # noqa: PLR0913 — registration requires all deps
     tts_service: TtsProtocol | None,
     agent_store: AgentStore | None,
     raw_config: dict,
-    nats_llm_driver: NatsLlmDriver | None,
+    nats_llm_driver: "NatsLlmDriver | None",
+    *,
+    cli_nats_driver: "CliNatsDriver | None" = None,
 ) -> None:
     """Resolve agents from configs and register them on the hub."""
     llm_cfg = _load_llm_config(raw_config)
@@ -167,6 +169,7 @@ def register_agents(  # noqa: PLR0913 — registration requires all deps
         agent_store=agent_store,
         llm_cfg=llm_cfg,
         nats_llm_driver=nats_llm_driver,
+        cli_nats_driver=cli_nats_driver,
     )
     for ag in all_agents.values():
         hub.register_agent(ag)

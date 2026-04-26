@@ -17,10 +17,11 @@ from lyra.infrastructure.stores.pairing import PairingManager, set_pairing_manag
 
 if TYPE_CHECKING:
     from lyra.core.agent import Agent
-    from lyra.core.cli.cli_pool import CliPool
     from lyra.core.hub.hub import Hub
     from lyra.infrastructure.stores.agent_store import AgentStore
     from lyra.infrastructure.stores.auth_store import AuthStore
+    from lyra.llm.drivers.cli_nats import CliNatsDriver
+    from lyra.llm.drivers.nats_driver import NatsLlmDriver
 
 log = logging.getLogger(__name__)
 
@@ -77,8 +78,8 @@ async def shutdown_hub_runtime(  # noqa: PLR0913 — unavoidable wiring surface
     dispatchers,
     proxies,
     pm: PairingManager | None,
-    cli_pool: CliPool | None,
-    nats_llm_driver,
+    cli_nats_driver: "CliNatsDriver | None",
+    nats_llm_driver: "NatsLlmDriver | None",
 ) -> None:
     """Run the post-cancellation teardown sequence for hub_standalone."""
     await readiness_sub.unsubscribe()
@@ -88,12 +89,8 @@ async def shutdown_hub_runtime(  # noqa: PLR0913 — unavoidable wiring surface
         await proxy.publish_stream_errors("hub_shutdown")
     if pm is not None:
         await pm.close()
-    if cli_pool is not None:
-        await cli_pool.drain(timeout=60.0)
-        active_ids = cli_pool.get_active_pool_ids()
-        if active_ids:
-            await hub.notify_shutdown_inflight(active_ids)
-        await cli_pool.stop()
+    if cli_nats_driver is not None:
+        await cli_nats_driver.stop()
     if nats_llm_driver is not None:
         await nats_llm_driver.stop()
     await hub.shutdown()

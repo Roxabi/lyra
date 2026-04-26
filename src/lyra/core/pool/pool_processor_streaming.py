@@ -10,6 +10,8 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ..messaging.message import InboundMessage
     from .pool import Pool
 
@@ -60,7 +62,7 @@ def build_streaming_turn_logger(  # noqa: PLR0913 — internal helper, params bu
     platform: str,
     user_id: str,
     content_parts: list[str],
-) -> tuple[OutboundMessage, object]:
+) -> tuple[OutboundMessage, Callable[[OutboundMessage], Awaitable[None]]]:
     """Build OutboundMessage with turn-logging callback for streaming responses.
 
     Returns:

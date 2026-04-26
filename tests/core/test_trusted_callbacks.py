@@ -120,10 +120,58 @@ def test_unwrap_rejects_lambda_and_logs(caplog: pytest.LogCaptureFixture) -> Non
         result = unwrap_callback(meta, "_session_update_fn")
 
     assert result is None
-    assert caplog.records
+    assert any("Rejected untrusted callback" in r.message for r in caplog.records)
+    assert any("_session_update_fn" in r.message for r in caplog.records)
 
 
 def test_unwrap_pop_missing_key_does_not_raise() -> None:
     meta: dict[str, object] = {}
     result = unwrap_callback(meta, "_on_dispatched", pop=True)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_trusted_callback_propagates_sync_exception() -> None:
+    def _raise() -> None:
+        raise RuntimeError("boom")
+
+    cb = TrustedCallback(_raise)
+    with pytest.raises(RuntimeError, match="boom"):
+        await cb()
+
+
+@pytest.mark.asyncio
+async def test_trusted_callback_propagates_async_exception() -> None:
+    async def _raise() -> None:
+        raise RuntimeError("async boom")
+
+    cb = TrustedCallback(_raise)
+    with pytest.raises(RuntimeError, match="async boom"):
+        await cb()
+
+
+def test_unwrap_rejects_non_callable_value_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    meta: dict[str, object] = {"_on_dispatched": 42}
+
+    with caplog.at_level(logging.WARNING, logger="lyra.core.messaging.callbacks"):
+        result = unwrap_callback(meta, "_on_dispatched")
+
+    assert result is None
+    assert any("Rejected untrusted callback" in r.message for r in caplog.records)
+
+
+def test_unwrap_pop_removes_key_even_on_rejection(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def _raw() -> None:
+        pass
+
+    meta: dict[str, object] = {"_on_dispatched": _raw}
+
+    with caplog.at_level(logging.WARNING, logger="lyra.core.messaging.callbacks"):
+        result = unwrap_callback(meta, "_on_dispatched", pop=True)
+
+    assert result is None
+    assert "_on_dispatched" not in meta

@@ -10,14 +10,12 @@ import collections.abc
 import importlib
 import logging
 import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..agent import AgentBase
     from ..messaging.message import InboundMessage
     from .pool import Pool
-
-from collections.abc import Callable
 
 from ..messaging.callbacks import TrustedCallback
 from ..messaging.message import GENERIC_ERROR_REPLY, OutboundMessage, Response
@@ -204,9 +202,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
             _content_parts,
         )
         pool._inflight_stream_outbound = _outbound
-        _outbound.metadata["_on_dispatched"] = TrustedCallback(
-            cast("Callable[..., object]", _log_callback)
-        )
+        _outbound.metadata["_on_dispatched"] = TrustedCallback(_log_callback)
 
         try:
             await pool._ctx.dispatch_streaming(_original_msg, result, _outbound)

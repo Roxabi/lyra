@@ -107,6 +107,13 @@ class NatsSttClient:
                 SUBJECTS.stt_heartbeat, cb=self._on_heartbeat
             )
 
+    async def stop(self) -> None:
+        """Unsubscribe from heartbeat subject. Idempotent."""
+        if self._hb_sub is not None:
+            await self._hb_sub.unsubscribe()
+            self._hb_sub = None
+            log.debug("NatsSttClient stopped")
+
     def is_available(self) -> bool:
         """Check if any STT workers are registered via heartbeats."""
         return self._registry.any_alive()

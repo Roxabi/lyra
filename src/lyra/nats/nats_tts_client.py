@@ -94,6 +94,13 @@ class NatsTtsClient:
                 SUBJECTS.tts_heartbeat, cb=self._on_heartbeat
             )
 
+    async def stop(self) -> None:
+        """Unsubscribe from heartbeat subject. Idempotent."""
+        if self._hb_sub is not None:
+            await self._hb_sub.unsubscribe()
+            self._hb_sub = None
+            log.debug("NatsTtsClient stopped")
+
     def is_available(self) -> bool:
         """Check if any TTS workers are registered via heartbeats."""
         return self._registry.any_alive()

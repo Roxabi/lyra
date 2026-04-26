@@ -17,7 +17,7 @@ import dataclasses
 import logging
 from typing import TYPE_CHECKING
 
-from ...messaging.message import InboundMessage, Response
+from ...messaging.message import InboundMessage, Response, TelegramMeta
 from ..pipeline.pipeline_types import _DROP, PipelineResult
 
 if TYPE_CHECKING:
@@ -43,9 +43,9 @@ def _build_stt_reply(
     reply: bool = True,
 ) -> InboundMessage:
     """Construct synthetic reply envelope for STT error/echo dispatch."""
-    meta = dict(msg.platform_meta)
-    if not reply:
-        meta.pop("message_id", None)
+    meta = msg.platform_meta
+    if not reply and isinstance(meta, TelegramMeta):
+        meta = dataclasses.replace(meta, message_id=None)
     return dataclasses.replace(
         msg,
         text="",

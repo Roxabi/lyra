@@ -110,7 +110,7 @@ async def _resume_path2(
 ) -> tuple[ResumeStatus | None, bool]:
     """Path 2: thread-session-resume. Returns (status|None, attempted)."""
     hub = ctx.hub
-    thread_session_id: str | None = msg.platform_meta.get("thread_session_id")
+    thread_session_id: str | None = getattr(msg.platform_meta, "thread_session_id", None)
     if thread_session_id is None:
         return None, False
 

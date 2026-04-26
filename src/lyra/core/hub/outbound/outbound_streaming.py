@@ -7,12 +7,12 @@ the fallback text-accumulation path used when an adapter lacks ``send_streaming`
 from __future__ import annotations
 
 import asyncio
-import inspect
 import logging
 import time
 from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING
 
+from ...messaging.callbacks import unwrap_callback
 from ...messaging.message import InboundMessage, OutboundMessage, Platform
 from ...messaging.render_events import TextRenderEvent
 
@@ -123,11 +123,9 @@ class StreamingDispatch:
                     msg.id,
                 )
         if outbound is not None:
-            _dispatched = outbound.metadata.pop("_on_dispatched", None)
-            if callable(_dispatched):
-                _result = _dispatched(outbound)
-                if inspect.isawaitable(_result):
-                    await _result
+            _dispatched = unwrap_callback(outbound.metadata, "_on_dispatched", pop=True)
+            if _dispatched is not None:
+                await _dispatched(outbound)
         stamp = time.monotonic()
 
         # Voice: synthesize TTS after text collected (fallback path)

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import logging
 import time
 from typing import TYPE_CHECKING
 
 from ...circuit_breaker import CircuitBreaker
+from ...messaging.callbacks import unwrap_callback
 from ...messaging.message import RoutingContext
 from .outbound_errors import (
     _CIRCUIT_NOTIFY_DEBOUNCE,
@@ -90,11 +90,9 @@ async def dispatch_outbound_item(  # noqa: C901, PLR0913, PLR0915
         _cb_out = payload if kind == "send" else outbound
         if _cb_out is not None:
             _cb_out.metadata["reply_message_id"] = None
-            _cb = _cb_out.metadata.pop("_on_dispatched", None)
-            if callable(_cb):
-                _cb_result = _cb(_cb_out)
-                if inspect.isawaitable(_cb_result):
-                    await _cb_result
+            _cb = unwrap_callback(_cb_out.metadata, "_on_dispatched", pop=True)
+            if _cb is not None:
+                await _cb(_cb_out)
         # Fix 3: notify user once per chat per debounce window
         scope_key = msg.scope_id or msg.id
         now = time.monotonic()
@@ -167,11 +165,9 @@ async def dispatch_outbound_item(  # noqa: C901, PLR0913, PLR0915
     # "send" → payload is the OutboundMessage; else → outbound.
     _out = payload if kind == "send" else outbound
     if _out is not None:
-        _dispatched = _out.metadata.pop("_on_dispatched", None)
-        if callable(_dispatched):
-            _dispatched_result = _dispatched(_out)
-            if inspect.isawaitable(_dispatched_result):
-                await _dispatched_result
+        _dispatched = unwrap_callback(_out.metadata, "_on_dispatched", pop=True)
+        if _dispatched is not None:
+            await _dispatched(_out)
 
     if _last_exc is not None:
         exc = _last_exc

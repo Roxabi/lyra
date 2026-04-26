@@ -12,12 +12,12 @@ TtsDispatch (outbound_tts.py); audio/attachment logic in AudioDispatch
 from __future__ import annotations
 
 import asyncio
-import inspect
 import logging
 import time
 from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
+from ...messaging.callbacks import unwrap_callback
 from ...messaging.message import InboundMessage, OutboundMessage, Platform, Response
 from .outbound_audio import AudioDispatch
 from .outbound_streaming import StreamingDispatch
@@ -159,7 +159,7 @@ class OutboundRouter:
             outbound = response
         else:
             outbound = response.to_outbound()
-            _cb = response.metadata.get("_on_dispatched")
+            _cb = unwrap_callback(response.metadata, "_on_dispatched")
             if _cb is not None:
                 outbound.metadata["_on_dispatched"] = _cb
         if outbound.routing is None and msg.routing is not None:
@@ -167,11 +167,9 @@ class OutboundRouter:
 
         async def _fallback_and_notify(adapter: "ChannelAdapter") -> None:
             await adapter.send(msg, outbound)
-            _dispatched = outbound.metadata.pop("_on_dispatched", None)
-            if callable(_dispatched):
-                _result = _dispatched(outbound)
-                if inspect.isawaitable(_result):
-                    await _result
+            _dispatched = unwrap_callback(outbound.metadata, "_on_dispatched", pop=True)
+            if _dispatched is not None:
+                await _dispatched(outbound)
 
         await self._route_outbound(
             msg,

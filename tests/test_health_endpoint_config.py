@@ -7,6 +7,7 @@ Classes: TestConfigEndpoint, TestHealthReaperFields.
 from __future__ import annotations
 
 import time
+from unittest.mock import Mock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -26,8 +27,6 @@ class TestConfigEndpoint:
     async def test_config_returns_404_when_no_anthropic_agent(self) -> None:
         """No agent registered → 404."""
         # Arrange
-        from unittest.mock import Mock
-
         mock_secrets = Mock(spec=Secrets, health_secret="test-config-secret")
         test_hub = Hub()
         app = create_health_app(test_hub, secrets=mock_secrets)
@@ -53,8 +52,6 @@ class TestHealthReaperFields:
 
     @pytest.fixture(autouse=True)
     def mock_secrets(self) -> Secrets:
-        from unittest.mock import Mock
-
         return Mock(spec=Secrets, health_secret=HEALTH_SECRET)
 
     async def test_reaper_fields_absent_when_no_cli_pool(

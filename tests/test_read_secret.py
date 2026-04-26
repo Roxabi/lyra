@@ -72,13 +72,17 @@ class TestSecrets:
             secret_file.chmod(0o644)
 
     def test_health_secret_cached_property(self, tmp_path: Path) -> None:
-        """health_secret cached_property reads from secrets/health_secret."""
+        """health_secret cached_property reads once and caches the result."""
+        from unittest.mock import patch
+
         vault_dir = self._setup_secrets_dir(tmp_path)
         (vault_dir / "secrets" / "health_secret").write_text("my-health-token\n")
 
         secrets = Secrets(vault_dir=vault_dir)
-        result = secrets.health_secret
+        with patch.object(secrets, "_read", wraps=secrets._read) as spy:
+            first = secrets.health_secret
+            second = secrets.health_secret
 
-        assert result == "my-health-token"
-        # Second access returns same value (cached_property)
-        assert secrets.health_secret == "my-health-token"
+        assert first == "my-health-token"
+        assert second == "my-health-token"
+        assert spy.call_count == 1

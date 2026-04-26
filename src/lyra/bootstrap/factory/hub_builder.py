@@ -35,6 +35,7 @@ from lyra.stt import STTProtocol
 from lyra.tts import TtsProtocol
 
 if TYPE_CHECKING:
+    from lyra.core.cli.audit_sink import AuditSink
     from lyra.core.messaging.messages import MessageManager
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
@@ -107,7 +108,10 @@ def build_hub(  # noqa: PLR0913 — construction requires all deps
 
 
 async def build_cli_pool(
-    raw_config: dict, agent_configs: dict[str, Agent]
+    raw_config: dict,
+    agent_configs: dict[str, Agent],
+    *,
+    audit_sink: AuditSink | None = None,
 ) -> CliPool | None:
     """Build and start a CliPool if any agent uses the claude-cli backend."""
     cli_pool_cfg = _load_cli_pool_config(raw_config)
@@ -122,6 +126,7 @@ async def build_cli_pool(
                 stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
                 max_idle_retries=cli_pool_cfg.max_idle_retries,
                 intermediate_timeout=cli_pool_cfg.intermediate_timeout,
+                audit_sink=audit_sink,
             )
             await cli_pool.start()
             return cli_pool

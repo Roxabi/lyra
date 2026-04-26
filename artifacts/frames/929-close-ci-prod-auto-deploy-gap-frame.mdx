@@ -1,0 +1,45 @@
+---
+title: Close CI→prod auto-deploy gap for Quadlet containers
+issue: 929
+status: approved
+tier: F-lite
+date: 2026-04-26
+---
+
+## Problem
+
+CI publishes container images to GHCR on every staging merge (`publish.yml` → `ghcr.io/roxabi/lyra:staging`), but nothing on prod (M₁) pulls new images. Quadlet containers keep running stale layers indefinitely until someone manually runs `podman pull` + `systemctl restart`.
+
+This was discovered during a credential outage investigation — the latest deploy was 39h stale despite 4 CI-published images in between. The gap affects lyra (hub, telegram, discord) and voiceCLI (tts, stt). Additionally, roxabi-live is not yet containerized and runs via supervisor with manual git-pull deploys.
+
+The root cause is a half-completed migration: Quadlet units exist on prod but still reference `localhost/lyra:latest` (local build), while the repo-side units already point to `ghcr.io/roxabi/lyra:staging`. Legacy deploy scripts (`deploy.sh`, `deploy-quadlet.sh`, `lyra-deploy.timer`) still operate on the old git-pull + local-build model.
+
+## Who
+
+- **Primary:** Mickael (sole operator) — manual deploy friction, risk of running stale code
+- **Secondary:** End users of lyra (Telegram/Discord) and roxabi-live (dep-graph) — stale deploys = missing fixes/features
+
+## Constraints
+
+- Podman rootless + Quadlet (systemd user units) — not Docker
+- GHCR as sole registry (GitHub Packages, auth via PAT with `read:packages`)
+- M₁ (roxabituwer) is the only prod machine — no cluster, no orchestrator
+- Must not break lyra uptime during migration (hub→adapter restart ordering matters)
+- voiceCLI containers already point to `ghcr.io/roxabi/voicecli:staging` but also lack auto-pull
+
+## Out of Scope
+
+- Containerizing roxabi-live (separate issue — currently supervisor-managed)
+- Blue/green or rolling deployments (single machine, not needed)
+- Monitoring/alerting on deploy failures (can follow up)
+- NATS container management (pinned by digest, managed independently per DEPLOYMENT.md §10)
+
+## Complexity
+
+**Tier: F-lite** — single domain (deploy infra), well-understood Podman auto-update mechanism, clear plan in the issue, no architectural unknowns.
+
+Signals:
+- All changes are config/script, no application code
+- Podman `AutoUpdate=registry` is a documented, stable feature
+- Scope is bounded: 5 `.container` files + timer + script cleanup + docs
+- No cross-project dependencies beyond the shared `publish-container.yml` workflow (already working)

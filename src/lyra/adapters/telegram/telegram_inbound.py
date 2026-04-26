@@ -12,6 +12,7 @@ from lyra.adapters.telegram.telegram_audio import _download_audio
 from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.callbacks import TrustedCallback
 from lyra.core.messaging.message import InboundMessage, Platform
 
 if TYPE_CHECKING:
@@ -91,7 +92,7 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
         ) -> None:
             await _ts.start_session(session_id, pool_id)
 
-        _meta_updates["_session_update_fn"] = _tg_session_update_fn
+        _meta_updates["_session_update_fn"] = TrustedCallback(_tg_session_update_fn)
     if _meta_updates:
         hub_msg = dataclasses.replace(
             hub_msg,

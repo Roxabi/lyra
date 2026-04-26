@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from ..messaging.message import InboundMessage
     from .pool import Pool
 
+from ..messaging.callbacks import TrustedCallback
 from ..messaging.message import GENERIC_ERROR_REPLY, OutboundMessage, Response
 from .pool_processor_streaming import (
     build_streaming_capture,
@@ -201,7 +202,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
             _content_parts,
         )
         pool._inflight_stream_outbound = _outbound
-        _outbound.metadata["_on_dispatched"] = _log_callback
+        _outbound.metadata["_on_dispatched"] = TrustedCallback(_log_callback)
 
         try:
             await pool._ctx.dispatch_streaming(_original_msg, result, _outbound)
@@ -251,7 +252,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
                     role="assistant",
                 )
 
-            result.metadata["_on_dispatched"] = _log_turn
+            result.metadata["_on_dispatched"] = TrustedCallback(_log_turn)
         await pool._ctx.dispatch_response(_original_msg, result)
         await pool._observer.session_update_async(_original_msg)
 

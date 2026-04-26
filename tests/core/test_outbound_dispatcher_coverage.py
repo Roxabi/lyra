@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 from lyra.core.hub.outbound.outbound_errors import _SCOPE_REAP_THRESHOLD
+from lyra.core.messaging.callbacks import TrustedCallback
 from lyra.core.messaging.message import InboundMessage, OutboundMessage, RoutingContext
 from lyra.core.messaging.render_events import TextRenderEvent
 from tests.conftest import TIMEOUT_IO
@@ -125,7 +126,7 @@ class TestOnDispatchedCallback:
             msg = make_dispatcher_msg()
             out = OutboundMessage.from_text("hi")
             called: list[OutboundMessage] = []
-            out.metadata["_on_dispatched"] = called.append
+            out.metadata["_on_dispatched"] = TrustedCallback(called.append)
 
             dispatcher.enqueue(msg, out)
             await asyncio.sleep(0.05)
@@ -151,7 +152,7 @@ class TestOnDispatchedCallback:
             msg = make_dispatcher_msg()
             out = OutboundMessage.from_text("hi")
             called: list[OutboundMessage] = []
-            out.metadata["_on_dispatched"] = called.append
+            out.metadata["_on_dispatched"] = TrustedCallback(called.append)
 
             dispatcher.enqueue(msg, out)
             await asyncio.sleep(0.05)

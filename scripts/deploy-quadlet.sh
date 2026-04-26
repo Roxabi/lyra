@@ -1,4 +1,5 @@
 #!/bin/bash
+# DEPRECATED: replaced by podman-auto-update (see #929). Retained as offline fallback.
 # Deploy script for production — Quadlet/podman path.
 # Pulls latest code, rebuilds the lyra image, restarts systemd user services.
 # Called by: systemd timer (auto) or manual invocation on M₁.

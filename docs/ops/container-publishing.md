@@ -98,10 +98,65 @@ Switching between the two is a one-line edit to the `.container` file followed b
 
 ---
 
-## M1 pull + restart runbook
+## Auto-Update Flow
 
-After a new image is pushed (either `:staging` or a semver tag), pull and restart on M₁
-(`roxabituwer`, rootless podman 5.x):
+Since #929, prod (M₁) uses `podman auto-update` to automatically pull new images and restart
+containers. No manual intervention is needed after a staging merge.
+
+### How it works
+
+1. CI merges to `staging` → `publish.yml` pushes `ghcr.io/roxabi/<project>:staging`
+2. `podman-auto-update.timer` fires every 5 minutes on M₁
+3. `podman auto-update` checks GHCR digest for each container with `AutoUpdate=registry` label
+4. New digest detected → pulls image, restarts the container
+
+### Prerequisites
+
+- **GHCR auth:** `podman login ghcr.io` on M₁ (credential stored in
+  `~/.config/containers/auth.json`). Uses a GitHub PAT or OAuth token with `read:packages`.
+- **AutoUpdate label:** each `.container` file must have
+  `Label=io.containers.autoupdate=registry` in the `[Container]` section.
+- **Timer drop-in:** `~/.config/systemd/user/podman-auto-update.timer.d/override.conf` sets
+  `OnCalendar=*:0/5` (every 5 minutes, no randomized delay).
+
+### Containers managed
+
+| Container | Image | AutoUpdate |
+|---|---|---|
+| lyra-hub | `ghcr.io/roxabi/lyra:staging` | registry |
+| lyra-telegram | `ghcr.io/roxabi/lyra:staging` | registry |
+| lyra-discord | `ghcr.io/roxabi/lyra:staging` | registry |
+| voicecli-tts | `ghcr.io/roxabi/voicecli:staging` | registry |
+| voicecli-stt | `ghcr.io/roxabi/voicecli:staging` | registry |
+| lyra-nats | pinned by digest | none (pinned) |
+
+### Verify
+
+```bash
+# Check timer is active
+systemctl --user is-active podman-auto-update.timer
+
+# Dry-run — lists containers and whether an update is pending
+podman auto-update --dry-run
+
+# Force an immediate update check
+podman auto-update
+```
+
+### Caveats
+
+- `podman auto-update` restarts containers independently — it does **not** respect Quadlet
+  `After=` ordering. Adapters may restart before hub. NATS reconnect logic handles this.
+- If the GHCR token expires, auto-update silently stops pulling. Check with
+  `podman login --get-login ghcr.io`.
+- Podman does not auto-rollback on startup failure. A bad image enters a restart loop
+  (`Restart=on-failure`). Check with `podman ps` or `journalctl --user -u <unit>`.
+
+---
+
+## M1 manual pull + restart (fallback)
+
+If auto-update is disabled or you need an immediate deploy without waiting for the timer:
 
 ```bash
 podman pull ghcr.io/roxabi/lyra:staging
@@ -121,22 +176,18 @@ curl -fsS localhost:8443/health
 
 ---
 
-## M1 auth for private images (future)
+## M1 GHCR auth
 
-Public GHCR images require no authentication; `podman pull` works without credentials as long
-as the image visibility is set to public in the GitHub package settings.
-
-If a project is ever published as a private package, authenticate before pulling. Store the
-credential in the rootless containers config so it persists across reboots:
+GHCR auth is required for `podman auto-update` to check image digests. Store the credential
+in the rootless containers config so it persists across reboots:
 
 ```bash
 podman login ghcr.io
-# Enter GitHub username and a PAT with read:packages scope.
-# Credential is stored at ~/.config/containers/auth.json (rootless)
-# or ~/.docker/config.json if podman falls back to the Docker credential store.
+# Enter GitHub username and a PAT with read:packages scope (or use gh auth token).
+# Credential is stored at ~/.config/containers/auth.json (rootless).
 ```
 
-This is a placeholder — no Roxabi project currently requires GHCR authentication to pull.
+Verify: `podman login --get-login ghcr.io` should print the username.
 
 ---
 

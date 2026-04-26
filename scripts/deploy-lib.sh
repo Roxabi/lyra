@@ -1,4 +1,5 @@
 #!/bin/bash
+# DEPRECATED: replaced by podman-auto-update (see #929). Retained as offline fallback.
 # deploy-lib.sh — shared Quadlet deploy library for the Roxabi ecosystem.
 # Installed from lyra @ <commit-sha>
 #

@@ -1,4 +1,5 @@
 #!/bin/bash
+# DEPRECATED: replaced by podman-auto-update (see #929). Retained as offline fallback.
 # Deploy script for production — pull latest code, install deps, restart changed services.
 # Called by: systemd timer (auto) or `make deploy` (manual from dev machine).
 #

@@ -1,7 +1,7 @@
 [Unit]
 Description=Lyra Hub
-After=nats.service
-Requires=nats.service
+After=lyra-nats.service
+Requires=lyra-nats.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -10,6 +10,7 @@ StartLimitBurst=5
 # (CI tag-by-SHA strategy). Upstream registry images (e.g. nats.container)
 # are pinned by digest directly.
 Image=ghcr.io/roxabi/lyra:staging
+Label=io.containers.autoupdate=registry
 ContainerName=lyra-hub
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).

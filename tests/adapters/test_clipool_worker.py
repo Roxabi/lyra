@@ -16,6 +16,8 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from lyra.core.cli.cli_pool import CliPool, CliResult
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
 
@@ -283,11 +285,12 @@ async def test_handle_control_resume_and_reset() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_handle_control_switch_cwd() -> None:
+async def test_handle_control_switch_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
     """op='switch_cwd': pool.switch_cwd() called with pool_id and cwd."""
     from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
-    # Arrange
+    # Arrange — allow /tmp as the base so /tmp/workspace passes the guard
+    monkeypatch.setenv("LYRA_CLAUDE_CWD", "/tmp")
     pool = _make_pool()
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()

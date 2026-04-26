@@ -9,6 +9,7 @@ via NATS request-reply inbox.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -117,6 +118,9 @@ class CliPoolNatsWorker(NatsAdapterBase):
             cmd = CliCmdPayload.model_validate(payload)
         except Exception:
             log.exception("clipool_worker: failed to parse CliCmdPayload")
+            await self.reply(
+                msg, _make_chunk("", event_type="error", is_error=True, done=True)
+            )
             return
 
         model_cfg = ModelConfig.model_validate(cmd.model_cfg)
@@ -218,6 +222,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             cmd = CliControlCmd.model_validate(payload)
         except Exception:
             log.exception("clipool_worker: failed to parse CliControlCmd")
+            await self.reply(msg, _make_ack("", ok=False))
             return
 
         try:
@@ -255,7 +260,21 @@ class CliPoolNatsWorker(NatsAdapterBase):
                     cmd.pool_id,
                 )
                 return _make_ack(cmd.pool_id, ok=False)
-            await self._pool.switch_cwd(cmd.pool_id, Path(cmd.cwd))
+            base_dir = Path(
+                os.environ.get("LYRA_CLAUDE_CWD", str(Path.home() / "projects"))
+            ).resolve()
+            try:
+                resolved = Path(cmd.cwd).resolve()
+                resolved.relative_to(base_dir)  # raises ValueError if outside
+            except ValueError:
+                log.warning(
+                    "clipool_worker: switch_cwd path %r escapes base %r for pool_id=%r",
+                    cmd.cwd,
+                    str(base_dir),
+                    cmd.pool_id,
+                )
+                return _make_ack(cmd.pool_id, ok=False)
+            await self._pool.switch_cwd(cmd.pool_id, resolved)
             return _make_ack(cmd.pool_id, ok=True)
 
         log.warning(

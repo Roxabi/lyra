@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 if TYPE_CHECKING:
@@ -551,3 +551,137 @@ class TestSimpleAgentCliLifecycle:
         # Assert — reset fn not registered, response returned cleanly
         assert pool._session_reset_fn is None
         assert isinstance(response, Response)
+
+
+# ---------------------------------------------------------------------------
+# TestSimpleAgentIsBackendAlive
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleAgentIsBackendAlive:
+    def test_delegates_to_provider(self) -> None:
+        provider = MagicMock()
+        provider.is_alive = MagicMock(return_value=True)
+        agent = make_agent(provider)
+
+        assert agent.is_backend_alive("pool-1") is True
+        provider.is_alive.assert_called_once_with("pool-1")
+
+    def test_returns_false_when_provider_says_false(self) -> None:
+        provider = MagicMock()
+        provider.is_alive = MagicMock(return_value=False)
+        agent = make_agent(provider)
+
+        assert agent.is_backend_alive("pool-1") is False
+
+
+# ---------------------------------------------------------------------------
+# TestSimpleAgentResetBackend
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleAgentResetBackend:
+    async def test_reset_routes_through_cli_pool(self) -> None:
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        cli_pool = MagicMock()
+        cli_pool.reset = AsyncMock()
+        agent = make_agent_with_cli_pool(provider, cli_pool)
+
+        await agent.reset_backend("pool-1")
+
+        cli_pool.reset.assert_awaited_once_with("pool-1")
+
+    async def test_noop_when_no_cli_pool(self) -> None:
+        provider = MagicMock()
+        agent = make_agent(provider)
+
+        await agent.reset_backend("pool-1")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# TestSimpleAgentSessionToolsFailure
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleAgentSessionToolsFailure:
+    def test_session_tools_build_failure_sets_none(self, monkeypatch: Any) -> None:
+        """When SessionTools construction fails, _session_tools is None and no crash."""
+        from lyra.integrations import web_intel
+
+        monkeypatch.setattr(
+            web_intel, "WebIntelScraper", MagicMock(side_effect=RuntimeError("no bin"))
+        )
+
+        provider = MagicMock()
+        provider.is_alive = MagicMock(return_value=True)
+        agent = make_agent(provider)
+
+        assert agent._session_tools is None
+
+
+# ---------------------------------------------------------------------------
+# TestSimpleAgentVoiceRewrite
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleAgentVoiceRewrite:
+    async def test_voice_command_rewrites_message(self) -> None:
+        """'/voice prompt' rewrites msg with voice modality."""
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(result="spoken reply", session_id="s1")
+        )
+        tts = MagicMock()
+        config = Agent(
+            name="lyra",
+            system_prompt="You are Lyra.",
+            memory_namespace="lyra",
+            llm_config=ModelConfig(),
+        )
+        agent = SimpleAgent(config, cast("LlmProvider", provider), tts=tts)
+        msg = make_inbound_message("/voice tell me a joke")
+        pool = make_pool()
+
+        response = await agent.process(msg, pool)
+
+        assert isinstance(response, Response)
+        assert response.speak is True
+        call_args = provider.complete.call_args[0]
+        assert "tell me a joke" in call_args[1]
+
+
+# ---------------------------------------------------------------------------
+# TestSimpleAgentEmptyReply
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleAgentEmptyReply:
+    async def test_empty_reply_returns_response_with_empty_content(self) -> None:
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(result="", session_id="s1")
+        )
+        agent = make_agent(provider)
+        msg = make_inbound_message("hi")
+        pool = make_pool()
+
+        response = await agent.process(msg, pool)
+
+        assert isinstance(response, Response)
+        assert response.content == ""
+        assert response.metadata["session_id"] == "s1"
+
+    async def test_voice_modality_sets_speak_true(self) -> None:
+        """Non-voice messages have speak=False by default."""
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(result="reply", session_id="s1")
+        )
+        agent = make_agent(provider)
+        msg = make_inbound_message("hi")
+        pool = make_pool()
+
+        response = await agent.process(msg, pool)
+
+        assert isinstance(response, Response)
+        assert response.speak is False

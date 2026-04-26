@@ -42,10 +42,20 @@ def acquire_lockfile() -> None:
             pid = int(pid_str)
             try:
                 os.kill(pid, 0)  # signal 0 = existence check only
-                sys.exit(
-                    f"Hub is already running (PID {pid}). "
-                    f"Remove {lf} if the process is stale."
-                )
+                # In a container the hub runs as PID 1; on OOM-kill the atexit
+                # handler is skipped, so the lock persists. The next container
+                # restart also gets PID 1, making the stale PID appear alive.
+                if pid == os.getpid():
+                    log.warning(
+                        "Stale lockfile found (PID %d matches our PID"
+                        " — container restart?) — overwriting",
+                        pid,
+                    )
+                else:
+                    sys.exit(
+                        f"Hub is already running (PID {pid}). "
+                        f"Remove {lf} if the process is stale."
+                    )
             except ProcessLookupError:
                 # PID no longer alive — stale lockfile, safe to overwrite
                 log.warning(

@@ -301,6 +301,7 @@ class TestNatsBusSanitization:
         assert isinstance(item.platform_meta, GenericMeta), (
             f"Expected GenericMeta, got {item.platform_meta!r}"
         )
+        assert item.platform_meta == GenericMeta()
 
 
 # ---------------------------------------------------------------------------

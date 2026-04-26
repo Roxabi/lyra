@@ -102,6 +102,13 @@ class NatsImageClient:
                 SUBJECTS.image_heartbeat, cb=self._on_heartbeat
             )
 
+    async def stop(self) -> None:
+        """Unsubscribe from heartbeat subject. Idempotent."""
+        if self._hb_sub is not None:
+            await self._hb_sub.unsubscribe()
+            self._hb_sub = None
+            log.debug("NatsImageClient stopped")
+
     async def _on_heartbeat(self, msg) -> None:
         try:
             data = json.loads(msg.data)

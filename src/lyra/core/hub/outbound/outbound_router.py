@@ -159,7 +159,7 @@ class OutboundRouter:
             outbound = response
         else:
             outbound = response.to_outbound()
-            _cb = unwrap_callback(response.metadata, "_on_dispatched")
+            _cb = unwrap_callback(response.metadata, "_on_dispatched", pop=True)
             if _cb is not None:
                 outbound.metadata["_on_dispatched"] = _cb
         if outbound.routing is None and msg.routing is not None:

@@ -143,6 +143,26 @@ Key decisions carried forward:
 | devops | 5 | `roxabi-nats/pyproject.toml`, `roxabi-contracts/pyproject.toml`, `lyra-clipool.container`, `clipool.env.example`, `lyra-hub.container`, `auth.conf` |
 | doc-writer | 1 | `docs/architecture/container-split.md` |
 
+## Wave Structure
+
+7 waves, max 4 parallel agents. Elapsed ~3 weeks vs ~10 sequential.
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | 4 ∥ | tester-A: T1 · backend-A: T2 · tester-B: T5 · backend-B: T6 |
+| 2 | Wave 1 done | 2 ∥ | devops: T3+T7 (version bumps) · tester: T4+T8 (RED-GATEs V0+V1) |
+| 3 | RED-GATEs V0+V1 | 4 ∥ | tester-A: T9 · backend-A: T10 · tester-B: T14 · backend-B: T15 |
+| 4 | Wave 3 done | 4 ∥ | backend-A: T11→T12 · backend-B: T16→T17+T18→T19 · devops: T24+T26 · doc-writer: T27 |
+| 5 | Wave 4 done | 2 ∥ | tester: T13+T20 (RED-GATEs V2+V3) · devops: T25 |
+| 6 | RED-GATEs V2+V3 | 2 ∥ | tester: T21 · backend: T22 |
+| 7 | Wave 6 done | 1 | tester: T23 (RED-GATE V4) → done |
+
+**Wave 4 detail** — two sequential chains run in parallel:
+- `backend-A`: T11 `clipool_standalone` → T12 `lyra adapter clipool` in `cli.py`
+- `backend-B`: T16 re-export → T17 `hub_builder` ∥ T18 `agent_factory` → T19 `hub_standalone`
+
+**V5 infra** slots into Wave 4 alongside code — no dedicated wave.
+
 ## Consistency Report
 
 - Criteria covered: 9/9 success criteria

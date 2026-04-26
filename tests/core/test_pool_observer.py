@@ -9,10 +9,12 @@ Covers:
 
 from __future__ import annotations
 
+import dataclasses
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.core.messaging.message import TelegramMeta
 from lyra.core.pool.pool_observer import PoolObserver
 from tests.core.conftest import make_inbound_message
 
@@ -219,7 +221,11 @@ class TestMessageIndexPopulation:
         obs.register_message_index(mi)
 
         msg = make_inbound_message()
-        msg.platform_meta["message_id"] = 42  # Telegram int
+        assert isinstance(msg.platform_meta, TelegramMeta)
+        msg = dataclasses.replace(
+            msg,
+            platform_meta=dataclasses.replace(msg.platform_meta, message_id=42),
+        )
         await obs.append(msg, session_id=_SESSION_ID)
 
         mi.upsert.assert_called_once_with(_POOL_ID, "42", _SESSION_ID, "user")
@@ -229,7 +235,11 @@ class TestMessageIndexPopulation:
         """append() does not fail when no MessageIndex is registered."""
         obs = _make_observer()
         msg = make_inbound_message()
-        msg.platform_meta["message_id"] = 42
+        assert isinstance(msg.platform_meta, TelegramMeta)
+        msg = dataclasses.replace(
+            msg,
+            platform_meta=dataclasses.replace(msg.platform_meta, message_id=42),
+        )
         await obs.append(msg, session_id=_SESSION_ID)  # should not raise
 
     @pytest.mark.anyio
@@ -241,8 +251,12 @@ class TestMessageIndexPopulation:
         obs.register_message_index(mi)
 
         msg = make_inbound_message()
-        # No message_id in platform_meta
-        msg.platform_meta.pop("message_id", None)
+        assert isinstance(msg.platform_meta, TelegramMeta)
+        # Set message_id to None — observer should skip indexing
+        msg = dataclasses.replace(
+            msg,
+            platform_meta=dataclasses.replace(msg.platform_meta, message_id=None),
+        )
         await obs.append(msg, session_id=_SESSION_ID)
 
         mi.upsert.assert_not_called()

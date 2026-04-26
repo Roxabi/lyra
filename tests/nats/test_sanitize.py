@@ -20,6 +20,7 @@ import pytest
 from lyra.core.hub.middleware import PipelineContext
 from lyra.core.hub.middleware.path_validation import resolve_context
 from lyra.core.hub.pipeline.message_pipeline import ResumeStatus
+from lyra.core.messaging.message import TelegramMeta
 from roxabi_nats._sanitize import PLATFORM_META_ALLOWLIST, sanitize_platform_meta
 from tests.core.conftest import _make_hub, make_inbound_message
 
@@ -218,9 +219,10 @@ class TestNatsBusSanitization:
     """Verify sanitization fires inside the NatsBus handler closure."""
 
     def test_handler_sanitizes_platform_meta(self) -> None:
-        """NatsBus handler strips unknown keys via dataclasses.replace."""
+        """Typed TelegramMeta round-trips cleanly via serialize → deserialize."""
         from lyra.core.auth.trust import TrustLevel
-        from lyra.core.messaging.message import InboundMessage, Platform
+        from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
+        from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
         from roxabi_nats._serialize import deserialize, serialize
 
         msg = InboundMessage(
@@ -234,22 +236,14 @@ class TestNatsBusSanitization:
             text="hello",
             text_raw="hello",
             trust_level=TrustLevel.PUBLIC,
-            platform_meta={
-                "chat_id": 123,
-                "is_group": False,
-                "evil_key": "should_vanish",
-            },
+            platform_meta=TelegramMeta(chat_id=123, is_group=False),
         )
-        # Simulate the handler: serialize → deserialize → sanitize
+        # Simulate the handler: serialize → deserialize with type registry
         raw = serialize(msg)
-        item = deserialize(raw, InboundMessage)
-        assert "evil_key" in item.platform_meta
-        cleaned = dataclasses.replace(
-            item,
-            platform_meta=sanitize_platform_meta(item.platform_meta),
-        )
-        assert "evil_key" not in cleaned.platform_meta
-        assert cleaned.platform_meta["chat_id"] == 123
+        item = deserialize(raw, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
+        assert isinstance(item.platform_meta, TelegramMeta)
+        assert item.platform_meta.chat_id == 123
+        assert item.platform_meta.is_group is False
 
 
 # ---------------------------------------------------------------------------
@@ -276,8 +270,10 @@ class TestScopeValidation:
         ctx = PipelineContext(hub=hub)
 
         _base = make_inbound_message(scope_id="chat:99")
+        assert isinstance(_base.platform_meta, TelegramMeta)
         msg = dataclasses.replace(
-            _base, platform_meta={**_base.platform_meta, "thread_session_id": "sess-1"}
+            _base,
+            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="sess-1"),
         )
 
         # Act
@@ -309,9 +305,10 @@ class TestScopeValidation:
         ctx = PipelineContext(hub=hub)
 
         _base = make_inbound_message(scope_id="chat:42")
+        assert isinstance(_base.platform_meta, TelegramMeta)
         msg = dataclasses.replace(
             _base,
-            platform_meta={**_base.platform_meta, "thread_session_id": "sess-live"},
+            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="sess-live"),
         )
 
         # Act
@@ -336,9 +333,10 @@ class TestScopeValidation:
         ctx = PipelineContext(hub=hub)
 
         _base = make_inbound_message(scope_id="chat:42")
+        assert isinstance(_base.platform_meta, TelegramMeta)
         msg = dataclasses.replace(
             _base,
-            platform_meta={**_base.platform_meta, "thread_session_id": "sess-ghost"},
+            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="sess-ghost"),
         )
 
         # Act
@@ -362,9 +360,10 @@ class TestScopeValidation:
         ctx = PipelineContext(hub=hub)
 
         _base = make_inbound_message(scope_id="chat:42")
+        assert isinstance(_base.platform_meta, TelegramMeta)
         msg = dataclasses.replace(
             _base,
-            platform_meta={**_base.platform_meta, "thread_session_id": "sess-any"},
+            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="sess-any"),
         )
 
         # Act
@@ -392,7 +391,8 @@ class TestScopeValidation:
         ctx = PipelineContext(hub=hub)
 
         msg = make_inbound_message(scope_id="chat:42")
-        assert msg.platform_meta.get("thread_session_id") is None
+        assert isinstance(msg.platform_meta, TelegramMeta)
+        assert msg.platform_meta.thread_session_id is None
 
         # Act
         status = await resolve_context(msg, pool, pool_id, ctx)
@@ -422,9 +422,10 @@ class TestScopeValidation:
         ctx = PipelineContext(hub=hub)
 
         _base = make_inbound_message(scope_id="chat:42")
+        assert isinstance(_base.platform_meta, TelegramMeta)
         msg = dataclasses.replace(
             _base,
-            platform_meta={**_base.platform_meta, "thread_session_id": "sess-cross"},
+            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="sess-cross"),
         )
 
         # Act

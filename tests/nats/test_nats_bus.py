@@ -20,8 +20,10 @@ from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import (
     Attachment,
+    DiscordMeta,
     InboundMessage,
     Platform,
+    TelegramMeta,
 )
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
@@ -36,21 +38,10 @@ from tests.nats.conftest import requires_nats_server
 def _make_msg(platform: Platform = Platform.TELEGRAM) -> InboundMessage:
     if platform == Platform.TELEGRAM:
         scope = "chat:123"
-        meta: dict = {
-            "chat_id": 123,
-            "topic_id": None,
-            "message_id": None,
-            "is_group": False,
-        }
+        meta: TelegramMeta | DiscordMeta = TelegramMeta(chat_id=123)
     else:
         scope = "channel:2"
-        meta = {
-            "guild_id": 1,
-            "channel_id": 2,
-            "message_id": 3,
-            "thread_id": None,
-            "channel_type": "text",
-        }
+        meta = DiscordMeta(guild_id=1, channel_id=2, message_id=3, channel_type="text")
     return InboundMessage(
         id="msg-1",
         platform=platform.value,
@@ -78,7 +69,7 @@ def _make_bus(nc: NATS) -> NatsBus:
 
 class TestSerialize:
     def test_callable_stripped_from_platform_meta(self) -> None:
-        """Callables in platform_meta must be stripped during serialization."""
+        """Typed platform_meta survives serialize/deserialize round-trip (no callables)."""
         # Arrange
         msg = InboundMessage(
             id="msg-callable",
@@ -92,19 +83,19 @@ class TestSerialize:
             text_raw="hi",
             timestamp=datetime.now(timezone.utc),
             trust_level=TrustLevel.PUBLIC,
-            platform_meta={"_session_update_fn": lambda: None, "chat_id": 99},
+            platform_meta=TelegramMeta(chat_id=99),
         )
 
         # Act
         payload = serialize(msg)
         result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
 
-        # Assert
-        assert "_session_update_fn" not in result.platform_meta
-        assert result.platform_meta.get("chat_id") == 99
+        # Assert — typed fields survive the round-trip
+        assert isinstance(result.platform_meta, TelegramMeta)
+        assert result.platform_meta.chat_id == 99
 
     def test_non_callable_platform_meta_preserved(self) -> None:
-        """Non-callable values in platform_meta survive the round-trip intact."""
+        """Typed TelegramMeta fields survive the round-trip intact."""
         # Arrange
         msg = InboundMessage(
             id="msg-meta",
@@ -118,7 +109,7 @@ class TestSerialize:
             text_raw="hi",
             timestamp=datetime.now(timezone.utc),
             trust_level=TrustLevel.PUBLIC,
-            platform_meta={"chat_id": 42, "is_group": True, "label": "vip"},
+            platform_meta=TelegramMeta(chat_id=42, is_group=True),
         )
 
         # Act
@@ -126,9 +117,9 @@ class TestSerialize:
         result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
 
         # Assert
-        assert result.platform_meta["chat_id"] == 42
-        assert result.platform_meta["is_group"] is True
-        assert result.platform_meta["label"] == "vip"
+        assert isinstance(result.platform_meta, TelegramMeta)
+        assert result.platform_meta.chat_id == 42
+        assert result.platform_meta.is_group is True
 
     def test_enum_roundtrip(self) -> None:
         """TrustLevel enum survives serialize → deserialize as the same enum member."""
@@ -208,7 +199,8 @@ class TestSerialize:
         assert isinstance(result.trust_level, TrustLevel)
         assert result.trust_level == TrustLevel.TRUSTED
         assert result.timestamp.tzinfo is not None
-        assert result.platform_meta["chat_id"] == 123
+        assert isinstance(result.platform_meta, TelegramMeta)
+        assert result.platform_meta.chat_id == 123
 
     def test_bytes_roundtrip(self) -> None:
         """bytes field (Attachment.url_or_path_or_bytes) survives as bytes."""
@@ -368,10 +360,7 @@ class TestNatsBusRoundTrip:
             text_raw="hello",
             timestamp=datetime.now(timezone.utc),
             trust_level=TrustLevel.TRUSTED,
-            platform_meta={
-                "_session_update_fn": lambda: "should not cross",
-                "chat_id": 123,
-            },
+            platform_meta=TelegramMeta(chat_id=123),
         )
 
         try:
@@ -379,9 +368,9 @@ class TestNatsBusRoundTrip:
             await publisher.put(Platform.TELEGRAM, msg)
             received = await asyncio.wait_for(subscriber.get(), timeout=2.0)
 
-            # Assert — callable gone, non-callable preserved
-            assert "_session_update_fn" not in received.platform_meta
-            assert received.platform_meta.get("chat_id") == 123
+            # Assert — typed platform_meta fields preserved across NATS transit
+            assert isinstance(received.platform_meta, TelegramMeta)
+            assert received.platform_meta.chat_id == 123
         finally:
             await subscriber.stop()
 

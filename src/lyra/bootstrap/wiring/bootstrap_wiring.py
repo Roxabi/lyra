@@ -21,12 +21,12 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
 from lyra.core.messaging.message import Platform
 from lyra.core.messaging.messages import MessageManager
-from lyra.core.stores.thread_store import ThreadStore
 from lyra.errors import MissingCredentialsError
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.credential_store import CredentialStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from lyra.infrastructure.stores.thread_store import ThreadStore
 
 # Default vault dir for discord.db (#417 / S4)
 _DEFAULT_VAULT_DIR = os.path.expanduser("~/.lyra")

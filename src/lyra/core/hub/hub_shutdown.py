@@ -10,6 +10,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.infrastructure.stores.turn_store import TurnStore
 
     from ..circuit_breaker import CircuitRegistry
@@ -17,7 +18,6 @@ if TYPE_CHECKING:
     from ..messaging.message import Platform
     from ..messaging.messages import MessageManager
     from ..pool import Pool
-    from ..stores.message_index import MessageIndex
     from .hub_protocol import ChannelAdapter
     from .outbound import OutboundDispatcher
     from .pipeline import PoolManager

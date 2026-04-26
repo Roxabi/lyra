@@ -17,12 +17,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator
 
-from lyra.core.stores.message_index import MessageIndex
-from lyra.core.stores.prefs_store import PrefsStore
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.credential_store import CredentialStore, LyraKeyring
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from lyra.infrastructure.stores.message_index import MessageIndex
+from lyra.infrastructure.stores.prefs_store import PrefsStore
 from lyra.infrastructure.stores.turn_store import TurnStore
 
 log = logging.getLogger(__name__)

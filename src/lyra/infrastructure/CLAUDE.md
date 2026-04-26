@@ -21,10 +21,10 @@ All files will be moved from `src/lyra/core/stores/`:
 | `auth_store.py` | **migrated** | `infrastructure/stores/auth_store.py` |
 | `credential_store.py` | pending | `infrastructure/stores/credential_store.py` |
 | `identity_alias_store.py` | pending | `infrastructure/stores/identity_alias_store.py` |
-| `message_index.py` | pending | `infrastructure/stores/message_index.py` |
-| `pairing.py` | pending | `infrastructure/stores/pairing.py` |
-| `prefs_store.py` | pending | `infrastructure/stores/prefs_store.py` |
-| `thread_store.py` | pending | `infrastructure/stores/thread_store.py` |
+| `message_index.py` | **migrated** | `infrastructure/stores/message_index.py` |
+| `pairing.py` | **migrated** | `infrastructure/stores/pairing.py` |
+| `prefs_store.py` | **migrated** | `infrastructure/stores/prefs_store.py` |
+| `thread_store.py` | **migrated** | `infrastructure/stores/thread_store.py` |
 | `turn_store.py` | **migrated** | `infrastructure/stores/turn_store.py` |
 | `turn_store_queries.py` | **migrated** | `infrastructure/stores/turn_store_queries.py` |
 | `turn_store_session.py` | **migrated** | `infrastructure/stores/turn_store_session.py` |

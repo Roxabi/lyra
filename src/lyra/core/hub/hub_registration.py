@@ -13,6 +13,7 @@ from .hub_protocol import Binding, ChannelAdapter, RoutingKey
 
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+    from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.infrastructure.stores.turn_store import TurnStore
 
     from ..agent import AgentBase
@@ -20,7 +21,6 @@ if TYPE_CHECKING:
     from ..memory import MemoryManager
     from ..messaging.bus import Bus
     from ..pool import Pool
-    from ..stores.message_index import MessageIndex
     from .outbound import OutboundDispatcher
 
 

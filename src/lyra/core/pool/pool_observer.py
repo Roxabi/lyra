@@ -5,10 +5,10 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
+    from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.infrastructure.stores.turn_store import TurnStore
 
     from ..messaging.message import InboundMessage
-    from ..stores.message_index import MessageIndex
 
 log = logging.getLogger(__name__)
 

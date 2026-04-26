@@ -10,7 +10,7 @@ import logging
 
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from lyra.core.stores.pairing import PairingError, get_pairing_manager
+from lyra.infrastructure.stores.pairing import PairingError, get_pairing_manager
 
 log = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from lyra.core.stores.message_index import MessageIndex
+from lyra.infrastructure.stores.message_index import MessageIndex
 
 
 @pytest.fixture

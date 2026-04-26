@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 from contextvars import copy_context
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from lyra.core.hub.middleware import PipelineContext
 from lyra.core.hub.middleware.middleware_stages import (
@@ -158,7 +160,8 @@ class TestTraceMiddleware:
         """trace_id must be available when next() runs."""
         captured_ids: list[str | None] = []
 
-        async def _capturing_next(msg, ctx):
+        async def _capturing_next(*_args: object) -> PipelineResult:
+            del _args
             captured_ids.append(TraceContext.get_trace_id())
             return _PASS
 
@@ -175,7 +178,8 @@ class TestTraceMiddleware:
     async def test_each_call_gets_unique_trace_id(self) -> None:
         ids: list[str | None] = []
 
-        async def _capturing_next(msg, ctx):
+        async def _capturing_next(*_args: object) -> PipelineResult:
+            del _args
             ids.append(TraceContext.get_trace_id())
             return _PASS
 
@@ -207,14 +211,13 @@ class TestTraceMiddleware:
 class TestPoolIdContextVar:
     async def test_create_pool_sets_pool_id_contextvar(self) -> None:
         """CreatePoolMiddleware must set pool_id in TraceContext."""
-        from unittest.mock import MagicMock
-
         from lyra.core.hub.hub import Binding, RoutingKey
         from lyra.core.messaging.message import Platform
 
         captured_pool_ids: list[str | None] = []
 
-        async def _capturing_next(msg, ctx):
+        async def _capturing_next(*_args: object) -> PipelineResult:
+            del _args
             captured_pool_ids.append(TraceContext.get_pool_id())
             return _PASS
 
@@ -239,6 +242,121 @@ class TestPoolIdContextVar:
 
         assert len(captured_pool_ids) == 1
         assert captured_pool_ids[0] == "telegram:main:chat:42"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# TraceContext.agent_name ContextVar
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestTraceContextAgentName:
+    def test_get_agent_name_returns_none_when_unset(self) -> None:
+        ctx = copy_context()
+        assert ctx.run(TraceContext.get_agent_name) is None
+
+    def test_set_and_get_agent_name(self) -> None:
+        def _inner():
+            TraceContext.set_agent_name("my-agent")
+            return TraceContext.get_agent_name()
+
+        ctx = copy_context()
+        assert ctx.run(_inner) == "my-agent"
+
+    def test_reset_agent_name(self) -> None:
+        def _inner():
+            token = TraceContext.set_agent_name("my-agent")
+            assert TraceContext.get_agent_name() == "my-agent"
+            TraceContext.reset_agent_name(token)
+            return TraceContext.get_agent_name()
+
+        ctx = copy_context()
+        assert ctx.run(_inner) is None
+
+    def test_agent_name_isolated_across_contexts(self) -> None:
+        def _set_and_get():
+            TraceContext.set_agent_name("context-a-agent")
+            return TraceContext.get_agent_name()
+
+        ctx_a = copy_context()
+        ctx_b = copy_context()
+
+        result_a = ctx_a.run(_set_and_get)
+        result_b = ctx_b.run(TraceContext.get_agent_name)
+
+        assert result_a == "context-a-agent"
+        assert result_b is None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# guarded_process_one — agent_name ContextVar set/reset
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestGuardedProcessOneAgentName:
+    async def test_guarded_process_one_sets_agent_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """agent_name ContextVar must equal pool.agent_name during execution."""
+        from lyra.core.pool.pool_processor_exec import guarded_process_one
+
+        captured: list[str | None] = []
+
+        async def _fake_process(*_args: object) -> None:
+            del _args
+            captured.append(TraceContext.get_agent_name())
+
+        pool = MagicMock()
+        pool.agent_name = "test-agent"
+        pool.pool_id = "telegram:main:chat:1"
+        pool._turn_timeout = None
+        pool._msg = MagicMock(return_value="reply")
+        pool._ctx = MagicMock()
+        pool._ctx.record_circuit_failure = MagicMock()
+
+        agent = MagicMock()
+        agent.is_backend_alive = MagicMock(return_value=True)
+        agent.reset_backend = AsyncMock()
+
+        msg = MagicMock()
+        msg.scope_id = "chat:1"
+
+        monkeypatch.setattr(
+            "lyra.core.pool.pool_processor_exec.process_one", _fake_process
+        )
+        await guarded_process_one(msg, agent, pool)
+
+        assert captured == ["test-agent"]
+
+    async def test_guarded_process_one_resets_on_exit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """agent_name ContextVar must be None after guarded_process_one returns."""
+        from lyra.core.pool.pool_processor_exec import guarded_process_one
+
+        async def _fake_process(*_args: object) -> None:
+            del _args
+
+        pool = MagicMock()
+        pool.agent_name = "test-agent"
+        pool.pool_id = "telegram:main:chat:2"
+        pool._turn_timeout = None
+        pool._msg = MagicMock(return_value="reply")
+        pool._ctx = MagicMock()
+        pool._ctx.record_circuit_failure = MagicMock()
+
+        agent = MagicMock()
+        agent.is_backend_alive = MagicMock(return_value=True)
+        agent.reset_backend = AsyncMock()
+
+        msg = MagicMock()
+        msg.scope_id = "chat:2"
+
+        monkeypatch.setattr(
+            "lyra.core.pool.pool_processor_exec.process_one", _fake_process
+        )
+        await guarded_process_one(msg, agent, pool)
+
+        assert TraceContext.get_agent_name() is None
 
 
 # ──────────────────────────────────────────────────────────────────────

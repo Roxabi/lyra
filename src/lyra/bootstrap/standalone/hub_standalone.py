@@ -33,6 +33,7 @@ from lyra.bootstrap.wiring.nats_wiring import (
     wire_nats_discord_proxies,
     wire_nats_telegram_proxies,
 )
+from lyra.infrastructure.audit import JetStreamAuditSink
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import start_readiness_responder
@@ -146,7 +147,12 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)
 
-        cli_pool = await build_cli_pool(raw_config, agent_configs)
+        audit_sink = JetStreamAuditSink()
+        await audit_sink.provision(nc)
+
+        cli_pool = await build_cli_pool(
+            raw_config, agent_configs, audit_sink=audit_sink
+        )
         if cli_pool is not None:
             cli_pool.set_turn_store(stores.turn)
         hub.cli_pool = cli_pool
@@ -245,6 +251,10 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             cli_pool=cli_pool,
             nats_llm_driver=nats_llm_driver,
         )
+
+    # Flush in-flight audit emit tasks before closing NATS (audit uses JetStream).
+    if cli_pool is not None:
+        await cli_pool.drain_audit_tasks()
 
     # Close NATS connection after stores context exits
     try:

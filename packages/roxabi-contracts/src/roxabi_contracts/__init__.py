@@ -7,6 +7,7 @@ contract. v0.1.0 ships ``ContractEnvelope`` and ``CONTRACT_VERSION``;
 per-domain submodules (voice, image, memory, llm) arrive in later tags.
 """
 
+from .audit import SecurityEvent
 from .envelope import CONTRACT_VERSION, ContractEnvelope
 
-__all__ = ["CONTRACT_VERSION", "ContractEnvelope"]
+__all__ = ["CONTRACT_VERSION", "ContractEnvelope", "SecurityEvent"]

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 from ..messaging.callbacks import TrustedCallback
 from ..messaging.message import GENERIC_ERROR_REPLY, OutboundMessage, Response
+from ..trace import TraceContext
 from .pool_processor_streaming import (
     build_streaming_capture,
     build_streaming_turn_logger,
@@ -32,68 +33,72 @@ async def guarded_process_one(
     msg: InboundMessage, agent: AgentBase, pool: Pool
 ) -> None:
     """Wrap process_one with timeout and error handling."""
-    _start = time.monotonic()
-    _cancelled = False
-    log.info(
-        "agent started: agent=%s pool=%s scope=%s",
-        pool.agent_name,
-        pool.pool_id,
-        msg.scope_id,
-    )
+    token_an = TraceContext.set_agent_name(pool.agent_name)
     try:
-        if pool._turn_timeout is not None:
-            await asyncio.wait_for(
-                process_one(msg, agent, pool), timeout=pool._turn_timeout
-            )
-        else:
-            await process_one(msg, agent, pool)
-        _duration_ms = (time.monotonic() - _start) * 1000
+        _start = time.monotonic()
+        _cancelled = False
         log.info(
-            "agent completed: agent=%s pool=%s duration_ms=%.0f",
+            "agent started: agent=%s pool=%s scope=%s",
             pool.agent_name,
             pool.pool_id,
-            _duration_ms,
+            msg.scope_id,
         )
-    except asyncio.TimeoutError:
-        log.warning(
-            "pool %s: turn timeout after %.0fs — killing backend",
-            pool.pool_id,
-            pool._turn_timeout,
-        )
-        if not agent.is_backend_alive(pool.pool_id):
-            log.error(
-                "pool %s: backend process died — timeout caused by dead process",
-                pool.pool_id,
-            )
-        await agent.reset_backend(pool.pool_id)
-        _reply = pool._msg("timeout", "Your request timed out. Please try again.")
-        await _safe_dispatch(msg, Response(content=_reply), pool)
-        log.warning(
-            "agent failed: agent=%s pool=%s error=timeout",
-            pool.agent_name,
-            pool.pool_id,
-        )
-    except asyncio.CancelledError:
-        _cancelled = True
-        raise
-    except Exception as exc:
-        log.exception("unhandled error in pool %s: %s", pool.pool_id, exc)
-        _reply = pool._msg("generic", GENERIC_ERROR_REPLY)
-        await _safe_dispatch(msg, Response(content=_reply), pool)
-        pool._ctx.record_circuit_failure(exc)
-        log.warning(
-            "agent failed: agent=%s pool=%s error=%s",
-            pool.agent_name,
-            pool.pool_id,
-            str(exc)[:200],
-        )
-    finally:
-        if not _cancelled:
+        try:
+            if pool._turn_timeout is not None:
+                await asyncio.wait_for(
+                    process_one(msg, agent, pool), timeout=pool._turn_timeout
+                )
+            else:
+                await process_one(msg, agent, pool)
+            _duration_ms = (time.monotonic() - _start) * 1000
             log.info(
-                "agent idle: agent=%s pool=%s",
+                "agent completed: agent=%s pool=%s duration_ms=%.0f",
+                pool.agent_name,
+                pool.pool_id,
+                _duration_ms,
+            )
+        except asyncio.TimeoutError:
+            log.warning(
+                "pool %s: turn timeout after %.0fs — killing backend",
+                pool.pool_id,
+                pool._turn_timeout,
+            )
+            if not agent.is_backend_alive(pool.pool_id):
+                log.error(
+                    "pool %s: backend process died — timeout caused by dead process",
+                    pool.pool_id,
+                )
+            await agent.reset_backend(pool.pool_id)
+            _reply = pool._msg("timeout", "Your request timed out. Please try again.")
+            await _safe_dispatch(msg, Response(content=_reply), pool)
+            log.warning(
+                "agent failed: agent=%s pool=%s error=timeout",
                 pool.agent_name,
                 pool.pool_id,
             )
+        except asyncio.CancelledError:
+            _cancelled = True
+            raise
+        except Exception as exc:
+            log.exception("unhandled error in pool %s: %s", pool.pool_id, exc)
+            _reply = pool._msg("generic", GENERIC_ERROR_REPLY)
+            await _safe_dispatch(msg, Response(content=_reply), pool)
+            pool._ctx.record_circuit_failure(exc)
+            log.warning(
+                "agent failed: agent=%s pool=%s error=%s",
+                pool.agent_name,
+                pool.pool_id,
+                str(exc)[:200],
+            )
+        finally:
+            if not _cancelled:
+                log.info(
+                    "agent idle: agent=%s pool=%s",
+                    pool.agent_name,
+                    pool.pool_id,
+                )
+    finally:
+        TraceContext.reset_agent_name(token_an)
 
 
 async def process_one(  # noqa: C901, PLR0915 — session-id update adds branches

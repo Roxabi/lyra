@@ -69,8 +69,7 @@ def _make_bus(nc: NATS) -> NatsBus:
 
 class TestSerialize:
     def test_callable_stripped_from_platform_meta(self) -> None:
-        """Typed platform_meta survives serialize/deserialize round-trip (no callables).
-        """
+        """Typed platform_meta survives serialize/deserialize round-trip (no callables)."""  # noqa: E501
         # Arrange
         msg = InboundMessage(
             id="msg-callable",

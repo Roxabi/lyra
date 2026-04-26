@@ -24,6 +24,7 @@ from lyra.bootstrap.factory.config import (
     _load_pairing_config,
     _load_pool_config,
 )
+from lyra.bootstrap.factory.hub_builder import build_cli_pool
 from lyra.bootstrap.infra.embedded_nats import ensure_nats
 from lyra.bootstrap.infra.lockfile import acquire_lockfile, release_lockfile
 from lyra.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
@@ -35,11 +36,11 @@ from lyra.bootstrap.wiring.bootstrap_wiring import (
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_loader import agent_row_to_config
-from lyra.core.cli.cli_pool import CliPool
 from lyra.core.config import HubConfig
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.messaging.message import InboundMessage
+from lyra.infrastructure.audit import JetStreamAuditSink
 from lyra.infrastructure.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.queue_groups import HUB_INBOUND
@@ -56,6 +57,7 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
     nc, embedded, _ = await ensure_nats(os.environ.get("NATS_URL"))
     acquire_lockfile()
     nats_llm_driver = None
+    cli_pool = None
     try:
         inbound_bus_cfg = _load_inbound_bus_config(raw_config)
         inbound_bus: NatsBus[InboundMessage] = NatsBus(
@@ -211,22 +213,14 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
             stores.prefs.set_alias_store(stores.identity_alias)
             hub.set_alias_store(stores.identity_alias)
 
-            cli_pool: CliPool | None = None
-            for cfg in agent_configs.values():
-                if cfg.llm_config.backend == "claude-cli":
-                    cli_pool = CliPool(
-                        idle_ttl=cli_pool_cfg.idle_ttl,
-                        default_timeout=cli_pool_cfg.default_timeout,
-                        reaper_interval=cli_pool_cfg.reaper_interval,
-                        kill_timeout=cli_pool_cfg.kill_timeout,
-                        read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
-                        stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
-                        max_idle_retries=cli_pool_cfg.max_idle_retries,
-                        intermediate_timeout=cli_pool_cfg.intermediate_timeout,
-                    )
-                    await cli_pool.start()
-                    cli_pool.set_turn_store(stores.turn)
-                    break
+            audit_sink = JetStreamAuditSink()
+            await audit_sink.provision(nc)
+
+            cli_pool = await build_cli_pool(
+                raw_config, agent_configs, audit_sink=audit_sink
+            )
+            if cli_pool is not None:
+                cli_pool.set_turn_store(stores.turn)
             hub.cli_pool = cli_pool
 
             all_agents = _resolve_agents(
@@ -286,6 +280,9 @@ async def _bootstrap_unified(  # noqa: C901, PLR0915
     finally:
         if nats_llm_driver is not None:
             await nats_llm_driver.stop()
+        # Flush in-flight audit emit tasks before closing NATS (audit uses JetStream).
+        if cli_pool is not None:
+            await cli_pool.drain_audit_tasks()
         try:
             await nc.close()
             log.info("NATS connection closed.")

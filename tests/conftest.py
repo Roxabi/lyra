@@ -170,6 +170,10 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_nats_bus.start = AsyncMock()
     fake_nats_bus.stop = AsyncMock()
     monkeypatch.setattr(unified_mod, "NatsBus", lambda **kw: fake_nats_bus)
+    fake_audit_sink = MagicMock()
+    fake_audit_sink.provision = AsyncMock()
+    fake_audit_sink.emit = AsyncMock()
+    monkeypatch.setattr(unified_mod, "JetStreamAuditSink", lambda: fake_audit_sink)
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
 

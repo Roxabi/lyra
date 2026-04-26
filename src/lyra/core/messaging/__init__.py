@@ -7,6 +7,7 @@ from .message import (
     InboundMessage,
     OutboundMessage,
     PlatformMeta,
+    SessionUpdateFn,
     TelegramMeta,
 )
 from .render_events import RenderEvent, TextRenderEvent, ToolSummaryRenderEvent
@@ -21,6 +22,7 @@ __all__ = [
     "OutboundMessage",
     "PlatformMeta",
     "RenderEvent",
+    "SessionUpdateFn",
     "TelegramMeta",
     "TextRenderEvent",
     "ToolSummaryRenderEvent",

@@ -4,7 +4,7 @@ Handles encoding/decoding of Lyra dataclasses to/from UTF-8 JSON bytes:
 - Enum  → .value (str/int)
 - datetime → .isoformat()
 - bytes → "b64:<base64>" prefixed string
-- callables stripped from dict fields (platform_meta)
+- callable fields skipped (session_update_fn, similar non-serializable fields)
 - nested dataclasses serialized recursively
 """
 
@@ -82,11 +82,6 @@ def deserialize_dict(
 # ---------------------------------------------------------------------------
 
 
-def _strip_callables(d: dict[str, Any]) -> dict[str, Any]:
-    """Remove callable values from a dict (used for platform_meta)."""
-    return {k: v for k, v in d.items() if not callable(v)}
-
-
 def _get_hints(dc_type: type, resolver: _TypeHintResolver) -> dict[str, Any]:
     """Get type hints for a dataclass, handling TYPE_CHECKING-only imports.
 
@@ -156,11 +151,9 @@ def _encode(obj: Any) -> Any:
         # obj is a dataclass instance (narrowed by is_dataclass + not type check)
         for f in dataclasses.fields(obj):
             value = getattr(obj, f.name)
-            encoded_value = _encode(value)
-            # Strip callables from dict fields (platform_meta pattern)
-            if isinstance(encoded_value, dict):
-                encoded_value = _strip_callables(encoded_value)
-            result[f.name] = encoded_value
+            if callable(value):
+                continue
+            result[f.name] = _encode(value)
         return result
 
     if isinstance(obj, Enum):

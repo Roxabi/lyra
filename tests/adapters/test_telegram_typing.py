@@ -122,7 +122,11 @@ async def test_send_cancels_typing_task() -> None:
     import asyncio
 
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.messaging.message import InboundMessage, OutboundMessage, TelegramMeta
+    from lyra.core.messaging.message import (
+        InboundMessage,
+        OutboundMessage,
+        TelegramMeta,
+    )
 
     # Arrange
     bot = AsyncMock()

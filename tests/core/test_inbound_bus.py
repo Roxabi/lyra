@@ -21,7 +21,9 @@ from tests.conftest import TIMEOUT_FAST
 def _make_msg(platform: Platform = Platform.TELEGRAM) -> InboundMessage:
     if platform == Platform.TELEGRAM:
         scope = "chat:123"
-        meta: TelegramMeta | DiscordMeta = TelegramMeta(chat_id=123, topic_id=None, message_id=None, is_group=False)
+        meta: TelegramMeta | DiscordMeta = TelegramMeta(
+            chat_id=123, topic_id=None, message_id=None, is_group=False
+        )
     else:
         scope = "channel:2"
         meta = DiscordMeta(

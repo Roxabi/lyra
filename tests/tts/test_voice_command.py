@@ -21,7 +21,12 @@ from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, OutboundAudio, Response, TelegramMeta
+from lyra.core.messaging.message import (
+    InboundMessage,
+    OutboundAudio,
+    Response,
+    TelegramMeta,
+)
 from lyra.core.pool import Pool
 from lyra.core.runtime_config import RuntimeConfig
 from lyra.tts import TtsProtocol

@@ -86,6 +86,9 @@ def _validate_inbound(
         )
         return None
     chat_id: int = inbound.platform_meta.chat_id
+    if not chat_id:
+        log.error("%s: chat_id is 0 for msg id=%s", caller, inbound.id)
+        return None
     topic_id: int | None = inbound.platform_meta.topic_id
     message_id: int | None = inbound.platform_meta.message_id
     return chat_id, topic_id, message_id

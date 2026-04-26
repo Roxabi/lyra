@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -16,6 +17,10 @@ GENERIC_ERROR_REPLY = "Something went wrong. Please try again."
 
 SCHEMA_VERSION_INBOUND_MESSAGE = 1
 SCHEMA_VERSION_OUTBOUND_MESSAGE = 1
+
+# Callback type for persisting a session ID after a turn is created.
+# Called by middleware_submit when a new pool session begins.
+SessionUpdateFn = Callable[["InboundMessage", str, str], Awaitable[None]]
 
 
 class Platform(str, Enum):
@@ -130,6 +135,9 @@ class InboundMessage:
     # Audio payload — populated when modality == "voice" (#534).
     # Stripped to None by the STT pipeline stage after successful transcription.
     audio: AudioPayload | None = None
+    # Callback set by adapters to persist session ID after a turn starts (#853).
+    # Not serialized over NATS (callable cannot cross process boundary).
+    session_update_fn: SessionUpdateFn | None = field(default=None, repr=False)
 
 
 @dataclass

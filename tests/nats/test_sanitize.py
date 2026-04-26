@@ -273,7 +273,9 @@ class TestScopeValidation:
         assert isinstance(_base.platform_meta, TelegramMeta)
         msg = dataclasses.replace(
             _base,
-            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="sess-1"),
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="sess-1"
+            ),
         )
 
         # Act
@@ -308,7 +310,9 @@ class TestScopeValidation:
         assert isinstance(_base.platform_meta, TelegramMeta)
         msg = dataclasses.replace(
             _base,
-            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="sess-live"),
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="sess-live"
+            ),
         )
 
         # Act
@@ -336,7 +340,9 @@ class TestScopeValidation:
         assert isinstance(_base.platform_meta, TelegramMeta)
         msg = dataclasses.replace(
             _base,
-            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="sess-ghost"),
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="sess-ghost"
+            ),
         )
 
         # Act
@@ -363,7 +369,9 @@ class TestScopeValidation:
         assert isinstance(_base.platform_meta, TelegramMeta)
         msg = dataclasses.replace(
             _base,
-            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="sess-any"),
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="sess-any"
+            ),
         )
 
         # Act
@@ -425,7 +433,9 @@ class TestScopeValidation:
         assert isinstance(_base.platform_meta, TelegramMeta)
         msg = dataclasses.replace(
             _base,
-            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="sess-cross"),
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="sess-cross"
+            ),
         )
 
         # Act

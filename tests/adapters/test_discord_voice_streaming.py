@@ -18,7 +18,13 @@ from lyra.adapters.discord.voice.discord_voice import (
     VoiceSessionManager,
 )
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import DiscordMeta, GenericMeta, InboundMessage, OutboundAudioChunk, TelegramMeta
+from lyra.core.messaging.message import (
+    DiscordMeta,
+    GenericMeta,
+    InboundMessage,
+    OutboundAudioChunk,
+    TelegramMeta,
+)
 
 # ---------------------------------------------------------------------------
 # File-local helpers

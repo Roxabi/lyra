@@ -362,7 +362,12 @@ class TestResolveContextResumeStatus:
         pool._session_resume_fn = _fake_resume
 
         _base = make_inbound_message(scope_id="chat:42")
-        msg = dataclasses.replace(_base, platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-1"))
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-1"
+            ),
+        )
         ctx = _make_ctx(hub)
 
         status = await resolve_context(msg, pool, pool_id, ctx)
@@ -389,7 +394,9 @@ class TestResolveContextResumeStatus:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(
             _base,
-            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-dead"),
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-dead"
+            ),
         )
         ctx = _make_ctx(hub)
 
@@ -430,7 +437,9 @@ class TestResolveContextResumeStatus:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(
             _base,
-            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-dead"),
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-dead"
+            ),
         )
         ctx = _make_ctx(hub)
 
@@ -463,7 +472,9 @@ class TestResolveContextResumeStatus:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(
             _base,
-            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-busy"),
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-busy"
+            ),
         )
         ctx = _make_ctx(hub)
 
@@ -582,7 +593,9 @@ class TestResolveContextResumeStatus:
         _base = make_inbound_message(scope_id="chat:42")
         msg = dataclasses.replace(
             _base,
-            platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-other"),
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-other"
+            ),
         )
         ctx = _make_ctx(hub)
 
@@ -620,8 +633,12 @@ class TestResolveContextResumeStatus:
 
         _base = make_inbound_message(scope_id="chat:42")
         # Use pool's current session_id as the thread_session_id
-        _meta = {**_base.platform_meta, "thread_session_id": pool.session_id}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id=pool.session_id
+            ),
+        )
         ctx = _make_ctx(hub)
 
         status = await resolve_context(msg, pool, pool_id, ctx)
@@ -678,8 +695,12 @@ class TestPath3DeadBackendGuard:
         hub._turn_store = cast("TurnStore", _FakeTurnStore())
 
         _base = make_inbound_message(scope_id="chat:42")
-        _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-dead"
+            ),
+        )
         ctx = _make_ctx(hub)
 
         status = await resolve_context(msg, pool, pool_id, ctx)
@@ -746,8 +767,12 @@ class TestNotifySessionFallthrough:
         hub._turn_store = cast("TurnStore", _FakeTurnStoreScope(pool_id))
 
         _base = make_inbound_message(scope_id="chat:42")
-        _meta = {**_base.platform_meta, "thread_session_id": "tss-dead"}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-dead"
+            ),
+        )
 
         from lyra.core.hub.hub_protocol import RoutingKey
         from lyra.core.messaging.message import Platform
@@ -792,8 +817,12 @@ class TestNotifySessionFallthrough:
         hub._turn_store = cast("TurnStore", _FakeTurnStoreScope(pool_id))
 
         _base = make_inbound_message(scope_id="chat:42")
-        _meta = {**_base.platform_meta, "thread_session_id": "tss-live"}
-        msg = dataclasses.replace(_base, platform_meta=_meta)
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-live"
+            ),
+        )
 
         from lyra.core.hub.hub_protocol import RoutingKey
         from lyra.core.messaging.message import Platform

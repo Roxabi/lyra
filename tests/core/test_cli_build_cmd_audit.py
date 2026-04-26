@@ -29,9 +29,7 @@ class TestBuildCmdSkipPermissionsAudit:
             and "dangerously-skip-permissions" in record.message
             for record in caplog.records
         ), "Expected SECURITY warning for skip_permissions bypass"
-        assert any(
-            record.levelno == logging.WARNING for record in caplog.records
-        )
+        assert any(record.levelno == logging.WARNING for record in caplog.records)
 
     def test_no_warning_when_skip_permissions_false(
         self, caplog: pytest.LogCaptureFixture

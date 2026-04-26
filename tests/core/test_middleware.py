@@ -600,7 +600,12 @@ class TestResolveContextMiddleware:
 
         ctx = PipelineContext(hub=hub)
         _base = make_inbound_message(scope_id="chat:42")
-        msg = dataclasses.replace(_base, platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-1"))
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-1"
+            ),
+        )
 
         status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
@@ -632,7 +637,12 @@ class TestResolveContextMiddleware:
 
         ctx = PipelineContext(hub=hub)
         _base = make_inbound_message(scope_id="chat:42")
-        msg = dataclasses.replace(_base, platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-dead"))
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-dead"
+            ),
+        )
 
         status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
@@ -736,7 +746,12 @@ class TestNotifySessionFallthroughMiddleware:
         hub._turn_store = cast(TurnStore, _FakeTurnStore())
 
         _base = make_inbound_message(scope_id="chat:42")
-        msg = dataclasses.replace(_base, platform_meta=dataclasses.replace(_base.platform_meta, thread_session_id="tss-dead"))
+        msg = dataclasses.replace(
+            _base,
+            platform_meta=dataclasses.replace(
+                _base.platform_meta, thread_session_id="tss-dead"
+            ),
+        )
         ctx = PipelineContext(
             hub=hub,
             pool=pool,

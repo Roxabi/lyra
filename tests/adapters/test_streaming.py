@@ -8,7 +8,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import DiscordMeta, InboundMessage, OutboundMessage, TelegramMeta
+from lyra.core.messaging.message import (
+    DiscordMeta,
+    InboundMessage,
+    OutboundMessage,
+    TelegramMeta,
+)
 from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
 
 # ---------------------------------------------------------------------------

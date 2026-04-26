@@ -238,17 +238,15 @@ def make_inbound_message(  # noqa: PLR0913
 
     if platform == "telegram":
         _scope = scope_id if scope_id is not None else "chat:42"
-        _meta = (
-            platform_meta
-            if platform_meta is not None
-            else TelegramMeta(chat_id=42)
-        )
+        _meta = platform_meta if platform_meta is not None else TelegramMeta(chat_id=42)
     elif platform == "discord":
         _scope = scope_id if scope_id is not None else "channel:333"
         _meta = (
             platform_meta
             if platform_meta is not None
-            else DiscordMeta(channel_id=333, message_id=555, guild_id=111, channel_type="text")
+            else DiscordMeta(
+                channel_id=333, message_id=555, guild_id=111, channel_type="text"
+            )
         )
     else:
         _scope = scope_id if scope_id is not None else f"{platform}:default"
@@ -802,7 +800,9 @@ def make_pairing_message(  # noqa: PLR0913 — test factory with optional overri
     """Build a minimal InboundMessage for pairing tests."""
     if platform == Platform.DISCORD:
         scope = "channel:1"
-        meta = DiscordMeta(channel_id=1, message_id=1, guild_id=guild_id, channel_type="text")
+        meta = DiscordMeta(
+            channel_id=1, message_id=1, guild_id=guild_id, channel_type="text"
+        )
     else:
         scope = "chat:42"
         meta = TelegramMeta(chat_id=42, is_group=is_group)

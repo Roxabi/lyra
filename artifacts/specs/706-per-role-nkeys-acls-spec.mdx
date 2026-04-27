@@ -1,0 +1,48 @@
+# Spec: Per-Role NKeys ACL Matrix (Issue #706)
+
+## Scope
+
+This spec defines the canonical publish/subscribe permissions for each NATS identity
+in the Lyra ecosystem. It is the source of truth for `deploy/nats/acl-matrix.json`
+and is verified by `scripts/check-acl-matrix-spec.sh` on every CI run.
+
+**Updated (postmortem Fix 1+2, 2026-04-28):**
+- Retired `tts-adapter` and `sst-adapter` (replaced by `voice-tts`/`voice-stt`)
+- All inbox subjects normalized to lowercase `_inbox.X.>` (ADR-051)
+- Added `image-worker` and `clipool-worker` with explicit `_inbox.hub.>` publish grants
+
+## ACL Matrix
+
+<!-- acl-matrix:begin -->
+| Subject | hub | telegram-adapter | discord-adapter | voice-tts | voice-stt | llm-worker | image-worker | clipool-worker | monitor |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `lyra.inbound.telegram.>` | SUB | PUB | — | — | — | — | — | — | — |
+| `lyra.inbound.discord.>` | SUB | — | PUB | — | — | — | — | — | — |
+| `lyra.outbound.telegram.>` | PUB | SUB | — | — | — | — | — | — | — |
+| `lyra.outbound.discord.>` | PUB | — | SUB | — | — | — | — | — | — |
+| `lyra.system.ready` [^ready] | SUB | PUB | PUB | PUB | PUB | — | — | PUB | — |
+| `lyra.voice.tts.request` | PUB | — | — | SUB | — | — | — | — | — |
+| `lyra.voice.tts.heartbeat` | SUB | — | — | PUB | — | — | — | — | — |
+| `lyra.voice.stt.request` | PUB | — | — | — | SUB | — | — | — | — |
+| `lyra.voice.stt.heartbeat` | SUB | — | — | — | PUB | — | — | — | — |
+| `lyra.llm.request` | PUB | — | — | — | — | SUB | — | — | — |
+| `lyra.llm.health.*` [^health] | SUB | — | — | — | — | PUB | — | — | — |
+| `lyra.image.generate.request` | PUB | — | — | — | — | — | SUB | — | — |
+| `lyra.image.heartbeat` | SUB | — | — | — | — | — | PUB | — | — |
+| `lyra.clipool.cmd` | PUB | — | — | — | — | — | — | SUB | — |
+| `lyra.clipool.heartbeat` | SUB | — | — | — | — | — | — | PUB | — |
+| `lyra.audit.>` | PUB | — | — | — | — | — | — | — | — |
+| `lyra.monitor.>` [^monitor] | — | — | — | — | — | — | — | — | PUB+SUB |
+| `_inbox.hub.>` [^inbox] | SUB | — | — | PUB | PUB | PUB | PUB | PUB | — |
+| `_inbox.telegram-adapter.>` [^inbox] | — | SUB | — | — | — | — | — | — | — |
+| `_inbox.discord-adapter.>` [^inbox] | — | — | SUB | — | — | — | — | — | — |
+| `_inbox.voice-tts.>` [^inbox] | — | — | — | SUB | — | — | — | — | — |
+| `_inbox.voice-stt.>` [^inbox] | — | — | — | — | SUB | — | — | — | — |
+| `_inbox.image-worker.>` [^inbox] | — | — | — | — | — | — | SUB | — | — |
+| `_inbox.clipool-worker.>` [^inbox] | — | — | — | — | — | — | — | SUB | — |
+<!-- acl-matrix:end -->
+
+[^ready]: `lyra.system.ready` — adapters and workers publish once on startup; hub subscribes to track liveness.
+[^health]: `lyra.llm.health.*` — LLM worker publishes health status; hub subscribes for routing decisions.
+[^monitor]: `lyra.monitor.>` — reserved monitoring namespace, pub+sub restricted to `monitor` identity.
+[^inbox]: Inbox subjects use lowercase `_inbox.{identity}.>` (ADR-051). Workers publish to `_inbox.hub.>` to deliver responses; each identity subscribes its own inbox for receiving replies.

@@ -26,9 +26,10 @@ JSON="${REPO_ROOT}/deploy/nats/acl-matrix.json"
 SPEC="${REPO_ROOT}/artifacts/specs/706-per-role-nkeys-acls-spec.mdx"
 
 # ---------------------------------------------------------------------------
-# Identity column order — 7 of the 10 identities in JSON (#706 scope)
+# Identity column order — all active identities (updated: retired tts-adapter/sst-adapter
+# removed, voice-tts/voice-stt/image-worker/clipool-worker added per postmortem Fix 1+2)
 # ---------------------------------------------------------------------------
-IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter llm-worker monitor)
+IDENTITIES=(hub telegram-adapter discord-adapter voice-tts voice-stt llm-worker image-worker clipool-worker monitor)
 
 # ---------------------------------------------------------------------------
 # Subject rows — "display_label|json_pub_subject|json_sub_subject"
@@ -39,10 +40,7 @@ IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter llm-wor
 #   subject is relevant for this row.
 # json_sub_subject: exact JSON subscribe subject for SUB. "NONE" if n/a.
 #
-# This hard-coded mapping reproduces the spec table verbatim. It is intentional
-# that some JSON entries (e.g. tts/stt-adapter publishing lyra.system.ready,
-# adapters subscribing _INBOX.>) are not represented here — those are
-# supplementary ACLs outside the #706 matrix scope.
+# Inbox subjects use lowercase _inbox.X.> (ADR-051 + postmortem Fix 1).
 # ---------------------------------------------------------------------------
 # Format: "display|pub_subject|sub_subject"
 ROWS=(
@@ -57,12 +55,19 @@ ROWS=(
   '`lyra.voice.stt.heartbeat`|lyra.voice.stt.heartbeat|lyra.voice.stt.heartbeat'
   '`lyra.llm.request`|lyra.llm.request|lyra.llm.request'
   '`lyra.llm.health.*` [^health]|lyra.llm.health.*|lyra.llm.health.*'
-  '`_INBOX.hub.>` [^inbox]|_INBOX.hub.>|_INBOX.hub.>'
-  '`_INBOX.telegram-adapter.>` [^inbox]|_INBOX.telegram-adapter.>|_INBOX.telegram-adapter.>'
-  '`_INBOX.discord-adapter.>` [^inbox]|_INBOX.discord-adapter.>|_INBOX.discord-adapter.>'
-  '`_INBOX.tts-adapter.>` [^inbox]|_INBOX.tts-adapter.>|_INBOX.tts-adapter.>'
-  '`_INBOX.stt-adapter.>` [^inbox]|_INBOX.stt-adapter.>|_INBOX.stt-adapter.>'
-  '`lyra.monitor.>` (reserved) [^monitor]|lyra.monitor.>|lyra.monitor.>'
+  '`lyra.image.generate.request`|lyra.image.generate.request|lyra.image.generate.request'
+  '`lyra.image.heartbeat`|lyra.image.heartbeat|lyra.image.heartbeat'
+  '`lyra.clipool.cmd`|lyra.clipool.cmd|lyra.clipool.cmd'
+  '`lyra.clipool.heartbeat`|lyra.clipool.heartbeat|lyra.clipool.heartbeat'
+  '`lyra.audit.>`|lyra.audit.>|NONE'
+  '`lyra.monitor.>` [^monitor]|lyra.monitor.>|lyra.monitor.>'
+  '`_inbox.hub.>` [^inbox]|_inbox.hub.>|_inbox.hub.>'
+  '`_inbox.telegram-adapter.>` [^inbox]|NONE|_inbox.telegram-adapter.>'
+  '`_inbox.discord-adapter.>` [^inbox]|NONE|_inbox.discord-adapter.>'
+  '`_inbox.voice-tts.>` [^inbox]|NONE|_inbox.voice-tts.>'
+  '`_inbox.voice-stt.>` [^inbox]|NONE|_inbox.voice-stt.>'
+  '`_inbox.image-worker.>` [^inbox]|NONE|_inbox.image-worker.>'
+  '`_inbox.clipool-worker.>` [^inbox]|NONE|_inbox.clipool-worker.>'
 )
 
 # ---------------------------------------------------------------------------

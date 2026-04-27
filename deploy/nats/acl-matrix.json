@@ -145,7 +145,8 @@
       "owner": "lyra",
       "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat. Inbox narrowed to _INBOX.clipool-worker.> per ADR-051 per-identity prefix invariant.",
       "publish": [
-        "lyra.clipool.heartbeat"
+        "lyra.clipool.heartbeat",
+        "lyra.system.ready"
       ],
       "subscribe": [
         "lyra.clipool.cmd",

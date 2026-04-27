@@ -8,31 +8,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
+
+from .cli_pool_types import _CliPoolCore
 
 if TYPE_CHECKING:
-    from ..agent.agent_config import ModelConfig
     from .cli_pool_worker import _ProcessEntry
-
-
-class _CliPoolCore(Protocol):
-    """Protocol declaring cross-mixin dependencies expected by CliPoolLifecycleMixin."""
-
-    async def _idle_reaper(self) -> None: ...
-
-    async def _kill(
-        self, pool_id: str, *, preserve_session: bool = ...
-    ) -> None: ...
-
-    async def _spawn(
-        self,
-        pool_id: str,
-        model_config: ModelConfig,
-        system_prompt: str = ...,
-    ) -> _ProcessEntry | None: ...
-
-    async def reset(self, pool_id: str) -> None: ...
-
 
 log = logging.getLogger(__name__)
 

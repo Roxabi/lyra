@@ -29,7 +29,7 @@ from roxabi_contracts.voice import (
     per_worker_tts,
     validate_worker_id,
 )
-from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS as _TTS_CONFIG_FIELDS
+from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 if TYPE_CHECKING:
@@ -235,7 +235,7 @@ class NatsTtsClient:
         }
         if agent_tts is not None:
             # voice/language use caller-override semantics (see below); excluded here
-            for field in _TTS_CONFIG_FIELDS:
+            for field in TTS_CONFIG_FIELDS:
                 val = getattr(agent_tts, field, None)
                 if val is not None:
                     req_kwargs[field] = val

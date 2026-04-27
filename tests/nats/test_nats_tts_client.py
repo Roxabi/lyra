@@ -10,9 +10,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.agent.agent_config import AgentTTSConfig
-from lyra.nats.nats_tts_client import _TTS_CONFIG_FIELDS, NatsTtsClient
+from lyra.nats.nats_tts_client import NatsTtsClient
 from lyra.nats.worker_registry import WorkerStats
 from lyra.tts import TtsUnavailableError
+from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
 
 
 def _inject_fresh_worker(
@@ -177,7 +178,7 @@ class TestCircuitBreaker:
         # contract_version is always stamped (ADR-044)
         assert request_dict["contract_version"] == "1"
         # All unset fields (None) must be absent from the NATS payload
-        none_fields = [f for f in _TTS_CONFIG_FIELDS if f not in ("engine", "speed")]
+        none_fields = [f for f in TTS_CONFIG_FIELDS if f not in ("engine", "speed")]
         assert all(f not in request_dict for f in none_fields)
 
     @pytest.mark.asyncio

@@ -9,7 +9,7 @@ import pytest
 
 import lyra.__main__ as main_mod
 import lyra.bootstrap.factory.agent_factory as agent_factory_mod
-import lyra.bootstrap.factory.unified as unified_mod
+import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from tests.conftest import patch_auth_config_test
@@ -109,7 +109,7 @@ class TestAuthConfig:
         )
         # Sentinel: if we reach agent_row_to_config, auth validation passed.
         monkeypatch.setattr(
-            unified_mod,
+            wiring_helpers_mod,
             "agent_row_to_config",
             lambda row, **kw: (_ for _ in ()).throw(SystemExit("past_auth")),
         )

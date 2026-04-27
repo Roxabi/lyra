@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from lyra.core.stores.thread_store_protocol import ThreadSession
 from lyra.infrastructure.stores.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
@@ -105,8 +106,11 @@ class ThreadStore(SqliteStore):
 
     async def get_session(
         self, thread_id: str, bot_id: str
-    ) -> tuple[str | None, str | None]:
-        """Return (session_id, pool_id) for (thread_id, bot_id), or (None, None)."""
+    ) -> ThreadSession:
+        """Return ThreadSession for (thread_id, bot_id).
+
+        Returns an unresolved ThreadSession (is_resolved=False) if not found.
+        """
         db = self._require_db()
         async with db.execute(
             "SELECT session_id, pool_id FROM discord_threads "
@@ -115,8 +119,8 @@ class ThreadStore(SqliteStore):
         ) as cur:
             row = await cur.fetchone()
         if row is None:
-            return None, None
-        return row[0], row[1]
+            return ThreadSession(session_id=None, pool_id=None)
+        return ThreadSession(session_id=row[0], pool_id=row[1])
 
     # ------------------------------------------------------------------
     # Writes

@@ -273,9 +273,12 @@ class TestPersistThreadSessionEviction:
         from unittest.mock import AsyncMock, MagicMock
 
         from lyra.adapters.discord.discord_threads import persist_thread_session
+        from lyra.core.stores.thread_store_protocol import ThreadSession
 
         # Arrange — cache pre-filled to the limit (500 entries)
-        cache: dict[str, tuple[str, str]] = {str(i): ("s", "p") for i in range(500)}
+        cache: dict[str, ThreadSession] = {
+            str(i): ThreadSession("s", "p") for i in range(500)
+        }
 
         mock_store = MagicMock()
         mock_store.update_session = AsyncMock()
@@ -298,7 +301,7 @@ class TestPersistThreadSessionEviction:
         assert "0" not in cache
         # New entry must be present with the correct value
         assert "9999" in cache
-        assert cache["9999"] == ("new-sess", "new-pool")
+        assert cache["9999"] == ThreadSession("new-sess", "new-pool")
 
     @pytest.mark.asyncio
     async def test_persist_thread_session_returns_early_for_non_discord_meta(
@@ -309,8 +312,9 @@ class TestPersistThreadSessionEviction:
 
         from lyra.adapters.discord.discord_threads import persist_thread_session
         from lyra.core.messaging.message import TelegramMeta
+        from lyra.core.stores.thread_store_protocol import ThreadSession
 
-        cache: dict[str, tuple[str, str]] = {}
+        cache: dict[str, ThreadSession] = {}
         mock_store = MagicMock()
         mock_store.update_session = AsyncMock()
 
@@ -406,13 +410,14 @@ class TestRetrieveThreadSession:
         from unittest.mock import AsyncMock
 
         from lyra.adapters.discord.discord_threads import retrieve_thread_session
+        from lyra.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
-        cache: dict[str, tuple[str, str]] = {"123": ("sess-a", "pool-a")}
+        cache: dict[str, ThreadSession] = {"123": ThreadSession("sess-a", "pool-a")}
 
         result = await retrieve_thread_session(store, "123", "bot1", cache)
 
-        assert result == ("sess-a", "pool-a")
+        assert result == ThreadSession("sess-a", "pool-a")
         store.get_session.assert_not_called()
 
     @pytest.mark.asyncio
@@ -421,12 +426,13 @@ class TestRetrieveThreadSession:
         from unittest.mock import AsyncMock
 
         from lyra.adapters.discord.discord_threads import retrieve_thread_session
+        from lyra.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
-        cache: dict[str, tuple[str, str]] = {
-            "1": ("s1", "p1"),
-            "2": ("s2", "p2"),
-            "3": ("s3", "p3"),
+        cache: dict[str, ThreadSession] = {
+            "1": ThreadSession("s1", "p1"),
+            "2": ThreadSession("s2", "p2"),
+            "3": ThreadSession("s3", "p3"),
         }
 
         await retrieve_thread_session(store, "1", "bot1", cache)
@@ -440,16 +446,17 @@ class TestRetrieveThreadSession:
         from unittest.mock import AsyncMock
 
         from lyra.adapters.discord.discord_threads import retrieve_thread_session
+        from lyra.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
-        store.get_session.return_value = ("sess-b", "pool-b")
-        cache: dict[str, tuple[str, str]] = {}
+        store.get_session.return_value = ThreadSession("sess-b", "pool-b")
+        cache: dict[str, ThreadSession] = {}
 
         result = await retrieve_thread_session(store, "456", "bot1", cache)
 
-        assert result == ("sess-b", "pool-b")
+        assert result == ThreadSession("sess-b", "pool-b")
         store.get_session.assert_awaited_once_with(thread_id="456", bot_id="bot1")
-        assert cache["456"] == ("sess-b", "pool-b")
+        assert cache["456"] == ThreadSession("sess-b", "pool-b")
 
     @pytest.mark.asyncio
     async def test_cache_miss_none_result_does_not_populate_cache(self) -> None:
@@ -457,14 +464,15 @@ class TestRetrieveThreadSession:
         from unittest.mock import AsyncMock
 
         from lyra.adapters.discord.discord_threads import retrieve_thread_session
+        from lyra.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
-        store.get_session.return_value = (None, None)
-        cache: dict[str, tuple[str, str]] = {}
+        store.get_session.return_value = ThreadSession(None, None)
+        cache: dict[str, ThreadSession] = {}
 
         result = await retrieve_thread_session(store, "789", "bot1", cache)
 
-        assert result == (None, None)
+        assert result == ThreadSession(None, None)
         assert "789" not in cache
 
     @pytest.mark.asyncio
@@ -473,10 +481,13 @@ class TestRetrieveThreadSession:
         from unittest.mock import AsyncMock
 
         from lyra.adapters.discord.discord_threads import retrieve_thread_session
+        from lyra.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
-        store.get_session.return_value = ("sess-new", "pool-new")
-        cache: dict[str, tuple[str, str]] = {str(i): ("s", "p") for i in range(500)}
+        store.get_session.return_value = ThreadSession("sess-new", "pool-new")
+        cache: dict[str, ThreadSession] = {
+            str(i): ThreadSession("s", "p") for i in range(500)
+        }
         oldest_key = "0"
 
         await retrieve_thread_session(store, "999", "bot1", cache)
@@ -484,6 +495,25 @@ class TestRetrieveThreadSession:
         assert oldest_key not in cache
         assert "999" in cache
         assert len(cache) == 500
+        assert cache["999"] == ThreadSession("sess-new", "pool-new")
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_partial_result_does_not_populate_cache(self) -> None:
+        """Partial ThreadSession (session_id set, pool_id=None): cache stays empty."""
+        from unittest.mock import AsyncMock
+
+        from lyra.adapters.discord.discord_threads import retrieve_thread_session
+        from lyra.core.stores.thread_store_protocol import ThreadSession
+
+        store = AsyncMock()
+        store.get_session.return_value = ThreadSession("sess-x", None)
+        cache: dict[str, ThreadSession] = {}
+
+        result = await retrieve_thread_session(store, "101", "bot1", cache)
+
+        assert result.session_id == "sess-x"
+        assert result.pool_id is None
+        assert "101" not in cache
 
 
 # ---------------------------------------------------------------------------

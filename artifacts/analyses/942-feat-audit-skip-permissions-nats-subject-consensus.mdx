@@ -1,0 +1,61 @@
+---
+title: "PR #979 Q_1b1 Findings — Expert Consensus"
+issue: 942
+status: consensus-reached
+date: 2026-04-27
+panel: architect, backend-dev, product-lead
+confidence: high
+---
+
+## Problem
+
+4 remaining Q_1b1 review findings on PR #979 (feat(audit): skip_permissions subject routing). The 4 high-C blockers were already auto-applied. Should the remaining findings be applied in this PR?
+
+## Panel
+
+| Agent | Focus |
+|-------|-------|
+| architect | arch soundness, maintainability, NATS subject namespace contract |
+| backend-dev | impl complexity, correctness, DRY |
+| product-lead | user/operator impact, P3-low cost/benefit |
+
+## Consensus ρ
+
+**Apply F1 + F2. Skip F3 + F4.**
+
+### Rationale
+
+**F1 (payload assertion, C:75%):** Unanimous Apply. Routing tests only assert subject; payload goes unchecked. `model_dump_json()` + encode is the primary data path — consumers read the payload, not just the subject. 2-line assertion per routing test closes a real regression gap on the exact new code path introduced in this PR.
+
+**F2 (shared prefix constant, C:75%):** 2-1 Apply (product-lead: defer). Architect and backend-dev: the test at line 182 already asserts `startswith("lyra.audit.security.")` — acknowledging the prefix relationship. The source should encode what the test already treats as an invariant. 3-line change, zero runtime cost, makes rename atomic.
+
+**F3 (rename _SUBJECT_NORMAL, C:70%):** Unanimous Skip. "normal" is established domain vocabulary in permission systems. The wire subject value (`lyra.audit.security.normal`) consumed by all NATS subscribers would not change — only the Python constant name. Rename churn > clarity gain on a P3-low PR.
+
+**F4 (AAA comments, C:65%):** Unanimous Skip. No project-wide AAA convention. Applying selectively creates inconsistency. Docstrings on each test already state intent. Stack.yml file_length gate makes comment padding a cost.
+
+### Trade-offs
+
+- F1 + F2 combined: ~10 lines added, closes two real maintainability gaps introduced by this PR
+- F3: cosmetic churn with active risk (external NATS consumers reference the string value; constant rename could mislead future authors about whether the subject string also changed)
+- F4: style-only, zero functional signal
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| Defer F2 to next modification | product-lead | Majority: the invariant is already tested; source should match |
+| Apply F3 | — | Unanimous skip: domain vocabulary, rename risk > benefit |
+| Apply F4 | — | Unanimous skip: no project convention, inconsistency worse than omission |
+
+## Dissent
+
+**F2:** product-lead preferred deferring on grounds of zero active risk with only 2 constants. Overruled by majority: encoding the prefix relationship in source is correct regardless of current risk level.
+
+## Implementation Notes
+
+- F1: `payload = js.publish.call_args[0][1]; assert json.loads(payload)["skip_permissions"] is True/False` in each routing test
+- F2: `_SUBJECT_PREFIX = "lyra.audit.security"` → `_SUBJECT_PRIVILEGED = f"{_SUBJECT_PREFIX}.privileged"` → `_SUBJECT_NORMAL = f"{_SUBJECT_PREFIX}.normal"`; `test_subjects_are_under_lyra_audit_wildcard` can assert against `_SUBJECT_PREFIX` directly
+
+## Next
+
+Apply F1 + F2 in the `/fix` 1b1 phase → push → re-run `/code-review`.

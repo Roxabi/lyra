@@ -66,6 +66,9 @@ jobs:
       - name: Check ACL matrix spec drift
         run: bash scripts/check-acl-matrix-spec.sh
 
+      - name: Check inbox_prefix uses identity_name API
+        run: bash scripts/check-inbox-prefix.sh
+
       - name: Enforce import layers
         run: uv run lint-imports
 

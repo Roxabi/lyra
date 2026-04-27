@@ -12,10 +12,12 @@ may change without notice — external consumers MUST NOT import them.
 from ._serialize import _TypeHintResolver as TypeHintResolver
 from .adapter_base import CONTRACT_VERSION, NatsAdapterBase
 from .connect import nats_connect
+from .driver_base import NatsDriverBase
 
 __all__ = [
     "CONTRACT_VERSION",
     "NatsAdapterBase",
+    "NatsDriverBase",
     "TypeHintResolver",
     "nats_connect",
 ]

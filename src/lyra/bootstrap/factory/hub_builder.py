@@ -39,9 +39,19 @@ if TYPE_CHECKING:
     from lyra.core.messaging.messages import MessageManager
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
+    from lyra.llm.drivers.cli_nats import CliNatsDriver
     from lyra.llm.drivers.nats_driver import NatsLlmDriver
 
 log = logging.getLogger(__name__)
+
+
+async def build_cli_nats_driver(nc: NATS, *, timeout: float = 120.0) -> "CliNatsDriver":
+    """Build and start a CliNatsDriver connected to the clipool worker."""
+    from lyra.llm.drivers.cli_nats import CliNatsDriver
+
+    driver = CliNatsDriver(nc, timeout=timeout)
+    await driver.start()
+    return driver
 
 
 def build_inbound_bus(
@@ -143,7 +153,9 @@ def register_agents(  # noqa: PLR0913 — registration requires all deps
     tts_service: TtsProtocol | None,
     agent_store: AgentStore | None,
     raw_config: dict,
-    nats_llm_driver: NatsLlmDriver | None,
+    nats_llm_driver: "NatsLlmDriver | None",
+    *,
+    cli_nats_driver: "CliNatsDriver | None" = None,
 ) -> None:
     """Resolve agents from configs and register them on the hub."""
     llm_cfg = _load_llm_config(raw_config)
@@ -157,6 +169,7 @@ def register_agents(  # noqa: PLR0913 — registration requires all deps
         agent_store=agent_store,
         llm_cfg=llm_cfg,
         nats_llm_driver=nats_llm_driver,
+        cli_nats_driver=cli_nats_driver,
     )
     for ag in all_agents.values():
         hub.register_agent(ag)

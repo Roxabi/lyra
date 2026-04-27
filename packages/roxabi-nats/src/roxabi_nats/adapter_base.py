@@ -120,6 +120,36 @@ class NatsAdapterBase(ABC):
         await stop.wait()
         await self._shutdown()
 
+    async def run_embedded(self, nc: NATS, stop: asyncio.Event | None = None) -> None:
+        """Run using an already-connected NATS client (for unified/embedded mode).
+
+        Unlike ``run()``, this method does not create a new NATS connection and
+        does not call ``_shutdown()`` (which would drain/close the shared connection).
+        The caller is responsible for managing the NATS connection lifecycle.
+        """
+        self._nc = nc
+        self._started_at = time.monotonic()
+        cmd_sub = await nc.subscribe(
+            self.subject, queue=self.queue_group, cb=self._dispatch
+        )
+        subs = [cmd_sub]
+        for extra in self._extra_subjects():
+            subs.append(await nc.subscribe(extra, cb=self._dispatch))
+        if self._heartbeat_subject:
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        if stop is None:
+            stop = asyncio.Event()
+        try:
+            await stop.wait()
+        finally:
+            if self._heartbeat_task is not None:
+                self._heartbeat_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._heartbeat_task
+            for sub in subs:
+                with contextlib.suppress(Exception):
+                    await sub.unsubscribe()
+
     @abstractmethod
     async def handle(self, msg, payload: dict) -> None: ...
 

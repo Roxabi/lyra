@@ -118,6 +118,16 @@ def _adapter_discord() -> None:
     _run_adapter("discord")
 
 
+@adapter_app.command("clipool")
+def _adapter_clipool() -> None:
+    """Start the standalone CliPool NATS worker."""
+    from lyra.bootstrap.standalone.clipool_standalone import (
+        _bootstrap_clipool_standalone,
+    )
+
+    _boot(_bootstrap_clipool_standalone)
+
+
 def _run_adapter(platform: str) -> None:
     from lyra.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,

@@ -13,7 +13,7 @@ from lyra.bootstrap.bootstrap_stores import open_stores
 from lyra.bootstrap.factory.agent_factory import _resolve_bot_agent_map
 from lyra.bootstrap.factory.config import MessageIndexConfig
 from lyra.bootstrap.factory.hub_builder import (
-    build_cli_pool,
+    build_cli_nats_driver,
     build_hub,
     build_inbound_bus,
     register_agents,
@@ -150,17 +150,13 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         audit_sink = JetStreamAuditSink()
         await audit_sink.provision(nc)
 
-        cli_pool = await build_cli_pool(
-            raw_config, agent_configs, audit_sink=audit_sink
-        )
-        if cli_pool is not None:
-            cli_pool.set_turn_store(stores.turn)
-        hub.cli_pool = cli_pool
+        cli_nats_driver = await build_cli_nats_driver(nc)
+        hub.cli_pool = None  # CliPool now runs in lyra-clipool container
 
         register_agents(
             hub,
             agent_configs,
-            cli_pool,
+            None,
             circuit_registry,
             msg_manager,
             stt_service,
@@ -168,6 +164,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             stores.agent,
             raw_config,
             nats_llm_driver,
+            cli_nats_driver=cli_nats_driver,
         )
 
         # Wire each (platform, bot_id) to a NatsChannelProxy + OutboundDispatcher
@@ -248,13 +245,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
             dispatchers=dispatchers,
             proxies=proxies,
             pm=pm,
-            cli_pool=cli_pool,
+            cli_nats_driver=cli_nats_driver,
             nats_llm_driver=nats_llm_driver,
         )
-
-    # Flush in-flight audit emit tasks before closing NATS (audit uses JetStream).
-    if cli_pool is not None:
-        await cli_pool.drain_audit_tasks()
 
     # Close NATS connection after stores context exits
     try:

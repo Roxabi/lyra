@@ -2,7 +2,15 @@
 
 ## Overview
 
-3 containers communicating over NATS.
+5 containers communicating over NATS.
+
+| Container | Process | Role |
+|---|---|---|
+| `lyra-hub` | `lyra hub` | Hub process, NATS-connected |
+| `lyra-telegram` | `lyra adapter telegram` | Telegram platform adapter |
+| `lyra-discord` | `lyra adapter discord` | Discord platform adapter |
+| `lyra-clipool` | `lyra adapter clipool` | CliPool NATS worker (claude-cli subprocess pool) |
+| `lyra-nats` | nats-server | NATS message broker |
 
 ```
 ┌──────────────┐  NATS inbound   ┌─────────────┐  NATS cmd    ┌──────────────┐
@@ -153,18 +161,27 @@ resumes it rather than starting fresh.
 
 Adapter mounts are per-file inline binds (not the full `lyra-data.volume`) — adapters never touch `auth.db` or `message_index.db`.
 
+> **Credential boundary:** `~/.claude/` (Claude session files + credentials) is mounted exclusively in `lyra-clipool`. The Hub no longer requires access to Claude credentials — it only sends UUIDs over NATS and receives streaming events back.
+
 ---
 
 ## NATS Topics
 
-| Topic | Direction | Purpose |
+| Subject | Direction | Semantics |
 |---|---|---|
 | `lyra.inbound.telegram.<bot_id>` | Adapter → Hub | Telegram messages |
 | `lyra.inbound.discord.<bot_id>` | Adapter → Hub | Discord messages |
 | `lyra.outbound.telegram.<bot_id>` | Hub → Adapter | Responses to Telegram |
 | `lyra.outbound.discord.<bot_id>` | Hub → Adapter | Responses to Discord |
-| `lyra.clipool.cmd.<pool_id>` | Hub → CliPool | Submit turn + resume UUID *(new)* |
-| `lyra.clipool.reply.<pool_id>` | CliPool → Hub | Streaming events + session_id *(new)* |
+| `lyra.clipool.cmd` | Hub → CliPool | Send a claude-cli command; reply-to is ephemeral inbox |
+| `lyra.clipool.control` | Hub → CliPool | Control operations (reset/resume_and_reset/switch_cwd) |
+| `lyra.clipool.heartbeat` | CliPool → Hub | Worker liveness every 30s |
+
+**CliPool subject design notes:**
+
+- All CliPool subjects are **flat** (not per-pool-id) — `pool_id` is routed via payload
+- Reply-to for `lyra.clipool.cmd` is an **ephemeral inbox** (`_INBOX.<random>`) — streaming chunks arrive on the inbox, not a fixed subject
+- Workers subscribe to `lyra.clipool.cmd` with queue group `clipool-workers` for future multi-instance scaling
 
 ---
 

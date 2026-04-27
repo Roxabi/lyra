@@ -6,7 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "roxabi-vault",
     "cryptography>=46.0.7",
-    "pydantic>=2.12.5",
+    "pydantic>=2.13.3",
     "pyyaml>=6.0",  # YAML parsing for deploy/gen-supervisor-conf.py
     # Adapters
     "aiogram>=3.27.0",       # Telegram — asyncio-native, tracks Bot API same-day

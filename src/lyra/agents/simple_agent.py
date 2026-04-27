@@ -25,6 +25,7 @@ from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.pool import Pool
 from lyra.core.processors.stream_processor import StreamProcessor
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
+from lyra.integrations.base import SessionTools
 from lyra.llm.base import LlmProvider
 
 from .simple_agent_prompts import STTError, STTNoiseError, build_llm_text
@@ -73,6 +74,7 @@ class SimpleAgent(AgentBase):
         agents_dir: Path | None = None,
         agent_store: "AgentStore | None" = None,
         tool_display_config: ToolDisplayConfig | None = None,
+        session_tools: SessionTools | None = None,
     ) -> None:
         self._tool_display_config = tool_display_config or ToolDisplayConfig()
         resolved_agents_dir = agents_dir or _AGENTS_DIR
@@ -85,6 +87,7 @@ class SimpleAgent(AgentBase):
         self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
         self._provider = provider
         self._cli_pool = cli_pool
+        self._session_tools = session_tools
         super().__init__(
             config,
             agents_dir=agents_dir,
@@ -116,25 +119,27 @@ class SimpleAgent(AgentBase):
         self._register_session_commands()
 
     def _register_session_commands(self) -> None:
-        """Store SessionTools; register processor cmds as passthroughs (B2, #363)."""
+        """Register processor cmds as passthroughs; uses injected SessionTools."""
         importlib.import_module("lyra.core.processors")  # trigger self-registration
         from lyra.core.processors.processor_registry import registry
-        from lyra.integrations.base import SessionTools
-        from lyra.integrations.vault_cli import VaultCli
-        from lyra.integrations.web_intel import WebIntelScraper
 
-        try:
-            self._session_tools = SessionTools(
-                scraper=WebIntelScraper(), vault=VaultCli()
-            )
-        except Exception:
-            log.warning(
-                "SimpleAgent: could not build session tools"
-                " — processor pipeline disabled",
-                exc_info=True,
-            )
-            self._session_tools = None
-            return
+        if self._session_tools is None:
+            # Transitional fallback: construct locally until all callers inject.
+            from lyra.integrations.vault_cli import VaultCli
+            from lyra.integrations.web_intel import WebIntelScraper
+
+            try:
+                self._session_tools = SessionTools(
+                    scraper=WebIntelScraper(), vault=VaultCli()
+                )
+            except Exception:
+                log.warning(
+                    "SimpleAgent: could not build session tools"
+                    " — processor pipeline disabled",
+                    exc_info=True,
+                )
+                self._session_tools = None
+                return
 
         for cmd in registry.commands():
             self.command_router.register_passthrough(cmd.lstrip("/"))

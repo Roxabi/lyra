@@ -159,6 +159,20 @@ def _create_agent(  # noqa: PLR0913 -- factory with optional overrides for each 
 
             provider = ClaudeCliDriver(cli_pool)
         from lyra.agents.simple_agent import SimpleAgent
+        from lyra.integrations.base import SessionTools
+        from lyra.integrations.vault_cli import VaultCli
+        from lyra.integrations.web_intel import WebIntelScraper
+
+        try:
+            session_tools: SessionTools | None = SessionTools(
+                scraper=WebIntelScraper(), vault=VaultCli()
+            )
+        except Exception:
+            log.warning(
+                "agent_factory: could not build SessionTools — passing None",
+                exc_info=True,
+            )
+            session_tools = None
 
         return SimpleAgent(
             config,
@@ -169,6 +183,7 @@ def _create_agent(  # noqa: PLR0913 -- factory with optional overrides for each 
             stt=stt,
             tts=tts,
             agent_store=agent_store,
+            session_tools=session_tools,
         )
     raise ValueError(f"Unknown backend: {backend}")
 

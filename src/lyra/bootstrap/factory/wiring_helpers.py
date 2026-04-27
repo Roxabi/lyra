@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -137,7 +136,7 @@ async def _init_bot_auths_and_agents(
     try:
         tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
     except ValueError as exc:
-        sys.exit(str(exc))
+        raise SystemExit(str(exc))
 
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
         raw_config,
@@ -153,7 +152,7 @@ async def _init_bot_auths_and_agents(
     )
 
     if not tg_bot_auths and not dc_bot_auths:
-        sys.exit(
+        raise SystemExit(
             "No adapters configured — add at least one"
             " [[telegram.bots]] or [[discord.bots]] entry with"
             " a matching [[auth.telegram_bots]] or"
@@ -177,7 +176,7 @@ async def _init_bot_auths_and_agents(
         else:
             log.error("Agent %r not found in DB — skipping", n)
     if not agent_configs:
-        sys.exit(
+        raise SystemExit(
             "No agent configs could be loaded — run"
             " 'lyra agent init' to seed the agents table"
         )

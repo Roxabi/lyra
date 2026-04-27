@@ -13,6 +13,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
@@ -123,7 +125,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
     async def _handle_cmd(self, msg: Any, payload: dict) -> None:
         try:
             cmd = CliCmdPayload.model_validate(payload)
-        except Exception:
+        except ValidationError:
             log.exception("clipool_worker: failed to parse CliCmdPayload")
             await self.reply(
                 msg, _make_chunk("", event_type="error", is_error=True, done=True)
@@ -147,7 +149,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 model_cfg,
                 cmd.system_prompt,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - external boundary: catch all to ensure error reply
             log.exception(
                 "clipool_worker: send_streaming failed for pool_id=%r", cmd.pool_id
             )
@@ -198,7 +200,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 model_cfg,
                 cmd.system_prompt,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - external boundary: catch all to ensure error reply
             log.exception("clipool_worker: send failed for pool_id=%r", cmd.pool_id)
             await self.reply(
                 msg,
@@ -227,14 +229,14 @@ class CliPoolNatsWorker(NatsAdapterBase):
     async def _handle_control(self, msg: Any, payload: dict) -> None:
         try:
             cmd = CliControlCmd.model_validate(payload)
-        except Exception:
+        except ValidationError:
             log.exception("clipool_worker: failed to parse CliControlCmd")
             await self.reply(msg, _make_ack("", ok=False))
             return
 
         try:
             ack_bytes = await self._dispatch_control(cmd)
-        except Exception:
+        except Exception:  # noqa: BLE001 - external boundary: catch all to ensure error ack
             log.exception(
                 "clipool_worker: control op %r failed for pool_id=%r",
                 cmd.op,

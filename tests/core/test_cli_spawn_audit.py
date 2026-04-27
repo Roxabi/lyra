@@ -273,6 +273,9 @@ class TestJetStreamAuditSinkEmit:
         assert all(r.name == "lyra.security" for r in security_records)
         import json
 
-        payload = json.loads(security_records[0].getMessage())
+        # Message format: "AUDIT DEGRADED [<subject>]: <json>"
+        msg = security_records[0].getMessage()
+        json_str = msg.split(": ", 1)[1]
+        payload = json.loads(json_str)
         assert payload["pid"] == 2
         assert payload["skip_permissions"] is True

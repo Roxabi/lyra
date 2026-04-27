@@ -792,8 +792,6 @@ async def test_stt_middleware_no_msg_manager_replies() -> None:
     ctx = PipelineContext(hub=hub)
 
     msg = make_inbound_message(modality="voice")
-    import dataclasses
-
     msg = dataclasses.replace(
         msg,
         audio=AudioPayload(audio_bytes=b"fake_audio", mime_type="audio/ogg"),
@@ -803,5 +801,9 @@ async def test_stt_middleware_no_msg_manager_replies() -> None:
 
     result = await mw(msg, ctx, next_mock)
 
-    hub.dispatch_response.assert_called()
+    hub.dispatch_response.assert_called_once()
+    call_args = hub.dispatch_response.call_args
+    assert call_args is not None
+    response_arg = call_args[0][1]
+    assert response_arg.content
     assert result.action == Action.DROP

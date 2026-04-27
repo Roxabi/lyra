@@ -373,7 +373,7 @@ class TestTtsUnavailableFallback:
         # Log warning must be emitted
         assert "msg-fallback-1" in caplog.text
         assert "notifying user" in caplog.text
-        assert caplog.records[0].levelno == logging.WARNING
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_tts_generic_exception_sends_notification(

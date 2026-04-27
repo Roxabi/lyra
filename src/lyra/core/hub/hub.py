@@ -90,7 +90,7 @@ class Hub(
         self.circuit_registry: CircuitRegistry | None = circuit_registry
         self._msg_manager: MessageManager | None = msg_manager
         if msg_manager is None:
-            log.warning(
+            log.debug(
                 "Hub initialised without a MessageManager"
                 " — STT error replies will use hardcoded fallbacks"
             )

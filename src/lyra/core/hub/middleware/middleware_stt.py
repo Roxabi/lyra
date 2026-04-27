@@ -85,7 +85,7 @@ class SttMiddleware:
         hub = ctx.hub
         if hub._msg_manager is None:
             _content = _FALLBACKS.get(
-                "audio_download_failed",
+                "stt_unsupported",
                 "Voice messages are not available.",
             )
             await hub.dispatch_response(

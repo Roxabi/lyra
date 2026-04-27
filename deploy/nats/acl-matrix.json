@@ -1,5 +1,12 @@
 {
-  "version": "1",
+  "version": "2",
+  "request_reply_flows": [
+    { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" },
+    { "requester": "hub", "responder": "voice-tts",      "subject": "lyra.voice.tts.request.>" },
+    { "requester": "hub", "responder": "voice-stt",      "subject": "lyra.voice.stt.request.>" },
+    { "requester": "hub", "responder": "llm-worker",     "subject": "lyra.llm.request" },
+    { "requester": "hub", "responder": "image-worker",   "subject": "lyra.image.generate.request" }
+  ],
   "identities": {
     "hub": {
       "owner": "lyra",
@@ -24,8 +31,6 @@
         "lyra.voice.stt.heartbeat",
         "lyra.llm.health.*",
         "lyra.system.ready",
-        "_inbox.hub.>",
-        "_inbox.hub.*.*",
         "lyra.image.heartbeat",
         "lyra.clipool.heartbeat"
       ]
@@ -60,11 +65,10 @@
     },
     "voice-tts": {
       "owner": "voicecli",
-      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Inbox normalized to _inbox.voice-tts.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Explicit _inbox.hub.> publish grant per postmortem Fix 2.",
+      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Inbox normalized to _inbox.voice-tts.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "publish": [
         "lyra.voice.tts.heartbeat",
-        "lyra.system.ready",
-        "_inbox.hub.>"
+        "lyra.system.ready"
       ],
       "subscribe": [
         "lyra.voice.tts.request",
@@ -74,11 +78,10 @@
     },
     "voice-stt": {
       "owner": "voicecli",
-      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Inbox normalized to _inbox.voice-stt.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Explicit _inbox.hub.> publish grant per postmortem Fix 2.",
+      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Inbox normalized to _inbox.voice-stt.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "publish": [
         "lyra.voice.stt.heartbeat",
-        "lyra.system.ready",
-        "_inbox.hub.>"
+        "lyra.system.ready"
       ],
       "subscribe": [
         "lyra.voice.stt.request",
@@ -88,10 +91,9 @@
     },
     "llm-worker": {
       "owner": "reserved",
-      "description": "Reserved LLM worker identity — publishes health status, subscribes to LLM request queue. Explicit _inbox.hub.> publish grant added per postmortem Fix 2.",
+      "description": "Reserved LLM worker identity — publishes health status, subscribes to LLM request queue. Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "publish": [
-        "lyra.llm.health.*",
-        "_inbox.hub.>"
+        "lyra.llm.health.*"
       ],
       "subscribe": [
         "lyra.llm.request"
@@ -99,10 +101,9 @@
     },
     "image-worker": {
       "owner": "imagecli",
-      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Inbox normalized to _inbox.image-worker.> (ADR-051 + postmortem Fix 1). Explicit _inbox.hub.> publish grant per postmortem Fix 2.",
+      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Inbox normalized to _inbox.image-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "publish": [
-        "lyra.image.heartbeat",
-        "_inbox.hub.>"
+        "lyra.image.heartbeat"
       ],
       "subscribe": [
         "lyra.image.generate.request",
@@ -122,11 +123,10 @@
     },
     "clipool-worker": {
       "owner": "lyra",
-      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Inbox normalized to _inbox.clipool-worker.> (ADR-051 + postmortem Fix 1). Explicit _inbox.hub.> publish grant per postmortem Fix 2.",
+      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Inbox normalized to _inbox.clipool-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "publish": [
         "lyra.clipool.heartbeat",
-        "lyra.system.ready",
-        "_inbox.hub.>"
+        "lyra.system.ready"
       ],
       "subscribe": [
         "lyra.clipool.cmd",

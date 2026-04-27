@@ -10,6 +10,14 @@
 #
 # ACL matrix (identities + publish/subscribe allow-lists) is sourced from
 # deploy/nats/acl-matrix.json — do not edit inline; update the JSON instead.
+#
+# Deploy order (for #992+ topology-first schema):
+#   1. deploy/nats/gen-nkeys.sh (this script) — new script accepts v1 + v2
+#   2. deploy/nats/acl-matrix.json            — bumped to v2, adds request_reply_flows
+#   3. sudo ./gen-nkeys.sh --regen-authconf   — re-render auth.conf from existing seeds
+#   4. nats-server --signal reload
+# Running old gen-nkeys.sh against acl-matrix.json v2 is a hard error (version gate).
+#
 # Requires jq >= 1.6 on $PATH.
 #
 # Usage: sudo ./deploy/nats/gen-nkeys.sh
@@ -45,7 +53,7 @@ MATRIX_JSON="$(dirname "${BASH_SOURCE[0]}")/acl-matrix.json"
 # Reads deploy/nats/acl-matrix.json and populates PUB_ALLOW, SUB_ALLOW, IDENTITIES,
 # ALLOW_RESPONSES, and OWNER.
 # Aborts with a clear error if jq is missing/too old, JSON is absent/malformed,
-# .version != "1", or any identity has an invalid schema.
+# .version not in {"1","2"}, or any identity has an invalid schema.
 load_matrix() {
   # Assert jq on $PATH
   command -v jq >/dev/null 2>&1 \
@@ -65,11 +73,11 @@ load_matrix() {
   [ -f "${MATRIX_JSON}" ] \
     || error "ACL matrix not found: ${MATRIX_JSON}"
 
-  # Assert .version == "1"
+  # Assert .version in {"1","2"}
   local v
   v=$(jq -r '.version' "${MATRIX_JSON}")
-  [ "${v}" = "1" ] \
-    || error "unsupported acl-matrix.json version: ${v} (expected \"1\")"
+  [[ "${v}" == "1" || "${v}" == "2" ]] \
+    || error "unsupported acl-matrix.json version: ${v} (expected \"1\" or \"2\")"
 
   # Validate all identities and populate arrays
   declare -gA PUB_ALLOW SUB_ALLOW OWNER ALLOW_RESPONSES
@@ -98,8 +106,47 @@ load_matrix() {
       '.identities[$n].subscribe | map("\"" + . + "\"") | join(",")' "${MATRIX_JSON}")
     OWNER[$name]=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
     ALLOW_RESPONSES[$name]=$(jq -r --arg n "${name}" \
-      '.identities[$n].allow_responses // true' "${MATRIX_JSON}")
+      'if (.identities[$n] | has("allow_responses")) then .identities[$n].allow_responses else true end' \
+      "${MATRIX_JSON}")
   done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
+
+  # Assert no duplicate (requester, responder, subject) tuples in request_reply_flows
+  local dup_count
+  dup_count=$(jq '[.request_reply_flows[]? | {requester,responder,subject}] |
+      group_by([.requester,.responder,.subject]) |
+      map(select(length > 1)) | length' "${MATRIX_JSON}")
+  [ "${dup_count}" = "0" ] \
+      || error "acl-matrix.json: duplicate request_reply_flows entries detected (${dup_count} groups)"
+
+  # Derive _inbox.{requester}.> grants from request_reply_flows
+  while IFS= read -r flow; do
+      local requester responder inbox
+      requester=$(jq -r '.requester' <<<"$flow")
+      responder=$(jq -r '.responder'  <<<"$flow")
+      # Validate against known identities
+      [[ -v "SUB_ALLOW[$requester]" ]] \
+          || error "request_reply_flows: unknown requester '${requester}' (not in .identities)"
+      [[ -v "PUB_ALLOW[$responder]" ]] \
+          || error "request_reply_flows: unknown responder '${responder}' (not in .identities)"
+      inbox="\"_inbox.${requester}.>\""
+      # subject not yet used — inbox grant is unconditional per #992; narrow to subject-scoped grants in follow-up
+
+      if [[ "${SUB_ALLOW[$requester]}" != *"${inbox}"* ]]; then
+          if [[ -n "${SUB_ALLOW[$requester]}" ]]; then
+              SUB_ALLOW[$requester]="${SUB_ALLOW[$requester]},${inbox}"
+          else
+              SUB_ALLOW[$requester]="${inbox}"
+          fi
+      fi
+
+      if [[ "${PUB_ALLOW[$responder]}" != *"${inbox}"* ]]; then
+          if [[ -n "${PUB_ALLOW[$responder]}" ]]; then
+              PUB_ALLOW[$responder]="${PUB_ALLOW[$responder]},${inbox}"
+          else
+              PUB_ALLOW[$responder]="${inbox}"
+          fi
+      fi
+  done < <(jq -c '.request_reply_flows[]?' "${MATRIX_JSON}")
 }
 
 # ── emit_user (T1.3) ──────────────────────────────────────────────────────────

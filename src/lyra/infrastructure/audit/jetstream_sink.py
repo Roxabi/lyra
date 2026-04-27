@@ -14,8 +14,9 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 _security_log = logging.getLogger("lyra.security")
 
-_SUBJECT_PRIVILEGED = "lyra.audit.security.privileged"
-_SUBJECT_NORMAL = "lyra.audit.security.normal"
+_SUBJECT_PREFIX = "lyra.audit.security"
+_SUBJECT_PRIVILEGED = f"{_SUBJECT_PREFIX}.privileged"
+_SUBJECT_NORMAL = f"{_SUBJECT_PREFIX}.normal"
 
 
 class JetStreamAuditSink:

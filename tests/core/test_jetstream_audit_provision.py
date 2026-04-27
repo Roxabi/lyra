@@ -14,6 +14,7 @@ import pytest
 
 from lyra.infrastructure.audit.jetstream_sink import (
     _SUBJECT_NORMAL,
+    _SUBJECT_PREFIX,
     _SUBJECT_PRIVILEGED,
     JetStreamAuditSink,
 )
@@ -153,6 +154,8 @@ class TestJetStreamAuditSinkSubjectRouting:
 
     async def test_emit_privileged_subject_when_skip_permissions_true(self) -> None:
         """emit() uses lyra.audit.security.privileged when skip_permissions=True."""
+        import json
+
         sink = JetStreamAuditSink()
         js = _make_js()
         js.publish = AsyncMock()
@@ -162,11 +165,14 @@ class TestJetStreamAuditSinkSubjectRouting:
         await sink.emit(event)  # type: ignore[arg-type]
 
         js.publish.assert_awaited_once()
-        subject = js.publish.call_args[0][0]
+        subject, payload = js.publish.call_args[0]
         assert subject == _SUBJECT_PRIVILEGED
+        assert json.loads(payload)["skip_permissions"] is True
 
     async def test_emit_normal_subject_when_skip_permissions_false(self) -> None:
         """emit() uses lyra.audit.security.normal when skip_permissions=False."""
+        import json
+
         sink = JetStreamAuditSink()
         js = _make_js()
         js.publish = AsyncMock()
@@ -176,13 +182,14 @@ class TestJetStreamAuditSinkSubjectRouting:
         await sink.emit(event)  # type: ignore[arg-type]
 
         js.publish.assert_awaited_once()
-        subject = js.publish.call_args[0][0]
+        subject, payload = js.publish.call_args[0]
         assert subject == _SUBJECT_NORMAL
+        assert json.loads(payload)["skip_permissions"] is False
 
     def test_subjects_are_under_lyra_audit_wildcard(self) -> None:
-        """Both subjects fall under lyra.audit.security.* (stream wildcard)."""
-        assert _SUBJECT_PRIVILEGED.startswith("lyra.audit.security.")
-        assert _SUBJECT_NORMAL.startswith("lyra.audit.security.")
+        """Both subjects fall under _SUBJECT_PREFIX.* (stream wildcard)."""
+        assert _SUBJECT_PRIVILEGED.startswith(f"{_SUBJECT_PREFIX}.")
+        assert _SUBJECT_NORMAL.startswith(f"{_SUBJECT_PREFIX}.")
 
     async def test_emit_degraded_sink_does_not_publish_privileged_event(
         self, caplog: pytest.LogCaptureFixture

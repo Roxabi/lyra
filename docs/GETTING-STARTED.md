@@ -365,11 +365,12 @@ cd ~/projects/lyra
 make lyra status
 ```
 
-You should see all three units active:
+You should see all four units active:
 ```
 lyra-hub.service    active (running)
 lyra-telegram.service  active (running)
 lyra-discord.service   active (running)
+lyra-clipool.service   active (running)
 ```
 
 Or check the full container list:
@@ -401,7 +402,7 @@ What happens under the hood:
 1. The adapter (standalone process) normalizes your message into an `InboundMessage`
 2. It publishes to NATS (`lyra.inbound.<platform>.<bot_id>`)
 3. The Hub picks it up via its `NatsBus` subscription and resolves the routing
-4. `SimpleAgent` sends the text to a persistent `claude` subprocess
+4. The Hub publishes the turn to NATS (`lyra.clipool.cmd`); the `lyra-clipool` worker receives it and spawns the `claude` subprocess, streaming replies back via NATS (`lyra.clipool.heartbeat`)
 5. The Hub publishes the response to NATS (`lyra.outbound.<platform>.<bot_id>`)
 6. The `NatsOutboundListener` in the adapter process receives it and dispatches to the platform
 
@@ -447,8 +448,8 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 
 **Daily commands** (from `~/projects/lyra`):
 ```bash
-make ps              # status of all services (lyra-hub + lyra-telegram + lyra-discord)
-make lyra reload     # restart hub + both adapters
+make ps              # status of all services (lyra-hub + lyra-telegram + lyra-discord + lyra-clipool)
+make lyra reload     # restart hub + both adapters + clipool (four processes)
 make lyra logs       # tail lyra_hub stdout
 make deploy          # pull latest + run tests + restart (from Machine 2)
 ```

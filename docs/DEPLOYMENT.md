@@ -7,7 +7,7 @@ Running Lyra as a managed service on Machine 1 (Ubuntu Server 26.04 LTS) using P
 
 ## Overview
 
-Lyra runs as **four containers** managed by **Podman Quadlet** (systemd --user). A `linger`-enabled
+Lyra runs as **five containers** managed by **Podman Quadlet** (systemd --user). A `linger`-enabled
 systemd user session ensures all containers auto-start on boot without a login session.
 
 ```
@@ -15,14 +15,16 @@ Machine 1 (roxabituwer, 192.168.1.16)
 ├── systemd: nats.service         (host NATS — independent, always-on)
 ├── systemd --user (linger enabled)
 │   ├── nats.service              ← Quadlet NATS container (lyra-internal, port 4223)
-│   ├── lyra-hub.service          ← hub container (NatsBus, pool, LLM, memory)
+│   ├── lyra-hub.service          ← hub container (NatsBus, pool, routing, memory)
 │   ├── lyra-telegram.service     ← Telegram adapter container
-│   └── lyra-discord.service      ← Discord adapter container
+│   ├── lyra-discord.service      ← Discord adapter container
+│   └── lyra-clipool.service      ← CliPool NATS worker (Claude subprocesses)
 ├── Quadlet unit files: ~/.config/containers/systemd/
 │   ├── lyra.network
 │   ├── lyra-hub.container
 │   ├── lyra-telegram.container
 │   ├── lyra-discord.container
+│   ├── lyra-clipool.container
 │   ├── nats.container
 │   └── lyra-*.volume
 ├── env files: ~/.lyra/env/hub.env, telegram.env, discord.env
@@ -102,8 +104,8 @@ See [DEPLOYMENT-quadlet.md](DEPLOYMENT-quadlet.md) for the full env file layout 
 
 ## Multi-Bot Deployment
 
-Multiple bots are configured in `config.toml` — no container changes needed. The three-container
-topology (`lyra-hub`, `lyra-telegram`, `lyra-discord`) is fixed regardless of how many bots
+Multiple bots are configured in `config.toml` — no container changes needed. The four-container
+topology (`lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`) is fixed regardless of how many bots
 are configured.
 
 ### Environment variables
@@ -119,23 +121,23 @@ ARYL_TELEGRAM_WEBHOOK_SECRET=another-random-string
 
 ### Resource considerations
 
-All bots share the `lyra-hub` container and a single `CliPool` (Claude CLI subprocess pool).
+All bots share the `lyra-hub` container for routing and the `lyra-clipool` container for Claude subprocess execution.
 Adapter containers (`lyra-telegram`, `lyra-discord`) are lightweight thin NATS clients.
 
 - **CPU / RAM**: each additional bot adds a small constant overhead. At personal-use scale this
-  is negligible — expect under 50 MB additional RAM per bot, all in `lyra-hub`.
+  is negligible — expect under 50 MB additional RAM per bot across hub and clipool.
 - **CliPool contention**: simultaneous long-running LLM requests from multiple bots compete for
-  subprocess slots in the shared pool in `lyra-hub`.
+  subprocess slots in the shared `lyra-clipool` container.
 - **Crash scope**: an unhandled exception in `lyra-hub` takes down all bot routing at once. The
   adapter containers survive independently. systemd `Restart=on-failure` brings everything back.
 
 ### No container changes for additional bots
 
-The three containers remain fixed — adding bots only changes `config.toml`. Changes take effect
+The four containers remain fixed — adding bots only changes `config.toml`. Changes take effect
 on restart.
 
 ```bash
-# Restart all three Lyra containers after updating config.toml
+# Restart all four Lyra containers after updating config.toml
 make lyra reload
 ```
 
@@ -296,10 +298,11 @@ sudo systemctl reload nats.service
 
 ### Reconnect order
 
-Restart adapters first so the hub is last to reconnect:
+Restart adapters and clipool first so the hub is last to reconnect:
 
 ```bash
 make telegram reload && make discord reload
+make clipool reload  # clipool before hub
 make lyra reload     # hub last
 ```
 

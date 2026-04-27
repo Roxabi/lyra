@@ -172,6 +172,7 @@ quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/contai
 	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"
 	@cp deploy/quadlet/lyra-telegram.container         "$(QUADLET_DIR)/lyra-telegram.container"
 	@cp deploy/quadlet/lyra-discord.container          "$(QUADLET_DIR)/lyra-discord.container"
+	@cp deploy/quadlet/lyra-clipool.container          "$(QUADLET_DIR)/lyra-clipool.container"
 	@systemctl --user daemon-reload
 	@echo "Quadlet units installed."
 	@echo "Next: run 'make quadlet-secrets-install' to (re)create Podman secrets from ~/.lyra/nkeys/."
@@ -202,6 +203,7 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 	@podman secret create --replace lyra-nkey-hub               "$(LYRA_NKEYS_DIR)/hub.seed"
 	@podman secret create --replace lyra-nkey-telegram-adapter  "$(LYRA_NKEYS_DIR)/telegram-adapter.seed"
 	@podman secret create --replace lyra-nkey-discord-adapter   "$(LYRA_NKEYS_DIR)/discord-adapter.seed"
+	@podman secret create --replace lyra-nkey-clipool-worker    "$(LYRA_NKEYS_DIR)/clipool-worker.seed"
 	@echo "Podman secrets installed. Verify: podman secret ls"
 
 # ── Supervisor config reload (remote prod only until cutover #611) ──────────

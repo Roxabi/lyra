@@ -43,9 +43,11 @@ flowchart TD
         P1["Pool<br/>asyncio.Task"]
         P2["Pool<br/>asyncio.Task"]
         AGENT["Agent<br/>stateless singleton"]
-        LLM["LLM<br/>LlmProvider<br/>Claude CLI + SDK"]
         SC["SessionCommand<br/>scrape → LLM → vault"]
         OD["OutboundDispatcher<br/>NatsChannelProxy"]
+    end
+    subgraph CP["lyra-clipool process"]
+        LLM["LLM<br/>LlmProvider<br/>Claude CLI + SDK"]
     end
     NATS[("NATS<br/>systemd")]
 
@@ -57,7 +59,9 @@ flowchart TD
     P1 --> AGENT
     P2 --> AGENT
     AGENT -->|"/vault-add · /explain<br/>/summarize · /search"| SC
-    AGENT -->|"normal chat"| LLM
+    HUB -->|"lyra.clipool.cmd"| NATS
+    NATS -->|"lyra.clipool.cmd"| LLM
+    LLM -->|"lyra.clipool.heartbeat"| NATS
     P1 --> OD
     P2 --> OD
     OD -->|"lyra.outbound.telegram.*"| NATS
@@ -171,10 +175,11 @@ See [QUICKSTART.md](docs/QUICKSTART.md) for the full walkthrough.
 ## CLI reference
 
 ```bash
-# Production entry points (three-process NATS mode — run inside Quadlet containers)
+# Production entry points (four-process NATS mode — run inside Quadlet containers)
 lyra hub                          # start the hub process
 lyra adapter telegram             # start the Telegram adapter process
 lyra adapter discord              # start the Discord adapter process
+lyra clipool                      # start the standalone CliPool NATS worker
 
 # Legacy single-process (dev / quick test)
 lyra start                        # start hub + adapters in one process (no NATS required)
@@ -229,10 +234,10 @@ DEPLOY_DIR=~/projects/lyra            # project path on production
 
 | Command | Description |
 |---------|-------------|
-| `make lyra` | Start hub + both adapters (lyra-hub, lyra-telegram, lyra-discord) |
-| `make lyra stop` | Stop all three Lyra processes |
-| `make lyra reload` | Restart all three Lyra processes |
-| `make lyra status` | Status of all three Lyra processes |
+| `make lyra` | Start hub + both adapters + clipool (lyra-hub, lyra-telegram, lyra-discord, lyra-clipool) |
+| `make lyra stop` | Stop all four Lyra processes |
+| `make lyra reload` | Restart all four Lyra processes |
+| `make lyra status` | Status of all four Lyra processes |
 | `make lyra logs` | Tail lyra-hub stdout |
 | `make telegram` | telegram adapter only (start\|stop\|reload\|logs\|errors) |
 | `make discord` | discord adapter only (start\|stop\|reload\|logs\|errors) |
@@ -251,7 +256,7 @@ src/lyra/
   core/       — hub, pool, agent, message, memory, auth, bus, command router
   adapters/   — channel adapters (Telegram, Discord, CLI) + NatsOutboundListener
   nats/       — NatsBus, NatsChannelProxy (NATS inter-process transport)
-  bootstrap/  — process entry points: hub_standalone, adapter_standalone
+  bootstrap/  — process entry points: hub_standalone, adapter_standalone, clipool_standalone
   agents/     — agent implementations + TOML seed configs
   llm/        — LlmProvider protocol, drivers (CLI, SDK), smart routing
   stt/        — STTService (faster-whisper)

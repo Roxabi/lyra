@@ -54,15 +54,14 @@ class TestBuildCliPoolAuditSinkWiring:
 
 class TestJetStreamAuditSinkBootstrapIntegration:
     async def test_provision_is_called_before_cli_pool_in_standalone(self) -> None:
-        """provision() must be called before build_cli_pool in hub_standalone."""
+        """provision() must be called before build_cli_nats_driver in hub_standalone."""
         call_order: list[str] = []
 
-        async def _fake_provision(nc: object) -> None:
+        async def _fake_provision(*_: object) -> None:
             call_order.append("provision")
 
-        async def _fake_build_cli_pool(*args: object, **kwargs: object) -> None:
-            call_order.append("build_cli_pool")
-            return None
+        async def _fake_build_cli_nats_driver(*_: object) -> None:  # type: ignore[misc]
+            call_order.append("build_cli_nats_driver")
 
         with patch(
             "lyra.bootstrap.standalone.hub_standalone.JetStreamAuditSink"
@@ -72,8 +71,8 @@ class TestJetStreamAuditSinkBootstrapIntegration:
             MockSink.return_value = mock_sink
 
             with patch(
-                "lyra.bootstrap.standalone.hub_standalone.build_cli_pool",
-                side_effect=_fake_build_cli_pool,
+                "lyra.bootstrap.standalone.hub_standalone.build_cli_nats_driver",
+                side_effect=_fake_build_cli_nats_driver,
             ):
                 # Import the module — both symbols are referenced at module level
                 import lyra.bootstrap.standalone.hub_standalone as hub_mod
@@ -81,9 +80,10 @@ class TestJetStreamAuditSinkBootstrapIntegration:
                 # Verify structural presence — imported at module level
                 assert hasattr(hub_mod, "JetStreamAuditSink")
 
-        # If both were called, provision must precede build_cli_pool
-        if "provision" in call_order and "build_cli_pool" in call_order:
-            assert call_order.index("provision") < call_order.index("build_cli_pool")
+        # If both were called, provision must precede build_cli_nats_driver
+        _key = "build_cli_nats_driver"
+        if "provision" in call_order and _key in call_order:
+            assert call_order.index("provision") < call_order.index(_key)
 
     async def test_audit_sink_skip_permissions_event_fields(self) -> None:
         """A spawn with skip_permissions=True emits event with that field True."""

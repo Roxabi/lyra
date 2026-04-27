@@ -2,7 +2,7 @@
 
 ## Overview
 
-3 containers communicating over NATS.
+4 containers communicating over NATS.
 
 ```
 ┌──────────────┐  NATS inbound   ┌─────────────┐  NATS cmd    ┌──────────────┐
@@ -170,12 +170,9 @@ Adapter mounts are per-file inline binds (not the full `lyra-data.volume`) — a
 
 ## Migration Delta
 
-| | Today | Target |
+| | Before | Status |
 |---|---|---|
 | Hub ↔ Adapter | Already NATS (3-process mode) | Same, containerized |
-| Hub ↔ CliPool | **In-process** (stdio, method calls) | **New: NATS protocol** |
+| Hub ↔ CliPool | In-process (stdio, method calls) | ✅ Done (#941) — NATS protocol (`lyra.clipool.cmd` / `lyra.clipool.heartbeat`) |
 | DBs | All in `~/.lyra/` on one host | Split across volumes per container |
 | Session resume | In-process `_resume_session_ids` dict | Hub sends UUID over NATS |
-
-**The hard part:** replacing the in-process `Hub → CliPool` stdio bridge with a
-NATS-based protocol. All other separation already exists in 3-process mode.

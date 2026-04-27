@@ -50,7 +50,7 @@ class SessionManager:
 
     async def _summarize_session(self, pool: "Pool") -> str:
         """Generate session summary. Base: simple truncation. Override for LLM."""
-        turn_store = pool._turn_store
+        turn_store = pool.turn_store
         if turn_store is not None and pool.user_id:
             # Fetch both user and assistant turns from TurnStore (newest first).
             raw = await turn_store.get_turns(pool.pool_id, pool.user_id, limit=20)
@@ -88,7 +88,7 @@ class SessionManager:
         """Summarize and truncate pool history when approaching context limit."""
         if self._memory is None:
             return
-        turn_store = pool._turn_store
+        turn_store = pool.turn_store
         if turn_store is not None and pool.user_id:
             # Derive token estimate from TurnStore — includes both user and
             # assistant turns, restoring pre-#666 full-conversation accounting.

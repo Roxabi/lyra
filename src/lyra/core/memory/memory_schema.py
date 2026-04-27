@@ -7,11 +7,15 @@ inserts (e.g. in tests) don't crash on NOT-NULL constraints.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 log = logging.getLogger(__name__)
 
 
-async def apply_schema_compat(db) -> None:  # noqa: ANN001 — aiosqlite Connection
+async def apply_schema_compat(db: "aiosqlite.Connection") -> None:
     """Add DEFAULT 'general' on the category column if missing.
 
     Uses the 12-step SQLite table-rename procedure to rebuild the table.
@@ -66,14 +70,18 @@ async def apply_schema_compat(db) -> None:  # noqa: ANN001 — aiosqlite Connect
         """)
         await db.execute(
             "CREATE TRIGGER IF NOT EXISTS entries_ad AFTER DELETE ON entries BEGIN"
-            " INSERT INTO entries_fts(entries_fts, rowid, title, content, category, type)"  # noqa: E501
-            " VALUES ('delete', old.id, old.title, old.content, old.category, old.type);"  # noqa: E501
+            " INSERT INTO entries_fts(entries_fts, rowid, title, content,"
+            " category, type)"
+            " VALUES ('delete', old.id, old.title, old.content,"
+            " old.category, old.type);"
             " END"
         )
         await db.execute(
             "CREATE TRIGGER IF NOT EXISTS entries_au AFTER UPDATE ON entries BEGIN"
-            " INSERT INTO entries_fts(entries_fts, rowid, title, content, category, type)"  # noqa: E501
-            " VALUES ('delete', old.id, old.title, old.content, old.category, old.type);"  # noqa: E501
+            " INSERT INTO entries_fts(entries_fts, rowid, title, content,"
+            " category, type)"
+            " VALUES ('delete', old.id, old.title, old.content,"
+            " old.category, old.type);"
             " INSERT INTO entries_fts(rowid, title, content, category, type)"
             " VALUES (new.id, new.title, new.content, new.category, new.type);"
             " END"

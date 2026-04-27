@@ -62,7 +62,7 @@ class CommandReloadManager:
                 effective.append(name)
             except ValueError as exc:
                 log.warning("Skipping command %r: %s", name, exc)
-            except Exception:  # noqa: BLE001  # resilient: don't let one bad plugin block startup
+            except Exception:  # noqa: BLE001 — resilient: don't let one bad plugin block startup
                 log.warning("Failed to load command %r", name, exc_info=True)
         return effective
 
@@ -112,6 +112,6 @@ class CommandReloadManager:
                 self.command_hashes[name] = new_hash
                 changed = True
                 log.info("Hot-reloaded command %r (hash changed)", name)
-            except Exception:  # noqa: BLE001  # resilient: don't let hot-reload crash the agent
+            except Exception:  # noqa: BLE001 — resilient: don't let hot-reload crash the agent
                 log.warning("Failed to reload command %r", name, exc_info=True)
         return changed

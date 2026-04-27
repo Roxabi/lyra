@@ -21,10 +21,19 @@ import logging
 import re
 import uuid
 from contextvars import ContextVar, Token
+from typing import cast
 
 _trace_id: ContextVar[str] = ContextVar("trace_id")
 _pool_id: ContextVar[str] = ContextVar("pool_id")
 _agent_name: ContextVar[str] = ContextVar("agent_name")
+
+
+class TraceLogRecord(logging.LogRecord):
+    """LogRecord subclass that declares the extra trace fields."""
+
+    trace_id: str
+    pool_id: str
+    agent_name: str
 
 
 class TraceContext:
@@ -82,18 +91,19 @@ class TraceIdFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        trec = cast(TraceLogRecord, record)
         try:
-            record.trace_id = _trace_id.get("")  # type: ignore[attr-defined]
+            trec.trace_id = _trace_id.get("")
         except Exception:
-            record.trace_id = ""  # type: ignore[attr-defined]
+            trec.trace_id = ""
         try:
-            record.pool_id = _pool_id.get("")  # type: ignore[attr-defined]
+            trec.pool_id = _pool_id.get("")
         except Exception:
-            record.pool_id = ""  # type: ignore[attr-defined]
+            trec.pool_id = ""
         try:
-            record.agent_name = _agent_name.get("")  # type: ignore[attr-defined]
+            trec.agent_name = _agent_name.get("")
         except Exception:
-            record.agent_name = ""  # type: ignore[attr-defined]
+            trec.agent_name = ""
         return True
 
 

@@ -30,7 +30,8 @@ def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing con
     thread_id: int | None = None,
     channel_id: int | None = None,
     trust_level: TrustLevel = TrustLevel.TRUSTED,
-    is_admin: bool = False,  # REQUIRED: always pass is_admin=identity.is_admin — do not rely on default  # noqa: E501
+    # REQUIRED: always pass is_admin=identity.is_admin — do not rely on default
+    is_admin: bool = False,
 ) -> InboundMessage:
     """Convert a discord.py Message (or SimpleNamespace) to InboundMessage."""
     is_mention = adapter._bot_user is not None and adapter._bot_user in raw.mentions

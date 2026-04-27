@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ..agent.agent_config import ModelConfig
 from .cli_pool_worker import _ProcessEntry
@@ -16,6 +16,25 @@ from .cli_protocol import StreamingIterator, send_and_read_stream
 
 if TYPE_CHECKING:
     from .cli_protocol import CliProtocolOptions
+
+
+class _CliPoolCore(Protocol):
+    """Protocol declaring cross-mixin dependencies for CliPoolStreamingMixin."""
+
+    async def _idle_reaper(self) -> None: ...
+
+    async def _kill(
+        self, pool_id: str, *, preserve_session: bool = ...
+    ) -> None: ...
+
+    async def _spawn(
+        self,
+        pool_id: str,
+        model_config: ModelConfig,
+        system_prompt: str = ...,
+    ) -> _ProcessEntry | None: ...
+
+    async def reset(self, pool_id: str) -> None: ...
 
 log = logging.getLogger(__name__)
 
@@ -50,8 +69,9 @@ class CliPoolStreamingMixin:
         for _attempt in range(2):  # at most one stale-resume retry
             entry = self._entries.get(pool_id)
 
+            _core = cast(_CliPoolCore, self)
             if entry is None or not entry.is_alive():
-                entry = await self._spawn(pool_id, model_config, system_prompt)  # type: ignore[attr-defined]
+                entry = await _core._spawn(pool_id, model_config, system_prompt)
                 if entry is None:
                     raise RuntimeError("Failed to spawn Claude CLI process")
             elif entry.system_prompt != system_prompt:
@@ -59,8 +79,8 @@ class CliPoolStreamingMixin:
                     "[pool:%s] system_prompt changed — respawning (streaming)",
                     pool_id,
                 )
-                await self._kill(pool_id, preserve_session=False)  # type: ignore[attr-defined]
-                entry = await self._spawn(pool_id, model_config, system_prompt)  # type: ignore[attr-defined]
+                await _core._kill(pool_id, preserve_session=False)
+                entry = await _core._spawn(pool_id, model_config, system_prompt)
                 if entry is None:
                     raise RuntimeError("Failed to respawn Claude CLI process")
             elif entry.model_config != model_config:
@@ -68,15 +88,15 @@ class CliPoolStreamingMixin:
                     "[pool:%s] model_config mismatch — respawning (streaming)",
                     pool_id,
                 )
-                await self._kill(pool_id, preserve_session=False)  # type: ignore[attr-defined]
-                entry = await self._spawn(pool_id, model_config, system_prompt)  # type: ignore[attr-defined]
+                await _core._kill(pool_id, preserve_session=False)
+                entry = await _core._spawn(pool_id, model_config, system_prompt)
                 if entry is None:
                     raise RuntimeError("Failed to respawn Claude CLI process")
 
             _pool_id = pool_id
 
             async def _reset() -> None:
-                await self.reset(_pool_id)  # type: ignore[attr-defined]
+                await cast(_CliPoolCore, self).reset(_pool_id)
 
             # Lock: write stdin inside lock, release before returning the
             # read-only iterator.  This prevents concurrent stdin interleave
@@ -105,7 +125,9 @@ class CliPoolStreamingMixin:
                         pool_id,
                         entry.resumed_from,
                     )
-                    await self._kill(pool_id, preserve_session=False)  # type: ignore[attr-defined]
+                    await cast(_CliPoolCore, self)._kill(
+                        pool_id, preserve_session=False
+                    )
                     continue
 
             entry.turn_count += 1

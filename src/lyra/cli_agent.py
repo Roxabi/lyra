@@ -84,5 +84,5 @@ def _list_from_dir(
 # Register commands from sub-modules (import triggers @agent_app.command())
 # ---------------------------------------------------------------------------
 
-importlib.import_module("lyra.cli_agent_create")  # noqa: E402 â registers commands via @agent_app.command()
-importlib.import_module("lyra.agent_cmd.agents")  # noqa: E402 â registers commands via @agent_app.command()
+importlib.import_module("lyra.cli_agent_create")  # noqa: E402 — intentional: registers subcommands after agent_app is defined
+importlib.import_module("lyra.agent_cmd.agents")  # noqa: E402 — intentional: registers subcommands after agent_app is defined

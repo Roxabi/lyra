@@ -107,6 +107,7 @@ class Pool:
         self.session_start: datetime = datetime.now(UTC)
         self.message_count: int = 0
         self._system_prompt: str = ""
+        self._configured: bool = False
         self.voice_mode: bool = False
         self.last_detected_language: str | None = None
         self._last_turn_had_backend_error: bool = False

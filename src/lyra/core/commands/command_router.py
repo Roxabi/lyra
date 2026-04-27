@@ -35,8 +35,9 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 BuiltinHandler = Callable[
-    [list, InboundMessage, Pool | None], Response | Awaitable[Response] | None
-]  # noqa: E501
+    [list, InboundMessage, Pool | None],
+    Response | Awaitable[Response] | None,
+]
 
 
 class CommandRouter:
@@ -148,9 +149,10 @@ class CommandRouter:
     ) -> None:
         """Register a session command handler.
 
-        Deprecated: prefer ``@register`` from ``lyra.core.processors.processor_registry``.
+        Deprecated: prefer ``@register`` from
+        ``lyra.core.processors.processor_registry``.
         *name* must not include the leading slash. Raises ``ValueError`` on clash.
-        """  # noqa: E501
+        """
         full_name = f"/{name}"
         if full_name in self._builtins:
             raise ValueError(f"Session command {full_name!r} clashes with a builtin.")

@@ -8,10 +8,31 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
+    from ..agent.agent_config import ModelConfig
     from .cli_pool_worker import _ProcessEntry
+
+
+class _CliPoolCore(Protocol):
+    """Protocol declaring cross-mixin dependencies expected by CliPoolLifecycleMixin."""
+
+    async def _idle_reaper(self) -> None: ...
+
+    async def _kill(
+        self, pool_id: str, *, preserve_session: bool = ...
+    ) -> None: ...
+
+    async def _spawn(
+        self,
+        pool_id: str,
+        model_config: ModelConfig,
+        system_prompt: str = ...,
+    ) -> _ProcessEntry | None: ...
+
+    async def reset(self, pool_id: str) -> None: ...
+
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +50,9 @@ class CliPoolLifecycleMixin:
 
     async def start(self) -> None:
         """Start the idle reaper background task."""
-        self._reaper_task = asyncio.create_task(self._idle_reaper())  # type: ignore[attr-defined]
+        self._reaper_task = asyncio.create_task(
+            cast(_CliPoolCore, self)._idle_reaper()
+        )
         log.info("CliPool started (idle_ttl=%ds)", self._idle_ttl)
 
     def get_reaper_status(self) -> dict[str, bool | float | None]:
@@ -84,5 +107,5 @@ class CliPoolLifecycleMixin:
             except asyncio.CancelledError:
                 pass
         for pool_id in list(self._entries):
-            await self._kill(pool_id)  # type: ignore[attr-defined]
+            await cast(_CliPoolCore, self)._kill(pool_id)
         log.info("CliPool stopped")

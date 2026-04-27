@@ -137,8 +137,8 @@ class CliProtocolOptions:
 
 
 # Re-export from submodules for backward compatibility (after class definitions)
-from .cli_non_streaming import read_until_result, send_and_read  # noqa: E402
-from .cli_streaming import StreamingIterator, send_and_read_stream  # noqa: E402
+from .cli_non_streaming import read_until_result, send_and_read  # noqa: E402, I001 — circular import: cli_non_streaming/cli_streaming import CliProtocolOptions from this module
+from .cli_streaming import StreamingIterator, send_and_read_stream  # noqa: E402, I001 — circular import: cli_non_streaming/cli_streaming import CliProtocolOptions from this module
 
 __all__ = [
     "CliProtocolOptions",

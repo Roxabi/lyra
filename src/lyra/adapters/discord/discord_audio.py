@@ -223,7 +223,7 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
                 "ThreadStore: lazy is_owned (audio) failed for thread_id=%s",
                 message.channel.id,
             )
-    if not _audio_is_dm and not _audio_is_mention and not _audio_in_owned_thread:  # noqa: E501
+    if not _audio_is_dm and not _audio_is_mention and not _audio_in_owned_thread:
         return
 
     hub_audio = adapter.normalize_audio(

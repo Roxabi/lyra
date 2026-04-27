@@ -75,7 +75,7 @@ async def resolve_bot_agent_map(
             )
             try:
                 await agent_store.set_bot_agent(platform, bot_id, toml_agent)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 — resilient: DB seed failure must not abort multibot startup
                 log.warning(
                     "bot_agent_map: failed to seed (%r, %r) -> %r: %s",
                     platform,

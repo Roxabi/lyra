@@ -130,7 +130,8 @@ def normalize(
     raw: Any,
     *,
     trust_level: TrustLevel = TrustLevel.TRUSTED,
-    is_admin: bool = False,  # REQUIRED: always pass is_admin=identity.is_admin — do not rely on default  # noqa: E501
+    # REQUIRED: always pass is_admin=identity.is_admin — do not rely on default
+    is_admin: bool = False,
 ) -> InboundMessage:
     """Convert an aiogram Message (or SimpleNamespace) to an InboundMessage.
 

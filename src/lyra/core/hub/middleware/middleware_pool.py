@@ -107,7 +107,7 @@ class CreatePoolMiddleware:
             and not getattr(pool, "_configured", False)
         ):
             _agent.configure_pool(pool)
-            pool._configured = True  # type: ignore[attr-defined]
+            pool._configured = True
 
         if pool._on_resume_fn is None and ctx.hub._turn_store is not None:  # #597
             pool._on_resume_fn = ctx.hub._turn_store.increment_resume_count

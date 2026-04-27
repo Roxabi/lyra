@@ -1,0 +1,102 @@
+---
+title: "FakeWorkers Refactor (ADR-059 V6) — Expert Consensus"
+issue: 962
+status: consensus-reached
+date: 2026-04-27
+panel: architect, security-auditor, backend-dev
+confidence: high
+---
+
+## Problem
+
+PR #982 implements ADR-059 V6: moving `FakeTtsWorker`, `FakeSttWorker`, and `FakeImageWorker`
+from `roxabi_contracts` into `roxabi_nats[testing]`. Five lower-confidence findings from a
+second `/code-review` pass required consensus on long-term solutions before applying fixes.
+
+## Panel
+
+| Agent | Focus |
+|---|---|
+| architect | arch soundness, maintainability, module structure |
+| security-auditor | security, attack surface, correctness of safety guards |
+| backend-dev | impl complexity, API design, maintainability cost |
+
+## Consensus
+
+### Finding A — `roxabi-nats[testing]` missing as explicit test dep in contracts pyproject.toml
+
+**Decision:** Add `roxabi-nats[testing]` as an explicit `[dependency-groups] test` entry in
+`packages/roxabi-contracts/pyproject.toml`.
+
+**Rationale:** The shim tests in `roxabi-contracts` import from `roxabi_nats.testing`, so the
+dependency is real and must be declared. Implicit transitive resolution is fragile; explicit
+declaration documents the intent and ensures lockfile stability.
+
+### Finding B — `localhost` gap not documented in `_guards.py`
+
+**Decision:** Add a single-line comment in `_guards.py` above `ALLOWED_LOOPBACK_HOSTS`
+acknowledging that `localhost` is intentionally absent — DNS resolution cannot be guaranteed,
+and only numeric loopback addresses are safe.
+
+**Rationale:** The omission of `localhost` is a deliberate security decision that will surprise
+future readers. A comment prevents a well-meaning contributor from "fixing" it and introducing
+a DNS-rebinding vector.
+
+### Finding C — `"production"` missing from Guard-2 parametrize list in voice tests
+
+**Decision:** Add the lowercase `"production"` string to the `test_g2_prod_env_case_insensitive`
+parametrize list in `test_voice_testing_doubles.py` (currently only tests `"PRODUCTION"`,
+`"Production"`, `"pRoDuCtIoN"`).
+
+**Rationale:** The test is named "case_insensitive" but omits the base case. This is a genuine
+coverage gap — the casefold branch needs the all-lowercase sentinel to verify correct behavior.
+
+### Finding D — `stop()` not re-entrant (no `_stopping` flag)
+
+**Decision:** Add a `_stopping: bool = False` flag to both `FakeTtsWorker`/`FakeSttWorker`
+(voice.py) and `FakeImageWorker` (image.py). Set it to `True` at the top of `stop()` and check
+it in `_dispatch` before publishing, so in-flight handlers don't attempt to write to a
+draining connection.
+
+**Rationale:** The bare `except Exception` in `_dispatch` handles the publish failure but still
+logs noise and incurs an unnecessary exception path. The `_stopping` flag is the correct
+structural fix: it prevents the attempt rather than catching the failure. Cost is one bool per
+worker instance.
+
+### Finding E — `_DRAIN_TIMEOUT_S` duplicated across voice.py and image.py
+
+**Decision:** Extract `_DRAIN_TIMEOUT_S = 3.0` into `roxabi_nats/testing/_constants.py` and
+import from both `voice.py` and `image.py`.
+
+**Rationale:** `_guards.py` already establishes the pattern: shared testing primitives live in
+dedicated submodules. A third worker (FakeLlmWorker, etc.) would add a third mirror; centralizing
+now prevents drift. A one-line `_constants.py` with a single import costs nothing.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|---|---|
+| Keep `_DRAIN_TIMEOUT_S` mirrors with comment (Finding E) | backend-dev | Third-worker growth makes drift concrete; `_guards.py` precedent is decisive |
+| Add `localhost` to `ALLOWED_LOOPBACK_HOSTS` (Finding B) | — | DNS resolution is not guaranteed; numeric loopback is the only safe option |
+
+## Dissent
+
+Finding E: backend-dev initially favored accepting mirrors with a comment. After majority
+presented the third-worker trajectory and the `_guards.py` precedent, backend-dev accepted
+the centralization approach. Dissent recorded per consensus protocol.
+
+All other findings: unanimous.
+
+## Implementation Notes
+
+Apply in this order to avoid import errors:
+1. Create `roxabi_nats/testing/_constants.py` with `_DRAIN_TIMEOUT_S = 3.0`
+2. Update `voice.py` and `image.py` to import from `_constants`
+3. Add `_stopping` flag to all three worker classes
+4. Add `localhost` comment to `_guards.py`
+5. Add `"production"` to voice test parametrize
+6. Add `roxabi-nats[testing]` to contracts test dep group
+
+## Next
+
+Apply via `/fix` Phase 6 (1b1 accepted decisions).

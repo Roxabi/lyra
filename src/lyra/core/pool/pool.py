@@ -10,8 +10,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.infrastructure.stores.turn_store import TurnStore
-
     from ..memory import SessionSnapshot
 
 from ..config import PoolConfig
@@ -119,50 +117,6 @@ class Pool:
             session_id_fn=lambda: self.session_id,
         )
         self._processor = PoolProcessor(self)
-
-    # Backward-compat shims — delegate to observer so callers keep working.
-    # TODO: ADR-059 remove once callers updated:
-    #   session_lifecycle.py, test_turn_store.py, test_pool_advanced.py
-    #   must access pool._observer directly or use PoolObserver API.
-    @property
-    def _turn_store(self) -> TurnStore | None:
-        return self._observer._turn_store
-
-    @_turn_store.setter
-    def _turn_store(self, value: TurnStore | None) -> None:
-        self._observer._turn_store = value
-
-    @property
-    def _turn_logger(
-        self,
-    ) -> Callable[[str, InboundMessage], Awaitable[None]] | None:
-        return self._observer._turn_logger
-
-    @_turn_logger.setter
-    def _turn_logger(
-        self, value: Callable[[str, InboundMessage], Awaitable[None]] | None
-    ) -> None:
-        self._observer._turn_logger = value
-
-    @property
-    def _session_update_fn(
-        self,
-    ) -> Callable[[InboundMessage, str, str], Awaitable[None]] | None:
-        return self._observer._session_update_fn
-
-    @_session_update_fn.setter
-    def _session_update_fn(
-        self, value: Callable[[InboundMessage, str, str], Awaitable[None]] | None
-    ) -> None:
-        self._observer._session_update_fn = value
-
-    @property
-    def _session_persisted(self) -> bool:
-        return self._observer._session_persisted
-
-    @_session_persisted.setter
-    def _session_persisted(self, value: bool) -> None:
-        self._observer._session_persisted = value
 
     @property
     def debounce_ms(self) -> int:

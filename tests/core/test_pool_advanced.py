@@ -158,7 +158,7 @@ class TestPoolIdentity:
 
     def test_pool_turn_logger_default(self, pool: Pool) -> None:
         """_turn_logger defaults to None — no logger wired by default."""
-        assert pool._turn_logger is None
+        assert pool._observer._turn_logger is None
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +202,7 @@ class TestPoolAppend:
         async def fake_logger(sid: str, m: object) -> None:
             calls.append((sid, m))
 
-        pool._turn_logger = fake_logger
+        pool._observer.register_turn_logger(fake_logger)
         await pool.append(_make_inbound())
         assert pool.message_count == 1
         assert len(calls) == 1

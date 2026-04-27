@@ -390,3 +390,153 @@ class TestPersistThreadClaimFailurePath:
 
         # Assert — message still reaches the inbound bus
         inbound_bus.put.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Tests for retrieve_thread_session
+# ---------------------------------------------------------------------------
+
+
+class TestRetrieveThreadSession:
+    """retrieve_thread_session — cache hit/miss, LRU promotion, eviction."""
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_returns_cached_value(self) -> None:
+        """Cache hit: returns value without calling get_session."""
+        from unittest.mock import AsyncMock
+
+        from lyra.adapters.discord.discord_threads import retrieve_thread_session
+
+        store = AsyncMock()
+        cache: dict[str, tuple[str, str]] = {"123": ("sess-a", "pool-a")}
+
+        result = await retrieve_thread_session(store, "123", "bot1", cache)
+
+        assert result == ("sess-a", "pool-a")
+        store.get_session.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_promotes_key_to_end(self) -> None:
+        """Cache hit moves the accessed key to end (LRU promotion)."""
+        from unittest.mock import AsyncMock
+
+        from lyra.adapters.discord.discord_threads import retrieve_thread_session
+
+        store = AsyncMock()
+        cache: dict[str, tuple[str, str]] = {
+            "1": ("s1", "p1"),
+            "2": ("s2", "p2"),
+            "3": ("s3", "p3"),
+        }
+
+        await retrieve_thread_session(store, "1", "bot1", cache)
+
+        # "1" should now be at the end (most recently used)
+        assert list(cache.keys())[-1] == "1"
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_calls_store_and_warms_cache(self) -> None:
+        """Cache miss: calls get_session and warms the cache on a hit."""
+        from unittest.mock import AsyncMock
+
+        from lyra.adapters.discord.discord_threads import retrieve_thread_session
+
+        store = AsyncMock()
+        store.get_session.return_value = ("sess-b", "pool-b")
+        cache: dict[str, tuple[str, str]] = {}
+
+        result = await retrieve_thread_session(store, "456", "bot1", cache)
+
+        assert result == ("sess-b", "pool-b")
+        store.get_session.assert_awaited_once_with(thread_id="456", bot_id="bot1")
+        assert cache["456"] == ("sess-b", "pool-b")
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_none_result_does_not_populate_cache(self) -> None:
+        """Cache miss with (None, None) from store: cache stays empty."""
+        from unittest.mock import AsyncMock
+
+        from lyra.adapters.discord.discord_threads import retrieve_thread_session
+
+        store = AsyncMock()
+        store.get_session.return_value = (None, None)
+        cache: dict[str, tuple[str, str]] = {}
+
+        result = await retrieve_thread_session(store, "789", "bot1", cache)
+
+        assert result == (None, None)
+        assert "789" not in cache
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_evicts_oldest_when_full(self) -> None:
+        """Cache at 500 entries: miss with a store hit evicts the oldest key."""
+        from unittest.mock import AsyncMock
+
+        from lyra.adapters.discord.discord_threads import retrieve_thread_session
+
+        store = AsyncMock()
+        store.get_session.return_value = ("sess-new", "pool-new")
+        cache: dict[str, tuple[str, str]] = {str(i): ("s", "p") for i in range(500)}
+        oldest_key = "0"
+
+        await retrieve_thread_session(store, "999", "bot1", cache)
+
+        assert oldest_key not in cache
+        assert "999" in cache
+        assert len(cache) == 500
+
+
+# ---------------------------------------------------------------------------
+# Tests for restore_hot_threads
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreHotThreads:
+    """restore_hot_threads — str→int conversion, empty path, window calculation."""
+
+    @pytest.mark.asyncio
+    async def test_returns_set_of_int_thread_ids(self) -> None:
+        """store returns string IDs → result is a set of ints."""
+        from unittest.mock import AsyncMock
+
+        from lyra.adapters.discord.discord_threads import restore_hot_threads
+
+        store = AsyncMock()
+        store.get_thread_ids.return_value = ["123", "456", "789"]
+
+        result = await restore_hot_threads(store, "bot1", hot_hours=36)
+
+        assert result == {123, 456, 789}
+
+    @pytest.mark.asyncio
+    async def test_empty_store_returns_empty_set(self) -> None:
+        """store returns no thread IDs → empty set."""
+        from unittest.mock import AsyncMock
+
+        from lyra.adapters.discord.discord_threads import restore_hot_threads
+
+        store = AsyncMock()
+        store.get_thread_ids.return_value = []
+
+        result = await restore_hot_threads(store, "bot1", hot_hours=36)
+
+        assert result == set()
+
+    @pytest.mark.asyncio
+    async def test_passes_active_since_datetime_to_store(self) -> None:
+        """get_thread_ids is called with a non-None active_since datetime."""
+        from unittest.mock import AsyncMock
+
+        from lyra.adapters.discord.discord_threads import restore_hot_threads
+
+        store = AsyncMock()
+        store.get_thread_ids.return_value = []
+
+        await restore_hot_threads(store, "bot1", hot_hours=24)
+
+        call_kwargs = store.get_thread_ids.call_args
+        assert call_kwargs is not None
+        active_since = call_kwargs.kwargs.get(
+            "active_since"
+        ) or call_kwargs.args[1]
+        assert active_since is not None

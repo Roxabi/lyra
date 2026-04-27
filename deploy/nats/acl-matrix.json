@@ -67,7 +67,6 @@
       "subscribe": [
         "lyra.voice.tts.request",
         "lyra.voice.tts.request.>",
-        "_INBOX.voice-tts.>",
         "_inbox.voice-tts.>"
       ]
     },
@@ -82,7 +81,6 @@
       "subscribe": [
         "lyra.voice.stt.request",
         "lyra.voice.stt.request.>",
-        "_INBOX.voice-stt.>",
         "_inbox.voice-stt.>"
       ]
     },

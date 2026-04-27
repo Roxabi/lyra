@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import discord
 
+from lyra.core.stores.thread_store_protocol import ThreadSession
+
 if TYPE_CHECKING:
     from lyra.adapters.shared._shared_streaming import PlatformCallbacks
     from lyra.adapters.shared.outbound_listener import OutboundListener
@@ -99,7 +101,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         self._thread_store: ThreadStoreProtocol | None = thread_store
         self._turn_store: "TurnStore | None" = turn_store
         self._watch_channels: frozenset[int] = watch_channels
-        self._thread_sessions: dict[str, tuple[str, str]] = {}
+        self._thread_sessions: dict[str, ThreadSession] = {}
         self._vsm: VoiceSessionManager = VoiceSessionManager()
         self._outbound_listener: "OutboundListener | None" = None
         # Injectable identity resolver for slash command trust (set by wiring layer).

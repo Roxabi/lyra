@@ -6,8 +6,15 @@ Implementations live in lyra.infrastructure.stores; this protocol lives in core.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
+
+
+@dataclass(frozen=True)
+class ThreadSession:
+    session_id: str | None
+    pool_id: str | None
 
 
 @runtime_checkable
@@ -26,7 +33,7 @@ class ThreadStoreProtocol(Protocol):
 
     async def get_session(
         self, thread_id: str, bot_id: str
-    ) -> tuple[str | None, str | None]: ...
+    ) -> ThreadSession: ...
 
     async def claim(
         self,

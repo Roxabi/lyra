@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from lyra.core.messaging.message import DiscordMeta
+from lyra.core.stores.thread_store_protocol import ThreadSession
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
@@ -47,7 +48,7 @@ async def persist_thread_session(  # noqa: PLR0913 — each arg is a distinct re
     session_id: str,
     pool_id: str,
     bot_id: str,
-    cache: dict[str, tuple[str, str]],
+    cache: dict[str, ThreadSession],
 ) -> None:
     """Persist session_id and pool_id for a thread after a successful turn."""
     if not isinstance(msg.platform_meta, DiscordMeta):
@@ -72,7 +73,7 @@ async def persist_thread_session(  # noqa: PLR0913 — each arg is a distinct re
             )
         _key = str(thread_id)
         cache.pop(_key, None)
-        cache[_key] = (session_id, pool_id)
+        cache[_key] = ThreadSession(session_id=session_id, pool_id=pool_id)
         log.debug(
             "ThreadStore: persisted session_id=%s pool_id=%s for thread_id=%s",
             session_id,
@@ -112,8 +113,8 @@ async def retrieve_thread_session(
     thread_store: "ThreadStoreProtocol",
     thread_id: str,
     bot_id: str,
-    cache: dict[str, tuple[str, str]],
-) -> tuple[str | None, str | None]:
+    cache: dict[str, ThreadSession],
+) -> ThreadSession:
     """Look up session_id and pool_id for an owned thread.
 
     Checks the in-memory *cache* first; on a miss, queries ThreadStore and
@@ -124,19 +125,16 @@ async def retrieve_thread_session(
         cache[thread_id] = cache.pop(thread_id)
         return cached
 
-    stored_session_id, stored_pool_id = await thread_store.get_session(
-        thread_id=thread_id,
-        bot_id=bot_id,
-    )
-    if stored_session_id is not None and stored_pool_id is not None:
+    ts = await thread_store.get_session(thread_id=thread_id, bot_id=bot_id)
+    if ts.session_id is not None and ts.pool_id is not None:
         if len(cache) >= 500:
             _oldest = next(iter(cache))
             del cache[_oldest]
-        cache[thread_id] = (stored_session_id, stored_pool_id)
+        cache[thread_id] = ts
         log.debug(
             "ThreadStore: retrieved session_id=%s pool_id=%s for thread_id=%s",
-            stored_session_id,
-            stored_pool_id,
+            ts.session_id,
+            ts.pool_id,
             thread_id,
         )
-    return stored_session_id, stored_pool_id
+    return ts

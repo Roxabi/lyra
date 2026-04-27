@@ -38,7 +38,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor register quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
+.PHONY: build push lyra telegram discord nats clipool monitor register quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy remote update nats-setup nats-regen-authconf nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -298,6 +298,12 @@ remote:
 
 nats-setup:
 	@bash deploy/nats/setup.sh
+
+nats-regen-authconf:          ## pull latest staging, regen auth.conf, reload nats-server
+	$(require_machine1)
+	@git pull origin staging
+	@sudo bash deploy/nats/gen-nkeys.sh --regen-authconf
+	@nats-server --signal reload
 
 nats-deploy:              ## run NATS setup on prod, then reload supervisor conf
 	$(require_machine1)

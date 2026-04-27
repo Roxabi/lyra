@@ -353,7 +353,7 @@ if [ "${REGEN_AUTHCONF}" = true ]; then
   fi
 
   info "auth.conf re-rendered from ${#IDENTITIES[@]} existing seeds."
-  info "Next: sudo systemctl reload nats.service"
+  info "Next: nats-server --signal reload"
   exit 0
 fi
 

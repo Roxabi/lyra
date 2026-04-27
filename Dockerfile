@@ -20,6 +20,8 @@ RUN uv sync --frozen --no-dev
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM ghcr.io/roxabi/base:latest AS runtime
 
+USER root
+
 # UID 1500 pinned per ADR-053 (Quadlet container UID stability)
 RUN useradd -u 1500 -m lyra \
  && mkdir -p /home/lyra/projects \

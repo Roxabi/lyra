@@ -121,14 +121,14 @@
     },
     "image-worker": {
       "owner": "imagecli",
-      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). _INBOX.>/_inbox.> defensively included for reply-path robustness, mirroring voice-tts/voice-stt — allow_responses alone may not cover every nats-server version's reply publish path. Inbox narrowing to _INBOX.image-worker.> is sequenced behind the imageCLI connect-site PR per ADR-047 rule 4.",
+      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Publish ACLs narrowed per #949 — broad _INBOX.>/_inbox.> removed now that imagecli sets inbox_prefix=_INBOX.image-worker at connect time (ADR-051). allow_responses covers reply publish; _INBOX.image-worker.> subscribe added for receive-side ACL completeness.",
       "publish": [
-        "lyra.image.heartbeat",
-        "_INBOX.>",
-        "_inbox.>"
+        "lyra.image.heartbeat"
       ],
       "subscribe": [
-        "lyra.image.generate.request"
+        "lyra.image.generate.request",
+        "_INBOX.image-worker.>",
+        "_inbox.image-worker.>"
       ]
     },
     "monitor": {
@@ -143,18 +143,16 @@
     },
     "clipool-worker": {
       "owner": "lyra",
-      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. _INBOX.>/_inbox.> defensively included for reply-path robustness (allow_responses alone does not cover all nats-py reply publish paths), mirroring image-worker pattern.",
+      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Publish ACLs narrowed per #949 — broad _INBOX.>/_inbox.> removed now that clipool_standalone sets inbox_prefix=_INBOX.clipool-worker at connect time (ADR-051). allow_responses covers reply publish; subscribe narrowed to match.",
       "publish": [
         "lyra.clipool.heartbeat",
-        "lyra.system.ready",
-        "_INBOX.>",
-        "_inbox.>"
+        "lyra.system.ready"
       ],
       "subscribe": [
         "lyra.clipool.cmd",
         "lyra.clipool.control",
-        "_INBOX.>",
-        "_inbox.>"
+        "_INBOX.clipool-worker.>",
+        "_inbox.clipool-worker.>"
       ]
     }
   }

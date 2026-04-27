@@ -18,7 +18,7 @@ import socket
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import cast
 
 from nats.aio.client import Client as NATS
 
@@ -26,7 +26,7 @@ from nats.aio.client import Client as NATS
 # The public name CONTRACT_VERSION is served via __getattr__ below so that
 # accessing it emits a DeprecationWarning per ADR-059 (V4).
 from roxabi_contracts.envelope import CONTRACT_VERSION as _CONTRACT_VERSION
-from roxabi_nats._serialize import _EMPTY_RESOLVER, _TypeHintResolver
+from roxabi_nats._resolver import _EMPTY_RESOLVER, _TypeHintResolver
 from roxabi_nats._validate import validate_nats_token
 from roxabi_nats._version_check import (
     check_contract_version,
@@ -77,7 +77,12 @@ class NatsAdapterBase(ABC):
         heartbeat_interval: float = 5.0,
         type_registry: Sequence[tuple[str, str]] | None = None,
         inbox_prefix: str | None = None,
+        identity_name: str | None = None,
     ):
+        if inbox_prefix is not None and identity_name is not None:
+            raise ValueError(
+                "NatsAdapterBase: inbox_prefix and identity_name are mutually exclusive"
+            )
         validate_nats_token(subject, kind="subject")
         validate_nats_token(queue_group, kind="queue_group")
         self.subject = subject
@@ -86,12 +91,11 @@ class NatsAdapterBase(ABC):
         self.schema_version = schema_version
         self.timeout = timeout
         self.drain_timeout = drain_timeout
-        # Per-identity inbox prefix (ADR-051): scopes the nats-py request/reply
-        # inbox subscription to _INBOX.<identity>.> instead of the default
-        # _INBOX.>. Required for any adapter connecting under an ACL that
-        # narrows inbox grants per identity. Value is forwarded to
-        # nats.connect() via nats_connect() at run() time.
+        # Per-identity inbox prefix (ADR-051). Use identity_name (preferred, canonical)
+        # or inbox_prefix (legacy, for callers that pre-date identity_name).
+        # Forwarded to nats_connect() at run() time. Mutually exclusive.
         self._inbox_prefix = inbox_prefix
+        self._identity_name = identity_name
         self._nc: NATS | None = None
         self._drop_count: dict[str, int] = {}
         self._started_at: float | None = None
@@ -111,10 +115,11 @@ class NatsAdapterBase(ABC):
         )
 
     async def run(self, nats_url: str, stop: asyncio.Event | None = None) -> None:
-        connect_kwargs: dict[str, Any] = {}
-        if self._inbox_prefix is not None:
-            connect_kwargs["inbox_prefix"] = self._inbox_prefix
-        nc = await nats_connect(nats_url, **connect_kwargs)
+        nc = await nats_connect(
+            nats_url,
+            identity_name=self._identity_name,
+            inbox_prefix=self._inbox_prefix,
+        )
         self._nc = nc
         await self._wait_ready()
         await nc.subscribe(self.subject, queue=self.queue_group, cb=self._dispatch)

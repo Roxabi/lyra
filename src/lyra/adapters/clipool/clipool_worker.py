@@ -79,7 +79,13 @@ class CliPoolNatsWorker(NatsAdapterBase):
     end-of-turn.
     """
 
-    def __init__(self, pool: CliPool, *, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        pool: CliPool,
+        *,
+        timeout: float = 30.0,
+        identity_name: str | None = None,
+    ) -> None:
         super().__init__(
             subject=_CMD_SUBJECT,
             queue_group=_QUEUE_GROUP,
@@ -88,6 +94,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             timeout=timeout,
             heartbeat_subject=_HEARTBEAT_SUBJECT,
             heartbeat_interval=_HEARTBEAT_INTERVAL,
+            identity_name=identity_name,
         )
         self._pool = pool
 

@@ -157,15 +157,16 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     # Retrieve stored session for existing owned threads (read-side fix).
     # New auto-threads have no prior session; skip get_session() for those.
     _stored_session_id: str | None = None
-    _stored_pool_id: str | None = None
     if _in_owned_thread and adapter._thread_store is not None:
         try:
-            _stored_session_id, _stored_pool_id = await retrieve_thread_session(
+            _ts_result = await retrieve_thread_session(
                 adapter._thread_store,
                 thread_id=str(message.channel.id),
                 bot_id=adapter._bot_id,
                 cache=adapter._thread_sessions,
             )
+            # pool_id not consumed here; session routing uses session_id only
+            _stored_session_id = _ts_result.session_id
         except Exception:
             log.exception(
                 "ThreadStore: failed to retrieve session for thread_id=%s",

@@ -100,6 +100,30 @@ load_matrix() {
     ALLOW_RESPONSES[$name]=$(jq -r --arg n "${name}" \
       '.identities[$n].allow_responses // true' "${MATRIX_JSON}")
   done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
+
+  # Derive _inbox.{requester}.> grants from request_reply_flows
+  while IFS= read -r flow; do
+      local requester responder inbox
+      requester=$(jq -r '.requester' <<<"$flow")
+      responder=$(jq -r '.responder'  <<<"$flow")
+      inbox="\"_inbox.${requester}.>\""
+
+      if [[ "${SUB_ALLOW[$requester]}" != *"${inbox}"* ]]; then
+          if [[ -n "${SUB_ALLOW[$requester]}" ]]; then
+              SUB_ALLOW[$requester]="${SUB_ALLOW[$requester]},${inbox}"
+          else
+              SUB_ALLOW[$requester]="${inbox}"
+          fi
+      fi
+
+      if [[ "${PUB_ALLOW[$responder]}" != *"${inbox}"* ]]; then
+          if [[ -n "${PUB_ALLOW[$responder]}" ]]; then
+              PUB_ALLOW[$responder]="${PUB_ALLOW[$responder]},${inbox}"
+          else
+              PUB_ALLOW[$responder]="${inbox}"
+          fi
+      fi
+  done < <(jq -c '.request_reply_flows[]?' "${MATRIX_JSON}")
 }
 
 # ── emit_user (T1.3) ──────────────────────────────────────────────────────────

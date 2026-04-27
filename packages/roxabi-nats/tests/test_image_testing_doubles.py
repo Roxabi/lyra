@@ -100,13 +100,33 @@ async def test_stop_is_idempotent_when_never_started() -> None:
     await w.stop()
 
 
+async def test_stop_nulls_disconnected_nc() -> None:
+    """stop() must null _nc/_sub even when _nc.is_connected is False."""
+    from unittest.mock import MagicMock
+
+    worker = FakeImageWorker()
+    mock_nc = MagicMock()
+    mock_nc.is_connected = False
+    worker._nc = mock_nc  # type: ignore[assignment]
+    worker._sub = object()  # type: ignore[assignment]
+    await worker.stop()
+    assert worker._nc is None
+    assert worker._sub is None
+    mock_nc.drain.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Guard 1 subprocess test
 # ---------------------------------------------------------------------------
 
 
 def test_g1_import_without_extra(tmp_path: Path) -> None:
-    """Guard 1 — importing roxabi_nats.testing.image without nats-py fails at import."""
+    """Guard 1 — `import nats` at the top of testing.image fires when nats-py is absent.
+
+    Stubs are injected for all roxabi_nats submodules that import nats at their own
+    module top (adapter_base, connect, driver_base, _serialize), so the sabotaged
+    nats.py is only hit by the Guard 1 tripwire line in roxabi_nats.testing.image.
+    """
     sabotage = tmp_path / "nats.py"
     sabotage.write_text(
         textwrap.dedent(
@@ -117,7 +137,26 @@ def test_g1_import_without_extra(tmp_path: Path) -> None:
     )
     script = textwrap.dedent(
         """
-        import sys
+        import sys, types
+
+        def _stub(name, **attrs):
+            m = types.ModuleType(name)
+            for k, v in attrs.items():
+                setattr(m, k, v)
+            sys.modules[name] = m
+
+        # Stub submodules that import nats at their module top so only
+        # the Guard 1 tripwire in testing/image.py consumes the sabotage.
+        _stub("roxabi_nats.adapter_base", NatsAdapterBase=None)
+        _stub("roxabi_nats.connect", nats_connect=None)
+        _stub("roxabi_nats.driver_base", NatsDriverBase=None)
+        _stub("roxabi_nats._serialize", _TypeHintResolver=object)
+        _stub(
+            "roxabi_nats.testing._guards",
+            assert_not_production=lambda cls_name: None,
+            assert_loopback_url=lambda url: None,
+        )
+
         try:
             import roxabi_nats.testing.image  # noqa: F401
         except ModuleNotFoundError as exc:
@@ -229,6 +268,29 @@ async def test_image_roundtrip_seed_used_sentinel(nats_server_url: str) -> None:
 
 
 @requires_nats_server
+async def test_image_calls_records_multiple_requests_in_order(
+    nats_server_url: str,
+) -> None:
+    worker = FakeImageWorker(nats_url=nats_server_url)
+    await worker.start()
+    assert worker.calls == []
+    try:
+        nc = await _nats.connect(nats_server_url)
+        for i in range(3):
+            req = ImageRequest(
+                **_ENVELOPE, request_id=f"r{i}", prompt=f"p{i}", engine="flux"
+            )
+            await nc.request(
+                SUBJECTS.image_request, req.model_dump_json().encode(), timeout=2.0
+            )
+        assert [r.request_id for r in worker.calls] == ["r0", "r1", "r2"]
+        await nc.close()
+    finally:
+        await worker.stop()
+        await asyncio.sleep(0.05)
+
+
+@requires_nats_server
 async def test_image_dispatch_drops_malformed_json(nats_server_url: str) -> None:
     """_dispatch silently drops requests that fail Pydantic validation."""
     worker = FakeImageWorker(nats_url=nats_server_url)
@@ -264,3 +326,14 @@ async def test_image_dispatch_no_reply_records_call(nats_server_url: str) -> Non
     finally:
         await worker.stop()
         await asyncio.sleep(0.05)
+
+
+def test_image_init_does_not_expose_testing() -> None:
+    """Regression guard — roxabi_contracts.image.__init__ must NOT re-export testing."""
+    import inspect
+
+    import roxabi_contracts.image as image_mod
+
+    assert "testing" not in image_mod.__all__
+    src = inspect.getsource(image_mod)
+    assert "testing" not in src

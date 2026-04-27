@@ -20,8 +20,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# scipy + numpy are pulled in via roxabi-contracts[testing] (voice fixtures).
-# nats-py is already a core dep — listed here for install-time discoverability.
+# nats-py arrives via core deps (not repeated here).
+# scipy + numpy come transitively via roxabi-contracts[testing] (voice fixtures).
 # ADR-059 V6: FakeTtsWorker/FakeSttWorker/FakeImageWorker live in roxabi_nats.testing.
 testing = ["roxabi-contracts[testing]"]
 

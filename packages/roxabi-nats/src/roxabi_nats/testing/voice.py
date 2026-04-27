@@ -39,7 +39,7 @@ from roxabi_contracts.voice.models import (
 )
 from roxabi_contracts.voice.subjects import SUBJECTS
 from roxabi_nats.connect import nats_connect
-from roxabi_nats.testing._guards import _assert_loopback_url, _assert_not_production
+from roxabi_nats.testing._guards import assert_loopback_url, assert_not_production
 
 __all__: list[str] = ["FakeTtsWorker", "FakeSttWorker"]
 
@@ -54,7 +54,7 @@ class FakeTtsWorker:
         nats_url: str = "nats://127.0.0.1:4222",
         reply_fixture: bytes | None = None,
     ) -> None:
-        _assert_not_production("FakeTtsWorker")
+        assert_not_production("FakeTtsWorker")
         self._nats_url = nats_url
         self._reply_fixture: bytes = (
             reply_fixture if reply_fixture is not None else silence_wav_16khz
@@ -64,7 +64,7 @@ class FakeTtsWorker:
         self.calls: list[TtsRequest] = []
 
     async def start(self) -> None:
-        _assert_loopback_url(self._nats_url)
+        assert_loopback_url(self._nats_url)
         if self._nc is not None:
             raise RuntimeError("FakeTtsWorker already started")
         # `allow_reconnect=False, connect_timeout=2` bound the nats-py handshake;
@@ -77,9 +77,14 @@ class FakeTtsWorker:
             nats_connect(self._nats_url, allow_reconnect=False, connect_timeout=2),
             timeout=3.0,
         )
-        self._sub = await self._nc.subscribe(
-            SUBJECTS.tts_request, queue=SUBJECTS.tts_workers, cb=self._dispatch
-        )
+        try:
+            self._sub = await self._nc.subscribe(
+                SUBJECTS.tts_request, queue=SUBJECTS.tts_workers, cb=self._dispatch
+            )
+        except Exception:
+            await self._nc.close()
+            self._nc = None
+            raise
 
     async def stop(self) -> None:
         if self._nc is not None and self._nc.is_connected:
@@ -113,7 +118,10 @@ class FakeTtsWorker:
             mime_type="audio/wav",
             duration_ms=1000,
         )
-        await self._nc.publish(msg.reply, reply.model_dump_json().encode())
+        try:
+            await self._nc.publish(msg.reply, reply.model_dump_json().encode())
+        except Exception:
+            log.debug("FakeTtsWorker skipping reply — connection closing")
 
 
 class FakeSttWorker:
@@ -122,7 +130,7 @@ class FakeSttWorker:
         nats_url: str = "nats://127.0.0.1:4222",
         reply_fixture: str | None = None,
     ) -> None:
-        _assert_not_production("FakeSttWorker")
+        assert_not_production("FakeSttWorker")
         self._nats_url = nats_url
         self._reply_fixture: str = (
             reply_fixture if reply_fixture is not None else sample_transcript_en
@@ -132,7 +140,7 @@ class FakeSttWorker:
         self.calls: list[SttRequest] = []
 
     async def start(self) -> None:
-        _assert_loopback_url(self._nats_url)
+        assert_loopback_url(self._nats_url)
         if self._nc is not None:
             raise RuntimeError("FakeSttWorker already started")
         # `allow_reconnect=False, connect_timeout=2` bound the nats-py handshake;
@@ -145,9 +153,14 @@ class FakeSttWorker:
             nats_connect(self._nats_url, allow_reconnect=False, connect_timeout=2),
             timeout=3.0,
         )
-        self._sub = await self._nc.subscribe(
-            SUBJECTS.stt_request, queue=SUBJECTS.stt_workers, cb=self._dispatch
-        )
+        try:
+            self._sub = await self._nc.subscribe(
+                SUBJECTS.stt_request, queue=SUBJECTS.stt_workers, cb=self._dispatch
+            )
+        except Exception:
+            await self._nc.close()
+            self._nc = None
+            raise
 
     async def stop(self) -> None:
         if self._nc is not None and self._nc.is_connected:
@@ -179,4 +192,7 @@ class FakeSttWorker:
             language="en",
             duration_seconds=1.0,
         )
-        await self._nc.publish(msg.reply, reply.model_dump_json().encode())
+        try:
+            await self._nc.publish(msg.reply, reply.model_dump_json().encode())
+        except Exception:
+            log.debug("FakeSttWorker skipping reply — connection closing")

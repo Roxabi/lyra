@@ -40,7 +40,7 @@ from roxabi_contracts.image.fixtures import (
 from roxabi_contracts.image.models import ImageRequest, ImageResponse
 from roxabi_contracts.image.subjects import SUBJECTS
 from roxabi_nats.connect import nats_connect
-from roxabi_nats.testing._guards import _assert_loopback_url, _assert_not_production
+from roxabi_nats.testing._guards import assert_loopback_url, assert_not_production
 
 __all__: list[str] = ["FakeImageWorker"]
 
@@ -55,7 +55,7 @@ class FakeImageWorker:
         nats_url: str = "nats://127.0.0.1:4222",
         reply_fixture: bytes | None = None,
     ) -> None:
-        _assert_not_production("FakeImageWorker")
+        assert_not_production("FakeImageWorker")
         self._nats_url = nats_url
         self._reply_fixture: bytes = (
             reply_fixture if reply_fixture is not None else tiny_png_1x1
@@ -65,18 +65,23 @@ class FakeImageWorker:
         self.calls: list[ImageRequest] = []
 
     async def start(self) -> None:
-        _assert_loopback_url(self._nats_url)
+        assert_loopback_url(self._nats_url)
         if self._nc is not None:
             raise RuntimeError("FakeImageWorker already started")
         self._nc = await asyncio.wait_for(
             nats_connect(self._nats_url, allow_reconnect=False, connect_timeout=2),
             timeout=3.0,
         )
-        self._sub = await self._nc.subscribe(
-            SUBJECTS.image_request,
-            queue=SUBJECTS.image_workers,
-            cb=self._dispatch,
-        )
+        try:
+            self._sub = await self._nc.subscribe(
+                SUBJECTS.image_request,
+                queue=SUBJECTS.image_workers,
+                cb=self._dispatch,
+            )
+        except Exception:
+            await self._nc.close()
+            self._nc = None
+            raise
 
     async def stop(self) -> None:
         if self._nc is not None and self._nc.is_connected:
@@ -112,4 +117,7 @@ class FakeImageWorker:
             # seed_used=-1 signals "no seed provided" (auto/random); 0 is a valid seed
             seed_used=req.seed if req.seed is not None else -1,
         )
-        await self._nc.publish(msg.reply, reply.model_dump_json().encode())
+        try:
+            await self._nc.publish(msg.reply, reply.model_dump_json().encode())
+        except Exception:
+            log.debug("FakeImageWorker skipping reply — connection closing")

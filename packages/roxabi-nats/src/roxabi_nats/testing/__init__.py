@@ -15,7 +15,7 @@ Import the submodule directly or use attribute access:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
 if TYPE_CHECKING:
     from roxabi_nats.testing.image import FakeImageWorker
@@ -25,6 +25,22 @@ __all__: list[str] = ["FakeTtsWorker", "FakeSttWorker", "FakeImageWorker"]
 
 _VOICE = ("FakeTtsWorker", "FakeSttWorker")
 _IMAGE = ("FakeImageWorker",)
+
+
+@overload
+def __getattr__(name: Literal["FakeTtsWorker"]) -> type[FakeTtsWorker]: ...
+
+
+@overload
+def __getattr__(name: Literal["FakeSttWorker"]) -> type[FakeSttWorker]: ...
+
+
+@overload
+def __getattr__(name: Literal["FakeImageWorker"]) -> type[FakeImageWorker]: ...
+
+
+@overload
+def __getattr__(name: str) -> object: ...
 
 
 def __getattr__(name: str) -> object:

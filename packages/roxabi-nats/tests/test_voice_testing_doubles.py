@@ -239,6 +239,22 @@ async def test_stop_is_idempotent() -> None:
     await worker.stop()
 
 
+async def test_stop_nulls_disconnected_nc() -> None:
+    """stop() must null _nc/_sub even when _nc.is_connected is False."""
+    from unittest.mock import MagicMock
+
+    for cls in (FakeTtsWorker, FakeSttWorker):
+        worker = cls()
+        mock_nc = MagicMock()
+        mock_nc.is_connected = False
+        worker._nc = mock_nc  # type: ignore[assignment]
+        worker._sub = object()  # type: ignore[assignment]
+        await worker.stop()
+        assert worker._nc is None
+        assert worker._sub is None
+        mock_nc.drain.assert_not_called()
+
+
 async def test_start_twice_raises() -> None:
     """start() with a live _nc must raise RuntimeError."""
     worker = FakeTtsWorker()
@@ -274,10 +290,11 @@ def test_g2_prod_env_case_insensitive(
 
 
 def test_g1_import_without_extra(tmp_path: Path) -> None:
-    """Guard 1 — importing roxabi_nats.testing.voice without nats-py fails at import.
+    """Guard 1 — `import nats` at the top of testing.voice fires when nats-py is absent.
 
-    The sabotaged nats.py raises ModuleNotFoundError, proving Guard 1 fires at
-    module-top-level in roxabi_nats.testing.voice.
+    Stubs are injected for all roxabi_nats submodules that import nats at their own
+    module top (adapter_base, connect, driver_base, _serialize), so the sabotaged
+    nats.py is only hit by the Guard 1 tripwire line in roxabi_nats.testing.voice.
     """
     sabotage = tmp_path / "nats.py"
     sabotage.write_text(
@@ -289,7 +306,26 @@ def test_g1_import_without_extra(tmp_path: Path) -> None:
     )
     script = textwrap.dedent(
         """
-        import sys
+        import sys, types
+
+        def _stub(name, **attrs):
+            m = types.ModuleType(name)
+            for k, v in attrs.items():
+                setattr(m, k, v)
+            sys.modules[name] = m
+
+        # Stub submodules that import nats at their module top so only
+        # the Guard 1 tripwire in testing/voice.py consumes the sabotage.
+        _stub("roxabi_nats.adapter_base", NatsAdapterBase=None)
+        _stub("roxabi_nats.connect", nats_connect=None)
+        _stub("roxabi_nats.driver_base", NatsDriverBase=None)
+        _stub("roxabi_nats._serialize", _TypeHintResolver=object)
+        _stub(
+            "roxabi_nats.testing._guards",
+            assert_not_production=lambda cls_name: None,
+            assert_loopback_url=lambda url: None,
+        )
+
         try:
             import roxabi_nats.testing.voice  # noqa: F401
         except ModuleNotFoundError as exc:

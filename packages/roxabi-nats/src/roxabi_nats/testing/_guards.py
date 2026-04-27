@@ -11,8 +11,8 @@ from urllib.parse import urlparse
 
 __all__ = [
     "ALLOWED_LOOPBACK_HOSTS",
-    "_assert_not_production",
-    "_assert_loopback_url",
+    "assert_not_production",
+    "assert_loopback_url",
 ]
 
 ALLOWED_LOOPBACK_HOSTS: frozenset[str] = frozenset(
@@ -20,13 +20,13 @@ ALLOWED_LOOPBACK_HOSTS: frozenset[str] = frozenset(
 )
 
 
-def _assert_not_production(cls_name: str) -> None:
+def assert_not_production(cls_name: str) -> None:
     """Guard 2 — raises RuntimeError when LYRA_ENV=production (case-insensitive)."""
     if os.environ.get("LYRA_ENV", "").casefold() == "production":
         raise RuntimeError(f"{cls_name} cannot run in production")
 
 
-def _assert_loopback_url(url: str) -> None:
+def assert_loopback_url(url: str) -> None:
     """Guard 3 — raises ValueError when the URL hostname is not loopback."""
     host = urlparse(url).hostname
     if host not in ALLOWED_LOOPBACK_HOSTS:

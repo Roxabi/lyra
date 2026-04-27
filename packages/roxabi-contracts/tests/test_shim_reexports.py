@@ -6,8 +6,10 @@ the canonical implementations in roxabi_nats.testing.
 
 from __future__ import annotations
 
-from roxabi_nats.testing._guards import _assert_loopback_url as _canonical_loopback
-from roxabi_nats.testing._guards import _assert_not_production as _canonical_prod
+import warnings
+
+from roxabi_nats.testing._guards import assert_loopback_url as _canonical_loopback
+from roxabi_nats.testing._guards import assert_not_production as _canonical_prod
 from roxabi_nats.testing.image import FakeImageWorker as _CanonicalFakeImageWorker
 from roxabi_nats.testing.voice import FakeSttWorker as _CanonicalFakeSttWorker
 from roxabi_nats.testing.voice import FakeTtsWorker as _CanonicalFakeTtsWorker
@@ -27,10 +29,12 @@ def test_image_testing_shim_reexports() -> None:
 
 
 def test_testing_guards_shim_reexports() -> None:
-    from roxabi_contracts._testing_guards import (
-        _assert_loopback_url,
-        _assert_not_production,
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        from roxabi_contracts._testing_guards import (
+            assert_loopback_url,
+            assert_not_production,
+        )
 
-    assert _assert_not_production is _canonical_prod
-    assert _assert_loopback_url is _canonical_loopback
+    assert assert_not_production is _canonical_prod
+    assert assert_loopback_url is _canonical_loopback

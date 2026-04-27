@@ -98,3 +98,25 @@ class TestEmptyAndAllowlistShape:
 
     def test_allowlist_is_immutable(self) -> None:
         assert isinstance(PLATFORM_META_ALLOWLIST, frozenset)
+
+
+class TestInjectableAllowlist:
+    def test_custom_allowlist_used_when_provided(self) -> None:
+        custom = frozenset({"custom_field", "other_field"})
+        meta = {"custom_field": "keep", "guild_id": "strip", "other_field": 1}
+        result = sanitize_platform_meta(meta, allowlist=custom)
+        assert result == {"custom_field": "keep", "other_field": 1}
+
+    def test_default_allowlist_used_when_none(self) -> None:
+        meta = {"guild_id": "123", "unknown": "x"}
+        assert sanitize_platform_meta(meta, allowlist=None) == {"guild_id": "123"}
+
+    def test_empty_custom_allowlist_strips_everything(self) -> None:
+        meta = {"guild_id": "123", "chat_id": 42}
+        assert sanitize_platform_meta(meta, allowlist=frozenset()) == {}
+
+    def test_underscore_keys_still_stripped_with_custom_allowlist(self) -> None:
+        custom = frozenset({"custom_field"})
+        meta = {"custom_field": "ok", "_custom_field": "injected"}
+        result = sanitize_platform_meta(meta, allowlist=custom)
+        assert result == {"custom_field": "ok"}

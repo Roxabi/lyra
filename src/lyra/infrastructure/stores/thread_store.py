@@ -107,7 +107,10 @@ class ThreadStore(SqliteStore):
     async def get_session(
         self, thread_id: str, bot_id: str
     ) -> ThreadSession:
-        """Return ThreadSession for (thread_id, bot_id), or null-session."""
+        """Return ThreadSession for (thread_id, bot_id).
+
+        Returns an unresolved ThreadSession (is_resolved=False) if not found.
+        """
         db = self._require_db()
         async with db.execute(
             "SELECT session_id, pool_id FROM discord_threads "

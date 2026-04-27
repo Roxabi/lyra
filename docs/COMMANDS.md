@@ -53,13 +53,14 @@ source .venv/bin/activate
 | `lyra bot list` | List all stored bot credentials (tokens masked) |
 | `lyra bot remove --platform <p> --bot-id <id>` | Remove stored bot credentials |
 
-**Hub and adapter (production three-process mode)**
+**Hub and adapter (production four-process mode)**
 
 | Command | Description |
 |---------|-------------|
 | `lyra hub` | Start the standalone Hub process (requires NATS) |
 | `lyra adapter telegram` | Start the standalone Telegram adapter (requires NATS) |
 | `lyra adapter discord` | Start the standalone Discord adapter (requires NATS) |
+| `lyra clipool` | Start the standalone CliPool NATS worker (requires NATS) |
 
 **Config management**
 

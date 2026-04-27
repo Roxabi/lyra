@@ -12,7 +12,7 @@ Production deployment for Machine 1 (`roxabituwer`, Ubuntu 26.04 LTS) using root
 | Tier | Topology | Audience |
 |---|---|---|
 | Dev | `lyra start` — 1 process, embedded NATS | local hacking |
-| Prod (Quadlet) | 4 containers on `lyra.network` | **default — this doc** |
+| Prod (Quadlet) | 5 containers on `lyra.network` | **default — this doc** |
 
 **Use Quadlet** (this doc) for production — OCI isolation, reproducible images, rootless
 containers, systemd-native lifecycle management.
@@ -21,7 +21,7 @@ containers, systemd-native lifecycle management.
 
 ## 1. Overview
 
-Four containers run on a shared `lyra.network` bridge, all rootless under the `lyra` user:
+Five containers run on a shared `lyra.network` bridge, all rootless under the `lyra` user:
 
 ```
 systemd --user (linger enabled)
@@ -30,7 +30,8 @@ systemd --user (linger enabled)
 ├── lyra-hub.service          ← Exec: lyra hub
 │     PublishPort 127.0.0.1:8443:8443
 ├── lyra-telegram.service     ← Exec: lyra adapter telegram
-└── lyra-discord.service      ← Exec: lyra adapter discord
+├── lyra-discord.service      ← Exec: lyra adapter discord
+└── lyra-clipool.service      ← Exec: lyra clipool
 
 Volumes
 ├── lyra-data          → /home/lyra/.lyra            (hub rw, adapters ro)

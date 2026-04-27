@@ -61,13 +61,14 @@ File/rename → update P immediately
 
 Rules: add/delete/move → update P | new `src/lyra/` subdir → nearest P (¬nested)
 
-## Production entry points (NATS 3-process)
+## Production entry points (NATS 4-process)
 
 | Program | CLI | Bootstrap |
 |---|---|---|
 | `lyra-hub` | `lyra hub` | `_bootstrap_hub_standalone()` |
 | `lyra-telegram` | `lyra adapter telegram` | `_bootstrap_adapter_standalone()` |
 | `lyra-discord` | `lyra adapter discord` | `_bootstrap_adapter_standalone()` |
+| `lyra-clipool` | `lyra adapter clipool` | `_bootstrap_clipool_standalone()` |
 
 Topics: `lyra.inbound.<platform>.<bot_id>` | `lyra.outbound.<platform>.<bot_id>`
 

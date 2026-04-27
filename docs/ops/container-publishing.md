@@ -126,6 +126,7 @@ containers. No manual intervention is needed after a staging merge.
 | lyra-hub | `ghcr.io/roxabi/lyra:staging` | registry |
 | lyra-telegram | `ghcr.io/roxabi/lyra:staging` | registry |
 | lyra-discord | `ghcr.io/roxabi/lyra:staging` | registry |
+| lyra-clipool | `ghcr.io/roxabi/lyra:staging` | registry |
 | voicecli-tts | `ghcr.io/roxabi/voicecli-tts:staging` | registry |
 | voicecli-stt | `ghcr.io/roxabi/voicecli-stt:staging` | registry |
 | lyra-nats | pinned by digest | none (pinned) |
@@ -161,13 +162,13 @@ If auto-update is disabled or you need an immediate deploy without waiting for t
 ```bash
 podman pull ghcr.io/roxabi/lyra:staging
 systemctl --user daemon-reload
-systemctl --user restart lyra-hub lyra-telegram lyra-discord
+systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool
 ```
 
-Verify all three units are healthy:
+Verify all four units are healthy:
 
 ```bash
-systemctl --user is-active lyra-hub lyra-telegram lyra-discord
+systemctl --user is-active lyra-hub lyra-telegram lyra-discord lyra-clipool
 curl -fsS localhost:8443/health
 ```
 
@@ -201,12 +202,12 @@ reload and restart:
 #   Image=ghcr.io/roxabi/lyra:1.0.0   ← revert to previous known-good tag
 
 systemctl --user daemon-reload
-systemctl --user restart lyra-hub lyra-telegram lyra-discord
+systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool
 ```
 
 The previous image layer is still present in the local podman store as long as it has not been
 pruned, so the restart is immediate with no pull required. Confirm with
-`systemctl --user is-active lyra-hub lyra-telegram lyra-discord`.
+`systemctl --user is-active lyra-hub lyra-telegram lyra-discord lyra-clipool`.
 
 ---
 
@@ -239,4 +240,5 @@ Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt t
 - `deploy/quadlet/lyra-hub.container` — `Image=` reference example
 - `deploy/quadlet/lyra-telegram.container` — `Image=` reference example
 - `deploy/quadlet/lyra-discord.container` — `Image=` reference example
+- `deploy/quadlet/lyra-clipool.container` — `Image=` reference example
 - [#920](https://github.com/Roxabi/lyra/issues/920) — container publishing pattern epic

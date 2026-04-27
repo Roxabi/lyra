@@ -1,7 +1,7 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-04-01 (NATS three-process mode: standalone hub + per-adapter processes — #458)
+> Last updated: 2026-04-27 (NATS four-process mode: hub + adapters + clipool — #941)
 
 ---
 
@@ -122,7 +122,7 @@ Default (`large-v3-turbo`) adds ~3GB → total **~8.5GB / 10GB** with 1.5GB head
 
 ### Overview
 
-**Production deployment (NATS three-process mode, #458):**
+**Production deployment (NATS four-process mode, #941):**
 
 ```
 lyra_telegram process                   lyra_hub process                    lyra_discord process
@@ -134,15 +134,17 @@ aiogram long-poll                       open_stores()                       disc
       │                                                   │                        │
       │                                           get_or_create_pool()             │
       │                                                   │                        │
-      │                                           agent.process(msg, pool)         │
-      │                                                   │                        │
+      │                                    lyra.clipool.cmd ──▶ lyra_clipool process
+      │                                                   │         │
+      │                                    lyra.clipool.heartbeat ◀─┘
+      │                                                   │       (Claude subprocesses)
       │  lyra.outbound.telegram.<bot>                     │  lyra.outbound.discord.<bot>
       ◀───────────────────────────────────────────────────┴───────────────────────▶
 NatsOutboundListener                                                    NatsOutboundListener
 sends reply to user                                                     sends reply to user
 ```
 
-All three processes run on Machine 1. NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub) and `lyra.outbound.<platform>.<bot_id>` (hub→adapter). On startup, the hub sends a Telegram notification to the admin chat (if `TELEGRAM_TOKEN` and `TELEGRAM_ADMIN_CHAT_ID` are set) via `_notify_startup()` in `bootstrap/hub_standalone.py`.
+All four processes run on Machine 1. NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub), `lyra.outbound.<platform>.<bot_id>` (hub→adapter), `lyra.clipool.cmd` (hub→clipool), `lyra.clipool.control` (hub→clipool), `lyra.clipool.heartbeat` (clipool→hub). On startup, the hub sends a Telegram notification to the admin chat (if `TELEGRAM_TOKEN` and `TELEGRAM_ADMIN_CHAT_ID` are set) via `_notify_startup()` in `bootstrap/hub_standalone.py`.
 
 **Unified single-process mode** (`lyra start` → `_bootstrap_unified`) runs hub + adapters in one process with NATS messaging internally. When `NATS_URL` is not set, an embedded nats-server is auto-started.
 
@@ -260,7 +262,7 @@ After the Phase 1b refactoring, every module is ≤300 LOC. Key decomposition:
 | **Outbound** | `outbound_dispatcher.py` | `outbound_errors.py` |
 | **Telegram** | `telegram.py` (adapter shell) | `telegram_inbound.py`, `telegram_outbound.py`, `telegram_normalize.py`, `telegram_audio.py`, `telegram_formatting.py` |
 | **Discord** | `discord.py` (adapter shell) | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_voice.py`, `discord_voice_commands.py` |
-| **Bootstrap** | `unified.py` (single-process), `hub_standalone.py` (hub-only), `adapter_standalone.py` (adapter-only) | `bootstrap_stores.py`, `bootstrap_wiring.py`, `embedded_nats.py`, `bootstrap_lifecycle.py` |
+| **Bootstrap** | `unified.py` (single-process), `hub_standalone.py` (hub-only), `adapter_standalone.py` (adapter-only), `clipool_standalone.py` (clipool-only) | `bootstrap_stores.py`, `bootstrap_wiring.py`, `embedded_nats.py`, `bootstrap_lifecycle.py` |
 | **Shared** | `adapters/_shared.py` | Common adapter utilities (typing control, etc.) |
 | **Shared** | `adapters/_shared_streaming.py` | `StreamingSession` — centralized edit-in-place streaming algorithm for all platform adapters (#468, #495, #501) |
 | **Shared** | `adapters/_base_outbound.py` | `OutboundAdapterBase` — abstract base class for all platform outbound adapters |
@@ -274,7 +276,7 @@ All platform adapters inherit `OutboundAdapterBase`. Streaming is centralized in
 
 **Per-channel queues** (#126, completed): each channel adapter has its own bounded inbound queue → feeds a shared staging queue → Hub consumes and routes. Outbound has a symmetric per-channel queue + OutboundDispatcher.
 
-**Backpressure**: when the staging queue is full, the adapter sends an immediate acknowledgment ("message received, ~Xs wait") then performs a blocking `await bus.put()` until a slot frees up. `Bus[T].put()` is `async` — implementors must raise `asyncio.QueueFull` when the per-platform queue is at capacity so callers can apply backpressure without blocking the event loop. `LocalBus.put()` is the concrete async wrapper backed by `asyncio.Queue`; production transports (`NatsBus`, live since #458) must uphold the same contract. In three-process mode, `NatsBus` handles hub↔adapter communication while each process still uses `LocalBus` internally for its async queue.
+**Backpressure**: when the staging queue is full, the adapter sends an immediate acknowledgment ("message received, ~Xs wait") then performs a blocking `await bus.put()` until a slot frees up. `Bus[T].put()` is `async` — implementors must raise `asyncio.QueueFull` when the per-platform queue is at capacity so callers can apply backpressure without blocking the event loop. `LocalBus.put()` is the concrete async wrapper backed by `asyncio.Queue`; production transports (`NatsBus`, live since #458) must uphold the same contract. In four-process mode, `NatsBus` handles hub↔adapter communication while each process still uses `LocalBus` internally for its async queue.
 
 **Unified message format:**
 ```python
@@ -719,7 +721,7 @@ client = AsyncOpenAI(
 
 ### Deferred Gaps (Phase 2)
 
-- **Machine 2 / local LLM** — OllamaDriver in #123 will add the driver; NATS worker for Machine 2 is Phase 2 (#51). Circuit breaker for remote LLM: #23. NATS standalone mode (single-machine, three-process) is ✅ done (#458).
+- **Machine 2 / local LLM** — OllamaDriver in #123 will add the driver; NATS worker for Machine 2 is Phase 2 (#51). Circuit breaker for remote LLM: #23. NATS standalone mode (single-machine, four-process) is ✅ done (#941).
 - **Machine 1 VRAM under load** — Measure with `nvidia-smi` before planning Phase 2 SLMs.
 - **Memory levels 2, 4** — Episodic Markdown logs (L2), procedural seeds (L4) deferred. Add when real need arises. (L1 raw turn logging shipped in #67.)
 

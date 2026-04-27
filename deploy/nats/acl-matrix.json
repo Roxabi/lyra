@@ -3,14 +3,19 @@
   "identities": {
     "hub": {
       "owner": "lyra",
-      "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image workers. Inbox narrowed to _INBOX.hub.> per ADR-051 per-identity prefix invariant.",
+      "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox narrowed to _INBOX.hub.> per ADR-051 per-identity prefix invariant.",
       "publish": [
         "lyra.outbound.telegram.>",
         "lyra.outbound.discord.>",
         "lyra.voice.tts.request.>",
         "lyra.voice.stt.request.>",
         "lyra.llm.request",
-        "lyra.image.generate.request"
+        "lyra.image.generate.request",
+        "lyra.clipool.cmd",
+        "lyra.clipool.control",
+        "$JS.API.STREAM.CREATE.LYRA_AUDIT",
+        "$JS.API.STREAM.UPDATE.LYRA_AUDIT",
+        "lyra.audit.>"
       ],
       "subscribe": [
         "lyra.inbound.telegram.>",
@@ -20,7 +25,8 @@
         "lyra.llm.health.*",
         "lyra.system.ready",
         "_INBOX.hub.>",
-        "lyra.image.heartbeat"
+        "lyra.image.heartbeat",
+        "lyra.clipool.heartbeat"
       ]
     },
     "telegram-adapter": {
@@ -133,6 +139,18 @@
       ],
       "subscribe": [
         "lyra.monitor.>"
+      ]
+    },
+    "clipool-worker": {
+      "owner": "lyra",
+      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat. Inbox narrowed to _INBOX.clipool-worker.> per ADR-051 per-identity prefix invariant.",
+      "publish": [
+        "lyra.clipool.heartbeat"
+      ],
+      "subscribe": [
+        "lyra.clipool.cmd",
+        "lyra.clipool.control",
+        "_INBOX.clipool-worker.>"
       ]
     }
   }

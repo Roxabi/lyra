@@ -179,7 +179,26 @@ class TestJetStreamAuditSinkSubjectRouting:
         subject = js.publish.call_args[0][0]
         assert subject == _SUBJECT_NORMAL
 
-    async def test_subjects_are_under_lyra_audit_wildcard(self) -> None:
+    def test_subjects_are_under_lyra_audit_wildcard(self) -> None:
         """Both subjects fall under lyra.audit.security.* (stream wildcard)."""
         assert _SUBJECT_PRIVILEGED.startswith("lyra.audit.security.")
         assert _SUBJECT_NORMAL.startswith("lyra.audit.security.")
+
+    async def test_emit_degraded_sink_does_not_publish_privileged_event(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Degraded sink logs (not publishes) privileged events; subject in message."""
+        sink = JetStreamAuditSink()
+        sink._degraded = True  # type: ignore[attr-defined]
+        js = _make_js()
+        js.publish = AsyncMock()
+        sink._js = js  # type: ignore[attr-defined]
+
+        event = _make_event(skip_permissions=True)
+        with caplog.at_level(logging.WARNING, logger="lyra.security"):
+            await sink.emit(event)  # type: ignore[arg-type]
+
+        js.publish.assert_not_awaited()
+        security_records = [r for r in caplog.records if r.name == "lyra.security"]
+        assert len(security_records) == 1
+        assert _SUBJECT_PRIVILEGED in security_records[0].message

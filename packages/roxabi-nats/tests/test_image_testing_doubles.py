@@ -1,13 +1,20 @@
-"""Three-guard tests for roxabi_contracts.image.testing. Mirrors spec #764."""
+"""Three-guard tests for roxabi_nats.testing.image. Mirrors spec #764.
+
+Moved from roxabi_contracts/tests/test_image_testing_doubles.py per ADR-059 V6.
+"""
 
 from __future__ import annotations
 
+import shutil
+
 import pytest
 
-# Imports here (not inside fixtures) to prove the module loads in the test
-# env — Guard 1 (import-time) is exercised implicitly; if the [testing]
-# extra is missing, `nats` is absent and this import fails.
-from roxabi_contracts.image.testing import FakeImageWorker
+from roxabi_nats.testing.image import FakeImageWorker
+
+requires_nats_server = pytest.mark.skipif(
+    shutil.which("nats-server") is None,
+    reason="nats-server not found in PATH — install via 'make nats-install'",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -65,17 +72,9 @@ def test_g2_prod_env_case_insensitive(
 
 
 async def test_start_twice_raises() -> None:
-    """start() is not idempotent — a double-start is a programmer error.
-
-    Guard 3 fires first (loopback check) so we point at a non-loopback URL
-    to exit before ``nats_connect``. Reaching the ``_nc is not None`` branch
-    would require a real NATS server; the guard short-circuits earlier.
-
-    Instead, we seed ``_nc`` manually to simulate "already started" state
-    and verify the RuntimeError fires instead of a silent second connect.
-    """
+    """start() is not idempotent — a double-start is a programmer error."""
     w = FakeImageWorker(nats_url="nats://127.0.0.1:4222")
-    w._nc = object()  # type: ignore[assignment]  # simulate started state
+    w._nc = object()  # type: ignore[assignment]
     with pytest.raises(RuntimeError, match="already started"):
         await w.start()
 
@@ -83,5 +82,5 @@ async def test_start_twice_raises() -> None:
 async def test_stop_is_idempotent_when_never_started() -> None:
     """stop() on a fresh worker is a no-op — never raises."""
     w = FakeImageWorker(nats_url="nats://127.0.0.1:4222")
-    await w.stop()  # no start(), no exception
-    await w.stop()  # second stop, still no exception
+    await w.stop()
+    await w.stop()

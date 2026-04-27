@@ -24,15 +24,17 @@ import nats  # noqa: F401  # pyright: ignore[reportUnusedImport]  # isort:skip
 import asyncio
 import base64
 import logging
-import os
 from datetime import datetime, timezone
-from urllib.parse import urlparse
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from pydantic import ValidationError
 
+from roxabi_contracts._testing_guards import (
+    _assert_loopback_url,
+    _assert_not_production,
+)
 from roxabi_contracts.voice.fixtures import sample_transcript_en, silence_wav_16khz
 from roxabi_contracts.voice.models import (
     SttRequest,
@@ -48,26 +50,6 @@ __all__: list[str] = ["FakeTtsWorker", "FakeSttWorker"]
 log = logging.getLogger(__name__)
 
 _DRAIN_TIMEOUT_S: float = 2.0
-
-ALLOWED_LOOPBACK_HOSTS: frozenset[str] = frozenset(
-    {"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"}
-)
-
-
-def _assert_not_production(cls_name: str) -> None:
-    """Guard 2 — raises RuntimeError when LYRA_ENV=production (case-insensitive)."""
-    if os.environ.get("LYRA_ENV", "").casefold() == "production":
-        raise RuntimeError(f"{cls_name} cannot run in production")
-
-
-def _assert_loopback_url(url: str) -> None:
-    """Guard 3 — raises ValueError when the URL hostname is not loopback."""
-    host = urlparse(url).hostname
-    if host not in ALLOWED_LOOPBACK_HOSTS:
-        raise ValueError(
-            f"loopback NATS URL required — refusing host {host!r}; "
-            f"allowed: {sorted(ALLOWED_LOOPBACK_HOSTS)}"
-        )
 
 
 class FakeTtsWorker:

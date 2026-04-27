@@ -24,6 +24,7 @@ def build_stt_response(  # noqa: PLR0913 — builder with optional success/error
     language: str | None = None,
     duration_seconds: float | None = None,
     error: str | None = None,
+    issued_at: datetime | None = None,
 ) -> str:
     """Build an SttResponse JSON string from a request payload.
 
@@ -36,6 +37,9 @@ def build_stt_response(  # noqa: PLR0913 — builder with optional success/error
         language: Detected language code (required when ok=True).
         duration_seconds: Audio duration in seconds (required when ok=True).
         error: Error message (required when ok=False).
+        issued_at: Timestamp to embed in the response envelope. Defaults to
+            ``datetime.now(timezone.utc)``. Pass a fixed value in tests to
+            avoid mocking the clock.
 
     Returns:
         JSON string of the SttResponse model.
@@ -49,7 +53,7 @@ def build_stt_response(  # noqa: PLR0913 — builder with optional success/error
     response = SttResponse(
         contract_version=CONTRACT_VERSION,
         trace_id=trace_id,
-        issued_at=datetime.now(timezone.utc),
+        issued_at=issued_at if issued_at is not None else datetime.now(timezone.utc),
         ok=ok,
         request_id=request_id,
         text=text,
@@ -69,6 +73,7 @@ def build_tts_response(  # noqa: PLR0913 — builder with optional success/error
     duration_ms: int | None = None,
     error: str | None = None,
     waveform_b64: str | None = None,
+    issued_at: datetime | None = None,
 ) -> str:
     """Build a TtsResponse JSON string from a request payload.
 
@@ -82,6 +87,9 @@ def build_tts_response(  # noqa: PLR0913 — builder with optional success/error
         duration_ms: Audio duration in milliseconds (required when ok=True).
         error: Error message (required when ok=False).
         waveform_b64: Optional base64-encoded waveform visualization.
+        issued_at: Timestamp to embed in the response envelope. Defaults to
+            ``datetime.now(timezone.utc)``. Pass a fixed value in tests to
+            avoid mocking the clock.
 
     Returns:
         JSON string of the TtsResponse model.
@@ -95,7 +103,7 @@ def build_tts_response(  # noqa: PLR0913 — builder with optional success/error
     response = TtsResponse(
         contract_version=CONTRACT_VERSION,
         trace_id=trace_id,
-        issued_at=datetime.now(timezone.utc),
+        issued_at=issued_at if issued_at is not None else datetime.now(timezone.utc),
         ok=ok,
         request_id=request_id,
         audio_b64=audio_b64,

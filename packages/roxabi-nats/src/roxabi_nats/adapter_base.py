@@ -16,38 +16,49 @@ import re
 import signal
 import socket
 import time
-import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Any, cast
 
 from nats.aio.client import Client as NATS
 
-# Compat shim — canonical home is roxabi_contracts.envelope per ADR-049.
-# Remove this re-export at roxabi-nats v0.3.0 (BREAKING CHANGE). Both
-# `roxabi_nats.adapter_base.CONTRACT_VERSION` and the top-level
-# `roxabi_nats.CONTRACT_VERSION` resolve through this module, so emitting
-# the warning here covers every deprecated access path.
-from roxabi_contracts.envelope import CONTRACT_VERSION
-
-warnings.warn(
-    "roxabi_nats.adapter_base.CONTRACT_VERSION (and roxabi_nats.CONTRACT_VERSION) "
-    "is deprecated; import from roxabi_contracts.envelope instead. "
-    "The re-export is removed at roxabi-nats v0.3.0.",
-    DeprecationWarning,
-    stacklevel=2,
-)
-
-from roxabi_nats._serialize import _EMPTY_RESOLVER, _TypeHintResolver  # noqa: E402
-from roxabi_nats._validate import validate_nats_token  # noqa: E402
-from roxabi_nats._version_check import (  # noqa: E402
+# NatsAdapterBase uses _CONTRACT_VERSION directly from its canonical home.
+# The public name CONTRACT_VERSION is served via __getattr__ below so that
+# accessing it emits a DeprecationWarning per ADR-059 (V4).
+from roxabi_contracts.envelope import CONTRACT_VERSION as _CONTRACT_VERSION
+from roxabi_nats._serialize import _EMPTY_RESOLVER, _TypeHintResolver
+from roxabi_nats._validate import validate_nats_token
+from roxabi_nats._version_check import (
     check_contract_version,
     check_schema_version,
 )
-from roxabi_nats.connect import nats_connect  # noqa: E402
-from roxabi_nats.readiness import wait_for_hub  # noqa: E402
+from roxabi_nats.connect import nats_connect
+from roxabi_nats.readiness import wait_for_hub
 
-__all__ = ["CONTRACT_VERSION", "NatsAdapterBase"]
+__all__ = ["CONTRACT_VERSION", "NatsAdapterBase"]  # noqa: F822  # pyright: ignore[reportUnsupportedDunderAll]
+
+
+def __getattr__(name: str) -> object:
+    """Lazy shim — emits DeprecationWarning only when CONTRACT_VERSION is accessed
+    via ``roxabi_nats.adapter_base.CONTRACT_VERSION``.  Plain ``import`` of this
+    module no longer fires any warning.
+
+    Compat shim per ADR-059 (V4). Remove at roxabi-nats v0.3.0.
+    """
+    if name == "CONTRACT_VERSION":
+        import warnings
+
+        warnings.warn(
+            "roxabi_nats.adapter_base.CONTRACT_VERSION "
+            "(and roxabi_nats.CONTRACT_VERSION) is deprecated; "
+            "import from roxabi_contracts.envelope instead. "
+            "The re-export is removed at roxabi-nats v0.3.0.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return _CONTRACT_VERSION
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 log = logging.getLogger(__name__)
 
@@ -191,7 +202,7 @@ class NatsAdapterBase(ABC):
         return check_contract_version(
             payload,
             envelope_name=self.envelope_name,
-            expected=CONTRACT_VERSION,
+            expected=_CONTRACT_VERSION,
             subject=self.subject,
             counter=self._drop_count,
         )
@@ -200,7 +211,7 @@ class NatsAdapterBase(ABC):
         """Base heartbeat payload. Subclasses override to add service fields."""
         uptime = time.monotonic() - self._started_at if self._started_at else 0.0
         return {
-            "contract_version": CONTRACT_VERSION,
+            "contract_version": _CONTRACT_VERSION,
             "worker_id": self._worker_id,
             "service": self.queue_group,
             "host": socket.gethostname(),

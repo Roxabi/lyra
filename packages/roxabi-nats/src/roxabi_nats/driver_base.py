@@ -89,7 +89,14 @@ class NatsDriverBase:
         queue: asyncio.Queue = asyncio.Queue(maxsize=512)
 
         async def _on_msg(msg: Any) -> None:
-            await queue.put(msg)
+            try:
+                queue.put_nowait(msg)
+            except asyncio.QueueFull:
+                log.warning(
+                    "nats_driver_base: _stream_gen inbox queue full,"
+                    " dropping chunk on %s",
+                    subject,
+                )
 
         sub = await self._nc.subscribe(inbox, cb=_on_msg)
         payload = json.dumps(payload_dict, ensure_ascii=False).encode("utf-8")

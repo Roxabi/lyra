@@ -12,7 +12,7 @@ NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
 UserNS=keep-id:uid=1500,gid=1500
-EnvironmentFile=%h/.lyra/env/clipool.env
+EnvironmentFile=-%h/.lyra/env/clipool.env
 Environment=NATS_URL=nats://lyra-nats:4222
 Secret=lyra-nkey-clipool-worker,type=mount,target=clipool-worker.seed,mode=0400,uid=1500,gid=1500
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/clipool-worker.seed
@@ -38,6 +38,7 @@ Exec=lyra adapter clipool
 [Service]
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=120
 CPUQuota=400%
 ExecStartPre=/bin/bash -c 'test -e %h/.claude.json || echo "{}" > %h/.claude.json'
 ExecStartPre=/bin/bash -c 'test -e %h/.claude/.credentials.json || echo "{}" > %h/.claude/.credentials.json'

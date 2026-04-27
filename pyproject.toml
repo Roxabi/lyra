@@ -15,7 +15,7 @@ dependencies = [
     # relaxes its pynacl<1.6 Windows constraint.
     # HTTP (webhook server for Telegram + inter-machine calls)
     "fastapi>=0.115",
-    "uvicorn[standard]>=0.44.0",
+    "uvicorn[standard]>=0.46.0",
     "httpx[asyncio]>=0.28",
     "python-dotenv>=1.2.2",
     # NATS transport (NatsBus — issue #455, Slice C of #445).

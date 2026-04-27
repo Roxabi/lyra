@@ -10,7 +10,7 @@ from typing import Any
 
 import typer
 
-from lyra.commands import PLUGINS_DIR
+from lyra.core.paths import PLUGINS_DIR
 
 log = logging.getLogger(__name__)
 

@@ -80,11 +80,15 @@ modules =
     lyra.config
     lyra.integrations
     lyra.monitoring
+    lyra.agent_cmd
 ignore_imports =
-    # Indirect through lyra.core (permitted core imports, not peer coupling) (#977)
+    # Transitive paths through lyra.core — not peer coupling; importlinter's independence
+    # contract traces all paths between listed modules, including through unlisted ones.
+    # These are permitted imports (floating → core), detected transitively. (#977)
     lyra.tts.engine_selector -> lyra.core.agent.agent_config
     lyra.core.processors.processor_registry -> lyra.integrations.base
     lyra.core.agent.agent -> lyra.stt
+    lyra.core.agent.agent -> lyra.tts
 
 [importlinter:contract:shared-modules-upper-boundary]
 name = Shared floating modules must not import bootstrap, adapters, or infrastructure
@@ -97,6 +101,7 @@ source_modules =
     lyra.config
     lyra.integrations
     lyra.monitoring
+    lyra.agent_cmd
 forbidden_modules =
     lyra.bootstrap
     lyra.adapters

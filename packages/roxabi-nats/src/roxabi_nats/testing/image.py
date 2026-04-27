@@ -40,16 +40,17 @@ from roxabi_contracts.image.fixtures import (
 from roxabi_contracts.image.models import ImageRequest, ImageResponse
 from roxabi_contracts.image.subjects import SUBJECTS
 from roxabi_nats.connect import nats_connect
+from roxabi_nats.testing._constants import _DRAIN_TIMEOUT_S
 from roxabi_nats.testing._guards import assert_loopback_url, assert_not_production
 
 __all__: list[str] = ["FakeImageWorker"]
 
 log = logging.getLogger(__name__)
 
-_DRAIN_TIMEOUT_S: float = 2.0
-
 
 class FakeImageWorker:
+    _stopping: bool = False
+
     def __init__(
         self,
         nats_url: str = "nats://127.0.0.1:4222",
@@ -84,6 +85,7 @@ class FakeImageWorker:
             raise
 
     async def stop(self) -> None:
+        self._stopping = True
         if self._nc is not None and self._nc.is_connected:
             try:
                 await asyncio.wait_for(self._nc.drain(), timeout=_DRAIN_TIMEOUT_S)
@@ -93,8 +95,11 @@ class FakeImageWorker:
                 )
         self._sub = None
         self._nc = None
+        self._stopping = False
 
     async def _dispatch(self, msg: Msg) -> None:
+        if self._stopping:
+            return
         try:
             req = ImageRequest.model_validate_json(msg.data)
         except ValidationError as exc:

@@ -1305,12 +1305,24 @@ testing = [
     { name = "scipy" },
 ]
 
+[package.dev-dependencies]
+test = [
+    { name = "pytest" },
+    { name = "roxabi-nats", extra = ["testing"] },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "pydantic", specifier = ">=2" },
     { name = "scipy", marker = "extra == 'testing'", specifier = ">=1.11" },
 ]
 provides-extras = ["testing"]
+
+[package.metadata.requires-dev]
+test = [
+    { name = "pytest" },
+    { name = "roxabi-nats", extras = ["testing"], editable = "packages/roxabi-nats" },
+]
 
 [[package]]
 name = "roxabi-nats"

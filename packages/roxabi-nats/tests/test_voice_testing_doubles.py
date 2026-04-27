@@ -280,7 +280,9 @@ def test_voice_init_does_not_expose_testing() -> None:
 
 
 @pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
-@pytest.mark.parametrize("value", ["PRODUCTION", "Production", "pRoDuCtIoN"])
+@pytest.mark.parametrize(
+    "value", ["production", "PRODUCTION", "Production", "pRoDuCtIoN"]
+)
 def test_g2_prod_env_case_insensitive(
     cls, value: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -143,10 +143,12 @@
     },
     "clipool-worker": {
       "owner": "lyra",
-      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat. Inbox narrowed to _INBOX.clipool-worker.> per ADR-051 per-identity prefix invariant.",
+      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. _INBOX.>/_inbox.> defensively included for reply-path robustness (allow_responses alone does not cover all nats-py reply publish paths), mirroring image-worker pattern.",
       "publish": [
         "lyra.clipool.heartbeat",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "_INBOX.>",
+        "_inbox.>"
       ],
       "subscribe": [
         "lyra.clipool.cmd",

@@ -248,25 +248,26 @@ stateDiagram-v2
 
 ### Module Layout
 
-After the Phase 1b refactoring, every module is ≤300 LOC. Key decomposition:
+After the Phase 1b refactoring and V4 decomposition (#773), every module is ≤300 LOC. Key decomposition:
 
 | Domain | Main module | Extracted modules |
 |--------|------------|-------------------|
-| **Hub** | `hub.py` | `hub_outbound.py`, `message_pipeline.py`, `audio_pipeline.py`, `pool_manager.py`, `hub_rate_limit.py`, `hub_protocol.py` |
-| **Agent** | `agent.py` (AgentBase ABC) | `agent_config.py` (Agent dataclass), `agent_builder.py`, `agent_loader.py`, `agent_models.py`, `agent_plugins.py` |
-| **Pool** | `pool.py` | `pool_processor.py` (debounce/cancel/dispatch), `pool_manager.py` (lifecycle), `pool_observer.py` (turn logging) |
-| **Commands** | `command_router.py` | `builtin_commands.py`, `workspace_commands.py`, `session_commands.py` |
-| **Memory** | `memory.py` | `memory_freshness.py`, `memory_schema.py`, `memory_types.py` |
-| **Auth** | `auth.py` (config parsing) | `authenticator.py` (Authenticator), `guard.py` (GuardChain), `auth_store.py` |
-| **Agent Store** | `agent_store.py` | `agent_seeder.py` (TOML → DB import) |
-| **Outbound** | `outbound_dispatcher.py` | `outbound_errors.py` |
-| **Telegram** | `telegram.py` (adapter shell) | `telegram_inbound.py`, `telegram_outbound.py`, `telegram_normalize.py`, `telegram_audio.py`, `telegram_formatting.py` |
-| **Discord** | `discord.py` (adapter shell) | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_voice.py`, `discord_voice_commands.py` |
-| **Bootstrap** | `unified.py` (single-process), `hub_standalone.py` (hub-only), `adapter_standalone.py` (adapter-only), `clipool_standalone.py` (clipool-only) | `bootstrap_stores.py`, `bootstrap_wiring.py`, `embedded_nats.py`, `bootstrap_lifecycle.py` |
-| **Shared** | `adapters/_shared.py` | Common adapter utilities (typing control, etc.) |
-| **Shared** | `adapters/_shared_streaming.py` | `StreamingSession` — centralized edit-in-place streaming algorithm for all platform adapters (#468, #495, #501) |
-| **Shared** | `adapters/_base_outbound.py` | `OutboundAdapterBase` — abstract base class for all platform outbound adapters |
-| **NATS** | `nats/render_event_codec.py` | Explicit encoder/decoder for `RenderEvent` over NATS wire format |
+| **Hub** | `hub/hub.py` (mixin composition) | `hub_shutdown.py`, `hub_circuit_breaker.py`, `hub_pool_delegation.py`, `hub_dispatch.py`, `hub_registration.py`, `hub_rate_limit.py`, `hub_protocol.py`, `identity_resolver.py` |
+| **Agent** | `agent/agent.py` (AgentBase ABC) | `agent_config.py` (Agent dataclass), `agent_builder.py`, `agent_db_loader.py`, `agent_models.py`, `agent_commands.py` |
+| **Pool** | `pool/pool.py` | `pool_processor.py` (debounce/cancel/dispatch), `pool_observer.py` (turn logging), `pool_context.py` (protocol) |
+| **Commands** | `commands/command_router.py` | `builtin_commands.py`, `workspace_commands.py`, `command_loader.py` |
+| **Memory** | `memory/memory.py` | `memory_freshness.py`, `memory_schema.py`, `memory_types.py` |
+| **Auth** | `auth/auth.py` (config parsing) | `authenticator.py` (Authenticator), `guard.py` (GuardChain), `identity.py`, `trust.py` |
+| **Stores** | `infrastructure/stores/` | `agent_store.py`, `auth_store.py`, `turn_store.py`, `pairing.py`, `thread_store.py`, `prefs_store.py`, `message_index.py`, `identity_alias_store.py` |
+| **Outbound** | `hub/outbound.py` | `OutboundDispatcher`, `OutboundRouter`, `AudioDispatch`, `TtsDispatch` |
+| **Telegram** | `adapters/telegram/telegram.py` | `telegram_inbound.py`, `telegram_outbound.py`, `telegram_normalize.py`, `telegram_audio.py`, `telegram_formatting.py` |
+| **Discord** | `adapters/discord/adapter.py` | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_config.py`, `lifecycle.py`, `voice/` |
+| **Bootstrap** | `bootstrap/standalone/` | `hub_standalone.py`, `adapter_standalone.py`, `clipool_standalone.py`; `factory/` (hub_builder, agent_factory, config, unified); `wiring/` (nats_wiring); `lifecycle/`; `infra/` (health, lockfile, notify, embedded_nats) |
+| **Shared** | `adapters/shared/_shared.py` | Common adapter utilities (typing control, push_to_hub_guarded) |
+| **Shared** | `adapters/shared/_shared_streaming_emitter.py` | `StreamingSession`, `PlatformCallbacks` — centralized edit-in-place streaming for all adapters |
+| **Shared** | `adapters/shared/_base_outbound.py` | `OutboundAdapterBase` — abstract base class for all platform outbound adapters |
+| **NATS** | `nats/nats_bus.py` | `nats_outbound_listener.py`, `nats_stt_client.py`, `nats_tts_client.py`, `nats_channel_proxy.py`, `render_event_codec.py` |
+| **LLM** | `llm/base.py` | `llm/drivers/` (cli.py, nats_driver.py, cli_nats.py), `llm/decorators.py`, `llm/registry.py` |
 
 ### Adapter Streaming Pattern
 
@@ -389,7 +390,7 @@ One pool per conversation scope. Contains:
 
 #### PoolManager threading model
 
-`PoolManager` (`src/lyra/core/hub/pipeline/pool_manager.py`) is a **hybrid sync/async** coordinator. It owns an `OrderedDict[str, Pool]` and must support both synchronous callers (LRU touch, runtime-config setters like `set_debounce_ms`, `set_cancel_on_new_message`) and asynchronous flush paths (eviction → `agent.flush_session`).
+`PoolManager` (`src/lyra/core/hub/pipeline.py` as `PoolManager` class) is a **hybrid sync/async** coordinator. It owns an `OrderedDict[str, Pool]` and must support both synchronous callers (LRU touch, runtime-config setters like `set_debounce_ms`, `set_cancel_on_new_message`) and asynchronous flush paths (eviction → `agent.flush_session`).
 
 | Concern | Primitive | Scope |
 |---|---|---|
@@ -513,7 +514,7 @@ stateDiagram-v2
 - `AgentBase.flush_session()` runs on pool eviction / explicit disconnect → full L3 write + background concept/preference extraction
 
 ### Level 1 — Session memory ✅
-- **TurnStore** (`src/lyra/core/turn_store.py`) — raw turn logging to `~/.lyra/turns.db` (SQLite)
+- **TurnStore** (`src/lyra/infrastructure/stores/turn_store.py`) — raw turn logging to `~/.lyra/turns.db` (SQLite)
 - Every user and assistant turn persisted with `pool_id`, `session_id`, `role`, `content`, platform message IDs
 - Separate DB from roxabi-vault to avoid write contention
 - Fire-and-forget writes via `asyncio.create_task` — never blocks message processing
@@ -816,12 +817,14 @@ class CognitiveFrame:
 
 **Phase 1b shipped**: #135 (runtime config ✅), #134 (smart routing ✅), #80 (voice STT ✅), #139 (message normalization ✅), #123 (LlmProvider ✅), #151 (auth ✅), #152 (routing ✅), #83 (memory integration ✅), #99 (hub command sessions ✅), voice TTS ✅ (OGG/Opus · waveform · Discord voice bubble · /voice routes through LLM), #268 (AgentStore — SQLite-backed agent registry ✅), #67 (raw turn logging — TurnStore L1 ✅), #276 (retryable flag on LlmResult ✅)
 
-**Architecture refactoring shipped** (2026-03-16/17):
-- Module decomposition: hub.py → `hub.py` + `message_pipeline.py` + `audio_pipeline.py` + `pool_manager.py` + `hub_rate_limit.py` + `hub_protocol.py` (#294–#312)
-- Adapter decomposition: `discord.py` → 8 focused modules (`discord_inbound.py`, `discord_outbound.py`, `discord_audio.py`, `discord_formatting.py`, etc.) (#296/#311); `telegram.py` → 5 focused modules (#297)
-- Core decomposition: `agent.py` → `agent.py` + `agent_builder.py` + `agent_config.py` + `agent_loader.py` + `agent_models.py` + `agent_plugins.py` (#295/#306); `pool.py` → `pool.py` + `pool_processor.py` (#300/#309); `command_router.py` → `command_router.py` + `builtin_commands.py` + `workspace_commands.py` (#298/#312); `memory.py` → `memory.py` + `memory_freshness.py` + `memory_schema.py` + `memory_types.py`; `agent_store.py` → `agent_store.py` + `agent_seeder.py` (#304/#308)
-- Auth split: `AuthMiddleware` → `Authenticator` (identity resolver) + `GuardChain` (composable guard pipeline) (#313/#314)
-- 8-pattern deduplication across adapters + core — shared adapter code in `adapters/_shared.py`
+**Architecture refactoring shipped** (2026-03-16/17, V4 decomposition #773):
+- Hub decomposition: `hub.py` → mixin composition (`HubShutdownMixin`, `HubCircuitBreakerMixin`, `HubPoolDelegationMixin`, `HubDispatchMixin`, `HubRegistrationMixin`) in `hub/` subdirectory
+- Adapter decomposition: `discord.py` → 11 focused modules in `adapters/discord/` (`adapter.py`, `lifecycle.py`, `discord_inbound.py`, etc.); `telegram.py` → 5 focused modules in `adapters/telegram/`
+- Core decomposition: `agent/` subdirectory with `agent.py`, `agent_builder.py`, `agent_config.py`, `agent_db_loader.py`, `agent_models.py`, `agent_commands.py`; `pool/` subdirectory with `pool.py`, `pool_processor.py`, `pool_observer.py`, `pool_context.py`
+- Infrastructure layer (ADR-048): stores moved from `core/stores/` to `infrastructure/stores/` — `agent_store.py`, `turn_store.py`, `auth_store.py`, `pairing.py`, etc.
+- Auth split: `AuthMiddleware` → `Authenticator` (identity resolver) + `GuardChain` (composable guard pipeline) in `auth/` subdirectory
+- Bootstrap decomposition: `bootstrap/` → subdirectories `standalone/`, `factory/`, `wiring/`, `lifecycle/`, `infra/`
+- 8-pattern deduplication across adapters + core — shared adapter code in `adapters/shared/`
 - Removed dead abstractions: `bootstrap/legacy.py`; `event_bus.py` refactored into `PipelineEventBus` (fire-and-forget telemetry fan-out, #432) — old pub/sub `EventBus` replaced by typed dataclass events
 - **#317** — Harden timeout system and reaper process
 - **#318** — Wire `session_id` + `reply_message_id` for session resumption

@@ -32,12 +32,13 @@ For single-machine dev or personal use. `lyra start` runs hub + adapters in one 
 ```bash
 git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
 cd ~/projects/lyra && uv sync
-cp .env.example .env         # tokens go via `lyra bot add` (see Step 8)
-lyra agent init              # seed agents DB from bundled TOML
-lyra start                   # hub + telegram + discord in one process
+cp config.toml.example config.toml   # edit owner_users with your IDs
+lyra agent init                      # seed agents DB from bundled TOML
+lyra bot add --platform telegram --bot-id lyra   # store token encrypted
+lyra start                           # hub + telegram + discord in one process
 ```
 
-No containers. No systemd. No `make deploy`. Stop with `Ctrl+C`. For bot token setup see **Step 8 — Configure**.
+No containers. No systemd. No `make deploy`. Stop with `Ctrl+C`.
 
 Move to Tier 3 (split processes, auto-deploy timer, health monitoring, embedded NATS replaced by a system service) only when you actually need 24/7 uptime. Tier 3 is what this guide covers from **Step 1** onward.
 
@@ -202,17 +203,17 @@ git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
 cd ~/projects/lyra && python3 deploy/setup.py
 ```
 
-`make setup` will:
+`deploy/setup.py` will:
 1. Check prerequisites (git, uv, podman, claude, GitHub SSH)
 2. Clone and install **lyra** (core — always installed)
 3. Prompt for optional modules:
    - **voiceCLI** — TTS/STT (requires NVIDIA GPU, ~3GB)
-   - **diagrams** — gallery server with live-reload
+   - **roxabi-forge** — HTML diagram gallery
    - **imageCLI** — image generation CLI
    - **roxabi-vault** — knowledge vault
 4. `make quadlet-install` — install Quadlet units to `~/.config/containers/systemd/`
 5. Create log directories (`~/.local/state/*/logs/`)
-6. Scaffold `~/.lyra/env/*.env` from examples
+6. Scaffold `config.toml` from example
 7. Seed agents into the DB (`lyra agent init`)
 8. Install Claude Code plugins:
    - **Mandatory:** `web-intel`, `agent-browser`, `lyra-send`, `refine-agent`
@@ -222,14 +223,14 @@ cd ~/projects/lyra && python3 deploy/setup.py
 
 To install all optional modules and plugins without prompts:
 ```bash
-make setup ARGS=--all
+python3 deploy/setup.py --all
 ```
 
 ---
 
 ## Step 8 — Configure
 
-The setup scaffolded `.env` and `config.toml` from examples. Three things to fill in:
+The setup scaffolded `config.toml` from the example. Fill in:
 
 ### 1. Auth config (`config.toml`)
 
@@ -269,11 +270,11 @@ lyra bot add --platform discord --bot-id lyra
 
 This encrypts and stores the tokens in `~/.lyra/config.db`.
 
-> **Note:** `.env` is mostly for non-secret config. Key entries:
-> - `NATS_URL=tls://127.0.0.1:4222` — set this for production (`lyra hub` + `lyra adapter`). Omit it for single-machine dev — `lyra start` auto-starts an embedded nats-server.
-> - `NATS_NKEY_SEED_PATH`, `NATS_CA_CERT` — nkey auth and TLS (set by `make nats-setup`)
-> - `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` — monitoring cron reads these directly from `.env`
-> - `LYRA_STT_ENABLED=1`, `LYRA_TTS_ENABLED=1` — enable NATS STT/TTS adapters; `LYRA_STT_MODEL=large-v3-turbo` — STT model size
+> **Note:** Bot tokens are encrypted in `~/.lyra/config.db` — not in `.env`. The `.env` file is for:
+> - `DEPLOY_HOST`, `DEPLOY_DIR` — remote deployment target
+> - `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` — monitoring timer (sends alerts directly)
+> - `LYRA_HEALTH_SECRET` — bearer token for health endpoint
+> - Voice settings (`LYRA_STT_ENABLED`, `LYRA_TTS_ENGINE`, etc.)
 >
 > See `.env.example` for all available options.
 
@@ -289,45 +290,52 @@ Follow the prompts to authenticate. Lyra uses Claude Code as its LLM backend —
 
 ---
 
-## Step 10 — NATS (optional for single-machine dev)
+## Step 10 — NATS setup (production only)
 
-For **single-machine development**, no NATS setup is required. `lyra start` auto-starts an embedded nats-server when `NATS_URL` is not set in `.env`.
+For **single-machine development**, no NATS setup is required. `lyra start` auto-starts an embedded nats-server when `NATS_URL` is not set.
 
-For **multi-machine production** (hub and adapters as separate processes — the default on Machine 1):
+For **production** (Quadlet containers on `roxabi.network`):
 
 ```bash
 cd ~/projects/lyra
 
-# One command — installs binary, system user, nats.conf, TLS certs, nkeys, starts service, verifies auth
+# Generate nkeys and auth.conf for all identities
 make nats-setup
+
+# Create Podman secrets from the nkey files
+make quadlet-secrets-install
 ```
 
-`make nats-setup` is idempotent — safe to re-run after upgrades or re-provisioning. It wires three env vars into `.env` automatically:
+`make nats-setup` generates:
+- `~/.lyra/nkeys/*.seed` — nkey seed files for each identity (hub, telegram-adapter, discord-adapter, clipool-worker)
+- `~/.lyra/nkeys/auth.conf` — merged auth config for NATS
 
-| Variable | Value | Purpose |
-|----------|-------|---------|
-| `NATS_URL` | `tls://127.0.0.1:4222` | TLS connection to local NATS |
-| `NATS_NKEY_SEED_PATH` | `~/.lyra/nkeys/hub.seed` | nkey authentication |
-| `NATS_CA_CERT` | `/etc/nats/certs/ca.crt` | CA cert for TLS verification |
-
-> **Key rotation:** `sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.lyra/nkeys && make nats-setup`
-> **Manual permission fix only:** `sudo deploy/nats/gen-nkeys.sh --fix-perms`
+The Quadlet NATS container (`lyra-nats.container`) runs rootless on `roxabi.network` with no TLS (container-to-container traffic is internal). Clients connect via `NATS_URL=nats://lyra-nats:4222`.
 
 ---
 
 ## Step 11 — Enable auto-start on boot
 
-Quadlet units start automatically once installed and linger is enabled. No separate `lyra.service`
-wrapper is needed.
+Quadlet units start automatically once installed and linger is enabled.
 
 ```bash
 # Enable linger (allows systemd --user to run without a login session)
 loginctl enable-linger $USER
 
-# Install Quadlet units (already done by make setup; repeat after updates)
+# Install Quadlet units (already done by setup.py; repeat after updates)
 make quadlet-install
 
+# Create Podman secrets for nkey auth
+make quadlet-secrets-install
+
 # Start all Lyra containers now
+systemctl --user start lyra-nats.service
+sleep 3  # wait for NATS to be ready
+systemctl --user start lyra-hub.service lyra-telegram.service lyra-discord.service lyra-clipool.service
+```
+
+Or use the Makefile dispatcher:
+```bash
 make lyra start
 ```
 
@@ -362,15 +370,16 @@ make monitor status   # check result
 
 ```bash
 cd ~/projects/lyra
-make lyra status
+systemctl --user status 'lyra-*.service' lyra-nats.service
 ```
 
-You should see all four units active:
+You should see all five units active:
 ```
-lyra-hub.service    active (running)
-lyra-telegram.service  active (running)
-lyra-discord.service   active (running)
-lyra-clipool.service   active (running)
+lyra-nats.service       active (running)
+lyra-hub.service        active (running)
+lyra-telegram.service   active (running)
+lyra-discord.service    active (running)
+lyra-clipool.service    active (running)
 ```
 
 Or check the full container list:
@@ -385,9 +394,9 @@ make monitor status
 
 Check the logs:
 ```bash
-make lyra logs      # tail Telegram adapter stdout
-make lyra errlogs   # tail stderr (where INFO/ERROR logs go)
-make monitor logs   # tail monitoring cron output (journalctl)
+make lyra logs        # journalctl for lyra-hub
+make lyra errors      # journalctl for lyra-hub (errors only)
+make monitor logs     # tail monitoring cron output (journalctl)
 ```
 
 ---
@@ -439,19 +448,20 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | VoiceCLI project | `~/projects/voiceCLI/` (if installed) |
 | Quadlet units | `~/.config/containers/systemd/lyra-*.container` |
 | VoiceCLI Quadlet units | `~/.config/containers/systemd/voicecli-*.container` (if voiceCLI installed) |
-| Env files | `~/.lyra/env/hub.env`, `telegram.env`, `discord.env` |
 | Config | `~/projects/lyra/config.toml` |
 | Credentials | `~/.lyra/config.db` (encrypted, via `lyra bot add`) |
+| Nkey seeds | `~/.lyra/nkeys/*.seed` |
+| Podman secrets | `podman secret ls` (lyra-nats-auth, lyra-nkey-*) |
 | Logs | `journalctl --user -u lyra-hub` |
 | Diagrams | `~/.roxabi/forge/` (if installed) |
 | Firewall | UFW, SSH only |
 
 **Daily commands** (from `~/projects/lyra`):
 ```bash
-make ps              # status of all services (lyra-hub + lyra-telegram + lyra-discord + lyra-clipool)
-make lyra reload     # restart hub + both adapters + clipool (four processes)
-make lyra logs       # tail lyra_hub stdout
-make deploy          # pull latest + run tests + restart (from Machine 2)
+make lyra status     # status of all lyra containers
+make lyra reload     # restart hub + adapters + clipool
+make lyra logs       # journalctl for lyra-hub
+make deploy          # pull latest staging, install quadlet units (from Machine 2)
 ```
 
 ---

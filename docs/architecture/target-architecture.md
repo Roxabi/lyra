@@ -244,7 +244,7 @@ edit       = true
 
 ## StreamingSession — Outbound Orchestration
 
-Implemented in `src/lyra/adapters/_shared_streaming.py`.
+Implemented in `src/lyra/adapters/shared/_shared_streaming_emitter.py`.
 
 Centralizes the edit-in-place streaming algorithm for all platform adapters.
 Platform-specific behavior is injected via `PlatformCallbacks`.
@@ -302,7 +302,7 @@ Three drivers implement `LlmProvider`:
 |--------|---------|-----------|------|
 | `ClaudeCliDriver` | Claude Code subprocess | ✅ native NDJSON stream | `oauth_only` |
 | `NatsLlmDriver` | Remote LLM worker over NATS | ✅ ephemeral inbox | `nats` |
-| `LiteLlmDriver` | LiteLLM proxy (future) | ✅ | `api_key` |
+| `CliNatsDriver` | Hub-side dispatch to claude-cli over NATS | ✅ ephemeral inbox | `nats` |
 
 ### Decorator Stack
 
@@ -329,7 +329,7 @@ Every hub↔adapter envelope carries `schema_version: int`.
 1. Bump `SCHEMA_VERSION_<ENVELOPE>` constant
 2. Update `schema_version` field default on envelope
 3. Coordinate simultaneous deploy of hub + adapters
-4. Verify: `grep SCHEMA_VERSION_ src/lyra/core/*.py`
+4. Verify: `grep SCHEMA_VERSION_ src/lyra/core/messaging/*.py`
 
 ---
 
@@ -344,5 +344,5 @@ Every hub↔adapter envelope carries `schema_version: int`.
 | `StreamingSession` | ✅ Implemented |
 | `PlatformCallbacks` | ✅ Implemented |
 | `OutboundAdapterBase` | ✅ Implemented |
-| Drivers (2 + 1 planned) | ✅ ClaudeCli, NatsLlm | LiteLlm (future) |
+| Drivers (3) | ✅ ClaudeCli, NatsLlm, CliNats |
 | Decorator stack | ✅ CircuitBreaker → SmartRouting → Retry |

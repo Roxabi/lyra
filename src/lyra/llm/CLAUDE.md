@@ -32,7 +32,12 @@ Three concrete drivers in `drivers/`:
 |--------|---------|---------------------------|----------------------|
 | `ClaudeCliDriver` | Claude Code subprocess (`CliPool`) | `True` — native NDJSON stream | `"oauth_only"` |
 | `NatsLlmDriver` | Remote LLM worker over NATS request-reply | `True` — ephemeral inbox streaming | `"nats"` |
+| `CliNatsDriver` | Hub-side LlmProvider dispatching claude-cli over NATS | `True` — ephemeral inbox streaming | `"nats"` |
 
+**Driver selection:**
+- `ClaudeCliDriver` — single-process mode (hub owns CliPool directly)
+- `CliNatsDriver` — multi-process mode (hub sends requests to clipool worker over NATS)
+- `NatsLlmDriver` — generic remote LLM worker (not claude-cli specific)
 
 ## Decorator stack
 

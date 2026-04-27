@@ -24,6 +24,7 @@ Outbound (platform) ←──────────────── Outbound
 | `memory/` | `MemoryManager`, memory types, freshness, schema, upserts |
 | `messaging/` | `Message`, `Bus`, `LocalBus`, `LlmEvent`, `RenderEvent`, scope, tool-display config |
 | `pool/` | Pool primitives — lifecycle, per-message processing, session observation |
+| `ports/` | Domain port protocols (`LlmProvider`, `TtsProtocol`, `STTProtocol`) — pure Protocol definitions |
 | `processors/` | Stream processing, processor registry, plugin-style processor implementations |
 | `stores/` | Store protocols + factory functions (implementations moved to `lyra.infrastructure.stores`) |
 
@@ -49,6 +50,18 @@ The `cli/` subdir holds the Claude CLI subprocess protocol:
 - `cli/cli_pool_lifecycle.py` — `CliPoolLifecycleMixin`: `start`, `stop`, `drain`, `get_reaper_status` (#760)
 - `cli/cli_pool_streaming.py` — `CliPoolStreamingMixin`: `send_streaming`, stale-resume guard (#760)
 - `cli/cli_pool_session.py` — `CliPoolSessionMixin`: TurnStore wiring, CLI session persistence for `--resume`
+
+## Domain port protocols
+
+The `ports/` subdir holds pure Protocol definitions with no infrastructure imports:
+
+- `ports/llm.py` — `LlmProvider` protocol (streaming-aware), `LlmResult` dataclass
+- `ports/stt.py` — `STTProtocol` (speech-to-text abstraction)
+- `ports/tts.py` — `TtsProtocol` (text-to-speech abstraction)
+
+These are **domain ports** — they define what the core domain needs from external services.
+Implementations live elsewhere (e.g., `llm/drivers/`, `adapters/clipool/`).
+The separation ensures `core` never imports infrastructure directly (hexagonal architecture).
 
 ## Non-obvious placement decisions
 

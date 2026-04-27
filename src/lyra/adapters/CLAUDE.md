@@ -11,6 +11,8 @@ No business logic or LLM interaction lives here.
 
 ```
 adapters/
+  clipool/          # Clipool worker adapter (1 file + __init__)
+    clipool_worker.py           # CliPoolNatsWorker — claude-cli subprocess over NATS
   discord/          # Discord adapter (11 files + __init__)
     adapter.py      # DiscordAdapter facade
     lifecycle.py    # on_ready, on_guild_join, on_voice_state_update
@@ -71,6 +73,20 @@ iterator and logs a warning); functional voice-channel playback is Discord-only.
 Each platform is split into focused submodules: `{platform}.py` is the facade; concerns are `_inbound`, `_outbound`, `_normalize`, `_formatting`, `_audio`. Shared cross-platform code lives in `shared/_shared.py`, `shared/_shared_audio.py`, `shared/_shared_streaming.py` (re-export shim), `shared/_shared_streaming_state.py` (state types), `shared/_shared_streaming_emitter.py` (session + callbacks).
 
 `outbound_listener.py` defines a structural protocol — adapters reference it without inheriting. `NatsOutboundListener` satisfies it for the three-process NATS deployment mode.
+
+## Clipool adapter
+
+`clipool/` is not a platform adapter — it's the **NATS worker** that hosts `CliPool` in a separate process. The hub sends LLM requests via `CliNatsDriver` to `clipool_worker.py`, which runs the actual Claude CLI subprocess.
+
+This separation enables:
+- CPU-bound CLI work to run isolated from the hub
+- Horizontal scaling of CLI workers
+- Independent lifecycle management (worker can restart without hub restart)
+
+The clipool worker listens on NATS subjects:
+- `lyra.clipool.cmd` — LLM requests from hub
+- `lyra.clipool.control` — control commands (reset, heartbeat)
+- `lyra.clipool.heartbeat` — periodic health announcements
 
 ## Telegram vs Discord differences
 

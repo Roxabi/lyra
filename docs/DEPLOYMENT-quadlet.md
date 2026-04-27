@@ -12,7 +12,7 @@ Production deployment for Machine 1 (`roxabituwer`, Ubuntu 26.04 LTS) using root
 | Tier | Topology | Audience |
 |---|---|---|
 | Dev | `lyra start` — 1 process, embedded NATS | local hacking |
-| Prod (Quadlet) | 5 containers on `lyra.network` | **default — this doc** |
+| Prod (Quadlet) | 5 containers on `roxabi.network` | **default — this doc** |
 
 **Use Quadlet** (this doc) for production — OCI isolation, reproducible images, rootless
 containers, systemd-native lifecycle management.
@@ -21,28 +21,27 @@ containers, systemd-native lifecycle management.
 
 ## 1. Overview
 
-Five containers run on a shared `lyra.network` bridge, all rootless under the `lyra` user:
+Five containers run on a shared `roxabi.network` bridge, all rootless under the `lyra` user:
 
 ```
 systemd --user (linger enabled)
-├── nats.service              ← NATS 2.10.29-alpine (pinned by digest)
-│     PublishPort 127.0.0.1:4223:4222
-├── lyra-hub.service          ← Exec: lyra hub
+├── lyra-nats.service          ← NATS 2.10.29-alpine (port 4222 on roxabi.network)
+├── lyra-hub.service           ← Exec: lyra hub
 │     PublishPort 127.0.0.1:8443:8443
-├── lyra-telegram.service     ← Exec: lyra adapter telegram
-├── lyra-discord.service      ← Exec: lyra adapter discord
-└── lyra-clipool.service      ← Exec: lyra clipool
+├── lyra-telegram.service      ← Exec: lyra adapter telegram
+├── lyra-discord.service       ← Exec: lyra adapter discord
+└── lyra-clipool.service       ← Exec: lyra clipool
 
 Volumes
-├── lyra-data          → /home/lyra/.lyra            (hub rw, adapters ro)
-├── lyra-logs          → /home/lyra/.local/state/lyra/logs  (all rw)
-├── lyra-config        → /app/config.toml             (bind ro, ~/.lyra/config.toml)
-├── lyra-nats-auth     → /etc/nats/nkeys/auth.conf    (nats ro)
-└── lyra-nkey-{hub,telegram-adapter,discord-adapter,...}.volume
-                       → /run/secrets/*.seed          (each container ro)
+├── lyra-data           → /home/lyra/.lyra            (hub rw, adapters ro)
+├── lyra-logs           → /home/lyra/.local/state/lyra/logs  (all rw)
+├── lyra-config         → config.toml bind mount       (ro)
+└── Podman secrets
+                        → /run/secrets/*.seed          (each container ro)
+                        → /etc/nats/nkeys/auth.conf    (nats ro)
 ```
 
-Unit files live in `deploy/quadlet/`. Quadlet generates the `.service` units from `.container`, `.volume`, and `.network` descriptors on `daemon-reload`. Service names match `ContainerName=`: `lyra-hub.service`, `lyra-telegram.service`, `lyra-discord.service`, `nats.service`.
+Unit files live in `deploy/quadlet/`. Quadlet generates the `.service` units from `.container`, `.volume`, and `.network` descriptors on `daemon-reload`. Service names match `ContainerName=`: `lyra-nats.service`, `lyra-hub.service`, `lyra-telegram.service`, `lyra-discord.service`, `lyra-clipool.service`.
 
 ## 2. Prerequisites
 
@@ -157,59 +156,47 @@ Note: adapters declare `After=lyra-hub.service` but no `Requires=` — a hub res
 
 ## 7. Env + secrets
 
-**Credential source (since #417, March 2026):** Bot tokens (Telegram, Discord) are Fernet-encrypted in `~/.lyra/config.db` (table `bot_secrets`) and decrypted at runtime by `LyraKeyring` using `~/.lyra/keyring.key`. The standalone adapter bootstrap (`src/lyra/bootstrap/standalone/adapter_standalone.py`) reads from `config.db` directly — no env var is needed or read for tokens.
-
-**What the env file is for:** only `lyra-hub` reads an env file, and only for operational vars:
-
-| Container | `EnvironmentFile=` | Required vars |
-|---|---|---|
-| `lyra-hub` | `%h/.lyra/env/hub.env` | `LYRA_HEALTH_SECRET`, `LYRA_HEALTH_PORT` |
-| `lyra-telegram` | — | (tokens come from `config.db`) |
-| `lyra-discord` | — | (tokens come from `config.db`) |
-
-`%h` expands to `$HOME` in Quadlet unit files.
-
-**Bootstrap recipe** (run once on Machine 1 before the first deploy):
+**Credential source:** Bot tokens (Telegram, Discord) are Fernet-encrypted in `~/.lyra/config.db` (table `bot_secrets`) and decrypted at runtime by `LyraKeyring` using `~/.lyra/keyring.key`. The standalone adapter bootstrap reads from `config.db` directly — no env vars needed for tokens.
 
 ```bash
-mkdir -p ~/.lyra/env && chmod 700 ~/.lyra/env
-cp deploy/quadlet/hub.env.example ~/.lyra/env/hub.env
-chmod 600 ~/.lyra/env/hub.env
-# fill in LYRA_HEALTH_SECRET with a random string
+# Store tokens (run once per bot)
+lyra bot add --platform telegram --bot-id lyra
+lyra bot add --platform discord --bot-id lyra
+
+# Verify
+lyra bot list
 ```
 
-Bot tokens do not need to be set here. Verify they are present in `config.db` before starting:
-
-```bash
-uv run lyra secrets list   # or equivalent CLI to inspect config.db entries
-```
-
-**Keyring rotation:** after rotating `~/.lyra/keyring.key`, restart all three containers — hub, telegram, and discord — to force `LyraKeyring` to re-read the new key from disk.
-
-**Dev tier:** `lyra start` (single process, embedded NATS) reads `~/projects/lyra/.env` — a single unsplit file documented in [DEPLOYMENT.md §2](DEPLOYMENT.md). Quadlet credential model is independent of dev tier.
-
-`NATS_URL` and `NATS_NKEY_SEED_PATH` are set inline in each `.container` file — they do not belong in the scoped env files:
+**Environment inline in `.container` files:** NATS connection vars are set directly in each Quadlet unit:
 
 ```ini
 Environment=NATS_URL=nats://lyra-nats:4222
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/<role>.seed
 ```
 
-nkey seed files are mounted as named volumes from `lyra-nkey-<role>.volume` into `/run/secrets/<role>.seed` (read-only). See `deploy/quadlet/*.volume` for the full list of nkey volumes. Seed files are generated by `deploy/nats/gen-nkeys.sh` — refer to [DEPLOYMENT.md §10](DEPLOYMENT.md#10-nats-acl-rollout).
+**Nkey secrets:** Seed files live in `~/.lyra/nkeys/` and are mounted as Podman secrets:
 
-`config.toml` is bind-mounted read-only from `~/.lyra/config.toml` via the `lyra-config.volume` (requires `~/.lyra/config.toml` to exist before starting units).
+```bash
+# Generate nkeys + auth.conf
+make nats-setup
 
-**Note:** The NATS container publishes on port 4223 by default to avoid conflicting with a host NATS instance that may already occupy 4222. If no host NATS is running, switch `PublishPort=127.0.0.1:4223:4222` to `4222:4222` in `nats.container` and update `NATS_URL` in the scoped env files.
+# Create Podman secrets
+make quadlet-secrets-install
+```
+
+This creates secrets: `lyra-nats-auth`, `lyra-nkey-hub`, `lyra-nkey-telegram-adapter`, `lyra-nkey-discord-adapter`, `lyra-nkey-clipool-worker`.
+
+`config.toml` is bind-mounted read-only from `~/projects/lyra/config.toml`.
 
 ## 8. Logs
 
-Logs go to journald. No rotating files on disk (supervisord logs at `~/.local/state/lyra/logs/` are not written by containers — that path is still mounted but used by the app's internal log writer; container stdout goes to journald).
+Logs go to journald. Container stdout/stderr is captured by systemd:
 
 ```bash
 journalctl --user -u lyra-hub -f
 journalctl --user -u lyra-telegram -f
 journalctl --user -u lyra-discord -f
-journalctl --user -u nats -f
+journalctl --user -u lyra-nats -f
 
 # Errors only
 journalctl --user -u lyra-hub -f -p err
@@ -289,15 +276,8 @@ journalctl --user -u systemd-user-generators -b
 
 ```bash
 podman images | grep lyra
-# If missing, re-run make push from Machine 2
-```
-
-**Volume permission error**
-
-Named volumes are created with rootless ownership. If a bind-mount volume fails (`lyra-config.volume`), check that `~/.lyra/config.toml` exists:
-
-```bash
-ls -la ~/.lyra/config.toml
+# If missing, pull from GHCR:
+podman pull ghcr.io/roxabi/lyra:staging
 ```
 
 **Container exits immediately**
@@ -305,17 +285,19 @@ ls -la ~/.lyra/config.toml
 ```bash
 podman logs lyra-hub        # last run stdout/stderr
 journalctl --user -u lyra-hub -n 50
-# Most common causes: missing env file, missing nkey seed, config.toml absent
+# Common causes: missing config.toml, missing nkey seed, DB not seeded
 ```
 
-**NATS port conflict**
+**NATS connection refused**
 
-The Quadlet NATS binds to `127.0.0.1:4223` by default. If another NATS instance is already on `4222`, there is no conflict. If port 4222 is free, update `nats.container` to `4222:4222` and adjust `NATS_URL` in the scoped env files.
+```bash
+systemctl --user status lyra-nats.service
+journalctl --user -u lyra-nats -n 20
+# Ensure NATS is running on roxabi.network
+```
 
 ---
 
 ## Known gaps
 
-- **Image digest pinning for `localhost/lyra:latest` is not yet in place.** The `.container` files note this with a comment referencing a CI tag-by-SHA follow-up issue. Currently the `latest` tag floats.
-- **NATS port 4223 coexistence.** `nats.container` publishes `127.0.0.1:4223:4222` to avoid conflicting with a host NATS instance on 4222. If no host NATS is present, change this to `4222:4222` in `nats.container` and update `NATS_URL` in the scoped env files accordingly.
-- **`make remote` is supervisord-only.** The `remote` target SSHes and invokes `supervisorctl` unconditionally. It has no systemd branch equivalent to the local `lyra_sctl` dispatcher.
+- **Image digest pinning for `localhost/lyra:dev` is not yet in place.** Production uses `ghcr.io/roxabi/lyra:staging` with auto-update.

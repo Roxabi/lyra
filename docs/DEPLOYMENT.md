@@ -7,27 +7,28 @@ Running Lyra as a managed service on Machine 1 (Ubuntu Server 26.04 LTS) using P
 
 ## Overview
 
-Lyra runs as **five containers** managed by **Podman Quadlet** (systemd --user). A `linger`-enabled
-systemd user session ensures all containers auto-start on boot without a login session.
+Lyra runs as **five containers** on a shared `roxabi.network` bridge, managed by **Podman Quadlet** (systemd --user). A `linger`-enabled systemd user session ensures all containers auto-start on boot without a login session.
 
 ```
 Machine 1 (roxabituwer, 192.168.1.16)
-├── systemd: nats.service         (host NATS — independent, always-on)
 ├── systemd --user (linger enabled)
-│   ├── nats.service              ← Quadlet NATS container (lyra-internal, port 4223)
+│   ├── lyra-nats.service         ← Quadlet NATS container (port 4222, roxabi.network)
 │   ├── lyra-hub.service          ← hub container (NatsBus, pool, routing, memory)
 │   ├── lyra-telegram.service     ← Telegram adapter container
 │   ├── lyra-discord.service      ← Discord adapter container
 │   └── lyra-clipool.service      ← CliPool NATS worker (Claude subprocesses)
 ├── Quadlet unit files: ~/.config/containers/systemd/
-│   ├── lyra.network
+│   ├── roxabi.network
 │   ├── lyra-hub.container
 │   ├── lyra-telegram.container
 │   ├── lyra-discord.container
 │   ├── lyra-clipool.container
-│   ├── nats.container
+│   ├── lyra-nats.container
 │   └── lyra-*.volume
-├── env files: ~/.lyra/env/hub.env, telegram.env, discord.env
+├── config: ~/projects/lyra/config.toml
+├── credentials: ~/.lyra/config.db (encrypted, via `lyra bot add`)
+├── nkey seeds: ~/.lyra/nkeys/*.seed
+├── Podman secrets: lyra-nats-auth, lyra-nkey-*
 └── logs: journalctl --user -u lyra-hub
 ```
 
@@ -75,48 +76,61 @@ make lyra reload
 
 ## 2. Configure environment
 
-Env files live in `~/.lyra/env/` (one per container). Example layout:
+**Credentials (tokens):** Bot tokens are stored encrypted in `~/.lyra/config.db` via `lyra bot add`. Adapters read directly from this database at startup — no env vars needed for tokens.
 
 ```bash
-# ~/.lyra/env/hub.env
-NATS_URL=nats://nats:4222
-NATS_NKEY_SEED_PATH=/run/secrets/hub.seed
-NATS_CA_CERT=/etc/nats/certs/ca.crt
-ANTHROPIC_API_KEY=sk-ant-...
-LYRA_HEALTH_SECRET=...
-
-# ~/.lyra/env/telegram.env
-NATS_URL=nats://nats:4222
-NATS_NKEY_SEED_PATH=/run/secrets/telegram-adapter.seed
-TELEGRAM_TOKEN=...
-
-# ~/.lyra/env/discord.env
-NATS_URL=nats://nats:4222
-NATS_NKEY_SEED_PATH=/run/secrets/discord-adapter.seed
-DISCORD_TOKEN=...
+# Store bot tokens (run once per bot)
+lyra bot add --platform telegram --bot-id lyra
+lyra bot add --platform discord --bot-id lyra
 ```
+
+**Environment inline in `.container` files:** NATS connection vars are set directly in each Quadlet unit:
+
+```ini
+# In lyra-hub.container, lyra-telegram.container, etc.
+Environment=NATS_URL=nats://lyra-nats:4222
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/hub.seed
+```
+
+**Nkey secrets:** Seed files are mounted as Podman secrets from `~/.lyra/nkeys/`:
 
 ```bash
-chmod 600 ~/.lyra/env/*.env
+# Generate nkeys + auth.conf
+make nats-setup
+
+# Create Podman secrets
+make quadlet-secrets-install
 ```
 
-See [DEPLOYMENT-quadlet.md](DEPLOYMENT-quadlet.md) for the full env file layout and volume mounts.
+See [DEPLOYMENT-quadlet.md](DEPLOYMENT-quadlet.md) for the full volume and secret layout.
 
 ## Multi-Bot Deployment
 
-Multiple bots are configured in `config.toml` — no container changes needed. The four-container
-topology (`lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`) is fixed regardless of how many bots
+Multiple bots are configured in `config.toml` — no container changes needed. The five-container
+topology (`lyra-nats`, `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`) is fixed regardless of how many bots
 are configured.
 
-### Environment variables
+### Adding a second bot
 
-Add one set of variables per additional bot in the appropriate env file. Reference them in
-`config.toml` with the `env:` prefix.
+1. Add the bot entry in `config.toml`:
+```toml
+[[telegram.bots]]
+bot_id = "aryl"
 
+[[auth.telegram_bots]]
+bot_id = "aryl"
+default = "blocked"
+owner_users = []
+```
+
+2. Store the bot token:
 ```bash
-# ~/.lyra/env/telegram.env — second bot
-ARYL_TELEGRAM_TOKEN=123456789:ABCdef...
-ARYL_TELEGRAM_WEBHOOK_SECRET=another-random-string
+lyra bot add --platform telegram --bot-id aryl
+```
+
+3. Restart containers:
+```bash
+make lyra reload
 ```
 
 ### Resource considerations
@@ -130,27 +144,6 @@ Adapter containers (`lyra-telegram`, `lyra-discord`) are lightweight thin NATS c
   subprocess slots in the shared `lyra-clipool` container.
 - **Crash scope**: an unhandled exception in `lyra-hub` takes down all bot routing at once. The
   adapter containers survive independently. systemd `Restart=on-failure` brings everything back.
-
-### No container changes for additional bots
-
-The four containers remain fixed — adding bots only changes `config.toml`. Changes take effect
-on restart.
-
-```bash
-# Restart all four Lyra containers after updating config.toml
-make lyra reload
-```
-
-Verify all bots started cleanly:
-
-```bash
-make lyra logs      # tail lyra-hub stdout
-# Look for lines like:
-# INFO lyra.bootstrap.hub_standalone: Registered Telegram bot bot_id='lyra'
-# INFO lyra.bootstrap.hub_standalone: Registered Telegram bot bot_id='aryl'
-# INFO lyra.adapters.discord: Discord bot ready: RoxabiLyra (id=<id>)
-# INFO lyra.adapters.discord: Discord bot ready: RoxabiAryl (id=<id>)
-```
 
 ---
 
@@ -274,61 +267,42 @@ journalctl --user -u lyra-telegram --no-pager -n 50
 
 ## 10. NATS ACL Rollout
 
-When the subject->identity ACL matrix changes (spec #706), regenerate and reload NATS without
-dropping client connections. `deploy/nats/gen-nkeys.sh` is the single source of truth for nkey
-generation and `auth.conf` emission.
+When the subject→identity ACL matrix changes (spec #706), regenerate nkeys and update the Podman secret.
 
 ### Regenerate
 
 ```bash
-sudo ./deploy/nats/gen-nkeys.sh --regenerate --yes
+cd ~/projects/lyra
+./deploy/nats/gen-nkeys.sh --regenerate --yes
 ```
 
 This rotates all nkeys — old seeds are backed up to `~/.lyra/nkeys.bak.{epoch}/` and the old
-`auth.conf` to `/etc/nats/nkeys/auth.conf.bak.{epoch}` before any files are overwritten.
+`auth.conf` is backed up before any files are overwritten.
 
-### Reload
+### Update Podman secret and reload
 
 ```bash
-sudo systemctl reload nats.service
+make quadlet-secrets-install   # recreate Podman secrets from new seeds
+systemctl --user restart lyra-nats.service
 ```
 
-> **Note:** the `nats.service` unit uses `Type=simple` with `ExecReload=/bin/kill -HUP $MAINPID`.
-> There is no `.pid` file — reload must go through systemd, not `nats-server --signal`.
+### Reconnect clients
 
-### Reconnect order
-
-Restart adapters and clipool first so the hub is last to reconnect:
+Restart adapters and clipool so they reconnect with new credentials:
 
 ```bash
 make telegram reload && make discord reload
-make clipool reload  # clipool before hub
-make lyra reload     # hub last
+make clipool reload
+make lyra-hub reload  # hub last
 ```
 
-> Voice workers (TTS/STT) live in the voicecli project and are reloaded via its own Makefile
+> Voice workers (TTS/STT) live in the voiceCLI project and are reloaded via its own Makefile
 > targets.
-
-New ACLs take effect on the next publish/subscribe; existing subscriptions opened before the
-reload continue to receive until the client reconnects.
 
 ### Verify
 
 ```bash
-scripts/check-nats-acls.sh --since "$(date -Iseconds)" --window 90 | tee rollout-evidence.txt
-```
-
-### Rollback
-
-Old pubkeys only validate against old seeds — restoring `auth.conf` alone is not enough. Both
-the conf and the seed directory must be restored atomically:
-
-```bash
-EPOCH=<timestamp-from-ls>
-sudo cp -a /etc/nats/nkeys/auth.conf.bak.$EPOCH /etc/nats/nkeys/auth.conf
-sudo rm -rf ~/.lyra/nkeys && sudo cp -a ~/.lyra/nkeys.bak.$EPOCH ~/.lyra/nkeys
-sudo systemctl reload nats.service
-# then the reconnect sequence above
+scripts/check-nats-acls.sh --since "$(date -Iseconds)" --window 90
 ```
 
 ---

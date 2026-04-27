@@ -13,22 +13,18 @@ Rotation replaces the seed file (private key material) for one or more identitie
 ## Identity → Systemd Unit Map
 
 > Production runs Podman Quadlet units (as of #611). The restart commands in Step 5 use
-> `systemctl --user` accordingly.
+> `systemctl --user` accordingly. NATS runs as `lyra-nats.service` (Quadlet container).
 
 | Identity (seed file) | Systemd unit | Log command |
 |---|---|---|
 | `hub.seed` | `lyra-hub.service` | `journalctl --user -u lyra-hub` |
 | `telegram-adapter.seed` | `lyra-telegram.service` | `journalctl --user -u lyra-telegram` |
 | `discord-adapter.seed` | `lyra-discord.service` | `journalctl --user -u lyra-discord` |
-| `tts-adapter.seed` | _(future Quadlet unit)_ | — |
-| `stt-adapter.seed` | _(future Quadlet unit)_ | — |
+| `clipool-worker.seed` | `lyra-clipool.service` | `journalctl --user -u lyra-clipool` |
 | `voice-tts.seed` | `voicecli-tts.service` (voiceCLI project) | `journalctl --user -u voicecli-tts` |
 | `voice-stt.seed` | `voicecli-stt.service` (voiceCLI project) | `journalctl --user -u voicecli-stt` |
-| `llm-worker.seed` | _(no unit yet)_ | — |
-| `image-worker.seed` | _(future Quadlet unit)_ | — |
-| `monitor.seed` | _(no unit yet)_ | — |
 
-All seeds live in `~/.lyra/nkeys/` on Machine 1. Live auth.conf lives at `/etc/nats/nkeys/auth.conf`.
+All seeds live in `~/.lyra/nkeys/` on Machine 1. The merged `auth.conf` is stored as Podman secret `lyra-nats-auth`.
 
 ---
 
@@ -120,34 +116,24 @@ If `nats-server` is on PATH and `/etc/nats/nats.conf` exists, the script validat
 
 ---
 
-## 4. Reload NATS
+## 4. Update NATS secret and restart
 
 ```bash
-sudo systemctl reload nats.service
+# Recreate Podman secret with new auth.conf
+make quadlet-secrets-install
+
+# Restart NATS container to pick up new secret
+systemctl --user restart lyra-nats.service
 ```
 
-This sends `SIGHUP` to the running `nats-server` process. The server re-reads `auth.conf` in place. Existing authenticated connections are not dropped immediately — they continue with their current authentication state until they reconnect. The old public key is invalidated for new connection attempts as soon as the reload completes.
-
-Record the reload timestamp — you will need it for the verification step:
+Record the restart timestamp — you will need it for the verification step:
 
 ```bash
 RELOAD_TS=$(date -Iseconds)
-echo "Reload timestamp: ${RELOAD_TS}"
+echo "Restart timestamp: ${RELOAD_TS}"
 ```
 
-**4.1 Assess whether active compromise is in progress.**
-
-`systemctl reload` does not disconnect existing authenticated sessions. A connection authenticated under the old key before the reload remains open until it reconnects. The old public key is invalid for new connections, but any session already established continues until the client disconnects or reconnects.
-
-- **Historical compromise** (seed leak only, no evidence of live use) — `reload` is sufficient. The attacker cannot open new sessions; proceed to Step 5.
-- **Active/in-progress compromise** (attacker may hold a live connection now) — use `sudo systemctl restart nats.service` instead of `reload` to evict all sessions immediately. This causes ~5 s of downtime and drops all current connections, including legitimate ones.
-
-```bash
-# Active compromise only — replaces the reload in Step 4:
-sudo systemctl restart nats.service
-```
-
-Update `RELOAD_TS` after a restart if you use this path.
+The container restart evicts all existing connections. All clients will reconnect with new credentials automatically.
 
 ---
 
@@ -276,15 +262,15 @@ cp ~/.lyra/nkeys/${IDENTITY}.seed.bak-${BAK_TS} ~/.lyra/nkeys/${IDENTITY}.seed
 chmod 0600 ~/.lyra/nkeys/${IDENTITY}.seed
 ```
 
-**7.3 Restore auth.conf and reload NATS:**
+**7.3 Restore auth.conf and restart NATS:**
 
 ```bash
 # Replace CONF_BAK with the actual backup filename from Step 3 output (format: YYYYMMDD-HHMMSS).
-CONF_BAK=/etc/nats/nkeys/auth.conf.bak.YYYYMMDD-HHMMSS  # ← replace with timestamp from Step 3 output
+CONF_BAK=~/.lyra/nkeys/auth.conf.bak.YYYYMMDD-HHMMSS  # ← replace with timestamp from Step 3 output
 
-sudo cp -a "${CONF_BAK}" /etc/nats/nkeys/auth.conf
-# cp -a preserves ownership + mode from --regen-authconf backup
-sudo systemctl reload nats.service
+cp "${CONF_BAK}" ~/.lyra/nkeys/auth.conf
+make quadlet-secrets-install   # recreate Podman secret
+systemctl --user restart lyra-nats.service
 ```
 
 **7.4 Reverse-order restart** (workers first, hub last — same order as Step 5).

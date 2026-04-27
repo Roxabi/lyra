@@ -48,3 +48,23 @@ forbidden_modules =
     aiosqlite
     sqlite3
 allow_indirect_imports = true
+
+[importlinter:contract:commands-no-infra]
+name = Commands must not import Infrastructure directly
+type = forbidden
+source_modules =
+    lyra.commands
+forbidden_modules =
+    lyra.infrastructure
+allow_indirect_imports = true
+
+[importlinter:contract:agents-no-bootstrap]
+name = Agents must not import Composition Root
+type = forbidden
+source_modules =
+    lyra.agents
+forbidden_modules =
+    lyra.bootstrap
+ignore_imports =
+    # Transitional: TYPE_CHECKING import pending protocol extraction (ADR-059 V9)
+    lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store

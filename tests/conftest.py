@@ -370,7 +370,7 @@ def patch_all(
         stores_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
     )
     monkeypatch.setattr(
-        unified_mod,
+        wiring_helpers_mod,
         "agent_row_to_config",
         lambda row, **kw: Agent(
             name=row.name,

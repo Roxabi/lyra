@@ -10,13 +10,13 @@ from lyra.core.messaging.message import DiscordMeta
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
-    from lyra.infrastructure.stores.thread_store import ThreadStore
+    from lyra.core.stores.thread_store_protocol import ThreadStoreProtocol
 
 log = logging.getLogger(__name__)
 
 
 async def persist_thread_claim(
-    thread_store: "ThreadStore",
+    thread_store: "ThreadStoreProtocol",
     thread_id: int,
     bot_id: str,
     channel_id: int,
@@ -42,7 +42,7 @@ async def persist_thread_claim(
 
 
 async def persist_thread_session(  # noqa: PLR0913 — each arg is a distinct required dependency
-    thread_store: "ThreadStore",
+    thread_store: "ThreadStoreProtocol",
     msg: "InboundMessage",
     session_id: str,
     pool_id: str,
@@ -86,7 +86,7 @@ async def persist_thread_session(  # noqa: PLR0913 — each arg is a distinct re
 
 
 async def restore_hot_threads(
-    thread_store: "ThreadStore",
+    thread_store: "ThreadStoreProtocol",
     bot_id: str,
     hot_hours: int,
 ) -> set[int]:
@@ -109,7 +109,7 @@ async def restore_hot_threads(
 
 
 async def retrieve_thread_session(
-    thread_store: "ThreadStore",
+    thread_store: "ThreadStoreProtocol",
     thread_id: str,
     bot_id: str,
     cache: dict[str, tuple[str, str]],

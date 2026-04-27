@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from lyra.adapters.shared._shared_streaming import PlatformCallbacks
     from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.messaging.bus import Bus
+    from lyra.core.stores.thread_store_protocol import ThreadStoreProtocol
     from lyra.infrastructure.stores.turn_store import TurnStore
 
 from lyra.adapters.discord import discord_audio  # noqa: I001
@@ -48,7 +49,6 @@ from lyra.core.messaging.message import (
     OutboundMessage,
 )
 from lyra.core.messaging.messages import MessageManager
-from lyra.infrastructure.stores.thread_store import ThreadStore
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         msg_manager: MessageManager | None = None,
         auto_thread: bool = True,
         thread_hot_hours: int = 36,
-        thread_store: ThreadStore | None = None,
+        thread_store: ThreadStoreProtocol | None = None,
         watch_channels: frozenset[int] = frozenset(),
         turn_store: "TurnStore | None" = None,
     ) -> None:
@@ -96,7 +96,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         self._bot_user: Any = None  # set on on_ready; None until login
         self._mention_re: re.Pattern[str] | None = None  # compiled on on_ready
         self._owned_threads: set[int] = set()  # populated from ThreadStore on on_ready
-        self._thread_store: ThreadStore | None = thread_store
+        self._thread_store: ThreadStoreProtocol | None = thread_store
         self._turn_store: "TurnStore | None" = turn_store
         self._watch_channels: frozenset[int] = watch_channels
         self._thread_sessions: dict[str, tuple[str, str]] = {}

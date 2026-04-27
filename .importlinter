@@ -68,3 +68,37 @@ forbidden_modules =
 ignore_imports =
     # Transitional: TYPE_CHECKING import pending protocol extraction (ADR-059 V9)
     lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store
+
+[importlinter:contract:shared-modules-independence]
+name = Shared floating modules must not import each other (peer isolation)
+type = independence
+modules =
+    lyra.obs
+    lyra.stt
+    lyra.tts
+    lyra.errors
+    lyra.config
+    lyra.integrations
+    lyra.monitoring
+ignore_imports =
+    # Indirect through lyra.core (permitted core imports, not peer coupling) (#977)
+    lyra.tts.engine_selector -> lyra.core.agent.agent_config
+    lyra.core.processors.processor_registry -> lyra.integrations.base
+    lyra.core.agent.agent -> lyra.stt
+
+[importlinter:contract:shared-modules-upper-boundary]
+name = Shared floating modules must not import bootstrap, adapters, or infrastructure
+type = forbidden
+source_modules =
+    lyra.obs
+    lyra.stt
+    lyra.tts
+    lyra.errors
+    lyra.config
+    lyra.integrations
+    lyra.monitoring
+forbidden_modules =
+    lyra.bootstrap
+    lyra.adapters
+    lyra.infrastructure
+allow_indirect_imports = true

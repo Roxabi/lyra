@@ -2,6 +2,5 @@
 # Each entry must have a tracking issue.
 # Format: <path>  # <lines> lines — <issue> <description>
 src/lyra/core/pool/pool.py  # 326 lines — #858 backward-compat param overrides
-src/lyra/core/commands/command_router.py  # 303 lines — #858 backward-compat param overrides
 src/lyra/bootstrap/factory/wiring_helpers.py  # 400 lines — ADR-059/V10 bootstrap helper aggregator (imports + 10 focused functions)
 src/lyra/bootstrap/bootstrap_stores.py  # 305 lines — #957 idx_sql DDL validation adds allowlist guard before sqlite_master replay

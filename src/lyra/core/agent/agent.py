@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ..memory.memory import MemoryManager
     from ..messaging.render_events import RenderEvent
 
-from lyra.commands import PLUGINS_DIR
+from lyra.core.paths import PLUGINS_DIR
 
 from ..auth.trust import TrustLevel
 from ..circuit_breaker import CircuitRegistry

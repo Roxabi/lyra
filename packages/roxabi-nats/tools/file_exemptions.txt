@@ -1,0 +1,4 @@
+# File size exemptions (≤300 lines per file)
+# Each entry must have a tracking issue.
+# Format: <path>  # <lines> lines — <issue> <description>
+packages/roxabi-nats/src/roxabi_nats/_serialize.py  # 318 lines — #977 needs split, tracked for follow-up

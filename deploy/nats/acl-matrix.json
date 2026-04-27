@@ -151,7 +151,7 @@
       "subscribe": [
         "lyra.clipool.cmd",
         "lyra.clipool.control",
-        "_INBOX.clipool-worker.>",
+        "_INBOX.>",
         "_inbox.>"
       ]
     }

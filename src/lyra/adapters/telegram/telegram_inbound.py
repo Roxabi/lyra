@@ -199,8 +199,10 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
             )
         except Exception:
             log.warning(
-                "Failed to send audio-download-failed reply for user_id=%s",
+                "Failed to send audio-download-failed reply"
+                " for user_id=%s message_id=%s",
                 user_id,
+                message_id,
             )
         return
 

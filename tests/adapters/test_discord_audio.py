@@ -177,6 +177,7 @@ async def test_on_message_audio_download_failure_sends_reply() -> None:
         read=AsyncMock(side_effect=RuntimeError("network error")),
     )
     msg = _make_discord_msg(attachments=[attachment_obj])
+    msg.guild = None
     msg.author.bot = False
 
     await adapter.on_message(msg)

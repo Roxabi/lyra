@@ -4,7 +4,7 @@
 SHELL := /bin/bash -o pipefail
 
 SUPERVISOR_HUB ?= $(HOME)/projects
-HUB_SERVICES   := lyra telegram discord
+HUB_SERVICES   := lyra telegram discord nats clipool
 -include $(SUPERVISOR_HUB)/hub.mk
 
 # Fallback SVC_CMD parsing — used when hub.mk is not present (e.g. prod).
@@ -38,7 +38,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: build push lyra telegram discord monitor register quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
+.PHONY: build push lyra telegram discord nats clipool monitor register quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy remote update nats-setup nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -62,7 +62,9 @@ push:                  ## save image and load on $(DEPLOY_HOST) via ssh
 LYRA_HUB_UNIT      := lyra-hub
 LYRA_TELEGRAM_UNIT := lyra-telegram
 LYRA_DISCORD_UNIT  := lyra-discord
-LYRA_UNITS         := $(LYRA_HUB_UNIT) $(LYRA_TELEGRAM_UNIT) $(LYRA_DISCORD_UNIT)
+LYRA_NATS_UNIT     := lyra-nats
+LYRA_CLIPOOL_UNIT  := lyra-clipool
+LYRA_UNITS         := $(LYRA_HUB_UNIT) $(LYRA_TELEGRAM_UNIT) $(LYRA_DISCORD_UNIT) $(LYRA_CLIPOOL_UNIT)
 
 # $(call lyra_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl or supervisorctl.
 # Uses supervisorctl if LYRA_SUPERVISORCTL_PATH is set, else systemctl (default install).
@@ -104,6 +106,16 @@ endif
 discord:
 ifndef _IS_LYRA_SUBCMD
 	$(call lyra_sctl,$(LYRA_DISCORD_UNIT))
+endif
+
+nats:
+ifndef _IS_LYRA_SUBCMD
+	$(call lyra_sctl,$(LYRA_NATS_UNIT))
+endif
+
+clipool:
+ifndef _IS_LYRA_SUBCMD
+	$(call lyra_sctl,$(LYRA_CLIPOOL_UNIT))
 endif
 
 # ── Monitor (systemd timer, not supervisor) ──────────────────────────────────

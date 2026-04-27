@@ -14,7 +14,7 @@ dependencies = [
     # TODO(#271): CVE-2025-69277 — pynacl 1.5.0 needs upgrade to >=1.6.2 once discord.py
     # relaxes its pynacl<1.6 Windows constraint.
     # HTTP (webhook server for Telegram + inter-machine calls)
-    "fastapi>=0.115",
+    "fastapi>=0.136.1",
     "uvicorn[standard]>=0.44.0",
     "httpx[asyncio]>=0.28",
     "python-dotenv>=1.2.2",

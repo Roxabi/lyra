@@ -13,8 +13,6 @@ layers =
     lyra.llm | lyra.nats
     lyra.core
 ignore_imports =
-    # Transitional: agent_store_protocol remains in core (Direction 2, out of scope)
-    lyra.core.stores.agent_store_protocol -> lyra.infrastructure.stores.agent_store
     # Downward TYPE_CHECKING imports (ADR-048 transition)
     lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store
     lyra.core.auth.authenticator -> lyra.infrastructure.stores.auth_store

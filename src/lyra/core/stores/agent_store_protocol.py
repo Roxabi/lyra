@@ -1,35 +1,21 @@
-"""Full AgentStoreProtocol + make_agent_store factory.
+"""AgentStoreProtocol — structural interface for agent stores.
 
 The narrow ``AgentStoreProtocol`` in ``agent_seeder.py`` covers only ``get``
 and ``upsert`` — just enough for TOML seeding.  This module provides a fuller
-protocol covering every method callers depend on, plus a factory function that
-reads ``LYRA_DB`` to select the backing implementation at runtime.
+protocol covering every method callers depend on.
 
-Typical test usage::
-
-    import os, pytest
-    os.environ["LYRA_DB"] = "json"
-    store = make_agent_store()          # → JsonAgentStore
-    await store.connect()
-
-Production code (cli_agent, bootstrap) continues to instantiate AgentStore
-directly — they are not changed by this issue.
+Factory: use ``lyra.bootstrap.factory.agent_store_factory.make_agent_store``
+to obtain a store instance at runtime.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from ..agent.agent_models import AgentRow, AgentRuntimeStateRow
 
-if TYPE_CHECKING:
-    from lyra.infrastructure.stores.agent_store import AgentStore
-
-    from .json_agent_store import JsonAgentStore
-
-__all__ = ["AgentStoreProtocol", "make_agent_store"]
+__all__ = ["AgentStoreProtocol"]
 
 
 @runtime_checkable
@@ -76,37 +62,3 @@ class AgentStoreProtocol(Protocol):
 
     # TOML seeding
     async def seed_from_toml(self, path: Path, *, force: bool = False) -> int: ...
-
-
-def make_agent_store(
-    db_path: Path | None = None,
-) -> "AgentStore | JsonAgentStore":
-    """Return the appropriate agent store based on the ``LYRA_DB`` env var.
-
-    ``LYRA_DB=json``  →  :class:`~lyra.core.json_agent_store.JsonAgentStore`
-                          Path: ``LYRA_AGENT_STORE_PATH`` or
-                          ``~/.lyra/agents_test.json``
-
-    Any other value (or unset)  →  :class:`~lyra.core.agent_store.AgentStore`
-                                    Path: *db_path* or ``~/.lyra/config.db``
-
-    Note: the returned store is not yet connected — callers must ``await
-    store.connect()`` before use.
-    """
-    if os.environ.get("LYRA_DB") == "json":
-        from .json_agent_store import JsonAgentStore
-
-        store_path_env = os.environ.get("LYRA_AGENT_STORE_PATH")
-        _vault = Path(
-            os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
-        ).resolve()
-        path = Path(store_path_env) if store_path_env else _vault / "agents_test.json"
-        return JsonAgentStore(path=path)
-
-    from lyra.infrastructure.stores.agent_store import AgentStore
-
-    _vault = Path(
-        os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
-    ).resolve()
-    resolved = db_path or (_vault / "config.db")
-    return AgentStore(db_path=resolved)

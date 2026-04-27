@@ -40,11 +40,15 @@ def _cap_value(val: str | int | bool) -> str | int | bool:
     return val
 
 
-def sanitize_platform_meta(meta: dict[str, Any]) -> dict[str, Any]:
+def sanitize_platform_meta(
+    meta: dict[str, Any],
+    *,
+    allowlist: frozenset[str] | None = None,
+) -> dict[str, Any]:
     """Filter platform_meta to allowlisted keys and safe scalar values.
 
     Strips:
-    - Keys not in PLATFORM_META_ALLOWLIST
+    - Keys not in the allowlist (defaults to ``PLATFORM_META_ALLOWLIST``)
     - Keys with leading underscore (internal-only, e.g. _session_update_fn)
     - Values that are not scalar (``str | int | bool``) — avoids the
       ``str({deep dict})`` memory-amplification path since the only
@@ -55,15 +59,20 @@ def sanitize_platform_meta(meta: dict[str, Any]) -> dict[str, Any]:
 
     Stripped keys and dropped values are logged at DEBUG (key names only,
     never value content — avoids log-amplification from crafted messages).
+
+    Pass ``allowlist`` to inject a platform-specific set instead of the
+    hardcoded default (e.g. sourced from roxabi-contracts at call time).
     """
+    # empty frozenset is valid (block-all); only None falls back to default
+    active_allowlist = allowlist if allowlist is not None else PLATFORM_META_ALLOWLIST
     stripped = [
-        k for k in meta if k not in PLATFORM_META_ALLOWLIST or k.startswith("_")
+        k for k in meta if k not in active_allowlist or k.startswith("_")
     ]
     if stripped:
         log.debug("platform_meta: stripped keys %s", stripped)
     result: dict[str, Any] = {}
     for k, v in meta.items():
-        if k not in PLATFORM_META_ALLOWLIST or k.startswith("_"):
+        if k not in active_allowlist or k.startswith("_"):
             continue
         if not isinstance(v, (str, int, bool)):
             log.debug(

@@ -266,7 +266,7 @@ class TestTurnStoreIntegrationWithPool:
         store = TurnStore(":memory:")
         await store.connect()
         pool = Pool(pool_id="p:1", agent_name="a", ctx=self._make_ctx())
-        pool._turn_store = store
+        pool._observer.register_turn_store(store)
         msg = self._make_msg()
 
         await pool.append(msg)
@@ -312,7 +312,7 @@ class TestTurnStoreIntegrationWithPool:
         ctx.get_agent = MagicMock(return_value=agent)
 
         pool = Pool(pool_id="p:2", agent_name="stub", ctx=ctx)
-        pool._turn_store = store
+        pool._observer.register_turn_store(store)
 
         from lyra.core.pool.pool_processor_exec import process_one
 

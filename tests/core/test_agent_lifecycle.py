@@ -265,9 +265,9 @@ class TestAgentCompact:
         pool.message_count = 2  # below threshold
         pool.user_id = "u1"
         # No TurnStore — forces fallback to pool.history (empty → token_est=0).
-        pool._turn_store = None
+        pool.turn_store = None
 
-        await agent.compact(pool)  # FAILS: method doesn't exist yet
+        await agent.compact(pool)
 
         # Must not have written a partial session when below threshold
         mock_mm.upsert_session.assert_not_awaited()
@@ -315,7 +315,7 @@ class TestAgentCompact:
                 {"role": "user", "content": "x" * 100},
             ]
         )
-        pool._turn_store = mock_turn_store
+        pool.turn_store = mock_turn_store
 
         await agent.compact(pool)
 

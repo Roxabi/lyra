@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, Response
-from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from lyra.core.stores.identity_alias_store_protocol import IdentityAliasStoreProtocol
 
 if TYPE_CHECKING:
     from lyra.core.pool import Pool
@@ -26,7 +26,9 @@ def _redact(platform_id: str) -> str:
     return platform_id
 
 
-def _any_alias_blocked(hub: object, alias_store: IdentityAliasStore, *ids: str) -> bool:
+def _any_alias_blocked(
+    hub: object, alias_store: IdentityAliasStoreProtocol, *ids: str
+) -> bool:
     """Return True if any alias of any of *ids* is BLOCKED in any authenticator."""
     authenticators = getattr(hub, "_authenticators", {})
     for check_id in ids:
@@ -37,7 +39,7 @@ def _any_alias_blocked(hub: object, alias_store: IdentityAliasStore, *ids: str) 
     return False
 
 
-def _get_alias_store(pool: Pool) -> IdentityAliasStore | None:
+def _get_alias_store(pool: Pool) -> IdentityAliasStoreProtocol | None:
     """Retrieve alias store from the hub context."""
     hub = getattr(pool, "_ctx", None)
     if hub is None:

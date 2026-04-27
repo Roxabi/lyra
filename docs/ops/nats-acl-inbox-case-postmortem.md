@@ -230,7 +230,7 @@ environments; document or add as a CI setup step.
 | Priority | Action | Effort | Blocker |
 |---|---|---|---|
 | P0 — now | Fix 2 — explicit reply-path publish in `acl-matrix.json` | 10-line JSON + regenerate secret | none |
-| P0 — coordinated | Fix 1 — lowercase `_inbox` prefix + drop dual-variant | bootstrap `.py` + `acl-matrix.json` + redeploy | voicecli must move simultaneously |
+| P0 — unblocked | Fix 1 — lowercase `_inbox` prefix + drop dual-variant (hub/adapters/image-worker/clipool-worker) | `nats_connect()` identity_name path + `acl-matrix.json` + redeploy | voicecli blocker resolved; voice-{tts,stt} already done |
 | P0 — alongside Fix 1 | Fix 3 — ACL integration test in CI | new test script + Makefile target | Fix 1 must land first to test correct case |
 
 Fix 2 is independent and low-risk — deploy immediately regardless of Fix 1
@@ -241,10 +241,12 @@ responder's publish ACL.
 Fix 3 is P0, not Medium: it is the only fix that would have prevented this
 incident from shipping. Gate it in `pre-push` alongside `import_layers`.
 
-> **Fix 1 is blocked by voicecli coordination.** Deploying it in lyra alone
-> while voicecli still uses uppercase produces an identical outage for
-> voice-tts and voice-stt. Do not ship without a joint release or a confirmed
-> staging validation across both repos.
+> **Fix 1 voicecli blocker is resolved.** voicecli already connects with
+> lowercase `_inbox.voice-tts` / `_inbox.voice-stt` (verified 2026-04-28).
+> voice-{tts,stt} ACL entries in `acl-matrix.json` are already normalized to
+> lowercase-only (commit `4f3a02d6`). Remaining Fix 1 scope: change
+> `nats_connect()` `identity_name` path from `_INBOX.{name}` → `_inbox.{name}`
+> and update ACL entries for hub, adapters, image-worker, clipool-worker.
 
 Fixes 1+2 together eliminate the entire class of case-mismatch and
 invisible-grant bugs. Fix 3 is the guardrail that catches the next one.
@@ -281,7 +283,7 @@ invisible-grant bugs. Fix 3 is the guardrail that catches the next one.
 | Item | Owner | Status |
 |---|---|---|
 | Fix 2 — explicit reply-path ACLs | — | done |
-| Fix 1 — lowercase normalization (coordinated lyra + voicecli) | — | open |
+| Fix 1 — lowercase normalization (all identities) | — | done — `nats_connect()` identity_name path → `_inbox.{name}`; all uppercase `_INBOX.X.>` ACL entries dropped |
 | Fix 3 — `make test-acl` in pre-push | — | open |
 | Alert: `permissions violation` in NATS logs | — | done |
 | Alert: sustained `_stream_gen timeout` in hub logs | — | done |
@@ -664,7 +666,7 @@ Three phases: immediate mitigation → normalization (coordinated) → topology-
 
 | Action | Rationale |
 |---|---|
-| Fix 1: lowercase `_inbox` prefix across lyra + voicecli (joint release only) | Eliminates dual-case maintenance burden; must ship with voicecli or voice services break identically |
+| Fix 1: lowercase `_inbox` prefix — all identities | `nats_connect()` identity_name path normalized; all uppercase `_INBOX.X.>` ACL entries dropped; voicecli confirmed lowercase (2026-04-28) |
 | Fix 3: `make test-acl` in pre-push — real NATS, real round-trips, denied-subject assertions, `allow_responses`-removed fixture | CI gate that would have blocked this incident from shipping; run alongside `import_layers` |
 
 ---

@@ -153,7 +153,7 @@ async def nats_connect(
     If NATS_NKEY_SEED_PATH is set, reads the seed file and passes it
     via nkeys_seed_str. If unset, connects without authentication (dev mode).
 
-    ``identity_name`` sets ``inbox_prefix="_INBOX.{identity_name}"`` (ADR-051),
+    ``identity_name`` sets ``inbox_prefix="_inbox.{identity_name}"`` (ADR-051),
     scoping nats-py reply-to subjects to the identity's ACL-allowed prefix.
     ``inbox_prefix`` sets the prefix directly. The two are mutually exclusive —
     passing both raises ``ValueError``. Both values are validated via
@@ -181,7 +181,7 @@ async def nats_connect(
     }
     if identity_name is not None:
         _validate_nats_token(identity_name, kind="identity_name")
-        kwargs["inbox_prefix"] = f"_INBOX.{identity_name}"
+        kwargs["inbox_prefix"] = f"_inbox.{identity_name}"
     elif inbox_prefix is not None:
         _validate_nats_token(inbox_prefix, kind="inbox_prefix")
         kwargs["inbox_prefix"] = inbox_prefix

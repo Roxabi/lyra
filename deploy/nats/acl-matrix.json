@@ -3,7 +3,7 @@
   "identities": {
     "hub": {
       "owner": "lyra",
-      "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Both inbox case variants retained: nats.py default uses lowercase _inbox.hub.> (hub does not set inbox_prefix at connect time, tracked as a bug); uppercase _INBOX.hub.> kept for ADR-051 compliance once fixed.",
+      "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox normalized to lowercase _inbox.hub.> (ADR-051 + postmortem Fix 1).",
       "notes": "Stream provisioning is a deploy-time admin operation — hub does not create/update streams at runtime. $JS.API.STREAM.CREATE/UPDATE.LYRA_AUDIT are intentionally absent from publish ACLs.",
       "allow_responses": false,
       "publish": [
@@ -24,7 +24,6 @@
         "lyra.voice.stt.heartbeat",
         "lyra.llm.health.*",
         "lyra.system.ready",
-        "_INBOX.hub.>",
         "_inbox.hub.>",
         "lyra.image.heartbeat",
         "lyra.clipool.heartbeat"
@@ -32,7 +31,7 @@
     },
     "telegram-adapter": {
       "owner": "lyra",
-      "description": "Telegram bot adapter — inbox narrowed to _INBOX.telegram-adapter.> per ADR-051 per-identity prefix invariant.",
+      "description": "Telegram bot adapter — inbox normalized to _inbox.telegram-adapter.> (ADR-051 + postmortem Fix 1).",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.telegram.>",
@@ -40,12 +39,12 @@
       ],
       "subscribe": [
         "lyra.outbound.telegram.>",
-        "_INBOX.telegram-adapter.>"
+        "_inbox.telegram-adapter.>"
       ]
     },
     "discord-adapter": {
       "owner": "lyra",
-      "description": "Discord bot adapter — inbox narrowed to _INBOX.discord-adapter.> per ADR-051 per-identity prefix invariant.",
+      "description": "Discord bot adapter — inbox normalized to _inbox.discord-adapter.> (ADR-051 + postmortem Fix 1).",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.discord.>",
@@ -53,12 +52,12 @@
       ],
       "subscribe": [
         "lyra.outbound.discord.>",
-        "_INBOX.discord-adapter.>"
+        "_inbox.discord-adapter.>"
       ]
     },
     "voice-tts": {
       "owner": "voicecli",
-      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Inbox narrowed to _INBOX.voice-tts.> per ADR-051 per-identity prefix invariant; both case variants retained for nats-py case-sensitivity compatibility. Explicit _inbox.hub.> publish grant added per postmortem Fix 2.",
+      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Inbox normalized to _inbox.voice-tts.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Explicit _inbox.hub.> publish grant per postmortem Fix 2.",
       "publish": [
         "lyra.voice.tts.heartbeat",
         "lyra.system.ready",
@@ -72,7 +71,7 @@
     },
     "voice-stt": {
       "owner": "voicecli",
-      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Inbox narrowed to _INBOX.voice-stt.> per ADR-051 per-identity prefix invariant; both case variants retained for nats-py case-sensitivity compatibility. Explicit _inbox.hub.> publish grant added per postmortem Fix 2.",
+      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Inbox normalized to _inbox.voice-stt.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Explicit _inbox.hub.> publish grant per postmortem Fix 2.",
       "publish": [
         "lyra.voice.stt.heartbeat",
         "lyra.system.ready",
@@ -97,14 +96,13 @@
     },
     "image-worker": {
       "owner": "imagecli",
-      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Publish ACLs narrowed per #949 — broad _INBOX.>/_inbox.> removed now that imagecli sets inbox_prefix=_INBOX.image-worker at connect time (ADR-051). allow_responses covers reply publish; _INBOX.image-worker.> subscribe added for receive-side ACL completeness. Explicit _inbox.hub.> publish grant added per postmortem Fix 2.",
+      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Inbox normalized to _inbox.image-worker.> (ADR-051 + postmortem Fix 1). Explicit _inbox.hub.> publish grant per postmortem Fix 2.",
       "publish": [
         "lyra.image.heartbeat",
         "_inbox.hub.>"
       ],
       "subscribe": [
         "lyra.image.generate.request",
-        "_INBOX.image-worker.>",
         "_inbox.image-worker.>"
       ]
     },
@@ -121,7 +119,7 @@
     },
     "clipool-worker": {
       "owner": "lyra",
-      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Publish ACLs narrowed per #949 — broad _INBOX.>/_inbox.> removed now that clipool_standalone sets inbox_prefix=_INBOX.clipool-worker at connect time (ADR-051). allow_responses covers reply publish; subscribe narrowed to match. Explicit _inbox.hub.> publish grant added per postmortem Fix 2.",
+      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Inbox normalized to _inbox.clipool-worker.> (ADR-051 + postmortem Fix 1). Explicit _inbox.hub.> publish grant per postmortem Fix 2.",
       "publish": [
         "lyra.clipool.heartbeat",
         "lyra.system.ready",
@@ -130,7 +128,6 @@
       "subscribe": [
         "lyra.clipool.cmd",
         "lyra.clipool.control",
-        "_INBOX.clipool-worker.>",
         "_inbox.clipool-worker.>"
       ]
     }

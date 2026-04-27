@@ -73,7 +73,7 @@ class TestNatsConnect:
     async def test_identity_name_sets_inbox_prefix(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """identity_name derives inbox_prefix=_INBOX.{name} (ADR-051)."""
+        """identity_name derives inbox_prefix=_inbox.{name} (ADR-051)."""
         monkeypatch.delenv("NATS_NKEY_SEED_PATH", raising=False)
 
         mock_nc = AsyncMock()
@@ -82,7 +82,7 @@ class TestNatsConnect:
             await nats_connect("nats://localhost:4222", identity_name="clipool-worker")
 
             call_kwargs = mock_connect.call_args.kwargs
-            assert call_kwargs["inbox_prefix"] == "_INBOX.clipool-worker"
+            assert call_kwargs["inbox_prefix"] == "_inbox.clipool-worker"
 
     async def test_inbox_prefix_sets_inbox_prefix_directly(
         self, monkeypatch: pytest.MonkeyPatch

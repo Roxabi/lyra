@@ -29,7 +29,7 @@ from roxabi_contracts.voice import (
     per_worker_tts,
     validate_worker_id,
 )
-from roxabi_nats._tts_constants import _TTS_CONFIG_FIELDS
+from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS as _TTS_CONFIG_FIELDS
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 if TYPE_CHECKING:

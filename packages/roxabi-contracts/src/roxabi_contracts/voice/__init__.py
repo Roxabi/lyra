@@ -10,6 +10,10 @@ from roxabi_contracts.voice.builders import (
     build_stt_response,
     build_tts_response,
 )
+from roxabi_contracts.voice.constants import (
+    AGENT_TTS_FIELDS,
+    TTS_CONFIG_FIELDS,
+)
 from roxabi_contracts.voice.models import (
     SttRequest,
     SttResponse,
@@ -24,7 +28,9 @@ from roxabi_contracts.voice.subjects import (
 )
 
 __all__ = [
+    "AGENT_TTS_FIELDS",
     "SUBJECTS",
+    "TTS_CONFIG_FIELDS",
     "SttRequest",
     "SttResponse",
     "TtsRequest",

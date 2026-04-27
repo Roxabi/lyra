@@ -1,0 +1,89 @@
+---
+title: "ADR-061: importlinter independence contract — fix port imports to eliminate transitive suppressions"
+description: Fix core modules to import from lyra.core.ports.* directly instead of floating modules, reducing ignore_imports in the shared-modules-independence contract from 4 to 2.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Issue #977 (hexagonal arch structural audit) introduced a `shared-modules-independence` contract in `.importlinter` to enforce peer isolation between 8 floating modules: `lyra.obs`, `lyra.stt`, `lyra.tts`, `lyra.errors`, `lyra.config`, `lyra.integrations`, `lyra.monitoring`, `lyra.agent_cmd`.
+
+importlinter's `independence` contract type traces **all transitive import paths** between listed modules, including paths that pass through unlisted ones. This means a path such as:
+
+```
+lyra.tts → lyra.core.agent.agent_config → ... → lyra.core.agent.agent → lyra.stt
+```
+
+is flagged as "lyra.tts imports lyra.stt", even though the coupling is mediated entirely through `lyra.core` and is not a peer-to-peer dependency.
+
+To pass the gate, 4 `ignore_imports` entries were added:
+
+```ini
+lyra.tts.engine_selector -> lyra.core.agent.agent_config
+lyra.core.processors.processor_registry -> lyra.integrations.base
+lyra.core.agent.agent -> lyra.stt
+lyra.core.agent.agent -> lyra.tts
+```
+
+Root cause analysis reveals:
+
+1. `STTProtocol` and `TtsProtocol` were already migrated to `lyra.core.ports.stt` and `lyra.core.ports.tts` respectively (ADR-059 V8). `lyra.stt` and `lyra.tts` re-export them for backward compatibility. However, `lyra.core.agent.agent` still imports them from the floating modules (`lyra.stt`, `lyra.tts`) rather than directly from `lyra.core.ports.*`.
+
+2. `SessionTools` in `lyra.integrations.base` is a concrete dataclass used as a type annotation in `lyra.core.processors.processor_registry`. No port protocol exists for it yet.
+
+3. `lyra.core.ports.tts` and `lyra.core.ports.stt` themselves carry TYPE_CHECKING imports of `SynthesisResult` (from `lyra.tts`) and `TranscriptionResult` (from `lyra.stt`) respectively, because those result value objects have not yet been migrated to `lyra.core.ports.*`. These two downward references are architecturally justified as type-check-only and are documented separately.
+
+## Options Considered
+
+### Option A: Keep `ignore_imports` suppressions permanently
+- **Pros:** Zero implementation cost; no code changes required
+- **Cons:** importlinter independence contract loses authority — it cannot falsify violations, only suppress known ones. Suppression list grows linearly with each new floating module that touches core. Masks real architectural drift.
+
+### Option B: Fix import sites to use `lyra.core.ports.*` directly + extract `SessionToolsProtocol` (recommended)
+- **Pros:** Correct hexagonal boundary — core depends only on its own ports. Reduces `ignore_imports` from 4 to 2. The linter enforces the contract with authority.
+- **Cons:** Requires 3 file changes + 1 new file. Backward-compat re-exports in `lyra.stt` and `lyra.tts` must remain until all external callers are migrated.
+
+### Option C: Inline `# noqa` markers to exclude TYPE_CHECKING imports from tracing
+- **Pros:** Minimal code change; hides the noise at the source
+- **Cons:** importlinter has no native per-import inline suppression directive. This would require a custom pre-processing hook or tool fork. Non-standard, fragile, and does not fix the architectural issue.
+
+### Option D: Split independence contract into per-module-pair direct-only contracts
+- **Pros:** More precise control over which pairs are checked
+- **Cons:** O(n²) contract surface for n modules. Does not eliminate transitive coupling — only changes how it is reported. Operational overhead with no architectural improvement.
+
+## Decision
+
+**Option B.** Fix the three import sites to reference `lyra.core.ports.*` directly, and introduce `SessionToolsProtocol` in `lyra.core.ports.integrations`.
+
+Concrete changes:
+
+| File | Change |
+|------|--------|
+| `lyra/core/agent/agent.py` | Import `STTProtocol` from `lyra.core.ports.stt`, `TtsProtocol` from `lyra.core.ports.tts` |
+| `lyra/core/processors/processor_registry.py` | Import `SessionToolsProtocol` from `lyra.core.ports.integrations` (new) |
+| `lyra/core/ports/integrations.py` | New file: structural `Protocol` matching `SessionTools` public interface |
+| `.importlinter` | Remove 2 entries: `lyra.core.agent.agent -> lyra.stt`, `lyra.core.agent.agent -> lyra.tts` |
+| `.importlinter` | Remove 1 entry: `lyra.core.processors.processor_registry -> lyra.integrations.base` |
+| `.importlinter` | Retain: `lyra.tts.engine_selector -> lyra.core.agent.agent_config` (legitimate tts→core, traced transitively via core/ports/tts.py) |
+
+The 2 remaining `ignore_imports` entries (`core/ports/stt.py → lyra.stt:TranscriptionResult` and `core/ports/tts.py → lyra.tts:SynthesisResult`) are TYPE_CHECKING-only references to result value objects that have not yet been migrated to core. These are tracked as a follow-on migration (result types as core value objects) and must be documented inline.
+
+Backward-compat re-exports in `lyra.stt.__init__` and `lyra.tts.__init__` are preserved. The protocol re-exports (`STTProtocol`, `TtsProtocol`) remain until a separate audit confirms all adapters and agents import from `lyra.core.ports.*` directly.
+
+## Consequences
+
+### Positive
+- The `shared-modules-independence` contract becomes authoritative: any future peer coupling between floating modules will be caught, not masked.
+- `lyra.core.agent.agent` and `lyra.core.processors.processor_registry` are clean of floating-module runtime coupling.
+- `ignore_imports` count in the independence contract drops from 4 to 2 (or 1, depending on the `engine_selector` path resolution after the fix).
+
+### Negative
+- `lyra.core.ports.integrations` adds a new file to maintain. If `SessionTools` evolves, the protocol must be kept in sync — type-checking will catch drift at check time, not runtime.
+- Backward-compat re-exports in `lyra.stt` / `lyra.tts` must remain active longer, adding a migration debt.
+
+### Neutral
+- `SynthesisResult` and `TranscriptionResult` remaining in `lyra.stt` / `lyra.tts` is the current state. Migrating them to `lyra.core.ports.*` as proper value objects is a larger follow-on tracked separately; it is not a blocker for this ADR.
+- ADR-059 V8 migration work is validated by this decision — the ports were placed correctly; only the call-site imports were not updated.

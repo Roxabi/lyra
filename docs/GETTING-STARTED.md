@@ -1,6 +1,6 @@
 # Getting Started — Lyra by Roxabi
 
-Complete guide to set up Machine 1 (Ubuntu Server 24.04 LTS) as the Lyra hub from scratch.
+Complete guide to set up Machine 1 (Ubuntu Server 26.04 LTS) as the Lyra hub from scratch.
 
 ---
 

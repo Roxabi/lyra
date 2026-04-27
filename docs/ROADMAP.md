@@ -1,13 +1,13 @@
 # Lyra — Prioritized Roadmap
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-04-01
+> Last updated: 2026-04-27
 
 ---
 
 ## Current focus
 
-**Phase 1b complete. Architecture refactoring complete. NATS standalone mode shipped (#458).** Hub and adapters now run as three separate processes on Machine 1, communicating over NATS. Next: Phase 2 Machine 2 LLM worker (#51), or #136 (multi-bot registry, blocked by #79).
+**Phase 1b complete. Architecture refactoring complete. NATS 4-process mode shipped (#458, 0.2.0).** Hub, Telegram, Discord, and CliPool now run as four separate processes on Machine 1, communicating over NATS. Next: Phase 2 Machine 2 LLM worker (#51), or #136 (multi-bot registry, blocked by #79).
 
 ---
 
@@ -19,7 +19,7 @@
 | **1** | — | ✅ Done | Hub: asyncio bus, adapters (Telegram/Discord), SimpleAgent, command router |
 | **1b** | #73 | ✅ Done | Agent core: persona ✅, parity audit ✅, memory foundation ✅, hub refactor ✅, command sessions ✅, architecture refactoring ✅, dropped SDK driver (#666) ✅ |
 | **Voice** | #74 | 🔓 Unblocked | TTS + STT integration — unblocked since #76 shipped |
-| **2** | #60 | Partial | NATS standalone mode ✅ done (#458); Machine 2 LLM worker coordination = planned |
+| **2** | #60 | Partial | NATS 4-process mode ✅ done (#458, 0.2.0 — hub + telegram + discord + clipool); Machine 2 LLM worker coordination = planned |
 | **3** | #61 | Frozen | Atomic SLMs + cognitive pipeline |
 | **4** | #62 | Frozen | Resilience, observability, security |
 | **5** | #63 | Frozen | Multi-agent orchestration |
@@ -146,7 +146,7 @@
 
 | # | Issue | Priority | Status |
 |---|-------|----------|--------|
-| #133 | Split Lyra adapters into independent processes (NATS) | P2 | ✅ Done (#458) |
+| #133 | Split Lyra adapters into independent processes (NATS) | P2 | ✅ Done (#458, 0.2.0) |
 | #132 | Document Machine 2 voice daemon setup | P2 | Open |
 | #123 | Claude CLI wrapper library — extract 2ndBrain pool design | P2 | Open |
 
@@ -176,10 +176,10 @@
 
 | # | Issue | Priority | Status |
 |---|-------|----------|--------|
-| #49 | Install NATS server on Machine 1 | P2 | ✅ Done (#458) |
-| #50 | NatsBus implementation | P2 | ✅ Done (#458) |
-| #48 | Bus abstraction — LocalBus/NatsBus interface | P2 | ✅ Done (#458) |
-| #458 | Adapters as thin NATS clients — standalone hub + adapter processes | P2 | ✅ Done |
+| #49 | Install NATS server on Machine 1 | P2 | ✅ Done (#458, 0.2.0) |
+| #50 | NatsBus implementation | P2 | ✅ Done (#458, 0.2.0) |
+| #48 | Bus abstraction — LocalBus/NatsBus interface | P2 | ✅ Done (#458, 0.2.0) |
+| #458 | Adapters as thin NATS clients — 4-process: hub + telegram + discord + clipool | P2 | ✅ Done (0.2.0) |
 | #51 | LLM worker on Machine 2 — NATS-based inference service | P2 | Planned |
 | #52 | Health check system — heartbeat + worker status | P2 | Planned |
 | #56 | JetStream persistence — survive restarts, replay | P3 | Planned |
@@ -248,7 +248,7 @@ Feature work accumulates silently. `core/` had grown to 60+ files; over a dozen 
 
 > Explicitly frozen. Reconsider when Phase 1b tail + voice are done.
 
-- **NATS Machine 2 LLM worker** — Phase 2 (#51); NATS standalone (single-machine, three-process) already shipped in #458
+- **NATS Machine 2 LLM worker** — Phase 2 (#51); NATS 4-process (hub + telegram + discord + clipool) already shipped in #458 (0.2.0)
 - **Atomic SLMs** — Phase 3, no local model benchmark done yet (#14)
 - **Proactive engine** — Phase 2, no infra for it yet
 - **Funding rate arbitrage** — full-time topic, incompatible with solo

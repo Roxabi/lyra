@@ -1,7 +1,7 @@
 # Lyra — End-to-End Happy Paths
 
 > Living document. Catalogs every happy-path scenario across the system.
-> Last updated: 2026-03-17
+> Last updated: 2026-04-27
 
 ---
 

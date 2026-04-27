@@ -42,6 +42,13 @@ artifacts:
   frames: artifacts/frames
   plans: artifacts/plans
 
+standards:
+  architecture: docs/architecture
+  deployment: docs/DEPLOYMENT.md
+  configuration: docs/CONFIGURATION.md
+  troubleshooting: docs/GETTING-STARTED.md
+  contributing: docs/GETTING-STARTED.md
+
 quality_gates:
   file_length:
     enabled: true

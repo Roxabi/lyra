@@ -1,42 +1,42 @@
-# Lyra — Sécurité, Routing & Mémoire Isolée
+# Lyra — Security, Routing & Memory Isolation
 
-> Reference document. Last updated: 2026-03-13.
-> **Status**: #auth (#151 ✅), #routing (#152 ✅) are shipped. #commands and #memory-isolation remain open.
+> Reference document. Last updated: 2026-04-27.
+> **Status**: #auth (#151 ✅), #routing (#152 ✅), #commands ✅ (CommandParser shipped), #memory-isolation — partially implemented (user_id partition active in prefs_store; full MemoryEntry metadata schema not yet applied).
 
 ---
 
-## Vue d'ensemble
+## Overview
 
-4 domaines à implémenter pour garantir qu'un utilisateur autorisé reçoit la bonne réponse, du bon agent, sur le bon canal, avec sa mémoire isolée.
+4 domains that together ensure an authorized user receives the correct response, from the correct agent, on the correct channel, with isolated memory.
 
 ```
-[Canal] → Authenticator + GuardChain  (qui peut parler ?)
-        → CommandParser          (quelle action ?)
-        → Bus → Router           (quel agent / pool ?)
-                → ComplexityEstimator → LLMConfig   (quel modèle ?)
-                → Agent → MemoryManager (user_id filter absolu)
-                        → RoutingContext (bon bot + bon channel)
-        → Adapter (vérifie routing avant envoi)
+[Channel] → Authenticator + GuardChain  (who may speak?)
+          → CommandParser               (what action?)
+          → Bus → Router                (which agent / pool?)
+                  → ComplexityEstimator → LLMConfig   (which model?)
+                  → Agent → MemoryManager (absolute user_id filter)
+                          → RoutingContext (correct bot + correct channel)
+          → Adapter (verifies routing before send)
 ```
 
 ---
 
 ## #auth — Authenticator + GuardChain + TrustLevel
 
-### Problème
+### Problem
 
-Sans auth, n'importe quel utilisateur peut envoyer un message qui atteint le Bus et consomme des ressources (LLM tokens, mémoire, CPU).
+Without auth, any user can send a message that reaches the Bus and consumes resources (LLM tokens, memory, CPU).
 
 ### Solution
 
-Auth au niveau Adapter, **avant** le Bus. Le message est rejeté à la source.
+Auth at the Adapter level, **before** the Bus. The message is rejected at the source.
 
 ```python
 class TrustLevel(Enum):
-    OWNER   = "owner"    # accès total, toutes commandes
-    TRUSTED = "trusted"  # accès normal
-    PUBLIC  = "public"   # accès limité (si activé)
-    BLOCKED = "blocked"  # rejeté silencieusement
+    OWNER   = "owner"    # full access, all commands
+    TRUSTED = "trusted"  # normal access
+    PUBLIC  = "public"   # limited access (if enabled)
+    BLOCKED = "blocked"  # silently rejected
 
 class Authenticator:
     """Identity resolver — maps user_id to TrustLevel."""
@@ -56,7 +56,7 @@ class GuardChain:
         return None
 ```
 
-**Intégration dans chaque Adapter :**
+**Integration in each Adapter:**
 
 ```python
 async def on_event(self, raw_event) -> Message | None:
@@ -109,28 +109,28 @@ Module-level registry: `lyra.core.admin` — `is_admin(user_id)` / `set_admin_us
 
 ---
 
-## #routing — RoutingContext + vérification Adapter — ✅ Shipped (#152)
+## #routing — RoutingContext + Adapter outbound verification — ✅ Shipped (#152)
 
-### Problème
+### Problem
 
-Sans `RoutingContext` complet dans la `Response`, l'Adapter sortant ne sait pas sur quel bot, quel chat, quel thread envoyer la réponse — risque d'envoyer au mauvais endroit dans un setup multi-bot ou multi-channel.
+Without a complete `RoutingContext` in the `Response`, the outbound Adapter does not know which bot, which chat, or which thread to send to — risking delivery to the wrong destination in a multi-bot or multi-channel setup.
 
 ### Solution
 
-Chaque `Response` porte un `RoutingContext` complet, populé dès la création du `Message` entrant.
+Every `Response` carries a complete `RoutingContext`, populated at `InboundMessage` creation time.
 
 ```python
 class RoutingContext:
     channel: str            # "telegram" | "discord" | "cli"
-    bot_id: str             # identifiant du bot qui doit répondre
-    chat_id: str            # chat_id Telegram / guild+channel Discord
+    bot_id: str             # identifier of the bot that must reply
+    chat_id: str            # Telegram chat_id / Discord guild+channel
     thread_id: str | None   # forum thread, Discord thread
-    reply_to_message_id: str | None  # threading natif Telegram/Discord
+    reply_to_message_id: str | None  # native Telegram/Discord threading
     user_id: str
     session_id: str
 ```
 
-**Population à l'entrée (dans `normalize()`) :**
+**Populated at intake (in `normalize()`):**
 
 ```python
 def normalize(self, update: TelegramUpdate) -> Message:
@@ -148,7 +148,7 @@ def normalize(self, update: TelegramUpdate) -> Message:
     )
 ```
 
-**Vérification à la sortie (dans l'Adapter outbound) :**
+**Verified at outbound (in the Adapter):**
 
 ```python
 async def send(self, response: Response) -> None:
@@ -166,17 +166,17 @@ async def send(self, response: Response) -> None:
 ### Implementation — ✅ Shipped (#152)
 
 - [x] `RoutingContext` dataclass in `src/lyra/core/message.py`
-- [x] Population in TelegramAdapter + DiscordAdapter normalize()
+- [x] Population in TelegramAdapter + DiscordAdapter `normalize()`
 - [x] Outbound verification (channel + bot_id) in each adapter
-- [x] Propagation RoutingContext from InboundMessage → Response
+- [x] Propagation of RoutingContext from InboundMessage → Response
 
 ---
 
 ## #commands — CommandParser + ComplexityEstimator
 
-### Problème
+### Problem
 
-Sans parsing de commandes, `/imagine`, `!help`, `/config` sont traités comme du texte brut par le LLM — pas de routing vers les bons skills/agents, pas d'optimisation de modèle.
+Without command parsing, `/imagine`, `!help`, `/config` are treated as raw text by the LLM — no routing to the right skills/agents, no model optimization.
 
 ### CommandParser
 
@@ -184,10 +184,10 @@ Sans parsing de commandes, `/imagine`, `!help`, `/config` sont traités comme du
 PREFIXES = ['/', '!']
 
 class CommandContext:
-    prefix: str       # "/" ou "!"
+    prefix: str       # "/" or "!"
     name: str         # "imagine", "help", "config"
-    args: str         # reste du message après le nom
-    raw: str          # texte original complet
+    args: str         # remainder of message after the name
+    raw: str          # full original text
 
 class CommandParser:
     def parse(self, text: str) -> CommandContext | None:
@@ -203,7 +203,7 @@ class CommandParser:
         return None
 ```
 
-**Routing des commandes :**
+**Command routing table:**
 
 ```python
 COMMAND_ROUTING = {
@@ -216,7 +216,7 @@ COMMAND_ROUTING = {
 
 ### ComplexityEstimator
 
-Sélection du modèle selon la complexité du message — évite d'utiliser un modèle lourd pour "bonjour".
+Model selection based on message complexity — avoids using a heavyweight model for "hello".
 
 ```python
 class ComplexityLevel(Enum):
@@ -248,76 +248,77 @@ COMPLEXITY_TO_MODEL = {
 }
 ```
 
-### À implémenter
+### Implementation status
 
-- [ ] `CommandParser` + `CommandContext`
-- [ ] Table de routing commandes → (agent_id, pool_id)
-- [ ] `ComplexityEstimator` avec signaux configurables
-- [ ] `COMPLEXITY_TO_MODEL` mapping dans config
-- [ ] Intégration dans `Router.dispatch()`
-- [ ] Upgrade dynamique possible si l'agent détecte en cours de génération qu'il a besoin de plus de puissance
+`CommandParser` is shipped and wired into `middleware_pool.py` and Discord voice commands. The `ComplexityEstimator` / `SmartRoutingDecorator` exists in code but is disabled: `smart_routing.enabled=true` is rejected by the validator and `create` wizard. Model selection is fixed per agent config. The `COMPLEXITY_TO_MODEL` routing table below is therefore not active.
+
+- [x] `CommandParser` + `CommandContext` — `src/lyra/core/commands/command_parser.py`
+- [x] Command routing in `CommandRouter`
+- [ ] `ComplexityEstimator` with configurable signals — code exists, wiring disabled
+- [ ] `COMPLEXITY_TO_MODEL` mapping in config — not active
+- [ ] Dynamic upgrade mid-generation — not implemented
 
 ---
 
-## #memory-isolation — Isolation + Métadonnées
+## #memory-isolation — Isolation + Metadata
 
-### Problème
+### Problem
 
-Sans partition stricte par `user_id`, un bug ou une requête mal construite pourrait retourner des souvenirs d'un autre utilisateur. Sans métadonnées, impossible de faire du housekeeping (purge, stats, audit).
+Without a strict partition by `user_id`, a bug or malformed query could return memories belonging to a different user. Without metadata, housekeeping (purge, stats, audit) is impossible.
 
-### Schéma MemoryEntry étendu
+### Extended MemoryEntry schema
 
 ```python
 class MemoryEntry:
-    # --- Identité ---
+    # --- Identity ---
     id: UUID
-    user_id: str            # ← partition key ABSOLUE, jamais omis
+    user_id: str            # ← ABSOLUTE partition key, never omitted
 
     # --- Sessions ---
     session_id_created: str
     session_id_modified: str
 
-    # --- Contenu ---
+    # --- Content ---
     level: MemoryLevel      # L1 → L5
     content: str
-    embedding: bytes        # sqlite-vec (L4 uniquement)
+    embedding: bytes        # sqlite-vec (L4 only)
     tags: list[str]
 
-    # --- Métadonnées ---
+    # --- Metadata ---
     created_at: datetime
     updated_at: datetime
-    count_usage: int        # incrémenté à chaque retrieve
-    count_edits: int        # incrémenté à chaque write/update
-    confidence: float       # score de fiabilité (0.0 → 1.0)
-    ttl: datetime | None    # expiry auto (L1/L2)
+    count_usage: int        # incremented on each retrieve
+    count_edits: int        # incremented on each write/update
+    confidence: float       # reliability score (0.0 → 1.0)
+    ttl: datetime | None    # auto-expiry (L1/L2)
     source: str             # "user" | "agent" | "system"
 ```
 
-### Règle d'isolation SQL (non négociable)
+### SQL isolation rule (non-negotiable)
 
 ```sql
--- Toute requête mémoire doit inclure user_id :
+-- Every memory query must include user_id:
 SELECT * FROM memory
-WHERE user_id = :user_id        -- isolation absolue
-  AND level IN (3, 4)           -- scope demandé
+WHERE user_id = :user_id        -- absolute isolation
+  AND level IN (3, 4)           -- requested scope
   AND (ttl IS NULL OR ttl > datetime('now'))
 ORDER BY count_usage DESC, updated_at DESC
 LIMIT 20;
 ```
 
-**Jamais de requête globale sans filtre `user_id`.** Même pour les stats, aggréger par user.
+**Never run a global query without a `user_id` filter.** Even for stats, aggregate per user.
 
-### Stockage par niveau
+### Storage by level
 
-| Niveau | Isolation |
-|--------|-----------|
-| L1 Working | `dict` en mémoire, scopé par `pool_id` |
+| Level | Isolation |
+|-------|-----------|
+| L1 Working | `dict` in memory, scoped by `pool_id` |
 | L2 Session | Store keyed by `(user_id, session_id)` |
-| L3 Episodic | `~/.lyra/memory/episodic/{user_id}/YYYY-MM-DD/` — user_id dans le path |
-| L4 Semantic | SQLite, `WHERE user_id = ?` obligatoire sur toutes les requêtes |
-| L5 Procedural | Global (skills = capacités agent, pas de données user) |
+| L3 Episodic | `~/.lyra/memory/episodic/{user_id}/YYYY-MM-DD/` — user_id in path |
+| L4 Semantic | SQLite, `WHERE user_id = ?` mandatory on all queries |
+| L5 Procedural | Global (skills = agent capabilities, not user data) |
 
-### Mise à jour des compteurs
+### Counter updates
 
 ```python
 async def retrieve(self, user_id: str, query: str, level: MemoryLevel) -> list[MemoryEntry]:
@@ -338,25 +339,24 @@ async def write(self, user_id: str, content: str, level: MemoryLevel, session_id
     return await self._create(user_id, content, level, session_id)
 ```
 
-### Issue #83 — Extension
+### Implementation status
 
-L'issue existante `#83` (Three-Layer Memory System) doit être étendue pour inclure :
-- [ ] Schéma `MemoryEntry` avec tous les champs métadonnées ci-dessus
-- [ ] Contrainte SQL `user_id` sur toutes les requêtes L4
-- [ ] Structure de path `{user_id}/` pour L3
-- [ ] `count_usage` + `count_edits` incrémentés automatiquement
-- [ ] TTL auto-purge pour L1/L2
-- [ ] Endpoint stats par user (usage, taille, dernière activité)
+`user_id` partitioning is active in `prefs_store.py` (L4 queries use `WHERE user_id = ?`). The full `MemoryEntry` metadata schema (count_usage, count_edits, confidence, ttl, source) is not yet applied uniformly — this was tracked as an extension to #83.
+
+- [x] `user_id` isolation enforced in `prefs_store.py` queries
+- [x] L3 path structure uses `{user_id}/` directories (session_lifecycle.py)
+- [ ] Full `MemoryEntry` metadata schema with all fields above
+- [ ] `count_usage` + `count_edits` auto-increment
+- [ ] TTL auto-purge for L1/L2
+- [ ] Per-user stats endpoint (usage, size, last activity)
 
 ---
 
-## Priorités suggérées
+## Priority table
 
-| Issue | Priorité | Taille | Dépendances |
-|-------|----------|--------|-------------|
-| `#auth` | **P0** | S | — |
-| `#routing` | **P0** | M | `#auth` |
-| `#memory-isolation` | **P1** | M (extend #83) | — |
-| `#commands` | **P1** | M | `#routing` |
-
-`#auth` en premier — tout le reste s'appuie sur `TrustLevel` dans le `Message`.
+| Domain | Priority | Size | Dependencies | Status |
+|--------|----------|------|--------------|--------|
+| `#auth` | P0 | S | — | ✅ Shipped |
+| `#routing` | P0 | M | `#auth` | ✅ Shipped |
+| `#commands` | P1 | M | `#routing` | Partial (CommandParser ✅, ComplexityEstimator disabled) |
+| `#memory-isolation` | P1 | M (extend #83) | — | Partial (user_id partition active, full schema open) |

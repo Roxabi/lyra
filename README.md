@@ -5,7 +5,7 @@
 [![CI](https://github.com/Roxabi/lyra/actions/workflows/ci.yml/badge.svg)](https://github.com/Roxabi/lyra/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-package%20manager-DE5FE9)
-![version](https://img.shields.io/badge/version-0.1.0-22c55e)
+![version](https://img.shields.io/badge/version-0.2.0-22c55e)
 ![asyncio](https://img.shields.io/badge/concurrency-asyncio-0ea5e9)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 

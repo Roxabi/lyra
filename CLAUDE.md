@@ -30,7 +30,6 @@ Let:
 | `deploy/quadlet/` | Podman Quadlet units |
 | `packages/roxabi-nats/` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/` | NATS contract schemas (ADR-049) |
-| `deploy/agents.yml` | Agent registry (legacy: was used for supervisord conf generation) |
 
 ## Agent management
 

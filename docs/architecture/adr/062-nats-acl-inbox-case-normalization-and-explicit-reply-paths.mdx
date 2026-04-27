@@ -1,0 +1,139 @@
+---
+title: "ADR-062: NATS ACL inbox case normalization and explicit reply-path grants"
+description: Standardize all inbox prefixes to lowercase _inbox.<identity> and encode requester-to-responder publish paths explicitly in acl-matrix.json, eliminating the dual-variant maintenance burden and making the ACL dependency graph fully auditable.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+On 2026-04-27, a production outage (all four bot channels returning errors for ~2 hours) was traced to a case mismatch between the hub's `inbox_prefix="_INBOX.hub"` (uppercase) and a subscribe ACL that only contained `_INBOX.hub.>` — missing the lowercase `_inbox.hub.>` variant.
+
+NATS 2.10.29 lowercases subject names in `-ERR` permission violation messages, which misled the investigation into thinking nats-py was generating lowercase inboxes. The wire subjects were uppercase throughout; the actual gap was a missing lowercase subscribe ACL entry on the hub.
+
+ADR-051 established per-identity inbox prefixes as a security invariant and scoped them from `_INBOX.>` to `_INBOX.<identity>.>`. It deferred the question of which case to standardize on, requiring both `_INBOX.<identity>.>` (uppercase) and `_inbox.<identity>.>` (lowercase) variants in subscribe ACLs as a compatibility measure "until all deployed nats-py versions are confirmed to use uppercase."
+
+This deferral created the maintenance burden that caused the incident:
+- Every new identity in `acl-matrix.json` requires two ACL entries per inbox direction.
+- Every ACL audit and `gen-nkeys.sh --regenerate` run must carry both variants.
+- The case NATS server reports in errors diverges from the case in the ACL, making debugging systematically misleading.
+- `allow_responses: true` grants were found to evaluate case-insensitively for publish permission, but NATS subscription filters apply case-sensitively — meaning a case mismatch passes the publish side but silently drops messages on the subscribe side.
+
+The hotfix applied during the incident (adding `_inbox.hub.>` to hub's subscribe ACL) confirmed the dual-variant pattern is workable but fragile. This ADR closes the deferral.
+
+## Options Considered
+
+### Option A: Keep dual-variant, improve tooling
+
+Retain both `_INBOX.<identity>.>` and `_inbox.<identity>.>` ACL entries for all identities. Add a lint step to `gen-nkeys.sh` that enforces both variants are always present for any identity with an inbox subscribe ACL.
+
+- **Pros:** No wire-level change; no cross-satellite coordination required. Lower rollout risk.
+- **Cons:** Permanent double-width maintenance in `acl-matrix.json`. NATS error messages continue to report lowercase while ACLs are uppercase — future debuggers face the same misleading symptom. Root cause (case divergence between wire and ACL) is not addressed, only defended against.
+
+### Option B: Standardize on lowercase `_inbox.<identity>` everywhere
+
+Change all `inbox_prefix` values in bootstrap `.py` files to lowercase (`_inbox.<identity>`). Update all `acl-matrix.json` subscribe entries to lowercase. Drop uppercase `_INBOX.<identity>.>` entries after rollout. This matches the case NATS server uses in error messages.
+
+- **Pros:** Single ACL entry per identity per direction. Error messages now match ACL entries exactly — debugging is straightforward. Eliminates the entire class of case-mismatch bugs. Aligns with the case NATS server treats as canonical in its own error reporting.
+- **Cons:** Wire subjects change (`_INBOX.hub.TOKEN` → `_inbox.hub.TOKEN`). Rollout must be atomic per identity or dual ACLs must be held during migration. Requires per-satellite PRs (voiceCLI, imageCLI) per ADR-047, same coordination already required by ADR-051's deferred step.
+
+### Option C: Standardize on uppercase only
+
+Retain uppercase `_INBOX.<identity>`, remove lowercase variants, add lint enforcement.
+
+- **Pros:** No change to current connect-site code.
+- **Cons:** NATS error messages always report lowercase — the mismatch between reported case and ACL case is permanent. Any future NATS release that changes error message case would silently expose the gap again. Does not align with the server's own display convention.
+
+## Decision
+
+**Option B — standardize on lowercase `_inbox.<identity>` system-wide, with explicit reply-path publish ACLs.**
+
+Two changes are adopted together:
+
+### Change 1: Lowercase inbox prefix normalization (Fix 1)
+
+Every NATS identity connecting through `roxabi_nats.nats_connect` MUST use `inbox_prefix="_inbox.<identity-name>"` (lowercase). The `roxabi_nats` SDK's `nats_connect` function, when the `identity_name` parameter is used, MUST derive the prefix as `f"_inbox.{identity_name}"`.
+
+`acl-matrix.json` subscribe entries for all identities are updated to `_inbox.<identity>.>` (lowercase only). The uppercase `_INBOX.<identity>.>` entries are removed after all connect sites are migrated.
+
+Rollout order per identity (same as ADR-051 rule):
+1. Update connect site to lowercase prefix.
+2. Update `acl-matrix.json` subscribe entry to lowercase (dual-hold during migration: add lowercase, keep uppercase until step 3).
+3. Regenerate `auth.conf` via `gen-nkeys.sh`.
+4. Recreate Podman secret and reload NATS.
+5. Remove uppercase entry from `acl-matrix.json` in a follow-up.
+
+Satellite workers (voiceCLI `stt_adapter.py`, `tts_adapter.py`; imageCLI `adapter.py`) require per-satellite PRs per ADR-047. These PRs MUST land before the uppercase ACL entries are removed.
+
+### Change 2: Explicit reply-path publish ACLs (Fix 2)
+
+Each responder identity that publishes replies to the hub's inbox MUST have an explicit publish ACL entry for `_inbox.hub.>`. This replaces implicit reliance on `allow_responses: true` for correctness. `allow_responses: true` is retained as defence-in-depth only.
+
+The finding from the 2026-04-27 incident — that `allow_responses` grants evaluate case-insensitively for publish permission but NATS subscription filters apply case-sensitively — means `allow_responses` cannot be relied upon for correctness when any case divergence exists in the system. Explicit publish ACLs are evaluated by the same case-sensitive rule as subscribe ACLs, making behaviour deterministic regardless of `allow_responses` edge cases.
+
+Affected responder identities and their added publish entries:
+
+| Identity | Added publish ACL |
+|---|---|
+| `clipool-worker` | `_inbox.hub.>` |
+| `voice-tts` | `_inbox.hub.>` |
+| `voice-stt` | `_inbox.hub.>` |
+
+The `_inbox.hub.>` entries in responder publish ACLs encode a structural dependency: these responders reply only to the hub. This coupling is intentional and bounded by the current hub-spoke topology. If non-hub identities become requesters in future, their inbox paths must be added to the relevant responder publish ACLs at that time. ACL entries of this type MUST be annotated in `acl-matrix.json` with a comment identifying the requester identity.
+
+### Priority and sequencing
+
+Change 1 (Fix 1) MUST land before or simultaneously with Change 2 (Fix 2). Deploying Fix 2 with `_inbox.hub.>` explicit ACLs while the hub still uses uppercase `_INBOX.hub` prefix makes the explicit ACLs dead code until Fix 1 completes. If Fix 2 must be deployed before Fix 1 is fully rolled out, the explicit publish entries MUST temporarily carry both cases: `["_INBOX.hub.>", "_inbox.hub.>"]`, trimmed after Fix 1 completes.
+
+Correct order: Fix 1 (establish canonical prefix) → Fix 2 (encode stable prefix in explicit ACLs) → Fix 3 (CI gate, see below).
+
+## Consequences
+
+### Positive
+
+- `acl-matrix.json` contains one subscribe ACL entry per identity per direction. ACL audits are half as wide.
+- NATS error messages and ACL entries use the same case. Debugging case-related permission issues is no longer misleading.
+- The dependency graph between identities is fully auditable in `acl-matrix.json`: any responder that can write to a requester's inbox has an explicit publish ACL entry naming that inbox pattern.
+- `allow_responses: true` case-sensitivity edge case is no longer load-bearing for correctness.
+- Eliminates the class of bugs introduced by ADR-051's deferred dual-variant: future identities have a single, unambiguous inbox prefix convention.
+
+### Negative
+
+- Wire subjects change for all identities that previously used uppercase `_INBOX.<identity>`. Rolling deploys must hold dual ACLs during the migration window. Risk is bounded by rollout procedure.
+- Cross-satellite coordination required (same as ADR-051 negative): voiceCLI and imageCLI connect sites must be updated in sync with `acl-matrix.json` changes. No mechanism currently enforces this atomicity for external repos — an ops checklist is required per satellite.
+- Responder publish ACLs now encode requester identity. If a responder is reused by a new requester or the hub identity is renamed, responder ACLs must be updated. This is a new maintenance surface that did not exist when `allow_responses: true` was the sole mechanism.
+
+### Neutral
+
+- `NatsLlmDriver._stream_gen()` is unchanged. The change is at connect time and ACL level only.
+- The `monitor` identity has no inbox grant and is not affected.
+- ADR-051's per-identity inbox prefix invariant is fully preserved; this ADR narrows the case convention within that invariant.
+
+## Relation to Fix 3 (ACL integration test)
+
+A CI integration test (`make test-acl`) is a prerequisite for long-term stability of this ADR's invariants. The test MUST:
+- Connect as each identity using its nkey and assert all subscribe/publish ACLs function correctly.
+- Assert hub→responder→hub round-trips succeed end-to-end.
+- Assert each identity is denied on out-of-ACL subjects.
+- Explicitly test that a hub connecting with lowercase `_inbox.hub` prefix can receive replies published to `_inbox.hub.<TOKEN>` (regression guard for this incident's exact failure mode).
+- Assert that with `allow_responses: true` removed from a responder's ACL, explicit publish grants are sufficient for round-trips.
+
+The test is independent of this ADR's implementation but SHOULD be delivered as Fix 3 immediately after Fix 1+2 land.
+
+## Unaddressed risks noted for follow-up
+
+- **No machine-readable cross-reference between connect-site inbox prefix and ACL subscribe entry.** `gen-nkeys.sh` or `lyra ops verify` (ADR-046 Invariant 5) SHOULD gain a lint step: for each identity with a `_inbox.<identity>.>` subscribe ACL, assert a matching connect-site parameter exists, and flag any `_INBOX.>` wildcard as a drift error.
+- **No alerting on NATS permission violations.** The 2026-04-27 incident ran undetected for ~2 hours because permission violations in clipool logs were not alarmed. A `roxabi-live` alert on NATS `permissions violation` log lines would reduce detection time to minutes for any future ACL gap.
+- **Satellite rollout atomicity is not gated.** Partial rollouts (lyra ACL updated, satellite not yet redeployed) create a live window of broken communication. A deploy gate or ordered rollout checklist is needed for cross-satellite ACL changes.
+
+## References
+
+- Post-mortem: `docs/ops/nats-acl-inbox-case-postmortem.md`
+- ADR-051: Per-identity NATS inbox prefix as a security invariant
+- ADR-046: nkey provisioning — declarative authconf
+- ADR-047: NATS connector ownership pattern
+- ADR-045: roxabi-nats SDK
+- ACL matrix: `deploy/nats/acl-matrix.json`
+- Issue: #949 (clipool publish ACL narrowing that removed `_INBOX.>` wildcard)

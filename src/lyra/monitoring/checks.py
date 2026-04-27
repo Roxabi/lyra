@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from .checks_log import check_hub_stream_gen_timeout, check_nats_log_errors
 from .config import MonitoringConfig
 from .models import CheckResult, HealthReport
 
@@ -256,7 +257,26 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
         if health_json.get("reaper_alive") is not None:
             checks.append(check_reaper(health_json))
 
-    # Check 7: Disk space (blocking → offload to thread)
+    # Check 7: NATS permissions violations (blocking → offload to thread)
+    checks.append(
+        await asyncio.to_thread(
+            check_nats_log_errors,
+            config.nats_container_name,
+            config.nats_log_check_minutes,
+        )
+    )
+
+    # Check 8: Hub stream_gen timeouts (blocking → offload to thread)
+    checks.append(
+        await asyncio.to_thread(
+            check_hub_stream_gen_timeout,
+            config.hub_container_name,
+            config.stream_gen_timeout_minutes,
+            config.stream_gen_timeout_threshold,
+        )
+    )
+
+    # Check 9: Disk space (blocking → offload to thread)
     checks.append(
         await asyncio.to_thread(
             check_disk, config.disk_check_path, config.min_disk_free_gb

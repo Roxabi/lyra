@@ -38,6 +38,11 @@ class MonitoringConfig(BaseModel):
         default=["lyra-hub", "lyra-telegram", "lyra-discord"]
     )
     health_secret: str = ""
+    nats_container_name: str = "lyra-nats"
+    hub_container_name: str = "lyra-hub"
+    nats_log_check_minutes: int = 30
+    stream_gen_timeout_minutes: int = 30
+    stream_gen_timeout_threshold: int = 3
 
     # Secrets (from env vars)
     telegram_token: str = Field(default="", repr=False)

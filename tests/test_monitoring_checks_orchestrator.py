@@ -40,6 +40,12 @@ class TestRunChecks:
             lambda *a, **kw: MagicMock(returncode=0, stdout="active\n"),
         )
 
+        # Mock podman logs for log-scan checks (empty output → 0 matches → passed)
+        monkeypatch.setattr(
+            "lyra.monitoring.checks_log.subprocess.run",
+            lambda *a, **kw: MagicMock(returncode=0, stdout="", stderr=""),
+        )
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -76,8 +82,9 @@ class TestRunChecks:
 
         assert report.all_passed is True
         assert report.failed_count == 0
-        # process:lyra-hub + http_health + queue_depth + circuits + reaper + disk
-        assert len(report.checks) == 6
+        # process:lyra-hub + http_health + queue_depth + circuits + reaper
+        # + nats:permissions_violation + hub:stream_gen_timeout + disk
+        assert len(report.checks) == 8
 
     async def test_failure_detected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC-11: run_checks returns all_passed=False when a check fails."""

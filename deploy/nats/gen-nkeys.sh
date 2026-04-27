@@ -4,10 +4,9 @@
 # Seeds (private keys) → ~/.lyra/nkeys/     owned by LYRA_USER, 0600 — no system access needed
 # auth.conf (public keys) → /etc/nats/nkeys/ owned by root:nats,  0640 — read by nats-server
 #
-# Creates 10 user nkey seeds: hub, telegram-adapter, discord-adapter,
-#                              tts-adapter [retired: ADR-051; kept for audit_matrix_inbox_drift only],
-#                              stt-adapter [retired: ADR-051; kept for audit_matrix_inbox_drift only],
-#                              voice-tts, voice-stt, llm-worker, image-worker, monitor
+# Creates 9 user nkey seeds: hub, telegram-adapter, discord-adapter,
+#                             voice-tts, voice-stt, llm-worker, image-worker, monitor, clipool-worker
+# Retired: tts-adapter, stt-adapter (removed in #690; entries purged from matrix per postmortem Phase 1).
 #
 # ACL matrix (identities + publish/subscribe allow-lists) is sourced from
 # deploy/nats/acl-matrix.json — do not edit inline; update the JSON instead.
@@ -43,7 +42,8 @@ error() { echo -e "${RED}[x]${NC} $1" >&2; exit 1; }
 MATRIX_JSON="$(dirname "${BASH_SOURCE[0]}")/acl-matrix.json"
 
 # ── load_matrix ───────────────────────────────────────────────────────────────
-# Reads deploy/nats/acl-matrix.json and populates PUB_ALLOW, SUB_ALLOW, IDENTITIES.
+# Reads deploy/nats/acl-matrix.json and populates PUB_ALLOW, SUB_ALLOW, IDENTITIES,
+# ALLOW_RESPONSES, and OWNER.
 # Aborts with a clear error if jq is missing/too old, JSON is absent/malformed,
 # .version != "1", or any identity has an invalid schema.
 load_matrix() {
@@ -72,7 +72,7 @@ load_matrix() {
     || error "unsupported acl-matrix.json version: ${v} (expected \"1\")"
 
   # Validate all identities and populate arrays
-  declare -gA PUB_ALLOW SUB_ALLOW OWNER
+  declare -gA PUB_ALLOW SUB_ALLOW OWNER ALLOW_RESPONSES
   IDENTITIES=()
 
   local valid_owners="lyra voicecli imagecli reserved"
@@ -97,6 +97,8 @@ load_matrix() {
     SUB_ALLOW[$name]=$(jq -r --arg n "${name}" \
       '.identities[$n].subscribe | map("\"" + . + "\"") | join(",")' "${MATRIX_JSON}")
     OWNER[$name]=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
+    ALLOW_RESPONSES[$name]=$(jq -r --arg n "${name}" \
+      '.identities[$n].allow_responses // true' "${MATRIX_JSON}")
   done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
 }
 
@@ -107,6 +109,7 @@ emit_user() {
   local name="$1" pubkey="$2"
   [ -z "${pubkey:-}" ] \
     && error "BUG: render_auth_conf invoked for identity '${name}' with no pubkey"
+  local allow_resp="${ALLOW_RESPONSES[$name]:-true}"
   cat <<USER
     {
       nkey: "${pubkey}"
@@ -114,7 +117,7 @@ emit_user() {
       permissions: {
         publish:   { allow: [${PUB_ALLOW[$name]:-}] }
         subscribe: { allow: [${SUB_ALLOW[$name]:-}] }
-        allow_responses: true
+        allow_responses: ${allow_resp}
       }
     }
 USER
@@ -358,10 +361,10 @@ if [ "${REGEN_AUTHCONF}" = true ]; then
 fi
 
 # ── emit-merged-authconf mode: write merged lyra+voicecli auth.conf ──────────
-# Purpose: produce a single auth.conf covering all 5 live identities:
+# Purpose: produce a single auth.conf covering live identities:
 #   hub, telegram-adapter, discord-adapter (lyra seeds → ~/.lyra/nkeys/)
 #   voice-tts, voice-stt                   (voicecli seeds → ~/.voicecli/nkeys/)
-# Retired identities (tts-adapter, stt-adapter) are excluded.
+# tts-adapter and stt-adapter were retired in #690 and removed from the ACL matrix (postmortem Phase 1).
 # No root required — writes to user-owned ~/.lyra/nkeys/auth.conf.
 # Seeds must already exist (run gen-nkeys.sh once, then relocate voice seeds per
 # ADR-055 D4: cp ~/.lyra/nkeys/voice-*.seed ~/.voicecli/nkeys/).
@@ -597,26 +600,24 @@ info "Generating nkey pairs in ${SEEDS_DIR}/ ..."
 HUB_PUB=$(generate_nkey "hub")
 TELEGRAM_PUB=$(generate_nkey "telegram-adapter")
 DISCORD_PUB=$(generate_nkey "discord-adapter")
-TTS_PUB=$(generate_nkey "tts-adapter")
-STT_PUB=$(generate_nkey "stt-adapter")
 VOICE_TTS_PUB=$(generate_nkey "voice-tts")
 VOICE_STT_PUB=$(generate_nkey "voice-stt")
 WORKER_PUB=$(generate_nkey "llm-worker")
 IMAGE_WORKER_PUB=$(generate_nkey "image-worker")
 MONITOR_PUB=$(generate_nkey "monitor")
+CLIPOOL_PUB=$(generate_nkey "clipool-worker")
 
 # ── write auth.conf via render_auth_conf (T1.6) ───────────────────────────────
 declare -A PUBKEYS=(
   [hub]="${HUB_PUB}"
   [telegram-adapter]="${TELEGRAM_PUB}"
   [discord-adapter]="${DISCORD_PUB}"
-  [tts-adapter]="${TTS_PUB}"
-  [stt-adapter]="${STT_PUB}"
   [voice-tts]="${VOICE_TTS_PUB}"
   [voice-stt]="${VOICE_STT_PUB}"
   [llm-worker]="${WORKER_PUB}"
   [image-worker]="${IMAGE_WORKER_PUB}"
   [monitor]="${MONITOR_PUB}"
+  [clipool-worker]="${CLIPOOL_PUB}"
 )
 render_auth_conf PUBKEYS > "${AUTH_CONF}"
 
@@ -633,11 +634,10 @@ info ""
 info "  hub.seed               NATS_NKEY_SEED_PATH=${SEEDS_DIR}/hub.seed"
 info "  telegram-adapter.seed  NATS_NKEY_SEED_PATH=${SEEDS_DIR}/telegram-adapter.seed"
 info "  discord-adapter.seed   NATS_NKEY_SEED_PATH=${SEEDS_DIR}/discord-adapter.seed"
-info "  tts-adapter.seed       NATS_NKEY_SEED_PATH=${SEEDS_DIR}/tts-adapter.seed"
-info "  stt-adapter.seed       NATS_NKEY_SEED_PATH=${SEEDS_DIR}/stt-adapter.seed"
 info "  voice-tts.seed         NATS_NKEY_SEED_PATH=${SEEDS_DIR}/voice-tts.seed   (voicecli nats-serve tts)"
 info "  voice-stt.seed         NATS_NKEY_SEED_PATH=${SEEDS_DIR}/voice-stt.seed   (voicecli nats-serve stt)"
 info "  llm-worker.seed        NATS_NKEY_SEED_PATH=${SEEDS_DIR}/llm-worker.seed"
 info "  image-worker.seed      NATS_NKEY_SEED_PATH=${SEEDS_DIR}/image-worker.seed  (imagecli nats-serve)"
 info "  monitor.seed           NATS_NKEY_SEED_PATH=${SEEDS_DIR}/monitor.seed"
+info "  clipool-worker.seed    NATS_NKEY_SEED_PATH=${SEEDS_DIR}/clipool-worker.seed"
 warn "Supervisor confs already reference ~/.lyra/nkeys/ — no changes needed."

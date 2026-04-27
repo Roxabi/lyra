@@ -5,6 +5,7 @@
       "owner": "lyra",
       "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Both inbox case variants retained: nats.py default uses lowercase _inbox.hub.> (hub does not set inbox_prefix at connect time, tracked as a bug); uppercase _INBOX.hub.> kept for ADR-051 compliance once fixed.",
       "notes": "Stream provisioning is a deploy-time admin operation — hub does not create/update streams at runtime. $JS.API.STREAM.CREATE/UPDATE.LYRA_AUDIT are intentionally absent from publish ACLs.",
+      "allow_responses": false,
       "publish": [
         "lyra.outbound.telegram.>",
         "lyra.outbound.discord.>",
@@ -32,6 +33,7 @@
     "telegram-adapter": {
       "owner": "lyra",
       "description": "Telegram bot adapter — inbox narrowed to _INBOX.telegram-adapter.> per ADR-051 per-identity prefix invariant.",
+      "allow_responses": false,
       "publish": [
         "lyra.inbound.telegram.>",
         "lyra.system.ready"
@@ -44,6 +46,7 @@
     "discord-adapter": {
       "owner": "lyra",
       "description": "Discord bot adapter — inbox narrowed to _INBOX.discord-adapter.> per ADR-051 per-identity prefix invariant.",
+      "allow_responses": false,
       "publish": [
         "lyra.inbound.discord.>",
         "lyra.system.ready"
@@ -53,40 +56,13 @@
         "_INBOX.discord-adapter.>"
       ]
     },
-    "tts-adapter": {
-      "owner": "lyra",
-      "description": "Lyra-side TTS voice satellite (retired in #690 cutover). Inbox narrowed to _INBOX.tts-adapter.> and _inbox.tts-adapter.> per ADR-051; both case variants retained for nats-py case-sensitivity compatibility.",
-      "publish": [
-        "lyra.voice.tts.heartbeat",
-        "lyra.system.ready"
-      ],
-      "subscribe": [
-        "lyra.voice.tts.request",
-        "lyra.voice.tts.request.>",
-        "_INBOX.tts-adapter.>",
-        "_inbox.tts-adapter.>"
-      ]
-    },
-    "stt-adapter": {
-      "owner": "lyra",
-      "description": "Lyra-side STT voice satellite (retired in #690 cutover). Inbox narrowed to _INBOX.stt-adapter.> and _inbox.stt-adapter.> per ADR-051; both case variants retained for nats-py case-sensitivity compatibility.",
-      "publish": [
-        "lyra.voice.stt.heartbeat",
-        "lyra.system.ready"
-      ],
-      "subscribe": [
-        "lyra.voice.stt.request",
-        "lyra.voice.stt.request.>",
-        "_INBOX.stt-adapter.>",
-        "_inbox.stt-adapter.>"
-      ]
-    },
     "voice-tts": {
       "owner": "voicecli",
-      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Inbox narrowed to _INBOX.voice-tts.> per ADR-051 per-identity prefix invariant; both case variants retained for nats-py case-sensitivity compatibility.",
+      "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Inbox narrowed to _INBOX.voice-tts.> per ADR-051 per-identity prefix invariant; both case variants retained for nats-py case-sensitivity compatibility. Explicit _inbox.hub.> publish grant added per postmortem Fix 2.",
       "publish": [
         "lyra.voice.tts.heartbeat",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "_inbox.hub.>"
       ],
       "subscribe": [
         "lyra.voice.tts.request",
@@ -97,10 +73,11 @@
     },
     "voice-stt": {
       "owner": "voicecli",
-      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Inbox narrowed to _INBOX.voice-stt.> per ADR-051 per-identity prefix invariant; both case variants retained for nats-py case-sensitivity compatibility.",
+      "description": "voicecli nats-serve STT worker on Machine 1 (#689). Inbox narrowed to _INBOX.voice-stt.> per ADR-051 per-identity prefix invariant; both case variants retained for nats-py case-sensitivity compatibility. Explicit _inbox.hub.> publish grant added per postmortem Fix 2.",
       "publish": [
         "lyra.voice.stt.heartbeat",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "_inbox.hub.>"
       ],
       "subscribe": [
         "lyra.voice.stt.request",
@@ -111,9 +88,10 @@
     },
     "llm-worker": {
       "owner": "reserved",
-      "description": "Reserved LLM worker identity — publishes health status, subscribes to LLM request queue.",
+      "description": "Reserved LLM worker identity — publishes health status, subscribes to LLM request queue. Explicit _inbox.hub.> publish grant added per postmortem Fix 2.",
       "publish": [
-        "lyra.llm.health.*"
+        "lyra.llm.health.*",
+        "_inbox.hub.>"
       ],
       "subscribe": [
         "lyra.llm.request"
@@ -121,9 +99,10 @@
     },
     "image-worker": {
       "owner": "imagecli",
-      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Publish ACLs narrowed per #949 — broad _INBOX.>/_inbox.> removed now that imagecli sets inbox_prefix=_INBOX.image-worker at connect time (ADR-051). allow_responses covers reply publish; _INBOX.image-worker.> subscribe added for receive-side ACL completeness.",
+      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Publish ACLs narrowed per #949 — broad _INBOX.>/_inbox.> removed now that imagecli sets inbox_prefix=_INBOX.image-worker at connect time (ADR-051). allow_responses covers reply publish; _INBOX.image-worker.> subscribe added for receive-side ACL completeness. Explicit _inbox.hub.> publish grant added per postmortem Fix 2.",
       "publish": [
-        "lyra.image.heartbeat"
+        "lyra.image.heartbeat",
+        "_inbox.hub.>"
       ],
       "subscribe": [
         "lyra.image.generate.request",
@@ -134,6 +113,7 @@
     "monitor": {
       "owner": "reserved",
       "description": "Monitoring identity — full pub+sub on lyra.monitor.> namespace.",
+      "allow_responses": false,
       "publish": [
         "lyra.monitor.>"
       ],
@@ -143,10 +123,11 @@
     },
     "clipool-worker": {
       "owner": "lyra",
-      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Publish ACLs narrowed per #949 — broad _INBOX.>/_inbox.> removed now that clipool_standalone sets inbox_prefix=_INBOX.clipool-worker at connect time (ADR-051). allow_responses covers reply publish; subscribe narrowed to match.",
+      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Publish ACLs narrowed per #949 — broad _INBOX.>/_inbox.> removed now that clipool_standalone sets inbox_prefix=_INBOX.clipool-worker at connect time (ADR-051). allow_responses covers reply publish; subscribe narrowed to match. Explicit _inbox.hub.> publish grant added per postmortem Fix 2.",
       "publish": [
         "lyra.clipool.heartbeat",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "_inbox.hub.>"
       ],
       "subscribe": [
         "lyra.clipool.cmd",

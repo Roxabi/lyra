@@ -280,14 +280,14 @@ invisible-grant bugs. Fix 3 is the guardrail that catches the next one.
 
 | Item | Owner | Status |
 |---|---|---|
-| Fix 2 — explicit reply-path ACLs | — | open |
+| Fix 2 — explicit reply-path ACLs | — | done |
 | Fix 1 — lowercase normalization (coordinated lyra + voicecli) | — | open |
 | Fix 3 — `make test-acl` in pre-push | — | open |
-| Alert: `permissions violation` in NATS logs | — | open |
-| Alert: sustained `_stream_gen timeout` in hub logs | — | open |
+| Alert: `permissions violation` in NATS logs | — | done |
+| Alert: sustained `_stream_gen timeout` in hub logs | — | done |
 | Synthetic round-trip health probe | — | open |
-| Fix `gen-nkeys.sh` missing `clipool-worker` in key-gen block | — | open |
-| Remove retired identities from `acl-matrix.json` | — | open |
+| Fix `gen-nkeys.sh` missing `clipool-worker` in key-gen block | — | done |
+| Remove retired identities from `acl-matrix.json` | — | done |
 | Write NATS secret rotation runbook | — | open |
 | Write post-deploy smoke test + canary rollout procedure | — | open |
 | Post-incident verification: zero `permissions violation` for 24h | — | open |
@@ -567,26 +567,133 @@ Highest-risk scenario: `clipool-worker` seed compromise → intercept all user p
 
 ---
 
+### The single structural error behind root cause 1
+
+**Authorization was modeled at the implementation layer instead of the semantic layer.**
+
+`acl-matrix.json` encodes: *"what subjects can identity X pub/sub to?"* — strings, cases, wildcards.
+The invariant that actually needs to be maintained is: *"hub uses request-reply to clipool"* — a communication topology fact about pairs of actors.
+
+These two representations describe the same truth, but they are not equivalent under change:
+- Topology → per-identity ACLs can be **derived mechanically**
+- Per-identity ACLs → topology **cannot be reconstructed** without knowing which subjects correspond to which roles at runtime
+
+Because the wrong level was chosen as the SSoT, every implementation detail — inbox case (`_INBOX` vs `_inbox`), wildcard narrowing, `allow_responses` semantics — became a load-bearing configuration surface with no machine-enforced relationship to the semantic invariant it was supposed to implement.
+
+Every specific failure in this incident traces back to this:
+
+| Specific failure | Trace to root |
+|---|---|
+| `allow_responses` became invisible load-bearing | It bridges the gap between the subject-centric model and the actual topology — magic required because the schema cannot express "clipool replies to hub" |
+| Dual-case maintenance burden | Case is an implementation artifact; the topology (`clipool→hub flow`) is case-agnostic. The wrong abstraction level forces case tracking |
+| `inbox_prefix` ↔ ACL subscribe parity unenforced | `_INBOX.hub` in Python and `_INBOX.hub.>` in JSON are two representations of the same semantic fact — but the schema has no concept of "this is the hub's inbox", so there is nothing to enforce parity against |
+| #949 narrowing silently broke clipool→hub | Changing one identity's publish ACL had no machine-detectable effect on the cross-identity flow it was part of — because cross-identity flows do not exist as a concept in the schema |
+| Fix 2 introduces responder-encodes-requester coupling | Correct fix, but it encodes topology into per-identity subject lists — still the wrong layer, just explicit now instead of implicit |
+
+#### The durable fix: topology as a first-class schema concept
+
+Add a section to `acl-matrix.json` that names flows explicitly:
+
+```json
+{
+  "request_reply_flows": [
+    { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" },
+    { "requester": "hub", "responder": "voice-tts",      "subject": "lyra.voice.tts.cmd" }
+  ],
+
+  "identities": {
+    "hub":            { "subscribe": ["lyra.system.>"], "publish": ["lyra.clipool.cmd"] },
+    "clipool-worker": { "subscribe": ["lyra.clipool.cmd"], "publish": ["lyra.clipool.heartbeat"] }
+  }
+}
+```
+
+`gen-nkeys.sh` (or a replacement `gen-acl.py`) **derives** the inbox entries automatically from the flow declarations:
+
+```
+for each flow (requester=hub, responder=clipool-worker):
+    hub.subscribe     += ["_inbox.hub.>"]   ← requester always needs this
+    clipool.publish   += ["_inbox.hub.>"]   ← responder needs to reach requester's inbox
+    allow_responses    = false              ← no longer needed; explicit grant covers it
+```
+
+ACL entries become **generated output**, not manually maintained input.
+
+What this buys:
+
+| Old world | New world |
+|---|---|
+| Rename hub's inbox prefix → manually hunt every responder | Rename it in one place → generator updates all responder publish entries |
+| Add a new flow → remember to update both sides | Declare the flow → both sides generated |
+| `allow_responses` is invisible load-bearing magic | Explicit `_inbox.hub.>` entry; `allow_responses` is defence-in-depth or removed |
+| CI cannot verify cross-identity correctness | Generator has the topology → can emit a test matrix asserting hub→clipool→hub round-trip |
+| Case mismatch is possible | Generator controls the case → single source, always consistent |
+
+The inbox case-mismatch bug that caused this incident is **structurally impossible** in this model: there is no second place to write the string incorrectly. The generator formats `_inbox.{requester}.>` once and writes it into both the requester's subscribe ACL and every responder's publish ACL. The Python connect call reads from the same source:
+
+```python
+# generator uses:   f"_inbox.{identity_name}.>"
+# connect call uses: nats_connect(nats_url, identity_name="hub")
+# → inbox_prefix derived from identity_name by nats_connect, same string, structural parity
+```
+
+This is the correct long-term target for `acl-matrix.json`. Fix 2 (explicit `_inbox.hub.>` in responder publish ACLs) is the right immediate step and moves in this direction — it makes the topology visible. The topology-first schema makes it machine-enforced.
+
+---
+
 ### Prioritized action map (from 5-why analysis)
+
+Three phases: immediate mitigation → normalization (coordinated) → topology-first migration (durable fix for root cause 1).
+
+---
+
+#### Phase 1 — Immediate (P0, unblocked)
+
+| Action | Rationale |
+|---|---|
+| Fix 2: explicit `_inbox.hub.>` in all responder publish ACLs in `acl-matrix.json` | Removes reliance on `allow_responses` as sole auth path; seeds Phase 3 topology migration |
+| Remove `allow_responses: true` from identities that never do request-reply | Shrinks blast radius; makes which identities participate in request-reply visible |
+| Alert on `permissions violation` in NATS container logs | Would have caught this incident at 16:11 instead of 18:55 |
+| Alert on sustained `_stream_gen timeout` in hub logs | Hub-side signal for any future ACL or transport break |
+| Synthetic round-trip health probe (hub → clipool → hub) post-deploy | Catches a broken reply-path before real user traffic hits it |
+| Retire `tts-adapter`/`sst-adapter`: remove from `acl-matrix.json`, revoke seeds, remove `generate_nkey` calls | Eliminates active attack surface for credentials with no running service |
+
+---
+
+#### Phase 2 — Coordinated (P0, blocked on voicecli)
+
+| Action | Rationale |
+|---|---|
+| Fix 1: lowercase `_inbox` prefix across lyra + voicecli (joint release only) | Eliminates dual-case maintenance burden; must ship with voicecli or voice services break identically |
+| Fix 3: `make test-acl` in pre-push — real NATS, real round-trips, denied-subject assertions, `allow_responses`-removed fixture | CI gate that would have blocked this incident from shipping; run alongside `import_layers` |
+
+---
+
+#### Phase 3 — Topology-first migration (P1, unblocked after Phase 1)
+
+Root cause 1 fix: `acl-matrix.json` currently models authorization at the subject level. Topology must become a first-class schema concept so the generator enforces cross-identity consistency — making the case-mismatch and missing-grant classes of bug structurally impossible.
+
+| Action | Rationale |
+|---|---|
+| Add `request_reply_flows` section to `acl-matrix.json`; declare all existing hub→responder flows | Makes topology visible and machine-readable; prerequisite for generator derivation |
+| Build generator that derives `_inbox.{requester}.>` subscribe + publish entries from flow declarations | Inbox ACLs become generated output; no second place to write the string incorrectly |
+| Update `nats_connect()` in roxabi-nats: `identity_name` → `f"_inbox.{identity_name}.>"` so connect-site and generator use the same string | Closes the Python ↔ JSON parity gap that caused this incident |
+| Drop `allow_responses: true` from all identities once explicit flow grants cover all reply paths | Removes invisible magic; may be kept as defence-in-depth only |
+| Drive `gen-nkeys.sh` key-generation from `IDENTITIES[]` iteration — kill hardcoded identity list | Single identity SSoT; prevents clipool-worker-class desync on fresh provisioning |
+| Extend Fix 3 test suite: assert that removing a flow declaration removes the derived ACL grant | Documents and tests topology derivation as load-bearing |
+| `acl-matrix.json` schema: add `status: active\|retired`, CI rejects any retired entry without expiry | Identity lifecycle becomes a defined process; prevents monotonic ACL growth |
+
+---
+
+#### Other P1 / P2
 
 | Priority | Action |
 |---|---|
-| P0 — now | Fix 2: explicit `_inbox.hub.>` in all responder publish ACLs in `acl-matrix.json` |
-| P0 — now | Alert on `permissions violation` in NATS container logs |
-| P0 — now | Alert on sustained `_stream_gen timeout` in hub logs |
-| P0 — now | Synthetic round-trip health probe immediately post-deploy |
-| P0 — now | Retire `tts-adapter`/`sst-adapter`: remove ACL entries, revoke seeds, remove `generate_nkey` calls |
-| P0 — now | Remove `allow_responses: true` from identities that never do request-reply |
-| P0 — coordinated | Fix 1: lowercase normalization across lyra + voicecli (joint release only) |
-| P0 — alongside Fix 1 | Fix 3: `make test-acl` in pre-push (real NATS, real round-trips, denied-subject assertions, `allow_responses`-removed fixture) |
 | P1 | `/health/ready` split: liveness vs. NATS round-trip readiness; container healthcheck → `/health/ready` |
-| P1 | `acl-matrix.json` schema: add `status: active\|retired`, CI rejects any retired entry without expiry |
-| P1 | Topology model in ACL schema: `request_reply_flows` section expressing cross-identity request-reply dependencies |
 | P1 | Incident response process: owner, trigger criteria, user notification template, post-incident gate (runbook must exist before incident is closed) |
 | P1 | Canary rollout procedure: 1 channel before full blast; post-canary smoke test before promoting |
 | P1 | `make nats-rotate-secrets` atomic target wrapping all 4 steps with pre/post validation |
-| P1 | NATS secret rotation runbook (unblocks closing current open action item) |
-| P2 | `gen-nkeys.sh`: drive key-generation from `IDENTITIES[]` iteration, kill hardcoded identity list |
+| P1 | NATS secret rotation runbook |
 | P2 | Enable NATS HTTP monitoring on `127.0.0.1`; alert on error counters |
 | P2 | Credential rotation policy (90-day max age + event-triggered) + append-only rotation log |
 | P2 | Graceful degradation spec for LLM response path: user-facing message on `_stream_gen` timeout |

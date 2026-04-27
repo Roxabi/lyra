@@ -14,7 +14,8 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 _security_log = logging.getLogger("lyra.security")
 
-_SUBJECT = "lyra.audit.security"
+_SUBJECT_PRIVILEGED = "lyra.audit.security.privileged"
+_SUBJECT_NORMAL = "lyra.audit.security.normal"
 
 
 class JetStreamAuditSink:
@@ -83,7 +84,8 @@ class JetStreamAuditSink:
             if self._degraded or self._js is None:
                 _security_log.warning("%s", json_str)
                 return
-            await self._js.publish(_SUBJECT, payload)
+            subject = _SUBJECT_PRIVILEGED if event.skip_permissions else _SUBJECT_NORMAL
+            await self._js.publish(subject, payload)
         except Exception as exc:
             _security_log.warning(
                 "AUDIT: emit failed (%s) — %s", type(exc).__name__, json_str

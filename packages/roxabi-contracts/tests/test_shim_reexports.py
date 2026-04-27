@@ -6,7 +6,7 @@ the canonical implementations in roxabi_nats.testing.
 
 from __future__ import annotations
 
-import warnings
+import pytest
 
 from roxabi_nats.testing._guards import assert_loopback_url as _canonical_loopback
 from roxabi_nats.testing._guards import assert_not_production as _canonical_prod
@@ -29,8 +29,9 @@ def test_image_testing_shim_reexports() -> None:
 
 
 def test_testing_guards_shim_reexports() -> None:
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
+    with pytest.warns(
+        DeprecationWarning, match="roxabi_contracts._testing_guards is deprecated"
+    ):
         from roxabi_contracts._testing_guards import (
             assert_loopback_url,
             assert_not_production,

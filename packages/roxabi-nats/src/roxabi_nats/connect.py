@@ -140,11 +140,18 @@ async def _default_reconnected_cb() -> None:
     log.info("NATS reconnected")
 
 
-async def nats_connect(url: str, **extra: Any) -> NATS:
+async def nats_connect(
+    url: str, *, identity_name: str | None = None, **extra: Any
+) -> NATS:
     """Connect to NATS, optionally authenticating with an nkey seed.
 
     If NATS_NKEY_SEED_PATH is set, reads the seed file and passes it
     via nkeys_seed_str. If unset, connects without authentication (dev mode).
+
+    ``identity_name`` sets ``inbox_prefix="_INBOX.{identity_name}"`` so that
+    nats-py scopes reply-to subjects to the identity's ACL-allowed prefix
+    (ADR-051). Callers may still pass ``inbox_prefix`` directly via ``**extra``
+    when they need a custom value; ``identity_name`` is ignored in that case.
 
     Extra keyword arguments (e.g. ``error_cb``, ``disconnected_cb``,
     ``reconnected_cb``) are forwarded to ``nats.connect()``.
@@ -162,6 +169,8 @@ async def nats_connect(url: str, **extra: Any) -> NATS:
         "reconnected_cb": _default_reconnected_cb,
         **extra,
     }
+    if identity_name is not None and "inbox_prefix" not in kwargs:
+        kwargs["inbox_prefix"] = f"_INBOX.{identity_name}"
     seed = _read_nkey_seed()
     if seed:
         kwargs["nkeys_seed_str"] = seed

@@ -70,6 +70,38 @@ class TestNatsConnect:
             assert "reconnected_cb" in call_kwargs
             assert result is mock_nc
 
+    async def test_identity_name_sets_inbox_prefix(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """identity_name derives inbox_prefix=_INBOX.{name} (ADR-051)."""
+        monkeypatch.delenv("NATS_NKEY_SEED_PATH", raising=False)
+
+        mock_nc = AsyncMock()
+        mock_conn = AsyncMock(return_value=mock_nc)
+        with patch("roxabi_nats.connect.nats.connect", new=mock_conn) as mock_connect:
+            await nats_connect("nats://localhost:4222", identity_name="clipool-worker")
+
+            call_kwargs = mock_connect.call_args.kwargs
+            assert call_kwargs["inbox_prefix"] == "_INBOX.clipool-worker"
+
+    async def test_identity_name_does_not_override_explicit_inbox_prefix(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Explicit inbox_prefix in **extra wins over identity_name."""
+        monkeypatch.delenv("NATS_NKEY_SEED_PATH", raising=False)
+
+        mock_nc = AsyncMock()
+        mock_conn = AsyncMock(return_value=mock_nc)
+        with patch("roxabi_nats.connect.nats.connect", new=mock_conn) as mock_connect:
+            await nats_connect(
+                "nats://localhost:4222",
+                identity_name="hub",
+                inbox_prefix="_INBOX.hub",
+            )
+
+            call_kwargs = mock_connect.call_args.kwargs
+            assert call_kwargs["inbox_prefix"] == "_INBOX.hub"
+
     async def test_connect_without_seed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """nats.connect called without nkeys_seed_str when env var absent."""
         # Arrange

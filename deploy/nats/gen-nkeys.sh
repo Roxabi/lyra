@@ -15,7 +15,7 @@
 #   1. deploy/nats/gen-nkeys.sh (this script) — new script accepts v1 + v2
 #   2. deploy/nats/acl-matrix.json            — bumped to v2, adds request_reply_flows
 #   3. sudo ./gen-nkeys.sh --regen-authconf   — re-render auth.conf from existing seeds
-#   4. nats-server --signal reload=/var/run/nats-server.pid
+#   4. nats-server --signal reload
 # Running old gen-nkeys.sh against acl-matrix.json v2 is a hard error (version gate).
 #
 # Requires jq >= 1.6 on $PATH.
@@ -53,7 +53,7 @@ MATRIX_JSON="$(dirname "${BASH_SOURCE[0]}")/acl-matrix.json"
 # Reads deploy/nats/acl-matrix.json and populates PUB_ALLOW, SUB_ALLOW, IDENTITIES,
 # ALLOW_RESPONSES, and OWNER.
 # Aborts with a clear error if jq is missing/too old, JSON is absent/malformed,
-# .version != "1", or any identity has an invalid schema.
+# .version not in {"1","2"}, or any identity has an invalid schema.
 load_matrix() {
   # Assert jq on $PATH
   command -v jq >/dev/null 2>&1 \
@@ -73,7 +73,7 @@ load_matrix() {
   [ -f "${MATRIX_JSON}" ] \
     || error "ACL matrix not found: ${MATRIX_JSON}"
 
-  # Assert .version == "1"
+  # Assert .version in {"1","2"}
   local v
   v=$(jq -r '.version' "${MATRIX_JSON}")
   [[ "${v}" == "1" || "${v}" == "2" ]] \
@@ -106,7 +106,8 @@ load_matrix() {
       '.identities[$n].subscribe | map("\"" + . + "\"") | join(",")' "${MATRIX_JSON}")
     OWNER[$name]=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
     ALLOW_RESPONSES[$name]=$(jq -r --arg n "${name}" \
-      '.identities[$n].allow_responses // true' "${MATRIX_JSON}")
+      'if (.identities[$n] | has("allow_responses")) then .identities[$n].allow_responses else true end' \
+      "${MATRIX_JSON}")
   done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
 
   # Assert no duplicate (requester, responder, subject) tuples in request_reply_flows
@@ -128,6 +129,7 @@ load_matrix() {
       [[ -v "PUB_ALLOW[$responder]" ]] \
           || error "request_reply_flows: unknown responder '${responder}' (not in .identities)"
       inbox="\"_inbox.${requester}.>\""
+      # subject not yet used — inbox grant is unconditional per #992; narrow to subject-scoped grants in follow-up
 
       if [[ "${SUB_ALLOW[$requester]}" != *"${inbox}"* ]]; then
           if [[ -n "${SUB_ALLOW[$requester]}" ]]; then

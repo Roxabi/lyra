@@ -63,6 +63,7 @@ def sanitize_platform_meta(
     Pass ``allowlist`` to inject a platform-specific set instead of the
     hardcoded default (e.g. sourced from roxabi-contracts at call time).
     """
+    # empty frozenset is valid (block-all); only None falls back to default
     active_allowlist = allowlist if allowlist is not None else PLATFORM_META_ALLOWLIST
     stripped = [
         k for k in meta if k not in active_allowlist or k.startswith("_")

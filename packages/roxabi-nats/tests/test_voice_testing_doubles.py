@@ -1,17 +1,43 @@
-"""Three-guard tests for roxabi_contracts.voice.testing. See spec #764."""
+"""Three-guard tests for roxabi_nats.testing.voice. See spec #764.
+
+Moved from roxabi_contracts/tests/test_voice_testing_doubles.py per ADR-059 V6.
+"""
 
 from __future__ import annotations
 
-from typing import cast
+import asyncio
+import base64
+import os
+import shutil
+import subprocess
+import sys
+import textwrap
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, cast
 
 import pytest
-
-# Imports are here (not inside fixtures) to prove the module loads in the
-# test env — Guard 1 (import-time) is exercised in a separate subprocess
-# test in Slice V3.
 from nats.aio.client import Client as NATS
+from nats.errors import NoServersError
 
-from roxabi_contracts.voice.testing import FakeSttWorker, FakeTtsWorker
+import nats as _nats
+from roxabi_contracts.voice import (
+    SttRequest,
+    SttResponse,
+    TtsRequest,
+    TtsResponse,
+)
+from roxabi_contracts.voice.fixtures import (
+    sample_transcript_en,
+    silence_wav_16khz,
+)
+from roxabi_contracts.voice.subjects import SUBJECTS
+from roxabi_nats.testing.voice import FakeSttWorker, FakeTtsWorker
+
+requires_nats_server = pytest.mark.skipif(
+    shutil.which("nats-server") is None,
+    reason="nats-server not found in PATH — install via 'make nats-install'",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -55,8 +81,6 @@ async def _run_loopback_passes_guard(cls: type, url: str) -> None:
     # No nats-server running on these ports in this unit test — assert the
     # guard does NOT raise ValueError, but some other error (connection
     # refused / timeout) occurs downstream. We only care that Guard 3 passed.
-    # If Guard 3 fired incorrectly, its ValueError would not match the tuple
-    # below and pytest.raises would fail, catching the regression.
     w = cls(nats_url=url)
     with pytest.raises((OSError, asyncio.TimeoutError, NoServersError)):
         await w.start()
@@ -79,46 +103,15 @@ async def test_g3_accepts_ipv6_loopback_full(cls) -> None:
 
 @pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
 async def test_g3_non_loopback_raises_when_g2_unset(cls) -> None:
-    """Guard 3 fires even with LYRA_ENV unset — proves G3 independent of G2.
-
-    The `_clear_lyra_env` autouse fixture ensures LYRA_ENV is unset for
-    this test. This mirrors the spec's guard independence matrix row
-    explicitly rather than relying on the autouse fixture implicitly.
-    """
+    """Guard 3 fires even with LYRA_ENV unset — proves G3 independent of G2."""
     w = cls(nats_url="nats://10.0.0.5:4222")
     with pytest.raises(ValueError, match="loopback"):
         await w.start()
 
 
 # ---------------------------------------------------------------------------
-# Slice V2: roundtrip + ordering + idempotent/double-start tests
+# Roundtrip + ordering + idempotent/double-start tests
 # ---------------------------------------------------------------------------
-
-import asyncio  # noqa: E402
-import base64  # noqa: E402
-import os  # noqa: E402
-import subprocess  # noqa: E402
-import sys  # noqa: E402
-import textwrap  # noqa: E402
-from datetime import datetime, timezone  # noqa: E402
-from pathlib import Path  # noqa: E402
-from typing import Any  # noqa: E402
-
-from nats.errors import NoServersError  # noqa: E402
-
-import nats as _nats  # noqa: E402
-from _markers import requires_nats_server  # noqa: E402
-from roxabi_contracts.voice import (  # noqa: E402
-    SttRequest,
-    SttResponse,
-    TtsRequest,
-    TtsResponse,
-)
-from roxabi_contracts.voice.fixtures import (  # noqa: E402
-    sample_transcript_en,
-    silence_wav_16khz,
-)
-from roxabi_contracts.voice.subjects import SUBJECTS  # noqa: E402
 
 _ENVELOPE: dict[str, Any] = {
     "contract_version": "1",
@@ -131,7 +124,7 @@ _ENVELOPE: dict[str, Any] = {
 async def test_tts_roundtrip_default_fixture(nats_server_url: str) -> None:
     worker = FakeTtsWorker(nats_url=nats_server_url)
     await worker.start()
-    assert worker.calls == []  # contamination check — prior test leaked?
+    assert worker.calls == []
     try:
         nc = await _nats.connect(nats_server_url)
         req = TtsRequest(**_ENVELOPE, request_id="r1", text="hello")
@@ -149,14 +142,14 @@ async def test_tts_roundtrip_default_fixture(nats_server_url: str) -> None:
         await nc.close()
     finally:
         await worker.stop()
-        await asyncio.sleep(0.05)  # session-scoped fixture drain barrier
+        await asyncio.sleep(0.05)
 
 
 @requires_nats_server
 async def test_stt_roundtrip_default_fixture(nats_server_url: str) -> None:
     worker = FakeSttWorker(nats_url=nats_server_url)
     await worker.start()
-    assert worker.calls == []  # contamination check — prior test leaked?
+    assert worker.calls == []
     try:
         nc = await _nats.connect(nats_server_url)
         req = SttRequest(
@@ -178,7 +171,7 @@ async def test_stt_roundtrip_default_fixture(nats_server_url: str) -> None:
         await nc.close()
     finally:
         await worker.stop()
-        await asyncio.sleep(0.05)  # session-scoped fixture drain barrier
+        await asyncio.sleep(0.05)
 
 
 @requires_nats_server
@@ -187,7 +180,7 @@ async def test_calls_records_multiple_requests_in_order(
 ) -> None:
     worker = FakeTtsWorker(nats_url=nats_server_url)
     await worker.start()
-    assert worker.calls == []  # contamination check — prior test leaked?
+    assert worker.calls == []
     try:
         nc = await _nats.connect(nats_server_url)
         for i in range(3):
@@ -199,42 +192,34 @@ async def test_calls_records_multiple_requests_in_order(
         await nc.close()
     finally:
         await worker.stop()
-        await asyncio.sleep(0.05)  # session-scoped fixture drain barrier
+        await asyncio.sleep(0.05)
 
 
 @requires_nats_server
 async def test_dispatch_drops_malformed_json(nats_server_url: str) -> None:
-    """_dispatch silently drops requests that fail Pydantic validation.
-
-    Spec F8: `except ValidationError` path — log WARNING, no reply, no
-    entry in `.calls`. Proves the drop-on-drift contract.
-    """
+    """_dispatch silently drops requests that fail Pydantic validation."""
     worker = FakeTtsWorker(nats_url=nats_server_url)
     await worker.start()
-    assert worker.calls == []  # contamination check — prior test leaked?
+    assert worker.calls == []
     try:
         nc = await _nats.connect(nats_server_url)
-        # Use publish (not request) because request would time out when
-        # no reply arrives — publish + sleep to let the dispatch run.
         await nc.publish(SUBJECTS.tts_request, b"this is not json at all")
-        await asyncio.sleep(0.1)  # let dispatch run
+        await asyncio.sleep(0.1)
         assert worker.calls == []
         await nc.close()
     finally:
         await worker.stop()
-        await asyncio.sleep(0.05)  # session-scoped fixture drain barrier
+        await asyncio.sleep(0.05)
 
 
 @requires_nats_server
 async def test_dispatch_no_reply_records_call_without_publishing(
     nats_server_url: str,
 ) -> None:
-    """Fire-and-forget publish (no reply subject) records the call but
-    sends no reply. Spec F8: `if not msg.reply ... return` short-circuit.
-    """
+    """Fire-and-forget publish (no reply subject) records the call, sends no reply."""
     worker = FakeTtsWorker(nats_url=nats_server_url)
     await worker.start()
-    assert worker.calls == []  # contamination check — prior test leaked?
+    assert worker.calls == []
     try:
         nc = await _nats.connect(nats_server_url)
         req = TtsRequest(**_ENVELOPE, request_id="r-fire", text="hello")
@@ -245,48 +230,85 @@ async def test_dispatch_no_reply_records_call_without_publishing(
         await nc.close()
     finally:
         await worker.stop()
-        await asyncio.sleep(0.05)  # session-scoped fixture drain barrier
+        await asyncio.sleep(0.05)
 
 
 async def test_stop_is_idempotent() -> None:
     worker = FakeTtsWorker()
     await worker.stop()
-    await worker.stop()  # second call: no exception
+    await worker.stop()
+
+
+async def test_stop_nulls_disconnected_nc() -> None:
+    """stop() must null _nc/_sub even when _nc.is_connected is False."""
+    from unittest.mock import MagicMock
+
+    for cls in (FakeTtsWorker, FakeSttWorker):
+        worker = cls()
+        mock_nc = MagicMock()
+        mock_nc.is_connected = False
+        worker._nc = mock_nc  # type: ignore[assignment]
+        worker._sub = object()  # type: ignore[assignment]
+        await worker.stop()
+        assert worker._nc is None
+        assert worker._sub is None
+        mock_nc.drain.assert_not_called()
 
 
 async def test_start_twice_raises() -> None:
     """start() with a live _nc must raise RuntimeError."""
-    # Bypass actual connection by setting _nc manually to exercise the check.
     worker = FakeTtsWorker()
     worker._nc = cast(NATS, object())
     with pytest.raises(RuntimeError, match="already started"):
         await worker.start()
 
 
+async def test_start_subscribe_failure_closes_connection_tts() -> None:
+    """If subscribe() raises, start() must close _nc and null it — no leak."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    mock_nc = MagicMock()
+    mock_nc.subscribe = AsyncMock(side_effect=RuntimeError("subscribe failed"))
+    mock_nc.close = AsyncMock()
+
+    patched = AsyncMock(return_value=mock_nc)
+    with patch("roxabi_nats.testing.voice.nats_connect", new=patched):
+        worker = FakeTtsWorker(nats_url="nats://127.0.0.1:4222")
+        with pytest.raises(RuntimeError, match="subscribe failed"):
+            await worker.start()
+
+    assert worker._nc is None
+    mock_nc.close.assert_awaited_once()
+
+
+async def test_start_subscribe_failure_closes_connection_stt() -> None:
+    """If subscribe() raises, start() must close _nc and null it — no leak."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    mock_nc = MagicMock()
+    mock_nc.subscribe = AsyncMock(side_effect=RuntimeError("subscribe failed"))
+    mock_nc.close = AsyncMock()
+
+    patched = AsyncMock(return_value=mock_nc)
+    with patch("roxabi_nats.testing.voice.nats_connect", new=patched):
+        worker = FakeSttWorker(nats_url="nats://127.0.0.1:4222")
+        with pytest.raises(RuntimeError, match="subscribe failed"):
+            await worker.start()
+
+    assert worker._nc is None
+    mock_nc.close.assert_awaited_once()
+
+
 # ---------------------------------------------------------------------------
-# Slice V3: Guard 1 subprocess test + API surface invariant
+# Guard 1 subprocess test + API surface invariant
 # ---------------------------------------------------------------------------
 
 
 def test_voice_init_does_not_expose_testing() -> None:
-    """Regression guard — voice/__init__.py must NOT re-export testing.
-
-    The testing module lives behind the [testing] extra; accidental re-export
-    at the voice package root would mean a bare `import roxabi_contracts.voice`
-    in a production install would trigger Guard 1's ModuleNotFoundError even
-    when no caller wants test doubles. Spec #764 §API surface invariant.
-
-    Note: after *any* submodule import Python injects the submodule into the
-    parent package namespace, so `vars(voice_mod)` will contain 'testing'
-    once this test suite has imported it. The meaningful invariant is that
-    __init__.py does NOT import or list testing — checked via __all__ and
-    source inspection.
-    """
+    """Regression guard — roxabi_contracts.voice.__init__ must NOT re-export testing."""
     import roxabi_contracts.voice as voice_mod
 
-    # __all__ must not advertise the testing module
     assert "testing" not in voice_mod.__all__
-    # __init__.py source must not contain an explicit import of testing
     import inspect
 
     src = inspect.getsource(voice_mod)
@@ -294,7 +316,9 @@ def test_voice_init_does_not_expose_testing() -> None:
 
 
 @pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
-@pytest.mark.parametrize("value", ["PRODUCTION", "Production", "pRoDuCtIoN"])
+@pytest.mark.parametrize(
+    "value", ["production", "PRODUCTION", "Production", "pRoDuCtIoN"]
+)
 def test_g2_prod_env_case_insensitive(
     cls, value: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -304,34 +328,46 @@ def test_g2_prod_env_case_insensitive(
 
 
 def test_g1_import_without_extra(tmp_path: Path) -> None:
-    """Guard 1 — importing roxabi_contracts.voice.testing without nats-py
-    installed fails at import (not instantiation).
+    """Guard 1 — `import nats` at the top of testing.voice fires when nats-py is absent.
 
-    Implementation: craft a temp dir containing a sabotaging `nats.py`
-    that raises ModuleNotFoundError on execution, prepend it to
-    PYTHONPATH so the subprocess's `import nats` hits it before the real
-    package, then assert the import of `roxabi_contracts.voice.testing`
-    fails. This proves Guard 1 fires at module-top-level (line: `import nats`).
-
-    Regression guard: if a future change wraps `import nats` in a
-    try/except inside testing.py, this test will fail (subprocess exits 0
-    instead of 42), catching the regression before it reaches production.
+    Stubs are injected for all roxabi_nats submodules that import nats at their own
+    module top (adapter_base, connect, driver_base, _serialize), so the sabotaged
+    nats.py is only hit by the Guard 1 tripwire line in roxabi_nats.testing.voice.
     """
     sabotage = tmp_path / "nats.py"
     sabotage.write_text(
         textwrap.dedent(
             """
-            raise ModuleNotFoundError("No module named 'nats' (sabotaged)")
+            raise ModuleNotFoundError("No module named 'nats' (sabotaged)", name="nats")
             """
         ).lstrip()
     )
     script = textwrap.dedent(
         """
-        import sys
+        import sys, types
+
+        def _stub(name, **attrs):
+            m = types.ModuleType(name)
+            for k, v in attrs.items():
+                setattr(m, k, v)
+            sys.modules[name] = m
+
+        # Stub submodules that import nats at their module top so only
+        # the Guard 1 tripwire in testing/voice.py consumes the sabotage.
+        _stub("roxabi_nats.adapter_base", NatsAdapterBase=None)
+        _stub("roxabi_nats.connect", nats_connect=None)
+        _stub("roxabi_nats.driver_base", NatsDriverBase=None)
+        _stub("roxabi_nats._serialize", _TypeHintResolver=object)
+        _stub(
+            "roxabi_nats.testing._guards",
+            assert_not_production=lambda cls_name: None,
+            assert_loopback_url=lambda url: None,
+        )
+
         try:
-            import roxabi_contracts.voice.testing  # noqa: F401
+            import roxabi_nats.testing.voice  # noqa: F401
         except ModuleNotFoundError as exc:
-            if "nats" in str(exc):
+            if exc.name == "nats":
                 sys.exit(42)
             raise
         sys.exit(0)

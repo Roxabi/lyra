@@ -1302,19 +1302,27 @@ dependencies = [
 
 [package.optional-dependencies]
 testing = [
-    { name = "nats-py" },
-    { name = "roxabi-nats" },
     { name = "scipy" },
+]
+
+[package.dev-dependencies]
+test = [
+    { name = "pytest" },
+    { name = "roxabi-nats", extra = ["testing"] },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "nats-py", marker = "extra == 'testing'", specifier = ">=2.6" },
     { name = "pydantic", specifier = ">=2" },
-    { name = "roxabi-nats", marker = "extra == 'testing'", editable = "packages/roxabi-nats" },
     { name = "scipy", marker = "extra == 'testing'", specifier = ">=1.11" },
 ]
 provides-extras = ["testing"]
+
+[package.metadata.requires-dev]
+test = [
+    { name = "pytest" },
+    { name = "roxabi-nats", extras = ["testing"], editable = "packages/roxabi-nats" },
+]
 
 [[package]]
 name = "roxabi-nats"
@@ -1326,12 +1334,19 @@ dependencies = [
     { name = "roxabi-contracts" },
 ]
 
+[package.optional-dependencies]
+testing = [
+    { name = "roxabi-contracts", extra = ["testing"] },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "nats-py", specifier = ">=2.6" },
     { name = "nkeys", specifier = ">=0.2.0" },
     { name = "roxabi-contracts", editable = "packages/roxabi-contracts" },
+    { name = "roxabi-contracts", extras = ["testing"], marker = "extra == 'testing'", editable = "packages/roxabi-contracts" },
 ]
+provides-extras = ["testing"]
 
 [[package]]
 name = "roxabi-vault"

@@ -19,6 +19,12 @@ dependencies = [
     "roxabi-contracts>=0.1.0",
 ]
 
+[project.optional-dependencies]
+# nats-py arrives via core deps (not repeated here).
+# scipy + numpy come transitively via roxabi-contracts[testing] (voice fixtures).
+# ADR-059 V6: FakeTtsWorker/FakeSttWorker/FakeImageWorker live in roxabi_nats.testing.
+testing = ["roxabi-contracts[testing]"]
+
 [project.urls]
 Repository = "https://github.com/Roxabi/lyra"
 Issues = "https://github.com/Roxabi/lyra/issues"

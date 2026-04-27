@@ -41,7 +41,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
     platform_enum = Platform(platform)
 
     try:
-        nc = await nats_connect(nats_url, inbox_prefix=f"_INBOX.{platform}-adapter")
+        nc = await nats_connect(nats_url, identity_name=f"{platform}-adapter")
         log.info(
             "adapter_standalone: connected to NATS at %s",
             scrub_nats_url(nats_url),

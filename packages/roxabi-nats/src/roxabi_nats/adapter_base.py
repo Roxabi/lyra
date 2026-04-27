@@ -26,7 +26,7 @@ from nats.aio.client import Client as NATS
 # The public name CONTRACT_VERSION is served via __getattr__ below so that
 # accessing it emits a DeprecationWarning per ADR-059 (V4).
 from roxabi_contracts.envelope import CONTRACT_VERSION as _CONTRACT_VERSION
-from roxabi_nats._serialize import _EMPTY_RESOLVER, _TypeHintResolver
+from roxabi_nats._resolver import _EMPTY_RESOLVER, _TypeHintResolver
 from roxabi_nats._validate import validate_nats_token
 from roxabi_nats._version_check import (
     check_contract_version,

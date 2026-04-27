@@ -283,7 +283,7 @@ def test_g1_import_without_extra(tmp_path: Path) -> None:
     sabotage.write_text(
         textwrap.dedent(
             """
-            raise ModuleNotFoundError("No module named 'nats' (sabotaged)")
+            raise ModuleNotFoundError("No module named 'nats' (sabotaged)", name="nats")
             """
         ).lstrip()
     )
@@ -293,7 +293,7 @@ def test_g1_import_without_extra(tmp_path: Path) -> None:
         try:
             import roxabi_nats.testing.voice  # noqa: F401
         except ModuleNotFoundError as exc:
-            if "nats" in str(exc):
+            if exc.name == "nats":
                 sys.exit(42)
             raise
         sys.exit(0)

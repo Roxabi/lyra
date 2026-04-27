@@ -5,10 +5,24 @@ Moved from roxabi_contracts/tests/test_image_testing_doubles.py per ADR-059 V6.
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import os
 import shutil
+import subprocess
+import sys
+import textwrap
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 import pytest
+from nats.errors import NoServersError
 
+import nats as _nats
+from roxabi_contracts.image.fixtures import tiny_png_1x1, tiny_png_mime
+from roxabi_contracts.image.models import ImageRequest, ImageResponse
+from roxabi_contracts.image.subjects import SUBJECTS
 from roxabi_nats.testing.image import FakeImageWorker
 
 requires_nats_server = pytest.mark.skipif(
@@ -84,3 +98,169 @@ async def test_stop_is_idempotent_when_never_started() -> None:
     w = FakeImageWorker(nats_url="nats://127.0.0.1:4222")
     await w.stop()
     await w.stop()
+
+
+# ---------------------------------------------------------------------------
+# Guard 1 subprocess test
+# ---------------------------------------------------------------------------
+
+
+def test_g1_import_without_extra(tmp_path: Path) -> None:
+    """Guard 1 — importing roxabi_nats.testing.image without nats-py fails at import."""
+    sabotage = tmp_path / "nats.py"
+    sabotage.write_text(
+        textwrap.dedent(
+            """
+            raise ModuleNotFoundError("No module named 'nats' (sabotaged)", name="nats")
+            """
+        ).lstrip()
+    )
+    script = textwrap.dedent(
+        """
+        import sys
+        try:
+            import roxabi_nats.testing.image  # noqa: F401
+        except ModuleNotFoundError as exc:
+            if exc.name == "nats":
+                sys.exit(42)
+            raise
+        sys.exit(0)
+        """
+    ).lstrip()
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={
+            **os.environ,
+            "PYTHONPATH": f"{tmp_path}{os.pathsep}{os.environ.get('PYTHONPATH', '')}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 42, (
+        f"expected exit 42 (ModuleNotFoundError for nats), got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Guard 3 loopback-accept tests
+# ---------------------------------------------------------------------------
+
+
+async def _run_loopback_passes_guard(url: str) -> None:
+    # Guard 3 must NOT raise ValueError. Connection error (no server) is expected.
+    w = FakeImageWorker(nats_url=url)
+    with pytest.raises((OSError, asyncio.TimeoutError, NoServersError)):
+        await w.start()
+
+
+async def test_g3_accepts_ipv4_loopback() -> None:
+    await _run_loopback_passes_guard("nats://127.0.0.1:4222")
+
+
+async def test_g3_accepts_ipv6_loopback() -> None:
+    await _run_loopback_passes_guard("nats://[::1]:4222")
+
+
+async def test_g3_accepts_ipv6_loopback_full() -> None:
+    await _run_loopback_passes_guard("nats://[0:0:0:0:0:0:0:1]:4222")
+
+
+# ---------------------------------------------------------------------------
+# Roundtrip + behavioral tests
+# ---------------------------------------------------------------------------
+
+_ENVELOPE: dict[str, Any] = {
+    "contract_version": "1",
+    "trace_id": "test-trace",
+    "issued_at": datetime(2026, 4, 18, tzinfo=timezone.utc),
+}
+
+
+@requires_nats_server
+async def test_image_roundtrip_default_fixture(nats_server_url: str) -> None:
+    worker = FakeImageWorker(nats_url=nats_server_url)
+    await worker.start()
+    assert worker.calls == []
+    try:
+        nc = await _nats.connect(nats_server_url)
+        req = ImageRequest(
+            **_ENVELOPE,
+            request_id="r1",
+            prompt="a cat",
+            engine="flux",
+        )
+        msg = await nc.request(
+            SUBJECTS.image_request, req.model_dump_json().encode(), timeout=2.0
+        )
+        reply = ImageResponse.model_validate_json(msg.data)
+        assert reply.ok is True
+        assert reply.request_id == "r1"
+        assert reply.mime_type == tiny_png_mime
+        assert base64.b64decode(reply.image_b64) == tiny_png_1x1
+        assert len(worker.calls) == 1
+        assert worker.calls[0].prompt == "a cat"
+        await nc.close()
+    finally:
+        await worker.stop()
+        await asyncio.sleep(0.05)
+
+
+@requires_nats_server
+async def test_image_roundtrip_seed_used_sentinel(nats_server_url: str) -> None:
+    """seed_used=-1 when request has no seed (auto/random)."""
+    worker = FakeImageWorker(nats_url=nats_server_url)
+    await worker.start()
+    try:
+        nc = await _nats.connect(nats_server_url)
+        req = ImageRequest(
+            **_ENVELOPE, request_id="r-seed", prompt="dog", engine="flux"
+        )
+        msg = await nc.request(
+            SUBJECTS.image_request, req.model_dump_json().encode(), timeout=2.0
+        )
+        reply = ImageResponse.model_validate_json(msg.data)
+        assert reply.seed_used == -1
+        await nc.close()
+    finally:
+        await worker.stop()
+        await asyncio.sleep(0.05)
+
+
+@requires_nats_server
+async def test_image_dispatch_drops_malformed_json(nats_server_url: str) -> None:
+    """_dispatch silently drops requests that fail Pydantic validation."""
+    worker = FakeImageWorker(nats_url=nats_server_url)
+    await worker.start()
+    assert worker.calls == []
+    try:
+        nc = await _nats.connect(nats_server_url)
+        await nc.publish(SUBJECTS.image_request, b"not json")
+        await asyncio.sleep(0.1)
+        assert worker.calls == []
+        await nc.close()
+    finally:
+        await worker.stop()
+        await asyncio.sleep(0.05)
+
+
+@requires_nats_server
+async def test_image_dispatch_no_reply_records_call(nats_server_url: str) -> None:
+    """Fire-and-forget publish records the call but sends no reply."""
+    worker = FakeImageWorker(nats_url=nats_server_url)
+    await worker.start()
+    assert worker.calls == []
+    try:
+        nc = await _nats.connect(nats_server_url)
+        req = ImageRequest(
+            **_ENVELOPE, request_id="r-fire", prompt="bird", engine="flux"
+        )
+        await nc.publish(SUBJECTS.image_request, req.model_dump_json().encode())
+        await asyncio.sleep(0.1)
+        assert len(worker.calls) == 1
+        assert worker.calls[0].request_id == "r-fire"
+        await nc.close()
+    finally:
+        await worker.stop()
+        await asyncio.sleep(0.05)

@@ -284,14 +284,14 @@ invisible-grant bugs. Fix 3 is the guardrail that catches the next one.
 |---|---|---|
 | Fix 2 — explicit reply-path ACLs | — | done |
 | Fix 1 — lowercase normalization (all identities) | — | done — `nats_connect()` identity_name path → `_inbox.{name}`; all uppercase `_INBOX.X.>` ACL entries dropped |
-| Fix 3 — `make test-acl` in pre-push | — | open |
+| Fix 3 — `make test-acl` in pre-push | — | skipped |
 | Alert: `permissions violation` in NATS logs | — | done |
 | Alert: sustained `_stream_gen timeout` in hub logs | — | done |
-| Synthetic round-trip health probe | — | open |
+| Synthetic round-trip health probe | — | skipped |
 | Fix `gen-nkeys.sh` missing `clipool-worker` in key-gen block | — | done |
 | Remove retired identities from `acl-matrix.json` | — | done |
-| Write NATS secret rotation runbook | — | open |
-| Write post-deploy smoke test + canary rollout procedure | — | open |
+| Write NATS secret rotation runbook | — | done — `docs/ops/nats-authconf-update.md` |
+| Write post-deploy smoke test + canary rollout procedure | — | done — `docs/ops/deploy-smoke-canary.md` |
 | Post-incident verification: zero `permissions violation` for 24h | — | open |
 
 ---

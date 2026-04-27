@@ -424,8 +424,12 @@ if [ "${REGEN_AUTHCONF}" = true ]; then
     warn "nats-server not found or /etc/nats/nats.conf missing — skipped config validation."
   fi
 
+  # Mirror to user-space for make quadlet-secrets-install
+  install -m 0600 -o "${LYRA_USER}" -g "${LYRA_USER}" "${AUTH_CONF}" "${SEEDS_DIR}/auth.conf"
+
   info "auth.conf re-rendered from ${#IDENTITIES[@]} existing seeds."
-  info "Next: nats-server --signal reload"
+  info "  Mirrored → ${SEEDS_DIR}/auth.conf (for make quadlet-secrets-install)"
+  info "Next: make quadlet-secrets-install && podman kill -s HUP lyra-nats"
   exit 0
 fi
 
@@ -624,12 +628,16 @@ render_auth_conf PUBKEYS > "${AUTH_CONF}"
 chown root:nats "${AUTH_CONF}"
 chmod 0640 "${AUTH_CONF}"
 
+# Mirror auth.conf to user-space so make quadlet-secrets-install can read it
+# without root. SEEDS_DIR is user-owned (apply_permissions already ran above).
+install -m 0600 -o "${LYRA_USER}" -g "${LYRA_USER}" "${AUTH_CONF}" "${SEEDS_DIR}/auth.conf"
+
 # B4: auth.conf written successfully — clear the restore trap.
 trap - ERR INT TERM
 
 info "Done."
 info "  Seeds:     ${SEEDS_DIR}/"
-info "  auth.conf: ${AUTH_CONF}"
+info "  auth.conf: ${AUTH_CONF} (mirrored → ${SEEDS_DIR}/auth.conf)"
 info ""
 info "  hub.seed               NATS_NKEY_SEED_PATH=${SEEDS_DIR}/hub.seed"
 info "  telegram-adapter.seed  NATS_NKEY_SEED_PATH=${SEEDS_DIR}/telegram-adapter.seed"

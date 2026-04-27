@@ -1,0 +1,43 @@
+---
+title: "refactor(core): remove close() from ThreadStoreProtocol, move teardown to bootstrap lifecycle"
+issue: 984
+status: approved
+tier: F-lite
+date: 2026-04-27
+---
+
+## Problem
+
+`ThreadStoreProtocol` exposes `close()` as part of its consumer-facing API. This leaks a lifecycle concern — store ownership and teardown — into the adapter layer, which should only be a reader/writer of the store.
+
+The current flow: `SIGTERM → discord.Client.close() → DiscordAdapter.close() → self._thread_store.close()`. The adapter is not the store owner; bootstrap created it and bootstrap should destroy it. This creates an implicit coupling where the adapter must be the last to close, and a comment in `bootstrap_wiring.py:133` documents the workaround ("closed by the first adapter's close()").
+
+The normal-shutdown path in `adapter_standalone.py` never calls `dc_thread_store.close()` after the adapters finish — it only closes `dc_turn_store`. This is a resource leak that happens to be masked by the adapter calling close() internally. The error path in `wire_discord_adapters` does close it correctly (line 222-224), making the normal path inconsistent.
+
+## Who
+
+- **Primary:** bootstrap layer — owns resource lifecycle
+- **Secondary:** future adapter implementors who should not need to think about store teardown
+
+## Constraints
+
+- `dc_thread_store` is created in `adapter_standalone.py` and passed into `wire_discord_adapters`/adapters; the teardown must be added in the same function after adapters stop
+- `DiscordAdapter.close()` is called by `discord.Client` SIGTERM path — removing `thread_store.close()` from it must not cause a double-close if bootstrap also closes it
+- `runtime_checkable` on the protocol means removing `close()` will break any `isinstance(x, ThreadStoreProtocol)` checks that rely on it — need to verify no such checks exist
+- `bootstrap_wiring.py:222-224` already closes `thread_store` on the error path; the fix aligns the normal path
+
+## Out of Scope
+
+- Telegram or CLI adapter stores (not affected)
+- Hub lifecycle (`bootstrap_hub.py`) — no thread_store there
+- Any changes to `ThreadStore` concrete implementation
+- Test coverage for teardown sequence (no integration tests for shutdown path exist)
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (bootstrap + adapter), 4 files to touch, no unknowns.
+
+Signals observed:
+- 4 files: `thread_store_protocol.py`, `adapter.py` (discord), `adapter_standalone.py`, `bootstrap_wiring.py`
+- No new patterns or architecture changes
+- Fix is additive in standalone (add one `close()` call) + subtractive in protocol and adapter

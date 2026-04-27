@@ -10,6 +10,14 @@
 #
 # ACL matrix (identities + publish/subscribe allow-lists) is sourced from
 # deploy/nats/acl-matrix.json — do not edit inline; update the JSON instead.
+#
+# Deploy order (for #992+ topology-first schema):
+#   1. deploy/nats/gen-nkeys.sh (this script) — new script accepts v1 + v2
+#   2. deploy/nats/acl-matrix.json            — bumped to v2, adds request_reply_flows
+#   3. sudo ./gen-nkeys.sh --regen-authconf   — re-render auth.conf from existing seeds
+#   4. nats-server --signal reload=/var/run/nats-server.pid
+# Running old gen-nkeys.sh against acl-matrix.json v2 is a hard error (version gate).
+#
 # Requires jq >= 1.6 on $PATH.
 #
 # Usage: sudo ./deploy/nats/gen-nkeys.sh
@@ -68,8 +76,8 @@ load_matrix() {
   # Assert .version == "1"
   local v
   v=$(jq -r '.version' "${MATRIX_JSON}")
-  [ "${v}" = "1" ] \
-    || error "unsupported acl-matrix.json version: ${v} (expected \"1\")"
+  [[ "${v}" == "1" || "${v}" == "2" ]] \
+    || error "unsupported acl-matrix.json version: ${v} (expected \"1\" or \"2\")"
 
   # Validate all identities and populate arrays
   declare -gA PUB_ALLOW SUB_ALLOW OWNER ALLOW_RESPONSES
@@ -101,11 +109,24 @@ load_matrix() {
       '.identities[$n].allow_responses // true' "${MATRIX_JSON}")
   done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
 
+  # Assert no duplicate (requester, responder, subject) tuples in request_reply_flows
+  local dup_count
+  dup_count=$(jq '[.request_reply_flows[]? | {requester,responder,subject}] |
+      group_by([.requester,.responder,.subject]) |
+      map(select(length > 1)) | length' "${MATRIX_JSON}")
+  [ "${dup_count}" = "0" ] \
+      || error "acl-matrix.json: duplicate request_reply_flows entries detected (${dup_count} groups)"
+
   # Derive _inbox.{requester}.> grants from request_reply_flows
   while IFS= read -r flow; do
       local requester responder inbox
       requester=$(jq -r '.requester' <<<"$flow")
       responder=$(jq -r '.responder'  <<<"$flow")
+      # Validate against known identities
+      [[ -v "SUB_ALLOW[$requester]" ]] \
+          || error "request_reply_flows: unknown requester '${requester}' (not in .identities)"
+      [[ -v "PUB_ALLOW[$responder]" ]] \
+          || error "request_reply_flows: unknown responder '${responder}' (not in .identities)"
       inbox="\"_inbox.${requester}.>\""
 
       if [[ "${SUB_ALLOW[$requester]}" != *"${inbox}"* ]]; then

@@ -13,6 +13,7 @@ import pytest
 
 import lyra.__main__ as main_mod
 import lyra.bootstrap.bootstrap_stores as stores_mod
+import lyra.bootstrap.factory.agent_factory as agent_factory_mod
 import lyra.bootstrap.factory.unified as unified_mod
 import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
 import lyra.bootstrap.wiring.bootstrap_wiring as wiring_mod
@@ -309,7 +310,7 @@ def patch_all(
             super().__init__(**kwargs)
             captured.append(self)
 
-    monkeypatch.setattr(unified_mod, "Hub", CapturingHub)
+    monkeypatch.setattr(wiring_helpers_mod, "Hub", CapturingHub)
 
     class CapturingDcAdapter(_FakeDcAdapter):
         def __init__(self, **kwargs: object) -> None:
@@ -369,7 +370,7 @@ def patch_all(
         stores_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
     )
     monkeypatch.setattr(
-        unified_mod,
+        wiring_helpers_mod,
         "agent_row_to_config",
         lambda row, **kw: Agent(
             name=row.name,
@@ -405,7 +406,7 @@ def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_agent_store.set_bot_agent = AsyncMock()
     monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
     monkeypatch.setattr(
-        unified_mod,
+        agent_factory_mod,
         "_resolve_bot_agent_map",
         AsyncMock(return_value={("telegram", "main"): "lyra_default"}),
     )

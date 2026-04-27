@@ -253,12 +253,13 @@ class Pool:
             if self._on_resume_fn is not None:
                 try:
                     await self._on_resume_fn(session_id)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     log.exception(
                         "[pool:%s] resume count increment failed for %r",
                         self.pool_id,
                         session_id,
                     )
+                    accepted = False
         return accepted
 
     def _msg(self, key: str, fallback: str) -> str:
@@ -276,7 +277,7 @@ class Pool:
                 await self._observer._turn_store.start_session(
                     self.session_id, self.pool_id
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 log.exception("[pool:%s] start_session failed", self.pool_id)
         self._observer.reset_session_persisted()
         if self._session_reset_fn is not None:

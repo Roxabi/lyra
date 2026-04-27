@@ -4,7 +4,7 @@ Covers:
 - NATS_URL guard (SystemExit when env var missing)
 - Lockfile lifecycle (acquire / release / stale PID / live PID block)
 - Health endpoint basic response (no NATS required)
-- inbox_prefix kwarg passed to nats_connect (ADR-051, #715)
+- identity_name kwarg passed to nats_connect (ADR-051, #715)
 """
 
 from __future__ import annotations
@@ -388,15 +388,15 @@ class TestStandaloneHubPipeline:
 
 
 # ---------------------------------------------------------------------------
-# T4 — hub_standalone passes inbox_prefix to nats_connect (ADR-051, #715)
+# T4 — hub_standalone passes identity_name to nats_connect (ADR-051, #715)
 # ---------------------------------------------------------------------------
 
 
-class TestHubStandaloneInboxPrefix:
-    async def test_bootstrap_hub_standalone_passes_inbox_prefix(
+class TestHubStandaloneIdentityName:
+    async def test_bootstrap_hub_standalone_passes_identity_name(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Bootstrap calls nats_connect with inbox_prefix='_INBOX.hub' (ADR-051)."""
+        """Bootstrap calls nats_connect with identity_name='hub' (ADR-051)."""
         # Arrange
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
         raw_config = _test_config()
@@ -436,34 +436,34 @@ class TestHubStandaloneInboxPrefix:
             with pytest.raises(SystemExit, match="test-sentinel"):
                 await _bootstrap_hub_standalone(raw_config)
 
-        # Assert — nats_connect called once with the hub inbox prefix
+        # Assert — nats_connect called once with the hub identity_name
         mock_nats_connect.assert_awaited_once()
         call_kwargs = mock_nats_connect.call_args.kwargs
-        assert call_kwargs.get("inbox_prefix") == "_INBOX.hub", (
-            f"Expected inbox_prefix='_INBOX.hub', got {call_kwargs!r}"
+        assert call_kwargs.get("identity_name") == "hub", (
+            f"Expected identity_name='hub', got {call_kwargs!r}"
         )
 
 
 # ---------------------------------------------------------------------------
-# T10b — adapter_standalone passes platform inbox_prefix (ADR-051, #715)
+# T10b — adapter_standalone passes platform identity_name (ADR-051, #715)
 # ---------------------------------------------------------------------------
 
 
-class TestAdapterStandaloneInboxPrefix:
+class TestAdapterStandaloneIdentityName:
     @pytest.mark.parametrize(
-        ("platform", "expected_prefix"),
+        ("platform", "expected_identity"),
         [
-            ("telegram", "_INBOX.telegram-adapter"),
-            ("discord", "_INBOX.discord-adapter"),
+            ("telegram", "telegram-adapter"),
+            ("discord", "discord-adapter"),
         ],
     )
-    async def test_bootstrap_adapter_standalone_passes_platform_inbox_prefix(
+    async def test_bootstrap_adapter_standalone_passes_platform_identity_name(
         self,
         monkeypatch: pytest.MonkeyPatch,
         platform: str,
-        expected_prefix: str,
+        expected_identity: str,
     ) -> None:
-        """Adapter bootstrap passes per-platform inbox_prefix (ADR-051)."""
+        """Adapter bootstrap passes per-platform identity_name (ADR-051)."""
         # Arrange
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
         raw_config = _test_config()
@@ -499,11 +499,11 @@ class TestAdapterStandaloneInboxPrefix:
             with pytest.raises(SystemExit, match="test-sentinel"):
                 await _bootstrap_adapter_standalone(raw_config, platform)
 
-        # Assert — nats_connect called with platform-derived inbox prefix
+        # Assert — nats_connect called with platform-derived identity_name
         mock_nats_connect.assert_awaited_once()
         call_kwargs = mock_nats_connect.call_args.kwargs
-        assert call_kwargs.get("inbox_prefix") == expected_prefix, (
-            f"platform={platform!r}: expected inbox_prefix={expected_prefix!r},"
+        assert call_kwargs.get("identity_name") == expected_identity, (
+            f"platform={platform!r}: expected identity_name={expected_identity!r},"
             f" got {call_kwargs!r}"
         )
 

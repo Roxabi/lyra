@@ -17,19 +17,11 @@ Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
 Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
 Secret=lyra-nkey-clipool-worker,type=mount,target=clipool-worker.seed,mode=0400,uid=1500,gid=1500
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/clipool-worker.seed
-# ~/.claude/ mounts (moved from lyra-hub.container — see issue #941)
-# rw: CLI writes tokens + project memory at runtime
-# ro: config/skills read at startup
-# z: shared SELinux label
-Volume=%h/.claude/.credentials.json:/home/lyra/.claude/.credentials.json:z
-Volume=%h/.claude/settings.json:/home/lyra/.claude/settings.json:ro,z
-Volume=%h/.claude/settings.local.json:/home/lyra/.claude/settings.local.json:ro,z
-Volume=%h/.claude/CLAUDE.md:/home/lyra/.claude/CLAUDE.md:ro,z
-Volume=%h/.claude/projects:/home/lyra/.claude/projects:z
-Volume=%h/.claude/plugins:/home/lyra/.claude/plugins:ro,z
-Volume=%h/.claude/skills:/home/lyra/.claude/skills:ro,z
-Volume=%h/.claude/shared:/home/lyra/.claude/shared:ro,z
-Volume=%h/.claude/.git:/home/lyra/.claude/.git:ro,z
+# ~/.claude/ — directory mount (not file mounts) so Syncthing's atomic renames
+# (unlink old inode → rename new) remain transparent to the container.
+# Single-file bind-mounts bind the inode at mount time; after an atomic replace
+# the container holds a Links:0 ghost and never sees the refreshed token.
+Volume=%h/.claude:/home/lyra/.claude:z
 Volume=%h/.claude.json:/home/lyra/.claude.json:z
 # Workspace — mirrors host ~/projects so claude subprocess picks up per-project CLAUDE.md
 Volume=%h/projects:/home/lyra/projects:z
@@ -43,9 +35,6 @@ TimeoutStopSec=120
 CPUQuota=400%
 ExecStartPre=/bin/bash -c 'test -e %h/.claude.json || echo "{}" > %h/.claude.json'
 ExecStartPre=/bin/bash -c 'test -e %h/.claude/.credentials.json || echo "{}" > %h/.claude/.credentials.json'
-ExecStartPre=/bin/bash -c 'test -e %h/.claude/settings.json || echo "{}" > %h/.claude/settings.json'
-ExecStartPre=/bin/bash -c 'test -e %h/.claude/settings.local.json || echo "{}" > %h/.claude/settings.local.json'
-ExecStartPre=/bin/bash -c 'test -e %h/.claude/CLAUDE.md || touch %h/.claude/CLAUDE.md'
 
 [Install]
 WantedBy=default.target

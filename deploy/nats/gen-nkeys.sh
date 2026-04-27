@@ -225,6 +225,75 @@ if [ "${TEMPLATE_ONLY}" = true ]; then
   exit 0
 fi
 
+# ── emit-merged-authconf mode: write merged lyra+voicecli auth.conf ──────────
+# Purpose: produce a single auth.conf covering live identities:
+#   hub, telegram-adapter, discord-adapter (lyra seeds → ~/.lyra/nkeys/)
+#   voice-tts, voice-stt                   (voicecli seeds → ~/.voicecli/nkeys/)
+# tts-adapter and stt-adapter were retired in #690 and removed from the ACL matrix (postmortem Phase 1).
+# No root required — writes to user-owned ~/.lyra/nkeys/auth.conf.
+# Seeds must already exist (run gen-nkeys.sh once, then relocate voice seeds per
+# ADR-055 D4: cp ~/.lyra/nkeys/voice-*.seed ~/.voicecli/nkeys/).
+if [ "${EMIT_MERGED_AUTHCONF}" = true ]; then
+  NK_BIN=$(command -v nk || echo "")
+  [ -n "${NK_BIN}" ] || error "nk not found on \$PATH — run gen-nkeys.sh without flags first (it will install nk)"
+
+  VOICECLI_SEEDS_DIR="${HOME}/.voicecli/nkeys"
+  MERGED_AUTH_CONF="${SEEDS_DIR}/auth.conf"
+
+  # Live identities for merged auth.conf
+  MERGED_LYRA_IDENTITIES=("hub" "telegram-adapter" "discord-adapter")
+  MERGED_VOICE_IDENTITIES=("voice-tts" "voice-stt")
+
+  declare -A MERGED_PUBKEYS
+
+  # Derive lyra identity pubkeys from ~/.lyra/nkeys/
+  for name in "${MERGED_LYRA_IDENTITIES[@]}"; do
+    seed_file="${SEEDS_DIR}/${name}.seed"
+    [ -f "${seed_file}" ] \
+      || error "Missing lyra seed: ${seed_file} — run gen-nkeys.sh without flags first"
+    pubkey=$("${NK_BIN}" -inkey "${seed_file}" -pubout 2>/dev/null) \
+      || error "Failed to derive pubkey from ${seed_file}"
+    MERGED_PUBKEYS[$name]="${pubkey}"
+    info "Derived pubkey: ${name} (from ${seed_file})"
+  done
+
+  # Derive voicecli identity pubkeys from ~/.voicecli/nkeys/
+  for name in "${MERGED_VOICE_IDENTITIES[@]}"; do
+    # Map identity name to seed filename: voice-tts → voice-tts.seed
+    seed_file="${VOICECLI_SEEDS_DIR}/${name}.seed"
+    [ -f "${seed_file}" ] \
+      || error "Missing voicecli seed: ${seed_file} — run: mkdir -p ~/.voicecli/nkeys && cp ~/.lyra/nkeys/${name}.seed ~/.voicecli/nkeys/"
+    pubkey=$("${NK_BIN}" -inkey "${seed_file}" -pubout 2>/dev/null) \
+      || error "Failed to derive pubkey from ${seed_file}"
+    MERGED_PUBKEYS[$name]="${pubkey}"
+    info "Derived pubkey: ${name} (from ${seed_file})"
+  done
+
+  # Build IDENTITIES subset for render_auth_conf (must be in IDENTITIES from acl-matrix)
+  IDENTITIES=("${MERGED_LYRA_IDENTITIES[@]}" "${MERGED_VOICE_IDENTITIES[@]}")
+
+  # Backup existing merged auth.conf if present
+  if [ -f "${MERGED_AUTH_CONF}" ]; then
+    BACKUP_MERGED="${MERGED_AUTH_CONF}.bak.$(date +%Y%m%d-%H%M%S)"
+    cp -a "${MERGED_AUTH_CONF}" "${BACKUP_MERGED}"
+    chmod 0600 "${BACKUP_MERGED}"
+    info "Backed up existing auth.conf → ${BACKUP_MERGED}"
+  fi
+
+  # Render and write atomically (temp + rename)
+  TMP_MERGED=$(mktemp)
+  trap 'rm -f "${TMP_MERGED}"' EXIT
+  render_auth_conf MERGED_PUBKEYS > "${TMP_MERGED}"
+  mkdir -p "${SEEDS_DIR}"
+  mv "${TMP_MERGED}" "${MERGED_AUTH_CONF}"
+  chmod 0600 "${MERGED_AUTH_CONF}"
+
+  info "Merged auth.conf written → ${MERGED_AUTH_CONF}"
+  info "Identities: ${IDENTITIES[*]}"
+  info "Next: make quadlet-secrets-install  # uploads as Podman secret lyra-nats-auth"
+  exit 0
+fi
+
 # ── root check (required for all other modes) ──────────────────────────────────
 [ "$(id -u)" -eq 0 ] || error "Must be run as root (sudo ./deploy/nats/gen-nkeys.sh)"
 
@@ -357,75 +426,6 @@ if [ "${REGEN_AUTHCONF}" = true ]; then
 
   info "auth.conf re-rendered from ${#IDENTITIES[@]} existing seeds."
   info "Next: nats-server --signal reload"
-  exit 0
-fi
-
-# ── emit-merged-authconf mode: write merged lyra+voicecli auth.conf ──────────
-# Purpose: produce a single auth.conf covering live identities:
-#   hub, telegram-adapter, discord-adapter (lyra seeds → ~/.lyra/nkeys/)
-#   voice-tts, voice-stt                   (voicecli seeds → ~/.voicecli/nkeys/)
-# tts-adapter and stt-adapter were retired in #690 and removed from the ACL matrix (postmortem Phase 1).
-# No root required — writes to user-owned ~/.lyra/nkeys/auth.conf.
-# Seeds must already exist (run gen-nkeys.sh once, then relocate voice seeds per
-# ADR-055 D4: cp ~/.lyra/nkeys/voice-*.seed ~/.voicecli/nkeys/).
-if [ "${EMIT_MERGED_AUTHCONF}" = true ]; then
-  NK_BIN=$(command -v nk || echo "")
-  [ -n "${NK_BIN}" ] || error "nk not found on \$PATH — run gen-nkeys.sh without flags first (it will install nk)"
-
-  VOICECLI_SEEDS_DIR="${HOME}/.voicecli/nkeys"
-  MERGED_AUTH_CONF="${SEEDS_DIR}/auth.conf"
-
-  # Live identities for merged auth.conf
-  MERGED_LYRA_IDENTITIES=("hub" "telegram-adapter" "discord-adapter")
-  MERGED_VOICE_IDENTITIES=("voice-tts" "voice-stt")
-
-  declare -A MERGED_PUBKEYS
-
-  # Derive lyra identity pubkeys from ~/.lyra/nkeys/
-  for name in "${MERGED_LYRA_IDENTITIES[@]}"; do
-    seed_file="${SEEDS_DIR}/${name}.seed"
-    [ -f "${seed_file}" ] \
-      || error "Missing lyra seed: ${seed_file} — run gen-nkeys.sh without flags first"
-    pubkey=$("${NK_BIN}" -inkey "${seed_file}" -pubout 2>/dev/null) \
-      || error "Failed to derive pubkey from ${seed_file}"
-    MERGED_PUBKEYS[$name]="${pubkey}"
-    info "Derived pubkey: ${name} (from ${seed_file})"
-  done
-
-  # Derive voicecli identity pubkeys from ~/.voicecli/nkeys/
-  for name in "${MERGED_VOICE_IDENTITIES[@]}"; do
-    # Map identity name to seed filename: voice-tts → voice-tts.seed
-    seed_file="${VOICECLI_SEEDS_DIR}/${name}.seed"
-    [ -f "${seed_file}" ] \
-      || error "Missing voicecli seed: ${seed_file} — run: mkdir -p ~/.voicecli/nkeys && cp ~/.lyra/nkeys/${name}.seed ~/.voicecli/nkeys/"
-    pubkey=$("${NK_BIN}" -inkey "${seed_file}" -pubout 2>/dev/null) \
-      || error "Failed to derive pubkey from ${seed_file}"
-    MERGED_PUBKEYS[$name]="${pubkey}"
-    info "Derived pubkey: ${name} (from ${seed_file})"
-  done
-
-  # Build IDENTITIES subset for render_auth_conf (must be in IDENTITIES from acl-matrix)
-  IDENTITIES=("${MERGED_LYRA_IDENTITIES[@]}" "${MERGED_VOICE_IDENTITIES[@]}")
-
-  # Backup existing merged auth.conf if present
-  if [ -f "${MERGED_AUTH_CONF}" ]; then
-    BACKUP_MERGED="${MERGED_AUTH_CONF}.bak.$(date +%Y%m%d-%H%M%S)"
-    cp -a "${MERGED_AUTH_CONF}" "${BACKUP_MERGED}"
-    chmod 0600 "${BACKUP_MERGED}"
-    info "Backed up existing auth.conf → ${BACKUP_MERGED}"
-  fi
-
-  # Render and write atomically (temp + rename)
-  TMP_MERGED=$(mktemp)
-  trap 'rm -f "${TMP_MERGED}"' EXIT
-  render_auth_conf MERGED_PUBKEYS > "${TMP_MERGED}"
-  mkdir -p "${SEEDS_DIR}"
-  mv "${TMP_MERGED}" "${MERGED_AUTH_CONF}"
-  chmod 0600 "${MERGED_AUTH_CONF}"
-
-  info "Merged auth.conf written → ${MERGED_AUTH_CONF}"
-  info "Identities: ${IDENTITIES[*]}"
-  info "Next: make quadlet-secrets-install  # uploads as Podman secret lyra-nats-auth"
   exit 0
 fi
 

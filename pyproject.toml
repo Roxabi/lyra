@@ -5,7 +5,7 @@ description = "Lyra by Roxabi — Personal AI agent engine"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "roxabi-vault",
-    "cryptography>=46.0.7",
+    "cryptography>=47.0.0",
     "pydantic>=2.12.5",
     "pyyaml>=6.0",  # YAML parsing for deploy/gen-supervisor-conf.py
     # Adapters

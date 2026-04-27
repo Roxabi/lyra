@@ -84,7 +84,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
         pool: CliPool,
         *,
         timeout: float = 30.0,
-        inbox_prefix: str | None = None,
+        identity_name: str | None = None,
     ) -> None:
         super().__init__(
             subject=_CMD_SUBJECT,
@@ -94,7 +94,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             timeout=timeout,
             heartbeat_subject=_HEARTBEAT_SUBJECT,
             heartbeat_interval=_HEARTBEAT_INTERVAL,
-            inbox_prefix=inbox_prefix,
+            identity_name=identity_name,
         )
         self._pool = pool
 

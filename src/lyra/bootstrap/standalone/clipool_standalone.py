@@ -39,7 +39,7 @@ async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
     worker = CliPoolNatsWorker(
         cli_pool,
         timeout=cli_pool_cfg.default_timeout,
-        inbox_prefix="_INBOX.clipool-worker",
+        identity_name="clipool-worker",
     )
     log.info("clipool: starting CliPoolNatsWorker on lyra.clipool.cmd")
     try:

@@ -12,6 +12,7 @@ from urllib.parse import urlparse, urlunparse
 from nats.aio.client import Client as NATS
 
 import nats
+from roxabi_nats._validate import validate_nats_token as _validate_nats_token
 
 log = logging.getLogger(__name__)
 
@@ -141,23 +142,32 @@ async def _default_reconnected_cb() -> None:
 
 
 async def nats_connect(
-    url: str, *, identity_name: str | None = None, **extra: Any
+    url: str,
+    *,
+    identity_name: str | None = None,
+    inbox_prefix: str | None = None,
+    **extra: Any,
 ) -> NATS:
     """Connect to NATS, optionally authenticating with an nkey seed.
 
     If NATS_NKEY_SEED_PATH is set, reads the seed file and passes it
     via nkeys_seed_str. If unset, connects without authentication (dev mode).
 
-    ``identity_name`` sets ``inbox_prefix="_INBOX.{identity_name}"`` so that
-    nats-py scopes reply-to subjects to the identity's ACL-allowed prefix
-    (ADR-051). Callers may still pass ``inbox_prefix`` directly via ``**extra``
-    when they need a custom value; ``identity_name`` is ignored in that case.
+    ``identity_name`` sets ``inbox_prefix="_INBOX.{identity_name}"`` (ADR-051),
+    scoping nats-py reply-to subjects to the identity's ACL-allowed prefix.
+    ``inbox_prefix`` sets the prefix directly. The two are mutually exclusive —
+    passing both raises ``ValueError``. Both values are validated via
+    ``validate_nats_token`` before use.
 
     Extra keyword arguments (e.g. ``error_cb``, ``disconnected_cb``,
     ``reconnected_cb``) are forwarded to ``nats.connect()``.
     Auth-related keys (``nkeys_seed_str``, ``token``, ``user``, ``password``,
     ``tls``) are rejected — authentication is owned exclusively by this helper.
     """
+    if identity_name is not None and inbox_prefix is not None:
+        raise ValueError(
+            "nats_connect: identity_name and inbox_prefix are mutually exclusive"
+        )
     bad = _RESERVED_KEYS & extra.keys()
     if bad:
         raise ValueError(
@@ -169,8 +179,12 @@ async def nats_connect(
         "reconnected_cb": _default_reconnected_cb,
         **extra,
     }
-    if identity_name is not None and "inbox_prefix" not in kwargs:
+    if identity_name is not None:
+        _validate_nats_token(identity_name, kind="identity_name")
         kwargs["inbox_prefix"] = f"_INBOX.{identity_name}"
+    elif inbox_prefix is not None:
+        _validate_nats_token(inbox_prefix, kind="inbox_prefix")
+        kwargs["inbox_prefix"] = inbox_prefix
     seed = _read_nkey_seed()
     if seed:
         kwargs["nkeys_seed_str"] = seed

@@ -84,23 +84,41 @@ class TestNatsConnect:
             call_kwargs = mock_connect.call_args.kwargs
             assert call_kwargs["inbox_prefix"] == "_INBOX.clipool-worker"
 
-    async def test_identity_name_does_not_override_explicit_inbox_prefix(
+    async def test_inbox_prefix_sets_inbox_prefix_directly(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Explicit inbox_prefix in **extra wins over identity_name."""
+        """inbox_prefix kwarg forwards value directly to nats.connect."""
         monkeypatch.delenv("NATS_NKEY_SEED_PATH", raising=False)
 
         mock_nc = AsyncMock()
         mock_conn = AsyncMock(return_value=mock_nc)
         with patch("roxabi_nats.connect.nats.connect", new=mock_conn) as mock_connect:
+            await nats_connect("nats://localhost:4222", inbox_prefix="_INBOX.hub")
+
+            call_kwargs = mock_connect.call_args.kwargs
+            assert call_kwargs["inbox_prefix"] == "_INBOX.hub"
+
+    async def test_identity_name_and_inbox_prefix_mutually_exclusive(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ValueError raised when both identity_name and inbox_prefix are set."""
+        monkeypatch.delenv("NATS_NKEY_SEED_PATH", raising=False)
+
+        with pytest.raises(ValueError, match="mutually exclusive"):
             await nats_connect(
                 "nats://localhost:4222",
                 identity_name="hub",
                 inbox_prefix="_INBOX.hub",
             )
 
-            call_kwargs = mock_connect.call_args.kwargs
-            assert call_kwargs["inbox_prefix"] == "_INBOX.hub"
+    async def test_identity_name_invalid_token_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ValueError raised when identity_name contains invalid NATS token chars."""
+        monkeypatch.delenv("NATS_NKEY_SEED_PATH", raising=False)
+
+        with pytest.raises(ValueError, match="Invalid identity_name"):
+            await nats_connect("nats://localhost:4222", identity_name="bad>name")
 
     async def test_connect_without_seed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """nats.connect called without nkeys_seed_str when env var absent."""

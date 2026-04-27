@@ -77,20 +77,22 @@ class TestLockfileLifecycle:
     def test_lockfile_blocks_second_instance(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """_acquire_lockfile exits when the lockfile holds a live PID."""
-        # Arrange — write our own PID (we are alive)
+        """_acquire_lockfile exits when the lockfile holds a live foreign PID."""
+        # Use parent PID — alive but not os.getpid(), so it hits the "already
+        # running" branch rather than the container-restart overwrite path
+        # (added in fix(lockfile): handle stale PID-1 lock on container OOM-kill).
+        live_foreign_pid = os.getppid()
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         lockfile = tmp_path.resolve() / "hub.lock"
-        lockfile.write_text(str(os.getpid()))
+        lockfile.write_text(str(live_foreign_pid))
 
         # Act / Assert — should sys.exit because PID is alive
         with pytest.raises(SystemExit) as exc_info:
             _acquire_lockfile()
 
         assert exc_info.value.code is not None
-        # Message should mention the PID and lockfile path
         message = str(exc_info.value.code)
-        assert str(os.getpid()) in message or "already running" in message
+        assert str(live_foreign_pid) in message or "already running" in message
 
     def test_lockfile_overwrites_stale_pid(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

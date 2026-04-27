@@ -49,8 +49,6 @@ log = logging.getLogger(__name__)
 
 
 class FakeImageWorker:
-    _stopping: bool = False
-
     def __init__(
         self,
         nats_url: str = "nats://127.0.0.1:4222",
@@ -63,6 +61,7 @@ class FakeImageWorker:
         )
         self._nc: NATS | None = None
         self._sub: Subscription | None = None
+        self._stopping: bool = False
         self.calls: list[ImageRequest] = []
 
     async def start(self) -> None:
@@ -95,7 +94,6 @@ class FakeImageWorker:
                 )
         self._sub = None
         self._nc = None
-        self._stopping = False
 
     async def _dispatch(self, msg: Msg) -> None:
         if self._stopping:

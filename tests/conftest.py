@@ -14,6 +14,7 @@ import pytest
 import lyra.__main__ as main_mod
 import lyra.bootstrap.bootstrap_stores as stores_mod
 import lyra.bootstrap.factory.unified as unified_mod
+import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
 import lyra.bootstrap.wiring.bootstrap_wiring as wiring_mod
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
@@ -169,11 +170,13 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_nats_bus = MagicMock()
     fake_nats_bus.start = AsyncMock()
     fake_nats_bus.stop = AsyncMock()
-    monkeypatch.setattr(unified_mod, "NatsBus", lambda **kw: fake_nats_bus)
+    monkeypatch.setattr(wiring_helpers_mod, "NatsBus", lambda **kw: fake_nats_bus)
     fake_audit_sink = MagicMock()
     fake_audit_sink.provision = AsyncMock()
     fake_audit_sink.emit = AsyncMock()
-    monkeypatch.setattr(unified_mod, "JetStreamAuditSink", lambda: fake_audit_sink)
+    monkeypatch.setattr(
+        wiring_helpers_mod, "JetStreamAuditSink", lambda: fake_audit_sink
+    )
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
 
@@ -250,10 +253,10 @@ def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
             result[("discord", bot_cfg.bot_id)] = "lyra_default"
         return result
 
-    monkeypatch.setattr(unified_mod, "_resolve_bot_agent_map", _fake_resolve)
+    monkeypatch.setattr(wiring_helpers_mod, "_resolve_bot_agent_map", _fake_resolve)
 
     monkeypatch.setattr(
-        unified_mod,
+        wiring_helpers_mod,
         "agent_row_to_config",
         lambda row, **kw: Agent(
             name=row.name if hasattr(row, "name") else "lyra_default",

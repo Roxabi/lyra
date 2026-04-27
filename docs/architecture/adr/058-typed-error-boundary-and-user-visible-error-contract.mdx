@@ -1,0 +1,180 @@
+---
+title: "ADR-058: Typed Error Boundary and User-Visible Error Contract"
+description: Establish a structural contract for surfacing user-visible errors through a typed exception hierarchy and an ErrorBoundaryMiddleware, addressing silent-failure gaps found in #945.
+---
+
+## Status
+
+Proposed
+
+## Context
+
+Issue #945 identified four silent-failure gaps in voice message download paths across the
+Telegram and Discord adapters. The root cause is structural: there is no contract that
+forces a user-visible error to produce a reply. Each adapter and middleware catches
+exceptions ad-hoc and may return silently.
+
+Current state:
+- `telegram_inbound.py:186` — `except Exception: return` with no user reply on download failure.
+- `discord_audio.py:158` — `except Exception: return` with no user reply on `attachment.read()` failure.
+- `middleware_stt.py:85` — `if hub._msg_manager is None: return _DROP` silently drops voice messages when the message manager is not wired.
+- `hub_dispatch.py:122-129` — `dispatch_audio()` / `dispatch_response()` failures are caught with `log.exception` and no further action; the error reply itself can be silently lost.
+
+The middleware pipeline (`MiddlewarePipeline`) is fully sequential and covers messages
+that enter `Hub.run()`. Adapter-level download failures occur before
+`push_to_hub_guarded()` and are therefore outside the pipeline boundary entirely.
+
+## Options Considered
+
+### Option A: ErrorBoundaryMiddleware only (outermost pipeline stage)
+
+Add a middleware at position 0 that catches `LyraUserError` and any unhandled exception,
+dispatches a reply, and returns `_DROP`.
+
+- **Pros:** Minimal surface area. Catches all future pipeline-internal failures. Clean
+  composition with existing `MiddlewarePipeline`.
+- **Cons:** Does not close the #945 gaps. Adapter download failures are pre-pipeline and
+  never reach the middleware chain. The four actual silent-failure sites are unchanged.
+
+### Option B: Typed exception hierarchy + adapter-level catch + ErrorBoundaryMiddleware + NullMessageManager
+
+Define `LyraUserError` with subclasses matching the known failure modes. Raise typed
+exceptions at the four identified sites. Catch them in each adapter's download function
+with a local reply, and add `ErrorBoundaryMiddleware` as a pipeline-level safety net.
+Replace the `_msg_manager is None` guard with a `NullMessageManager`.
+
+- **Pros:** Closes all four #945 gaps. Creates a structural contract (raising a typed
+  exception is the only way to trigger a user reply). `ErrorBoundaryMiddleware` is a
+  genuine backstop for future pipeline-internal failures.
+- **Cons:** Requires changes in both adapter and core layers. Adapter error handling must
+  route replies without going through the pipeline (adapter does not hold a hub reference
+  at the download callsite; reply must be issued via the platform API directly or via a
+  narrow callback).
+
+### Option C: Result type throughout the pipeline
+
+Replace `PipelineResult` with `Result[PipelineResult, UserError]` and propagate error
+values explicitly.
+
+- **Pros:** Makes error paths visible at the type level.
+- **Cons:** Invasive change across all ten middleware stages, all test fixtures, and all
+  callers of `pipeline.process()`. Disproportionate to the problem scope. Rejected.
+
+## Decision
+
+Adopt **Option B** as the target architecture.
+
+**Layer 1 — Typed exception hierarchy**
+
+Define in `lyra.core.errors` (new module, domain layer):
+
+```python
+class LyraUserError(Exception):
+    """Base class for errors that must produce a user-visible reply."""
+    def __init__(self, key: str, fallback_text: str = "") -> None:
+        self.key = key
+        self.fallback_text = fallback_text
+
+class AudioDownloadError(LyraUserError): ...
+class AudioTooLargeError(LyraUserError): ...
+class AudioInvalidFormatError(LyraUserError): ...
+class SttError(LyraUserError): ...
+```
+
+`key` is the `MessageManager` template key. `fallback_text` is a degraded-mode literal
+used only when `MessageManager` is unavailable; it must not become the primary
+presentation path.
+
+**Layer 2 — Adapter-level catch**
+
+At each of the four #945 sites, replace `except Exception: return` with:
+
+```python
+except AudioTooLargeError:
+    await _send_reply(adapter, msg, key="audio_too_large")
+    return
+except AudioDownloadError:
+    await _send_reply(adapter, msg, key="audio_download_error")
+    return
+```
+
+Replies are issued via the platform API (not `hub.dispatch_response`) because the message
+has not yet entered the hub at this point. This is consistent with the existing
+audio-too-large path already implemented in `discord_audio.py:143-153`.
+
+**Layer 3 — ErrorBoundaryMiddleware**
+
+Add as position 0 in `build_default_pipeline()`:
+
+```python
+class ErrorBoundaryMiddleware:
+    async def __call__(self, msg, ctx, next):
+        try:
+            return await next(msg, ctx)
+        except LyraUserError as e:
+            content = ctx.hub.get_message(e.key) or e.fallback_text or "An error occurred."
+            await ctx.hub.dispatch_response(msg, Response(content=content))
+            return _DROP
+        except Exception:
+            log.exception("unhandled pipeline error for msg id=%s", msg.id)
+            key = "internal_error"
+            content = ctx.hub.get_message(key) or "An internal error occurred."
+            await ctx.hub.dispatch_response(msg, Response(content=content))
+            return _DROP
+```
+
+This is a safety net for pipeline-internal failures, not the primary fix for #945.
+
+**Layer 4 — NullMessageManager**
+
+Replace the `if hub._msg_manager is None: return _DROP` guard in `SttMiddleware` with a
+`NullMessageManager` that returns an empty string for any key:
+
+```python
+class NullMessageManager:
+    def get(self, key: str) -> str:
+        return ""
+```
+
+`Hub.__init__` signature remains unchanged: `msg_manager: MessageManager | None = None`.
+When `None` is passed, `Hub` instantiates a `NullMessageManager` internally. This avoids
+a breaking change to the constructor and preserves all existing test fixtures.
+
+**Known limitation — second-order failure in error dispatch**
+
+If `dispatch_response()` itself fails inside `ErrorBoundaryMiddleware`, the error reply is
+lost. `hub_dispatch.py` already catches these failures with `log.exception`. This is
+accepted as a second-order failure mode outside this ADR's scope.
+
+**NATS adapter**
+
+NATS envelope failures (`nats_envelope_handlers.py`) are infrastructure-level (malformed
+envelope, schema version mismatch) and occur before any message enters the hub. These are
+correctly handled by `log.warning; return`. They do not involve user-visible errors and
+are out of scope.
+
+## Consequences
+
+### Positive
+- Raising `LyraUserError` becomes the single structural mechanism to guarantee a user
+  reply; all other exception handling becomes a fallback, not the primary path.
+- `ErrorBoundaryMiddleware` closes a previously open risk: any future middleware that
+  raises unexpectedly will produce a user reply rather than a silent drop.
+- `NullMessageManager` removes the last `_msg_manager is None` silent-drop in the
+  pipeline, making misconfiguration observable.
+- Typed subclasses (`AudioDownloadError`, `AudioTooLargeError`) make error sites
+  grep-able and testable in isolation.
+
+### Negative
+- Adapter download functions must be refactored to raise typed exceptions rather than
+  returning silently; callers must be updated.
+- `ErrorBoundaryMiddleware` adds a try/except wrapper around the entire pipeline chain,
+  adding a small overhead to every message (negligible, but worth noting).
+- `fallback_text` on the exception creates a mild coupling between domain error identity
+  and presentation. Must not be used as the normal path.
+
+### Neutral
+- `LyraUserError` is a domain-layer type; it must not import from adapters or infrastructure.
+- The `NullMessageManager` pattern is consistent with existing nullable dependencies in
+  Hub (e.g., `circuit_registry`, `event_bus`).
+- CLI adapter has no audio download path and is unaffected.

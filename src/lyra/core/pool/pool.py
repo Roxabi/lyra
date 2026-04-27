@@ -120,6 +120,9 @@ class Pool:
         self._processor = PoolProcessor(self)
 
     # Backward-compat shims — delegate to observer so callers keep working.
+    # TODO: ADR-059 remove once callers updated:
+    #   session_lifecycle.py, test_turn_store.py, test_pool_advanced.py
+    #   must access pool._observer directly or use PoolObserver API.
     @property
     def _turn_store(self) -> TurnStore | None:
         return self._observer._turn_store

@@ -1,0 +1,346 @@
+---
+title: "ADR-059: Hexagonal / Clean Architecture Canonical Model for the Roxabi Ecosystem"
+description: Establishes the authoritative 4-layer dependency model, layer placement rules, Composition Root convention, and importlinter enforcement patterns for Lyra, voiceCLI, roxabi-nats, and roxabi-contracts.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Three repositories have been audited for architectural violations:
+
+- **Lyra** (`src/lyra/`) — AI agent engine; partially hexagonal since ADR-048 (infrastructure layer) and ADR-057 (audit port/adapter split).
+- **voiceCLI** (`src/voicecli/`) — TTS/STT service with GPU model management.
+- **roxabi-nats** + **roxabi-contracts** — shared NATS transport SDK and schema package, consumed by multiple repos.
+
+The audits surfaced the same failure mode across all three: Domain/Application code imports Infrastructure concretions directly, bypassing or omitting the port abstraction entirely. The result is tight coupling, untestable seams, and layer violations that accumulate as features are added.
+
+### Audit findings summary
+
+**Lyra — P0 (dependency rule broken)**
+
+| Location | Violation |
+|---|---|
+| `core/stores/agent_store_protocol.py:106` | `make_agent_store()` factory performs a runtime import of a concrete SQLite class; factory lives in Domain, should be in Composition Root |
+| `core/stores/agent_store_migrations.py` | `aiosqlite` migration runner lives in `core/` — belongs in `infrastructure/stores/` |
+| `commands/pairing/handlers.py:13` | Application handler imports `get_pairing_manager` from Infrastructure directly; no port exists |
+| `commands/identity/handlers.py:10` | Application handler imports concrete `IdentityAliasStore`; no `IdentityAliasStoreProtocol` in `core/` |
+
+**Lyra — P1 (missing ports / enforcement gaps)**
+
+| Location | Violation |
+|---|---|
+| `adapters/discord/adapter.py:51` | Imports concrete `ThreadStore` (SQLite); no `ThreadStoreProtocol` |
+| `config.py:25-26` | Shared config imports from `adapters.discord` + `adapters.telegram` — blast radius on every test |
+| `llm/base.py` | `LlmProvider` port lives in the Infrastructure tier, not Domain |
+| `stt/__init__.py`, `tts/__init__.py` | `STTProtocol`, `TtsProtocol` outside `core/`, unguarded by importlinter |
+| `.importlinter` | `lyra.commands` and `lyra.agents` absent from layer contracts |
+
+**voiceCLI — P0**
+
+| Location | Violation |
+|---|---|
+| `engine.py` | `TTSEngine` ABC (Domain port) co-located with CUDA factory functions (Infrastructure) |
+| `transcribe.py:63` | Imports `SOCKET_PATH` from `stt_daemon` — peer Infrastructure coupling with no port |
+| `api.py:398-427` | Application layer imports `daemon.py` + `model_registry` directly; no `SynthesisPort` |
+
+**voiceCLI — P1**
+
+| Location | Violation |
+|---|---|
+| No `STTEngine` port | Port is absent entirely; callers reference concrete implementations |
+| `cli.py` | 1 548 lines — god object mixing orchestration, bootstrap, and command definitions |
+| `.importlinter` | All contracts are commented out; zero enforcement |
+
+**roxabi-contracts**
+
+| Location | Violation |
+|---|---|
+| `voice/testing.py`, `image/testing.py` | Full NATS subscriber implementations inside the contracts package; creates a circular dependency path `contracts[testing]` → `roxabi-nats` → `contracts` |
+
+**roxabi-nats**
+
+| Location | Violation |
+|---|---|
+| `_tts_constants.py` | TTS domain field knowledge embedded inside the transport SDK |
+
+The common root cause is the absence of a shared, written canonical model. ADR-048 established the `lyra.infrastructure` layer for persistence, and ADR-057 applied the port/adapter split to the audit sink. This ADR generalises those decisions into an explicit, cross-repo canonical model so that every future port, adapter, and bootstrap decision has a single written reference.
+
+## Options Considered
+
+### Option A: Per-repo ADRs — each repo defines its own layering independently
+
+- **Pros:** Repos can evolve at independent speeds. No cross-repo coordination required.
+- **Cons:** Divergence is the observed status quo and the root cause of the audit findings. A shared model cannot be assumed if it is not written. importlinter contract structures will continue to diverge. On-boarding contributors to a second repo requires re-reading a different mental model.
+
+### Option B: Single canonical ADR in Lyra (cross-repo reference) — this ADR
+
+- **Pros:** One SSoT. ADR-048 and ADR-057 already established the Lyra-side model; this ADR writes it down explicitly and extends it to voiceCLI, roxabi-nats, and roxabi-contracts. importlinter enforcement structures can be copied with repo-specific module names. Migration priorities are explicit per repo.
+- **Cons:** Lyra's ADR directory becomes the authoritative reference for sibling repos. This is acceptable because Lyra is the ecosystem origin project (memory: `project_lyra_is_ecosystem_origin`), and the `roxabi-nats` / `roxabi-contracts` packages already live inside the Lyra repository.
+
+### Option C: Extract shared architecture documentation to a `roxabi-plugins` shared reference
+
+- **Pros:** Neutral home; not tied to any one product repo.
+- **Cons:** `roxabi-plugins` is a plugin/skill distribution mechanism, not an architecture governance repo. Placing canonical architecture docs there adds an unexpected dependency path for engineers reading voiceCLI or Lyra code. Cross-referencing is already established through Lyra ADRs (ADR-045 through ADR-057).
+
+## Decision
+
+**Option B** — single canonical ADR in Lyra's ADR directory, cross-referenced from sibling repos.
+
+The canonical model is defined below. All future port, adapter, and bootstrap decisions in Lyra, voiceCLI, roxabi-nats, and roxabi-contracts must conform to this model or supersede it with a new ADR.
+
+---
+
+## Design
+
+### The canonical 4-layer model
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Adapters (outermost)                               │
+│  Telegram · Discord · CLI · NATS adapters           │
+│  Drives Application use cases                       │
+├─────────────────────────────────────────────────────┤
+│  Infrastructure                                     │
+│  SQLite · NATS transport · GPU/models · FS · APIs   │
+│  Implements Domain ports                            │
+├─────────────────────────────────────────────────────┤
+│  Application                                        │
+│  Use cases · Orchestration · Command handlers       │
+│  Depends only on Domain ports                       │
+├─────────────────────────────────────────────────────┤
+│  Domain (innermost)                                 │
+│  Entities · Ports (Protocols/ABCs) · Rules          │
+│  Zero I/O imports                                   │
+└─────────────────────────────────────────────────────┘
+
+Dependency rule: imports point inward only.
+Adapters → Application + Domain
+Infrastructure → Domain (implements ports)
+Application → Domain only
+Domain → nothing from outer layers
+```
+
+### Layer definitions and placement rules
+
+#### Layer 1 — Domain
+
+**Contains:**
+- Pure entities and value objects (Pydantic models, dataclasses, named tuples — no DB or transport imports).
+- Port interfaces: `Protocol` classes or `ABC` subclasses that define the capability a use case needs from the outside world. A port has no implementation.
+- Domain exceptions hierarchy: `DomainError` → `NotFoundError`, `ValidationError`, `ConflictError`.
+- Business rules expressed as pure functions or methods on entities.
+
+**Must not import from:** Application, Infrastructure, Adapters, or any I/O library (`aiosqlite`, `nats`, `torch`, `httpx`, `asyncio.subprocess`, etc.).
+
+**Lyra placement:** `src/lyra/core/` — protocols in `core/stores/`, `core/cli/`, `core/ports/` (future).
+**voiceCLI placement:** `src/voicecli/domain/` (to be created) or `src/voicecli/ports/`.
+
+**Examples of correct Domain placement:**
+- `AgentStoreProtocol` — port for agent config persistence.
+- `AuditSink` — port for security event emission (ADR-057).
+- `LlmProvider` — port for LLM inference (currently misplaced in `lyra.llm` — see Consequences).
+- `TTSEngine` ABC — port for speech synthesis (currently misplaced alongside CUDA factories in voiceCLI).
+- `STTEngine` — port for speech recognition (currently absent in voiceCLI — must be created).
+- `ThreadStoreProtocol`, `IdentityAliasStoreProtocol` — missing ports that must be added.
+
+#### Layer 2 — Application
+
+**Contains:**
+- Use cases: single-responsibility orchestration functions or classes that coordinate Domain objects via ports.
+- Command handlers: entry points for commands (e.g., `lyra.commands.pairing.handlers`).
+- Application services: stateless coordination with no direct I/O.
+- DTOs for cross-boundary data transfer (can reference Domain value objects).
+
+**Must not import from:** Infrastructure or Adapters.
+**May import from:** Domain only — type-hint against port interfaces, never against concrete implementations.
+
+**Lyra placement:** `src/lyra/commands/`, `src/lyra/agents/`.
+**voiceCLI placement:** `src/voicecli/api.py` (after refactor — currently violating).
+
+**Anti-pattern:** `commands/pairing/handlers.py` imports `get_pairing_manager` from Infrastructure directly. The handler must receive a `PairingManagerProtocol` through dependency injection.
+
+#### Layer 3 — Infrastructure
+
+**Contains:**
+- Concrete implementations of Domain ports: SQLite stores, NATS publishers, filesystem helpers, model loaders, HTTP clients.
+- Migration runners, schema creation, connection pool management.
+- Framework configuration that is implementation-specific.
+
+**Must not import from:** Adapters.
+**May import from:** Domain (to implement ports) + Application (rare; only for DTOs).
+
+**Lyra placement:** `src/lyra/infrastructure/` (established by ADR-048).
+**voiceCLI placement:** `src/voicecli/infrastructure/` (to be created).
+
+**Examples of correct Infrastructure placement:**
+- `infrastructure/stores/agent_store.py` — SQLite implementation of `AgentStoreProtocol`.
+- `infrastructure/stores/agent_store_migrations.py` — currently misplaced in `core/`; must move.
+- `JetStreamAuditSink` — NATS JetStream implementation of `AuditSink` (ADR-057).
+- `make_agent_store()` factory — currently misplaced in `core/stores/agent_store_protocol.py`; must move to Composition Root.
+- CUDA model loader — currently co-located with `TTSEngine` ABC in voiceCLI; must separate.
+
+#### Layer 4 — Adapters (outermost)
+
+**Contains:**
+- Platform I/O channel implementations: Telegram, Discord, CLI, NATS message adapters.
+- Inbound translation: raw platform event → Application use case call.
+- Outbound translation: Application result → platform-specific reply.
+
+**Must not import from:** other Adapters (lateral coupling is forbidden).
+**May import from:** Application + Domain.
+
+**Lyra placement:** `src/lyra/adapters/`.
+
+**Anti-pattern:** `adapters/discord/adapter.py:51` imports concrete `ThreadStore` (SQLite). The adapter must receive a `ThreadStoreProtocol` via injection and import only the protocol from Domain.
+
+**Note on `lyra.llm` and `lyra.nats`:** These currently sit between `infrastructure` and `adapters` in the importlinter layering. `lyra.llm` hosts the `LlmProvider` port — this port belongs in `lyra.core` (Domain). `lyra.nats` is the NATS transport SDK bridge layer (see roxabi-nats guidance below). The existing layering contract is preserved for compatibility; the `LlmProvider` port migration is tracked as a P1 item in Consequences.
+
+### Composition Root
+
+**Definition:** The single location where concrete Infrastructure implementations are wired to Domain ports. No other location may instantiate a concrete implementation and pass it as a port type.
+
+**Placement:** `src/lyra/bootstrap/` in Lyra; equivalent `bootstrap/` or `main.py` entry point in voiceCLI.
+
+**Rules:**
+- The Composition Root is the only site that imports both a Domain port and its Infrastructure implementation simultaneously.
+- Factory functions (`make_xxx_store()`) that select and instantiate concretions belong in the Composition Root, not in Domain.
+- `make_agent_store()` in `core/stores/agent_store_protocol.py:106` violates this rule — it must move to `bootstrap/bootstrap_stores.py`.
+- Adapter selection (e.g., choosing between a SQLite store and an in-memory test double) must happen in the Composition Root, not via `if/elif` chains inside Application or Domain code.
+
+**voiceCLI:** The CUDA factory functions currently in `engine.py` belong in a `bootstrap/` entry point, not alongside the `TTSEngine` ABC.
+
+### importlinter contract structure
+
+Each repo enforcing clean architecture must have two contract categories in `.importlinter`:
+
+**Contract 1 — Layers contract:**
+
+```ini
+[importlinter:contract:clean-architecture-layers]
+name = Clean architecture layers
+type = layers
+layers =
+    <repo>.bootstrap
+    <repo>.adapters
+    <repo>.infrastructure
+    <repo>.llm | <repo>.nats   # if applicable
+    <repo>.core
+```
+
+**Contract 2 — Forbidden contracts (one per Domain module that must stay clean):**
+
+```ini
+[importlinter:contract:core-no-infra-imports]
+name = Domain layer must not import infrastructure
+type = forbidden
+source_modules =
+    <repo>.core
+forbidden_modules =
+    aiosqlite
+    sqlite3
+    nats
+    torch
+    httpx
+    asyncio.subprocess
+allow_indirect_imports = true
+```
+
+**voiceCLI — current state:** `.importlinter` contracts are fully commented out. All contracts must be uncommented and the layers contract must be populated as part of the P0 remediation.
+
+**Lyra — current gaps:** `lyra.commands` and `lyra.agents` are absent from the layers contract. They must be added at the correct tier (Application, above `lyra.infrastructure`, below `lyra.adapters`).
+
+### roxabi-nats package guidance
+
+`packages/roxabi-nats/` is a pure transport SDK. It provides NATS connection primitives, subject routing, and connector patterns.
+
+**Must not contain:**
+- Domain field knowledge from any product domain (`_tts_constants.py` is a P0 violation — TTS field names belong in `roxabi-contracts.voice` or the consuming repo's Domain layer).
+- Port interfaces for any product's business capability.
+- Application orchestration logic.
+
+**May contain:**
+- Generic NATS subject helpers and codec utilities.
+- `Connector` base classes and lifecycle management.
+- Transport-level error types.
+
+**Migration:** `_tts_constants.py` must be moved to `roxabi-contracts.voice` (where TTS schema lives) or to `voicecli`'s Domain layer, depending on whether the constants are schema-level (contracts) or product-level (domain).
+
+### roxabi-contracts package guidance
+
+`packages/roxabi-contracts/` defines shared message schemas (Pydantic models inheriting `ContractEnvelope`). It is a pure data-shape package with no runtime logic.
+
+**Must not contain:**
+- NATS subscriber or publisher implementations. `voice/testing.py` and `image/testing.py` currently contain full NATS subscriber implementations — this creates the circular dependency: `contracts[testing]` → `roxabi-nats` → `contracts`.
+- Application orchestration or business logic.
+
+**Fix for the circular dependency:** Extract testing utilities that require `roxabi-nats` into a separate package (`roxabi-contracts-testing` or a `testkit` extras group that is not imported by the main package). Alternatively, move the NATS subscriber implementations into the consuming test packages (`lyra`, `voicecli`) where they belong.
+
+**May contain:**
+- Pydantic models for all shared NATS message envelopes.
+- Schema version constants and envelope base classes.
+
+---
+
+## Consequences
+
+### Positive
+
+- A single written reference exists for port/adapter placement decisions in all affected repos. New contributors can determine correct file placement without reading multiple ADRs.
+- importlinter enforcement becomes structurally uniform across repos; violations surface at CI push time rather than at code review.
+- The `roxabi-contracts` circular dependency is eliminated, removing a fragile optional-import workaround.
+- Application and command handler tests become infrastructure-free: handlers receive port interfaces by injection, test doubles replace SQLite/NATS without patching.
+
+### Negative
+
+- Migration work is non-trivial. The P0 items below require dedicated PRs and careful import-line surgery across both Lyra and voiceCLI.
+- `lyra.config` currently imports from `adapters.discord` and `adapters.telegram`. Fixing this blast-radius coupling requires redesigning how shared config is structured — likely extracting adapter-specific config fragments into the adapter modules themselves and inverting the import direction.
+
+### Neutral
+
+- This ADR does not change the existing `lyra.infrastructure` layer structure established by ADR-048 or the `AuditSink` port/adapter split from ADR-057. It formalises and extends those decisions.
+- voiceCLI's `cli.py` god object (1 548 lines) requires decomposition independent of the layer migration; that is a separate refactoring concern but must align with the port/adapter split when it happens.
+
+---
+
+## Migration path (prioritised per repo)
+
+### Lyra — P0
+
+1. Move `make_agent_store()` factory from `core/stores/agent_store_protocol.py:106` to `bootstrap/bootstrap_stores.py` (Composition Root).
+2. Move `core/stores/agent_store_migrations.py` to `infrastructure/stores/agent_store_migrations.py`.
+3. Add `PairingManagerProtocol` to `core/` (or `core/stores/`); update `commands/pairing/handlers.py` to receive it by injection rather than importing `get_pairing_manager` from Infrastructure.
+4. Add `IdentityAliasStoreProtocol` to `core/stores/`; update `commands/identity/handlers.py` to type-hint against the protocol.
+
+### Lyra — P1
+
+5. Add `ThreadStoreProtocol` to `core/stores/`; update `adapters/discord/adapter.py:51` to receive it by injection.
+6. Move `LlmProvider` port from `lyra.llm.base` to `lyra.core.ports.llm` (or `lyra.core.llm`); update `lyra.llm` implementations to import the protocol from `core`.
+7. Move `STTProtocol`, `TtsProtocol` from `stt/__init__.py`, `tts/__init__.py` to `lyra.core.ports`; add importlinter forbidden contracts covering these modules.
+8. Add `lyra.commands` and `lyra.agents` to the layers contract in `.importlinter` at the Application tier.
+9. Restructure `config.py` to eliminate the `adapters.discord` + `adapters.telegram` imports (extract adapter config into adapter modules).
+
+### voiceCLI — P0
+
+1. Uncomment `.importlinter` contracts; populate the layers contract with the voiceCLI module hierarchy.
+2. Separate `TTSEngine` ABC from CUDA factory functions in `engine.py`: port → `voicecli/domain/tts_port.py`; factory → `voicecli/bootstrap/`.
+3. Create `STTEngine` port in `voicecli/domain/stt_port.py`.
+4. Remove `SOCKET_PATH` import from `transcribe.py:63`; expose it through a `STTConnectorProtocol` or pass it via Composition Root injection.
+5. Refactor `api.py:398-427` to receive `SynthesisPort` and `TranscriptionPort` by injection; remove direct imports of `daemon.py` and `model_registry`.
+
+### voiceCLI — P1
+
+6. Decompose `cli.py` (1 548 lines): extract bootstrap wiring, orchestration use cases, and command definitions into separate modules aligned to Application and Composition Root tiers.
+
+### roxabi-nats — P0
+
+1. Move `_tts_constants.py` to `roxabi-contracts.voice` or to `voicecli`'s Domain layer. Remove from the transport SDK.
+
+### roxabi-contracts — P0
+
+1. Remove full NATS subscriber implementations from `voice/testing.py` and `image/testing.py`. Options:
+   - Extract to a `roxabi-contracts-testkit` package (separate wheel, optional dep).
+   - Move implementations into the consuming repos' test utilities.
+2. Verify no remaining `roxabi-nats` import exists in the main `roxabi-contracts` package (only in the separated test utilities).

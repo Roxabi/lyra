@@ -35,31 +35,41 @@ class TestUnifiedNoBuildCliPool:
 
 class TestUnifiedCliNatsDriverWired:
     def test_unified_imports_build_cli_nats_driver(self) -> None:
-        """After T22, unified.py must import build_cli_nats_driver."""
-        # Arrange
+        """After T22, unified bootstrap must wire build_cli_nats_driver.
+
+        After the V10 refactor, the symbol lives in wiring_helpers.py (called
+        by unified.py).  We inspect both modules so the test does not regress
+        if the helper is inlined back into unified.py in a future change.
+        """
         import lyra.bootstrap.factory.unified as unified_mod
+        import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 
         importlib.reload(unified_mod)
-        source = inspect.getsource(unified_mod)
+        combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
 
         # Assert
-        assert "build_cli_nats_driver" in source, (
-            "unified.py does not reference build_cli_nats_driver — "
-            "T22 should add CliNatsDriver wiring"
+        assert "build_cli_nats_driver" in combined, (
+            "Neither unified.py nor wiring_helpers.py references "
+            "build_cli_nats_driver — T22 should add CliNatsDriver wiring"
         )
 
     def test_unified_imports_clipool_nats_worker(self) -> None:
-        """After T22, unified.py must reference CliPoolNatsWorker."""
-        # Arrange
+        """After T22, unified bootstrap must reference CliPoolNatsWorker.
+
+        After the V10 refactor, the symbol lives in wiring_helpers.py (called
+        by unified.py).  We inspect both modules so the test does not regress
+        if the helper is inlined back into unified.py in a future change.
+        """
         import lyra.bootstrap.factory.unified as unified_mod
+        import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 
         importlib.reload(unified_mod)
-        source = inspect.getsource(unified_mod)
+        combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
 
         # Assert
-        assert "CliPoolNatsWorker" in source, (
-            "unified.py does not reference CliPoolNatsWorker — "
-            "T22 should spawn it as an asyncio task"
+        assert "CliPoolNatsWorker" in combined, (
+            "Neither unified.py nor wiring_helpers.py references "
+            "CliPoolNatsWorker — T22 should spawn it as an asyncio task"
         )
 
 
@@ -94,6 +104,8 @@ class TestUnifiedCliPoolNatsWorkerInstantiated:
             instantiated.append(inst)
             return inst
 
+        import lyra.bootstrap.factory.wiring_helpers as helpers_mod
+
         # Patch at the module boundary where unified.py resolves the class
         with patch.object(
             unified_mod,
@@ -103,25 +115,29 @@ class TestUnifiedCliPoolNatsWorkerInstantiated:
         ):
             # We do NOT call _bootstrap_unified (too heavy) —
             # instead verify the source contract via inspection.
-            source = inspect.getsource(unified_mod)
+            combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
 
-        # Assert — post-T22 the class is referenced in source
-        assert "CliPoolNatsWorker" in source, (
-            "CliPoolNatsWorker never referenced in unified.py — T22 must add it"
+        # Assert — post-T22 the class is referenced in the unified bootstrap
+        assert "CliPoolNatsWorker" in combined, (
+            "CliPoolNatsWorker never referenced in unified bootstrap — T22 must add it"
         )
 
 
 class TestUnifiedWorkerTaskCreated:
     def test_unified_uses_create_task_for_worker(self) -> None:
-        """After T22, unified.py must use asyncio.create_task for the worker."""
-        # Arrange
+        """After T22, unified bootstrap must use asyncio.create_task for the worker.
+
+        After the V10 refactor, create_task lives in wiring_helpers.py
+        (_run_clipool_worker_task).  We inspect both modules.
+        """
         import lyra.bootstrap.factory.unified as unified_mod
+        import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 
         importlib.reload(unified_mod)
-        source = inspect.getsource(unified_mod)
+        combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
 
         # Assert — T22 must wire the worker via create_task so it runs concurrently
-        assert "create_task" in source, (
-            "unified.py does not call asyncio.create_task — "
+        assert "create_task" in combined, (
+            "Neither unified.py nor wiring_helpers.py calls asyncio.create_task — "
             "T22 should schedule CliPoolNatsWorker via asyncio.create_task"
         )

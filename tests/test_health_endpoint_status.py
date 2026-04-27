@@ -31,9 +31,7 @@ from tests.core.conftest import push_to_hub
 
 
 class TestHealthUnauthenticated:
-    async def test_no_token_returns_ok_only(
-        self, hub: Hub
-    ) -> None:
+    async def test_no_token_returns_ok_only(self, hub: Hub) -> None:
         """#207: Unauthenticated /health returns only {"ok": true}."""
         from lyra.bootstrap.infra.health import create_health_app
 
@@ -45,9 +43,7 @@ class TestHealthUnauthenticated:
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
 
-    async def test_wrong_token_returns_ok_only(
-        self, hub: Hub
-    ) -> None:
+    async def test_wrong_token_returns_ok_only(self, hub: Hub) -> None:
         """#207: Wrong Bearer token still returns minimal response."""
         from lyra.bootstrap.infra.health import create_health_app
 
@@ -62,9 +58,7 @@ class TestHealthUnauthenticated:
         data = resp.json()
         assert data == {"ok": True}
 
-    async def test_no_secret_configured_returns_ok_only(
-        self, hub: Hub
-    ) -> None:
+    async def test_no_secret_configured_returns_ok_only(self, hub: Hub) -> None:
         """#207: When no secret is configured, always minimal."""
         from lyra.bootstrap.infra.health import create_health_app
 
@@ -78,9 +72,7 @@ class TestHealthUnauthenticated:
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
 
-    async def test_empty_secret_env_returns_ok_only(
-        self, hub: Hub
-    ) -> None:
+    async def test_empty_secret_env_returns_ok_only(self, hub: Hub) -> None:
         """#207: Empty health_secret still returns minimal response."""
         from lyra.bootstrap.infra.health import create_health_app
 

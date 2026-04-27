@@ -67,7 +67,8 @@ async def _discord_typing_worker(  # noqa: C901 — retry + error branches
                     )
                     raise
                 await asyncio.sleep(1.0 * (2**_attempt))
-        assert channel is not None  # guaranteed by the loop above
+        if channel is None:
+            raise RuntimeError("typing: channel not resolved after 3 attempts")
         _consecutive_errors = 0
         while True:
             try:

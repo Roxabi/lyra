@@ -12,6 +12,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from ..messaging.events import LlmEvent
+from .cli_pool_entry import _ProcessEntry
 from .cli_protocol_types import CliProtocolOptions, _read_stderr_snippet
 from .cli_streaming_parser import CliStreamingParser
 
@@ -30,15 +31,13 @@ class StreamingIterator:
 
     def __init__(  # noqa: PLR0913 — protocol fn: positional args map 1:1 to wire-level concerns
         self,
-        entry: object,
+        entry: _ProcessEntry,
         pool_id: str,
         *,
         pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
         default_timeout: float = 300,
         opts: CliProtocolOptions = CliProtocolOptions(),
     ) -> None:
-        from .cli_pool import _ProcessEntry
-
         assert isinstance(entry, _ProcessEntry)
         self._entry = entry
         self._pool_id = pool_id
@@ -176,7 +175,7 @@ class StreamingIterator:
 
 
 async def send_and_read_stream(  # noqa: PLR0913 -- protocol fn: positional args map 1:1 to wire-level concerns
-    entry: object,
+    entry: _ProcessEntry,
     message: str,
     pool_id: str,
     *,
@@ -189,8 +188,6 @@ async def send_and_read_stream(  # noqa: PLR0913 -- protocol fn: positional args
     The iterator exposes ``session_id`` (None until parsed from the stream).
     Call ``aclose()`` to kill the subprocess on cancellation.
     """
-    from .cli_pool import _ProcessEntry
-
     assert isinstance(entry, _ProcessEntry)
     proc = entry.proc
     if proc.stdin is None:

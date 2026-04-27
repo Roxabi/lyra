@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from ..agent.agent_config import ModelConfig
-    from .cli_pool_worker import _ProcessEntry
+    from .cli_pool_entry import _ProcessEntry
 
 
 class _CliPoolCore(Protocol):  # pyright: ignore[reportUnusedClass]
@@ -28,5 +28,5 @@ class _CliPoolCore(Protocol):  # pyright: ignore[reportUnusedClass]
     async def reset(self, pool_id: str) -> None: ...
 
 
-# Note: ModelConfig and _ProcessEntry are TYPE_CHECKING-only imports.
-# get_type_hints(_CliPoolCore) will raise NameError at runtime — this is intentional.
+# TYPE_CHECKING-only imports: runtime callers must not call get_type_hints() on
+# _CliPoolCore or any class that Protocol-checks against it.

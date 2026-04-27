@@ -9,21 +9,18 @@ from __future__ import annotations
 
 from .cli_non_streaming import read_until_result, send_and_read
 from .cli_protocol_types import (
-    _SESSION_ID_RE,
     SESSION_ID_RE,
     CliProtocolOptions,
     CliResult,
-    _read_stderr_snippet,
     build_cmd,
 )
-from .cli_streaming import StreamingIterator, send_and_read_stream
+from .cli_streaming import CliStreamingParser, StreamingIterator, send_and_read_stream
 
 __all__ = [
     "CliProtocolOptions",
     "CliResult",
+    "CliStreamingParser",
     "SESSION_ID_RE",
-    "_SESSION_ID_RE",
-    "_read_stderr_snippet",
     "StreamingIterator",
     "build_cmd",
     "read_until_result",

@@ -18,12 +18,12 @@ FAIL=0
 # Find source files (exclude tests)
 # Note: tests/ may intentionally test the raw inbox_prefix parameter
 find_sources() {
-    find src packages -name "*.py" -not -path "*/tests/*" -print0 2>/dev/null
+    find src packages -name "*.py" -not -path "*/tests/*" -not -name "test_*.py" -not -name "conftest.py" -print0 2>/dev/null
 }
 
 # Check for f-string construction: inbox_prefix=f"_INBOX.
 while IFS= read -r -d '' f; do
-    matches=$(grep -n 'inbox_prefix=f"_INBOX\.' "$f" 2>/dev/null || true)
+    matches=$(grep -n 'inbox_prefix\s*=\s*f["'"'"'"]_INBOX\.' "$f" 2>/dev/null || true)
     if [ -n "$matches" ]; then
         echo "FAIL: $f uses raw f-string inbox_prefix construction (use identity_name= instead):"
         echo "$matches"
@@ -37,8 +37,8 @@ while IFS= read -r -d '' f; do
     result=$(python3 - "$f" <<'PYEOF'
 import ast, sys
 try:
-    tree = ast.parse(open(sys.argv[1]).read())
-except SyntaxError:
+    tree = ast.parse(open(sys.argv[1], encoding="utf-8", errors="replace").read())
+except (SyntaxError, UnicodeDecodeError):
     sys.exit(0)
 for node in ast.walk(tree):
     if isinstance(node, ast.Call):

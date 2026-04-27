@@ -27,7 +27,7 @@ from .cli_pool_worker import (
     _ProcessEntry,
 )
 from .cli_protocol import (
-    _SESSION_ID_RE,
+    SESSION_ID_RE,
     CliProtocolOptions,
     CliResult,
     send_and_read,
@@ -260,7 +260,7 @@ class CliPool(  # noqa: E501
                 session_id,
             )
             return False
-        if not _SESSION_ID_RE.match(cli_sid):
+        if not SESSION_ID_RE.match(cli_sid):
             log.warning(
                 "[pool:%s] resume_and_reset: invalid persisted CLI session %r"
                 " — skipping",

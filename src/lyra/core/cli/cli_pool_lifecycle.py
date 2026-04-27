@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, cast
 from .cli_pool_types import _CliPoolCore
 
 if TYPE_CHECKING:
-    from .cli_pool_worker import _ProcessEntry
+    from .cli_pool_entry import _ProcessEntry
 
 log = logging.getLogger(__name__)
 

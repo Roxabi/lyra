@@ -108,7 +108,9 @@ class CreatePoolMiddleware:
         ):
             _agent.configure_pool(pool)
             pool._configured = True
-            # configure_pool must be idempotent — no lock guards this check-then-set
+            # configure_pool must be idempotent — safe without a lock: the hub
+            # runs as a single asyncio task (sequential). Concurrent refactor
+            # would require asyncio.Lock here.
 
         if pool._on_resume_fn is None and ctx.hub._turn_store is not None:  # #597
             pool._on_resume_fn = ctx.hub._turn_store.increment_resume_count

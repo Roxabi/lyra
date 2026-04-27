@@ -147,11 +147,11 @@ render_table() {
 # ---------------------------------------------------------------------------
 # Extract sentinel block from spec (without the marker lines themselves)
 # ---------------------------------------------------------------------------
-TMPDIR_LOCAL=$(mktemp -d)
-trap 'rm -rf "$TMPDIR_LOCAL"' EXIT
+NATS_TMPDIR=$(mktemp -d)
+trap 'rm -rf "$NATS_TMPDIR"' EXIT
 
-SPEC_BLOCK="${TMPDIR_LOCAL}/spec_block.txt"
-RENDERED="${TMPDIR_LOCAL}/rendered.txt"
+SPEC_BLOCK="${NATS_TMPDIR}/spec_block.txt"
+RENDERED="${NATS_TMPDIR}/rendered.txt"
 
 awk '/<!-- acl-matrix:begin -->/{found=1; next} /<!-- acl-matrix:end -->/{found=0} found' \
   "$SPEC" > "$SPEC_BLOCK"

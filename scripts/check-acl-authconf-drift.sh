@@ -42,7 +42,7 @@ normalize_authconf() {
   # 4. Normalize whitespace: squeeze multiple spaces, trim trailing
   sed -E \
     -e '/^[[:space:]]*#/d' \
-    -e 's/[[:space:]]*#[^"]*$//' \
+    -e 's/[[:space:]]*#.*$//' \
     -e 's/nkey: "[^"]+"/nkey: "NKEY_PLACEHOLDER"/g' \
     -e 's/[[:space:]]+/ /g' \
     -e 's/[[:space:]]+$//' \

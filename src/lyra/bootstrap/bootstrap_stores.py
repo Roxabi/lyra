@@ -133,7 +133,11 @@ def _atomic_table_copy(  # noqa: C901 — sequential migration steps
             tables,
         ).fetchall()
         for (idx_sql,) in idx_rows:
-            if not re.match(r'^CREATE\s+(UNIQUE\s+)?INDEX\s+', idx_sql, re.IGNORECASE):
+            _DDL_INDEX_RE = (
+                r'^CREATE\s+(UNIQUE\s+)?INDEX\s+'
+                r'(IF\s+NOT\s+EXISTS\s+)?[A-Za-z_][A-Za-z0-9_]*\s+ON\b'
+            )
+            if not re.match(_DDL_INDEX_RE, idx_sql, re.IGNORECASE):
                 log.warning(
                     "Skipping unexpected DDL from sqlite_master: %r", idx_sql[:80]
                 )

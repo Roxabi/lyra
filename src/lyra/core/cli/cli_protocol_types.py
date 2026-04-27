@@ -96,9 +96,6 @@ def build_cmd(
 SESSION_ID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 )
-# Private alias kept for backward compat (cli_pool.py imports this name).
-_SESSION_ID_RE = SESSION_ID_RE
-
 
 @dataclass
 class CliResult:

@@ -93,5 +93,5 @@ def extract_patch(text: str, patch_cls: type) -> "RefinementPatch | None":
         if not isinstance(fields, dict):
             return None
         return patch_cls(fields=fields)
-    except (json.JSONDecodeError, IndexError, ValueError):
+    except (json.JSONDecodeError, ValueError):
         return None

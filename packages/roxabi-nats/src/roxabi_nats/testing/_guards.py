@@ -17,7 +17,7 @@ __all__ = [
 
 # "localhost" intentionally absent — DNS resolution not guaranteed; numeric loopback only.  # noqa: E501
 ALLOWED_LOOPBACK_HOSTS: frozenset[str] = frozenset(
-    {"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"}
+    {"127.0.0.1", "::1", "0:0:0:0:0:0:0:1"}
 )
 
 

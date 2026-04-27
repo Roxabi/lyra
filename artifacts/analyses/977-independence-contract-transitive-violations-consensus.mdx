@@ -1,0 +1,109 @@
+---
+title: "Independence contract transitive violations — Expert Consensus"
+issue: 977
+status: consensus-reached
+date: 2026-04-27
+panel: architect, backend-dev, devops
+confidence: high
+---
+
+## Problem
+
+The `shared-modules-independence` contract added in #977 requires 4 `ignore_imports` entries to suppress transitive paths detected through `lyra.core`:
+
+- `lyra.core.agent.agent -> lyra.stt` (TYPE_CHECKING import of `STTProtocol`)
+- `lyra.core.agent.agent -> lyra.tts` (TYPE_CHECKING import of `TtsProtocol`)
+- `lyra.core.processors.processor_registry -> lyra.integrations.base` (TYPE_CHECKING import of `SessionTools`)
+- `lyra.tts.engine_selector -> lyra.core.agent.agent_config` (transitive path entry point)
+
+importlinter's `independence` contract type traces ALL import paths between listed modules, including TYPE_CHECKING-guarded ones and transitive paths through unlisted modules. The root cause: `lyra.core` imports protocol types from floating modules instead of defining them in `lyra.core.ports.*`.
+
+Every new floating module added risks triggering additional suppressions via these same core→floating paths.
+
+## Panel
+
+| Agent | Focus |
+|-------|-------|
+| architect | Architecture soundness, contract authority, long-term maintainability |
+| backend-dev | Implementation complexity, migration scope, backward compatibility |
+| devops | CI stability, suppression accumulation risk, maintenance burden |
+
+## Consensus ρ
+
+**Option B — complete the in-progress `lyra.core.ports.*` migration.**
+
+`lyra.core.ports.stt` (`STTProtocol`) and `lyra.core.ports.tts` (`TtsProtocol`) already exist. The fix is:
+
+1. Update `lyra.core.agent.agent` to import from `lyra.core.ports.stt` and `lyra.core.ports.tts` instead of `lyra.stt` and `lyra.tts`
+2. Create `lyra.core.ports.integrations` with `SessionToolsProtocol` (the subset used by `lyra.core.processors.processor_registry`), leaving integration-specific exceptions in `lyra.integrations.base`
+3. Update `lyra.core.processors.processor_registry` to import from `lyra.core.ports.integrations`
+4. Keep backward-compat re-exports in `lyra.stt.__init__`, `lyra.tts.__init__`, `lyra.integrations.base`
+5. Remove all 4 `ignore_imports` entries from `shared-modules-independence`
+
+### Rationale
+
+- `lyra.core.ports.stt/tts` already exist — this is finishing a migration already underway
+- Port interfaces belong in `lyra.core.ports` by definition (hexagonal arch: core defines the ports, adapters implement them)
+- Zero suppressions needed after migration — independence contract regains full authority
+- Suppression accumulation risk eliminated: each new floating module no longer inherits the transitive paths
+
+### Trade-offs
+
+- Backward-compat re-exports in floating modules must remain until all callers are audited (`lyra.stt.STTProtocol` etc.)
+- `lyra.core.ports.tts` TYPE_CHECKING-imports `SynthesisResult` from `lyra.tts` — after migration, verify this does not create a new transitive path; if it does, `SynthesisResult` needs a port home too
+- `SessionTools` bundles both protocols and integration-specific exceptions — only move the protocol subset to core, not the full file
+- Small migration cost: ~3 import sites + 1 new port file
+
+## Alternatives
+
+| Option | Proposed by | Rejected because |
+|--------|-------------|------------------|
+| A — keep suppressions permanently | — | Suppressions mask architectural drift; independence contract loses authority; accumulates linearly with new floating modules |
+| C — `exclude_type_checking_imports = true` | — | Global session option, would silence ALL contracts including clean-architecture-layers with 20+ legitimate tracked violations (ADR-048/ADR-059); also silences genuine future violations |
+| D — accept current 4 suppressions as "stable" | — | "Unlikely to grow" is contradicted by current growth rate; same pattern already has 2 source files and is triggered by adding any new floating module that imports lyra.core |
+
+## Dissent
+
+None — unanimous.
+
+## Implementation Notes
+
+**Scope for follow-up issue (not #977):**
+
+```python
+# lyra.core.agent.agent — change:
+from lyra.stt import STTProtocol          # → from lyra.core.ports.stt import STTProtocol
+from lyra.tts import TtsProtocol          # → from lyra.core.ports.tts import TtsProtocol
+
+# lyra.core.processors.processor_registry — change:
+from lyra.integrations.base import SessionTools  # → from lyra.core.ports.integrations import SessionToolsProtocol
+```
+
+**New file to create:**
+```python
+# lyra.core.ports.integrations
+# Extract only the Protocol subset used by core — not AudioConversionFailed/ServiceControlFailed
+```
+
+**Verify after migration:**
+```bash
+uv run lint-imports  # should show 0 ignore_imports in shared-modules-independence
+```
+
+**Backward compat to preserve:**
+```python
+# lyra/stt/__init__.py — keep re-export
+from lyra.core.ports.stt import STTProtocol  # already present
+
+# lyra/tts/__init__.py — keep re-export  
+from lyra.core.ports.tts import TtsProtocol  # already present
+
+# lyra/integrations/base.py — add re-export after migration
+from lyra.core.ports.integrations import SessionToolsProtocol
+```
+
+## Next
+
+Open a follow-up issue: `fix(arch): complete core.ports migration — move SessionTools to lyra.core.ports.integrations, update agent.py + processor_registry.py import sites, drop 4 independence ignore_imports`
+
+The current #977 state (4 suppressions with clear comments) is acceptable as a transitional state while this follow-up is scheduled.

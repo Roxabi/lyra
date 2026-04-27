@@ -93,6 +93,24 @@ async def test_start_twice_raises() -> None:
         await w.start()
 
 
+async def test_start_subscribe_failure_closes_connection() -> None:
+    """If subscribe() raises, start() must close _nc and null it — no leak."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    mock_nc = MagicMock()
+    mock_nc.subscribe = AsyncMock(side_effect=RuntimeError("subscribe failed"))
+    mock_nc.close = AsyncMock()
+
+    patched = AsyncMock(return_value=mock_nc)
+    with patch("roxabi_nats.testing.image.nats_connect", new=patched):
+        worker = FakeImageWorker(nats_url="nats://127.0.0.1:4222")
+        with pytest.raises(RuntimeError, match="subscribe failed"):
+            await worker.start()
+
+    assert worker._nc is None
+    mock_nc.close.assert_awaited_once()
+
+
 async def test_stop_is_idempotent_when_never_started() -> None:
     """stop() on a fresh worker is a no-op — never raises."""
     w = FakeImageWorker(nats_url="nats://127.0.0.1:4222")

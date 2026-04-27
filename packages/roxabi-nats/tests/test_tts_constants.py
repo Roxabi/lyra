@@ -42,3 +42,16 @@ class TestBoundaryContract:
         # known set so accidental additions fail this test and force a review.
         agent_only = set(_AGENT_TTS_FIELDS) - set(_TTS_CONFIG_FIELDS)
         assert agent_only == {"voice", "language", "default_language", "languages"}
+
+
+class TestShimDelegation:
+    def test_shim_delegates_to_contracts_not_inline_copy(self) -> None:
+        # The shim must re-export the canonical objects from roxabi_contracts,
+        # not define its own copies.  Identity (is) guarantees delegation.
+        from roxabi_contracts.voice.constants import (
+            AGENT_TTS_FIELDS,
+            TTS_CONFIG_FIELDS,
+        )
+
+        assert _TTS_CONFIG_FIELDS is TTS_CONFIG_FIELDS
+        assert _AGENT_TTS_FIELDS is AGENT_TTS_FIELDS

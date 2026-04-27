@@ -30,6 +30,8 @@ ignore_imports =
     lyra.core.hub.hub_registration -> lyra.infrastructure.stores.message_index
     lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.message_index
     lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index
+    # Transitional: pairing_protocol facade (ADR-059 V3 pending)
+    lyra.core.stores.pairing_protocol -> lyra.infrastructure.stores.pairing
     # TurnStore moved to infrastructure per ADR-048 (#760 review fix f2)
     lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store
     lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store
@@ -48,6 +50,3 @@ forbidden_modules =
     aiosqlite
     sqlite3
 allow_indirect_imports = true
-ignore_imports =
-    # Transitional: files pending migration to infrastructure/stores (ADR-048)
-    lyra.core.stores.agent_store_migrations -> aiosqlite

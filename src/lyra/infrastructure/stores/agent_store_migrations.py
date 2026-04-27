@@ -6,7 +6,7 @@ import logging
 
 import aiosqlite
 
-from ..agent.agent_schema import _MIGRATE_AGENTS
+from lyra.core.agent.agent_schema import _MIGRATE_AGENTS
 
 log = logging.getLogger(__name__)
 

@@ -13,6 +13,8 @@ ReadOnly=true
 DropCapability=all
 UserNS=keep-id:uid=1500,gid=1500
 Environment=NATS_URL=nats://lyra-nats:4222
+Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
+Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
 Secret=lyra-nkey-clipool-worker,type=mount,target=clipool-worker.seed,mode=0400,uid=1500,gid=1500
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/clipool-worker.seed
 # ~/.claude/ mounts (moved from lyra-hub.container — see issue #941)

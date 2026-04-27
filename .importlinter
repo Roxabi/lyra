@@ -36,6 +36,7 @@ ignore_imports =
     lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store
     lyra.core.cli.cli_pool -> lyra.infrastructure.stores.turn_store
     lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store
+    lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store
     lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store
 
 [importlinter:contract:core-stores-no-sqlite]

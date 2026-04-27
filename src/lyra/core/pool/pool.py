@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from lyra.infrastructure.stores.turn_store import TurnStore
+
     from ..memory import SessionSnapshot
 
 from ..config import PoolConfig
@@ -117,6 +119,11 @@ class Pool:
             session_id_fn=lambda: self.session_id,
         )
         self._processor = PoolProcessor(self)
+
+    @property
+    def turn_store(self) -> "TurnStore | None":
+        """Read-only access to the wired TurnStore (None if not configured)."""
+        return self._observer._turn_store
 
     @property
     def debounce_ms(self) -> int:

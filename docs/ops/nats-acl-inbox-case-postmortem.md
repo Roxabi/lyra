@@ -285,6 +285,7 @@ invisible-grant bugs. Fix 3 is the guardrail that catches the next one.
 | Fix 2 — explicit reply-path ACLs | — | done |
 | Fix 1 — lowercase normalization (all identities) | — | done — `nats_connect()` identity_name path → `_inbox.{name}`; all uppercase `_INBOX.X.>` ACL entries dropped |
 | Fix 3 — `make test-acl` in pre-push | — | skipped |
+| Phase 3 — `request_reply_flows` schema + derived inbox grants | — | Done — #992 (request_reply_flows array added; manual `_inbox.hub.>` entries removed from all responder publish ACLs) |
 | Alert: `permissions violation` in NATS logs | — | done |
 | Alert: sustained `_stream_gen timeout` in hub logs | — | done |
 | Synthetic round-trip health probe | — | skipped |
@@ -675,15 +676,16 @@ Three phases: immediate mitigation → normalization (coordinated) → topology-
 
 Root cause 1 fix: `acl-matrix.json` currently models authorization at the subject level. Topology must become a first-class schema concept so the generator enforces cross-identity consistency — making the case-mismatch and missing-grant classes of bug structurally impossible.
 
-| Action | Rationale |
-|---|---|
-| Add `request_reply_flows` section to `acl-matrix.json`; declare all existing hub→responder flows | Makes topology visible and machine-readable; prerequisite for generator derivation |
-| Build generator that derives `_inbox.{requester}.>` subscribe + publish entries from flow declarations | Inbox ACLs become generated output; no second place to write the string incorrectly |
-| Update `nats_connect()` in roxabi-nats: `identity_name` → `f"_inbox.{identity_name}.>"` so connect-site and generator use the same string | Closes the Python ↔ JSON parity gap that caused this incident |
-| Drop `allow_responses: true` from all identities once explicit flow grants cover all reply paths | Removes invisible magic; may be kept as defence-in-depth only |
-| Drive `gen-nkeys.sh` key-generation from `IDENTITIES[]` iteration — kill hardcoded identity list | Single identity SSoT; prevents clipool-worker-class desync on fresh provisioning |
-| Extend Fix 3 test suite: assert that removing a flow declaration removes the derived ACL grant | Documents and tests topology derivation as load-bearing |
-| `acl-matrix.json` schema: add `status: active\|retired`, CI rejects any retired entry without expiry | Identity lifecycle becomes a defined process; prevents monotonic ACL growth |
+| Action | Status | Rationale |
+|---|---|---|
+| Add `request_reply_flows` section to `acl-matrix.json`; declare all existing hub→responder flows | Done — #992 | Makes topology visible and machine-readable; prerequisite for generator derivation |
+| Remove manual `_inbox.hub.>` entries from all responder publish ACLs (derived from flows) | Done — #992 | Inbox grants are now declared via request_reply_flows, not per-identity manual entries |
+| Build generator that derives `_inbox.{requester}.>` subscribe + publish entries from flow declarations | open | Inbox ACLs become generated output; no second place to write the string incorrectly |
+| Update `nats_connect()` in roxabi-nats: `identity_name` → `f"_inbox.{identity_name}.>"` so connect-site and generator use the same string | open | Closes the Python ↔ JSON parity gap that caused this incident |
+| Drop `allow_responses: true` from all identities once explicit flow grants cover all reply paths | open | Removes invisible magic; may be kept as defence-in-depth only |
+| Drive `gen-nkeys.sh` key-generation from `IDENTITIES[]` iteration — kill hardcoded identity list | open | Single identity SSoT; prevents clipool-worker-class desync on fresh provisioning |
+| Extend Fix 3 test suite: assert that removing a flow declaration removes the derived ACL grant | open | Documents and tests topology derivation as load-bearing |
+| `acl-matrix.json` schema: add `status: active\|retired`, CI rejects any retired entry without expiry | open | Identity lifecycle becomes a defined process; prevents monotonic ACL growth |
 
 ---
 

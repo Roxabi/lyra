@@ -127,7 +127,7 @@ async def send(  # noqa: C901 — attachment loop adds branches
         chunk_view = view if (i == last_idx and view is not None) else None
         if should_reply:
             if reply_msg_id is None:
-                raise AssertionError(
+                raise RuntimeError(
                     "reply_msg_id must not be None when should_reply is True"
                 )
             msg_obj = cast(_PartialMessageable, messageable).get_partial_message(
@@ -211,7 +211,7 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         messageable = await adapter._resolve_channel(send_to_id)
         if should_reply:
             if reply_msg_id is None:
-                raise AssertionError(
+                raise RuntimeError(
                     "reply_msg_id must not be None when should_reply is True"
                 )
             msg_obj = cast(_PartialMessageable, messageable).get_partial_message(
@@ -247,7 +247,8 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
                     sent = await messageable.send(chunk)
                     last_id = sent.id
                 except Exception:
-                    log.exception("Failed to send final text chunk")
+                    log.exception("Failed to send final chunk to Discord")
+                    raise
             else:
                 await send_with_retry(
                     lambda c=chunk: messageable.send(c),

@@ -17,7 +17,7 @@ from ..agent.agent_config import ModelConfig
 
 
 @dataclass
-class _ProcessEntry:  # pyright: ignore[reportUnusedClass]
+class _ProcessEntry:  # pyright: ignore[reportUnusedClass]  # private by convention (pool internal); name inherited from cli_pool_worker
     """A persistent CLI process for one pool."""
 
     proc: asyncio.subprocess.Process

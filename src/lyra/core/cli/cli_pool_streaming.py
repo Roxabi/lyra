@@ -99,6 +99,7 @@ class CliPoolStreamingMixin:
             # Stale resume guard: if this process was spawned with --resume,
             # briefly yield to let the event loop process a potential child-exit
             # signal.  The CLI exits in ~1ms when the session doesn't exist.
+            # post-increment: bumped inside lock before this check
             if _attempt == 0 and entry.resumed_from and entry.turn_count == 1:
                 await asyncio.sleep(self._STALE_RESUME_CHECK_DELAY)
                 if not entry.is_alive():

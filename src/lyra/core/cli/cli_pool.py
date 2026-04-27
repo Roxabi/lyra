@@ -176,6 +176,7 @@ class CliPool(  # noqa: E501
                         not result.ok
                         and _attempt == 0
                         and entry.resumed_from
+                        # pre-increment: turn_count not yet bumped for this turn
                         and entry.turn_count == 0
                         and "No conversation found" in result.error
                     ):

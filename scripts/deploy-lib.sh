@@ -13,8 +13,13 @@
 #                      not contain colons. Empty lines are skipped.
 #   IMAGE            — OCI image, e.g. "localhost/lyra:latest"
 #   DOCKERFILE       — path relative to PROJECT_DIR, default "Dockerfile"
-#   HUB_SERVICE      — primary service to start first and gate the rest on (optional)
-#   ADAPTER_SERVICES — space-separated services restarted after HUB_SERVICE is active
+#   HUB_SERVICE      — hub service restarted first; lib waits up to 60s for it to reach
+#                      active before restarting ADAPTER_SERVICES. Only set for multi-service
+#                      projects that require hub→adapter ordering. Single-service projects
+#                      must leave this unset (no adapters to sequence; the 60s readiness
+#                      poll is wasted work). When unset, all services restart as a flat group.
+#   ADAPTER_SERVICES — space-separated adapter services restarted after HUB_SERVICE is
+#                      active. Leave empty (or unset) when HUB_SERVICE is unset.
 #   ENV_FILES_DIR    — directory holding per-role env files, e.g. "$HOME/.lyra/env"
 #   ENV_FILES        — space-separated list of <role> names expected under ENV_FILES_DIR
 #                      (script verifies "<role>.env" exists with mode 0600)

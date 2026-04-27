@@ -145,6 +145,22 @@ source "$LIB_PATH"
 
 LIB must be installed before the first deploy (`make quadlet-install-deploy-lib` in the lyra checkout).
 
+### HUB_SERVICE semantics
+
+`HUB_SERVICE` exists to solve the hub→adapters ordering problem: restart the hub first, gate
+on it reaching `active`, then restart the adapters. It is meaningful **only for multi-service
+projects** (like Lyra: hub + telegram + discord + clipool).
+
+**Single-service projects must leave `HUB_SERVICE` unset.** Setting it with an empty
+`ADAPTER_SERVICES` triggers the full 60s readiness polling loop before the lib does nothing —
+wasted time with no sequencing benefit. When both are unset the lib restarts all services
+as a flat group.
+
+| Project shape | `HUB_SERVICE` | `ADAPTER_SERVICES` |
+|---|---|---|
+| 1 service (e.g. imageCLI `imagecli-gen`) | _(unset)_ | _(unset)_ |
+| Multi-service hub+adapters (e.g. Lyra) | `lyra-hub` | `lyra-telegram lyra-discord lyra-clipool` |
+
 ### Full example — imageCLI (1 service, NATS-using)
 
 ```sh
@@ -164,8 +180,8 @@ PROJECT_DIR="$HOME/projects/imageCLI"
 PROJECT_BRANCH="staging"
 IMAGE="localhost/imagecli-gen:latest"
 DOCKERFILE="Dockerfile"
-HUB_SERVICE="imagecli-gen"
-ADAPTER_SERVICES=""            # single service: no adapters
+# HUB_SERVICE / ADAPTER_SERVICES: leave unset for single-service projects.
+# Setting HUB_SERVICE without adapters triggers a pointless 60s readiness poll.
 ENV_FILES_DIR="$HOME/.imagecli/env"
 ENV_FILES="gen"
 LOG_FILE="$HOME/.local/state/imagecli/logs/deploy.log"

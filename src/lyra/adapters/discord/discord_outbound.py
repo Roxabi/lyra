@@ -246,9 +246,8 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
                 try:
                     sent = await messageable.send(chunk)
                     last_id = sent.id
-                except Exception:
+                except Exception:  # noqa: BLE001 — resilient: caller has no fallback for partial streams
                     log.exception("Failed to send final chunk to Discord")
-                    raise
             else:
                 await send_with_retry(
                     lambda c=chunk: messageable.send(c),

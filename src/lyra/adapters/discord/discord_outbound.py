@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import discord
 
@@ -29,6 +29,15 @@ if TYPE_CHECKING:
     from lyra.adapters.shared._shared_streaming import PlatformCallbacks
 
 log = logging.getLogger("lyra.adapters.discord")
+
+# Channels that support get_partial_message(); _resolve_channel() returns one of these.
+_PartialMessageable = (
+    discord.TextChannel
+    | discord.Thread
+    | discord.DMChannel
+    | discord.VoiceChannel
+    | discord.StageChannel
+)
 
 
 async def _discord_typing_worker(  # noqa: C901 — retry + error branches
@@ -58,7 +67,8 @@ async def _discord_typing_worker(  # noqa: C901 — retry + error branches
                     )
                     raise
                 await asyncio.sleep(1.0 * (2**_attempt))
-        assert channel is not None  # guaranteed by the loop above
+        if channel is None:
+            raise RuntimeError("typing: channel not resolved after 3 attempts")
         _consecutive_errors = 0
         while True:
             try:
@@ -116,7 +126,13 @@ async def send(  # noqa: C901 — attachment loop adds branches
     for i, chunk in enumerate(chunks):
         chunk_view = view if (i == last_idx and view is not None) else None
         if should_reply:
-            msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
+            if reply_msg_id is None:
+                raise RuntimeError(
+                    "reply_msg_id must not be None when should_reply is True"
+                )
+            msg_obj = cast(_PartialMessageable, messageable).get_partial_message(
+                reply_msg_id
+            )
             if chunk_view is not None:
                 sent = await msg_obj.reply(chunk, view=chunk_view)
             else:
@@ -194,7 +210,13 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
     async def _send_placeholder():
         messageable = await adapter._resolve_channel(send_to_id)
         if should_reply:
-            msg_obj = messageable.get_partial_message(reply_msg_id)  # type: ignore[attr-defined]
+            if reply_msg_id is None:
+                raise RuntimeError(
+                    "reply_msg_id must not be None when should_reply is True"
+                )
+            msg_obj = cast(_PartialMessageable, messageable).get_partial_message(
+                reply_msg_id
+            )
             placeholder = await msg_obj.reply(_placeholder_text)
         else:
             placeholder = await messageable.send(_placeholder_text)
@@ -224,8 +246,8 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
                 try:
                     sent = await messageable.send(chunk)
                     last_id = sent.id
-                except Exception:
-                    log.exception("Failed to send final text chunk")
+                except Exception:  # noqa: BLE001 — resilient: caller has no fallback for partial streams
+                    log.exception("Failed to send final chunk to Discord")
             else:
                 await send_with_retry(
                     lambda c=chunk: messageable.send(c),

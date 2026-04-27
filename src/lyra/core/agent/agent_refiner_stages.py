@@ -40,12 +40,12 @@ def build_system_prompt(ctx: "RefinementContext") -> str:
                 lines.append(f"  display_name: {identity['display_name']}")
             if identity.get("role"):
                 lines.append(f"  role: {identity['role']}")
-        except Exception:  # noqa: BLE001
+        except (json.JSONDecodeError, TypeError):
             pass
     if ctx.voice_json:
         try:
             lines.append(f"  voice: {json.loads(ctx.voice_json)}")
-        except Exception:  # noqa: BLE001
+        except (json.JSONDecodeError, TypeError):
             pass
     lines.extend(
         [
@@ -93,5 +93,5 @@ def extract_patch(text: str, patch_cls: type) -> "RefinementPatch | None":
         if not isinstance(fields, dict):
             return None
         return patch_cls(fields=fields)
-    except (json.JSONDecodeError, IndexError, ValueError):
+    except (json.JSONDecodeError, ValueError):
         return None

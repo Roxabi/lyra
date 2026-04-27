@@ -4,6 +4,7 @@
     "hub": {
       "owner": "lyra",
       "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox narrowed to _INBOX.hub.> per ADR-051 per-identity prefix invariant.",
+      "notes": "Stream provisioning is a deploy-time admin operation — hub does not create/update streams at runtime. $JS.API.STREAM.CREATE/UPDATE.LYRA_AUDIT are intentionally absent from publish ACLs.",
       "publish": [
         "lyra.outbound.telegram.>",
         "lyra.outbound.discord.>",
@@ -13,8 +14,6 @@
         "lyra.image.generate.request",
         "lyra.clipool.cmd",
         "lyra.clipool.control",
-        "$JS.API.STREAM.CREATE.LYRA_AUDIT",
-        "$JS.API.STREAM.UPDATE.LYRA_AUDIT",
         "lyra.audit.>"
       ],
       "subscribe": [

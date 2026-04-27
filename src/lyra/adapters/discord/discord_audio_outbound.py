@@ -8,6 +8,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
 import discord
+from discord.http import Route  # internal discord.py API — verify on upgrades
 
 from lyra.adapters.discord.discord_formatting import _validate_inbound
 from lyra.adapters.shared._shared import (
@@ -92,7 +93,7 @@ async def render_audio(
             "content_type": "audio/ogg",
         },
     ]
-    route = discord.http.Route(  # type: ignore[attr-defined]
+    route = Route(
         "POST", "/channels/{channel_id}/messages", channel_id=send_to_id
     )
     try:

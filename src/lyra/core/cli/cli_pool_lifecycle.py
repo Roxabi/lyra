@@ -8,10 +8,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from .cli_pool_types import _CliPoolCore
 
 if TYPE_CHECKING:
-    from .cli_pool_worker import _ProcessEntry
+    from .cli_pool_entry import _ProcessEntry
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +31,9 @@ class CliPoolLifecycleMixin:
 
     async def start(self) -> None:
         """Start the idle reaper background task."""
-        self._reaper_task = asyncio.create_task(self._idle_reaper())  # type: ignore[attr-defined]
+        self._reaper_task = asyncio.create_task(
+            cast(_CliPoolCore, self)._idle_reaper()
+        )
         log.info("CliPool started (idle_ttl=%ds)", self._idle_ttl)
 
     def get_reaper_status(self) -> dict[str, bool | float | None]:
@@ -84,5 +88,5 @@ class CliPoolLifecycleMixin:
             except asyncio.CancelledError:
                 pass
         for pool_id in list(self._entries):
-            await self._kill(pool_id)  # type: ignore[attr-defined]
+            await cast(_CliPoolCore, self)._kill(pool_id)
         log.info("CliPool stopped")

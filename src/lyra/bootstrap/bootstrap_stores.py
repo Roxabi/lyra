@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -102,19 +103,22 @@ def _atomic_table_copy(  # noqa: C901 — sequential migration steps
                 continue
             dst.execute(row[0])
             # Copy rows — validate column names before interpolation
-            cols_cur = src.execute(f"PRAGMA table_info({table})")  # noqa: S608
+            # safe: table/column names validated against _IDENT_RE above
+            cols_cur = src.execute(f"PRAGMA table_info({table})")
             col_names = [r[1] for r in cols_cur.fetchall()]
             for c in col_names:
                 if not _IDENT_RE.match(c):
                     raise ValueError(f"Invalid column name in {table}: {c!r}")
             col_list = ", ".join(col_names)
             placeholders = ", ".join("?" for _ in col_names)
+            # safe: table/column names validated against _IDENT_RE above
             rows = src.execute(
-                f"SELECT {col_list} FROM {table}"  # noqa: S608
+                f"SELECT {col_list} FROM {table}"
             ).fetchall()
             if rows:
+                # safe: table/column names validated against _IDENT_RE above
                 dst.executemany(
-                    f"INSERT OR IGNORE INTO {table} ({col_list})"  # noqa: S608
+                    f"INSERT OR IGNORE INTO {table} ({col_list})"
                     f" VALUES ({placeholders})",
                     rows,
                 )
@@ -129,6 +133,15 @@ def _atomic_table_copy(  # noqa: C901 — sequential migration steps
             tables,
         ).fetchall()
         for (idx_sql,) in idx_rows:
+            _DDL_INDEX_RE = (
+                r'^CREATE\s+(UNIQUE\s+)?INDEX\s+'
+                r'(IF\s+NOT\s+EXISTS\s+)?[A-Za-z_][A-Za-z0-9_]*\s+ON\b'
+            )
+            if not re.match(_DDL_INDEX_RE, idx_sql, re.IGNORECASE):
+                log.warning(
+                    "Skipping unexpected DDL from sqlite_master: %r", idx_sql[:80]
+                )
+                continue
             try:
                 dst.execute(idx_sql)
             except sqlite3.OperationalError:

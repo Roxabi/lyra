@@ -10,13 +10,14 @@ import asyncio
 import json
 import logging
 
-from .cli_protocol import CliProtocolOptions, CliResult, _read_stderr_snippet
+from .cli_pool_entry import _ProcessEntry
+from .cli_protocol_types import CliProtocolOptions, CliResult, _read_stderr_snippet
 
 log = logging.getLogger(__name__)
 
 
 async def send_and_read(  # noqa: PLR0913 — protocol fn: positional args map 1:1 to wire-level concerns
-    entry: object,  # _ProcessEntry — typed as object to avoid a circular import
+    entry: _ProcessEntry,
     message: str,
     pool_id: str,
     *,
@@ -27,8 +28,6 @@ async def send_and_read(  # noqa: PLR0913 — protocol fn: positional args map 1
 
     ``default_timeout`` is retried up to ``opts.max_idle_retries`` times.
     """
-    from .cli_pool import _ProcessEntry  # local import to avoid circularity
-
     assert isinstance(entry, _ProcessEntry)
     proc = entry.proc
     if proc.stdin is None:
@@ -56,7 +55,7 @@ async def send_and_read(  # noqa: PLR0913 — protocol fn: positional args map 1
 
 
 async def read_until_result(  # noqa: C901, PLR0915
-    entry: object,
+    entry: _ProcessEntry,
     *,
     pool_id: str,
     default_timeout: float = 300,
@@ -66,8 +65,6 @@ async def read_until_result(  # noqa: C901, PLR0915
 
     Raises no exceptions — returns ``CliResult(error=...)`` on failure.
     """
-    from .cli_pool import _ProcessEntry  # local import to avoid circularity
-
     assert isinstance(entry, _ProcessEntry)
     proc = entry.proc
     if proc.stdout is None:

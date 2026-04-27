@@ -1,6 +1,8 @@
 """Worker/process management helpers for CliPool — split from cli_pool.py (#293).
 
-Contains _ProcessEntry, subprocess spawn/kill helpers, and the idle reaper.
+Contains subprocess spawn/kill helpers and the idle reaper.
+_ProcessEntry lives in cli_pool_entry to avoid circular imports with
+cli_non_streaming / cli_streaming (both of which import cli_protocol_types).
 CliPool (cli_pool.py) inherits from CliPoolWorkerMixin to preserve the public API.
 """
 
@@ -11,7 +13,6 @@ import logging
 import os
 import time
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -21,10 +22,14 @@ from roxabi_contracts.envelope import CONTRACT_VERSION
 
 from ..agent.agent_config import ModelConfig
 from ..trace import TraceContext
-from .cli_protocol import _read_stderr_snippet, build_cmd
+from .cli_pool_entry import _ProcessEntry
+from .cli_protocol_types import _read_stderr_snippet, build_cmd
 
 if TYPE_CHECKING:
     from .audit_sink import AuditSink
+
+# Re-export so existing `from .cli_pool_worker import _ProcessEntry` keeps working.
+__all__ = ["_ProcessEntry", "CliPoolWorkerMixin", "_LYRA_ROOT"]
 
 log = logging.getLogger(__name__)
 
@@ -52,38 +57,6 @@ def _find_project_root() -> Path:
 _env_cwd = os.environ.get("LYRA_CLAUDE_CWD")
 _LYRA_ROOT = Path(_env_cwd) if _env_cwd else _find_project_root()
 
-
-@dataclass
-class _ProcessEntry:
-    """A persistent CLI process for one pool."""
-
-    proc: asyncio.subprocess.Process
-    pool_id: str
-    model_config: ModelConfig
-    system_prompt: str = ""
-    session_id: str | None = None
-    resumed_from: str | None = None  # session_id passed to --resume at spawn
-    # tmpfile for --system-prompt-file (cleaned on kill)
-    prompt_file: str | None = None
-    turn_count: int = 0
-    last_activity: float = field(default_factory=time.time)
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    _on_session_update: Callable[[str, str], None] | None = field(
-        default=None, repr=False
-    )
-
-    def is_alive(self) -> bool:
-        return self.proc.returncode is None
-
-    def update_session_id(self, sid: str | None) -> None:
-        """Set session_id and fire the persist callback if changed."""
-        if sid and sid != self.session_id:
-            self.session_id = sid
-            if self._on_session_update is not None:
-                try:
-                    self._on_session_update(self.pool_id, sid)
-                except Exception:
-                    log.debug("[pool:%s] session update callback failed", self.pool_id)
 
 
 class CliPoolWorkerMixin:

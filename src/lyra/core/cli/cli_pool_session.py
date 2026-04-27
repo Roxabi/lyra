@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.turn_store import TurnStore
 
-from .cli_protocol import _SESSION_ID_RE
+from .cli_protocol import SESSION_ID_RE
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class CliPoolSessionMixin:
 
     def _persist_cli_session(self, pool_id: str, cli_session_id: str) -> None:
         """Persist CLI session ID to TurnStore for --resume after daemon restart."""
-        if not cli_session_id or not _SESSION_ID_RE.match(cli_session_id):
+        if not cli_session_id or not SESSION_ID_RE.match(cli_session_id):
             return
         lyra_sid = self._lyra_sessions.get(pool_id)
         if lyra_sid and self._turn_store is not None:

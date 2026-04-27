@@ -6,7 +6,7 @@ import logging
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from lyra.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
@@ -168,7 +168,7 @@ class CliNatsDriver(NatsDriverBase):
     def _build_control_payload(
         self,
         pool_id: str,
-        op: str,
+        op: Literal["reset", "resume_and_reset", "switch_cwd"],
         *,
         session_id: str | None = None,
         cwd: str | None = None,
@@ -178,7 +178,7 @@ class CliNatsDriver(NatsDriverBase):
             trace_id=str(uuid4()),
             issued_at=datetime.now(timezone.utc),
             pool_id=pool_id,
-            op=op,  # type: ignore[arg-type]
+            op=op,
             session_id=session_id,
             cwd=cwd,
         ).model_dump(mode="json")

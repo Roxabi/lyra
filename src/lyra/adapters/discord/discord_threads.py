@@ -126,7 +126,7 @@ async def retrieve_thread_session(
         return cached
 
     ts = await thread_store.get_session(thread_id=thread_id, bot_id=bot_id)
-    if ts.session_id is not None and ts.pool_id is not None:
+    if ts.is_resolved:
         if len(cache) >= 500:
             _oldest = next(iter(cache))
             del cache[_oldest]

@@ -16,6 +16,10 @@ class ThreadSession:
     session_id: str | None
     pool_id: str | None
 
+    @property
+    def is_resolved(self) -> bool:
+        return self.session_id is not None and self.pool_id is not None
+
 
 @runtime_checkable
 class ThreadStoreProtocol(Protocol):

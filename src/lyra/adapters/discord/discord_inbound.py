@@ -165,6 +165,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                 bot_id=adapter._bot_id,
                 cache=adapter._thread_sessions,
             )
+            # pool_id not consumed here; session routing uses session_id only
             _stored_session_id = _ts_result.session_id
         except Exception:
             log.exception(

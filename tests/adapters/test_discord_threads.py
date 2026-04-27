@@ -300,8 +300,6 @@ class TestPersistThreadSessionEviction:
         # Oldest key ("0") must have been evicted
         assert "0" not in cache
         # New entry must be present with the correct value
-        from lyra.core.stores.thread_store_protocol import ThreadSession
-
         assert "9999" in cache
         assert cache["9999"] == ThreadSession("new-sess", "new-pool")
 
@@ -497,6 +495,25 @@ class TestRetrieveThreadSession:
         assert oldest_key not in cache
         assert "999" in cache
         assert len(cache) == 500
+        assert cache["999"] == ThreadSession("sess-new", "pool-new")
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_partial_result_does_not_populate_cache(self) -> None:
+        """Partial ThreadSession (session_id set, pool_id=None): cache stays empty."""
+        from unittest.mock import AsyncMock
+
+        from lyra.adapters.discord.discord_threads import retrieve_thread_session
+        from lyra.core.stores.thread_store_protocol import ThreadSession
+
+        store = AsyncMock()
+        store.get_session.return_value = ThreadSession("sess-x", None)
+        cache: dict[str, ThreadSession] = {}
+
+        result = await retrieve_thread_session(store, "101", "bot1", cache)
+
+        assert result.session_id == "sess-x"
+        assert result.pool_id is None
+        assert "101" not in cache
 
 
 # ---------------------------------------------------------------------------

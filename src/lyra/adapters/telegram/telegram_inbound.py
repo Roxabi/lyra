@@ -189,6 +189,21 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
             file_id,
             user_id,
         )
+        try:
+            _text = adapter._msg(
+                "audio_download_failed",
+                "Couldn't retrieve your audio file. Please try again.",
+            )
+            await adapter.bot.send_message(
+                **_make_send_kwargs(chat_id, _text, message_id)
+            )
+        except Exception:
+            log.warning(
+                "Failed to send audio-download-failed reply"
+                " for user_id=%s message_id=%s",
+                user_id,
+                message_id,
+            )
         return
 
     try:

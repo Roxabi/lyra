@@ -267,6 +267,9 @@ def make_inbound_message(  # noqa: PLR0913
     )
     if modality is not None:
         kwargs["modality"] = modality
+    if modality == "voice":
+        kwargs["text"] = ""
+        kwargs["text_raw"] = ""
     return InboundMessage(**kwargs)
 
 

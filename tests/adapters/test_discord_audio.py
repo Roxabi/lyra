@@ -160,8 +160,8 @@ async def test_on_message_enqueues_audio_on_inbound_bus() -> None:
 
 
 @pytest.mark.asyncio
-async def test_on_message_audio_download_failure_returns_cleanly() -> None:
-    """on_message() handles download failure gracefully — no enqueue, no crash."""
+async def test_on_message_audio_download_failure_sends_reply() -> None:
+    """on_message() handles download failure — no enqueue, user gets error reply."""
     inbound_bus = MagicMock()
     inbound_bus.put = AsyncMock()
     adapter = DiscordAdapter(
@@ -177,12 +177,13 @@ async def test_on_message_audio_download_failure_returns_cleanly() -> None:
         read=AsyncMock(side_effect=RuntimeError("network error")),
     )
     msg = _make_discord_msg(attachments=[attachment_obj])
+    msg.guild = None
     msg.author.bot = False
 
     await adapter.on_message(msg)
 
     inbound_bus.put.assert_not_called()
-    msg.reply.assert_not_called()
+    msg.reply.assert_called_once()
 
 
 @pytest.mark.asyncio

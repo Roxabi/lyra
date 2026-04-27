@@ -18,6 +18,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ...messaging.message import InboundMessage, Response, TelegramMeta
+from ...messaging.messages import _FALLBACKS
 from ..pipeline.pipeline_types import _DROP, PipelineResult
 
 if TYPE_CHECKING:
@@ -83,6 +84,14 @@ class SttMiddleware:
 
         hub = ctx.hub
         if hub._msg_manager is None:
+            _content = _FALLBACKS.get(
+                "stt_unsupported",
+                "Voice messages are not available.",
+            )
+            await hub.dispatch_response(
+                _build_stt_reply(msg, reply=False),
+                Response(content=_content),
+            )
             return _DROP
 
         # 3. STT not configured → inform user and drop.

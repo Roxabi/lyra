@@ -1,0 +1,65 @@
+---
+title: "#945 Review Findings — Expert Consensus"
+issue: 945
+status: consensus-reached
+date: 2026-04-27
+panel: architect, tester, backend-dev
+confidence: high
+---
+
+## Problem
+
+Three review findings remained open after auto-applying F1–F5 for PR #947. Panel assessed whether F6 (Discord guild isolation), F7 (Telegram log field consistency), and F8 (pre-existing type-ignore) should be applied, deferred, or skipped.
+
+## Panel
+
+| Agent | Focus |
+|---|---|
+| architect | Arch soundness, layer boundaries, maintainability |
+| tester | Test reliability, coverage, assertion quality |
+| backend-dev | Observability, error handling, ops |
+
+## Consensus
+
+### F6 — Discord download-failure test guild isolation → **Apply** (2-1)
+
+**`tests/adapters/test_discord_audio.py:163` — add `msg.guild = None`**
+
+Majority (architect, backend-dev): test passes by coincidence — download exception fires before the guild gate, but this ordering is an implicit assumption. Adding `msg.guild = None` makes intent explicit and test ordering-independent at zero cost.
+
+Dissent (tester): download exception short-circuits correctly by design; adding `msg.guild = None` is cosmetic documentation only, not a reliability fix.
+
+### F7 — Telegram/Discord log field inconsistency → **Apply** (unanimous)
+
+**`src/lyra/adapters/telegram/telegram_inbound.py:201` — add `message_id` to `log.warning`**
+
+All three agents agree: Telegram inner-except logs `user_id` only; Discord logs `message_id` only. Both fields are in scope at the callsite. During incident response, the inner-except is the last-resort log when error-reply send itself fails — having both fields in both adapters is the correct baseline. Single format-string change, zero risk.
+
+### F8 — `_dispatch_error` type-ignore (pre-existing) → **Skip** (2-1)
+
+**`src/lyra/core/hub/middleware/middleware_stt.py:171` — leave as-is**
+
+Majority (architect, tester): `assert hub._msg_manager is not None` would not remove the `# type: ignore[union-attr]` (pyright cannot narrow `object`), adds a runtime branch on a hot STT path, and the invariant belongs at the Hub initialization boundary. Pre-existing, runtime-safe due to the new guard at line 85, out of scope for a bug fix PR.
+
+Dissent (backend-dev): assert makes the invariant explicit and crashes fast on violation rather than raising `AttributeError`.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|---|---|
+| Skip F6 | tester | Majority prefers explicit intent over relying on ordering coincidence |
+| Apply F8 with assert | backend-dev | Assert doesn't remove type-ignore; adds hot-path branch; invariant belongs at init |
+| Defer F8 | tester | Same outcome as Skip for this PR; track separately if Hub type exposed to middleware |
+
+## Dissent
+
+- F6: tester dissents — considers `msg.guild = None` cosmetic; ordering is correct by architecture
+- F8: backend-dev dissents — prefers runtime assert over suppression comment
+
+## Implementation Notes
+
+Apply F6 + F7 in a single commit. Skip F8. Run focused test suite after to confirm green.
+
+## Next
+
+Commit F6 + F7 → push → re-review or merge.

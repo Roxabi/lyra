@@ -160,6 +160,18 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
             "Failed to download audio attachment for message_id=%s",
             message.id,
         )
+        try:
+            await message.reply(
+                adapter._msg(
+                    "audio_download_failed",
+                    "Couldn't retrieve your audio file. Please try again.",
+                )
+            )
+        except Exception:
+            log.warning(
+                "Failed to send audio-download-failed reply for message_id=%s",
+                message.id,
+            )
         return
 
     # Magic-byte check: client-supplied content_type is untrusted.

@@ -40,12 +40,12 @@ def build_system_prompt(ctx: "RefinementContext") -> str:
                 lines.append(f"  display_name: {identity['display_name']}")
             if identity.get("role"):
                 lines.append(f"  role: {identity['role']}")
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             pass
     if ctx.voice_json:
         try:
             lines.append(f"  voice: {json.loads(ctx.voice_json)}")
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             pass
     lines.extend(
         [

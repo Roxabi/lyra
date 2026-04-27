@@ -75,10 +75,8 @@ class CliPoolStreamingMixin:
                 if entry is None:
                     raise RuntimeError("Failed to respawn Claude CLI process")
 
-            _pool_id = pool_id
-
             async def _reset() -> None:
-                await cast(_CliPoolCore, self).reset(_pool_id)
+                await cast(_CliPoolCore, self).reset(pool_id)
 
             # Lock: write stdin inside lock, release before returning the
             # read-only iterator.  This prevents concurrent stdin interleave

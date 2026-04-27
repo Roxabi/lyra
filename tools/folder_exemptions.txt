@@ -8,3 +8,4 @@
 
 src/lyra/core           # 13 files — #858 config dataclass extraction
 src/lyra/infrastructure/stores  # 14 files — #935 ADR-048 store migration (4 files moved from core/stores)
+src/lyra/core/cli           # 13 files — #957 cli_protocol_types.py extracted to resolve circular import (ADR-060)

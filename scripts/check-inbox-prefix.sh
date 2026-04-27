@@ -6,7 +6,6 @@
 # validation and should be flagged.
 #
 # Tests are excluded since they may intentionally test the raw parameter.
-# Docstrings may trigger warnings but are informational (helps keep docs consistent).
 #
 # Usage: scripts/check-inbox-prefix.sh
 # Returns: 0 if no violations, 1 if violations found
@@ -19,7 +18,7 @@ FAIL=0
 # Find source files (exclude tests)
 # Note: tests/ may intentionally test the raw inbox_prefix parameter
 find_sources() {
-    find src packages -name "*.py" -print0 2>/dev/null | grep -zvE '/tests/'
+    find src packages -name "*.py" -not -path "*/tests/*" -print0 2>/dev/null
 }
 
 # Check for f-string construction: inbox_prefix=f"_INBOX.
@@ -33,24 +32,28 @@ while IFS= read -r -d '' f; do
 done < <(find_sources)
 
 # Check for literal construction: inbox_prefix="_INBOX.
-# Note: This may also match docstring examples (informational, not a hard error for docs)
+# Uses Python AST to avoid false positives from comments/docstrings
 while IFS= read -r -d '' f; do
-    matches=$(grep -n 'inbox_prefix="_INBOX\.' "$f" 2>/dev/null || true)
-    if [ -n "$matches" ]; then
-        # Check if this is a docstring (contains double backticks around the expression)
-        # Docstrings are informational - warn but don't fail
-        filtered=$(echo "$matches" | grep -v '``inbox_prefix=' || true)
-        if [ -n "$filtered" ]; then
-            echo "FAIL: $f uses raw literal inbox_prefix construction (use identity_name= instead):"
-            echo "$filtered"
-            FAIL=1
-        fi
-        # Docstring matches are informational only
-        docstring_matches=$(echo "$matches" | grep '``inbox_prefix=' || true)
-        if [ -n "$docstring_matches" ]; then
-            echo "INFO: $f has docstring mentioning inbox_prefix (verify docs recommend identity_name):"
-            echo "$docstring_matches"
-        fi
+    result=$(python3 - "$f" <<'PYEOF'
+import ast, sys
+try:
+    tree = ast.parse(open(sys.argv[1]).read())
+except SyntaxError:
+    sys.exit(0)
+for node in ast.walk(tree):
+    if isinstance(node, ast.Call):
+        for kw in node.keywords:
+            if (kw.arg == 'inbox_prefix' and
+                    isinstance(kw.value, ast.Constant) and
+                    isinstance(kw.value.value, str) and
+                    kw.value.value.startswith('_INBOX.')):
+                print(f"{sys.argv[1]}:{kw.value.lineno}: inbox_prefix=\"{kw.value.value}...\"")
+PYEOF
+    )
+    if [ -n "$result" ]; then
+        echo "FAIL: uses raw literal inbox_prefix construction (use identity_name= instead):"
+        echo "$result"
+        FAIL=1
     fi
 done < <(find_sources)
 

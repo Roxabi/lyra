@@ -104,10 +104,11 @@ class CreatePoolMiddleware:
         if (
             _agent is not None
             and hasattr(_agent, "configure_pool")
-            and not getattr(pool, "_configured", False)
+            and not pool._configured
         ):
             _agent.configure_pool(pool)
             pool._configured = True
+            # configure_pool must be idempotent — no lock guards this check-then-set
 
         if pool._on_resume_fn is None and ctx.hub._turn_store is not None:  # #597
             pool._on_resume_fn = ctx.hub._turn_store.increment_resume_count

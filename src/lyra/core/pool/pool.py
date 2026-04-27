@@ -254,7 +254,7 @@ class Pool:
             if self._on_resume_fn is not None:
                 try:
                     await self._on_resume_fn(session_id)
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: BLE001 — resilient: TurnStore errors must not abort session
                     log.exception(
                         "[pool:%s] resume count increment failed for %r",
                         self.pool_id,
@@ -278,7 +278,7 @@ class Pool:
                 await self._observer._turn_store.start_session(
                     self.session_id, self.pool_id
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — resilient: TurnStore errors must not abort session
                 log.exception("[pool:%s] start_session failed", self.pool_id)
         self._observer.reset_session_persisted()
         if self._session_reset_fn is not None:

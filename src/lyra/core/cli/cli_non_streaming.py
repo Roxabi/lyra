@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 
-from .cli_protocol import CliProtocolOptions, CliResult, _read_stderr_snippet
+from .cli_protocol_types import CliProtocolOptions, CliResult, _read_stderr_snippet
 
 log = logging.getLogger(__name__)
 

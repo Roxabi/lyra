@@ -85,7 +85,7 @@ async def _register_bot(
         try:
             command_loader.load(plugin_name)
         except Exception:  # noqa: BLE001 — resilient: plugin load failure must not abort agent setup
-            log.debug(
+            log.warning(
                 "Could not load plugin %s for agent %s",
                 plugin_name,
                 agent_name,

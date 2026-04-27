@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -132,6 +133,11 @@ def _atomic_table_copy(  # noqa: C901 — sequential migration steps
             tables,
         ).fetchall()
         for (idx_sql,) in idx_rows:
+            if not re.match(r'^CREATE\s+(UNIQUE\s+)?INDEX\s+', idx_sql, re.IGNORECASE):
+                log.warning(
+                    "Skipping unexpected DDL from sqlite_master: %r", idx_sql[:80]
+                )
+                continue
             try:
                 dst.execute(idx_sql)
             except sqlite3.OperationalError:

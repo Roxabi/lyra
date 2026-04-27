@@ -21,15 +21,15 @@ import logging
 import re
 import uuid
 from contextvars import ContextVar, Token
-from typing import cast
+from typing import Protocol, cast
 
 _trace_id: ContextVar[str] = ContextVar("trace_id")
 _pool_id: ContextVar[str] = ContextVar("pool_id")
 _agent_name: ContextVar[str] = ContextVar("agent_name")
 
 
-class TraceLogRecord(logging.LogRecord):
-    """LogRecord subclass that declares the extra trace fields."""
+class TraceLogRecord(Protocol):
+    """Protocol for LogRecord instances enriched by TraceIdFilter."""
 
     trace_id: str
     pool_id: str

@@ -1,0 +1,63 @@
+---
+title: "ADR-060: CLI Protocol Circular Import Resolution via Type Extraction"
+description: Extract shared types from cli_protocol.py into cli_protocol_types.py to eliminate circular import between the facade and its submodules.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+`cli_protocol.py` served dual roles: it defined shared types (`CliResult`,
+`CliProtocolOptions`, `SESSION_ID_RE`, `build_cmd`, `_read_stderr_snippet`)
+and acted as a re-export facade for `cli_non_streaming` and `cli_streaming`.
+
+This created a circular import: `cli_non_streaming` and `cli_streaming` needed
+the shared types at module load time, but those types lived in `cli_protocol`,
+which tried to import from those submodules.  The workaround was bottom-of-file
+re-exports suppressed with `# noqa: E402, I001`, masking the structural problem.
+
+`cli_pool` also imported from `cli_protocol`, consuming `_SESSION_ID_RE`,
+`CliProtocolOptions`, `CliResult`, and `send_and_read` — it was a downstream
+consumer, not a contributor to the cycle.
+
+## Options Considered
+
+### Option A: Extract shared types into `cli_protocol_types.py`
+- **Pros:** Eliminates the circular import structurally; `cli_protocol.py`
+  becomes a clean top-of-file re-export facade with no `noqa` suppressions;
+  submodules import from `cli_protocol_types` (no cycle); all external callers
+  continue importing from `cli_protocol` unchanged.
+- **Cons:** Adds one new file; requires updating imports in two files
+  (`cli_non_streaming`, `cli_streaming`).
+
+### Option B: Document the load-order invariant with a module-level comment
+- **Pros:** Zero structural change; no new files.
+- **Cons:** Retains the `noqa` suppressions; the circular dependency remains
+  a latent risk; any future import reordering by a linter or editor could
+  silently break the module.
+
+## Decision
+
+Option A — extract shared types into `cli_protocol_types.py`.
+
+The extraction was clean: `CliResult`, `CliProtocolOptions`, `SESSION_ID_RE`,
+`_SESSION_ID_RE`, `build_cmd`, and `_read_stderr_snippet` have no coupling to
+the submodules.  `cli_protocol.py` is now a pure top-of-file re-export facade.
+All external import paths (`from .cli_protocol import …`) remain unchanged.
+
+## Consequences
+
+### Positive
+- Circular import is eliminated structurally; no `noqa` suppressions needed.
+- `cli_protocol.py` is a clean, readable re-export facade.
+- Pyright and ruff pass with zero errors on the affected module tree.
+- Linter/editor import reordering can no longer break module initialization.
+
+### Negative
+- One additional file (`cli_protocol_types.py`) in the `cli/` package.
+
+### Neutral
+- `cli_pool.py` continues importing from `cli_protocol` — no change required.
+- Private alias `_SESSION_ID_RE` is preserved for backward compatibility.

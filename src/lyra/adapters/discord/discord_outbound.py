@@ -32,7 +32,11 @@ log = logging.getLogger("lyra.adapters.discord")
 
 # Channels that support get_partial_message(); _resolve_channel() returns one of these.
 _PartialMessageable = (
-    discord.TextChannel | discord.Thread | discord.DMChannel | discord.VoiceChannel
+    discord.TextChannel
+    | discord.Thread
+    | discord.DMChannel
+    | discord.VoiceChannel
+    | discord.StageChannel
 )
 
 
@@ -121,7 +125,10 @@ async def send(  # noqa: C901 — attachment loop adds branches
     for i, chunk in enumerate(chunks):
         chunk_view = view if (i == last_idx and view is not None) else None
         if should_reply:
-            assert reply_msg_id is not None  # guaranteed by should_reply
+            if reply_msg_id is None:
+                raise AssertionError(
+                    "reply_msg_id must not be None when should_reply is True"
+                )
             msg_obj = cast(_PartialMessageable, messageable).get_partial_message(
                 reply_msg_id
             )
@@ -202,7 +209,10 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
     async def _send_placeholder():
         messageable = await adapter._resolve_channel(send_to_id)
         if should_reply:
-            assert reply_msg_id is not None  # guaranteed by should_reply
+            if reply_msg_id is None:
+                raise AssertionError(
+                    "reply_msg_id must not be None when should_reply is True"
+                )
             msg_obj = cast(_PartialMessageable, messageable).get_partial_message(
                 reply_msg_id
             )

@@ -8,7 +8,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
 import discord
-from discord.http import Route
+from discord.http import Route  # internal discord.py API — verify on upgrades
 
 from lyra.adapters.discord.discord_formatting import _validate_inbound
 from lyra.adapters.shared._shared import (

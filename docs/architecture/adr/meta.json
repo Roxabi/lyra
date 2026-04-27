@@ -53,6 +53,9 @@
     "053-deployment-topology-and-container-hardening",
     "055-quadlet-ecosystem-conventions",
     "056-container-publishing-workflow-pattern",
-    "057-security-event-audit-infrastructure"
+    "057-security-event-audit-infrastructure",
+    "058-typed-error-boundary-and-user-visible-error-contract",
+    "059-hexagonal-clean-architecture-canonical-model",
+    "060-cli-protocol-circular-import-resolution"
   ]
 }

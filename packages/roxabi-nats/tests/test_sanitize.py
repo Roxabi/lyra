@@ -98,3 +98,36 @@ class TestEmptyAndAllowlistShape:
 
     def test_allowlist_is_immutable(self) -> None:
         assert isinstance(PLATFORM_META_ALLOWLIST, frozenset)
+
+
+class TestInjectableAllowlist:
+    def test_custom_allowlist_used_when_provided(self) -> None:
+        # "custom_only" is NOT on PLATFORM_META_ALLOWLIST — proves the custom set is
+        # active. "guild_id" IS on PLATFORM_META_ALLOWLIST — proves the default is not.
+        custom = frozenset({"custom_only", "other_field"})
+        meta = {"custom_only": "keep", "guild_id": "default-only", "other_field": 1}
+        result = sanitize_platform_meta(meta, allowlist=custom)
+        assert result == {"custom_only": "keep", "other_field": 1}
+        assert "guild_id" not in result
+
+    def test_default_allowlist_used_when_none(self) -> None:
+        meta = {"guild_id": "123", "unknown": "x"}
+        assert sanitize_platform_meta(meta, allowlist=None) == {"guild_id": "123"}
+
+    def test_empty_custom_allowlist_strips_everything(self) -> None:
+        meta = {"guild_id": "123", "chat_id": 42}
+        assert sanitize_platform_meta(meta, allowlist=frozenset()) == {}
+
+    def test_underscore_keys_still_stripped_with_custom_allowlist(self) -> None:
+        # "_custom_field" IS in custom — the only operative filter is the underscore
+        # guard; if that guard were removed the key would pass through.
+        custom = frozenset({"custom_field", "_custom_field"})
+        meta = {"custom_field": "ok", "_custom_field": "injected"}
+        result = sanitize_platform_meta(meta, allowlist=custom)
+        assert result == {"custom_field": "ok"}
+        assert "_custom_field" not in result
+
+    def test_non_scalar_dropped_with_custom_allowlist(self) -> None:
+        custom = frozenset({"custom_field"})
+        meta = {"custom_field": [1, 2, 3]}
+        assert sanitize_platform_meta(meta, allowlist=custom) == {}

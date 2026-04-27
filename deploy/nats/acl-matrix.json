@@ -25,6 +25,7 @@
         "lyra.llm.health.*",
         "lyra.system.ready",
         "_inbox.hub.>",
+        "_inbox.hub.*.*",
         "lyra.image.heartbeat",
         "lyra.clipool.heartbeat"
       ]
@@ -39,7 +40,8 @@
       ],
       "subscribe": [
         "lyra.outbound.telegram.>",
-        "_inbox.telegram-adapter.>"
+        "_inbox.telegram-adapter.>",
+        "_inbox.telegram-adapter.*.*"
       ]
     },
     "discord-adapter": {
@@ -52,7 +54,8 @@
       ],
       "subscribe": [
         "lyra.outbound.discord.>",
-        "_inbox.discord-adapter.>"
+        "_inbox.discord-adapter.>",
+        "_inbox.discord-adapter.*.*"
       ]
     },
     "voice-tts": {

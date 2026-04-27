@@ -19,9 +19,12 @@ log = logging.getLogger(__name__)
 
 class Secrets:
     def __init__(self, vault_dir: Path | None = None) -> None:
-        self._vault_dir = vault_dir or Path(
-            os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
-        ).resolve()
+        self._vault_dir = (
+            vault_dir
+            or Path(
+                os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
+            ).resolve()
+        )
 
     def _read(self, name: str) -> str:
         path = self._vault_dir / "secrets" / name
@@ -58,7 +61,6 @@ def _probe_nats(nc: Any | None) -> str | None:
     except Exception as exc:
         log.debug("_probe_nats: unexpected exception from nc.is_connected: %s", exc)
         return "unreachable"
-
 
 
 def create_health_app(  # noqa: C901 — optional sections (nats/reaper/circuits)

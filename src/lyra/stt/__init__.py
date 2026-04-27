@@ -5,9 +5,14 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import (
+    runtime_checkable,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+)
 
 from pydantic import BaseModel
+
+# STTProtocol now lives in core/ports/; re-exported here for backward compat.
+from lyra.core.ports.stt import STTProtocol
 
 log = logging.getLogger(__name__)
 
@@ -21,11 +26,6 @@ __all__ = [
     "is_whisper_noise",
     "mime_from_suffix",
 ]
-
-
-@runtime_checkable
-class STTProtocol(Protocol):
-    async def transcribe(self, audio: bytes, mime: str) -> "TranscriptionResult": ...
 
 
 class STTUnavailableError(Exception):

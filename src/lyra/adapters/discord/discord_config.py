@@ -1,29 +1,12 @@
-"""Discord configuration model and loader."""
+"""Discord configuration model and loader.
+
+Re-exports from lyra.core.config so existing importers keep working.
+The canonical definition lives in core to avoid pulling discord.py into lyra.config
+(ADR-059 V6).
+"""
 
 from __future__ import annotations
 
-import os
+from lyra.core.config import DiscordConfig, load_discord_config
 
-from pydantic import BaseModel, ConfigDict, Field
-
-_AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
-
-
-class DiscordConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    token: str = Field(repr=False)
-    auto_thread: bool = True
-
-
-def load_discord_config() -> DiscordConfig:
-    """Load Discord configuration from environment variables.
-
-    Raises SystemExit if DISCORD_TOKEN is absent. Never logs the token.
-    """
-    token = os.environ.get("DISCORD_TOKEN")
-    if not token:
-        raise SystemExit("Missing required env var: DISCORD_TOKEN")
-    auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "").strip().lower()
-    auto_thread = auto_thread_str in _AUTO_THREAD_TRUE if auto_thread_str else True
-    return DiscordConfig(token=token, auto_thread=auto_thread)
+__all__ = ["DiscordConfig", "load_discord_config"]

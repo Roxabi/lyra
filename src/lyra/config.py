@@ -22,8 +22,15 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from lyra.adapters.discord.discord_config import DiscordConfig, load_discord_config
-from lyra.adapters.telegram import TelegramConfig, load_config
+from lyra.core.config import (
+    DiscordConfig,
+    TelegramConfig,
+    load_discord_config,
+    load_telegram_config,
+)
+
+# Backward-compat alias: callers using load_config get the Telegram loader.
+load_config = load_telegram_config
 
 __all__ = [
     "DiscordConfig",

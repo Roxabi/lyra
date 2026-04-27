@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from lyra.adapters.shared._shared_streaming import PlatformCallbacks
@@ -41,6 +40,7 @@ from lyra.adapters.telegram.telegram_outbound import (
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.auth.guard import BlockedGuard, GuardChain
 from lyra.core.auth.trust import TrustLevel
+from lyra.core.config import TelegramConfig as TelegramConfig, load_telegram_config
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
@@ -53,22 +53,9 @@ from lyra.core.messaging.messages import MessageManager
 log = logging.getLogger(__name__)
 
 
-class TelegramConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    token: str
-    webhook_secret: str
-
-
-def load_config() -> TelegramConfig:
-    """Load Telegram configuration from environment variables."""
-    token = os.environ.get("TELEGRAM_TOKEN")
-    if not token:
-        raise SystemExit("Missing required env var: TELEGRAM_TOKEN")
-    secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
-    if not secret:
-        raise SystemExit("Missing required env var: TELEGRAM_WEBHOOK_SECRET")
-    return TelegramConfig(token=token, webhook_secret=secret)
+# TelegramConfig/load_telegram_config live in lyra.core.config (ADR-059 V6).
+# load_config is a backward-compat alias.
+load_config = load_telegram_config
 
 
 def _make_verifier(secret: str):

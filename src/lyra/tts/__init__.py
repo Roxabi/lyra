@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+# TtsProtocol now lives in core/ports/; re-exported here for backward compat.
+from lyra.core.ports.tts import TtsProtocol
 from lyra.tts.engine_selector import (
     LANG_ISO_TO_QWEN,
     TTSConfig,
@@ -15,24 +16,7 @@ from lyra.tts.engine_selector import (
 )
 from lyra.tts.text_normalization import normalize_text_for_tts
 
-if TYPE_CHECKING:
-    from lyra.core.agent.agent_config import AgentTTSConfig
-
-
 log = logging.getLogger(__name__)
-
-
-@runtime_checkable
-class TtsProtocol(Protocol):
-    async def synthesize(
-        self,
-        text: str,
-        *,
-        agent_tts: "AgentTTSConfig | None" = None,
-        language: str | None = None,
-        voice: str | None = None,
-        fallback_language: str | None = None,
-    ) -> "SynthesisResult": ...
 
 
 class TtsUnavailableError(Exception):

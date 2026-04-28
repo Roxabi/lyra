@@ -1,0 +1,43 @@
+---
+title: "acl-matrix.json: derive responder inbox grants from request_reply_flows"
+issue: 1000
+status: approved
+tier: F-lite
+date: 2026-04-28
+---
+
+## Problem
+
+Five responder identities in `deploy/nats/acl-matrix.json` each carry a hand-written `_inbox.hub.>` publish grant (`voice-tts`, `voice-stt`, `llm-worker`, `image-worker`, `clipool-worker`). This is a copy-paste pattern with no enforcement. When a new responder is added, the grant must be manually remembered and added in two places: the ACL matrix itself, and the `scripts/check-acl-matrix-spec.sh` CI check.
+
+Omitting the grant causes hub→responder requests to fail silently — the exact incident class from the 2026-04-27 outage. The CI check exists as a mitigation, but it must also be updated manually, making it a second point of failure rather than a true safeguard.
+
+The fix is to make the inbox grants **derived**, not authored: declare `request_reply_flows` in `acl-matrix.json` and let `gen-nkeys.sh` inject the `_inbox.{requester}.>` grants automatically for each responder identity.
+
+## Who
+
+- **Primary:** developers adding a new Lyra worker — they should only need to declare one flow entry and get the correct NATS grants for free.
+- **Secondary:** ops/CI — `check-acl-matrix-spec.sh` can be simplified or removed once derivation is tested and load-bearing.
+
+## Constraints
+
+- Standalone refactor — no upstream blockers.
+- Must not break existing NATS ACL output for the five current responders.
+- `gen-nkeys.sh` is the generation entry point; derivation logic lives there (or a helper it calls).
+- Test suite must assert that the derivation produces the correct grants so the CI check becomes redundant.
+
+## Out of Scope
+
+- Adding new responder identities (this PR only wires the derivation for the existing five).
+- Changes to the NATS server config or subject namespace.
+- `check-acl-matrix-spec.sh` removal is optional cleanup; can be a follow-up.
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (NATS ACL tooling), no architectural unknowns. Two files change (`acl-matrix.json`, `gen-nkeys.sh`) plus test assertions.
+
+Signals observed:
+- Single domain: NATS ACL generation scripts
+- No new architecture — pure refactor of how grants are derived
+- Proposed solution fully specified in issue body
+- Label: `size:F-lite`

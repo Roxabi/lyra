@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 from datetime import datetime, timezone
@@ -10,6 +11,8 @@ from datetime import datetime, timezone
 import httpx
 
 from .models import CheckResult
+
+log = logging.getLogger(__name__)
 
 
 def check_disk(path: str, min_free_gb: int) -> CheckResult:
@@ -45,7 +48,7 @@ async def check_nats_varz(url: str, state_file: str, timeout: int = 5) -> CheckR
     except (FileNotFoundError, json.JSONDecodeError):
         pass
 
-    # Fetch /varz
+    # Fetch /varz — also catches ValueError/TypeError from int() on unexpected schema
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(varz_url, timeout=timeout)
@@ -57,6 +60,8 @@ async def check_nats_varz(url: str, state_file: str, timeout: int = 5) -> CheckR
                 timestamp=now,
             )
         data = resp.json()
+        current_auth = int(data.get("auth_errors", 0))
+        current_slow = int(data.get("slow_consumers", 0))
     except Exception as exc:
         return CheckResult(
             name="nats:varz",
@@ -65,28 +70,19 @@ async def check_nats_varz(url: str, state_file: str, timeout: int = 5) -> CheckR
             timestamp=now,
         )
 
-    current_auth = int(data.get("auth_errors", 0))
-    current_slow = int(data.get("slow_consumers", 0))
-
-    last_auth = last.get("auth_errors", current_auth)
-    last_slow = last.get("slow_consumers", current_slow)
-
-    delta_auth = current_auth - last_auth
-    delta_slow = current_slow - last_slow
-
-    # Negative delta → NATS restarted; reinitialize baseline silently
-    if delta_auth < 0:
-        delta_auth = 0
-    if delta_slow < 0:
-        delta_slow = 0
+    # Negative delta → NATS restarted; max(0, ...) reinitializes baseline silently
+    delta_auth = max(0, current_auth - last.get("auth_errors", current_auth))
+    delta_slow = max(0, current_slow - last.get("slow_consumers", current_slow))
 
     # Persist current values
-    os.makedirs(os.path.dirname(state_path), exist_ok=True)
+    parent = os.path.dirname(state_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     try:
         with open(state_path, "w") as f:
             json.dump({"auth_errors": current_auth, "slow_consumers": current_slow}, f)
-    except OSError:
-        pass
+    except OSError as exc:
+        log.warning("nats:varz state write failed: %s", exc)
 
     failures = []
     if delta_auth > 0:

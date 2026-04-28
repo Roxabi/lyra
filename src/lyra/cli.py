@@ -91,7 +91,7 @@ def _boot(coro_factory) -> None:
     from lyra.bootstrap.factory.config import _load_logging_config, _load_raw_config
 
     raw_config = _load_raw_config()
-    _setup_logging(_load_logging_config(raw_config))
+    _setup_logging(_load_logging_config(raw_config).level)
     asyncio.run(coro_factory(raw_config))
 
 

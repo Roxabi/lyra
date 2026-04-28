@@ -13,7 +13,6 @@ import sys
 from dotenv import load_dotenv
 
 from lyra.bootstrap.factory.config import (
-    LoggingConfig,
     _load_logging_config,
     _load_raw_config,
 )
@@ -43,15 +42,13 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         sys.exit(str(exc))
 
 
-def _setup_logging(log_config: LoggingConfig | None = None) -> None:
+def _setup_logging(level: str = "INFO") -> None:
     """Configure logging: stdout console handler only.
 
     Uses explicit handler construction (not ``basicConfig``) to guarantee
     formatter and filter attachment.
     """
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-    if log_config is None:
-        log_config = LoggingConfig()
 
     trace_filter = TraceIdFilter()
     # Redact Telegram bot tokens — httpx logs full request URLs (incl. token)
@@ -66,8 +63,8 @@ def _setup_logging(log_config: LoggingConfig | None = None) -> None:
     root = logging.getLogger()
     if root.handlers:
         return  # already configured — avoid duplicate handlers
-    level = getattr(logging, log_config.level.upper(), logging.INFO)
-    root.setLevel(level)
+    level_int = getattr(logging, level.upper(), logging.INFO)
+    root.setLevel(level_int)
     root.addFilter(trace_filter)
     root.addFilter(telegram_token_filter)
     root.addHandler(console_handler)
@@ -75,8 +72,7 @@ def _setup_logging(log_config: LoggingConfig | None = None) -> None:
 
 def main() -> None:
     raw_config = _load_raw_config()
-    log_config = _load_logging_config(raw_config)
-    _setup_logging(log_config)
+    _setup_logging(_load_logging_config(raw_config).level)
     asyncio.run(_main())
 
 

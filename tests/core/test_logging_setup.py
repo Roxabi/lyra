@@ -1,11 +1,14 @@
-"""Unit tests for LoggingConfig and _setup_logging wiring (#270)."""
+"""Unit tests for LoggingConfig and _setup_logging wiring (#999)."""
 
 from __future__ import annotations
 
 import logging
 
 from lyra.bootstrap.factory.config import LoggingConfig, _load_logging_config
-from lyra.core.trace import TraceIdFilter  # noqa: F401 (used in isinstance checks)
+from lyra.core.trace import (  # noqa: F401 (used in isinstance checks)
+    TelegramTokenFilter,
+    TraceIdFilter,
+)
 
 # ──────────────────────────────────────────────────────────────────────
 # LoggingConfig
@@ -37,7 +40,7 @@ class TestLoggingConfig:
 
 
 class TestSetupLogging:
-    """Tests for _setup_logging wiring (#270)."""
+    """Tests for _setup_logging wiring (#999)."""
 
     def test_trace_filter_attached_to_root(self) -> None:
         import lyra.__main__ as main_mod
@@ -48,7 +51,7 @@ class TestSetupLogging:
         root.handlers.clear()
         root.filters.clear()
         try:
-            main_mod._setup_logging(LoggingConfig())
+            main_mod._setup_logging()
             assert any(isinstance(f, TraceIdFilter) for f in root.filters)
         finally:
             root.handlers[:] = original_handlers
@@ -59,14 +62,34 @@ class TestSetupLogging:
 
         root = logging.getLogger()
         original_handlers = root.handlers[:]
+        original_filters = root.filters[:]
         root.handlers.clear()
+        root.filters.clear()
         try:
-            main_mod._setup_logging(LoggingConfig())
+            main_mod._setup_logging()
             count_after_first = len(root.handlers)
-            main_mod._setup_logging(LoggingConfig())
+            main_mod._setup_logging()
             assert len(root.handlers) == count_after_first
         finally:
             root.handlers[:] = original_handlers
+            root.filters[:] = original_filters
+
+    def test_level_applied_to_root(self) -> None:
+        import lyra.__main__ as main_mod
+
+        root = logging.getLogger()
+        original_level = root.level
+        original_handlers = root.handlers[:]
+        original_filters = root.filters[:]
+        root.handlers.clear()
+        root.filters.clear()
+        try:
+            main_mod._setup_logging(level="debug")
+            assert root.level == logging.DEBUG
+        finally:
+            root.handlers[:] = original_handlers
+            root.filters[:] = original_filters
+            root.setLevel(original_level)
 
     def test_console_handler_only(self) -> None:
         """After setup, only a StreamHandler is present (no file handler)."""
@@ -74,10 +97,16 @@ class TestSetupLogging:
 
         root = logging.getLogger()
         original_handlers = root.handlers[:]
+        original_filters = root.filters[:]
         root.handlers.clear()
+        root.filters.clear()
         try:
-            main_mod._setup_logging(LoggingConfig())
+            main_mod._setup_logging()
             assert len(root.handlers) == 1
             assert isinstance(root.handlers[0], logging.StreamHandler)
+            handler_filters = root.handlers[0].filters
+            assert any(isinstance(f, TraceIdFilter) for f in handler_filters)
+            assert any(isinstance(f, TelegramTokenFilter) for f in handler_filters)
         finally:
             root.handlers[:] = original_handlers
+            root.filters[:] = original_filters

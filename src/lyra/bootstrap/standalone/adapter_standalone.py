@@ -273,24 +273,25 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             if not wired_dc:
                 sys.exit("No Discord adapters started — check credentials")
             await wait_for_hub(nc)
-
             stop_dc = setup_shutdown_event(_stop)
-
             start_tasks = [
-                asyncio.create_task(
-                    a.start(tok),
-                    name=f"discord:{a._bot_id}",
-                )
+                asyncio.create_task(a.start(tok), name=f"discord:{a._bot_id}")
                 for a, tok, _ in wired_dc
             ]
             try:
                 await stop_dc.wait()
-                for a, _, _ in wired_dc:
-                    await a.close()
+                for _r in await asyncio.gather(
+                    *[a.close() for a, _, _ in wired_dc], return_exceptions=True
+                ):
+                    if isinstance(_r, BaseException) and not isinstance(
+                        _r, asyncio.CancelledError
+                    ):
+                        log.exception("DC adapter close failed", exc_info=_r)
                 await asyncio.gather(*start_tasks, return_exceptions=True)
             finally:
                 for _, _, ibus in wired_dc:
                     await ibus.stop()
+                await dc_thread_store.close()
                 await dc_turn_store.close()
 
         else:

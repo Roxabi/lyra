@@ -1,0 +1,113 @@
+---
+title: "PR #995 Review Findings — Expert Consensus"
+issue: 984
+status: consensus-reached
+date: 2026-04-28
+panel: architect, backend-dev, product-lead
+confidence: high
+---
+
+## Problem
+
+PR #995 code review (iteration 2) surfaced 1 blocker, 6 suggestions, and 4 nitpicks on top of
+a spec-compliant implementation. Panel was asked to determine best long-term disposition for
+each finding: fix-now in this PR vs defer to a follow-up issue.
+
+## Panel
+
+| Agent | Focus |
+|---|---|
+| architect | Arch soundness, layer boundaries, maintainability |
+| backend-dev | Impl correctness, Python idioms, API design, test quality |
+| product-lead | Scope discipline, time-to-market, no gold-plating |
+
+## Consensus ρ
+
+### Fix in this PR (7 findings)
+
+| # | Finding | Files | Rationale |
+|---|---------|-------|-----------|
+| B1 | Log exceptions from `asyncio.gather` result list | `bootstrap_lifecycle.py:119` | Silent teardown failures are an operational blindspot. Filter `CancelledError`, log unexpected `BaseException`. |
+| S4 | Replace sequential dc_adapter close loop with `asyncio.gather` | `adapter_standalone.py:288` | Same operation, same correctness gap as B1 fixed path. 2-line fix. Matches established pattern in `run_lifecycle`. |
+| S5 | F6b test: add `mock_store.close.assert_not_called()` negative assertion | `test_bootstrap_lifecycle.py` | Test named "noop" that doesn't assert the noop is hollow. The guard could be deleted and the test would still pass. |
+| S6 | Protocol absence assertion: `assert ThreadStoreProtocol.__protocol_attrs__ == expected_set` | `test_thread_store_protocol.py` | Machine-verifiable guard for ADR-063's core decision. Prefer `__protocol_attrs__` over `hasattr` (more robust, idiomatic for Protocols). |
+| N1 | Remove `@pytest.mark.asyncio` from F5 test | `test_discord_edge.py:313` | `asyncio_mode="auto"` is active; decorator is a no-op that breaks file consistency. |
+| N4 | Reword docstring — remove hardcoded "5 methods" count | `test_thread_store_protocol.py:4` | Fragile count drifts silently on future protocol changes. |
+
+**Also in this PR (S1, S2) — 2-1 majority fix:**
+
+| # | Finding | Files | Rationale |
+|---|---------|-------|-----------|
+| S1 | Annotate `WiredAdapters.tg_adapters`, `tg_dispatchers`, `dc_dispatchers` | `wiring_helpers.py:91–95` | `dc_adapters` is typed; the others use bare `list`. Inconsistency at a cross-subpackage boundary. Verify dispatcher types against `bootstrap_wiring.py` before annotating. |
+| S2 | `LifecycleResources.nc: nats.aio.client.Client | None` under TYPE_CHECKING | `bootstrap_lifecycle.py:37` | `Any | None` collapses to `Any`. Pattern already established in `wiring_helpers.py:47`. |
+
+### Defer to follow-up (4 findings)
+
+| # | Finding | Disposition |
+|---|---------|-------------|
+| S3 | `lifecycle/` ↔ `factory/` import cycle → `bootstrap/types.py` | Defer — runtime cycle is already prevented by `TYPE_CHECKING` guard. Extraction is non-trivial and should land on its own branch. Add `# TYPE_CHECKING only — prevents runtime cycle` comment at the import. Create issue. |
+| N2 | AAA comments in F5 test | Defer — style chore; separate commit. |
+| N3 | `LifecycleResources.cli_pool` always None in unified | Defer — field may serve future hub-standalone mode. Add `# unified: always None; reserved for hub-standalone mode` inline comment for now. |
+| — | `thread_store_protocol.py` docstring comment about NATS ordering | Accept — NATS close is caller's responsibility per `unified.py` structure; ADR-063 documents intent. No code change needed. |
+
+## Rationale
+
+**B1** is non-negotiable — swallowed exceptions in production teardown are an operational blindspot. Every agent agreed.
+
+**S4** is directly related to this PR's correctness contract: `adapter_standalone.py` is the second teardown path this PR owns. Leaving it sequential after fixing `run_lifecycle` is inconsistent and leaves the same stall risk. Cost: 2 lines.
+
+**S3** is a genuine structural debt but the TYPE_CHECKING guard already prevents the runtime cycle. Extracting `bootstrap/types.py` mid-PR adds a new file, moves two dataclasses, and touches import sites — scope risk outweighs the runtime risk of the current state. Defer with a comment and a tracking issue.
+
+**N2 / N3** — cosmetic and speculative respectively. Clean defers.
+
+## Dissent
+
+- **backend-dev** on S6: preferred `__protocol_attrs__` over `hasattr(ThreadStoreProtocol, "close")`. Majority accepted this as the better approach, not a dissent on the fix-now verdict.
+- **product-lead** on S1/S2: preferred deferring type annotation fixes. Majority overrode on grounds that `WiredAdapters` is an active cross-subpackage boundary where type gaps cause silent errors.
+- **architect** on S3: recommended `bootstrap/types.py` extraction in this PR. Overridden 2-1 by backend-dev + product-lead who flagged scope risk on iteration 2.
+
+## Implementation Notes
+
+For **B1 + S4** (exception logging pattern):
+
+```python
+# run_lifecycle (B1) — after gather for dc adapters:
+results = await asyncio.gather(
+    *[a.close() for a, _, _ in wired.dc_adapters],
+    return_exceptions=True,
+)
+for r in results:
+    if isinstance(r, BaseException) and not isinstance(r, asyncio.CancelledError):
+        log.exception("DC adapter close failed during teardown", exc_info=r)
+
+# adapter_standalone.py (S4):
+await asyncio.gather(
+    *[a.close() for a, _, _ in wired_dc],
+    return_exceptions=True,
+)
+# inspect results with same pattern
+```
+
+For **S6** — `test_thread_store_protocol.py`:
+
+```python
+def test_protocol_has_no_close_method() -> None:
+    """ADR-063: close() was explicitly removed from ThreadStoreProtocol."""
+    expected = {"get_thread_ids", "is_owned", "get_session", "claim", "update_session"}
+    assert ThreadStoreProtocol.__protocol_attrs__ == expected
+```
+
+For **S5** — restructure F6b:
+
+```python
+async def test_run_lifecycle_none_dc_thread_store_is_noop() -> None:
+    mock_store = AsyncMock()
+    wired = _make_wired(dc_thread_store=None)
+    # ... run lifecycle ...
+    hub.shutdown.assert_awaited_once()
+    mock_store.close.assert_not_called()  # None guard verified
+```
+
+## Next
+
+→ `/fix` to apply B1, S1, S2, S4, S5, S6, N1, N4. Create issue for S3 (bootstrap/types.py).

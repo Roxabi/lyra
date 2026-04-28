@@ -1,7 +1,7 @@
 """Protocol conformance test — ThreadStore satisfies ThreadStoreProtocol.
 
-Guards against silent drift: if ThreadStore drops or renames any of the
-6 methods required by the protocol, this test fails at import time.
+Guards against silent protocol drift: if ThreadStore drops or renames any method
+required by the protocol, this test fails at import time.
 """
 
 from __future__ import annotations
@@ -24,3 +24,13 @@ def test_thread_store_protocol_exported_from_package() -> None:
     from lyra.core.stores import ThreadStoreProtocol as _TSP
 
     assert _TSP is ThreadStoreProtocol
+
+
+def test_thread_store_protocol_has_no_close_method() -> None:
+    """ADR-063: close() was explicitly removed from ThreadStoreProtocol.
+
+    Re-adding it would silently break teardown ownership — guards against regression.
+    """
+    expected = {"get_thread_ids", "is_owned", "get_session", "claim", "update_session"}
+    actual: set[str] = getattr(ThreadStoreProtocol, "__protocol_attrs__", set())
+    assert actual == expected

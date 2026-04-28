@@ -146,17 +146,11 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
             await self._outbound_listener.start()
 
     async def close(self) -> None:
-        """Cancel typing tasks, drain voice, close ThreadStore, stop listener."""
+        """Cancel typing tasks, drain voice, stop listener."""
         await self._typing.cancel_all()
         await self._vsm.leave_all()
         if self._outbound_listener is not None:
             await self._outbound_listener.stop()
-        # Close adapter-owned ThreadStore
-        if self._thread_store is not None:
-            try:
-                await self._thread_store.close()
-            except Exception:
-                log.exception("Failed to close ThreadStore for bot %s", self._bot_id)
         await super().close()
 
     async def on_ready(self) -> None:

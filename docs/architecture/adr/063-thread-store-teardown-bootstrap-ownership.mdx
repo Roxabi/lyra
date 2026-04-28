@@ -1,0 +1,62 @@
+---
+title: "ADR-063: ThreadStore teardown ownership moved to bootstrap layer"
+description: Remove close() from ThreadStoreProtocol and move ThreadStore lifecycle management (connect/close) exclusively into the bootstrap layer, keeping the domain protocol free of infrastructure lifecycle concerns.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+`ThreadStore` (SQLite-backed Discord thread persistence) was previously closed inside `DiscordAdapter.close()`. Every Discord adapter instance held a reference to the shared `ThreadStore` and attempted to close it on shutdown. Because all adapters share one store instance (one SQLite connection to `discord.db`), this created a double-close hazard: the first adapter to close would close the store, leaving subsequent adapters holding a dead reference.
+
+The `ThreadStoreProtocol` (domain port, `core/stores/thread_store_protocol.py`) exposed a `close()` method, which meant the protocol included a lifecycle concern that has no place in the domain layer. Per ADR-059 (hexagonal canonical model), domain ports express what the domain needs from infrastructure — not how infrastructure is initialized or torn down.
+
+The problem was surfaced during issue #984 when teardown ordering was audited across standalone and unified bootstrap paths.
+
+## Options Considered
+
+### Option A: Keep close() in adapter, add a "closed" guard on the shared store
+
+Add a boolean flag to `ThreadStore` so that only the first `close()` call executes; subsequent calls are no-ops. The adapter retains ownership of teardown.
+
+- **Pros:** Minimal diff; no bootstrap plumbing change.
+- **Cons:** The shared store now has implicit state to handle misuse. The domain protocol still carries a lifecycle method. The root cause (adapter owning what it does not own) remains. Double-close guard is a smell, not a fix.
+
+### Option B: Move close() to bootstrap, remove it from the protocol (chosen)
+
+Bootstrap creates the shared `ThreadStore`, connects it, threads it through wiring (`wire_discord_adapters` returns it as part of its tuple), and closes it in the teardown block — after all adapters have closed. The protocol loses `close()`. Adapters receive a `ThreadStoreProtocol` reference and use only domain methods.
+
+- **Pros:** Ownership is explicit and correct. Protocol is clean. Teardown ordering is centrally controlled in one place per entry point. Eliminates double-close hazard structurally.
+- **Cons:** Adds one propagation step through `_wire_adapters` → `run_lifecycle` / `adapter_standalone` finally-block. The wiring return tuple grows by one element.
+
+## Decision
+
+Option B. Bootstrap layer owns the full lifecycle of `ThreadStore` (open on startup, close on shutdown). `close()` is removed from `ThreadStoreProtocol`. The concrete `ThreadStore` type retains `close()` as a bootstrap-internal method — wiring code holds the concrete reference and is the only caller.
+
+Teardown ordering in both entry points:
+
+1. Adapters close (stops inbound processing and outbound listeners).
+2. `dc_thread_store.close()` (store released after no further domain reads are possible).
+3. Remaining infrastructure (pairing manager, CLI pool drain, hub shutdown).
+
+The `wire_discord_adapters` function returns `(adapters, dispatchers, thread_store)`. The error path in wiring closes the store before re-raising to avoid connection leaks on partial wiring failure.
+
+## Consequences
+
+### Positive
+
+- Protocol boundary is clean: `ThreadStoreProtocol` expresses domain behaviour only.
+- Double-close hazard is eliminated structurally — one owner, one close call.
+- Teardown ordering is visible and auditable in a single location per entry point.
+- Aligns with the store pattern documented in `core/CLAUDE.md`: `connect()` / `close()` are bootstrap concerns, not domain concerns.
+
+### Negative
+
+- `_wire_adapters` return tuple grows to 5 elements (positional coupling risk; revisit if it reaches 6+).
+- `adapter_standalone.py` finally-block requires a None-guard on `dc_thread_store` to handle the edge case where `thread_store` is `None` despite `wired_dc` being non-empty (skipped adapter path).
+
+### Neutral
+
+- Concrete `ThreadStore` type is now explicitly held by wiring code for lifecycle purposes. This is an intentional break of protocol abstraction at the bootstrap boundary — bootstrap is infrastructure and is permitted to know the concrete type.

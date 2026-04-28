@@ -5,7 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nats.aio.client import Client as NatsClient
+
+    from lyra.bootstrap.factory.wiring_helpers import WiredAdapters
 
 import uvicorn
 
@@ -23,32 +29,37 @@ from lyra.nats.nats_channel_proxy import NatsChannelProxy
 log = logging.getLogger(__name__)
 
 
-async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
+@dataclass
+class LifecycleResources:
+    """Optional infrastructure wired into the lifecycle."""
+
+    pm: PairingManager | None
+    # unified: always None; CliPool managed in unified.py finally
+    cli_pool: CliPool | None
+    proxies: list[NatsChannelProxy] | None = field(default=None)
+    nc: NatsClient | None = field(default=None)
+
+
+async def run_lifecycle(  # noqa: C901 — lifecycle orchestration
     hub: Hub,
-    tg_adapters: list,
-    tg_dispatchers: list,
-    dc_adapters: list[tuple],
-    dc_dispatchers: list,
-    pm: PairingManager | None,
-    cli_pool: CliPool | None,
+    wired: WiredAdapters,
+    resources: LifecycleResources,
     _stop: asyncio.Event | None,
-    proxies: list[NatsChannelProxy] | None = None,
-    nc: Any | None = None,
 ) -> None:
     """Start all buses/dispatchers/adapters, wait for stop, then tear down.
 
-    When *nc* is provided (unified mode with NATS), it is forwarded to the
-    health endpoint so ``/health/detail`` can surface NATS reachability.
+    When *resources.nc* is provided (unified mode with NATS), it is forwarded
+    to the health endpoint so ``/health/detail`` can surface NATS reachability.
     """
     await hub.inbound_bus.start()
-    for d in tg_dispatchers:
+    for d in wired.tg_dispatchers:
         await d.start()
-    for d in dc_dispatchers:
+    for d in wired.dc_dispatchers:
         await d.start()
 
     health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
     health_host = os.environ.get("LYRA_HEALTH_HOST", "127.0.0.1")
-    health_app = create_health_app(hub, nc=nc)
+    health_app = create_health_app(hub, nc=resources.nc)
     health_config = uvicorn.Config(
         health_app, host=health_host, port=health_port, log_level="warning"
     )
@@ -73,51 +84,58 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
         _audit_consumer = AuditConsumer(_audit_queue)
         _audit_task = asyncio.create_task(_audit_consumer.run(), name="audit-consumer")
         tasks.append(_audit_task)
-    for tg_adapter in tg_adapters:
+    for tg_adapter in wired.tg_adapters:
         tasks.append(
             asyncio.create_task(
                 tg_adapter.dp.start_polling(tg_adapter.bot, handle_signals=False),
                 name=f"telegram:{tg_adapter._bot_id}",
             )
         )
-    for dc_adapter, dc_bot_cfg, dc_token in dc_adapters:
+    for dc_adapter, dc_bot_cfg, dc_token in wired.dc_adapters:
         _dc_task = asyncio.create_task(
             dc_adapter.start(dc_token),
             name=f"discord:{dc_bot_cfg.bot_id}",
         )
         tasks.append(_dc_task)
 
-    tg_active = [f"telegram:{a._bot_id}" for a in tg_adapters]
-    dc_active = [f"discord:{c.bot_id}" for _, c, _ in dc_adapters]
+    tg_active = [f"telegram:{a._bot_id}" for a in wired.tg_adapters]
+    dc_active = [f"discord:{c.bot_id}" for _, c, _ in wired.dc_adapters]
     active = tg_active + dc_active
     log.info(
-        "Lyra started \u2014 adapters: %s, health on :%d.",
+        "Lyra started — adapters: %s, health on :%d.",
         ", ".join(active) if active else "none",
         health_port,
     )
 
     await watchdog(tasks, stop)
 
-    log.info("Shutdown signal received \u2014 stopping\u2026")
+    log.info("Shutdown signal received — stopping…")
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
     await teardown_buses(hub.inbound_bus)
-    await teardown_dispatchers(tg_dispatchers + dc_dispatchers)
+    await teardown_dispatchers(wired.tg_dispatchers + wired.dc_dispatchers)
     # proxies is only populated in three-process hub_standalone mode; unified mode
     # runs adapters in-process (platform SDKs) and does not use NatsChannelProxy.
-    for proxy in proxies or []:
+    for proxy in resources.proxies or []:
         await proxy.publish_stream_errors("hub_shutdown")
-    for dc_adapter, _, _dc_tok in dc_adapters:
-        await dc_adapter.close()
-    if pm is not None:
-        await pm.close()
-    if cli_pool is not None:
-        await cli_pool.drain(timeout=60.0)
+    _close_results = await asyncio.gather(
+        *[a.close() for a, _, _ in wired.dc_adapters],
+        return_exceptions=True,
+    )
+    for _r in _close_results:
+        if isinstance(_r, BaseException) and not isinstance(_r, asyncio.CancelledError):
+            log.exception("DC adapter close failed during teardown", exc_info=_r)
+    if wired.dc_thread_store is not None:
+        await wired.dc_thread_store.close()
+    if resources.pm is not None:
+        await resources.pm.close()
+    if resources.cli_pool is not None:
+        await resources.cli_pool.drain(timeout=60.0)
         # Notify only sessions that couldn't finish within the drain window.
-        active_ids = cli_pool.get_active_pool_ids()
+        active_ids = resources.cli_pool.get_active_pool_ids()
         if active_ids:
             await hub.notify_shutdown_inflight(active_ids)
-        await cli_pool.stop()
+        await resources.cli_pool.stop()
     await hub.shutdown()
     log.info("Lyra stopped.")

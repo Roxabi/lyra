@@ -1,0 +1,15 @@
+---
+title: "ADR-062: NATS ACL inbox case normalization and explicit reply-path grants"
+description: Standardize all inbox prefixes to lowercase _inbox.<identity> and encode requester-to-responder publish paths explicitly in acl-matrix.json, eliminating the dual-variant maintenance burden and making the ACL dependency graph fully auditable.
+superseded_by: "ADR-045"
+---
+
+## Status
+
+**Superseded by ADR-045** (2026-04-28)
+
+This ADR has been merged into [ADR-045](../045-roxabi-nats-sdk-uv-workspace-extraction.mdx) (see §From ADR-062). The decision remains valid; content has been consolidated for readability.
+
+## Original Summary
+
+Standardized all inbox prefixes to lowercase `_inbox.<identity>` and encoded requester-to-responder publish paths explicitly in `acl-matrix.json`, eliminating the dual-variant maintenance burden that caused a production outage on 2026-04-27.

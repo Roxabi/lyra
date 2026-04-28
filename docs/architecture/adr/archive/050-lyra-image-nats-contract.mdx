@@ -1,0 +1,15 @@
+---
+title: "ADR-050: lyra ↔ imagecli NATS image contract"
+description: "Freeze the request/reply and heartbeat payloads exchanged between lyra (hub) and imagecli (satellite) over NATS. Declare max-payload cap and enumerate user-controlled-fields sanitization contract."
+superseded_by: "ADR-049"
+---
+
+## Status
+
+**Superseded by ADR-049** (2026-04-28)
+
+This ADR has been merged into [ADR-049](../049-roxabi-contracts-shared-schema-package.mdx) (see §Image Contract). The decision remains valid; content has been consolidated for readability.
+
+## Original Summary
+
+Froze the wire contract for image generation between lyra hub and imagecli satellite: subjects (`lyra.image.generate.request`), payload schemas, `contract_version: "1"` field, 50 MB cap, heartbeat protocol, and user-controlled-fields sanitization contract.

@@ -344,3 +344,99 @@ allow_indirect_imports = true
    - Extract to a `roxabi-contracts-testkit` package (separate wheel, optional dep).
    - Move implementations into the consuming repos' test utilities.
 2. Verify no remaining `roxabi-nats` import exists in the main `roxabi-contracts` package (only in the separated test utilities).
+
+---
+
+## Amendment: Infrastructure Layer (from ADR-048)
+
+**Supersedes:** ADR-048 "Introduce lyra.infrastructure layer for persistence"
+
+### Decision
+
+Introduce `lyra.infrastructure` as a new architectural layer between `lyra.llm | lyra.nats` and `lyra.adapters`. Move SQLite store implementations from `core/stores/` to `infrastructure/stores/`. Protocols and test doubles remain in `core/stores/`.
+
+### Layer structure
+
+```
+src/lyra/
+├── core/stores/               # protocols + test doubles only
+│   ├── agent_store_protocol.py
+│   ├── json_agent_store.py
+│   └── pairing_config.py
+├── infrastructure/stores/     # SQLite implementations
+│   ├── sqlite_base.py
+│   ├── agent_store.py
+│   ├── auth_store.py
+│   └── ... (10 files total)
+└── bootstrap/bootstrap_stores.py  # factory wiring
+```
+
+### importlinter forbidden contract
+
+```ini
+[importlinter:contract:core-stores-no-sqlite]
+name = core/stores protocols must not import SQLite drivers
+type = forbidden
+source_modules =
+    lyra.core.stores
+forbidden_modules =
+    aiosqlite
+    sqlite3
+allow_indirect_imports = true
+```
+
+### Governance rule
+
+Any new subdirectory under `infrastructure/` (e.g., `telemetry/`, `fs/`, `cache/`) requires its own ADR. Adding files to an existing subdirectory does not.
+
+---
+
+## Amendment: CLI Protocol Imports (from ADR-060)
+
+**Supersedes:** ADR-060 "CLI Protocol Circular Import Resolution via Type Extraction"
+
+### Problem
+
+`cli_protocol.py` served dual roles: defining shared types and re-exporting submodules. This created a circular import where `cli_non_streaming` and `cli_streaming` needed types from `cli_protocol`, which imported from them.
+
+### Resolution
+
+Extract shared types into `cli_protocol_types.py`:
+
+| Extracted | Notes |
+|---|---|
+| `CliResult` | Result value object |
+| `CliProtocolOptions` | Options dataclass |
+| `SESSION_ID_RE`, `_SESSION_ID_RE` | Regex patterns |
+| `build_cmd` | Command builder helper |
+| `_read_stderr_snippet` | Stderr reader helper |
+
+`cli_protocol.py` becomes a pure top-of-file re-export facade. All external import paths remain unchanged.
+
+---
+
+## Amendment: importlinter Independence Contract (from ADR-061)
+
+**Supersedes:** ADR-061 "importlinter independence contract — fix port imports to eliminate transitive suppressions"
+
+### Problem
+
+The `shared-modules-independence` contract traced transitive paths through `lyra.core`, flagging false positives. 4 `ignore_imports` suppressions masked the real issue: core modules importing from floating modules instead of `lyra.core.ports.*`.
+
+### Resolution
+
+| File | Change |
+|------|--------|
+| `lyra/core/agent/agent.py` | Import `STTProtocol`, `TtsProtocol` from `lyra.core.ports.*` |
+| `lyra/core/processors/processor_registry.py` | Import `SessionToolsProtocol` from `lyra.core.ports.integrations` |
+| `lyra/core/ports/integrations.py` | New: `SessionToolsProtocol` matching `SessionTools` interface |
+
+### Remaining suppressions
+
+2 `ignore_imports` entries remain for TYPE_CHECKING-only references to result value objects (`SynthesisResult`, `TranscriptionResult`) not yet migrated to core:
+
+```ini
+lyra.tts.engine_selector -> lyra.core.agent.agent_config
+lyra.core.ports.stt -> lyra.stt:TranscriptionResult  # TYPE_CHECKING only
+lyra.core.ports.tts -> lyra.tts:SynthesisResult      # TYPE_CHECKING only
+```

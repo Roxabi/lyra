@@ -1,0 +1,15 @@
+---
+title: "ADR-053: Deployment topology and container-image hardening"
+description: Defines the production deployment topology for Lyra on M₁ (roxabituwer) using rootless Podman Quadlet, including container-image hardening, network isolation, and security invariants.
+superseded_by: "ADR-055"
+---
+
+## Status
+
+**Superseded by ADR-055** (2026-04-28)
+
+This ADR has been merged into [ADR-055](../055-quadlet-ecosystem-conventions.mdx) (see §Tier Strategy, §Naming Normalization). The decision remains valid; content has been consolidated for readability.
+
+## Original Summary
+
+Defined the production deployment topology for Lyra on M₁ using rootless Podman Quadlet, including container-image hardening (digest pinning, read-only rootfs), network isolation via `lyra.network`, and security invariants for the 4-process NATS architecture.

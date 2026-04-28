@@ -1,0 +1,15 @@
+---
+title: "ADR-060: CLI Protocol Circular Import Resolution via Type Extraction"
+description: Extract shared types from cli_protocol.py into cli_protocol_types.py to eliminate circular import between the facade and its submodules.
+superseded_by: "ADR-059"
+---
+
+## Status
+
+**Superseded by ADR-059** (2026-04-28)
+
+This ADR has been merged into [ADR-059](../059-hexagonal-clean-architecture-canonical-model.mdx) (see §Amendment: CLI Protocol Imports). The decision remains valid; content has been consolidated for readability.
+
+## Original Summary
+
+Extracted shared types (`CliResult`, `CliProtocolOptions`, `SESSION_ID_RE`, `build_cmd`) from `cli_protocol.py` into `cli_protocol_types.py` to eliminate the circular import between the facade and its submodules.

@@ -66,6 +66,7 @@
     "voice-tts": {
       "owner": "voicecli",
       "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Inbox normalized to _inbox.voice-tts.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "allow_responses": true,
       "publish": [
         "lyra.voice.tts.heartbeat",
         "lyra.system.ready"
@@ -79,6 +80,7 @@
     "voice-stt": {
       "owner": "voicecli",
       "description": "voicecli nats-serve STT worker on Machine 1 (#689). Inbox normalized to _inbox.voice-stt.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "allow_responses": true,
       "publish": [
         "lyra.voice.stt.heartbeat",
         "lyra.system.ready"
@@ -92,6 +94,7 @@
     "llm-worker": {
       "owner": "reserved",
       "description": "Reserved LLM worker identity — publishes health status, subscribes to LLM request queue. Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "allow_responses": true,
       "publish": [
         "lyra.llm.health.*"
       ],
@@ -102,6 +105,7 @@
     "image-worker": {
       "owner": "imagecli",
       "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Inbox normalized to _inbox.image-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "allow_responses": true,
       "publish": [
         "lyra.image.heartbeat"
       ],
@@ -124,6 +128,7 @@
     "clipool-worker": {
       "owner": "lyra",
       "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Inbox normalized to _inbox.clipool-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "allow_responses": true,
       "publish": [
         "lyra.clipool.heartbeat",
         "lyra.system.ready"

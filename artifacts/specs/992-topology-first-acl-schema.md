@@ -30,7 +30,7 @@ Add a top-level `request_reply_flows` array alongside `identities`:
 
 ```json
 {
-  "version": "1",
+  "version": "2",
   "request_reply_flows": [
     { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" },
     { "requester": "hub", "responder": "voice-tts",      "subject": "lyra.voice.tts.request.>" },

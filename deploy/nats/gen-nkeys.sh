@@ -15,7 +15,8 @@
 #   1. deploy/nats/gen-nkeys.sh (this script) — new script accepts v1 + v2
 #   2. deploy/nats/acl-matrix.json            — bumped to v2, adds request_reply_flows
 #   3. sudo ./gen-nkeys.sh --regen-authconf   — re-render auth.conf from existing seeds
-#   4. nats-server --signal reload
+#   4. make quadlet-secrets-install           — upload new secret to Podman
+#   5. podman kill -s HUP lyra-nats           — reload NATS from the updated secret
 # Running old gen-nkeys.sh against acl-matrix.json v2 is a hard error (version gate).
 #
 # Requires jq >= 1.6 on $PATH.
@@ -110,10 +111,12 @@ load_matrix() {
       "${MATRIX_JSON}")
   done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
 
-  # Assert no duplicate (requester, responder, subject) tuples in request_reply_flows
+  # Assert no duplicate (requester, responder) pairs in request_reply_flows.
+  # subject is advisory only — derivation is per-pair, not per-subject; two entries with
+  # same requester+responder but different subjects would produce identical ACL output.
   local dup_count
-  dup_count=$(jq '[.request_reply_flows[]? | {requester,responder,subject}] |
-      group_by([.requester,.responder,.subject]) |
+  dup_count=$(jq '[.request_reply_flows[]? | {requester,responder}] |
+      group_by([.requester,.responder]) |
       map(select(length > 1)) | length' "${MATRIX_JSON}")
   [ "${dup_count}" = "0" ] \
       || error "acl-matrix.json: duplicate request_reply_flows entries detected (${dup_count} groups)"
@@ -123,6 +126,11 @@ load_matrix() {
       local requester responder inbox
       requester=$(jq -r '.requester' <<<"$flow")
       responder=$(jq -r '.responder'  <<<"$flow")
+      # Allowlist: identity names must be [a-z0-9][a-z0-9-]* to prevent NATS wildcard injection
+      [[ "$requester" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
+          || error "request_reply_flows: requester '${requester}' contains invalid characters (expected [a-z0-9-])"
+      [[ "$responder" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
+          || error "request_reply_flows: responder '${responder}' contains invalid characters (expected [a-z0-9-])"
       # Validate against known identities
       [[ -v "SUB_ALLOW[$requester]" ]] \
           || error "request_reply_flows: unknown requester '${requester}' (not in .identities)"

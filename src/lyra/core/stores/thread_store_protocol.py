@@ -25,8 +25,6 @@ class ThreadSession:
 class ThreadStoreProtocol(Protocol):
     """Structural protocol for Discord thread ownership and session persistence."""
 
-    async def close(self) -> None: ...
-
     async def get_thread_ids(
         self,
         bot_id: str,

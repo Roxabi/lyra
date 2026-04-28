@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -298,6 +298,41 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
     # Assert — reply text matches the TOML value for discord backpressure_ack
     expected = mm.get("backpressure_ack", platform="discord")
     reply_mock.assert_awaited_once_with(expected)
+
+
+# ---------------------------------------------------------------------------
+# Empty text edge case
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# F5 — DiscordAdapter.close() must NOT call thread_store.close()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_close_does_not_call_thread_store_close() -> None:
+    """F5: DiscordAdapter.close() must not delegate teardown to thread_store.close().
+
+    The call was removed in PR #995; teardown is now the bootstrap's responsibility.
+    """
+    from lyra.adapters.discord import DiscordAdapter
+
+    # Arrange
+    mock_thread_store = AsyncMock()
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+        thread_store=mock_thread_store,
+    )
+
+    with patch("discord.Client.close", new_callable=AsyncMock):
+        # Act
+        await adapter.close()
+
+    # Assert — bootstrap owns teardown; adapter must not touch thread_store
+    mock_thread_store.close.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

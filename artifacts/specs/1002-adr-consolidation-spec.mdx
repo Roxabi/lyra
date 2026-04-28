@@ -1,0 +1,151 @@
+---
+title: "Spec: Consolidate ADRs"
+description: Detailed merge instructions, file operations, acceptance tests
+issue: 1002
+frame: 1002-adr-consolidation-frame.mdx
+status: approved
+created: 2026-04-28
+---
+
+## Summary
+
+Merge 15 ADRs into 4 target ADRs, reducing live ADR count from 37 to ~22.
+
+## Acceptance Criteria
+
+- [ ] 37 → ~22 live ADRs (15 merged into 4)
+- [ ] 15 ADRs archived with "Superseded by ADR-XXX" status
+- [ ] All cross-references updated
+- [ ] No broken links (`grep -r "ADR-0" docs/` returns valid targets only)
+
+## Merge Operations
+
+### Merge 1: NATS Core → ADR-045
+
+**Target:** `docs/architecture/adr/045-roxabi-nats-sdk-uv-workspace-extraction.mdx`
+
+**Sources to merge:**
+| ADR | Sections to extract |
+|-----|---------------------|
+| 037 | NatsOutboundListener placement, bootstrap contract |
+| 040 | Bus[T] protocol, envelope design, serialization, coupling |
+| 047 | Connector ownership pattern (hub owns subjects, satellites own workers) |
+| 062 | ACL inbox case normalization, reply-path grants |
+
+**Operation:**
+1. Read each source ADR
+2. Extract key decisions (Context, Decision, Consequences)
+3. Append as new sections to ADR-045 with headers like `## From ADR-037: NatsOutboundListener Placement`
+4. Update ADR-045 title to: "ADR-045: roxabi-nats SDK — Architecture, Ownership, and ACLs"
+
+### Merge 2: NATS Contracts → ADR-049
+
+**Target:** `docs/architecture/adr/049-roxabi-contracts-shared-schema-package.mdx`
+
+**Sources to merge:**
+| ADR | Sections to extract |
+|-----|---------------------|
+| 044 | lyra ↔ voicecli NATS voice contract |
+| 050 | lyra ↔ imagecli NATS image contract |
+
+**Operation:**
+1. Append ADR-044 and ADR-050 as subsections under new `## NATS Contracts` section
+2. Update title to: "ADR-049: roxabi-contracts — Shared NATS Schemas (Voice, Image)"
+
+### Merge 3: Quadlet → ADR-055
+
+**Target:** `docs/architecture/adr/055-quadlet-ecosystem-conventions.mdx`
+
+**Sources to merge:**
+| ADR | Sections to extract |
+|-----|---------------------|
+| 053 | Deployment topology, container hardening |
+| 054 | Credential store, UID rework |
+| 056 | Container publishing workflow, CI pattern |
+
+**Operation:**
+1. ADR-055 already references 053/054 as parent
+2. Merge 053 §3-5 (topology details), 054 §4-6 (credential details), 056 §3-5 (CI workflow)
+3. Keep ADR-055 structure intact, append details as subsections
+
+### Merge 4: Architecture → ADR-059
+
+**Target:** `docs/architecture/adr/059-hexagonal-clean-architecture-canonical-model.mdx`
+
+**Sources to merge:**
+| ADR | Sections to extract |
+|-----|---------------------|
+| 048 | Infrastructure layer introduction |
+| 060 | CLI protocol circular import resolution |
+| 061 | importlinter independence contract |
+
+**Operation:**
+1. ADR-059 already canonical — append 048/060/061 findings as `## Amendment: Infrastructure Layer` etc.
+2. Keep audit findings in ADR-059 main body
+
+## Archive Operations
+
+After each merge:
+
+1. Move source file to `docs/architecture/adr/archive/`
+2. Replace content with:
+
+```mdx
+---
+title: "ADR-0XX: [Original Title]"
+description: "[Original description]"
+superseded_by: "ADR-YYY"
+---
+
+## Status
+
+**Superseded by ADR-YYY** (2026-04-28)
+
+This ADR has been merged into ADR-YYY. The decision remains valid; content has been consolidated for readability.
+
+## Original Content
+
+[Preserve original Context and Decision sections for historical reference]
+```
+
+## Cross-Reference Updates
+
+```bash
+# Find all references to merged ADRs
+grep -rn "ADR-037\|ADR-040\|ADR-044\|ADR-047\|ADR-049\|ADR-050\|ADR-053\|ADR-054\|ADR-056\|ADR-060\|ADR-061\|ADR-062" docs/
+```
+
+For each match:
+- Update to point to new target ADR
+- Add parenthetical: `ADR-0XX → ADR-YYY`
+
+## Verification
+
+1. Count live ADRs: `ls -1 docs/architecture/adr/*.mdx | wc -l` should equal ~22
+2. Check archived: `ls -1 docs/architecture/adr/archive/*.mdx | wc -l` should equal ~42 (27 + 15)
+3. Verify links: `grep -rn "ADR-0" docs/` — all should resolve
+4. Check status fields: all merged ADRs in archive should have "Superseded by ADR-XXX"
+
+## File List
+
+**Modified:**
+- `docs/architecture/adr/045-*.mdx` (expand scope)
+- `docs/architecture/adr/049-*.mdx` (expand scope)
+- `docs/architecture/adr/055-*.mdx` (expand scope)
+- `docs/architecture/adr/059-*.mdx` (expand scope)
+- Any files with cross-references to merged ADRs
+
+**Moved to archive:**
+- `docs/architecture/adr/037-*.mdx`
+- `docs/architecture/adr/040-*.mdx`
+- `docs/architecture/adr/044-*.mdx`
+- `docs/architecture/adr/047-*.mdx`
+- `docs/architecture/adr/050-*.mdx`
+- `docs/architecture/adr/053-*.mdx`
+- `docs/architecture/adr/054-*.mdx`
+- `docs/architecture/adr/056-*.mdx`
+- `docs/architecture/adr/060-*.mdx`
+- `docs/architecture/adr/061-*.mdx`
+- `docs/architecture/adr/062-*.mdx`
+
+**Note:** ADR-048 also merges into 059, but we need to verify it's not already referenced differently.

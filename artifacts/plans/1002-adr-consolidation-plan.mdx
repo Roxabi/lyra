@@ -1,0 +1,167 @@
+---
+title: "Plan: Consolidate ADRs"
+description: Step-by-step implementation for ADR merge operations
+issue: 1002
+spec: 1002-adr-consolidation-spec.mdx
+status: approved
+created: 2026-04-28
+---
+
+## Overview
+
+Merge 11 ADRs into 4 target ADRs via doc-writer agent, then archive originals and update cross-references.
+
+## Phase 1: Create Worktree
+
+```bash
+git worktree add .claude/worktrees/1002-adr-consolidation -b 1002-adr-consolidation
+```
+
+## Phase 2: Merge Operations (spawn doc-writer agent)
+
+### Step 2.1: Merge NATS Core → ADR-045
+
+**Agent task:** Merge ADRs 037, 040, 047, 062 into ADR-045
+
+**Instructions:**
+1. Read ADR-045, ADR-037, ADR-040, ADR-047, ADR-062
+2. Expand ADR-045 scope:
+   - Add `## From ADR-037: NatsOutboundListener Placement` section
+   - Add `## From ADR-040: Messaging Architecture Review` section (condensed — key decisions only)
+   - Add `## From ADR-047: Connector Ownership` section
+   - Add `## From ADR-062: ACL Normalization` section
+3. Update title: "ADR-045: roxabi-nats SDK — Architecture, Ownership, and ACLs"
+4. Preserve all Context/Decision content, condense Options if verbose
+
+### Step 2.2: Merge NATS Contracts → ADR-049
+
+**Agent task:** Merge ADRs 044, 050 into ADR-049
+
+**Instructions:**
+1. Read ADR-049, ADR-044, ADR-050
+2. Add `## NATS Contracts` section with subsections:
+   - `### Voice Contract (from ADR-044)`
+   - `### Image Contract (from ADR-050)`
+3. Update title: "ADR-049: roxabi-contracts — Shared NATS Schemas"
+
+### Step 2.3: Merge Quadlet → ADR-055
+
+**Agent task:** Merge ADRs 053, 054, 056 into ADR-055
+
+**Instructions:**
+1. Read ADR-055, ADR-053, ADR-054, ADR-056
+2. ADR-055 already references 053/054 as parent
+3. Merge 053 topology details into `## D1-D3` sections
+4. Merge 054 credential details into existing credential section
+5. Merge 056 CI workflow as new `## D5: Deploy Script Template` subsection
+6. Update description to reflect consolidated scope
+
+### Step 2.4: Merge Architecture → ADR-059
+
+**Agent task:** Merge ADRs 048, 060, 061 into ADR-059
+
+**Instructions:**
+1. Read ADR-059, ADR-048, ADR-060, ADR-061
+2. Add as amendments:
+   - `## Amendment: Infrastructure Layer (from ADR-048)`
+   - `## Amendment: CLI Protocol Imports (from ADR-060)`
+   - `## Amendment: importlinter Contract (from ADR-061)`
+3. Keep ADR-059 audit findings as primary content
+
+## Phase 3: Archive Merged ADRs
+
+For each merged ADR (037, 040, 044, 047, 050, 053, 054, 056, 060, 061, 062):
+
+```bash
+# Move to archive
+mv docs/architecture/adr/0XX-*.mdx docs/architecture/adr/archive/
+
+# Replace content with superseded notice
+```
+
+Archive template:
+```mdx
+---
+title: "ADR-0XX: [Original Title]"
+description: "[Original description]"
+superseded_by: "ADR-YYY"
+---
+
+## Status
+
+**Superseded by ADR-YYY** (2026-04-28)
+
+This ADR has been merged into [ADR-YYY](../YYY-*.mdx). The decision remains valid; content has been consolidated for readability.
+
+## Summary
+
+[1-2 sentence summary of the original decision]
+```
+
+## Phase 4: Update Cross-References
+
+```bash
+# Find all references
+grep -rn "ADR-037\|ADR-040\|ADR-044\|ADR-047\|ADR-050\|ADR-053\|ADR-054\|ADR-056\|ADR-060\|ADR-061\|ADR-062" docs/
+```
+
+Update each reference:
+- `ADR-037` → `ADR-045` (add note: "formerly ADR-037")
+- `ADR-040` → `ADR-045`
+- `ADR-044` → `ADR-049`
+- `ADR-047` → `ADR-045`
+- `ADR-050` → `ADR-049`
+- `ADR-053` → `ADR-055`
+- `ADR-054` → `ADR-055`
+- `ADR-056` → `ADR-055`
+- `ADR-060` → `ADR-059`
+- `ADR-061` → `ADR-059`
+- `ADR-062` → `ADR-045`
+
+## Phase 5: Verification
+
+1. Count live ADRs: `ls -1 docs/architecture/adr/*.mdx | wc -l` → expect 26 (37 - 11)
+2. Count archived: `ls -1 docs/architecture/adr/archive/*.mdx | wc -l` → expect 38 (27 + 11)
+3. Verify links: `grep -rn "ADR-0" docs/architecture/` → check targets exist
+4. Check archive files have superseded_by frontmatter
+
+## Phase 6: Commit & PR
+
+```bash
+git add docs/architecture/adr/
+git commit -m "docs(adr): consolidate 11 ADRs into 4 cohesive documents
+
+- Merge NATS Core (037,040,047,062) → ADR-045
+- Merge NATS Contracts (044,050) → ADR-049
+- Merge Quadlet (053,054,056) → ADR-055
+- Merge Architecture (048,060,061) → ADR-059
+- Archive merged ADRs with superseded_by pointers
+- Update cross-references
+
+Closes #1002
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+```
+
+## Agent Assignments
+
+| Phase | Agent | Files |
+|-------|-------|-------|
+| 2.1 | doc-writer | ADR-045, 037, 040, 047, 062 |
+| 2.2 | doc-writer | ADR-049, 044, 050 |
+| 2.3 | doc-writer | ADR-055, 053, 054, 056 |
+| 2.4 | doc-writer | ADR-059, 048, 060, 061 |
+| 3 | fixer | Archive all merged ADRs |
+| 4 | fixer | Cross-reference updates |
+| 5 | tester | Verification checks |
+
+## Execution Mode
+
+Run phases 2.1-2.4 in parallel (4 doc-writer agents), then sequential for 3-6.
+
+## Rollback
+
+If issues found:
+```bash
+git checkout staging -- docs/architecture/adr/
+```

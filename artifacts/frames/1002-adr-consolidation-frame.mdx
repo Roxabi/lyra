@@ -1,0 +1,95 @@
+---
+title: "Frame: Consolidate 37 live ADRs into ~20-25"
+description: Merge granular ADRs into cohesive documents, archive merged originals, update cross-references
+issue: 1002
+tier: F-lite
+status: approved
+created: 2026-04-28
+---
+
+## Problem Statement
+
+We have 37 live ADRs (Architecture Decision Records) + 27 archived. Many are granular fixes that should be consolidated:
+
+- **NATS (11 ADRs):** Incremental extraction created 11 separate ADRs for NATS-related decisions
+- **Deployment (7 ADRs):** Quadlet migration generated multiple incident-driven ADRs
+- **Architecture (4 ADRs):** Hexagonal/layer decisions spread across multiple documents
+
+This creates:
+- Navigation friction (readers must piece together related decisions)
+- Maintenance burden (cross-references drift)
+- Cognitive overhead (too many files to track)
+
+## Constraints
+
+1. **No information loss** — all decisions must be preserved in merged documents
+2. **Archive with forward pointers** — merged ADRs go to `archive/` with "Superseded by ADR-XXX" note
+3. **Update cross-references** — find/replace links in other docs
+4. **Preserve ADR numbering** — merged ADRs retain their numbers in archive
+
+## Success Criteria
+
+- ADR count reduced from 37 to ~20-25
+- Each domain has 1-2 cohesive ADRs (not 5-11 scattered ones)
+- All merged ADRs archived with forward pointers
+- No broken links in documentation
+- `make linkcheck` passes (if available)
+
+## Consolidation Strategy
+
+### Group 1: NATS Core → 2 ADRs
+
+| Source ADRs | Content | Merge Into |
+|-------------|---------|------------|
+| 037, 040, 045, 047, 062 | NATS architecture, ownership, ACLs | **ADR-045** (roxabi-nats SDK) — expand scope |
+| 044, 049, 050 | Voice + Image contracts | **ADR-049** (roxabi-contracts) — expand scope |
+
+**Rationale:** ADR-045 already covers SDK extraction; ADR-049 covers contracts. Expand their scope to absorb related decisions.
+
+### Group 2: Quadlet Deployment → 2 ADRs
+
+| Source ADRs | Content | Merge Into |
+|-------------|---------|------------|
+| 053, 054, 055, 056 | Deployment topology, credentials, conventions, CI | **ADR-055** (Quadlet Ecosystem Conventions) — already cross-project |
+
+**Rationale:** ADR-055 already declares itself as the parent for D1-D7 decisions. Expand it to absorb 053/054/056 details.
+
+### Group 3: Architecture → 1 ADR
+
+| Source ADRs | Content | Merge Into |
+|-------------|---------|------------|
+| 048, 059, 060, 061 | Infrastructure layer, hexagonal model, circular imports, importlinter | **ADR-059** (Hexagonal Architecture) — already canonical |
+
+**Rationale:** ADR-059 is already the "canonical model" — expand to cover 048/060/061 findings.
+
+### Files NOT Merged
+
+These remain standalone:
+- 001, 002, 005, 026, 031 (Routing/Hub/Pool — foundational, distinct)
+- 008, 011, 024 (Memory — distinct subsystem)
+- 029, 030, 052 (Agents/Tools — distinct domain)
+- 058 (Error handling — distinct concern)
+- 013, 022, 038, 063 (Misc — isolated decisions)
+
+## Out of Scope
+
+- Non-ADR architecture docs (`docs/architecture/*.md`)
+- Archived ADRs (already consolidated there)
+
+## Risks
+
+| Risk | Mitigation |
+|------|------------|
+| Broken links | `grep -r "ADR-0XX"` before/after |
+| Merge conflicts | Single PR, single pass |
+| Information loss | Copy verbatim, don't summarize |
+
+## Timeline
+
+1. Merge NATS Core ADRs (037, 040, 045, 047, 062 → 045)
+2. Merge NATS Contracts ADRs (044, 049, 050 → 049)
+3. Merge Quadlet ADRs (053, 054, 056 → 055)
+4. Merge Architecture ADRs (048, 060, 061 → 059)
+5. Archive merged originals with forward pointers
+6. Update cross-references
+7. Verify no broken links

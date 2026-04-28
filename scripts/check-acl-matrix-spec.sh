@@ -25,6 +25,15 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JSON="${REPO_ROOT}/deploy/nats/acl-matrix.json"
 SPEC="${REPO_ROOT}/artifacts/specs/706-per-role-nkeys-acls-spec.mdx"
 
+# Pre-compute effective ACL (static grants + derived from request_reply_flows)
+EFFECTIVE_JSON=$(jq '
+  reduce (.request_reply_flows[]?) as $flow (
+    .;
+    .identities[$flow.requester].subscribe += ["_inbox.\($flow.requester).>"] |
+    .identities[$flow.responder].publish   += ["_inbox.\($flow.requester).>"]
+  )
+' "$JSON")
+
 # ---------------------------------------------------------------------------
 # Identity column order — all active identities (updated: retired tts-adapter/sst-adapter
 # removed, voice-tts/voice-stt/image-worker/clipool-worker added per postmortem Fix 1+2)
@@ -88,7 +97,7 @@ json_has() {
   local subject="$3"
   jq --arg id "$identity" --arg key "$key" --arg subj "$subject" '
     .identities[$id][$key] // [] | map(select(. == $subj)) | length > 0
-  ' "$JSON"
+  ' <<< "$EFFECTIVE_JSON"
 }
 
 # Compute cell value: PUB | SUB | PUB+SUB | —

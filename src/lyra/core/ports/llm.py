@@ -66,4 +66,8 @@ class LlmProvider(Protocol):
     ) -> AsyncIterator[LlmEvent]: ...
 
 
-__all__ = ["LlmProvider", "LlmResult"]
+class LlmUnavailableError(Exception):
+    """Raised when no LLM worker is reachable (timeout, no heartbeat, circuit open)."""
+
+
+__all__ = ["LlmProvider", "LlmResult", "LlmUnavailableError"]

@@ -34,11 +34,11 @@ class SubmitToPoolMiddleware:
         self,
         msg: InboundMessage,
         ctx: PipelineContext,
-        next: Next,
+        next: Next,  # noqa: A002 — terminal stage; Next required by protocol, intentionally unused
     ) -> PipelineResult:
         if ctx.pool is None:
             raise RuntimeError(
-                "CreatePoolMiddleware must precede SubmitToPoolMiddleware"
+                "MessagePrepMiddleware must precede SubmitToPoolMiddleware"
             )
         if ctx.key is None:
             raise RuntimeError(

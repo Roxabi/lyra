@@ -246,6 +246,77 @@ stateDiagram-v2
     FallbackReply --> [*]
 ```
 
+## Inbound Message Pipeline
+
+Every inbound message (Telegram, Discord, CLI) runs through a fixed 10-stage sequential middleware chain before reaching the LLM or being dropped.
+
+```
+User sends message
+        │
+        ▼
+0  TraceMiddleware
+   assign trace_id to this turn
+        │
+        ▼
+1  ValidatePlatformMiddleware
+   known platform? ──No──► DROP
+        │ Yes
+        ▼
+2  ResolveTrustMiddleware
+   look up user in auth DB → tag trust level
+        │
+        ▼
+3  TrustGuardMiddleware
+   user BLOCKED? ──Yes──► DROP (silent)
+        │ No
+        ▼
+4  RateLimitMiddleware
+   too many messages? ──Yes──► DROP
+        │ No
+        ▼
+5  SttMiddleware
+   voice message? ──No──────────────────────────────────────────► continue
+        │ Yes                                                          │
+        ├─ STT not configured / error / noise ──► reply error + DROP  │
+        └─ transcribed OK → swap audio→text, echo "🎤 ..." ──────────►│
+        ▼
+6  ResolveBindingMiddleware
+   find agent for this platform/bot/scope ──None──► DROP
+        │ found
+        ▼
+7  MessagePrepMiddleware                   ← "prepare & route"
+   get/create conversation pool
+   parse "/cmd" or "!cmd" → tag msg.command
+   bare URL? → rewrite as /summarize URL
+        │
+        ▼
+8  CommandMiddleware                       ← command branch
+   msg.command set? ──No──────────────────────────────────────────► continue
+        │ Yes                                                          │
+        ├─ builtin (/clear, /help, /stop…) → handle → reply ──► DONE │
+        ├─ plugin command (/echo, /search…) → handle → reply ──► DONE │
+        ├─ !unknown → passthrough (fallthrough to LLM) ──────────────►│
+        └─ /unknown → "unknown command" reply ──────────────► DONE    │
+        ▼
+9  SubmitToPoolMiddleware                  ← LLM branch
+   adapter registered? ──No──► DROP
+   circuit breaker open? ──Yes──► DROP
+   session resume (Path 1/2/3)
+   submit to pool → LLM turn
+```
+
+**Key design points:**
+
+- Stages 0–4 are guards: they DROP early with no cost.
+- Stage 5 (STT) normalises voice to text so downstream stages are always text-based.
+- Stage 7 is the only stage that mutates the message (adds `msg.command`, rewrites bare URLs). All other stages pass it through unchanged or drop it.
+- Stage 8 is one treatment branch. New treatment branches (e.g. image processing, structured data) go here: check a condition, handle + return early, or call `next()` to fall through to stage 9.
+- Stage 9 is the terminal LLM branch. It never short-circuits on success.
+
+**Adding a new command:** see `src/lyra/commands/` — drop a `plugin.toml` + `handlers.py` in a new subdirectory, enable the plugin name in the agent config. No changes to core pipeline required.
+
+**Adding a new treatment branch:** insert a new middleware class between `CommandMiddleware` and `SubmitToPoolMiddleware` in `build_default_pipeline()` (`src/lyra/core/hub/middleware/middleware.py`).
+
 ### Module Layout
 
 After the Phase 1b refactoring and V4 decomposition (#773), every module is ≤300 LOC. Key decomposition:

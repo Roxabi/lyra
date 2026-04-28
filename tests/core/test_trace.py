@@ -10,7 +10,7 @@ import pytest
 
 from lyra.core.hub.middleware import PipelineContext
 from lyra.core.hub.middleware.middleware_stages import (
-    CreatePoolMiddleware,
+    MessagePrepMiddleware,
     TraceMiddleware,
 )
 from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult
@@ -204,13 +204,13 @@ class TestTraceMiddleware:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# CreatePoolMiddleware — pool_id ContextVar
+# MessagePrepMiddleware — pool_id ContextVar
 # ──────────────────────────────────────────────────────────────────────
 
 
 class TestPoolIdContextVar:
     async def test_create_pool_sets_pool_id_contextvar(self) -> None:
-        """CreatePoolMiddleware must set pool_id in TraceContext."""
+        """MessagePrepMiddleware must set pool_id in TraceContext."""
         from lyra.core.hub.hub import Binding, RoutingKey
         from lyra.core.messaging.message import Platform
 
@@ -235,7 +235,7 @@ class TestPoolIdContextVar:
 
         ctx = PipelineContext(hub=hub, key=key, binding=binding, agent=mock_agent)
 
-        mw = CreatePoolMiddleware()
+        mw = MessagePrepMiddleware()
         msg = make_inbound_message()
 
         await mw(msg, ctx, _capturing_next)

@@ -8,7 +8,7 @@ from .middleware import (
 )
 from .middleware_stages import (
     CommandMiddleware,
-    CreatePoolMiddleware,
+    MessagePrepMiddleware,
     RateLimitMiddleware,
     ResolveBindingMiddleware,
     ResolveTrustMiddleware,
@@ -23,7 +23,7 @@ __all__ = [
     "PipelineMiddleware",
     "build_default_pipeline",
     "CommandMiddleware",
-    "CreatePoolMiddleware",
+    "MessagePrepMiddleware",
     "RateLimitMiddleware",
     "ResolveBindingMiddleware",
     "ResolveTrustMiddleware",

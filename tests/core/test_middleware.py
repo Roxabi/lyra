@@ -18,7 +18,7 @@ from lyra.core.hub.middleware import (
 )
 from lyra.core.hub.middleware.middleware_stages import (
     CommandMiddleware,
-    CreatePoolMiddleware,
+    MessagePrepMiddleware,
     RateLimitMiddleware,
     ResolveBindingMiddleware,
     ValidatePlatformMiddleware,
@@ -184,7 +184,7 @@ class TestResolveBinding:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# CreatePoolMiddleware
+# MessagePrepMiddleware
 # ──────────────────────────────────────────────────────────────────────
 
 
@@ -195,7 +195,7 @@ class TestCreatePool:
         hub = _make_hub()
         agent = hub.agent_registry["lyra"]
         binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
-        mw = CreatePoolMiddleware()
+        mw = MessagePrepMiddleware()
         ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
         next_fn = _make_next()
         msg = make_inbound_message()
@@ -213,7 +213,7 @@ class TestCreatePool:
         hub._turn_store.increment_resume_count = AsyncMock()
         agent = hub.agent_registry["lyra"]
         binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
-        mw = CreatePoolMiddleware()
+        mw = MessagePrepMiddleware()
         ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
         msg = make_inbound_message()
 
@@ -229,7 +229,7 @@ class TestCreatePool:
         hub._turn_store = None
         agent = hub.agent_registry["lyra"]
         binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
-        mw = CreatePoolMiddleware()
+        mw = MessagePrepMiddleware()
         ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
         msg = make_inbound_message()
 
@@ -252,7 +252,7 @@ class TestCreatePool:
 
         agent = hub.agent_registry["lyra"]
         binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
-        mw = CreatePoolMiddleware()
+        mw = MessagePrepMiddleware()
         ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
         msg = make_inbound_message()
 

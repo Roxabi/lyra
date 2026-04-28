@@ -65,8 +65,11 @@ class ResolveBindingMiddleware:
         return await next(msg, ctx)
 
 
-class CreatePoolMiddleware:
-    """Stage 7: get or create the pool. Sets ctx.pool, ctx.router."""
+class MessagePrepMiddleware:
+    """Stage 7: get or create the pool, parse command prefix, rewrite bare URLs.
+
+    Sets ctx.pool, ctx.router, msg.command.
+    """
 
     async def __call__(
         self,
@@ -76,12 +79,12 @@ class CreatePoolMiddleware:
     ) -> PipelineResult:
         if ctx.binding is None:
             raise RuntimeError(
-                "ResolveBindingMiddleware must precede CreatePoolMiddleware"
+                "ResolveBindingMiddleware must precede MessagePrepMiddleware"
             )
         if ctx.agent is None:
             raise RuntimeError(
                 "ResolveBindingMiddleware must set ctx.agent"
-                " before CreatePoolMiddleware"
+                " before MessagePrepMiddleware"
             )
 
         pool = ctx.hub.get_or_create_pool(
@@ -137,7 +140,7 @@ class CommandMiddleware:
         next: Next,
     ) -> PipelineResult:
         if ctx.pool is None:
-            raise RuntimeError("CreatePoolMiddleware must precede CommandMiddleware")
+            raise RuntimeError("MessagePrepMiddleware must precede CommandMiddleware")
         if ctx.key is None:
             raise RuntimeError("RateLimitMiddleware must precede CommandMiddleware")
         router = ctx.router

@@ -9,7 +9,7 @@ ordering and session resume atomicity.
 
 Layout:
   middleware.py         — protocol, context, runner, factory
-  middleware_stages.py  — stages 0–8 (trace, guards, pool creation, command dispatch)
+  middleware_stages.py  — stages 0–8 (trace, guards, pool/msg prep, command dispatch)
   middleware_submit.py  — stage 9 (pool submit + session resume)
 """
 
@@ -167,7 +167,7 @@ def build_default_pipeline(
     """Build the standard middleware pipeline with all 10 stages."""
     from .middleware_stages import (
         CommandMiddleware,
-        CreatePoolMiddleware,
+        MessagePrepMiddleware,
         RateLimitMiddleware,
         ResolveBindingMiddleware,
         ResolveTrustMiddleware,
@@ -187,7 +187,7 @@ def build_default_pipeline(
             RateLimitMiddleware(),
             SttMiddleware(),
             ResolveBindingMiddleware(),
-            CreatePoolMiddleware(),
+            MessagePrepMiddleware(),
             CommandMiddleware(),
             SubmitToPoolMiddleware(),
         ],

@@ -384,7 +384,7 @@ async def _wire_adapters(
         bundle.msg_manager,
         nats_client=nc,
     )
-    dc_adapters, dc_dispatchers = await wire_discord_adapters(
+    dc_adapters, dc_dispatchers, _dc_thread_store = await wire_discord_adapters(
         hub,
         bundle.dc_bot_auths,
         bundle.bot_agent_map,

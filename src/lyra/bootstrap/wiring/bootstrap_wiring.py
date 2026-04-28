@@ -120,6 +120,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
 ) -> tuple[
     list[tuple[DiscordAdapter, DiscordBotConfig, str]],
     list[OutboundDispatcher],
+    ThreadStore | None,
 ]:
     """Wire each Discord bot: adapter + dispatcher + hub bindings.
 
@@ -130,8 +131,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
     dispatchers: list[OutboundDispatcher] = []
 
     # Shared ThreadStore for all Discord adapters (#417/S4)
-    # One connection to discord.db — shared across bots, closed by the first
-    # adapter's close() (all adapters hold the same reference).
+    # One connection to discord.db — shared across all Discord bots.
     _vault = Path(vault_dir or os.environ.get("LYRA_VAULT_DIR", _DEFAULT_VAULT_DIR))
     thread_store: ThreadStore | None = None
     if dc_bot_auths:
@@ -224,7 +224,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — wiring requires all 
             await thread_store.close()
         raise
 
-    return adapters, dispatchers
+    return adapters, dispatchers, thread_store
 
 
 def _build_bot_auths(  # noqa: PLR0913

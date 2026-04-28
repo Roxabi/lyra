@@ -1,5 +1,0 @@
-[Unit]
-Description=Lyra logs volume (rotating file handlers, rw for hub + adapters)
-
-[Volume]
-Label=app=lyra

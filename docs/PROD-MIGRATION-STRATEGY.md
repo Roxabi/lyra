@@ -99,7 +99,7 @@ One or both may not run simultaneously, or INTEL_PORT is overridden. **Verify on
 
 | Project | Container name(s) | Image | Network | Port(s) | Volume(s) | NATS |
 |---|---|---|---|---|---|---|
-| `lyra` | `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-nats` | `localhost/lyra:latest` | `lyra.network` (or shared `roxabi.network`) | 8443 (hub health) | `lyra-data`, `lyra-logs`, `lyra-config`, `lyra-nkey-*` | via `lyra-nats` container (shared or per-project — ADR TBD) |
+| `lyra` | `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-nats` | `localhost/lyra:latest` | `lyra.network` (or shared `roxabi.network`) | 8443 (hub health) | `lyra-data`, `lyra-config`, `lyra-nkey-*` | via `lyra-nats` container (shared or per-project — ADR TBD) |
 | `voiceCLI` | `voicecli-tts`, `voicecli-stt` | `localhost/voicecli:latest` | TBD (own or shared) | GPU device passthrough | `voicecli-data`, `voicecli-nkey-*` | shared NATS (post-Phase 4) |
 | `imageCLI` | `imagecli-gen` | `localhost/imagecli:latest` | TBD | GPU device passthrough | `imagecli-data` | unknown; investigate |
 | `llmCLI` | `llmcli-serve` | `localhost/llmcli:latest` | TBD | TBD | `llmcli-data` | unknown; investigate |

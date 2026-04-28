@@ -22,7 +22,7 @@ DropCapability=all
 UserNS=keep-id:uid=1500,gid=1500
 EnvironmentFile=%h/.lyra/env/hub.env
 # hub.env contains only hub-scoped vars (LYRA_HEALTH_SECRET,
-# LYRA_LOG_DIR, ROXABI_VAULT_DIR). Adapter tokens (Telegram, Discord, TTS/STT)
+# ROXABI_VAULT_DIR). Adapter tokens (Telegram, Discord, TTS/STT)
 # are excluded — hub does not need them. See deploy/quadlet/hub.env.example.
 # NATS_URL is overridden inline below; cutover = update .env.hub directly.
 Environment=NATS_URL=nats://lyra-nats:4222
@@ -30,8 +30,6 @@ Environment=NATS_URL=nats://lyra-nats:4222
 Secret=lyra-nkey-hub,type=mount,target=hub.seed,mode=0400,uid=1500,gid=1500
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/hub.seed
 Volume=lyra-data.volume:/home/lyra/.lyra:z
-Volume=lyra-logs.volume:/home/lyra/.local/state/lyra/logs:z
-Environment=LYRA_LOG_DIR=/home/lyra/.local/state/lyra/logs
 # Inline single-file bind mount — Quadlet .volume units wrapping a single file
 # either fail with loop-device errors or are silently downgraded to empty named
 # volumes (IsADirectoryError at read time). Inline Volume= does a direct bind.

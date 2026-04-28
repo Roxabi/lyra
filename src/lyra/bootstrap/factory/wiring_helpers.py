@@ -25,7 +25,7 @@ from lyra.bootstrap.factory.config import (
     _load_pairing_config,
     _load_pool_config,
 )
-from lyra.bootstrap.types import WiredAdapters
+from lyra.bootstrap.types import DiscordAdapterEntry, WiredAdapters
 from lyra.bootstrap.wiring.bootstrap_wiring import (
     _build_bot_auths,
     wire_discord_adapters,
@@ -396,7 +396,7 @@ async def _wire_adapters(
     return WiredAdapters(
         tg_adapters=tg_adapters,
         tg_dispatchers=tg_dispatchers,
-        dc_adapters=dc_adapters,
+        dc_adapters=[DiscordAdapterEntry(*t) for t in dc_adapters],
         dc_dispatchers=dc_dispatchers,
         dc_thread_store=dc_thread_store,
     )

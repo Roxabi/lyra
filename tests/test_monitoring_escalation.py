@@ -234,7 +234,7 @@ class TestRunFallbackChain:
         monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "12345")
         # Mock disk usage for check_disk
         monkeypatch.setattr(
-            "lyra.monitoring.checks.shutil.disk_usage",
+            "lyra.monitoring.checks_varz.shutil.disk_usage",
             lambda path: shutil._ntuple_diskusage(
                 total=100 * 1024**3,
                 used=50 * 1024**3,

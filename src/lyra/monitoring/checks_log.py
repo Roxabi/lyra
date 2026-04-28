@@ -14,9 +14,7 @@ _LOG_EXCEPTIONS = (
 )
 
 
-def check_nats_log_errors(
-    container_name: str, max_age_minutes: int
-) -> CheckResult:
+def check_nats_log_errors(container_name: str, max_age_minutes: int) -> CheckResult:
     """Check NATS container logs for permissions violation errors.
 
     Runs `podman logs --since {max_age_minutes}m {container_name}` and counts
@@ -75,8 +73,7 @@ def check_hub_stream_gen_timeout(
         )
         combined = result.stdout + result.stderr
         count = sum(
-            1 for line in combined.splitlines()
-            if "_stream_gen timeout" in line.lower()
+            1 for line in combined.splitlines() if "_stream_gen timeout" in line.lower()
         )
         if count >= threshold:
             return CheckResult(
@@ -92,8 +89,7 @@ def check_hub_stream_gen_timeout(
             name="hub:stream_gen_timeout",
             passed=True,
             detail=(
-                f"{count} timeouts in last {max_age_minutes}m"
-                f" (threshold={threshold})"
+                f"{count} timeouts in last {max_age_minutes}m (threshold={threshold})"
             ),
             timestamp=now,
         )

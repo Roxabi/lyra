@@ -43,6 +43,8 @@ class MonitoringConfig(BaseModel):
     nats_log_check_minutes: int = 30
     stream_gen_timeout_minutes: int = 30
     stream_gen_timeout_threshold: int = 3
+    nats_monitor_url: str = "http://127.0.0.1:8222"
+    nats_monitor_state_file: str = "~/.lyra/nats-monitor-state.json"
 
     # Secrets (from env vars)
     telegram_token: str = Field(default="", repr=False)

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 import subprocess
 from datetime import datetime, timezone
 
 import httpx
 
 from .checks_log import check_hub_stream_gen_timeout, check_nats_log_errors
+from .checks_varz import check_disk, check_nats_varz
 from .config import MonitoringConfig
 from .models import CheckResult, HealthReport
 
@@ -203,20 +203,6 @@ def check_reaper(health_json: dict) -> CheckResult:
     )
 
 
-def check_disk(path: str, min_free_gb: int) -> CheckResult:
-    """Check if free disk space exceeds minimum threshold."""
-    now = datetime.now(timezone.utc)
-    usage = shutil.disk_usage(path)
-    free_gb = usage.free / (1024**3)
-    passed = free_gb >= min_free_gb
-    return CheckResult(
-        name="disk",
-        passed=passed,
-        detail=f"free={free_gb:.1f}GB, min={min_free_gb}GB",
-        timestamp=now,
-    )
-
-
 async def run_checks(config: MonitoringConfig) -> HealthReport:
     """Run all Layer 1 checks and return aggregated report."""
     now = datetime.now(timezone.utc)
@@ -280,6 +266,14 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
     checks.append(
         await asyncio.to_thread(
             check_disk, config.disk_check_path, config.min_disk_free_gb
+        )
+    )
+
+    # Check 10: NATS /varz error counters (auth_errors, slow_consumers)
+    checks.append(
+        await check_nats_varz(
+            config.nats_monitor_url,
+            config.nats_monitor_state_file,
         )
     )
 

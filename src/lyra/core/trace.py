@@ -152,7 +152,7 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info and not record.exc_text:
             record.exc_text = self.formatException(record.exc_info)
 
-        obj: dict[str, str] = {
+        obj: dict[str, object] = {
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
             "logger": record.name,
@@ -178,5 +178,9 @@ class JsonFormatter(logging.Formatter):
         agent_name = getattr(record, "agent_name", "")
         if agent_name:
             obj["agent_name"] = agent_name
+
+        event = getattr(record, "event", None)
+        if event:
+            obj["event"] = event
 
         return json.dumps(obj, ensure_ascii=False)

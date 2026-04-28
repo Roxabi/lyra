@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from lyra.infrastructure.stores.thread_store import ThreadStore
 
 import uvicorn
 
@@ -34,6 +37,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     _stop: asyncio.Event | None,
     proxies: list[NatsChannelProxy] | None = None,
     nc: Any | None = None,
+    dc_thread_store: "ThreadStore | None" = None,
 ) -> None:
     """Start all buses/dispatchers/adapters, wait for stop, then tear down.
 
@@ -110,6 +114,8 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
         await proxy.publish_stream_errors("hub_shutdown")
     for dc_adapter, _, _dc_tok in dc_adapters:
         await dc_adapter.close()
+    if dc_thread_store is not None:
+        await dc_thread_store.close()
     if pm is not None:
         await pm.close()
     if cli_pool is not None:

@@ -373,7 +373,8 @@ async def _wire_adapters(
 ) -> tuple:
     """Wire Telegram and Discord adapters.
 
-    Returns (tg_adapters, tg_dispatchers, dc_adapters, dc_dispatchers).
+    Returns (tg_adapters, tg_dispatchers, dc_adapters, dc_dispatchers,
+    dc_thread_store) where dc_thread_store is ThreadStore | None.
     """
     tg_adapters, tg_dispatchers = await wire_telegram_adapters(
         hub,
@@ -384,7 +385,7 @@ async def _wire_adapters(
         bundle.msg_manager,
         nats_client=nc,
     )
-    dc_adapters, dc_dispatchers, _dc_thread_store = await wire_discord_adapters(
+    dc_adapters, dc_dispatchers, dc_thread_store = await wire_discord_adapters(
         hub,
         bundle.dc_bot_auths,
         bundle.bot_agent_map,
@@ -395,7 +396,7 @@ async def _wire_adapters(
         vault_dir=str(vault_dir),
         nats_client=nc,
     )
-    return tg_adapters, tg_dispatchers, dc_adapters, dc_dispatchers
+    return tg_adapters, tg_dispatchers, dc_adapters, dc_dispatchers, dc_thread_store
 
 
 async def _run_clipool_worker_task(

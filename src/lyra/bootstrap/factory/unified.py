@@ -64,6 +64,7 @@ async def _bootstrap_unified(
                 tg_dispatchers,
                 dc_adapters,
                 dc_dispatchers,
+                dc_thread_store,
             ) = await _wire_adapters(hub, bundle, nc, stores, vault_dir)
 
             clipool_worker_task = await _run_clipool_worker_task(clipool.worker, nc)
@@ -78,6 +79,7 @@ async def _bootstrap_unified(
                 None,
                 _stop,
                 nc=nc,
+                dc_thread_store=dc_thread_store,
             )
 
             clipool_worker_task.cancel()

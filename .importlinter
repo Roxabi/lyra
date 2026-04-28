@@ -90,6 +90,18 @@ ignore_imports =
     lyra.core.agent.agent -> lyra.stt
     lyra.core.agent.agent -> lyra.tts
 
+[importlinter:contract:bootstrap-types-no-subpackages]
+name = bootstrap/types.py must not import from bootstrap subpackages (neutral shared module invariant)
+type = forbidden
+source_modules =
+    lyra.bootstrap.types
+forbidden_modules =
+    lyra.bootstrap.factory
+    lyra.bootstrap.lifecycle
+    lyra.bootstrap.standalone
+    lyra.bootstrap.wiring
+allow_indirect_imports = true
+
 [importlinter:contract:shared-modules-upper-boundary]
 name = Shared floating modules must not import bootstrap, adapters, or infrastructure
 type = forbidden

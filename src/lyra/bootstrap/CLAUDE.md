@@ -43,6 +43,7 @@ bootstrap/
   # Flat files (remain at bootstrap/ root)
   auth_seeding.py                  # seed_auth_store, build_bot_auths
   bootstrap_stores.py              # open_stores (store lifecycle context manager)
+  types.py                         # WiredAdapters, LifecycleResources (neutral shared types)
   __init__.py                      # re-exports _bootstrap_unified, _bootstrap_hub_standalone, _bootstrap_adapter_standalone
 ```
 

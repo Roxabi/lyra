@@ -25,6 +25,7 @@ from lyra.bootstrap.factory.config import (
     _load_pairing_config,
     _load_pool_config,
 )
+from lyra.bootstrap.types import DiscordAdapterEntry, WiredAdapters
 from lyra.bootstrap.wiring.bootstrap_wiring import (
     _build_bot_auths,
     wire_discord_adapters,
@@ -45,11 +46,6 @@ from lyra.nats.queue_groups import HUB_INBOUND
 
 if TYPE_CHECKING:
     import nats
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.telegram import TelegramAdapter
-    from lyra.config import DiscordBotConfig
-    from lyra.core.hub import OutboundDispatcher
-    from lyra.infrastructure.stores.thread_store import ThreadStore
     from lyra.llm.drivers.cli_nats import CliNatsDriver
     from lyra.llm.drivers.nats_driver import NatsLlmDriver
 
@@ -86,15 +82,6 @@ class CliPoolBundle:
     cli_nats_driver: "CliNatsDriver | None"
     worker: object
     audit_sink: JetStreamAuditSink
-
-
-@dataclass
-class WiredAdapters:
-    tg_adapters: list[TelegramAdapter]
-    tg_dispatchers: list[OutboundDispatcher]
-    dc_adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]]
-    dc_dispatchers: list[OutboundDispatcher]
-    dc_thread_store: ThreadStore | None
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +396,7 @@ async def _wire_adapters(
     return WiredAdapters(
         tg_adapters=tg_adapters,
         tg_dispatchers=tg_dispatchers,
-        dc_adapters=dc_adapters,
+        dc_adapters=[DiscordAdapterEntry(*t) for t in dc_adapters],
         dc_dispatchers=dc_dispatchers,
         dc_thread_store=dc_thread_store,
     )

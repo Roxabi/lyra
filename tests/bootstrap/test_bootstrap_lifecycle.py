@@ -34,7 +34,7 @@ def _make_wired(dc_thread_store: AsyncMock | None) -> MagicMock:
 
 
 def _make_resources() -> LifecycleResources:
-    return LifecycleResources(pm=None, cli_pool=None, proxies=None, nc=None)
+    return LifecycleResources(pm=None, cli_pool=None, nc=None)
 
 
 async def _watchdog_immediate(

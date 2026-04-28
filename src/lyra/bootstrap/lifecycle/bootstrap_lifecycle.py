@@ -5,13 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from nats.aio.client import Client as NatsClient
-
-    from lyra.bootstrap.factory.wiring_helpers import WiredAdapters
 
 import uvicorn
 
@@ -21,23 +14,10 @@ from lyra.bootstrap.lifecycle.lifecycle_helpers import (
     teardown_buses,
     teardown_dispatchers,
 )
-from lyra.core.cli.cli_pool import CliPool
+from lyra.bootstrap.types import LifecycleResources, WiredAdapters
 from lyra.core.hub import Hub
-from lyra.infrastructure.stores.pairing import PairingManager
-from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 log = logging.getLogger(__name__)
-
-
-@dataclass
-class LifecycleResources:
-    """Optional infrastructure wired into the lifecycle."""
-
-    pm: PairingManager | None
-    # unified: always None; CliPool managed in unified.py finally
-    cli_pool: CliPool | None
-    proxies: list[NatsChannelProxy] | None = field(default=None)
-    nc: NatsClient | None = field(default=None)
 
 
 async def run_lifecycle(  # noqa: C901 — lifecycle orchestration
@@ -117,7 +97,7 @@ async def run_lifecycle(  # noqa: C901 — lifecycle orchestration
     await teardown_dispatchers(wired.tg_dispatchers + wired.dc_dispatchers)
     # proxies is only populated in three-process hub_standalone mode; unified mode
     # runs adapters in-process (platform SDKs) and does not use NatsChannelProxy.
-    for proxy in resources.proxies or []:
+    for proxy in resources.proxies:
         await proxy.publish_stream_errors("hub_shutdown")
     _close_results = await asyncio.gather(
         *[a.close() for a, _, _ in wired.dc_adapters],

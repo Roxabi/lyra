@@ -92,7 +92,6 @@ class LoggingConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    json_file: bool = True
     level: str = "info"
 
 

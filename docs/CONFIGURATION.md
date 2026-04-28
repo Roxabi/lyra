@@ -342,7 +342,6 @@ health_secret = ""                            # optional health endpoint auth
 | `LYRA_VAULT_DIR` | `~/.lyra` | Store directory for all databases |
 | `LYRA_MESSAGES_CONFIG` | bundled | Path to custom `messages.toml` |
 | `LYRA_DB` | — | Override database path (test only) |
-| `LYRA_LOG_DIR` | — | Log directory override |
 
 ### Telegram
 

@@ -1,4 +1,4 @@
-"""Per-request trace context, log filter, and JSON formatter (#270).
+"""Per-request trace context, log filter, and token redaction (#270).
 
 Provides:
 - ``TraceContext`` — three ``contextvars.ContextVar`` instances (trace_id, pool_id,
@@ -9,14 +9,11 @@ Provides:
   tokens from log messages. ``httpx``'s default ``INFO`` log for every
   request includes the full URL, which for Telegram looks like
   ``POST https://api.telegram.org/bot<TOKEN>/sendMessage`` — the token is
-  a credential and must not reach disk.
-- ``JsonFormatter`` — emits one JSON object per line from an explicit field
-  allowlist. No ``LogRecord.__dict__`` dump.
+  a credential and must not appear in log output.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import uuid
@@ -138,49 +135,3 @@ class TelegramTokenFilter(logging.Filter):
         return True
 
 
-class JsonFormatter(logging.Formatter):
-    """Emit one JSON object per line with fields: timestamp, level, logger,
-    message, trace_id, pool_id, agent_name, exception, stack_info.
-
-    Fields whose value is empty string are omitted from the output to keep
-    JSON clean (e.g. ``trace_id`` is absent for startup log lines).
-    """
-
-    def format(self, record: logging.LogRecord) -> str:
-        # Ensure the message is fully interpolated.
-        record.message = record.getMessage()
-        if record.exc_info and not record.exc_text:
-            record.exc_text = self.formatException(record.exc_info)
-
-        obj: dict[str, object] = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.message,
-        }
-
-        # Exception and stack_info as separate fields (not in message).
-        if record.exc_text:
-            obj["exception"] = record.exc_text
-
-        if record.stack_info:
-            obj["stack_info"] = self.formatStack(record.stack_info)
-
-        # Add context var fields only when non-empty.
-        trace_id = getattr(record, "trace_id", "")
-        if trace_id:
-            obj["trace_id"] = trace_id
-
-        pool_id = getattr(record, "pool_id", "")
-        if pool_id:
-            obj["pool_id"] = pool_id
-
-        agent_name = getattr(record, "agent_name", "")
-        if agent_name:
-            obj["agent_name"] = agent_name
-
-        event = getattr(record, "event", None)
-        if event:
-            obj["event"] = event
-
-        return json.dumps(obj, ensure_ascii=False)

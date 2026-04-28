@@ -34,7 +34,6 @@ systemd --user (linger enabled)
 
 Volumes
 ├── lyra-data           → /home/lyra/.lyra            (hub rw, adapters ro)
-├── lyra-logs           → /home/lyra/.local/state/lyra/logs  (all rw)
 ├── lyra-config         → config.toml bind mount       (ro)
 └── Podman secrets
                         → /run/secrets/*.seed          (each container ro)

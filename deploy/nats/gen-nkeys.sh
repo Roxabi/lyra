@@ -98,7 +98,10 @@ load_matrix() {
       '.identities[$n].subscribe | map("\"" + . + "\"") | join(",")' "${MATRIX_JSON}")
     OWNER[$name]=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
     ALLOW_RESPONSES[$name]=$(jq -r --arg n "${name}" \
-      '.identities[$n].allow_responses // true' "${MATRIX_JSON}")
+      'if (.identities[$n].allow_responses | type) == "boolean"
+       then (.identities[$n].allow_responses | tostring)
+       else "true"
+       end' "${MATRIX_JSON}")
   done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
 }
 

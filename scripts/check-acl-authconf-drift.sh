@@ -58,11 +58,34 @@ normalize_authconf < "${NATS_TMPDIR}/generated_auth.conf" > "$GENERATED_NORM"
 
 # Diff — explicit capture makes intent clear under set -euo pipefail
 diff_out=$(diff -u "$COMMITTED_NORM" "$GENERATED_NORM" || true)
-if [ -z "$diff_out" ]; then
-  echo "✓ auth.conf is in sync with acl-matrix.json"
-  exit 0
-else
+if [ -n "$diff_out" ]; then
   echo "$diff_out"
   echo "::error::auth.conf is out of sync with acl-matrix.json — run 'bash deploy/nats/gen-nkeys.sh --template-only > deploy/nats/auth.conf' and commit the result" >&2
   exit 1
 fi
+echo "✓ auth.conf template matches acl-matrix.json"
+
+# ---------------------------------------------------------------------------
+# Direct allow_responses validation: for every identity in acl-matrix.json
+# that explicitly sets allow_responses:false, verify auth.conf contains
+# "allow_responses: false" in its block. This catches jq boolean coercion
+# bugs independently of the template diff (e.g. // operator coercing false→true).
+# ---------------------------------------------------------------------------
+allow_resp_failures=0
+while IFS= read -r identity; do
+  # Check the identity's block in auth.conf: the block starts with "# <identity>"
+  # and allow_responses must be false on the next line(s) of that block.
+  # We extract the block between "# <identity>" and the closing "}" and grep within it.
+  block=$(awk "/# ${identity}$/,/^[[:space:]]*\}/" "$AUTH_CONF" | head -20)
+  if ! echo "$block" | grep -q 'allow_responses: false'; then
+    echo "::error::allow_responses mismatch: '${identity}' has allow_responses:false in acl-matrix.json but auth.conf does not" >&2
+    allow_resp_failures=$((allow_resp_failures + 1))
+  fi
+done < <(jq -r '.identities | to_entries[] | select(.value.allow_responses == false) | .key' "$ACL_MATRIX")
+
+if [ "$allow_resp_failures" -gt 0 ]; then
+  echo "::error::${allow_resp_failures} allow_responses value(s) wrong in auth.conf — regenerate with: bash deploy/nats/gen-nkeys.sh --template-only > deploy/nats/auth.conf" >&2
+  exit 1
+fi
+echo "✓ allow_responses values match acl-matrix.json"
+exit 0

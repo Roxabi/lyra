@@ -6,9 +6,11 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from nats.aio.client import Client as NatsClient
+
     from lyra.bootstrap.factory.wiring_helpers import WiredAdapters
 
 import uvicorn
@@ -32,9 +34,10 @@ class LifecycleResources:
     """Optional infrastructure wired into the lifecycle."""
 
     pm: PairingManager | None
+    # unified: always None; CliPool managed in unified.py finally
     cli_pool: CliPool | None
     proxies: list[NatsChannelProxy] | None = field(default=None)
-    nc: Any | None = field(default=None)
+    nc: NatsClient | None = field(default=None)
 
 
 async def run_lifecycle(  # noqa: C901 — lifecycle orchestration
@@ -116,10 +119,13 @@ async def run_lifecycle(  # noqa: C901 — lifecycle orchestration
     # runs adapters in-process (platform SDKs) and does not use NatsChannelProxy.
     for proxy in resources.proxies or []:
         await proxy.publish_stream_errors("hub_shutdown")
-    await asyncio.gather(
+    _close_results = await asyncio.gather(
         *[a.close() for a, _, _ in wired.dc_adapters],
         return_exceptions=True,
     )
+    for _r in _close_results:
+        if isinstance(_r, BaseException) and not isinstance(_r, asyncio.CancelledError):
+            log.exception("DC adapter close failed during teardown", exc_info=_r)
     if wired.dc_thread_store is not None:
         await wired.dc_thread_store.close()
     if resources.pm is not None:

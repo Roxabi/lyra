@@ -46,7 +46,9 @@ from lyra.nats.queue_groups import HUB_INBOUND
 if TYPE_CHECKING:
     import nats
     from lyra.adapters.discord import DiscordAdapter
+    from lyra.adapters.telegram import TelegramAdapter
     from lyra.config import DiscordBotConfig
+    from lyra.core.hub import OutboundDispatcher
     from lyra.infrastructure.stores.thread_store import ThreadStore
     from lyra.llm.drivers.cli_nats import CliNatsDriver
     from lyra.llm.drivers.nats_driver import NatsLlmDriver
@@ -88,10 +90,10 @@ class CliPoolBundle:
 
 @dataclass
 class WiredAdapters:
-    tg_adapters: list
-    tg_dispatchers: list
+    tg_adapters: list[TelegramAdapter]
+    tg_dispatchers: list[OutboundDispatcher]
     dc_adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]]
-    dc_dispatchers: list
+    dc_dispatchers: list[OutboundDispatcher]
     dc_thread_store: ThreadStore | None
 
 

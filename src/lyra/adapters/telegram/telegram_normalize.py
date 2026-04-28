@@ -83,20 +83,11 @@ def _extract_attachments(msg: Any) -> list[Attachment]:
 def _make_scope_id(
     chat_id: int,
     topic_id: int | None,
-    *,
-    user_id: str,
-    is_group: bool,
 ) -> str:
-    """Build the canonical scope_id for a Telegram chat/topic.
-
-    In shared spaces (groups, supergroups) the scope includes the user
-    identity so that each user gets their own pool (#356).
-    """
+    """Build the canonical scope_id for a Telegram chat/topic."""
     if topic_id is not None:
-        base = f"chat:{chat_id}:topic:{topic_id}"
-    else:
-        base = f"chat:{chat_id}"
-    return base
+        return f"chat:{chat_id}:topic:{topic_id}"
+    return f"chat:{chat_id}"
 
 
 def _build_routing(  # noqa: PLR0913 — groups related metadata fields
@@ -125,7 +116,7 @@ def _build_routing(  # noqa: PLR0913 — groups related metadata fields
     return platform_meta, routing
 
 
-def normalize(
+def normalize(  # noqa: C901
     adapter: TelegramAdapter,
     raw: Any,
     *,
@@ -144,26 +135,46 @@ def normalize(
         )
     is_group = raw.chat.type != "private"
 
+    bot_suffix = f"@{adapter._bot_username}" if adapter._bot_username else None
+
     # is_mention is always False in private chats
     is_mention = False
-    if is_group and raw.entities and adapter._bot_username is not None:
+    if is_group and raw.entities and bot_suffix is not None:
         for entity in raw.entities:
             if entity.type == "mention":
                 slice_text = raw.text[entity.offset : entity.offset + entity.length]
-                if slice_text == f"@{adapter._bot_username}":
+                if slice_text == bot_suffix:
+                    is_mention = True
+                    break
+            elif entity.type == "bot_command":
+                # /cmd → bare (no suffix, respond); /cmd@botname → only if our bot
+                cmd_text = raw.text[entity.offset : entity.offset + entity.length]
+                if "@" not in cmd_text or cmd_text.endswith(bot_suffix):
                     is_mention = True
                     break
 
     chat_id: int = raw.chat.id
     topic_id: int | None = raw.message_thread_id
     user_id = f"tg:user:{raw.from_user.id}"
-    scope_id = _make_scope_id(chat_id, topic_id, user_id=user_id, is_group=is_group)
+    scope_id = _make_scope_id(chat_id, topic_id)
 
     text = raw.text or getattr(raw, "caption", None) or ""
+    # Strip @botname suffix from bot_command entities (/clear@botname → /clear).
+    # Telegram group commands include the suffix; CommandRouter expects plain names.
+    if raw.entities and bot_suffix is not None:
+        for entity in raw.entities:
+            if entity.type == "bot_command":
+                cmd_text = text[entity.offset : entity.offset + entity.length]
+                if cmd_text.endswith(bot_suffix):
+                    text = (
+                        text[: entity.offset]
+                        + cmd_text[: -len(bot_suffix)]
+                        + text[entity.offset + entity.length :]
+                    )
+                break  # only one bot_command entity per message
     # Strip @mention prefix so content reaches the agent clean (align with Discord)
-    if is_mention and adapter._bot_username is not None:
-        mention_tag = f"@{adapter._bot_username}"
-        text = text.replace(mention_tag, "").strip()
+    if is_mention and bot_suffix is not None:
+        text = text.replace(bot_suffix, "").strip()
     timestamp = raw.date
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
@@ -225,7 +236,7 @@ def normalize_audio(
     topic_id: int | None = getattr(raw, "message_thread_id", None)
     is_group = raw.chat.type != "private"
     user_id = f"tg:user:{raw.from_user.id}"
-    scope_id = _make_scope_id(chat_id, topic_id, user_id=user_id, is_group=is_group)
+    scope_id = _make_scope_id(chat_id, topic_id)
     voice = raw.voice or raw.audio or getattr(raw, "video_note", None)
     duration_ms: int | None = None
     if voice is not None:

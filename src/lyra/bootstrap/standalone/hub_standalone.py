@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from lyra.bootstrap.auth_seeding import build_bot_auths, seed_auth_store
 from lyra.bootstrap.bootstrap_stores import open_stores
@@ -64,8 +65,20 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
     acquire_lockfile()
 
+    # Drivers built later are registered here so the reconnect callback can
+    # clear their stale freshness timestamps after a NATS reconnect.
+    _freshness_drivers: list[Any] = []
+
+    async def _on_nats_reconnect() -> None:
+        log.info("NATS reconnected — clearing worker freshness caches")
+        for _d in _freshness_drivers:
+            if hasattr(_d, "_worker_freshness"):
+                _d._worker_freshness.clear()
+
     try:
-        nc = await nats_connect(nats_url, identity_name="hub")
+        nc = await nats_connect(
+            nats_url, identity_name="hub", reconnected_cb=_on_nats_reconnect
+        )
         log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
     except Exception as exc:
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
@@ -152,6 +165,12 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
 
         cli_nats_driver = await build_cli_nats_driver(nc)
         hub.cli_pool = None  # CliPool now runs in lyra-clipool container
+
+        # Register drivers that hold _worker_freshness so the reconnect callback
+        # clears stale timestamps after a NATS reconnect (see _on_nats_reconnect).
+        _freshness_drivers.extend(
+            d for d in [cli_nats_driver, nats_llm_driver] if d is not None
+        )
 
         register_agents(
             hub,

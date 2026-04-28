@@ -1,14 +1,7 @@
 """Unit tests — scope_id must NOT be user-scoped in shared spaces.
 
 Issue #592: Groups / guild channels must produce the same scope_id for all
-users so everyone shares one pool.  Currently both adapters add per-user
-suffixes, causing each user to get their own pool.
-
-RED phase:
-- Discord: normalize() calls user_scoped() for guild channels → different users
-  get different scope_ids → the equality assertion fails.
-- Telegram: _make_scope_id() returns user_scoped(base, user_id) for groups →
-  same failure.
+users so everyone shares one pool. Groups are NOT per-user by design.
 """
 
 from __future__ import annotations
@@ -144,17 +137,10 @@ def test_discord_dm_scope_id_is_channel_only() -> None:
 def test_telegram_two_users_same_group_same_scope_id() -> None:
     """Two users in the same Telegram group must share the same scope_id.
 
-    RED: _make_scope_id returns user_scoped(base, user_id) for groups →
-    user u1: scope_id='chat:300:user:tg:user:u1'
-    user u2: scope_id='chat:300:user:tg:user:u2'
-    → assertion fails.
+    Groups are NOT per-user by design — all users in the same chat share one pool.
     """
-    sid_a = _make_scope_id(
-        chat_id=300, topic_id=None, user_id="tg:user:u1", is_group=True
-    )
-    sid_b = _make_scope_id(
-        chat_id=300, topic_id=None, user_id="tg:user:u2", is_group=True
-    )
+    sid_a = _make_scope_id(chat_id=300, topic_id=None)
+    sid_b = _make_scope_id(chat_id=300, topic_id=None)
 
     # RED: fails because user_scoped() appends different user ids
     assert sid_a == sid_b, (
@@ -167,10 +153,10 @@ def test_telegram_two_users_same_group_same_scope_id() -> None:
 def test_telegram_two_users_same_topic_same_scope_id() -> None:
     """Two users in the same topic must share the same scope_id.
 
-    RED: topic scoping also calls user_scoped → different scope_ids per user.
+    Groups are NOT per-user by design — topic scope is chat+topic only.
     """
-    sid_a = _make_scope_id(chat_id=300, topic_id=5, user_id="tg:user:u1", is_group=True)
-    sid_b = _make_scope_id(chat_id=300, topic_id=5, user_id="tg:user:u2", is_group=True)
+    sid_a = _make_scope_id(chat_id=300, topic_id=5)
+    sid_b = _make_scope_id(chat_id=300, topic_id=5)
 
     # RED: fails because user_scoped() appends different user ids
     assert sid_a == sid_b, (
@@ -185,9 +171,7 @@ def test_telegram_private_scope_id_is_chat_only() -> None:
 
     This should already pass; included as regression guard.
     """
-    sid = _make_scope_id(
-        chat_id=100, topic_id=None, user_id="tg:user:42", is_group=False
-    )
+    sid = _make_scope_id(chat_id=100, topic_id=None)
 
     assert sid == "chat:100", f"Private chat scope_id should be 'chat:100', got {sid!r}"
 
@@ -196,14 +180,9 @@ def test_telegram_different_groups_different_scope_id() -> None:
     """Users in different groups must NOT share a scope_id.
 
     This is a sanity check — different group chats must remain isolated.
-    Expected to pass in both RED and GREEN.
     """
-    sid_a = _make_scope_id(
-        chat_id=300, topic_id=None, user_id="tg:user:u1", is_group=True
-    )
-    sid_b = _make_scope_id(
-        chat_id=400, topic_id=None, user_id="tg:user:u1", is_group=True
-    )
+    sid_a = _make_scope_id(chat_id=300, topic_id=None)
+    sid_b = _make_scope_id(chat_id=400, topic_id=None)
 
     # Even after fix, different chat_ids must produce different scope_ids
     assert sid_a != sid_b, (

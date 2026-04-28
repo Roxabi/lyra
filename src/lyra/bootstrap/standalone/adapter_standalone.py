@@ -291,6 +291,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             finally:
                 for _, _, ibus in wired_dc:
                     await ibus.stop()
+                await dc_thread_store.close()
                 await dc_turn_store.close()
 
         else:

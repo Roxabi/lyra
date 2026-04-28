@@ -45,6 +45,10 @@ from lyra.nats.queue_groups import HUB_INBOUND
 
 if TYPE_CHECKING:
     import nats
+    from lyra.adapters.discord import DiscordAdapter
+    from lyra.config import DiscordBotConfig
+    from lyra.core.hub import OutboundDispatcher
+    from lyra.infrastructure.stores.thread_store import ThreadStore
     from lyra.llm.drivers.cli_nats import CliNatsDriver
     from lyra.llm.drivers.nats_driver import NatsLlmDriver
 
@@ -370,7 +374,13 @@ async def _wire_adapters(
     nc: nats.aio.client.Client,
     stores: object,
     vault_dir: Path,
-) -> tuple:
+) -> tuple[
+    list,
+    list,
+    list[tuple[DiscordAdapter, DiscordBotConfig, str]],
+    list[OutboundDispatcher],
+    ThreadStore | None,
+]:
     """Wire Telegram and Discord adapters.
 
     Returns (tg_adapters, tg_dispatchers, dc_adapters, dc_dispatchers,

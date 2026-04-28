@@ -37,7 +37,7 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     _stop: asyncio.Event | None,
     proxies: list[NatsChannelProxy] | None = None,
     nc: Any | None = None,
-    dc_thread_store: "ThreadStore | None" = None,
+    dc_thread_store: ThreadStore | None = None,
 ) -> None:
     """Start all buses/dispatchers/adapters, wait for stop, then tear down.
 
@@ -112,8 +112,10 @@ async def run_lifecycle(  # noqa: PLR0913, C901 — lifecycle orchestration
     # runs adapters in-process (platform SDKs) and does not use NatsChannelProxy.
     for proxy in proxies or []:
         await proxy.publish_stream_errors("hub_shutdown")
-    for dc_adapter, _, _dc_tok in dc_adapters:
-        await dc_adapter.close()
+    await asyncio.gather(
+        *[a.close() for a, _, _ in dc_adapters],
+        return_exceptions=True,
+    )
     if dc_thread_store is not None:
         await dc_thread_store.close()
     if pm is not None:

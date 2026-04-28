@@ -154,7 +154,7 @@ class TestCheckDisk:
         import shutil
 
         monkeypatch.setattr(
-            "lyra.monitoring.checks.shutil.disk_usage",
+            "lyra.monitoring.checks_varz.shutil.disk_usage",
             lambda path: shutil._ntuple_diskusage(
                 total=100 * 1024**3, used=50 * 1024**3, free=50 * 1024**3
             ),
@@ -170,7 +170,7 @@ class TestCheckDisk:
         import shutil
 
         monkeypatch.setattr(
-            "lyra.monitoring.checks.shutil.disk_usage",
+            "lyra.monitoring.checks_varz.shutil.disk_usage",
             lambda path: shutil._ntuple_diskusage(
                 total=100 * 1024**3,
                 used=int(99.5 * 1024**3),

@@ -62,9 +62,15 @@ class TestRunChecks:
             "reaper_last_sweep_age": 30.0,
         }
 
+        varz_response = MagicMock()
+        varz_response.status_code = 200
+        varz_response.json.return_value = {"auth_errors": 0, "slow_consumers": 0}
+
         with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
-            mock_client.get.return_value = mock_response
+            mock_client.get.side_effect = (
+                lambda url, **kw: varz_response if "/varz" in url else mock_response
+            )
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
@@ -72,7 +78,7 @@ class TestRunChecks:
             import shutil
 
             monkeypatch.setattr(
-                "lyra.monitoring.checks.shutil.disk_usage",
+                "lyra.monitoring.checks_varz.shutil.disk_usage",
                 lambda path: shutil._ntuple_diskusage(
                     total=100 * 1024**3, used=50 * 1024**3, free=50 * 1024**3
                 ),
@@ -83,8 +89,8 @@ class TestRunChecks:
         assert report.all_passed is True
         assert report.failed_count == 0
         # process:lyra-hub + http_health + queue_depth + circuits + reaper
-        # + nats:permissions_violation + hub:stream_gen_timeout + disk
-        assert len(report.checks) == 8
+        # + nats:permissions_violation + hub:stream_gen_timeout + disk + nats:varz
+        assert len(report.checks) == 9
 
     async def test_failure_detected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC-11: run_checks returns all_passed=False when a check fails."""
@@ -127,7 +133,7 @@ class TestRunChecks:
             import shutil
 
             monkeypatch.setattr(
-                "lyra.monitoring.checks.shutil.disk_usage",
+                "lyra.monitoring.checks_varz.shutil.disk_usage",
                 lambda path: shutil._ntuple_diskusage(
                     total=100 * 1024**3, used=50 * 1024**3, free=50 * 1024**3
                 ),

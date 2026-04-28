@@ -24,3 +24,13 @@ def test_thread_store_protocol_exported_from_package() -> None:
     from lyra.core.stores import ThreadStoreProtocol as _TSP
 
     assert _TSP is ThreadStoreProtocol
+
+
+def test_thread_store_protocol_has_no_close_method() -> None:
+    """ADR-063: close() was explicitly removed from ThreadStoreProtocol.
+
+    Re-adding it would silently break teardown ownership — guards against regression.
+    """
+    expected = {"get_thread_ids", "is_owned", "get_session", "claim", "update_session"}
+    actual: set[str] = getattr(ThreadStoreProtocol, "__protocol_attrs__", set())
+    assert actual == expected

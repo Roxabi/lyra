@@ -231,6 +231,7 @@ class Pool:
 
     async def reset_session(self) -> None:
         """Reset session state; called by /clear. Rotates UUID, notifies TurnStore."""
+        self._pending_session_id = None
         old_sid = self.session_id
         await self._observer.end_session_async(old_sid)
         self.session_id = str(uuid.uuid4())

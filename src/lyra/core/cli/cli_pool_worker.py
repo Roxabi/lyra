@@ -218,6 +218,8 @@ class CliPoolWorkerMixin:
     async def _kill(self, pool_id: str, *, preserve_session: bool = True) -> None:
         entry = self._entries.pop(pool_id, None)
         self._cwd_overrides.pop(pool_id, None)
+        if not preserve_session:
+            self._resume_session_ids.pop(pool_id, None)
         if entry is None:
             return
         self._maybe_preserve_session(pool_id, entry, preserve_session=preserve_session)

@@ -1,7 +1,7 @@
 """Protocol conformance test — ThreadStore satisfies ThreadStoreProtocol.
 
-Guards against silent drift: if ThreadStore drops or renames any of the
-5 methods required by the protocol, this test fails at import time.
+Guards against silent protocol drift: if ThreadStore drops or renames any method
+required by the protocol, this test fails at import time.
 """
 
 from __future__ import annotations

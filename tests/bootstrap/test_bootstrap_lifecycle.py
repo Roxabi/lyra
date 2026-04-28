@@ -84,11 +84,15 @@ async def test_run_lifecycle_closes_dc_thread_store() -> None:
 
 
 async def test_run_lifecycle_none_dc_thread_store_is_noop() -> None:
-    """F6b: run_lifecycle with dc_thread_store=None completes without error."""
+    """F6b: run_lifecycle with dc_thread_store=None does not attempt to close the store.
+
+    The None guard must prevent any close() call on the thread store.
+    """
     from lyra.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
 
     hub = _make_hub()
-    wired = _make_wired(dc_thread_store=None)
+    mock_store = AsyncMock()  # would fail loudly if close() were called
+    wired = _make_wired(dc_thread_store=None)  # None guard being tested
     resources = _make_resources()
     stop = asyncio.Event()
     stop.set()
@@ -100,7 +104,6 @@ async def test_run_lifecycle_none_dc_thread_store_is_noop() -> None:
         ),
         patch("uvicorn.Server.serve", new_callable=AsyncMock),
     ):
-        # Should not raise
         await run_lifecycle(
             hub=hub,
             wired=wired,
@@ -108,5 +111,6 @@ async def test_run_lifecycle_none_dc_thread_store_is_noop() -> None:
             _stop=stop,
         )
 
-    # Assert — hub shutdown was called (lifecycle ran to completion)
+    # Assert — lifecycle completed and the None guard prevented any close attempt
     hub.shutdown.assert_awaited_once()
+    mock_store.close.assert_not_called()  # None guard: close() must NOT be called

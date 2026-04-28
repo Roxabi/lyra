@@ -310,7 +310,6 @@ async def test_discord_msg_manager_injection_backpressure_ack() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_close_does_not_call_thread_store_close() -> None:
     """F5: DiscordAdapter.close() must not delegate teardown to thread_store.close().
 

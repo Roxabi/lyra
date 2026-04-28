@@ -1,0 +1,131 @@
+---
+title: "refactor(core): remove close() from ThreadStoreProtocol, move teardown to bootstrap lifecycle"
+issue: 984
+status: approved
+tier: F-lite
+date: 2026-04-28
+frame: artifacts/frames/984-thread-store-teardown-bootstrap-frame.mdx
+---
+
+## Context
+
+Derived from [frame](../frames/984-thread-store-teardown-bootstrap-frame.mdx).
+
+`ThreadStoreProtocol.close()` exposes store ownership to adapters. Both the standalone path (`adapter_standalone.py`) and the unified path (`bootstrap_lifecycle.py` via `wire_discord_adapters`) currently rely on `DiscordAdapter.close()` to close `dc_thread_store` — an implicit contract that is fragile and inconsistent with the error path (which closes it explicitly in `bootstrap_wiring.py:222-224`).
+
+The unified path compounds the problem: `wire_discord_adapters` creates `ThreadStore` internally but does not return it. After adapters close, `run_lifecycle` has no reference to close it — it relies entirely on `DiscordAdapter.close()`. Removing `close()` from the adapter without surfacing the store through `wire_discord_adapters` → `_wire_adapters` → `run_lifecycle` would leak the store in unified mode.
+
+No `isinstance(x, ThreadStoreProtocol)` checks exist that would break when `close()` is removed.
+
+Note: `thread_store_protocol.py` was recently updated to add a `ThreadSession` dataclass and change `get_session` return type — this issue only removes `close()`, no other protocol changes.
+
+## Goal
+
+Remove `close()` from `ThreadStoreProtocol` and ensure `dc_thread_store` is closed explicitly by bootstrap — in both standalone (`adapter_standalone.py`) and unified (`bootstrap_lifecycle.py`) paths — after adapter teardown completes.
+
+## Users
+
+- **Bootstrap layer:** resource lifecycle is fully owned and explicit in both process modes
+- **Future adapter implementors:** `ThreadStoreProtocol` is a clean reader/writer API with no ownership semantics
+
+## Expected Behavior
+
+After the change:
+
+1. `ThreadStoreProtocol` declares only read/write methods (`get_thread_ids`, `is_owned`, `get_session`, `claim`, `update_session`). No `close()`.
+2. `DiscordAdapter.close()` no longer calls `self._thread_store.close()`. The `if self._thread_store is not None` block that calls `close()` is removed.
+3. `wire_discord_adapters` returns a 3-tuple: `(adapters, dispatchers, thread_store | None)` instead of the current 2-tuple.
+4. `_wire_adapters` in `wiring_helpers.py` captures the returned `thread_store` and returns a 5-tuple: `(tg_adapters, tg_dispatchers, dc_adapters, dc_dispatchers, dc_thread_store)`.
+5. `run_lifecycle` in `bootstrap_lifecycle.py` receives `dc_thread_store` and calls `await dc_thread_store.close()` after all `dc_adapter.close()` calls complete, before NATS closes. `None`-guarded.
+6. `adapter_standalone.py` — which already holds `dc_thread_store` directly — calls `await dc_thread_store.close()` in the inner `finally` block (same block as `dc_turn_store.close()`, after the `ibus.stop()` loop), before NATS closes.
+7. `bootstrap_wiring.py` comment at line 133 is updated: removes "closed by the first adapter's close()" wording.
+
+On SIGTERM in standalone, teardown order:
+adapters close → `ibus.stop()` loop → `dc_thread_store.close()` → `dc_turn_store.close()` → `nc.close()`
+
+On SIGTERM in unified, teardown order:
+`dc_adapter.close()` loop → `dc_thread_store.close()` (in `run_lifecycle`) → NATS / other cleanup
+
+## Data Model & Consumers
+
+### Protocol shape (before → after)
+
+```classDiagram
+  class ThreadStoreProtocol {
+    -close() ~~removed~~
+    +get_thread_ids(bot_id, active_since) list[str]
+    +is_owned(thread_id, bot_id) bool
+    +get_session(thread_id, bot_id) ThreadSession
+    +claim(thread_id, bot_id, channel_id, guild_id) None
+    +update_session(thread_id, bot_id, session_id, pool_id) None
+  }
+  class ThreadStore {
+    +close() None
+    +connect() None
+  }
+  ThreadStore ..|> ThreadStoreProtocol : satisfies (structurally)
+```
+
+`ThreadStore` retains `close()` as a concrete method — only the protocol loses it.
+
+### Return type change
+
+`wire_discord_adapters` return type changes:
+
+```
+before: tuple[list[tuple[DiscordAdapter, DiscordBotConfig, str]], list[OutboundDispatcher]]
+after:  tuple[list[tuple[DiscordAdapter, DiscordBotConfig, str]], list[OutboundDispatcher], ThreadStore | None]
+```
+
+### Consumer map
+
+```flowchart LR
+  STANDALONE[adapter_standalone.py] -->|creates dc_thread_store directly + closes| TS[ThreadStore]
+  STANDALONE -->|passes as ThreadStoreProtocol| DA[DiscordAdapter]
+  WDA[wire_discord_adapters] -->|creates internally, now returns| TS2[ThreadStore unified]
+  HELPERS[_wire_adapters wiring_helpers] -->|captures + threads through| TS2
+  LIFECYCLE[run_lifecycle bootstrap_lifecycle] -->|receives + closes| TS2
+  DA -->|reads: is_owned, claim, get_session, update_session| TS
+  DT[discord_threads helpers] -->|reads: get_thread_ids, is_owned, claim, update_session| TS
+```
+
+| Consumer | Role | Owns teardown |
+|---|---|---|
+| `adapter_standalone.py` | standalone — creates + **closes** dc_thread_store | **yes** |
+| `wire_discord_adapters` | unified — creates, returns ThreadStore to caller | no |
+| `_wire_adapters` | passes through ThreadStore to run_lifecycle | no |
+| `run_lifecycle` | unified — receives + **closes** dc_thread_store | **yes** |
+| `DiscordAdapter` | reads: `is_owned`, `claim`, `get_session`, `update_session` | no |
+| `discord_threads` helpers | reads: `get_thread_ids`, `is_owned`, `claim`, `update_session` | no |
+
+## Breadboard
+
+| ID | Affordance | Handler | Data |
+|---|---|---|---|
+| A1 | `ThreadStoreProtocol` (no `close`) | `thread_store_protocol.py` | protocol definition |
+| A2 | `DiscordAdapter.close()` (no thread_store teardown) | `adapter.py` | remove `_thread_store.close()` block |
+| A3 | `wire_discord_adapters` returns 3-tuple | `bootstrap_wiring.py` | add `thread_store` to return value |
+| A4 | `_wire_adapters` captures + returns dc_thread_store | `wiring_helpers.py` | update signature + return |
+| A5 | `run_lifecycle` closes dc_thread_store after adapters | `bootstrap_lifecycle.py` | add `await dc_thread_store.close()` |
+| A6 | `adapter_standalone.py` teardown (inner finally) | `adapter_standalone.py` | add `await dc_thread_store.close()` |
+| A7 | `bootstrap_wiring.py` comment update | `bootstrap_wiring.py` line 133 | remove stale reference |
+
+## Slices
+
+| # | Slice | Files | Independently demoable |
+|---|---|---|---|
+| S1 | Remove `close()` from protocol and adapter; surface ThreadStore through wiring chain; close in both bootstrap paths; update comment | `thread_store_protocol.py`, `adapter.py`, `bootstrap_wiring.py`, `wiring_helpers.py`, `bootstrap_lifecycle.py`, `adapter_standalone.py` | yes — typecheck + ruff pass |
+
+Single slice: all changes form a connected chain. Removing `close()` from the protocol propagates to the adapter; removing it from the adapter requires explicit close in both callers; surfacing it requires the wiring chain to thread it through.
+
+## Success Criteria
+
+- [ ] `ThreadStoreProtocol` has no `close()` method declared
+- [ ] `DiscordAdapter.close()` contains no reference to `self._thread_store.close()`
+- [ ] `wire_discord_adapters` returns a 3-tuple where the third element is `ThreadStore | None`
+- [ ] `_wire_adapters` in `wiring_helpers.py` captures `dc_thread_store` from the 3-tuple and includes it in its return value
+- [ ] `run_lifecycle` in `bootstrap_lifecycle.py` calls `await dc_thread_store.close()` after all `dc_adapter.close()` calls, before NATS closes; `None`-guarded
+- [ ] `adapter_standalone.py` calls `await dc_thread_store.close()` inside the inner `finally` block, after the `ibus.stop()` loop, before NATS closes
+- [ ] `bootstrap_wiring.py` line 133 comment no longer states "closed by the first adapter's close()"
+- [ ] `uv run pyright` passes with no new errors
+- [ ] `uv run ruff check .` passes

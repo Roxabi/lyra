@@ -23,10 +23,8 @@ from lyra.bootstrap.factory.wiring_helpers import (
 )
 from lyra.bootstrap.infra.embedded_nats import ensure_nats
 from lyra.bootstrap.infra.lockfile import acquire_lockfile, release_lockfile
-from lyra.bootstrap.lifecycle.bootstrap_lifecycle import (
-    LifecycleResources,
-    run_lifecycle,
-)
+from lyra.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
+from lyra.bootstrap.types import LifecycleResources
 
 log = logging.getLogger(__name__)
 

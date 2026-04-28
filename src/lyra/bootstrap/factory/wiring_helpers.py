@@ -47,7 +47,6 @@ if TYPE_CHECKING:
     import nats
     from lyra.adapters.discord import DiscordAdapter
     from lyra.config import DiscordBotConfig
-    from lyra.core.hub import OutboundDispatcher
     from lyra.infrastructure.stores.thread_store import ThreadStore
     from lyra.llm.drivers.cli_nats import CliNatsDriver
     from lyra.llm.drivers.nats_driver import NatsLlmDriver
@@ -85,6 +84,15 @@ class CliPoolBundle:
     cli_nats_driver: "CliNatsDriver | None"
     worker: object
     audit_sink: JetStreamAuditSink
+
+
+@dataclass
+class WiredAdapters:
+    tg_adapters: list
+    tg_dispatchers: list
+    dc_adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]]
+    dc_dispatchers: list
+    dc_thread_store: ThreadStore | None
 
 
 # ---------------------------------------------------------------------------
@@ -374,18 +382,8 @@ async def _wire_adapters(
     nc: nats.aio.client.Client,
     stores: object,
     vault_dir: Path,
-) -> tuple[
-    list,
-    list,
-    list[tuple[DiscordAdapter, DiscordBotConfig, str]],
-    list[OutboundDispatcher],
-    ThreadStore | None,
-]:
-    """Wire Telegram and Discord adapters.
-
-    Returns (tg_adapters, tg_dispatchers, dc_adapters, dc_dispatchers,
-    dc_thread_store) where dc_thread_store is ThreadStore | None.
-    """
+) -> WiredAdapters:
+    """Wire Telegram and Discord adapters."""
     tg_adapters, tg_dispatchers = await wire_telegram_adapters(
         hub,
         bundle.tg_bot_auths,
@@ -406,7 +404,13 @@ async def _wire_adapters(
         vault_dir=str(vault_dir),
         nats_client=nc,
     )
-    return tg_adapters, tg_dispatchers, dc_adapters, dc_dispatchers, dc_thread_store
+    return WiredAdapters(
+        tg_adapters=tg_adapters,
+        tg_dispatchers=tg_dispatchers,
+        dc_adapters=dc_adapters,
+        dc_dispatchers=dc_dispatchers,
+        dc_thread_store=dc_thread_store,
+    )
 
 
 async def _run_clipool_worker_task(

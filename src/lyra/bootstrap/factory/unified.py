@@ -23,7 +23,10 @@ from lyra.bootstrap.factory.wiring_helpers import (
 )
 from lyra.bootstrap.infra.embedded_nats import ensure_nats
 from lyra.bootstrap.infra.lockfile import acquire_lockfile, release_lockfile
-from lyra.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
+from lyra.bootstrap.lifecycle.bootstrap_lifecycle import (
+    LifecycleResources,
+    run_lifecycle,
+)
 
 log = logging.getLogger(__name__)
 
@@ -59,28 +62,12 @@ async def _bootstrap_unified(
 
             _register_agents(hub, bundle, voice, clipool, raw_config, stores)
 
-            (
-                tg_adapters,
-                tg_dispatchers,
-                dc_adapters,
-                dc_dispatchers,
-                dc_thread_store,
-            ) = await _wire_adapters(hub, bundle, nc, stores, vault_dir)
+            wired = await _wire_adapters(hub, bundle, nc, stores, vault_dir)
 
             clipool_worker_task = await _run_clipool_worker_task(clipool.worker, nc)
 
-            await run_lifecycle(
-                hub,
-                tg_adapters,
-                tg_dispatchers,
-                dc_adapters,
-                dc_dispatchers,
-                pm,
-                None,
-                _stop,
-                nc=nc,
-                dc_thread_store=dc_thread_store,
-            )
+            resources = LifecycleResources(pm=pm, cli_pool=None, nc=nc)
+            await run_lifecycle(hub, wired, resources, _stop)
 
             clipool_worker_task.cancel()
             await asyncio.gather(clipool_worker_task, return_exceptions=True)

@@ -1,0 +1,47 @@
+---
+title: "std: stdout-only logging — remove file handlers, set journald retention"
+issue: 999
+status: approved
+tier: F-lite
+date: 2026-04-28
+---
+
+## Problem
+
+Lyra containers currently dual-write logs: a `RotatingFileHandler` writes to a named volume, and a `StreamHandler` forwards to stdout (captured by journald). This is redundant — journald is already the persistent sink via Podman/Quadlet (systemd captures stdout automatically), so the file handler adds coupling with no benefit.
+
+The `RotatingFileHandler` is also the wrong abstraction for an OCI/systemd runtime. It embeds infrastructure concerns (rotation, retention) inside application code. journald handles all of that uniformly across services, for free. The named volume `lyra-logs.volume` and all `Volume=lyra-logs.volume:…` mounts in Quadlet units are dead weight that should be removed.
+
+A one-time infra config on M₁ (prod server) sets journald retention (`SystemMaxUse=500M`, `MaxRetentionSec=14day`) — this is out of scope for this PR and tracked as an ops task in the issue.
+
+## Who
+
+- **Primary:** ops / maintainer — the person deploying and debugging lyra on M₁; benefits from uniform log access via `journalctl` and no orphaned log volumes.
+- **Secondary:** devs running lyra locally — shell redirect (`>> app.log 2>&1`) replaces the file handler without any in-code gates.
+
+## Constraints
+
+- Lyra repo only — voiceCLI is a separate repo and only audited, not changed here.
+- imageCLI / llmCLI: deferred to next touch (not in this sprint).
+- Shared `setup_logging()` utility: optional, only extracted if a second project is touched in the same PR (it isn't here).
+- M₁ journald config (`/etc/systemd/journald.conf`) is a manual ops step on the server — not committed to this repo.
+- Must not break the `lyra start` unified entry point or any of the 4 standalone adapters.
+
+## Out of Scope
+
+- voiceCLI RotatingFileHandler removal (audit only, separate repo)
+- imageCLI / llmCLI migration
+- Shared `setup_logging()` extraction (deferred)
+- M₁ journald retention config (ops task, not repo commit)
+- Any new log formatting, structured logging, or log-level changes
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (infra/logging), 6–8 files touched, all changes are deletions or line removals with no new logic introduced.
+
+Signals observed:
+- 2 Python files: remove `RotatingFileHandler` setup blocks
+- 1 Quadlet volume file: delete `deploy/quadlet/lyra-logs.volume`
+- 4 Quadlet `.container` files: remove `Volume=lyra-logs.volume:…` line each
+- 1 doc file: update `docs/DEPLOYMENT-quadlet.md` (remove volume from table)
+- No new architecture, no unknowns, no cross-domain dependencies

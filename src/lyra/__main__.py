@@ -9,9 +9,6 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import datetime, timezone
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -21,7 +18,7 @@ from lyra.bootstrap.factory.config import (
     _load_raw_config,
 )
 from lyra.bootstrap.factory.unified import _bootstrap_unified
-from lyra.core.trace import JsonFormatter, TelegramTokenFilter, TraceIdFilter
+from lyra.core.trace import TelegramTokenFilter, TraceIdFilter
 from lyra.errors import KeyringError, MissingCredentialsError
 
 log = logging.getLogger(__name__)
@@ -47,42 +44,19 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
 
 
 def _setup_logging(log_config: LoggingConfig | None = None) -> None:
-    """Configure logging: console + rotating file in ~/.local/state/lyra/logs/.
+    """Configure logging: stdout console handler only.
 
     Uses explicit handler construction (not ``basicConfig``) to guarantee
-    formatter and filter attachment.  When ``log_config.json_file`` is True
-    the file handler emits JSONL; console always stays plaintext.
+    formatter and filter attachment.
     """
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     if log_config is None:
         log_config = LoggingConfig()
 
-    _default_log = str(Path.home() / ".local" / "state" / "lyra" / "logs")
-    log_dir = Path(os.environ.get("LYRA_LOG_DIR", _default_log)).resolve()
-    if os.environ.get("LYRA_LOG_DIR"):
-        log.debug("LYRA_LOG_DIR resolved to %s", log_dir)
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    log_file = log_dir / f"{stamp}_lyra.log"
-
     trace_filter = TraceIdFilter()
     # Redact Telegram bot tokens — httpx logs full request URLs (incl. token)
-    # at INFO. Must run on every handler so both console and file output are
-    # covered. Attached BEFORE formatting.
+    # at INFO. Attached BEFORE formatting.
     telegram_token_filter = TelegramTokenFilter()
-
-    file_handler = RotatingFileHandler(
-        log_file,
-        maxBytes=10 * 1024 * 1024,
-        backupCount=5,  # 10 MB per file, 5 backups
-    )
-    if log_config.json_file:
-        file_handler.setFormatter(JsonFormatter())
-    else:
-        file_handler.setFormatter(logging.Formatter(fmt))
-    file_handler.addFilter(trace_filter)
-    file_handler.addFilter(telegram_token_filter)
 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter(fmt))
@@ -96,10 +70,7 @@ def _setup_logging(log_config: LoggingConfig | None = None) -> None:
     root.setLevel(level)
     root.addFilter(trace_filter)
     root.addFilter(telegram_token_filter)
-    root.addHandler(file_handler)
     root.addHandler(console_handler)
-
-    logging.getLogger(__name__).info("Logging to %s", log_file)
 
 
 def main() -> None:

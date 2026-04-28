@@ -11,9 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 from .checks import run_checks
 from .config import load_monitoring_config
@@ -23,26 +20,13 @@ log = logging.getLogger("lyra.monitoring")
 
 
 def _setup_monitor_logging() -> None:
-    """Configure logging to ~/.local/state/lyra/logs/monitor.log."""
+    """Configure logging to stdout."""
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-
-    _default_log = str(Path.home() / ".local" / "state" / "lyra" / "logs")
-    log_dir = Path(os.environ.get("LYRA_LOG_DIR", _default_log)).resolve()
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    log_file = log_dir / "monitor.log"
-
-    file_handler = RotatingFileHandler(
-        log_file,
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-    )
-    file_handler.setFormatter(logging.Formatter(fmt))
 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter(fmt))
 
-    logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
+    logging.basicConfig(level=logging.INFO, handlers=[console_handler])
 
 
 async def _run() -> int:

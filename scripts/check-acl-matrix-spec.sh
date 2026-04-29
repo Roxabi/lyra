@@ -176,6 +176,10 @@ awk '/<!-- acl-matrix:begin -->/{found=1; next} /<!-- acl-matrix:end -->/{found=
 render_table > "$RENDERED"
 
 if [ "${UPDATE}" = true ]; then
+  if [ "${CI:-}" = "true" ]; then
+    echo "::error::--update is a local-only flag and must not be passed in CI (changes would be lost at runner teardown)"
+    exit 1
+  fi
   awk '
     /<!-- acl-matrix:begin -->/ { print; found=1; next }
     /<!-- acl-matrix:end -->/ { found=0; while ((getline line < RENDERED) > 0) print line; print; next }

@@ -19,7 +19,7 @@ while IFS= read -r name; do
   if [ "$status" = "retired" ]; then
     retired=$(jq -r --arg n "$name" '.identities[$n].retired_at // empty' "$JSON")
     [ -n "$retired" ] || { echo "ERROR: '$name' is retired but missing retired_at"; errors=$((errors + 1)); }
-    [[ -z "$retired" || "$retired" =~ $DATE_RE ]] || { echo "ERROR: '$name' retired_at invalid format: $retired (expected YYYY-MM-DD)"; errors=$((errors + 1)); }
+    [[ -z "$retired" || "$retired" =~ $DATE_RE ]] || { echo "ERROR: '$name' retired_at invalid format: $retired (expected YYYY-MM-DD)"; errors=$((errors + 1)); }  # -z guard intentional: empty already caught above
     in_flows=$(jq -r --arg n "$name" \
       '[.request_reply_flows[]? | select(.requester==$n or .responder==$n)] | length' "$JSON")
     [ "$in_flows" = "0" ] || { echo "ERROR: '$name' is retired but still referenced in request_reply_flows"; errors=$((errors + 1)); }

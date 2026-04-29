@@ -28,7 +28,7 @@ If the identity appears as `requester` or `responder` in any flow entry, remove 
 **3. Validate lifecycle fields.**
 
 ```bash
-bash scripts/check-acl-matrix-retired.sh
+bash scripts/check-acl-matrix-retired.sh  # validates status, created_at, retired_at on ALL identities
 ```
 
 Expected output: `ok — acl-matrix lifecycle fields valid`
@@ -106,7 +106,7 @@ If the identity participates in request-reply, add the corresponding entry to `r
 **2. Validate and regenerate.**
 
 ```bash
-bash scripts/check-acl-matrix-retired.sh
+bash scripts/check-acl-matrix-retired.sh  # validates status, created_at on ALL identities (not just the new one)
 bash scripts/check-acl-matrix-spec.sh --update
 sudo ./deploy/nats/gen-nkeys.sh --regen-authconf
 ```

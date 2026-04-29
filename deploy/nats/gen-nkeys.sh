@@ -251,12 +251,6 @@ done
 [ -n "${MATRIX_JSON_OVERRIDE}" ] && MATRIX_JSON="${MATRIX_JSON_OVERRIDE}"
 load_matrix
 
-# ── warn for retired identities with seeds on disk ───────────────────────────
-while IFS= read -r name; do
-  seed_file="${SEEDS_DIR}/${name}.seed"
-  [ -f "${seed_file}" ] && warn "Retired identity '${name}' has a seed on disk: ${seed_file} — consider shredding it"
-done < <(jq -r '.identities | to_entries[] | select(.value.status == "retired") | .key' "${MATRIX_JSON}")
-
 # ── validate-supervisor mode — no root required ────────────────────────────────
 if $VALIDATE_SUPERVISOR; then
   validate_supervisor
@@ -442,6 +436,13 @@ if [ "${FIX_PERMS}" = true ]; then
   apply_permissions
   exit 0
 fi
+
+# ── warn for retired identities with seeds on disk ───────────────────────────
+# Runs only for filesystem-mutating modes (regen-authconf, regenerate, default).
+while IFS= read -r name; do
+  seed_file="${SEEDS_DIR}/${name}.seed"
+  [ -f "${seed_file}" ] && warn "Retired identity '${name}' has a seed on disk: ${seed_file} — consider shredding it"
+done < <(jq -r '.identities | to_entries[] | select(.value.status == "retired") | .key' "${MATRIX_JSON}")
 
 # ── regen-authconf mode: re-render auth.conf from existing seeds ──────────────
 # Purpose: upgrade a live auth.conf to the current IDENTITIES + ACL matrix

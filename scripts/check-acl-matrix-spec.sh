@@ -38,7 +38,7 @@ EFFECTIVE_JSON=$(jq '
 # Identity column order — all active identities (updated: retired tts-adapter/sst-adapter
 # removed, voice-tts/voice-stt/image-worker/clipool-worker added per postmortem Fix 1+2)
 # ---------------------------------------------------------------------------
-IDENTITIES=(hub telegram-adapter discord-adapter voice-tts voice-stt llm-worker image-worker clipool-worker monitor)
+mapfile -t IDENTITIES < <(jq -r '.identities | to_entries[] | select(.value.status == "active") | .key' "$JSON")
 
 # ---------------------------------------------------------------------------
 # Subject rows — "display_label|json_pub_subject|json_sub_subject"

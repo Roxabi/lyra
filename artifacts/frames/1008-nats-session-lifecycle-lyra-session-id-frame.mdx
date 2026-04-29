@@ -8,11 +8,12 @@ date: 2026-04-29
 
 ## Problem
 
-`cli_nats.link_lyra_session()` is a no-op: it never writes to `_lyra_sessions[pool_id]`, so when the clipool worker processes a command it falls back to using `pool_id` as `lyra_session_id` (a scope identifier, not a session UUID). Simultaneously, the clipool standalone bootstrap never wires a TurnStore into the worker's CliPool, so `_persist_cli_session()` silently skips and the `lyra_session_id → cli_session_id` mapping is never written.
+Session resume and `/clear` are broken in the NATS clipool path. Two root causes:
 
-Two user-visible failures follow: (1) reply-to resume is always broken — the hub resolves a `lyra_session_id` from MessageIndex, calls `resume_and_reset`, gets None back, and silently starts a fresh session; (2) `/clear` generates a new UUID that is never propagated, so the next turn re-sends the stale `pool_id` value and `get_last_session` returns the old session on restart.
+1. `CliNatsDriver.link_lyra_session()` is a no-op — never stores the mapping — so `_build_cmd_payload` always sends `pool_id` instead of the real `lyra_session_id` UUID.
+2. The `lyra_session_id → cli_session_id` mapping is owned by the clipool worker (via `CliPoolSessionMixin`), but the worker has no TurnStore in standalone or prod — so `_persist_cli_session` silently skips every turn and resume always cold-starts.
 
-The fix is purely mechanical: 4 localised changes, no contract or schema modifications.
+The deeper issue: clipool is a stateless CLI executor; it should not own session persistence. The hub is the router and session owner — it has TurnStore and already knows `lyra_session_id`. The mapping should live in the hub's TurnStore, written and read by the hub-side driver (`CliNatsDriver`), not by the worker.
 
 ## Who
 
@@ -21,22 +22,18 @@ The fix is purely mechanical: 4 localised changes, no contract or schema modific
 
 ## Constraints
 
-- No NATS contract changes — `CliControlCmd.session_id` stays as a Lyra session UUID.
-- Fix must not break the existing clipool standalone bootstrap path.
-- Changes confined to `cli_nats.py`, `clipool_worker.py`, and the clipool bootstrap; ≤4 files.
-- Aligns with HarnessProvider pattern established in #988/#990: the worker owns its TurnStore and all internal `cli_session_id` mapping.
+- No breaking contract changes — `CliCmdPayload` and `CliControlCmd` field names stay; semantics of `CliControlCmd.session_id` changes from lyra UUID to CLI session ID (documented, rename deferred to #1009).
+- Fix must not break the local (non-NATS) CLI driver path.
+- Clipool worker becomes fully stateless — no TurnStore, no `link_lyra_session`.
+- `CliNatsDriver` runs in the hub process and has access to hub's TurnStore via injection.
 
 ## Out of Scope
 
-- Refactoring CliPool or TurnStore internals.
-- Changing `CliControlCmd` or any NATS envelope fields.
-- Session persistence for other adapter types (Telegram, Discord).
-- Error-handling improvements beyond the silent-skip bug.
-- `turns.db` volume ownership + Quadlet wiring for prod TurnStore persistence (follow-up).
-- `_lyra_sessions` driver refactor: pass `lyra_session_id` as kwarg to `stream()`/`complete()` instead of pre-registration (follow-up).
-- `_handle_cmd_streaming` dropping `ResultLlmEvent.session_id` silently (follow-up).
-- Resume outcome logging / heartbeat counters (follow-up).
-- Contract test asserting `lyra_session_id != pool_id` in NATS payloads (follow-up).
+- Renaming `CliControlCmd.session_id` to `cli_session_id` in the contract (#1009).
+- Removing the `resume_and_reset` control command entirely (#1009).
+- Removing `_lyra_sessions` from `CliPoolSessionMixin` once the local driver path is also migrated (#1009).
+- Resume outcome logging / heartbeat counters (#1009).
+- `lyra-data.volume` Quadlet wiring — no longer needed for clipool once this fix lands.
 
 ## Complexity
 

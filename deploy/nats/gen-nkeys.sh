@@ -306,9 +306,15 @@ if [ "${EMIT_MERGED_AUTHCONF}" = true ]; then
   VOICECLI_SEEDS_DIR="${HOME}/.voicecli/nkeys"
   MERGED_AUTH_CONF="${SEEDS_DIR}/auth.conf"
 
-  # Live identities for merged auth.conf
-  MERGED_LYRA_IDENTITIES=("hub" "telegram-adapter" "discord-adapter" "clipool-worker")
-  MERGED_VOICE_IDENTITIES=("voice-tts" "voice-stt")
+  # Live identities for merged auth.conf — derived from IDENTITIES[] by owner
+  MERGED_LYRA_IDENTITIES=()
+  MERGED_VOICE_IDENTITIES=()
+  for name in "${IDENTITIES[@]}"; do
+    case "${OWNER[$name]}" in
+      lyra)     MERGED_LYRA_IDENTITIES+=("${name}") ;;
+      voicecli) MERGED_VOICE_IDENTITIES+=("${name}") ;;
+    esac
+  done
 
   declare -A MERGED_PUBKEYS
 

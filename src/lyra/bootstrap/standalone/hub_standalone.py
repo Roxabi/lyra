@@ -164,6 +164,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         await audit_sink.provision(nc)
 
         cli_nats_driver = await build_cli_nats_driver(nc)
+        cli_nats_driver.set_turn_store(stores.turn)
         hub.cli_pool = None  # CliPool now runs in lyra-clipool container
 
         # Register drivers that hold _worker_freshness so the reconnect callback

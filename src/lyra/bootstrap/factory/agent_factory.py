@@ -133,6 +133,7 @@ def _create_agent(  # noqa: PLR0913 -- factory with optional overrides for each 
     tts: TtsProtocol | None = None,
     provider_registry: ProviderRegistry | None = None,
     agent_store: AgentStore | None = None,
+    cli_nats_driver: "CliNatsDriver | None" = None,
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.llm_config.backend
@@ -184,6 +185,7 @@ def _create_agent(  # noqa: PLR0913 -- factory with optional overrides for each 
             tts=tts,
             agent_store=agent_store,
             session_tools=session_tools,
+            cli_nats_driver=cli_nats_driver,
         )
     raise ValueError(f"Unknown backend: {backend}")
 
@@ -242,6 +244,7 @@ def _resolve_agents(  # noqa: PLR0913
             tts=tts_service,
             provider_registry=per_agent_registry,
             agent_store=agent_store,
+            cli_nats_driver=cli_nats_driver,
         )
         agents[name] = agent
     return agents

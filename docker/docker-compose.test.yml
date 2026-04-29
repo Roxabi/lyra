@@ -1,5 +1,13 @@
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   nats:
+    <<: [*logging]
     image: nats:2.10-alpine
     command: ["-js", "-m", "8222", "-c", "/etc/nats/nats.conf"]
     volumes:
@@ -13,6 +21,7 @@ services:
       retries: 15
 
   stt-stub:
+    <<: [*logging]
     build:
       context: ./stubs
       dockerfile: Dockerfile.stub
@@ -29,6 +38,7 @@ services:
     restart: unless-stopped
 
   tts-stub:
+    <<: [*logging]
     build:
       context: ./stubs
       dockerfile: Dockerfile.stub

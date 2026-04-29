@@ -46,6 +46,7 @@ class TestStreamingIteratorError:
                 duration_ms=50,
                 cost_usd=None,
                 error_text="Something went wrong",
+                session_id="abc-123",
             )
         ]
         assert it.error == "Something went wrong"
@@ -114,7 +115,7 @@ class TestStreamingIteratorError:
         assert it.error is None
         assert events[0] == TextLlmEvent(text="Hello")
         assert events[-1] == ResultLlmEvent(
-            is_error=False, duration_ms=1200, cost_usd=None
+            is_error=False, duration_ms=1200, cost_usd=None, session_id="abc-123"
         )
 
     async def test_subtype_success_without_streamed_text_stays_error(self) -> None:
@@ -150,6 +151,7 @@ class TestStreamingIteratorError:
                 duration_ms=21,
                 cost_usd=None,
                 error_text="Please run /login",
+                session_id="abc-123",
             )
         ]
 
@@ -260,7 +262,9 @@ class TestStreamingIteratorTimeout:
         # Assert — recovered after single timeout
         assert chunks == [
             TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(
+                is_error=False, duration_ms=100, cost_usd=None, session_id="abc-123"
+            ),
         ]
 
     async def test_timeout_with_dead_process_stops_immediately(self) -> None:
@@ -371,7 +375,9 @@ class TestSendAndReadStream:
         assert chunks == [
             TextLlmEvent(text="Hello"),
             TextLlmEvent(text=" world"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(
+                is_error=False, duration_ms=100, cost_usd=None, session_id="abc-123"
+            ),
         ]
 
     async def test_passes_pool_reset_fn_to_iterator(self) -> None:
@@ -403,5 +409,7 @@ class TestSendAndReadStream:
         # Assert — text-only assistant event skipped; LlmEvents still yielded
         assert events == [
             TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(
+                is_error=False, duration_ms=100, cost_usd=None, session_id="abc-123"
+            ),
         ]

@@ -62,6 +62,7 @@ class ResultLlmEvent:
     duration_ms: int
     cost_usd: float | None = None
     error_text: str | None = None
+    session_id: str | None = None
 
 
 # Union type exported for type annotations and ``isinstance`` checks.

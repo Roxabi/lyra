@@ -235,6 +235,42 @@ class CliPool(  # noqa: E501
         self._cwd_overrides[pool_id] = cwd
         log.info("[pool:%s] workspace switched to %s", pool_id, cwd)
 
+    async def resume_direct(self, pool_id: str, cli_session_id: str) -> bool:
+        """Set up --resume using a pre-resolved cli_session_id (no TurnStore lookup).
+
+        Called by CliPoolNatsWorker which receives cli_session_id directly from hub.
+        Returns True if resume was set up, False if no-op (already on that session
+        or invalid id).
+        """
+        if not cli_session_id or not SESSION_ID_RE.match(cli_session_id):
+            log.warning(
+                "[pool:%s] resume_direct: invalid cli_session_id %r",
+                pool_id,
+                cli_session_id,
+            )
+            return False
+        entry = self._entries.get(pool_id)
+        already_on_session = (
+            entry is not None
+            and entry.is_alive()
+            and entry.session_id == cli_session_id
+        )
+        if already_on_session:
+            log.info(
+                "[pool:%s] resume_direct: already on session %s — no-op",
+                pool_id,
+                cli_session_id,
+            )
+            return True
+        await self._kill(pool_id, preserve_session=False)
+        self._resume_session_ids[pool_id] = cli_session_id
+        log.info(
+            "[pool:%s] resume_direct: will resume CLI session %s on next spawn",
+            pool_id,
+            cli_session_id,
+        )
+        return True
+
     async def resume_and_reset(self, pool_id: str, session_id: str) -> bool:
         """Kill process; next _spawn() uses --resume <cli_session_id> (one-shot).
 

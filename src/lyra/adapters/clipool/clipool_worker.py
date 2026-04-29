@@ -179,6 +179,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                     cmd.pool_id,
                     event_type="result",
                     is_error=event.is_error,
+                    session_id=event.session_id or None,
                     done=True,
                 )
                 await self.reply(msg, chunk)
@@ -259,7 +260,8 @@ class CliPoolNatsWorker(NatsAdapterBase):
                     cmd.pool_id,
                 )
                 return _make_ack(cmd.pool_id, ok=False)
-            resumed = await self._pool.resume_and_reset(cmd.pool_id, cmd.session_id)
+            # cmd.session_id is the cli_session_id resolved by the hub driver.
+            resumed = await self._pool.resume_direct(cmd.pool_id, cmd.session_id)
             return _make_ack(cmd.pool_id, ok=True, resumed=resumed)
 
         if cmd.op == "switch_cwd":

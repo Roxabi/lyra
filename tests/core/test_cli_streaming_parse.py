@@ -43,7 +43,7 @@ class TestStreamingIteratorYields:
         assert chunks == [
             TextLlmEvent(text="Hello"),
             TextLlmEvent(text=" world"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
     async def test_skips_input_json_delta_events(self) -> None:
@@ -67,7 +67,7 @@ class TestStreamingIteratorYields:
         assert chunks == [
             TextLlmEvent(text="Hello"),
             TextLlmEvent(text=" world"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
     async def test_skips_empty_text_delta(self) -> None:
@@ -91,7 +91,7 @@ class TestStreamingIteratorYields:
         # Assert
         assert chunks == [
             TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
     async def test_stops_on_result_event(self) -> None:
@@ -115,7 +115,7 @@ class TestStreamingIteratorYields:
         # Assert — stops at result; extra_delta not yielded
         assert chunks == [
             TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
     async def test_stops_on_eof(self) -> None:
@@ -232,7 +232,7 @@ class TestStreamingIteratorNonJson:
         # Assert — non-JSON line skipped; text_delta still yielded
         assert chunks == [
             TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
     async def test_skips_blank_lines(self) -> None:
@@ -247,7 +247,7 @@ class TestStreamingIteratorNonJson:
         # Assert
         assert chunks == [
             TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
 
@@ -274,7 +274,7 @@ class TestStreamingIteratorAssistant:
         # Assert — text_delta yields TextLlmEvent; intermediate text-only block dropped
         assert events == [
             TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
     async def test_tool_use_in_assistant_event_yields_tool_use_event(self) -> None:
@@ -306,7 +306,7 @@ class TestStreamingIteratorAssistant:
         assert events == [
             ToolUseLlmEvent(tool_name="Bash", tool_id="t1", input={"cmd": "ls"}),
             TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
     async def test_multiple_tool_use_blocks_yield_multiple_events(self) -> None:
@@ -334,7 +334,7 @@ class TestStreamingIteratorAssistant:
         assert events == [
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
             ToolUseLlmEvent(tool_name="Write", tool_id="t2", input={}),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
     async def test_stream_event_content_block_start_tool_use_yields_event(
@@ -366,7 +366,7 @@ class TestStreamingIteratorAssistant:
         assert events == [
             ToolUseLlmEvent(tool_name="Read", tool_id="tu_42", input={}),
             TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
     async def test_no_intermediates_without_assistant_events(self) -> None:
@@ -384,5 +384,5 @@ class TestStreamingIteratorAssistant:
         assert events == [
             TextLlmEvent(text="Hello"),
             TextLlmEvent(text=" world"),
-            ResultLlmEvent(is_error=False, duration_ms=100, cost_usd=None),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]

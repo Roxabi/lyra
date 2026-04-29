@@ -75,6 +75,7 @@ def _make_pool() -> MagicMock:
     pool.send = AsyncMock()
     pool.reset = AsyncMock()
     pool.resume_and_reset = AsyncMock(return_value=True)
+    pool.resume_direct = AsyncMock(return_value=True)
     pool.switch_cwd = AsyncMock()
     return pool
 
@@ -322,27 +323,28 @@ async def test_handle_control_reset() -> None:
 
 
 async def test_handle_control_resume_and_reset() -> None:
-    """op='resume_and_reset': pool.resume_and_reset(pool_id, session_id) called."""
+    """op='resume_and_reset': pool.resume_direct(pool_id, session_id) called."""
     from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
-    pool.resume_and_reset.return_value = True
+    pool.resume_direct.return_value = True
 
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
 
     msg = _make_nats_msg(subject="lyra.clipool.control", reply="_INBOX.ctrl")
+    _sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     payload = _control_payload(
-        op="resume_and_reset", pool_id="pool-y", session_id="sid-42"
+        op="resume_and_reset", pool_id="pool-y", session_id=_sid
     )
 
     # Act
     await worker._handle_control(msg, payload)
 
     # Assert — correct call signature
-    pool.resume_and_reset.assert_awaited_once_with("pool-y", "sid-42")
+    pool.resume_direct.assert_awaited_once_with("pool-y", _sid)
 
     # Assert — reply published with ok=True (pool returned True)
     nc.publish.assert_called_once()

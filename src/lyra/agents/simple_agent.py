@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from lyra.core.cli.cli_pool import CliPool
     from lyra.core.messaging.render_events import RenderEvent
     from lyra.infrastructure.stores.agent_store import AgentStore
+    from lyra.llm.drivers.cli_nats import CliNatsDriver
     from lyra.stt import STTProtocol
     from lyra.tts import TtsProtocol
 
@@ -65,7 +66,7 @@ class SimpleAgent(AgentBase):
         self,
         config: Agent,
         provider: LlmProvider,
-        cli_pool: CliPool | None = None,
+        cli_pool: "CliPool | None" = None,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         stt: "STTProtocol | None" = None,
@@ -75,6 +76,7 @@ class SimpleAgent(AgentBase):
         agent_store: "AgentStore | None" = None,
         tool_display_config: ToolDisplayConfig | None = None,
         session_tools: SessionTools | None = None,
+        cli_nats_driver: "CliNatsDriver | None" = None,
     ) -> None:
         self._tool_display_config = tool_display_config or ToolDisplayConfig()
         resolved_agents_dir = agents_dir or _AGENTS_DIR
@@ -87,6 +89,7 @@ class SimpleAgent(AgentBase):
         self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
         self._provider = provider
         self._cli_pool = cli_pool
+        self._cli_nats_driver = cli_nats_driver
         self._session_tools = session_tools
         super().__init__(
             config,
@@ -177,6 +180,12 @@ class SimpleAgent(AgentBase):
             pool.register_session_callbacks(
                 resume_fn=lambda sid: _cli_pool.resume_and_reset(_pool_id, sid),
             )
+        elif self._cli_nats_driver is not None:
+            _driver = self._cli_nats_driver
+            _pool_id = pool.pool_id
+            pool.register_session_callbacks(
+                resume_fn=lambda sid: _driver.resume_and_reset(_pool_id, sid),
+            )
 
     def configure_pool(self, pool: Pool) -> None:
         """Wire provider callbacks onto *pool* before first message is processed.
@@ -227,6 +236,8 @@ class SimpleAgent(AgentBase):
         # Link Lyra session → CLI session so reply-to-resume works.
         if self._cli_pool is not None:
             self._cli_pool.link_lyra_session(pool.pool_id, pool.session_id)
+        elif self._cli_nats_driver is not None:
+            self._cli_nats_driver.link_lyra_session(pool.pool_id, pool.session_id)
 
         log.debug(
             "[agent:%s][pool:%s] processing message (%d chars)",

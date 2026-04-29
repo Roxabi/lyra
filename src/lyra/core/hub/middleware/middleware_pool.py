@@ -146,6 +146,12 @@ class CommandMiddleware:
         router = ctx.router
         if router and router.is_command(msg):
             _cmd = msg.text.split()[0] if msg.text else ""
+            log.info(
+                "command %s from user=%s scope=%s",
+                _cmd,
+                msg.user_id,
+                ctx.key.scope_id if ctx.key else "?",
+            )
             ctx.trace("processor", "command_detected", command=_cmd)
             return await self._dispatch_command(msg, _cmd, router, ctx, next)
         return await next(msg, ctx)

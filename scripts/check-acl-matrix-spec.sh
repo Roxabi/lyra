@@ -21,6 +21,9 @@
 
 set -euo pipefail
 
+UPDATE=false
+[[ "${1:-}" == "--update" ]] && UPDATE=true
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JSON="${REPO_ROOT}/deploy/nats/acl-matrix.json"
 SPEC="${REPO_ROOT}/artifacts/specs/706-per-role-nkeys-acls-spec.mdx"
@@ -171,6 +174,17 @@ awk '/<!-- acl-matrix:begin -->/{found=1; next} /<!-- acl-matrix:end -->/{found=
   "$SPEC" > "$SPEC_BLOCK"
 
 render_table > "$RENDERED"
+
+if [ "${UPDATE}" = true ]; then
+  awk '
+    /<!-- acl-matrix:begin -->/ { print; found=1; next }
+    /<!-- acl-matrix:end -->/ { found=0; while ((getline line < RENDERED) > 0) print line; print; next }
+    !found { print }
+  ' RENDERED="$RENDERED" "$SPEC" > "${NATS_TMPDIR}/spec_updated.txt"
+  cp "${NATS_TMPDIR}/spec_updated.txt" "$SPEC"
+  echo "Updated sentinel block in $SPEC"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # Diff — exit 0 on match, 1 on drift

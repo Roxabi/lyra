@@ -190,7 +190,12 @@ class TestCliPoolSendStreaming:
         events = [ev async for ev in it]
         assert events == [
             TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=75, cost_usd=None),
+            ResultLlmEvent(
+                is_error=False,
+                duration_ms=75,
+                cost_usd=None,
+                session_id="stream-sess-1",
+            ),
         ]
 
     async def test_send_streaming_spawn_failure_raises(self) -> None:

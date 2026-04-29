@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -254,7 +255,7 @@ class TestNoTurnStoreInWorker:
             ],
             capture_output=True,
             text=True,
-            cwd="/home/mickael/projects/lyra/.claude/worktrees/1008-nats-session-lifecycle",
+            cwd=str(Path(__file__).parents[3]),
         )
         # grep returns exit code 1 when no match — that is the desired outcome
         assert result.returncode == 1, (

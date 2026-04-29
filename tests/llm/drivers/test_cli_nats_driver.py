@@ -404,7 +404,11 @@ class TestResumeAndReset:
 
     @pytest.mark.asyncio
     async def test_resume_and_reset_sends_correct_payload(self) -> None:
-        """resume_and_reset() sends op=resume_and_reset with pool_id and session_id."""
+        """resume_and_reset() sends the TurnStore-resolved cli_sid in the payload.
+
+        The driver resolves lyra_session_id → cli_session_id via TurnStore
+        before building the payload. When no TurnStore is wired, session_id=None.
+        """
         # Arrange
         driver = _make_driver()
         captured: list[tuple[str, dict]] = []
@@ -415,7 +419,7 @@ class TestResumeAndReset:
             captured.append((subject, payload_dict))
             return {"ok": True, "resumed": True}
 
-        # Act
+        # Act — no TurnStore wired, so cli_sid resolves to None
         with patch.object(driver, "_request", new=_mock_request):
             await driver.resume_and_reset("pool-1", "sess-xyz")
 
@@ -424,7 +428,35 @@ class TestResumeAndReset:
         assert subject == CliNatsDriver.SUBJECT_CONTROL
         assert payload.get("op") == "resume_and_reset"
         assert payload.get("pool_id") == "pool-1"
-        assert payload.get("session_id") == "sess-xyz"
+        # session_id is the TurnStore-resolved CLI session (None when no store wired)
+        assert payload.get("session_id") is None
+
+    @pytest.mark.asyncio
+    async def test_resume_and_reset_sends_cli_sid_when_turn_store_resolves(
+        self,
+    ) -> None:
+        """resume_and_reset() sends the TurnStore-resolved cli_sid in the payload."""
+        # Arrange
+        driver = _make_driver()
+        cli_sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        store = _make_turn_store()
+        store.get_cli_session = AsyncMock(return_value=cli_sid)
+        driver.set_turn_store(store)
+        captured: list[tuple[str, dict]] = []
+
+        async def _mock_request(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> dict:
+            captured.append((subject, payload_dict))
+            return {"ok": True, "resumed": True}
+
+        # Act
+        with patch.object(driver, "_request", new=_mock_request):
+            await driver.resume_and_reset("pool-1", "lyra-sess-xyz")
+
+        # Assert
+        _subject, payload = captured[0]
+        assert payload.get("session_id") == cli_sid
 
 
 # ---------------------------------------------------------------------------
@@ -538,3 +570,202 @@ class TestLinkLyraSession:
 
         # Act / Assert
         driver.link_lyra_session("pool-1", "lyra-session-abc")
+
+
+# ---------------------------------------------------------------------------
+# Session lifecycle — lyra_session_id propagation (#1008)
+# ---------------------------------------------------------------------------
+
+
+def _make_turn_store() -> AsyncMock:
+    """Build a minimal _CliSessionStore mock."""
+    store = AsyncMock()
+    store.set_cli_session = AsyncMock()
+    store.get_cli_session = AsyncMock(return_value=None)
+    return store
+
+
+class TestLinkLyraSessionMapping:
+    """link_lyra_session() stores mapping used by _build_cmd_payload."""
+
+    def test_link_stores_mapping_and_payload_uses_uuid(self) -> None:
+        """After link_lyra_session, _build_cmd_payload uses the lyra UUID."""
+        # Arrange
+        driver = _make_driver()
+        lyra_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+        # Act
+        driver.link_lyra_session("pool-1", lyra_uuid)
+        payload = driver._build_cmd_payload(
+            "pool-1", "hello", _make_model_cfg(), "sys", stream=False
+        )
+
+        # Assert — lyra_session_id in payload is the linked UUID, not the pool_id
+        assert payload["lyra_session_id"] == lyra_uuid
+        assert payload["lyra_session_id"] != "pool-1"
+
+    def test_build_cmd_payload_falls_back_to_pool_id_when_no_link(self) -> None:
+        """_build_cmd_payload falls back to pool_id when no link registered."""
+        # Arrange
+        driver = _make_driver()
+
+        # Act — no link_lyra_session call
+        payload = driver._build_cmd_payload(
+            "pool-xyz", "text", _make_model_cfg(), "sys", stream=False
+        )
+
+        # Assert — no KeyError; falls back gracefully
+        assert payload["lyra_session_id"] == "pool-xyz"
+
+
+class TestCompleteSessionPersistence:
+    """complete() persists cli_session_id via TurnStore when wired."""
+
+    @pytest.mark.asyncio
+    async def test_complete_calls_set_cli_session_when_turn_store_wired(self) -> None:
+        """complete() fires set_cli_session(lyra_sid, cli_sid) when TurnStore is set."""
+        # Arrange
+        driver = _make_driver()
+        lyra_uuid = "11111111-2222-3333-4444-555555555555"
+        cli_sid = "cli-xyz"
+        driver.link_lyra_session("pool-1", lyra_uuid)
+
+        store = _make_turn_store()
+        driver.set_turn_store(store)
+
+        async def _mock_request(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> dict:
+            return {"result": "ok", "session_id": cli_sid, "error": ""}
+
+        # Act
+        with patch.object(driver, "_request", new=_mock_request):
+            result = await driver.complete("pool-1", "hello", _make_model_cfg(), "sys")
+
+        # Assert — result ok
+        assert result.ok is True
+
+        # Allow the fire-and-forget task to complete
+        import asyncio
+
+        await asyncio.sleep(0)
+
+        # Assert — set_cli_session was called with (lyra_uuid, cli_sid)
+        store.set_cli_session.assert_awaited_once_with(lyra_uuid, cli_sid)
+
+    @pytest.mark.asyncio
+    async def test_complete_no_turn_store_write_when_store_is_none(self) -> None:
+        """complete() skips TurnStore write when _turn_store is None (no error)."""
+        # Arrange
+        driver = _make_driver()
+        driver.link_lyra_session("pool-1", "lyra-abc")
+
+        # _turn_store stays None (default)
+
+        async def _mock_request(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> dict:
+            return {"result": "ok", "session_id": "cli-xyz", "error": ""}
+
+        # Act / Assert — no AttributeError raised
+        with patch.object(driver, "_request", new=_mock_request):
+            result = await driver.complete("pool-1", "hello", _make_model_cfg(), "sys")
+
+        assert result.ok is True
+
+    @pytest.mark.asyncio
+    async def test_set_turn_store_none_is_safe(self) -> None:
+        """set_turn_store(None) does not raise and leaves _turn_store as None."""
+        # Arrange
+        driver = _make_driver()
+        store = _make_turn_store()
+        driver.set_turn_store(store)
+
+        # Act — reset to None
+        driver.set_turn_store(None)  # type: ignore[arg-type]
+
+        # Assert
+        assert driver._turn_store is None
+
+
+class TestStreamGenSessionPersistence:
+    """_stream_gen_llm() persists cli_session_id when result chunk has session_id."""
+
+    @pytest.mark.asyncio
+    async def test_stream_gen_calls_set_cli_session_on_result_chunk(self) -> None:
+        """_stream_gen_llm yields ResultLlmEvent and fires set_cli_session task."""
+        # Arrange
+        driver = _make_driver()
+        lyra_uuid = "aaaaaaaa-0000-0000-0000-000000000001"
+        cli_sid = "cccccccc-dddd-dddd-dddd-dddddddddddd"
+        driver.link_lyra_session("pool-1", lyra_uuid)
+
+        store = _make_turn_store()
+        driver.set_turn_store(store)
+
+        chunks = [
+            {"event_type": "text", "text": "hi", "done": False},
+            {
+                "event_type": "result",
+                "is_error": False,
+                "session_id": cli_sid,
+                "done": True,
+            },
+        ]
+
+        events = []
+
+        async def _mock_stream_gen(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> AsyncIterator[dict]:
+            for c in chunks:
+                yield c
+
+        # Act
+        with patch.object(driver, "_stream_gen", new=_mock_stream_gen):
+            async for ev in await driver.stream(
+                "pool-1", "hello", _make_model_cfg(), "sys"
+            ):
+                events.append(ev)
+
+        import asyncio
+
+        await asyncio.sleep(0)
+
+        # Assert — ResultLlmEvent carries session_id
+        result_events = [e for e in events if isinstance(e, ResultLlmEvent)]
+        assert len(result_events) == 1
+        assert result_events[0].session_id == cli_sid
+
+        # Assert — set_cli_session persisted the mapping
+        store.set_cli_session.assert_awaited_once_with(lyra_uuid, cli_sid)
+
+    @pytest.mark.asyncio
+    async def test_stream_gen_no_set_cli_session_when_turn_store_none(self) -> None:
+        """_stream_gen_llm does not error when _turn_store is None."""
+        # Arrange
+        driver = _make_driver()
+        driver.link_lyra_session("pool-1", "lyra-uuid-xyz")
+        # _turn_store is None by default
+
+        chunks = [
+            {
+                "event_type": "result",
+                "is_error": False,
+                "session_id": "cli-abc",
+                "done": True,
+            }
+        ]
+
+        async def _mock_stream_gen(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> AsyncIterator[dict]:
+            for c in chunks:
+                yield c
+
+        # Act / Assert — no AttributeError
+        with patch.object(driver, "_stream_gen", new=_mock_stream_gen):
+            async for _ in await driver.stream(
+                "pool-1", "hi", _make_model_cfg(), "sys"
+            ):
+                pass

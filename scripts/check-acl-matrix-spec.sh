@@ -21,6 +21,9 @@
 
 set -euo pipefail
 
+UPDATE=false
+[[ "${1:-}" == "--update" ]] && UPDATE=true
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JSON="${REPO_ROOT}/deploy/nats/acl-matrix.json"
 SPEC="${REPO_ROOT}/artifacts/specs/706-per-role-nkeys-acls-spec.mdx"
@@ -38,7 +41,7 @@ EFFECTIVE_JSON=$(jq '
 # Identity column order — all active identities (updated: retired tts-adapter/sst-adapter
 # removed, voice-tts/voice-stt/image-worker/clipool-worker added per postmortem Fix 1+2)
 # ---------------------------------------------------------------------------
-IDENTITIES=(hub telegram-adapter discord-adapter voice-tts voice-stt llm-worker image-worker clipool-worker monitor)
+mapfile -t IDENTITIES < <(jq -r '.identities | to_entries[] | select(.value.status == "active") | .key' "$JSON")
 
 # ---------------------------------------------------------------------------
 # Subject rows — "display_label|json_pub_subject|json_sub_subject"
@@ -171,6 +174,21 @@ awk '/<!-- acl-matrix:begin -->/{found=1; next} /<!-- acl-matrix:end -->/{found=
   "$SPEC" > "$SPEC_BLOCK"
 
 render_table > "$RENDERED"
+
+if [ "${UPDATE}" = true ]; then
+  if [ "${CI:-}" = "true" ]; then
+    echo "::error::--update is a local-only flag and must not be passed in CI (changes would be lost at runner teardown)"
+    exit 1
+  fi
+  awk '
+    /<!-- acl-matrix:begin -->/ { print; found=1; next }
+    /<!-- acl-matrix:end -->/ { found=0; while ((getline line < RENDERED) > 0) print line; print; next }
+    !found { print }
+  ' RENDERED="$RENDERED" "$SPEC" > "${NATS_TMPDIR}/spec_updated.txt"
+  cp "${NATS_TMPDIR}/spec_updated.txt" "$SPEC"
+  echo "Updated sentinel block in $SPEC"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # Diff — exit 0 on match, 1 on drift

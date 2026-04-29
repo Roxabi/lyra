@@ -9,6 +9,8 @@
   ],
   "identities": {
     "hub": {
+      "status": "active",
+      "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox normalized to lowercase _inbox.hub.> (ADR-051 + postmortem Fix 1).",
       "notes": "Stream provisioning is a deploy-time admin operation — hub does not create/update streams at runtime. $JS.API.STREAM.CREATE/UPDATE.LYRA_AUDIT are intentionally absent from publish ACLs.",
@@ -36,6 +38,8 @@
       ]
     },
     "telegram-adapter": {
+      "status": "active",
+      "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Telegram bot adapter — inbox normalized to _inbox.telegram-adapter.> (ADR-051 + postmortem Fix 1).",
       "allow_responses": false,
@@ -50,6 +54,8 @@
       ]
     },
     "discord-adapter": {
+      "status": "active",
+      "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Discord bot adapter — inbox normalized to _inbox.discord-adapter.> (ADR-051 + postmortem Fix 1).",
       "allow_responses": false,
@@ -64,6 +70,8 @@
       ]
     },
     "voice-tts": {
+      "status": "active",
+      "created_at": "2026-04-21",
       "owner": "voicecli",
       "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Inbox normalized to _inbox.voice-tts.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "allow_responses": true,
@@ -78,6 +86,8 @@
       ]
     },
     "voice-stt": {
+      "status": "active",
+      "created_at": "2026-04-21",
       "owner": "voicecli",
       "description": "voicecli nats-serve STT worker on Machine 1 (#689). Inbox normalized to _inbox.voice-stt.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "allow_responses": true,
@@ -92,6 +102,8 @@
       ]
     },
     "llm-worker": {
+      "status": "active",
+      "created_at": "2026-04-21",
       "owner": "reserved",
       "description": "Reserved LLM worker identity — publishes health status, subscribes to LLM request queue. Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "allow_responses": true,
@@ -103,6 +115,8 @@
       ]
     },
     "image-worker": {
+      "status": "active",
+      "created_at": "2026-04-21",
       "owner": "imagecli",
       "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Inbox normalized to _inbox.image-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "allow_responses": true,
@@ -115,6 +129,8 @@
       ]
     },
     "monitor": {
+      "status": "active",
+      "created_at": "2026-04-21",
       "owner": "reserved",
       "description": "Monitoring identity — full pub+sub on lyra.monitor.> namespace.",
       "allow_responses": false,
@@ -126,6 +142,8 @@
       ]
     },
     "clipool-worker": {
+      "status": "active",
+      "created_at": "2026-04-27",
       "owner": "lyra",
       "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Inbox normalized to _inbox.clipool-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "allow_responses": true,

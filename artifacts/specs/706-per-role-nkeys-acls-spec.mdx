@@ -14,13 +14,13 @@ and is verified by `scripts/check-acl-matrix-spec.sh` on every CI run.
 ## ACL Matrix
 
 <!-- acl-matrix:begin -->
-| Subject | hub | telegram-adapter | discord-adapter | voice-tts | voice-stt | llm-worker | image-worker | clipool-worker | monitor |
+| Subject | hub | telegram-adapter | discord-adapter | voice-tts | voice-stt | llm-worker | image-worker | monitor | clipool-worker |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | `lyra.inbound.telegram.>` | SUB | PUB | — | — | — | — | — | — | — |
 | `lyra.inbound.discord.>` | SUB | — | PUB | — | — | — | — | — | — |
 | `lyra.outbound.telegram.>` | PUB | SUB | — | — | — | — | — | — | — |
 | `lyra.outbound.discord.>` | PUB | — | SUB | — | — | — | — | — | — |
-| `lyra.system.ready` [^ready] | SUB | PUB | PUB | PUB | PUB | — | — | PUB | — |
+| `lyra.system.ready` [^ready] | SUB | PUB | PUB | PUB | PUB | — | — | — | PUB |
 | `lyra.voice.tts.request` | PUB | — | — | SUB | — | — | — | — | — |
 | `lyra.voice.tts.heartbeat` | SUB | — | — | PUB | — | — | — | — | — |
 | `lyra.voice.stt.request` | PUB | — | — | — | SUB | — | — | — | — |
@@ -29,17 +29,17 @@ and is verified by `scripts/check-acl-matrix-spec.sh` on every CI run.
 | `lyra.llm.health.*` [^health] | SUB | — | — | — | — | PUB | — | — | — |
 | `lyra.image.generate.request` | PUB | — | — | — | — | — | SUB | — | — |
 | `lyra.image.heartbeat` | SUB | — | — | — | — | — | PUB | — | — |
-| `lyra.clipool.cmd` | PUB | — | — | — | — | — | — | SUB | — |
-| `lyra.clipool.heartbeat` | SUB | — | — | — | — | — | — | PUB | — |
+| `lyra.clipool.cmd` | PUB | — | — | — | — | — | — | — | SUB |
+| `lyra.clipool.heartbeat` | SUB | — | — | — | — | — | — | — | PUB |
 | `lyra.audit.>` | PUB | — | — | — | — | — | — | — | — |
-| `lyra.monitor.>` [^monitor] | — | — | — | — | — | — | — | — | PUB+SUB |
-| `_inbox.hub.>` [^inbox] | SUB | — | — | PUB | PUB | PUB | PUB | PUB | — |
+| `lyra.monitor.>` [^monitor] | — | — | — | — | — | — | — | PUB+SUB | — |
+| `_inbox.hub.>` [^inbox] | SUB | — | — | PUB | PUB | PUB | PUB | — | PUB |
 | `_inbox.telegram-adapter.>` [^inbox] | — | SUB | — | — | — | — | — | — | — |
 | `_inbox.discord-adapter.>` [^inbox] | — | — | SUB | — | — | — | — | — | — |
 | `_inbox.voice-tts.>` [^inbox] | — | — | — | SUB | — | — | — | — | — |
 | `_inbox.voice-stt.>` [^inbox] | — | — | — | — | SUB | — | — | — | — |
 | `_inbox.image-worker.>` [^inbox] | — | — | — | — | — | — | SUB | — | — |
-| `_inbox.clipool-worker.>` [^inbox] | — | — | — | — | — | — | — | SUB | — |
+| `_inbox.clipool-worker.>` [^inbox] | — | — | — | — | — | — | — | — | SUB |
 <!-- acl-matrix:end -->
 
 [^ready]: `lyra.system.ready` — adapters and workers publish once on startup; hub subscribes to track liveness.

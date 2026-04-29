@@ -4,9 +4,8 @@
 # Seeds (private keys) → ~/.lyra/nkeys/     owned by LYRA_USER, 0600 — no system access needed
 # auth.conf (public keys) → /etc/nats/nkeys/ owned by root:nats,  0640 — read by nats-server
 #
-# Creates 9 user nkey seeds: hub, telegram-adapter, discord-adapter,
-#                             voice-tts, voice-stt, llm-worker, image-worker, monitor, clipool-worker
-# Retired: tts-adapter, stt-adapter (removed in #690; entries purged from matrix per postmortem Phase 1).
+# Creates user nkey seeds for all active identities in deploy/nats/acl-matrix.json.
+# Retired identities are excluded; see docs/ops/nats-identity-retirement.md.
 #
 # ACL matrix (identities + publish/subscribe allow-lists) is sourced from
 # deploy/nats/acl-matrix.json — do not edit inline; update the JSON instead.
@@ -97,6 +96,19 @@ load_matrix() {
         || error "acl-matrix.json: identity '${name}' missing field '${field}'"
     done
 
+    for lc_field in status created_at; do
+      local has_lc
+      has_lc=$(jq -r --arg n "${name}" --arg f "${lc_field}" \
+        'if .identities[$n] | has($f) then "yes" else "no" end' "${MATRIX_JSON}")
+      [ "${has_lc}" = "yes" ] \
+        || error "acl-matrix.json: identity '${name}' missing field '${lc_field}'"
+    done
+
+    local st
+    st=$(jq -r --arg n "${name}" '.identities[$n].status' "${MATRIX_JSON}")
+    jq -e --arg n "${name}" '.identities[$n].status | IN("active","retired")' "${MATRIX_JSON}" > /dev/null \
+      || error "acl-matrix.json: identity '${name}' has invalid status '${st}' (expected active|retired)"
+
     local o
     o=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
     echo " ${valid_owners} " | grep -qw "${o}" \
@@ -110,7 +122,7 @@ load_matrix() {
     ALLOW_RESPONSES[$name]=$(jq -r --arg n "${name}" \
       'if (.identities[$n] | has("allow_responses")) then .identities[$n].allow_responses else true end' \
       "${MATRIX_JSON}")
-  done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
+  done < <(jq -r '.identities | to_entries[] | select(.value.status != "retired") | .key' "${MATRIX_JSON}")
 
   # Assert no duplicate (requester, responder) pairs in request_reply_flows.
   # subject is advisory only — derivation is per-pair, not per-subject; two entries with
@@ -298,9 +310,15 @@ if [ "${EMIT_MERGED_AUTHCONF}" = true ]; then
   VOICECLI_SEEDS_DIR="${HOME}/.voicecli/nkeys"
   MERGED_AUTH_CONF="${SEEDS_DIR}/auth.conf"
 
-  # Live identities for merged auth.conf
-  MERGED_LYRA_IDENTITIES=("hub" "telegram-adapter" "discord-adapter" "clipool-worker")
-  MERGED_VOICE_IDENTITIES=("voice-tts" "voice-stt")
+  # Live identities for merged auth.conf — derived from IDENTITIES[] by owner
+  MERGED_LYRA_IDENTITIES=()
+  MERGED_VOICE_IDENTITIES=()
+  for name in "${IDENTITIES[@]}"; do
+    case "${OWNER[$name]}" in
+      lyra)     MERGED_LYRA_IDENTITIES+=("${name}") ;;
+      voicecli) MERGED_VOICE_IDENTITIES+=("${name}") ;;
+    esac
+  done
 
   declare -A MERGED_PUBKEYS
 
@@ -418,6 +436,13 @@ if [ "${FIX_PERMS}" = true ]; then
   apply_permissions
   exit 0
 fi
+
+# ── warn for retired identities with seeds on disk ───────────────────────────
+# Runs only for filesystem-mutating modes (regen-authconf, regenerate, default).
+while IFS= read -r name; do
+  seed_file="${SEEDS_DIR}/${name}.seed"
+  [ -f "${seed_file}" ] && warn "Retired identity '${name}' has a seed on disk: ${seed_file} — consider shredding it"
+done < <(jq -r '.identities | to_entries[] | select(.value.status == "retired") | .key' "${MATRIX_JSON}")
 
 # ── regen-authconf mode: re-render auth.conf from existing seeds ──────────────
 # Purpose: upgrade a live auth.conf to the current IDENTITIES + ACL matrix
@@ -656,31 +681,15 @@ mkdir -p "${AUTH_DIR}"
 chown root:nats "${AUTH_DIR}"
 chmod 750 "${AUTH_DIR}"
 
-# ── generate nkey pairs (T1.5: extended to 7; generate_nkey defined earlier) ──
+# ── generate nkey pairs + write auth.conf ────────────────────────────────────
 
 info "Generating nkey pairs in ${SEEDS_DIR}/ ..."
-HUB_PUB=$(generate_nkey "hub")
-TELEGRAM_PUB=$(generate_nkey "telegram-adapter")
-DISCORD_PUB=$(generate_nkey "discord-adapter")
-VOICE_TTS_PUB=$(generate_nkey "voice-tts")
-VOICE_STT_PUB=$(generate_nkey "voice-stt")
-WORKER_PUB=$(generate_nkey "llm-worker")
-IMAGE_WORKER_PUB=$(generate_nkey "image-worker")
-MONITOR_PUB=$(generate_nkey "monitor")
-CLIPOOL_PUB=$(generate_nkey "clipool-worker")
+declare -A PUBKEYS
+for name in "${IDENTITIES[@]}"; do
+  PUBKEYS[$name]=$(generate_nkey "${name}")
+done
 
-# ── write auth.conf via render_auth_conf (T1.6) ───────────────────────────────
-declare -A PUBKEYS=(
-  [hub]="${HUB_PUB}"
-  [telegram-adapter]="${TELEGRAM_PUB}"
-  [discord-adapter]="${DISCORD_PUB}"
-  [voice-tts]="${VOICE_TTS_PUB}"
-  [voice-stt]="${VOICE_STT_PUB}"
-  [llm-worker]="${WORKER_PUB}"
-  [image-worker]="${IMAGE_WORKER_PUB}"
-  [monitor]="${MONITOR_PUB}"
-  [clipool-worker]="${CLIPOOL_PUB}"
-)
+# ── write auth.conf via render_auth_conf ──────────────────────────────────────
 render_auth_conf PUBKEYS > "${AUTH_CONF}"
 
 chown root:nats "${AUTH_CONF}"

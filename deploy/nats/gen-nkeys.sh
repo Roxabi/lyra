@@ -247,6 +247,15 @@ done
 [ -n "${MATRIX_JSON_OVERRIDE}" ] && MATRIX_JSON="${MATRIX_JSON_OVERRIDE}"
 load_matrix
 
+# ── warn for retired identities with seeds on disk ───────────────────────────
+while IFS= read -r name; do
+  _status=$(jq -r --arg n "${name}" '.identities[$n].status' "${MATRIX_JSON}")
+  if [ "${_status}" = "retired" ]; then
+    seed_file="${SEEDS_DIR}/${name}.seed"
+    [ -f "${seed_file}" ] && warn "Retired identity '${name}' has a seed on disk: ${seed_file} — consider shredding it"
+  fi
+done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
+
 # ── validate-supervisor mode — no root required ────────────────────────────────
 if $VALIDATE_SUPERVISOR; then
   validate_supervisor

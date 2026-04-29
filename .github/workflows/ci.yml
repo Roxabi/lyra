@@ -66,6 +66,9 @@ jobs:
       - name: Check ACL matrix spec drift
         run: bash scripts/check-acl-matrix-spec.sh
 
+      - name: Check ACL matrix lifecycle fields
+        run: bash scripts/check-acl-matrix-retired.sh
+
       - name: Check request-reply flows
         run: bash scripts/check-request-reply-flows.sh
 

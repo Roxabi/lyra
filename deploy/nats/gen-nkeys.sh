@@ -664,31 +664,15 @@ mkdir -p "${AUTH_DIR}"
 chown root:nats "${AUTH_DIR}"
 chmod 750 "${AUTH_DIR}"
 
-# ── generate nkey pairs (T1.5: extended to 7; generate_nkey defined earlier) ──
+# ── generate nkey pairs + write auth.conf ────────────────────────────────────
 
 info "Generating nkey pairs in ${SEEDS_DIR}/ ..."
-HUB_PUB=$(generate_nkey "hub")
-TELEGRAM_PUB=$(generate_nkey "telegram-adapter")
-DISCORD_PUB=$(generate_nkey "discord-adapter")
-VOICE_TTS_PUB=$(generate_nkey "voice-tts")
-VOICE_STT_PUB=$(generate_nkey "voice-stt")
-WORKER_PUB=$(generate_nkey "llm-worker")
-IMAGE_WORKER_PUB=$(generate_nkey "image-worker")
-MONITOR_PUB=$(generate_nkey "monitor")
-CLIPOOL_PUB=$(generate_nkey "clipool-worker")
+declare -A PUBKEYS
+for name in "${IDENTITIES[@]}"; do
+  PUBKEYS[$name]=$(generate_nkey "${name}")
+done
 
-# ── write auth.conf via render_auth_conf (T1.6) ───────────────────────────────
-declare -A PUBKEYS=(
-  [hub]="${HUB_PUB}"
-  [telegram-adapter]="${TELEGRAM_PUB}"
-  [discord-adapter]="${DISCORD_PUB}"
-  [voice-tts]="${VOICE_TTS_PUB}"
-  [voice-stt]="${VOICE_STT_PUB}"
-  [llm-worker]="${WORKER_PUB}"
-  [image-worker]="${IMAGE_WORKER_PUB}"
-  [monitor]="${MONITOR_PUB}"
-  [clipool-worker]="${CLIPOOL_PUB}"
-)
+# ── write auth.conf via render_auth_conf ──────────────────────────────────────
 render_auth_conf PUBKEYS > "${AUTH_CONF}"
 
 chown root:nats "${AUTH_CONF}"

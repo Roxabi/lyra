@@ -1,0 +1,61 @@
+---
+id: ADR-064
+title: "NATS ACL: derive responder inbox grants from request_reply_flows"
+status: accepted
+date: 2026-04-28
+issue: "#1000"
+supersedes: "ADR-062 (Fix 2 — explicit _inbox.hub.> grants)"
+---
+
+## Context
+
+ADR-062 (Fix 2) introduced explicit `_inbox.hub.>` publish grants for each responder identity (`voice-tts`, `voice-stt`, `llm-worker`, `image-worker`, `clipool-worker`) as a manual postmortem correction. This created a copy-paste pattern with no enforcement: adding a new responder requires remembering to update `acl-matrix.json` in multiple places. Omitting any step causes silent failures — the exact incident class the postmortem addressed.
+
+The topology-first schema (#992/#993) resolved this by adding a `request_reply_flows` section to `acl-matrix.json` and deriving inbox grants automatically in `load_matrix()`. This ADR documents the decision and adds a dedicated CI enforcement layer.
+
+## Options Considered
+
+### Option A: Explicit hand-written grants per responder (status quo from ADR-062 Fix 2)
+
+Each responder identity carries its `_inbox.{requester}.>` publish grant as a literal entry in
+`acl-matrix.json`. The CI sentinel table in `check-acl-matrix-spec.sh` must be updated in lockstep.
+
+- **Pros:** Grants are fully visible in the JSON without any derivation logic. No code path to audit for correctness. Static, auditable state.
+- **Cons:** Adding a new responder requires edits in multiple places. Missing any one step produces a silent auth failure — the exact incident class the postmortem addressed. The copy-paste pattern scales linearly with responder count with no enforcement mechanism.
+
+### Option B: Declarative `request_reply_flows` with automated derivation (chosen)
+
+Introduce a `request_reply_flows` section in `acl-matrix.json`. The `load_matrix()` function in `gen-nkeys.sh` reads each flow entry and injects the corresponding `_inbox.{requester}.>` grant into the responder's effective publish set at generation time. A dedicated CI script validates identity existence, subject coverage, and that `--template-only` output contains the derived grants.
+
+- **Pros:** Single declaration drives both grant and CI enforcement. Adding a new responder is one JSON entry. The `subject` field is machine-readable and can drive future tooling (flow diagrams, contract tests).
+- **Cons:** Grant presence is implicit — operators reading `acl-matrix.json` must know that `request_reply_flows` entries expand into publish grants. The derivation logic in `load_matrix()` must be kept correct; a bug there silently drops grants for all responders. Requires a new CI script and guard logic to compensate for that risk. Run `gen-nkeys.sh --template-only` to inspect the effective grants.
+
+## Decision
+
+Replace hand-written `_inbox.{requester}.>` grants with a declarative `request_reply_flows` section in `acl-matrix.json`. The `load_matrix()` function in `gen-nkeys.sh` derives and injects these grants automatically for each listed responder (implemented in #992/#993).
+
+```json
+"request_reply_flows": [
+  { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" },
+  { "requester": "hub", "responder": "voice-tts",      "subject": "lyra.voice.tts.request.>" },
+  { "requester": "hub", "responder": "voice-stt",      "subject": "lyra.voice.stt.request.>" },
+  { "requester": "hub", "responder": "image-worker",   "subject": "lyra.image.generate.request" },
+  { "requester": "hub", "responder": "llm-worker",     "subject": "lyra.llm.request" }
+]
+```
+
+## Consequences
+
+**Adding a new responder:** declare one `request_reply_flows` entry → inbox grant is derived automatically. No manual grant authoring.
+
+**CI enforcement:** `scripts/check-request-reply-flows.sh` validates:
+1. Both requester and responder identities exist in `acl-matrix.json`
+2. The requester's `publish[]` covers the flow `subject`
+3. `gen-nkeys.sh --template-only` output contains the derived `_inbox.{requester}.>` grant (postcondition)
+4. Regression guards: injecting an unknown responder or unknown requester must cause exit 1
+
+**`check-acl-matrix-spec.sh`:** the `_inbox.hub.>` sentinel row is retained; the script pre-computes effective ACL (including derived grants) via `EFFECTIVE_JSON` before validating, so the sentinel remains correct.
+
+**`--emit-merged-authconf`:** `clipool-worker` added to `MERGED_LYRA_IDENTITIES` to ensure the derived grant is present in the merged auth.conf used by the lyra+voicecli combined deployment.
+
+**Inspecting effective grants:** run `gen-nkeys.sh --template-only` — the output shows the full auth.conf including derived inbox grants not visible in `acl-matrix.json` alone.

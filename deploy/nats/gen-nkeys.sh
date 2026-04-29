@@ -49,6 +49,7 @@ warn()  { echo -e "${YELLOW}[!]${NC} $1" >&2; }
 error() { echo -e "${RED}[x]${NC} $1" >&2; exit 1; }
 
 MATRIX_JSON="$(dirname "${BASH_SOURCE[0]}")/acl-matrix.json"
+MATRIX_JSON_OVERRIDE=""
 
 # ── load_matrix ───────────────────────────────────────────────────────────────
 # Reads deploy/nats/acl-matrix.json and populates PUB_ALLOW, SUB_ALLOW, IDENTITIES,
@@ -229,11 +230,13 @@ while [[ $# -gt 0 ]]; do
     --yes)                   AUTO_YES=true;               shift ;;
     --validate-supervisor)   VALIDATE_SUPERVISOR=true;    shift ;;
     --emit-merged-authconf)  EMIT_MERGED_AUTHCONF=true;  shift ;;
+    --matrix)                MATRIX_JSON_OVERRIDE="$2";  shift 2 ;;
     *) error "Unknown option: $1" ;;
   esac
 done
 
 # ── load ACL matrix ───────────────────────────────────────────────────────────
+[ -n "${MATRIX_JSON_OVERRIDE}" ] && MATRIX_JSON="${MATRIX_JSON_OVERRIDE}"
 load_matrix
 
 # ── validate-supervisor mode — no root required ────────────────────────────────
@@ -296,7 +299,7 @@ if [ "${EMIT_MERGED_AUTHCONF}" = true ]; then
   MERGED_AUTH_CONF="${SEEDS_DIR}/auth.conf"
 
   # Live identities for merged auth.conf
-  MERGED_LYRA_IDENTITIES=("hub" "telegram-adapter" "discord-adapter")
+  MERGED_LYRA_IDENTITIES=("hub" "telegram-adapter" "discord-adapter" "clipool-worker")
   MERGED_VOICE_IDENTITIES=("voice-tts" "voice-stt")
 
   declare -A MERGED_PUBKEYS

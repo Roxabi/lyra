@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 from uuid import uuid4
 
 from lyra.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
@@ -18,6 +19,14 @@ if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
 
     from lyra.core.agent.agent_config import ModelConfig
+
+
+class _CliSessionStore(Protocol):
+    """Minimal protocol for TurnStore operations needed by CliNatsDriver."""
+
+    async def set_cli_session(self, session_id: str, cli_session_id: str) -> None: ...
+
+    async def get_cli_session(self, session_id: str) -> str | None: ...
 
 __all__ = ["CliNatsDriver"]
 log = logging.getLogger(__name__)
@@ -33,6 +42,12 @@ class CliNatsDriver(NatsDriverBase):
 
     def __init__(self, nc: "NATS", *, timeout: float = 120.0) -> None:
         super().__init__(nc, timeout=timeout)
+        self._lyra_sessions: dict[str, str] = {}
+        self._turn_store: _CliSessionStore | None = None
+
+    def set_turn_store(self, store: _CliSessionStore) -> None:
+        """Wire the hub TurnStore so the driver can persist cli_session_id mappings."""
+        self._turn_store = store
 
     # ── LlmProvider protocol ──────────────────────────────────────────────
 
@@ -66,9 +81,17 @@ class CliNatsDriver(NatsDriverBase):
                 if t:
                     yield TextLlmEvent(text=t)
             elif event_type == "result":
+                _cli_sid = chunk.get("session_id")
+                if _cli_sid and self._turn_store and pool_id in self._lyra_sessions:
+                    asyncio.get_running_loop().create_task(
+                        self._turn_store.set_cli_session(
+                            self._lyra_sessions[pool_id], _cli_sid
+                        )
+                    )
                 yield ResultLlmEvent(
                     is_error=bool(chunk.get("is_error", False)),
                     duration_ms=int(chunk.get("duration_ms", 0)),
+                    session_id=_cli_sid or None,
                 )
                 return
             if chunk.get("done", False):
@@ -111,9 +134,14 @@ class CliNatsDriver(NatsDriverBase):
                 error=error,
                 retryable=bool(reply.get("retryable", True)),
             )
+        _cli_sid = reply.get("session_id", "")
+        if _cli_sid and self._turn_store and pool_id in self._lyra_sessions:
+            asyncio.get_running_loop().create_task(
+                self._turn_store.set_cli_session(self._lyra_sessions[pool_id], _cli_sid)
+            )
         return LlmResult(
             result=reply.get("text") or reply.get("result", ""),
-            session_id=reply.get("session_id", ""),
+            session_id=_cli_sid,
         )
 
     # ── CliPool-compatible control methods ────────────────────────────────
@@ -124,9 +152,17 @@ class CliNatsDriver(NatsDriverBase):
         await self._request(self.SUBJECT_CONTROL, payload)
 
     async def resume_and_reset(self, pool_id: str, session_id: str) -> bool:
-        """Ask clipool worker to resume a prior session then reset."""
+        """Ask clipool worker to resume a prior session then reset.
+
+        Looks up the cli_session_id from hub TurnStore and sends it to the worker
+        so the worker can pass it directly to CliPool.resume_direct (no TurnStore
+        lookup on the worker side).
+        """
+        cli_sid: str | None = None
+        if self._turn_store is not None:
+            cli_sid = await self._turn_store.get_cli_session(session_id)
         payload = self._build_control_payload(
-            pool_id, "resume_and_reset", session_id=session_id
+            pool_id, "resume_and_reset", session_id=cli_sid
         )
         reply = await self._request(self.SUBJECT_CONTROL, payload)
         return bool(reply.get("resumed", False))
@@ -137,7 +173,8 @@ class CliNatsDriver(NatsDriverBase):
         await self._request(self.SUBJECT_CONTROL, payload)
 
     def link_lyra_session(self, pool_id: str, lyra_session_id: str) -> None:
-        """No-op on the NATS side — session linkage is carried in each payload."""
+        """Store lyra_session_id for pool_id; _build_cmd_payload uses it."""
+        self._lyra_sessions[pool_id] = lyra_session_id
         log.debug(
             "cli_nats: link pool_id=%s → lyra_session=%s", pool_id, lyra_session_id
         )
@@ -158,7 +195,7 @@ class CliNatsDriver(NatsDriverBase):
             trace_id=str(uuid4()),
             issued_at=datetime.now(timezone.utc),
             pool_id=pool_id,
-            lyra_session_id=pool_id,
+            lyra_session_id=self._lyra_sessions.get(pool_id, pool_id),
             text=text,
             model_cfg=model_cfg.model_dump(exclude={"api_key"}),
             system_prompt=system_prompt,

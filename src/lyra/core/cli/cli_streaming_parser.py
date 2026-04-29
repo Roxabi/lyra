@@ -141,6 +141,7 @@ class CliStreamingParser:
                     duration_ms=data.get("duration_ms", 0),
                     cost_usd=None,
                     error_text=self.error if is_error else None,
+                    session_id=data.get("session_id") or None,
                 )
             )
 

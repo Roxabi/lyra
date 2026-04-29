@@ -66,6 +66,9 @@ jobs:
       - name: Check ACL matrix spec drift
         run: bash scripts/check-acl-matrix-spec.sh
 
+      - name: Check request-reply flows
+        run: bash scripts/check-request-reply-flows.sh
+
       - name: Check auth.conf drift (acl-matrix.json is source of truth)
         run: bash scripts/check-acl-authconf-drift.sh
 

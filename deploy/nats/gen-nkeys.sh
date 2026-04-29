@@ -97,6 +97,14 @@ load_matrix() {
         || error "acl-matrix.json: identity '${name}' missing field '${field}'"
     done
 
+    for lc_field in status created_at; do
+      local has_lc
+      has_lc=$(jq -r --arg n "${name}" --arg f "${lc_field}" \
+        'if .identities[$n] | has($f) then "yes" else "no" end' "${MATRIX_JSON}")
+      [ "${has_lc}" = "yes" ] \
+        || error "acl-matrix.json: identity '${name}' missing field '${lc_field}'"
+    done
+
     local o
     o=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
     echo " ${valid_owners} " | grep -qw "${o}" \
@@ -110,7 +118,7 @@ load_matrix() {
     ALLOW_RESPONSES[$name]=$(jq -r --arg n "${name}" \
       'if (.identities[$n] | has("allow_responses")) then .identities[$n].allow_responses else true end' \
       "${MATRIX_JSON}")
-  done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
+  done < <(jq -r '.identities | to_entries[] | select(.value.status != "retired") | .key' "${MATRIX_JSON}")
 
   # Assert no duplicate (requester, responder) pairs in request_reply_flows.
   # subject is advisory only — derivation is per-pair, not per-subject; two entries with

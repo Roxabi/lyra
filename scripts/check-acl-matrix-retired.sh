@@ -12,17 +12,17 @@ while IFS= read -r name; do
   status=$(jq -r --arg n "$name" '.identities[$n].status // empty' "$JSON")
   created=$(jq -r --arg n "$name" '.identities[$n].created_at // empty' "$JSON")
 
-  [ -n "$status" ]  || { echo "ERROR: '$name' missing status";     ((errors++)); }
-  [ -n "$created" ] || { echo "ERROR: '$name' missing created_at"; ((errors++)); }
-  [[ -z "$created" || "$created" =~ $DATE_RE ]] || { echo "ERROR: '$name' created_at invalid format: $created (expected YYYY-MM-DD)"; ((errors++)); }
+  [ -n "$status" ]  || { echo "ERROR: '$name' missing status";     errors=$((errors + 1)); }
+  [ -n "$created" ] || { echo "ERROR: '$name' missing created_at"; errors=$((errors + 1)); }
+  [[ -z "$created" || "$created" =~ $DATE_RE ]] || { echo "ERROR: '$name' created_at invalid format: $created (expected YYYY-MM-DD)"; errors=$((errors + 1)); }
 
   if [ "$status" = "retired" ]; then
     retired=$(jq -r --arg n "$name" '.identities[$n].retired_at // empty' "$JSON")
-    [ -n "$retired" ] || { echo "ERROR: '$name' is retired but missing retired_at"; ((errors++)); }
-    [[ -z "$retired" || "$retired" =~ $DATE_RE ]] || { echo "ERROR: '$name' retired_at invalid format: $retired (expected YYYY-MM-DD)"; ((errors++)); }
+    [ -n "$retired" ] || { echo "ERROR: '$name' is retired but missing retired_at"; errors=$((errors + 1)); }
+    [[ -z "$retired" || "$retired" =~ $DATE_RE ]] || { echo "ERROR: '$name' retired_at invalid format: $retired (expected YYYY-MM-DD)"; errors=$((errors + 1)); }
     in_flows=$(jq -r --arg n "$name" \
       '[.request_reply_flows[]? | select(.requester==$n or .responder==$n)] | length' "$JSON")
-    [ "$in_flows" = "0" ] || { echo "ERROR: '$name' is retired but still referenced in request_reply_flows"; ((errors++)); }
+    [ "$in_flows" = "0" ] || { echo "ERROR: '$name' is retired but still referenced in request_reply_flows"; errors=$((errors + 1)); }
   fi
 done < <(jq -r '.identities | keys_unsorted[]' "$JSON")
 

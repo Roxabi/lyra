@@ -4,9 +4,8 @@
 # Seeds (private keys) → ~/.lyra/nkeys/     owned by LYRA_USER, 0600 — no system access needed
 # auth.conf (public keys) → /etc/nats/nkeys/ owned by root:nats,  0640 — read by nats-server
 #
-# Creates 9 user nkey seeds: hub, telegram-adapter, discord-adapter,
-#                             voice-tts, voice-stt, llm-worker, image-worker, monitor, clipool-worker
-# Retired: tts-adapter, stt-adapter (removed in #690; entries purged from matrix per postmortem Phase 1).
+# Creates user nkey seeds for all active identities in deploy/nats/acl-matrix.json.
+# Retired identities are excluded; see docs/ops/nats-identity-retirement.md.
 #
 # ACL matrix (identities + publish/subscribe allow-lists) is sourced from
 # deploy/nats/acl-matrix.json — do not edit inline; update the JSON instead.
@@ -104,6 +103,11 @@ load_matrix() {
       [ "${has_lc}" = "yes" ] \
         || error "acl-matrix.json: identity '${name}' missing field '${lc_field}'"
     done
+
+    local st
+    st=$(jq -r --arg n "${name}" '.identities[$n].status' "${MATRIX_JSON}")
+    jq -e --arg n "${name}" '.identities[$n].status | IN("active","retired")' "${MATRIX_JSON}" > /dev/null \
+      || error "acl-matrix.json: identity '${name}' has invalid status '${st}' (expected active|retired)"
 
     local o
     o=$(jq -r --arg n "${name}" '.identities[$n].owner' "${MATRIX_JSON}")
@@ -249,12 +253,9 @@ load_matrix
 
 # ── warn for retired identities with seeds on disk ───────────────────────────
 while IFS= read -r name; do
-  _status=$(jq -r --arg n "${name}" '.identities[$n].status' "${MATRIX_JSON}")
-  if [ "${_status}" = "retired" ]; then
-    seed_file="${SEEDS_DIR}/${name}.seed"
-    [ -f "${seed_file}" ] && warn "Retired identity '${name}' has a seed on disk: ${seed_file} — consider shredding it"
-  fi
-done < <(jq -r '.identities | keys_unsorted[]' "${MATRIX_JSON}")
+  seed_file="${SEEDS_DIR}/${name}.seed"
+  [ -f "${seed_file}" ] && warn "Retired identity '${name}' has a seed on disk: ${seed_file} — consider shredding it"
+done < <(jq -r '.identities | to_entries[] | select(.value.status == "retired") | .key' "${MATRIX_JSON}")
 
 # ── validate-supervisor mode — no root required ────────────────────────────────
 if $VALIDATE_SUPERVISOR; then

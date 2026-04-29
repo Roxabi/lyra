@@ -1,0 +1,49 @@
+---
+title: "NATS session lifecycle — lyra_session_id propagation + TurnStore wiring"
+issue: 1008
+status: approved
+tier: F-lite
+date: 2026-04-29
+---
+
+## Problem
+
+`cli_nats.link_lyra_session()` is a no-op: it never writes to `_lyra_sessions[pool_id]`, so when the clipool worker processes a command it falls back to using `pool_id` as `lyra_session_id` (a scope identifier, not a session UUID). Simultaneously, the clipool standalone bootstrap never wires a TurnStore into the worker's CliPool, so `_persist_cli_session()` silently skips and the `lyra_session_id → cli_session_id` mapping is never written.
+
+Two user-visible failures follow: (1) reply-to resume is always broken — the hub resolves a `lyra_session_id` from MessageIndex, calls `resume_and_reset`, gets None back, and silently starts a fresh session; (2) `/clear` generates a new UUID that is never propagated, so the next turn re-sends the stale `pool_id` value and `get_last_session` returns the old session on restart.
+
+The fix is purely mechanical: 4 localised changes, no contract or schema modifications.
+
+## Who
+
+- **Primary:** end users of the Telegram/Discord adapters who rely on session continuity (resume after reconnect, `/clear` to start fresh).
+- **Secondary:** developers running clipool locally who observe silent session resets.
+
+## Constraints
+
+- No NATS contract changes — `CliControlCmd.session_id` stays as a Lyra session UUID.
+- Fix must not break the existing clipool standalone bootstrap path.
+- Changes confined to `cli_nats.py`, `clipool_worker.py`, and the clipool bootstrap; ≤4 files.
+- Aligns with HarnessProvider pattern established in #988/#990: the worker owns its TurnStore and all internal `cli_session_id` mapping.
+
+## Out of Scope
+
+- Refactoring CliPool or TurnStore internals.
+- Changing `CliControlCmd` or any NATS envelope fields.
+- Session persistence for other adapter types (Telegram, Discord).
+- Error-handling improvements beyond the silent-skip bug.
+- `turns.db` volume ownership + Quadlet wiring for prod TurnStore persistence (follow-up).
+- `_lyra_sessions` driver refactor: pass `lyra_session_id` as kwarg to `stream()`/`complete()` instead of pre-registration (follow-up).
+- `_handle_cmd_streaming` dropping `ResultLlmEvent.session_id` silently (follow-up).
+- Resume outcome logging / heartbeat counters (follow-up).
+- Contract test asserting `lyra_session_id != pool_id` in NATS payloads (follow-up).
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (LLM driver + clipool adapter), 4 targeted changes, no new architecture.
+
+Signals observed:
+- Label `size:F-lite`
+- ≤4 files touched, all in one domain
+- Root cause fully diagnosed, fix enumerated in issue body
+- No contract changes, no new patterns

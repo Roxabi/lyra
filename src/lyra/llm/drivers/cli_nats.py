@@ -32,6 +32,14 @@ __all__ = ["CliNatsDriver"]
 log = logging.getLogger(__name__)
 
 
+def _log_task_exc(task: asyncio.Task) -> None:
+    """Done-callback: log any exception from a fire-and-forget task."""
+    if not task.cancelled() and (exc := task.exception()):
+        log.warning(
+            "cli_nats: fire-and-forget task %r failed: %s", task.get_name(), exc
+        )
+
+
 class CliNatsDriver(NatsDriverBase):
     """LlmProvider over NATS — hub sends to CliPoolNatsWorker."""
 
@@ -83,11 +91,7 @@ class CliNatsDriver(NatsDriverBase):
             elif event_type == "result":
                 _cli_sid = chunk.get("session_id")
                 if _cli_sid and self._turn_store and pool_id in self._lyra_sessions:
-                    asyncio.get_running_loop().create_task(
-                        self._turn_store.set_cli_session(
-                            self._lyra_sessions[pool_id], _cli_sid
-                        )
-                    )
+                    self._fire_set_cli_session(self._lyra_sessions[pool_id], _cli_sid)
                 yield ResultLlmEvent(
                     is_error=bool(chunk.get("is_error", False)),
                     duration_ms=int(chunk.get("duration_ms", 0)),
@@ -136,12 +140,10 @@ class CliNatsDriver(NatsDriverBase):
             )
         _cli_sid = reply.get("session_id", "")
         if _cli_sid and self._turn_store and pool_id in self._lyra_sessions:
-            asyncio.get_running_loop().create_task(
-                self._turn_store.set_cli_session(self._lyra_sessions[pool_id], _cli_sid)
-            )
+            self._fire_set_cli_session(self._lyra_sessions[pool_id], _cli_sid)
         return LlmResult(
             result=reply.get("text") or reply.get("result", ""),
-            session_id=_cli_sid,
+            session_id=_cli_sid or "",
         )
 
     # ── CliPool-compatible control methods ────────────────────────────────
@@ -161,6 +163,14 @@ class CliNatsDriver(NatsDriverBase):
         cli_sid: str | None = None
         if self._turn_store is not None:
             cli_sid = await self._turn_store.get_cli_session(session_id)
+        if cli_sid is None:
+            log.debug(
+                "cli_nats: no cli_session_id for lyra_session=%s, "
+                "skipping resume [pool:%s]",
+                session_id,
+                pool_id,
+            )
+            return False
         payload = self._build_control_payload(
             pool_id, "resume_and_reset", session_id=cli_sid
         )
@@ -178,6 +188,18 @@ class CliNatsDriver(NatsDriverBase):
         log.debug(
             "cli_nats: link pool_id=%s → lyra_session=%s", pool_id, lyra_session_id
         )
+
+    def unlink_lyra_session(self, pool_id: str) -> None:
+        """Remove the pool_id → lyra_session_id mapping (call on pool eviction)."""
+        self._lyra_sessions.pop(pool_id, None)
+
+    def _fire_set_cli_session(self, lyra_sid: str, cli_sid: str) -> None:
+        """Schedule set_cli_session without blocking; log any failure."""
+        task = asyncio.get_running_loop().create_task(
+            self._turn_store.set_cli_session(lyra_sid, cli_sid),  # type: ignore[union-attr]
+            name=f"set_cli_session:{lyra_sid[:8]}",
+        )
+        task.add_done_callback(_log_task_exc)
 
     # ── Payload builders ──────────────────────────────────────────────────
 

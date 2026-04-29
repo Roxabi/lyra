@@ -335,15 +335,16 @@ async def test_handle_control_resume_and_reset() -> None:
     worker._nc = nc
 
     msg = _make_nats_msg(subject="lyra.clipool.control", reply="_INBOX.ctrl")
+    _sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     payload = _control_payload(
-        op="resume_and_reset", pool_id="pool-y", session_id="sid-42"
+        op="resume_and_reset", pool_id="pool-y", session_id=_sid
     )
 
     # Act
     await worker._handle_control(msg, payload)
 
     # Assert — correct call signature
-    pool.resume_direct.assert_awaited_once_with("pool-y", "sid-42")
+    pool.resume_direct.assert_awaited_once_with("pool-y", _sid)
 
     # Assert — reply published with ok=True (pool returned True)
     nc.publish.assert_called_once()

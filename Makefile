@@ -251,8 +251,8 @@ deploy:
 
 full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf → secrets → HUP NATS → restart lyra
 	$(require_machine1)
-	@echo "Full deploy to $(DEPLOY_HOST) (requires sudo for gen-nkeys.sh)..."
-	@ssh -t $(DEPLOY_HOST) '\
+	@echo "Full deploy to $(DEPLOY_HOST)..."
+	@ssh $(DEPLOY_HOST) '\
 	set -eu; \
 	LYRA_DIR=$(DEPLOY_DIR); \
 	VOICE_DIR=$$(grep "^VOICE_DEPLOY_DIR=" "$$LYRA_DIR/.env" 2>/dev/null | cut -d= -f2); \
@@ -268,7 +268,7 @@ full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf
 	echo "==> lyra: installing quadlet units..."; \
 	make -C "$$LYRA_DIR" quadlet-install; \
 	echo "==> NATS: regenerating auth.conf from updated acl-matrix.json..."; \
-	sudo bash "$$LYRA_DIR/deploy/nats/gen-nkeys.sh" --regen-authconf; \
+	bash "$$LYRA_DIR/deploy/nats/gen-nkeys.sh" --regen-authconf; \
 	echo "==> NATS: installing Podman secrets..."; \
 	make -C "$$LYRA_DIR" quadlet-secrets-install; \
 	echo "==> NATS: reloading (HUP)..."; \
@@ -327,11 +327,10 @@ remote:
 nats-setup:
 	@bash deploy/nats/setup.sh
 
-nats-regen-authconf:          ## pull latest staging, regen auth.conf, reload nats-server
-	$(require_machine1)
-	@git pull origin staging
-	@sudo bash deploy/nats/gen-nkeys.sh --regen-authconf
-	@nats-server --signal reload
+nats-regen-authconf:          ## re-render auth.conf from existing seeds, upload Podman secret, HUP NATS
+	@bash deploy/nats/gen-nkeys.sh --regen-authconf
+	@$(MAKE) quadlet-secrets-install
+	@podman kill -s HUP lyra-nats
 
 nats-deploy:              ## run NATS setup on prod, then reload supervisor conf
 	$(require_machine1)

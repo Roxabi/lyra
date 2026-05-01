@@ -14,7 +14,7 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox normalized to lowercase _inbox.hub.> (ADR-051 + postmortem Fix 1).",
-      "notes": "Hub provisions the lyra-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $JS.API.STREAM.CREATE/UPDATE.LYRA_AUDIT are covered by the broader $JS.API.> grant. Tighter per-operation scoping is tracked as a follow-up.",
+      "notes": "Hub provisions the lyra-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.lyra-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up.",
       "allow_responses": false,
       "publish": [
         "lyra.outbound.telegram.>",
@@ -26,7 +26,8 @@
         "lyra.clipool.cmd",
         "lyra.clipool.control",
         "lyra.audit.>",
-        "$JS.API.>"
+        "$JS.API.>",
+        "$KV.lyra-state.>"
       ],
       "subscribe": [
         "lyra.inbound.telegram.>",

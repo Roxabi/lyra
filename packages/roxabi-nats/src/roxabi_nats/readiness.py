@@ -1,7 +1,11 @@
 """NATS readiness probe — hub readiness responder and adapter probe.
 
-The hub registers a responder on ``lyra.system.ready``; adapters send a
-request loop until the hub replies or the probe times out.
+The hub writes ``hub.ready = b'true'`` to the ``lyra-state`` KV bucket via
+``announce_hub_ready()``; adapters call ``wait_for_hub()`` which reads the
+same key via JetStream KV (fast path) or watches for it (watch path).
+
+This approach is compatible with ``allow_responses: false`` ACLs because no
+inbox/reply subjects are used.
 """
 
 from __future__ import annotations
@@ -13,7 +17,6 @@ import time
 from collections.abc import Sequence
 from typing import Protocol
 
-import nats.errors
 from nats.aio.client import Client as NATS
 from nats.aio.subscription import Subscription
 
@@ -39,7 +42,24 @@ async def announce_hub_ready(nc: NATS) -> None:
 
     Degrades gracefully if JetStream is not available (logs WARNING, returns).
     """
-    raise NotImplementedError("announce_hub_ready: implementation pending")
+    from nats.js.api import KeyValueConfig, StorageType
+    from nats.js.errors import BucketNotFoundError
+
+    try:
+        js = nc.jetstream()
+    except Exception:
+        log.warning("Hub KV unavailable — JetStream not enabled")
+        return
+
+    try:
+        kv = await js.key_value("lyra-state")
+    except BucketNotFoundError:
+        kv = await js.create_key_value(
+            KeyValueConfig(bucket="lyra-state", storage=StorageType.FILE)
+        )
+
+    await kv.put("hub.ready", b"true")
+    log.info("Hub KV ready announced")
 
 
 async def start_readiness_responder(
@@ -80,7 +100,10 @@ async def wait_for_hub(
     *,
     timeout: float = PROBE_TIMEOUT_S,
 ) -> bool:
-    """Probe the hub readiness subject until a reply is received or timeout expires.
+    """Probe hub readiness via JetStream KV instead of request/reply.
+
+    Compatible with allow_responses: false ACLs — no inbox subjects used.
+    Returns True if hub.ready key is found, False on timeout or JetStream unavailable.
 
     Args:
         nc: Already-connected NATS client.
@@ -88,32 +111,63 @@ async def wait_for_hub(
             ``PROBE_TIMEOUT_S``.
 
     Returns:
-        ``True`` if the hub replied within *timeout*, ``False`` otherwise.
+        ``True`` if the hub.ready key is found within *timeout*, ``False`` otherwise.
     """
+    from nats.js.api import KeyValueConfig, StorageType
+    from nats.js.errors import BucketNotFoundError, KeyNotFoundError
+
     deadline = time.monotonic() + timeout
 
-    while time.monotonic() < deadline:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-        per_call = min(PROBE_INTERVAL_S, remaining)
+    # Open or create the KV bucket
+    try:
+        js = nc.jetstream()
         try:
-            await nc.request(READINESS_SUBJECT, b"", timeout=per_call)
-            log.info("Hub readiness confirmed — starting polling")
-            return True
-        except nats.errors.TimeoutError:
-            pass
-        except nats.errors.NoRespondersError:
-            pass
-        except Exception:
-            log.exception("wait_for_hub: unexpected error during probe")
+            kv = await js.key_value("lyra-state")
+        except BucketNotFoundError:
+            kv = await js.create_key_value(
+                KeyValueConfig(bucket="lyra-state", storage=StorageType.FILE)
+            )
+    except Exception:
+        log.warning("wait_for_hub: JetStream not enabled — skipping probe")
+        return False
 
-        # Brief sleep between probes so we don't hammer NATS on NoRespondersError
-        await asyncio.sleep(PROBE_INTERVAL_S)
+    # Fast path: key already present
+    try:
+        entry = await kv.get("hub.ready")
+        if entry.value == b"true":
+            log.info("Hub ready (KV immediate)")
+            return True
+    except KeyNotFoundError:
+        pass  # fall through to watch
+
+    # Watch path: block until key appears or timeout
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        log.warning(
+            "Hub readiness probe timed out after %ss — starting anyway (graceful degradation)",
+            timeout,
+        )
+        return False
+
+    try:
+        watcher = await kv.watch("hub.ready")
+        try:
+            async with asyncio.timeout(remaining):
+                async for entry in watcher:
+                    if entry is None:
+                        continue  # init-done sentinel — no messages pending yet
+                    if entry.value == b"true":
+                        log.info("Hub ready (KV watch)")
+                        return True
+        except TimeoutError:
+            pass
+        finally:
+            await watcher.stop()
+    except Exception:
+        log.exception("wait_for_hub: unexpected error during KV watch")
 
     log.warning(
-        "Hub readiness probe timed out after %ss — "
-        "starting anyway (graceful degradation)",
+        "Hub readiness probe timed out after %ss — starting anyway (graceful degradation)",
         timeout,
     )
     return False

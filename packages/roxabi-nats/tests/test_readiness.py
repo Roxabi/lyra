@@ -284,17 +284,40 @@ class TestWaitForHubUnexpectedError:
     ) -> None:
         """wait_for_hub catches unexpected errors, logs them, and returns False.
 
-        Injects a fake NATS client whose .request() raises RuntimeError on
-        every call. Probe should exhaust the timeout, log via log.exception,
-        and return False.
+        Injects a fake NATS client whose KV watcher raises RuntimeError during
+        iteration. Probe should catch the error via log.exception and return False.
         """
 
-        # Arrange — fake NATS client that raises unexpected errors
+        # Arrange — fake KV watcher that raises during async iteration
+        class BrokenWatcher:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise RuntimeError("synthetic KV watch fault")
+
+            async def stop(self) -> None:
+                pass
+
+        # Fake KV that returns a key-not-found on get() and a broken watcher
+        class BrokenKV:
+            async def get(self, key: str):
+                from nats.js.errors import KeyNotFoundError
+
+                raise KeyNotFoundError
+
+            async def watch(self, key: str):
+                return BrokenWatcher()
+
+        # Fake JetStream context that returns BrokenKV
+        class BrokenJS:
+            async def key_value(self, bucket: str):
+                return BrokenKV()
+
+        # Fake NATS client that returns BrokenJS from .jetstream()
         class BrokenNats:
-            async def request(
-                self, subject: str, payload: bytes, timeout: float
-            ) -> None:
-                raise RuntimeError("synthetic transport fault")
+            def jetstream(self):
+                return BrokenJS()
 
         with caplog.at_level(logging.ERROR, logger="roxabi_nats.readiness"):
             # Act — short timeout so the test is fast

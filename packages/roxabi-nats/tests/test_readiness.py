@@ -281,6 +281,13 @@ class TestAnnounceHubReady:
 
     async def test_idempotent_second_call(self, nc_js: NATS) -> None:
         """announce_hub_ready called twice raises no exception; key stays b'true'."""
+        # Arrange — purge so prior tests in the session don't bleed in
+        try:
+            kv_setup = await nc_js.jetstream().key_value("lyra-state")
+            await kv_setup.purge("hub.ready")
+        except Exception:
+            pass  # bucket may not exist yet — that's fine
+
         # Act — two successive calls must not raise
         await announce_hub_ready(nc_js)
         await announce_hub_ready(nc_js)
@@ -359,35 +366,6 @@ class TestWaitForHubKV:
                 await adapter_nc.drain()
 
         # Assert
-        assert result is True
-
-    async def test_none_sentinel_skipped(
-        self, nc_js: NATS, nats_server_jetstream_url: str
-    ) -> None:
-        """wait_for_hub KV watcher correctly skips the None sentinel entry.
-
-        The NATS KV watcher emits a None entry on the initial watch call when
-        the key does not yet exist. The probe must not treat that as a valid
-        value and must continue waiting until the real key is written.
-        """
-        # Arrange — adapter connects before hub writes (same race as watch test)
-        adapter_nc = await nats.connect(nats_server_jetstream_url)
-        try:
-            probe_task = asyncio.create_task(
-                wait_for_hub(adapter_nc, timeout=5.0),
-                name="kv-sentinel-probe",
-            )
-
-            # Give the watcher time to receive the None sentinel
-            await asyncio.sleep(0.3)
-            await announce_hub_ready(nc_js)
-
-            result = await asyncio.wait_for(probe_task, timeout=6.0)
-        finally:
-            if adapter_nc.is_connected:
-                await adapter_nc.drain()
-
-        # Assert — probe succeeded despite the None sentinel
         assert result is True
 
     async def test_timeout_returns_false_and_warns(

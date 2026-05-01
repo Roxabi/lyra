@@ -413,7 +413,7 @@ class TestWaitForHubKV:
     async def test_kv_watch_returns_true_after_key_written(
         self, nc_js: NATS, nats_server_jetstream_url: str
     ) -> None:
-        """wait_for_hub returns True via KV watch when key is written after probe starts."""
+        """wait_for_hub returns True via KV watch when key appears mid-probe."""
         # Arrange — adapter connects before hub writes the key
         adapter_nc = await nats.connect(nats_server_jetstream_url)
         try:
@@ -518,10 +518,9 @@ class TestWaitForHubKV:
 
         # Assert
         assert result is True
-        assert any(
-            "Hub ready (KV immediate)" in r.message for r in caplog.records
-        ), (
-            f"Expected 'Hub ready (KV immediate)' in logs; got: {[r.message for r in caplog.records]}"
+        assert any("Hub ready (KV immediate)" in r.message for r in caplog.records), (
+            f"Expected 'Hub ready (KV immediate)' in logs; got: "
+            f"{[r.message for r in caplog.records]}"
         )
 
     async def test_adapter_logs_watch(
@@ -530,7 +529,7 @@ class TestWaitForHubKV:
         nats_server_jetstream_url: str,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """wait_for_hub logs 'Hub ready (KV watch)' when key appears after probe starts."""
+        """wait_for_hub logs 'Hub ready (KV watch)' when key appears mid-probe."""
         # Arrange — race path: key written after probe begins
         adapter_nc = await nats.connect(nats_server_jetstream_url)
         try:
@@ -550,8 +549,7 @@ class TestWaitForHubKV:
 
         # Assert
         assert result is True
-        assert any(
-            "Hub ready (KV watch)" in r.message for r in caplog.records
-        ), (
-            f"Expected 'Hub ready (KV watch)' in logs; got: {[r.message for r in caplog.records]}"
+        assert any("Hub ready (KV watch)" in r.message for r in caplog.records), (
+            f"Expected 'Hub ready (KV watch)' in logs; got: "
+            f"{[r.message for r in caplog.records]}"
         )

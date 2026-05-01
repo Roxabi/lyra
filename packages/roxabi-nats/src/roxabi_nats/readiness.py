@@ -95,6 +95,31 @@ async def start_readiness_responder(
     return sub
 
 
+_TIMEOUT_MSG = (
+    "Hub readiness probe timed out after %ss — starting anyway (graceful degradation)"
+)
+
+
+async def _kv_watch_for_ready(kv: object, remaining: float) -> bool:
+    """Block on KV watch until hub.ready=b'true' appears or timeout expires."""
+    watcher = await kv.watch("hub.ready")  # type: ignore[union-attr]
+    try:
+        async with asyncio.timeout(remaining):
+            async for entry in watcher:
+                if entry is None:
+                    continue  # init-done sentinel — no messages pending yet
+                if entry.value == b"true":
+                    log.info("Hub ready (KV watch)")
+                    return True
+    except TimeoutError:
+        pass
+    except Exception:
+        log.exception("wait_for_hub: unexpected error during KV watch")
+    finally:
+        await watcher.stop()
+    return False
+
+
 async def wait_for_hub(
     nc: NATS,
     *,
@@ -118,7 +143,6 @@ async def wait_for_hub(
 
     deadline = time.monotonic() + timeout
 
-    # Open or create the KV bucket
     try:
         js = nc.jetstream()
         try:
@@ -131,7 +155,6 @@ async def wait_for_hub(
         log.warning("wait_for_hub: JetStream not enabled — skipping probe")
         return False
 
-    # Fast path: key already present
     try:
         entry = await kv.get("hub.ready")
         if entry.value == b"true":
@@ -140,34 +163,13 @@ async def wait_for_hub(
     except KeyNotFoundError:
         pass  # fall through to watch
 
-    # Watch path: block until key appears or timeout
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        log.warning(
-            "Hub readiness probe timed out after %ss — starting anyway (graceful degradation)",
-            timeout,
-        )
+        log.warning(_TIMEOUT_MSG, timeout)
         return False
 
-    try:
-        watcher = await kv.watch("hub.ready")
-        try:
-            async with asyncio.timeout(remaining):
-                async for entry in watcher:
-                    if entry is None:
-                        continue  # init-done sentinel — no messages pending yet
-                    if entry.value == b"true":
-                        log.info("Hub ready (KV watch)")
-                        return True
-        except TimeoutError:
-            pass
-        finally:
-            await watcher.stop()
-    except Exception:
-        log.exception("wait_for_hub: unexpected error during KV watch")
+    if await _kv_watch_for_ready(kv, remaining):
+        return True
 
-    log.warning(
-        "Hub readiness probe timed out after %ss — starting anyway (graceful degradation)",
-        timeout,
-    )
+    log.warning(_TIMEOUT_MSG, timeout)
     return False

@@ -145,7 +145,7 @@ def nats_server_jetstream_url() -> Generator[str, None, None]:
 
 @pytest.fixture()
 async def nc_js(nats_server_jetstream_url: str) -> AsyncGenerator[NATS, None]:
-    """Return a connected nats.NATS client for JetStream tests, drained after each test."""
+    """Return a JetStream-connected NATS client, drained after each test."""
     conn = await nats.connect(nats_server_jetstream_url)
     yield conn
     if conn.is_connected:

@@ -38,7 +38,7 @@ define require_machine1
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor register quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy remote update nats-setup nats-regen-authconf nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
+.PHONY: build push lyra telegram discord nats clipool monitor register quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy full-deploy remote update nats-setup nats-regen-authconf nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -248,6 +248,35 @@ deploy:
 	echo ""; \
 	echo "Units installed + daemon-reload done."; \
 	echo "To restart: make remote lyra reload  (or: systemctl --user restart voicecli-tts voicecli-stt)"'
+
+full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf → secrets → HUP NATS → restart lyra
+	$(require_machine1)
+	@echo "Full deploy to $(DEPLOY_HOST) (requires sudo for gen-nkeys.sh)..."
+	@ssh -t $(DEPLOY_HOST) '\
+	set -eu; \
+	LYRA_DIR=$(DEPLOY_DIR); \
+	VOICE_DIR=$$(grep "^VOICE_DEPLOY_DIR=" "$$LYRA_DIR/.env" 2>/dev/null | cut -d= -f2); \
+	VOICE_DIR=$${VOICE_DIR:-$$HOME/projects/voiceCLI}; \
+	echo "==> lyra: pulling staging..."; \
+	cd "$$LYRA_DIR" && git pull origin staging; \
+	if [ -d "$$VOICE_DIR/.git" ]; then \
+	    echo "==> voiceCLI: pulling staging..."; \
+	    cd "$$VOICE_DIR" && git pull origin staging; \
+	    echo "==> voiceCLI: installing quadlet units..."; \
+	    make -C "$$VOICE_DIR" quadlet-install; \
+	fi; \
+	echo "==> lyra: installing quadlet units..."; \
+	make -C "$$LYRA_DIR" quadlet-install; \
+	echo "==> NATS: regenerating auth.conf from updated acl-matrix.json..."; \
+	sudo bash "$$LYRA_DIR/deploy/nats/gen-nkeys.sh" --regen-authconf; \
+	echo "==> NATS: installing Podman secrets..."; \
+	make -C "$$LYRA_DIR" quadlet-secrets-install; \
+	echo "==> NATS: reloading (HUP)..."; \
+	podman kill -s HUP lyra-nats; \
+	echo "==> Lyra: restarting containers..."; \
+	systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool; \
+	echo ""; \
+	echo "Full deploy complete."'
 
 # make remote [service] [action]
 #   service: lyra or empty → all lyra-* programs | <shortname> → lyra-<shortname>

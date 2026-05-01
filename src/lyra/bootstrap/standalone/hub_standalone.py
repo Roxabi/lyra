@@ -37,7 +37,7 @@ from lyra.bootstrap.wiring.nats_wiring import (
 from lyra.infrastructure.audit import JetStreamAuditSink
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
-from roxabi_nats.readiness import start_readiness_responder
+from roxabi_nats.readiness import announce_hub_ready, start_readiness_responder
 
 log = logging.getLogger(__name__)
 
@@ -210,6 +210,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         for d in dispatchers:
             await d.start()
 
+        await announce_hub_ready(nc)
         readiness_sub = await start_readiness_responder(nc, [hub.inbound_bus])
 
         import uvicorn

@@ -1,0 +1,48 @@
+---
+title: Replace request/reply readiness probe with NATS KV state
+issue: 1012
+status: approved
+tier: F-lite
+date: 2026-05-01
+---
+
+## Problem
+
+`wait_for_hub()` probes hub readiness via NATS request/reply on `lyra.system.ready`. Since commit `5b3b6c4a` (Apr 27), the hub's NATS ACL enforces `allow_responses: false`, which blocks hub from publishing to dynamic inbox subjects (`_inbox.clipool-worker.*`). Hub cannot reply to the probe, so clipool receives no acknowledgement and retries every 1 second for 1200 seconds (20 min) before finally subscribing to its command topic.
+
+**Observable impact on every clipool restart:**
+- 20-minute window where clipool does not respond to commands
+- 1200 NATS ACL violation log entries at 1/sec
+
+The regression was masked because clipool ran continuously from Apr 30 — the 20-min wait completed once and clipool stayed subscribed. A manual restart on May 1 re-triggered it.
+
+Strict ACLs (`allow_responses: false`) and request/reply probing are fundamentally incompatible. The probe must be replaced.
+
+## Who
+
+- **Primary:** `lyra-clipool` adapter — directly affected by the 20-min startup delay
+- **Secondary:** Any adapter that calls `wait_for_hub()` under a strict NATS ACL identity; developers restarting services on production
+
+## Constraints
+
+- JetStream must be enabled on the NATS server (expected to already be enabled)
+- KV bucket name: `lyra-state`, key: `hub.ready`, value: `true`
+- Hub writes the key once on startup — no heartbeat, no TTL needed
+- ACL config (`allow_responses: false`) stays unchanged — this fix must not require relaxing ACLs
+- Short-term unblock: reduce `default_timeout` in `wait_for_hub()` from 1200 s → 30 s while the KV fix is in flight
+
+## Out of Scope
+
+- Changes to NATS ACL configuration or `allow_responses` policy
+- Readiness signals for adapters other than hub (e.g. clipool → telegram)
+- Heartbeat / liveness monitoring beyond startup readiness
+
+## Complexity
+
+**Tier: F-lite** — Single domain (NATS transport layer), clear scope: replace one probe mechanism in `wait_for_hub()` and add one KV write in hub startup. No new architecture patterns needed.
+
+Signals observed:
+- ≤3 files expected (hub startup, `wait_for_hub()` implementation, possibly NATS client config)
+- Single domain: NATS/JetStream KV
+- Fix approach fully specified in issue body
+- No cross-domain coordination required

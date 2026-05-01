@@ -97,6 +97,7 @@ SESSION_ID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 )
 
+
 @dataclass
 class CliResult:
     """Result from a CliPool.send() call.

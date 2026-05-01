@@ -1,0 +1,81 @@
+---
+title: "ADR-065: NATS KV readiness probe replaces request/reply"
+description: Replace the hub readiness req/reply probe with a JetStream KV key (hub.ready in lyra-state) to eliminate inbox-subject ACL violations under allow_responses:false.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+ADR-062 and ADR-064 established per-identity inbox prefixes and derived responder grants in `acl-matrix.json`. The hub identity carries `allow_responses: false` as a security invariant — it does not need to reply to arbitrary inboxes.
+
+The existing readiness probe used NATS request/reply: adapters sent a request to `lyra.system.ready`; the hub replied to the dynamically generated `_INBOX.adapter.*` subject. This worked only when the hub ACL permitted publishing to adapter inboxes. Under `allow_responses: false`, the hub could not publish to any reply subject. The result was a 20-minute startup stall and ~1 200 ACL violations per second as the `nats-py` library retried delivery.
+
+Three classes of constraint drove the decision:
+- **ACL immovability.** `allow_responses: false` is a deliberate hardening measure. Relaxing it for readiness re-opens the inbox-spoofing surface closed by ADR-051.
+- **Persistent state.** The hub readiness fact is stable after startup. A KV key is the correct primitive for stable, read-many, written-once facts in JetStream.
+- **Adapter-side ACL simplicity.** Adapters need only `$KV.lyra-state.>` subscribe access — a single, predictable subject, not a dynamic inbox.
+
+## Options Considered
+
+### Option A: Grant hub publish to adapter inboxes (status quo relaxation)
+
+Add `_inbox.telegram.>`, `_inbox.discord.>`, etc. to the hub's publish ACL and restore `allow_responses: true`.
+
+- **Pros:** No code change; existing req/reply loop works.
+- **Cons:** Re-opens the inbox-spoofing surface that ADR-051 closed. Requires enumerating all adapter identity inbox prefixes in the hub ACL — a brittle, order-dependent list. Violates the `allow_responses: false` invariant. Rejected.
+
+### Option B: Fixed reply subject (lyra.system.ready.reply)
+
+Hub subscribes to a well-known `lyra.system.ready.reply` subject; adapters publish their request and listen on that fixed subject for the response.
+
+- **Pros:** No JetStream dependency. Works with core NATS only.
+- **Cons:** All adapters share one reply subject — no per-adapter correlation. A hub restart while adapters are waiting causes missed replies with no recovery path. Requires polling with a timer rather than event-driven notification. Still requires hub → adapter publish path, just with a fixed name instead of a dynamic inbox.
+
+### Option C: JetStream KV key (chosen)
+
+Hub calls `announce_hub_ready(nc)` on startup, writing `hub.ready = b"true"` to the `lyra-state` KV bucket. Adapters call `wait_for_hub(nc)` which (1) tries an immediate `kv.get("hub.ready")`, (2) falls back to a `kv.watch("hub.ready")` if the key is not yet present, and (3) degrades gracefully if JetStream is unavailable.
+
+- **Pros:** No inbox subjects involved — zero ACL surface change on the hub. KV value persists across adapter restarts; adapters that start after the hub see the key immediately. Watch path handles the race where an adapter starts before the hub. Idempotent: calling `kv.put` multiple times is safe.
+- **Cons:** Requires JetStream to be enabled. Adapters must be granted `$KV.lyra-state.>` subscribe access (one new ACL line per adapter identity). If JetStream is down, the probe skips and the adapter starts anyway (graceful degradation — same behavior as a timeout).
+
+## Decision
+
+Option C. The hub writes `hub.ready = b"true"` to `lyra-state` KV on startup. Adapters probe via KV read + watch. The legacy `start_readiness_responder` subscription on `lyra.system.ready` is retained for identities with `allow_responses: true` (external health endpoints, integration tests, CLIs) but is no longer part of the adapter startup path.
+
+Bucket provisioning ownership: the hub is the sole creator of the `lyra-state` bucket. Adapters that encounter `BucketNotFoundError` should degrade gracefully (log WARNING, return False) rather than create the bucket — this prevents adapters racing to provision with potentially divergent configs.
+
+## Consequences
+
+### Positive
+
+- Hub ACL is unchanged: no new publish grants required.
+- ACL violations eliminated: the `~1 200/s` rate drops to zero on startup.
+- Race-safe: the KV watch path means adapter start order is irrelevant.
+- KV key persists: adapters restarted after hub is up see the key immediately without a hub action.
+- Graceful degradation: JetStream unavailability is a WARNING, not a crash.
+
+### Negative
+
+- JetStream is now a soft dependency for the readiness probe. Environments running core-NATS-only (no `--jetstream`) lose probe coverage and always start with `wait_for_hub → False`.
+- `lyra-state` bucket must exist (hub provisions it). If hub never runs (fresh deploy, misconfiguration), adapters degrade silently rather than failing loudly — operators must watch for the WARNING log.
+
+### Neutral
+
+- `PROBE_INTERVAL_S` constant was removed in this PR — it was no longer referenced by any production code path.
+- `start_readiness_responder` continues to serve the HTTP health endpoint and CLI tooling that have `allow_responses: true` identities.
+- ACL matrix: each adapter identity gains one new subscribe allow: `$KV.lyra-state.>`.
+- `$JS.API.>` publish allow added for hub and all adapters to support JetStream API calls.
+
+## Deployment
+
+When deploying this change, the following order must be respected:
+
+1. **Enable JetStream on NATS.** Container installs: ensure `Exec=nats-server -js -c /etc/nats/nats.conf` in `lyra-nats.container`. Systemd installs: the `jetstream { store_dir: ... }` stanza in `nats.conf` activates it.
+2. **Regen auth.conf.** Run `sudo ./deploy/nats/gen-nkeys.sh --regen-authconf` to add the `$KV.lyra-state.>` subscribe grants and voice-client identity to the production ACL.
+3. **Reload NATS.** `make quadlet-secrets-install && podman kill -s HUP lyra-nats` (container) or `systemctl reload nats-server` (systemd).
+4. **Deploy code.** `make deploy` — hub wires `announce_hub_ready()` on startup; adapters call `wait_for_hub()` instead of the legacy probe.
+
+If NATS is reloaded before the code is deployed, adapters continue using the legacy probe path without error. If code is deployed before NATS is reloaded, adapters degrade gracefully (JetStream unavailable → WARNING, adapter starts anyway).

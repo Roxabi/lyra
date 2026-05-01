@@ -37,9 +37,7 @@ def _make_resources() -> LifecycleResources:
     return LifecycleResources(pm=None, cli_pool=None, nc=None)
 
 
-async def _watchdog_immediate(
-    tasks: object, stop: asyncio.Event
-) -> None:
+async def _watchdog_immediate(tasks: object, stop: asyncio.Event) -> None:
     """Replacement for watchdog that triggers shutdown immediately."""
     stop.set()
 

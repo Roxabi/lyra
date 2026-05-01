@@ -14,9 +14,7 @@ class _CliPoolCore(Protocol):  # pyright: ignore[reportUnusedClass]
 
     async def _idle_reaper(self) -> None: ...
 
-    async def _kill(
-        self, pool_id: str, *, preserve_session: bool = True
-    ) -> None: ...
+    async def _kill(self, pool_id: str, *, preserve_session: bool = True) -> None: ...
 
     async def _spawn(
         self,

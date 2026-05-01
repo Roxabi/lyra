@@ -59,7 +59,10 @@ def _parse_llm_timeout(timeout: float | None) -> float:
     if not (_TIMEOUT_MIN <= value <= _TIMEOUT_MAX):
         log.warning(
             "LLM timeout %.1fs out of range [%.0f, %.0f]; using %.0fs",
-            value, _TIMEOUT_MIN, _TIMEOUT_MAX, _TIMEOUT_DEFAULT,
+            value,
+            _TIMEOUT_MIN,
+            _TIMEOUT_MAX,
+            _TIMEOUT_DEFAULT,
         )
         return _TIMEOUT_DEFAULT
     return value

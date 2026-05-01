@@ -93,9 +93,7 @@ async def render_audio(
             "content_type": "audio/ogg",
         },
     ]
-    route = Route(
-        "POST", "/channels/{channel_id}/messages", channel_id=send_to_id
-    )
+    route = Route("POST", "/channels/{channel_id}/messages", channel_id=send_to_id)
     try:
         await adapter.http.request(route, form=form, files=[voice_file])
         log.info(

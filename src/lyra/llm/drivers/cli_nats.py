@@ -28,6 +28,7 @@ class _CliSessionStore(Protocol):
 
     async def get_cli_session(self, session_id: str) -> str | None: ...
 
+
 __all__ = ["CliNatsDriver"]
 log = logging.getLogger(__name__)
 

@@ -104,9 +104,7 @@ class ThreadStore(SqliteStore):
         ) as cur:
             return await cur.fetchone() is not None
 
-    async def get_session(
-        self, thread_id: str, bot_id: str
-    ) -> ThreadSession:
+    async def get_session(self, thread_id: str, bot_id: str) -> ThreadSession:
         """Return ThreadSession for (thread_id, bot_id).
 
         Returns an unresolved ThreadSession (is_resolved=False) if not found.

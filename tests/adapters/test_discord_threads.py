@@ -566,7 +566,5 @@ class TestRestoreHotThreads:
 
         call_kwargs = store.get_thread_ids.call_args
         assert call_kwargs is not None
-        active_since = call_kwargs.kwargs.get(
-            "active_since"
-        ) or call_kwargs.args[1]
+        active_since = call_kwargs.kwargs.get("active_since") or call_kwargs.args[1]
         assert active_since is not None

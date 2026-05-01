@@ -2,12 +2,12 @@
 
 Covered behaviours:
 - start_readiness_responder() replies to lyra.system.ready with a valid JSON payload
-- wait_for_hub() returns True when a responder is running
-- wait_for_hub() returns False and logs WARNING when no responder is present
-- wait_for_hub() succeeds when the responder starts after the probe begins
-  (concurrent-startup race simulation)
-- wait_for_hub() returns False and logs on unexpected errors
 - start_readiness_responder() handles buses=[] (sum of empty = 0)
+- wait_for_hub() returns True via KV immediate path when hub.ready key exists
+- wait_for_hub() returns True via KV watch when key appears mid-probe
+- wait_for_hub() returns False and logs WARNING on timeout
+- wait_for_hub() returns False and logs on unexpected errors
+- announce_hub_ready() writes and announces hub.ready key
 """
 
 from __future__ import annotations
@@ -22,9 +22,9 @@ from nats.aio.client import Client as NATS
 
 import nats
 from roxabi_nats.readiness import (
-    PROBE_INTERVAL_S,
     PROBE_TIMEOUT_S,
     READINESS_SUBJECT,
+    announce_hub_ready,
     start_readiness_responder,
     wait_for_hub,
 )
@@ -63,19 +63,10 @@ class TestReadinessConstants:
         """READINESS_SUBJECT must equal 'lyra.system.ready'."""
         assert READINESS_SUBJECT == "lyra.system.ready"
 
-    def test_probe_interval_is_positive(self) -> None:
-        """PROBE_INTERVAL_S must be a positive float."""
-        assert isinstance(PROBE_INTERVAL_S, float)
-        assert PROBE_INTERVAL_S > 0
-
     def test_probe_timeout_is_positive(self) -> None:
         """PROBE_TIMEOUT_S must be a positive float."""
         assert isinstance(PROBE_TIMEOUT_S, float)
         assert PROBE_TIMEOUT_S > 0
-
-    def test_probe_timeout_greater_than_interval(self) -> None:
-        """PROBE_TIMEOUT_S must be larger than PROBE_INTERVAL_S."""
-        assert PROBE_TIMEOUT_S > PROBE_INTERVAL_S
 
 
 # ---------------------------------------------------------------------------
@@ -85,31 +76,6 @@ class TestReadinessConstants:
 
 @requires_nats_server
 class TestReadinessReply:
-    async def test_readiness_reply_returns_true(
-        self, nc: NATS, nats_server_url: str
-    ) -> None:
-        """wait_for_hub returns True when a responder is active on another connection.
-
-        Uses two NATS connections to mirror the real hub/adapter split:
-        - nc  (from fixture) runs the responder (hub side)
-        - nc2 (created here)  runs the probe  (adapter side)
-        """
-        # Arrange — start responder on hub connection
-        buses = [FakeBus(count=2), FakeBus(count=3)]
-        sub = await start_readiness_responder(nc, buses)
-
-        nc2 = await nats.connect(nats_server_url)
-        try:
-            # Act
-            result = await wait_for_hub(nc2, timeout=5.0)
-
-            # Assert — probe succeeded
-            assert result is True
-        finally:
-            await sub.unsubscribe()
-            if nc2.is_connected:
-                await nc2.drain()
-
     async def test_readiness_reply_payload_shape(
         self, nc: NATS, nats_server_url: str
     ) -> None:
@@ -199,52 +165,6 @@ class TestReadinessTimeout:
 
 
 # ---------------------------------------------------------------------------
-# TestConcurrentStartup — SC-3: probe succeeds when hub starts after probe begins
-# ---------------------------------------------------------------------------
-
-
-@requires_nats_server
-class TestConcurrentStartup:
-    async def test_wait_for_hub_succeeds_when_responder_starts_after_probe(
-        self, nc: NATS, nats_server_url: str
-    ) -> None:
-        """wait_for_hub waits and returns True when responder starts 200ms after probe.
-
-        Simulates the real race: adapter calls wait_for_hub before hub is ready,
-        then hub boots and starts the responder while the probe is still retrying.
-        """
-        # Arrange — second connection for the hub side
-        hub_nc = await nats.connect(nats_server_url)
-
-        sub = None
-        try:
-            # Act — launch probe as a concurrent task (adapter side)
-            probe_task = asyncio.create_task(
-                wait_for_hub(nc, timeout=5.0),
-                name="readiness-probe",
-            )
-
-            # Simulate hub starting 200ms after the probe begins
-            await asyncio.sleep(0.2)
-            buses = [FakeBus(count=1)]
-            sub = await start_readiness_responder(hub_nc, buses)
-
-            # Wait for probe to resolve
-            result = await asyncio.wait_for(probe_task, timeout=6.0)
-
-            # Assert — probe eventually succeeded
-            assert result is True, (
-                "wait_for_hub should return True once the responder started, "
-                "but it returned False"
-            )
-        finally:
-            if sub is not None:
-                await sub.unsubscribe()
-            if hub_nc.is_connected:
-                await hub_nc.drain()
-
-
-# ---------------------------------------------------------------------------
 # TestReadinessEdgeCases — empty buses list + unexpected errors
 # ---------------------------------------------------------------------------
 
@@ -283,17 +203,40 @@ class TestWaitForHubUnexpectedError:
     ) -> None:
         """wait_for_hub catches unexpected errors, logs them, and returns False.
 
-        Injects a fake NATS client whose .request() raises RuntimeError on
-        every call. Probe should exhaust the timeout, log via log.exception,
-        and return False.
+        Injects a fake NATS client whose KV watcher raises RuntimeError during
+        iteration. Probe should catch the error via log.exception and return False.
         """
 
-        # Arrange — fake NATS client that raises unexpected errors
+        # Arrange — fake KV watcher that raises during async iteration
+        class BrokenWatcher:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise RuntimeError("synthetic KV watch fault")
+
+            async def stop(self) -> None:
+                pass
+
+        # Fake KV that returns a key-not-found on get() and a broken watcher
+        class BrokenKV:
+            async def get(self, key: str):
+                from nats.js.errors import KeyNotFoundError
+
+                raise KeyNotFoundError
+
+            async def watch(self, key: str):
+                return BrokenWatcher()
+
+        # Fake JetStream context that returns BrokenKV
+        class BrokenJS:
+            async def key_value(self, bucket: str):
+                return BrokenKV()
+
+        # Fake NATS client that returns BrokenJS from .jetstream()
         class BrokenNats:
-            async def request(
-                self, subject: str, payload: bytes, timeout: float
-            ) -> None:
-                raise RuntimeError("synthetic transport fault")
+            def jetstream(self):
+                return BrokenJS()
 
         with caplog.at_level(logging.ERROR, logger="roxabi_nats.readiness"):
             # Act — short timeout so the test is fast
@@ -307,4 +250,229 @@ class TestWaitForHubUnexpectedError:
         assert error_records, (
             "Expected at least one ERROR log from wait_for_hub on unexpected "
             f"error; captured records: {caplog.records}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestAnnounceHubReady — T3: KV write on hub startup
+# ---------------------------------------------------------------------------
+
+
+@requires_nats_server
+class TestAnnounceHubReady:
+    async def test_writes_hub_ready_key(
+        self, nc_js: NATS, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """announce_hub_ready writes hub.ready = b'true' and logs INFO."""
+        with caplog.at_level(logging.INFO, logger="roxabi_nats.readiness"):
+            await announce_hub_ready(nc_js)
+
+        # Assert — key is present and has the expected value
+        js = nc_js.jetstream()
+        kv = await js.key_value("lyra-state")
+        entry = await kv.get("hub.ready")
+        assert entry.value == b"true"
+
+        # Assert — INFO log was emitted (spec criterion SC-7)
+        assert any("Hub KV ready announced" in r.message for r in caplog.records), (
+            f"Expected 'Hub KV ready announced' in logs; got: "
+            f"{[r.message for r in caplog.records]}"
+        )
+
+    async def test_idempotent_second_call(self, nc_js: NATS) -> None:
+        """announce_hub_ready called twice raises no exception; key stays b'true'."""
+        # Arrange — purge so prior tests in the session don't bleed in
+        try:
+            kv_setup = await nc_js.jetstream().key_value("lyra-state")
+            await kv_setup.purge("hub.ready")
+        except Exception:
+            pass  # bucket may not exist yet — that's fine
+
+        # Act — two successive calls must not raise
+        await announce_hub_ready(nc_js)
+        await announce_hub_ready(nc_js)
+
+        # Assert — key still holds the expected value
+        js = nc_js.jetstream()
+        kv = await js.key_value("lyra-state")
+        entry = await kv.get("hub.ready")
+        assert entry.value == b"true"
+
+    async def test_jetstream_unavailable_logs_warning(
+        self, nc: NATS, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """announce_hub_ready degrades gracefully when JetStream is unavailable.
+
+        Uses the plain ``nc`` fixture (no JetStream server), verifies no
+        exception is raised and that a WARNING was logged.
+        """
+        # Act — plain NATS server has no JetStream; must not raise
+        with caplog.at_level(logging.WARNING, logger="roxabi_nats.readiness"):
+            await announce_hub_ready(nc)
+
+        # Assert — function returned without raising (implicit if we reach here)
+        # Assert — at least one WARNING was logged
+        warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert warning_records, (
+            "Expected at least one WARNING log from announce_hub_ready when "
+            f"JetStream is unavailable; captured records: {caplog.records}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestWaitForHubKV — T4: KV read paths in wait_for_hub
+# ---------------------------------------------------------------------------
+
+
+@requires_nats_server
+class TestWaitForHubKV:
+    async def test_kv_immediate_returns_true(
+        self, nc_js: NATS, nats_server_jetstream_url: str
+    ) -> None:
+        """wait_for_hub returns True immediately when hub.ready is already set."""
+        # Arrange — hub writes the key first
+        await announce_hub_ready(nc_js)
+
+        # Act — adapter connects and probes
+        adapter_nc = await nats.connect(nats_server_jetstream_url)
+        try:
+            result = await wait_for_hub(adapter_nc, timeout=5.0)
+        finally:
+            if adapter_nc.is_connected:
+                await adapter_nc.drain()
+
+        # Assert
+        assert result is True
+
+    async def test_kv_watch_returns_true_after_key_written(
+        self, nc_js: NATS, nats_server_jetstream_url: str
+    ) -> None:
+        """wait_for_hub returns True via KV watch when key appears mid-probe."""
+        # Arrange — purge so a prior hub.ready write doesn't bypass the watch path
+        try:
+            kv_setup = await nc_js.jetstream().key_value("lyra-state")
+            await kv_setup.purge("hub.ready")
+        except Exception:
+            pass
+        # Arrange — adapter connects before hub writes the key
+        adapter_nc = await nats.connect(nats_server_jetstream_url)
+        try:
+            # Act — launch probe as a task; hub writes 200ms later
+            probe_task = asyncio.create_task(
+                wait_for_hub(adapter_nc, timeout=5.0),
+                name="kv-readiness-probe",
+            )
+
+            await asyncio.sleep(0.2)
+            await announce_hub_ready(nc_js)
+
+            result = await asyncio.wait_for(probe_task, timeout=6.0)
+        finally:
+            if adapter_nc.is_connected:
+                await adapter_nc.drain()
+
+        # Assert
+        assert result is True
+
+    async def test_timeout_returns_false_and_warns(
+        self, nc_js: NATS, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """wait_for_hub returns False and logs WARNING when key never appears."""
+        # Arrange — purge hub.ready so earlier tests in the session don't bleed in
+        try:
+            kv_setup = await nc_js.jetstream().key_value("lyra-state")
+            await kv_setup.purge("hub.ready")
+        except Exception:
+            pass  # bucket may not exist yet — that's fine for this test
+
+        with caplog.at_level(logging.WARNING, logger="roxabi_nats.readiness"):
+            # Act
+            result = await wait_for_hub(nc_js, timeout=0.5)
+
+        # Assert
+        assert result is False
+
+        warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert warning_records, (
+            "Expected at least one WARNING log from wait_for_hub on timeout; "
+            f"captured records: {caplog.records}"
+        )
+
+    async def test_jetstream_unavailable_returns_false(
+        self, nc: NATS, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """wait_for_hub returns False and logs WARNING when JetStream is unavailable."""
+        # Arrange — plain NATS server (no JetStream); short timeout
+        with caplog.at_level(logging.WARNING, logger="roxabi_nats.readiness"):
+            result = await wait_for_hub(nc, timeout=1.0)
+
+        # Assert
+        assert result is False
+
+        warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert warning_records, (
+            "Expected at least one WARNING log from wait_for_hub when JetStream "
+            f"is unavailable; captured records: {caplog.records}"
+        )
+
+    async def test_adapter_logs_immediate(
+        self,
+        nc_js: NATS,
+        nats_server_jetstream_url: str,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """wait_for_hub logs 'Hub ready (KV immediate)' when key is already present."""
+        # Arrange
+        await announce_hub_ready(nc_js)
+
+        adapter_nc = await nats.connect(nats_server_jetstream_url)
+        try:
+            with caplog.at_level(logging.INFO, logger="roxabi_nats.readiness"):
+                result = await wait_for_hub(adapter_nc, timeout=5.0)
+        finally:
+            if adapter_nc.is_connected:
+                await adapter_nc.drain()
+
+        # Assert
+        assert result is True
+        assert any("Hub ready (KV immediate)" in r.message for r in caplog.records), (
+            f"Expected 'Hub ready (KV immediate)' in logs; got: "
+            f"{[r.message for r in caplog.records]}"
+        )
+
+    async def test_adapter_logs_watch(
+        self,
+        nc_js: NATS,
+        nats_server_jetstream_url: str,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """wait_for_hub logs 'Hub ready (KV watch)' when key appears mid-probe."""
+        # Arrange — purge so a prior hub.ready write doesn't bypass the watch path
+        try:
+            kv_setup = await nc_js.jetstream().key_value("lyra-state")
+            await kv_setup.purge("hub.ready")
+        except Exception:
+            pass
+        # Arrange — race path: key written after probe begins
+        adapter_nc = await nats.connect(nats_server_jetstream_url)
+        try:
+            with caplog.at_level(logging.INFO, logger="roxabi_nats.readiness"):
+                probe_task = asyncio.create_task(
+                    wait_for_hub(adapter_nc, timeout=5.0),
+                    name="kv-watch-log-probe",
+                )
+
+                await asyncio.sleep(0.2)
+                await announce_hub_ready(nc_js)
+
+                result = await asyncio.wait_for(probe_task, timeout=6.0)
+        finally:
+            if adapter_nc.is_connected:
+                await adapter_nc.drain()
+
+        # Assert
+        assert result is True
+        assert any("Hub ready (KV watch)" in r.message for r in caplog.records), (
+            f"Expected 'Hub ready (KV watch)' in logs; got: "
+            f"{[r.message for r in caplog.records]}"
         )

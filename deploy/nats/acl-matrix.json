@@ -14,7 +14,7 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox normalized to lowercase _inbox.hub.> (ADR-051 + postmortem Fix 1).",
-      "notes": "Stream provisioning is a deploy-time admin operation — hub does not create/update streams at runtime. $JS.API.STREAM.CREATE/UPDATE.LYRA_AUDIT are intentionally absent from publish ACLs.",
+      "notes": "Hub provisions the lyra-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $JS.API.STREAM.CREATE/UPDATE.LYRA_AUDIT are covered by the broader $JS.API.> grant. Tighter per-operation scoping is tracked as a follow-up.",
       "allow_responses": false,
       "publish": [
         "lyra.outbound.telegram.>",
@@ -25,7 +25,8 @@
         "lyra.image.generate.request",
         "lyra.clipool.cmd",
         "lyra.clipool.control",
-        "lyra.audit.>"
+        "lyra.audit.>",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.inbound.telegram.>",
@@ -35,7 +36,8 @@
         "lyra.llm.health.*",
         "lyra.system.ready",
         "lyra.image.heartbeat",
-        "lyra.clipool.heartbeat"
+        "lyra.clipool.heartbeat",
+        "_inbox.hub.>"
       ]
     },
     "telegram-adapter": {
@@ -43,15 +45,18 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Telegram bot adapter — inbox normalized to _inbox.telegram-adapter.> (ADR-051 + postmortem Fix 1).",
+      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up.",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.telegram.>",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.outbound.telegram.>",
         "_inbox.telegram-adapter.>",
-        "_inbox.telegram-adapter.*.*"
+        "_inbox.telegram-adapter.*.*",
+        "$KV.lyra-state.>"
       ]
     },
     "discord-adapter": {
@@ -59,15 +64,18 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Discord bot adapter — inbox normalized to _inbox.discord-adapter.> (ADR-051 + postmortem Fix 1).",
+      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up.",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.discord.>",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.outbound.discord.>",
         "_inbox.discord-adapter.>",
-        "_inbox.discord-adapter.*.*"
+        "_inbox.discord-adapter.*.*",
+        "$KV.lyra-state.>"
       ]
     },
     "voice-tts": {
@@ -150,12 +158,14 @@
       "allow_responses": true,
       "publish": [
         "lyra.clipool.heartbeat",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.clipool.cmd",
         "lyra.clipool.control",
-        "_inbox.clipool-worker.>"
+        "_inbox.clipool-worker.>",
+        "$KV.lyra-state.>"
       ]
     },
     "voice-client": {

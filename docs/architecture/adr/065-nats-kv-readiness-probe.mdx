@@ -64,7 +64,18 @@ Bucket provisioning ownership: the hub is the sole creator of the `lyra-state` b
 
 ### Neutral
 
-- `PROBE_INTERVAL_S` constant is now unused by production code; retained in the module for backward compatibility but should be removed in the next minor version.
+- `PROBE_INTERVAL_S` constant was removed in this PR — it was no longer referenced by any production code path.
 - `start_readiness_responder` continues to serve the HTTP health endpoint and CLI tooling that have `allow_responses: true` identities.
 - ACL matrix: each adapter identity gains one new subscribe allow: `$KV.lyra-state.>`.
 - `$JS.API.>` publish allow added for hub and all adapters to support JetStream API calls.
+
+## Deployment
+
+When deploying this change, the following order must be respected:
+
+1. **Enable JetStream on NATS.** Container installs: ensure `Exec=nats-server -js -c /etc/nats/nats.conf` in `lyra-nats.container`. Systemd installs: the `jetstream { store_dir: ... }` stanza in `nats.conf` activates it.
+2. **Regen auth.conf.** Run `sudo ./deploy/nats/gen-nkeys.sh --regen-authconf` to add the `$KV.lyra-state.>` subscribe grants and voice-client identity to the production ACL.
+3. **Reload NATS.** `make quadlet-secrets-install && podman kill -s HUP lyra-nats` (container) or `systemctl reload nats-server` (systemd).
+4. **Deploy code.** `make deploy` — hub wires `announce_hub_ready()` on startup; adapters call `wait_for_hub()` instead of the legacy probe.
+
+If NATS is reloaded before the code is deployed, adapters continue using the legacy probe path without error. If code is deployed before NATS is reloaded, adapters degrade gracefully (JetStream unavailable → WARNING, adapter starts anyway).

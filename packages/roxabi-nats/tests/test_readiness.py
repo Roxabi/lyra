@@ -348,6 +348,12 @@ class TestWaitForHubKV:
         self, nc_js: NATS, nats_server_jetstream_url: str
     ) -> None:
         """wait_for_hub returns True via KV watch when key appears mid-probe."""
+        # Arrange — purge so a prior hub.ready write doesn't bypass the watch path
+        try:
+            kv_setup = await nc_js.jetstream().key_value("lyra-state")
+            await kv_setup.purge("hub.ready")
+        except Exception:
+            pass
         # Arrange — adapter connects before hub writes the key
         adapter_nc = await nats.connect(nats_server_jetstream_url)
         try:
@@ -441,6 +447,12 @@ class TestWaitForHubKV:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """wait_for_hub logs 'Hub ready (KV watch)' when key appears mid-probe."""
+        # Arrange — purge so a prior hub.ready write doesn't bypass the watch path
+        try:
+            kv_setup = await nc_js.jetstream().key_value("lyra-state")
+            await kv_setup.purge("hub.ready")
+        except Exception:
+            pass
         # Arrange — race path: key written after probe begins
         adapter_nc = await nats.connect(nats_server_jetstream_url)
         try:

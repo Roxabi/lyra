@@ -68,11 +68,16 @@ async def announce_hub_ready(nc: NATS) -> None:
 
     Degrades gracefully if JetStream is not available (logs WARNING, returns).
     """
+    from nats.js.errors import ServiceUnavailableError
+
     try:
         js = nc.jetstream()
         kv = await _open_or_create_lyra_state_kv(js)
-    except Exception:
+    except ServiceUnavailableError:
         log.warning("Hub KV unavailable — JetStream not enabled")
+        return
+    except Exception:
+        log.exception("announce_hub_ready: unexpected error opening lyra-state KV")
         return
 
     await kv.put("hub.ready", b"true")

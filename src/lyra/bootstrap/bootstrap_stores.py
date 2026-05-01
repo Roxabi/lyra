@@ -112,9 +112,7 @@ def _atomic_table_copy(  # noqa: C901 — sequential migration steps
             col_list = ", ".join(col_names)
             placeholders = ", ".join("?" for _ in col_names)
             # safe: table/column names validated against _IDENT_RE above
-            rows = src.execute(
-                f"SELECT {col_list} FROM {table}"
-            ).fetchall()
+            rows = src.execute(f"SELECT {col_list} FROM {table}").fetchall()
             if rows:
                 # safe: table/column names validated against _IDENT_RE above
                 dst.executemany(
@@ -134,8 +132,8 @@ def _atomic_table_copy(  # noqa: C901 — sequential migration steps
         ).fetchall()
         for (idx_sql,) in idx_rows:
             _DDL_INDEX_RE = (
-                r'^CREATE\s+(UNIQUE\s+)?INDEX\s+'
-                r'(IF\s+NOT\s+EXISTS\s+)?[A-Za-z_][A-Za-z0-9_]*\s+ON\b'
+                r"^CREATE\s+(UNIQUE\s+)?INDEX\s+"
+                r"(IF\s+NOT\s+EXISTS\s+)?[A-Za-z_][A-Za-z0-9_]*\s+ON\b"
             )
             if not re.match(_DDL_INDEX_RE, idx_sql, re.IGNORECASE):
                 log.warning(

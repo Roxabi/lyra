@@ -33,9 +33,7 @@ class ThreadStoreProtocol(Protocol):
 
     async def is_owned(self, thread_id: str, bot_id: str) -> bool: ...
 
-    async def get_session(
-        self, thread_id: str, bot_id: str
-    ) -> ThreadSession: ...
+    async def get_session(self, thread_id: str, bot_id: str) -> ThreadSession: ...
 
     async def claim(
         self,

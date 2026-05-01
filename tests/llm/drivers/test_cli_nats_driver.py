@@ -865,9 +865,7 @@ class TestStreamGenSessionPersistence:
         # Act
         events = []
         with patch.object(driver, "_stream_gen", new=_mock_stream_gen):
-            async for ev in await driver.stream(
-                "pool-1", "hi", _make_model_cfg(), ""
-            ):
+            async for ev in await driver.stream("pool-1", "hi", _make_model_cfg(), ""):
                 events.append(ev)
         await asyncio.sleep(0)  # let the fire-and-forget task run
 

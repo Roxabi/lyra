@@ -336,9 +336,7 @@ async def test_handle_control_resume_and_reset() -> None:
 
     msg = _make_nats_msg(subject="lyra.clipool.control", reply="_INBOX.ctrl")
     _sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    payload = _control_payload(
-        op="resume_and_reset", pool_id="pool-y", session_id=_sid
-    )
+    payload = _control_payload(op="resume_and_reset", pool_id="pool-y", session_id=_sid)
 
     # Act
     await worker._handle_control(msg, payload)

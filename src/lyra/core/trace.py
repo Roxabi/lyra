@@ -133,5 +133,3 @@ class TelegramTokenFilter(logging.Filter):
         except Exception:
             pass  # never block logging on a filter error
         return True
-
-

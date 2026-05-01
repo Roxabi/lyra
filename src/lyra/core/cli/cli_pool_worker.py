@@ -58,7 +58,6 @@ _env_cwd = os.environ.get("LYRA_CLAUDE_CWD")
 _LYRA_ROOT = Path(_env_cwd) if _env_cwd else _find_project_root()
 
 
-
 class CliPoolWorkerMixin:
     """Base class providing spawn/kill worker methods for CliPool."""
 

@@ -65,9 +65,7 @@ def sanitize_platform_meta(
     """
     # empty frozenset is valid (block-all); only None falls back to default
     active_allowlist = allowlist if allowlist is not None else PLATFORM_META_ALLOWLIST
-    stripped = [
-        k for k in meta if k not in active_allowlist or k.startswith("_")
-    ]
+    stripped = [k for k in meta if k not in active_allowlist or k.startswith("_")]
     if stripped:
         log.debug("platform_meta: stripped keys %s", stripped)
     result: dict[str, Any] = {}

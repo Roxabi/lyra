@@ -31,9 +31,7 @@ class CliPoolLifecycleMixin:
 
     async def start(self) -> None:
         """Start the idle reaper background task."""
-        self._reaper_task = asyncio.create_task(
-            cast(_CliPoolCore, self)._idle_reaper()
-        )
+        self._reaper_task = asyncio.create_task(cast(_CliPoolCore, self)._idle_reaper())
         log.info("CliPool started (idle_ttl=%ds)", self._idle_ttl)
 
     def get_reaper_status(self) -> dict[str, bool | float | None]:

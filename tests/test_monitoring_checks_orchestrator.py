@@ -68,8 +68,8 @@ class TestRunChecks:
 
         with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
-            mock_client.get.side_effect = (
-                lambda url, **kw: varz_response if "/varz" in url else mock_response
+            mock_client.get.side_effect = lambda url, **kw: (
+                varz_response if "/varz" in url else mock_response
             )
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)

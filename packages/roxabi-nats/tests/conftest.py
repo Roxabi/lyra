@@ -110,3 +110,43 @@ async def nc(nats_server_url: str) -> AsyncGenerator[NATS, None]:
     yield conn
     if conn.is_connected:
         await conn.drain()
+
+
+@pytest.fixture(scope="session")
+def nats_server_jetstream_url() -> Generator[str, None, None]:
+    """Spawn a JetStream-enabled nats-server subprocess for the test session.
+
+    Skipped automatically when nats-server is not in PATH.
+    """
+    if not _nats_server_available:
+        pytest.skip("nats-server not found in PATH")
+    port = _free_port()
+    url = f"nats://127.0.0.1:{port}"
+    proc = subprocess.Popen(
+        ["nats-server", "-p", str(port), "--jetstream"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    # Wait for server to be ready
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.05)
+    else:
+        proc.terminate()
+        raise RuntimeError(f"nats-server did not start on port {port}")
+    yield url
+    proc.terminate()
+    proc.wait()
+
+
+@pytest.fixture()
+async def nc_js(nats_server_jetstream_url: str) -> AsyncGenerator[NATS, None]:
+    """Return a connected nats.NATS client for JetStream tests, drained after each test."""
+    conn = await nats.connect(nats_server_jetstream_url)
+    yield conn
+    if conn.is_connected:
+        await conn.drain()

@@ -31,6 +31,17 @@ class _HasSubscriptionCount(Protocol):
     def subscription_count(self) -> int: ...
 
 
+async def announce_hub_ready(nc: NATS) -> None:
+    """Write hub.ready = b'true' to lyra-state KV bucket on hub startup.
+
+    Adapters call wait_for_hub() to read this key instead of using a
+    request/reply probe — compatible with allow_responses: false ACLs.
+
+    Degrades gracefully if JetStream is not available (logs WARNING, returns).
+    """
+    raise NotImplementedError("announce_hub_ready: implementation pending")
+
+
 async def start_readiness_responder(
     nc: NATS, buses: Sequence[_HasSubscriptionCount]
 ) -> Subscription:

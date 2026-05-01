@@ -2,12 +2,12 @@
 
 Covered behaviours:
 - start_readiness_responder() replies to lyra.system.ready with a valid JSON payload
-- wait_for_hub() returns True when a responder is running
-- wait_for_hub() returns False and logs WARNING when no responder is present
-- wait_for_hub() succeeds when the responder starts after the probe begins
-  (concurrent-startup race simulation)
-- wait_for_hub() returns False and logs on unexpected errors
 - start_readiness_responder() handles buses=[] (sum of empty = 0)
+- wait_for_hub() returns True via KV immediate path when hub.ready key exists
+- wait_for_hub() returns True via KV watch when key appears mid-probe
+- wait_for_hub() returns False and logs WARNING on timeout
+- wait_for_hub() returns False and logs on unexpected errors
+- announce_hub_ready() writes and announces hub.ready key
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ from nats.aio.client import Client as NATS
 
 import nats
 from roxabi_nats.readiness import (
-    PROBE_INTERVAL_S,
     PROBE_TIMEOUT_S,
     READINESS_SUBJECT,
     announce_hub_ready,
@@ -64,19 +63,10 @@ class TestReadinessConstants:
         """READINESS_SUBJECT must equal 'lyra.system.ready'."""
         assert READINESS_SUBJECT == "lyra.system.ready"
 
-    def test_probe_interval_is_positive(self) -> None:
-        """PROBE_INTERVAL_S must be a positive float."""
-        assert isinstance(PROBE_INTERVAL_S, float)
-        assert PROBE_INTERVAL_S > 0
-
     def test_probe_timeout_is_positive(self) -> None:
         """PROBE_TIMEOUT_S must be a positive float."""
         assert isinstance(PROBE_TIMEOUT_S, float)
         assert PROBE_TIMEOUT_S > 0
-
-    def test_probe_timeout_greater_than_interval(self) -> None:
-        """PROBE_TIMEOUT_S must be larger than PROBE_INTERVAL_S."""
-        assert PROBE_TIMEOUT_S > PROBE_INTERVAL_S
 
 
 # ---------------------------------------------------------------------------
@@ -86,31 +76,6 @@ class TestReadinessConstants:
 
 @requires_nats_server
 class TestReadinessReply:
-    async def test_readiness_reply_returns_true(
-        self, nc: NATS, nats_server_url: str
-    ) -> None:
-        """wait_for_hub returns True when a responder is active on another connection.
-
-        Uses two NATS connections to mirror the real hub/adapter split:
-        - nc  (from fixture) runs the responder (hub side)
-        - nc2 (created here)  runs the probe  (adapter side)
-        """
-        # Arrange — start responder on hub connection
-        buses = [FakeBus(count=2), FakeBus(count=3)]
-        sub = await start_readiness_responder(nc, buses)
-
-        nc2 = await nats.connect(nats_server_url)
-        try:
-            # Act
-            result = await wait_for_hub(nc2, timeout=5.0)
-
-            # Assert — probe succeeded
-            assert result is True
-        finally:
-            await sub.unsubscribe()
-            if nc2.is_connected:
-                await nc2.drain()
-
     async def test_readiness_reply_payload_shape(
         self, nc: NATS, nats_server_url: str
     ) -> None:
@@ -197,52 +162,6 @@ class TestReadinessTimeout:
             "Expected at least one WARNING log from wait_for_hub on timeout; "
             f"captured records: {caplog.records}"
         )
-
-
-# ---------------------------------------------------------------------------
-# TestConcurrentStartup — SC-3: probe succeeds when hub starts after probe begins
-# ---------------------------------------------------------------------------
-
-
-@requires_nats_server
-class TestConcurrentStartup:
-    async def test_wait_for_hub_succeeds_when_responder_starts_after_probe(
-        self, nc: NATS, nats_server_url: str
-    ) -> None:
-        """wait_for_hub waits and returns True when responder starts 200ms after probe.
-
-        Simulates the real race: adapter calls wait_for_hub before hub is ready,
-        then hub boots and starts the responder while the probe is still retrying.
-        """
-        # Arrange — second connection for the hub side
-        hub_nc = await nats.connect(nats_server_url)
-
-        sub = None
-        try:
-            # Act — launch probe as a concurrent task (adapter side)
-            probe_task = asyncio.create_task(
-                wait_for_hub(nc, timeout=5.0),
-                name="readiness-probe",
-            )
-
-            # Simulate hub starting 200ms after the probe begins
-            await asyncio.sleep(0.2)
-            buses = [FakeBus(count=1)]
-            sub = await start_readiness_responder(hub_nc, buses)
-
-            # Wait for probe to resolve
-            result = await asyncio.wait_for(probe_task, timeout=6.0)
-
-            # Assert — probe eventually succeeded
-            assert result is True, (
-                "wait_for_hub should return True once the responder started, "
-                "but it returned False"
-            )
-        finally:
-            if sub is not None:
-                await sub.unsubscribe()
-            if hub_nc.is_connected:
-                await hub_nc.drain()
 
 
 # ---------------------------------------------------------------------------
@@ -341,16 +260,24 @@ class TestWaitForHubUnexpectedError:
 
 @requires_nats_server
 class TestAnnounceHubReady:
-    async def test_writes_hub_ready_key(self, nc_js: NATS) -> None:
-        """announce_hub_ready writes hub.ready = b'true' to lyra-state KV bucket."""
-        # Act
-        await announce_hub_ready(nc_js)
+    async def test_writes_hub_ready_key(
+        self, nc_js: NATS, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """announce_hub_ready writes hub.ready = b'true' and logs INFO."""
+        with caplog.at_level(logging.INFO, logger="roxabi_nats.readiness"):
+            await announce_hub_ready(nc_js)
 
         # Assert — key is present and has the expected value
         js = nc_js.jetstream()
         kv = await js.key_value("lyra-state")
         entry = await kv.get("hub.ready")
         assert entry.value == b"true"
+
+        # Assert — INFO log was emitted (spec criterion SC-7)
+        assert any("Hub KV ready announced" in r.message for r in caplog.records), (
+            f"Expected 'Hub KV ready announced' in logs; got: "
+            f"{[r.message for r in caplog.records]}"
+        )
 
     async def test_idempotent_second_call(self, nc_js: NATS) -> None:
         """announce_hub_ready called twice raises no exception; key stays b'true'."""
@@ -467,7 +394,13 @@ class TestWaitForHubKV:
         self, nc_js: NATS, caplog: pytest.LogCaptureFixture
     ) -> None:
         """wait_for_hub returns False and logs WARNING when key never appears."""
-        # Arrange — no hub writes; short timeout to keep the test fast
+        # Arrange — purge hub.ready so earlier tests in the session don't bleed in
+        try:
+            kv_setup = await nc_js.jetstream().key_value("lyra-state")
+            await kv_setup.purge("hub.ready")
+        except Exception:
+            pass  # bucket may not exist yet — that's fine for this test
+
         with caplog.at_level(logging.WARNING, logger="roxabi_nats.readiness"):
             # Act
             result = await wait_for_hub(nc_js, timeout=0.5)

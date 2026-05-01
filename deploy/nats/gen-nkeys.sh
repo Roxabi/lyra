@@ -2,7 +2,7 @@
 # Generate nkey seeds for NATS authentication
 #
 # Seeds (private keys) → ~/.lyra/nkeys/     owned by LYRA_USER, 0600 — no system access needed
-# auth.conf (public keys) → /etc/nats/nkeys/ owned by root:nats,  0640 — read by nats-server
+# auth.conf (public keys) → ~/.lyra/nkeys/   owned by LYRA_USER, 0600 — uploaded as Podman secret lyra-nats-auth
 #
 # Creates user nkey seeds for all active identities in deploy/nats/acl-matrix.json.
 # Retired identities are excluded; see docs/ops/nats-identity-retirement.md.
@@ -13,7 +13,7 @@
 # Deploy order (for #992+ topology-first schema):
 #   1. deploy/nats/gen-nkeys.sh (this script) — new script accepts v1 + v2
 #   2. deploy/nats/acl-matrix.json            — bumped to v2, adds request_reply_flows
-#   3. sudo ./gen-nkeys.sh --regen-authconf   — re-render auth.conf from existing seeds
+#   3. ./gen-nkeys.sh --regen-authconf        — re-render auth.conf from existing seeds (no root)
 #   4. make quadlet-secrets-install           — upload new secret to Podman
 #   5. podman kill -s HUP lyra-nats           — reload NATS from the updated secret
 # Running old gen-nkeys.sh against acl-matrix.json v2 is a hard error (version gate).
@@ -25,7 +25,7 @@
 #        sudo ./deploy/nats/gen-nkeys.sh --show             # print existing public keys
 #        sudo ./deploy/nats/gen-nkeys.sh --regenerate       # atomic backup + wipe + regenerate (rotates keys)
 #        sudo ./deploy/nats/gen-nkeys.sh --regenerate --yes # non-interactive regenerate
-#        sudo ./deploy/nats/gen-nkeys.sh --regen-authconf   # re-render auth.conf from EXISTING seeds (no key rotation)
+#             ./deploy/nats/gen-nkeys.sh --regen-authconf   # re-render auth.conf from EXISTING seeds (no key rotation, no root needed)
 #             ./deploy/nats/gen-nkeys.sh --template-only    # write auth.conf skeleton to stdout (no root needed)
 #             ./deploy/nats/gen-nkeys.sh --validate-supervisor   # verify each owner==lyra identity has its seed wired into a supervisor conf or quadlet container
 #             ./deploy/nats/gen-nkeys.sh --emit-merged-authconf  # write merged auth.conf (lyra + voicecli identities) to ~/.lyra/nkeys/auth.conf (no root needed)
@@ -370,6 +370,61 @@ if [ "${EMIT_MERGED_AUTHCONF}" = true ]; then
   exit 0
 fi
 
+# ── regen-authconf mode: re-render auth.conf from existing seeds (no root required) ──
+# Purpose: upgrade a live auth.conf to the current IDENTITIES + ACL matrix
+# without rotating keys. Used when the script's ACL model has evolved
+# (e.g. #714 added per-role ACLs, #992 added JetStream grants) but seeds
+# on disk are still valid.
+#
+# Writes only to ${SEEDS_DIR}/auth.conf (user-owned) — no system paths touched.
+# Differs from --regenerate: no seed wipe, no key rotation — existing services
+# keep working, only the auth.conf content changes.
+if [ "${REGEN_AUTHCONF}" = true ]; then
+  [ -d "${SEEDS_DIR}" ] || error "${SEEDS_DIR} does not exist — run without flags first to seed keys"
+
+  NK_BIN=$(command -v nk || echo "")
+  [ -n "${NK_BIN}" ] || error "nk not found — run without flags first (it will install nk)"
+
+  # Warn for retired identities with seeds on disk
+  while IFS= read -r name; do
+    seed_file="${SEEDS_DIR}/${name}.seed"
+    [ -f "${seed_file}" ] && warn "Retired identity '${name}' has a seed on disk: ${seed_file} — consider shredding it"
+  done < <(jq -r '.identities | to_entries[] | select(.value.status == "retired") | .key' "${MATRIX_JSON}")
+
+  # Collect pubkeys — all seeds must already exist (no key rotation in this mode)
+  declare -A EXISTING_PUBKEYS
+  for name in "${IDENTITIES[@]}"; do
+    seed_file="${SEEDS_DIR}/${name}.seed"
+    [ -f "${seed_file}" ] \
+      || error "Missing seed: ${seed_file} — run gen-nkeys.sh without flags first (--regen-authconf does not create seeds)"
+    pubkey=$("${NK_BIN}" -inkey "${seed_file}" -pubout 2>/dev/null) \
+      || error "Failed to derive pubkey from ${seed_file}"
+    info "Derived pubkey from existing seed: ${name}"
+    EXISTING_PUBKEYS[$name]="${pubkey}"
+  done
+
+  # Backup current user-space auth.conf if present
+  USER_AUTH_CONF="${SEEDS_DIR}/auth.conf"
+  if [ -f "${USER_AUTH_CONF}" ]; then
+    BACKUP_AUTH="${USER_AUTH_CONF}.bak.$(date +%Y%m%d-%H%M%S)"
+    cp -a "${USER_AUTH_CONF}" "${BACKUP_AUTH}"
+    chmod 0600 "${BACKUP_AUTH}"
+    info "Backed up auth.conf → ${BACKUP_AUTH}"
+  fi
+
+  # Render and write atomically (temp + rename)
+  TMP_AUTH=$(mktemp)
+  trap 'rm -f "${TMP_AUTH}"' EXIT
+  render_auth_conf EXISTING_PUBKEYS > "${TMP_AUTH}"
+  mkdir -p "${SEEDS_DIR}"
+  mv "${TMP_AUTH}" "${USER_AUTH_CONF}"
+  chmod 0600 "${USER_AUTH_CONF}"
+
+  info "auth.conf re-rendered from ${#IDENTITIES[@]} existing seeds → ${USER_AUTH_CONF}"
+  info "Next: make quadlet-secrets-install && podman kill -s HUP lyra-nats"
+  exit 0
+fi
+
 # ── root check (required for all other modes) ──────────────────────────────────
 [ "$(id -u)" -eq 0 ] || error "Must be run as root (sudo ./deploy/nats/gen-nkeys.sh)"
 
@@ -438,83 +493,11 @@ if [ "${FIX_PERMS}" = true ]; then
 fi
 
 # ── warn for retired identities with seeds on disk ───────────────────────────
-# Runs only for filesystem-mutating modes (regen-authconf, regenerate, default).
+# Runs only for filesystem-mutating modes (regenerate, default).
 while IFS= read -r name; do
   seed_file="${SEEDS_DIR}/${name}.seed"
   [ -f "${seed_file}" ] && warn "Retired identity '${name}' has a seed on disk: ${seed_file} — consider shredding it"
 done < <(jq -r '.identities | to_entries[] | select(.value.status == "retired") | .key' "${MATRIX_JSON}")
-
-# ── regen-authconf mode: re-render auth.conf from existing seeds ──────────────
-# Purpose: upgrade a live auth.conf to the current IDENTITIES + ACL matrix
-# without rotating keys. Used when the script's ACL model has evolved
-# (e.g. #714 added per-role ACLs, #689 added voice-{stt,tts} roles) but seeds
-# on disk are still valid.
-#
-# Differs from --regenerate: no seed wipe, no key rotation — existing services
-# keep working, only the auth.conf content changes.
-if [ "${REGEN_AUTHCONF}" = true ]; then
-  [ -d "${SEEDS_DIR}" ] || error "${SEEDS_DIR} does not exist — run without flags first to seed keys"
-
-  # Need nk to derive pubkeys from existing seeds
-  NK_BIN=$(command -v nk || echo "")
-  [ -n "${NK_BIN}" ] || error "nk not found — run without flags first (it will install nk)"
-
-  # Collect pubkeys — derive from existing seeds or create missing ones
-  declare -A EXISTING_PUBKEYS
-  for name in "${IDENTITIES[@]}"; do
-    seed_file="${SEEDS_DIR}/${name}.seed"
-    if [ -f "${seed_file}" ]; then
-      pubkey=$("${NK_BIN}" -inkey "${seed_file}" -pubout 2>/dev/null) \
-        || error "Failed to derive pubkey from ${seed_file}"
-      info "Derived pubkey from existing seed: ${name}"
-      EXISTING_PUBKEYS[$name]="${pubkey}"
-    else
-      info "Created missing seed: ${name}"
-      EXISTING_PUBKEYS[$name]=$(generate_nkey "${name}")
-    fi
-  done
-
-  # Backup current auth.conf if present
-  if [ -f "${AUTH_CONF}" ]; then
-    BACKUP_AUTH="${AUTH_CONF}.bak.$(date +%Y%m%d-%H%M%S)"
-    cp -a "${AUTH_CONF}" "${BACKUP_AUTH}"
-    chmod 0640 "${BACKUP_AUTH}"
-    info "Backed up auth.conf → ${BACKUP_AUTH}"
-  fi
-
-  # Render new auth.conf to temp, install atomically
-  TMP_AUTH=$(mktemp)
-  trap 'rm -f "${TMP_AUTH}"' EXIT
-  render_auth_conf EXISTING_PUBKEYS > "${TMP_AUTH}"
-
-  # Validate with nats-server -t if available
-  if command -v nats-server &>/dev/null && [ -f /etc/nats/nats.conf ]; then
-    # Temporarily stage: copy to AUTH_CONF location for include-path resolution,
-    # keep backup as safety net.
-    install -m 0640 -o root -g nats "${TMP_AUTH}" "${AUTH_CONF}"
-    if ! nats-server -t -c /etc/nats/nats.conf >/dev/null 2>&1; then
-      if [ -n "${BACKUP_AUTH:-}" ] && [ -f "${BACKUP_AUTH}" ]; then
-        cp -a "${BACKUP_AUTH}" "${AUTH_CONF}"
-        error "nats-server config validation failed — restored backup. Inspect ${TMP_AUTH} for issues."
-      else
-        rm -f "${AUTH_CONF}"
-        error "nats-server config validation failed — no backup to restore. Re-run --regenerate if needed."
-      fi
-    fi
-    info "nats-server config validation OK."
-  else
-    install -m 0640 -o root -g nats "${TMP_AUTH}" "${AUTH_CONF}"
-    warn "nats-server not found or /etc/nats/nats.conf missing — skipped config validation."
-  fi
-
-  # Mirror to user-space for make quadlet-secrets-install
-  install -m 0600 -o "${LYRA_USER}" -g "${LYRA_USER}" "${AUTH_CONF}" "${SEEDS_DIR}/auth.conf"
-
-  info "auth.conf re-rendered from ${#IDENTITIES[@]} existing seeds."
-  info "  Mirrored → ${SEEDS_DIR}/auth.conf (for make quadlet-secrets-install)"
-  info "Next: make quadlet-secrets-install && podman kill -s HUP lyra-nats"
-  exit 0
-fi
 
 # ── regenerate mode: atomic backup + wipe (T1.7) ──────────────────────────────
 if [ "${REGENERATE}" = true ]; then

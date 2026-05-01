@@ -15,7 +15,10 @@ import json
 import logging
 import time
 from collections.abc import Sequence
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from nats.js.kv import KeyValue
 
 from nats.aio.client import Client as NATS
 from nats.aio.subscription import Subscription
@@ -23,7 +26,6 @@ from nats.aio.subscription import Subscription
 log = logging.getLogger(__name__)
 
 READINESS_SUBJECT = "lyra.system.ready"
-PROBE_INTERVAL_S = 0.5
 PROBE_TIMEOUT_S = 30.0
 
 
@@ -34,6 +36,30 @@ class _HasSubscriptionCount(Protocol):
     def subscription_count(self) -> int: ...
 
 
+async def _open_or_create_lyra_state_kv(js: object) -> KeyValue:
+    """Open or create the lyra-state KV bucket (hub-only).
+
+    Handles the concurrent-creation race: if create_key_value raises
+    BadRequestError (another process won the race between our key_value miss
+    and this create call), falls back to opening the existing bucket.
+    """
+    from nats.js.api import KeyValueConfig, StorageType
+    from nats.js.errors import BadRequestError, BucketNotFoundError
+
+    try:
+        return await js.key_value("lyra-state")  # type: ignore[union-attr]
+    except BucketNotFoundError:
+        pass
+
+    try:
+        return await js.create_key_value(  # type: ignore[union-attr]
+            KeyValueConfig(bucket="lyra-state", storage=StorageType.FILE)
+        )
+    except BadRequestError:
+        # Lost the creation race — bucket exists now; open it.
+        return await js.key_value("lyra-state")  # type: ignore[union-attr]
+
+
 async def announce_hub_ready(nc: NATS) -> None:
     """Write hub.ready = b'true' to lyra-state KV bucket on hub startup.
 
@@ -42,21 +68,12 @@ async def announce_hub_ready(nc: NATS) -> None:
 
     Degrades gracefully if JetStream is not available (logs WARNING, returns).
     """
-    from nats.js.api import KeyValueConfig, StorageType
-    from nats.js.errors import BucketNotFoundError
-
     try:
         js = nc.jetstream()
+        kv = await _open_or_create_lyra_state_kv(js)
     except Exception:
         log.warning("Hub KV unavailable — JetStream not enabled")
         return
-
-    try:
-        kv = await js.key_value("lyra-state")
-    except BucketNotFoundError:
-        kv = await js.create_key_value(
-            KeyValueConfig(bucket="lyra-state", storage=StorageType.FILE)
-        )
 
     await kv.put("hub.ready", b"true")
     log.info("Hub KV ready announced")
@@ -100,9 +117,9 @@ _TIMEOUT_MSG = (
 )
 
 
-async def _kv_watch_for_ready(kv: object, remaining: float) -> bool:
+async def _kv_watch_for_ready(kv: KeyValue, remaining: float) -> bool:
     """Block on KV watch until hub.ready=b'true' appears or timeout expires."""
-    watcher = await kv.watch("hub.ready")  # type: ignore[union-attr]
+    watcher = await kv.watch("hub.ready")
     try:
         async with asyncio.timeout(remaining):
             async for entry in watcher:
@@ -120,6 +137,25 @@ async def _kv_watch_for_ready(kv: object, remaining: float) -> bool:
     return False
 
 
+async def _open_kv_with_retry(js: object, deadline: float) -> KeyValue | None:
+    """Wait for hub to provision the lyra-state bucket, retrying on absence.
+
+    Returns the open KeyValue handle, or None when the deadline expires before
+    the bucket appears. Raises on errors other than BucketNotFoundError (e.g.
+    ServiceUnavailableError when JetStream is disabled).
+    """
+    from nats.js.errors import BucketNotFoundError
+
+    while True:
+        try:
+            return await js.key_value("lyra-state")  # type: ignore[union-attr]
+        except BucketNotFoundError:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.5:
+                return None
+            await asyncio.sleep(0.5)
+
+
 async def wait_for_hub(
     nc: NATS,
     *,
@@ -130,6 +166,10 @@ async def wait_for_hub(
     Compatible with allow_responses: false ACLs — no inbox subjects used.
     Returns True if hub.ready key is found, False on timeout or JetStream unavailable.
 
+    Adapters must not create the lyra-state bucket — only the hub provisions it
+    via announce_hub_ready(). If the bucket is absent, this function retries
+    key_value() until the hub provisions it or the timeout expires.
+
     Args:
         nc: Already-connected NATS client.
         timeout: Total seconds to wait before giving up. Defaults to
@@ -138,21 +178,19 @@ async def wait_for_hub(
     Returns:
         ``True`` if the hub.ready key is found within *timeout*, ``False`` otherwise.
     """
-    from nats.js.api import KeyValueConfig, StorageType
-    from nats.js.errors import BucketNotFoundError, KeyNotFoundError
+    from nats.js.errors import KeyNotFoundError
 
     deadline = time.monotonic() + timeout
+    js = nc.jetstream()
 
     try:
-        js = nc.jetstream()
-        try:
-            kv = await js.key_value("lyra-state")
-        except BucketNotFoundError:
-            kv = await js.create_key_value(
-                KeyValueConfig(bucket="lyra-state", storage=StorageType.FILE)
-            )
+        kv = await _open_kv_with_retry(js, deadline)
     except Exception:
         log.warning("wait_for_hub: JetStream not enabled — skipping probe")
+        return False
+
+    if kv is None:
+        log.warning(_TIMEOUT_MSG, timeout)
         return False
 
     try:

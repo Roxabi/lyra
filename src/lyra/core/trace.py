@@ -91,15 +91,15 @@ class TraceIdFilter(logging.Filter):
         trec = cast(TraceLogRecord, record)
         try:
             trec.trace_id = _trace_id.get("")
-        except Exception:
+        except LookupError:  # ContextVar.get() — theoretically unreachable
             trec.trace_id = ""
         try:
             trec.pool_id = _pool_id.get("")
-        except Exception:
+        except LookupError:  # ContextVar.get() — theoretically unreachable
             trec.pool_id = ""
         try:
             trec.agent_name = _agent_name.get("")
-        except Exception:
+        except LookupError:  # ContextVar.get() — theoretically unreachable
             trec.agent_name = ""
         return True
 
@@ -130,6 +130,6 @@ class TelegramTokenFilter(logging.Filter):
             if redacted != msg:
                 record.msg = redacted
                 record.args = None
-        except Exception:
+        except Exception:  # noqa: BLE001  # logging filter: must never raise
             pass  # never block logging on a filter error
         return True

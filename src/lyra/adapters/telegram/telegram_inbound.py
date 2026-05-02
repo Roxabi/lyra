@@ -7,6 +7,8 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from aiogram.exceptions import TelegramAPIError
+
 from lyra.adapters.shared._shared import push_to_hub_guarded
 from lyra.adapters.telegram.telegram_audio import _download_audio
 from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
@@ -174,7 +176,7 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
             await adapter.bot.send_message(
                 **_make_send_kwargs(chat_id, _text, message_id)
             )
-        except Exception:
+        except TelegramAPIError:
             log.warning(
                 "Failed to send audio-too-large reply for user_id=%s",
                 user_id,
@@ -194,7 +196,7 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
             await adapter.bot.send_message(
                 **_make_send_kwargs(chat_id, _text, message_id)
             )
-        except Exception:
+        except TelegramAPIError:
             log.warning(
                 "Failed to send audio-download-failed reply"
                 " for user_id=%s message_id=%s",

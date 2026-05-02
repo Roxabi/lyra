@@ -145,7 +145,7 @@ class StreamingSession:
                                 await self._cb.edit_placeholder_tool(
                                     placeholder_obj, event, display_text
                                 )
-                            except Exception as edit_exc:
+                            except Exception as edit_exc:  # noqa: BLE001  # streaming edit: any send failure is non-fatal
                                 log.debug("Tool summary edit skipped: %s", edit_exc)
                             self._st.last_tool_edit = now
 
@@ -164,7 +164,7 @@ class StreamingSession:
                                 await self._cb.edit_placeholder_text(
                                     placeholder_obj, self._st.istate.display()
                                 )
-                            except Exception as edit_exc:
+                            except Exception as edit_exc:  # noqa: BLE001  # streaming edit: any send failure is non-fatal
                                 log.debug(
                                     "Intermediate text edit skipped: %s", edit_exc
                                 )
@@ -245,7 +245,7 @@ class StreamingSession:
         )
         try:
             await self._cb.edit_placeholder_text(placeholder_obj, error_text)
-        except Exception as edit_exc:
+        except Exception as edit_exc:  # noqa: BLE001  # streaming edit: any send failure is non-fatal
             log.debug("Error edit skipped: %s", edit_exc)
 
     def _handle_typing_tail(self) -> None:
@@ -269,7 +269,7 @@ class StreamingSession:
             first_event = await events.__anext__()
         except StopAsyncIteration:
             pass
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # streaming edit: any send failure is non-fatal
             peek_error = exc
         if first_event is None and peek_error is None:
             await self._drain_fallback(events)

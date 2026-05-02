@@ -1,0 +1,210 @@
+---
+title: "ADR-066: Unified WorkerError envelope across NATS reply contracts"
+description: Establish a single canonical structured error payload (WorkerError) on every NATS worker→hub reply envelope, with an open-string code namespace governed by a registry, additive rollout per ADR-049, and adoption telemetry as the gate metric for transition phases.
+---
+
+## Status
+
+Accepted
+
+Extends ADR-006 (hub run-loop error/response gap) from the hub→adapter direction to the worker→hub NATS reply boundary. Complementary to ADR-058 (typed error boundary inside adapters); orthogonal — different boundary.
+
+## Context
+
+The Lyra ecosystem speaks NATS across 7 production processes (`lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`, `voicecli_tts`, `voicecli_stt`, `imagecli_gen`), all sharing `packages/roxabi-contracts` (Pydantic envelopes per ADR-049) and `packages/roxabi-nats` (transport SDK per ADR-045). When a worker fails — clipool times out, the LLM driver crashes, voice synthesis hits a quota — the user sees a bare `❌` or the generic English fallback _"Something went wrong. Please try again."_
+
+An audit triggered by issue #1016 established that the gap is structural and cross-cutting:
+
+- **6 NATS reply envelopes carry 4 different error contracts.** `LlmChunkEvent.error: str`, `LlmResponse.ok + error: str`, `CliChunkEvent.is_error` _(no message field at all)_, `Tts/SttResponse.ok + error: str`, `ImageResponse.ok + error + error_detail` _(error_detail field is dead — never populated by any worker)_, `CliControlAck.ok` _(no message)_.
+- **3 SDK silent-drop sites in `roxabi-nats`.** `NatsDriverBase._stream_gen` returns silently on timeout. `NatsAdapterBase._dispatch` logs and drops malformed JSON. The circuit breaker is poll-only (`is_open()`), no event on open/half-open.
+- **Divergent error shapes inside one driver.** `NatsLlmDriver.complete()` returns `LlmResult(error=…, retryable=…)`; `NatsLlmDriver.stream()` yields `ResultLlmEvent(is_error=True, error_text=…)` — different field names, different timeout strings, same conceptual failure.
+- **Zero structured error telemetry end-to-end.** Bare ❌ in Telegram is the only production signal; regressions are invisible.
+
+ADR-006 decided "always send an error response, never silent drop" for the hub run loop (hub→adapter direction). The worker→hub direction never received the same treatment. This ADR closes that gap.
+
+The shape exploration is in `artifacts/analyses/1016-worker-error-envelope-analysis.mdx` (4 shapes: per-domain narrow patch, additive `WorkerError` on 5 envelopes, tagged-union wrapper, separate error subject). Both an architect and a devops review converged independently on the additive-envelope shape.
+
+## Options Considered
+
+### Option A: Per-domain narrow patch
+Add `error_text: str | None` to `CliChunkEvent` only (the original F-lite scope of #1016). Future workers each re-litigate the field name.
+
+- **Pros:** Smallest possible change; ships in a single PR; zero coordination cost.
+- **Cons:** Leaves the 3 SDK silent-drop sites unaddressed. Codifies inconsistency across domains. Future workers (#988 harness) re-invent the field. Hub fallback stays hardcoded English. No `code` for adapter i18n. No `retryable` for circuit-breaker policy.
+
+### Option B: Additive `WorkerError` on 5 reply envelopes _(chosen)_
+Single canonical model in `roxabi-contracts`. Optional `worker_error: WorkerError | None` field on each of the 5 reply envelopes. Open-string code namespace governed by a registry. SDK synthesizes `WorkerError(code="transport.*", …)` on driver-side timeouts and parse failures. `is_error` / `ok` flags retained alongside.
+
+- **Pros:** One contract, one extractor, one fallback path, uniform telemetry. Additive only — fully compatible with ADR-049 (`extra="ignore"` forward-compat). No `CONTRACT_VERSION` bump. Cross-repo skew tolerated. Foundation for adapter i18n (future epic) and structured retry policy ships free. Future worker authors have one documented answer.
+- **Cons:** Touches 5 schemas at once — coordination cost higher than Option A. ADR required (≥2 packages, new cross-cutting pattern). Open-string registry is a soft discipline — codes can accumulate without enforcement (mitigated by CI sync check between Python `KNOWN_CODES` and Markdown table).
+
+### Option C: Tagged-union envelope wrapper
+Wrap every reply in a generic `WorkerReply<T> { ok: bool, payload: T | None, error: WorkerError | None }`. All 6 reply contracts become `WorkerReply<...>` instantiations.
+
+- **Pros:** Strongest typing — invariant `ok = (error is None)` enforced at the type system level. Eliminates `is_error` / `ok` ambiguity by construction.
+- **Cons:** **Breaking change.** Existing wire format changes shape; ADR-049 forbids this without coordinated cross-repo upgrade; triggers `CONTRACT_VERSION` bump. Multi-week migration across `lyra`, `voiceCLI`, `imageCLI` simultaneously. Pydantic generics + discriminated unions add cognitive overhead. Solves a typing-elegance problem at runtime cost; the actual user pain is solvable without it.
+
+### Option D: Separate error subject (out-of-band channel)
+Workers publish errors on a parallel NATS subject (`lyra.errors.<domain>.<bot>`). Hub subscribes to both reply and error subjects. Reply contracts stay unchanged.
+
+- **Pros:** Reply contracts truly untouched. Errors observable by other consumers (logging pipeline, future OTel) without parsing reply payloads.
+- **Cons:** Loses temporal correlation — a streaming chunk can finish "successfully" while the error subject delivers a terminal failure with no ordering guarantee. Doubles the subscription topology; topology-first ACL schema (ADR-064 / #993) needs revisiting. `trace_id` correlation across two subjects requires explicit linking. Doesn't solve the in-process API divergence inside `NatsLlmDriver`.
+
+## Decision
+
+**Option B: Additive `WorkerError` on 5 reply envelopes.**
+
+### The model
+
+In `packages/roxabi-contracts/src/roxabi_contracts/errors.py`:
+
+```python
+class WorkerError(BaseModel):
+    code: str = Field(min_length=1)        # hierarchical, dot-delimited, registry-governed
+    message: str = Field(min_length=1)     # human-readable, surfaced to user
+    retryable: bool = True                 # drives hub circuit-breaker / retry-prompt
+    detail: str | None = Field(default=None, max_length=2048)  # internal log context, not user-facing
+```
+
+`message` is non-empty by construction. `detail` is capped at 2 KB to prevent log bloat.
+
+### Adoption surface
+
+`worker_error: WorkerError | None = None` is added to **5 reply envelopes**:
+
+| Envelope | Notes |
+|---|---|
+| `CliChunkEvent` | replaces the absent error message field that motivated the original #1016 narrow scope |
+| `LlmChunkEvent` | additive alongside existing `error: str \| None` (legacy field retained) |
+| `LlmResponse` | additive alongside existing `ok` + `@model_validator` invariants (load-bearing) |
+| `TtsResponse` / `SttResponse` | additive alongside existing `ok` + invariants (load-bearing) |
+| `ImageResponse` | additive alongside `ok`; the dead `error_detail` field is **deleted** in the same migration (zero call sites, audit-confirmed) |
+
+**Excluded:** `CliControlAck`. No error path uses it; speculative addition is forbidden.
+
+### The code namespace
+
+Hierarchical, dot-delimited, **open string** — not a Pydantic `Literal`. A `Literal` would force a `CONTRACT_VERSION` bump every time a new code is added, contradicting ADR-049's additive-only minor-bump rule. Validity is enforced operationally, not at the type level:
+
+```
+transport.{timeout, no_responders, parse, contract_mismatch, slow_consumer}
+worker.{crash, validation, internal, busy}
+cli.{auth, session_lost, parse}
+llm.{rate_limit, context_too_long, model_unavailable}
+voice.{engine_unavailable, audio_invalid}
+image.{engine_unavailable, prompt_rejected}
+```
+
+The registry is shipped in two places that must stay in sync:
+
+1. **`packages/roxabi-contracts/src/roxabi_contracts/errors.py`** — Python `KNOWN_CODES: dict[str, CodeMeta]` (machine-readable; consumers can pattern-match on dotted prefix without typo risk).
+2. **`packages/roxabi-contracts/docs/error-codes.md`** — Markdown table (human-readable; the canonical reference).
+
+A CI check (`packages/roxabi-contracts/scripts/check_codes_sync.py`) asserts they remain in lockstep. Adding a new code without updating both fails CI.
+
+### SDK transport-error synthesis (driver-side only)
+
+`roxabi-nats` synthesizes `WorkerError(code="transport.*", …)` instead of silent drops, **on the driver side only**:
+
+- `_stream_gen` timeout → terminal `WorkerError(code="transport.timeout", retryable=True)` event.
+- `_stream_gen` JSON parse failure → terminal `WorkerError(code="transport.parse", retryable=False)`.
+- `_stream_gen` no responders → `WorkerError(code="transport.no_responders", retryable=True)`.
+
+`NatsAdapterBase._dispatch` (worker-receive direction) cannot synthesize: there is no reply subject available in that code path. This is a documented constraint, not a deferred goal.
+
+This dependency arrow (`roxabi-nats` ← `roxabi-contracts`) already exists per ADR-049 (compat shim). Importing `WorkerError` reuses the same arrow; no layering violation introduced.
+
+### Hub side
+
+A single helper at `src/lyra/core/messaging/error_extractor.py` (location is the transport concern, not stream processing):
+
+```python
+def _extract_worker_error(reply: ReplyEnvelope) -> WorkerError | None: ...
+```
+
+`stream_processor`'s hardcoded English fallback (`"Something went wrong. Please try again."`) is removed and replaced by `WorkerError.message` rendering. Adapters key off `code` (foundation for future i18n; not in scope of this ADR). The `retryable` flag drives circuit-breaker decisions and retry-prompt UX (consumer policy is a separate concern).
+
+### `is_error` / `ok` retention
+
+The existing boolean predicates are **retained alongside** `worker_error`. They are not deprecated:
+
+- `LlmResponse`, `TtsResponse`, `SttResponse`, `ImageResponse` use `ok` as the predicate for `@model_validator` invariants (e.g. `ok=True ⇒ payload present`). Removing `ok` requires rewriting those validators — a semantic break for any consumer that pattern-matches `if not response.ok`.
+- `is_error` on streaming chunks is similarly cheap and harmless.
+- The intended invariant is `worker_error is not None ⇒ not ok`, but `ok` remains the primary API. There is no Phase 5 deprecation of these flags.
+
+### Rollout: additive-only, metric-gated
+
+Rollout is phased to keep cross-repo skew non-failure-mode at every step:
+
+| Phase | Issue | Scope |
+|---|---|---|
+| **P1** | #1016 | `WorkerError` model + additive field on 5 envelopes + registry + CI sync check + delete `ImageResponse.error_detail` + adoption counters in each process. |
+| **P2** | #1016 | `clipool_worker` + `NatsLlmDriver` populate `worker_error`; hub `_extract_worker_error` helper; tests; **48h soak in prod** before deleting the legacy `error_text` shim. |
+| P3 | child issue | SDK driver-side synthesis (P3 also touches `NatsLlmDriver`'s duplicated heartbeat / `_any_worker_alive` logic — this driver predates `NatsDriverBase`). |
+| P4 | child issue | voiceCLI + imageCLI workers populate `worker_error`. Coordinated cross-repo PRs. |
+
+Per ADR-049, additive optional fields **do not bump `CONTRACT_VERSION`**. The generation marker for "does this deploy have the field?" is the `roxabi_contracts.__version__` (release-please semver), logged at process startup. Dashboards key off the package version, not `contract_version`.
+
+`extra="ignore"` (ADR-049) makes absent `worker_error` non-failure for any consumer of an old-version reply. Cross-repo skew (voiceCLI / imageCLI pinning an older `roxabi-contracts` tag) is tolerated throughout the rollout.
+
+### Adoption telemetry as a binding gate
+
+Every process emits two structured-log counters during P1:
+
+- `worker_error_received_total{code, domain}` — hub-side count of incoming replies that carry a populated `worker_error`.
+- `worker_error_populated_total{domain}` — worker-side count of outgoing replies that include a populated `worker_error`.
+
+Backend choice: **structured logs** (zero new infrastructure; parsed from journald / Vector). Prometheus is not adopted for this ADR; if and when the OTel epic (#667) introduces a metrics backend, these counters migrate trivially.
+
+The P2 shim deletion is **gated on telemetry**, not on judgment:
+
+- Required: `worker_error_populated_total{domain="cli"}` > 0 _and_ `worker_error_populated_total{domain="llm"}` > 0 _and_ legacy `error_text` counter == 0 for **48 consecutive hours** in production.
+- The gate condition is shipped as an executable one-liner that prints `PASS` or `FAIL`; it is not a manual log inspection. The exact command is documented in the `/spec` artifact.
+
+### Out of scope
+
+- OTel instrumentation (#667) — `WorkerError` is the transport contract; OTel is the observability layer that wraps it later.
+- Adapter i18n via `code` lookup — foundation ships in P1 (the `code` field exists); locale mapping is a separate epic.
+- Retry orchestration at the hub — `retryable` is exposed; circuit-breaker policy and backoff schedules are a separate concern.
+- `_dispatch` synthesis (worker-receive direction) — no reply subject available; not solvable without changing the request envelope.
+- Deprecating `is_error` / `ok` — invariants are load-bearing; struck.
+- `CliControlAck` adoption — no error path uses it.
+- Migrating non-NATS error paths (HTTP boundaries, internal hub exceptions, adapter-internal errors) — covered partly by ADR-058 (proposed); orthogonal to this ADR.
+- Refactoring `NatsLlmDriver` to use `NatsDriverBase` — duplicate heartbeat logic; flagged for P3.
+
+## Consequences
+
+### Positive
+
+- **One canonical error shape** across every NATS worker→hub reply. Hub has a single extractor; future worker authors have one documented answer.
+- **Transport-layer failures become observable** on the driver side — `_stream_gen` timeout and parse failures surface as terminal events instead of silent generator exhaustion.
+- **Foundation for structured retry, circuit-breaker, and i18n** ships free with the `code` + `retryable` fields, without committing to those policies in this ADR.
+- **Adoption is measurable** via counters; phase transitions are metric-gated, not judgment calls.
+- **Additive-only rollout** — no `CONTRACT_VERSION` bump, no breaking change, no coordinated cross-repo deploy ordering required. `extra="ignore"` (ADR-049) handles staggered restarts.
+- **`ImageResponse.error_detail` (dead field) is cleaned up** in the same migration rather than ossifying further.
+- **Closes the worker→hub error gap** that ADR-006 left open when it addressed the hub→adapter direction.
+
+### Negative
+
+- **5 schemas change in lockstep** during P1; cross-domain coordination is higher than a per-domain narrow patch would have been. Mitigated by P1 being a contract-only change (no behavior change), so the diff is mechanical.
+- **Open-string codes require registry discipline** to remain useful. Mitigated by the CI sync check, but the registry is a soft contract — undisciplined growth is possible if the check is bypassed.
+- **48h soak gate adds calendar time** between P1 ship and P2 shim deletion. Mitigated by the executable PASS/FAIL one-liner so the gate is a script, not a manual readout.
+- **Dual error fields during P2** — `error_text` shim coexists with `worker_error` until the 48h soak passes. Consumers reading both temporarily is acceptable but a known intermediate state.
+
+### Neutral
+
+- **`is_error` / `ok` redundancy** — `worker_error is not None ⇒ not ok` is an invariant we accept as duplicated truth. The cost of removing the booleans (rewriting `@model_validator` invariants and breaking pattern-match consumers) outweighs the typing-elegance gain.
+- **Telemetry backend = structured logs** for now. If OTel (#667) lands first, a counter backend swap becomes the natural integration point; the counters' shape (`{code, domain}` labels) is OTel-compatible.
+- **Cross-repo coordination is deferred to P4.** voiceCLI / imageCLI pin `roxabi-contracts` by tag in their `pyproject.toml`; their adoption is a separate set of PRs in those repos. The wire format remains compatible during the gap (`extra="ignore"`).
+- **`NatsLlmDriver` predates `NatsDriverBase`** and carries duplicate heartbeat logic. P2 touches `nats_driver.py` for `worker_error` only; the refactor toward `NatsDriverBase` is flagged for P3 and not undertaken here.
+
+## References
+
+- Issue: [#1016](https://github.com/Roxabi/lyra/issues/1016) — feat(contracts): WorkerError envelope
+- Frame: `artifacts/frames/1016-worker-error-envelope-frame.mdx`
+- Analysis: `artifacts/analyses/1016-worker-error-envelope-analysis.mdx` (4 shapes evaluated; B selected)
+- Extends: ADR-006 (hub run-loop error/response gap) — same principle applied to a different boundary
+- Builds on: ADR-049 (roxabi-contracts shared schema package) — additive-only rule, `extra="ignore"`, test-double 3-guards
+- Builds on: ADR-045 (roxabi-nats SDK) — transport primitives layer this depends on
+- Complementary: ADR-058 (typed error boundary, proposed) — adapter-internal exceptions; orthogonal boundary
+- Immediate fix that motivated the audit: `603c9472` (stream_processor + nats_driver `error_text` safety net)

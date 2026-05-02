@@ -37,9 +37,8 @@ def _log_task_exc(task: asyncio.Task) -> None:
     """Done-callback: log any exception from a fire-and-forget task."""
     if not task.cancelled() and (exc := task.exception()):
         log.error(
-            "cli_nats: fire-and-forget task %r failed: %s",
+            "cli_nats: fire-and-forget task %r failed",
             task.get_name(),
-            exc,
             exc_info=exc,
         )
 
@@ -201,7 +200,15 @@ class CliNatsDriver(NatsDriverBase):
 
     def _fire_set_cli_session(self, lyra_sid: str, cli_sid: str) -> None:
         """Schedule set_cli_session without blocking; log any failure."""
-        task = asyncio.get_running_loop().create_task(
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            log.error(
+                "cli_nats: _fire_set_cli_session called outside event loop [%s]",
+                lyra_sid[:8],
+            )
+            return
+        task = loop.create_task(
             self._turn_store.set_cli_session(lyra_sid, cli_sid),  # type: ignore[union-attr]
             name=f"set_cli_session:{lyra_sid[:8]}",
         )

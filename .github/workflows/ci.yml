@@ -41,6 +41,21 @@ jobs:
           sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
           nats-server --version
 
+      - name: Install nk
+        env:
+          NK_VERSION: "0.4.4"
+        run: |
+          ARCH=$(dpkg --print-architecture)
+          TARBALL="nk-v${NK_VERSION}-linux-${ARCH}.tar.gz"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/${TARBALL}" \
+            -o "${TMPDIR}/${TARBALL}"
+          # sha256: verify before merging — nk v0.4.4 linux/amd64
+          # nkeys releases do not publish a SHA256SUMS file; pin via version + review release page
+          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nk" /usr/local/bin/nk
+          nk --version
+
       - name: Install uv
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v7
 

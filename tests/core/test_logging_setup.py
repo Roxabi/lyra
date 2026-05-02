@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import sys
 from collections.abc import Generator
 from unittest.mock import patch
 
@@ -105,11 +106,12 @@ class TestSetupLogging:
     def test_duplicate_call_does_not_add_handlers_or_filters(self) -> None:
         root = logging.getLogger()
         setup_logging()
-        handler_count = len(root.handlers)
-        filter_count = len(root.filters)
+        our_handlers = [h for h in root.handlers if type(h) is logging.StreamHandler]
+        our_filters = list(root.filters)
         setup_logging()
-        assert len(root.handlers) == handler_count
-        assert len(root.filters) == filter_count
+        our = [h for h in root.handlers if type(h) is logging.StreamHandler]
+        assert our == our_handlers
+        assert list(root.filters) == our_filters
 
     def test_level_applied_to_root(self) -> None:
         root = logging.getLogger()
@@ -157,3 +159,14 @@ class TestSetupLogging:
             logger.info("POST https://api.telegram.org/bot123456:ABCxyz/sendMessage")
             output = mock_stdout.getvalue()
         assert "bot123456:ABCxyz" in output
+
+    def test_invalid_level_falls_back_to_info(self) -> None:
+        root = logging.getLogger()
+        setup_logging(level="INVALID")
+        assert root.level == logging.INFO
+
+    def test_handler_writes_to_stdout(self) -> None:
+        root = logging.getLogger()
+        setup_logging()
+        h = _our_handler(root)
+        assert h.stream is sys.stdout

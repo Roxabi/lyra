@@ -31,7 +31,9 @@ def setup_logging(level: str = "INFO") -> None:
     global _setup_done
     root = logging.getLogger()
     level_int = getattr(logging, level.upper(), logging.INFO)
-    root.setLevel(level_int)  # always honour the caller's requested level
+    # Always overrides: last caller wins. Intentional — entry-points call once at
+    # startup; a second call (e.g. a test fixture) is expected to control the level.
+    root.setLevel(level_int)
     if _setup_done:
         return
     trace_filter = TraceIdFilter()

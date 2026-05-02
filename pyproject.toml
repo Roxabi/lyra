@@ -76,6 +76,7 @@ packages = ["src/lyra"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["."]
 testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests"]
 addopts = "--import-mode=importlib -n auto"
 filterwarnings = [

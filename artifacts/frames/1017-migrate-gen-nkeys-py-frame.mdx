@@ -1,0 +1,248 @@
+---
+title: migrate gen-nkeys.sh → scripts/gen_nkeys.py
+issue: 1017
+status: approved
+tier: F-full
+date: 2026-05-02
+---
+
+## Problem
+
+`deploy/nats/gen-nkeys.sh` is a 702-line bash program that owns
+security-critical logic: it parses `acl-matrix.json`, filters retired
+identities, derives inbox grants from `request_reply_flows`, validates
+identity lifecycle, renders `auth.conf`, and shells out to `nk` for key
+material. The 2026-05-01 audit (PRs #975–#1013) identified
+**11 distinct safety bugs** in this script, ~7 invisible to shellcheck
+because they are jq-semantic or logic bugs:
+
+- `jq //` coerced `false`→`true` and silently regressed an ACL block
+  (#993).
+- `jq -r` returned the literal string `"null"` for absent fields, faking
+  validation passes.
+- A missing identity-existence guard hard-crashed jq on subject
+  interpolation.
+- `check_derived_output` read unmodified JSON, so the mutated regression
+  path was never exercised — a textbook test-discrimination failure.
+- A bash `return` value >255 silently wrapped mod-256, so `check_flows`
+  reported pass on 256+ failures.
+- `2>/dev/null` swallowed jq errors.
+
+The "bash" recurring-bug-class entry from the same audit names this
+script as the canonical example. Shellcheck would catch ~4/11; the
+structural fix is to replace bash with a typed language where: `false`
+stays `false`, missing keys raise, range checks aren't truncated, and
+every derivation rule is unit-testable.
+
+This is not a feature add. It is a structural fix for a security-critical
+code path.
+
+## Who
+
+- **Primary:** Mickael, when running `lyra-genkeys --regen-authconf` /
+  `--emit-merged-authconf` / `--show` locally or on prod
+  (`roxabituwer`) — the operator-facing command surface must not change
+  beyond the script-name swap (handled via console-script entry point;
+  see Constraints).
+- **Secondary:** CI (`.github/workflows/ci.yml:70,73` invoking
+  `scripts/check-acl-matrix-retired.sh` and
+  `scripts/check-request-reply-flows.sh`), pre-commit hooks, and the
+  three Makefile call sites (`Makefile:197,271,331`).
+- **Tertiary:** future contributors adding identities or flows to
+  `acl-matrix.json`, who today rely on bash error messages and tomorrow
+  will get typed validation errors.
+
+## Constraints
+
+### Behavioral parity
+
+- **Semantic-equivalence parity, not byte-for-byte.** A frozen
+  `acl-matrix.json` fixture is rendered by both bash and Python; the
+  resulting `auth.conf` files are **parsed** and compared at the
+  identity-block level (active-identity set, per-identity publish/
+  subscribe allow-lists, `allow_responses` value). Header comments,
+  whitespace, and ordering may diverge as long as a NATS-loading parse
+  yields identical authorization. The parity test is the safety net
+  that licenses the bash deletion in the same PR.
+- **No long-lived parallel paths.** The bash original is deleted in
+  the same PR that lands Python parity (or an immediate follow-up).
+  RC-3 of the recurring-bug-class memo names parallel-path drift
+  explicitly; a `LYRA_NKEYS_BACKEND=python` flag would *be* that bug
+  class. The parity test (above) is the rollback safety net, not a
+  feature flag.
+- **Exit-code contract is stable.** `0` = success; `1` = validation
+  failure or missing dependency. argparse's default `SystemExit(2)` on
+  bad args is acceptable (CI does not depend on that subcode). Each
+  CI/Makefile caller is verified post-port.
+
+### Privilege + environment
+
+The existing bash splits modes by where they write. The Python port
+preserves both classes verbatim — no consolidation, no behavior
+change.
+
+| Mode | Writes to | Root? |
+|---|---|---|
+| `--regen-authconf` | `~/.lyra/nkeys/auth.conf` only | no |
+| `--emit-merged-authconf` | stdout + `~/.lyra/nkeys/auth.conf` | no |
+| `--show` | reads `/etc/nats/nkeys/auth.conf` (root:nats 0640) | yes |
+| `--fix-perms` | chown/chmod `/etc/nats/nkeys/` + seeds | yes |
+| `--regenerate` | wipes + writes `~/.lyra/nkeys/` and `/etc/nats/` | yes |
+| (no flag, full) | seeds + `/etc/nats/nkeys/auth.conf` | yes |
+
+`gen-nkeys.sh:429` enforces the root check globally; the two
+no-root modes exit ahead of it (commit `d16969b7`). The Python port
+mirrors this dispatch: `--regen-authconf` and `--emit-merged-authconf`
+run without root; everything else asserts `os.geteuid() == 0` and
+exits 1 with the same error message otherwise.
+
+- **Stale `sudo` in runbooks (in scope to fix in this PR).** The
+  Makefile already dropped `sudo` from `--regen-authconf` (commit
+  `886f2a40`). Three callers in `docs/ops/` were missed:
+  - `docs/ops/nats-identity-retirement.md:49` — stale
+  - `docs/ops/nats-identity-retirement.md:111` — stale
+  - `docs/ops/nkey-rotation.md:105` — stale
+  - (`docs/ops/nkey-rotation.md:63` `sudo --show` is correct.)
+  These three are corrected as part of the call-site sweep, not a
+  separate issue.
+- **`SUDO_USER` resolution is mandatory and security-sensitive.**
+  Under `sudo`, `Path.home()` returns `/root`. The Python port must
+  resolve the operator's real home via
+  `os.environ.get("SUDO_USER")` → `pwd.getpwnam(...).pw_dir`,
+  mirroring bash's `LYRA_USER="${SUDO_USER:-$(id -un)}"` +
+  `getent passwd` (`gen-nkeys.sh:38`). Writing seeds to
+  `/root/.lyra/nkeys/` instead of the operator's home is a security
+  regression. Negative test required: simulate `sudo` envvars,
+  assert resolved seed path is *not* `/root/.lyra/...`.
+- **File modes preserved and tested.**
+  - Seeds (`~/.lyra/nkeys/<name>.seed`): `0600`.
+  - User auth.conf (`~/.lyra/nkeys/auth.conf`) + `.bak`: `0600`.
+  - System auth.conf (`/etc/nats/nkeys/auth.conf`): `root:nats 0640`.
+  Atomicity: `tempfile.NamedTemporaryFile(delete=False)` + explicit
+  `os.chmod` + `os.replace`. Each mode asserted by a parity test
+  (`oct(os.stat(p).st_mode)[-4:] == "0600"` etc.).
+
+### Invocation surface
+
+- **Entry point: `pyproject.toml [project.scripts]` console script
+  named `lyra-genkeys`.** `uv sync` (and `uv tool install -e .` in
+  prod) puts it on PATH. Makefile, runbook, SSH-deploy, and
+  pre-commit calls all become `lyra-genkeys --<flag>`. No bash shim
+  layer; the console script *is* the interface. The script entry
+  module (`scripts/gen_nkeys.py`) wires `argparse` + dispatch.
+- The two `scripts/check-*.sh` siblings are **bundled in this issue**
+  (per body) but each gets its own derivation/parity proof — they do
+  not call `gen-nkeys.sh` and are independently verifiable. They
+  become `lyra-check-acl-retired` / `lyra-check-flows` console
+  scripts (or a single `lyra-acl check {retired,flows}` subcommand —
+  spec-level decision).
+
+### Schema + structural
+
+- **TypedDict for the ACL matrix model.** Not Pydantic.
+  `acl-matrix.json` is read once at provisioning time from a file the
+  operator controls; `scripts/check-acl-matrix-spec.sh` already
+  performs structural validation upstream of this script. Adding
+  Pydantic at this layer is a wrong-layer dep — `roxabi-contracts`
+  (ADR-049) owns runtime wire schemas, not provisioning config. The
+  Python port gets static typing via TypedDict + pyright; runtime
+  validation stays where it already lives.
+- **`NkeyProvider` ABC** with `SubprocessNkeyProvider` (real
+  `subprocess.run(["nk", …])`) and `FakeNkeyProvider` (deterministic
+  pubkeys for tests) implementations. Two-method interface:
+  `gen_seed() -> bytes`, `pubkey_from_seed(seed: bytes) -> str`.
+  Without this seam, every derivation-rule test is entangled with the
+  `nk` binary or with fragile global `subprocess` mocks. Cheap up
+  front, expensive to retrofit.
+- **`scripts/` is never imported by `src/lyra/`.** `scripts/` houses
+  operator/provisioning tooling — standalone executables. ADR-046
+  treats `gen-nkeys.sh`'s successor as an operator tool. The
+  console-script entry points are registered in `pyproject.toml`, but
+  `src/lyra/*` must not import from `scripts/*`. A small importlinter
+  contract (or a focused test) enforces this invariant.
+
+### File-length cap mitigation
+
+- A faithful port of 702 lines of bash will exceed the 300-line cap
+  (`.claude/stack.yml`). Frame mandates a **module split** (preferred
+  over an exemption):
+  - `scripts/_models.py` — TypedDicts for ACL matrix, identity,
+    request/reply flow.
+  - `scripts/_nk.py` — `NkeyProvider` ABC +
+    `SubprocessNkeyProvider`.
+  - `scripts/_renderer.py` — `auth.conf` rendering pure functions.
+  - `scripts/gen_nkeys.py` — CLI entry + mode dispatch (thin).
+  - `scripts/check_acl_matrix_retired.py`,
+    `scripts/check_request_reply_flows.py` — sibling validators.
+- Underscore-prefix on private modules signals "not a public API"; CI
+  asserts no `src/lyra/*` import from any of these.
+
+### Test discipline (falsification gate)
+
+- Every validation rule + derivation rule has a **paired negative
+  test** that mutates input *at the TypedDict / model level* (not at
+  the subprocess level — that was the bash bug) and asserts the
+  expected `SystemExit` / error.
+- Each negative test names the guard it covers in the test function
+  name and docstring (e.g.,
+  `test_render_skips_retired_identity_when_status_field_is_retired`).
+- A test-discrimination check: at least one mutation per guard must
+  be verified to fail when the guard is removed (the new
+  test-discrimination protocol installed by this issue — directly
+  addresses the `check_derived_output` bash bug).
+
+## Out of Scope
+
+- `--retire <name>` subcommand automation
+  (`docs/ops/nats-identity-retirement.md:143` — separate issue).
+- Backup retention hook for `~/.lyra/nkeys/`
+  (`docs/ops/nkey-rotation.md:320`).
+- `acl-matrix.json` schema changes (rendering only — schema is frozen
+  for this issue).
+- Promoting models to `roxabi-contracts` or to a new
+  `packages/roxabi-nkeys` package — `scripts/` flat module split is
+  the correct shape; package promotion is a wrong dependency direction
+  for provisioning tooling.
+- Other bash scripts in `scripts/` not named in the issue
+  (`check-acl-authconf-drift.sh`, `check-acl-matrix-spec.sh`,
+  `check-inbox-prefix.sh`, `check-nats-acls.sh`,
+  `deploy-quadlet.sh`, `deploy-lib.sh`).
+- `deploy/nats/gen-certs.sh`, `setup.sh`, `nats.conf` editing.
+- Refactoring callers beyond the minimum needed to swap the
+  invocation, plus the runbook sudo-correction noted above.
+
+## Risks
+
+- **Parity false-positive.** Parsed-equivalence test passes but
+  reality differs (e.g. NATS treats two equivalent ACL grammars
+  differently). Mitigation: include one end-to-end test that boots a
+  test NATS container against the rendered `auth.conf` and asserts
+  publish/subscribe outcomes for one identity per role.
+- **`SUDO_USER` regression.** Highest-impact silent failure. Mitigation:
+  explicit unit test that asserts target paths under simulated `sudo`
+  envvars.
+- **Console-script PATH on prod.** `uv tool install` must place
+  `lyra-genkeys` somewhere that survives `sudo`'s sanitized PATH (or
+  the runbook stops using sudo for the no-root modes — see
+  Constraints). Verified during deploy step of plan.
+
+## Complexity
+
+**Tier: F-full** — multi-domain refactor of a 702-line
+security-critical script with prod runbook dependencies, CI wiring,
+pre-commit wiring, console-script entry-point packaging, and a full
+test infrastructure (`tests/scripts/`) that does not currently exist.
+
+Signals observed:
+- Multi-domain (Python implementation + module split + console-script
+  packaging + subprocess wrapping + CI config + pre-commit config +
+  docs/runbook updates + bash deletion).
+- New testing patterns (`tests/scripts/` does not exist; first-class
+  unit tests for derivation rules and validation guards; new test-
+  discrimination protocol).
+- New `NkeyProvider` abstraction.
+- New `pyproject.toml [project.scripts]` console-script entry points.
+- Security-sensitive output requiring semantic-equivalence parity.
+- Three call sites in Makefile + two in CI + multiple docs/ops
+  references — coordinated swap.
+- Issue carries `size:F-full` label.

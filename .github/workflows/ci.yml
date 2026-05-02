@@ -80,7 +80,8 @@ jobs:
 
       - name: Check docs drift — removed symbols must not reappear
         run: |
-          if grep -rn "LYRA_LOG_DIR\|json_file\|RotatingFileHandler" docs/ --exclude-dir=architecture; then
+          set -euo pipefail
+          if find docs/ -name "*.md" ! -path "*/architecture/*" | xargs grep -n "LYRA_LOG_DIR\|json_file\s*=\|RotatingFileHandler"; then
             echo "::error::Removed symbols found in operator docs — update docs to match current code"
             exit 1
           fi

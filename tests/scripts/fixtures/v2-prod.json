@@ -1,0 +1,73 @@
+{
+  "version": "2",
+  "request_reply_flows": [
+    { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" }
+  ],
+  "identities": {
+    "hub": {
+      "status": "active",
+      "created_at": "2026-04-21",
+      "owner": "lyra",
+      "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers.",
+      "allow_responses": false,
+      "publish": [
+        "lyra.outbound.telegram.>",
+        "lyra.outbound.discord.>",
+        "lyra.voice.tts.request.>",
+        "lyra.voice.stt.request.>",
+        "lyra.llm.request",
+        "lyra.image.generate.request",
+        "lyra.clipool.cmd",
+        "lyra.clipool.control",
+        "lyra.audit.>",
+        "$JS.API.>",
+        "$KV.lyra-state.>"
+      ],
+      "subscribe": [
+        "lyra.inbound.telegram.>",
+        "lyra.inbound.discord.>",
+        "lyra.voice.tts.heartbeat",
+        "lyra.voice.stt.heartbeat",
+        "lyra.llm.health.*",
+        "lyra.system.ready",
+        "lyra.image.heartbeat",
+        "lyra.clipool.heartbeat",
+        "_inbox.hub.>"
+      ]
+    },
+    "voice-tts": {
+      "status": "active",
+      "created_at": "2026-04-21",
+      "owner": "voicecli",
+      "description": "voicecli nats-serve TTS worker.",
+      "allow_responses": true,
+      "publish": [
+        "lyra.voice.tts.heartbeat",
+        "lyra.system.ready"
+      ],
+      "subscribe": [
+        "lyra.voice.tts.request",
+        "lyra.voice.tts.request.>",
+        "_inbox.voice-tts.>"
+      ]
+    },
+    "clipool-worker": {
+      "status": "active",
+      "created_at": "2026-04-27",
+      "owner": "lyra",
+      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub.",
+      "allow_responses": true,
+      "publish": [
+        "lyra.clipool.heartbeat",
+        "lyra.system.ready",
+        "$JS.API.>"
+      ],
+      "subscribe": [
+        "lyra.clipool.cmd",
+        "lyra.clipool.control",
+        "_inbox.clipool-worker.>",
+        "$KV.lyra-state.>"
+      ]
+    }
+  }
+}

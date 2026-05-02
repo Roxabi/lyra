@@ -15,6 +15,7 @@ from typing import Annotated, Literal, Self
 from pydantic import StringConstraints, model_validator
 
 from roxabi_contracts.envelope import ContractEnvelope
+from roxabi_contracts.errors import WorkerError
 
 
 class ImageRequest(ContractEnvelope):
@@ -57,7 +58,7 @@ class ImageResponse(ContractEnvelope):
     engine: str | None = None
     seed_used: int | None = None
     error: str | None = None
-    error_detail: str | None = None
+    worker_error: WorkerError | None = None
 
     @model_validator(mode="after")
     def _enforce_success_invariant(self) -> Self:

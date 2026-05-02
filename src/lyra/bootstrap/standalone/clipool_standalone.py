@@ -9,6 +9,7 @@ import sys
 from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
 from lyra.bootstrap.factory.config import _load_cli_pool_config
 from lyra.core.cli.cli_pool import CliPool
+from lyra.core.messaging.metrics import log_contracts_version
 from roxabi_nats.connect import scrub_nats_url
 
 log = logging.getLogger(__name__)
@@ -19,6 +20,8 @@ async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
     nats_url = os.environ.get("NATS_URL")
     if not nats_url:
         sys.exit("NATS_URL is required for standalone clipool mode.")
+
+    log_contracts_version()
 
     cli_pool_cfg = _load_cli_pool_config(raw_config)
 

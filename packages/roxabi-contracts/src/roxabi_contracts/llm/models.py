@@ -15,6 +15,7 @@ from typing import Annotated, Self
 from pydantic import StringConstraints, model_validator
 
 from roxabi_contracts.envelope import ContractEnvelope
+from roxabi_contracts.errors import WorkerError
 
 
 class LlmRequest(ContractEnvelope):
@@ -42,6 +43,7 @@ class LlmChunkEvent(ContractEnvelope):
     is_error: bool = False
     error: str | None = None
     duration_ms: int | None = None
+    worker_error: WorkerError | None = None
 
 
 class LlmResponse(ContractEnvelope):
@@ -56,6 +58,7 @@ class LlmResponse(ContractEnvelope):
     text: str | None = None
     error: str | None = None
     duration_ms: int | None = None
+    worker_error: WorkerError | None = None
 
     @model_validator(mode="after")
     def _enforce_success_invariant(self) -> Self:

@@ -1,0 +1,55 @@
+# WorkerError code registry
+
+> Kept in sync with `roxabi_contracts.errors.KNOWN_CODES` via `scripts/check_codes_sync.py` (CI gate).
+
+## transport.*
+
+| code | retryable | description |
+|------|-----------|-------------|
+| transport.timeout | true | NATS request timed out before a reply was received. |
+| transport.no_responders | true | NATS returned a no-responders status; no subscriber on the subject. |
+| transport.parse | false | Inbound NATS payload could not be parsed (malformed JSON or schema mismatch). |
+| transport.contract_mismatch | false | CONTRACT_VERSION or schema shape does not match what this consumer expects. |
+| transport.slow_consumer | true | NATS slow-consumer detected; message dropped by the broker. |
+
+## worker.*
+
+| code | retryable | description |
+|------|-----------|-------------|
+| worker.crash | true | Worker process raised an unhandled exception. |
+| worker.validation | false | Request payload failed domain-level validation inside the worker. |
+| worker.internal | true | Worker encountered an internal error not covered by a more specific code. |
+| worker.busy | true | Worker rejected the request because its concurrency limit is reached. |
+
+## cli.*
+
+| code | retryable | description |
+|------|-----------|-------------|
+| cli.auth | false | CLI pool authentication failed (invalid or expired credentials). |
+| cli.session_lost | true | CLI session was lost and could not be resumed. |
+| cli.parse | false | CLI command string could not be parsed. |
+
+## llm.*
+
+| code | retryable | description |
+|------|-----------|-------------|
+| llm.rate_limit | true | LLM provider returned a rate-limit / quota-exceeded error. |
+| llm.context_too_long | false | Input tokens exceed the model's context window. |
+| llm.model_unavailable | true | Requested LLM model is temporarily or permanently unavailable. |
+| llm.no_responders | true | No LLM worker is subscribed on the expected NATS subject. |
+
+## voice.*
+
+| code | retryable | description |
+|------|-----------|-------------|
+| voice.engine_unavailable | true | Voice engine (TTS/STT) is not reachable or has not started. |
+| voice.audio_invalid | false | Audio payload is malformed, too short, or in an unsupported format. |
+
+## image.*
+
+| code | retryable | description |
+|------|-----------|-------------|
+| image.engine_unavailable | true | Image generation engine is not reachable or has not started. |
+| image.prompt_rejected | false | Image prompt was rejected by the engine's content policy. |
+
+See ADR-066 for design rationale.

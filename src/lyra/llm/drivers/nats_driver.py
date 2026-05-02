@@ -235,6 +235,7 @@ class NatsLlmDriver:
                     yield ResultLlmEvent(
                         is_error=True,
                         duration_ms=0,
+                        error_text="Request timed out. Please try again.",
                     )
                     return
 

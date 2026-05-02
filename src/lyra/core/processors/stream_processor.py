@@ -123,7 +123,9 @@ class StreamProcessor:
                 # reported error so the adapter surfaces something
                 # actionable instead of a bare "❌".
                 final_text = self._pending_text or (
-                    event.error_text if event.is_error and event.error_text else ""
+                    (event.error_text or "Something went wrong. Please try again.")
+                    if event.is_error
+                    else ""
                 )
                 yield TextRenderEvent(
                     text=final_text,

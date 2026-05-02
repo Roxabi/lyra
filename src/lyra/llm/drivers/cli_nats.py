@@ -93,10 +93,12 @@ class CliNatsDriver(NatsDriverBase):
                 _cli_sid = chunk.get("session_id")
                 if _cli_sid and self._turn_store and pool_id in self._lyra_sessions:
                     self._fire_set_cli_session(self._lyra_sessions[pool_id], _cli_sid)
+                _is_error = bool(chunk.get("is_error", False))
                 yield ResultLlmEvent(
-                    is_error=bool(chunk.get("is_error", False)),
+                    is_error=_is_error,
                     duration_ms=int(chunk.get("duration_ms", 0)),
                     session_id=_cli_sid or None,
+                    error_text=chunk.get("error_text") or None if _is_error else None,
                 )
                 return
             if chunk.get("done", False):

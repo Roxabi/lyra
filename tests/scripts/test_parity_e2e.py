@@ -1,4 +1,8 @@
-"""E2E parity test: boots nats-server with rendered auth.conf, verifies identity authorization."""
+"""E2E parity test: boots nats-server with rendered auth.conf.
+
+Verifies identity authorization end-to-end.
+"""
+
 from __future__ import annotations
 
 import shutil
@@ -16,12 +20,15 @@ FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 NATS_AVAILABLE = shutil.which("nats-server") is not None
 NK_AVAILABLE = shutil.which("nk") is not None
 
+_nats_py_available = False
 try:
-    import nats as _nats_module  # noqa: F401
+    import nats as _nats_module  # noqa: F401  # pyright: ignore[reportUnusedImport]
 
-    NATS_PY_AVAILABLE = True
+    _nats_py_available = True
 except ImportError:
-    NATS_PY_AVAILABLE = False
+    pass
+
+NATS_PY_AVAILABLE: bool = _nats_py_available
 
 pytestmark = pytest.mark.skipif(
     not (NATS_AVAILABLE and NK_AVAILABLE),
@@ -61,7 +68,7 @@ def rendered_auth_conf(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="module")
 def nats_server(rendered_auth_conf: Path) -> Generator[None, None, None]:
-    """Start nats-server with rendered auth.conf; poll healthz; shut down after tests."""
+    """Start nats-server with rendered auth.conf; shut down after tests."""
     proc = subprocess.Popen(
         [
             "nats-server",
@@ -97,7 +104,7 @@ def nats_server(rendered_auth_conf: Path) -> Generator[None, None, None]:
 
 
 def test_rendered_auth_conf_parses_correctly(rendered_auth_conf: Path) -> None:
-    """parse_auth_conf round-trips the rendered file; user count matches active identities."""
+    """parse_auth_conf round-trips the rendered file; user count matches active."""
     from scripts._loader import load_matrix
     from scripts._renderer import parse_auth_conf
 
@@ -126,7 +133,7 @@ def test_hub_identity_in_auth_conf(rendered_auth_conf: Path) -> None:
 
 
 def test_retired_identity_excluded(tmp_path: Path) -> None:
-    """Render with v2-with-retired fixture; 'old-worker' must not appear in output."""
+    """Render with v2-with-retired fixture; 'old-worker' must not appear."""
     from scripts._loader import load_matrix
     from scripts._nk import FakeNkeyProvider
     from scripts._renderer import render_auth_conf
@@ -152,7 +159,7 @@ def test_retired_identity_excluded(tmp_path: Path) -> None:
 
 
 def test_inbox_grant_derived_from_flows(rendered_auth_conf: Path) -> None:
-    """clipool-worker's publish allow includes '_inbox.hub.>' derived from hub→clipool-worker flow."""
+    """clipool-worker publish allow includes '_inbox.hub.>' from hub flow."""
     from scripts._renderer import parse_auth_conf
 
     text = rendered_auth_conf.read_text()
@@ -162,8 +169,9 @@ def test_inbox_grant_derived_from_flows(rendered_auth_conf: Path) -> None:
         (u for u in parsed.users if u.comment_name == "clipool-worker"), None
     )
     assert clipool is not None, "clipool-worker not found in auth.conf users"
-    assert "_inbox.hub.>" in clipool.publish_allow, (
-        f"Expected '_inbox.hub.>' in clipool-worker publish_allow; got: {clipool.publish_allow}"
+    got = clipool.publish_allow
+    assert "_inbox.hub.>" in got, (
+        f"Expected '_inbox.hub.>' in clipool-worker publish_allow; got: {got}"
     )
 
 
@@ -184,9 +192,9 @@ def test_hub_can_connect(nats_server: None) -> None:
     """hub identity connects to nats-server with FakeNkeyProvider seed (nats-py)."""
     import asyncio
 
-    import nats
-
     from scripts._nk import FakeNkeyProvider
+
+    import nats
 
     provider = FakeNkeyProvider()
     seed = provider.gen_seed("hub")

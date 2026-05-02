@@ -16,8 +16,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _MATRIX_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "v2-prod.json"
 
@@ -95,8 +93,7 @@ class TestRegenAuthconf:
 
         # Assert
         assert result.returncode == 0, (
-            f"Expected exit 0; got {result.returncode}\n"
-            f"stderr: {result.stderr}"
+            f"Expected exit 0; got {result.returncode}\nstderr: {result.stderr}"
         )
         assert "not yet implemented" not in result.stderr
 
@@ -130,12 +127,13 @@ class TestRegenAuthconf:
         # Assert — file must exist and carry the auth block
         auth_conf = seeds_dir / "auth.conf"
         assert result.returncode == 0, (
-            f"Expected exit 0; got {result.returncode}\n"
-            f"stderr: {result.stderr}"
+            f"Expected exit 0; got {result.returncode}\nstderr: {result.stderr}"
         )
         assert auth_conf.exists(), "auth.conf must be written by --regen-authconf"
         content = auth_conf.read_text()
-        assert "authorization" in content, "auth.conf must contain 'authorization' block"
+        assert "authorization" in content, (
+            "auth.conf must contain 'authorization' block"
+        )
 
 
 # ── T19.3 — --emit-merged-authconf ───────────────────────────────────────────
@@ -183,8 +181,7 @@ class TestEmitMergedAuthconf:
 
         # Assert
         assert result.returncode == 0, (
-            f"Expected exit 0; got {result.returncode}\n"
-            f"stderr: {result.stderr}"
+            f"Expected exit 0; got {result.returncode}\nstderr: {result.stderr}"
         )
         auth_conf = seeds_dir / "auth.conf"
         assert auth_conf.exists(), "auth.conf must be written by --emit-merged-authconf"
@@ -275,8 +272,7 @@ class TestShowMode:
 
         # Assert
         assert result.returncode != 0, (
-            "Expected non-zero exit for --show without root; "
-            f"got {result.returncode}"
+            f"Expected non-zero exit for --show without root; got {result.returncode}"
         )
         assert "not yet implemented" not in result.stderr
 

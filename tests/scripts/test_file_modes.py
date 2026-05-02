@@ -16,8 +16,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 # This import will fail at collection time — that is the intended RED state.
 # Once T24 lands, atomic_write is importable from scripts.gen_nkeys (or
 # scripts._io if the implementation extracts it there; update the import then).
@@ -130,8 +128,9 @@ class TestAtomicWrite:
 
         # Assert — no temp files left in the directory
         siblings = list(tmp_path.iterdir())
+        found = [p.name for p in siblings]
         assert siblings == [dest], (
-            f"Expected only {dest.name} in tmp_path; found: {[p.name for p in siblings]}"
+            f"Expected only {dest.name} in tmp_path; found: {found}"
         )
         assert dest.read_text() == content
 
@@ -145,8 +144,10 @@ class TestUserAuthconfModeAfterRegen:
 
         SC-2 + file modes table: --regen-authconf writes to SEEDS_DIR/auth.conf
         with mode 0600 (user-owned, not readable by group/other).
-        Will FAIL now: --regen-authconf raises SystemExit("not yet implemented in this slice").
-        # verified: removing os.chmod(0o600) in regen_authconf handler → mode != 0600 → fails
+        Will FAIL now: --regen-authconf raises
+        SystemExit("not yet implemented in this slice").
+        # verified: removing os.chmod(0o600) in regen_authconf handler
+        # → mode != 0600 → fails
         """
         # Arrange — write fake seeds for all active identities
         seeds_dir = tmp_path / "nkeys"

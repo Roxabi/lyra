@@ -4,8 +4,6 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # operator_home() doesn't exist yet — import will fail (desired RED state)
 from scripts.gen_nkeys import operator_home
 

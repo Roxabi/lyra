@@ -3,7 +3,6 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-
 from scripts._nk import ensure_nk_or_exit
 
 

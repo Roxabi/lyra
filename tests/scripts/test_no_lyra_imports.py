@@ -1,4 +1,5 @@
 """Guard: scripts/ modules must not import from lyra.*"""
+
 import ast
 from pathlib import Path
 

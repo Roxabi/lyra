@@ -12,8 +12,13 @@ _VALID_VERSIONS = {"1", "2"}
 _VALID_STATUSES = {"active", "retired"}
 _VALID_OWNERS = {"lyra", "voicecli", "imagecli", "reserved"}
 _REQUIRED_FIELDS = (
-    "owner", "status", "description",
-    "publish", "subscribe", "allow_responses", "created_at",
+    "owner",
+    "status",
+    "description",
+    "publish",
+    "subscribe",
+    "allow_responses",
+    "created_at",
 )
 
 

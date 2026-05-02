@@ -118,6 +118,7 @@ class TestSetupLogging:
         stream = io.StringIO()
         try:
             setup_logging()
+            assert isinstance(root.handlers[0], logging.StreamHandler)
             root.handlers[0].stream = stream
             logger = logging.getLogger("test_redact")
             logger.info("POST https://api.telegram.org/bot123456:ABCxyz/sendMessage")

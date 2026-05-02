@@ -10,9 +10,44 @@ import json
 import logging
 from collections import deque
 
+from roxabi_contracts.errors import KNOWN_CODES, WorkerError
+
 from ..messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from ..messaging.metrics import emit_populated_total
 
 log = logging.getLogger(__name__)
+
+# Subtypes that indicate an auth failure from the upstream CLI.
+_AUTH_SUBTYPES = frozenset({"auth_error", "auth", "login_required"})
+# Subtypes that suggest a lost / unresumable session.
+_SESSION_LOST_SUBTYPES = frozenset({"session_expired", "session_lost", "resume_failed"})
+
+
+def _classify_cli_error(subtype: str, error_text: str) -> WorkerError:
+    """Map a CLI result subtype + message to a structured WorkerError.
+
+    Mapping rules (path a — upstream CLI reports is_error):
+      * auth-related subtype  → cli.auth   (not retryable)
+      * session-related       → cli.session_lost (retryable)
+      * anything else         → cli.parse  (not retryable)
+
+    ``worker.parse`` is NOT present in KNOWN_CODES (registry only has
+    ``cli.parse`` and ``transport.parse``), so parser failures use
+    ``cli.parse`` per ADR-066 fallback policy.
+    """
+    if subtype in _AUTH_SUBTYPES:
+        code = "cli.auth"
+    elif subtype in _SESSION_LOST_SUBTYPES:
+        code = "cli.session_lost"
+    else:
+        code = "cli.parse"
+
+    meta = KNOWN_CODES[code]
+    return WorkerError(
+        code=code,
+        message=error_text or meta.description,
+        retryable=meta.default_retryable,
+    )
 
 
 class CliStreamingParser:
@@ -45,6 +80,8 @@ class CliStreamingParser:
         try:
             data = json.loads(line)
         except json.JSONDecodeError:
+            # Non-JSON lines are silently skipped — the CLI subprocess may emit
+            # interleaved debug output that is not part of the NDJSON protocol.
             return self._pending
 
         msg_type = data.get("type", "")
@@ -135,6 +172,11 @@ class CliStreamingParser:
                 data.get("duration_ms", 0),
             )
             self._done = True
+            # Path (a): upstream CLI emits is_error=True — classify to cli.* code.
+            worker_error: WorkerError | None = None
+            if is_error:
+                worker_error = _classify_cli_error(subtype, self.error or "")
+                emit_populated_total(domain="cli")
             self._pending.append(
                 ResultLlmEvent(
                     is_error=is_error,
@@ -142,6 +184,7 @@ class CliStreamingParser:
                     cost_usd=None,
                     error_text=self.error if is_error else None,
                     session_id=data.get("session_id") or None,
+                    worker_error=worker_error,
                 )
             )
 

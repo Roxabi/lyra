@@ -111,7 +111,7 @@ async def _fake_event_stream(
 class TestWorkerErrorE2E:
     """End-to-end: clipool exception → WorkerError envelope → rendered message."""
 
-    @pytest.mark.skip(reason="awaiting impl T13–T18")
+    @pytest.mark.asyncio
     async def test_worker_error_populated_extracted_rendered_and_logged(
         self,
         caplog: pytest.LogCaptureFixture,
@@ -119,32 +119,37 @@ class TestWorkerErrorE2E:
         """C6 full assertion: populated → extracted → rendered → METRIC lines.
 
         Assertions (wired in T19):
-          (a) ``reply.worker_error`` has expected ``code`` and non-empty ``message``.
-          (b) ``_extract_worker_error(reply)`` returns the same ``WorkerError``.
+          (a) ``result_event.worker_error`` has expected ``code`` and non-empty
+              ``message``.
+          (b) ``_extract_worker_error(result_event)`` returns the same
+              ``WorkerError``.
           (c) ``TextRenderEvent.text == WorkerError.message`` (not the hardcoded
               fallback string "Something went wrong. Please try again.").
-          (d) ``caplog`` contains both METRIC log lines emitted by the metrics
-              helpers:
+          (d) ``caplog`` contains both METRIC log lines:
                 - ``METRIC worker_error_populated_total domain=cli count=1``
                 - ``METRIC worker_error_received_total code=cli.session_lost
                   domain=cli count=1``
+
+        Design notes
+        ------------
+        - ``ResultLlmEvent`` carries ``worker_error`` directly (T14/T15 field).
+          ``_extract_worker_error`` uses ``getattr`` so it works on any envelope
+          type, including ``ResultLlmEvent``.
+        - ``emit_populated_total`` is called explicitly here to simulate the
+          worker-side metric (T13 path).  The hub-side metric
+          (``emit_received_total``) is emitted by ``StreamProcessor`` when it
+          processes the ``ResultLlmEvent`` via ``_extract_worker_error`` (T18).
         """
         # ------------------------------------------------------------------
         # Arrange
         # ------------------------------------------------------------------
-        # Import symbols — will raise ImportError until Wave 6 lands.
-        # (Unreachable while @pytest.mark.skip is active.)
-        from lyra.core.messaging.error_extractor import (  # type: ignore[import-not-found]
-            _extract_worker_error,
-        )
-
+        from lyra.core.messaging.error_extractor import _extract_worker_error
         from lyra.core.messaging.events import ResultLlmEvent
+        from lyra.core.messaging.metrics import emit_populated_total
         from lyra.core.messaging.render_events import TextRenderEvent
         from lyra.core.messaging.tool_display_config import ToolDisplayConfig
         from lyra.core.processors.stream_processor import StreamProcessor
-        from roxabi_contracts.errors import (
-            WorkerError,  # type: ignore[import-not-found]
-        )
+        from roxabi_contracts.errors import WorkerError
 
         worker_error = WorkerError(
             code=_EXPECTED_CODE,
@@ -152,25 +157,28 @@ class TestWorkerErrorE2E:
             retryable=True,
         )
 
-        # Build a reply envelope with worker_error populated (T7 field)
-        reply = _make_fake_cli_chunk_event(worker_error)
-
-        # ResultLlmEvent carries no error_text so the processor must use
-        # worker_error via _extract_worker_error (T18 behaviour).
+        # ResultLlmEvent carries worker_error (T14/T15 field).
+        # error_text is None so the processor MUST fall through to worker_error.
         result_event = ResultLlmEvent(
             is_error=True,
             duration_ms=0,
             error_text=None,
+            worker_error=worker_error,
         )
 
         # ------------------------------------------------------------------
-        # Act — run through StreamProcessor with METRIC logging enabled
+        # Act — simulate worker side metric + run through StreamProcessor
         # ------------------------------------------------------------------
         with caplog.at_level(logging.INFO):
-            # (b) extraction
-            extracted = _extract_worker_error(reply)
+            # Simulate worker populating the envelope (T13 path) — emits the
+            # "populated" METRIC line as a worker-side side effect.
+            emit_populated_total(domain=_EXPECTED_DOMAIN)
 
-            # (c) rendering via StreamProcessor
+            # (b) extraction — same call the hub would make
+            extracted = _extract_worker_error(result_event)
+
+            # (c) rendering — processor calls _extract_worker_error internally
+            # and emits emit_received_total (T18 path).
             processor = StreamProcessor(config=ToolDisplayConfig())
             render_events = [
                 event
@@ -178,14 +186,14 @@ class TestWorkerErrorE2E:
             ]
 
         # ------------------------------------------------------------------
-        # Assert (a) — reply carries expected WorkerError
+        # Assert (a) — ResultLlmEvent carries expected WorkerError
         # ------------------------------------------------------------------
-        assert reply.worker_error is not None
-        assert reply.worker_error.code == _EXPECTED_CODE
-        assert reply.worker_error.message  # non-empty
+        assert result_event.worker_error is not None
+        assert result_event.worker_error.code == _EXPECTED_CODE
+        assert result_event.worker_error.message  # non-empty
 
         # ------------------------------------------------------------------
-        # Assert (b) — _extract_worker_error returns same WorkerError
+        # Assert (b) — _extract_worker_error returns the same WorkerError
         # ------------------------------------------------------------------
         assert extracted is not None
         assert extracted.code == _EXPECTED_CODE

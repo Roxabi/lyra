@@ -7,11 +7,14 @@ lyra.llm.base re-exports for backward compatibility.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.messaging.events import LlmEvent
+
+if TYPE_CHECKING:
+    from roxabi_contracts.errors import WorkerError
 
 
 @dataclass
@@ -21,6 +24,9 @@ class LlmResult:
     Set ``retryable=False`` for errors that must not be retried
     (e.g. open circuit, invalid credentials, quota exhausted).
     Defaults to True so transient failures are retried automatically.
+
+    ``worker_error`` carries the structured error envelope (ADR-066 / #1016).
+    When populated, ``error`` is also set for backward compatibility (P2 shim).
     """
 
     result: str = ""
@@ -29,6 +35,7 @@ class LlmResult:
     retryable: bool = True
     warning: str = ""
     user_message: str = ""
+    worker_error: "WorkerError | None" = field(default=None)
 
     @property
     def ok(self) -> bool:

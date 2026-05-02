@@ -18,7 +18,9 @@ from lyra.core.messaging.events import (
     TextLlmEvent,
     ToolUseLlmEvent,
 )
+from lyra.core.messaging.metrics import emit_populated_total
 from lyra.llm.base import LlmResult
+from roxabi_contracts.errors import WorkerError
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -122,15 +124,41 @@ class NatsLlmDriver:
             reply = await self._nc.request(
                 self.SUBJECT_REQUEST, payload, timeout=self._timeout
             )
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError) as exc:
             log.warning(
                 "nats_llm: complete() timeout after %.0fs [pool:%s]",
                 self._timeout,
                 pool_id,
             )
-            return LlmResult(
-                error=f"LLM worker timeout after {self._timeout:.0f}s",
+            error_msg = f"LLM worker timeout after {self._timeout:.0f}s"
+            worker_error = WorkerError(
+                code="transport.timeout",
+                message=str(exc) or error_msg,
                 retryable=True,
+            )
+            emit_populated_total(domain="llm")
+            return LlmResult(
+                error=error_msg,
+                retryable=True,
+                worker_error=worker_error,
+            )
+        except nats.errors.NoRespondersError as exc:
+            log.warning(
+                "nats_llm: complete() no responders [pool:%s]: %s",
+                pool_id,
+                exc,
+            )
+            error_msg = f"NATS no responders: {exc}"
+            worker_error = WorkerError(
+                code="transport.no_responders",
+                message=str(exc) or error_msg,
+                retryable=True,
+            )
+            emit_populated_total(domain="llm")
+            return LlmResult(
+                error=error_msg,
+                retryable=True,
+                worker_error=worker_error,
             )
         except nats.errors.Error as exc:
             log.warning(
@@ -139,19 +167,38 @@ class NatsLlmDriver:
                 type(exc).__name__,
                 exc,
             )
-            return LlmResult(
-                error=f"NATS transport error: {exc}",
+            error_msg = f"NATS transport error: {exc}"
+            worker_error = WorkerError(
+                code="transport.timeout",
+                message=str(exc) or error_msg,
                 retryable=True,
+            )
+            emit_populated_total(domain="llm")
+            return LlmResult(
+                error=error_msg,
+                retryable=True,
+                worker_error=worker_error,
             )
 
         try:
             data: dict = json.loads(reply.data)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             log.warning(
                 "nats_llm: complete() invalid JSON from worker [pool:%s]",
                 pool_id,
             )
-            return LlmResult(error="Invalid JSON from worker", retryable=True)
+            error_msg = "Invalid JSON from worker"
+            worker_error = WorkerError(
+                code="transport.parse",
+                message=str(exc) or error_msg,
+                retryable=False,
+            )
+            emit_populated_total(domain="llm")
+            return LlmResult(
+                error=error_msg,
+                retryable=False,
+                worker_error=worker_error,
+            )
 
         error = data.get("error", "")
         retryable = bool(data.get("retryable", True))
@@ -232,24 +279,46 @@ class NatsLlmDriver:
             while True:
                 try:
                     msg = await asyncio.wait_for(queue.get(), timeout=self._timeout)
-                except TimeoutError:
+                except (TimeoutError, asyncio.TimeoutError) as exc:
                     log.warning("nats_llm: stream() inbox timeout [pool:%s]", pool_id)
+                    error_msg = "Request timed out. Please try again."
+                    worker_error = WorkerError(
+                        code="transport.timeout",
+                        message=str(exc) or error_msg,
+                        retryable=True,
+                    )
+                    emit_populated_total(domain="llm")
                     yield ResultLlmEvent(
                         is_error=True,
                         duration_ms=0,
-                        error_text="Request timed out. Please try again.",
+                        error_text=error_msg,
+                        worker_error=worker_error,
                     )
                     return
 
                 try:
                     chunk: dict = json.loads(msg.data)
-                except (json.JSONDecodeError, ValueError):
-                    log.debug(
-                        "nats_llm: stream chunk parse error [pool:%s]",
+                except (json.JSONDecodeError, ValueError) as exc:
+                    log.warning(
+                        "nats_llm: stream chunk parse error [pool:%s]: %s",
                         pool_id,
+                        exc,
                         exc_info=True,
                     )
-                    continue
+                    error_msg = f"Stream parse error: {exc}"
+                    worker_error = WorkerError(
+                        code="transport.parse",
+                        message=str(exc) or error_msg,
+                        retryable=False,
+                    )
+                    emit_populated_total(domain="llm")
+                    yield ResultLlmEvent(
+                        is_error=True,
+                        duration_ms=0,
+                        error_text=error_msg,
+                        worker_error=worker_error,
+                    )
+                    return
 
                 event_type = chunk.get("event_type", "text")
                 done = bool(chunk.get("done", False))

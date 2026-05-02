@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.cli.cli_protocol import StreamingIterator, send_and_read_stream
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from roxabi_contracts.errors import WorkerError
 
 from .conftest import (
     ASSISTANT_INTERMEDIATE_LINE,
@@ -47,6 +48,11 @@ class TestStreamingIteratorError:
                 cost_usd=None,
                 error_text="Something went wrong",
                 session_id="abc-123",
+                worker_error=WorkerError(
+                    code="cli.parse",
+                    message="Something went wrong",
+                    retryable=False,
+                ),
             )
         ]
         assert it.error == "Something went wrong"
@@ -152,6 +158,11 @@ class TestStreamingIteratorError:
                 cost_usd=None,
                 error_text="Please run /login",
                 session_id="abc-123",
+                worker_error=WorkerError(
+                    code="cli.parse",
+                    message="Please run /login",
+                    retryable=False,
+                ),
             )
         ]
 

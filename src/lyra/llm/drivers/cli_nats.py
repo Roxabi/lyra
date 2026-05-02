@@ -36,8 +36,11 @@ log = logging.getLogger(__name__)
 def _log_task_exc(task: asyncio.Task) -> None:
     """Done-callback: log any exception from a fire-and-forget task."""
     if not task.cancelled() and (exc := task.exception()):
-        log.warning(
-            "cli_nats: fire-and-forget task %r failed: %s", task.get_name(), exc
+        log.error(
+            "cli_nats: fire-and-forget task %r failed: %s",
+            task.get_name(),
+            exc,
+            exc_info=exc,
         )
 
 

@@ -871,3 +871,72 @@ class TestStreamGenSessionPersistence:
 
         # Assert — streaming still completes, no exception propagated
         assert any(isinstance(ev, ResultLlmEvent) for ev in events)
+
+
+# ---------------------------------------------------------------------------
+# _fire_set_cli_session() done-callback (issue #1021)
+# ---------------------------------------------------------------------------
+
+
+class TestFireSetCliSessionCallback:
+    """_fire_set_cli_session() logs exceptions via done-callback."""
+
+    @pytest.mark.asyncio
+    async def test_exception_produces_log_error(self) -> None:
+        """set_cli_session failure triggers log.error via the done-callback."""
+        import asyncio
+
+        # Arrange
+        driver = _make_driver()
+        store = _make_turn_store()
+        store.set_cli_session = AsyncMock(side_effect=Exception("db down"))
+        driver.set_turn_store(store)
+
+        # Act
+        with patch("lyra.llm.drivers.cli_nats.log") as mock_log:
+            driver._fire_set_cli_session("lyra-sess-1", "cli-sid-abc")
+            await asyncio.sleep(0)  # run the task coroutine (raises)
+            await asyncio.sleep(0)  # run the done-callback
+
+            # Assert inside patch so mock is still active
+            mock_log.error.assert_called_once()
+            assert "cli_nats" in mock_log.error.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_no_exception_does_not_log_error(self) -> None:
+        """Successful set_cli_session does not trigger log.error."""
+        import asyncio
+
+        # Arrange
+        driver = _make_driver()
+        store = _make_turn_store()
+        store.set_cli_session = AsyncMock(return_value=None)
+        driver.set_turn_store(store)
+
+        # Act
+        with patch("lyra.llm.drivers.cli_nats.log") as mock_log:
+            driver._fire_set_cli_session("lyra-sess-1", "cli-sid-ok")
+            await asyncio.sleep(0)
+
+        # Assert
+        mock_log.error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_bare_create_task_without_callback_swallows_silently(self) -> None:
+        """Negative: bare create_task() without callback swallows exceptions."""
+        import asyncio
+
+        exc_raised = Exception("db down")
+
+        async def _failing() -> None:
+            raise exc_raised
+
+        # Act — bare create_task, no callback wired
+        with patch("lyra.llm.drivers.cli_nats.log") as mock_log:
+            task = asyncio.get_event_loop().create_task(_failing())
+            await asyncio.sleep(0)
+
+        # Assert — exception is swallowed; log.error was never called
+        assert task.done()
+        assert task.exception() is exc_raised
+        mock_log.error.assert_not_called()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, NotRequired, TypedDict
 
 Owner = Literal["lyra", "voicecli", "imagecli", "reserved"]
@@ -33,7 +33,7 @@ class LoadedMatrix(TypedDict):
 
 @dataclass(eq=True, frozen=True)
 class ParsedUser:
-    nkey: str
+    nkey: str = field(compare=False)
     publish_allow: frozenset[str]
     subscribe_allow: frozenset[str]
     allow_responses: bool

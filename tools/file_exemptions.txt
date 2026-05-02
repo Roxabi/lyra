@@ -10,3 +10,4 @@ src/lyra/bootstrap/standalone/adapter_standalone.py  # 303 lines — #1016 Worke
 src/lyra/core/processors/stream_processor.py  # 305 lines — #1016 WorkerError extractor + emit_received_total wiring
 src/lyra/llm/drivers/nats_driver.py  # 364 lines — #1016 WorkerError population on transport.* failures (P3 will refactor with NatsDriverBase)
 src/lyra/adapters/clipool/clipool_worker.py  # 334 lines — #1016 WorkerError population + exception classifier
+scripts/gen_nkeys.py  # 597 lines — #1017 Slice-2 key-aware modes (regen-authconf, emit-merged, regenerate, show, fix-perms, default dual-write)

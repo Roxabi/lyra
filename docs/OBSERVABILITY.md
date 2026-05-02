@@ -2,25 +2,21 @@
 
 ## Overview
 
-Lyra uses **structured JSON file logs** with **per-turn trace IDs** as the primary observability mechanism, complemented by a **raw turn store** (SQLite audit trail) for conversation persistence.
+Lyra uses **structured console logs** with **per-turn trace IDs** as the primary observability mechanism, complemented by a **raw turn store** (SQLite audit trail) for conversation persistence.
 There is no distributed tracing framework (no OpenTelemetry).
 Each inbound turn receives a unique `trace_id` (UUID4) that propagates through the full async call chain via `contextvars`. The `pool_id` remains the conversation-scope correlation key.
 
 ---
 
-## Log Storage
+## Log Output
 
 | Where | Format |
 |-------|--------|
-| `~/.local/state/lyra/logs/{YYYYMMDD_HHMMSS}_lyra.log` | Rotating file, UTC-stamped at startup |
-| stdout | Mirror of file output (plaintext) |
+| stdout | `%(asctime)s %(levelname)s %(name)s: %(message)s` (plaintext) |
 
-**Rotation policy:** 10 MB per file, 5 backups kept (~50 MB total).
-**Level:** `INFO` by default.
-**File format:** JSONL (one JSON object per line) when `json_file = true` (default). Fields: `timestamp`, `level`, `logger`, `message`, `trace_id` (when set), `pool_id` (when set).
-**Console format:** `%(asctime)s %(levelname)s %(name)s: %(message)s` (plaintext, unchanged).
+**Level:** `INFO` by default; override via `[logging] level` in `config.toml`.
 
-Configured in `src/lyra/__main__.py` — `_setup_logging()`. Toggle JSON with `[logging] json_file = true` in `config.toml`.
+Configured in `src/lyra/__main__.py` — `_setup_logging()`.
 
 ---
 
@@ -33,11 +29,7 @@ A `TraceIdFilter` (attached to all logging handlers at startup) reads `trace_id`
 To isolate a single turn's log lines:
 
 ```bash
-# JSON file logs (default)
-jq 'select(.trace_id == "abc-123-...")' ~/.local/state/lyra/logs/*.log
-
-# Or grep for the trace_id
-grep '"trace_id":"abc-123-..."' ~/.local/state/lyra/logs/*.log
+grep 'abc-123-...' /var/log/supervisor/lyra_hub.stdout.log
 ```
 
 **Scope boundary:** Log lines emitted in `Hub.run()` outside of pipeline processing (e.g., the main loop itself) do not carry a `trace_id`. Only per-turn processing is traced.
@@ -48,7 +40,7 @@ Implemented in `src/lyra/core/trace.py`. See #270.
 
 ## Correlation: the `pool_id`
 
-The `pool_id` is a stable string that identifies a conversation scope and appears in both file and console logs:
+The `pool_id` is a stable string that identifies a conversation scope and appears in console logs:
 
 ```
 {platform}:{bot_id}:{scope_type}:{scope_id}
@@ -58,7 +50,7 @@ The `pool_id` is a stable string that identifies a conversation scope and appear
 To reconstruct a full conversation scope:
 
 ```bash
-grep "telegram:main:chat:123456" ~/.local/state/lyra/logs/*.log
+grep "telegram:main:chat:123456" /var/log/supervisor/lyra_hub.stdout.log
 ```
 
 ---
@@ -77,7 +69,7 @@ The following events are emitted (at INFO unless noted) for each inbound message
 | Cancel-in-flight | `lyra.core.pool` (DEBUG) | New message while LLM processing |
 | Circuit breaker | `lyra.core.circuit_breaker` (WARNING) | State transition old→new |
 
-**What is NOT logged in file logs:** message content, full prompts/responses (only char/token counts). For full content capture, see the Turn Store below.
+**What is NOT logged:** message content, full prompts/responses (only char/token counts). For full content capture, see the Turn Store below.
 
 ---
 
@@ -153,5 +145,5 @@ Config keys (in `config.toml` under `[monitoring]`):
 |-----|---------|
 | No end-to-end trace IDs | ✅ Resolved in #270 |
 | No structured/JSON logs | ✅ Resolved in #270 |
-| No message content capture in file logs | Captured in Turn Store (L1, #67 ✅) |
+| No message content capture in logs | Captured in Turn Store (L1, #67 ✅) |
 | No OpenTelemetry integration | — |

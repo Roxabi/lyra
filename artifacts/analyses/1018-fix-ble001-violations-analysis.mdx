@@ -1,0 +1,205 @@
+---
+title: "fix 121 BLE001 violations — replace bare except Exception with specific types"
+description: "Per-violation categorization and exception-type mapping for all 121 BLE001 catches"
+---
+
+## Source
+
+Issue #1018: Ruff BLE001 flags 121 blind `except Exception:` catches across 67 files. Fix strategy
+defined in issue (4 categories). This analysis validates and corrects the estimates, identifies
+specific replacement exception types per category, and surfaces implementation risks.
+
+## Problem
+
+121 blind `except Exception:` catches obstruct enabling BLE001 as a quality gate. The catches fall
+into 4 structurally different patterns — a single mechanical pass cannot fix them all correctly.
+The issue's count estimates are off: category B is ~47 violations (2× the estimate), category C is
+~38 (3× the estimate). Both require careful per-violation review before implementation.
+
+## Outcome
+
+`uv run ruff check --select BLE001 .` → 0 violations, no file-level blanket noqa, and BLE001 added
+to the default `[tool.ruff.lint] select` list in `pyproject.toml`.
+
+## Appetite
+
+1-week cycle — mechanical fix with categorization overhead. Parallelizable by domain area.
+
+## Shapes
+
+### Shape 1: Batch-by-category (recommended)
+
+Enumerate all violations by category first (analysis artifact as authoritative map), then fix
+each category in a single sweep. Each fix pass is uniform within a category.
+
+**Execution order:** A → B → C → D (ascending risk; A fails at test-time, D is tests).
+
+**Trade-offs:**
+- Pro: Faster per-file — same decision applied to all violations of a type; less context switching
+- Pro: Reviewable in category-scoped commits
+- Con: Requires up-front categorization (done in this analysis)
+- Con: C-category requires individual logging audit per violation
+
+**Rough scope:** M — ~120 single-line changes across 67 files + 1 pyproject.toml update
+
+### Shape 2: File-by-file
+
+Process each of the 67 files sequentially, applying contextual judgment per violation.
+
+**Trade-offs:**
+- Pro: No pre-categorization pass needed
+- Con: Slower — context-switch overhead per file
+- Con: Risk of inconsistent decisions across similar patterns in different files
+- Con: Cannot parallelize across agents easily
+
+**Rough scope:** M — same number of changes, higher coordination cost
+
+## Fit Check
+
+**Shape 1 wins.** The categorization is already complete in this analysis. Batch-by-category
+allows parallelizing the fix across 2–3 agents (e.g., packages vs src/adapters vs src/core) with
+no overlap risk if files are partitioned by domain.
+
+---
+
+## Violation Map (actual counts from `ruff check --select BLE001`)
+
+Total confirmed: **121 violations** across **67 files**
+
+| Category | Actual count | Issue estimate | Fix |
+|----------|-------------|---------------|-----|
+| A — JSON/deserialize | ~15 | 15–20 | Narrow to specific parse exceptions |
+| B — Transport/API ops | ~47 | 20–25 | `nats.errors.Error` or noqa + comment |
+| C — Error boundaries | ~38 | 10–15 | Keep broad + noqa + enforce `log.exception` |
+| D — Tests (all) | 9 | 5 | Narrow or noqa + comment |
+| Special — trace.py ContextVar | 4 | — | `LookupError` |
+
+### Category A — JSON/deserialize/type-hint resolution (~15 violations)
+
+Specific replacement types per location:
+
+| File | Line | Replacement |
+|------|------|-------------|
+| `nats_envelope_handlers.py` | 196 | `except (json.JSONDecodeError, ValueError)` |
+| `nats_envelope_handlers.py` | 55, 83, 107, 142 | `except (ValueError, TypeError)` — `_deserialize_dict` can raise either |
+| `adapter_base.py` (roxabi-nats) | 189 | `except (json.JSONDecodeError, ValueError)` |
+| `driver_base.py` (roxabi-nats) | 67, 113 | `except (json.JSONDecodeError, ValueError)` |
+| `_serialize.py` (roxabi-nats) | 130 | `# noqa: BLE001  # get_type_hints: NameError/AttributeError from forward refs` |
+| `messages.py` | 46 | `except (tomllib.TOMLDecodeError, OSError)` |
+| `messages.py` | 55 | `except (KeyError, ValueError)` — format_map fallback |
+| `docker/stubs/stt_stub.py` | 47 | `except (json.JSONDecodeError, ValueError)` |
+| `docker/stubs/tts_stub.py` | 54 | `except (json.JSONDecodeError, ValueError)` |
+
+### Category B — Transport/async ops (~47 violations)
+
+Pattern: NATS publish/subscribe teardown, Discord/Telegram API fire-and-forget calls, heartbeat
+ops. All already log (debug or warning) — no silent swallows.
+
+Fix: prefer `except nats.errors.Error` for NATS ops; `except discord.HTTPException` for Discord;
+fall back to `# noqa: BLE001  # <transport> teardown/op: any transport error is safe to swallow`
+when the library does not export a narrow base exception class.
+
+Key sub-groups:
+
+**NATS teardown** (unsubscribe / heartbeat / close):
+- `driver_base.py:52,122` — `sub.unsubscribe()` → `except nats.errors.Error`
+- `adapter_base.py:243` — heartbeat publish → `except nats.errors.Error`
+- `hub_standalone.py:277` — `nc.close()` → `except nats.errors.Error`
+- `sqlite_base.py:35` — sqlite close → `except Exception  # noqa: BLE001  # db teardown`
+- `infrastructure/audit/jetstream_sink.py:44,66,70,90` — JetStream init/publish → `except nats.errors.Error`
+- `readiness.py:193` — JetStream not enabled → `except nats.errors.Error`
+- `nats_channel_proxy.py:171,186,220` — NATS publish → `except nats.errors.Error`
+- `nats_outbound_listener.py:124` — NATS op
+
+**NATS client retry loops** (already use isinstance pattern internally):
+- `nats_tts_client.py:175`, `nats_stt_client.py:189`, `nats_image_client.py:162` → `except (nats.errors.Error, TimeoutError)` — these use `_is_no_responders(exc)` check inside the handler
+- `nats_llm_client.py:217,256` — L217 re-raises as `LlmUnavailableError`; L256 same pattern
+
+**Fake workers (testing):**
+- `testing/voice.py:126,204`, `testing/image.py:125` → `except nats.errors.Error  # connection closing during test teardown`
+
+**Discord API ops:**
+- `discord_audio.py:149,170,191` — send reply failures → `except discord.HTTPException`
+- `discord_audio.py:158` — attachment read → `except (discord.HTTPException, OSError)`
+- `discord_audio.py:221`, `discord_inbound.py:83,140` — ThreadStore checks → noqa
+- `discord_audio_outbound.py:105,159`, `discord_outbound.py:79,97`, `discord/lifecycle.py:51,67` → `except discord.HTTPException`
+- `discord_voice_commands.py:52` → `except discord.DiscordException`
+
+**Telegram API ops:**
+- `telegram_outbound.py:59,86,97,220,234` — typing indicator / placeholder edits → `except TelegramError`
+- `telegram_inbound.py:177,197` — send reply → `except TelegramError`
+
+**Streaming emitter:**
+- `_shared_streaming_emitter.py:148,167,248,272` — edit/peek ops → `except Exception  # noqa: BLE001  # streaming edit: any send failure is non-fatal`
+
+**Other:**
+- `_inbound_cache.py:95`, `_shared_audio.py:74` → noqa with comment
+
+### Category C — Error boundaries (~38 violations)
+
+Pattern: top-level pool/middleware/bootstrap boundaries. These intentionally catch broadly because
+they sit above unknown caller code. Fix: verify each has `log.exception(…)` or `exc_info=True`
+**before** adding noqa; add the missing log line if absent.
+
+**Violations that already log correctly** (just need noqa comment):
+- `session_lifecycle.py:146,182` — `log.warning(…, exc_info=True)` ✓
+- `pool_processor_exec.py:82,151,176` — `log.exception` ✓  
+- `middleware.py:64` — `log.debug(…, exc_info=True)` ✓
+- `middleware_submit.py:92` — `log.warning(…, exc_info=True)` ✓
+- `memory_schema.py:90` — `log.warning(…, exc_info=True)` ✓
+- `outbound_errors.py:122`, `command_router.py:119`, `monitoring/__main__.py:70,76,87` ✓
+
+**Violations with a sys.exit path** (no logging needed — process terminates):
+- `hub_standalone.py:83`, `adapter_standalone.py:49` — `sys.exit(f"…: {exc}")` — suppress is intentional; noqa + comment
+
+**⚠ Violations that need a log line added** (silent before noqa):
+- `agent.py:124` — `return  # DB unavailable — keep cached config` — no log at all; add `log.debug("agent store unavailable — keeping cached config", exc_info=True)` before return
+- Need to audit all remaining C violations in: `bootstrap/factory/`, `bootstrap/infra/`, `agent_cmd/`, `agents/`, `core/cli/`, `commands/`, `cli_agent.py`, `cli_setup.py`, `core/runtime_config.py`, `core/tts_dispatch.py`, `pool_processor.py`, `pool_processor_streaming.py`
+
+### Category D — Tests (9 violations)
+
+**`packages/roxabi-nats/tests/test_readiness.py:288,355,385,454`** — `kv.purge("hub.ready")` in test setup; KV bucket may not exist yet.
+Fix: `except nats.js.errors.NotFoundError` — NATS JS exports this for missing buckets.
+
+**`tests/core/test_pool_manager.py:366,373`** — captures any error from thread ops for later assertion; the catch IS the test mechanism.
+Fix: `# noqa: BLE001  # test error capture: any threading error is the test subject`
+
+**`tests/core/test_cli_pool_streaming.py:116`, `test_debouncer_pool.py:195`, `test_pool_tasks.py:276`** — teardown cleanup.
+Fix: narrow to `asyncio.CancelledError` / `RuntimeError` or noqa with teardown comment.
+
+### Special — trace.py ContextVar filter (4 violations)
+
+`trace.py:94,98,102` — `ContextVar.get(default)` **cannot raise**; the try/except is dead code.
+Fix: `except LookupError` (theoretical; signals intent without silencing real bugs)
+
+`trace.py:133` — `pass  # never block logging on a filter error` — intentional broad catch in a logging filter; must never propagate.
+Fix: `# noqa: BLE001  # logging filter: must never raise`
+
+---
+
+## Implementation Risks
+
+| Risk | Severity | Mitigation |
+|------|----------|-----------|
+| `nats.errors.Error` may not cover all NATS transport errors | Medium | Verify against `nats-py` error hierarchy; `nats.errors.Error` is the base for all NATS errors |
+| Discord exception hierarchy: `HTTPException` vs `DiscordException` | Low | `discord.HTTPException` is narrower; use `discord.DiscordException` at boundaries |
+| Category C silent violations — adding noqa without logging audit first | High | **Mandatory audit**: grep for `except Exception` + no `log.exception` / no `exc_info=True` in body before adding noqa |
+| `_serialize.py:130` — `get_type_hints` raises `NameError`/`AttributeError` for forward refs in user-defined types; cannot narrow | Medium | noqa is correct; comment must explain |
+| Tests `test_pool_manager.py` — the broad catch IS the test subject | Low | noqa + comment; do not narrow or tests break |
+| `pyproject.toml` BLE001 enable must be the final commit | Medium | Add as last step; if any violation remains, ruff will catch it in CI |
+
+---
+
+## Recommended Execution (for plan phase)
+
+```
+1. Fix Category A (safest, directly narrowable) — 1 commit
+2. Fix Category B NATS ops  — 1 commit per package (roxabi-nats, src/lyra/nats, adapters)
+3. Fix Category B Discord/Telegram — 1 commit
+4. Audit + fix Category C — 1 commit (log-line additions first, noqa second)
+5. Fix Special (trace.py) — 1 commit
+6. Fix Category D (tests) — 1 commit
+7. Enable BLE001 in pyproject.toml — final verification commit
+```
+
+Zero-violation check between steps 6 and 7 as the acceptance gate.

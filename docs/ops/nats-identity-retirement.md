@@ -46,7 +46,7 @@ This rewrites the sentinel-bracketed table in `artifacts/specs/706-per-role-nkey
 `gen-nkeys.sh` skips retired identities when rendering `auth.conf`. The retired identity's public key is no longer present in any permissions block after this step.
 
 ```bash
-sudo ./deploy/nats/gen-nkeys.sh --regen-authconf
+lyra-acl genkeys --regen-authconf
 ```
 
 **6. Commit.**
@@ -108,7 +108,7 @@ If the identity participates in request-reply, add the corresponding entry to `r
 ```bash
 bash scripts/check-acl-matrix-retired.sh  # validates status, created_at on ALL identities (not just the new one)
 bash scripts/check-acl-matrix-spec.sh --update
-sudo ./deploy/nats/gen-nkeys.sh --regen-authconf
+lyra-acl genkeys --regen-authconf
 ```
 
 `gen-nkeys.sh` creates `~/.lyra/nkeys/<name>.seed` if absent, derives the public key, and re-renders `auth.conf`.

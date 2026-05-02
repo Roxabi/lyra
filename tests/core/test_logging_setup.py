@@ -4,10 +4,45 @@ from __future__ import annotations
 
 import io
 import logging
+from collections.abc import Generator
+from unittest.mock import patch
 
+import pytest
+
+import lyra.core.logging_setup as _ls_mod
 from lyra.bootstrap.factory.config import LoggingConfig, _load_logging_config
 from lyra.core.logging_setup import setup_logging
 from lyra.core.trace import TelegramTokenFilter, TraceIdFilter
+
+# ──────────────────────────────────────────────────────────────────────
+# Fixture: reset module sentinel + root logger state before each test
+# ──────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _reset_logging_state() -> Generator[None, None, None]:
+    """Reset setup_logging sentinel and root logger state around each test.
+
+    Clears root handlers/filters so setup_logging() starts from a clean
+    slate. Pytest's log-capture plugin re-adds its own LogCaptureHandler
+    subclasses around the test call body — tests that need to inspect
+    handler specifics use `type(h) is logging.StreamHandler` to select
+    only the handler installed by setup_logging().
+    """
+    root = logging.getLogger()
+    orig_handlers = root.handlers[:]
+    orig_filters = root.filters[:]
+    orig_level = root.level
+    orig_done = _ls_mod._setup_done
+    root.handlers.clear()
+    root.filters.clear()
+    _ls_mod._setup_done = False
+    yield
+    root.handlers[:] = orig_handlers
+    root.filters[:] = orig_filters
+    root.setLevel(orig_level)
+    _ls_mod._setup_done = orig_done
+
 
 # ──────────────────────────────────────────────────────────────────────
 # LoggingConfig
@@ -38,108 +73,85 @@ class TestLoggingConfig:
 # ──────────────────────────────────────────────────────────────────────
 
 
+def _our_handler(root: logging.Logger) -> logging.StreamHandler:  # type: ignore[type-arg]
+    """Return the StreamHandler installed by setup_logging (exact type match).
+
+    Pytest's log-capture plugin injects LogCaptureHandler subclasses around
+    the test body; `type(h) is logging.StreamHandler` skips those.
+    """
+    return next(h for h in root.handlers if type(h) is logging.StreamHandler)
+
+
 class TestSetupLogging:
-    def _reset(self, root: logging.Logger) -> tuple[list, list, int]:
-        handlers = root.handlers[:]
-        filters = root.filters[:]
-        level = root.level
-        root.handlers.clear()
-        root.filters.clear()
-        return handlers, filters, level
-
-    def _restore(self, root: logging.Logger, h: list, f: list, lv: int) -> None:
-        root.handlers[:] = h
-        root.filters[:] = f
-        root.setLevel(lv)
-
     def test_trace_filter_attached_to_root(self) -> None:
         root = logging.getLogger()
-        h, f, lv = self._reset(root)
-        try:
-            setup_logging()
-            assert any(isinstance(x, TraceIdFilter) for x in root.filters)
-        finally:
-            self._restore(root, h, f, lv)
+        setup_logging()
+        assert any(isinstance(x, TraceIdFilter) for x in root.filters)
 
     def test_telegram_token_filter_attached_to_root(self) -> None:
         root = logging.getLogger()
-        h, f, lv = self._reset(root)
-        try:
-            setup_logging()
-            assert any(isinstance(x, TelegramTokenFilter) for x in root.filters)
-        finally:
-            self._restore(root, h, f, lv)
+        setup_logging()
+        assert any(isinstance(x, TelegramTokenFilter) for x in root.filters)
 
     def test_telegram_token_filter_attached_to_handler(self) -> None:
         root = logging.getLogger()
-        h, f, lv = self._reset(root)
-        try:
-            setup_logging()
-            handler_filters = root.handlers[0].filters
-            assert any(isinstance(x, TelegramTokenFilter) for x in handler_filters)
-            assert any(isinstance(x, TraceIdFilter) for x in handler_filters)
-        finally:
-            self._restore(root, h, f, lv)
+        setup_logging()
+        h = _our_handler(root)
+        assert any(isinstance(x, TelegramTokenFilter) for x in h.filters)
+        assert any(isinstance(x, TraceIdFilter) for x in h.filters)
 
-    def test_duplicate_call_does_not_add_handlers(self) -> None:
+    def test_duplicate_call_does_not_add_handlers_or_filters(self) -> None:
         root = logging.getLogger()
-        h, f, lv = self._reset(root)
-        try:
-            setup_logging()
-            count = len(root.handlers)
-            setup_logging()
-            assert len(root.handlers) == count
-        finally:
-            self._restore(root, h, f, lv)
+        setup_logging()
+        handler_count = len(root.handlers)
+        filter_count = len(root.filters)
+        setup_logging()
+        assert len(root.handlers) == handler_count
+        assert len(root.filters) == filter_count
 
     def test_level_applied_to_root(self) -> None:
         root = logging.getLogger()
-        h, f, lv = self._reset(root)
-        try:
-            setup_logging(level="debug")
-            assert root.level == logging.DEBUG
-        finally:
-            self._restore(root, h, f, lv)
+        setup_logging(level="debug")
+        assert root.level == logging.DEBUG
+
+    def test_level_updated_on_second_call(self) -> None:
+        root = logging.getLogger()
+        setup_logging(level="info")
+        setup_logging(level="debug")
+        assert root.level == logging.DEBUG
 
     def test_console_handler_only(self) -> None:
+        """setup_logging installs exactly one native StreamHandler."""
         root = logging.getLogger()
-        h, f, lv = self._reset(root)
-        try:
-            setup_logging()
-            assert len(root.handlers) == 1
-            assert isinstance(root.handlers[0], logging.StreamHandler)
-        finally:
-            self._restore(root, h, f, lv)
+        setup_logging()
+        our = [h for h in root.handlers if type(h) is logging.StreamHandler]
+        assert len(our) == 1
 
     def test_token_redacted_in_log_output(self) -> None:
-        """With setup_logging active, bot token is redacted in captured output."""
-        root = logging.getLogger()
-        h, f, lv = self._reset(root)
-        stream = io.StringIO()
-        try:
+        """With setup_logging active, bot token is redacted; numeric id preserved."""
+        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
             setup_logging()
-            assert isinstance(root.handlers[0], logging.StreamHandler)
-            root.handlers[0].stream = stream
             logger = logging.getLogger("test_redact")
             logger.info("POST https://api.telegram.org/bot123456:ABCxyz/sendMessage")
-            output = stream.getvalue()
-            assert "bot123456:ABCxyz" not in output
-            assert "<REDACTED>" in output
-        finally:
-            self._restore(root, h, f, lv)
+            output = mock_stderr.getvalue()
+        assert "bot123456:ABCxyz" not in output
+        assert "<REDACTED>" in output
+        assert "bot123456" in output  # numeric id preserved for correlation
 
     def test_token_appears_without_filter(self) -> None:
-        """Negative: without TelegramTokenFilter the raw token is visible."""
-        stream = io.StringIO()
-        handler = logging.StreamHandler(stream)
-        logger = logging.getLogger("test_no_filter_negative")
-        logger.propagate = False
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
-        try:
+        """Negative: removing TelegramTokenFilter makes the raw token visible."""
+        root = logging.getLogger()
+        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+            setup_logging()
+            # Remove TelegramTokenFilter to prove it is the causal mechanism
+            root.filters = [
+                f for f in root.filters if not isinstance(f, TelegramTokenFilter)
+            ]
+            for h in root.handlers:
+                h.filters = [
+                    f for f in h.filters if not isinstance(f, TelegramTokenFilter)
+                ]
+            logger = logging.getLogger("test_no_filter_negative")
             logger.info("POST https://api.telegram.org/bot123456:ABCxyz/sendMessage")
-            output = stream.getvalue()
-            assert "bot123456:ABCxyz" in output
-        finally:
-            logger.removeHandler(handler)
-            logger.propagate = True
+            output = mock_stderr.getvalue()
+        assert "bot123456:ABCxyz" in output

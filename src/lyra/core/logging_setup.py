@@ -8,17 +8,29 @@ from lyra.core.trace import TelegramTokenFilter, TraceIdFilter
 
 _FMT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
+# Module-level sentinel — guards handler/filter attachment, not level updates.
+# Using a sentinel (rather than root.handlers check) ensures the filter contract
+# holds even when a third-party library (e.g. pytest log-capture) pre-populates
+# root handlers before setup_logging is called.
+_setup_done: bool = False
+
 
 def setup_logging(level: str = "INFO") -> None:
     """Configure stdout-only logging with token redaction.
 
-    Idempotent: returns immediately if the root logger already has handlers.
+    Always applies the requested log level to the root logger. Handler and
+    filter attachment runs only once — subsequent calls update the level but
+    skip re-attaching handlers/filters.
+
     Attaches TelegramTokenFilter to both the handler and the root logger so
     that httpx URL logs (which embed the bot token) are redacted before
     reaching any sink.
     """
+    global _setup_done
     root = logging.getLogger()
-    if root.handlers:
+    level_int = getattr(logging, level.upper(), logging.INFO)
+    root.setLevel(level_int)  # always honour the caller's requested level
+    if _setup_done:
         return
     trace_filter = TraceIdFilter()
     telegram_filter = TelegramTokenFilter()
@@ -26,8 +38,10 @@ def setup_logging(level: str = "INFO") -> None:
     handler.setFormatter(logging.Formatter(_FMT))
     handler.addFilter(trace_filter)
     handler.addFilter(telegram_filter)
-    level_int = getattr(logging, level.upper(), logging.INFO)
-    root.setLevel(level_int)
+    # root-level filters: cover httpx loggers that propagate to root before
+    # reaching any handler. handler-level filters: defence-in-depth for
+    # future handlers added without the filter.
     root.addFilter(trace_filter)
     root.addFilter(telegram_filter)
     root.addHandler(handler)
+    _setup_done = True

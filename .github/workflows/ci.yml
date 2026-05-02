@@ -78,6 +78,13 @@ jobs:
       - name: Check inbox_prefix uses identity_name API
         run: bash scripts/check-inbox-prefix.sh
 
+      - name: Check docs drift — removed symbols must not reappear
+        run: |
+          if grep -rn "LYRA_LOG_DIR\|json_file\|RotatingFileHandler" docs/ --exclude-dir=architecture; then
+            echo "::error::Removed symbols found in operator docs — update docs to match current code"
+            exit 1
+          fi
+
       - name: Enforce import layers
         run: uv run lint-imports
 

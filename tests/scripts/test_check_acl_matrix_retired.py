@@ -19,8 +19,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts" / "check_acl_matrix_retired.py"
 
@@ -80,7 +78,8 @@ class TestCheckAclMatrixRetiredPositive:
         """Positive: prod acl-matrix.json has no lifecycle errors; CLI must exit 0."""
         result = _run_cli(prod_matrix_path)
         assert result.returncode == 0, (
-            f"CLI exited {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+            f"CLI exited {result.returncode}\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
 
@@ -234,7 +233,11 @@ class TestRetiredInFlows:
         data = {
             "version": "2",
             "request_reply_flows": [
-                {"requester": "hub", "responder": "voice-tts", "subject": "lyra.voice.tts.request.>"},
+                {
+                    "requester": "hub",
+                    "responder": "voice-tts",
+                    "subject": "lyra.voice.tts.request.>",
+                },
             ],
             "identities": {
                 "hub": _valid_active_identity(),

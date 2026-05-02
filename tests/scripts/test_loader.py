@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 # REPO and fixture paths re-used from conftest
-from tests.scripts.conftest import FIXTURES_DIR, REPO
+from tests.scripts.conftest import FIXTURES_DIR
 
 _V2_PROD = FIXTURES_DIR / "v2-prod.json"
 _V1_LEGACY = FIXTURES_DIR / "v1-legacy.json"
@@ -23,6 +23,7 @@ _V1_LEGACY = FIXTURES_DIR / "v1-legacy.json"
 # ---------------------------------------------------------------------------
 # Helper — build a minimal valid identity dict
 # ---------------------------------------------------------------------------
+
 
 def _valid_identity(
     *,
@@ -67,11 +68,20 @@ class TestLoadMatrixPositive:
         assert result["version"] in ("1", "2")
         assert isinstance(result["identities"], dict)
         assert len(result["identities"]) >= 1
-        assert isinstance(result["request_reply_flows"], list)
-        assert len(result["request_reply_flows"]) >= 1
+        flows = result.get("request_reply_flows")
+        assert isinstance(flows, list)
+        assert len(flows) >= 1
         # Spot-check one identity key set
         first_identity = next(iter(result["identities"].values()))
-        for key in ("owner", "status", "description", "publish", "subscribe", "allow_responses", "created_at"):
+        for key in (
+            "owner",
+            "status",
+            "description",
+            "publish",
+            "subscribe",
+            "allow_responses",
+            "created_at",
+        ):
             assert key in first_identity, f"identity missing key: {key}"
 
 
@@ -217,12 +227,20 @@ class TestLoadMatrixNegatives:
         assert exc_info.value.code != 0
 
     def test_duplicate_flow_pair(self, tmp_path: Path) -> None:
-        """Guard: request_reply_flows must not contain duplicate (requester, responder) pairs."""
+        """Guard: request_reply_flows must not have duplicate (requester, responder)."""
         data = {
             "version": "2",
             "request_reply_flows": [
-                {"requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd"},
-                {"requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.other"},
+                {
+                    "requester": "hub",
+                    "responder": "clipool-worker",
+                    "subject": "lyra.clipool.cmd",
+                },
+                {
+                    "requester": "hub",
+                    "responder": "clipool-worker",
+                    "subject": "lyra.clipool.other",
+                },
             ],
             "identities": {
                 "hub": _valid_identity(owner="lyra"),

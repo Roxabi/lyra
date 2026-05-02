@@ -6,9 +6,9 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
 
 import pytest
+from scripts._acl_models import LoadedMatrix
 from scripts._nk import FakeNkeyProvider as FakeNkeyProvider  # noqa: F401
 
 # ── Repo root ────────────────────────────────────────────────────────────────
@@ -83,18 +83,18 @@ def with_retired_matrix_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def prod_matrix() -> dict[str, Any]:
+def prod_matrix() -> LoadedMatrix:
     """Raw JSON of deploy/nats/acl-matrix.json."""
     return json.loads(_REAL_MATRIX_JSON.read_text())
 
 
 @pytest.fixture()
-def legacy_matrix() -> dict[str, Any]:
+def legacy_matrix() -> LoadedMatrix:
     """Raw JSON of tests/scripts/fixtures/v1-legacy.json."""
     return json.loads(_V1_LEGACY_JSON.read_text())
 
 
 @pytest.fixture()
-def with_retired_matrix() -> dict[str, Any]:
+def with_retired_matrix() -> LoadedMatrix:
     """Raw JSON of tests/scripts/fixtures/v2-with-retired.json."""
     return json.loads(_V2_WITH_RETIRED_JSON.read_text())

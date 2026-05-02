@@ -16,6 +16,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from scripts._acl_models import Flow, Identity  # noqa: E402
 from scripts._loader import load_matrix  # noqa: E402
 from scripts._renderer import render_auth_conf  # noqa: E402
 from scripts._supervisor import validate_supervisor  # noqa: E402
@@ -124,7 +125,7 @@ def _subject_covered(subject: str, publish: list[str]) -> bool:
     return False
 
 
-def _flow_errors(flow: dict, identities: dict) -> list[str]:  # type: ignore[type-arg]
+def _flow_errors(flow: Flow, identities: dict[str, Identity]) -> list[str]:
     requester = flow["requester"]
     responder = flow["responder"]
     subject = flow.get("subject", "")

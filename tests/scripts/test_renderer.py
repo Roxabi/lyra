@@ -8,11 +8,9 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
-
-import pytest
 
 # This import will fail at collection time — that is the intended RED state.
+from scripts._acl_models import LoadedMatrix
 from scripts._renderer import parse_auth_conf, render_auth_conf
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -20,11 +18,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
-def _fake_pubkeys(matrix: dict[str, Any]) -> dict[str, str]:
+def _fake_pubkeys(matrix: LoadedMatrix) -> dict[str, str]:
     """Build deterministic pubkeys dict from matrix identities (active only)."""
     return {
-        name: f"UDET{name.upper().replace('-', '')}"
-        for name in matrix["identities"]
+        name: f"UDET{name.upper().replace('-', '')}" for name in matrix["identities"]
     }
 
 
@@ -32,12 +29,14 @@ def _fake_pubkeys(matrix: dict[str, Any]) -> dict[str, str]:
 
 
 class TestRenderParity:
-    def test_render_parity_vs_bash(self, prod_matrix: dict[str, Any], prod_matrix_path: Path) -> None:
-        """Rendered output parsed with parse_auth_conf equals bash output parsed the same way.
+    def test_render_parity_vs_bash(
+        self, prod_matrix: LoadedMatrix, prod_matrix_path: Path
+    ) -> None:
+        """parse_auth_conf(render_auth_conf(...)) equals parse_auth_conf(bash output).
 
         SC-3: render parity — Python renderer produces semantically equivalent
         auth.conf to the bash original for v2-prod fixture.
-        # verified: removing render_auth_conf call causes parse to get empty string → mismatch
+        # verified: removing render_auth_conf call → empty parse → mismatch
         """
         from tests.scripts.conftest import bash_render
 
@@ -52,7 +51,7 @@ class TestRenderParity:
 
 
 class TestEmitUserStructure:
-    def test_emit_user_structure(self, prod_matrix: dict[str, Any]) -> None:
+    def test_emit_user_structure(self, prod_matrix: LoadedMatrix) -> None:
         """Rendered output for hub contains its name in a comment and its pubkey.
 
         SC-3: every identity block carries the name as a comment and the nkey pubkey.
@@ -64,7 +63,7 @@ class TestEmitUserStructure:
         assert "hub" in rendered
         assert "UDETHUB" in rendered
 
-    def test_emit_voice_tts_structure(self, prod_matrix: dict[str, Any]) -> None:
+    def test_emit_voice_tts_structure(self, prod_matrix: LoadedMatrix) -> None:
         """Rendered output for voice-tts contains its name and pubkey."""
         pubkeys = _fake_pubkeys(prod_matrix)
         rendered = render_auth_conf(prod_matrix, pubkeys)
@@ -74,7 +73,7 @@ class TestEmitUserStructure:
 
 
 class TestRetiredIdentityExcluded:
-    def test_retired_identity_excluded(self, with_retired_matrix: dict[str, Any]) -> None:
+    def test_retired_identity_excluded(self, with_retired_matrix: LoadedMatrix) -> None:
         """Retired identity old-worker must NOT appear in rendered output.
 
         SC-5: retired identities are excluded from auth.conf rendering.
@@ -88,11 +87,11 @@ class TestRetiredIdentityExcluded:
 
 
 class TestAllowResponsesHonored:
-    def test_allow_responses_honored(self, prod_matrix: dict[str, Any]) -> None:
-        """Identity with allow_responses=True (voice-tts) has allow_responses: true in block.
+    def test_allow_responses_honored(self, prod_matrix: LoadedMatrix) -> None:
+        """voice-tts (allow_responses=True) renders allow_responses: true in block.
 
         SC-4: allow_responses field from matrix is faithfully rendered.
-        # verified: removing allow_responses handling causes field to be absent/false → fails
+        # verified: removing allow_responses handling → field absent/false → fails
         """
         pubkeys = _fake_pubkeys(prod_matrix)
         rendered = render_auth_conf(prod_matrix, pubkeys)
@@ -102,8 +101,8 @@ class TestAllowResponsesHonored:
         # The rendered block must contain allow_responses: true somewhere near voice-tts
         assert "allow_responses: true" in rendered
 
-    def test_allow_responses_false_honored(self, prod_matrix: dict[str, Any]) -> None:
-        """Identity with allow_responses=False (hub) has allow_responses: false in block."""
+    def test_allow_responses_false_honored(self, prod_matrix: LoadedMatrix) -> None:
+        """hub (allow_responses=False) renders allow_responses: false in block."""
         pubkeys = _fake_pubkeys(prod_matrix)
         rendered = render_auth_conf(prod_matrix, pubkeys)
 
@@ -113,16 +112,20 @@ class TestAllowResponsesHonored:
 
 class TestInboxGrantFromFlow:
     def test_inbox_grant_from_flow(self) -> None:
-        """Responder's publish allow contains _inbox.<requester>.> derived from request_reply_flows.
+        """Responder's publish allow contains _inbox.<requester>.> from flows.
 
         SC-6: derived inbox grants — for flow (hub → clipool-worker, lyra.clipool.cmd),
         clipool-worker's publish allow must include _inbox.hub.>
-        # verified: removing flow-derivation logic causes _inbox.hub.> to be absent → fails
+        # verified: removing flow-derivation logic → _inbox.hub.> absent → fails
         """
-        matrix = {
+        matrix: LoadedMatrix = {
             "version": "2",
             "request_reply_flows": [
-                {"requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd"}
+                {
+                    "requester": "hub",
+                    "responder": "clipool-worker",
+                    "subject": "lyra.clipool.cmd",
+                }
             ],
             "identities": {
                 "hub": {
@@ -156,11 +159,12 @@ class TestInboxGrantFromFlow:
 
 
 class TestParserIdempotence:
-    def test_parser_idempotence(self, prod_matrix: dict[str, Any]) -> None:
-        """parse_auth_conf is idempotent: render → parse → render → parse gives equal results.
+    def test_parser_idempotence(self, prod_matrix: LoadedMatrix) -> None:
+        """parse_auth_conf is idempotent: render→parse→render→parse gives equal results.
 
-        SC-22: ParsedAuthConf is a dataclass(eq=True, frozen=True); equality is the parity primitive.
-        # verified: breaking parse_auth_conf to return mutable object causes frozen check to fail
+        SC-22: ParsedAuthConf is a dataclass(eq=True, frozen=True); equality is
+        the parity primitive.
+        # verified: breaking parse_auth_conf to mutable → frozen check fails
         """
         pubkeys = _fake_pubkeys(prod_matrix)
         rendered1 = render_auth_conf(prod_matrix, pubkeys)
@@ -171,10 +175,10 @@ class TestParserIdempotence:
 
         assert parsed1 == parsed2
 
-    def test_parsed_auth_conf_is_frozen(self, prod_matrix: dict[str, Any]) -> None:
+    def test_parsed_auth_conf_is_frozen(self, prod_matrix: LoadedMatrix) -> None:
         """ParsedAuthConf must be frozen (dataclass frozen=True).
 
-        # verified: removing frozen=True from ParsedAuthConf allows mutation → assertion fails
+        # verified: removing frozen=True from ParsedAuthConf → mutation allowed → fails
         """
         import dataclasses
 
@@ -187,7 +191,7 @@ class TestParserIdempotence:
 
 
 class TestNatsSubjectCharset:
-    def test_nats_subject_charset(self, prod_matrix: dict[str, Any]) -> None:
+    def test_nats_subject_charset(self, prod_matrix: LoadedMatrix) -> None:
         """All rendered subjects only contain valid NATS subject characters.
 
         SC-3: no spaces or special characters outside the NATS subject charset.
@@ -200,15 +204,13 @@ class TestNatsSubjectCharset:
         # Extract quoted subject-like tokens from rendered output.
         # We look for strings inside quotes in publish/subscribe allow blocks.
         quoted_strings = re.findall(r'"([^"]+)"', rendered)
-        invalid_charset = re.compile(r'[^a-zA-Z0-9._>*$\-]')
+        invalid_charset = re.compile(r"[^a-zA-Z0-9._>*$\-]")
 
         for token in quoted_strings:
             # Skip tokens that look like comments or multi-word descriptions
             if " " in token or len(token) == 0:
                 continue
-            # Only check tokens that look like NATS subjects (contain . or start with _/$)
+            # Only check tokens that look like NATS subjects (. or starts with _/$)
             if "." in token or token.startswith("_") or token.startswith("$"):
                 bad = invalid_charset.findall(token)
-                assert not bad, (
-                    f"Subject token {token!r} contains invalid chars: {bad}"
-                )
+                assert not bad, f"Subject token {token!r} contains invalid chars: {bad}"

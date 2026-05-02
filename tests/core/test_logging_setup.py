@@ -1,14 +1,13 @@
-"""Unit tests for LoggingConfig and _setup_logging wiring (#999)."""
+"""Unit tests for lyra.core.logging_setup.setup_logging (#1020)."""
 
 from __future__ import annotations
 
+import io
 import logging
 
 from lyra.bootstrap.factory.config import LoggingConfig, _load_logging_config
-from lyra.core.trace import (  # noqa: F401 (used in isinstance checks)
-    TelegramTokenFilter,
-    TraceIdFilter,
-)
+from lyra.core.logging_setup import setup_logging
+from lyra.core.trace import TelegramTokenFilter, TraceIdFilter
 
 # ──────────────────────────────────────────────────────────────────────
 # LoggingConfig
@@ -35,78 +34,111 @@ class TestLoggingConfig:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# _setup_logging
+# setup_logging
 # ──────────────────────────────────────────────────────────────────────
 
 
 class TestSetupLogging:
-    """Tests for _setup_logging wiring (#999)."""
+    def _reset(self, root: logging.Logger) -> tuple[list, list, int]:
+        handlers = root.handlers[:]
+        filters = root.filters[:]
+        level = root.level
+        root.handlers.clear()
+        root.filters.clear()
+        return handlers, filters, level
+
+    def _restore(self, root: logging.Logger, h: list, f: list, lv: int) -> None:
+        root.handlers[:] = h
+        root.filters[:] = f
+        root.setLevel(lv)
 
     def test_trace_filter_attached_to_root(self) -> None:
-        import lyra.__main__ as main_mod
-
         root = logging.getLogger()
-        original_handlers = root.handlers[:]
-        original_filters = root.filters[:]
-        root.handlers.clear()
-        root.filters.clear()
+        h, f, lv = self._reset(root)
         try:
-            main_mod._setup_logging()
-            assert any(isinstance(f, TraceIdFilter) for f in root.filters)
+            setup_logging()
+            assert any(isinstance(x, TraceIdFilter) for x in root.filters)
         finally:
-            root.handlers[:] = original_handlers
-            root.filters[:] = original_filters
+            self._restore(root, h, f, lv)
+
+    def test_telegram_token_filter_attached_to_root(self) -> None:
+        root = logging.getLogger()
+        h, f, lv = self._reset(root)
+        try:
+            setup_logging()
+            assert any(isinstance(x, TelegramTokenFilter) for x in root.filters)
+        finally:
+            self._restore(root, h, f, lv)
+
+    def test_telegram_token_filter_attached_to_handler(self) -> None:
+        root = logging.getLogger()
+        h, f, lv = self._reset(root)
+        try:
+            setup_logging()
+            handler_filters = root.handlers[0].filters
+            assert any(isinstance(x, TelegramTokenFilter) for x in handler_filters)
+            assert any(isinstance(x, TraceIdFilter) for x in handler_filters)
+        finally:
+            self._restore(root, h, f, lv)
 
     def test_duplicate_call_does_not_add_handlers(self) -> None:
-        import lyra.__main__ as main_mod
-
         root = logging.getLogger()
-        original_handlers = root.handlers[:]
-        original_filters = root.filters[:]
-        root.handlers.clear()
-        root.filters.clear()
+        h, f, lv = self._reset(root)
         try:
-            main_mod._setup_logging()
-            count_after_first = len(root.handlers)
-            main_mod._setup_logging()
-            assert len(root.handlers) == count_after_first
+            setup_logging()
+            count = len(root.handlers)
+            setup_logging()
+            assert len(root.handlers) == count
         finally:
-            root.handlers[:] = original_handlers
-            root.filters[:] = original_filters
+            self._restore(root, h, f, lv)
 
     def test_level_applied_to_root(self) -> None:
-        import lyra.__main__ as main_mod
-
         root = logging.getLogger()
-        original_level = root.level
-        original_handlers = root.handlers[:]
-        original_filters = root.filters[:]
-        root.handlers.clear()
-        root.filters.clear()
+        h, f, lv = self._reset(root)
         try:
-            main_mod._setup_logging(level="debug")
+            setup_logging(level="debug")
             assert root.level == logging.DEBUG
         finally:
-            root.handlers[:] = original_handlers
-            root.filters[:] = original_filters
-            root.setLevel(original_level)
+            self._restore(root, h, f, lv)
 
     def test_console_handler_only(self) -> None:
-        """After setup, only a StreamHandler is present (no file handler)."""
-        import lyra.__main__ as main_mod
-
         root = logging.getLogger()
-        original_handlers = root.handlers[:]
-        original_filters = root.filters[:]
-        root.handlers.clear()
-        root.filters.clear()
+        h, f, lv = self._reset(root)
         try:
-            main_mod._setup_logging()
+            setup_logging()
             assert len(root.handlers) == 1
             assert isinstance(root.handlers[0], logging.StreamHandler)
-            handler_filters = root.handlers[0].filters
-            assert any(isinstance(f, TraceIdFilter) for f in handler_filters)
-            assert any(isinstance(f, TelegramTokenFilter) for f in handler_filters)
         finally:
-            root.handlers[:] = original_handlers
-            root.filters[:] = original_filters
+            self._restore(root, h, f, lv)
+
+    def test_token_redacted_in_log_output(self) -> None:
+        """With setup_logging active, bot token is redacted in captured output."""
+        root = logging.getLogger()
+        h, f, lv = self._reset(root)
+        stream = io.StringIO()
+        try:
+            setup_logging()
+            root.handlers[0].stream = stream
+            logger = logging.getLogger("test_redact")
+            logger.info("POST https://api.telegram.org/bot123456:ABCxyz/sendMessage")
+            output = stream.getvalue()
+            assert "bot123456:ABCxyz" not in output
+            assert "<REDACTED>" in output
+        finally:
+            self._restore(root, h, f, lv)
+
+    def test_token_appears_without_filter(self) -> None:
+        """Negative: without TelegramTokenFilter the raw token is visible."""
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        logger = logging.getLogger("test_no_filter_negative")
+        logger.propagate = False
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        try:
+            logger.info("POST https://api.telegram.org/bot123456:ABCxyz/sendMessage")
+            output = stream.getvalue()
+            assert "bot123456:ABCxyz" in output
+        finally:
+            logger.removeHandler(handler)
+            logger.propagate = True

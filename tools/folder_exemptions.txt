@@ -6,6 +6,6 @@
 # into cohesive subdirs. core/hub/ deferred to V5 (follow-up issue).
 # V5 completed under #848 — core/hub/ decomposed into middleware/, outbound/, pipeline/.
 
-src/lyra/core           # 13 files — #858 config dataclass extraction
+src/lyra/core           # 15 files — #858 config dataclass extraction; #1020 logging_setup.py extracted
 src/lyra/infrastructure/stores  # 14 files — #935 ADR-048 store migration (4 files moved from core/stores)
 src/lyra/core/cli           # 14 files — #957 cli_pool_entry.py extracted to break _ProcessEntry circular import

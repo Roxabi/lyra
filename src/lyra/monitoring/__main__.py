@@ -12,33 +12,13 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from lyra.core.trace import TelegramTokenFilter, TraceIdFilter
+from lyra.core.logging_setup import setup_logging
 
 from .checks import run_checks
 from .config import load_monitoring_config
 from .escalation import escalate_to_llm, send_telegram_alert, send_telegram_raw_alert
 
 log = logging.getLogger("lyra.monitoring")
-
-
-def _setup_monitor_logging() -> None:
-    """Configure logging to stdout with token redaction."""
-    fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(fmt))
-    trace_filter = TraceIdFilter()
-    telegram_filter = TelegramTokenFilter()
-    console_handler.addFilter(trace_filter)
-    console_handler.addFilter(telegram_filter)
-
-    root = logging.getLogger()
-    if root.handlers:
-        return
-    root.setLevel(logging.INFO)
-    root.addFilter(trace_filter)
-    root.addFilter(telegram_filter)
-    root.addHandler(console_handler)
 
 
 async def _run() -> int:
@@ -106,7 +86,7 @@ async def _run() -> int:
 
 def main() -> int:
     """Entry point for python -m lyra.monitoring."""
-    _setup_monitor_logging()
+    setup_logging()
     return asyncio.run(_run())
 
 

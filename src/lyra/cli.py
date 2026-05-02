@@ -87,11 +87,11 @@ def _boot(coro_factory) -> None:
     Every ``lyra <subcommand>`` entry point delegates here so logging
     is always configured before the event loop starts.
     """
-    from lyra.__main__ import _setup_logging
     from lyra.bootstrap.factory.config import _load_logging_config, _load_raw_config
+    from lyra.core.logging_setup import setup_logging
 
     raw_config = _load_raw_config()
-    _setup_logging(_load_logging_config(raw_config).level)
+    setup_logging(_load_logging_config(raw_config).level)
     asyncio.run(coro_factory(raw_config))
 
 

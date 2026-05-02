@@ -192,7 +192,7 @@ class TestPoolCancelInFlight:
         if pool._current_task is not None:
             try:
                 await asyncio.wait_for(pool._current_task, timeout=3.0)
-            except (asyncio.CancelledError, Exception):
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001  # test teardown
                 pass
 
         # Should have dispatched a cancellation reply.

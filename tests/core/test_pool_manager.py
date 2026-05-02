@@ -363,14 +363,14 @@ class TestLockSafetyConcurrentMutation:
             try:
                 for _ in range(100):
                     _ = list(hub.pools.keys())
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  # test error capture: any threading error is the test subject
                 errors.append(e)
 
         def pop_pools():
             try:
                 for i in range(50, 100):
                     hub.get_or_create_pool(f"pool-{i}", "test-agent")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  # test error capture: any threading error is the test subject
                 errors.append(e)
 
         import threading

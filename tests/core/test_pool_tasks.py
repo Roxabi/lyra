@@ -273,7 +273,7 @@ class TestPoolCancel:
         if pool._current_task is not None:
             try:
                 await asyncio.wait_for(pool._current_task, timeout=2.0)
-            except (asyncio.CancelledError, Exception):
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001  # test teardown
                 pass
 
         ctx_mock.dispatch_response.assert_awaited_once()

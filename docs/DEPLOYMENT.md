@@ -333,3 +333,35 @@ make build && make push
 nvidia-smi     # if this fails, drivers need reinstalling
 # See GETTING-STARTED.md for NVIDIA driver setup
 ```
+
+---
+
+## Soak gate journald retention pre-requisite
+
+The WorkerError soak gate (`tools/check_worker_error_soak_gate.sh`, spec `artifacts/specs/1016-worker-error-envelope-spec.mdx` §C7) reads `journalctl --since "48 hours ago" --no-pager` in its default mode. For the gate to produce a meaningful result the host journald must retain at least 48 hours of logs.
+
+Verify retention before running the gate:
+
+```bash
+# Check total journald disk usage
+journalctl --disk-usage
+
+# Confirm logs go back at least 48 h — the first line should be older than 2 days ago
+journalctl --since "48 hours ago" | head -1
+```
+
+If `head -1` returns nothing, journald has already rotated logs past the window. Increase the retention limit in `/etc/systemd/journald.conf`:
+
+```ini
+[Journal]
+SystemMaxUse=2G
+MaxRetentionSec=4day
+```
+
+Then reload: `sudo systemctl restart systemd-journald`.
+
+Once retention is confirmed, run the gate:
+
+```bash
+tools/check_worker_error_soak_gate.sh   # PASS or FAIL on stdout
+```

@@ -39,7 +39,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 if TYPE_CHECKING:
-    pass  # static type-checker path only — no runtime symbols imported here
+    from lyra.core.messaging.events import LlmEvent
 
 
 # ---------------------------------------------------------------------------
@@ -56,43 +56,9 @@ _EXPECTED_MESSAGE = "CLI session expired — please retry."
 # ---------------------------------------------------------------------------
 
 
-def _make_fake_cli_chunk_event(worker_error: object) -> object:
-    """Build a minimal fake CliChunkEvent-like object with worker_error set.
-
-    Used as a stand-in until the real ``CliChunkEvent.worker_error`` field
-    exists (T7).  Constructed from the real ``CliChunkEvent`` class once
-    available; falls back to a plain namespace so the helper is importable.
-    """
-    try:
-        from roxabi_contracts.cli.models import (
-            CliChunkEvent,  # type: ignore[import-not-found]
-        )
-
-        return CliChunkEvent(
-            pool_id="test-pool",
-            event_type="error",
-            is_error=True,
-            done=True,
-            worker_error=worker_error,
-        )
-    except (ImportError, TypeError):
-        # Pre-T7: CliChunkEvent doesn't carry worker_error yet — use a
-        # namespace object so assertion logic can still be drafted.
-        import types
-
-        obj = types.SimpleNamespace(
-            pool_id="test-pool",
-            event_type="error",
-            is_error=True,
-            done=True,
-            worker_error=worker_error,
-        )
-        return obj
-
-
 async def _fake_event_stream(
-    result_event: object,
-) -> AsyncGenerator[object, None]:
+    result_event: "LlmEvent",
+) -> "AsyncGenerator[LlmEvent, None]":
     """Yield a single ResultLlmEvent carrying the worker_error via error_text shim.
 
     Pre-T18, StreamProcessor reads ``event.error_text``; post-T18 it reads

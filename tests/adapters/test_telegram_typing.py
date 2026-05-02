@@ -10,6 +10,7 @@ from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiogram.exceptions import TelegramAPIError
 
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.render_events import TextRenderEvent
@@ -79,7 +80,9 @@ async def test_typing_loop_swallows_send_chat_action_exception() -> None:
     from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
 
     bot = AsyncMock()
-    bot.send_chat_action.side_effect = Exception("Telegram API error")
+    bot.send_chat_action.side_effect = TelegramAPIError(
+        MagicMock(), "Telegram API error"
+    )
     chat_id = 111
 
     # Should not raise

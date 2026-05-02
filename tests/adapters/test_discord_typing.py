@@ -51,7 +51,7 @@ async def test_discord_typing_worker_handles_exception_gracefully() -> None:
     from lyra.adapters.discord import _discord_typing_worker
 
     async def resolve(_channel_id: int) -> None:
-        raise Exception("channel not found")
+        raise discord.HTTPException(MagicMock(), "channel not found")
 
     # Should not raise
     await _discord_typing_worker(resolve, channel_id=123)

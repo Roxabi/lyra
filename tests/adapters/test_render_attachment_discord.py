@@ -13,8 +13,9 @@ Covers:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
@@ -188,7 +189,9 @@ class TestDiscordRenderAttachment:
     async def test_reply_fallback(self) -> None:
         adapter = make_dc_attach_adapter()
         channel = mock_channel()
-        channel.fetch_message = AsyncMock(side_effect=Exception("not found"))
+        channel.fetch_message = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(), "not found")
+        )
 
         att = OutboundAttachment(data=b"x", type="image", mime_type="image/png")
         inbound = make_dc_attach_msg()

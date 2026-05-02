@@ -818,7 +818,9 @@ async def test_typing_worker_bailout_after_3_errors() -> None:
     from lyra.adapters.discord.discord_outbound import _discord_typing_worker
 
     mock_channel = _AsyncMock()
-    mock_channel.typing = _AsyncMock(side_effect=Exception("typing failed"))
+    mock_channel.typing = _AsyncMock(
+        side_effect=discord.HTTPException(MagicMock(), "typing failed")
+    )
 
     async def resolve(_channel_id: int):
         return mock_channel

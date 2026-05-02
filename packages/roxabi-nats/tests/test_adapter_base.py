@@ -20,6 +20,7 @@ import signal
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import nats.errors
 import pytest
 
 from roxabi_nats.adapter_base import NatsAdapterBase  # ImportError expected (RED)
@@ -918,7 +919,7 @@ class TestHeartbeatLoop:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise RuntimeError("publish failed")
+                raise nats.errors.Error("publish failed")
             # Close after second call so loop exits
             mock_nc.is_closed = True
 

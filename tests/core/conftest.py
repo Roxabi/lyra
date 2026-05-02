@@ -314,6 +314,7 @@ def make_fake_proc(stdout_lines: list[bytes]) -> MagicMock:
     proc.stdout = MagicMock()
     proc.stdout.readline = AsyncMock(side_effect=lines_with_eof)
 
+    proc.stderr = None  # _read_stderr_snippet checks for None before reading
     proc.terminate = MagicMock()
     proc.wait = AsyncMock(return_value=0)
     proc.kill = MagicMock()

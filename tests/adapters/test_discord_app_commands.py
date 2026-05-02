@@ -109,7 +109,9 @@ class TestOnReadySync:
             "guilds",
             new_callable=lambda: property(lambda self: [mock_guild]),
         ):
-            adapter.tree.sync = AsyncMock(side_effect=Exception("sync failed"))
+            adapter.tree.sync = AsyncMock(
+                side_effect=discord.DiscordException("sync failed")
+            )
             # Simulate the user being set (on_ready reads self.user)
             with patch.object(
                 type(adapter),
@@ -200,6 +202,7 @@ class TestTextFallbackPreserved:
         message.content = "!leave"
         message.guild = MagicMock()
         message.guild.id = 12345
+        message.reply = AsyncMock()
 
         result = await handle_voice_command(adapter, message)
         assert result is True

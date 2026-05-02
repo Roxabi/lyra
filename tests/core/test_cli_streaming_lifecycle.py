@@ -271,6 +271,7 @@ class TestStreamingIteratorTimeout:
         # Arrange — timeout occurs and process has died (returncode set)
         proc = MagicMock()
         proc.returncode = 1  # dead
+        proc.stderr = None  # _read_stderr_snippet checks for None before reading
         proc.stdout = MagicMock()
         proc.stdout.readline = AsyncMock(side_effect=asyncio.TimeoutError)
         entry = make_entry(proc)

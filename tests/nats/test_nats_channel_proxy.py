@@ -11,6 +11,7 @@ import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import nats.errors
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
@@ -283,7 +284,7 @@ async def test_send_streaming_chunk_has_stream_id_no_type() -> None:
 async def test_send_streaming_drains_iterator_on_publish_failure() -> None:
     """On NATS publish failure, remaining events are drained (no hang)."""
     nc = _make_nc()
-    nc.publish = AsyncMock(side_effect=Exception("NATS connection lost"))
+    nc.publish = AsyncMock(side_effect=nats.errors.Error("NATS connection lost"))
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound()
 
@@ -542,7 +543,7 @@ async def test_publish_stream_errors_publishes_for_active() -> None:
 async def test_publish_stream_errors_swallows_nats_failure() -> None:
     """publish_stream_errors() does not raise even when nc.publish fails."""
     nc = _make_nc()
-    nc.publish = AsyncMock(side_effect=Exception("NATS gone"))
+    nc.publish = AsyncMock(side_effect=nats.errors.Error("NATS gone"))
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
 
     proxy._active_streams = {"stream-x", "stream-y"}

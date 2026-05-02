@@ -28,6 +28,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import nats.errors
 import pytest
 
 from lyra.core.agent.agent_config import ModelConfig
@@ -276,7 +277,7 @@ class TestComplete:
         async def _mock_request(
             subject: str, payload_dict: dict, *, timeout: float | None = None
         ) -> dict:
-            raise Exception("NATS connection lost")
+            raise nats.errors.Error("NATS connection lost")
 
         # Act
         with patch.object(driver, "_request", new=_mock_request):

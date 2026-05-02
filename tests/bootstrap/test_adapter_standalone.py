@@ -79,6 +79,10 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
             "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
             return_value=mock_listener,
         ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            AsyncMock(return_value=True),
+        ),
         keyring_patch,
         cred_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
@@ -121,6 +125,10 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
             return_value=mock_listener_dc,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            AsyncMock(return_value=True),
         ),
         keyring_patch,
         cred_patch,

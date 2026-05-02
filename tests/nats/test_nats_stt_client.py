@@ -6,6 +6,7 @@ import json
 import time
 from unittest.mock import AsyncMock, MagicMock
 
+import nats.errors
 import pytest
 
 from lyra.nats.nats_stt_client import NatsSttClient
@@ -147,7 +148,7 @@ class TestCircuitBreaker:
     async def test_failure_records_on_unreachable(self, wav_bytes: bytes) -> None:
         # Arrange
         mock_nc = AsyncMock()
-        mock_nc.request = AsyncMock(side_effect=Exception("NATS error"))
+        mock_nc.request = AsyncMock(side_effect=nats.errors.Error("NATS error"))
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
         # Act
@@ -160,7 +161,9 @@ class TestCircuitBreaker:
     async def test_failure_records_on_max_payload(self, wav_bytes: bytes) -> None:
         # Arrange
         mock_nc = AsyncMock()
-        mock_nc.request = AsyncMock(side_effect=Exception("NATS: max_payload exceeded"))
+        mock_nc.request = AsyncMock(
+            side_effect=nats.errors.Error("NATS: max_payload exceeded")
+        )
         client = NatsSttClient(nc=mock_nc)
         _inject_fresh_worker(client)
         # Act

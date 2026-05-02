@@ -83,10 +83,12 @@ def _our_handler(root: logging.Logger) -> logging.StreamHandler:  # type: ignore
 
 
 class TestSetupLogging:
-    def test_trace_filter_attached_to_root(self) -> None:
+    def test_trace_filter_attached_to_handler_only(self) -> None:
         root = logging.getLogger()
         setup_logging()
-        assert any(isinstance(x, TraceIdFilter) for x in root.filters)
+        h = _our_handler(root)
+        assert any(isinstance(x, TraceIdFilter) for x in h.filters)
+        assert not any(isinstance(x, TraceIdFilter) for x in root.filters)
 
     def test_telegram_token_filter_attached_to_root(self) -> None:
         root = logging.getLogger()
@@ -129,11 +131,11 @@ class TestSetupLogging:
 
     def test_token_redacted_in_log_output(self) -> None:
         """With setup_logging active, bot token is redacted; numeric id preserved."""
-        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             setup_logging()
             logger = logging.getLogger("test_redact")
             logger.info("POST https://api.telegram.org/bot123456:ABCxyz/sendMessage")
-            output = mock_stderr.getvalue()
+            output = mock_stdout.getvalue()
         assert "bot123456:ABCxyz" not in output
         assert "<REDACTED>" in output
         assert "bot123456" in output  # numeric id preserved for correlation
@@ -141,7 +143,7 @@ class TestSetupLogging:
     def test_token_appears_without_filter(self) -> None:
         """Negative: removing TelegramTokenFilter makes the raw token visible."""
         root = logging.getLogger()
-        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             setup_logging()
             # Remove TelegramTokenFilter to prove it is the causal mechanism
             root.filters = [
@@ -153,5 +155,5 @@ class TestSetupLogging:
                 ]
             logger = logging.getLogger("test_no_filter_negative")
             logger.info("POST https://api.telegram.org/bot123456:ABCxyz/sendMessage")
-            output = mock_stderr.getvalue()
+            output = mock_stdout.getvalue()
         assert "bot123456:ABCxyz" in output

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 from lyra.core.trace import TelegramTokenFilter, TraceIdFilter
 
@@ -16,7 +17,7 @@ _setup_done: bool = False
 
 
 def setup_logging(level: str = "INFO") -> None:
-    """Configure stdout-only logging with token redaction.
+    """Configure stdout logging with token redaction.
 
     Always applies the requested log level to the root logger. Handler and
     filter attachment runs only once — subsequent calls update the level but
@@ -24,7 +25,8 @@ def setup_logging(level: str = "INFO") -> None:
 
     Attaches TelegramTokenFilter to both the handler and the root logger so
     that httpx URL logs (which embed the bot token) are redacted before
-    reaching any sink.
+    reaching any sink. TraceIdFilter is handler-only (injects ContextVar
+    fields before emit; root-level attachment would be redundant).
     """
     global _setup_done
     root = logging.getLogger()
@@ -34,14 +36,13 @@ def setup_logging(level: str = "INFO") -> None:
         return
     trace_filter = TraceIdFilter()
     telegram_filter = TelegramTokenFilter()
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter(_FMT))
     handler.addFilter(trace_filter)
     handler.addFilter(telegram_filter)
-    # root-level filters: cover httpx loggers that propagate to root before
-    # reaching any handler. handler-level filters: defence-in-depth for
+    # root-level filter: covers httpx loggers that propagate to root before
+    # reaching any handler. handler-level filter: defence-in-depth for
     # future handlers added without the filter.
-    root.addFilter(trace_filter)
     root.addFilter(telegram_filter)
     root.addHandler(handler)
     _setup_done = True

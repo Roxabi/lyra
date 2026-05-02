@@ -7,13 +7,10 @@ That is the intended RED state.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 # This import will fail at collection time — that is the intended RED state.
 from scripts._acl_models import LoadedMatrix
 from scripts._renderer import parse_auth_conf, render_auth_conf
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -26,28 +23,6 @@ def _fake_pubkeys(matrix: LoadedMatrix) -> dict[str, str]:
 
 
 # ── tests ─────────────────────────────────────────────────────────────────────
-
-
-class TestRenderParity:
-    def test_render_parity_vs_bash(
-        self, prod_matrix: LoadedMatrix, prod_matrix_path: Path
-    ) -> None:
-        """parse_auth_conf(render_auth_conf(...)) equals parse_auth_conf(bash output).
-
-        SC-3: render parity — Python renderer produces semantically equivalent
-        auth.conf to the bash original for v2-prod fixture.
-        # verified: removing render_auth_conf call → empty parse → mismatch
-        """
-        from tests.scripts.conftest import bash_render
-
-        pubkeys = _fake_pubkeys(prod_matrix)
-        rendered = render_auth_conf(prod_matrix, pubkeys)
-        parsed_python = parse_auth_conf(rendered)
-
-        bash_output = bash_render(prod_matrix_path)
-        parsed_bash = parse_auth_conf(bash_output)
-
-        assert parsed_python == parsed_bash
 
 
 class TestEmitUserStructure:

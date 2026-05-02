@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 from uuid import uuid4
 
+import nats.errors
+
 from lyra.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
 from lyra.llm.base import LlmResult
 from roxabi_contracts.cli.models import CliCmdPayload, CliControlCmd

@@ -237,7 +237,6 @@ backoff_base = 1.0             # exponential backoff base (default: 1.0)
 
 ```toml
 [logging]
-json_file = true               # write JSON log file (default: true)
 level = "info"                 # log level (default: "info")
 ```
 

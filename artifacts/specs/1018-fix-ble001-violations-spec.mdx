@@ -1,0 +1,266 @@
+---
+title: fix 121 BLE001 violations — replace bare except Exception with specific types
+issue: 1018
+status: approved
+tier: F-full
+date: 2026-05-02
+---
+
+## Context
+
+Promoted from: `artifacts/analyses/1018-fix-ble001-violations-analysis.mdx`
+Frame: `artifacts/frames/1018-fix-ble001-violations-frame.mdx`
+
+121 blind `except Exception:` catches across 67 files. Ruff BLE001 cannot be enabled as a quality
+gate until zero violations remain. Violations fall into 4 structurally distinct categories
+requiring different fix strategies.
+
+## Goal
+
+`uv run ruff check --select BLE001 .` returns zero violations, with BLE001 added to the default
+`[tool.ruff.lint] select` list in `pyproject.toml`, and no file-level blanket noqa anywhere.
+
+## Users
+
+- **Maintainers** — broad catches currently hide runtime failures during debugging and incident response
+- **CI** — BLE001 quality gate unblocked; future violations caught on first push
+
+## Expected Behavior
+
+After this change, every `except` clause in the codebase that previously caught `Exception` blindly
+either:
+1. Catches a specific, narrower exception type (categories A, D, Special)
+2. Catches a library-specific base exception (`nats.errors.Error`, `discord.HTTPException`, `TelegramError`)
+3. Retains `except Exception` with an inline `# noqa: BLE001  # <reason>` comment that explains
+   in one sentence why broad catching is intentional
+
+Category C (error boundaries) additionally must have `log.exception(…)` or `exc_info=True` in
+every catch body — no silent swallows. Where that line is missing, it is added before the noqa.
+
+The final commit adds `BLE001` to `[tool.ruff.lint] select` in `pyproject.toml`. Running ruff
+confirms zero violations. Existing tests all pass.
+
+## Violation Taxonomy
+
+```
+classDiagram
+    class ViolationCategory {
+        +name: str
+        +count: int
+        +fix_strategy: str
+    }
+    class CategoryA {
+        name = "JSON/deserialize"
+        count = ~15
+        fix = "narrow to (JSONDecodeError, ValueError, TypeError, OSError)"
+    }
+    class CategoryB {
+        name = "Transport/async ops"
+        count = ~47
+        fix = "nats.errors.Error | discord.HTTPException | TelegramError | noqa"
+    }
+    class CategoryC {
+        name = "Error boundaries"
+        count = ~38
+        fix = "noqa + enforce log.exception/exc_info=True"
+    }
+    class CategoryD {
+        name = "Tests"
+        count = 9
+        fix = "narrow or noqa + teardown comment"
+    }
+    class CategorySpecial {
+        name = "trace.py ContextVar"
+        count = 4
+        fix = "LookupError or noqa"
+    }
+    ViolationCategory <|-- CategoryA
+    ViolationCategory <|-- CategoryB
+    ViolationCategory <|-- CategoryC
+    ViolationCategory <|-- CategoryD
+    ViolationCategory <|-- CategorySpecial
+```
+
+### Exception type decision table
+
+| Context | Preferred replacement | Fallback |
+|---------|----------------------|----------|
+| `json.loads()` | `(json.JSONDecodeError, ValueError)` | — |
+| `tomllib.load()` | `(tomllib.TOMLDecodeError, OSError)` | — |
+| Custom deserialize fn (`_deserialize_dict`) | `(ValueError, TypeError)` | — |
+| `str.format_map()` | `(KeyError, ValueError)` | — |
+| `get_type_hints()` | noqa — can raise `NameError`/`AttributeError`/`RecursionError` from user types | — |
+| NATS publish/subscribe/unsubscribe | `nats.errors.Error` | — |
+| NATS JS purge in tests | `nats.js.errors.NotFoundError` | — |
+| NATS retry-loop (isinstance pattern) | `(nats.errors.Error, TimeoutError)` | — |
+| Discord API send | `discord.HTTPException` | `discord.DiscordException` at boundaries |
+| Discord attachment read | `(discord.HTTPException, OSError)` | — |
+| Telegram API send | `TelegramError` (aiogram) | — |
+| ContextVar.get() | `LookupError` (theoretically unreachable) | — |
+| Logging filter (must never raise) | noqa `# logging filter: must never raise` | — |
+| SQLite teardown | noqa `# db teardown` | — |
+| Streaming edit (fire-and-forget UI) | noqa `# streaming edit: any send failure is non-fatal` | — |
+| Top-level process boundary (sys.exit path) | noqa `# top-level boundary: process exits on error` | — |
+| Top-level middleware/pool boundary | noqa `# top-level boundary` (requires `exc_info=True`) | — |
+| Test error capture (catch IS the test) | noqa `# test error capture: any error is the test subject` | — |
+| Test teardown | noqa `# test teardown` | — |
+
+## Breadboard
+
+### Category A: JSON/deserialize fix workflow
+
+| File | Line(s) | Current | Replacement |
+|------|---------|---------|-------------|
+| `nats_envelope_handlers.py` | 196 | `except Exception` | `except (json.JSONDecodeError, ValueError)` |
+| `nats_envelope_handlers.py` | 55, 83, 107, 142 | `except Exception` | `except (ValueError, TypeError)` |
+| `adapter_base.py` (roxabi-nats) | 189 | `except Exception` | `except (json.JSONDecodeError, ValueError)` |
+| `driver_base.py` (roxabi-nats) | 67, 113 | `except Exception` | `except (json.JSONDecodeError, ValueError)` |
+| `_serialize.py` (roxabi-nats) | 130 | `except Exception` | `except Exception  # noqa: BLE001  # get_type_hints: NameError/AttributeError from forward refs` |
+| `messages.py` | 46 | `except Exception` | `except (tomllib.TOMLDecodeError, OSError)` |
+| `messages.py` | 55 | `except Exception` | `except (KeyError, ValueError)` |
+| `docker/stubs/stt_stub.py` | 47 | `except Exception` | `except (json.JSONDecodeError, ValueError)` |
+| `docker/stubs/tts_stub.py` | 54 | `except Exception` | `except (json.JSONDecodeError, ValueError)` |
+
+### Category B: Transport/API fix workflow
+
+**NATS teardown/ops:**
+
+| File | Line(s) | Replacement |
+|------|---------|-------------|
+| `driver_base.py` (roxabi-nats) | 52, 122 | `except nats.errors.Error` |
+| `adapter_base.py` (roxabi-nats) | 243 | `except nats.errors.Error` |
+| `readiness.py` (roxabi-nats) | 193 | `except nats.errors.Error` |
+| `testing/voice.py` (roxabi-nats) | 126, 204 | `except nats.errors.Error  # connection closing during test teardown` |
+| `testing/image.py` (roxabi-nats) | 125 | `except nats.errors.Error  # connection closing during test teardown` |
+| `hub_standalone.py` | 277 | `except nats.errors.Error` |
+| `bootstrap/factory/unified.py` | 84 | `except nats.errors.Error` |
+| `jetstream_sink.py` | 44, 66, 70, 90 | `except nats.errors.Error` |
+| `nats_channel_proxy.py` | 171, 186, 220 | `except nats.errors.Error` |
+| `nats_outbound_listener.py` | 124 | `except nats.errors.Error` |
+| `nats_tts_client.py` | 175 | `except (nats.errors.Error, TimeoutError)` |
+| `nats_stt_client.py` | 189 | `except (nats.errors.Error, TimeoutError)` |
+| `nats_image_client.py` | 162 | `except (nats.errors.Error, TimeoutError)` |
+| `nats_llm_client.py` | 217, 256 | `except (nats.errors.Error, TimeoutError)` |
+
+**Discord API ops:**
+
+| File | Line(s) | Replacement |
+|------|---------|-------------|
+| `discord_audio.py` | 149, 170, 191 | `except discord.HTTPException` |
+| `discord_audio.py` | 158 | `except (discord.HTTPException, OSError)` |
+| `discord_audio.py` | 221 | `except Exception  # noqa: BLE001  # ThreadStore: non-fatal ownership check` |
+| `discord_audio_outbound.py` | 105, 159 | `except discord.HTTPException` |
+| `discord_outbound.py` | 79, 97 | `except discord.HTTPException` |
+| `discord_inbound.py` | 83 | `except Exception  # noqa: BLE001  # ThreadStore: non-fatal ownership check` |
+| `discord_inbound.py` | 140 | `except Exception  # noqa: BLE001  # thread recovery: non-fatal persistence` |
+| `discord/lifecycle.py` | 51, 67 | `except discord.DiscordException` |
+| `discord_voice_commands.py` | 52 | `except discord.DiscordException` |
+
+**Telegram API ops:**
+
+| File | Line(s) | Replacement |
+|------|---------|-------------|
+| `telegram_outbound.py` | 59, 86, 97 | `except TelegramError` |
+| `telegram_outbound.py` | 220, 234 | `except TelegramError` |
+| `telegram_inbound.py` | 177, 197 | `except TelegramError` |
+
+**Streaming/shared:**
+
+| File | Line(s) | Replacement |
+|------|---------|-------------|
+| `_shared_streaming_emitter.py` | 148, 167, 248, 272 | `except Exception  # noqa: BLE001  # streaming edit: any send failure is non-fatal` |
+| `_inbound_cache.py` | 95 | `except Exception  # noqa: BLE001  # cache op: non-fatal` |
+| `_shared_audio.py` | 74 | `except Exception  # noqa: BLE001  # audio op: non-fatal` |
+| `sqlite_base.py` | 35 | `except Exception  # noqa: BLE001  # db teardown` |
+
+### Category C: Error boundary fix workflow
+
+**Pre-condition for every C violation:** confirm `log.exception(…)` or `exc_info=True` is present
+in the catch body. If absent, add the log line first, then append `  # noqa: BLE001  # top-level boundary`.
+
+**Confirmed logging-present** (noqa comment only):
+
+| File | Line(s) | Notes |
+|------|---------|-------|
+| `session_lifecycle.py` | 146, 182 | `log.warning(…, exc_info=True)` ✓ |
+| `pool_processor_exec.py` | 82, 151, 176 | `log.exception` ✓ |
+| `middleware.py` | 64 | `log.debug(…, exc_info=True)` ✓ |
+| `middleware_submit.py` | 92 | `log.warning(…, exc_info=True)` ✓ |
+| `memory_schema.py` | 90 | `log.warning(…, exc_info=True)` ✓ |
+| `outbound_errors.py` | 122 | `log.warning` ✓ |
+| `command_router.py` | 119 | `log.debug` ✓ |
+| `monitoring/__main__.py` | 70, 76, 87 | `log.error` ✓ |
+
+**sys.exit path** (no log needed — process terminates):
+
+| File | Line | Comment |
+|------|------|---------|
+| `hub_standalone.py` | 83 | `# noqa: BLE001  # NATS connect failure: process exits` |
+| `adapter_standalone.py` | 49 | `# noqa: BLE001  # NATS connect failure: process exits` |
+
+**⚠ Requires log line added before noqa:**
+
+| File | Line | Missing log | Log to add |
+|------|------|------------|-----------|
+| `agent.py` | 124 | silent `return` | `log.debug("agent store unavailable — keeping cached config", exc_info=True)` |
+
+**Remaining C violations** (logging audit required during implementation — ~26 additional):
+`bootstrap/factory/agent_factory.py:171`, `bootstrap/factory/voice_overlay.py:87`,
+`bootstrap/infra/embedded_nats.py:181`, `bootstrap/infra/health.py:61`,
+`bootstrap/infra/notify.py:35`, `agent_cmd/agents/init.py:52,96,105,113`,
+`agents/simple_agent.py:138`, `core/cli/cli_pool_entry.py:51`,
+`core/cli/cli_pool_worker.py:118,273`, `core/cli/cli_protocol_types.py:41`,
+`core/cli/cli_streaming.py:164`, `core/commands/builtin_commands.py:73`,
+`core/pool/pool_processor.py:150`, `core/pool/pool_processor_streaming.py:118`,
+`core/pool/pool_processor_exec.py:169,276`, `core/session_lifecycle.py` (additional),
+`core/tts_dispatch.py:201`, `cli_agent.py:74`, `cli_setup.py:113`,
+`core/runtime_config.py:121`, `commands/svc/handlers.py:91`, `core/agent/agent.py:142`
+
+**Note:** Adding a missing log line to a production error path is a **behavioral change**, not just
+lint cleanup. For each site lacking logging: confirm the appropriate log level (debug/warning),
+confirm exc_info is correct for the severity, then add the line. Flag any site where the
+log addition changes observable behavior in the PR description.
+
+For each remaining C violation: check the 1–5 lines following the `except` clause for
+`log.exception`, `log.warning`, `log.error`, or `exc_info=True`. If absent, add
+`log.warning("…", exc_info=True)` with a context-specific message before adding noqa.
+
+### Category D: Tests fix workflow
+
+| File | Line(s) | Fix |
+|------|---------|-----|
+| `test_readiness.py` (roxabi-nats) | 288, 355, 385, 454 | `except nats.js.errors.NotFoundError` |
+| `test_pool_manager.py` | 366, 373 | `# noqa: BLE001  # test error capture: any threading error is the test subject` |
+| `test_cli_pool_streaming.py` | 116 | `# noqa: BLE001  # test teardown` |
+| `test_debouncer_pool.py` | 195 | `# noqa: BLE001  # test teardown` |
+| `test_pool_tasks.py` | 276 | `# noqa: BLE001  # test teardown` |
+
+### Special: trace.py ContextVar
+
+| Line(s) | Fix |
+|---------|-----|
+| 94, 98, 102 | `except LookupError  # ContextVar.get() — theoretically unreachable` |
+| 133 | `# noqa: BLE001  # logging filter: must never raise` |
+
+## Slices
+
+| # | Slice | Files touched | Acceptance gate |
+|---|-------|--------------|----------------|
+| S1 | Category A — JSON/deserialize | 9 files | ruff A-group clean; tests pass |
+| S2 | Category B — NATS ops (roxabi-nats + src/lyra/nats + infra + unified.py) | ~17 files | ruff B-NATS clean; tests pass |
+| S3 | Category B — Discord/Telegram/shared adapters | ~15 files | ruff B-adapter clean; tests pass |
+| S4 | Special — trace.py ContextVar | 1 file | ruff trace.py clean |
+| S5 | Category C — error boundaries (logging audit + noqa) | ~30 files | ruff C clean; no silent C violations |
+| S6 | Category D — tests | 5 files | ruff D clean; tests pass |
+| S7 | Enable BLE001 in pyproject.toml | 1 file | `ruff check --select BLE001 .` → 0 violations |
+
+## Success Criteria
+
+- [ ] `uv run ruff check --select BLE001 .` returns exit 0 with zero violations
+- [ ] `BLE001` appears in `[tool.ruff.lint] select` list in `pyproject.toml`
+- [ ] No file contains a file-level `# noqa: BLE001` — all suppressed catches are inline on the `except` line
+- [ ] Every `# noqa: BLE001` comment includes a one-line explanation from the canonical phrases in the decision table — no bare `# noqa: BLE001` without a reason phrase
+- [ ] Every Category C `except Exception  # noqa: BLE001` that is not a `sys.exit` path has `log.exception`, `log.warning`, `log.error`, or `exc_info=True` within the next 5 lines — verified manually per the confirmed-logging-present table and per-site audit notes in the PR
+- [ ] All NATS transport teardown ops (unsubscribe, publish, close, JetStream init) use `except nats.errors.Error` rather than `except Exception` — fire-and-forget Discord/Telegram UI ops may use `discord.HTTPException` / `TelegramError` or noqa per the breadboard table
+- [ ] `uv run pytest` exits 0 (no test regressions)
+- [ ] `uv run ruff check .` exits 0 (no other ruff regressions introduced)

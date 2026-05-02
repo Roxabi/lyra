@@ -102,7 +102,7 @@ async def render_audio(
             duration_secs,
             inbound.id,
         )
-    except Exception:
+    except discord.HTTPException:
         log.warning(
             "render_audio: voice message failed — falling back to file attachment",
             exc_info=True,
@@ -156,7 +156,7 @@ async def render_attachment(
             ref_msg = await messageable.fetch_message(reply_to_id)
             await ref_msg.reply(content=content or None, file=file_obj)
             return
-        except Exception:
+        except discord.HTTPException:
             log.warning(
                 "render_attachment: could not reply to message_id=%s, sending normally",
                 reply_to_id,

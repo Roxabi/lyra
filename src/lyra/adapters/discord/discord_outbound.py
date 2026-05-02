@@ -76,7 +76,7 @@ async def _discord_typing_worker(  # noqa: C901 — retry + error branches
                 _consecutive_errors = 0
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except discord.HTTPException as exc:
                 _consecutive_errors += 1
                 if _consecutive_errors == 1:
                     log.warning(
@@ -94,7 +94,7 @@ async def _discord_typing_worker(  # noqa: C901 — retry + error branches
             await asyncio.sleep(9)
     except asyncio.CancelledError:
         pass
-    except Exception as exc:
+    except discord.HTTPException as exc:
         log.warning(
             "typing: worker for channel %d exited unexpectedly: %s",
             channel_id,

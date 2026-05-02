@@ -80,7 +80,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
             ):
                 adapter._owned_threads.add(message.channel.id)
                 _in_owned_thread = True
-        except Exception:
+        except Exception:  # noqa: BLE001  # ThreadStore: non-fatal ownership check
             log.warning(
                 "ThreadStore: lazy is_owned check failed for thread_id=%s",
                 message.channel.id,
@@ -137,7 +137,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                             channel_id=message.channel.id,
                             guild_id=getattr(message.guild, "id", None),
                         )
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001  # thread recovery: non-fatal persistence
                         log.warning(
                             "Failed to persist thread claim in recovery path: %s", e
                         )

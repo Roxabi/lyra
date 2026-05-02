@@ -9,6 +9,7 @@ Checks per flow:
   - responder identity exists
   - requester publish[] covers the flow subject (NATS-wildcard-aware)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,8 +40,8 @@ def _subject_covered(subject: str, publish: list[str]) -> bool:
         if grant == ">":
             return True
         if grant.endswith(".>"):
-            prefix = grant[:-1]   # "lyra.foo."
-            bare = grant[:-2]     # "lyra.foo"
+            prefix = grant[:-1]  # "lyra.foo."
+            bare = grant[:-2]  # "lyra.foo"
             if subject == bare or subject.startswith(prefix):
                 return True
     return False
@@ -81,7 +82,8 @@ def main() -> None:
             publish = identities[requester].get("publish", [])
             if not _subject_covered(subject, publish):
                 errors.append(
-                    f"FAIL: requester '{requester}' publish[] does not cover subject '{subject}'"
+                    f"FAIL: requester '{requester}' publish[] does not cover"
+                    f" subject '{subject}'"
                 )
 
     if errors:

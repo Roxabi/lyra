@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""check_acl_matrix_retired.py — validate lifecycle fields on all acl-matrix.json identities.
+"""check_acl_matrix_retired — validate lifecycle fields on acl-matrix.json identities.
 
 Exit 0: all identities valid.
 Exit 1: one or more errors printed to stderr.
@@ -11,6 +11,7 @@ Error classes (mirrors check-acl-matrix-retired.sh):
   EC-4  Retired identity without retired_at
   EC-5  Retired identity still referenced in flows
 """
+
 from __future__ import annotations
 
 import argparse
@@ -61,7 +62,8 @@ def main() -> None:
             # EC-5: must not be referenced in any flow.
             if name in flow_names:
                 errors.append(
-                    f"ERROR: '{name}' is retired but still referenced in request_reply_flows"
+                    f"ERROR: '{name}' is retired but still referenced"
+                    " in request_reply_flows"
                 )
 
     if errors:

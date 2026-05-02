@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from scripts._nk import FakeNkeyProvider as FakeNkeyProvider  # noqa: F401
 
 # ── Repo root ────────────────────────────────────────────────────────────────
@@ -24,6 +23,7 @@ _REAL_MATRIX_JSON = REPO / "deploy" / "nats" / "acl-matrix.json"
 
 
 # ── bash_render helper ────────────────────────────────────────────────────────
+
 
 def bash_render(matrix_path: Path) -> str:
     """Shell out to gen-nkeys.sh --template-only --matrix <path>.
@@ -54,6 +54,7 @@ def bash_render(matrix_path: Path) -> str:
 
 # ── Path fixtures (copies to tmp_path for isolation) ─────────────────────────
 
+
 @pytest.fixture()
 def prod_matrix_path(tmp_path: Path) -> Path:
     """Path to a tmp copy of deploy/nats/acl-matrix.json."""
@@ -79,6 +80,7 @@ def with_retired_matrix_path(tmp_path: Path) -> Path:
 
 
 # ── In-memory dict fixtures (raw JSON loads, LoadedMatrix-shaped) ─────────────
+
 
 @pytest.fixture()
 def prod_matrix() -> dict[str, Any]:

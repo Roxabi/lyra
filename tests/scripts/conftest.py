@@ -1,7 +1,4 @@
-"""Shared fixtures and helpers for tests/scripts — #1017 gen_nkeys.py.
-
-DO NOT import from scripts.*  — the module does not exist yet (V1-RED wave).
-"""
+"""Shared fixtures and helpers for tests/scripts — #1017 gen_nkeys.py."""
 
 from __future__ import annotations
 
@@ -13,6 +10,8 @@ from typing import Any
 
 import pytest
 
+from scripts._nk import FakeNkeyProvider as FakeNkeyProvider  # noqa: F401
+
 # ── Repo root ────────────────────────────────────────────────────────────────
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -22,28 +21,6 @@ _V2_PROD_JSON = FIXTURES_DIR / "v2-prod.json"
 _V1_LEGACY_JSON = FIXTURES_DIR / "v1-legacy.json"
 _V2_WITH_RETIRED_JSON = FIXTURES_DIR / "v2-with-retired.json"
 _REAL_MATRIX_JSON = REPO / "deploy" / "nats" / "acl-matrix.json"
-
-
-# ── FakeNkeyProvider ──────────────────────────────────────────────────────────
-
-class FakeNkeyProvider:
-    """Deterministic stub for the (not-yet-written) NkeyProvider ABC.
-
-    pubkey formula: f"UDET{name.upper().replace('-', '')}"
-    """
-
-    def gen_seed(self, name: str) -> bytes:
-        """Return deterministic seed bytes for *name*."""
-        return name.encode()
-
-    def pubkey_from_seed(self, seed: bytes) -> str:
-        """Derive deterministic pubkey from seed bytes."""
-        name = seed.decode()
-        return f"UDET{name.upper().replace('-', '')}"
-
-    def pubkey(self, name: str) -> str:
-        """Convenience: pubkey directly from name."""
-        return self.pubkey_from_seed(self.gen_seed(name))
 
 
 # ── bash_render helper ────────────────────────────────────────────────────────

@@ -5,6 +5,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import nats.errors
+
+import nats
 from roxabi_contracts.audit import SecurityEvent
 
 if TYPE_CHECKING:
@@ -41,7 +44,7 @@ class JetStreamAuditSink:
 
         try:
             js = nc.jetstream()
-        except Exception as exc:
+        except nats.errors.Error as exc:
             log.warning(
                 "AUDIT: JetStream not available — emitting to lyra.security logger: %s",
                 exc,
@@ -63,11 +66,11 @@ class JetStreamAuditSink:
         except BadRequestError:
             try:
                 await js.update_stream(cfg)
-            except Exception as exc:
+            except nats.errors.Error as exc:
                 log.warning("AUDIT: stream config mismatch — marking degraded: %s", exc)
                 self._degraded = True
                 return
-        except Exception as exc:
+        except nats.errors.Error as exc:
             log.warning(
                 "AUDIT: JetStream not available — emitting to lyra.security logger: %s",
                 exc,
@@ -87,7 +90,7 @@ class JetStreamAuditSink:
                 _security_log.warning("AUDIT DEGRADED [%s]: %s", subject, json_str)
                 return
             await self._js.publish(subject, payload)
-        except Exception as exc:
+        except nats.errors.Error as exc:
             _security_log.warning(
                 "AUDIT: emit failed (%s) on subject %s — %s",
                 type(exc).__name__,

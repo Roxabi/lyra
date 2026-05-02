@@ -16,10 +16,12 @@ from datetime import datetime, timezone
 from typing import NoReturn
 from uuid import uuid4
 
+import nats.errors
 from nats.aio.client import Client as NATS
 from nats.errors import NoRespondersError
 from pydantic import ValidationError
 
+import nats
 from lyra.nats.worker_registry import WorkerRegistry
 from lyra.stt import (
     STTNoiseError,
@@ -186,7 +188,7 @@ class NatsSttClient:
                 self._registry.mark_stale(worker.worker_id)
                 last_exc = TimeoutError()
                 continue
-            except Exception as exc:
+            except (nats.errors.Error, TimeoutError) as exc:
                 if _is_no_responders(exc):
                     self._registry.mark_stale(worker.worker_id)
                     last_exc = exc

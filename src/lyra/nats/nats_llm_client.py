@@ -18,10 +18,12 @@ from datetime import datetime, timezone
 from typing import Any, NoReturn
 from uuid import uuid4
 
+import nats.errors
 from nats.aio.client import Client as NATS
 from nats.errors import NoRespondersError
 from pydantic import ValidationError
 
+import nats
 from lyra.core.ports.llm import LlmUnavailableError
 from lyra.nats.worker_registry import WorkerRegistry
 from roxabi_contracts.envelope import CONTRACT_VERSION
@@ -253,7 +255,7 @@ class NatsLlmClient:
                 self._registry.mark_stale(worker.worker_id)
                 last_exc = exc
                 continue
-            except Exception as exc:
+            except (nats.errors.Error, TimeoutError) as exc:
                 if isinstance(exc, NoRespondersError):
                     self._registry.mark_stale(worker.worker_id)
                     last_exc = exc

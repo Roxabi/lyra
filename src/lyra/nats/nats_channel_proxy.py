@@ -12,8 +12,10 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
+import nats.errors
 from nats.aio.client import Client as NATS
 
+import nats
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (
     InboundMessage,
@@ -183,7 +185,7 @@ class NatsChannelProxy:
                         subject,
                         json.dumps(error_envelope, ensure_ascii=False).encode("utf-8"),
                     )
-                except Exception:
+                except nats.errors.Error:
                     log.warning(
                         "NatsChannelProxy: failed to publish stream_error"
                         " for stream_id=%r",
@@ -217,7 +219,7 @@ class NatsChannelProxy:
                     subject,
                     json.dumps(envelope, ensure_ascii=False).encode("utf-8"),
                 )
-            except Exception:
+            except nats.errors.Error:
                 log.warning(
                     "NatsChannelProxy: failed to publish stream_error for stream_id=%r",
                     stream_id,

@@ -66,6 +66,7 @@
     "062-nats-acl-inbox-case-normalization-and-explicit-reply-paths",
     "063-thread-store-teardown-bootstrap-ownership",
     "064-nats-acl-request-reply-flows-derivation",
-    "065-nats-kv-readiness-probe"
+    "065-nats-kv-readiness-probe",
+    "066-unified-worker-error-envelope-nats-reply-contracts"
   ]
 }

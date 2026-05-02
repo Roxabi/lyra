@@ -25,6 +25,7 @@ import base64
 import logging
 from datetime import datetime, timezone
 
+import nats.errors
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
@@ -123,7 +124,7 @@ class FakeTtsWorker:
         )
         try:
             await self._nc.publish(msg.reply, reply.model_dump_json().encode())
-        except Exception:
+        except nats.errors.Error:  # connection closing during test teardown
             log.debug("FakeTtsWorker skipping reply — connection closing")
 
 
@@ -201,5 +202,5 @@ class FakeSttWorker:
         )
         try:
             await self._nc.publish(msg.reply, reply.model_dump_json().encode())
-        except Exception:
+        except nats.errors.Error:  # connection closing during test teardown
             log.debug("FakeSttWorker skipping reply — connection closing")

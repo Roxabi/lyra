@@ -17,6 +17,8 @@ import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
+import nats.errors
+
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
     from nats.aio.subscription import Subscription
@@ -49,7 +51,7 @@ class NatsDriverBase:
         if self._hb_sub is not None:
             try:
                 await self._hb_sub.unsubscribe()
-            except Exception:
+            except nats.errors.Error:
                 log.debug(
                     "NatsDriverBase: error unsubscribing heartbeat", exc_info=True
                 )
@@ -64,7 +66,7 @@ class NatsDriverBase:
                 log.warning("nats_driver_base: heartbeat missing worker_id, ignoring")
                 return
             self._worker_freshness[worker_id] = time.monotonic()
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             log.debug("nats_driver_base: heartbeat parse error", exc_info=True)
 
     def _any_worker_alive(self) -> bool:
@@ -110,7 +112,7 @@ class NatsDriverBase:
                     return
                 try:
                     chunk: dict = json.loads(msg.data)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
                     log.debug("nats_driver_base: chunk parse error", exc_info=True)
                     continue
                 yield chunk
@@ -119,7 +121,7 @@ class NatsDriverBase:
         finally:
             try:
                 await sub.unsubscribe()
-            except Exception:
+            except nats.errors.Error:
                 log.debug("nats_driver_base: error unsubscribing inbox", exc_info=True)
 
     async def _request(

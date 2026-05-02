@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from nats.js.kv import KeyValue
 
+import nats.errors
 from nats.aio.client import Client as NATS
 from nats.aio.subscription import Subscription
 
@@ -190,7 +191,7 @@ async def wait_for_hub(
 
     try:
         kv = await _open_kv_with_retry(js, deadline)
-    except Exception:
+    except nats.errors.Error:
         log.warning("wait_for_hub: JetStream not enabled — skipping probe")
         return False
 

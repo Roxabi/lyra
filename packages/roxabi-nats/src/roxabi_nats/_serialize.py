@@ -127,7 +127,7 @@ def _get_hints(dc_type: type, resolver: _TypeHintResolver) -> dict[str, Any]:
 
     try:
         result = get_type_hints(dc_type, globalns=globalns, localns=localns)
-    except Exception:
+    except Exception:  # noqa: BLE001  # get_type_hints: NameError/AttributeError from forward refs
         # Final fallback: no type coercion — raw JSON values returned as-is.
         # Do NOT cache the empty fallback: a transient resolution failure
         # should not permanently disable type coercion for this type.

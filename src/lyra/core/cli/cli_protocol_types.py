@@ -38,7 +38,7 @@ async def _read_stderr_snippet(
     try:
         raw = await asyncio.wait_for(proc.stderr.read(limit), timeout=0.5)
         return raw.decode(errors="replace").strip()
-    except (asyncio.TimeoutError, Exception):
+    except (asyncio.TimeoutError, OSError):
         return ""
 
 

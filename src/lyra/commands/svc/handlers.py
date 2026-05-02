@@ -88,5 +88,5 @@ async def cmd_svc(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
         if exc.reason == "not_available":
             return Response(content="supervisorctl.sh not found.")
         return safe_error_response(exc, log, "svc plugin")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # top-level boundary
         return safe_error_response(exc, log, "svc plugin")

@@ -61,7 +61,7 @@ class PipelineContext:
             return
         try:
             self.trace_hook(stage, event, **payload)
-        except Exception:
+        except Exception:  # noqa: BLE001  # top-level boundary
             log.debug("trace_hook raised — ignoring", exc_info=True)
 
     def emit(self, event: PipelineEvent) -> None:

@@ -49,7 +49,7 @@ def init_agents(
                             typer.echo(f"  imported: {toml_file.name}")
                         else:
                             skipped += 1
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001  # top-level boundary
                         typer.echo(f"  error: {toml_file.name}: {e}", err=True)
                         errors += 1
             typer.echo(
@@ -93,7 +93,7 @@ def validate(  # noqa: C901 -- validation walks multiple config sections
                             "smart_routing.enabled=true but smart_routing is no longer "
                             "supported on any backend"
                         )
-                except Exception:
+                except (_json.JSONDecodeError, ValueError):
                     errors_found.append(
                         f"smart_routing_json invalid JSON: {row.smart_routing_json!r}"
                     )
@@ -102,7 +102,7 @@ def validate(  # noqa: C901 -- validation walks multiple config sections
                 try:
                     if not isinstance(_json.loads(val), list):
                         raise ValueError("not a list")
-                except Exception:
+                except (_json.JSONDecodeError, ValueError):
                     errors_found.append(f"{fn} is not a valid JSON array: {val!r}")
             for fn in ("workspaces_json", "commands_json"):
                 val = getattr(row, fn)
@@ -110,7 +110,7 @@ def validate(  # noqa: C901 -- validation walks multiple config sections
                     try:
                         if not isinstance(_json.loads(val), dict):
                             raise ValueError("not an object")
-                    except Exception:
+                    except (_json.JSONDecodeError, ValueError):
                         errors_found.append(f"{fn} is not a valid JSON object: {val!r}")
             if errors_found:
                 for e in errors_found:

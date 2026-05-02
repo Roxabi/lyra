@@ -128,7 +128,7 @@ class CliNatsDriver(NatsDriverBase):
         )
         try:
             reply = await self._request(self.SUBJECT_CMD, payload)
-        except Exception as exc:
+        except nats.errors.Error as exc:
             log.warning(
                 "cli_nats: complete() transport error [pool:%s]: %s: %s",
                 pool_id,

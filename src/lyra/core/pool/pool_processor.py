@@ -147,7 +147,7 @@ class PoolProcessor:
                 if inbox_waiter in done and not inbox_waiter.cancelled():
                     try:
                         pool._inbox.put_nowait(inbox_waiter.result())
-                    except (asyncio.QueueFull, Exception):
+                    except Exception:  # noqa: BLE001  # top-level boundary
                         log.warning(
                             "pool %s: message lost in inbox race",
                             pool.pool_id,

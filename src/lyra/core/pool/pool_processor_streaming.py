@@ -115,5 +115,5 @@ async def run_streaming_turn_post(
         import asyncio
 
         await asyncio.create_task(processor.post(original_msg, streamed))  # type: ignore[misc]
-    except Exception:
+    except Exception:  # noqa: BLE001  # top-level boundary
         log.warning("Processor post() failed (streaming)", exc_info=True)

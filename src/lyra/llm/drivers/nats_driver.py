@@ -18,6 +18,8 @@ from lyra.core.messaging.events import (
 )
 from lyra.llm.base import LlmResult
 
+import nats.errors
+
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
     from nats.aio.subscription import Subscription
@@ -61,7 +63,7 @@ class NatsLlmDriver:
         if self._hb_sub is not None:
             try:
                 await self._hb_sub.unsubscribe()
-            except Exception:
+            except nats.errors.Error:
                 log.debug("NatsLlmDriver: error unsubscribing heartbeat", exc_info=True)
             finally:
                 self._hb_sub = None
@@ -75,7 +77,7 @@ class NatsLlmDriver:
                 return
             self._worker_freshness[worker_id] = time.monotonic()
             log.debug("nats_llm: heartbeat from worker_id=%s", worker_id)
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             log.debug("nats_llm: heartbeat parse error", exc_info=True)
 
     def _any_worker_alive(self) -> bool:
@@ -130,7 +132,7 @@ class NatsLlmDriver:
                 error=f"LLM worker timeout after {self._timeout:.0f}s",
                 retryable=True,
             )
-        except Exception as exc:
+        except nats.errors.Error as exc:
             log.warning(
                 "nats_llm: complete() transport error [pool:%s]: %s: %s",
                 pool_id,
@@ -241,7 +243,7 @@ class NatsLlmDriver:
 
                 try:
                     chunk: dict = json.loads(msg.data)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
                     log.debug(
                         "nats_llm: stream chunk parse error [pool:%s]",
                         pool_id,
@@ -285,7 +287,7 @@ class NatsLlmDriver:
         finally:
             try:
                 await sub.unsubscribe()
-            except Exception:
+            except nats.errors.Error:
                 log.debug(
                     "nats_llm: error unsubscribing inbox [pool:%s]",
                     pool_id,

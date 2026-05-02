@@ -110,7 +110,7 @@ async def _register_bot(
         typer.echo(
             f"Registered {len(public_commands)} commands for bot @{username} ({bot_id})"
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # top-level boundary
         typer.echo(
             f"Error registering commands for bot_id={bot_id}: {exc}",
             err=True,

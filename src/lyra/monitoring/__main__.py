@@ -67,13 +67,13 @@ async def _run() -> int:
             diagnosis.severity,
             diagnosis.diagnosis,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # top-level boundary
         log.error("LLM escalation failed: %s", exc)
         # Fallback: raw Telegram alert
         try:
             await send_telegram_raw_alert(report, config)
             log.info("Raw Telegram alert sent (LLM unavailable)")
-        except Exception as tg_exc:
+        except Exception as tg_exc:  # noqa: BLE001  # top-level boundary
             log.error(
                 "Telegram delivery also failed: %s. Full report logged above. Exit 1.",
                 tg_exc,
@@ -84,7 +84,7 @@ async def _run() -> int:
     try:
         await send_telegram_alert(diagnosis, config)
         log.info("Telegram alert sent with diagnosis")
-    except Exception as tg_exc:
+    except Exception as tg_exc:  # noqa: BLE001  # top-level boundary
         log.error("Telegram delivery failed: %s", tg_exc)
         # Log-only fallback — full report for investigation
         for check in report.checks:

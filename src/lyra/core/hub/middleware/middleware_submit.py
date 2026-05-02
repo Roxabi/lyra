@@ -89,7 +89,7 @@ class SubmitToPoolMiddleware:
 
         try:
             status = await resolve_context(msg, pool, pool.pool_id, ctx)
-        except Exception:
+        except Exception:  # noqa: BLE001  # top-level boundary
             log.warning(
                 "_resolve_context failed — continuing with active session",
                 exc_info=True,

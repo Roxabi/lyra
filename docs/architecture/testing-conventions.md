@@ -14,7 +14,8 @@ A *negative test* is one that **fails** when the guarded branch is removed, the 
 
 ### What counts as a guard
 
-- `if` / `elif` / `else` branching on a condition
+- `if` / `elif` branching on a condition
+- `else` branches that encode a distinct error or exceptional path (e.g., `else: raise ValueError(...)`) — not general fallthrough or happy-path defaults
 - `None`-checks and early-return guards
 - Filter expressions (`filter()`, list comprehensions with conditions)
 - Protocol / ABC method implementations
@@ -73,3 +74,5 @@ The `dev-core:tester` agent flags missing negative tests as `issue:` (≥90% con
 2. **Unit** — pure functions, utilities, type guards
 3. **Integration** (largest layer) — real modules wired together
 4. **E2E** — critical journeys only
+
+> Layer-to-tool mapping: see [Architecture Patterns — Testing Strategy](architecture-patterns.md#testing-strategy).

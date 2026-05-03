@@ -450,6 +450,7 @@ class TestTelegramTokenFilter:
         )
         filt.filter(record)
         assert "BBFfiQCzx1yABCDefGHijKLmnoPQRstUVwx" not in record.getMessage()
+        assert "<REDACTED>" in record.getMessage()
 
     def test_bare_token_not_over_matched_by_short_secret(self) -> None:
         """Secrets shorter than 30 chars are not bot tokens — must not be redacted."""
@@ -459,6 +460,17 @@ class TestTelegramTokenFilter:
         record = self._make_record("ratio=12345678:short")
         filt.filter(record)
         assert record.getMessage() == "ratio=12345678:short"
+
+    def test_bare_token_not_matched_when_id_too_short(self) -> None:
+        """IDs shorter than 8 digits do not match the digit-count floor."""
+        from lyra.core.trace import TelegramTokenFilter
+
+        filt = TelegramTokenFilter()
+        record = self._make_record(
+            "id=1234567:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        )
+        filt.filter(record)
+        assert record.getMessage() == "id=1234567:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
     def test_url_token_already_redacted_before_bare_pass(self) -> None:
         """URL pattern runs first; bare pass must not double-redact."""
@@ -474,3 +486,4 @@ class TestTelegramTokenFilter:
         msg = record.getMessage()
         assert "AAGg_wDfJ7896yPdf-L10CEVHbiuShA38Sw" not in msg
         assert msg.count("<REDACTED>") == 1
+        assert "bot8500388193:<REDACTED>" in msg

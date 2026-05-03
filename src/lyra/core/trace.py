@@ -119,11 +119,17 @@ class TelegramTokenFilter(logging.Filter):
     record is never suppressed. Defensive: never raises.
     """
 
-    # URL-embedded: /bot1234567890:AAEhBP0av28...Z/method
+    # URL-embedded: /bot<id>:<secret>/method (httpx always emits full-length secrets)
     _TOKEN_RE = re.compile(r"bot(\d+):[A-Za-z0-9_-]+")
     _REDACTED_SUB = r"bot\1:<REDACTED>"
     # Bare token: 1234567890:AAEhBP0av28...Z (config dumps, exception reprs)
-    _BARE_TOKEN_RE = re.compile(r"\b(\d{8,12}:[A-Za-z0-9_-]{30,50})\b")
+    # Lookbehind/lookahead instead of \b: \b breaks after trailing '-' (non-\w).
+    # No upper bound: avoids silently missing tokens with secrets > 50 chars.
+    # _REDACTED_SUB must stay < 30 chars so a partially-redacted URL-form token
+    # (bot<id>:<REDACTED>) is not re-matched by this pattern.
+    _BARE_TOKEN_RE = re.compile(
+        r"(?<!\w)(\d{8,12}:[A-Za-z0-9_-]{30,})(?![A-Za-z0-9_-])"
+    )
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:

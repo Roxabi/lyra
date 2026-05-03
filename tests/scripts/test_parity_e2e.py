@@ -289,7 +289,9 @@ def test_hub_publish_acl_enforced(nats_server: None, rendered_auth_conf: Path) -
         await nc.drain()
 
     asyncio.run(_test())
-    perm_violations = [e for e in acl_errors if "Permissions Violation" in str(e)]
+    perm_violations = [
+        e for e in acl_errors if "permissions violation" in str(e).lower()
+    ]
     assert perm_violations, (
         f"Expected Permissions Violation for denied publish; errors: {acl_errors}"
     )
@@ -325,7 +327,9 @@ def test_voice_tts_publish_acl_enforced(
         await nc.drain()
 
     asyncio.run(_test())
-    perm_violations = [e for e in acl_errors if "Permissions Violation" in str(e)]
+    perm_violations = [
+        e for e in acl_errors if "permissions violation" in str(e).lower()
+    ]
     assert perm_violations, (
         f"Expected Permissions Violation for denied publish; errors: {acl_errors}"
     )
@@ -361,7 +365,9 @@ def test_clipool_worker_subscribe_acl_enforced(
         await nc.drain()
 
     asyncio.run(_test())
-    perm_violations = [e for e in acl_errors if "Permissions Violation" in str(e)]
+    perm_violations = [
+        e for e in acl_errors if "permissions violation" in str(e).lower()
+    ]
     assert perm_violations, (
         f"Expected Permissions Violation for denied subscribe; errors: {acl_errors}"
     )

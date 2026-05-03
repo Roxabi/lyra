@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from collections.abc import Sequence
+from collections.abc import Coroutine, Sequence
 from typing import Any, Protocol
 
 log = logging.getLogger(__name__)
@@ -20,6 +20,20 @@ def setup_signal_handlers(stop: asyncio.Event) -> None:
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, stop.set)
     loop.add_signal_handler(signal.SIGTERM, stop.set)
+
+
+async def close_safely(label: str, *coros: Coroutine[Any, Any, Any]) -> None:
+    """Close/stop resources concurrently, logging failures without re-raising.
+
+    Skips CancelledError (normal shutdown path). All resources are attempted
+    regardless of individual failures.
+    """
+    if not coros:
+        return
+    results = await asyncio.gather(*coros, return_exceptions=True)
+    for r in results:
+        if isinstance(r, BaseException) and not isinstance(r, asyncio.CancelledError):
+            log.exception("Close failed [%s]", label, exc_info=r)
 
 
 async def teardown_buses(*buses: _Stoppable) -> None:

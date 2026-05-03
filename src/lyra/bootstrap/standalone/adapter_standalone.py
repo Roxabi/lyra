@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import InboundMessage, Platform
@@ -156,9 +157,8 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                     await a.dp.stop_polling()
                 await asyncio.gather(*poll_tasks, return_exceptions=True)
             finally:
-                for a, ibus in wired:
-                    await a.close()
-                    await ibus.stop()
+                await close_safely("tg-adapters", *[a.close() for a, _ in wired])
+                await close_safely("tg-buses", *[ibus.stop() for _, ibus in wired])
                 await tg_turn_store.close()
 
         elif platform == "discord":
@@ -283,17 +283,11 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             ]
             try:
                 await stop_dc.wait()
-                for _r in await asyncio.gather(
-                    *[a.close() for a, _, _ in wired_dc], return_exceptions=True
-                ):
-                    if isinstance(_r, BaseException) and not isinstance(
-                        _r, asyncio.CancelledError
-                    ):
-                        log.exception("DC adapter close failed", exc_info=_r)
+                await close_safely("dc-adapters", *[a.close() for a, _, _ in wired_dc])
                 await asyncio.gather(*start_tasks, return_exceptions=True)
             finally:
-                for _, _, ibus in wired_dc:
-                    await ibus.stop()
+                dc_bus_coros = [ibus.stop() for _, _, ibus in wired_dc]
+                await close_safely("dc-buses", *dc_bus_coros)
                 await dc_thread_store.close()
                 await dc_turn_store.close()
 

@@ -1,0 +1,74 @@
+---
+title: "check-acl-matrix-spec.sh refactor — Expert Consensus"
+issue: 1039
+status: consensus-reached
+date: 2026-05-03
+panel: architect, devops, security-auditor
+confidence: high
+---
+
+## Problem
+
+After auto-deriving ROWS from `acl-matrix.json` (PR #1041), a code review surfaced 5 non-blocking
+findings clustered around the same root: the script mixes JSON data into bash string handling
+(injection risk), derives IDENTITIES and ROWS from different source objects (inconsistent),
+and calls `json_has()` O(identities × rows) times (subprocess overhead).
+
+## Panel
+
+| Agent | Focus |
+|-------|-------|
+| architect | arch soundness, maintainability, scalability |
+| devops | ops impact, CI performance, script correctness |
+| security-auditor | security, attack surface, data integrity |
+
+## Consensus ρ
+
+**Single-pass jq materialization in `render_table()`.**
+
+Replace `mapfile -t IDENTITIES`, `mapfile -t ROWS`, `json_has()`, `cell_value()`, and the
+bash iteration loop with a single `jq` invocation that derives identities, subjects, and
+computes all cell values from `$EFFECTIVE_JSON` in one pass, outputting markdown directly.
+
+### Rationale
+
+- **Eliminates injection surface**: all JSON data stays inside jq; bash never parses
+  `|`-delimited strings originating from JSON (findings 2 + 4)
+- **Consistent source**: IDENTITIES and ROWS both derived from `$EFFECTIVE_JSON`
+  (post request_reply_flows expansion) — no divergence (finding 3)
+- **O(1) jq forks** instead of O(identities × rows) ≈ 264+ subprocesses (finding 5)
+- **Comment accuracy**: single source means the comment can state `$EFFECTIVE_JSON`
+  precisely (finding 1)
+
+### Trade-offs
+
+- Logic shifts from bash loops to jq — slightly less familiar to bash-first maintainers
+- jq error messages are less friendly than bash; mitigated by jq being declarative
+- Net SLOC: ~−40 bash lines, +15 jq lines → net reduction
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| Per-finding patches (quote strings, update comment) | all | Band-aids; don't close injection surface or fix inconsistent sources; technical debt accumulates |
+| Input validation (reject keys/subjects with `\|`) | security-auditor | Allowlist brittle; treats symptom not cause; bash shouldn't parse JSON at all |
+| Escape/sanitize in bash | devops | Hides structural flaw; markdown header still broken if `\|` in key |
+| Shift to Python | security-auditor | Over-engineered for a 180-line script; jq is already the data tool here |
+
+## Dissent
+
+None — unanimous.
+
+## Implementation Notes
+
+1. `render_table()` becomes a single `jq -r '...' <<< "$EFFECTIVE_JSON"` call
+2. Remove `mapfile -t IDENTITIES` (line 44), `mapfile -t ROWS` block (lines 52–61),
+   `json_has()` (lines 75–82), `cell_value()` (lines 86–106), and the bash `render_table()`
+   body (lines 111–140)
+3. Update header comment to remove "hard-coded subject→JSON-lookup mapping" description
+4. Run `--update` to regenerate spec sentinel block after rewrite
+5. `EFFECTIVE_JSON` variable remains as-is (single bash variable, one `jq` fork to produce it)
+
+## Next
+
+Fixes applied directly in the open PR (#1041) as part of the `/fix` pipeline.

@@ -2,17 +2,14 @@
 # check-acl-matrix-spec.sh — verify acl-matrix.json is in sync with the
 # sentinel-bracketed table in artifacts/specs/706-per-role-nkeys-acls-spec.mdx.
 #
-# Strategy: cell-by-cell assert. For each cell in the spec table where the
-# expected value is PUB or SUB (not —), we verify the JSON publish/subscribe
-# arrays back that claim. Cells that read — in the spec are not asserted
-# (the spec intentionally omits supplementary ACLs present in the JSON for
-# other identities / other features). Drift = spec claims PUB/SUB but JSON
-# disagrees, or spec claims — but JSON would produce PUB+SUB.
+# Strategy: render a full table from EFFECTIVE_JSON (acl-matrix.json after
+# request_reply_flows inbox grants are applied) and diff it against the spec
+# sentinel block. For each (subject, identity) cell, the value is PUB, SUB,
+# PUB+SUB, or — based on whether the subject appears in the identity's
+# effective publish/subscribe arrays.
 #
-# We render a full table from JSON and diff against the spec sentinel block.
-# The render uses a hard-coded subject→JSON-lookup mapping that reproduces
-# the spec exactly: for each (subject, identity) we look up only the specific
-# JSON subjects that the spec intends to cover per row.
+# Subjects are auto-derived: union of publish[] + subscribe[] across all active
+# identities, filtered to lyra.* and _inbox.*, sorted alphabetically.
 #
 # Exit 0  → no drift.
 # Exit 1  → drift; unified diff to stdout.
@@ -38,105 +35,44 @@ EFFECTIVE_JSON=$(jq '
 ' "$JSON")
 
 # ---------------------------------------------------------------------------
-# Identity column order — all active identities (updated: retired tts-adapter/sst-adapter
-# removed, voice-tts/voice-stt/image-worker/clipool-worker added per postmortem Fix 1+2)
-# ---------------------------------------------------------------------------
-mapfile -t IDENTITIES < <(jq -r '.identities | to_entries[] | select(.value.status == "active") | .key' "$JSON")
-
-# ---------------------------------------------------------------------------
-# Subject rows — auto-derived from acl-matrix.json.
-# Union of publish[] + subscribe[] across active identities, after
-# request_reply_flows expansion. Excludes NATS system subjects ($JS.*, $KV.*).
-# Format: "display|pub_subject|sub_subject"
-# ---------------------------------------------------------------------------
-mapfile -t ROWS < <(jq -r '
-  [
-    .identities | to_entries[] |
-    select(.value.status == "active") |
-    .value | (.publish // []) + (.subscribe // [])
-  ] |
-  flatten | unique | sort[] |
-  select(startswith("lyra.") or startswith("_inbox.")) |
-  ("`" + . + "`|" + . + "|" + .)
-' <<< "$EFFECTIVE_JSON")
-
-# ---------------------------------------------------------------------------
-# Identities that are in scope for each row's pub/sub check.
-# For rows where some identities have — in the spec, we must NOT assert PUB
-# or SUB from JSON for those identities. We instead only assert the cells
-# that the spec claims are non-—.
-#
-# Implementation: for each cell, compute what JSON says using the row's
-# specific pub/sub subjects, then emit the result. The diff will catch
-# any disagreement with the spec.
-# ---------------------------------------------------------------------------
-
-# Returns "true" or "false": does the JSON array for identity+key contain subject?
-json_has() {
-  local identity="$1"
-  local key="$2"   # "publish" or "subscribe"
-  local subject="$3"
-  jq --arg id "$identity" --arg key "$key" --arg subj "$subject" '
-    .identities[$id][$key] // [] | map(select(. == $subj)) | length > 0
-  ' <<< "$EFFECTIVE_JSON"
-}
-
-# Compute cell value: PUB | SUB | PUB+SUB | —
-# Uses the row's dedicated pub_subject and sub_subject (may differ per row).
-cell_value() {
-  local identity="$1"
-  local pub_subject="$2"
-  local sub_subject="$3"
-
-  local is_pub="false"
-  local is_sub="false"
-
-  [[ "$pub_subject" != "NONE" ]] && is_pub=$(json_has "$identity" "publish" "$pub_subject")
-  [[ "$sub_subject" != "NONE" ]] && is_sub=$(json_has "$identity" "subscribe" "$sub_subject")
-
-  if [[ "$is_pub" == "true" && "$is_sub" == "true" ]]; then
-    echo "PUB+SUB"
-  elif [[ "$is_pub" == "true" ]]; then
-    echo "PUB"
-  elif [[ "$is_sub" == "true" ]]; then
-    echo "SUB"
-  else
-    echo "—"
-  fi
-}
-
-# ---------------------------------------------------------------------------
-# Render the table from JSON
+# Render the table from EFFECTIVE_JSON in a single jq pass.
+# Derives active identities + lyra.* / _inbox.* subjects from the same
+# post-expansion source; computes all cells; outputs markdown directly.
+# No bash string parsing of JSON data — all field splitting stays inside jq.
 # ---------------------------------------------------------------------------
 render_table() {
-  # Header
-  local header="| Subject |"
-  for id in "${IDENTITIES[@]}"; do
-    header+=" ${id} |"
-  done
-  echo "$header"
+  jq -r '
+    . as $eff |
+    ([ .identities | to_entries[] | select(.value.status == "active") | .key ]) as $ids |
+    (
+      [
+        .identities | to_entries[] |
+        select(.value.status == "active") |
+        .value | (.publish // []) + (.subscribe // [])
+      ] |
+      flatten | unique | sort |
+      map(select(startswith("lyra.") or startswith("_inbox.")))
+    ) as $subjects |
 
-  # Separator
-  local sep="|---|"
-  for id in "${IDENTITIES[@]}"; do
-    sep+=":-:|"
-  done
-  echo "$sep"
-
-  # Data rows
-  for row in "${ROWS[@]}"; do
-    local display="${row%%|*}"
-    local rest="${row#*|}"
-    local pub_subject="${rest%%|*}"
-    local sub_subject="${rest##*|}"
-    local line="| ${display} |"
-    for id in "${IDENTITIES[@]}"; do
-      local val
-      val=$(cell_value "$id" "$pub_subject" "$sub_subject")
-      line+=" ${val} |"
-    done
-    echo "$line"
-  done
+    "| Subject |" + ($ids | map(" \(.) |") | join("")),
+    "|---|" + ($ids | map(":-:|") | join("")),
+    (
+      $subjects[] |
+      . as $subj |
+      "| `\($subj)` |" + (
+        [ $ids[] |
+          . as $id |
+          (($eff.identities[$id].publish  // []) | any(. == $subj)) as $pub |
+          (($eff.identities[$id].subscribe // []) | any(. == $subj)) as $sub |
+          if   $pub and $sub then " PUB+SUB |"
+          elif $pub            then " PUB |"
+          elif $sub            then " SUB |"
+          else                      " — |"
+          end
+        ] | join("")
+      )
+    )
+  ' <<< "$EFFECTIVE_JSON"
 }
 
 # ---------------------------------------------------------------------------

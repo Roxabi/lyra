@@ -445,7 +445,8 @@ class TestTelegramTokenFilter:
 
         filt = TelegramTokenFilter()
         record = self._make_record(
-            "TelegramError: invalid token 9876543210:BBFfiQCzx1yABCDefGHijKLmnoPQRstUVwx"
+            "TelegramError: invalid token "
+            "9876543210:BBFfiQCzx1yABCDefGHijKLmnoPQRstUVwx"
         )
         filt.filter(record)
         assert "BBFfiQCzx1yABCDefGHijKLmnoPQRstUVwx" not in record.getMessage()
@@ -460,15 +461,16 @@ class TestTelegramTokenFilter:
         assert record.getMessage() == "ratio=12345678:short"
 
     def test_url_token_already_redacted_before_bare_pass(self) -> None:
-        """URL-embedded token is handled by _TOKEN_RE; bare pass must not double-redact."""
+        """URL pattern runs first; bare pass must not double-redact."""
         from lyra.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
-        url = "https://api.telegram.org/bot8500388193:AAGg_wDfJ7896yPdf-L10CEVHbiuShA38Sw/sendMessage"
+        url = (
+            "https://api.telegram.org/"
+            "bot8500388193:AAGg_wDfJ7896yPdf-L10CEVHbiuShA38Sw/sendMessage"
+        )
         record = self._make_record(f"POST {url}")
         filt.filter(record)
         msg = record.getMessage()
         assert "AAGg_wDfJ7896yPdf-L10CEVHbiuShA38Sw" not in msg
-        # Bot id preserved from URL pattern; bare pass sees bot8500388193:<REDACTED> which
-        # no longer matches the bare pattern (it starts with 'bot'), so no double-redact.
         assert msg.count("<REDACTED>") == 1

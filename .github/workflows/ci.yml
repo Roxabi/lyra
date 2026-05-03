@@ -113,8 +113,8 @@ jobs:
 
       - name: Verify error codes registry sync
         run: |
-          uv run python packages/roxabi-contracts/scripts/check_codes_sync.py
-          EC=$?; [[ $EC -eq 0 || $EC -eq 2 ]] || exit $EC
+          uv run python packages/roxabi-contracts/scripts/check_codes_sync.py || EC=$?
+          [[ ${EC:-0} -eq 0 || ${EC:-0} -eq 2 ]] || exit "${EC:-1}"
 
       - name: Coverage — lyra
         run: uv run pytest tests/ --cov=lyra --cov-branch --cov-report=term-missing --cov-fail-under=50

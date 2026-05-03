@@ -137,7 +137,7 @@ def _mode_regen_authconf(args: argparse.Namespace) -> None:
         if not seed_file.exists():
             print(
                 f"error: missing seed: {seed_file}"
-                " — run gen-nkeys.sh without flags first",
+                " — run 'uv run lyra-acl genkeys'",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -176,7 +176,7 @@ def _mode_emit_merged_authconf(args: argparse.Namespace) -> None:
         seed_file = seeds_dir / f"{name}.seed"
         if not seed_file.exists():
             print(
-                f"error: missing lyra seed: {seed_file} — run gen-nkeys.sh first",
+                f"error: missing lyra seed: {seed_file} — run 'uv run lyra-acl genkeys'",
                 file=sys.stderr,
             )
             sys.exit(1)

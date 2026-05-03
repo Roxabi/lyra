@@ -41,7 +41,12 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def rendered_auth_conf(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Render auth.conf using real nk keys so nats-server accepts the config."""
+    """Render auth.conf + seed files; return the directory.
+
+    Writes:
+      <tmp>/auth.conf         — nats-server authorization config
+      <tmp>/<name>.seed       — raw nk seed bytes per active identity
+    """
     from scripts._loader import load_matrix
     from scripts._nk import SubprocessNkeyProvider
     from scripts._renderer import render_auth_conf
@@ -56,14 +61,14 @@ def rendered_auth_conf(tmp_path_factory: pytest.TempPathFactory) -> Path:
         for name, ident in matrix["identities"].items()
         if ident["status"] == "active"
     }
-    pubkeys = {
-        name: provider.pubkey_from_seed(provider.gen_seed(name)) for name in active
-    }
+    seeds = {name: provider.gen_seed(name) for name in active}
+    pubkeys = {name: provider.pubkey_from_seed(seed) for name, seed in seeds.items()}
     text = render_auth_conf(matrix, pubkeys)
 
-    conf_path = tmp / "auth.conf"
-    conf_path.write_text(text)
-    return conf_path
+    (tmp / "auth.conf").write_text(text)
+    for name, seed in seeds.items():
+        (tmp / f"{name}.seed").write_bytes(seed)
+    return tmp
 
 
 @pytest.fixture(scope="module")
@@ -73,7 +78,7 @@ def nats_server(rendered_auth_conf: Path) -> Generator[None, None, None]:
         [
             "nats-server",
             "-c",
-            str(rendered_auth_conf),
+            str(rendered_auth_conf / "auth.conf"),
             "-m",
             "8222",
             "-p",
@@ -115,7 +120,7 @@ def test_rendered_auth_conf_parses_correctly(rendered_auth_conf: Path) -> None:
         1 for ident in matrix["identities"].values() if ident["status"] == "active"
     )
 
-    text = rendered_auth_conf.read_text()
+    text = (rendered_auth_conf / "auth.conf").read_text()
     parsed = parse_auth_conf(text)
 
     assert len(parsed.users) == active_count, (
@@ -127,7 +132,7 @@ def test_hub_identity_in_auth_conf(rendered_auth_conf: Path) -> None:
     """Rendered auth.conf contains a user entry whose comment_name is 'hub'."""
     from scripts._renderer import parse_auth_conf
 
-    text = rendered_auth_conf.read_text()
+    text = (rendered_auth_conf / "auth.conf").read_text()
     parsed = parse_auth_conf(text)
 
     names = [u.comment_name for u in parsed.users]
@@ -164,7 +169,7 @@ def test_inbox_grant_derived_from_flows(rendered_auth_conf: Path) -> None:
     """clipool-worker publish allow includes '_inbox.hub.>' from hub flow."""
     from scripts._renderer import parse_auth_conf
 
-    text = rendered_auth_conf.read_text()
+    text = (rendered_auth_conf / "auth.conf").read_text()
     parsed = parse_auth_conf(text)
 
     clipool = next(
@@ -190,16 +195,13 @@ def test_nats_server_starts_with_auth_conf(nats_server: None) -> None:
     not NATS_PY_AVAILABLE,
     reason="nats-py not installed — skipping live connection test",
 )
-def test_hub_can_connect(nats_server: None) -> None:
-    """hub identity connects to nats-server with FakeNkeyProvider seed (nats-py)."""
+def test_hub_can_connect(nats_server: None, rendered_auth_conf: Path) -> None:
+    """hub identity connects to nats-server using the seed that was registered."""
     import asyncio
-
-    from scripts._nk import FakeNkeyProvider
 
     import nats
 
-    provider = FakeNkeyProvider()
-    seed = provider.gen_seed("hub")
+    seed = (rendered_auth_conf / "hub.seed").read_bytes()
 
     async def _connect() -> None:
         nc = await nats.connect(

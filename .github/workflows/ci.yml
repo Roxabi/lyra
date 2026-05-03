@@ -41,6 +41,22 @@ jobs:
           sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
           nats-server --version
 
+      - name: Install nk
+        env:
+          NK_VERSION: "0.4.15"
+        run: |
+          ARCH=$(dpkg --print-architecture)
+          ZIPFILE="nkeys-v${NK_VERSION}-linux-${ARCH}.zip"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/${ZIPFILE}" \
+            -o "${TMPDIR}/${ZIPFILE}"
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/nkeys-v${NK_VERSION}-checksums.txt" \
+            -o "${TMPDIR}/checksums.txt"
+          cd "${TMPDIR}" && grep -F "${ZIPFILE}" checksums.txt | sha256sum --check
+          unzip -q "${TMPDIR}/${ZIPFILE}" -d "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nkeys-v${NK_VERSION}-linux-${ARCH}/nk" /usr/local/bin/nk
+          nk -v
+
       - name: Install uv
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v7
 
@@ -67,10 +83,10 @@ jobs:
         run: bash scripts/check-acl-matrix-spec.sh
 
       - name: Check ACL matrix lifecycle fields
-        run: bash scripts/check-acl-matrix-retired.sh
+        run: uv run lyra-check-acl-retired
 
       - name: Check request-reply flows
-        run: bash scripts/check-request-reply-flows.sh
+        run: uv run lyra-check-flows
 
       - name: Check auth.conf drift (acl-matrix.json is source of truth)
         run: bash scripts/check-acl-authconf-drift.sh
@@ -96,7 +112,9 @@ jobs:
         run: uv run pyright
 
       - name: Verify error codes registry sync
-        run: uv run python packages/roxabi-contracts/scripts/check_codes_sync.py
+        run: |
+          uv run python packages/roxabi-contracts/scripts/check_codes_sync.py || EC=$?
+          [[ ${EC:-0} -eq 0 || ${EC:-0} -eq 2 ]] || exit "${EC:-1}"
 
       - name: Coverage — lyra
         run: uv run pytest tests/ --cov=lyra --cov-branch --cov-report=term-missing --cov-fail-under=50

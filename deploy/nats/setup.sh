@@ -13,7 +13,7 @@
 #   4. nats.service systemd unit + lyra.service ordering drop-in
 #   5. UFW firewall rule (port 4222, LAN only)
 #   6. TLS certs (gen-certs.sh — skips if present)
-#   7. nkey seeds (gen-nkeys.sh — re-renders auth.conf + re-applies permissions on re-run)
+#   7. nkey seeds (gen_nkeys.py — re-renders auth.conf + re-applies permissions on re-run)
 #   8. Start / restart nats.service
 #   9. Verify nkey enforcement is active
 #
@@ -132,10 +132,10 @@ fi
 section "nkeys"
 if [ -f "${NKEYS_AUTH}" ]; then
   info "auth.conf exists — re-rendering from current seeds (idempotent)."
-  sudo "${LYRA_DIR}/deploy/nats/gen-nkeys.sh" --regen-authconf --yes
-  sudo "${LYRA_DIR}/deploy/nats/gen-nkeys.sh" --fix-perms
+  sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --regen-authconf
+  sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --fix-perms
 else
-  sudo "${LYRA_DIR}/deploy/nats/gen-nkeys.sh"
+  sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys
 fi
 sudo test -f "${NKEYS_AUTH}" || error "Key generation failed — auth.conf missing"
 
@@ -211,4 +211,4 @@ else
 fi
 
 info "NATS setup complete."
-sudo "${LYRA_DIR}/deploy/nats/gen-nkeys.sh" --show
+sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --show

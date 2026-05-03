@@ -102,7 +102,7 @@ rm ~/.lyra/nkeys/${IDENTITY}.seed
 
 # 3.2 Re-render auth.conf with the new public key(s).
 cd ~/projects/lyra
-sudo ./deploy/nats/gen-nkeys.sh --regen-authconf
+lyra-acl genkeys --regen-authconf
 ```
 
 Expected output includes:

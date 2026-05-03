@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# T1.8 — Shell test harness for gen-nkeys.sh --template-only
+# T1.8 — Shell test harness for gen_nkeys.py genkeys --template-only
 # Runs without sudo. No filesystem writes outside stdout.
 # Usage: bash tests/nats/test_gen_nkeys_acls.sh
 #
@@ -21,13 +21,13 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 # NB16: fail loudly if the cd landed somewhere unexpected (symlinked runner,
 # sourced invocation) rather than with a cryptic "No such file" later.
-[ -x "./deploy/nats/gen-nkeys.sh" ] \
-  || { echo "FAIL: cannot locate ./deploy/nats/gen-nkeys.sh from $(pwd)"; exit 1; }
+[ -f "./scripts/gen_nkeys.py" ] \
+  || { echo "FAIL: cannot locate ./scripts/gen_nkeys.py from $(pwd)"; exit 1; }
 
 OUT=$(mktemp)
 trap 'rm -f "$OUT"' EXIT
 
-./deploy/nats/gen-nkeys.sh --template-only > "$OUT"
+uv run lyra-acl genkeys --template-only > "$OUT"
 echo "PASS: template-only produced output ($(wc -l < "$OUT") lines)"
 
 # ── Expected allow-lists loaded from acl-matrix.json (SSoT per #717) ──

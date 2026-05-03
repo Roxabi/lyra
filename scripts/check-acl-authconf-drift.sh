@@ -3,7 +3,7 @@
 # deploy/nats/acl-matrix.json.
 #
 # Strategy: regenerate auth.conf template from acl-matrix.json using
-# gen-nkeys.sh --template-only, then normalize both files (strip comments,
+# gen_nkeys.py genkeys --template-only, then normalize both files (strip comments,
 # normalize nkey values to placeholder) and diff.
 #
 # Exit 0 → no drift.
@@ -16,7 +16,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AUTH_CONF="${REPO_ROOT}/deploy/nats/auth.conf"
 ACL_MATRIX="${REPO_ROOT}/deploy/nats/acl-matrix.json"
-GEN_NKEYS="${REPO_ROOT}/deploy/nats/gen-nkeys.sh"
+GEN_NKEYS="${REPO_ROOT}/scripts/gen_nkeys.py"
 
 # Ensure required files exist
 for f in "$AUTH_CONF" "$ACL_MATRIX" "$GEN_NKEYS"; do
@@ -50,7 +50,7 @@ normalize_authconf() {
 }
 
 # Generate expected auth.conf from acl-matrix.json
-bash "$GEN_NKEYS" --template-only > "${NATS_TMPDIR}/generated_auth.conf"
+uv run --project "${REPO_ROOT}" lyra-acl genkeys --template-only > "${NATS_TMPDIR}/generated_auth.conf"
 
 # Normalize both files
 normalize_authconf < "$AUTH_CONF" > "$COMMITTED_NORM"
@@ -60,7 +60,7 @@ normalize_authconf < "${NATS_TMPDIR}/generated_auth.conf" > "$GENERATED_NORM"
 diff_out=$(diff -u "$COMMITTED_NORM" "$GENERATED_NORM" || true)
 if [ -n "$diff_out" ]; then
   echo "$diff_out"
-  echo "::error::auth.conf is out of sync with acl-matrix.json — run 'bash deploy/nats/gen-nkeys.sh --template-only > deploy/nats/auth.conf' and commit the result" >&2
+  echo "::error::auth.conf is out of sync with acl-matrix.json — run 'uv run lyra-acl genkeys --template-only > deploy/nats/auth.conf' and commit the result" >&2
   exit 1
 fi
 echo "✓ auth.conf template matches acl-matrix.json"
@@ -84,7 +84,7 @@ while IFS= read -r identity; do
 done < <(jq -r '.identities | to_entries[] | select(.value.allow_responses == false) | .key' "$ACL_MATRIX")
 
 if [ "$allow_resp_failures" -gt 0 ]; then
-  echo "::error::${allow_resp_failures} allow_responses value(s) wrong in auth.conf — regenerate with: bash deploy/nats/gen-nkeys.sh --template-only > deploy/nats/auth.conf" >&2
+  echo "::error::${allow_resp_failures} allow_responses value(s) wrong in auth.conf — regenerate with: uv run lyra-acl genkeys --template-only > deploy/nats/auth.conf" >&2
   exit 1
 fi
 echo "✓ allow_responses values match acl-matrix.json"

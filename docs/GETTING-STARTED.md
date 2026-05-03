@@ -306,6 +306,8 @@ make nats-setup
 make quadlet-secrets-install
 ```
 
+> If `nk` is not installed: `apt install nats-tools` (or download from https://github.com/nats-io/nkeys/releases and place at `/usr/local/bin/nk`).
+
 `make nats-setup` generates:
 - `~/.lyra/nkeys/*.seed` — nkey seed files for each identity (hub, telegram-adapter, discord-adapter, clipool-worker)
 - `~/.lyra/nkeys/auth.conf` — merged auth config for NATS

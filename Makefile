@@ -194,7 +194,7 @@ quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/contai
 	fi
 
 quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.lyra/nkeys/auth.conf
-	@./deploy/nats/gen-nkeys.sh --emit-merged-authconf
+	@lyra-acl genkeys --emit-merged-authconf
 
 quadlet-install-deploy-lib:  ## install scripts/deploy-lib.sh to ~/.local/lib/roxabi/ with pinned commit
 	@mkdir -p "$(DEPLOY_LIB_INSTALL_DIR)"
@@ -268,7 +268,7 @@ full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf
 	echo "==> lyra: installing quadlet units..."; \
 	make -C "$$LYRA_DIR" quadlet-install; \
 	echo "==> NATS: regenerating auth.conf from updated acl-matrix.json..."; \
-	bash "$$LYRA_DIR/deploy/nats/gen-nkeys.sh" --regen-authconf; \
+	sudo env "PATH=$$PATH" lyra-acl genkeys --regen-authconf; \
 	echo "==> NATS: installing Podman secrets..."; \
 	make -C "$$LYRA_DIR" quadlet-secrets-install; \
 	echo "==> NATS: reloading (HUP)..."; \
@@ -328,7 +328,7 @@ nats-setup:
 	@bash deploy/nats/setup.sh
 
 nats-regen-authconf:          ## re-render auth.conf from existing seeds, upload Podman secret, HUP NATS
-	@bash deploy/nats/gen-nkeys.sh --regen-authconf
+	@lyra-acl genkeys --regen-authconf
 	@$(MAKE) quadlet-secrets-install
 	@podman kill -s HUP lyra-nats
 

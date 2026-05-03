@@ -28,6 +28,13 @@ def _get_provider() -> NkeyProvider:
     """Return the active NkeyProvider; exit 1 with install hint when nk is absent."""
     env_provider = os.environ.get("NKEY_PROVIDER", "").lower()
     if env_provider == "fake":
+        if not os.environ.get("LYRA_TEST_MODE"):
+            print(
+                "error: NKEY_PROVIDER=fake requires LYRA_TEST_MODE=1"
+                " — refusing to generate fake seeds outside test context",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         return FakeNkeyProvider()
     ensure_nk_or_exit()
     return _provider_factory()

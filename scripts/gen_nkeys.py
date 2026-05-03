@@ -269,27 +269,22 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     args.func(args)
 
 
 def alias_genkeys() -> None:
-    sys.argv.insert(1, "genkeys")
-    main()
+    main(["genkeys"] + sys.argv[1:])
 
 
 def _check_retired() -> None:
-    sys.argv.insert(1, "check")
-    sys.argv.insert(2, "retired")
-    main()
+    main(["check", "retired"] + sys.argv[1:])
 
 
 def _check_flows() -> None:
-    sys.argv.insert(1, "check")
-    sys.argv.insert(2, "flows")
-    main()
+    main(["check", "flows"] + sys.argv[1:])
 
 
 if __name__ == "__main__":

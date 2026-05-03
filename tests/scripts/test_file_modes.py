@@ -41,6 +41,7 @@ def _run_genkeys(
     """Run gen_nkeys.py genkeys with given args via subprocess."""
     run_env = os.environ.copy()
     run_env["NKEY_PROVIDER"] = "fake"  # tests write name.encode() seed bytes
+    run_env["LYRA_TEST_MODE"] = "1"
     if env:
         run_env.update(env)
     return subprocess.run(

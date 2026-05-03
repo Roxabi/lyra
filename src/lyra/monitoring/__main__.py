@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from lyra.bootstrap.factory.config import _load_logging_config, _load_raw_config
 from lyra.core.logging_setup import setup_logging
 
 from .checks import run_checks
@@ -87,7 +86,8 @@ async def _run() -> int:
 
 def main() -> int:
     """Entry point for python -m lyra.monitoring."""
-    setup_logging(_load_logging_config(_load_raw_config()).level)
+    config = load_monitoring_config()
+    setup_logging(config.log_level)
     return asyncio.run(_run())
 
 

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import nats.errors
 
-import nats
 from roxabi_contracts.audit import SecurityEvent
 
 if TYPE_CHECKING:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+import aiohttp
 import discord
 
 from lyra.adapters.shared._shared import push_to_hub_guarded
@@ -155,7 +156,7 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
 
     try:
         audio_bytes = await audio_attachment.read()
-    except (discord.HTTPException, OSError):
+    except (discord.HTTPException, OSError, aiohttp.ClientError):
         log.exception(
             "Failed to download audio attachment for message_id=%s",
             message.id,

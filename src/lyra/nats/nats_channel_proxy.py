@@ -15,7 +15,6 @@ from typing import Any
 import nats.errors
 from nats.aio.client import Client as NATS
 
-import nats
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (
     InboundMessage,

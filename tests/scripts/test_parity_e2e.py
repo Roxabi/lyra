@@ -204,7 +204,7 @@ def test_hub_can_connect(nats_server: None, rendered_auth_conf: Path) -> None:
     async def _connect() -> None:
         nc = await nats.connect(
             "nats://localhost:4223",
-            nkeys_seed_file=str(rendered_auth_conf / "hub.seed"),
+            nkeys_seed=str(rendered_auth_conf / "hub.seed"),
         )
         await nc.drain()
 

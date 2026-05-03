@@ -34,6 +34,7 @@ from lyra.core.messaging.render_events import (
     ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
+from roxabi_contracts.errors import KNOWN_CODES
 
 
 class StreamProcessor:
@@ -126,7 +127,8 @@ class StreamProcessor:
                 if event.is_error and not self._pending_text:
                     we = _extract_worker_error(event)
                     if we is not None:
-                        domain = we.code.split(".")[0]
+                        meta = KNOWN_CODES.get(we.code)
+                        domain = meta.domain if meta else we.code.split(".")[0]
                         emit_received_total(code=we.code, domain=domain)
                         error_text = we.message
                     else:

@@ -29,6 +29,10 @@ def _extract_worker_error(reply: object) -> WorkerError | None:
     is_err = getattr(reply, "is_error", None)
     ok_flag = getattr(reply, "ok", None)
     # Contradiction: success flag set but worker_error populated → WE wins, log warning.
+    # Use `is` identity (not truthiness): legacy envelopes lack the field and surface
+    # as `None` here, which must NOT be treated as "success". `is False` matches only
+    # an explicit False; `is True` matches only an explicit True. Do NOT collapse to
+    # `not is_err` / `ok_flag` — that would fire false positives on every legacy reply.
     contradicts = (is_err is False) or (ok_flag is True)
     if contradicts:
         log.warning(

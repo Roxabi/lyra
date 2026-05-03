@@ -65,7 +65,7 @@ class CliStreamingParser:
         self._done = False
         self._pending: deque[LlmEvent] = deque()
 
-    def parse_line(self, line: str) -> deque[LlmEvent]:  # noqa: C901, PLR0912 — protocol event dispatch
+    def parse_line(self, line: str) -> deque[LlmEvent]:  # noqa: C901, PLR0912, PLR0915 — protocol event dispatch
         """Parse a JSON line, update state, and return events to yield.
 
         Returns a deque of LlmEvent objects. Caller should pop from left.
@@ -79,9 +79,35 @@ class CliStreamingParser:
 
         try:
             data = json.loads(line)
-        except json.JSONDecodeError:
-            # Non-JSON lines are silently skipped — the CLI subprocess may emit
-            # interleaved debug output that is not part of the NDJSON protocol.
+        except json.JSONDecodeError as exc:
+            # Spec C4 path (b): a JSON-shaped line that fails to parse is a
+            # protocol-level corruption (truncated stream, encoding bug, etc.)
+            # → emit terminal `cli.parse` envelope so the hub instrumentation
+            # chain activates. Non-JSON lines (debug output, blank lines) are
+            # still silently skipped — the heuristic is "line starts with `{`".
+            # CLI NDJSON protocol emits one object per line — never bare arrays
+            # or scalars. Anything starting with `{` is unambiguously a protocol
+            # line; debug lines use prefixes like `[DEBUG]`, `INFO:`, blank, etc.
+            stripped = line.lstrip()
+            if stripped.startswith("{"):
+                meta = KNOWN_CODES["cli.parse"]
+                worker_error = WorkerError(
+                    code="cli.parse",
+                    message=f"CLI emitted malformed JSON: {exc}",
+                    retryable=meta.default_retryable,
+                )
+                emit_populated_total(domain="cli")
+                self._done = True
+                self._pending.append(
+                    ResultLlmEvent(
+                        is_error=True,
+                        duration_ms=0,
+                        cost_usd=None,
+                        error_text=str(exc),
+                        session_id=self.session_id,
+                        worker_error=worker_error,
+                    )
+                )
             return self._pending
 
         msg_type = data.get("type", "")

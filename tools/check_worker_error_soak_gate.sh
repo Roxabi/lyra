@@ -71,28 +71,33 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-# Acquire input stream
+# Acquire input stream — built as an argv array (NOT a string) so callers cannot
+# inject shell metacharacters via --since or --fixture values. Every consumer
+# below pipes from `"${INPUT_ARGS[@]}"` which respects argument boundaries and
+# disables shell parsing of quotes / `;` / backticks / `$(…)` in user input.
 if [ -n "$FIXTURE" ]; then
     if [ ! -f "$FIXTURE" ]; then
         echo "ERROR: Fixture file not found: $FIXTURE" >&2
         exit 1
     fi
-    INPUT_CMD="cat -- $FIXTURE"
+    INPUT_ARGS=(cat -- "$FIXTURE")
 else
-    INPUT_CMD="journalctl --since \"$SINCE\" --no-pager"
+    INPUT_ARGS=(journalctl --since "$SINCE" --no-pager)
 fi
 
 # Count populated_total domain=cli
-pop_cli=$(eval "$INPUT_CMD" | grep -c 'METRIC worker_error_populated_total domain=cli' || true)
+pop_cli=$("${INPUT_ARGS[@]}" | grep -c 'METRIC worker_error_populated_total domain=cli' || true)
 
 # Count populated_total domain=llm
-pop_llm=$(eval "$INPUT_CMD" | grep -c 'METRIC worker_error_populated_total domain=llm' || true)
+pop_llm=$("${INPUT_ARGS[@]}" | grep -c 'METRIC worker_error_populated_total domain=llm' || true)
 
 # Count any populated_total
-pop_total=$(eval "$INPUT_CMD" | grep -c 'METRIC worker_error_populated_total' || true)
+pop_total=$("${INPUT_ARGS[@]}" | grep -c 'METRIC worker_error_populated_total' || true)
 
 # Count legacy error_text= with a non-empty, non-None, non-"" value.
-# Uses awk for precise field extraction (POSIX portable — no lookahead needed).
+# Uses awk for precise field extraction (the script requires bash — see shebang —
+# but the awk program itself uses only POSIX features for portability between
+# gawk / mawk / busybox awk).
 # Algorithm:
 #   1. Match lines containing "error_text=".
 #   2. Extract the value after "error_text=" (everything up to next space/tab or EOL).
@@ -100,7 +105,7 @@ pop_total=$(eval "$INPUT_CMD" | grep -c 'METRIC worker_error_populated_total' ||
 # This correctly handles: error_text="" → skip, error_text=None → skip,
 #                         error_text= → skip, error_text="msg" → count,
 #                         error_text=raw → count.
-legacy_text=$(eval "$INPUT_CMD" | awk '
+legacy_text=$("${INPUT_ARGS[@]}" | awk '
     /error_text=/ {
         # Extract value after error_text=
         n = split($0, parts, "error_text=")

@@ -157,10 +157,28 @@ class CliPoolNatsWorker(NatsAdapterBase):
     async def _handle_cmd(self, msg: Any, payload: dict) -> None:
         try:
             cmd = CliCmdPayload.model_validate(payload)
-        except ValidationError:
+        except ValidationError as exc:
             log.exception("clipool_worker: failed to parse CliCmdPayload")
+            # Schema validation failure on the inbound payload is a transport-level
+            # parse error from this worker's perspective: the message arrived but
+            # could not be decoded. Surface the structured envelope + counter so
+            # the soak gate sees this failure mode (otherwise it was an invisible
+            # `is_error=True` chunk with no domain attribution).
+            worker_error = WorkerError(
+                code="transport.parse",
+                message=str(exc) or "CliCmdPayload validation failed",
+                retryable=False,
+            )
+            emit_populated_total(domain="cli")
             await self.reply(
-                msg, _make_chunk("", event_type="error", is_error=True, done=True)
+                msg,
+                _make_chunk(
+                    "",
+                    event_type="error",
+                    is_error=True,
+                    done=True,
+                    worker_error=worker_error,
+                ),
             )
             return
 

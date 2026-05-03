@@ -5,20 +5,41 @@ See docs/architecture/adr/066-unified-worker-error-envelope-nats-reply-contracts
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator
 
 __all__ = ["WorkerError", "CodeMeta", "KNOWN_CODES"]
+
+
+# Scrub NATS connection-string credentials from message/detail strings.
+# Pattern matches `scheme://user:pass@host` for nats / nats+tls / amqp / redis / http(s)
+# and replaces the userinfo with `***:***`. Defence-in-depth against accidentally
+# embedding `str(exc)` from a transport error that includes the connect URL.
+_CREDENTIAL_RE = re.compile(
+    r"((?:nats|nats\+tls|amqp|amqps|redis|rediss|https?|postgres(?:ql)?|mysql)://)"
+    r"[^/@\s:]+:[^/@\s]+@"
+)
+
+
+def _scrub(value: str) -> str:
+    return _CREDENTIAL_RE.sub(r"\1***:***@", value)
 
 
 class WorkerError(BaseModel):
     """Structured error returned on NATS reply subjects by all Lyra workers."""
 
-    code: str = Field(min_length=1)
-    message: str = Field(min_length=1)
+    code: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9._-]*$")
+    message: str = Field(min_length=1, max_length=512)
     retryable: bool = True
     detail: str | None = Field(default=None, max_length=2048)
 
     model_config = {"extra": "ignore"}
+
+    @field_validator("message", "detail")
+    @classmethod
+    def _strip_credentials(cls, v: str | None) -> str | None:
+        return _scrub(v) if isinstance(v, str) else v
 
 
 class CodeMeta(BaseModel):

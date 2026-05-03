@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import nats.errors
+from pydantic import ValidationError
 
 from lyra.core.messaging.events import (
     LlmEvent,
@@ -29,6 +30,27 @@ if TYPE_CHECKING:
     from lyra.core.agent.agent_config import ModelConfig
 
 log = logging.getLogger(__name__)
+
+
+def _decode_worker_error(raw: Any) -> WorkerError | None:
+    """Validate a worker_error payload from a NATS reply chunk. None on absent/invalid.
+
+    Tolerates: ``None`` (field absent), ``dict`` (canonical), or anything else
+    (treated as absent and logged at debug). Validation failures are non-fatal —
+    the driver synthesises a fallback envelope upstream so the hub always sees
+    a structured error rather than a bare shim.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        log.debug("nats_llm: worker_error payload is %s, expected dict", type(raw))
+        return None
+    try:
+        return WorkerError.model_validate(raw)
+    except ValidationError:
+        log.debug("nats_llm: worker_error payload failed validation", exc_info=True)
+        return None
+
 
 # Module-level aliases kept for backward compatibility (tests may import these).
 SUBJECT_REQUEST = "lyra.llm.request"
@@ -168,8 +190,14 @@ class NatsLlmDriver:
                 exc,
             )
             error_msg = f"NATS transport error: {exc}"
+            # Catch-all for non-timeout / non-no-responders transport failures
+            # (e.g. connection reset, NATS protocol error). These are not timeouts;
+            # mislabelling as `transport.timeout` inflates that counter and misleads
+            # operators. `worker.internal` covers "internal failure not covered by
+            # a more specific code" — the right slot until a `transport.error` is
+            # added to the registry.
             worker_error = WorkerError(
-                code="transport.timeout",
+                code="worker.internal",
                 message=str(exc) or error_msg,
                 retryable=True,
             )
@@ -209,7 +237,19 @@ class NatsLlmDriver:
                 retryable,
                 error,
             )
-            return LlmResult(error=error, retryable=retryable)
+            # If the worker populated a structured WorkerError, surface it.
+            # Falls back to a synthesised `worker.internal` envelope so the hub
+            # extractor never sees a bare error_text shim from a NATS reply.
+            worker_error = _decode_worker_error(data.get("worker_error"))
+            if worker_error is None:
+                worker_error = WorkerError(
+                    code="worker.internal",
+                    message=error,
+                    retryable=retryable,
+                )
+            return LlmResult(
+                error=error, retryable=retryable, worker_error=worker_error
+            )
 
         return LlmResult(
             result=data.get("result", ""),
@@ -241,7 +281,7 @@ class NatsLlmDriver:
             pool_id, text, model_cfg, system_prompt, messages=messages
         )
 
-    async def _stream_gen(  # noqa: C901, PLR0913
+    async def _stream_gen(  # noqa: C901, PLR0913, PLR0915
         self,
         pool_id: str,
         text: str,
@@ -334,9 +374,26 @@ class NatsLlmDriver:
                         input=chunk.get("input", {}),
                     )
                 elif event_type == "result":
+                    is_error = bool(chunk.get("is_error", False))
+                    # P2 instrumentation chain: surface the worker's structured
+                    # error envelope so the hub extractor + emit_received_total
+                    # path activates. Without this read the entire streaming
+                    # path silently drops worker_error and falls back to the
+                    # legacy error_text shim.
+                    worker_error = _decode_worker_error(chunk.get("worker_error"))
+                    if worker_error is None and is_error:
+                        # Worker reported is_error=True but didn't populate the
+                        # envelope (legacy worker, or pre-P2 build). Synthesise
+                        # a `worker.internal` so the hub still receives a code.
+                        worker_error = WorkerError(
+                            code="worker.internal",
+                            message=str(chunk.get("error") or "Unknown worker error"),
+                            retryable=bool(chunk.get("retryable", True)),
+                        )
                     yield ResultLlmEvent(
-                        is_error=bool(chunk.get("is_error", False)),
+                        is_error=is_error,
                         duration_ms=int(chunk.get("duration_ms", 0)),
+                        worker_error=worker_error,
                     )
                     return
 

@@ -330,7 +330,7 @@ systemctl --user restart lyra-hub.service  # hub last
 ### Verify
 
 ```bash
-scripts/check-nats-acls.sh --since "$(date -Iseconds)" --window 90
+tools/check-nats-acls.sh --since "$(date -Iseconds)" --window 90
 ```
 
 ---

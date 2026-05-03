@@ -186,7 +186,7 @@ systemctl --user status 'lyra-*.service'
 **6.1 Check for NATS auth errors** using the reload timestamp captured in Step 4:
 
 ```bash
-scripts/check-nats-acls.sh --since "${RELOAD_TS}" --window 90 | tee ~/nkey-rotation-evidence.txt
+tools/check-nats-acls.sh --since "${RELOAD_TS}" --window 90 | tee ~/nkey-rotation-evidence.txt
 ```
 
 Expected output on success: `OK: no Permissions Violation in nats.service over 90s window`
@@ -327,4 +327,4 @@ ls ~/.lyra/nkeys/*.bak-* 2>/dev/null && echo "WARNING: backup files still presen
 - [#561](https://github.com/Roxabi/lyra/issues/561) — parent epic (NATS nkey provisioning)
 - [#714](https://github.com/Roxabi/lyra/issues/714) — per-role ACL rework
 - [`deploy/nats/gen-nkeys.sh`](../../deploy/nats/gen-nkeys.sh) — seed generation and auth.conf rendering
-- [`scripts/check-nats-acls.sh`](../../scripts/check-nats-acls.sh) — ACL violation detector used in Step 6.1
+- [`tools/check-nats-acls.sh`](../../tools/check-nats-acls.sh) — ACL violation detector used in Step 6.1

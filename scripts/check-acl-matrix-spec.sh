@@ -44,43 +44,21 @@ EFFECTIVE_JSON=$(jq '
 mapfile -t IDENTITIES < <(jq -r '.identities | to_entries[] | select(.value.status == "active") | .key' "$JSON")
 
 # ---------------------------------------------------------------------------
-# Subject rows — "display_label|json_pub_subject|json_sub_subject"
-#
-# json_pub_subject: the exact JSON publish subject to check for PUB.
-#   May differ from display (e.g. spec row "lyra.voice.tts.request" but hub
-#   publishes "lyra.voice.tts.request.>" in JSON).  Use "NONE" if no publish
-#   subject is relevant for this row.
-# json_sub_subject: exact JSON subscribe subject for SUB. "NONE" if n/a.
-#
-# Inbox subjects use lowercase _inbox.X.> (ADR-051 + postmortem Fix 1).
-# ---------------------------------------------------------------------------
+# Subject rows — auto-derived from acl-matrix.json.
+# Union of publish[] + subscribe[] across active identities, after
+# request_reply_flows expansion. Excludes NATS system subjects ($JS.*, $KV.*).
 # Format: "display|pub_subject|sub_subject"
-ROWS=(
-  '`lyra.inbound.telegram.>`|lyra.inbound.telegram.>|lyra.inbound.telegram.>'
-  '`lyra.inbound.discord.>`|lyra.inbound.discord.>|lyra.inbound.discord.>'
-  '`lyra.outbound.telegram.>`|lyra.outbound.telegram.>|lyra.outbound.telegram.>'
-  '`lyra.outbound.discord.>`|lyra.outbound.discord.>|lyra.outbound.discord.>'
-  '`lyra.system.ready` [^ready]|lyra.system.ready|lyra.system.ready'
-  '`lyra.voice.tts.request`|lyra.voice.tts.request.>|lyra.voice.tts.request'
-  '`lyra.voice.tts.heartbeat`|lyra.voice.tts.heartbeat|lyra.voice.tts.heartbeat'
-  '`lyra.voice.stt.request`|lyra.voice.stt.request.>|lyra.voice.stt.request'
-  '`lyra.voice.stt.heartbeat`|lyra.voice.stt.heartbeat|lyra.voice.stt.heartbeat'
-  '`lyra.llm.request`|lyra.llm.request|lyra.llm.request'
-  '`lyra.llm.health.*` [^health]|lyra.llm.health.*|lyra.llm.health.*'
-  '`lyra.image.generate.request`|lyra.image.generate.request|lyra.image.generate.request'
-  '`lyra.image.heartbeat`|lyra.image.heartbeat|lyra.image.heartbeat'
-  '`lyra.clipool.cmd`|lyra.clipool.cmd|lyra.clipool.cmd'
-  '`lyra.clipool.heartbeat`|lyra.clipool.heartbeat|lyra.clipool.heartbeat'
-  '`lyra.audit.>`|lyra.audit.>|NONE'
-  '`lyra.monitor.>` [^monitor]|lyra.monitor.>|lyra.monitor.>'
-  '`_inbox.hub.>` [^inbox]|_inbox.hub.>|_inbox.hub.>'
-  '`_inbox.telegram-adapter.>` [^inbox]|NONE|_inbox.telegram-adapter.>'
-  '`_inbox.discord-adapter.>` [^inbox]|NONE|_inbox.discord-adapter.>'
-  '`_inbox.voice-tts.>` [^inbox]|NONE|_inbox.voice-tts.>'
-  '`_inbox.voice-stt.>` [^inbox]|NONE|_inbox.voice-stt.>'
-  '`_inbox.image-worker.>` [^inbox]|NONE|_inbox.image-worker.>'
-  '`_inbox.clipool-worker.>` [^inbox]|NONE|_inbox.clipool-worker.>'
-)
+# ---------------------------------------------------------------------------
+mapfile -t ROWS < <(jq -r '
+  [
+    .identities | to_entries[] |
+    select(.value.status == "active") |
+    .value | (.publish // []) + (.subscribe // [])
+  ] |
+  flatten | unique | sort[] |
+  select(startswith("lyra.") or startswith("_inbox.")) |
+  ("`" + . + "`|" + . + "|" + .)
+' <<< "$EFFECTIVE_JSON")
 
 # ---------------------------------------------------------------------------
 # Identities that are in scope for each row's pub/sub check.

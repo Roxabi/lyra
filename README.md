@@ -199,11 +199,13 @@ docs/         — ARCHITECTURE, ADRs, guides
 
 | Doc | Description |
 |-----|-------------|
-| [QUICKSTART.md](docs/QUICKSTART.md) | Zero to first message |
+| [QUICKSTART.md](docs/QUICKSTART.md) | Dev / single-process — zero to first message in ~5 min |
+| [GETTING-STARTED.md](docs/GETTING-STARTED.md) | Production hub setup on a fresh Ubuntu 26.04 box |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Hub design, memory model, decisions |
 | [ROADMAP.md](docs/ROADMAP.md) | Phase 1/2/3 scope |
 | [COMMANDS.md](docs/COMMANDS.md) | Command router, plugins |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Quadlet containers, logs |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Quadlet containers, auto-update, logs |
+| [CONFIGURATION.md](docs/CONFIGURATION.md) | All config files + env vars |
 | [ADRs](docs/architecture/adr/) | Architecture decision records |
 
 ## License

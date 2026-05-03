@@ -1,9 +1,8 @@
 # Deployment — Machine 1 (Production)
 
-Running Lyra as a managed service on Machine 1 (Ubuntu Server 26.04 LTS) using Podman Quadlet units. For the full Quadlet reference, see [DEPLOYMENT-quadlet.md](DEPLOYMENT-quadlet.md).
+Running Lyra as a managed service on Machine 1 (Ubuntu Server 26.04 LTS) using rootless Podman Quadlet units under `systemd --user`. This is the canonical (and only) production path.
 
-> **Legacy note:** Before #611, Lyra ran under supervisord. That stack has been removed from
-> the repo (#886). Supervisord is no longer the production path.
+> **Historical note:** Before #611, Lyra ran under supervisord; that stack was removed in #886. The Quadlet cutover is documented in `docs/history/PROD-MIGRATION-STRATEGY.md` for reference.
 
 ## Overview
 
@@ -39,40 +38,67 @@ Machine 1 must be set up with the provision script. See [GETTING-STARTED.md](GET
 Machine 1 requires:
 - Ubuntu 26.04 LTS (ships Podman 5.x natively via apt)
 - Linger enabled: `loginctl enable-linger $USER`
-- Image built on Machine 2 and pushed: `make build && make push`
+- nkeys generated + Podman secrets installed (see §10 NATS ACL Rollout)
+- For the manual fallback: image built on Machine 2 and pushed (`make build && make push`)
 
 ## 1. Deploy the code
 
+### Auto-update from GHCR (canonical, since #929)
+
+Production pulls images from GitHub Container Registry. CI publishes `ghcr.io/roxabi/lyra:staging` on every staging merge. Quadlet's `Label=io.containers.autoupdate=registry` paired with `podman-auto-update.timer` (5-minute polling) restarts the container as soon as a new digest is published — no manual intervention needed after a merge.
+
 ```bash
-# From Machine 2 — build image, push to Machine 1, install Quadlet units, restart
-make build && make push
+# Verify the timer is active (one-time, on Machine 1)
+systemctl --user is-active podman-auto-update.timer
+
+# See pending updates
+podman auto-update --dry-run
+```
+
+See [ops/container-publishing.md](ops/container-publishing.md#auto-update-flow) for the full pipeline.
+
+### Manual fallback — `scripts/deploy-quadlet.sh`
+
+When CI cannot publish (e.g. mid-incident, image-pinning experiment), drive a manual deploy from Machine 2:
+
+```bash
+make deploy-quadlet
+```
+
+This wraps `scripts/deploy-quadlet.sh`, which delegates the heavy lifting to a shared deploy library at `~/.local/lib/roxabi/deploy-lib.sh`. Install the library once per Machine 1 setup:
+
+```bash
+make quadlet-install-deploy-lib
+```
+
+The library is pinned at install time (commit SHA stamped in the header). Upgrade after a Lyra release with:
+
+```bash
+make quadlet-upgrade-lib
+```
+
+### Manual fallback — build + push
+
+When CI is unavailable and you must rebuild from a local checkout (Machine 2):
+
+```bash
+make build              # podman build → localhost/lyra:dev
+make push               # podman save | ssh M1 podman load
 ```
 
 On Machine 1:
 
 ```bash
 cd ~/projects/lyra
-make quadlet-install   # copy Quadlet units to ~/.config/containers/systemd/
-make lyra reload       # restart containers via systemctl --user
+make quadlet-install    # copy unit files to ~/.config/containers/systemd/
+make lyra reload        # restart containers
 ```
 
-**Test gate** — after pulling `lyra`, `pytest` runs before the restart. A test failure aborts.
+**Test gate** — `make deploy` runs `pytest` before the restart. A test failure aborts.
 
-**Graceful drain** — on restart, the running container finishes any in-flight Claude CLI turns
-(up to 60 s) before stopping. Conversations that complete within the window are transparent to
-users; only turns that outlast 60 s receive a "please resend" notification.
+**Graceful drain** — on restart, the running container finishes any in-flight Claude CLI turns (up to 60 s) before stopping. Conversations that complete within the window are transparent to users; only turns that outlast 60 s receive a "please resend" notification.
 
 **Deploy log** — every run is appended to `~/.local/state/lyra/logs/deploy.log`.
-
-For a manual image rebuild on Machine 1:
-
-```bash
-cd ~/projects/lyra
-git pull origin staging
-make build
-make quadlet-install
-make lyra reload
-```
 
 ## 2. Configure environment
 
@@ -102,7 +128,7 @@ make nats-setup
 make quadlet-secrets-install
 ```
 
-See [DEPLOYMENT-quadlet.md](DEPLOYMENT-quadlet.md) for the full volume and secret layout.
+Volume + secret layout is documented inline in `deploy/quadlet/lyra-hub.container` and the other unit files.
 
 ## Multi-Bot Deployment
 
@@ -273,7 +299,7 @@ When the subject→identity ACL matrix changes (spec #706), regenerate nkeys and
 
 ```bash
 cd ~/projects/lyra
-./deploy/nats/gen-nkeys.sh --regenerate --yes
+lyra-acl genkeys --regenerate --yes
 ```
 
 This rotates all nkeys — old seeds are backed up to `~/.lyra/nkeys.bak.{epoch}/` and the old

@@ -6,40 +6,117 @@ See docs/architecture/adr/066-unified-worker-error-envelope-nats-reply-contracts
 from __future__ import annotations
 
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field, field_validator
 
 __all__ = ["WorkerError", "CodeMeta", "KNOWN_CODES"]
 
+# Maximum stored length for free-text fields. Long stack traces / framing errors
+# are truncated to fit; we never raise a ValidationError on overflow because
+# WorkerError construction sites are inside `except` handlers — raising there
+# would crash the very error path that exists to surface the problem.
+_MESSAGE_MAX = 512
+_DETAIL_MAX = 2048
+_TRUNC_MARKER = "…"
 
-# Scrub NATS connection-string credentials from message/detail strings.
-# Pattern matches `scheme://user:pass@host` for nats / nats+tls / amqp / redis / http(s)
-# and replaces the userinfo with `***:***`. Defence-in-depth against accidentally
-# embedding `str(exc)` from a transport error that includes the connect URL.
-_CREDENTIAL_RE = re.compile(
-    r"((?:nats|nats\+tls|amqp|amqps|redis|rediss|https?|postgres(?:ql)?|mysql)://)"
-    r"[^/@\s:]+:[^/@\s]+@"
+# Schemes whose URLs may legitimately appear in worker exception strings and
+# may carry credentials in the userinfo component.
+_CREDENTIAL_SCHEMES = frozenset(
+    {
+        "nats",
+        "nats+tls",
+        "amqp",
+        "amqps",
+        "redis",
+        "rediss",
+        "http",
+        "https",
+        "postgres",
+        "postgresql",
+        "mysql",
+    }
 )
+
+# Loose URL extractor — matches `scheme://...` up to the first whitespace.
+# Resolution of credential boundaries (user / pass / host) is delegated to
+# `urllib.parse.urlsplit`, which correctly handles `@` in passwords (it
+# anchors the userinfo on the LAST `@` before the host), URL-encoded chars,
+# and IPv6 hosts.
+_URL_RE = re.compile(r"(?:[a-zA-Z][a-zA-Z0-9+.\-]*)://[^\s\"'<>]+")
+
+
+def _scrub_url(url: str) -> str:
+    """Replace userinfo in `url` with `***:***` if its scheme is in the allowlist.
+
+    Returns the URL unchanged if the scheme is unknown, or if there is no
+    userinfo to scrub. Uses `urlsplit` for boundary detection so passwords
+    containing `@` are handled correctly (RFC 3986 anchors userinfo on the
+    last `@` before the host).
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url
+    if parts.scheme.lower() not in _CREDENTIAL_SCHEMES:
+        return url
+    if "@" not in parts.netloc:
+        return url
+    # netloc = "user[:pass]@host[:port]" — split on LAST `@`
+    _, _, host_port = parts.netloc.rpartition("@")
+    new_netloc = f"***:***@{host_port}"
+    return urlunsplit(
+        (parts.scheme, new_netloc, parts.path, parts.query, parts.fragment)
+    )
 
 
 def _scrub(value: str) -> str:
-    return _CREDENTIAL_RE.sub(r"\1***:***@", value)
+    """Scrub credentials from any embedded URLs in `value`."""
+    return _URL_RE.sub(lambda m: _scrub_url(m.group(0)), value)
+
+
+def _truncate(value: str, limit: int) -> str:
+    """Truncate `value` to `limit` chars, replacing the tail with `…` on overflow.
+
+    Truncates rather than raises so error-path code never crashes on long
+    stack traces. The marker reserves 1 char so the final string fits exactly
+    within `limit`.
+    """
+    if len(value) <= limit:
+        return value
+    return value[: limit - len(_TRUNC_MARKER)] + _TRUNC_MARKER
 
 
 class WorkerError(BaseModel):
     """Structured error returned on NATS reply subjects by all Lyra workers."""
 
+    # `code` is a registry key — strict pattern, no normalisation. Newlines,
+    # control chars, and uppercase are rejected at construction time so
+    # downstream log lines and counter labels are forge-safe.
     code: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9._-]*$")
-    message: str = Field(min_length=1, max_length=512)
+
+    # `message` and `detail` are free-text. Scrubbed for credentials and
+    # truncated to bounded length. min_length applies to the post-scrub /
+    # post-truncate value via the validator below.
+    message: str = Field(min_length=1)
     retryable: bool = True
-    detail: str | None = Field(default=None, max_length=2048)
+    detail: str | None = Field(default=None)
 
     model_config = {"extra": "ignore"}
 
-    @field_validator("message", "detail")
+    @field_validator("message")
     @classmethod
-    def _strip_credentials(cls, v: str | None) -> str | None:
-        return _scrub(v) if isinstance(v, str) else v
+    def _sanitize_message(cls, v: str) -> str:
+        scrubbed = _scrub(v)
+        return _truncate(scrubbed, _MESSAGE_MAX)
+
+    @field_validator("detail")
+    @classmethod
+    def _sanitize_detail(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        scrubbed = _scrub(v)
+        return _truncate(scrubbed, _DETAIL_MAX)
 
 
 class CodeMeta(BaseModel):
@@ -82,6 +159,11 @@ KNOWN_CODES: dict[str, CodeMeta] = {
         domain="transport",
         default_retryable=True,
         description="NATS slow-consumer detected; message dropped by the broker.",
+    ),
+    "transport.error": CodeMeta(
+        domain="transport",
+        default_retryable=True,
+        description="Generic NATS / network transport failure not covered by a more specific code (e.g. connection reset, protocol error).",  # noqa: E501
     ),
     # --- worker --------------------------------------------------------------
     "worker.crash": CodeMeta(

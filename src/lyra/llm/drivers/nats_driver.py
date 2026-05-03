@@ -191,13 +191,12 @@ class NatsLlmDriver:
             )
             error_msg = f"NATS transport error: {exc}"
             # Catch-all for non-timeout / non-no-responders transport failures
-            # (e.g. connection reset, NATS protocol error). These are not timeouts;
-            # mislabelling as `transport.timeout` inflates that counter and misleads
-            # operators. `worker.internal` covers "internal failure not covered by
-            # a more specific code" — the right slot until a `transport.error` is
-            # added to the registry.
+            # (e.g. connection reset, NATS protocol error). `transport.error`
+            # is the registry slot for "generic transport failure"; the failure
+            # never reached the worker, so a `worker.*` code would invert the
+            # transport/worker domain semantics.
             worker_error = WorkerError(
-                code="worker.internal",
+                code="transport.error",
                 message=str(exc) or error_msg,
                 retryable=True,
             )

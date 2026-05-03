@@ -103,7 +103,10 @@ class CliStreamingParser:
                         is_error=True,
                         duration_ms=0,
                         cost_usd=None,
-                        error_text=str(exc),
+                        # Reuse the WorkerError.message — already credential-
+                        # scrubbed and bounded. Avoids a parallel `str(exc)`
+                        # path that would bypass sanitisation.
+                        error_text=worker_error.message,
                         session_id=self.session_id,
                         worker_error=worker_error,
                     )

@@ -90,14 +90,35 @@ def test_worker_error_detail_exact_2048_accepted() -> None:
     assert len(err.detail) == 2048  # type: ignore[arg-type]
 
 
-def test_worker_error_detail_2049_rejected() -> None:
-    """detail of 2049 characters raises ValidationError — NOT truncated."""
+def test_worker_error_detail_2049_truncated_with_marker() -> None:
+    """detail of 2049 characters is truncated to 2048 with a `…` suffix.
+
+    Truncation (not rejection) is required because WorkerError construction
+    sites live inside `except` handlers — raising on overflow would crash
+    the very error path that exists to surface the problem.
+    """
     # Arrange
     detail_2049 = "x" * 2049
 
-    # Act / Assert
-    with pytest.raises(ValidationError):
-        WorkerError(code="worker.internal", message="ctx", detail=detail_2049)
+    # Act
+    err = WorkerError(code="worker.internal", message="ctx", detail=detail_2049)
+
+    # Assert
+    assert len(err.detail) == 2048  # type: ignore[arg-type]
+    assert err.detail.endswith("…")  # type: ignore[union-attr]
+
+
+def test_worker_error_message_truncated_with_marker() -> None:
+    """message longer than 512 chars is truncated to 512 with a `…` suffix."""
+    # Arrange
+    long_message = "x" * 1000
+
+    # Act — must not raise
+    err = WorkerError(code="worker.crash", message=long_message)
+
+    # Assert
+    assert len(err.message) == 512
+    assert err.message.endswith("…")
 
 
 def test_worker_error_detail_none_accepted() -> None:
@@ -200,6 +221,7 @@ def test_code_meta_has_required_fields() -> None:
         "transport.parse",
         "transport.contract_mismatch",
         "transport.slow_consumer",
+        "transport.error",
         "worker.crash",
         "worker.validation",
         "worker.internal",
@@ -220,3 +242,112 @@ def test_code_meta_has_required_fields() -> None:
 def test_known_codes_contains_adr_codes(code: str) -> None:
     """Every code listed in ADR-066 §'The code namespace' is present."""
     assert code in KNOWN_CODES, f"Missing expected code: {code!r}"
+
+
+# ---------------------------------------------------------------------------
+# Code regex — forge-safety
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_code",
+    [
+        "CLI.AUTH",
+        "Worker.Crash",
+        "9invalid",
+        "with\nnewline",
+        "with\ttab",
+        "with space",
+        ".leading.dot",
+        "with/slash",
+        "with:colon",
+        "with@at",
+    ],
+    ids=[
+        "uppercase",
+        "mixed-case",
+        "leading-digit",
+        "newline",
+        "tab",
+        "space",
+        "leading-dot",
+        "slash",
+        "colon",
+        "at-sign",
+    ],
+)
+def test_worker_error_code_pattern_rejects(bad_code: str) -> None:
+    """Code must match `^[a-z][a-z0-9._-]*$` — newlines / control chars rejected."""
+    with pytest.raises(ValidationError):
+        WorkerError(code=bad_code, message="x")
+
+
+# ---------------------------------------------------------------------------
+# Credential scrubber
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (
+            "Connection failed: nats://user:pass@host:4222",
+            "Connection failed: nats://***:***@host:4222",
+        ),
+        (
+            # Password contains @ — urlsplit anchors on the LAST @ before host
+            "nats://user:p@ssword@host:4222",
+            "nats://***:***@host:4222",
+        ),
+        (
+            "Multiple URLs: nats://a:b@h1 and amqp://c:d@h2",
+            "Multiple URLs: nats://***:***@h1 and amqp://***:***@h2",
+        ),
+        (
+            # URL-encoded user
+            "nats://user%40domain:pass@host",
+            "nats://***:***@host",
+        ),
+        (
+            # Empty password — `user:@host` form
+            "nats://user:@host",
+            "nats://***:***@host",
+        ),
+        (
+            # Postgres + Redis
+            "Bad URL postgresql://u:p@db:5432/x and rediss://u:p@cache",
+            "Bad URL postgresql://***:***@db:5432/x and rediss://***:***@cache",
+        ),
+    ],
+    ids=[
+        "nats-basic",
+        "at-in-password",
+        "multi-url",
+        "url-encoded-user",
+        "empty-password",
+        "postgres-and-redis",
+    ],
+)
+def test_worker_error_message_scrubs_credentials(raw: str, expected: str) -> None:
+    """Credential userinfo in known-scheme URLs is replaced with `***:***`."""
+    err = WorkerError(code="worker.crash", message=raw)
+    assert err.message == expected
+
+
+def test_worker_error_detail_scrubs_credentials() -> None:
+    """detail field is also scrubbed via the same validator."""
+    err = WorkerError(
+        code="worker.crash",
+        message="boom",
+        detail="raw=nats://u:p@host",
+    )
+    assert err.detail == "raw=nats://***:***@host"
+
+
+def test_worker_error_unknown_scheme_not_scrubbed() -> None:
+    """URLs whose schemes are not in the credential allowlist are left alone."""
+    err = WorkerError(
+        code="worker.crash",
+        message="ftp://user:pass@host left alone",
+    )
+    assert err.message == "ftp://user:pass@host left alone"

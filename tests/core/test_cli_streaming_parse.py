@@ -250,6 +250,35 @@ class TestStreamingIteratorNonJson:
             ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
 
+    async def test_brace_shaped_malformed_json_emits_cli_parse_envelope(self) -> None:
+        """Spec C4 path (b): a `{`-shaped line that fails to decode emits cli.parse.
+
+        A truncated NDJSON line (e.g. CLI subprocess died mid-stream) is
+        unambiguous protocol corruption — the parser must emit a terminal
+        ResultLlmEvent with `worker_error.code == "cli.parse"` so the hub
+        instrumentation chain activates instead of silently swallowing the
+        failure.
+        """
+        # Arrange — `{`-shaped but invalid JSON simulates a truncated result line
+        truncated = b'{"type": "result", "session_id":\n'
+        proc = make_fake_proc([INIT_LINE, truncated])
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        chunks = [chunk async for chunk in it]
+
+        # Assert — exactly one terminal ResultLlmEvent with cli.parse
+        assert len(chunks) == 1
+        result = chunks[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.is_error is True
+        assert result.worker_error is not None
+        assert result.worker_error.code == "cli.parse"
+        assert result.worker_error.retryable is False
+        # error_text reuses the (scrubbed) WorkerError.message — never raw str(exc)
+        assert result.error_text == result.worker_error.message
+
 
 # ---------------------------------------------------------------------------
 # TestStreamingIteratorAssistant

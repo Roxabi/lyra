@@ -20,8 +20,17 @@ def _extract_worker_error(reply: object) -> WorkerError | None:
     """Extract WorkerError from any reply envelope. None if absent.
 
     Safe across legacy envelopes that don't carry the field (e.g. CliControlAck).
-    Logs a warning if is_error=False contradicts a populated worker_error,
-    but still returns the WorkerError (it overrides is_error).
+    Logs a warning if `is_error=False` / `ok=True` contradicts a populated
+    `worker_error`, and returns the WorkerError unchanged for the caller to
+    use as it sees fit.
+
+    Important: this function does NOT enforce "WE wins" — it only surfaces
+    the contradiction. Current callers (e.g. ``StreamProcessor``) gate the
+    extraction on ``event.is_error``, so a contradicted envelope is logged
+    here but not acted on downstream. This is deliberate: forcing every
+    success reply to be re-classified as error would change observable
+    behaviour for legacy producers that set the field defensively. Promote
+    this to enforcement only after auditing every call site.
     """
     we = getattr(reply, "worker_error", None)
     if we is None:

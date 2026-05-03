@@ -57,8 +57,19 @@ class TestSoakGateScript:
         assert cp.returncode == 1, f"Expected FAIL for {missing_branch}: {cp.stderr}"
         assert cp.stdout.strip() == "FAIL"
 
-    def test_legacy_dual_failure_still_fails(self) -> None:
-        """Backward-compat: original fail fixture (now no-cli) must still FAIL."""
+    def test_dual_failure_fixture_fails_on_either_branch(self) -> None:
+        """Fixture trips BOTH `pop_llm == 0` AND `legacy_text != 0` simultaneously.
+
+        Guards against a regression where one of the two branches stops firing
+        (e.g. counter parsing breaks): the gate must FAIL when either condition
+        holds independently, and the original fail fixture exists to assert
+        that two-branch failures still surface as a single FAIL exit (not
+        masked by short-circuit logic).
+        """
         cp = _run("soak_gate_fail.log")
         assert cp.returncode == 1
         assert cp.stdout.strip() == "FAIL"
+        # Verify the per-counter breakdown shows both branches tripped.
+        # populated_cli=1, populated_llm=0, legacy_text>=1
+        assert "populated_llm=0" in cp.stderr
+        assert "legacy_text=1" in cp.stderr

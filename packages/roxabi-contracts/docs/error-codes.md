@@ -11,6 +11,7 @@
 | transport.parse | false | Inbound NATS payload could not be parsed (malformed JSON or schema mismatch). |
 | transport.contract_mismatch | false | CONTRACT_VERSION or schema shape does not match what this consumer expects. |
 | transport.slow_consumer | true | NATS slow-consumer detected; message dropped by the broker. |
+| transport.error | true | Generic NATS / network transport failure not covered by a more specific code (e.g. connection reset, protocol error). |
 
 ## worker.*
 

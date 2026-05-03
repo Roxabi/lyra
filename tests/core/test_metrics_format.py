@@ -13,13 +13,16 @@ _METRICS_LOGGER = "lyra.core.messaging.metrics"
 
 
 def _has(records: list[logging.LogRecord], expected: str) -> bool:
-    """Return True when at least one record's rendered message matches `expected`.
+    """Return True when the metrics logger emitted a record with `expected`.
 
-    Order-independent: parallel test runs interleave records from other loggers,
-    so anchoring on `records[-1]` would be flaky. Logger-scoped capture (above)
-    plus exact-message match is the stable contract.
+    Order-independent AND logger-scoped: `at_level(..., logger=...)` only sets
+    the level threshold; pytest still captures records from every logger. We
+    filter on `r.name` so a coincidentally-equal message from another logger
+    can't false-pass under parallel runs.
     """
-    return any(r.getMessage() == expected for r in records)
+    return any(
+        r.name == _METRICS_LOGGER and r.getMessage() == expected for r in records
+    )
 
 
 def test_emit_populated_total_format(caplog):

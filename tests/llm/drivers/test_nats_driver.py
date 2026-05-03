@@ -215,6 +215,90 @@ class TestCompleteWorkerError:
         assert not result.ok
         assert result.retryable is True
 
+    async def test_worker_reply_with_structured_envelope_forwards_it(self) -> None:
+        """When the worker provides a worker_error dict, drive forwards it as-is."""
+        from roxabi_contracts.errors import WorkerError
+
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.request = AsyncMock(
+            return_value=make_reply(
+                {
+                    "error": "context too long",
+                    "retryable": False,
+                    "worker_error": {
+                        "code": "llm.context_too_long",
+                        "message": "input exceeds context",
+                        "retryable": False,
+                    },
+                }
+            )
+        )
+        driver = make_driver(nc)
+
+        # Act
+        result = await driver.complete("pool:1", "hi", make_model_cfg(), "sys")
+
+        # Assert — structured envelope preserved (NOT synthesised worker.internal)
+        assert not result.ok
+        assert isinstance(result.worker_error, WorkerError)
+        assert result.worker_error.code == "llm.context_too_long"
+
+    async def test_transport_catchall_uses_transport_error(self) -> None:
+        """Generic transport exception (not timeout/no-responders) yields transport.error."""
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.request = AsyncMock(side_effect=ConnectionResetError("socket reset"))
+        driver = make_driver(nc)
+
+        # Act
+        result = await driver.complete("pool:1", "hi", make_model_cfg(), "sys")
+
+        # Assert
+        assert not result.ok
+        assert result.worker_error is not None
+        assert result.worker_error.code == "transport.error"
+
+
+# ---------------------------------------------------------------------------
+# _decode_worker_error helper — direct unit coverage
+# ---------------------------------------------------------------------------
+
+
+class TestDecodeWorkerError:
+    """Direct tests for the module-level _decode_worker_error helper."""
+
+    def test_none_returns_none(self) -> None:
+        from lyra.llm.drivers.nats_driver import _decode_worker_error
+
+        assert _decode_worker_error(None) is None
+
+    def test_non_dict_returns_none(self) -> None:
+        from lyra.llm.drivers.nats_driver import _decode_worker_error
+
+        assert _decode_worker_error("not a dict") is None
+        assert _decode_worker_error(42) is None
+        assert _decode_worker_error(["list"]) is None
+
+    def test_invalid_dict_returns_none(self) -> None:
+        from lyra.llm.drivers.nats_driver import _decode_worker_error
+
+        # Invalid: code violates pattern (uppercase)
+        assert _decode_worker_error({"code": "BAD", "message": "x"}) is None
+        # Invalid: missing required `code`
+        assert _decode_worker_error({"message": "x"}) is None
+
+    def test_valid_dict_returns_worker_error(self) -> None:
+        from roxabi_contracts.errors import WorkerError
+
+        from lyra.llm.drivers.nats_driver import _decode_worker_error
+
+        we = _decode_worker_error(
+            {"code": "cli.session_lost", "message": "lost", "retryable": True}
+        )
+        assert isinstance(we, WorkerError)
+        assert we.code == "cli.session_lost"
+
 
 # ---------------------------------------------------------------------------
 # 4. stream() yields events in order, terminates on done=True

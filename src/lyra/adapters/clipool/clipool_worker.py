@@ -159,13 +159,14 @@ class CliPoolNatsWorker(NatsAdapterBase):
             cmd = CliCmdPayload.model_validate(payload)
         except ValidationError as exc:
             log.exception("clipool_worker: failed to parse CliCmdPayload")
-            # Schema validation failure on the inbound payload is a transport-level
-            # parse error from this worker's perspective: the message arrived but
-            # could not be decoded. Surface the structured envelope + counter so
-            # the soak gate sees this failure mode (otherwise it was an invisible
-            # `is_error=True` chunk with no domain attribution).
+            # The JSON decoded successfully (NatsAdapterBase did that before
+            # dispatching to handle()) but the payload failed schema validation
+            # — this is the textbook `worker.validation` case (decoded OK but
+            # fields are wrong, e.g. caller on an old contract version).
+            # `transport.parse` would mean "couldn't decode bytes/JSON", which
+            # is a different failure mode handled one layer up.
             worker_error = WorkerError(
-                code="transport.parse",
+                code="worker.validation",
                 message=str(exc) or "CliCmdPayload validation failed",
                 retryable=False,
             )
@@ -228,12 +229,19 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 )
                 await self.reply(msg, chunk)
             elif isinstance(event, ResultLlmEvent):
+                # Forward the structured envelope. CliStreamingParser populates
+                # `worker_error` on cli.auth / cli.session_lost / cli.parse;
+                # without this forward the field is None on the wire and the
+                # hub's nats_driver synthesises `worker.internal` instead of the
+                # precise CLI code, breaking the P2 instrumentation chain on the
+                # streaming path.
                 chunk = _make_chunk(
                     cmd.pool_id,
                     event_type="result",
                     is_error=event.is_error,
                     session_id=event.session_id or None,
                     done=True,
+                    worker_error=event.worker_error,
                 )
                 await self.reply(msg, chunk)
                 return

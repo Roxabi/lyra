@@ -203,8 +203,8 @@ fi
 # and restarts containers carrying Label=io.containers.autoupdate=registry.
 # Without this the container-native CI→prod deploy story (ADR-043 / PR #929) is broken.
 if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-     systemctl --user is-enabled podman-auto-update.timer &>/dev/null; then
-  info "podman-auto-update.timer already enabled for $ADMIN_USER."
+     systemctl --user is-active podman-auto-update.timer &>/dev/null; then
+  info "podman-auto-update.timer already active for $ADMIN_USER."
 else
   sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
     systemctl --user enable --now podman-auto-update.timer

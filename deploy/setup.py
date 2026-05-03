@@ -45,9 +45,10 @@ OPTIONAL_MODULES: list[dict[str, object]] = [
 ]
 
 
-def run(cmd: str, cwd: Path | None = None, check: bool = True) -> int:
+def run(cmd: list[str] | str, cwd: Path | None = None, check: bool = True) -> int:
     sys.stdout.flush()
-    result = subprocess.run(cmd, shell=True, cwd=cwd)
+    use_shell = isinstance(cmd, str)
+    result = subprocess.run(cmd, shell=use_shell, cwd=cwd)
     if check and result.returncode != 0:
         print(f"  ✗  Command failed: {cmd}")
         sys.exit(result.returncode)
@@ -68,25 +69,25 @@ def ask(prompt: str, default: bool = True) -> bool:
 
 def check_prereqs() -> bool:
     checks = {
-        "git": ("git --version", None),
+        "git": (["git", "--version"], None),
         "uv": (
-            "uv --version",
+            ["uv", "--version"],
             "https://docs.astral.sh/uv/getting-started/installation/",
         ),
         "podman": (
-            "podman --version",
+            ["podman", "--version"],
             "apt install podman (ships natively on Ubuntu 26.04+)",
         ),
         "claude": (
-            "claude --version",
+            ["claude", "--version"],
             "npm install -g @anthropic-ai/claude-code",
         ),
-        "ssh": ("ssh -T git@github.com", None),  # exits 1 on success for GitHub
+        "ssh": (["ssh", "-T", "git@github.com"], None),  # exits 1 on success for GitHub
     }
     print("Checking prerequisites...")
     failed = []
     for name, (cmd, install_url) in checks.items():
-        result = subprocess.run(cmd, shell=True, capture_output=True)
+        result = subprocess.run(cmd, capture_output=True)
         ok = result.returncode in (0, 1) if name == "ssh" else result.returncode == 0
         print(
             f"  {'✓' if ok else '✗'}  {name}"
@@ -106,7 +107,7 @@ def check_prereqs() -> bool:
 
 def install_lyra(lyra_dir: Path) -> None:
     print("Installing lyra...")
-    run("uv sync", cwd=lyra_dir)
+    run(["uv", "sync"], cwd=lyra_dir)
     print("  ✓  lyra installed")
 
 
@@ -124,9 +125,10 @@ def install_optional_module(module: dict, include_all: bool) -> Path | None:
         return None
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    run(f"git clone {module['repo']} {path}")
+    run(["git", "clone", module["repo"], str(path)])
     print("       installing...")
-    run(module["install"], cwd=path)
+    install_cmd = module["install"]
+    run(install_cmd if isinstance(install_cmd, list) else install_cmd.split(), cwd=path)
     return path
 
 
@@ -237,7 +239,7 @@ def setup_plugins(
     include_optional: bool,
 ) -> None:
     """Register Claude Code marketplaces and install plugins."""
-    result = subprocess.run("claude --version", shell=True, capture_output=True)
+    result = subprocess.run(["claude", "--version"], capture_output=True)
     if result.returncode != 0:
         print("  ✗  claude CLI not found — skipping plugin setup")
         return
@@ -309,8 +311,7 @@ def setup_plugins(
     ]
     for name, marketplace, desc in mandatory:
         r = subprocess.run(
-            f"claude plugin install {name}@{marketplace}",
-            shell=True,
+            ["claude", "plugin", "install", f"{name}@{marketplace}"],
             capture_output=True,
             text=True,
         )
@@ -323,8 +324,7 @@ def setup_plugins(
 
     if voicecli_dir and voicecli_dir.exists():
         r = subprocess.run(
-            "claude plugin install voice-cli@voicecli-marketplace",
-            shell=True,
+            ["claude", "plugin", "install", "voice-cli@voicecli-marketplace"],
             capture_output=True,
             text=True,
         )
@@ -356,8 +356,7 @@ def setup_plugins(
     for name, marketplace, desc in optional_plugins:
         if include_optional or ask(f"    Install {name}? ({desc})", default=True):
             r = subprocess.run(
-                f"claude plugin install {name}@{marketplace}",
-                shell=True,
+                ["claude", "plugin", "install", f"{name}@{marketplace}"],
                 capture_output=True,
                 text=True,
             )
@@ -391,8 +390,12 @@ def enable_linger() -> None:
     if not user:
         print("  !  Could not determine current user; skipping linger.")
         return
-    subprocess.run(["loginctl", "enable-linger", user], check=False)
-    print("  ✓  Linger enabled (containers auto-start on boot)")
+    result = subprocess.run(["loginctl", "enable-linger", user], check=False)
+    if result.returncode == 0:
+        print("  ✓  Linger enabled (containers auto-start on boot)")
+    else:
+        print("  !  loginctl enable-linger failed — run manually:")
+        print(f"       sudo loginctl enable-linger {user}")
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -428,7 +431,7 @@ def main() -> None:
     # Re-sync lyra with voice extra if voiceCLI was installed
     if voicecli_dir:
         print("Re-syncing lyra with voice support...")
-        run("uv sync --extra voice", cwd=lyra_dir)
+        run(["uv", "sync", "--extra", "voice"], cwd=lyra_dir)
         print()
 
     # Phase 3: post-setup scaffolding

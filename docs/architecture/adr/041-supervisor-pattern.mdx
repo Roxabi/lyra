@@ -7,12 +7,12 @@ description: Supervisor architecture consolidation — hub aggregator for local 
 
 Superseded by [ADR-047](047-nats-connector-ownership-pattern.mdx)
 
-> **Note (#886):** This ADR originally described a lyra-owned standalone supervisor
-> under a repo-local `deploy/` subtree. That directory has been removed. Lyra is now a
-> **tenant** on the machine-level supervisord at `~/projects/supervisord.conf`, with
-> conf files at `~/projects/conf.d/` (symlinked from `deploy/conf.d/` via `make
-> register`). Production is Podman Quadlet (ADR-053). The systemd unit targets
-> `%h/projects/scripts/start.sh --all`.
+> **Note (#886/#1036):** This ADR originally described a lyra-owned standalone supervisor
+> under a repo-local `deploy/` subtree. That was removed in #886. The subsequent
+> `deploy/conf.d/` tenant-conf scaffolding (symlinked from `~/projects/conf.d/` via
+> `make register`) was removed in #1036 when supervisord was retired in favour of Podman
+> Quadlet (ADR-053). Production is now fully Quadlet — see `deploy/quadlet/*.container`
+> and `systemctl --user`.
 >
 > The original hub-and-spoke body (Decision, Consequences, Implementation) has been
 > removed to keep the repo free of stale path references. See git history pre-#886
@@ -22,4 +22,4 @@ Superseded by [ADR-047](047-nats-connector-ownership-pattern.mdx)
 
 - [ADR-047](047-nats-connector-ownership-pattern.mdx) — tenant/host separation, NATS connector ownership
 - [ADR-053](053-deployment-topology-and-container-hardening.mdx) — deployment topology (Quadlet)
-- `deploy/conf.d/README.md` — tenant conf registration (`make register`) *(deleted in #1036; supervisord scaffolding retired in favour of Quadlet)*
+- `deploy/conf.d/README.md` — tenant conf registration (`make register`) *(deleted in #1036; supervisord scaffolding retired in favour of Quadlet — ADR-053)*

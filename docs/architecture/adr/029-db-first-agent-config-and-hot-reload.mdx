@@ -77,7 +77,7 @@ existing `_maybe_reload()` logic is unchanged.
 
 ### Option C: Remove hot-reload entirely; require daemon restart on config change
 
-`_maybe_reload()` becomes a no-op. All config changes require `supervisorctl restart`.
+`_maybe_reload()` becomes a no-op. All config changes require a daemon restart (was `supervisorctl restart`; now `systemctl --user restart <unit>` in Quadlet deployments — supervisord retired in #886/#1036).
 
 - **Pros:** Maximum simplicity. No polling, no state tracking.
 - **Cons:** Eliminates a genuine operational convenience. `lyra agent edit` changes require

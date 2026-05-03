@@ -1,5 +1,5 @@
 name = "svc"
-description = "Service management via supervisorctl (admin-only)"
+description = "Service management via systemctl --user (admin-only)"
 version = "0.1.0"
 priority = 50
 enabled = true

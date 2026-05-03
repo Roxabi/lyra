@@ -115,7 +115,6 @@ monitor:
 	@echo "make monitor — DEPRECATED."
 	@echo "Host-timer monitoring is superseded by Monitoring v2 (#1035 — NATS + Tauri)."
 	@echo "Existing prod has been disabled. This target will be removed when #1035 lands."
-	@-false
 
 # ── Quadlet install paths ────────────────────────────────────────────────────
 

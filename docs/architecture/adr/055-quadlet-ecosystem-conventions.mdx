@@ -153,7 +153,8 @@ Centralizing under `~/.roxabi/env/` introduces a second runtime root for project
 ```sh
 # --- Pre-flight ---
 # 1. Stop voiceCLI so no process is authenticating mid-move.
-supervisorctl -c ~/projects/supervisord.conf stop voicecli_tts voicecli_stt
+# (supervisord retired in #886/#1036 — use systemctl --user for Quadlet deployments)
+systemctl --user stop voicecli-tts.service voicecli-stt.service
 
 # 2. Confirm which auth.conf currently references these seed paths.
 grep -rn 'voice-tts\.seed\|voice-stt\.seed' /etc/nats/ ~/.lyra/ 2>/dev/null
@@ -171,18 +172,18 @@ sudo systemctl reload nats.service   # host NATS during migration window
 nats sub "voice.>" --count 1 --timeout 5s   # must authenticate; no ACL errors
 
 # --- Restart ---
-supervisorctl -c ~/projects/supervisord.conf start voicecli_tts voicecli_stt
+systemctl --user start voicecli-tts.service voicecli-stt.service
 ```
 
 **Rollback** (if verify fails):
 
 ```sh
-supervisorctl stop voicecli_tts voicecli_stt
+systemctl --user stop voicecli-tts.service voicecli-stt.service
 mv ~/.voicecli/nkeys/voice-tts.seed ~/.lyra/nkeys/
 mv ~/.voicecli/nkeys/voice-stt.seed ~/.lyra/nkeys/
 # Revert voiceCLI auth.conf to ~/.lyra/nkeys/ paths
 sudo systemctl reload nats.service
-supervisorctl start voicecli_tts voicecli_stt
+systemctl --user start voicecli-tts.service voicecli-stt.service
 ```
 
 Do not regen nkeys unless rotation is needed — the same seeds work with a path change and an auth.conf update.

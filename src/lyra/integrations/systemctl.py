@@ -43,6 +43,11 @@ _ACTIONS: dict[str, str] = {
     "status": "status",
 }
 
+# systemctl exit codes for `status`: 0 = active, 1 = dead/failed (ambiguous),
+# 3 = inactive (unit exists but not running), 4 = no such unit.
+# See `man 1 systemctl` — RETURN VALUES section.
+_TOLERATED_STATUS_CODES: frozenset[int] = frozenset({0, 3})
+
 
 class SystemctlManager:
     """ServiceManager backed by `systemctl --user`."""
@@ -78,19 +83,21 @@ class SystemctlManager:
                 proc.kill()
                 await proc.wait()
                 raise ServiceControlFailed("timeout")
-            # systemctl status exits non-zero when units are inactive — that's
-            # still useful output, not an error. For mutating actions, non-zero
-            # is a real failure.
-            if proc.returncode != 0 and action != "status":
-                output = stdout.decode().strip() if stdout else ""
-                log.warning(
-                    "SystemctlManager: %s exited %d: %s",
-                    action,
-                    proc.returncode,
-                    output[:200],
-                )
-                raise ServiceControlFailed("subprocess_error")
+            if proc.returncode != 0:
+                if action == "status" and proc.returncode in _TOLERATED_STATUS_CODES:
+                    pass  # rc=0 (active) or rc=3 (inactive) — valid status output
+                elif action == "status" and proc.returncode == 4:
+                    raise ServiceControlFailed("not_available")  # no such unit
+                else:
+                    _decoded = (stdout or b"").decode("utf-8", errors="replace")
+                    log.warning(
+                        "SystemctlManager: %s exited %d: %s",
+                        action,
+                        proc.returncode,
+                        _decoded.strip()[:200],
+                    )
+                    raise ServiceControlFailed("subprocess_error")
         except FileNotFoundError:
             raise ServiceControlFailed("not_available")
 
-        return stdout.decode().strip() if stdout else ""
+        return stdout.decode("utf-8", errors="replace").strip() if stdout else ""

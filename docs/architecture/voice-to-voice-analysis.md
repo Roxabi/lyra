@@ -571,6 +571,8 @@ Prod runs a watchdog that monitors local machine availability and triggers mode 
 
 ```python
 # Pseudo-code for Lyra's mode manager on prod (roxabituwer)
+# NOTE: supervisorctl calls below are illustrative (pre-Quadlet architecture).
+# Current deployments use systemctl --user (supervisord retired in #886/#1036).
 import subprocess
 
 ROXABITOWER_API = "http://192.168.1.XX:8800"  # VoiceCLI HTTP API

@@ -175,11 +175,11 @@ USER
 Python port renders via structured emit (Shape C — see Shapes).
 
 `--validate-supervisor` (`gen-nkeys.sh:197–224`) is structurally *not*
-key-generation — it asserts `deploy/conf.d/lyra-*.conf` and
-`deploy/quadlet/*.container` files wire `NATS_NKEY_SEED_PATH` for
-every owner==lyra identity. It only lives in `gen-nkeys.sh` because
-it needs `IDENTITIES[]` from `load_matrix`. Shape C splits it into
-its own module (`_supervisor.py`).
+key-generation — it asserts `deploy/quadlet/*.container` files wire
+`NATS_NKEY_SEED_PATH` for every owner==lyra identity (`deploy/conf.d/lyra-*.conf`
+was deleted in #1036; supervisord scaffolding retired). It only lives in
+`gen-nkeys.sh` because it needs `IDENTITIES[]` from `load_matrix`. Shape C splits
+it into its own module (`_supervisor.py`).
 
 ## Shapes
 

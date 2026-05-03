@@ -25,8 +25,10 @@ def validate_supervisor(matrix: LoadedMatrix, repo_root: Path) -> list[str]:
     """Check every owner==lyra active identity has NATS_NKEY_SEED_PATH in deploy files.
 
     Globs:
-      repo_root/deploy/conf.d/lyra-*.conf
       repo_root/deploy/quadlet/*.container
+
+    Note: deploy/conf.d/lyra-*.conf was deleted in #1036 (supervisord retired).
+    Only Quadlet container units are checked.
 
     Returns list of error strings; empty = all wired.
     """

@@ -844,3 +844,129 @@ class TestStreamDefensiveBranches:
             for record in caplog.records
             if record.levelname == "WARNING"
         )
+
+
+class TestStreamWorkerError:
+    """Direct coverage for the stream() result-chunk worker_error path.
+
+    Two sub-branches exist in nats_driver._stream_gen:
+      (a) chunk carries a structured `worker_error` dict → forwarded verbatim
+      (b) chunk carries `is_error=True` but no `worker_error` → synthesised
+          as `worker.internal` so the hub still sees a structured envelope.
+    """
+
+    async def test_stream_forwards_structured_worker_error(self) -> None:
+        # Arrange
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.we112233")
+
+        chunks = [
+            {
+                "event_type": "result",
+                "is_error": True,
+                "duration_ms": 12,
+                "worker_error": {
+                    "code": "llm.rate_limit",
+                    "message": "quota exceeded",
+                    "retryable": True,
+                },
+                "done": True,
+            },
+        ]
+
+        captured_cb: Any = None
+
+        async def fake_subscribe(subject, cb=None):
+            nonlocal captured_cb
+            captured_cb = cb
+            return AsyncMock()
+
+        nc.subscribe = AsyncMock(side_effect=fake_subscribe)
+        nc.publish = AsyncMock()
+
+        driver = make_driver(nc)
+
+        async def collect() -> list:
+            events: list = []
+            gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
+            task = asyncio.create_task(_drain(gen, events))
+            await yield_once()
+            for chunk in chunks:
+                await captured_cb(make_chunk_msg(chunk))
+            await task
+            return events
+
+        async def _drain(gen, events):
+            async for ev in gen:
+                events.append(ev)
+
+        # Act
+        events = await collect()
+
+        # Assert — structured envelope forwarded, NOT synthesised
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.is_error is True
+        assert result.worker_error is not None
+        assert result.worker_error.code == "llm.rate_limit"
+        assert result.worker_error.message == "quota exceeded"
+
+    async def test_stream_synthesises_worker_internal_when_envelope_absent(
+        self,
+    ) -> None:
+        # Arrange — is_error=True but worker omits the envelope (legacy worker)
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.we445566")
+
+        chunks = [
+            {
+                "event_type": "result",
+                "is_error": True,
+                "duration_ms": 7,
+                "error": "thing exploded",
+                "retryable": False,
+                "done": True,
+            },
+        ]
+
+        captured_cb: Any = None
+
+        async def fake_subscribe(subject, cb=None):
+            nonlocal captured_cb
+            captured_cb = cb
+            return AsyncMock()
+
+        nc.subscribe = AsyncMock(side_effect=fake_subscribe)
+        nc.publish = AsyncMock()
+
+        driver = make_driver(nc)
+
+        async def collect() -> list:
+            events: list = []
+            gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
+            task = asyncio.create_task(_drain(gen, events))
+            await yield_once()
+            for chunk in chunks:
+                await captured_cb(make_chunk_msg(chunk))
+            await task
+            return events
+
+        async def _drain(gen, events):
+            async for ev in gen:
+                events.append(ev)
+
+        # Act
+        events = await collect()
+
+        # Assert — worker.internal synthesised, retryable + message preserved
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.is_error is True
+        assert result.worker_error is not None
+        assert result.worker_error.code == "worker.internal"
+        assert result.worker_error.message == "thing exploded"
+        assert result.worker_error.retryable is False

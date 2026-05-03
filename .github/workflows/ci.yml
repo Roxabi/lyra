@@ -95,6 +95,9 @@ jobs:
       - name: Typecheck
         run: uv run pyright
 
+      - name: Verify error codes registry sync
+        run: uv run python packages/roxabi-contracts/scripts/check_codes_sync.py
+
       - name: Coverage — lyra
         run: uv run pytest tests/ --cov=lyra --cov-branch --cov-report=term-missing --cov-fail-under=50
 

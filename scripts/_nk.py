@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from abc import ABC, abstractmethod
 
 
@@ -31,13 +33,18 @@ class SubprocessNkeyProvider(NkeyProvider):
         return result.stdout.strip()
 
     def pubkey_from_seed(self, seed: bytes) -> str:
-        # nk ≥0.4.8 dropped stdin-as-"-"; /dev/stdin works on Linux/macOS.
-        result = subprocess.run(
-            ["nk", "-inkey", "/dev/stdin", "-pubout"],
-            input=seed,
-            capture_output=True,
-            check=True,
-        )
+        # nk ≥0.4.8 no longer accepts stdin ("-" or /dev/stdin); use a tmp file.
+        fd, tmp_path = tempfile.mkstemp(suffix=".seed")
+        try:
+            os.write(fd, seed + b"\n")
+            os.close(fd)
+            result = subprocess.run(
+                ["nk", "-inkey", tmp_path, "-pubout"],
+                capture_output=True,
+                check=True,
+            )
+        finally:
+            os.unlink(tmp_path)
         return result.stdout.strip().decode()
 
 

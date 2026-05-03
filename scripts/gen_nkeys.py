@@ -176,7 +176,8 @@ def _mode_emit_merged_authconf(args: argparse.Namespace) -> None:
         seed_file = seeds_dir / f"{name}.seed"
         if not seed_file.exists():
             print(
-                f"error: missing lyra seed: {seed_file} — run 'uv run lyra-acl genkeys'",
+                f"error: missing lyra seed: {seed_file}"
+                " — run 'uv run lyra-acl genkeys'",
                 file=sys.stderr,
             )
             sys.exit(1)

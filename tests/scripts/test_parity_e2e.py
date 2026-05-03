@@ -41,16 +41,16 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def rendered_auth_conf(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Render auth.conf using FakeNkeyProvider into a temp file."""
+    """Render auth.conf using real nk keys so nats-server accepts the config."""
     from scripts._loader import load_matrix
-    from scripts._nk import FakeNkeyProvider
+    from scripts._nk import SubprocessNkeyProvider
     from scripts._renderer import render_auth_conf
 
     tmp = tmp_path_factory.mktemp("nats")
     matrix_path = REPO_ROOT / "tests/scripts/fixtures/v2-prod.json"
     matrix = load_matrix(matrix_path)
 
-    provider = FakeNkeyProvider()
+    provider = SubprocessNkeyProvider()
     active = {
         name: ident
         for name, ident in matrix["identities"].items()

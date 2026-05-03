@@ -31,8 +31,9 @@ class SubprocessNkeyProvider(NkeyProvider):
         return result.stdout.strip()
 
     def pubkey_from_seed(self, seed: bytes) -> str:
+        # nk ≥0.4.8 dropped stdin-as-"-"; /dev/stdin works on Linux/macOS.
         result = subprocess.run(
-            ["nk", "-inkey", "-", "-pubout"],
+            ["nk", "-inkey", "/dev/stdin", "-pubout"],
             input=seed,
             capture_output=True,
             check=True,

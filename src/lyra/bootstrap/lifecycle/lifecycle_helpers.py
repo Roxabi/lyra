@@ -36,6 +36,8 @@ async def close_safely(label: str, *awaitables: Awaitable[Any]) -> None:
     for r in results:
         if isinstance(r, Exception):
             log.exception("Close failed [%s]", label, exc_info=r)
+        elif isinstance(r, BaseException):
+            log.debug("Close cancelled [%s] — resource may not be fully closed", label)
 
 
 async def teardown_buses(*buses: _Stoppable) -> None:

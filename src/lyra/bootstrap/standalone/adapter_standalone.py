@@ -157,8 +157,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                     await a.dp.stop_polling()
                 await asyncio.gather(*poll_tasks, return_exceptions=True)
             finally:
-                await close_safely("tg-adapters", *[a.close() for a, _ in wired])
-                await close_safely("tg-buses", *[ibus.stop() for _, ibus in wired])
+                await close_safely(
+                    "tg",
+                    *[coro for a, ibus in wired for coro in (a.close(), ibus.stop())],
+                )
                 await tg_turn_store.close()
 
         elif platform == "discord":
@@ -284,6 +286,8 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             try:
                 await stop_dc.wait()
                 await close_safely("dc-adapters", *[a.close() for a, _, _ in wired_dc])
+                for t in start_tasks:
+                    t.cancel()
                 await asyncio.gather(*start_tasks, return_exceptions=True)
             finally:
                 dc_bus_coros = [ibus.stop() for _, _, ibus in wired_dc]

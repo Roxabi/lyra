@@ -175,22 +175,27 @@ class TestCloseSafely:
         assert "tg-adapters" in record.getMessage()
         assert "Close failed" in record.getMessage()
 
-    async def test_cancelled_error_is_not_logged(
+    async def test_cancelled_error_logged_at_debug_not_error(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """CancelledError from a coro is silently skipped — it is a normal shutdown path."""
+        """CancelledError is logged at DEBUG (incomplete teardown visible) but not as error."""
         # Arrange
         async def cancelled_coro() -> None:
             raise asyncio.CancelledError()
 
-        # Act
         import logging
 
+        # Act — capture at DEBUG so we see the debug record
         with caplog.at_level(logging.DEBUG, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"):
             await close_safely("shutdown-label", cancelled_coro())
 
-        # Assert — no log records at all for CancelledError
-        assert caplog.records == []
+        # Assert — one DEBUG record, no ERROR record
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelno == logging.DEBUG
+        assert "shutdown-label" in caplog.records[0].getMessage()
+        # Negative: not logged as exception/error
+        error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert error_records == []
 
     async def test_multiple_failures_each_logged_independently(
         self, caplog: pytest.LogCaptureFixture

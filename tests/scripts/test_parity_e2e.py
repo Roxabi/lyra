@@ -88,7 +88,7 @@ def nats_server(rendered_auth_conf: Path) -> Generator[None, None, None]:
         try:
             urllib.request.urlopen("http://localhost:8222/healthz", timeout=0.5)
             break
-        except Exception:
+        except OSError:
             time.sleep(0.05)
     else:
         proc.terminate()

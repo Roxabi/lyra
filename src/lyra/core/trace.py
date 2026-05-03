@@ -113,20 +113,30 @@ class TelegramTokenFilter(logging.Filter):
     never appear in persisted logs, crash reports, or log-shipping
     pipelines.
 
-    Matches ``bot<digits>:<alphanumeric-with-hyphens-underscores>`` and
-    replaces the token segment with ``<REDACTED>``. Always returns
-    ``True`` — the record is never suppressed. Defensive: never raises.
+    Matches both the URL-embedded form (``bot<digits>:<secret>``) and the
+    bare form (``<digits>:<secret>`` from config dumps or exception reprs)
+    and replaces them with ``<REDACTED>``. Always returns ``True`` — the
+    record is never suppressed. Defensive: never raises.
     """
 
-    # Bot tokens: 1234567890:AAEhBP0av28...Z (numeric id, colon, ~35 char secret)
+    # URL-embedded: /bot<id>:<secret>/method (httpx always emits full-length secrets)
     _TOKEN_RE = re.compile(r"bot(\d+):[A-Za-z0-9_-]+")
     _REDACTED_SUB = r"bot\1:<REDACTED>"
+    # Bare token: 1234567890:AAEhBP0av28...Z (config dumps, exception reprs)
+    # Lookbehind/lookahead instead of \b: \b breaks after trailing '-' (non-\w).
+    # No upper bound: avoids silently missing tokens with secrets > 50 chars.
+    # _REDACTED_SUB must stay < 30 chars so a partially-redacted URL-form token
+    # (bot<id>:<REDACTED>) is not re-matched by this pattern.
+    _BARE_TOKEN_RE = re.compile(
+        r"(?<!\w)(\d{8,12}:[A-Za-z0-9_-]{30,})(?![A-Za-z0-9_-])"
+    )
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
             # Format the message once (% args interpolation) then redact.
             msg = record.getMessage()
             redacted = self._TOKEN_RE.sub(self._REDACTED_SUB, msg)
+            redacted = self._BARE_TOKEN_RE.sub("<REDACTED>", redacted)
             if redacted != msg:
                 record.msg = redacted
                 record.args = None

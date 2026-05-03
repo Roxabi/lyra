@@ -57,28 +57,6 @@ podman auto-update --dry-run
 
 See [ops/container-publishing.md](ops/container-publishing.md#auto-update-flow) for the full pipeline.
 
-### Manual fallback — `scripts/deploy-quadlet.sh`
-
-When CI cannot publish (e.g. mid-incident, image-pinning experiment), drive a manual deploy from Machine 2:
-
-> Note: `scripts/deploy-quadlet.sh` carries an internal deprecation banner (replaced by `podman-auto-update.timer` for routine deploys). Retained as an offline fallback for staged rollouts.
-
-```bash
-bash scripts/deploy-quadlet.sh
-```
-
-This wraps `scripts/deploy-quadlet.sh`, which delegates the heavy lifting to a shared deploy library at `~/.local/lib/roxabi/deploy-lib.sh`. Install the library once per Machine 1 setup:
-
-```bash
-make quadlet-install-deploy-lib
-```
-
-The library is pinned at install time (commit SHA stamped in the header). Upgrade after a Lyra release with:
-
-```bash
-make quadlet-upgrade-lib
-```
-
 ### Manual fallback — build + push
 
 When CI is unavailable and you must rebuild from a local checkout (Machine 2):

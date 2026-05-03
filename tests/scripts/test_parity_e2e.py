@@ -213,3 +213,118 @@ def test_hub_can_connect(nats_server: None, rendered_auth_conf: Path) -> None:
         await nc.drain()
 
     asyncio.run(_connect())
+
+
+@pytest.mark.skipif(
+    not NATS_PY_AVAILABLE,
+    reason="nats-py not installed — skipping live connection test",
+)
+def test_voice_tts_can_connect(nats_server: None, rendered_auth_conf: Path) -> None:
+    """voice-tts identity connects to nats-server using its registered seed."""
+    import asyncio
+
+    import nats
+
+    seed_str = (rendered_auth_conf / "voice-tts.seed").read_text().strip()
+
+    async def _connect() -> None:
+        nc = await nats.connect(
+            "nats://localhost:4223",
+            nkeys_seed_str=seed_str,
+        )
+        await nc.drain()
+
+    asyncio.run(_connect())
+
+
+@pytest.mark.skipif(
+    not NATS_PY_AVAILABLE,
+    reason="nats-py not installed — skipping live connection test",
+)
+def test_clipool_worker_can_connect(
+    nats_server: None, rendered_auth_conf: Path
+) -> None:
+    """clipool-worker identity connects to nats-server using its registered seed."""
+    import asyncio
+
+    import nats
+
+    seed_str = (rendered_auth_conf / "clipool-worker.seed").read_text().strip()
+
+    async def _connect() -> None:
+        nc = await nats.connect(
+            "nats://localhost:4223",
+            nkeys_seed_str=seed_str,
+        )
+        await nc.drain()
+
+    asyncio.run(_connect())
+
+
+def test_retired_identity_connect_rejected(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """Retired identity seed is not in auth.conf; connection must be rejected."""
+    import asyncio
+    import urllib.request
+
+    if not (NATS_PY_AVAILABLE and NATS_AVAILABLE and NK_AVAILABLE):
+        pytest.skip("nats-server, nk, and nats-py all required")
+
+    from scripts._loader import load_matrix
+    from scripts._nk import SubprocessNkeyProvider
+    from scripts._renderer import render_auth_conf
+
+    import nats
+
+    tmp = tmp_path_factory.mktemp("nats_retired")
+    matrix_path = FIXTURES_DIR / "v2-with-retired.json"
+    matrix = load_matrix(matrix_path)
+
+    provider = SubprocessNkeyProvider()
+    # Generate seeds for ALL identities including retired so we can attempt connect
+    seeds = {name: provider.gen_seed(name) for name in matrix["identities"]}
+    # auth.conf only includes active identities
+    active_pubkeys = {
+        name: provider.pubkey_from_seed(seeds[name])
+        for name, ident in matrix["identities"].items()
+        if ident["status"] == "active"
+    }
+    text = render_auth_conf(matrix, active_pubkeys)
+    (tmp / "auth.conf").write_text(text)
+    for name, seed in seeds.items():
+        (tmp / f"{name}.seed").write_bytes(seed + b"\n")
+
+    proc = subprocess.Popen(
+        ["nats-server", "-c", str(tmp / "auth.conf"), "-m", "8223", "-p", "4224"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        try:
+            urllib.request.urlopen("http://localhost:8223/healthz", timeout=0.5)
+            break
+        except OSError:
+            time.sleep(0.05)
+    else:
+        proc.terminate()
+        raw = proc.stderr.read() if proc.stderr else b""
+        stderr_text = raw.decode(errors="replace")
+        pytest.fail(f"nats-server (retired test) did not start\n{stderr_text}")
+
+    try:
+        seed_str = (tmp / "old-worker.seed").read_text().strip()
+
+        async def _connect_retired() -> None:
+            await nats.connect(
+                "nats://localhost:4224",
+                nkeys_seed_str=seed_str,
+                connect_timeout=2,
+            )
+
+        with pytest.raises(Exception):
+            asyncio.run(_connect_retired())
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)

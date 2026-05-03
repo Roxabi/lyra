@@ -93,6 +93,7 @@ class TestLoadMatrixPositive:
 class TestLoadMatrixNegatives:
     def test_missing_owner_field(self, tmp_path: Path) -> None:
         """Guard: identity must have owner field."""
+        # verified: removing owner-field check in _loader.py causes this test to fail
         identity = _valid_identity()
         del identity["owner"]
         data = {
@@ -110,6 +111,7 @@ class TestLoadMatrixNegatives:
 
     def test_missing_status_field(self, tmp_path: Path) -> None:
         """Guard: identity must have status field."""
+        # verified: removing status-field check in _loader.py causes this test to fail
         identity = _valid_identity()
         del identity["status"]
         data = {
@@ -127,6 +129,7 @@ class TestLoadMatrixNegatives:
 
     def test_invalid_status_value(self, tmp_path: Path) -> None:
         """Guard: identity status must be 'active' or 'retired'."""
+        # verified: removing status allowlist guard → test fails
         identity = _valid_identity(status="unknown")
         data = {
             "version": "2",
@@ -143,6 +146,7 @@ class TestLoadMatrixNegatives:
 
     def test_invalid_owner_value(self, tmp_path: Path) -> None:
         """Guard: identity owner must be one of lyra|voicecli|imagecli|reserved."""
+        # verified: removing owner allowlist guard → test fails
         identity = _valid_identity(owner="badowner")
         data = {
             "version": "2",
@@ -159,6 +163,7 @@ class TestLoadMatrixNegatives:
 
     def test_invalid_version(self, tmp_path: Path) -> None:
         """Guard: version must be '1' or '2'."""
+        # verified: removing version allowlist guard → test fails
         identity = _valid_identity()
         data = {
             "version": "99",
@@ -175,6 +180,7 @@ class TestLoadMatrixNegatives:
 
     def test_missing_created_at(self, tmp_path: Path) -> None:
         """Guard: identity must have created_at field."""
+        # verified: removing created_at field guard → test fails
         identity = _valid_identity()
         del identity["created_at"]
         data = {
@@ -192,6 +198,7 @@ class TestLoadMatrixNegatives:
 
     def test_bad_created_at_format(self, tmp_path: Path) -> None:
         """Guard: created_at must be a valid ISO date (YYYY-MM-DD)."""
+        # verified: removing date-format validation guard → test fails
         identity = _valid_identity(created_at="not-a-date")
         data = {
             "version": "2",
@@ -208,6 +215,7 @@ class TestLoadMatrixNegatives:
 
     def test_bad_retired_at_format(self, tmp_path: Path) -> None:
         """Guard: retired_at must be a valid ISO date (YYYY-MM-DD) when present."""
+        # verified: removing retired_at date-format guard → test fails
         identity = _valid_identity(
             status="retired",
             created_at="2025-01-01",
@@ -228,6 +236,7 @@ class TestLoadMatrixNegatives:
 
     def test_duplicate_flow_pair(self, tmp_path: Path) -> None:
         """Guard: request_reply_flows must not have duplicate (requester, responder)."""
+        # verified: removing duplicate-flow check in _loader.py causes this test to fail
         data = {
             "version": "2",
             "request_reply_flows": [
@@ -257,6 +266,7 @@ class TestLoadMatrixNegatives:
 
     def test_nonexistent_file(self, tmp_path: Path) -> None:
         """Guard: load_matrix raises SystemExit when the path does not exist."""
+        # verified: removing file-existence check in _loader.py causes this test to fail
         missing = tmp_path / "does-not-exist.json"
 
         from scripts._loader import load_matrix  # noqa: PLC0415

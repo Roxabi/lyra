@@ -25,12 +25,19 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JSON="${REPO_ROOT}/deploy/nats/acl-matrix.json"
 SPEC="${REPO_ROOT}/artifacts/specs/706-per-role-nkeys-acls-spec.mdx"
 
-# Pre-compute effective ACL (static grants + derived from request_reply_flows)
+[[ -f "$JSON" ]] || { echo "::error::acl-matrix.json not found: $JSON"; exit 1; }
+[[ -f "$SPEC" ]] || { echo "::error::spec file not found: $SPEC"; exit 1; }
+
+# Pre-compute effective ACL (static grants + derived from request_reply_flows).
+# Guard: skip flows that reference unknown identities (prevents auto-vivification).
+# Use |= unique after each += to prevent duplicate entries when the same identity
+# appears as requester/responder in multiple flows.
 EFFECTIVE_JSON=$(jq '
   reduce (.request_reply_flows[]?) as $flow (
     .;
-    .identities[$flow.requester].subscribe += ["_inbox.\($flow.requester).>"] |
-    .identities[$flow.responder].publish   += ["_inbox.\($flow.requester).>"]
+    select(.identities[$flow.requester] != null and .identities[$flow.responder] != null) |
+    .identities[$flow.requester].subscribe |= (. + ["_inbox.\($flow.requester).>"] | unique) |
+    .identities[$flow.responder].publish   |= (. + ["_inbox.\($flow.requester).>"] | unique)
   )
 ' "$JSON")
 
@@ -50,7 +57,7 @@ render_table() {
         select(.value.status == "active") |
         .value | (.publish // []) + (.subscribe // [])
       ] |
-      flatten | unique | sort |
+      flatten | unique |
       map(select(startswith("lyra.") or startswith("_inbox.")))
     ) as $subjects |
 
@@ -94,12 +101,14 @@ if [ "${UPDATE}" = true ]; then
     echo "::error::--update is a local-only flag and must not be passed in CI (changes would be lost at runner teardown)"
     exit 1
   fi
+  grep -q '<!-- acl-matrix:begin -->' "$SPEC" && grep -q '<!-- acl-matrix:end -->' "$SPEC" \
+    || { echo "::error::sentinel markers missing in $SPEC — cannot update safely"; exit 1; }
   awk '
     /<!-- acl-matrix:begin -->/ { print; found=1; next }
     /<!-- acl-matrix:end -->/ { found=0; while ((getline line < RENDERED) > 0) print line; print; next }
     !found { print }
   ' RENDERED="$RENDERED" "$SPEC" > "${NATS_TMPDIR}/spec_updated.txt"
-  cp "${NATS_TMPDIR}/spec_updated.txt" "$SPEC"
+  mv "${NATS_TMPDIR}/spec_updated.txt" "$SPEC"
   echo "Updated sentinel block in $SPEC"
   exit 0
 fi

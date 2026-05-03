@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import nats.errors
+from pydantic import ValidationError
 
 from lyra.core.messaging.events import (
     LlmEvent,
@@ -18,7 +19,9 @@ from lyra.core.messaging.events import (
     TextLlmEvent,
     ToolUseLlmEvent,
 )
+from lyra.core.messaging.metrics import emit_populated_total
 from lyra.llm.base import LlmResult
+from roxabi_contracts.errors import WorkerError
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -27,6 +30,27 @@ if TYPE_CHECKING:
     from lyra.core.agent.agent_config import ModelConfig
 
 log = logging.getLogger(__name__)
+
+
+def _decode_worker_error(raw: Any) -> WorkerError | None:
+    """Validate a worker_error payload from a NATS reply chunk. None on absent/invalid.
+
+    Tolerates: ``None`` (field absent), ``dict`` (canonical), or anything else
+    (treated as absent and logged at debug). Validation failures are non-fatal —
+    the driver synthesises a fallback envelope upstream so the hub always sees
+    a structured error rather than a bare shim.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        log.debug("nats_llm: worker_error payload is %s, expected dict", type(raw))
+        return None
+    try:
+        return WorkerError.model_validate(raw)
+    except ValidationError:
+        log.debug("nats_llm: worker_error payload failed validation", exc_info=True)
+        return None
+
 
 # Module-level aliases kept for backward compatibility (tests may import these).
 SUBJECT_REQUEST = "lyra.llm.request"
@@ -122,15 +146,41 @@ class NatsLlmDriver:
             reply = await self._nc.request(
                 self.SUBJECT_REQUEST, payload, timeout=self._timeout
             )
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError) as exc:
             log.warning(
                 "nats_llm: complete() timeout after %.0fs [pool:%s]",
                 self._timeout,
                 pool_id,
             )
-            return LlmResult(
-                error=f"LLM worker timeout after {self._timeout:.0f}s",
+            error_msg = f"LLM worker timeout after {self._timeout:.0f}s"
+            worker_error = WorkerError(
+                code="transport.timeout",
+                message=str(exc) or error_msg,
                 retryable=True,
+            )
+            emit_populated_total(domain="llm")
+            return LlmResult(
+                error=error_msg,
+                retryable=True,
+                worker_error=worker_error,
+            )
+        except nats.errors.NoRespondersError as exc:
+            log.warning(
+                "nats_llm: complete() no responders [pool:%s]: %s",
+                pool_id,
+                exc,
+            )
+            error_msg = f"NATS no responders: {exc}"
+            worker_error = WorkerError(
+                code="transport.no_responders",
+                message=str(exc) or error_msg,
+                retryable=True,
+            )
+            emit_populated_total(domain="llm")
+            return LlmResult(
+                error=error_msg,
+                retryable=True,
+                worker_error=worker_error,
             )
         except nats.errors.Error as exc:
             log.warning(
@@ -139,19 +189,43 @@ class NatsLlmDriver:
                 type(exc).__name__,
                 exc,
             )
-            return LlmResult(
-                error=f"NATS transport error: {exc}",
+            error_msg = f"NATS transport error: {exc}"
+            # Catch-all for non-timeout / non-no-responders transport failures
+            # (e.g. connection reset, NATS protocol error). `transport.error`
+            # is the registry slot for "generic transport failure"; the failure
+            # never reached the worker, so a `worker.*` code would invert the
+            # transport/worker domain semantics.
+            worker_error = WorkerError(
+                code="transport.error",
+                message=str(exc) or error_msg,
                 retryable=True,
+            )
+            emit_populated_total(domain="llm")
+            return LlmResult(
+                error=error_msg,
+                retryable=True,
+                worker_error=worker_error,
             )
 
         try:
             data: dict = json.loads(reply.data)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             log.warning(
                 "nats_llm: complete() invalid JSON from worker [pool:%s]",
                 pool_id,
             )
-            return LlmResult(error="Invalid JSON from worker", retryable=True)
+            error_msg = "Invalid JSON from worker"
+            worker_error = WorkerError(
+                code="transport.parse",
+                message=str(exc) or error_msg,
+                retryable=False,
+            )
+            emit_populated_total(domain="llm")
+            return LlmResult(
+                error=error_msg,
+                retryable=False,
+                worker_error=worker_error,
+            )
 
         error = data.get("error", "")
         retryable = bool(data.get("retryable", True))
@@ -162,7 +236,19 @@ class NatsLlmDriver:
                 retryable,
                 error,
             )
-            return LlmResult(error=error, retryable=retryable)
+            # If the worker populated a structured WorkerError, surface it.
+            # Falls back to a synthesised `worker.internal` envelope so the hub
+            # extractor never sees a bare error_text shim from a NATS reply.
+            worker_error = _decode_worker_error(data.get("worker_error"))
+            if worker_error is None:
+                worker_error = WorkerError(
+                    code="worker.internal",
+                    message=error,
+                    retryable=retryable,
+                )
+            return LlmResult(
+                error=error, retryable=retryable, worker_error=worker_error
+            )
 
         return LlmResult(
             result=data.get("result", ""),
@@ -194,7 +280,7 @@ class NatsLlmDriver:
             pool_id, text, model_cfg, system_prompt, messages=messages
         )
 
-    async def _stream_gen(  # noqa: C901, PLR0913
+    async def _stream_gen(  # noqa: C901, PLR0913, PLR0915
         self,
         pool_id: str,
         text: str,
@@ -232,24 +318,46 @@ class NatsLlmDriver:
             while True:
                 try:
                     msg = await asyncio.wait_for(queue.get(), timeout=self._timeout)
-                except TimeoutError:
+                except (TimeoutError, asyncio.TimeoutError) as exc:
                     log.warning("nats_llm: stream() inbox timeout [pool:%s]", pool_id)
+                    error_msg = "Request timed out. Please try again."
+                    worker_error = WorkerError(
+                        code="transport.timeout",
+                        message=str(exc) or error_msg,
+                        retryable=True,
+                    )
+                    emit_populated_total(domain="llm")
                     yield ResultLlmEvent(
                         is_error=True,
                         duration_ms=0,
-                        error_text="Request timed out. Please try again.",
+                        error_text=error_msg,
+                        worker_error=worker_error,
                     )
                     return
 
                 try:
                     chunk: dict = json.loads(msg.data)
-                except (json.JSONDecodeError, ValueError):
-                    log.debug(
-                        "nats_llm: stream chunk parse error [pool:%s]",
+                except (json.JSONDecodeError, ValueError) as exc:
+                    log.warning(
+                        "nats_llm: stream chunk parse error [pool:%s]: %s",
                         pool_id,
+                        exc,
                         exc_info=True,
                     )
-                    continue
+                    error_msg = f"Stream parse error: {exc}"
+                    worker_error = WorkerError(
+                        code="transport.parse",
+                        message=str(exc) or error_msg,
+                        retryable=False,
+                    )
+                    emit_populated_total(domain="llm")
+                    yield ResultLlmEvent(
+                        is_error=True,
+                        duration_ms=0,
+                        error_text=error_msg,
+                        worker_error=worker_error,
+                    )
+                    return
 
                 event_type = chunk.get("event_type", "text")
                 done = bool(chunk.get("done", False))
@@ -265,9 +373,26 @@ class NatsLlmDriver:
                         input=chunk.get("input", {}),
                     )
                 elif event_type == "result":
+                    is_error = bool(chunk.get("is_error", False))
+                    # P2 instrumentation chain: surface the worker's structured
+                    # error envelope so the hub extractor + emit_received_total
+                    # path activates. Without this read the entire streaming
+                    # path silently drops worker_error and falls back to the
+                    # legacy error_text shim.
+                    worker_error = _decode_worker_error(chunk.get("worker_error"))
+                    if worker_error is None and is_error:
+                        # Worker reported is_error=True but didn't populate the
+                        # envelope (legacy worker, or pre-P2 build). Synthesise
+                        # a `worker.internal` so the hub still receives a code.
+                        worker_error = WorkerError(
+                            code="worker.internal",
+                            message=str(chunk.get("error") or "Unknown worker error"),
+                            retryable=bool(chunk.get("retryable", True)),
+                        )
                     yield ResultLlmEvent(
-                        is_error=bool(chunk.get("is_error", False)),
+                        is_error=is_error,
                         duration_ms=int(chunk.get("duration_ms", 0)),
+                        worker_error=worker_error,
                     )
                     return
 

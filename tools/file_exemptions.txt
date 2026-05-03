@@ -6,3 +6,7 @@ src/lyra/bootstrap/factory/wiring_helpers.py  # 400 lines — ADR-059/V10 bootst
 src/lyra/bootstrap/bootstrap_stores.py  # 305 lines — #957 idx_sql DDL validation adds allowlist guard before sqlite_master replay
 src/lyra/core/cli/cli_pool.py  # 327 lines — #1008 resume_direct() method added for hub-side session resolution
 src/lyra/agents/simple_agent.py  # 309 lines — #1008 cli_nats_driver wiring for NATS-mode resume + link_lyra_session
+src/lyra/bootstrap/standalone/adapter_standalone.py  # 303 lines — #1016 WorkerError startup version log
+src/lyra/core/processors/stream_processor.py  # 305 lines — #1016 WorkerError extractor + emit_received_total wiring
+src/lyra/llm/drivers/nats_driver.py  # 364 lines — #1016 WorkerError population on transport.* failures (P3 will refactor with NatsDriverBase)
+src/lyra/adapters/clipool/clipool_worker.py  # 334 lines — #1016 WorkerError population + exception classifier

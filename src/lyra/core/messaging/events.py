@@ -21,7 +21,10 @@ Callers must never mutate event objects after construction.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from roxabi_contracts.errors import WorkerError
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,7 @@ class ResultLlmEvent:
     cost_usd: float | None = None
     error_text: str | None = None
     session_id: str | None = None
+    worker_error: "WorkerError | None" = None
 
 
 # Union type exported for type annotations and ``isinstance`` checks.

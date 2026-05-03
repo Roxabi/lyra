@@ -31,6 +31,7 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from pydantic import ValidationError
 
+from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.voice.fixtures import sample_transcript_en, silence_wav_16khz
 from roxabi_contracts.voice.models import (
     SttRequest,
@@ -62,7 +63,23 @@ class FakeTtsWorker:
         self._nc: NATS | None = None
         self._sub: Subscription | None = None
         self._stopping: bool = False
+        self._worker_error: WorkerError | None = None
         self.calls: list[TtsRequest] = []
+
+    @classmethod
+    def with_worker_error(
+        cls,
+        code: str,
+        message: str,
+        retryable: bool = True,
+        nats_url: str = "nats://127.0.0.1:4222",
+    ) -> "FakeTtsWorker":
+        """Return a FakeTtsWorker that replies with worker_error set (ok=False)."""
+        instance = cls(nats_url=nats_url)
+        instance._worker_error = WorkerError(
+            code=code, message=message, retryable=retryable
+        )
+        return instance
 
     async def start(self) -> None:
         assert_loopback_url(self._nats_url)
@@ -112,16 +129,27 @@ class FakeTtsWorker:
         self.calls.append(req)
         if not msg.reply or self._nc is None:
             return
-        reply = TtsResponse(
-            contract_version=req.contract_version,
-            trace_id=req.trace_id,
-            issued_at=datetime.now(timezone.utc),
-            ok=True,
-            request_id=req.request_id,
-            audio_b64=base64.b64encode(self._reply_fixture).decode("ascii"),
-            mime_type="audio/wav",
-            duration_ms=1000,
-        )
+        if self._worker_error is not None:
+            reply: TtsResponse = TtsResponse(
+                contract_version=req.contract_version,
+                trace_id=req.trace_id,
+                issued_at=datetime.now(timezone.utc),
+                ok=False,
+                request_id=req.request_id,
+                error=self._worker_error.message,
+                worker_error=self._worker_error,
+            )
+        else:
+            reply = TtsResponse(
+                contract_version=req.contract_version,
+                trace_id=req.trace_id,
+                issued_at=datetime.now(timezone.utc),
+                ok=True,
+                request_id=req.request_id,
+                audio_b64=base64.b64encode(self._reply_fixture).decode("ascii"),
+                mime_type="audio/wav",
+                duration_ms=1000,
+            )
         try:
             await self._nc.publish(msg.reply, reply.model_dump_json().encode())
         except nats.errors.Error:  # connection closing during test teardown
@@ -142,7 +170,23 @@ class FakeSttWorker:
         self._nc: NATS | None = None
         self._sub: Subscription | None = None
         self._stopping: bool = False
+        self._worker_error: WorkerError | None = None
         self.calls: list[SttRequest] = []
+
+    @classmethod
+    def with_worker_error(
+        cls,
+        code: str,
+        message: str,
+        retryable: bool = True,
+        nats_url: str = "nats://127.0.0.1:4222",
+    ) -> "FakeSttWorker":
+        """Return a FakeSttWorker that replies with worker_error set (ok=False)."""
+        instance = cls(nats_url=nats_url)
+        instance._worker_error = WorkerError(
+            code=code, message=message, retryable=retryable
+        )
+        return instance
 
     async def start(self) -> None:
         assert_loopback_url(self._nats_url)
@@ -190,16 +234,27 @@ class FakeSttWorker:
         self.calls.append(req)
         if not msg.reply or self._nc is None:
             return
-        reply = SttResponse(
-            contract_version=req.contract_version,
-            trace_id=req.trace_id,
-            issued_at=datetime.now(timezone.utc),
-            ok=True,
-            request_id=req.request_id,
-            text=self._reply_fixture,
-            language="en",
-            duration_seconds=1.0,
-        )
+        if self._worker_error is not None:
+            reply: SttResponse = SttResponse(
+                contract_version=req.contract_version,
+                trace_id=req.trace_id,
+                issued_at=datetime.now(timezone.utc),
+                ok=False,
+                request_id=req.request_id,
+                error=self._worker_error.message,
+                worker_error=self._worker_error,
+            )
+        else:
+            reply = SttResponse(
+                contract_version=req.contract_version,
+                trace_id=req.trace_id,
+                issued_at=datetime.now(timezone.utc),
+                ok=True,
+                request_id=req.request_id,
+                text=self._reply_fixture,
+                language="en",
+                duration_seconds=1.0,
+            )
         try:
             await self._nc.publish(msg.reply, reply.model_dump_json().encode())
         except nats.errors.Error:  # connection closing during test teardown

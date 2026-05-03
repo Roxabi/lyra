@@ -12,6 +12,7 @@ from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.core.messaging.metrics import log_contracts_version
 from lyra.infrastructure.stores.credential_store import CredentialStore, LyraKeyring
 from lyra.nats.queue_groups import adapter_outbound
 from roxabi_nats import nats_connect
@@ -37,6 +38,8 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
     nats_url = os.environ.get("NATS_URL")
     if not nats_url:
         sys.exit("NATS_URL required for standalone adapter mode")
+
+    log_contracts_version()
 
     platform_enum = Platform(platform)
 

@@ -32,6 +32,7 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from pydantic import ValidationError
 
+from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.image.fixtures import (
     tiny_png_1x1,
     tiny_png_height,
@@ -63,7 +64,23 @@ class FakeImageWorker:
         self._nc: NATS | None = None
         self._sub: Subscription | None = None
         self._stopping: bool = False
+        self._worker_error: WorkerError | None = None
         self.calls: list[ImageRequest] = []
+
+    @classmethod
+    def with_worker_error(
+        cls,
+        code: str,
+        message: str,
+        retryable: bool = True,
+        nats_url: str = "nats://127.0.0.1:4222",
+    ) -> "FakeImageWorker":
+        """Return a FakeImageWorker that replies with worker_error set (ok=False)."""
+        instance = cls(nats_url=nats_url)
+        instance._worker_error = WorkerError(
+            code=code, message=message, retryable=retryable
+        )
+        return instance
 
     async def start(self) -> None:
         assert_loopback_url(self._nats_url)
@@ -107,20 +124,31 @@ class FakeImageWorker:
         self.calls.append(req)
         if not msg.reply or self._nc is None:
             return
-        reply = ImageResponse(
-            contract_version=req.contract_version,
-            trace_id=req.trace_id,
-            issued_at=datetime.now(timezone.utc),
-            ok=True,
-            request_id=req.request_id,
-            image_b64=base64.b64encode(self._reply_fixture).decode("ascii"),
-            mime_type=tiny_png_mime,
-            width=tiny_png_width,
-            height=tiny_png_height,
-            engine=req.engine,
-            # seed_used=-1 signals "no seed provided" (auto/random); 0 is a valid seed
-            seed_used=req.seed if req.seed is not None else -1,
-        )
+        if self._worker_error is not None:
+            reply: ImageResponse = ImageResponse(
+                contract_version=req.contract_version,
+                trace_id=req.trace_id,
+                issued_at=datetime.now(timezone.utc),
+                ok=False,
+                request_id=req.request_id,
+                error=self._worker_error.message,
+                worker_error=self._worker_error,
+            )
+        else:
+            reply = ImageResponse(
+                contract_version=req.contract_version,
+                trace_id=req.trace_id,
+                issued_at=datetime.now(timezone.utc),
+                ok=True,
+                request_id=req.request_id,
+                image_b64=base64.b64encode(self._reply_fixture).decode("ascii"),
+                mime_type=tiny_png_mime,
+                width=tiny_png_width,
+                height=tiny_png_height,
+                engine=req.engine,
+                # seed_used=-1 = "no seed provided" (auto/random); 0 is valid
+                seed_used=req.seed if req.seed is not None else -1,
+            )
         try:
             await self._nc.publish(msg.reply, reply.model_dump_json().encode())
         except nats.errors.Error:  # connection closing during test teardown

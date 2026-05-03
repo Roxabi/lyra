@@ -10,9 +10,44 @@ import json
 import logging
 from collections import deque
 
+from roxabi_contracts.errors import KNOWN_CODES, WorkerError
+
 from ..messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from ..messaging.metrics import emit_populated_total
 
 log = logging.getLogger(__name__)
+
+# Subtypes that indicate an auth failure from the upstream CLI.
+_AUTH_SUBTYPES = frozenset({"auth_error", "auth", "login_required"})
+# Subtypes that suggest a lost / unresumable session.
+_SESSION_LOST_SUBTYPES = frozenset({"session_expired", "session_lost", "resume_failed"})
+
+
+def _classify_cli_error(subtype: str, error_text: str) -> WorkerError:
+    """Map a CLI result subtype + message to a structured WorkerError.
+
+    Mapping rules (path a — upstream CLI reports is_error):
+      * auth-related subtype  → cli.auth   (not retryable)
+      * session-related       → cli.session_lost (retryable)
+      * anything else         → cli.parse  (not retryable)
+
+    ``worker.parse`` is NOT present in KNOWN_CODES (registry only has
+    ``cli.parse`` and ``transport.parse``), so parser failures use
+    ``cli.parse`` per ADR-066 fallback policy.
+    """
+    if subtype in _AUTH_SUBTYPES:
+        code = "cli.auth"
+    elif subtype in _SESSION_LOST_SUBTYPES:
+        code = "cli.session_lost"
+    else:
+        code = "cli.parse"
+
+    meta = KNOWN_CODES[code]
+    return WorkerError(
+        code=code,
+        message=error_text or meta.description,
+        retryable=meta.default_retryable,
+    )
 
 
 class CliStreamingParser:
@@ -30,7 +65,7 @@ class CliStreamingParser:
         self._done = False
         self._pending: deque[LlmEvent] = deque()
 
-    def parse_line(self, line: str) -> deque[LlmEvent]:  # noqa: C901, PLR0912 — protocol event dispatch
+    def parse_line(self, line: str) -> deque[LlmEvent]:  # noqa: C901, PLR0912, PLR0915 — protocol event dispatch
         """Parse a JSON line, update state, and return events to yield.
 
         Returns a deque of LlmEvent objects. Caller should pop from left.
@@ -44,7 +79,38 @@ class CliStreamingParser:
 
         try:
             data = json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            # Spec C4 path (b): a JSON-shaped line that fails to parse is a
+            # protocol-level corruption (truncated stream, encoding bug, etc.)
+            # → emit terminal `cli.parse` envelope so the hub instrumentation
+            # chain activates. Non-JSON lines (debug output, blank lines) are
+            # still silently skipped — the heuristic is "line starts with `{`".
+            # CLI NDJSON protocol emits one object per line — never bare arrays
+            # or scalars. Anything starting with `{` is unambiguously a protocol
+            # line; debug lines use prefixes like `[DEBUG]`, `INFO:`, blank, etc.
+            stripped = line.lstrip()
+            if stripped.startswith("{"):
+                meta = KNOWN_CODES["cli.parse"]
+                worker_error = WorkerError(
+                    code="cli.parse",
+                    message=f"CLI emitted malformed JSON: {exc}",
+                    retryable=meta.default_retryable,
+                )
+                emit_populated_total(domain="cli")
+                self._done = True
+                self._pending.append(
+                    ResultLlmEvent(
+                        is_error=True,
+                        duration_ms=0,
+                        cost_usd=None,
+                        # Reuse the WorkerError.message — already credential-
+                        # scrubbed and bounded. Avoids a parallel `str(exc)`
+                        # path that would bypass sanitisation.
+                        error_text=worker_error.message,
+                        session_id=self.session_id,
+                        worker_error=worker_error,
+                    )
+                )
             return self._pending
 
         msg_type = data.get("type", "")
@@ -135,6 +201,11 @@ class CliStreamingParser:
                 data.get("duration_ms", 0),
             )
             self._done = True
+            # Path (a): upstream CLI emits is_error=True — classify to cli.* code.
+            worker_error: WorkerError | None = None
+            if is_error:
+                worker_error = _classify_cli_error(subtype, self.error or "")
+                emit_populated_total(domain="cli")
             self._pending.append(
                 ResultLlmEvent(
                     is_error=is_error,
@@ -142,6 +213,7 @@ class CliStreamingParser:
                     cost_usd=None,
                     error_text=self.error if is_error else None,
                     session_id=data.get("session_id") or None,
+                    worker_error=worker_error,
                 )
             )
 

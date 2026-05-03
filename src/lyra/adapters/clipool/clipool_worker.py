@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from lyra.core.messaging.metrics import emit_populated_total
 from roxabi_contracts.cli.models import (
     CliChunkEvent,
     CliCmdPayload,
@@ -25,6 +26,7 @@ from roxabi_contracts.cli.models import (
     CliControlCmd,
 )
 from roxabi_contracts.envelope import CONTRACT_VERSION
+from roxabi_contracts.errors import WorkerError
 from roxabi_nats.adapter_base import NatsAdapterBase
 
 log = logging.getLogger(__name__)
@@ -36,6 +38,36 @@ _QUEUE_GROUP = "clipool-workers"
 _ENVELOPE_NAME = "CliCmdPayload"
 _SCHEMA_VERSION = 1
 _HEARTBEAT_INTERVAL = 30.0
+
+
+def _classify_exception(exc: BaseException) -> WorkerError:
+    """Map an exception to a ``WorkerError`` with the appropriate code.
+
+    Code selection (per T13 / ADR-066):
+    - ``asyncio.TimeoutError`` → ``cli.session_lost`` (retryable=True)
+    - ``UnicodeDecodeError`` / ``ValueError`` (parse/decode) → ``cli.parse``
+      (retryable=False)
+    - Any other exception → ``worker.crash`` (retryable=True)
+    """
+    import asyncio
+
+    if isinstance(exc, asyncio.TimeoutError):
+        return WorkerError(
+            code="cli.session_lost",
+            message=str(exc) or "CLI session timed out",
+            retryable=True,
+        )
+    if isinstance(exc, (UnicodeDecodeError, ValueError)):
+        return WorkerError(
+            code="cli.parse",
+            message=str(exc) or "CLI parse/decode error",
+            retryable=False,
+        )
+    return WorkerError(
+        code="worker.crash",
+        message=str(exc) or "Unhandled worker exception",
+        retryable=True,
+    )
 
 
 def _make_chunk(pool_id: str, **kwargs: Any) -> bytes:
@@ -125,10 +157,29 @@ class CliPoolNatsWorker(NatsAdapterBase):
     async def _handle_cmd(self, msg: Any, payload: dict) -> None:
         try:
             cmd = CliCmdPayload.model_validate(payload)
-        except ValidationError:
+        except ValidationError as exc:
             log.exception("clipool_worker: failed to parse CliCmdPayload")
+            # The JSON decoded successfully (NatsAdapterBase did that before
+            # dispatching to handle()) but the payload failed schema validation
+            # — this is the textbook `worker.validation` case (decoded OK but
+            # fields are wrong, e.g. caller on an old contract version).
+            # `transport.parse` would mean "couldn't decode bytes/JSON", which
+            # is a different failure mode handled one layer up.
+            worker_error = WorkerError(
+                code="worker.validation",
+                message=str(exc) or "CliCmdPayload validation failed",
+                retryable=False,
+            )
+            emit_populated_total(domain="cli")
             await self.reply(
-                msg, _make_chunk("", event_type="error", is_error=True, done=True)
+                msg,
+                _make_chunk(
+                    "",
+                    event_type="error",
+                    is_error=True,
+                    done=True,
+                    worker_error=worker_error,
+                ),
             )
             return
 
@@ -149,11 +200,13 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 model_cfg,
                 cmd.system_prompt,
             )
-        except Exception:  # noqa: BLE001 - external boundary: catch all to ensure error reply
+        except Exception as exc:  # noqa: BLE001 - external boundary: catch all to ensure error reply
             log.exception(
                 "clipool_worker: send_streaming failed for pool_id=%r", cmd.pool_id
             )
             if msg.reply and self._nc:
+                worker_error = _classify_exception(exc)
+                emit_populated_total(domain="cli")
                 await self._nc.publish(
                     msg.reply,
                     _make_chunk(
@@ -161,6 +214,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                         event_type="error",
                         is_error=True,
                         done=True,
+                        worker_error=worker_error,
                     ),
                 )
             return
@@ -175,12 +229,19 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 )
                 await self.reply(msg, chunk)
             elif isinstance(event, ResultLlmEvent):
+                # Forward the structured envelope. CliStreamingParser populates
+                # `worker_error` on cli.auth / cli.session_lost / cli.parse;
+                # without this forward the field is None on the wire and the
+                # hub's nats_driver synthesises `worker.internal` instead of the
+                # precise CLI code, breaking the P2 instrumentation chain on the
+                # streaming path.
                 chunk = _make_chunk(
                     cmd.pool_id,
                     event_type="result",
                     is_error=event.is_error,
                     session_id=event.session_id or None,
                     done=True,
+                    worker_error=event.worker_error,
                 )
                 await self.reply(msg, chunk)
                 return
@@ -201,8 +262,10 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 model_cfg,
                 cmd.system_prompt,
             )
-        except Exception:  # noqa: BLE001 - external boundary: catch all to ensure error reply
+        except Exception as exc:  # noqa: BLE001 - external boundary: catch all to ensure error reply
             log.exception("clipool_worker: send failed for pool_id=%r", cmd.pool_id)
+            worker_error = _classify_exception(exc)
+            emit_populated_total(domain="cli")
             await self.reply(
                 msg,
                 _make_chunk(
@@ -210,6 +273,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                     event_type="error",
                     is_error=True,
                     done=True,
+                    worker_error=worker_error,
                 ),
             )
             return

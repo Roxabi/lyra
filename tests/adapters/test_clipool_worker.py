@@ -243,6 +243,94 @@ async def test_handle_cmd_publishes_done_chunk_after_stream() -> None:
     assert any(p.get("done") is True for p in published_payloads)
 
 
+async def test_handle_cmd_streaming_forwards_worker_error_from_result_event() -> None:
+    """ResultLlmEvent.worker_error must propagate into the published CliChunkEvent.
+
+    CliStreamingParser populates worker_error on cli.auth / cli.session_lost
+    / cli.parse. Without this forward, the field is None on the wire and the
+    hub's nats_driver synthesises `worker.internal` instead of the precise
+    CLI code, breaking the P2 instrumentation chain on the streaming path.
+    """
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from roxabi_contracts.errors import WorkerError
+
+    # Arrange
+    we = WorkerError(
+        code="cli.session_lost",
+        message="session expired — please retry",
+        retryable=True,
+    )
+    result_event = ResultLlmEvent(
+        is_error=True,
+        duration_ms=42,
+        session_id="sess-1",
+        worker_error=we,
+    )
+    pool = _make_pool()
+    pool.send_streaming.return_value = _make_event_iter([result_event])
+
+    worker = CliPoolNatsWorker(pool)
+    nc = AsyncMock()
+    worker._nc = nc
+
+    msg = _make_nats_msg(reply="_INBOX.reply")
+
+    # Act
+    await worker._handle_cmd(msg, _cmd_payload(stream=True))
+
+    # Assert — published chunk preserves the structured envelope
+    payloads = [
+        json.loads(call.args[1].decode())
+        for call in nc.publish.call_args_list
+        if len(call.args) > 1
+    ]
+    result_chunks = [p for p in payloads if p.get("event_type") == "result"]
+    assert result_chunks, f"no result chunk published; got {payloads}"
+    assert result_chunks[0]["worker_error"]["code"] == "cli.session_lost"
+    assert result_chunks[0]["worker_error"]["retryable"] is True
+
+
+async def test_handle_cmd_validation_error_replies_worker_validation() -> None:
+    """ValidationError on inbound payload publishes worker.validation envelope.
+
+    The JSON decoded successfully (NatsAdapterBase did that) but the schema
+    failed — this is the textbook `worker.validation` case, not
+    `transport.parse` (which means "couldn't decode bytes/JSON").
+    """
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    # Arrange — payload missing required `text` and `model_cfg` fields
+    bad_payload = {
+        "contract_version": "1",
+        "trace_id": "trace-bad",
+        "issued_at": datetime.now(timezone.utc).isoformat(),
+        "pool_id": "pool-1",
+        # text/model_cfg/system_prompt deliberately omitted
+    }
+
+    pool = _make_pool()
+    worker = CliPoolNatsWorker(pool)
+    nc = AsyncMock()
+    worker._nc = nc
+
+    msg = _make_nats_msg(reply="_INBOX.reply")
+
+    # Act
+    await worker._handle_cmd(msg, bad_payload)
+
+    # Assert — single error chunk with worker.validation
+    payloads = [
+        json.loads(call.args[1].decode())
+        for call in nc.publish.call_args_list
+        if len(call.args) > 1
+    ]
+    assert len(payloads) == 1
+    assert payloads[0]["is_error"] is True
+    assert payloads[0]["done"] is True
+    assert payloads[0]["worker_error"]["code"] == "worker.validation"
+    assert payloads[0]["worker_error"]["retryable"] is False
+
+
 # ---------------------------------------------------------------------------
 # _handle_control — reset
 # ---------------------------------------------------------------------------

@@ -215,6 +215,93 @@ class TestCompleteWorkerError:
         assert not result.ok
         assert result.retryable is True
 
+    async def test_worker_reply_with_structured_envelope_forwards_it(self) -> None:
+        """When the worker provides a worker_error dict, drive forwards it as-is."""
+        from roxabi_contracts.errors import WorkerError
+
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.request = AsyncMock(
+            return_value=make_reply(
+                {
+                    "error": "context too long",
+                    "retryable": False,
+                    "worker_error": {
+                        "code": "llm.context_too_long",
+                        "message": "input exceeds context",
+                        "retryable": False,
+                    },
+                }
+            )
+        )
+        driver = make_driver(nc)
+
+        # Act
+        result = await driver.complete("pool:1", "hi", make_model_cfg(), "sys")
+
+        # Assert — structured envelope preserved (NOT synthesised worker.internal)
+        assert not result.ok
+        assert isinstance(result.worker_error, WorkerError)
+        assert result.worker_error.code == "llm.context_too_long"
+
+    async def test_transport_catchall_uses_transport_error(self) -> None:
+        """Generic NATS transport error (¬timeout, ¬no-responders) → transport.error."""
+        nc = AsyncMock()
+        nc.is_connected = True
+        # ConnectionClosedError is a nats.errors.Error subclass that's neither
+        # a TimeoutError nor a NoRespondersError, so it falls into the catch-all.
+        nc.request = AsyncMock(
+            side_effect=nats.errors.ConnectionClosedError("socket reset")
+        )
+        driver = make_driver(nc)
+
+        # Act
+        result = await driver.complete("pool:1", "hi", make_model_cfg(), "sys")
+
+        # Assert
+        assert not result.ok
+        assert result.worker_error is not None
+        assert result.worker_error.code == "transport.error"
+
+
+# ---------------------------------------------------------------------------
+# _decode_worker_error helper — direct unit coverage
+# ---------------------------------------------------------------------------
+
+
+class TestDecodeWorkerError:
+    """Direct tests for the module-level _decode_worker_error helper."""
+
+    def test_none_returns_none(self) -> None:
+        from lyra.llm.drivers.nats_driver import _decode_worker_error
+
+        assert _decode_worker_error(None) is None
+
+    def test_non_dict_returns_none(self) -> None:
+        from lyra.llm.drivers.nats_driver import _decode_worker_error
+
+        assert _decode_worker_error("not a dict") is None
+        assert _decode_worker_error(42) is None
+        assert _decode_worker_error(["list"]) is None
+
+    def test_invalid_dict_returns_none(self) -> None:
+        from lyra.llm.drivers.nats_driver import _decode_worker_error
+
+        # Invalid: code violates pattern (uppercase)
+        assert _decode_worker_error({"code": "BAD", "message": "x"}) is None
+        # Invalid: missing required `code`
+        assert _decode_worker_error({"message": "x"}) is None
+
+    def test_valid_dict_returns_worker_error(self) -> None:
+        from lyra.llm.drivers.nats_driver import _decode_worker_error
+        from roxabi_contracts.errors import WorkerError
+
+        we = _decode_worker_error(
+            {"code": "cli.session_lost", "message": "lost", "retryable": True}
+        )
+        assert isinstance(we, WorkerError)
+        assert we.code == "cli.session_lost"
+
 
 # ---------------------------------------------------------------------------
 # 4. stream() yields events in order, terminates on done=True
@@ -757,3 +844,129 @@ class TestStreamDefensiveBranches:
             for record in caplog.records
             if record.levelname == "WARNING"
         )
+
+
+class TestStreamWorkerError:
+    """Direct coverage for the stream() result-chunk worker_error path.
+
+    Two sub-branches exist in nats_driver._stream_gen:
+      (a) chunk carries a structured `worker_error` dict → forwarded verbatim
+      (b) chunk carries `is_error=True` but no `worker_error` → synthesised
+          as `worker.internal` so the hub still sees a structured envelope.
+    """
+
+    async def test_stream_forwards_structured_worker_error(self) -> None:
+        # Arrange
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.we112233")
+
+        chunks = [
+            {
+                "event_type": "result",
+                "is_error": True,
+                "duration_ms": 12,
+                "worker_error": {
+                    "code": "llm.rate_limit",
+                    "message": "quota exceeded",
+                    "retryable": True,
+                },
+                "done": True,
+            },
+        ]
+
+        captured_cb: Any = None
+
+        async def fake_subscribe(subject, cb=None):
+            nonlocal captured_cb
+            captured_cb = cb
+            return AsyncMock()
+
+        nc.subscribe = AsyncMock(side_effect=fake_subscribe)
+        nc.publish = AsyncMock()
+
+        driver = make_driver(nc)
+
+        async def collect() -> list:
+            events: list = []
+            gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
+            task = asyncio.create_task(_drain(gen, events))
+            await yield_once()
+            for chunk in chunks:
+                await captured_cb(make_chunk_msg(chunk))
+            await task
+            return events
+
+        async def _drain(gen, events):
+            async for ev in gen:
+                events.append(ev)
+
+        # Act
+        events = await collect()
+
+        # Assert — structured envelope forwarded, NOT synthesised
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.is_error is True
+        assert result.worker_error is not None
+        assert result.worker_error.code == "llm.rate_limit"
+        assert result.worker_error.message == "quota exceeded"
+
+    async def test_stream_synthesises_worker_internal_when_envelope_absent(
+        self,
+    ) -> None:
+        # Arrange — is_error=True but worker omits the envelope (legacy worker)
+        nc = AsyncMock()
+        nc.is_connected = True
+        nc.new_inbox = MagicMock(return_value="_INBOX.hub.we445566")
+
+        chunks = [
+            {
+                "event_type": "result",
+                "is_error": True,
+                "duration_ms": 7,
+                "error": "thing exploded",
+                "retryable": False,
+                "done": True,
+            },
+        ]
+
+        captured_cb: Any = None
+
+        async def fake_subscribe(subject, cb=None):
+            nonlocal captured_cb
+            captured_cb = cb
+            return AsyncMock()
+
+        nc.subscribe = AsyncMock(side_effect=fake_subscribe)
+        nc.publish = AsyncMock()
+
+        driver = make_driver(nc)
+
+        async def collect() -> list:
+            events: list = []
+            gen = await driver.stream("p", "hi", make_model_cfg(), "sys")
+            task = asyncio.create_task(_drain(gen, events))
+            await yield_once()
+            for chunk in chunks:
+                await captured_cb(make_chunk_msg(chunk))
+            await task
+            return events
+
+        async def _drain(gen, events):
+            async for ev in gen:
+                events.append(ev)
+
+        # Act
+        events = await collect()
+
+        # Assert — worker.internal synthesised, retryable + message preserved
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.is_error is True
+        assert result.worker_error is not None
+        assert result.worker_error.code == "worker.internal"
+        assert result.worker_error.message == "thing exploded"
+        assert result.worker_error.retryable is False

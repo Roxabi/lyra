@@ -1,0 +1,6 @@
+2026-05-02 12:00:00 lyra.adapter.clipool: METRIC worker_error_populated_total domain=cli count=1
+2026-05-02 12:00:01 lyra.llm.drivers.nats: METRIC worker_error_populated_total domain=llm count=1
+2026-05-02 12:00:02 lyra.adapter.clipool: METRIC worker_error_populated_total domain=cli count=1
+2026-05-02 12:00:03 lyra.core.processors: METRIC worker_error_received_total code=cli.session_lost domain=cli count=1
+2026-05-02 12:00:04 lyra.core.processors: METRIC worker_error_received_total code=transport.timeout domain=llm count=1
+2026-05-02 12:00:05 lyra.core.cli: streaming chunk processed

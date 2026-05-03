@@ -7,7 +7,14 @@ contract. v0.1.0 ships ``ContractEnvelope`` and ``CONTRACT_VERSION``;
 per-domain submodules (voice, image, memory, llm) arrive in later tags.
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from .audit import SecurityEvent
 from .envelope import CONTRACT_VERSION, ContractEnvelope
 
-__all__ = ["CONTRACT_VERSION", "ContractEnvelope", "SecurityEvent"]
+try:
+    __version__: str = version("roxabi-contracts")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"
+
+__all__ = ["CONTRACT_VERSION", "ContractEnvelope", "SecurityEvent", "__version__"]

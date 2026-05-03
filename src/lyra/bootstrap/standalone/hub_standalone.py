@@ -34,6 +34,7 @@ from lyra.bootstrap.wiring.nats_wiring import (
     wire_nats_discord_proxies,
     wire_nats_telegram_proxies,
 )
+from lyra.core.messaging.metrics import log_contracts_version
 from lyra.infrastructure.audit import JetStreamAuditSink
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
@@ -64,6 +65,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         )
 
     acquire_lockfile()
+    log_contracts_version()
 
     # Drivers built later are registered here so the reconnect callback can
     # clear their stale freshness timestamps after a NATS reconnect.

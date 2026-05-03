@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 from roxabi_contracts.envelope import ContractEnvelope
+from roxabi_contracts.errors import WorkerError
 
 __all__ = [
     "CliCmdPayload",
@@ -36,6 +37,7 @@ class CliChunkEvent(ContractEnvelope):
     session_id: str | None = None
     is_error: bool = False
     done: bool = False
+    worker_error: WorkerError | None = None
 
 
 class CliControlCmd(ContractEnvelope):

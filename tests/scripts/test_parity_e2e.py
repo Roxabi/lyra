@@ -5,6 +5,7 @@ Verifies identity authorization end-to-end.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -69,6 +70,9 @@ def rendered_auth_conf(tmp_path_factory: pytest.TempPathFactory) -> Path:
 @pytest.fixture(scope="module")
 def nats_server(rendered_auth_conf: Path) -> Generator[None, None, None]:
     """Start nats-server with rendered auth.conf; shut down after tests."""
+    import tempfile
+
+    stderr_file = tempfile.NamedTemporaryFile(delete=False, suffix=".log")
     proc = subprocess.Popen(
         [
             "nats-server",
@@ -80,8 +84,9 @@ def nats_server(rendered_auth_conf: Path) -> Generator[None, None, None]:
             "4223",
         ],
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=stderr_file,
     )
+    stderr_file.close()
     # Poll healthz with 3s timeout
     deadline = time.monotonic() + 3.0
     while time.monotonic() < deadline:
@@ -92,7 +97,9 @@ def nats_server(rendered_auth_conf: Path) -> Generator[None, None, None]:
             time.sleep(0.05)
     else:
         proc.terminate()
-        pytest.fail("nats-server did not start within 3s")
+        stderr_log = Path(stderr_file.name).read_text(errors="replace")
+        os.unlink(stderr_file.name)
+        pytest.fail(f"nats-server did not start within 3s\nstderr:\n{stderr_log}")
 
     yield
 

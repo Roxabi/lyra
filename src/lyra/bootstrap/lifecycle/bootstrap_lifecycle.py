@@ -10,6 +10,7 @@ import uvicorn
 
 from lyra.bootstrap.infra.health import create_health_app
 from lyra.bootstrap.lifecycle.lifecycle_helpers import (
+    close_safely,
     setup_signal_handlers,
     teardown_buses,
     teardown_dispatchers,
@@ -99,13 +100,7 @@ async def run_lifecycle(  # noqa: C901 — lifecycle orchestration
     # runs adapters in-process (platform SDKs) and does not use NatsChannelProxy.
     for proxy in resources.proxies:
         await proxy.publish_stream_errors("hub_shutdown")
-    _close_results = await asyncio.gather(
-        *[a.close() for a, _, _ in wired.dc_adapters],
-        return_exceptions=True,
-    )
-    for _r in _close_results:
-        if isinstance(_r, BaseException) and not isinstance(_r, asyncio.CancelledError):
-            log.exception("DC adapter close failed during teardown", exc_info=_r)
+    await close_safely("dc-adapters", *[a.close() for a, _, _ in wired.dc_adapters])
     if wired.dc_thread_store is not None:
         await wired.dc_thread_store.close()
     if resources.pm is not None:

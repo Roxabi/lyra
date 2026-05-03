@@ -45,7 +45,7 @@ Machine 1 requires:
 
 ### Auto-update from GHCR (canonical, since #929)
 
-Production pulls images from GitHub Container Registry. CI publishes `ghcr.io/roxabi/lyra:staging` on every staging merge. Quadlet's `Label=io.containers.autoupdate=registry` paired with `podman-auto-update.timer` (5-minute polling) restarts the container as soon as a new digest is published — no manual intervention needed after a merge.
+Production pulls images from GitHub Container Registry. CI publishes `ghcr.io/roxabi/lyra:staging` on every staging merge. Quadlet's `Label=io.containers.autoupdate=registry` paired with `podman-auto-update.timer` (daily by default; configure a drop-in for shorter intervals) restarts the container as soon as a new digest is published — no manual intervention needed after a merge.
 
 ```bash
 # Verify the timer is active (one-time, on Machine 1)
@@ -56,28 +56,6 @@ podman auto-update --dry-run
 ```
 
 See [ops/container-publishing.md](ops/container-publishing.md#auto-update-flow) for the full pipeline.
-
-### Manual fallback — `scripts/deploy-quadlet.sh`
-
-When CI cannot publish (e.g. mid-incident, image-pinning experiment), drive a manual deploy from Machine 2:
-
-> Note: `scripts/deploy-quadlet.sh` carries an internal deprecation banner (replaced by `podman-auto-update.timer` for routine deploys). Retained as an offline fallback for staged rollouts.
-
-```bash
-bash scripts/deploy-quadlet.sh
-```
-
-This wraps `scripts/deploy-quadlet.sh`, which delegates the heavy lifting to a shared deploy library at `~/.local/lib/roxabi/deploy-lib.sh`. Install the library once per Machine 1 setup:
-
-```bash
-make quadlet-install-deploy-lib
-```
-
-The library is pinned at install time (commit SHA stamped in the header). Upgrade after a Lyra release with:
-
-```bash
-make quadlet-upgrade-lib
-```
 
 ### Manual fallback — build + push
 
@@ -181,10 +159,22 @@ Adapter containers (`lyra-telegram`, `lyra-discord`) are lightweight thin NATS c
 # One-time setup on Machine 1 — installs units and reloads systemd
 cd ~/projects/lyra
 make quadlet-install
+
+# Enable the auto-update timer (only needed if provision.sh was not run)
+systemctl --user enable --now podman-auto-update.timer
+
+# Verify it's active and shows a NEXT firing time
+systemctl --user list-timers | grep podman-auto-update
 ```
 
 This copies all `.container`, `.volume`, and `.network` files from `deploy/quadlet/` to
 `~/.config/containers/systemd/` and runs `systemctl --user daemon-reload`.
+
+`podman-auto-update.timer` must be active for the container-native CI→prod deploy to work:
+it polls GHCR at its configured interval (daily by default) and restarts any container whose
+image digest changed. Without it, pushes to `staging` build a new GHCR image but prod never
+pulls it. `provision.sh` enables this automatically; if you skipped provisioning or
+reprovisioned without the timer step, run the `enable --now` command above.
 
 ## 4. Manage the service
 
@@ -282,6 +272,9 @@ needed.
 ```bash
 # Enable linger (run once — survives reboots)
 loginctl enable-linger $USER
+
+# Enable auto-update timer (only needed if provision.sh was not run — see §3 for detail)
+systemctl --user enable --now podman-auto-update.timer
 
 # Check all Lyra unit statuses
 systemctl --user status 'lyra-*.service' nats.service

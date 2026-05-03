@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -119,7 +119,6 @@ monitor:
 # ── Quadlet install paths ────────────────────────────────────────────────────
 
 QUADLET_DIR            := $(HOME)/.config/containers/systemd
-DEPLOY_LIB_INSTALL_DIR := $(HOME)/.local/lib/roxabi
 
 quadlet-preflight:  ## advisory pre-flight checks before Quadlet install (non-blocking)
 	@_unprivport=$$(sysctl -n net.ipv4.ip_unprivileged_port_start 2>/dev/null || echo 1024); \
@@ -144,22 +143,9 @@ quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/contai
 	@systemctl --user daemon-reload
 	@echo "Quadlet units installed."
 	@echo "Next: run 'make quadlet-secrets-install' to (re)create Podman secrets from ~/.lyra/nkeys/."
-	@if [ ! -f "$(DEPLOY_LIB_INSTALL_DIR)/deploy-lib.sh" ]; then \
-		echo ""; \
-		echo "Hint: deploy-lib.sh not found at $(DEPLOY_LIB_INSTALL_DIR)/"; \
-		echo "      Run 'make quadlet-install-deploy-lib' to install the shared deploy library."; \
-	fi
 
 quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.lyra/nkeys/auth.conf
 	@lyra-acl genkeys --emit-merged-authconf
-
-quadlet-install-deploy-lib:  ## install scripts/deploy-lib.sh to ~/.local/lib/roxabi/ with pinned commit
-	@mkdir -p "$(DEPLOY_LIB_INSTALL_DIR)"
-	@sed "s|<commit-sha>|$$(git rev-parse HEAD)|" scripts/deploy-lib.sh > "$(DEPLOY_LIB_INSTALL_DIR)/deploy-lib.sh"
-	@chmod 0644 "$(DEPLOY_LIB_INSTALL_DIR)/deploy-lib.sh"
-	@echo "Installed deploy-lib.sh @ $$(git rev-parse --short HEAD) to $(DEPLOY_LIB_INSTALL_DIR)/"
-
-quadlet-upgrade-lib: quadlet-install-deploy-lib  ## alias — re-copy lib from this checkout
 
 # ADR-054 Decision 5 (revised): file-based credentials (NATS auth.conf + nkey seeds)
 # are delivered to containers as Podman secrets. Source files live in ~/.lyra/nkeys/;

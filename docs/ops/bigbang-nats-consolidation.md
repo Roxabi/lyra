@@ -85,10 +85,7 @@ chmod 600 ~/.voicecli/nkeys/*.seed
 cd ~/projects/lyra && make quadlet-authconf-merged
 # Verify: ~/.lyra/nkeys/auth.conf contains hub, telegram, discord, voice-tts, voice-stt blocks
 
-# 6. Install shared deploy-lib SSoT (ADR-055 D5)
-make quadlet-install-deploy-lib
-
-# 7. Delete stale Podman secrets from prior attempts
+# 6. Delete stale Podman secrets from prior attempts
 podman secret rm voicecli-tts.seed voicecli-stt.seed 2>/dev/null || true
 podman secret rm voicecli-nats-auth 2>/dev/null || true
 ```

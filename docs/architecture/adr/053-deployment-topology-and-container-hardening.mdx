@@ -17,7 +17,7 @@ Lyra now ships three deployment tiers:
 |---|---|---|---|
 | Dev | Single process, embedded NATS | `lyra start` | — |
 | ~~Simple prod~~ | ~~supervisord + 3 host processes + host `nats.service`~~ | ~~`scripts/deploy.sh`~~ | *(retired in #886/#1036)* |
-| Advanced prod | Podman Quadlet, 4 rootless containers on `lyra.network` | `scripts/deploy-quadlet.sh` | `docs/DEPLOYMENT.md` *(merged in #1036)* |
+| Advanced prod | Podman Quadlet, 4 rootless containers on `lyra.network` | `podman auto-update` / `make full-deploy` *(~~scripts/deploy-quadlet.sh~~ retired in #1035)* | `docs/DEPLOYMENT.md` *(merged in #1036)* |
 
 A Q2 2026 audit (architect + devops + security) of the Quadlet path surfaced five gaps that cannot be fixed in isolation — each change couples to at least one other. Fixing them in separate PRs without a recorded design intent creates contradictory half-states (e.g., UID pinned in the Dockerfile but `User=` absent in the units). This ADR bundles the five decisions into one design pass.
 
@@ -91,7 +91,9 @@ Migration note: supervisord does not auto-reload conf files. On the next `make r
 
 **Enforcement pattern:**
 
-1. Post-build: `scripts/deploy-quadlet.sh` captures the image ID immediately after `podman build`:
+> ⚠️ **Implementation note (#1035):** `scripts/deploy-quadlet.sh` was retired before this enforcement was implemented. The digest pinning below describes the original design intent. Current deploy path is `podman auto-update` (GHCR); manual path is `make full-deploy`.
+
+1. Post-build: ~~`scripts/deploy-quadlet.sh`~~ captures the image ID immediately after `podman build`:
    ```
    podman inspect --format '{{.Id}}' localhost/lyra:latest > .image-digest
    ```
@@ -101,7 +103,7 @@ Migration note: supervisord does not auto-reload conf files. On the next `make r
 
 `.image-digest` is added to `.gitignore` (it is machine-local build state, not a tracked artifact).
 
-Files affected: `scripts/deploy-quadlet.sh`, `.gitignore`.
+Files affected: ~~`scripts/deploy-quadlet.sh`~~ *(retired in #1035)*, `.gitignore`.
 
 ### 4. Container UID pinning + explicit `User=`
 
@@ -156,9 +158,9 @@ deploy/quadlet/telegram.env.example
 deploy/quadlet/discord.env.example
 ```
 
-`scripts/deploy-quadlet.sh` adds a pre-flight check: if `~/.lyra/env/<name>.env` does not exist, the script aborts with instructions to copy from the example file.
+~~`scripts/deploy-quadlet.sh`~~ *(retired in #1035)* adds a pre-flight check: if `~/.lyra/env/<name>.env` does not exist, the script aborts with instructions to copy from the example file.
 
-Files affected: `deploy/quadlet/lyra-hub.container`, `deploy/quadlet/lyra-telegram.container`, `deploy/quadlet/lyra-discord.container`, `scripts/deploy-quadlet.sh`, `deploy/quadlet/*.env.example` (new). Old `deploy/quadlet/.env.*.example` files are removed; `docs/DEPLOYMENT-quadlet.md` is updated.
+Files affected: `deploy/quadlet/lyra-hub.container`, `deploy/quadlet/lyra-telegram.container`, `deploy/quadlet/lyra-discord.container`, ~~`scripts/deploy-quadlet.sh`~~ *(retired in #1035)*, `deploy/quadlet/*.env.example` (new). Old `deploy/quadlet/.env.*.example` files are removed; `docs/DEPLOYMENT-quadlet.md` is updated.
 
 ## 6. Ecosystem Implications
 
@@ -214,9 +216,9 @@ The following implementation issues are out of scope for this ADR and should be 
 
 1. **Implement supervisord conf rename** — rename `lyra_hub/telegram/discord.conf` → `lyra-hub/telegram/discord.conf`, update `[program:]` stanzas and log paths; update `docs/DEPLOYMENT.md`.
 2. **Simplify Makefile UNIT conditionals** — remove `LYRA_HUB_UNIT` / `LYRA_TELEGRAM_UNIT` / `LYRA_DISCORD_UNIT` conditionals post-rename.
-3. **Implement image digest pinning in `scripts/deploy-quadlet.sh`** — post-build capture + pre-restart verify + abort on mismatch; add `.image-digest` to `.gitignore`.
+3. ~~**Implement image digest pinning in `scripts/deploy-quadlet.sh`**~~ *(moot — script retired in #1035 before implementation)*.
 4. **Pin UID 1500 in Dockerfile + add `User=lyra` to `.container` files** — `useradd -u 1500 -m lyra` in `Dockerfile`; `User=lyra` in all three `.container` files.
-5. **Relocate secrets to `~/.lyra/env/`** — update `EnvironmentFile=` paths in `.container` files; add `deploy/quadlet/.env.*.example`; update `scripts/deploy-quadlet.sh` pre-flight; update `docs/DEPLOYMENT-quadlet.md`; remove `~/projects/lyra/.env.*` from repo.
+5. **Relocate secrets to `~/.lyra/env/`** — update `EnvironmentFile=` paths in `.container` files; add `deploy/quadlet/.env.*.example`; ~~update `scripts/deploy-quadlet.sh` pre-flight~~ *(script retired in #1035)*; update `docs/DEPLOYMENT-quadlet.md`; remove `~/projects/lyra/.env.*` from repo.
 6. **`make remote` systemd target** — adding remote `make start/stop` over SSH via systemd units is a separate operational concern; track independently.
 7. **NATS port 4223 → 4222 transition** — during the ecosystem migration window, M₁ runs two NATS instances in coexistence: the host `nats.service` on 4222 (used by supervisord-managed projects that have not yet migrated) and the Quadlet NATS container on 4223 (used by Lyra). Port 4223 is an intentional coexistence topology for this migration window, not a temporary hack. Drop to 4222 when Quadlet NATS is the only NATS on M₁ — i.e., all supervisord-managed projects that use NATS have migrated. Track as a follow-up issue triggered by that transition point.
 8. **Evaluate `podman secret` as Phase 2 secrets backend** — follow-up to Alternative C above; assess ergonomics and provisioning impact after Decision 5 lands.

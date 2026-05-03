@@ -220,6 +220,8 @@ This closes open question 3 from the initial draft — no bind-mount fallback; m
 
 **Chosen:** Option C — shared shell library at `lyra/scripts/deploy-lib.sh`.
 
+> ⚠️ **Superseded (2026-05-03, #1035):** `deploy-lib.sh` and `deploy-quadlet.sh` were retired before ecosystem-wide adoption. Canonical deploy path is `podman auto-update.timer` (GHCR registry auto-pull); manual fallback is `make full-deploy`. D5 is partially superseded — the shared-library pattern was replaced by the Podman auto-update mechanism.
+
 **Rationale:** The deploy library is infra tooling, not a scaffold template. `roxabi-boilerplate` is a SaaS Next.js project scaffold — placing a Podman Quadlet deploy library there mixes entirely unrelated domains and requires M₁ to have `roxabi-boilerplate` checked out for deploys. Lyra is the ecosystem origin: it defines the patterns that downstream projects adopt. Hosting the shared deploy library in `lyra/scripts/deploy-lib.sh` is consistent with that role. Downstream projects source it via the Lyra git dependency (already available as `~/projects/lyra/`) or copy it at bootstrap time.
 
 **Versioning and installation:**

@@ -466,9 +466,7 @@ class TestTelegramTokenFilter:
         from lyra.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
-        record = self._make_record(
-            "id=1234567:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-        )
+        record = self._make_record("id=1234567:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
         filt.filter(record)
         assert record.getMessage() == "id=1234567:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 

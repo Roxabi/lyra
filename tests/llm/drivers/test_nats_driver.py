@@ -245,10 +245,14 @@ class TestCompleteWorkerError:
         assert result.worker_error.code == "llm.context_too_long"
 
     async def test_transport_catchall_uses_transport_error(self) -> None:
-        """Generic transport exception (not timeout/no-responders) yields transport.error."""
+        """Generic NATS transport error (¬timeout, ¬no-responders) → transport.error."""
         nc = AsyncMock()
         nc.is_connected = True
-        nc.request = AsyncMock(side_effect=ConnectionResetError("socket reset"))
+        # ConnectionClosedError is a nats.errors.Error subclass that's neither
+        # a TimeoutError nor a NoRespondersError, so it falls into the catch-all.
+        nc.request = AsyncMock(
+            side_effect=nats.errors.ConnectionClosedError("socket reset")
+        )
         driver = make_driver(nc)
 
         # Act
@@ -289,9 +293,8 @@ class TestDecodeWorkerError:
         assert _decode_worker_error({"message": "x"}) is None
 
     def test_valid_dict_returns_worker_error(self) -> None:
-        from roxabi_contracts.errors import WorkerError
-
         from lyra.llm.drivers.nats_driver import _decode_worker_error
+        from roxabi_contracts.errors import WorkerError
 
         we = _decode_worker_error(
             {"code": "cli.session_lost", "message": "lost", "retryable": True}

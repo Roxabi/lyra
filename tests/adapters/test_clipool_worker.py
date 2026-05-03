@@ -251,9 +251,8 @@ async def test_handle_cmd_streaming_forwards_worker_error_from_result_event() ->
     hub's nats_driver synthesises `worker.internal` instead of the precise
     CLI code, breaking the P2 instrumentation chain on the streaming path.
     """
-    from roxabi_contracts.errors import WorkerError
-
     from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from roxabi_contracts.errors import WorkerError
 
     # Arrange
     we = WorkerError(

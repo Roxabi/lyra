@@ -67,7 +67,7 @@ def rendered_auth_conf(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
     (tmp / "auth.conf").write_text(text)
     for name, seed in seeds.items():
-        (tmp / f"{name}.seed").write_bytes(seed)
+        (tmp / f"{name}.seed").write_bytes(seed + b"\n")
     return tmp
 
 
@@ -201,12 +201,10 @@ def test_hub_can_connect(nats_server: None, rendered_auth_conf: Path) -> None:
 
     import nats
 
-    seed = (rendered_auth_conf / "hub.seed").read_bytes()
-
     async def _connect() -> None:
         nc = await nats.connect(
             "nats://localhost:4223",
-            nkeys_seed=seed,
+            nkeys_seed_file=str(rendered_auth_conf / "hub.seed"),
         )
         await nc.drain()
 

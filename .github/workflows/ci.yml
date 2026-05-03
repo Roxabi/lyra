@@ -43,17 +43,18 @@ jobs:
 
       - name: Install nk
         env:
-          NK_VERSION: "0.4.4"
+          NK_VERSION: "0.4.15"
         run: |
           ARCH=$(dpkg --print-architecture)
-          TARBALL="nk-v${NK_VERSION}-linux-${ARCH}.tar.gz"
+          ZIPFILE="nkeys-v${NK_VERSION}-linux-${ARCH}.zip"
           TMPDIR=$(mktemp -d)
-          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/${TARBALL}" \
-            -o "${TMPDIR}/${TARBALL}"
-          # sha256: verify before merging — nk v0.4.4 linux/amd64
-          # nkeys releases do not publish a SHA256SUMS file; pin via version + review release page
-          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
-          sudo install -m 755 "${TMPDIR}/nk" /usr/local/bin/nk
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/${ZIPFILE}" \
+            -o "${TMPDIR}/${ZIPFILE}"
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/nkeys-v${NK_VERSION}-checksums.txt" \
+            -o "${TMPDIR}/checksums.txt"
+          cd "${TMPDIR}" && grep -F "${ZIPFILE}" checksums.txt | sha256sum --check
+          unzip -q "${TMPDIR}/${ZIPFILE}" -d "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nkeys-v${NK_VERSION}-linux-${ARCH}/nk" /usr/local/bin/nk
           nk --version
 
       - name: Install uv

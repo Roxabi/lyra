@@ -40,6 +40,7 @@ def _run_genkeys(
 ) -> subprocess.CompletedProcess[str]:
     """Run gen_nkeys.py genkeys with given args via subprocess."""
     run_env = os.environ.copy()
+    run_env["NKEY_PROVIDER"] = "fake"  # tests write name.encode() seed bytes
     if env:
         run_env.update(env)
     return subprocess.run(

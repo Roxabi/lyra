@@ -272,7 +272,6 @@ This encrypts and stores the tokens in `~/.lyra/config.db`.
 
 > **Note:** Bot tokens are encrypted in `~/.lyra/config.db` — not in `.env`. The `.env` file is for:
 > - `DEPLOY_HOST`, `DEPLOY_DIR` — remote deployment target
-> - `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` — monitoring timer (sends alerts directly)
 > - `LYRA_HEALTH_SECRET` — bearer token for health endpoint
 > - Voice settings (`LYRA_STT_ENABLED`, `LYRA_TTS_ENGINE`, etc.)
 >
@@ -353,6 +352,9 @@ mkdir -p ~/.lyra/env
 openssl rand -hex 32 > ~/.lyra/env/health_secret
 chmod 600 ~/.lyra/env/health_secret
 echo "LYRA_HEALTH_SECRET=$(cat ~/.lyra/env/health_secret)" >> ~/.lyra/env/hub.env
+
+# Reload the hub so the new EnvironmentFile value is picked up
+systemctl --user restart lyra-hub.service
 
 # Probe (after lyra-hub.service is running)
 curl -fsS -H "Authorization: Bearer $(cat ~/.lyra/env/health_secret)" \

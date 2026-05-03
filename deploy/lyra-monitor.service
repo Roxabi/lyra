@@ -6,6 +6,8 @@
 Description=[DEPRECATED — see #1035] Lyra health monitor (Layer 1 pre-check + Layer 2 LLM escalation)
 After=network-online.target
 Wants=network-online.target
+# Inert by design — accidental `systemctl --user start lyra-monitor.service` is a no-op.
+ConditionPathExists=/dev/null/disabled-see-1035
 
 [Service]
 Type=oneshot

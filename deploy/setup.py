@@ -168,8 +168,7 @@ def init_agents(lyra_dir: Path) -> None:
         print("  ✗  lyra CLI not found in venv — skipping agent init")
         return
     result = subprocess.run(
-        f"{agent_init} agent init",
-        shell=True,
+        [str(agent_init), "agent", "init"],
         cwd=lyra_dir,
         capture_output=True,
         text=True,
@@ -249,8 +248,7 @@ def setup_plugins(
     print()
 
     marketplace_out = subprocess.run(
-        "claude plugin marketplace list",
-        shell=True,
+        ["claude", "plugin", "marketplace", "list"],
         capture_output=True,
         text=True,
     ).stdout
@@ -265,8 +263,7 @@ def setup_plugins(
             print(f"  ✓  {label}  (already registered)")
         else:
             r = subprocess.run(
-                f"claude plugin marketplace add {path}",
-                shell=True,
+                ["claude", "plugin", "marketplace", "add", str(path)],
                 capture_output=True,
                 text=True,
             )
@@ -277,8 +274,13 @@ def setup_plugins(
 
     if "agent-browser" not in marketplace_out:
         r = subprocess.run(
-            "claude plugin marketplace add https://github.com/vercel-labs/agent-browser",
-            shell=True,
+            [
+                "claude",
+                "plugin",
+                "marketplace",
+                "add",
+                "https://github.com/vercel-labs/agent-browser",
+            ],
             capture_output=True,
             text=True,
         )
@@ -374,16 +376,22 @@ def setup_plugins(
 
 def install_quadlet_units(lyra_dir: Path) -> None:
     print("Installing Quadlet units (lyra)...")
-    result = subprocess.run("make quadlet-install", shell=True, cwd=lyra_dir)
+    result = subprocess.run(["make", "quadlet-install"], cwd=lyra_dir)
     if result.returncode == 0:
         print("  ✓  Quadlet units installed at ~/.config/containers/systemd/")
     else:
-        print("  !  make quadlet-install failed; run manually after fixing prereqs")
+        print("  ✗  make quadlet-install failed — aborting before linger.")
+        print("     Fix the prereqs (Podman, perms) and re-run setup.py.")
+        sys.exit(1)
 
 
 def enable_linger() -> None:
     print("Enabling systemd linger...")
-    run("loginctl enable-linger $(whoami)", check=False)
+    user = os.environ.get("USER") or os.environ.get("LOGNAME")
+    if not user:
+        print("  !  Could not determine current user; skipping linger.")
+        return
+    subprocess.run(["loginctl", "enable-linger", user], check=False)
     print("  ✓  Linger enabled (containers auto-start on boot)")
 
 

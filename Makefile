@@ -35,6 +35,8 @@ DEPLOY_DIR := $(shell grep '^DEPLOY_DIR=' .env 2>/dev/null | cut -d= -f2)
 define require_machine1
 	@[ -n "$(DEPLOY_HOST)" ] || { echo "Error: DEPLOY_HOST not set in .env"; exit 1; }
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
+	@case "$(DEPLOY_HOST)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_HOST contains shell metacharacters"; exit 1 ;; esac
+	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
 .PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format
@@ -113,7 +115,7 @@ monitor:
 	@echo "make monitor — DEPRECATED."
 	@echo "Host-timer monitoring is superseded by Monitoring v2 (#1035 — NATS + Tauri)."
 	@echo "Existing prod has been disabled. This target will be removed when #1035 lands."
-	@false
+	@-false
 
 # ── Quadlet install paths ────────────────────────────────────────────────────
 

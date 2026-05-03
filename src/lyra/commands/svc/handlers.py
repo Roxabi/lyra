@@ -1,4 +1,4 @@
-"""Service management plugin — wraps supervisorctl (admin-only)."""
+"""Service management plugin — wraps `systemctl --user` (admin-only)."""
 
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ from lyra.core.error_utils import safe_error_response
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
 from lyra.integrations.base import ServiceControlFailed, ServiceManager
-from lyra.integrations.supervisor import SupervisorctlManager
+from lyra.integrations.systemctl import SystemctlManager
 
 log = logging.getLogger(__name__)
 
-_service_manager: ServiceManager = SupervisorctlManager()
+_service_manager: ServiceManager = SystemctlManager()
 
 _ALLOWED_SERVICES = frozenset({"lyra", "voicecli_stt", "voicecli_tts"})
 _ALLOWED_ACTIONS = frozenset({"restart", "start", "stop", "status"})
@@ -86,7 +86,7 @@ async def cmd_svc(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
         if exc.reason == "timeout":
             return Response(content="Command timed out.")
         if exc.reason == "not_available":
-            return Response(content="supervisorctl.sh not found.")
+            return Response(content="systemctl --user not found.")
         return safe_error_response(exc, log, "svc plugin")
     except Exception as exc:  # noqa: BLE001  # top-level boundary
         return safe_error_response(exc, log, "svc plugin")

@@ -62,7 +62,7 @@ See [ops/container-publishing.md](ops/container-publishing.md#auto-update-flow) 
 When CI cannot publish (e.g. mid-incident, image-pinning experiment), drive a manual deploy from Machine 2:
 
 ```bash
-make deploy-quadlet
+bash scripts/deploy-quadlet.sh
 ```
 
 This wraps `scripts/deploy-quadlet.sh`, which delegates the heavy lifting to a shared deploy library at `~/.local/lib/roxabi/deploy-lib.sh`. Install the library once per Machine 1 setup:
@@ -319,7 +319,7 @@ Restart adapters and clipool so they reconnect with new credentials:
 ```bash
 make telegram reload && make discord reload
 make clipool reload
-make lyra-hub reload  # hub last
+systemctl --user restart lyra-hub.service  # hub last
 ```
 
 > Voice workers (TTS/STT) live in the voiceCLI project and are reloaded via its own Makefile

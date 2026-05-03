@@ -35,9 +35,12 @@ SPEC="${REPO_ROOT}/artifacts/specs/706-per-role-nkeys-acls-spec.mdx"
 EFFECTIVE_JSON=$(jq '
   reduce (.request_reply_flows[]?) as $flow (
     .;
-    select(.identities[$flow.requester] != null and .identities[$flow.responder] != null) |
-    .identities[$flow.requester].subscribe |= (. + ["_inbox.\($flow.requester).>"] | unique) |
-    .identities[$flow.responder].publish   |= (. + ["_inbox.\($flow.requester).>"] | unique)
+    if (.identities[$flow.requester] != null and .identities[$flow.responder] != null) then
+      .identities[$flow.requester].subscribe |= (. + ["_inbox.\($flow.requester).>"] | unique) |
+      .identities[$flow.responder].publish   |= (. + ["_inbox.\($flow.requester).>"] | unique)
+    else
+      .
+    end
   )
 ' "$JSON")
 

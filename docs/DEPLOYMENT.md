@@ -159,10 +159,22 @@ Adapter containers (`lyra-telegram`, `lyra-discord`) are lightweight thin NATS c
 # One-time setup on Machine 1 — installs units and reloads systemd
 cd ~/projects/lyra
 make quadlet-install
+
+# Enable the auto-update timer (one-time per host, run on Machine 1)
+systemctl --user enable --now podman-auto-update.timer
+
+# Verify it's active and shows a NEXT firing time
+systemctl --user list-timers | grep podman-auto-update
 ```
 
 This copies all `.container`, `.volume`, and `.network` files from `deploy/quadlet/` to
 `~/.config/containers/systemd/` and runs `systemctl --user daemon-reload`.
+
+`podman-auto-update.timer` must be active for the container-native CI→prod deploy to work:
+it polls GHCR every 5 minutes and restarts any container whose image digest changed. Without
+it, pushes to `staging` build a new GHCR image but prod never pulls it. `provision.sh`
+enables this automatically; if you skipped provisioning or reprovisioned without the timer
+step, run the `enable --now` command above.
 
 ## 4. Manage the service
 
@@ -260,6 +272,9 @@ needed.
 ```bash
 # Enable linger (run once — survives reboots)
 loginctl enable-linger $USER
+
+# Enable auto-update timer (run once — see §3 for detail)
+systemctl --user enable --now podman-auto-update.timer
 
 # Check all Lyra unit statuses
 systemctl --user status 'lyra-*.service' nats.service

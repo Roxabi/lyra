@@ -6,6 +6,7 @@ import asyncio
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import nats.errors
 import pytest
 
 from lyra.core.agent.agent_config import ModelConfig
@@ -212,7 +213,7 @@ class TestJetStreamAuditSinkEmit:
         sink = JetStreamAuditSink()
 
         js = MagicMock()
-        js.publish = AsyncMock(side_effect=RuntimeError("nats down"))
+        js.publish = AsyncMock(side_effect=nats.errors.Error("nats down"))
         sink._js = js  # type: ignore[attr-defined]
 
         event = SecurityEvent(

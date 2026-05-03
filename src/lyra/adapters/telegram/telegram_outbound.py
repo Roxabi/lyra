@@ -8,6 +8,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
+from aiogram.exceptions import TelegramAPIError
+
 from lyra.adapters.telegram.telegram_formatting import (
     _render_buttons,
     _render_text,
@@ -56,7 +58,7 @@ async def _typing_worker(bot: Any, chat_id: int, interval: float = 3.0) -> None:
         try:
             await bot.send_chat_action(chat_id, "typing")
             consecutive_failures = 0
-        except Exception as exc:
+        except TelegramAPIError as exc:
             consecutive_failures += 1
             log.debug("typing worker: %s (failure %d/3)", exc, consecutive_failures)
             if consecutive_failures >= 3:
@@ -83,7 +85,7 @@ async def _typing_loop(
     stop_event = asyncio.Event()
     try:
         await bot.send_chat_action(chat_id, "typing")
-    except Exception as exc:
+    except TelegramAPIError as exc:
         log.debug("typing indicator failed: %s", exc)
 
     async def keep_typing() -> None:
@@ -94,7 +96,7 @@ async def _typing_loop(
             except asyncio.TimeoutError:
                 try:
                     await bot.send_chat_action(chat_id, "typing")
-                except Exception as exc:
+                except TelegramAPIError as exc:
                     log.debug("typing indicator failed: %s", exc)
 
     task = asyncio.create_task(keep_typing())
@@ -217,7 +219,7 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
                     text=rendered[0],
                     parse_mode="MarkdownV2",
                 )
-            except Exception as exc:
+            except TelegramAPIError as exc:
                 log.debug("Placeholder text edit skipped: %s", exc)
 
     async def _edit_placeholder_tool(ph: Any, event: Any, header: str = "") -> None:
@@ -231,7 +233,7 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
                     text=rendered[0],
                     parse_mode="MarkdownV2",
                 )
-            except Exception as exc:
+            except TelegramAPIError as exc:
                 log.debug("Tool summary edit skipped: %s", exc)
 
     async def _send_message(text: str) -> int | None:

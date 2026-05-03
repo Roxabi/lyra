@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 from uuid import uuid4
 
+import nats.errors
+
 from lyra.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
 from lyra.llm.base import LlmResult
 from roxabi_contracts.cli.models import CliCmdPayload, CliControlCmd
@@ -128,7 +130,7 @@ class CliNatsDriver(NatsDriverBase):
         )
         try:
             reply = await self._request(self.SUBJECT_CMD, payload)
-        except Exception as exc:
+        except nats.errors.Error as exc:
             log.warning(
                 "cli_nats: complete() transport error [pool:%s]: %s: %s",
                 pool_id,

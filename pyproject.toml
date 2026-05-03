@@ -130,7 +130,7 @@ src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests",
 exclude = [".claude/worktrees", "deploy"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "C901", "PLR0913", "PLR0915"]
+select = ["E", "F", "I", "C901", "PLR0913", "PLR0915", "BLE001"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

@@ -113,7 +113,7 @@ class TestOnReapCallback:
             if pool._on_reap and reason == "idle":
                 try:
                     await pool._on_reap(pid, reason)
-                except Exception:
+                except Exception:  # noqa: BLE001  # test teardown
                     pass  # matches fire-and-forget pattern
 
         # No exception propagated — reaper survived

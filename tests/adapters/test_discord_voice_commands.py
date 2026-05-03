@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
 from lyra.adapters.discord import DiscordAdapter
@@ -288,7 +289,9 @@ class TestHandleVoiceCommand:
         adapter._vsm.join = join_mock
         voice_ch = MagicMock()
         msg = _make_message("!join", author_voice_channel=voice_ch)
-        msg.reply = AsyncMock(side_effect=RuntimeError("discord unavailable"))
+        msg.reply = AsyncMock(
+            side_effect=discord.DiscordException("discord unavailable")
+        )
 
         # Act
         with caplog.at_level(logging.WARNING):

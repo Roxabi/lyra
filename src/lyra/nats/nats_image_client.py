@@ -15,9 +15,11 @@ from datetime import datetime, timezone
 from typing import Any, Literal, NoReturn
 from uuid import uuid4
 
+import nats.errors
 from nats.aio.client import Client as NATS
 from pydantic import ValidationError
 
+import nats
 from lyra.nats.worker_registry import WorkerRegistry
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.image import (
@@ -159,7 +161,7 @@ class NatsImageClient:
             raise ImageUnavailableError(
                 f"Image adapter timeout after {self._timeout:.0f}s"
             ) from exc
-        except Exception as exc:
+        except (nats.errors.Error, TimeoutError) as exc:
             self._raise_nats_failure(exc, len(payload) / 1024)
         resp = self._parse_reply(reply.data)
         if not resp.ok:

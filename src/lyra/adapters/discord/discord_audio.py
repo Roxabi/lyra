@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+import aiohttp
 import discord
 
 from lyra.adapters.shared._shared import push_to_hub_guarded
@@ -146,7 +147,7 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
                     "That audio file is too large to process.",
                 )
             )
-        except Exception:
+        except discord.HTTPException:
             log.warning(
                 "Failed to send audio-too-large reply for message_id=%s",
                 message.id,
@@ -155,7 +156,7 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
 
     try:
         audio_bytes = await audio_attachment.read()
-    except Exception:
+    except (discord.HTTPException, OSError, aiohttp.ClientError):
         log.exception(
             "Failed to download audio attachment for message_id=%s",
             message.id,
@@ -167,7 +168,7 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
                     "Couldn't retrieve your audio file. Please try again.",
                 )
             )
-        except Exception:
+        except discord.HTTPException:
             log.warning(
                 "Failed to send audio-download-failed reply for message_id=%s",
                 message.id,
@@ -188,7 +189,7 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
                     "That file does not appear to be a valid audio file.",
                 )
             )
-        except Exception:
+        except discord.HTTPException:
             log.warning(
                 "Failed to send invalid-format reply for message_id=%s",
                 message.id,
@@ -218,7 +219,7 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
             ):
                 adapter._owned_threads.add(message.channel.id)
                 _audio_in_owned_thread = True
-        except Exception:
+        except Exception:  # noqa: BLE001  # ThreadStore: non-fatal ownership check
             log.warning(
                 "ThreadStore: lazy is_owned (audio) failed for thread_id=%s",
                 message.channel.id,

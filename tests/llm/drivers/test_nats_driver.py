@@ -19,6 +19,7 @@ import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import nats.errors
 import pytest
 
 from lyra.core.agent.agent_config import ModelConfig
@@ -158,7 +159,7 @@ class TestCompleteTimeout:
         # Arrange
         nc = AsyncMock()
         nc.is_connected = True
-        nc.request = AsyncMock(side_effect=RuntimeError("connection refused"))
+        nc.request = AsyncMock(side_effect=nats.errors.Error("connection refused"))
         driver = make_driver(nc)
 
         # Act

@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+import discord
+
 from lyra.adapters.discord.voice.discord_voice import (
     VoiceAlreadyActiveError,
     VoiceDependencyError,
@@ -15,8 +17,6 @@ from lyra.core.commands.command_parser import CommandParser
 from lyra.core.commands.command_registry import CommandParam, PlatformCommand
 
 if TYPE_CHECKING:
-    import discord
-
     from lyra.adapters.discord import DiscordAdapter
 
 log = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ async def reply_safe(message: Any, text: str, *, label: str) -> None:
     """Send a reply, logging a warning on failure."""
     try:
         await message.reply(text)
-    except Exception as exc:
+    except discord.DiscordException as exc:
         log.warning(
             "Failed to send %s reply for message_id=%s: %s",
             label,

@@ -58,7 +58,7 @@ def _probe_nats(nc: Any | None) -> str | None:
         return "unreachable"
     try:
         return "ok" if bool(nc.is_connected) else "unreachable"
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # top-level boundary
         log.debug("_probe_nats: unexpected exception from nc.is_connected: %s", exc)
         return "unreachable"
 

@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import cast
 
+import nats.errors
 from nats.aio.client import Client as NATS
 
 # NatsAdapterBase uses _CONTRACT_VERSION directly from its canonical home.
@@ -186,7 +187,7 @@ class NatsAdapterBase(ABC):
     async def _dispatch(self, msg) -> None:
         try:
             payload = json.loads(msg.data)
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             log.error("adapter_base: malformed JSON on %s", self.subject)
             return
         if self._validate_envelope(payload):
@@ -240,7 +241,7 @@ class NatsAdapterBase(ABC):
                     subject,
                     json.dumps(payload).encode(),
                 )
-            except Exception:
+            except nats.errors.Error:
                 log.warning("adapter_base: heartbeat publish failed", exc_info=True)
             await asyncio.sleep(self._heartbeat_interval)
 

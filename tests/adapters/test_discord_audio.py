@@ -174,7 +174,7 @@ async def test_on_message_audio_download_failure_sends_reply() -> None:
         content_type="audio/ogg",
         url="https://cdn.example/audio.ogg",
         size=1000,
-        read=AsyncMock(side_effect=RuntimeError("network error")),
+        read=AsyncMock(side_effect=OSError("network error")),
     )
     msg = _make_discord_msg(attachments=[attachment_obj])
     msg.guild = None

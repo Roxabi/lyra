@@ -198,7 +198,7 @@ class AudioPipeline:
             if self._hub._prefs_store is not None:
                 try:
                     prefs = await self._hub._prefs_store.get_prefs(msg.user_id)
-                except Exception:
+                except Exception:  # noqa: BLE001  # top-level boundary
                     log.warning(
                         "PrefsStore.get_prefs() failed for user %s — "
                         "falling back to detected language",

@@ -118,7 +118,7 @@ class RuntimeConfig(BaseModel):
         try:
             with path.open("rb") as f:
                 data = tomllib.load(f)
-        except Exception as exc:
+        except (tomllib.TOMLDecodeError, OSError) as exc:
             log.warning("Corrupt runtime config at %s — using defaults: %s", path, exc)
             return cls()
 

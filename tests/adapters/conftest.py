@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import httpx
 import pytest
 
@@ -85,10 +86,20 @@ def make_tg_adapter() -> TelegramAdapter:
 
 
 def make_dc_adapter() -> DiscordAdapter:
-    return DiscordAdapter(
+    adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
     )
+    # adapter.http is a discord.py internal uninitialized sentinel in tests.
+    # Mock it to raise discord.HTTPException so render_audio falls back to
+    # channel.send() as intended, rather than failing with AttributeError.
+    adapter.http = MagicMock()
+    adapter.http.request = AsyncMock(
+        side_effect=discord.HTTPException(
+            MagicMock(), "voice not supported in test env"
+        )
+    )
+    return adapter
 
 
 def make_dc_inbound_msg(

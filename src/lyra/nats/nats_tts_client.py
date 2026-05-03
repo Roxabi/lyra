@@ -15,10 +15,12 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, NoReturn
 from uuid import uuid4
 
+import nats.errors
 from nats.aio.client import Client as NATS
 from nats.errors import NoRespondersError
 from pydantic import ValidationError
 
+import nats
 from lyra.nats.worker_registry import WorkerRegistry
 from lyra.tts import SynthesisResult, TtsUnavailableError
 from roxabi_contracts.envelope import CONTRACT_VERSION
@@ -172,7 +174,7 @@ class NatsTtsClient:
                 self._registry.mark_stale(worker.worker_id)
                 last_exc = exc
                 continue
-            except Exception as exc:
+            except (nats.errors.Error, TimeoutError) as exc:
                 if _is_no_responders(exc):
                     self._registry.mark_stale(worker.worker_id)
                     last_exc = exc

@@ -7,6 +7,9 @@ import logging
 import os
 from pathlib import Path
 
+import nats.errors
+
+import nats
 from lyra.bootstrap.bootstrap_stores import open_stores
 from lyra.bootstrap.factory.wiring_helpers import (
     _build_hub,
@@ -81,7 +84,7 @@ async def _bootstrap_unified(
         try:
             await nc.close()
             log.info("NATS connection closed.")
-        except Exception as exc:
+        except nats.errors.Error as exc:
             log.warning("Error closing NATS connection: %s", exc)
         if embedded:
             await embedded.stop()

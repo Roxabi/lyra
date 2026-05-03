@@ -148,7 +148,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
             if _processor is not None:
                 try:
                     msg = await _processor.pre(msg)
-                except Exception:
+                except Exception:  # noqa: BLE001  # top-level boundary
                     log.warning(
                         "Processor pre() failed for %s", _cmd_name, exc_info=True
                     )
@@ -173,7 +173,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
         if _processor is not None and isinstance(result, Response):
             try:
                 result = await _processor.post(_original_msg, result)
-            except Exception:
+            except Exception:  # noqa: BLE001  # top-level boundary
                 log.warning("Processor post() failed", exc_info=True)
 
     # Capture values for the deferred turn-logging callback (#316).

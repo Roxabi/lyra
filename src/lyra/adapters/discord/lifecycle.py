@@ -48,7 +48,7 @@ async def on_ready(adapter: "DiscordAdapter") -> None:
         try:
             await adapter.tree.sync(guild=guild)
             log.info("Synced app_commands for guild %s", guild.id)
-        except Exception:
+        except discord.DiscordException:
             log.warning(
                 "Failed to sync app_commands for guild %s",
                 guild.id,
@@ -64,7 +64,7 @@ async def on_guild_join(adapter: "DiscordAdapter", guild: discord.Guild) -> None
     try:
         await adapter.tree.sync(guild=guild)
         log.info("Synced app_commands for new guild %s", guild.id)
-    except Exception:
+    except discord.DiscordException:
         log.warning(
             "Failed to sync app_commands for new guild %s",
             guild.id,

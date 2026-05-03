@@ -43,7 +43,7 @@ class MessageManager:
         try:
             with open(path, "rb") as f:
                 self._templates: dict[str, Any] = tomllib.load(f)
-        except Exception:
+        except (tomllib.TOMLDecodeError, OSError):
             log.warning("Failed to load messages.toml at %s — using fallbacks", path)
             self._templates: dict[str, Any] = {}
 
@@ -52,7 +52,7 @@ class MessageManager:
         try:
             raw = self._resolve(key, platform)
             return raw.format_map(kwargs)
-        except Exception as exc:
+        except (KeyError, ValueError) as exc:
             log.debug(
                 "MessageManager.get(%r, platform=%r) fell back: %s", key, platform, exc
             )

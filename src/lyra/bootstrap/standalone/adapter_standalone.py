@@ -46,7 +46,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             "adapter_standalone: connected to NATS at %s",
             scrub_nats_url(nats_url),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # NATS connect failure: process exits
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
     from lyra.nats.nats_bus import NatsBus

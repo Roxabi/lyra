@@ -12,6 +12,7 @@ import time
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import nats.errors
 import pytest
 
 from lyra.nats.nats_image_client import (
@@ -144,7 +145,7 @@ class TestNatsImageClient:
         # Arrange — nc.request raises an exception whose str() contains "max_payload"
         mock_nc = AsyncMock()
         mock_nc.request = AsyncMock(
-            side_effect=Exception("NATS: max_payload exceeded (1048576 bytes)")
+            side_effect=nats.errors.Error("NATS: max_payload exceeded (1048576 bytes)")
         )
         client = NatsImageClient(nc=mock_nc)
         client._registry.record_heartbeat({"worker_id": "img-1", "active_requests": 0})
@@ -232,7 +233,7 @@ class TestNatsImageClient:
         # Arrange — nc.request raises a generic Exception (not timeout, not
         # max_payload). Exercises the fallback branch in _raise_nats_failure.
         mock_nc = AsyncMock()
-        mock_nc.request = AsyncMock(side_effect=Exception("connection refused"))
+        mock_nc.request = AsyncMock(side_effect=nats.errors.Error("connection refused"))
         client = NatsImageClient(nc=mock_nc)
         client._registry.record_heartbeat({"worker_id": "img-1", "active_requests": 0})
         initial_failures = client._cb._failures

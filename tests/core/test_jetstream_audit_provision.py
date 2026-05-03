@@ -10,6 +10,7 @@ import logging
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
+import nats.errors
 import pytest
 
 from lyra.infrastructure.audit.jetstream_sink import (
@@ -90,7 +91,7 @@ class TestJetStreamAuditSinkProvision:
         sink = JetStreamAuditSink()
         js = _make_js()
         js.add_stream = AsyncMock(side_effect=BadRequestError())
-        js.update_stream = AsyncMock(side_effect=Exception("arbitrary error"))
+        js.update_stream = AsyncMock(side_effect=nats.errors.Error("arbitrary error"))
         nc = _make_nc(js)
 
         with caplog.at_level(logging.WARNING):
@@ -105,7 +106,7 @@ class TestJetStreamAuditSinkProvision:
         """provision() marks sink degraded and does not raise when JS unavailable."""
         sink = JetStreamAuditSink()
         nc = MagicMock()
-        nc.jetstream.side_effect = Exception("JetStream not enabled")
+        nc.jetstream.side_effect = nats.errors.Error("JetStream not enabled")
 
         with caplog.at_level(logging.WARNING):
             await sink.provision(nc)
@@ -120,7 +121,7 @@ class TestJetStreamAuditSinkProvision:
         """A non-BadRequestError from add_stream marks degraded."""
         sink = JetStreamAuditSink()
         js = _make_js()
-        js.add_stream = AsyncMock(side_effect=RuntimeError("server error"))
+        js.add_stream = AsyncMock(side_effect=nats.errors.Error("server error"))
         nc = _make_nc(js)
 
         with caplog.at_level(logging.WARNING):

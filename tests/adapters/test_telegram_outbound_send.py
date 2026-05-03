@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aiogram.exceptions import TelegramAPIError
 
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (  # noqa: F401
@@ -416,7 +417,9 @@ async def test_streaming_edit_placeholder_text_failure() -> None:
 
     adapter = _make_telegram_adapter()
     adapter.bot = AsyncMock()
-    adapter.bot.edit_message_text = AsyncMock(side_effect=Exception("API error"))
+    adapter.bot.edit_message_text = AsyncMock(
+        side_effect=TelegramAPIError(MagicMock(), "API error")
+    )
 
     original_msg = _make_telegram_message()
     outbound = OutboundMessage.from_text("")
@@ -643,7 +646,9 @@ async def test_typing_worker_bailout_after_3_failures() -> None:
     from lyra.adapters.telegram.telegram_outbound import _typing_worker
 
     bot = AsyncMock()
-    bot.send_chat_action = AsyncMock(side_effect=Exception("API error"))
+    bot.send_chat_action = AsyncMock(
+        side_effect=TelegramAPIError(MagicMock(), "API error")
+    )
 
     # Patch asyncio.sleep to avoid real delays
     sleep_target = "lyra.adapters.telegram.telegram_outbound.asyncio.sleep"

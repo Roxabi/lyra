@@ -285,7 +285,7 @@ class TestAnnounceHubReady:
         try:
             kv_setup = await nc_js.jetstream().key_value("lyra-state")
             await kv_setup.purge("hub.ready")
-        except Exception:
+        except Exception:  # noqa: BLE001  # test teardown: kv bucket may not exist
             pass  # bucket may not exist yet — that's fine
 
         # Act — two successive calls must not raise
@@ -352,7 +352,7 @@ class TestWaitForHubKV:
         try:
             kv_setup = await nc_js.jetstream().key_value("lyra-state")
             await kv_setup.purge("hub.ready")
-        except Exception:
+        except Exception:  # noqa: BLE001  # test teardown: kv bucket may not exist
             pass
         # Arrange — adapter connects before hub writes the key
         adapter_nc = await nats.connect(nats_server_jetstream_url)
@@ -382,7 +382,7 @@ class TestWaitForHubKV:
         try:
             kv_setup = await nc_js.jetstream().key_value("lyra-state")
             await kv_setup.purge("hub.ready")
-        except Exception:
+        except Exception:  # noqa: BLE001  # test teardown: kv bucket may not exist
             pass  # bucket may not exist yet — that's fine for this test
 
         with caplog.at_level(logging.WARNING, logger="roxabi_nats.readiness"):
@@ -451,7 +451,7 @@ class TestWaitForHubKV:
         try:
             kv_setup = await nc_js.jetstream().key_value("lyra-state")
             await kv_setup.purge("hub.ready")
-        except Exception:
+        except Exception:  # noqa: BLE001  # test teardown: kv bucket may not exist
             pass
         # Arrange — race path: key written after probe begins
         adapter_nc = await nats.connect(nats_server_jetstream_url)

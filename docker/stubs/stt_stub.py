@@ -44,7 +44,7 @@ async def handle_request(msg: nats.aio.client.Msg) -> None:
     try:
         try:
             request = json.loads(msg.data)
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             request = {}
         response = {
             "ok": True,

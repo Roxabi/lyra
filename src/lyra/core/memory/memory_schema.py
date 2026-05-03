@@ -87,7 +87,7 @@ async def apply_schema_compat(db: "aiosqlite.Connection") -> None:
             " END"
         )
         await db.commit()
-    except Exception:
+    except Exception:  # noqa: BLE001  # top-level boundary
         log.warning(
             "schema compat migration failed; database may be in inconsistent state",
             exc_info=True,

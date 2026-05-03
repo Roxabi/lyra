@@ -346,9 +346,9 @@ health_secret = ""                            # optional health endpoint auth
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `TELEGRAM_TOKEN` | Yes (monitoring) | Bot token |
+| `TELEGRAM_TOKEN` | No (deprecated — monitoring v1 only; see #1035) | Bot token |
 | `TELEGRAM_WEBHOOK_SECRET` | Yes (hub) | Webhook secret |
-| `TELEGRAM_ADMIN_CHAT_ID` | Yes (monitoring) | Chat ID for alerts |
+| `TELEGRAM_ADMIN_CHAT_ID` | No (deprecated — monitoring v1 only; see #1035) | Chat ID for alerts |
 | `TELEGRAM_BOT_USERNAME` | No | Bot username for help text |
 
 ### Discord

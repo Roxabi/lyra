@@ -1,14 +1,15 @@
-"""RED tests for scripts/_supervisor.py — #1017 T04.
+"""Tests for scripts/_supervisor.py — validates NATS nkey wiring across deploy
+formats (legacy supervisord conf.d + Quadlet container files).
 
-These tests FAIL at collection time because scripts/_supervisor.py does not exist yet.
-That is the intended RED state.
+The validator is retained post-supervisord-cutover (#1036) because Quadlet is
+the primary path and conf.d is supported as a backward-compat fallback for any
+operator with leftover legacy files.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-# This import will fail at collection time — that is the intended RED state.
 from scripts._acl_models import LoadedMatrix
 from scripts._supervisor import validate_supervisor
 

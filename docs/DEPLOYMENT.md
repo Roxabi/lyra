@@ -61,6 +61,8 @@ See [ops/container-publishing.md](ops/container-publishing.md#auto-update-flow) 
 
 When CI cannot publish (e.g. mid-incident, image-pinning experiment), drive a manual deploy from Machine 2:
 
+> Note: `scripts/deploy-quadlet.sh` carries an internal deprecation banner (replaced by `podman-auto-update.timer` for routine deploys). Retained as an offline fallback for staged rollouts.
+
 ```bash
 bash scripts/deploy-quadlet.sh
 ```

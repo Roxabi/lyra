@@ -98,7 +98,7 @@ podman secret rm voicecli-nats-auth 2>/dev/null || true
 ```
 T+0:00  Stop all clients
           systemctl --user stop lyra-hub lyra-telegram lyra-discord
-          supervisorctl stop voicecli_tts voicecli_stt
+          systemctl --user stop voicecli-tts voicecli-stt  # was: supervisorctl (retired #886/#1036)
 
 T+0:01  Kill host NATS
           sudo systemctl stop nats.service
@@ -149,8 +149,8 @@ T+0:10  Smoke test
 ## Post-cutover cleanup (same day)
 
 ```bash
-# Remove supervisord voicecli confs
-supervisorctl stop voicecli_tts voicecli_stt 2>/dev/null || true
+# Remove supervisord voicecli confs (supervisord retired in #886/#1036 — skip if already on Quadlet)
+systemctl --user stop voicecli-tts voicecli-stt 2>/dev/null || true  # was: supervisorctl
 rm -f ~/projects/supervisor/conf.d/voicecli_{tts,stt}.conf
 
 # Archive old host NATS config (keep for 1 week reference)

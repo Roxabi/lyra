@@ -15,5 +15,5 @@ warnings.warn(
     "lyra.monitoring is deprecated — superseded by Monitoring v2 (#1035). "
     "This package will be removed when v2 lands.",
     DeprecationWarning,
-    stacklevel=2,
+    stacklevel=1,
 )

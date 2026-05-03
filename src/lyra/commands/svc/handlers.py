@@ -30,7 +30,7 @@ _SERVICES_LIST = f"Services: {', '.join(sorted(_ALLOWED_SERVICES))}"
 
 
 def _sanitize_svc_output(output: str) -> str:
-    """Strip PID numbers and absolute paths from supervisorctl output.
+    """Strip PID numbers and absolute paths from systemctl output.
 
     Prevents internal process IDs and filesystem paths from being surfaced to
     users (L2 — information disclosure via /svc output).
@@ -64,7 +64,7 @@ def _validate(action: str, args: list[str]) -> tuple[str | None, Response | None
 
 
 async def cmd_svc(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
-    """Manage supervisor services. Admin-only."""
+    """Manage system services via systemctl --user. Admin-only."""
     if not msg.is_admin:
         return Response(content="This command is admin-only.")
 

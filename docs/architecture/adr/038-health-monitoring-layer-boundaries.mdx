@@ -65,7 +65,7 @@ fast-path turns.
 These three concepts require different checks:
 
 **Liveness** — is the process alive and the event loop running?
-- `check_process` (supervisorctl) and `check_http_health` cover this.
+- `check_process` (systemctl --user, not supervisorctl — retired in #886/#1036) and `check_http_health` cover this.
 - If `/health` returns 200, the hub's asyncio event loop is scheduled and
   FastAPI is serving.
 

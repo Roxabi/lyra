@@ -1,7 +1,13 @@
+# DEPRECATED — host-timer monitoring is superseded by Monitoring v2 (#1035).
+# Do not install on new hosts. Existing prod has been disabled. Code retained
+# for the v2 spec author to mine; this unit will be deleted when #1035 lands.
+
 [Unit]
-Description=Lyra health monitor (Layer 1 pre-check + Layer 2 LLM escalation)
+Description=[DEPRECATED — see #1035] Lyra health monitor (Layer 1 pre-check + Layer 2 LLM escalation)
 After=network-online.target
 Wants=network-online.target
+# Inert by design — accidental `systemctl --user start lyra-monitor.service` is a no-op.
+ConditionPathExists=/dev/null/disabled-see-1035
 
 [Service]
 Type=oneshot

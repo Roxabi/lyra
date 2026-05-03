@@ -1,10 +1,8 @@
-"""SupervisorctlManager — ServiceManager backed by supervisorctl.sh (issue #362).
+"""SupervisorctlManager — DEPRECATED legacy ServiceManager backed by supervisorctl.sh.
 
-Wraps the machine-level ~/projects/scripts/supervisorctl.sh behind the
-ServiceManager protocol. Path resolution and timeout are encapsulated here.
-
-Override script path with LYRA_SUPERVISORCTL_PATH env var.
-Default: ~/projects/scripts/supervisorctl.sh
+Superseded by `lyra.integrations.systemctl.SystemctlManager` after the Quadlet
+cutover (#611, #886). The /svc plugin now wires `SystemctlManager`. This module
+is retained for the existing test suite + as a reference until #1035 lands.
 """
 
 from __future__ import annotations
@@ -12,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import warnings
 from asyncio.subprocess import PIPE, STDOUT
 from pathlib import Path
 
@@ -28,6 +27,12 @@ class SupervisorctlManager:
     """ServiceManager backed by supervisorctl.sh."""
 
     def __init__(self, script_path: Path | None = None) -> None:
+        warnings.warn(
+            "SupervisorctlManager is deprecated; the /svc plugin now uses "
+            "SystemctlManager. This class will be removed once #1035 lands.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         raw = os.environ.get("LYRA_SUPERVISORCTL_PATH")
         if raw:
             resolved = Path(raw).expanduser().resolve()

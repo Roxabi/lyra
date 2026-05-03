@@ -17,7 +17,7 @@ Get Lyra running and send your first message in about 5 minutes.
 ## 1. Install
 
 ```bash
-git clone https://github.com/roxabi/lyra
+git clone https://github.com/Roxabi/lyra
 cd lyra
 uv sync
 

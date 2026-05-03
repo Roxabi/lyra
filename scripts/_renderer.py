@@ -11,7 +11,7 @@ _HEADER = (
     "# Spec: artifacts/specs/706-per-role-nkeys-acls-spec.mdx\n"
     "# TODO(ADR-045): ACL for roxabi-nats SDK identities intentionally omitted\n"
     "#                until the SDK extraction lands — rerun this script then.\n"
-    '# DO NOT edit manually — regenerate with:'
+    "# DO NOT edit manually — regenerate with:"
     ' sudo env "PATH=$PATH" lyra-acl genkeys --regenerate'
 )
 

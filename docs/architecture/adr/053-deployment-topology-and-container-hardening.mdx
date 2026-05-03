@@ -17,7 +17,7 @@ Lyra now ships three deployment tiers:
 |---|---|---|---|
 | Dev | Single process, embedded NATS | `lyra start` | — |
 | Simple prod | supervisord + 3 host processes + host `nats.service` | `scripts/deploy.sh` | `docs/DEPLOYMENT.md` |
-| Advanced prod | Podman Quadlet, 4 rootless containers on `lyra.network` | `scripts/deploy-quadlet.sh` | `docs/DEPLOYMENT-quadlet.md` |
+| Advanced prod | Podman Quadlet, 4 rootless containers on `lyra.network` | `scripts/deploy-quadlet.sh` | `docs/DEPLOYMENT.md` *(merged in #1036)* |
 
 A Q2 2026 audit (architect + devops + security) of the Quadlet path surfaced five gaps that cannot be fixed in isolation — each change couples to at least one other. Fixing them in separate PRs without a recorded design intent creates contradictory half-states (e.g., UID pinned in the Dockerfile but `User=` absent in the units). This ADR bundles the five decisions into one design pass.
 
@@ -60,10 +60,10 @@ Supervisord program names are renamed to match Quadlet unit names:
 | `[program:lyra_telegram]` | `[program:lyra-telegram]` |
 | `[program:lyra_discord]` | `[program:lyra-discord]` |
 
-Files affected (note: `deploy/supervisor/` was removed in #886; the canonical tenant conf location is now `deploy/conf.d/`):
-- `deploy/conf.d/lyra-hub.conf` (formerly `deploy/supervisor/conf.d/lyra_hub.conf`)
-- `deploy/conf.d/lyra-telegram.conf` (formerly `lyra_telegram.conf`)
-- `deploy/conf.d/lyra-discord.conf` (formerly `lyra_discord.conf`)
+Files affected (note: `deploy/supervisor/` was removed in #886, and the entire `deploy/conf.d/` tenant-conf directory was removed in #1036 alongside the rest of the supervisord scaffolding — Quadlet is now the sole deployment path):
+- `deploy/conf.d/lyra-hub.conf` *(deleted in #1036)*
+- `deploy/conf.d/lyra-telegram.conf` *(deleted in #1036)*
+- `deploy/conf.d/lyra-discord.conf` *(deleted in #1036)*
 - All `[program:...]` stanza names use hyphens
 - Log file names inside each conf update accordingly (`lyra_hub.log` → `lyra-hub.log`)
 

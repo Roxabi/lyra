@@ -272,7 +272,6 @@ This encrypts and stores the tokens in `~/.lyra/config.db`.
 
 > **Note:** Bot tokens are encrypted in `~/.lyra/config.db` — not in `.env`. The `.env` file is for:
 > - `DEPLOY_HOST`, `DEPLOY_DIR` — remote deployment target
-> - `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` — monitoring timer (sends alerts directly)
 > - `LYRA_HEALTH_SECRET` — bearer token for health endpoint
 > - Voice settings (`LYRA_STT_ENABLED`, `LYRA_TTS_ENGINE`, etc.)
 >
@@ -341,38 +340,32 @@ Or use the Makefile dispatcher:
 make lyra start
 ```
 
-## Step 12 — Enable health monitoring
+## Step 12 — Health monitoring
 
-The monitoring system runs as a **systemd user timer** (separate from the Quadlet containers). It runs every 5 minutes, checks hub health, and sends Telegram alerts on anomalies.
+> **Deprecated.** The legacy host-timer monitor (`lyra-monitor.{service,timer}`) is being replaced by Monitoring v2 — a NATS event stream + Tauri desktop dashboard — tracked in [#1035](https://github.com/Roxabi/lyra/issues/1035). Skip this step on new installs. The host-timer remains in the repo (with deprecation banners) only so the v2 spec author can mine its check logic.
+
+If you still want a quick way to check hub health from the command line, hit the health endpoint directly:
 
 ```bash
-cd ~/projects/lyra
+# Generate the health secret used by /health/detail
+mkdir -p ~/.lyra/env
+openssl rand -hex 32 > ~/.lyra/env/health_secret
+chmod 600 ~/.lyra/env/health_secret
+echo "LYRA_HEALTH_SECRET=$(cat ~/.lyra/env/health_secret)" >> ~/.lyra/env/hub.env
 
-# Ensure monitoring secrets are in .env
-# TELEGRAM_TOKEN=<bot token for sending alerts>
-# TELEGRAM_ADMIN_CHAT_ID=<your numeric Telegram user ID>
+# Reload the hub so the new EnvironmentFile value is picked up
+systemctl --user restart lyra-hub.service
 
-# Create the health secret file (used by /health/detail endpoint)
-mkdir -p ~/.lyra/secrets
-echo -n "$(openssl rand -hex 32)" > ~/.lyra/secrets/health_secret
-chmod 600 ~/.lyra/secrets/health_secret
-
-# Copy the same secret to .env so the monitoring cron can use it
-echo "LYRA_HEALTH_SECRET=$(cat ~/.lyra/secrets/health_secret)" >> .env
-
-# Install + enable the timer (done automatically by make register)
-make monitor enable
-
-# Verify it works
-make monitor run      # trigger a manual check
-make monitor status   # check result
+# Probe (after lyra-hub.service is running)
+curl -fsS -H "Authorization: Bearer $(cat ~/.lyra/env/health_secret)" \
+  http://127.0.0.1:8443/health/detail | jq .
 ```
 
 ## Step 13 — Verify services
 
 ```bash
 cd ~/projects/lyra
-systemctl --user status 'lyra-*.service' lyra-nats.service
+systemctl --user status 'lyra-*.service'
 ```
 
 You should see all five units active:
@@ -389,16 +382,10 @@ Or check the full container list:
 podman ps --format "table {{.Names}}\t{{.Status}}"
 ```
 
-Check the monitoring timer:
-```bash
-make monitor status
-```
-
 Check the logs:
 ```bash
 make lyra logs        # journalctl for lyra-hub
 make lyra errors      # journalctl for lyra-hub (errors only)
-make monitor logs     # tail monitoring cron output (journalctl)
 ```
 
 ---

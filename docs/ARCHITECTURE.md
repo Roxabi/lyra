@@ -669,21 +669,13 @@ Seven zero-LLM checks run every 5 minutes:
 
 When Layer 1 detects an anomaly, the failed checks are sent to the Anthropic API (Haiku). The LLM returns severity + diagnosis + suggested remediation. Result is sent to Telegram admin chat. If the LLM call fails, a raw alert with check results is sent instead.
 
-### Runtime
+### Status — DEPRECATED (#1035)
 
-The monitoring system runs as a **systemd user timer** (`lyra-monitor.timer`), separate from the Quadlet containers. This is a deliberate split:
+The host-timer pattern described above is **deprecated**. It cannot be containerised cleanly (host-only deps: `systemctl --user`, `podman logs`, loopback HTTP), polls instead of pushing, and offers no UI beyond a Telegram message.
 
-- **Podman Quadlet** manages long-running daemons (lyra-hub, lyra-telegram, lyra-discord)
-- **Systemd timer** manages the periodic monitoring cron (oneshot, every 5 minutes)
+Replacement is **Monitoring v2** — a NATS event stream + Tauri desktop dashboard, tracked in [#1035](https://github.com/Roxabi/lyra/issues/1035). The host timer was disabled on prod in 2026-05; the unit files and `src/lyra/monitoring/` package remain in the repo with deprecation banners so the v2 spec author can mine the check logic.
 
-```
-~/.config/systemd/user/lyra-monitor.timer   → triggers every 5min
-~/.config/systemd/user/lyra-monitor.service → runs python -m lyra.monitoring
-```
-
-Installed via `make register` in the lyra repo. Managed via `make monitor status|logs|run|enable|disable`.
-
-### Configuration
+### Configuration *(deprecated)*
 
 Thresholds: `[monitoring]` section in `lyra.toml`.
 Secrets: `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` in `.env`.

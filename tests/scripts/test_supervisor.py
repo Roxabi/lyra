@@ -24,8 +24,15 @@ def _lyra_owned_identities(matrix: LoadedMatrix) -> list[str]:
     ]
 
 
-def _make_supervisor_conf(root: Path, name: str) -> None:
-    """Create deploy/conf.d/lyra-<name>.conf with NATS_NKEY_SEED_PATH wired."""
+def _make_legacy_conf_d_entry(root: Path, name: str) -> None:
+    """Create deploy/conf.d/lyra-<name>.conf with NATS_NKEY_SEED_PATH wired.
+
+    Exercises the legacy supervisord-era acceptance path that
+    `scripts/_supervisor.py::validate_supervisor()` still recognises for
+    backward compat. The actual supervisord scaffolding was removed in #1036;
+    this helper is retained only because the validator continues to accept
+    conf.d-style files.
+    """
     conf_dir = root / "deploy" / "conf.d"
     conf_dir.mkdir(parents=True, exist_ok=True)
     conf_file = conf_dir / f"lyra-{name}.conf"
@@ -55,7 +62,7 @@ class TestValidateSupervisorPasses:
         # verified: removing conf file creation → identity reported as missing
         """
         for name in _lyra_owned_identities(prod_matrix):
-            _make_supervisor_conf(tmp_path, name)
+            _make_legacy_conf_d_entry(tmp_path, name)
 
         errors = validate_supervisor(prod_matrix, tmp_path)
 
@@ -71,7 +78,7 @@ class TestValidateSupervisorPasses:
         )
 
         for name in lyra_names:
-            _make_supervisor_conf(tmp_path, name)
+            _make_legacy_conf_d_entry(tmp_path, name)
 
         errors = validate_supervisor(prod_matrix, tmp_path)
 
@@ -91,7 +98,7 @@ class TestValidateSupervisorMissingWiring:
         # Create conf for everyone except hub
         for name in lyra_names:
             if name != "hub":
-                _make_supervisor_conf(tmp_path, name)
+                _make_legacy_conf_d_entry(tmp_path, name)
 
         errors = validate_supervisor(prod_matrix, tmp_path)
 
@@ -124,7 +131,7 @@ class TestValidateSupervisorMissingWiring:
         """
         # Only wire up lyra-owned identities
         for name in _lyra_owned_identities(prod_matrix):
-            _make_supervisor_conf(tmp_path, name)
+            _make_legacy_conf_d_entry(tmp_path, name)
 
         errors = validate_supervisor(prod_matrix, tmp_path)
 
@@ -157,7 +164,7 @@ class TestQuadletWiringCounts:
         assert len(lyra_names) >= 2, "Need at least 2 lyra identities for this test"
 
         # First identity → supervisor conf
-        _make_supervisor_conf(tmp_path, lyra_names[0])
+        _make_legacy_conf_d_entry(tmp_path, lyra_names[0])
         # Remaining → quadlet
         for name in lyra_names[1:]:
             _make_quadlet_container(tmp_path, name)

@@ -121,6 +121,8 @@ The `PipelineEventBus` is injected via constructor (DI, not singleton) per ADR-0
 
 ## Health Monitoring
 
+> **Deprecated — see [#1035](https://github.com/Roxabi/lyra/issues/1035).** The host-timer monitor (`lyra-monitor.{service,timer}` + `src/lyra/monitoring/`) has been disabled on prod and is superseded by Monitoring v2 (NATS event stream + Tauri desktop dashboard). The section below is preserved as a reference for the v2 spec author.
+
 A separate two-layer monitoring system runs on a configurable interval (default: 5 min):
 
 - **Layer 1 — Health checks:** hits `http://localhost:8443/health`, checks queue depth, idle thresholds.

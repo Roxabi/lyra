@@ -389,7 +389,6 @@ health_secret = ""                            # optional health endpoint auth
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LYRA_SUPERVISORCTL_PATH` | — | Path to supervisorctl |
 | `LYRA_AGENT_STORE_PATH` | — | Override agent store path |
 | `LYRA_CLAUDE_CWD` | — | Claude CLI working directory |
 | `LYRA_WEB_INTEL_PATH` | — | Web intel output path |
@@ -486,28 +485,17 @@ startup
 
 ---
 
-## Monitoring (`lyra-monitor.timer`)
+## Monitoring — DEPRECATED (#1035)
 
-The health monitoring cron runs as a **systemd user timer**, separate from the Quadlet containers.
+The host-timer health monitor (`lyra-monitor.{service,timer}` + `src/lyra/monitoring/`) is **deprecated**. It pokes `systemctl --user`, `podman logs`, and host loopback ports — none of which translate cleanly to a containerised world — and offers no UI beyond a Telegram message.
 
-### Files
+It is being replaced by **Monitoring v2** — a NATS event stream + Tauri desktop dashboard — tracked in [#1035](https://github.com/Roxabi/lyra/issues/1035). Banners on the deprecated files retain the existing check logic so the v2 spec author can mine it.
 
-| File | Role |
-|------|------|
-| `deploy/lyra-monitor.service` | Systemd oneshot — runs `python -m lyra.monitoring` |
-| `deploy/lyra-monitor.timer` | Triggers the service every 5 minutes |
-| `lyra.toml` `[monitoring]` | Thresholds |
-| `.env` | Secrets: `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` |
-
-### Installation
+For ad-hoc hub-health probes, hit `/health/detail` directly:
 
 ```bash
-make register         # installs timer + enables it (but does not start)
-make monitor enable   # start the timer
-make monitor status   # check timer + last run
-make monitor logs     # journalctl follow
-make monitor run      # trigger a manual check now
-make monitor disable  # stop the timer
+curl -fsS -H "Authorization: Bearer $LYRA_HEALTH_SECRET" \
+  http://127.0.0.1:8443/health/detail | jq .
 ```
 
 ---

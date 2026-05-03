@@ -201,10 +201,14 @@ def test_hub_can_connect(nats_server: None, rendered_auth_conf: Path) -> None:
 
     import nats
 
+    # nkeys_seed reads the file raw (no strip); use nkeys_seed_str with stripped content
+    # to avoid binascii.Error from a trailing newline in the .seed file.
+    seed_str = (rendered_auth_conf / "hub.seed").read_text().strip()
+
     async def _connect() -> None:
         nc = await nats.connect(
             "nats://localhost:4223",
-            nkeys_seed=str(rendered_auth_conf / "hub.seed"),
+            nkeys_seed_str=seed_str,
         )
         await nc.drain()
 

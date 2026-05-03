@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -113,7 +113,7 @@ class TestCloseSafely:
     """close_safely() awaits all coros concurrently and isolates failures."""
 
     async def test_empty_coros_is_noop(self) -> None:
-        """close_safely with no coroutines returns immediately without calling gather."""
+        """close_safely with no coroutines returns immediately; gather not called."""
         # Arrange / Act / Assert — must not raise and must not call asyncio.gather
         _target = "lyra.bootstrap.lifecycle.lifecycle_helpers.asyncio.gather"
         with patch(_target) as mock_gather:
@@ -159,6 +159,7 @@ class TestCloseSafely:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """A RuntimeError from a coro is logged and includes the label."""
+
         # Arrange
         async def bad_coro() -> None:
             raise RuntimeError("boom")
@@ -166,7 +167,9 @@ class TestCloseSafely:
         # Act
         import logging
 
-        with caplog.at_level(logging.ERROR, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"):
+        with caplog.at_level(
+            logging.ERROR, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"
+        ):
             await close_safely("tg-adapters", bad_coro())
 
         # Assert
@@ -178,7 +181,8 @@ class TestCloseSafely:
     async def test_cancelled_error_logged_at_debug_not_error(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """CancelledError is logged at DEBUG (incomplete teardown visible) but not as error."""
+        """CancelledError is logged at DEBUG only — not as error."""
+
         # Arrange
         async def cancelled_coro() -> None:
             raise asyncio.CancelledError()
@@ -186,7 +190,9 @@ class TestCloseSafely:
         import logging
 
         # Act — capture at DEBUG so we see the debug record
-        with caplog.at_level(logging.DEBUG, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"):
+        with caplog.at_level(
+            logging.DEBUG, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"
+        ):
             await close_safely("shutdown-label", cancelled_coro())
 
         # Assert — one DEBUG record, no ERROR record
@@ -200,7 +206,8 @@ class TestCloseSafely:
     async def test_multiple_failures_each_logged_independently(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Each failing coro produces its own log record — failures do not short-circuit logging."""
+        """Each failing coro produces its own log record — no short-circuit."""
+
         # Arrange
         async def bad_a() -> None:
             raise ValueError("error-a")
@@ -211,7 +218,9 @@ class TestCloseSafely:
         # Act
         import logging
 
-        with caplog.at_level(logging.ERROR, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"):
+        with caplog.at_level(
+            logging.ERROR, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"
+        ):
             await close_safely("multi-fail", bad_a(), bad_b())
 
         # Assert — one record per failure
@@ -222,7 +231,8 @@ class TestCloseSafely:
     async def test_cancelled_error_mixed_with_real_exception_logs_only_real(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """CancelledError is skipped even when mixed with a real exception that is logged."""
+        """CancelledError is skipped even when mixed with a real exception."""
+
         # Arrange
         async def cancelled_coro() -> None:
             raise asyncio.CancelledError()
@@ -233,7 +243,9 @@ class TestCloseSafely:
         # Act
         import logging
 
-        with caplog.at_level(logging.ERROR, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"):
+        with caplog.at_level(
+            logging.ERROR, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"
+        ):
             await close_safely("mixed-label", cancelled_coro(), erroring_coro())
 
         # Assert — exactly one record (the OSError), not two

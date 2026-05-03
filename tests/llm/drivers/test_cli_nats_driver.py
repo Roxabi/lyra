@@ -21,6 +21,7 @@ asyncio_mode = "auto" is configured project-wide in pyproject.toml.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
@@ -681,7 +682,6 @@ class TestCompleteSessionPersistence:
         assert result.ok is True
 
         # Allow the fire-and-forget task to complete
-        import asyncio
 
         await asyncio.sleep(0)
 
@@ -727,7 +727,6 @@ class TestCompleteSessionPersistence:
         self,
     ) -> None:
         """set_cli_session failure must not propagate to the complete() caller."""
-        import asyncio
 
         # Arrange
         driver = _make_driver()
@@ -789,8 +788,6 @@ class TestStreamGenSessionPersistence:
             ):
                 events.append(ev)
 
-        import asyncio
-
         await asyncio.sleep(0)
 
         # Assert — ResultLlmEvent carries session_id
@@ -836,7 +833,6 @@ class TestStreamGenSessionPersistence:
         self,
     ) -> None:
         """set_cli_session failure must not propagate to the streaming caller."""
-        import asyncio
 
         # Arrange
         driver = _make_driver()
@@ -871,3 +867,104 @@ class TestStreamGenSessionPersistence:
 
         # Assert — streaming still completes, no exception propagated
         assert any(isinstance(ev, ResultLlmEvent) for ev in events)
+
+
+# ---------------------------------------------------------------------------
+# _fire_set_cli_session() done-callback (issue #1021)
+# ---------------------------------------------------------------------------
+
+
+class TestFireSetCliSessionCallback:
+    """_fire_set_cli_session() logs exceptions via done-callback."""
+
+    @pytest.mark.asyncio
+    async def test_exception_produces_log_error(self) -> None:
+        """set_cli_session failure triggers log.error via the done-callback."""
+        # Arrange
+        driver = _make_driver()
+        store = _make_turn_store()
+        store.set_cli_session = AsyncMock(side_effect=Exception("db down"))
+        driver.set_turn_store(store)
+
+        # Act — two yields: (1) run the task coroutine, (2) fire done-callback.
+        # Both sleeps stay inside the patch scope so the mock is active when
+        # _log_task_exc runs (CPython fires done-callbacks synchronously at task
+        # completion, so two yields cover: schedule → run → callback).
+        with patch("lyra.llm.drivers.cli_nats.log") as mock_log:
+            driver._fire_set_cli_session("lyra-sess-1", "cli-sid-abc")
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+            # Assert inside patch: mock active when callback fires
+            mock_log.error.assert_called_once()
+            assert "cli_nats" in mock_log.error.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_no_exception_does_not_log_error(self) -> None:
+        """Successful set_cli_session does not trigger log.error."""
+        # Arrange
+        driver = _make_driver()
+        store = _make_turn_store()
+        store.set_cli_session = AsyncMock(return_value=None)
+        driver.set_turn_store(store)
+
+        # Act — assert inside patch so any spurious log.error during task
+        # execution is captured by the mock (not the real logger)
+        with patch("lyra.llm.drivers.cli_nats.log") as mock_log:
+            driver._fire_set_cli_session("lyra-sess-1", "cli-sid-ok")
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+            # Assert
+            mock_log.error.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _log_task_exc unit tests — regression guard for the callback itself
+# ---------------------------------------------------------------------------
+
+
+class TestLogTaskExc:
+    """Unit tests for _log_task_exc done-callback."""
+
+    def test_calls_log_error_on_task_exception(self) -> None:
+        """_log_task_exc calls log.error with exc_info when task raised."""
+        from lyra.llm.drivers.cli_nats import _log_task_exc
+
+        exc = Exception("db down")
+        task = MagicMock()
+        task.cancelled.return_value = False
+        task.exception.return_value = exc
+        task.get_name.return_value = "set_cli_session:abcdef12"
+
+        with patch("lyra.llm.drivers.cli_nats.log") as mock_log:
+            _log_task_exc(task)
+
+        mock_log.error.assert_called_once()
+        _, kwargs = mock_log.error.call_args
+        assert kwargs.get("exc_info") is exc
+
+    def test_no_log_when_task_succeeded(self) -> None:
+        """_log_task_exc does not log when the task completed without exception."""
+        from lyra.llm.drivers.cli_nats import _log_task_exc
+
+        task = MagicMock()
+        task.cancelled.return_value = False
+        task.exception.return_value = None
+
+        with patch("lyra.llm.drivers.cli_nats.log") as mock_log:
+            _log_task_exc(task)
+
+        mock_log.error.assert_not_called()
+
+    def test_no_log_when_task_cancelled(self) -> None:
+        """_log_task_exc does not log when the task was cancelled."""
+        from lyra.llm.drivers.cli_nats import _log_task_exc
+
+        task = MagicMock()
+        task.cancelled.return_value = True
+
+        with patch("lyra.llm.drivers.cli_nats.log") as mock_log:
+            _log_task_exc(task)
+
+        mock_log.error.assert_not_called()

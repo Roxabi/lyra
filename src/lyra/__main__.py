@@ -17,7 +17,7 @@ from lyra.bootstrap.factory.config import (
     _load_raw_config,
 )
 from lyra.bootstrap.factory.unified import _bootstrap_unified
-from lyra.core.trace import TelegramTokenFilter, TraceIdFilter
+from lyra.core.logging_setup import setup_logging
 from lyra.errors import KeyringError, MissingCredentialsError
 
 log = logging.getLogger(__name__)
@@ -42,37 +42,9 @@ async def _main(*, _stop: asyncio.Event | None = None) -> None:
         sys.exit(str(exc))
 
 
-def _setup_logging(level: str = "INFO") -> None:
-    """Configure logging: stdout console handler only.
-
-    Uses explicit handler construction (not ``basicConfig``) to guarantee
-    formatter and filter attachment.
-    """
-    fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-
-    trace_filter = TraceIdFilter()
-    # Redact Telegram bot tokens — httpx logs full request URLs (incl. token)
-    # at INFO. Attached BEFORE formatting.
-    telegram_token_filter = TelegramTokenFilter()
-
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(fmt))
-    console_handler.addFilter(trace_filter)
-    console_handler.addFilter(telegram_token_filter)
-
-    root = logging.getLogger()
-    if root.handlers:
-        return  # already configured — avoid duplicate handlers
-    level_int = getattr(logging, level.upper(), logging.INFO)
-    root.setLevel(level_int)
-    root.addFilter(trace_filter)
-    root.addFilter(telegram_token_filter)
-    root.addHandler(console_handler)
-
-
 def main() -> None:
     raw_config = _load_raw_config()
-    _setup_logging(_load_logging_config(raw_config).level)
+    setup_logging(_load_logging_config(raw_config).level)
     asyncio.run(_main())
 
 

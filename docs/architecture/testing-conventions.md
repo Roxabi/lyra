@@ -64,7 +64,7 @@ The `dev-core:tester` agent flags missing negative tests as `issue:` (≥90% con
 - Import + call real source functions — never mock the module under test
 - `unittest.mock.patch('module.Symbol')` / `mocker.patch(...)` — patch at the import site of the dependency, never patch the module under test itself
 - Integration tests (real modules wired) > unit tests with heavy mocks
-- Verify coverage: `uv run pytest --coverage <file>` (substitute your project's test command) — 0% → wrong mocking
+- Verify coverage: `uv run pytest --cov=src/<module> <test_path>` (substitute your project's test command) — 0% → wrong mocking
 
 ---
 

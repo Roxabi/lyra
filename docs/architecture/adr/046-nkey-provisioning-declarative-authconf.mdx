@@ -84,7 +84,7 @@ A `lyra ops verify` CLI command (or equivalent script) MUST be able to: (a) pars
 2. `sudo systemctl reload nats.service` — applies new auth.conf in place, no connection drop.
 3. Update supervisor envs to point each adapter to its own seed (fix the hub.seed fallback).
 4. Restart adapters in order: telegram, discord, tts, stt, hub.
-5. Run `scripts/check-nats-acls.sh --since @{reload-timestamp}` — zero `Permissions Violation` lines is the pass signal.
+5. Run `tools/check-nats-acls.sh --since @{reload-timestamp}` — zero `Permissions Violation` lines is the pass signal.
 6. Verify voicecli workers reconnect (heartbeats appear on `lyra.voice.*.heartbeat`).
 
 ### Lane sequencing
@@ -128,4 +128,4 @@ Lane B (containerize, #727/#728) remains independent — it does not need to lan
 - Spec: [`artifacts/specs/706-per-role-nkeys-acls-spec.mdx`](../../../artifacts/specs/706-per-role-nkeys-acls-spec.mdx)
 - Issue: [#714](https://github.com/Roxabi/lyra/issues/714) (per-role ACLs), [#689](https://github.com/Roxabi/lyra/issues/689) (Lane G voicecli cutover)
 - Script: `deploy/nats/gen-nkeys.sh`
-- Planned: `scripts/check-nats-acls.sh`, `lyra ops verify` CLI command
+- Planned: `tools/check-nats-acls.sh`, `lyra ops verify` CLI command

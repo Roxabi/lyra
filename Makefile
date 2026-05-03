@@ -31,14 +31,13 @@ endif
 
 DEPLOY_HOST := $(shell grep '^DEPLOY_HOST=' .env 2>/dev/null | cut -d= -f2)
 DEPLOY_DIR := $(shell grep '^DEPLOY_DIR=' .env 2>/dev/null | cut -d= -f2)
-LYRA_SUPERVISORCTL_PATH := $(shell grep '^LYRA_SUPERVISORCTL_PATH=' .env 2>/dev/null | cut -d= -f2)
 
 define require_machine1
 	@[ -n "$(DEPLOY_HOST)" ] || { echo "Error: DEPLOY_HOST not set in .env"; exit 1; }
 	@[ -n "$(DEPLOY_DIR)" ] || { echo "Error: DEPLOY_DIR not set in .env"; exit 1; }
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor register quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy full-deploy remote update nats-setup nats-regen-authconf nats-deploy test test-integration voice-smoke lint typecheck format gen-conf
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-install-deploy-lib quadlet-upgrade-lib quadlet-secrets-install quadlet-authconf-merged deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -66,31 +65,18 @@ LYRA_NATS_UNIT     := lyra-nats
 LYRA_CLIPOOL_UNIT  := lyra-clipool
 LYRA_UNITS         := $(LYRA_HUB_UNIT) $(LYRA_TELEGRAM_UNIT) $(LYRA_DISCORD_UNIT) $(LYRA_CLIPOOL_UNIT)
 
-# $(call lyra_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl or supervisorctl.
-# Uses supervisorctl if LYRA_SUPERVISORCTL_PATH is set, else systemctl (default install).
+# $(call lyra_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl --user.
 # Defaults (empty SVC_CMD) to `start`. `logs`/`errors` tail the first unit.
 define lyra_sctl
-	@if [ -n "$(LYRA_SUPERVISORCTL_PATH)" ]; then \
-		case "$(SVC_CMD)" in \
-			reload|"")      $(LYRA_SUPERVISORCTL_PATH) restart $(1) ;; \
-			start)          $(LYRA_SUPERVISORCTL_PATH) start $(1) ;; \
-			stop)           $(LYRA_SUPERVISORCTL_PATH) stop $(1) ;; \
-			status)         $(LYRA_SUPERVISORCTL_PATH) status $(1) || true ;; \
-			logs)           $(LYRA_SUPERVISORCTL_PATH) tail -f $(firstword $(1)) ;; \
-			errlogs|errors) $(LYRA_SUPERVISORCTL_PATH) tail -f $(firstword $(1)) stderr ;; \
-			*) echo "Unknown action: $(SVC_CMD). Use: start|stop|status|reload|logs|errors"; exit 1 ;; \
-		esac; \
-	else \
-		case "$(SVC_CMD)" in \
-			reload)         systemctl --user restart $(1) ;; \
-			start|"")       systemctl --user start   $(1) ;; \
-			stop)           systemctl --user stop    $(1) ;; \
-			status)         systemctl --user status  $(1) || true ;; \
-			logs)           journalctl --user -u $(firstword $(1)) -f ;; \
-			errlogs|errors) journalctl --user -u $(firstword $(1)) -f -p err ;; \
-			*) echo "Unknown action: $(SVC_CMD). Use: start|stop|status|reload|logs|errors"; exit 1 ;; \
-		esac; \
-	fi
+	@case "$(SVC_CMD)" in \
+		reload)         systemctl --user restart $(1) ;; \
+		start|"")       systemctl --user start   $(1) ;; \
+		stop)           systemctl --user stop    $(1) ;; \
+		status)         systemctl --user status  $(1) || true ;; \
+		logs)           journalctl --user -u $(firstword $(1)) -f ;; \
+		errlogs|errors) journalctl --user -u $(firstword $(1)) -f -p err ;; \
+		*) echo "Unknown action: $(SVC_CMD). Use: start|stop|status|reload|logs|errors"; exit 1 ;; \
+	esac
 endef
 
 lyra:
@@ -118,50 +104,20 @@ ifndef _IS_LYRA_SUBCMD
 	$(call lyra_sctl,$(LYRA_CLIPOOL_UNIT))
 endif
 
-# ── Monitor (systemd timer, not supervisor) ──────────────────────────────────
+# ── Monitor — DEPRECATED (#1035) ─────────────────────────────────────────────
+# Host-timer monitoring is superseded by Monitoring v2 (NATS event stream +
+# Tauri desktop dashboard). The unit has been disabled on prod. This target is
+# preserved as a no-op shim until #1035 lands; running it prints a pointer.
 
 monitor:
-	@case "$(_LYRA_CMD)" in \
-		status) systemctl --user status lyra-monitor.timer lyra-monitor.service 2>&1 || true; \
-			echo ""; systemctl --user list-timers lyra-monitor.timer 2>/dev/null || true ;; \
-		logs)   journalctl --user -u lyra-monitor.service -f ;; \
-		run)    echo "Triggering manual monitoring run..."; systemctl --user start lyra-monitor.service ;; \
-		enable) systemctl --user enable --now lyra-monitor.timer; echo "Monitor timer enabled." ;; \
-		disable) systemctl --user disable --now lyra-monitor.timer; echo "Monitor timer disabled." ;; \
-		"")     systemctl --user status lyra-monitor.timer 2>&1 || true ;; \
-		*)      echo "Usage: make monitor [status|logs|run|enable|disable]" ;; \
-	esac
+	@echo "make monitor — DEPRECATED."
+	@echo "Host-timer monitoring is superseded by Monitoring v2 (#1035 — NATS + Tauri)."
+	@echo "Existing prod has been disabled. This target will be removed when #1035 lands."
+	@false
 
-# ── Registration ─────────────────────────────────────────────────────────────
+# ── Quadlet install paths ────────────────────────────────────────────────────
 
-SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
-QUADLET_DIR      := $(HOME)/.config/containers/systemd
-
-register:
-	@echo "Registering lyra with supervisor hub..."
-	@$(HUB_GEN_MK) lyra "$(abspath .)" lyra telegram discord
-	$(call hub-link-conf,lyra-hub,deploy/conf.d/lyra-hub.conf)
-	$(call hub-link-conf,lyra-telegram,deploy/conf.d/lyra-telegram.conf)
-	$(call hub-link-conf,lyra-discord,deploy/conf.d/lyra-discord.conf)
-	@mkdir -p "$(HOME)/.local/state/lyra/logs"
-	$(hub_reread)
-	@echo ""
-	@echo "Installing lyra systemd service..."
-	@mkdir -p "$(SYSTEMD_USER_DIR)"
-	@cp "$(abspath deploy/lyra.service)" "$(SYSTEMD_USER_DIR)/lyra.service"
-	@echo ""
-	@echo "Installing monitoring systemd timer..."
-	@cp "$(abspath deploy/lyra-monitor.service)" "$(SYSTEMD_USER_DIR)/lyra-monitor.service"
-	@cp "$(abspath deploy/lyra-monitor.timer)"   "$(SYSTEMD_USER_DIR)/lyra-monitor.timer"
-	@systemctl --user daemon-reload
-	@systemctl --user enable --now lyra.service
-	@systemctl --user enable lyra-monitor.timer
-	@echo ""
-	@echo "Done."
-	@echo "  Supervisor: lyra.service is running. Use 'make lyra status' or 'systemctl --user status lyra'."
-	@echo "  Monitor:    run 'make monitor enable' to start the health check timer."
-	@echo "  Secrets:    ensure TELEGRAM_TOKEN, ANTHROPIC_API_KEY, TELEGRAM_ADMIN_CHAT_ID are in .env"
-
+QUADLET_DIR            := $(HOME)/.config/containers/systemd
 DEPLOY_LIB_INSTALL_DIR := $(HOME)/.local/lib/roxabi
 
 quadlet-preflight:  ## advisory pre-flight checks before Quadlet install (non-blocking)
@@ -217,14 +173,6 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 	@podman secret create --replace lyra-nkey-clipool-worker    "$(LYRA_NKEYS_DIR)/clipool-worker.seed"
 	@echo "Podman secrets installed. Verify: podman secret ls"
 
-# ── Supervisor config reload (remote prod only until cutover #611) ──────────
-
-SCTL := $(or $(SUPERVISORCTL),$(HOME)/projects/scripts/supervisorctl.sh)
-
-update:
-	@test -f "$(SCTL)" || { echo "ERROR: supervisorctl.sh not found at $(SCTL). Run 'make register' (or set SUPERVISORCTL) first."; exit 1; }
-	@$(SCTL) reread && $(SCTL) update
-
 # ── Deploy + remote ──────────────────────────────────────────────────────────
 
 deploy:
@@ -279,48 +227,28 @@ full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf
 	echo "Full deploy complete."'
 
 # make remote [service] [action]
-#   service: lyra or empty → all lyra-* programs | <shortname> → lyra-<shortname>
-#   action:  reload | start | stop | status (default) | logs | errors | update
-#   Single SSH call — service/action disambiguation + supervisor/systemd branch happen on the remote.
-#   Option A: remote sources its own .env to detect LYRA_SUPERVISORCTL_PATH; no local .env variable needed.
+#   service: lyra or empty → all lyra-* + voicecli-* units | <shortname> → lyra-<shortname>
+#   action:  reload | start | stop | status (default) | logs | errors
 remote:
 	$(require_machine1)
 	@ssh $(DEPLOY_HOST) '\
 	set -eu; \
-	RENV=$(DEPLOY_DIR)/.env; \
-	REMOTE_SCTL=$$(grep "^LYRA_SUPERVISORCTL_PATH=" "$$RENV" 2>/dev/null | cut -d= -f2); \
-	USE_SCTL=false; \
-	if [ -n "$$REMOTE_SCTL" ]; then USE_SCTL=true; fi; \
 	SVC="$(word 1,$(_LYRA_CMD))"; ACTION="$(word 2,$(_LYRA_CMD))"; \
-	CONF=$(DEPLOY_DIR)/deploy/conf.d; \
-	rdisc() { grep -Rh "^\[program:\(lyra-\|voicecli_\)" "$$CONF" | tr -d "[]" | cut -d: -f2 | tr "\n" " "; }; \
+	QDIR=$$HOME/.config/containers/systemd; \
+	rdisc() { ls "$$QDIR"/lyra-*.container "$$QDIR"/voicecli-*.container 2>/dev/null | xargs -n1 basename | sed "s/\.container$$//" | tr "\n" " "; }; \
 	if   [ -z "$$SVC" ] || [ "$$SVC" = lyra ]; then PROGS=$$(rdisc); FIRST=lyra-hub; \
-	elif [ -f "$$CONF/lyra-$$SVC.conf" ];       then PROGS="lyra-$$SVC"; FIRST="$$PROGS"; \
-	elif [ -f "$$CONF/voicecli_$$SVC.conf" ];   then PROGS="voicecli_$$SVC"; FIRST="$$PROGS"; \
+	elif [ -f "$$QDIR/lyra-$$SVC.container" ];     then PROGS="lyra-$$SVC"; FIRST="$$PROGS"; \
+	elif [ -f "$$QDIR/voicecli-$$SVC.container" ]; then PROGS="voicecli-$$SVC"; FIRST="$$PROGS"; \
 	else ACTION="$$SVC"; PROGS=$$(rdisc); FIRST=lyra-hub; fi; \
-	if [ "$$USE_SCTL" = true ]; then \
-	  case "$${ACTION:-status}" in \
-	    reload)  $$REMOTE_SCTL restart $$PROGS ;; \
-	    start)   $$REMOTE_SCTL start $$PROGS ;; \
-	    stop)    $$REMOTE_SCTL stop $$PROGS ;; \
-	    status)  $$REMOTE_SCTL status $$PROGS ;; \
-	    update)  $$REMOTE_SCTL reread && $$REMOTE_SCTL update ;; \
-	    logs)    $$REMOTE_SCTL tail -f $$FIRST ;; \
-	    errors)  $$REMOTE_SCTL tail -f $$FIRST stderr ;; \
-	    *)       echo "Unknown action: $$ACTION"; exit 1 ;; \
-	  esac; \
-	else \
-	  case "$${ACTION:-status}" in \
-	    reload)  systemctl --user restart $$PROGS ;; \
-	    start)   systemctl --user start   $$PROGS ;; \
-	    stop)    systemctl --user stop    $$PROGS ;; \
-	    status)  systemctl --user status  $$PROGS || true ;; \
-	    update)  echo "update is supervisord-only; use quadlet-install for Quadlet hosts" ;; \
-	    logs)    journalctl --user -u $$FIRST -f ;; \
-	    errors)  journalctl --user -u $$FIRST -f -p err ;; \
-	    *)       echo "Unknown action: $$ACTION"; exit 1 ;; \
-	  esac; \
-	fi'
+	case "$${ACTION:-status}" in \
+	  reload)  systemctl --user restart $$PROGS ;; \
+	  start)   systemctl --user start   $$PROGS ;; \
+	  stop)    systemctl --user stop    $$PROGS ;; \
+	  status)  systemctl --user status  $$PROGS || true ;; \
+	  logs)    journalctl --user -u $$FIRST -f ;; \
+	  errors)  journalctl --user -u $$FIRST -f -p err ;; \
+	  *)       echo "Unknown action: $$ACTION"; exit 1 ;; \
+	esac'
 
 # ── Dev tools ────────────────────────────────────────────────────────────────
 
@@ -331,13 +259,6 @@ nats-regen-authconf:          ## re-render auth.conf from existing seeds, upload
 	@lyra-acl genkeys --regen-authconf
 	@$(MAKE) quadlet-secrets-install
 	@podman kill -s HUP lyra-nats
-
-nats-deploy:              ## run NATS setup on prod, then reload supervisor conf
-	$(require_machine1)
-	@echo "Running NATS setup on $(DEPLOY_HOST)..."
-	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && bash deploy/nats/setup.sh"
-	@echo "Reloading supervisor config on $(DEPLOY_HOST)..."
-	@ssh $(DEPLOY_HOST) "$(REMOTE_SCTL) reread && $(REMOTE_SCTL) update"
 
 test:
 	uv run pytest -v
@@ -368,8 +289,3 @@ format:
 # dep-graph and corpus migrated to roxabi-dashboard (2026-04-22).
 # Run via dashboard: `uv run --project ../roxabi-dashboard roxabi-corpus sync`
 # Graph API: GET http://localhost:8000/api/graph
-
-# ── Supervisor config generation ─────────────────────────────────────────────
-
-gen-conf:              ## generate supervisord conf.d from agents.yml
-	uv run deploy/gen-supervisor-conf.py

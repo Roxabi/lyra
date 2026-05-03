@@ -1,5 +1,9 @@
+# DEPRECATED — host-timer monitoring is superseded by Monitoring v2 (#1035).
+# Do not install on new hosts. Existing prod has been disabled. This timer
+# will be deleted when #1035 lands.
+
 [Unit]
-Description=Run Lyra health monitor periodically
+Description=[DEPRECATED — see #1035] Run Lyra health monitor periodically
 
 [Timer]
 OnBootSec=1min

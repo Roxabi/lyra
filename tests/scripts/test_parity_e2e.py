@@ -261,6 +261,112 @@ def test_clipool_worker_can_connect(
     asyncio.run(_connect())
 
 
+@pytest.mark.skipif(
+    not NATS_PY_AVAILABLE,
+    reason="nats-py not installed — skipping live ACL test",
+)
+def test_hub_publish_acl_enforced(nats_server: None, rendered_auth_conf: Path) -> None:
+    """hub: allowed publish succeeds; denied publish triggers Permissions Violation."""
+    import asyncio
+
+    import nats
+
+    seed_str = (rendered_auth_conf / "hub.seed").read_text().strip()
+    acl_errors: list[Exception] = []
+
+    async def _test() -> None:
+        async def error_cb(exc: Exception) -> None:
+            acl_errors.append(exc)
+
+        nc = await nats.connect(
+            "nats://localhost:4223",
+            nkeys_seed_str=seed_str,
+            error_cb=error_cb,
+        )
+        await nc.publish("lyra.clipool.cmd", b"ping")
+        await nc.publish("lyra.inbound.telegram.acl_test", b"denied")
+        await asyncio.sleep(0.2)
+        await nc.drain()
+
+    asyncio.run(_test())
+    perm_violations = [e for e in acl_errors if "Permissions Violation" in str(e)]
+    assert perm_violations, (
+        f"Expected Permissions Violation for denied publish; errors: {acl_errors}"
+    )
+
+
+@pytest.mark.skipif(
+    not NATS_PY_AVAILABLE,
+    reason="nats-py not installed — skipping live ACL test",
+)
+def test_voice_tts_publish_acl_enforced(
+    nats_server: None, rendered_auth_conf: Path
+) -> None:
+    """voice-tts: allowed publish succeeds; denied publish is rejected."""
+    import asyncio
+
+    import nats
+
+    seed_str = (rendered_auth_conf / "voice-tts.seed").read_text().strip()
+    acl_errors: list[Exception] = []
+
+    async def _test() -> None:
+        async def error_cb(exc: Exception) -> None:
+            acl_errors.append(exc)
+
+        nc = await nats.connect(
+            "nats://localhost:4223",
+            nkeys_seed_str=seed_str,
+            error_cb=error_cb,
+        )
+        await nc.publish("lyra.voice.tts.heartbeat", b"ping")
+        await nc.publish("lyra.clipool.cmd", b"denied")
+        await asyncio.sleep(0.2)
+        await nc.drain()
+
+    asyncio.run(_test())
+    perm_violations = [e for e in acl_errors if "Permissions Violation" in str(e)]
+    assert perm_violations, (
+        f"Expected Permissions Violation for denied publish; errors: {acl_errors}"
+    )
+
+
+@pytest.mark.skipif(
+    not NATS_PY_AVAILABLE,
+    reason="nats-py not installed — skipping live ACL test",
+)
+def test_clipool_worker_subscribe_acl_enforced(
+    nats_server: None, rendered_auth_conf: Path
+) -> None:
+    """clipool-worker: allowed subscribe succeeds; denied subscribe is rejected."""
+    import asyncio
+
+    import nats
+
+    seed_str = (rendered_auth_conf / "clipool-worker.seed").read_text().strip()
+    acl_errors: list[Exception] = []
+
+    async def _test() -> None:
+        async def error_cb(exc: Exception) -> None:
+            acl_errors.append(exc)
+
+        nc = await nats.connect(
+            "nats://localhost:4223",
+            nkeys_seed_str=seed_str,
+            error_cb=error_cb,
+        )
+        await nc.subscribe("lyra.clipool.cmd")
+        await nc.subscribe("lyra.inbound.discord.>")
+        await asyncio.sleep(0.2)
+        await nc.drain()
+
+    asyncio.run(_test())
+    perm_violations = [e for e in acl_errors if "Permissions Violation" in str(e)]
+    assert perm_violations, (
+        f"Expected Permissions Violation for denied subscribe; errors: {acl_errors}"
+    )
+
+
 def test_retired_identity_connect_rejected(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> None:

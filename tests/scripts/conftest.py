@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 
@@ -53,17 +52,23 @@ def with_retired_matrix_path(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def prod_matrix() -> LoadedMatrix:
-    """Raw JSON of deploy/nats/acl-matrix.json."""
-    return json.loads(_REAL_MATRIX_JSON.read_text())
+    """Validated LoadedMatrix from deploy/nats/acl-matrix.json."""
+    from scripts._loader import load_matrix
+
+    return load_matrix(_REAL_MATRIX_JSON)
 
 
 @pytest.fixture()
 def legacy_matrix() -> LoadedMatrix:
-    """Raw JSON of tests/scripts/fixtures/v1-legacy.json."""
-    return json.loads(_V1_LEGACY_JSON.read_text())
+    """Validated LoadedMatrix from tests/scripts/fixtures/v1-legacy.json."""
+    from scripts._loader import load_matrix
+
+    return load_matrix(_V1_LEGACY_JSON)
 
 
 @pytest.fixture()
 def with_retired_matrix() -> LoadedMatrix:
-    """Raw JSON of tests/scripts/fixtures/v2-with-retired.json."""
-    return json.loads(_V2_WITH_RETIRED_JSON.read_text())
+    """Validated LoadedMatrix from tests/scripts/fixtures/v2-with-retired.json."""
+    from scripts._loader import load_matrix
+
+    return load_matrix(_V2_WITH_RETIRED_JSON)

@@ -132,7 +132,7 @@ fi
 section "nkeys"
 if [ -f "${NKEYS_AUTH}" ]; then
   info "auth.conf exists — re-rendering from current seeds (idempotent)."
-  sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --regen-authconf --yes
+  sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --regen-authconf
   sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --fix-perms
 else
   sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys

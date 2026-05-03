@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _MATRIX_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "v2-prod.json"
 
@@ -249,6 +251,45 @@ class TestRegenerateMode:
             f"got {result.returncode}"
         )
         assert "not yet implemented" not in result.stderr
+
+    def test_regenerate_restores_on_provision_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """seeds_dir is restored from backup if _mode_full_provision raises."""
+        import argparse
+        from unittest.mock import patch
+
+        from scripts._modes import _mode_regenerate
+
+        # Arrange: seeds_dir and auth_dir in tmp_path
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir()
+        seeds_dir.mkdir()
+        (seeds_dir / "hub.seed").write_bytes(b"original-seed")
+        (auth_dir / "auth.conf").write_text("original-auth-conf")
+
+        # Use env overrides so _require_root is skipped and paths redirect to tmp_path
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+
+        args = argparse.Namespace(yes=True, matrix=_MATRIX_FIXTURE)
+
+        # Patch _mode_full_provision to raise after seeds are wiped
+        with patch(
+            "scripts._modes._mode_full_provision",
+            side_effect=RuntimeError("simulated provision failure"),
+        ):
+            with pytest.raises(RuntimeError, match="simulated provision failure"):
+                _mode_regenerate(args)
+
+        # After failed provision: seeds_dir must be restored from backup
+        assert seeds_dir.exists(), (
+            "seeds_dir must be restored from backup after _mode_full_provision failure"
+        )
+        assert (seeds_dir / "hub.seed").read_bytes() == b"original-seed", (
+            "Seed file content must match the pre-wipe backup"
+        )
 
 
 # ── T19.5 — --show requires root ─────────────────────────────────────────────

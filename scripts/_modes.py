@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import grp
 import os
 import pwd
 import shutil
@@ -82,6 +83,15 @@ def _require_root() -> None:
         sys.exit(1)
 
 
+def _operator_uid_gid() -> tuple[int, int]:
+    """Return (uid, gid) of the operator (SUDO_USER if set, else current user)."""
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        pw = pwd.getpwnam(sudo_user)
+        return pw.pw_uid, pw.pw_gid
+    return os.getuid(), os.getgid()
+
+
 def _mode_regen_authconf(args: argparse.Namespace) -> None:
     """--regen-authconf: re-derive pubkeys from existing seeds, write auth.conf."""
     seeds_dir = _seeds_dir()
@@ -99,8 +109,7 @@ def _mode_regen_authconf(args: argparse.Namespace) -> None:
         seed_file = seeds_dir / f"{name}.seed"
         if not seed_file.exists():
             print(
-                f"error: missing seed: {seed_file}"
-                " — run 'uv run lyra-acl genkeys'",
+                f"error: missing seed: {seed_file} — run 'uv run lyra-acl genkeys'",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -191,15 +200,27 @@ def _mode_regenerate(args: argparse.Namespace) -> None:
     import time
 
     epoch = int(time.time())
+    backup_auth: str | None = None
+    backup_seeds: str | None = None
+
     if auth_conf.exists():
-        shutil.copy2(str(auth_conf), str(auth_conf) + f".bak.{epoch}")
+        backup_auth = str(auth_conf) + f".bak.{epoch}"
+        shutil.copy2(str(auth_conf), backup_auth)
     if seeds_dir.exists():
-        shutil.copytree(str(seeds_dir), str(seeds_dir) + f".bak.{epoch}")
+        backup_seeds = str(seeds_dir) + f".bak.{epoch}"
+        shutil.copytree(str(seeds_dir), backup_seeds)
         shutil.rmtree(str(seeds_dir))
     if auth_conf.exists():
         auth_conf.unlink()
 
-    _mode_full_provision(args)
+    try:
+        _mode_full_provision(args)
+    except BaseException:
+        if backup_seeds and Path(backup_seeds).exists() and not seeds_dir.exists():
+            shutil.copytree(backup_seeds, str(seeds_dir))
+        if backup_auth and Path(backup_auth).exists() and not auth_conf.exists():
+            shutil.copy2(backup_auth, str(auth_conf))
+        raise
 
 
 def _mode_show(args: argparse.Namespace) -> None:
@@ -217,19 +238,25 @@ def _mode_show(args: argparse.Namespace) -> None:
 
 
 def _mode_fix_perms(args: argparse.Namespace) -> None:
-    """--fix-perms: re-apply permissions (root required)."""
+    """--fix-perms: re-apply permissions and ownership (root required)."""
     _require_root()
     seeds_dir = _seeds_dir()
     auth_dir = _auth_dir()
     auth_conf = auth_dir / "auth.conf"
+    uid, gid = _operator_uid_gid()
 
     if seeds_dir.exists():
         seeds_dir.chmod(0o700)
+        os.chown(seeds_dir, uid, gid)
         for seed_file in seeds_dir.glob("*.seed"):
             seed_file.chmod(0o600)
+            os.chown(seed_file, uid, gid)
 
     if auth_conf.exists():
         auth_conf.chmod(0o640)
+        if not os.environ.get("AUTH_DIR"):
+            nats_gid = grp.getgrnam("nats").gr_gid
+            os.chown(auth_conf, 0, nats_gid)
 
 
 def _mode_full_provision(args: argparse.Namespace) -> None:
@@ -239,10 +266,13 @@ def _mode_full_provision(args: argparse.Namespace) -> None:
     auth_dir = _auth_dir()
     matrix = load_matrix(args.matrix)
     provider = _get_provider()
+    uid, gid = _operator_uid_gid()
 
     seeds_dir.mkdir(parents=True, exist_ok=True)
     seeds_dir.chmod(0o700)
+    os.chown(seeds_dir, uid, gid)
     auth_dir.mkdir(parents=True, exist_ok=True)
+    auth_dir.chmod(0o750)
 
     active = {
         name: identity
@@ -256,14 +286,19 @@ def _mode_full_provision(args: argparse.Namespace) -> None:
         seed_file = seeds_dir / f"{name}.seed"
         seed_str = seed.decode() if seed.endswith(b"\n") else seed.decode() + "\n"
         atomic_write(seed_file, seed_str, 0o600)
+        os.chown(seed_file, uid, gid)
         pubkeys[name] = provider.pubkey_from_seed(seed)
 
     content = render_auth_conf(matrix, pubkeys)
 
-    # System write: /etc/nats/nkeys/auth.conf (0640)
+    # System write: /etc/nats/nkeys/auth.conf (0640, root:nats)
     system_conf = auth_dir / "auth.conf"
     atomic_write(system_conf, content, 0o640)
+    if not os.environ.get("AUTH_DIR"):
+        nats_gid = grp.getgrnam("nats").gr_gid
+        os.chown(system_conf, 0, nats_gid)
 
-    # User mirror: ~/.lyra/nkeys/auth.conf (0600)
+    # User mirror: ~/.lyra/nkeys/auth.conf (0600, operator-owned)
     user_conf = seeds_dir / "auth.conf"
     atomic_write(user_conf, content, 0o600)
+    os.chown(user_conf, uid, gid)

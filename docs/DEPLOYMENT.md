@@ -45,7 +45,7 @@ Machine 1 requires:
 
 ### Auto-update from GHCR (canonical, since #929)
 
-Production pulls images from GitHub Container Registry. CI publishes `ghcr.io/roxabi/lyra:staging` on every staging merge. Quadlet's `Label=io.containers.autoupdate=registry` paired with `podman-auto-update.timer` (5-minute polling) restarts the container as soon as a new digest is published — no manual intervention needed after a merge.
+Production pulls images from GitHub Container Registry. CI publishes `ghcr.io/roxabi/lyra:staging` on every staging merge. Quadlet's `Label=io.containers.autoupdate=registry` paired with `podman-auto-update.timer` (daily by default; configure a drop-in for shorter intervals) restarts the container as soon as a new digest is published — no manual intervention needed after a merge.
 
 ```bash
 # Verify the timer is active (one-time, on Machine 1)
@@ -160,7 +160,7 @@ Adapter containers (`lyra-telegram`, `lyra-discord`) are lightweight thin NATS c
 cd ~/projects/lyra
 make quadlet-install
 
-# Enable the auto-update timer (one-time per host, run on Machine 1)
+# Enable the auto-update timer (only needed if provision.sh was not run)
 systemctl --user enable --now podman-auto-update.timer
 
 # Verify it's active and shows a NEXT firing time
@@ -171,10 +171,10 @@ This copies all `.container`, `.volume`, and `.network` files from `deploy/quadl
 `~/.config/containers/systemd/` and runs `systemctl --user daemon-reload`.
 
 `podman-auto-update.timer` must be active for the container-native CI→prod deploy to work:
-it polls GHCR every 5 minutes and restarts any container whose image digest changed. Without
-it, pushes to `staging` build a new GHCR image but prod never pulls it. `provision.sh`
-enables this automatically; if you skipped provisioning or reprovisioned without the timer
-step, run the `enable --now` command above.
+it polls GHCR at its configured interval (daily by default) and restarts any container whose
+image digest changed. Without it, pushes to `staging` build a new GHCR image but prod never
+pulls it. `provision.sh` enables this automatically; if you skipped provisioning or
+reprovisioned without the timer step, run the `enable --now` command above.
 
 ## 4. Manage the service
 
@@ -273,7 +273,7 @@ needed.
 # Enable linger (run once — survives reboots)
 loginctl enable-linger $USER
 
-# Enable auto-update timer (run once — see §3 for detail)
+# Enable auto-update timer (only needed if provision.sh was not run — see §3 for detail)
 systemctl --user enable --now podman-auto-update.timer
 
 # Check all Lyra unit statuses

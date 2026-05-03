@@ -199,7 +199,23 @@ else
   info "podman.socket enabled and started for $ADMIN_USER."
 fi
 
+# Enable podman-auto-update.timer — polls GHCR for new image digests (daily by default;
+# use a drop-in override to shorten the interval) and restarts containers carrying
+# Label=io.containers.autoupdate=registry.
+# Without this the container-native CI→prod deploy story (ADR-043 / PR #929) is broken.
+# Note: hard-fails if podman was not installed via apt — intentional (provision.sh is Ubuntu-only).
+if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+     systemctl --user is-active podman-auto-update.timer &>/dev/null; then
+  info "podman-auto-update.timer already active for $ADMIN_USER."
+else
+  sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+    systemctl --user enable --now podman-auto-update.timer
+  info "podman-auto-update.timer enabled and started for $ADMIN_USER."
+fi
+
 # Reload user systemd so the Quadlet generator picks up any new .container units.
+# podman-auto-update.timer is a static unit (apt-provided) — no daemon-reload dependency,
+# unlike Quadlet-generated units below.
 sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
   systemctl --user daemon-reload
 info "User systemd daemon reloaded (Quadlet generator active)."

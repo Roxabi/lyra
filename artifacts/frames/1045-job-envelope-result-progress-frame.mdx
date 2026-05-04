@@ -1,0 +1,46 @@
+---
+title: "feat(contracts): JobEnvelope + JobResult + JobProgress for lyra.jobs.* bus"
+issue: 1045
+status: approved
+tier: F-lite
+date: 2026-05-04
+---
+
+## Problem
+
+Epic #1044 introduces a generic job bus (`lyra.jobs.*`) so workers can execute arbitrary jobs outside the hub. Before any worker can publish or consume on this bus, every participant needs a shared wire format. Without it, callers would hard-code payload shapes and each worker would parse differently — creating a fragile, undocumented contract that breaks silently on any field rename.
+
+This issue defines the three envelopes that cover the full lifecycle of a job: submission (`JobEnvelope`), reply (`JobResult`), and streaming progress (`JobProgress`). They live in `roxabi-contracts` so the hub, adapters, and workers all import from one source of truth.
+
+## Who
+
+- **Primary:** `roxabi-contracts` consumers — hub dispatch code, worker SDK, adapter bridges — that will import `JobEnvelope`, `JobResult`, `JobProgress` from the shared package.
+- **Secondary:** Developers writing new workers in the epic chain (issues #2 JetStream config, #3 worker SDK) who depend on these models being stable before they can proceed.
+
+## Constraints
+
+- Must extend `ContractEnvelope` (provides `contract_version`, `trace_id`, `issued_at`).
+- `WorkerError` is reused unchanged from `errors.py` (ADR-066) — no new error model.
+- `composite_depth` must be validated `0 ≤ depth ≤ 3` in the model (cap = 3 per epic spec).
+- New module layout follows the existing pattern: `roxabi_contracts/jobs/` with `models.py`, `subjects.py`, `__init__.py` — same shape as `voice/`, `image/`, `llm/`.
+- Schema version field bumped per `roxabi-contracts` versioning policy (additive minor, `extra="ignore"` forward-compat).
+- Round-trip JSON tests required for all three envelopes (`testing/` fixtures pattern).
+- Single package domain: `packages/roxabi-contracts/` only — no changes to hub or adapter code.
+
+## Out of Scope
+
+- Worker SDK consumption of `JobEnvelope` (epic issue #3).
+- JetStream stream / consumer configuration (epic issue #2).
+- Hub dispatch routing — issue #1044 epic chain owns that.
+- Any changes to `WorkerError` or existing domain contracts.
+
+## Complexity
+
+**Tier: F-lite** — single-package change (`roxabi-contracts`), clear schema spec in the issue body, no unknowns, follows established module patterns.
+
+Signals observed:
+- All three envelope shapes fully specified in the issue.
+- Only one package affected (`packages/roxabi-contracts/`).
+- No cross-domain dependencies (hub/adapter changes are out of scope).
+- Pattern exists: `voice/`, `image/`, `llm/` subdomain modules to mirror.
+- Label: `size:F-lite`.

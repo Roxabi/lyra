@@ -11,10 +11,19 @@ from importlib.metadata import PackageNotFoundError, version
 
 from .audit import SecurityEvent
 from .envelope import CONTRACT_VERSION, ContractEnvelope
+from .jobs import JobEnvelope, JobProgress, JobResult
 
 try:
     __version__: str = version("roxabi-contracts")
 except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
 
-__all__ = ["CONTRACT_VERSION", "ContractEnvelope", "SecurityEvent", "__version__"]
+__all__ = [
+    "CONTRACT_VERSION",
+    "ContractEnvelope",
+    "JobEnvelope",
+    "JobProgress",
+    "JobResult",
+    "SecurityEvent",
+    "__version__",
+]

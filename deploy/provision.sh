@@ -119,6 +119,17 @@ next_free_subid_start() {
     echo 65536
   fi
 }
+# HWM gives the highest ending point but misses non-contiguous gaps: a manually
+# edited entry with start < HWM but start+count > HWM would go undetected and
+# the new allocation would alias an existing range. Scan every interval.
+assert_no_subid_overlap() {
+  local file="$1" start="$2" end="$3"
+  [[ ! -e "$file" ]] && return 0
+  local hit
+  hit=$(awk -F: -v s="$start" -v e="$end" \
+    '$2 + $3 > s && $2 < e { print "overlap with " $1 ": " $2 "-" $2+$3-1 }' "$file")
+  [[ -n "$hit" ]] && error "subid overlap detected in $file: $hit"
+}
 # NOTE (TOCTOU wontfix): the HWM read and subsequent `usermod` write are not
 # atomic against a concurrent `usermod`/`useradd`. A true fence would require
 # shadow-utils' own lock, which does not honor external flock. On a single-admin
@@ -133,6 +144,8 @@ if ! has_sufficient_subids /etc/subuid || ! has_sufficient_subids /etc/subgid; t
   if (( uid_end > 4294967295 || gid_end > 4294967295 )); then
     error "subuid/subgid space exhausted (uid_end=${uid_end}, gid_end=${gid_end})"
   fi
+  assert_no_subid_overlap /etc/subuid "$uid_start" "$((uid_end + 1))"
+  assert_no_subid_overlap /etc/subgid "$gid_start" "$((gid_end + 1))"
   warn "subuid/subgid ranges missing or too small for $ADMIN_USER — adding subuid ${uid_start}-${uid_end}, subgid ${gid_start}-${gid_end}."
   sudo usermod --add-subuids "${uid_start}-${uid_end}" --add-subgids "${gid_start}-${gid_end}" "$ADMIN_USER" \
     || error "Failed to configure subuid/subgid for $ADMIN_USER"

@@ -384,11 +384,11 @@ class TestTelegramTokenFilter:
         filt = TelegramTokenFilter()
         url = (
             "https://api.telegram.org/"
-            "bot8500388193:AAGg_wDfJ7896yPdf-L10CEVHbiuShA38Sw/sendMessage"
+            "bot8500388193:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/sendMessage"
         )
         record = self._make_record(f'HTTP Request: POST {url} "HTTP/1.1 200 OK"')
         assert filt.filter(record) is True
-        assert "AAGg_wDfJ7896yPdf-L10CEVHbiuShA38Sw" not in record.getMessage()
+        assert "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" not in record.getMessage()
         assert "bot8500388193:<REDACTED>" in record.getMessage()
 
     def test_preserves_bot_id_for_debuggability(self) -> None:
@@ -477,11 +477,11 @@ class TestTelegramTokenFilter:
         filt = TelegramTokenFilter()
         url = (
             "https://api.telegram.org/"
-            "bot8500388193:AAGg_wDfJ7896yPdf-L10CEVHbiuShA38Sw/sendMessage"
+            "bot8500388193:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/sendMessage"
         )
         record = self._make_record(f"POST {url}")
         filt.filter(record)
         msg = record.getMessage()
-        assert "AAGg_wDfJ7896yPdf-L10CEVHbiuShA38Sw" not in msg
+        assert "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" not in msg
         assert msg.count("<REDACTED>") == 1
         assert "bot8500388193:<REDACTED>" in msg

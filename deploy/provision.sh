@@ -125,10 +125,14 @@ next_free_subid_start() {
 assert_no_subid_overlap() {
   local file="$1" start="$2" end="$3"
   [[ ! -e "$file" ]] && return 0
+  [[ -e "$file" && ! -r "$file" ]] && error "Cannot read $file (check permissions)."
   local hit
   hit=$(awk -F: -v s="$start" -v e="$end" \
     '$2 + $3 > s && $2 < e { print "overlap with " $1 ": " $2 "-" $2+$3-1 }' "$file")
-  [[ -n "$hit" ]] && error "subid overlap detected in $file: $hit"
+  if [[ -n "$hit" ]]; then
+    while IFS= read -r line; do warn "  $line"; done <<< "$hit"
+    error "subid overlap detected in $file — see warnings above"
+  fi
 }
 # NOTE (TOCTOU wontfix): the HWM read and subsequent `usermod` write are not
 # atomic against a concurrent `usermod`/`useradd`. A true fence would require

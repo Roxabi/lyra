@@ -375,12 +375,13 @@ JetStream is enabled via the config file stanza in `deploy/nats/nats-container.c
 **First-time setup (production, uid 1500):**
 
 ```bash
-mkdir -p ~/.lyra/jetstream
+make quadlet-install                          # creates ~/.lyra/jetstream at mode 0700
 podman unshare chown 1500:1500 ~/.lyra/jetstream
-make quadlet-install
+make quadlet-secrets-install                  # skip if secrets already installed
+systemctl --user restart lyra-nats
 ```
 
-After `make quadlet-install`, restart NATS: `systemctl --user restart lyra-nats`.
+**Dev (no fixed uid mapping):** `make quadlet-install` is sufficient — omit the `podman unshare chown` step.
 
 ### Voice (STT/TTS)
 

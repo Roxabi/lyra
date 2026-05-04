@@ -109,6 +109,38 @@ from roxabi_contracts.voice.fixtures import silence_wav_16khz, sample_transcript
 `scipy` is declared in `[project.optional-dependencies].testing` and is
 only pulled when a consumer requests the `[testing]` extra.
 
+## Jobs domain
+
+Generic job-dispatch contract used to route work items across Lyra workers. Import surface:
+
+```python
+from roxabi_contracts.jobs import JobEnvelope, JobResult, JobProgress, jobs_submit
+```
+
+### Subjects
+
+| Subject | Model | Transport | Purpose |
+|---|---|---|---|
+| `lyra.jobs.<job_name>` | `JobEnvelope` | JetStream durable | Submit a job |
+| `lyra.results.<job_id>` | `JobResult` | Core NATS reply | Job completion reply |
+| `lyra.progress.<job_id>` | `JobProgress` | Core NATS pub/sub | Streaming progress (best-effort) |
+
+Subject strings are produced by the helpers `jobs_submit(job_name)`, `jobs_result(job_id)`, and `jobs_progress(job_id)`. Each helper validates its argument via `validate_job_token` (rejects empty strings and NATS wildcard characters).
+
+### Models
+
+All three models subclass `ContractEnvelope` and inherit `ConfigDict(extra="ignore")`.
+
+| Model | Purpose |
+|---|---|
+| `JobEnvelope` | Job submission; carries `job_id`, `job_name`, `payload`, `reply_to`, and optional `parent_job_id` / `composite_depth` |
+| `JobResult` | Completion reply; `status` is `"success"` or `"error"`; on error carries a `WorkerError` |
+| `JobProgress` | Progress event; carries `step`, optional `pct` (0–100), and optional `detail` dict |
+
+### Invariants
+
+`composite_depth` is validated 0–3 (raises `ValueError` outside that range). `JobResult` `status` and `error` are mutually exclusive: `status="error"` requires a `WorkerError`; `status="success"` must not carry one.
+
 ## Test doubles
 
 `roxabi_contracts.voice.testing` provides in-process replacements for a real

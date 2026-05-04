@@ -31,3 +31,16 @@ def validate_worker_id(worker_id: str) -> None:
             "NATS wildcard / subtree characters (. * >) are rejected to "
             "prevent subject injection"
         )
+
+
+_SAFE_JOB_TOKEN_RE = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def validate_job_token(token: str) -> None:
+    """Validate a job_name or job_id for NATS subject safety.
+    Dots allowed (namespacing: vault.add-from-url); * and > rejected."""
+    if not _SAFE_JOB_TOKEN_RE.fullmatch(token):
+        raise ValueError(
+            f"job token must match [A-Za-z0-9._-]+ (got {token!r}); "
+            "NATS wildcard characters (* >) and spaces are rejected"
+        )

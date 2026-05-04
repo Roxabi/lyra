@@ -1,0 +1,11 @@
+[Unit]
+Description=Lyra JetStream persistent storage — bind-mount %h/.lyra/jetstream into the NATS container
+# Provides durable backing for JetStream streams and KV buckets (lyra-turns, lyra-msg-index).
+# Host directory must exist before first start: mkdir -p ~/.lyra/jetstream
+# On production (uid 1500): podman unshare chown 1500:1500 ~/.lyra/jetstream
+
+[Volume]
+Type=none
+Device=%h/.lyra/jetstream
+Options=bind
+Label=app=lyra

@@ -364,6 +364,24 @@ health_secret = ""                            # optional health endpoint auth
 |----------|---------|-------------|
 | `NATS_URL` | `nats://localhost:4222` | NATS server URL (required for standalone hub) |
 
+#### JetStream persistent storage
+
+JetStream is enabled via the config file stanza in `deploy/nats/nats-container.conf` (the `-js` CLI flag was removed in #1055). Storage is backed by a Quadlet bind-mount volume:
+
+| Unit | Host path | Container path |
+|------|-----------|----------------|
+| `lyra-jetstream.volume` | `~/.lyra/jetstream` | `/var/lib/nats/jetstream` |
+
+**First-time setup (production, uid 1500):**
+
+```bash
+mkdir -p ~/.lyra/jetstream
+podman unshare chown 1500:1500 ~/.lyra/jetstream
+make quadlet-install
+```
+
+After `make quadlet-install`, restart NATS: `systemctl --user restart lyra-nats`.
+
 ### Voice (STT/TTS)
 
 | Variable | Default | Description |

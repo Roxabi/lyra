@@ -383,6 +383,8 @@ systemctl --user restart lyra-nats
 
 **Dev (no fixed uid mapping):** `make quadlet-install` is sufficient — omit the `podman unshare chown` step.
 
+**Upgrade:** after `make quadlet-install`, run `systemctl --user daemon-reload && systemctl --user restart lyra-nats` to pick up unit file changes.
+
 ### Voice (STT/TTS)
 
 | Variable | Default | Description |

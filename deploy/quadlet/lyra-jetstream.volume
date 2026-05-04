@@ -11,5 +11,5 @@ Type=none
 Device=%h/.lyra/jetstream
 # noexec,nosuid: NATS never executes from the store dir; restrict blast radius of any
 # write primitive inside the container (defense-in-depth alongside ReadOnly=true).
-Options=bind,noexec,nosuid
+Options=bind,noexec,nosuid,nodev
 Label=app=lyra

@@ -74,7 +74,7 @@ Bucket provisioning ownership: the hub is the sole creator of the `lyra-state` b
 When deploying this change, the following order must be respected:
 
 1. **Enable JetStream on NATS.** Both container and systemd installs use the `jetstream { store_dir: ... }` stanza in the NATS config. Container installs: the stanza is in `nats-container.conf`, backed by the `lyra-jetstream.volume` bind-mount (`~/.lyra/jetstream` → `/var/lib/nats/jetstream`). The `-js` CLI flag was removed in #1055. Systemd installs: the stanza is in `nats.conf`.
-2. **Regen auth.conf.** Run `sudo ./deploy/nats/gen-nkeys.sh --regen-authconf` to add the `$KV.lyra-state.>` subscribe grants and voice-client identity to the production ACL.
+2. **Regen auth.conf.** Run `make nats-regen-authconf` to add the `$KV.lyra-state.>` subscribe grants and voice-client identity to the production ACL.
 3. **Reload NATS.** `make quadlet-secrets-install && podman kill -s HUP lyra-nats` (container) or `systemctl reload nats-server` (systemd).
 4. **Deploy code.** `make deploy` — hub wires `announce_hub_ready()` on startup; adapters call `wait_for_hub()` instead of the legacy probe.
 

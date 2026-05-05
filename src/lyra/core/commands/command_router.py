@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from ..config import RouterConfig
 from ..messaging.message import InboundMessage, Response
 from ..pool.pool import Pool
-from . import builtin_commands, workspace_commands
+from . import builtin_commands, session_commands, workspace_commands
 from .command_config import DEFAULT_BUILTINS, CommandConfig, SessionCommandEntry
 from .command_loader import AsyncHandler, CommandLoader
 from .command_parser import CommandContext
@@ -213,6 +213,7 @@ class CommandRouter:
             "/workspace": lambda a, m, p: workspace_commands.cmd_workspace(
                 m, a, p, self._workspaces
             ),
+            "/session": lambda a, m, p: session_commands.cmd_session(m, a, p),
         }
 
     async def _dispatch_builtin(

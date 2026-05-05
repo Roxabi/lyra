@@ -530,3 +530,85 @@ class TestBackfillOnFirstConnect:
         assert started_at == ts_early  # MIN(timestamp) = earliest turn
 
         await store.close()
+
+
+class TestListSessions:
+    """list_sessions(pool_id, limit) — powers the /session built-in."""
+
+    async def test_returns_empty_for_unknown_pool(self, store: TurnStore) -> None:
+        rows = await store.list_sessions("pool:none", 5)
+        assert rows == []
+
+    async def test_orders_by_last_active_desc_and_limits(
+        self, store: TurnStore
+    ) -> None:
+        """Newest pool_sessions row first; limit caps the result."""
+        for i in range(7):
+            sid = f"sess-{i}"
+            await store.start_session(sid, "pool:x")
+            await store.set_cli_session(sid, f"cli-{i}")
+            await store.log_turn(
+                pool_id="pool:x",
+                session_id=sid,
+                role="user",
+                platform="telegram",
+                user_id="u",
+                content=f"hello {i}",
+            )
+        # Bump last_active_at on sess-3 so it floats to the top
+        db = store._db_or_raise()
+        await db.execute(
+            "UPDATE pool_sessions SET last_active_at = ? WHERE session_id = ?",
+            ("2999-01-01T00:00:00+00:00", "sess-3"),
+        )
+        await db.commit()
+
+        rows = await store.list_sessions("pool:x", 3)
+        assert len(rows) == 3
+        assert rows[0]["session_id"] == "sess-3"
+        assert rows[0]["cli_session_id"] == "cli-3"
+        assert rows[0]["first_user_msg"] == "hello 3"
+        assert rows[0]["turn_count"] == 1
+
+    async def test_first_user_msg_uses_earliest_user_turn(
+        self, store: TurnStore
+    ) -> None:
+        """first_user_msg is the first user turn in the session, not the assistant."""
+        await store.start_session("sess-a", "pool:y")
+        await store.log_turn(
+            pool_id="pool:y",
+            session_id="sess-a",
+            role="assistant",
+            platform="telegram",
+            user_id="u",
+            content="welcome",
+        )
+        await store.log_turn(
+            pool_id="pool:y",
+            session_id="sess-a",
+            role="user",
+            platform="telegram",
+            user_id="u",
+            content="first user line",
+        )
+        rows = await store.list_sessions("pool:y", 5)
+        assert len(rows) == 1
+        assert rows[0]["first_user_msg"] == "first user line"
+        assert rows[0]["turn_count"] == 2
+
+    async def test_session_with_no_user_turn_yields_none_title(
+        self, store: TurnStore
+    ) -> None:
+        """A session with only an assistant greeting returns None for first_user_msg."""
+        await store.start_session("sess-empty", "pool:z")
+        await store.log_turn(
+            pool_id="pool:z",
+            session_id="sess-empty",
+            role="assistant",
+            platform="telegram",
+            user_id="u",
+            content="hi",
+        )
+        rows = await store.list_sessions("pool:z", 5)
+        assert len(rows) == 1
+        assert rows[0]["first_user_msg"] is None

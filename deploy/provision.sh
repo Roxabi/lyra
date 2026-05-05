@@ -122,6 +122,24 @@ next_free_subid_start() {
 # HWM gives the highest ending point but misses non-contiguous gaps: a manually
 # edited entry with start < HWM but start+count > HWM would go undetected and
 # the new allocation would alias an existing range. Scan every interval.
+# Warn-only variant used on re-runs when the range already exists. Idempotency
+# is preserved (no fail-fast); the downstream `podman info` smoke test surfaces
+# real failures. Revisit when AGENT_USER subuid provisioning is added (#876).
+warn_subid_overlap() {
+  local file="$1"
+  [[ ! -e "$file" || ! -r "$file" ]] && return 0
+  local start count
+  read -r start count < <(awk -F: -v u="$ADMIN_USER" '$1 == u {print $2, $3; exit}' "$file")
+  [[ -z "$start" ]] && return 0
+  local end=$(( start + count ))
+  local hit
+  hit=$(awk -F: -v u="$ADMIN_USER" -v s="$start" -v e="$end" \
+    '$1 != u && $2 + $3 > s && $2 < e { print $1 ": " $2 "-" $2+$3-1 }' "$file")
+  if [[ -n "$hit" ]]; then
+    warn "subuid range for $ADMIN_USER in $file overlaps with:"
+    while IFS= read -r line; do warn "  $line"; done <<< "$hit"
+  fi
+}
 assert_no_subid_overlap() {
   local file="$1" start="$2" end="$3"
   [[ ! -e "$file" ]] && return 0
@@ -180,6 +198,8 @@ if ! has_sufficient_subids /etc/subuid || ! has_sufficient_subids /etc/subgid; t
   fi
   info "subuid/subgid added for $ADMIN_USER (≥65536 IDs)."
 else
+  warn_subid_overlap /etc/subuid
+  warn_subid_overlap /etc/subgid
   info "subuid/subgid already configured for $ADMIN_USER (≥65536 IDs)."
 fi
 

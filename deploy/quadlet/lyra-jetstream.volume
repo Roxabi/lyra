@@ -1,14 +1,15 @@
 [Unit]
-Description=Lyra JetStream persistent storage — bind-mount %h/.lyra/jetstream into the NATS container
+Description=Lyra JetStream persistent storage — bind-mount %h/.lyra/nats/jetstream into the NATS container
 # Provides durable backing for JetStream streams and KV buckets (lyra-turns, lyra-msg-index).
 # quadlet-install creates this directory automatically (install -d -m 0700).
-# On production (uid 1500): podman unshare chown 1500:1500 ~/.lyra/jetstream
-# SELinux note: AppArmor host (Ubuntu 26.04). On SELinux hosts, relocate Device= to a
-# path disjoint from ~/.lyra (e.g. ~/.lyra/nats/jetstream) — see follow-up issue.
+# On production (uid 1500): podman unshare chown 1500:1500 ~/.lyra/nats/jetstream
+# Moves JetStream state to a dedicated NATS subtree (~/.lyra/nats/) separate from
+# Lyra application files (auth.db, config.db, etc.) — hub has no reason to traverse
+# into ~/.lyra/nats/, reducing the practical SELinux inode label conflict risk (ADR-068).
 
 [Volume]
 Type=none
-Device=%h/.lyra/jetstream
+Device=%h/.lyra/nats/jetstream
 # noexec,nosuid: NATS never executes from the store dir; restrict blast radius of any
 # write primitive inside the container (defense-in-depth alongside ReadOnly=true).
 Options=bind,noexec,nosuid,nodev

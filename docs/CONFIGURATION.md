@@ -370,13 +370,13 @@ JetStream is enabled via the config file stanza in `deploy/nats/nats-container.c
 
 | Unit | Host path | Container path |
 |------|-----------|----------------|
-| `lyra-jetstream.volume` | `~/.lyra/jetstream` | `/var/lib/nats/jetstream` |
+| `lyra-jetstream.volume` | `~/.lyra/nats/jetstream` | `/var/lib/nats/jetstream` |
 
 **First-time setup (production, uid 1500):**
 
 ```bash
-make quadlet-install                          # creates ~/.lyra/jetstream at mode 0700
-podman unshare chown 1500:1500 ~/.lyra/jetstream
+make quadlet-install                          # creates ~/.lyra/nats/jetstream at mode 0700
+podman unshare chown 1500:1500 ~/.lyra/nats/jetstream
 make quadlet-secrets-install                  # skip if secrets already installed
 systemctl --user restart lyra-nats
 ```

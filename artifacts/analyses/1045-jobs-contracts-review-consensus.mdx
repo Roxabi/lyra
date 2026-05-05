@@ -1,0 +1,102 @@
+---
+title: "jobs contracts review findings — Expert Consensus"
+issue: 1045
+status: consensus-reached
+date: 2026-05-05
+panel: architect, security-auditor, backend-dev
+confidence: high
+---
+
+## Problem
+
+PR #1071 final review produced 11 open findings (0 blockers, 7 suggestions, 2 informational, 2 praise)
+across `_nats_utils.py`, `jobs/models.py`, `jobs/subjects.py`, `tests/test_jobs_models.py`, and
+`jobs/fixtures.py`. Panel resolves the long-term fix strategy for each finding before `/fix` applies them.
+
+## Panel
+
+| Agent | Focus |
+|-------|-------|
+| architect | arch soundness, maintainability, ADR compliance, evolvability |
+| security-auditor | input validation design, injection surface, trust boundaries |
+| backend-dev | Python/Pydantic v2 patterns, API design, test coverage |
+
+## Consensus
+
+| F | Finding | Decision | Vote |
+|---|---------|----------|------|
+| F1 | `validate_nats_subject` calls `validate_job_token` on post-split segments | Extract `_validate_subject_segment` using `_SAFE_WORKER_ID_RE` (no dots) | Unanimous |
+| F2 | Empty `_Subjects` dataclass | Populate with `Literal`-typed prefix fields: `submit_prefix`, `result_prefix`, `progress_prefix` | 2-1 |
+| F3 | `validate_nats_subject("")` raises with job-token error message | Explicit empty-string guard at top: `if not subject: raise ValueError(...)` | Unanimous |
+| F4 | Missing `parent_job_id` bad-token test | Add to existing `test_job_envelope_rejects_bad_token` parametrize | Unanimous |
+| F5 | Missing `reply_to` multi-segment tests (`_INBOX..abc`, `_INBOX.abc.`) | Add to existing `test_job_envelope_rejects_bad_token` parametrize (with comment marking `validate_nats_subject` semantics) | 2-1 |
+| F6 | Missing `success` + `data=None` test | Add `pytest.param({"status": "success"}, False, id="success-no-data")` to `test_job_result_invariant` | Unanimous |
+| F7 | Missing `step=""` rejection test | Add parametrize case | Unanimous |
+| F8 | `reply_to` no prefix restriction | Document trust assumption in `_validate_reply_to`: closed internal NATS cluster, all publishers trusted | Unanimous |
+| F9 | `_validate_job_id` duplicated in JobResult + JobProgress | Accept duplication — flat composition per ADR-049; 3-line body; independent evolvability | 2-1 |
+| F10 | Test docstring inverts SC-10/SC-11 | Fix docstring | Unanimous |
+| F11 | `_ENV` private symbol imported in tests | Rename `_ENV` → `ENV_BASE` in fixtures.py + all importers | Unanimous |
+
+## Rationale
+
+### F1 — separate segment validator
+
+`validate_job_token` regex `[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*` allows dots (for job namespacing).
+Split segments structurally cannot contain dots — correctness by coincidence, not by contract.
+Any future relaxation of `validate_job_token` silently widens subject validation with no type-check
+signal. `_validate_subject_segment` with `_SAFE_WORKER_ID_RE` makes the constraint explicit and removes
+the cross-function dependency.
+
+### F2 — populate _Subjects
+
+Voice/image/llm pattern: `SUBJECTS` holds static Literal-typed fields enabling pyright-checked access
+and grep-discovery. Jobs subjects are partially dynamic (parameterized by `job_name`/`job_id`) but the
+static prefix halves are Literal constants. `submit_prefix: Literal["lyra.jobs"] = "lyra.jobs"` etc.
+preserve the cross-domain pattern while acknowledging that complete subjects require the helper functions.
+Security's concern (dead surface) is resolved by populating rather than removing.
+
+### F8 — trust documentation
+
+Restricting `reply_to` to `_INBOX.`/`_R_.` prefixes would break legitimate patterns:
+JetStream-managed reply subjects (`$JS.ACK.*`), custom routing in test harnesses, any future transport
+that uses named reply queues. The `validate_nats_subject` call already blocks wildcards. The correct
+enforcement point is NATS ACL (ADR-062/064). Document the closed-cluster trust assumption inline.
+
+### F9 — flat composition preserved
+
+`_validate_job_id` is 3 lines in each of `JobResult` and `JobProgress`. ADR-049 specifies independent
+envelope evolvability — `JobResult.job_id` and `JobProgress.job_id` may diverge in a future schema
+version (structured composite IDs, versioned UUIDs). A `_JobIdMixin` locks both to the same validation
+rule before that divergence is needed. 3-line duplication is below the threshold of architectural value.
+Revisit at ≥3 duplications.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| F2 — remove `_Subjects` entirely | security-auditor | Breaks cross-domain pattern; empty body is the problem, not the symbol |
+| F5 — dedicated test block for multi-segment | architect | `reply_to` overrides belong with other `reply_to` overrides; comment marks the semantic distinction |
+| F8 — prefix allowlist `_INBOX.`/`_R_.` | security-auditor (conditional) | Brittle; breaks JetStream reply subjects; correct enforcement is ACL layer |
+| F9 — `_JobIdMixin(ContractEnvelope)` | backend-dev | Premature; ADR-049 flat composition; 3-line body; pre-locks independent evolvability |
+
+## Dissent
+
+- **F2:** security-auditor accepts populate; notes prefix fields diverge from `voice.SUBJECTS.tts_request`
+  ergonomics (full subject vs prefix). Document this divergence in `subjects.py` docstring.
+- **F5:** architect accepts existing parametrize block; requires a comment marking multi-segment cases as
+  testing `validate_nats_subject` segment-splitting semantics (not field-token validation).
+- **F9:** backend-dev accepts flat composition; records that at ≥3 `_validate_job_id` copies a mixin
+  should be revisited regardless of ADR-049.
+
+## Implementation Notes
+
+Apply in this order to avoid conflicts:
+1. `_nats_utils.py`: add `_validate_subject_segment` + `_SAFE_SUBJECT_SEGMENT_RE`; update `validate_nats_subject` to use it; add empty-string guard (F1 + F3)
+2. `jobs/subjects.py`: populate `_Subjects` with prefix Literal fields (F2)
+3. `jobs/models.py`: add trust assumption comment to `_validate_reply_to` (F8)
+4. `jobs/fixtures.py`: rename `_ENV` → `ENV_BASE` (F11)
+5. `tests/test_jobs_models.py`: all test additions (F4, F5, F6, F7, F10, F11-import-update)
+
+## Next
+
+`/fix #1071` — apply consensus decisions above.

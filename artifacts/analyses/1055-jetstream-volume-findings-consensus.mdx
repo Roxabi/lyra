@@ -1,0 +1,119 @@
+---
+title: "JetStream Volume Review Findings — Expert Consensus"
+issue: 1055
+status: consensus-reached
+date: 2026-05-04
+panel: architect, security-auditor, devops
+confidence: high
+---
+
+## Problem
+
+PR #1062 introduced the JetStream persistent volume (lyra-jetstream.volume, bind-mount
+`~/.lyra/jetstream` → `/var/lib/nats/jetstream`). A multi-domain code review raised 4
+actionable findings. This consensus determines the best long-term solution for each and
+the minimal fix for the current PR.
+
+## Panel
+
+| Agent | Focus |
+|-------|-------|
+| architect | arch soundness, structural correctness, reference-impl portability |
+| security-auditor | attack surface, data confidentiality, defense-in-depth |
+| devops | ops impact, deploy sequencing, day-2, migration risk |
+
+## Consensus
+
+### F1 — noexec,nosuid on jetstream volume mount
+
+**ρ: (a) Add `noexec,nosuid` to `Options=bind` in `lyra-jetstream.volume` — unanimous.**
+
+`ReadOnly=true` on the container applies to the rootfs, not volume mounts. NATS never
+executes binaries from its store dir (only reads/writes WAL + stream data). Adding
+`noexec,nosuid` is a zero-cost defense-in-depth layer orthogonal to `DropCapability=all`
+and `NoNewPrivileges=true`. Change: `Options=bind,noexec,nosuid`.
+
+### F2 — Directory permissions at creation
+
+**ρ: (a) Replace `mkdir -p` with `install -d -m 0700` in `quadlet-install` — unanimous.**
+
+`mkdir -p` inherits the shell umask (0755 on Ubuntu). JetStream store contains serialized
+KV payloads (`lyra-turns`, `lyra-msg-index`) — conversation content constitutes PII.
+`install -d -m 0700` is atomic and idempotent. `ExecStartPre=chmod` is rejected (wrong
+layer, TOCTOU window, silent on restart skip).
+
+### F3 — SELinux `:z` label on `~/.lyra/jetstream` subdirectory
+
+**Long-term ρ: (a) Move jetstream dir to `~/.lyra/nats/jetstream/` — 2/3 majority
+(architect #1, security-auditor #1, devops #3).**
+
+The parent-child bind-mount overlap (`lyra-data.volume` mounts `~/.lyra`; `lyra-jetstream.volume`
+mounts `~/.lyra/jetstream`) creates a structural defect: `:z` relabels the jetstream inode
+while the parent mount has no label, causing AVC denials on SELinux hosts. Moving to a
+disjoint path eliminates the overlap entirely and is SELinux-safe by construction.
+
+**For this PR (prereq, no migration):** (b) document AppArmor-only assumption in the
+volume unit and link a follow-up issue for the path migration.
+
+Rationale for deferral: #1062 is Phase 1 of #1049. Introducing a prod data migration
+(`stop → mkdir → mv → quadlet-install → start`) in a prereq PR risks silent data loss
+if the migration step is missed. The structural fix should ship as an independent
+S-tier issue with an explicit migration runbook.
+
+Dissent recorded: devops ranked (c) drop-`:z` highest for this PR, accepting (b) only
+if a follow-up issue is linked. ADR-068 (`docs/architecture/adr/068-selinux-z-label-quadlet-bind-volume-policy.mdx`)
+documents the SELinux label policy decision (written during consensus, main repo staging branch).
+
+### F4 — Restart instruction missing `quadlet-secrets-install` ordering
+
+**ρ: (a) Add `make quadlet-secrets-install` as explicit prerequisite before any
+"restart lyra-nats" instruction — unanimous.**
+
+Without the secret, NATS fails to start with an opaque Podman mount error, not an auth
+error. `full-deploy` and `nats-regen-authconf` already sequence correctly; the gap is in
+manual runbook paths. Add with "skip if secrets already installed" note to avoid confusion
+during normal deploys where secrets are current.
+
+## Alternatives
+
+| Option | Finding | Rejected because |
+|--------|---------|------------------|
+| (b) host-level noexec doc | F1 | Unenforceable; does not apply to volume unit |
+| (c) accept as-is | F1 | ReadOnly=true + capability drops are orthogonal to VFS mount exec restriction |
+| (b) ExecStartPre=chmod | F2 | Wrong layer; TOCTOU window; runs as container user, not host user |
+| (c) accept 0755 | F2 | PII exposure; single-user assumption has known expiry (voiceCLI joining roxabi.network Phase 4) |
+| (c) drop :z | F3 | Silently breaks SELinux hosts; cargo-cult removal of a label that has a correct use case |
+| (b) document AppArmor-only (long-term) | F3 | Enshrines constraint in docs rather than fixing the structural overlap |
+| (b) quadlet-install echo only | F4 | Gap is in manual restart paths, not in quadlet-install flow |
+
+## Dissent
+
+- **F3:** devops ranked (c) drop-`:z` #1 for this PR; accepts (b) if follow-up issue is created.
+  Devops concern: "dead defensive config is a maintenance liability." Majority holds: the label
+  has a correct use case on SELinux hosts; the right fix is structural path separation, not
+  removal of a valid mechanism.
+
+## Implementation Notes
+
+### For PR #1062 (immediate)
+
+1. **F1:** `Options=bind,noexec,nosuid` in `deploy/quadlet/lyra-jetstream.volume`
+2. **F2:** `install -d -m 0700 "$(HOME)/.lyra/jetstream"` in `Makefile` `quadlet-install`
+   (replacing `mkdir -p "$(HOME)/.lyra/jetstream"`)
+3. **F3:** Add `[Unit]` comment to `lyra-jetstream.volume`: "AppArmor host (Ubuntu 26.04).
+   On SELinux hosts, relocate Device= to a path disjoint from ~/.lyra — see follow-up issue."
+4. **F4:** Expand `docs/CONFIGURATION.md` JetStream setup block to include
+   `make quadlet-secrets-install` before restart, with "skip if already installed" note.
+
+### Follow-up issue (S-tier, post Phase 1)
+
+- Move `Device=%h/.lyra/jetstream` → `Device=%h/.lyra/nats/jetstream` in `lyra-jetstream.volume`
+- Update `quadlet-install` mkdir target to match
+- Production migration runbook: `systemctl --user stop lyra-nats && mkdir -p ~/.lyra/nats/jetstream && mv ~/.lyra/jetstream/* ~/.lyra/nats/jetstream/ && make quadlet-install && systemctl --user start lyra-nats && nats kv ls` (verify `lyra-state` bucket present)
+- Migration is idempotent if `~/.lyra/jetstream/` is absent (first install, no data to migrate)
+- Reference: ADR-068 (`docs/architecture/adr/068-selinux-z-label-quadlet-bind-volume-policy.mdx`)
+
+## Next
+
+Apply F1, F2, F3 (partial), F4 to PR #1062 via 1b1 decisions. Create follow-up issue
+for F3 structural path migration.

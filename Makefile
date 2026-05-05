@@ -137,6 +137,7 @@ quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/contai
 	@cp deploy/quadlet/lyra-data.volume                "$(QUADLET_DIR)/lyra-data.volume"
 	@cp deploy/quadlet/lyra-jetstream.volume           "$(QUADLET_DIR)/lyra-jetstream.volume"
 	@install -d -m 0700 "$(HOME)/.lyra/nats/jetstream"
+	@chmod 0700 "$(HOME)/.lyra/nats"
 	@chmod 0700 "$(HOME)/.lyra/nats/jetstream"
 	@cp deploy/quadlet/lyra-nats.container             "$(QUADLET_DIR)/lyra-nats.container"
 	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"

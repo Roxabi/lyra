@@ -1,7 +1,8 @@
 """Tests for roxabi_contracts.jobs domain models and subjects.
 
-Covers SC-10 (model roundtrip, extra-ignore, composite_depth boundary,
-JobResult status/error mutex) and SC-11 (subject helpers).
+Covers SC-10 (round-trip JSON for all three models), SC-11 (valid construction,
+composite_depth boundary, JobResult status/error invariant, extra-field ignore),
+plus subject validation (beyond spec).
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from roxabi_contracts.jobs import (
     jobs_submit,
 )
 from roxabi_contracts.jobs.fixtures import (
+    ENV_BASE,
     sample_job_envelope,
     sample_job_progress,
     sample_job_result_err,
@@ -86,6 +88,7 @@ def test_composite_depth_boundary(depth: int, should_raise: bool) -> None:
 # ---------------------------------------------------------------------------
 
 _WORKER_ERROR = WorkerError(code="worker.crash", message="scraper failed")
+_RESULT_BASE: dict[str, Any] = {**ENV_BASE, "job_id": "job-uuid-1234"}
 
 
 @pytest.mark.parametrize(
@@ -111,18 +114,16 @@ _WORKER_ERROR = WorkerError(code="worker.crash", message="scraper failed")
             False,
             id="error-with-WorkerError",
         ),
+        pytest.param(
+            {"status": "success"},
+            False,
+            id="success-no-data",
+        ),
     ],
 )
 def test_job_result_invariant(kwargs: dict[str, Any], should_raise: bool) -> None:
     """status/error mutex: error=None on error raises; WorkerError on success raises."""
-    # Arrange
-    from roxabi_contracts.jobs.fixtures import _ENV
-
-    payload: dict[str, Any] = {
-        **_ENV,
-        "job_id": "job-uuid-1234",
-        **kwargs,
-    }
+    payload: dict[str, Any] = {**_RESULT_BASE, **kwargs}
 
     if should_raise:
         with pytest.raises(ValidationError):
@@ -168,6 +169,76 @@ def test_extra_ignore(model: type[BaseModel], payload: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# test_model_rejects_bad_job_token (B1 — model-level field_validator coverage)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("overrides",),
+    [
+        pytest.param({"job_id": "bad*id"}, id="envelope-job_id-wildcard"),
+        pytest.param({"job_name": "bad>name"}, id="envelope-job_name-wildcard"),
+        pytest.param({"reply_to": "bad*inbox"}, id="envelope-reply_to-wildcard"),
+        pytest.param({"parent_job_id": "bad*id"}, id="envelope-parent_job_id-wildcard"),
+        pytest.param({"parent_job_id": "bad>id"}, id="envelope-parent_job_id-gt"),
+        # validate_nats_subject segment-splitting semantics on reply_to
+        pytest.param({"reply_to": "_INBOX..abc"}, id="reply_to-consecutive-dots"),
+        pytest.param({"reply_to": "_INBOX.abc."}, id="reply_to-trailing-dot"),
+    ],
+)
+def test_job_envelope_rejects_bad_token(overrides: dict[str, Any]) -> None:
+    """field_validators on job_id/job_name/reply_to/parent_job_id reject wildcards."""
+    with pytest.raises(ValidationError):
+        JobEnvelope.model_validate({**sample_job_envelope, **overrides})
+
+
+def test_job_result_rejects_bad_job_id() -> None:
+    """field_validator on job_id raises ValidationError for wildcard characters."""
+    payload = {**_RESULT_BASE, "job_id": "bad*id", "status": "success"}
+    with pytest.raises(ValidationError):
+        JobResult.model_validate(payload)
+
+
+def test_job_progress_rejects_bad_job_id() -> None:
+    """field_validator on job_id raises ValidationError for NATS wildcard characters."""
+    with pytest.raises(ValidationError):
+        JobProgress.model_validate({**sample_job_progress, "job_id": "bad*id"})
+
+
+def test_job_progress_rejects_empty_step() -> None:
+    """StringConstraints(min_length=1) on step rejects empty string."""
+    with pytest.raises(ValidationError):
+        JobProgress.model_validate({**sample_job_progress, "step": ""})
+
+
+# ---------------------------------------------------------------------------
+# test_job_progress_pct_boundary (B5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("pct", "should_raise"),
+    [
+        pytest.param(0.0, False, id="pct-0-valid"),
+        pytest.param(100.0, False, id="pct-100-valid"),
+        pytest.param(-0.1, True, id="pct-negative-invalid"),
+        pytest.param(100.1, True, id="pct-over-100-invalid"),
+        pytest.param(None, False, id="pct-none-valid"),
+    ],
+)
+def test_job_progress_pct_boundary(pct: float | None, should_raise: bool) -> None:
+    """pct in [0.0..100.0] is valid; outside that range raises ValidationError."""
+    payload: dict[str, Any] = {**sample_job_progress, "pct": pct}
+
+    if should_raise:
+        with pytest.raises(ValidationError):
+            JobProgress.model_validate(payload)
+    else:
+        inst = JobProgress.model_validate(payload)
+        assert inst.pct == pct
+
+
+# ---------------------------------------------------------------------------
 # test_subjects
 # ---------------------------------------------------------------------------
 
@@ -187,6 +258,14 @@ def test_subjects_jobs_progress() -> None:
     assert jobs_progress("job-uuid-1234") == "lyra.progress.job-uuid-1234"
 
 
+def test_job_envelope_accepts_inbox_reply_to() -> None:
+    """_INBOX.nonce subjects are valid reply_to values (underscore in charset)."""
+    inst = JobEnvelope.model_validate(
+        {**sample_job_envelope, "reply_to": "_INBOX.abc123"}
+    )
+    assert inst.reply_to == "_INBOX.abc123"
+
+
 @pytest.mark.parametrize(
     ("helper", "bad_token"),
     [
@@ -195,11 +274,16 @@ def test_subjects_jobs_progress() -> None:
         pytest.param(jobs_submit, "", id="submit-empty-string"),
         pytest.param(jobs_result, "bad*token", id="result-asterisk"),
         pytest.param(jobs_result, "bad>token", id="result-greater-than"),
+        pytest.param(jobs_result, "", id="result-empty-string"),
         pytest.param(jobs_progress, "bad*token", id="progress-asterisk"),
         pytest.param(jobs_progress, "bad>token", id="progress-greater-than"),
+        pytest.param(jobs_progress, "", id="progress-empty-string"),
+        pytest.param(jobs_submit, ".leading-dot", id="submit-leading-dot"),
+        pytest.param(jobs_submit, "a..b", id="submit-consecutive-dots"),
+        pytest.param(jobs_submit, "trailing.", id="submit-trailing-dot"),
     ],
 )
 def test_subjects_rejects_bad_tokens(helper: Any, bad_token: str) -> None:
-    """Subject helpers raise ValueError for NATS wildcards (* >) and empty strings."""
+    """Subject helpers raise ValueError for wildcards, empty strings, dot boundaries."""
     with pytest.raises(ValueError):
         helper(bad_token)

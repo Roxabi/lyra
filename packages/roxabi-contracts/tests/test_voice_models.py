@@ -174,6 +174,33 @@ def test_stt_response_error_path_allows_null_success_fields() -> None:
     assert resp.duration_seconds is None
 
 
+def test_stt_request_optional_prompt_and_task_round_trip() -> None:
+    """initial_prompt + task survive validate → dump_json → validate_json."""
+    req = SttRequest(
+        **_ENVELOPE,
+        request_id="r2",
+        audio_b64=_b64(silence_wav_16khz),
+        model="large-v3-turbo",
+        initial_prompt="Bonjour. Voici un texte avec une ponctuation correcte.",
+        task="transcribe",
+    )
+    parsed = SttRequest.model_validate_json(req.model_dump_json())
+    assert parsed.initial_prompt == req.initial_prompt
+    assert parsed.task == "transcribe"
+
+
+def test_stt_request_omits_prompt_and_task_by_default() -> None:
+    """Optional fields default to None — required-field round-trip stays valid."""
+    req = SttRequest(
+        **_ENVELOPE,
+        request_id="r2",
+        audio_b64=_b64(silence_wav_16khz),
+        model="large-v3-turbo",
+    )
+    assert req.initial_prompt is None
+    assert req.task is None
+
+
 # ---------------------------------------------------------------------------
 # Negative tests for `StringConstraints(min_length=1)` — pin the declared
 # constraints so a silent weakening (e.g. dropping the Annotated wrapper)

@@ -82,6 +82,11 @@ class SttRequest(ContractEnvelope):
     language_detection_threshold: float | None = None
     language_detection_segments: int | None = None
     language_fallback: str | None = None
+    # Whisper decoder context — biases transcription style (punctuation, casing,
+    # vocabulary). Passed through to faster-whisper as `initial_prompt`.
+    initial_prompt: str | None = None
+    # "transcribe" (default) or "translate" — Whisper task selector.
+    task: str | None = None
 
 
 class SttResponse(ContractEnvelope):

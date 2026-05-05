@@ -33,14 +33,23 @@ def validate_worker_id(worker_id: str) -> None:
         )
 
 
-_SAFE_JOB_TOKEN_RE = re.compile(r"[A-Za-z0-9._-]+")
+_SAFE_JOB_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*")
 
 
 def validate_job_token(token: str) -> None:
     """Validate a job_name or job_id for NATS subject safety.
-    Dots allowed (namespacing: vault.add-from-url); * and > rejected."""
+    Dots allowed for namespacing (vault.add-from-url) but leading/trailing/
+    consecutive dots are rejected; * and > rejected."""
     if not _SAFE_JOB_TOKEN_RE.fullmatch(token):
         raise ValueError(
-            f"job token must match [A-Za-z0-9._-]+ (got {token!r}); "
-            "NATS wildcard characters (* >) and spaces are rejected"
+            f"job token must match [A-Za-z0-9_-]+([.][A-Za-z0-9_-]+)* (got {token!r}); "
+            "NATS wildcard characters (* >) and dot-boundary violations are rejected"
         )
+
+
+def validate_nats_subject(subject: str) -> None:
+    """Validate a full multi-segment NATS subject (e.g. _INBOX.abc123).
+    Splits on '.' and validates each segment; rejects empty segments,
+    * and > in any position."""
+    for segment in subject.split("."):
+        validate_job_token(segment)

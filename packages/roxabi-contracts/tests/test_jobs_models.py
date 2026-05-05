@@ -261,9 +261,12 @@ def test_job_envelope_accepts_inbox_reply_to() -> None:
         pytest.param(jobs_progress, "bad*token", id="progress-asterisk"),
         pytest.param(jobs_progress, "bad>token", id="progress-greater-than"),
         pytest.param(jobs_progress, "", id="progress-empty-string"),
+        pytest.param(jobs_submit, ".leading-dot", id="submit-leading-dot"),
+        pytest.param(jobs_submit, "a..b", id="submit-consecutive-dots"),
+        pytest.param(jobs_submit, "trailing.", id="submit-trailing-dot"),
     ],
 )
 def test_subjects_rejects_bad_tokens(helper: Any, bad_token: str) -> None:
-    """Subject helpers raise ValueError for NATS wildcards (* >) and empty strings."""
+    """Subject helpers raise ValueError for wildcards, empty strings, dot boundaries."""
     with pytest.raises(ValueError):
         helper(bad_token)

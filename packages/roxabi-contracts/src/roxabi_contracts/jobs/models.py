@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import Field, StringConstraints, field_validator, model_validator
 
-from roxabi_contracts._nats_utils import validate_job_token
+from roxabi_contracts._nats_utils import validate_job_token, validate_nats_subject
 from roxabi_contracts.envelope import ContractEnvelope
 from roxabi_contracts.errors import WorkerError
 
@@ -28,10 +28,16 @@ class JobEnvelope(ContractEnvelope):
     parent_job_id: str | None = None
     composite_depth: Annotated[int, Field(ge=0, le=3)] = 0
 
-    @field_validator("job_id", "job_name", "reply_to")
+    @field_validator("job_id", "job_name")
     @classmethod
-    def _validate_nats_tokens(cls, v: str) -> str:
+    def _validate_job_tokens(cls, v: str) -> str:
         validate_job_token(v)
+        return v
+
+    @field_validator("reply_to")
+    @classmethod
+    def _validate_reply_to(cls, v: str) -> str:
+        validate_nats_subject(v)
         return v
 
     @field_validator("parent_job_id")
@@ -72,7 +78,7 @@ class JobProgress(ContractEnvelope):
 
     job_id: str
     step: Annotated[str, StringConstraints(min_length=1)]
-    pct: Annotated[float, Field(ge=0.0, le=100.0)] | None = None
+    pct: Annotated[float | None, Field(ge=0.0, le=100.0)] = None
     detail: dict[str, Any] | None = None
 
     @field_validator("job_id")

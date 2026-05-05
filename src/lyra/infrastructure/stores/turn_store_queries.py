@@ -127,6 +127,49 @@ async def get_cli_session_by_pool(db: aiosqlite.Connection, pool_id: str) -> str
         return None
 
 
+_LIST_SESSIONS_FOR_POOL = """
+SELECT  ps.session_id,
+        ps.cli_session_id,
+        ps.last_active_at,
+        (SELECT content FROM conversation_turns
+           WHERE session_id = ps.session_id AND role = 'user'
+           ORDER BY timestamp ASC LIMIT 1) AS first_user_msg,
+        (SELECT COUNT(*) FROM conversation_turns
+           WHERE session_id = ps.session_id) AS turn_count
+FROM    pool_sessions ps
+WHERE   ps.pool_id = ?
+ORDER BY ps.last_active_at DESC
+LIMIT   ?
+"""
+
+_LIST_SESSIONS_COLS = (
+    "session_id",
+    "cli_session_id",
+    "last_active_at",
+    "first_user_msg",
+    "turn_count",
+)
+
+
+async def list_sessions_for_pool(
+    db: aiosqlite.Connection, pool_id: str, limit: int = 5
+) -> list[dict]:
+    """Return up to *limit* recent sessions for *pool_id*, newest first.
+
+    Each row pulls the first user message and total turn count via correlated
+    subqueries on ``conversation_turns`` — cheap at small *limit* and avoids
+    denormalising state onto ``pool_sessions``.
+    """
+    limit = max(1, min(limit, 50))
+    try:
+        async with db.execute(_LIST_SESSIONS_FOR_POOL, (pool_id, limit)) as cur:
+            rows = await cur.fetchall()
+    except sqlite3.Error:
+        log.exception("list_sessions_for_pool failed (pool=%s)", pool_id)
+        return []
+    return [dict(zip(_LIST_SESSIONS_COLS, row)) for row in rows]
+
+
 async def get_turns(
     db: aiosqlite.Connection, pool_id: str, user_id: str, limit: int = 50
 ) -> list[dict]:

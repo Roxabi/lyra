@@ -19,6 +19,7 @@ from lyra.infrastructure.stores.turn_store_queries import (
     get_cli_session_by_pool,
     get_last_session,
     get_session_pool_id,
+    list_sessions_for_pool,
 )
 
 log = logging.getLogger(__name__)
@@ -88,6 +89,14 @@ class TurnStoreSessionMixin:
         Used by resume_and_reset() when an exact Lyra session lookup misses.
         """
         return await get_cli_session_by_pool(self._db_or_raise(), pool_id)
+
+    async def list_sessions(self, pool_id: str, limit: int = 5) -> list[dict]:
+        """Return up to *limit* recent sessions for *pool_id*, newest first.
+
+        Each row carries ``session_id``, ``cli_session_id``, ``last_active_at``,
+        ``first_user_msg`` (may be None for empty sessions) and ``turn_count``.
+        """
+        return await list_sessions_for_pool(self._db_or_raise(), pool_id, limit)
 
     async def increment_resume_count(self, session_id: str) -> None:
         """Increment resume_count for *session_id*. Tolerant: 0-row OK."""

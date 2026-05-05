@@ -46,5 +46,9 @@ DEFAULT_BUILTINS: dict[str, CommandConfig] = {
         ("workspace", "Switch workspace: /workspace <name> [question] | ls"),
         ("voice", "Enable voice mode (TTS replies) for this session"),
         ("text", "Disable voice mode (text-only replies)"),
+        (
+            "session",
+            "List or resume past Claude sessions: /session [list] | resume <n>",
+        ),
     ]
 }

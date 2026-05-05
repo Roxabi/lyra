@@ -91,11 +91,10 @@ class TurnStoreSessionMixin:
         return await get_cli_session_by_pool(self._db_or_raise(), pool_id)
 
     async def list_sessions(self, pool_id: str, limit: int = 5) -> list[dict]:
-        """Return up to *limit* recent sessions for *pool_id* with metadata.
+        """Return up to *limit* recent sessions for *pool_id*, newest first.
 
         Each row carries ``session_id``, ``cli_session_id``, ``last_active_at``,
         ``first_user_msg`` (may be None for empty sessions) and ``turn_count``.
-        Powers the user-facing ``/session`` command.
         """
         return await list_sessions_for_pool(self._db_or_raise(), pool_id, limit)
 

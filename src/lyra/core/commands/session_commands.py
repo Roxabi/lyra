@@ -30,6 +30,8 @@ def _format_age(iso_ts: str | None) -> str:
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=UTC)
     seconds = int((datetime.now(UTC) - ts).total_seconds())
+    if seconds < 0:
+        return "?"
     if seconds < 60:
         return f"{seconds}s ago"
     if seconds < 3600:
@@ -64,7 +66,9 @@ def _format_list(rows: list[dict], current_cli: str | None) -> str:
     return "\n".join(lines)
 
 
-async def _cmd_list(pool: Pool) -> Response:
+async def _cmd_list(msg: InboundMessage, pool: Pool) -> Response:
+    if denied := require_admin(msg):
+        return denied
     store = pool.turn_store
     if store is None:
         return Response(content="Session history not available (no TurnStore).")
@@ -81,7 +85,7 @@ async def _cmd_resume(msg: InboundMessage, args: list[str], pool: Pool) -> Respo
     try:
         idx = int(args[1])
     except ValueError:
-        return Response(content=f"Not a number: {args[1]!r}")
+        return Response(content="Not a number. Usage: /session resume <n>")
     if not pool.is_idle:
         return Response(
             content="A turn is in flight — wait for it to finish, or /stop first."
@@ -94,7 +98,7 @@ async def _cmd_resume(msg: InboundMessage, args: list[str], pool: Pool) -> Respo
         return Response(content=f"Index {idx} out of range. Run /session list first.")
     target = rows[idx - 1]
     cli_sid = target.get("cli_session_id")
-    if not cli_sid:
+    if not isinstance(cli_sid, str) or not cli_sid:
         return Response(
             content=f"Session #{idx} has no CLI session ID — cannot resume."
         )
@@ -115,7 +119,7 @@ async def cmd_session(
         return Response(content="No active pool.")
     sub = args[0].lower() if args else "list"
     if sub in ("", "list", "ls"):
-        return await _cmd_list(pool)
+        return await _cmd_list(msg, pool)
     if sub == "resume":
         return await _cmd_resume(msg, args, pool)
     return Response(content=f"Unknown subcommand: {sub!r}. Try: list | resume <n>")

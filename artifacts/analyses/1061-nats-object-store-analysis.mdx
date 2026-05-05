@@ -1,0 +1,138 @@
+---
+title: "Brainstorm: #1061 — Blob storage for large binary payloads"
+description: Convergence on Flat-FS+SQLite-behind-BlobStore-interface for ingesting/archiving Telegram/Discord attachments and STT/TTS audio; NATS Object Store dropped from the design.
+type: brainstorm
+---
+
+## Trigger
+
+Issue [#1061](https://github.com/Roxabi/lyra/issues/1061) — *epic: NATS Object Store for large binary payloads*. Original framing: introduce a NATS Object Store bucket (`lyra-blobs`) so audio bytes stop riding inline through NATS messages (50 MB ceiling, base64 overhead, hub memory spikes).
+
+Scope expansion during brainstorm:
+
+- **Q1 — file types:** ALL Telegram + Discord attachments (docs, images, videos, voice, stickers, animations, GIFs).
+- **Q2 — direction:** bidirectional + cross-bot (TG-shared file may be re-emitted on Discord).
+- **Q3 — lifecycle:** **permanent archive — no TTL.** User intent: "store everything for now, disk space handled later, need data to train and test and debug".
+- **Q4 — URL strategy:** eager download at ingress + platform reference (`tg:&lt;file_id&gt;` / `discord:&lt;ch&gt;/&lt;msg&gt;/&lt;att&gt;`) kept as recovery handle. Telegram URLs are bot-token-bound and Discord CDN URLs are signed and expire ~24h, so neither URL is stable.
+
+This expansion is what triggered the re-architecture: the original NATS-Object-Store design fits a transport/cache role, not a permanent multi-modal asset archive.
+
+## Ideas
+
+- **Single NATS bucket `lyra-blobs`** — original issue framing.
+  - Upside: one abstraction, fits existing `roxabi-nats` SDK shape.
+  - Downside: JetStream-backed → unbounded growth bloats `store_dir`; no content search; ML/debug must read NATS instead of standard S3/parquet/duckdb stack.
+
+- **Per-domain NATS buckets** (`lyra-audio`, `lyra-files`, `lyra-images`).
+  - Upside: cleaner per-type retention/access policies.
+  - Downside: same JetStream cold-tier problem; more buckets to manage; cross-type dedup harder.
+
+- **NATS + KV content-hash index w/ dedup**.
+  - Upside: native dedup; queryable metadata via KV.
+  - Downside: more moving parts; JetStream still grows; still ¬queryable for ML.
+
+- **Two-tier: NATS hot (≤24h) + MinIO/S3 archive**.
+  - Upside: each tool used for what it's good at; ML uses standard S3 tooling.
+  - Downside: 2 primitives + an archiver worker; copy-window data-loss risk; hub still pays NATS-OS latency for hot reads (~10–30 ms vs ~2–8 ms for direct MinIO at 5 MB).
+
+- **MinIO direct (skip NATS Object Store entirely)** — architect 2nd-opinion pick.
+  - Upside: one primitive; survives multi-host transition without re-architecture; presigned URLs available if ever needed.
+  - Downside: requires Quadlet unit + readiness probe + S3 client in every worker + credential management for benefits (presigned URLs, bucket policies) that don't apply yet (all consumers are internal Python workers on a single host).
+
+- **Flat FS + SQLite index** — devops 2nd-opinion pick. `~/.lyra/blobs/&lt;sha[:2]&gt;/&lt;sha&gt;` content-addressed tree + SQLite metadata DB.
+  - Upside: zero ops weight; native dedup via SHA-256; `sqlite3` queryable; trivially rsync-backed-up; SHA-addressed layout makes future migration to S3 = bulk copy + index re-import.
+  - Downside: single-host only; loses S3 ergonomics (presigned URLs, bucket policies — none currently needed).
+
+- **Flat FS + SQLite *behind a `BlobStore` interface*** ← **converged shape**.
+  - Upside: matches devops simplicity for v1, satisfies architect's "don't lock into a primitive" critique. The abstraction is cheap (3 methods: `put` / `get` / `exists`) and isolates call sites from the backing store. Migration to MinIO/S3 when multi-host emerges = swap one implementation, ¬touch adapters/workers.
+  - Downside: a tiny abstraction layer eaten upfront — but it's worth it.
+
+## Cross-cutting decisions (apply regardless of backend)
+
+- **Drop NATS Object Store from the design entirely.** Both reviewers (architect + devops) agreed it's the wrong primitive for permanent archive of arbitrary user files. Original `audio_ref` framing in #1061 is superseded by `BlobRef`.
+- **Eager download at adapter ingress** for Telegram/Discord. Telegram bot-token URL is fresh only ≥1h after `getFile`; Discord CDN signed URLs expire ~24h. Lazy fetching at use time = race condition. Hub never handles raw bytes for inbound files.
+- **Workers do direct FS reads on the same host today.** Cross-process via NATS message carrying `BlobRef`; raw bytes never traverse NATS. When multi-host arrives, swap `BlobStore` impl → workers fetch over S3, no contract change.
+- **`BlobRef` envelope:**
+  ```python
+  class BlobRef(BaseModel):
+      store_key: str           # opaque to consumer; FS path or s3://... in future
+      content_hash: str        # sha256 hex (dedup key)
+      mime: str
+      size: int
+      filename: str | None     # nullable for synthesized audio (no natural filename)
+      source: Literal["telegram", "discord", "tts", "stt", ...]
+      platform_ref: str | None         # "tg:&lt;file_id&gt;" | "discord:&lt;ch&gt;/&lt;msg&gt;/&lt;att&gt;" — recovery handle
+      platform_message_id: str | None  # distinct from platform_ref; reconstructs conversation thread for training data
+      created_at: datetime             # mandatory: ML provenance, audit trail, future TTL gating
+  ```
+- **ADR mandates** before flipping permanent retention on:
+  - Explicit "v1 = single-host, no replication, loss tolerated" statement (¬implicit).
+  - Inode + disk-usage alerts (inode exhaustion is more dangerous than byte exhaustion for flat-file stores at scale).
+  - Data volume on a separate mount (`/data/lyra/blobs` or similar), not the OS disk — isolates growth from OS health.
+  - Quadlet `After=` does ¬guarantee readiness; if/when MinIO is added later, follow ADR-065 NATS-KV readiness-probe pattern.
+- **Dedup is the SHA-256 layout's job.** `put(bytes)` computes `sha256`, `SELECT ... WHERE content_hash = ?` short-circuits the write if hit. Same audio re-sent = stored once, referenced N times.
+
+## Voice round-trip (anchor flow)
+
+User voice msg on Telegram → STT → agent → TTS → voice reply on Telegram. Single host (M₁ = `roxabituwer`).
+
+```
+User    TG-Adapter           BlobStore(FS+SQLite)         NATS              Hub               STT                TTS
+
+  ──voice──▶                                                                                                       
+   (file_id)                                                                                                       
+              1. getFile + HTTP GET ─────────────────▶ Telegram CDN ──▶ bytes                                      
+              2. sha256(bytes)                                                                                     
+              3. exists(hash)? ────▶ SELECT WHERE hash=?                                                           
+              4a. miss → put() ────▶ write blobs/ab/abc... + INSERT                                                
+              4b. hit  → reuse ────▶ row.store_key                                                                 
+              5. BlobRef built                                                                                     
+              6. publish ─────────────────────────────▶ lyra.inbound.telegram.&lt;bot&gt; ───▶ Hub                       
+                 InboundMessage(audio=AudioPayload(blob_ref=...))                                                  
+                                                                              7. request ────▶ STT                 
+                                                                                 SttRequest(blob_ref=...)          
+                                       8. open(store_key) ◀── direct FS read ─────────────────                     
+                                                                              9. ◀─ reply ────                     
+                                                                                 SttResponse(text="…")             
+                                                                          10. agent processing on hub              
+                                                                              11. request ──────────────────▶ TTS  
+                                                                                 TtsRequest(text="reply…")         
+                                                                                                12. synth bytes    
+                                       13. put() ◀────────────── direct FS write ─────────────────────────────    
+                                          write blobs/cd/cde... + INSERT                                          
+                                                                              14. ◀─ reply ──                      
+                                                                                 TtsResponse(blob_ref=...)         
+                                                                              15. publish ──▶ lyra.outbound.telegram.&lt;bot&gt;
+              16. open(store_key) ─▶ FS read                                                                       
+              17. sendVoice(bytes) ────────────────────▶ Telegram API                                              
+  ◀─voice──                                                                                                        
+```
+
+Properties:
+
+| # | Property | Why |
+|---|---|---|
+| 1 | Eager download at ingress | TG URL valid ≥1h only; bot-token-bound |
+| 2–4 | SHA-256 + SQLite check | Native dedup; same blob stored once |
+| 5 | `platform_ref` retained | Recovery if FS ever loses the blob & file still on platform |
+| 6,7,11,15 | NATS messages carry `BlobRef` only | No 50 MB ceiling; no base64; no hub memory spike |
+| 8,13,16 | Workers do direct FS I/O | Single-host today; no S3/HTTP roundtrip on hot path |
+| swap | `BlobStore` is a 3-method interface | Day FS-impl swaps for MinIO when multi-host arrives — call sites untouched |
+
+## What's next?
+
+1. ~~**Promote to analysis → spec via `/dev #1061`**~~ ✅ **Done — [Spec: #1061 — BlobStore for large binary payloads](../specs/1061-blobstore-spec.mdx).**
+2. ~~**ADR** — record the architectural decision~~ ✅ **Done — [ADR-067: BlobStore abstraction for large binary payloads — content-addressed flat-FS v1](../../docs/architecture/adr/067-blobstore-abstraction-flat-fs-content-addressed.mdx).**
+3. **Issue cleanup** ✅ — #1061 title + body refreshed to reflect the converged framing; ADR-067 linked from the issue.
+4. **Slice plan candidates** (for spec phase):
+   - V1: `roxabi-blobs` package (or extend `roxabi-nats` if naming preferred) — `BlobStore` interface + FS+SQLite impl + unit tests.
+   - V2: `BlobRef` in `roxabi-contracts`; deprecate `audio_b64` / `audio_bytes` with `DeprecationWarning` shim.
+   - V3: TG adapter eager-ingest path (voice + docs + images + videos); cross-bot re-emit verified.
+   - V4: Discord adapter ingress/egress symmetry.
+   - V5: STT/TTS workers consume/produce `BlobRef`.
+   - V6: Ops — separate volume mount, inode + df alerting, runbook for "disk full" scenario.
+5. **Open questions for spec phase:**
+   - Package home: `roxabi-blobs` (new) or grow `roxabi-nats` (existing)?
+   - SQLite schema: single `blobs` table or split (e.g., `blobs` + `blob_sources` for provenance)?
+   - Threshold for "too small to bother" (still inline below N KB) — or always content-address for uniformity?
+   - Backward-compat window: how long do `audio_b64` / `audio_bytes` deprecation shims live?

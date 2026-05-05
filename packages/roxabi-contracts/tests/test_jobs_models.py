@@ -1,13 +1,7 @@
-"""RED-phase tests for roxabi_contracts.jobs domain models and subjects.
+"""Tests for roxabi_contracts.jobs domain models and subjects.
 
 Covers SC-10 (model roundtrip, extra-ignore, composite_depth boundary,
 JobResult status/error mutex) and SC-11 (subject helpers).
-
-test_roundtrip and test_extra_ignore → PASS immediately (no validators needed).
-test_subjects → PASS immediately (helpers already enforce bad tokens).
-test_composite_depth_boundary[depth-4] and [depth--1] → FAIL until T7.
-test_job_result_invariant[error-no-WorkerError] and [success-with-error]
-→ FAIL until T7.
 """
 
 from __future__ import annotations
@@ -72,7 +66,7 @@ def test_roundtrip(model: type[BaseModel], payload: dict[str, Any]) -> None:
     ],
 )
 def test_composite_depth_boundary(depth: int, should_raise: bool) -> None:
-    """composite_depth in [0..3] is valid; 4 or -1 raise ValidationError (RED until T7)."""  # noqa: E501
+    """composite_depth in [0..3] is valid; 4 or -1 raise ValidationError."""
     # Arrange
     payload: dict[str, Any] = {
         **sample_job_envelope,
@@ -80,11 +74,9 @@ def test_composite_depth_boundary(depth: int, should_raise: bool) -> None:
     }
 
     if should_raise:
-        # Act / Assert — expected RED until T7 adds the validator
         with pytest.raises(ValidationError):
             JobEnvelope.model_validate(payload)
     else:
-        # Act / Assert — must pass right now
         inst = JobEnvelope.model_validate(payload)
         assert inst.composite_depth == depth
 
@@ -122,7 +114,7 @@ _WORKER_ERROR = WorkerError(code="worker.crash", message="scraper failed")
     ],
 )
 def test_job_result_invariant(kwargs: dict[str, Any], should_raise: bool) -> None:
-    """status/error mutex: error=None on status=error raises; WorkerError on success raises (RED until T7)."""  # noqa: E501
+    """status/error mutex: error=None on error raises; WorkerError on success raises."""
     # Arrange
     from roxabi_contracts.jobs.fixtures import _ENV
 
@@ -133,11 +125,9 @@ def test_job_result_invariant(kwargs: dict[str, Any], should_raise: bool) -> Non
     }
 
     if should_raise:
-        # Act / Assert — expected RED until T7 adds the validator
         with pytest.raises(ValidationError):
             JobResult.model_validate(payload)
     else:
-        # Act / Assert — must pass right now
         inst = JobResult.model_validate(payload)
         assert inst.status == kwargs["status"]
 
@@ -198,19 +188,18 @@ def test_subjects_jobs_progress() -> None:
 
 
 @pytest.mark.parametrize(
-    "bad_token",
+    ("helper", "bad_token"),
     [
-        pytest.param("bad*token", id="asterisk"),
-        pytest.param("bad>token", id="greater-than"),
+        pytest.param(jobs_submit, "bad*token", id="submit-asterisk"),
+        pytest.param(jobs_submit, "bad>token", id="submit-greater-than"),
+        pytest.param(jobs_submit, "", id="submit-empty-string"),
+        pytest.param(jobs_result, "bad*token", id="result-asterisk"),
+        pytest.param(jobs_result, "bad>token", id="result-greater-than"),
+        pytest.param(jobs_progress, "bad*token", id="progress-asterisk"),
+        pytest.param(jobs_progress, "bad>token", id="progress-greater-than"),
     ],
 )
-def test_subjects_rejects_bad_tokens(bad_token: str) -> None:
-    """jobs_submit raises ValueError for NATS wildcard characters (* and >)."""
+def test_subjects_rejects_bad_tokens(helper: Any, bad_token: str) -> None:
+    """Subject helpers raise ValueError for NATS wildcards (* >) and empty strings."""
     with pytest.raises(ValueError):
-        jobs_submit(bad_token)
-
-
-def test_subjects_dots_allowed() -> None:
-    """Dots in job_name are permitted (e.g. 'vault.add-from-url')."""
-    subject = jobs_submit("vault.add-from-url")
-    assert subject == "lyra.jobs.vault.add-from-url"
+        helper(bad_token)

@@ -3,17 +3,15 @@
 Pure Pydantic. No NATS imports. No transport logic. Every model subclasses
 ContractEnvelope, which provides (contract_version, trace_id, issued_at)
 plus ConfigDict(extra="ignore") for forward-compat.
-
-Validators for composite_depth and JobResult status/error mutex are in
-models.py but added in the GREEN phase (T7).
 """
 
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import StringConstraints, field_validator, model_validator
+from pydantic import Field, StringConstraints, field_validator, model_validator
 
+from roxabi_contracts._nats_utils import validate_job_token
 from roxabi_contracts.envelope import ContractEnvelope
 from roxabi_contracts.errors import WorkerError
 
@@ -28,13 +26,12 @@ class JobEnvelope(ContractEnvelope):
     payload: dict[str, Any]
     reply_to: Annotated[str, StringConstraints(min_length=1)]
     parent_job_id: str | None = None
-    composite_depth: int = 0
+    composite_depth: Annotated[int, Field(ge=0, le=3)] = 0
 
-    @field_validator("composite_depth")
+    @field_validator("job_id", "job_name", "reply_to")
     @classmethod
-    def _validate_depth(cls, v: int) -> int:
-        if not (0 <= v <= 3):
-            raise ValueError(f"composite_depth must be 0–3, got {v}")
+    def _validate_nats_tokens(cls, v: str) -> str:
+        validate_job_token(v)
         return v
 
 
@@ -45,6 +42,12 @@ class JobResult(ContractEnvelope):
     status: Literal["success", "error"]
     data: dict[str, Any] | None = None
     error: WorkerError | None = None
+
+    @field_validator("job_id")
+    @classmethod
+    def _validate_job_id(cls, v: str) -> str:
+        validate_job_token(v)
+        return v
 
     @model_validator(mode="after")
     def _enforce_status_invariant(self) -> Self:
@@ -62,5 +65,11 @@ class JobProgress(ContractEnvelope):
 
     job_id: Annotated[str, StringConstraints(min_length=1)]
     step: Annotated[str, StringConstraints(min_length=1)]
-    pct: float | None = None
+    pct: Annotated[float, Field(ge=0.0, le=100.0)] | None = None
     detail: dict[str, Any] | None = None
+
+    @field_validator("job_id")
+    @classmethod
+    def _validate_job_id(cls, v: str) -> str:
+        validate_job_token(v)
+        return v

@@ -21,10 +21,10 @@ __all__ = ["JobEnvelope", "JobResult", "JobProgress"]
 class JobEnvelope(ContractEnvelope):
     """Job submission envelope. Canonical subject: lyra.jobs.<job_name>."""
 
-    job_id: Annotated[str, StringConstraints(min_length=1)]
-    job_name: Annotated[str, StringConstraints(min_length=1)]
+    job_id: str
+    job_name: str
     payload: dict[str, Any]
-    reply_to: Annotated[str, StringConstraints(min_length=1)]
+    reply_to: str
     parent_job_id: str | None = None
     composite_depth: Annotated[int, Field(ge=0, le=3)] = 0
 
@@ -34,11 +34,18 @@ class JobEnvelope(ContractEnvelope):
         validate_job_token(v)
         return v
 
+    @field_validator("parent_job_id")
+    @classmethod
+    def _validate_parent_job_id(cls, v: str | None) -> str | None:
+        if v is not None:
+            validate_job_token(v)
+        return v
+
 
 class JobResult(ContractEnvelope):
     """Job reply envelope. Sent to reply_to subject on completion."""
 
-    job_id: Annotated[str, StringConstraints(min_length=1)]
+    job_id: str
     status: Literal["success", "error"]
     data: dict[str, Any] | None = None
     error: WorkerError | None = None
@@ -63,7 +70,7 @@ class JobResult(ContractEnvelope):
 class JobProgress(ContractEnvelope):
     """Job progress event. Published to lyra.progress.<job_id> (best-effort)."""
 
-    job_id: Annotated[str, StringConstraints(min_length=1)]
+    job_id: str
     step: Annotated[str, StringConstraints(min_length=1)]
     pct: Annotated[float, Field(ge=0.0, le=100.0)] | None = None
     detail: dict[str, Any] | None = None

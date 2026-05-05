@@ -9,7 +9,6 @@ __all__ = [
     "jobs_submit",
     "jobs_result",
     "jobs_progress",
-    "validate_job_token",
 ]
 
 

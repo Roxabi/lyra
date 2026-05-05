@@ -33,14 +33,38 @@ def validate_worker_id(worker_id: str) -> None:
         )
 
 
-_SAFE_JOB_TOKEN_RE = re.compile(r"[A-Za-z0-9._-]+")
+_SAFE_JOB_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*")
 
 
 def validate_job_token(token: str) -> None:
     """Validate a job_name or job_id for NATS subject safety.
-    Dots allowed (namespacing: vault.add-from-url); * and > rejected."""
+    Dots allowed for namespacing (vault.add-from-url) but leading/trailing/
+    consecutive dots are rejected; * and > rejected."""
     if not _SAFE_JOB_TOKEN_RE.fullmatch(token):
         raise ValueError(
-            f"job token must match [A-Za-z0-9._-]+ (got {token!r}); "
-            "NATS wildcard characters (* >) and spaces are rejected"
+            f"job token must match [A-Za-z0-9_-]+([.][A-Za-z0-9_-]+)* (got {token!r}); "
+            "NATS wildcard characters (* >) and dot-boundary violations are rejected"
         )
+
+
+# Subject *segments* (post-split) must not contain dots; use _SAFE_WORKER_ID_RE
+# rather than _SAFE_JOB_TOKEN_RE to keep the two validation paths independent.
+_SAFE_SUBJECT_SEGMENT_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def _validate_subject_segment(segment: str) -> None:
+    if not _SAFE_SUBJECT_SEGMENT_RE.fullmatch(segment):
+        raise ValueError(
+            f"NATS subject segment must match [A-Za-z0-9_-]+ (got {segment!r}); "
+            "dots, wildcards (* >) and empty segments are rejected"
+        )
+
+
+def validate_nats_subject(subject: str) -> None:
+    """Validate a full multi-segment NATS subject (e.g. _INBOX.abc123).
+    Splits on '.' and validates each segment via _validate_subject_segment
+    (no dots allowed per segment); rejects empty segments and wildcards."""
+    if not subject:
+        raise ValueError("NATS subject must not be empty")
+    for segment in subject.split("."):
+        _validate_subject_segment(segment)

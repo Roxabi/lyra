@@ -1,6 +1,7 @@
 """Jobs-domain NATS subject strings and helpers."""
 
 from dataclasses import dataclass
+from typing import Literal
 
 from roxabi_contracts._nats_utils import validate_job_token
 
@@ -9,18 +10,22 @@ __all__ = [
     "jobs_submit",
     "jobs_result",
     "jobs_progress",
-    "validate_job_token",
 ]
 
 
 @dataclass(frozen=True, slots=True)
 class _Subjects:
-    """Frozen namespace for jobs-domain subjects.
+    """Frozen namespace for jobs-domain subject prefixes.
 
-    Empty at v0.4.0; callers use helpers.
+    Holds the static prefix halves of each subject family. The dynamic
+    suffix (job_name or job_id) is appended by the helper functions below.
+    Diverges from voice/image/llm where SUBJECTS holds complete Literal
+    subjects — jobs subjects are always parameterised.
     """
 
-    pass
+    submit_prefix: Literal["lyra.jobs"] = "lyra.jobs"
+    result_prefix: Literal["lyra.results"] = "lyra.results"
+    progress_prefix: Literal["lyra.progress"] = "lyra.progress"
 
 
 SUBJECTS = _Subjects()

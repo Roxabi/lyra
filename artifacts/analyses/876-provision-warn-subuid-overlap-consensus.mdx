@@ -1,0 +1,76 @@
+---
+title: "provision.sh warn_subid_overlap — Long-Term Defensive Posture Consensus"
+issue: 876
+status: consensus-reached
+date: 2026-05-05
+panel: architect, devops, security-auditor
+confidence: high
+---
+
+## Problem
+
+Three review findings (F2, F5, F6) on PR #1072 remained after auto-apply. Panel was asked for long-term recommendations on all three pending findings in the context of `warn_subid_overlap` and `assert_no_subid_overlap` in `deploy/provision.sh`.
+
+## Panel
+
+| Agent | Focus |
+|-------|-------|
+| architect | Arch soundness, contract parity, maintainability |
+| devops | Ops observability, curl\|bash run visibility, idempotency |
+| security-auditor | Defense-in-depth, path traversal, privilege boundary |
+
+## Consensus ρ
+
+Apply all three fixes:
+
+**F2** — Split the combined missing/unreadable guard in `warn_subid_overlap`:
+```bash
+[[ ! -e "$file" ]] && return 0
+[[ ! -r "$file" ]] && { warn "Cannot read $file (check permissions) — skipping overlap check"; return 0; }
+```
+
+**F5** — Add allowlist guard at function entry in `warn_subid_overlap`:
+```bash
+[[ "$file" == /etc/subuid || "$file" == /etc/subgid ]] \
+  || { warn "warn_subid_overlap: unexpected file path '$file' — skipping"; return 0; }
+```
+
+**F6** — Add blank line between `warn_subid_overlap` and `assert_no_subid_overlap`.
+
+**Contract rule to document:** Advisory-path functions (`warn_*`) must distinguish missing (silent return 0) from unreadable (warn + return 0). This mirrors the hard-path (`assert_*`) pattern: missing = skip, unreadable = abort.
+
+### Rationale
+
+All three experts converged on the same solutions without debate:
+- F2: Missing vs unreadable distinction is an observability fix, not a security fix — the devops and arch perspectives both identified this as the right long-term posture for a `curl | bash` provisioner where operator signal matters
+- F5: Allowlist (not regex) because the permitted set is exactly two paths; exact match detects future drift loudly
+- F6: Blank line is unconditionally correct; security-auditor additionally recommends `shfmt` in CI as a systemic fix
+
+### Trade-offs
+
+- F2 warn on unreadable adds noise on permission-hardened hosts — accepted cost; advisory, not hard failure
+- F5 whitelist must be updated if distros relocate subid files — acceptable visible maintenance cost
+- F6 blank line: consider adding `shfmt` to the CI lint gate to prevent recurrence of shell style issues
+
+## Alternatives
+
+| Option | Proposed by | Rejected because |
+|--------|-------------|------------------|
+| F2: hard error on unreadable | — | Contradicts `warn_subid_overlap`'s advisory contract; `assert_no_subid_overlap` owns the abort path |
+| F2: silent skip with comment (status quo) | security-auditor (initial review) | Hides permission regressions in curl\|bash runs permanently |
+| F5: regex path guard (`^/etc/`) | — | Too broad; allows `/etc/passwd`, `/etc/shadow` to reach awk |
+| F5: no guard (status quo) | — | Implicit contract; breaks as script accumulates callers over time |
+| Shared file-access helper | architect | Over-engineering for single-file bash provisioner; bash lacks structured return types |
+
+## Dissent
+
+None — unanimous.
+
+## Implementation Notes
+
+Apply in order: F2 → F5 → F6 (ascending blast radius). All changes are local to `warn_subid_overlap`; no callers change. ADR-069 documents the contract rule for future reviewers.
+
+## Next
+
+- Apply F2/F5/F6 in PR #1072 → re-review → merge to staging
+- Follow-up (low priority): add `shfmt` to CI lint gate for shell files

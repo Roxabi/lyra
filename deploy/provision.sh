@@ -127,7 +127,11 @@ next_free_subid_start() {
 # real failures. Revisit when AGENT_USER subuid provisioning is added (#876).
 warn_subid_overlap() {
   local file="$1"
-  [[ ! -e "$file" || ! -r "$file" ]] && return 0
+  # Advisory-only: missing = silent, unreadable = warn + skip (mirrors assert_no_subid_overlap hard path).
+  [[ "$file" == /etc/subuid || "$file" == /etc/subgid ]] \
+    || { warn "warn_subid_overlap: unexpected file path '$file' — skipping"; return 0; }
+  [[ ! -e "$file" ]] && return 0
+  [[ ! -r "$file" ]] && { warn "Cannot read $file (check permissions) — skipping overlap check"; return 0; }
   local start count
   read -r start count < <(awk -F: -v u="$ADMIN_USER" '$1 == u {print $2, $3; exit}' "$file")
   [[ -z "$start" ]] && return 0
@@ -141,6 +145,7 @@ warn_subid_overlap() {
     while IFS= read -r line; do warn "  $line"; done <<< "$hit"
   fi
 }
+
 assert_no_subid_overlap() {
   local file="$1" start="$2" end="$3"
   [[ ! -e "$file" ]] && return 0

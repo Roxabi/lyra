@@ -131,7 +131,8 @@ warn_subid_overlap() {
   local start count
   read -r start count < <(awk -F: -v u="$ADMIN_USER" '$1 == u {print $2, $3; exit}' "$file")
   [[ -z "$start" ]] && return 0
-  local end=$(( start + count ))
+  [[ -z "$count" || ! "$count" =~ ^[0-9]+$ ]] && { warn "malformed subid entry for $ADMIN_USER in $file — skipping overlap check"; return 0; }
+  local end; end=$(( start + count ))
   local hit
   hit=$(awk -F: -v u="$ADMIN_USER" -v s="$start" -v e="$end" \
     '$1 != u && $2 + $3 > s && $2 < e { print $1 ": " $2 "-" $2+$3-1 }' "$file")
@@ -145,8 +146,8 @@ assert_no_subid_overlap() {
   [[ ! -e "$file" ]] && return 0
   [[ -e "$file" && ! -r "$file" ]] && error "Cannot read $file (check permissions)."
   local hit
-  hit=$(awk -F: -v s="$start" -v e="$end" \
-    '$2 + $3 > s && $2 < e { print "overlap with " $1 ": " $2 "-" $2+$3-1 }' "$file")
+  hit=$(awk -F: -v u="$ADMIN_USER" -v s="$start" -v e="$end" \
+    '$1 != u && $2 + $3 > s && $2 < e { print "overlap with " $1 ": " $2 "-" $2+$3-1 }' "$file")
   if [[ -n "$hit" ]]; then
     while IFS= read -r line; do warn "  $line"; done <<< "$hit"
     error "subid overlap detected in $file — see warnings above"

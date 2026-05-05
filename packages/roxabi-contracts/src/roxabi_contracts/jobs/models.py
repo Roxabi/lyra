@@ -37,6 +37,10 @@ class JobEnvelope(ContractEnvelope):
     @field_validator("reply_to")
     @classmethod
     def _validate_reply_to(cls, v: str) -> str:
+        # Trust boundary: all JobEnvelope publishers are internal trusted services
+        # on a private NATS cluster (ADR-062/064). No prefix restriction is applied
+        # here; enforcement is at the ACL layer. If the cluster topology ever allows
+        # untrusted publishers, restrict reply_to to _INBOX.* / _R_.* prefixes.
         validate_nats_subject(v)
         return v
 

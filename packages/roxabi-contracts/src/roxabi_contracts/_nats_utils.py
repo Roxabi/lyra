@@ -47,9 +47,24 @@ def validate_job_token(token: str) -> None:
         )
 
 
+# Subject *segments* (post-split) must not contain dots; use _SAFE_WORKER_ID_RE
+# rather than _SAFE_JOB_TOKEN_RE to keep the two validation paths independent.
+_SAFE_SUBJECT_SEGMENT_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def _validate_subject_segment(segment: str) -> None:
+    if not _SAFE_SUBJECT_SEGMENT_RE.fullmatch(segment):
+        raise ValueError(
+            f"NATS subject segment must match [A-Za-z0-9_-]+ (got {segment!r}); "
+            "dots, wildcards (* >) and empty segments are rejected"
+        )
+
+
 def validate_nats_subject(subject: str) -> None:
     """Validate a full multi-segment NATS subject (e.g. _INBOX.abc123).
-    Splits on '.' and validates each segment; rejects empty segments,
-    * and > in any position."""
+    Splits on '.' and validates each segment via _validate_subject_segment
+    (no dots allowed per segment); rejects empty segments and wildcards."""
+    if not subject:
+        raise ValueError("NATS subject must not be empty")
     for segment in subject.split("."):
-        validate_job_token(segment)
+        _validate_subject_segment(segment)

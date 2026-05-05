@@ -1,0 +1,192 @@
+---
+title: "Spec: #1061 — BlobStore for large binary payloads"
+description: Content-addressed flat-FS + SQLite BlobStore behind a uniform interface. Replaces inline `audio_b64`/`audio_bytes` and ingests all Telegram/Discord attachments. Implements ADR-067.
+---
+
+## Context
+
+**Promoted from:** [Brainstorm: #1061 — Blob storage for large binary payloads](../analyses/1061-nats-object-store-analysis.mdx)
+**Decision of record:** [ADR-067 — BlobStore abstraction for large binary payloads (content-addressed flat-FS v1)](../../docs/architecture/adr/067-blobstore-abstraction-flat-fs-content-addressed.mdx)
+**Issue:** [#1061](https://github.com/Roxabi/lyra/issues/1061) — `feat(blobs): epic — BlobStore for large binary payloads (audio + TG/Discord attachments)`
+
+Today, all binary payloads (STT audio, TTS audio, AudioPayload bytes) ride inline through NATS messages as raw bytes or base64. Hard NATS ceiling = 50 MB; base64 adds ~33% overhead; every subscriber receives the full blob even when only metadata is needed; hub memory spikes per audio exchange; no dedup. The original framing (NATS Object Store) was rejected during analysis — JetStream-backed unbounded archive growth is the wrong fit. ADR-067 locks in: flat-FS + SQLite content-addressed store behind a `BlobStore` interface, FS impl swappable for MinIO/S3 when multi-host arrives.
+
+This spec also extends scope beyond audio: every Telegram + Discord attachment (documents, images, videos, voice notes, stickers, animations, GIFs) is ingested into the same `BlobStore` as data for training, testing, and debugging.
+
+## Goal
+
+A uniform, content-addressed `BlobStore` primitive shared by lyra's adapters (Telegram, Discord) and voiceCLI workers (STT, TTS). Hub never handles raw bytes; NATS messages carry only `BlobRef`. All inbound user attachments are durably stored on ingress with rich provenance. Original `audio_b64` / `audio_bytes` fields are removed atomically.
+
+## Users & Use Cases
+
+### Primary actors
+
+| Actor | Role |
+|---|---|
+| User (Telegram or Discord) | Sends a voice note / file / sticker; receives a voice/file response |
+| Telegram adapter (`lyra-telegram`) | Inbound: `getFile` + HTTP download → `BlobStore.put`. Outbound: `BlobStore.get` → `sendVoice` / `sendDocument` |
+| Discord adapter (`lyra-discord`) | Inbound: CDN HTTP fetch → `BlobStore.put`. Outbound: `BlobStore.get` → channel attachment upload |
+| Hub (`lyra-hub`) | Routes `BlobRef` between adapters/workers; never reads/writes blob bytes |
+| STT worker (voiceCLI) | Receives `SttRequest(blob_ref)`; reads bytes via `BlobStore.get`; replies `SttResponse(text)` |
+| TTS worker (voiceCLI) | Receives `TtsRequest(text)`; synthesises bytes; writes via `BlobStore.put`; replies `TtsResponse(blob_ref)` |
+| ML/debug operator (Mickael) | Queries SQLite directly (`sqlite3 index.sqlite`) for training-data extraction and incident reconstruction |
+
+### Use cases
+
+- **UC1 — Voice round-trip (Telegram).** User → voice → STT → agent → TTS → voice → User. Every audio segment content-addressed; same audio re-sent twice = stored once.
+- **UC2 — Inbound file ingestion.** User sends a PDF/image/video on Telegram or Discord. Adapter eagerly downloads, puts in store, emits inbound message with `BlobRef`. File durably available to agent + future replay.
+- **UC3 — Outbound file emission.** Agent generates a PDF/image; `BlobRef` flows hub → adapter; adapter fetches bytes from store, uploads to platform.
+- **UC4 — Cross-bot re-emission.** A blob ingested on Telegram can be referenced by `content_hash` and re-emitted on Discord without re-downloading from the original platform.
+- **UC5 — ML/debug retrieval.** Operator queries SQLite for "all voice notes from user X over last 7 days" → list of `(content_hash, store_path, created_at)` → bulk read for analysis.
+
+## Expected Behavior
+
+### Happy path — voice round-trip (UC1)
+
+1. User sends a voice note on Telegram. Bot receives `Message.voice` with `file_id`.
+2. TG adapter calls `getFile(file_id)` → URL valid ≥1h, bot-token-bound.
+3. TG adapter HTTP-GETs the URL → bytes in memory.
+4. TG adapter computes `sha256(bytes)`.
+5. TG adapter calls `BlobStore.put(bytes, mime="audio/ogg", source="telegram", platform_ref=f"tg:{file_id}", platform_message_id=str(msg.message_id))`.
+6. `BlobStore` checks `blobs.content_hash`; if hit, skip write + return existing `store_path`. If miss, write `{root}/<sha[:2]>/<sha>` → `fsync` → INSERT into `blobs`.
+7. Always INSERT a `blob_refs` row (one per ingestion) → return `BlobRef`.
+8. TG adapter publishes `lyra.inbound.telegram.<bot_id>` with `InboundMessage(audio=AudioPayload(blob_ref=...))`.
+9. Hub receives, dispatches `SttRequest(blob_ref=...)` to STT worker subject.
+10. STT worker calls `BlobStore.get(store_key)` → bytes (direct FS read, single-host).
+11. STT worker transcribes → replies `SttResponse(text="...")`.
+12. Hub processes (LLM, plugins) → reply text.
+13. Hub dispatches `TtsRequest(text="reply")` to TTS worker.
+14. TTS worker synthesises bytes → `BlobStore.put(...)` → `BlobRef`.
+15. TTS worker replies `TtsResponse(blob_ref=...)`.
+16. Hub publishes `lyra.outbound.telegram.<bot_id>` with `OutboundMessage(audio=AudioPayload(blob_ref=...))`.
+17. TG adapter `BlobStore.get(store_key)` → bytes → `sendVoice`.
+
+### Happy path — inbound file ingestion (UC2)
+
+1. User attaches `notes.pdf` on Discord (50 KB).
+2. Discord adapter receives `Message.attachments[0]` with signed CDN URL + `content_type`.
+3. Adapter HTTP-GETs URL → bytes.
+4. Same put-flow as voice (steps 4–7 of UC1) with `mime="application/pdf"`, `source="discord"`, `platform_ref=f"discord:{channel_id}/{message_id}/{attachment_id}"`, `filename="notes.pdf"`.
+5. Inbound message published with `BlobRef`. Agent decides what to do with it.
+
+### Edge cases
+
+| Case | Handling |
+|---|---|
+| Same blob re-uploaded by same user twice | `content_hash` hit on 2nd `put`; bytes ¬rewritten; new `blob_refs` row created (provenance preserved). |
+| Same blob shared by 2 users / 2 platforms | Same: 1 `blobs` row, N `blob_refs` rows. Cross-bot re-emission (UC4) is just a `BlobRef` rebuild from existing `content_hash`. |
+| Telegram URL expired before download | Adapter fails fast on HTTP 404; emits typed error envelope (ADR-066). Eager-ingest discipline prevents this 99% of the time. |
+| Discord signed URL expired (re-fetched message) | Adapter re-fetches via bot API to get fresh signed URL. If still fails, typed error. |
+| Crash between blob-write and SQLite INSERT | Blob exists on FS without index row — orphan. Recovered via background reconciler that walks FS + reconciles missing index rows (V6 / ops slice). |
+| Crash between blobs INSERT and blob_refs INSERT | `blobs` row exists without ref. Reconciler treats as benign — content is dedup-ready for next put. |
+| Unknown `mime` from platform | Fall back to `application/octet-stream`. `mime` is informational, not used for routing. |
+| Attachment exceeds platform max | Out of scope for Lyra (platform rejects upload before bot sees it). |
+| SQLite WAL contention | Single writer per BlobStore instance; readers (workers) bypass SQLite entirely (raw FS read by `store_key`). |
+| Disk full | `put()` raises typed error → adapter publishes typed error envelope; user sees graceful degradation. Alert fires before this point. |
+| Hash collision | sha256 collision is operationally impossible; ¬handled. |
+
+## Breadboard
+
+### UI Affordances
+
+`BlobStore` is backend-only — no UI surface in lyra. User-facing surfaces are existing Telegram/Discord chat clients.
+
+| ID | Element | Location | Trigger |
+|----|---------|----------|---------|
+| U1 | Voice / file message in Telegram chat | Telegram client | User taps mic / paperclip |
+| U2 | Voice / file message in Discord chat | Discord client | User attaches file |
+| U3 | Bot voice/file reply | Either client | Agent emits outbound `BlobRef` |
+
+### Code Affordances
+
+| ID | Handler | Wiring | Logic |
+|----|---------|--------|-------|
+| N1 | `BlobStore.put(data, *, mime, source, ...) → BlobRef` | adapters + TTS worker → N1 → S1, S2 | sha256(data); SELECT S1 WHERE hash=?; if miss: write file → fsync → INSERT S1; INSERT S2; return BlobRef |
+| N2 | `BlobStore.get(store_key) → bytes` | workers + adapters → N2 → FS | open(store_key).read(); raises if missing |
+| N3 | `BlobStore.exists(content_hash) → BlobRef \| None` | adapters → N3 → S1 | SELECT FROM blobs WHERE content_hash=?; build BlobRef from latest blob_refs |
+| N4 | `BlobStore.delete(blob_ref_id)` | future GC → N4 → S1, S2 | DELETE blob_refs row; if no remaining refs to content_hash: DELETE blobs row + unlink file. Designed in v1; ¬called in v1. |
+| N5 | TG adapter `_ingest_telegram_file(file_id) → BlobRef` | U1 → N5 → N1 | getFile + HTTP GET + N1 |
+| N6 | Discord adapter `_ingest_discord_attachment(att) → BlobRef` | U2 → N6 → N1 | HTTP GET signed URL + N1 |
+| N7 | STT worker handler updated to consume `SttRequest(blob_ref)` | hub → N7 → N2 | get bytes via N2; transcribe |
+| N8 | TTS worker handler updated to produce `TtsResponse(blob_ref)` | hub → N8 → N1 | synth bytes; N1; reply with BlobRef |
+| N9 | Adapter outbound: `_emit_voice(blob_ref)` | hub → N9 → N2 + platform API | get bytes via N2; sendVoice / channel upload |
+
+### Data Stores
+
+| ID | Store | Type | Accessed by |
+|----|-------|------|-------------|
+| S1 | `blobs` table — `(content_hash PK, mime, size, store_path, first_seen_at)` | Persistent (SQLite WAL) | N1, N3, N4 |
+| S2 | `blob_refs` table — `(id PK, content_hash FK, source, platform_ref, platform_message_id, filename, ingested_at)` | Persistent (SQLite WAL) | N1, N4 |
+| S3 | Flat-FS blob store — `/data/lyra/blobs/&lt;sha[:2]&gt;/&lt;sha&gt;` | Persistent (bind-mount) | N1 (write), N2 (read), N4 (unlink) |
+| S4 | NATS messages carrying `BlobRef` (¬raw bytes) | Transient (NATS) | adapters, hub, workers |
+
+## Slices
+
+| Slice | Description | Affordances | Demo |
+|-------|-------------|-------------|------|
+| V1 | `packages/roxabi-blobs/` — `BlobStore` interface, FS+SQLite impl, sha256 dedup, fsync ordering, unit tests | N1, N2, N3, N4, S1, S2, S3 | `pytest packages/roxabi-blobs`; round-trip put/get/exists/delete on tmpdir |
+| V2 | `roxabi-contracts` — add `BlobRef`; remove `audio_b64`/`audio_bytes` from `SttRequest`/`TtsResponse`/`AudioPayload`; replace with `blob_ref: BlobRef` | (contract update) | Contract tests pass; no remaining inline-bytes paths |
+| V3 | TG adapter eager-ingest (voice + docs + images + videos + stickers + animations + GIFs); outbound voice via `BlobRef` | U1, N5, N9 | Send voice to bot → blob in store + SQLite row + `BlobRef` on NATS; bot replies voice from store |
+| V4 | Discord adapter symmetry — ingress + egress for all attachment types | U2, N6, N9 | Same as V3 on Discord |
+| V5 | STT/TTS worker handlers updated to consume/produce `BlobRef` (voiceCLI repo PR coordinated with V2) | N7, N8 | End-to-end voice round-trip green |
+| V6 | Ops — `/data/lyra/blobs` bind-mount in Quadlet; inode + df alerts ≥80%; orphan-blob reconciler script; backup runbook (atomicity via SQLite `.backup` API); `noatime` on mount | (infra) | Mount visible in container; alerts wired; reconciler runs cleanly on a synthetic orphan |
+
+## Constraints
+
+- **ADR-067 is binding:** all v1 design choices (flat-FS, SQLite split schema, no threshold, atomic deprecation, single-host, loss tolerated) are locked. Any deviation requires a new ADR.
+- **Workspace pattern:** `roxabi-blobs` joins `packages/roxabi-nats` + `packages/roxabi-contracts` as a uv workspace member. Standalone-repo extraction = separate ecosystem decision, out of scope.
+- **Single-host today:** STT and TTS workers run on M₁ alongside hub. Cross-host transport requires backend swap (FS → MinIO/S3) before it can work — explicitly deferred.
+- **Volume separation from JetStream (#1055):** blob mount must be a distinct filesystem from JetStream `store_dir`; growth domains isolated.
+- **Eager download at adapter ingress** (Telegram URL token race + Discord signed-URL expiry).
+- **NATS `max_payload = 50 MB`** retained as safety net only (¬primary transport).
+- **Coordinated cross-repo migration** (V2 ↔ V5): contracts and voiceCLI workers ship together with no shim window.
+
+## Non-goals
+
+- Cross-host blob transport (deferred to MinIO/S3 swap when needed).
+- Replication / offsite backup (v1 = loss tolerated, documented).
+- Threshold-based inline fallback (rejected per Q3 spike: no "tiny binary" category exists in TG/Discord delivery).
+- `DeprecationWarning` shim for `audio_b64`/`audio_bytes` (rejected per Q4: atomic migration).
+- Active GC / TTL enforcement (interface designed; v1 policy = retain-all).
+- Encryption at rest (out of scope; future ADR).
+- Access control / signed URLs / tenant isolation (single-tenant v1).
+- Image/video transcoding, thumbnailing, OCR (out of scope; consumers may add later).
+- A standalone `roxabi-foundation` repo extracting all `packages/roxabi-*` (separate ecosystem decision).
+
+## Technical Decisions
+
+Cross-reference ADR-067 for full rationale. Summary of v1-binding choices:
+
+| Decision | Choice | Rationale source |
+|---|---|---|
+| Storage primitive | Flat-FS + SQLite, content-addressed | ADR-067 |
+| Package home | `packages/roxabi-blobs` workspace member | Q1 / interview |
+| Schema | Split `blobs` + `blob_refs` | Q2 / interview |
+| Threshold | None — always content-address | Q3 / architect+devops spike |
+| Deprecation | Atomic — no shim | Q4 / interview |
+| Layout | `/data/lyra/blobs/<sha[:2]>/<sha>` (256 dirs, ≤5M blobs) | devops spike |
+| Mount | Bind-mount (¬Podman named volume); `noatime` | devops spike |
+| Write order | file → fsync → SQLite INSERT | devops spike |
+| GC | Interface in v1, retain-all policy | devops spike |
+| Backup atomicity | SQLite `.backup` / WAL checkpoint before FS snapshot | devops spike |
+| `BlobRef` envelope | `{store_key, content_hash, mime, size, filename?, source, platform_ref?, platform_message_id?, created_at}` | Architect review |
+
+## Success Criteria
+
+- [ ] `packages/roxabi-blobs` exists as a uv workspace member; `BlobStore` interface + FS+SQLite impl shipped with ≥90% unit-test coverage on the public API
+- [ ] `BlobRef` defined in `roxabi-contracts`; `audio_b64` and `audio_bytes` removed from `SttRequest`, `TtsResponse`, `AudioPayload`
+- [ ] Telegram adapter eagerly ingests every attachment type (voice, docs, images, videos, stickers, animations, GIFs); outbound voice resolves via `BlobStore.get`
+- [ ] Discord adapter symmetrically ingests + emits via `BlobStore`
+- [ ] voiceCLI STT worker consumes `SttRequest(blob_ref)`; TTS worker produces `TtsResponse(blob_ref)`
+- [ ] End-to-end voice round-trip on Telegram + Discord green; raw bytes never observed on a NATS subject (`max_payload` reduced in test env to verify)
+- [ ] SHA-256 dedup verified — same blob ingested 5× → 1 row in `blobs`, 5 rows in `blob_refs`, 1 file on FS
+- [ ] Crash safety: kill -9 between blob-write and SQLite INSERT leaves no inconsistent reference (orphan blob recoverable / acceptable)
+- [ ] `/data/lyra/blobs` bind-mounted in prod Quadlet with `noatime`; mount distinct from JetStream `store_dir` (#1055)
+- [ ] Inode utilization + disk-usage alerts wired at 80% on the blob mount
+- [ ] Orphan-blob reconciler script exists and is runnable from ops runbook
+- [ ] Backup runbook documents SQLite `.backup` atomicity requirement (¬naive `tar` while live)
+- [ ] All `from roxabi-blobs import BlobStore` paths import cleanly across `lyra` + `voiceCLI`
+
+## Open Questions
+
+None — all 4 brainstorm-phase open questions resolved (Q1: A, Q2: B, Q3: drop threshold, Q4: A). Implementation can proceed to `/plan`.

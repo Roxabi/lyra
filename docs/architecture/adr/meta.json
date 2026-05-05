@@ -67,6 +67,9 @@
     "063-thread-store-teardown-bootstrap-ownership",
     "064-nats-acl-request-reply-flows-derivation",
     "065-nats-kv-readiness-probe",
-    "066-unified-worker-error-envelope-nats-reply-contracts"
+    "066-unified-worker-error-envelope-nats-reply-contracts",
+    "067-blobstore-abstraction-flat-fs-content-addressed",
+    "068-selinux-z-label-quadlet-bind-volume-policy",
+    "069-provision-warn-subid-overlap-defensive-posture"
   ]
 }

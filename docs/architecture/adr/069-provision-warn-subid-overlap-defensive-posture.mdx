@@ -1,0 +1,116 @@
+---
+title: "ADR-069: Defensive posture for warn_subid_overlap in provision.sh"
+description: Defines how warn_subid_overlap handles unreadable files, unvalidated path arguments, and formatting; aligns its contract with assert_no_subid_overlap.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+`deploy/provision.sh` contains two functions that inspect `/etc/subuid` and `/etc/subgid`
+to prevent silent UID namespace aliasing during rootless Podman provisioning:
+
+- `assert_no_subid_overlap` — hard path: aborts provisioning on overlap or unreadable file
+- `warn_subid_overlap` — soft path: advisory warnings only, no exit
+
+Three review findings (F2, F5, F6) exposed inconsistencies in `warn_subid_overlap`'s
+defensive posture relative to `assert_no_subid_overlap`, and one whitespace gap.
+
+**F2.** `warn_subid_overlap` treats missing files and unreadable-but-present files
+identically (`[[ ! -e "$file" || ! -r "$file" ]] && return 0`). A missing file is normal
+(fresh install). An unreadable file that exists silently suppresses the entire overlap
+warning, which is the only advisory check for pre-existing range conflicts on hosts with
+LDAP or multi-user rootless containers.
+
+**F5.** `$file` is passed by callers as a hardcoded literal (`/etc/subuid`,
+`/etc/subgid`) but the function has no guard. A provisioning script that evolves
+(new distros, abstracted callers, copy-paste reuse) can easily pass an unexpected path.
+In a `curl | bash` execution context, a misdirected `awk -F:` scan of an arbitrary file
+is a low-severity but real correctness risk.
+
+**F6.** No blank line between `warn_subid_overlap` and `assert_no_subid_overlap`,
+reducing readability.
+
+**Scope:** These are bash-layer decisions in a provisioning script, not application
+architecture. No ADR would normally be warranted for whitespace. This record exists
+because F2 and F5 together establish a durable contract rule (advisory-path functions
+must still fail loudly on unreadable inputs, not silently degrade) that reviewers and
+future editors need to understand.
+
+## Options Considered
+
+### Option A: Silent skip on unreadable (status quo for F2) + no path guard (status quo for F5)
+
+- **Pros:** Minimal code; provisioning continues without noise on permission-hardened hosts.
+- **Cons:** Silently drops the entire advisory overlap check when the file is unreadable.
+  Operator has no signal that the check was skipped. Inconsistent with `assert_no_subid_overlap`
+  which hard-errors on the same condition. Unvalidated path grows as a latent risk.
+
+### Option B: Emit `warn` on unreadable + whitelist path guard (recommended)
+
+- **Pros:** Preserves advisory contract (no abort), but the operator sees a warning that the
+  check was skipped and why. Path whitelist makes the allowed input set explicit and catches
+  copy-paste drift early. Symmetric contract with `assert_no_subid_overlap` (both distinguish
+  missing vs unreadable; they differ only in severity: `warn` vs `error`).
+- **Cons:** Two additional lines of bash. Whitelist is exact (`/etc/subuid` | `/etc/subgid`)
+  so any future distro that moves the files requires an update to the guard.
+
+### Option C: Extract shared file-access helper returning a structured result
+
+- **Pros:** Eliminates all future drift between the two functions; single place to update
+  if paths change.
+- **Cons:** Over-engineering for a single-file bash provisioner. Bash has no structured
+  return types; a helper would use global variables or stdout parsing, both of which
+  increase complexity and testing surface. Not warranted at this scope.
+
+## Decision
+
+Apply Option B.
+
+**F2 fix:** Replace the combined missing/unreadable guard in `warn_subid_overlap` with
+two separate checks — missing returns silently, unreadable emits `warn` and returns:
+
+```bash
+[[ ! -e "$file" ]] && return 0
+[[ ! -r "$file" ]] && { warn "Cannot read $file (check permissions) — skipping overlap check"; return 0; }
+```
+
+**F5 fix:** Add a whitelist guard as the first line of `warn_subid_overlap`
+(and defensively of `assert_no_subid_overlap`):
+
+```bash
+[[ "$file" == /etc/subuid || "$file" == /etc/subgid ]] \
+  || { warn "warn_subid_overlap: unexpected file path '$file' — skipping"; return 0; }
+```
+
+For `assert_no_subid_overlap` the equivalent guard uses `error` instead of `warn/return 0`
+because that function is on the abort path.
+
+**F6 fix:** Add a blank line between the two function definitions.
+
+**Contract rule (document in code comment):** Advisory-path functions (`warn_*`) must
+still distinguish missing vs unreadable inputs. Missing = normal/silent. Unreadable = warn
+and skip. This mirrors the hard-path (`assert_*`) pattern of missing = skip, unreadable = abort.
+
+## Consequences
+
+### Positive
+
+- Operator learns when an overlap check was skipped due to permissions, not just when an
+  overlap was found. Reduces silent failure surface in `curl | bash` provisioning runs.
+- Path whitelist makes future callers explicit about which files are supported.
+- Contract parity between `warn_subid_overlap` and `assert_no_subid_overlap` reduces
+  cognitive load for reviewers who must reason about both functions together.
+
+### Negative
+
+- The whitelist guard must be updated if a future distro relocates subid files (e.g.,
+  Ubuntu with alternative NSS backends). This is an expected, visible maintenance cost.
+
+### Neutral
+
+- No change to provisioning outcome on the happy path (both files present and readable).
+- `warn_subid_overlap` remains a no-exit function; the `warn` on unreadable does not
+  abort provisioning.

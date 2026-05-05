@@ -7,6 +7,7 @@ plus ConfigDict(extra="ignore") for forward-compat.
 Validators for composite_depth and JobResult status/error mutex are in
 models.py but added in the GREEN phase (T7).
 """
+
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Self
@@ -21,6 +22,7 @@ __all__ = ["JobEnvelope", "JobResult", "JobProgress"]
 
 class JobEnvelope(ContractEnvelope):
     """Job submission envelope. Canonical subject: lyra.jobs.<job_name>."""
+
     job_id: Annotated[str, StringConstraints(min_length=1)]
     job_name: Annotated[str, StringConstraints(min_length=1)]
     payload: dict[str, Any]
@@ -38,6 +40,7 @@ class JobEnvelope(ContractEnvelope):
 
 class JobResult(ContractEnvelope):
     """Job reply envelope. Sent to reply_to subject on completion."""
+
     job_id: Annotated[str, StringConstraints(min_length=1)]
     status: Literal["success", "error"]
     data: dict[str, Any] | None = None
@@ -56,6 +59,7 @@ class JobResult(ContractEnvelope):
 
 class JobProgress(ContractEnvelope):
     """Job progress event. Published to lyra.progress.<job_id> (best-effort)."""
+
     job_id: Annotated[str, StringConstraints(min_length=1)]
     step: Annotated[str, StringConstraints(min_length=1)]
     pct: float | None = None

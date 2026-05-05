@@ -1,4 +1,5 @@
 """Jobs-domain NATS subject strings and helpers."""
+
 from dataclasses import dataclass
 
 from roxabi_contracts._nats_utils import validate_job_token

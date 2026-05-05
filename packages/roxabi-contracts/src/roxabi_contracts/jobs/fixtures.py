@@ -1,4 +1,5 @@
 """Test fixtures for roxabi_contracts.jobs. Pure dicts — no NATS imports."""
+
 from datetime import datetime, timezone
 
 _ENV: dict = {

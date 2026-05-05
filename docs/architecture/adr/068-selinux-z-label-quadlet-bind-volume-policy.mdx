@@ -1,0 +1,138 @@
+---
+title: "ADR-068: SELinux :z Label Policy for Quadlet Bind-Mount Volumes"
+description: Decides how to handle the container volume relabelling directive (:z) on bind-mount-backed Quadlet volumes for hosts that run AppArmor rather than SELinux, with long-term portability as the governing criterion.
+---
+
+## Status
+
+Accepted
+
+**Context:** PR #1062 (JetStream persistent volume — Phase 1 prereq for #1049) introduced `lyra-jetstream.volume`, a Quadlet `.volume` unit backed by a bind-mount of `%h/.lyra/jetstream`. The `lyra-nats.container` mounts it as `Volume=lyra-jetstream.volume:/var/lib/nats/jetstream:z`. The `:z` label relabels the bind-mount target for shared SELinux context. On AppArmor-only hosts `:z` is a silent no-op. On SELinux hosts it is load-bearing. Three options were debated in an F3 panel (architect, security-auditor, devops).
+
+---
+
+## Context
+
+Lyra's Quadlet deployment runs on `roxabituwer` (Ubuntu 26.04 LTS, Podman 5.x, AppArmor-only — SELinux is not present and is not planned). The production host is the sole current deployment target, and AppArmor is the LSM for the entire roxabi ecosystem on that machine.
+
+The `lyra-nats.container` already uses `:z` on the config file bind-mount:
+
+```
+Volume=%h/projects/lyra/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
+```
+
+PR #1062 adds a second `:z` on the JetStream data volume:
+
+```
+Volume=lyra-jetstream.volume:/var/lib/nats/jetstream:z
+```
+
+The specific issue raised is that `lyra-jetstream.volume` is itself a Quadlet `.volume` unit backed by `Type=none; Options=bind` — a bind-mount of `%h/.lyra/jetstream`. On SELinux hosts, applying `:z` to a directory that is a child of a directory already bind-mounted by a parent volume (`lyra-data.volume` mounts `%h/.lyra`) could create an SELinux context conflict between the two overlapping mounts. On AppArmor hosts this concern is inert.
+
+Three options were debated:
+
+| Option | Description |
+|--------|-------------|
+| (a) Move `~/.lyra/jetstream` to `~/.lyra/nats/jetstream/` | Structural fix — eliminates parent-child bind-mount overlap; dedicated NATS data subtree |
+| (b) Keep `:z`; document AppArmor-only assumption | Pragmatic — `:z` is a no-op on AppArmor; explicit comment prevents silent misuse elsewhere |
+| (c) Drop `:z` from the JetStream volume mount | Minimal — removes the relabelling directive; safe on AppArmor; breaks SELinux hosts silently |
+
+**Panel positions:**
+- security-auditor recommended (b): keep `:z`, document AppArmor-only assumption.
+- devops recommended (a): move to `~/.lyra/nats/jetstream/` — structural fix, eliminates overlap.
+- architect (this ADR): rank (a) best long-term, (b) second, (c) worst.
+
+**Constraint specific to PR #1062:** this PR is a prereq fix (Phase 1 of #1049). Introducing a production data migration in a prereq PR is high-risk — it couples a structural change that requires `stop → mv → start` on prod data to a scope that is supposed to be a minimal unblocking step. Silent data loss is the failure mode if the migration is skipped.
+
+---
+
+## Options Considered
+
+### Option (a): Move `~/.lyra/jetstream` to `~/.lyra/nats/jetstream/`
+
+- **Pros:** Eliminates the parent-child bind-mount overlap between `lyra-data.volume` (`%h/.lyra`) and the JetStream volume (`%h/.lyra/jetstream`). Creates a dedicated NATS data subtree, separating NATS-internal state from Lyra application state (`auth.db`, `config.db`, `keyring.key`, `turns.db`, `message_index.db`). The path is semantically correct — JetStream data is NATS infrastructure, not Lyra application data. Correct long-term.
+- **Cons:** Requires a production data migration on every deployed host (`stop lyra-nats → mv ~/.lyra/jetstream ~/.lyra/nats/jetstream → start lyra-nats`). If the migration is not performed before starting the container, the container binds an empty directory, JetStream loses all durable stream state, and the loss is silent. This makes it inappropriate as a prereq PR change — it must land as its own scoped issue with explicit migration documentation and operator runbook.
+
+### Option (b): Keep `:z`; document AppArmor-only assumption
+
+- **Pros:** No behaviour change on the current production host (`:z` is a no-op on AppArmor). Explicitly calls out the LSM assumption so future operators are not misled. Does not require data migration. Safe for a prereq PR scope.
+- **Cons:** Accumulates technical debt — the parent-child bind-mount overlap remains; the `:z` directive is inert but still present. If a future host introduces SELinux (unlikely given Ubuntu/AppArmor ecosystem commitment, but not impossible), the annotation must be revisited. The comment is the only guard against silent misuse.
+
+### Option (c): Drop `:z` from the JetStream volume mount
+
+- **Pros:** Removes an inert directive on AppArmor; tidier unit file.
+- **Cons:** Breaks SELinux hosts silently — the container would fail to access the bind-mount at runtime without the relabelling directive, and there is no error at deploy time. This is the worst long-term outcome: it optimises for the current host at the cost of correctness on any other host class. It also creates an inconsistency with the existing `:z` on the NATS config bind-mount in the same container unit — two bind mounts with different labelling policy, no documented rationale.
+
+---
+
+## Decision
+
+**Long-term rank: (a) > (b) > (c).**
+
+**For PR #1062 specifically: adopt (b).** Document the AppArmor-only assumption in `lyra-jetstream.volume` and `lyra-nats.container`. Open a follow-up issue for option (a) as a scoped structural improvement.
+
+**Rationale:**
+
+Option (c) is rejected outright. Silently breaking SELinux hosts while also creating an internal inconsistency within the same container unit is the worst possible outcome regardless of scope. Dropping `:z` is never correct for a container that deliberately uses it elsewhere.
+
+Option (b) is the correct choice for the current PR scope. The parent-child overlap is a structural issue, but it is not a correctness issue on AppArmor: the two bind mounts do not conflict at the Podman layer; they overlap at the filesystem level, which is a no-op. The `:z` directive on the JetStream mount is explicitly inert. Documenting this prevents silent misuse and is honest about the LSM assumption.
+
+Option (a) is the correct long-term structural fix. Moving JetStream state to `~/.lyra/nats/jetstream/` eliminates the overlap, separates NATS infrastructure data from Lyra application data, and removes the `:z` question entirely (the parent volume no longer contains the child path). However, it requires a production data migration with a concrete failure mode (empty directory → lost stream state). Introducing that migration in a prereq PR — whose purpose is to unblock Phase 1 of #1049 with minimal risk — is out of scope. It must land independently with its own operator runbook.
+
+**Compromise (adopted):** implement (b) in PR #1062, and open a follow-up issue for (a) with explicit scope: `stop lyra-nats → mkdir -p ~/.lyra/nats/jetstream → mv ~/.lyra/jetstream/* ~/.lyra/nats/ → update lyra-jetstream.volume Device= → update lyra-nats.container Volume= → start lyra-nats → verify stream recovery`. The follow-up is not blocked on any other work.
+
+---
+
+## Implementation (PR #1062)
+
+Add the following comment block to `deploy/quadlet/lyra-jetstream.volume`:
+
+```ini
+# LSM note: this host runs AppArmor (Ubuntu 26.04 LTS). The :z relabelling
+# directive on the container-side mount (lyra-nats.container) is a no-op on
+# AppArmor and is safe. On SELinux hosts, :z would relabel this directory
+# for shared container access — test before deploying on SELinux targets.
+# Follow-up: move to ~/.lyra/nats/jetstream/ to eliminate parent-child
+# bind-mount overlap with lyra-data.volume (see ADR-068).
+```
+
+The `:z` directive on `Volume=lyra-jetstream.volume:/var/lib/nats/jetstream:z` is retained unchanged.
+
+---
+
+## Consequences
+
+### Positive
+
+- PR #1062 stays within its prereq scope — no production data migration risk introduced.
+- The AppArmor-only assumption is explicit and auditable in both the volume unit and this ADR.
+- Option (a) is not lost — it is queued as a named follow-up with a concrete migration procedure.
+- Internal consistency is preserved: both bind-mounts in `lyra-nats.container` carry `:z`, with a documented rationale for each.
+
+### Negative
+
+- The parent-child bind-mount overlap (`%h/.lyra` and `%h/.lyra/jetstream`) remains until the (a) follow-up lands. On AppArmor this is inert; the structural debt is real but bounded.
+- The AppArmor assumption is now load-bearing documentation — if the host LSM changes without updating these units, silent failures result on the JetStream volume.
+
+### Neutral
+
+- This decision does not affect the NATS config bind-mount (`:ro,z` on `nats-container.conf`), which carries identical labelling policy and is governed by the same AppArmor assumption.
+- The follow-up issue for option (a) should include a verification step: confirm JetStream stream recovery after the path migration by checking stream sequence continuity via `nats stream info` before and after.
+
+---
+
+## Follow-up
+
+Open issue: **"Move JetStream data dir from `~/.lyra/jetstream` to `~/.lyra/nats/jetstream/`"**
+
+Scope:
+1. `systemctl --user stop lyra-nats`
+2. `mkdir -p ~/.lyra/nats/jetstream`
+3. `mv ~/.lyra/jetstream/* ~/.lyra/nats/jetstream/` (confirm empty source after move)
+4. Update `deploy/quadlet/lyra-jetstream.volume`: `Device=%h/.lyra/nats/jetstream`
+5. Verify `lyra-nats.container` volume reference is unchanged (Quadlet volume name is stable)
+6. `systemctl --user start lyra-nats`
+7. Confirm stream recovery: `nats stream info lyra-turns` (and any other active streams)
+8. Remove the LSM comment added by PR #1062 — overlap is resolved, comment is obsolete.
+
+This follow-up is independent of #1049 phases and can land at any time after PR #1062 merges.

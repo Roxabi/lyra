@@ -17,4 +17,9 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
 
-__all__ = ["CONTRACT_VERSION", "ContractEnvelope", "SecurityEvent", "__version__"]
+__all__ = [
+    "CONTRACT_VERSION",
+    "ContractEnvelope",
+    "SecurityEvent",
+    "__version__",
+]

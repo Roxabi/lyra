@@ -10,7 +10,8 @@
     "linkedin-post-generator@roxabi-marketplace": false,
     "roxabi-vault@roxabi-vault-marketplace": true,
     "typescript-lsp@claude-plugins-official": true,
-    "pyright-lsp@claude-plugins-official": true
+    "pyright-lsp@claude-plugins-official": true,
+    "mattpocock-skills@roxabi-marketplace": true
   },
   "extraKnownMarketplaces": {
     "roxabi-marketplace": {

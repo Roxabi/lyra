@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -129,7 +129,22 @@ quadlet-preflight:  ## advisory pre-flight checks before Quadlet install (non-bl
 		echo "         (or persist in /etc/sysctl.d/99-rootless-ports.conf)"; \
 	fi
 
-quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/containers/systemd/ + reload
+quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment guard (issue #1083)
+	@echo "==> quadlet --dryrun"
+	@QUADLET_UNIT_DIRS=$(CURDIR)/deploy/quadlet /usr/libexec/podman/quadlet --dryrun --user
+	@echo "==> inline-comment check"
+	@_bad=0; \
+	for f in deploy/quadlet/*.container deploy/quadlet/*.volume deploy/quadlet/*.network; do \
+	    [ -f "$$f" ] || continue; \
+	    if grep -Pn '^\s*[^#;].*[[:space:]]#' "$$f"; then \
+	        echo "ERROR: $$f has inline # comments on value lines (Quadlet does not strip them)"; \
+	        _bad=1; \
+	    fi; \
+	done; \
+	[ $$_bad -eq 0 ] || exit 1
+	@echo "quadlet-lint passed"
+
+quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify (NO_RESTART=1 skips restart/verify)
 	@mkdir -p "$(QUADLET_DIR)"
 	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container,pod} "$(QUADLET_DIR)/nats.container" \
 	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/lyra-nats.container"
@@ -147,9 +162,12 @@ quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/contai
 	@cp deploy/quadlet/lyra-gh.pod                     "$(QUADLET_DIR)/lyra-gh.pod"
 	@cp deploy/quadlet/lyra-gh-helper.container        "$(QUADLET_DIR)/lyra-gh-helper.container"
 	@cp deploy/quadlet/lyra-clipool.container          "$(QUADLET_DIR)/lyra-clipool.container"
-	@systemctl --user daemon-reload
-	@echo "Quadlet units installed."
-	@echo "Next: run 'make quadlet-secrets-install' to (re)create Podman secrets from ~/.lyra/nkeys/."
+	@echo "Quadlet units copied."
+	@if [ "$(NO_RESTART)" = "1" ]; then \
+		echo "NO_RESTART=1 — skipping daemon-reload, restart, and verification."; \
+	else \
+		bash deploy/quadlet-install-verify.sh; \
+	fi
 
 quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.lyra/nkeys/auth.conf
 	@lyra-acl genkeys --emit-merged-authconf

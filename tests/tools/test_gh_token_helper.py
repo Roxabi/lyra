@@ -4,6 +4,44 @@ Covers: InstallationToken expiry logic, JWTSigner (RS256 round-trip,
 password-rejection), TokenCache (atomic write, perms, corrupt/expired
 reads), mint() (stub HTTP, input validation, error paths), and
 Dispenser (socket protocol, mode, error propagation).
+
+## RED-GATE V1 (T5) coverage map
+
+AC group / spec ref → test section:
+
+- AC functional UC1 (transparent push):
+    Section F Dispenser: get/peek/error, socket mode
+- AC functional UC3 (cold-start):
+    Section H: mint_capped_uses_cache_when_fresh
+- AC functional UC4 (near-expiry refresh):
+    Section I: refresh_loop_warms_near_expiry_cache
+- AC functional N4 (internal lock):
+    Section H: mint_capped_locks_concurrent_callers
+- AC isolation N5/N6 (0600/0660 perms):
+    Section D: token_cache_write_atomic_perms
+    Section F: dispenser_socket_mode_0660_after_serve
+- AC mint-failure (MintError structured fields):
+    Section E: mint_raises_on_404, mint_raises_on_network_error
+    Section J: mint_error_carries_full_context
+- AC mint-failure (MintError→MintFailureEvent contract):
+    Section J: mint_error_translates_to_mint_failure_event_payload
+- AC ops χ-1 (rate-cap 1/45s):
+    Section G: RateLimiter suite
+    Section H: mint_capped_rate_caps_at_45s
+
+### Known limitation — MintFailureEvent NATS publish (deferred to T17/T18)
+
+MintError carries ``reason``, ``http_status``, and ``retries`` — all data required
+to construct a ``MintFailureEvent`` envelope. However the helper does NOT yet wire
+a NATS publish call: doing so would require injecting a NATS connection + nkey into
+helper.py, which is a separate design decision deferred to:
+
+- **T17** (hub subscriber) — defines the consumer side of ``lyra.gh.mint_failure.*``
+- **T18** (E2E host smoke) — exercises the full publish→subscribe→Telegram path
+
+The T5 test ``test_mint_error_translates_to_mint_failure_event_payload`` documents
+the *contract surface* (MintError fields → MintFailureEvent dict → model_validate)
+without requiring the helper to publish.
 """
 
 from __future__ import annotations
@@ -32,6 +70,7 @@ from lyra.tools.gh_token.helper import (
 )
 from lyra.tools.gh_token.rate_limit import RateLimiter
 from lyra.tools.gh_token.refresh import mint_capped, refresh_loop
+from roxabi_contracts.gh import MintFailureEvent
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
@@ -689,3 +728,154 @@ async def test_refresh_loop_warms_near_expiry_cache(
             )
 
     assert http_hit_count == 1, "refresh_loop must mint when cache is near expiry"
+
+
+# ── Section J: MintError edge cases + MintFailureEvent contract surface ───────
+#
+# AC mint-failure: MintError carries structured context (reason/http_status/retries)
+# and the fields map directly onto MintFailureEvent's contract surface.
+# The helper does NOT publish to NATS (deferred — see module docstring).
+
+
+def test_mint_error_carries_full_context() -> None:
+    """MintError fields survive raise → catch — contract for a future emitter.
+
+    Asserts that all three structured fields (reason, http_status, retries) are
+    preserved on the exception instance after it propagates through a raise/catch
+    boundary. This ensures a future emit site has every field it needs to build a
+    MintFailureEvent envelope without any string-parsing of the exception message.
+    """
+    # Arrange
+    reason = "GitHub API returned http_status=401"
+    http_status = 401
+    retries = 3
+
+    # Act
+    try:
+        raise MintError(reason=reason, http_status=http_status, retries=retries)
+    except MintError as exc:
+        caught = exc
+
+    # Assert — all three fields intact post-raise
+    assert caught.reason == reason
+    assert caught.http_status == http_status
+    assert caught.retries == retries
+    # Confirm the exception message (from super().__init__) matches reason
+    assert str(caught) == reason
+
+
+def test_mint_error_translates_to_mint_failure_event_payload() -> None:
+    """MintError fields → MintFailureEvent dict → model_validate succeeds.
+
+    Documents the contract surface between helper.MintError and the
+    roxabi_contracts.gh.MintFailureEvent schema. A future T17/T18 emit site
+    constructs the envelope dict using exactly this field mapping.
+
+    This test exercises the *shape* of the integration without requiring the
+    helper to hold a NATS connection (deferred — see module docstring).
+    """
+    # Arrange — simulate a 404 from GitHub (installation revoked)
+    err = MintError(
+        reason="github_api_404",
+        http_status=404,
+        retries=0,
+    )
+
+    payload = {
+        # ContractEnvelope mandatory fields
+        "contract_version": "1",
+        "trace_id": "test-trace-mint-failure",
+        "issued_at": datetime(2030, 1, 1, tzinfo=timezone.utc),
+        # MintFailureEvent fields — mapped from MintError
+        "machine": "roxabituwer",
+        "reason": err.reason,
+        "http_status": err.http_status,
+        "retries": err.retries,
+    }
+
+    # Act — model_validate must accept the payload built from MintError fields
+    event = MintFailureEvent.model_validate(payload)
+
+    # Assert
+    assert event.reason == err.reason
+    assert event.http_status == err.http_status
+    assert event.retries == err.retries
+    assert event.machine == "roxabituwer"
+
+
+def test_mint_error_network_failure_http_status_none() -> None:
+    """MintError for a network-level failure carries http_status=None.
+
+    Network/transport errors precede any HTTP response; the future emitter
+    must not attempt to serialize a numeric http_status for these paths.
+    """
+    # Arrange — simulate a ConnectError path (no HTTP response)
+    err = MintError(
+        reason="network error connecting to GitHub API: Connection refused",
+        http_status=None,
+        retries=0,
+    )
+
+    payload = {
+        "contract_version": "1",
+        "trace_id": "test-trace-network-err",
+        "issued_at": datetime(2030, 1, 1, tzinfo=timezone.utc),
+        "machine": "roxabituwer",
+        "reason": err.reason,
+        "http_status": err.http_status,  # None — valid per MintFailureEvent schema
+        "retries": err.retries,
+    }
+
+    # Act
+    event = MintFailureEvent.model_validate(payload)
+
+    # Assert — None is accepted; this is the pre-API failure path
+    assert event.http_status is None
+    assert event.reason.startswith("network error")
+
+
+@pytest.mark.asyncio
+async def test_install_id_alpha_only_rejected(rsa_pem_path: Path) -> None:
+    """mint() raises ValueError before any HTTP call for alphabetic install_id.
+
+    Complements test_mint_validates_install_id_numeric (which uses shell-injection
+    payload). This test confirms that a purely alphabetic value — e.g. a mistaken
+    hostname — is rejected with the same guard, not passed to the GitHub API URL.
+    """
+    # Arrange
+    called: list[bool] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        called.append(True)
+        return httpx.Response(201, text=_SUCCESS_BODY)
+
+    signer = JWTSigner(rsa_pem_path)
+    transport = httpx.MockTransport(handler)
+
+    # Act / Assert
+    async with httpx.AsyncClient(transport=transport) as http:
+        with pytest.raises(ValueError, match="purely numeric"):
+            await mint("12345", "abc", signer=signer, http=http)
+
+    assert not called, "HTTP transport must not be contacted for alphabetic install_id"
+
+
+def test_token_cache_parent_dir_must_exist(tmp_path: Path) -> None:
+    """TokenCache.write fails with OSError when the parent directory is missing.
+
+    Documents the operational contract: the Quadlet ``Tmpfs=`` directive is
+    responsible for creating ``/run/lyra-gh-token/`` before the helper process
+    starts. If that mount is absent, write() raises rather than silently swallowing
+    the error — a clear failure is preferable to a cold-cache loop.
+    """
+    # Arrange — path whose parent directory does not exist
+    ghost_parent = tmp_path / "nonexistent_dir" / "token.json"
+    cache = TokenCache(ghost_parent)
+    it = InstallationToken(
+        token="ghs_test",
+        expires_at=datetime(2030, 1, 1, tzinfo=timezone.utc),
+    )
+
+    # Act / Assert — must not silently swallow; OS error propagates
+    with pytest.raises(OSError):
+        cache.write(it)

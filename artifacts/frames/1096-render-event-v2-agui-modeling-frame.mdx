@@ -1,0 +1,67 @@
+---
+title: "RenderEvent v2 — adopt AG-UI modeling (back-port, no wire integration)"
+issue: 1096
+status: approved
+tier: F-full
+date: 2026-05-06
+---
+
+## Problem
+
+Lyra's `RenderEvent` hierarchy (delivered in ADR-032) ships only two event types — `TextRenderEvent` and `ToolSummaryRenderEvent` — and folds run lifecycle, reasoning, and tool-call streaming into either coarse text deltas or post-hoc summaries. The model is sufficient for "edit one Telegram message in place" but loses information that channels with richer rendering (Discord embeds, future AG-UI/web frontends, dashboards) could surface.
+
+The AG-UI protocol (https://github.com/ag-ui-protocol/ag-ui) ships a richer event taxonomy (~20 typed events) covering Run lifecycle, Text Start/Delta/End triplet, ToolCall Start/Args/End/Result streaming, and typed Reasoning streams. After dimension-by-dimension comparison, four of those modeling improvements are strictly better for Lyra's use case independently of whether AG-UI itself is ever adopted as a wire format. Current pain points the back-port directly resolves:
+
+- **Tool-call visibility is post-hoc.** `ToolSummaryRenderEvent` arrives after the call completes — no live "agent is calling search with these arguments" visibility. Users wait blind during long tool runs.
+- **Reasoning is a `⏳`-prefixed text hack.** `show_intermediate=true` dispatches intermediate CLI turns as regular text turns, conflating reasoning with assistant output. Adapters cannot suppress, dim, or reformat reasoning separately from final answer.
+- **Run lifecycle is implicit.** No explicit `RunStarted/Finished/Error` on the bus. Observability tools, future dashboards, and any frontend wanting to bracket UI state by run boundaries must infer them. Precludes interrupt-then-resume patterns and explicit step decomposition.
+- **Text streaming is a single delta.** Adapters receiving `TextRenderEvent(text, done)` cannot pre-allocate UI containers, attach metadata once, or distinguish "stream began" from "first token". Sufficient for chat-like edits, lossy for richer UIs.
+
+Adopting the AG-UI **modeling** without adopting the AG-UI **wire format** gives us a richer internal model whose value is independent of AG-UI protocol adoption. If/when AG-UI integration ships later, edge translation becomes mechanical. If AG-UI fragments or pivots, Lyra still has the better internal model with zero migration debt.
+
+## Who
+
+- **Primary:** Lyra hub developers (the team) maintaining `core/messaging/`, `core/processors/stream_processor.py`, `llm/drivers/`, and the channel adapters. The model expansion changes the surface they program against.
+- **Secondary:**
+  - **End users on Telegram + Discord** — gain real-time tool-call visibility (currently post-hoc) and cleaner reasoning rendering.
+  - **Future roxabi-dashboard consumers** — get explicit run lifecycle + structured reasoning to render dependent UI state.
+  - **Future AG-UI adapter implementor** — translation at the edge becomes near-1:1 instead of having to synthesize lifecycle/triplet/split events.
+
+## Constraints
+
+- **Foundation:** extends ADR-032 (LlmEvent → StreamProcessor → RenderEvent hexagonal streaming). Does not replace it. Hexagonal split must remain intact: no platform types cross layer boundaries.
+- **Schema versioning:** every change to `core/messaging/render_events.py` requires a `SCHEMA_VERSION_RENDER` bump and a coordinated deploy of `lyra_hub` + `lyra_telegram` + `lyra_discord`. Multiple bumps over the epic — Slice 5 (cleanup) is the final coordination point.
+- **Driver instrumentation unknown:** Slice 3 (ToolCall split) requires parsing Claude CLI subprocess `--include-partial-messages` tool-use deltas as `ToolCallArgs` deltas. ADR-028 documents the contract but the exact JSON event shape and delta semantics need preliminary analysis before implementation. This is the highest-risk slice.
+- **Slicing discipline:** each child slice is a **vertical thin slice** — type def + StreamProcessor change + driver change (if any) + adapter consumption + tests. No "types only" slices that ship unused events on the bus.
+- **Backward-compat policy:** during slices 2–4, v1 paths may temporarily coexist with v2 (one schema version supports both). Slice 5 removes v1 paths and bumps the floor — loud-fail rejection of pre-v2 payloads.
+- **Adapter parity:** Telegram and Discord must continue to render identical user-visible output through the migration. The new event surface gives adapters more information; they may collapse it back to the existing edit-in-place algorithm where richer rendering is not yet justified.
+- **Dependencies:**
+  - Foundation: ADR-032 (already shipped, accepted)
+  - Reference: ADR-028 (token-level streaming path shape, governs `--include-partial-messages` contract)
+  - No external blocker — fully internal modeling work
+- **Out-of-band protocols:** AG-UI, MCP, A2A — adoption decisions are independent and orthogonal. This epic stays inside Lyra's hub-spoke architecture; no HTTP/SSE adapter, no external surface change.
+
+## Out of Scope
+
+- **AG-UI as wire format / 5th channel adapter** — separate decision, deferred until concrete consumer (e.g. CopilotKit or web frontend) drives requirements.
+- **StateSnapshot / StateDelta events** — AG-UI ships these for bidirectional state sync (generative UI). Lyra has no consumer until roxabi-dashboard exists; defining "what is agent state" prematurely is speculative design.
+- **ActivitySnapshot / ActivityDelta events** — same rationale as state sync; no consumer driving requirements.
+- **Frontend-declared `tools[]`** — AG-UI passes tools per-run from the client. Collides with ADR-010 (Install/Wrap/Declare = static, agent-side). Orthogonal to this back-port.
+- **Replacing `InboundMessage` with AG-UI's flat `Message`** — would lose multi-channel metadata (platform, bot_id, scope_id, attachments, reply_to, locale, trust). Lyra's richer inbound model stays.
+- **Replacing server-owned history (TurnStore + Pool) with client-supplied `messages[]`** — wrong fit for multi-channel + persistent memory.
+- **Removing `schema_version` per envelope** — Lyra's discipline is stronger than AG-UI's (which has no version field on `BaseEvent`). Keep.
+- **Plugin/skill model changes** — ADR-010 stays; AG-UI's frontend-tool model is an additive layer for a future epic, not a replacement.
+
+## Complexity
+
+**Tier: F-full** — multi-domain (LLM driver + StreamProcessor + hub outbound + 2 channel adapters), schema-affecting (multiple coordinated `SCHEMA_VERSION_RENDER` bumps), one genuine unknown (CLI `--include-partial-messages` parsing for ToolCall args streaming), foundation-extending (ADR-032 augmentation).
+
+Signals observed:
+
+- **Files touched:** ~10–15 across `core/messaging/`, `core/processors/`, `llm/drivers/`, `adapters/shared/`, `adapters/telegram/`, `adapters/discord/`, plus tests. Spread across 4 domains.
+- **Technical risk:** Slice 3 (ToolCall split) requires preliminary analysis artifact before implementation — instrumentation of Claude CLI subprocess JSON is a new pattern depth.
+- **Architectural impact:** extends a foundational ADR (032) with new event types; cross-cutting through StreamProcessor and all outbound adapters. New abstractions (run lifecycle, message_id correlation, tool_call_id correlation).
+- **Unknowns:** 1 — CLI tool-use delta JSON shape & mapping to `ToolCallArgs` deltas. Requires `artifacts/analyses/NNN-toolcall-streaming-cli-instrumentation.mdx` before Slice 3 implementation.
+- **Domain breadth:** 4 — messaging events / stream processing / LLM driver / channel adapters.
+
+Sliced into 5 children + 1 ADR (filed: #1097–#1102) for independent merge cadence. Each child is F-lite or smaller; the umbrella is F-full because of cross-slice coordination (schema bumps, dependency graph, deploy lockstep).

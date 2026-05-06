@@ -366,3 +366,86 @@ class TestDefaultModeDualWrite:
             "User auth.conf must be mirrored to SEEDS_DIR by default mode"
         )
         assert "not yet implemented" not in result.stderr
+
+
+# ── Regression tests for #1089: rendered nkey lengths ────────────────────────
+
+
+class TestRenderedNkeyLength:
+    """Regression tests for #1089 — auth.conf nkeys must be exactly 56 chars.
+
+    Before the fix, FakeNkeyProvider.pubkey_from_seed returned UDET+seed_content
+    (62 chars for real seeds), which was rejected by nats-server as an invalid
+    public nkey for a user.
+    """
+
+    def _active_identities(self) -> list[str]:
+        matrix_data = json.loads(_MATRIX_FIXTURE.read_text())
+        return [
+            name
+            for name, ident in matrix_data["identities"].items()
+            if ident["status"] == "active"
+        ]
+
+    def _render_auth_conf(self, seeds_dir: "Path") -> str:
+        """Run --regen-authconf and return the rendered auth.conf text."""
+        result = _run_genkeys(
+            ["--regen-authconf", "--matrix", str(_MATRIX_FIXTURE)],
+            env={"SEEDS_DIR": str(seeds_dir)},
+        )
+        assert result.returncode == 0, f"--regen-authconf failed: {result.stderr}"
+        return (seeds_dir / "auth.conf").read_text()
+
+    def test_regen_authconf_all_nkeys_are_56_chars(self, tmp_path: "Path") -> None:
+        """Every nkey in rendered auth.conf must be exactly 56 chars.
+
+        Regression: #1089 — FakeNkeyProvider produced 62-char malformed nkeys
+        (UDET + raw seed content) that were rejected by nats-server.
+        """
+        import re
+
+        seeds_dir = tmp_path / "nkeys"
+        _write_fake_seeds(seeds_dir, self._active_identities())
+        content = self._render_auth_conf(seeds_dir)
+
+        nkey_values = re.findall(r'nkey\s*:\s*"([^"]*)"', content)
+        assert nkey_values, "auth.conf must contain at least one nkey entry"
+        for nkey in nkey_values:
+            assert len(nkey) == 56, (
+                f"nkey must be exactly 56 chars; got {len(nkey)}: {nkey!r}. "
+                f"Likely regression: UDET+seed concatenation (#1089)."
+            )
+
+    def test_regen_authconf_nkeys_start_with_u(self, tmp_path: "Path") -> None:
+        """Every nkey in rendered auth.conf must start with U (NATS user prefix)."""
+        import re
+
+        seeds_dir = tmp_path / "nkeys"
+        _write_fake_seeds(seeds_dir, self._active_identities())
+        content = self._render_auth_conf(seeds_dir)
+
+        nkey_values = re.findall(r'nkey\s*:\s*"([^"]*)"', content)
+        assert nkey_values, "auth.conf must contain at least one nkey entry"
+        for nkey in nkey_values:
+            assert nkey.startswith("U"), (
+                f"nkey must start with U (NATS user prefix); got: {nkey!r}"
+            )
+
+    def test_regen_authconf_no_embedded_newlines_in_nkey_strings(
+        self, tmp_path: "Path"
+    ) -> None:
+        """Rendered auth.conf must not have newlines inside nkey quoted strings.
+
+        Secondary regression from #1089: the closing quote appeared on its own
+        line when nkey values contained newlines.
+        """
+        seeds_dir = tmp_path / "nkeys"
+        _write_fake_seeds(seeds_dir, self._active_identities())
+        content = self._render_auth_conf(seeds_dir)
+
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("nkey:"):
+                assert stripped.startswith('nkey: "') and stripped.endswith('"'), (
+                    f"nkey line must open and close quote on same line; got: {line!r}"
+                )

@@ -57,8 +57,13 @@ These invariants require live-host verification — exercised by the manual runb
 | Date | Change | Rationale | Trigger to revisit |
 |------|--------|-----------|--------------------|
 | 2026-05-06 | Collapse from 2 Apps (Lyra-prod + Lyra-dev) to 1 App (`lyra-harness`, id 3619198, install_id 129952244) on both M₁ and M₂. T21 removed from plan. | Solo dev — operational cost of 2 registrations/PEMs/rotation flows outweighs audit-log separation benefit. | 2nd contributor joins, OR compliance/audit-isolation requirement surfaces. |
+| 2026-05-06 | Inline `LYRA_GH_APP_ID` + `LYRA_GH_INSTALLATION_ID` into `lyra-gh-helper.container` (deployment binding). Drop `gh-helper.env.example`. | Public values, invariant across hosts post single-App. Belongs in git-versioned unit, not runtime data or secret. | New App registered, OR BotIdentity registry phase 2. |
+| 2026-05-06 | Switch `/run/lyra-gh-token` from per-container `Tmpfs=` to a shared Quadlet `lyra-gh-token.volume` (tmpfs driver, mode 1777). Drop `uid=`/`gid=` from all `Tmpfs=` options. Drop `-` prefix on `EnvironmentFile=`. | M₁ host smoke (Podman 5.7.0) revealed: (a) pod containers do NOT share mount ns → `Tmpfs=` per-container creates split filesystems (helper sees socket, clipool sees empty dir), (b) Podman ≥5.x rejects `uid=`/`gid=` in `Tmpfs=` options, (c) Quadlet doesn't honor systemd's `-%h/...` silent-if-missing prefix. | Podman adds pod-level Tmpfs= or systemd-prefix support, OR move to mount-ns-shared design. |
 
-Note: I-12 (hub container excluded from GitHub auth) is unchanged — the single App still does not go anywhere near the hub.
+Notes:
+- I-12 (hub container excluded from GitHub auth) is unchanged — the single App still does not go anywhere near the hub.
+- I-2/I-3 still hold: file-level perms (cache 0600 owned uid 1501; socket 0660 group 1502) enforce isolation. Sticky bit on the volume root (1777) prevents cross-uid file deletion.
+- M₁ smoke verified 2026-05-06 13:36 CEST: `lyra-gh issue list --repo Roxabi/lyra` returned real issues; `cat /run/lyra-gh-token/token.json` from clipool returns Permission denied; `env | grep GH_TOKEN` empty.
 
 ## Out-of-Scope Gaps Observed
 

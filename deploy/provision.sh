@@ -377,6 +377,17 @@ else
   warn "Your public key: $(cat "$HOME/.ssh/id_ed25519.pub" 2>/dev/null || echo 'no key found — run ssh-keygen first')"
 fi
 
+# ── Lyra env-file dir (Quadlet EnvironmentFile= targets) ─────────────────────
+
+section "Lyra env-file directory"
+LYRA_ENV_DIR="/home/$ADMIN_USER/.lyra/env"
+sudo -u "$ADMIN_USER" install -d -m 0700 "$LYRA_ENV_DIR"
+# Quadlet EnvironmentFile= cannot use systemd's `-` silent-if-missing prefix;
+# touch an empty file so the unit starts even when no per-host overrides exist.
+sudo -u "$ADMIN_USER" touch "$LYRA_ENV_DIR/clipool.env"
+sudo -u "$ADMIN_USER" chmod 0600 "$LYRA_ENV_DIR/clipool.env"
+info "Lyra env-file dir prepared at $LYRA_ENV_DIR (clipool.env touched)."
+
 # ── Lyra GitHub App PEM (Podman secret) ─────────────────────────────────────
 
 section "Lyra GitHub App PEM (Podman secret)"

@@ -37,17 +37,13 @@ Environment=LYRA_GH_APP_ID=3619198
 Environment=LYRA_GH_INSTALLATION_ID=129952244
 Environment=LYRA_GH_PEM_PATH=/run/secrets/gh-app.pem
 
-# Tmpfs for token cache — declared identically on both pod containers.
-# Podman ≥5.x does NOT accept uid=/gid= in Tmpfs= mount options (only mode=,
-# size=, ro/rw/noexec/nosuid/nodev). Dir is owned by container-root within the
-# userns; isolation is enforced at FILE level instead:
-#   - token cache /run/lyra-gh-token/token.json → mode 0600 owned by uid 1501
-#     (helper.py atomic chmod-before-rename) → invariant I-2 holds.
-#   - dispenser socket → mode 0660 group lyra-tokenuser (gid 1502)
-#     (dispenser.py post-bind chmod) → invariant I-3 holds.
-# mode=0711 grants traversal-only ("--x" for other) so uid 1500 can connect()
-# the socket but cannot ls the dir.
-Tmpfs=/run/lyra-gh-token:mode=0711
+# Token-mint runtime state — shared with lyra-clipool via Quadlet .volume unit.
+# Pod containers do NOT share mount namespaces; Tmpfs= on sibling containers
+# creates two independent filesystems. lyra-gh-token.volume mounts the same
+# tmpfs-backed named volume into both containers (verified on M₁ Podman 5.7.0).
+# See lyra-gh-token.volume for mode/isolation rationale (file-level perms enforce
+# I-2/I-3; sticky 1777 dir mode allows uid 1500/1501 cohabitation).
+Volume=lyra-gh-token.volume:/run/lyra-gh-token:rw
 
 Exec=python -m lyra.tools.gh_token.daemon
 

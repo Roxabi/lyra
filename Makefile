@@ -136,6 +136,7 @@ quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/contai
 	@cp deploy/quadlet/roxabi.network                  "$(QUADLET_DIR)/roxabi.network"
 	@cp deploy/quadlet/lyra-data.volume                "$(QUADLET_DIR)/lyra-data.volume"
 	@cp deploy/quadlet/lyra-jetstream.volume           "$(QUADLET_DIR)/lyra-jetstream.volume"
+	@cp deploy/quadlet/lyra-gh-token.volume            "$(QUADLET_DIR)/lyra-gh-token.volume"
 	@install -d -m 0700 "$(HOME)/.lyra/nats/jetstream"
 	@chmod 0700 "$(HOME)/.lyra/nats"
 	@chmod 0700 "$(HOME)/.lyra/nats/jetstream"

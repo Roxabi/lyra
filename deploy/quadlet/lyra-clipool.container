@@ -34,15 +34,18 @@ Volume=%h/.claude.json:/home/lyra/.claude.json:z
 # Workspace — mirrors host ~/projects so claude subprocess picks up per-project CLAUDE.md
 Volume=%h/projects:/home/lyra/projects:z
 Environment=LYRA_CLAUDE_CWD=/home/lyra/projects
-EnvironmentFile=-%h/.lyra/env/clipool.env
+# Quadlet does not honor systemd's `-` prefix (silent-if-missing) on
+# EnvironmentFile=; it treats the `-` as a literal path character and produces
+# a malformed `--env-file=-/home/...` arg to podman. Drop the prefix and rely
+# on provision.sh to ensure the file exists (touch it empty if no overrides).
+EnvironmentFile=%h/.lyra/env/clipool.env
 
 # ── GitHub App identity (#1078) ─────────────────────────────────────────────
-# Tmpfs for token cache — identical declaration on both pod containers.
-# Podman ≥5.x does NOT support Tmpfs= in [Pod] sections AND does NOT accept
-# uid=/gid= in container-level Tmpfs= options. Isolation is enforced at FILE
-# level: cache file mode 0600 uid 1501 (I-2), socket mode 0660 gid 1502 (I-3).
-# mode=0711 = traversal-only for uid 1500 (cannot ls/cat, can connect socket).
-Tmpfs=/run/lyra-gh-token:mode=0711
+# Token-mint runtime state — shared with lyra-gh-helper via Quadlet .volume
+# unit (pod containers don't share mount ns, so Tmpfs= per-container yields
+# split filesystems — verified on M₁). See lyra-gh-token.volume for full
+# rationale + mode 1777 isolation argument.
+Volume=lyra-gh-token.volume:/run/lyra-gh-token:rw
 # Tmpfs for ~/.config/git so the git config template can be sourced read-only;
 # the runtime user has GIT_CONFIG_GLOBAL pointing into the image-baked /etc/lyra
 # template, so this tmpfs is reserved for any future per-process overrides.

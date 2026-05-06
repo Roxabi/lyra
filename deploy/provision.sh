@@ -377,6 +377,28 @@ else
   warn "Your public key: $(cat "$HOME/.ssh/id_ed25519.pub" 2>/dev/null || echo 'no key found — run ssh-keygen first')"
 fi
 
+# ── Lyra GitHub App PEM (Podman secret) ─────────────────────────────────────
+
+section "Lyra GitHub App PEM (Podman secret)"
+GH_PEM_PATH="${GH_PEM_PATH:-}"
+PEM_RE='^[A-Za-z0-9._/-]+$'  # path validation — reject shell metachars (env-driven via curl|bash)
+if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+     podman secret inspect lyra-gh-pem &>/dev/null; then
+  info "Podman secret 'lyra-gh-pem' already present, skipping."
+else
+  if [[ -z "$GH_PEM_PATH" ]]; then
+    warn "GH_PEM_PATH not set — skipping lyra-gh-pem bootstrap."
+    warn "  Re-run with: GH_PEM_PATH=/abs/path/to/lyra-app.pem $0"
+  else
+    [[ "$GH_PEM_PATH" =~ $PEM_RE ]] || error "Invalid GH_PEM_PATH: $GH_PEM_PATH"
+    [[ -f "$GH_PEM_PATH" ]] || error "PEM file not found: $GH_PEM_PATH"
+    sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+      podman secret create lyra-gh-pem "$GH_PEM_PATH" \
+      || error "Failed to create podman secret lyra-gh-pem"
+    info "Podman secret 'lyra-gh-pem' created from $GH_PEM_PATH."
+  fi
+fi
+
 # ── Dev tools ────────────────────────────────────────────────────────────────
 
 section "uv (Python package manager)"

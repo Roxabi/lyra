@@ -1,0 +1,58 @@
+name: Quadlet Lint
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - "deploy/quadlet/**"
+  workflow_dispatch: {}
+
+concurrency:
+  group: quadlet-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quadlet-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Quadlet dryrun — parse errors
+        env:
+          QUADLET_UNIT_DIRS: ${{ github.workspace }}/deploy/quadlet
+        run: |
+          set -euo pipefail
+          # Emit generator logs to stderr; non-zero exit on parse error.
+          /usr/libexec/podman/quadlet --dryrun --user 2>&1
+          echo "quadlet --dryrun passed"
+
+      - name: Quadlet inline-comment check
+        # Quadlet does NOT strip trailing # comments from option values.
+        # A line such as:  Volume=foo:bar:z  # comment
+        # causes Podman to receive the literal comment as a mount-option string.
+        # This step rejects any non-comment line that contains a trailing # comment
+        # in a Quadlet unit file (issue #1083 — incident 2026-05-06).
+        run: |
+          set -euo pipefail
+          QUADLET_DIR="deploy/quadlet"
+          PATTERN='^\s*[^#;].*[[:space:]]#'
+          BAD_FILES=()
+          while IFS= read -r -d '' f; do
+            if grep -Pn "${PATTERN}" "$f"; then
+              BAD_FILES+=("$f")
+            fi
+          done < <(find "${QUADLET_DIR}" \
+              -maxdepth 1 \
+              \( -name "*.container" -o -name "*.volume" -o -name "*.network" \) \
+              -print0)
+          if [[ ${#BAD_FILES[@]} -gt 0 ]]; then
+            echo ""
+            echo "::error::Inline # comments found in Quadlet value lines in: ${BAD_FILES[*]}"
+            echo "Quadlet does not strip trailing comments — use a dedicated comment line instead."
+            exit 1
+          fi
+          echo "No inline comments on value lines — OK"

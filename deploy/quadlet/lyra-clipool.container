@@ -38,16 +38,16 @@ EnvironmentFile=-%h/.lyra/env/clipool.env
 
 # ── GitHub App identity (#1078) ─────────────────────────────────────────────
 # Tmpfs for token cache — identical declaration on both pod containers.
-# Podman does NOT support Tmpfs= in [Pod] sections (verified: Podman 4.9–5.x
-# supportedPodKeys has no KeyTmpfs). Each container must declare it.
-# mode=0710: owned 1501:1502. dir traversal (x) for gid 1502 → uid 1500 can
-# connect() the socket but cannot ls the dir or cat token.json (invariants I-2/I-3).
-Tmpfs=/run/lyra-gh-token:mode=0710,uid=1501,gid=1502
+# Podman ≥5.x does NOT support Tmpfs= in [Pod] sections AND does NOT accept
+# uid=/gid= in container-level Tmpfs= options. Isolation is enforced at FILE
+# level: cache file mode 0600 uid 1501 (I-2), socket mode 0660 gid 1502 (I-3).
+# mode=0711 = traversal-only for uid 1500 (cannot ls/cat, can connect socket).
+Tmpfs=/run/lyra-gh-token:mode=0711
 # Tmpfs for ~/.config/git so the git config template can be sourced read-only;
 # the runtime user has GIT_CONFIG_GLOBAL pointing into the image-baked /etc/lyra
 # template, so this tmpfs is reserved for any future per-process overrides.
 # Note: ReadOnly=true is preserved — only Tmpfs= additions for credentials.
-Tmpfs=/home/lyra/.config/git:mode=0755,uid=1500,gid=1500
+Tmpfs=/home/lyra/.config/git:mode=0755
 
 # PEM secret removed — invariant I-5: PEM mounts only on lyra-gh-helper.container.
 # lyra-gh shim (uid 1500) reads tokens via the dispenser socket, never the PEM.

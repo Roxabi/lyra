@@ -38,13 +38,16 @@ Environment=LYRA_GH_INSTALLATION_ID=129952244
 Environment=LYRA_GH_PEM_PATH=/run/secrets/gh-app.pem
 
 # Tmpfs for token cache — declared identically on both pod containers.
-# mode=0710: dir owned by 1501:1502.
-#   owner (1501) rwx — helper can read/write token.json and the socket.
-#   group (1502) --x — uid 1500 (member of gid 1502) can traverse to connect()
-#                       the socket but CANNOT ls the dir or cat token.json.
-#   other       --- — no access.
-# This is the minimum that satisfies I-2 (token unreadable) + I-3 (socket reachable).
-Tmpfs=/run/lyra-gh-token:mode=0710,uid=1501,gid=1502
+# Podman ≥5.x does NOT accept uid=/gid= in Tmpfs= mount options (only mode=,
+# size=, ro/rw/noexec/nosuid/nodev). Dir is owned by container-root within the
+# userns; isolation is enforced at FILE level instead:
+#   - token cache /run/lyra-gh-token/token.json → mode 0600 owned by uid 1501
+#     (helper.py atomic chmod-before-rename) → invariant I-2 holds.
+#   - dispenser socket → mode 0660 group lyra-tokenuser (gid 1502)
+#     (dispenser.py post-bind chmod) → invariant I-3 holds.
+# mode=0711 grants traversal-only ("--x" for other) so uid 1500 can connect()
+# the socket but cannot ls the dir.
+Tmpfs=/run/lyra-gh-token:mode=0711
 
 Exec=python -m lyra.tools.gh_token.daemon
 

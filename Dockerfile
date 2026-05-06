@@ -22,6 +22,13 @@ FROM ghcr.io/roxabi/base:latest AS runtime
 
 USER root
 
+# socat — required by the gh_token shim scripts (git-credential-lyra-gh + lyra-gh)
+# to dial the dispenser Unix socket. Smallest dep that handles UNIX-CONNECT cleanly;
+# BSD nc -U fallback in the shims is for hosts where socat is unavailable.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends socat \
+ && rm -rf /var/lib/apt/lists/*
+
 # UID 1500 pinned per ADR-053 (Quadlet container UID stability)
 RUN useradd -u 1500 -m lyra \
  && mkdir -p /home/lyra/projects \

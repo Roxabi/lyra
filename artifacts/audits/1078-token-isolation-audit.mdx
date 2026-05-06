@@ -92,9 +92,16 @@ lyra-gh.pod (infra container — shared net/ipc namespace)
 | File | Role |
 |---|---|
 | `lyra-gh.pod` | Pod: shared UserNS (`keep-id:uid=1500`), network, start-limit |
-| `lyra-gh-helper.container` | Daemon: uid 1501, PEM secret, `python -m lyra.tools.gh_token.daemon` |
+| `lyra-gh-helper.container` | Daemon: uid 1501, PEM secret, App ID inlined, `python -m lyra.tools.gh_token.daemon` |
 | `lyra-clipool.container` | Worker: uid 1500, Pod=lyra-gh.pod, no PEM, no GH_APP_ID env |
-| `gh-helper.env.example` | Template: `LYRA_GH_APP_ID` + `LYRA_GH_INSTALLATION_ID` per host |
+
+### Why App ID is inlined (not in env file or DB)
+
+- App ID + install_id are public, not secret — no reason to protect them via Podman secret or per-host file
+- They are invariant across M₁/M₂ after the single-App (`lyra-harness`) decision (Decision Log 2026-05-06)
+- Helper sidecar (uid 1501, ReadOnly=true) cannot read clipool's LyraKeyring SQLite (uid 1500) — pushing via NATS would be overkill for two static public strings
+- Deployment binding belongs in the unit file (git-versioned, audit-trailed) — not runtime data (DB/keyring) nor Podman secret (reserved for actual credentials)
+- Revisit trigger: a 2nd GitHub App is registered, OR BotIdentity registry lands per Phase 2 of the consensus mdx
 
 ### Mode 0710 traversal rationale
 

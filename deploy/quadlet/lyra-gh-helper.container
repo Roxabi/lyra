@@ -29,10 +29,12 @@ Group=1502
 # mode=0400 uid=1501: only the helper process can read the key material.
 Secret=lyra-gh-pem,type=mount,target=gh-app.pem,mode=0400,uid=1501,gid=1501
 
-# GitHub App config — App ID + installation ID per host.
-# M₁ (roxabituwer) → Lyra-prod App; M₂ (ROXABITOWER) → Lyra-dev App.
-# Operator sets these in ~/.lyra/env/gh-helper.env (see deploy/quadlet/gh-helper.env.example).
-EnvironmentFile=-%h/.lyra/env/gh-helper.env
+# GitHub App config — deployment binding for lyra-harness App (id 3619198).
+# App ID + install_id are public, invariant across M₁/M₂ post single-App decision
+# (Decision Log 2026-05-06). Inlined here (not per-host env file) per deployment-binding
+# taxonomy: these belong in git-versioned unit files, not runtime data or Podman secrets.
+Environment=LYRA_GH_APP_ID=3619198
+Environment=LYRA_GH_INSTALLATION_ID=129952244
 Environment=LYRA_GH_PEM_PATH=/run/secrets/gh-app.pem
 
 # Tmpfs for token cache — declared identically on both pod containers.

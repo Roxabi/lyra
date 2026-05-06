@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from lyra.bootstrap.factory.config import _build_agent_overrides, _load_pairing_config
 from lyra.bootstrap.lifecycle.lifecycle_helpers import (
@@ -16,6 +17,7 @@ from lyra.core.agent.agent_loader import agent_row_to_config
 from lyra.infrastructure.stores.pairing import PairingManager, set_pairing_manager
 
 if TYPE_CHECKING:
+    from lyra.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
     from lyra.core.agent import Agent
     from lyra.core.hub.hub import Hub
     from lyra.infrastructure.stores.agent_store import AgentStore
@@ -24,6 +26,36 @@ if TYPE_CHECKING:
     from lyra.llm.drivers.nats_driver import NatsLlmDriver
 
 log = logging.getLogger(__name__)
+
+
+async def start_mint_failure_subscriber(nc: Any) -> "MintFailureSubscriber | None":
+    """Start the opt-in GitHub-App mint-failure NATS subscriber (#1078).
+
+    Returns the started subscriber, or None if LYRA_GH_OPS_TELEGRAM_BOT_ID +
+    LYRA_GH_OPS_TELEGRAM_CHAT_ID are not both set, or if startup fails.
+    """
+    from lyra.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
+
+    bot_id = os.environ.get("LYRA_GH_OPS_TELEGRAM_BOT_ID", "")
+    chat_id_raw = os.environ.get("LYRA_GH_OPS_TELEGRAM_CHAT_ID", "")
+    if not (bot_id and chat_id_raw):
+        log.info(
+            "MintFailureSubscriber disabled"
+            " — set LYRA_GH_OPS_TELEGRAM_BOT_ID + LYRA_GH_OPS_TELEGRAM_CHAT_ID"
+            " to enable"
+        )
+        return None
+    try:
+        sub = MintFailureSubscriber(
+            nc,
+            ops_telegram_bot_id=bot_id,
+            ops_telegram_chat_id=int(chat_id_raw),
+        )
+        await sub.start()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("MintFailureSubscriber failed to start: %s", exc)
+        return None
+    return sub
 
 
 def load_agent_configs(

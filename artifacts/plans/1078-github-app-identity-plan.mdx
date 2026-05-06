@@ -305,11 +305,12 @@ non-blocking for plan generation.
 - **Traces:** S4 · AC ops-#2
 - **Phase:** GREEN
 
-#### T16: Rotation test — measure ≤10 s downtime on M₁ → tester
+#### T16: Rotation test — measure ≤10 s downtime on M₁ → tester — **completed (2026-05-06)**
 - **File:** `tests/runbooks/v5_rotate.md` (manual on M₁)
 - **Snippet:** generate test PEM · `time bash deploy/scripts/rotate-gh-key.sh /tmp/test.pem` · record wall-clock
-- **Verify:** time field ≤10 s; healthcheck pass at end
+- **Verify:** time field ≤10 s; helper container Up + dispenser socket reachable from clipool at end
 - **Expected:** ≤10 s end-to-end
+- **Result:** **0.578 s** measured on M₁ (Podman 5.7.0). Functional smoke `lyra-gh issue list --repo Roxabi/lyra` returned a real issue post-rotation. Bug uncovered: original script restarted `lyra-clipool` (no-op for sidecar design) — fixed in commit 283a90db to restart `lyra-gh-helper` (PEM consumer, invariant I-5) and gate on dispenser-socket reachability. Audit Decision Log updated.
 - **Time:** 5 min · **Difficulty:** 2
 - **Traces:** AC ops-#2
 - **Phase:** RED-GATE
@@ -325,11 +326,12 @@ non-blocking for plan generation.
 - **Traces:** N9 → S5 · AC mint-failure-#1, #2
 - **Phase:** GREEN
 
-#### T18: RED-GATE V6 — end-to-end mint failure simulation (revoke installation token) → tester
+#### T18: RED-GATE V6 — end-to-end mint failure simulation (revoke installation token) → tester — **deferred (2026-05-06) → #1082**
 - **File:** `tests/runbooks/v6_mint_failure.md` (manual integrating real hub + clipool on M₁)
 - **Snippet:** revoke installation token via GitHub UI · trigger Claude `git push` → fail · `nats sub lyra.gh.mint_failure.>` shows event with `contract_version`/`trace_id`/`issued_at` · staging Telegram chat receives alert ≤30 s
 - **Verify:** both NATS event AND Telegram message observed
 - **Expected:** envelope schema valid; Telegram message arrives within 30 s
+- **Status:** Blocked on audit gap F-1 — helper-side NATS publish is not wired (helper has no nkey identity, would require ADR-046 changes). T17 subscriber + contract envelope are in place; only the producer call is missing. Tracked separately in Roxabi/lyra#1082.
 - **Time:** 10 min · **Difficulty:** 3
 - **Traces:** RED-GATE V6 · AC mint-failure-#1, #2
 - **Phase:** RED-GATE
@@ -360,12 +362,10 @@ non-blocking for plan generation.
 
 > Collapsed to single App `lyra-harness` (id 3619198, install_id 129952244) on both M₁ and M₂. See spec AC #10 update.
 
-#### T22: M₂ deploy — provision + restart + smoke push from dev clipool → devops
+#### ~~T22: M₂ deploy — provision + restart + smoke push from dev clipool → devops~~ — **cancelled (2026-05-06) → #1081**
 - **File:** M₂ host operations
 - **Snippet:** copy PEM · `GH_PEM_PATH=… bash deploy/provision.sh` · `make lyra-clipool restart` · smoke `git push` against test repo · verify Quadlet env on M₂ = M₁ (same `LYRA_GH_APP_ID=3619198`)
-- **Verify:** smoke push succeeds; M₁ unaffected (check M₁ healthcheck still ✓); both hosts show same `app_id`
-- **Expected:** all 3 conditions hold
-- **Time:** 10 min · **Difficulty:** 3
+- **Cancellation:** Single-App collapse made M₁/M₂ identity invariant — T22 added no new spec dimension (same code, image, App). M₂ Podman 4.9.3 is also incompatible with the chosen `Pod=` design (option (a) in audit gap #2). M₁ T12 already validates the full chain end-to-end. Tracked as a follow-up in Roxabi/lyra#1081 with two design options when un-deferred (Podman upgrade vs option-(b) host-bind variant).
 - **Traces:** UC7 · AC identity-#3
 - **Phase:** RED-GATE [manual]
 
@@ -480,6 +480,7 @@ non-blocking for plan generation.
 - T19: 19 — Register Lyra-prod App
 - T20: 20 — Set Roxabi/lyra branch protection
 - T21: 21 — Register Lyra-dev App on M₂ **(removed 2026-05-06 — collapsed to single App lyra-harness)**
-- T22: 22 — M₂ deploy + smoke push
+- T22: 22 — M₂ deploy + smoke push **(cancelled 2026-05-06 → #1081 follow-up)**
+- T18: 18 — RED-GATE V6 mint failure E2E **(deferred 2026-05-06 → #1082 follow-up; blocked on F-1)**
 - T23: 23 — Security audit token-isolation invariants
 - T24: 24 — Document gh-key-rotation runbook

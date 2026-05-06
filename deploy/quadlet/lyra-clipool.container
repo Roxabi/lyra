@@ -2,6 +2,9 @@
 Description=Lyra CliPool Worker
 After=lyra-nats.service
 # No Requires= — clipool connects directly to NATS; hub restarts must not cascade
+# Rate-limit restarts so a crash-loop cannot spam GitHub /app/installations/{id}/access_tokens
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Container]
 Image=ghcr.io/roxabi/lyra:staging
@@ -24,6 +27,44 @@ Volume=%h/.claude.json:/home/lyra/.claude.json:z
 # Workspace — mirrors host ~/projects so claude subprocess picks up per-project CLAUDE.md
 Volume=%h/projects:/home/lyra/projects:z
 Environment=LYRA_CLAUDE_CWD=/home/lyra/projects
+EnvironmentFile=-%h/.lyra/env/clipool.env
+
+# ── GitHub App identity (#1078) ─────────────────────────────────────────────
+# Tmpfs for token cache — mode 0700 owned by helper uid 1501 (≠ Claude uid 1500)
+# so /run/lyra-gh-token/token.json (mode 0600) is unreadable from inside the
+# Claude subprocess. Group lyra-tokenuser (gid 1502) gives the credential
+# helper + lyra-gh shim socket access via the dispenser at mode 0660.
+Tmpfs=/run/lyra-gh-token:mode=0700,uid=1501,gid=1501
+# Tmpfs for ~/.config/git so the git config template can be sourced read-only;
+# the runtime user has GIT_CONFIG_GLOBAL pointing into the image-baked /etc/lyra
+# template, so this tmpfs is reserved for any future per-process overrides.
+# Note: ReadOnly=true is preserved — only Tmpfs= additions for credentials.
+Tmpfs=/home/lyra/.config/git:mode=0755,uid=1500,gid=1500
+
+# Podman secret carrying the GitHub App PEM. Bootstrapped on the host by
+# deploy/provision.sh (T13). The secret is mounted read-only at uid 1501 only;
+# Claude (uid 1500) cannot read it.
+Secret=lyra-gh-pem,type=mount,target=gh-app.pem,mode=0400,uid=1501,gid=1501
+Environment=LYRA_GH_PEM_PATH=/run/secrets/gh-app.pem
+
+# GitHub App identity — App ID + installation ID per host (M₁ = Lyra-prod,
+# M₂ = Lyra-dev). Operator sets these in ~/.lyra/env/clipool.env or the
+# environment of the systemd --user invocation. Empty values disable the
+# helper at startup (caught by the dispenser entrypoint — clipool will
+# still run, just without `git push` capability).
+Environment=LYRA_GH_APP_ID=
+Environment=LYRA_GH_INSTALLATION_ID=
+
+# Wire git's global config to the image-baked template so the credential
+# helper line resolves transparently for any `git push` from inside Claude.
+Environment=GIT_CONFIG_GLOBAL=/etc/lyra/git.config.tmpl
+
+# χ-2 decision: /proc hidepid=2 is intentionally NOT enabled here. Rationale:
+# (a) podman exec introspection (`podman top`, `podman exec ... ps -ef`) is
+# valuable for ops; hidepid=2 breaks it for non-procuser members.
+# (b) defense-in-depth on token isolation already covers the intended attack
+# (token cache 0600/uid 1501; env scoped via `lyra-gh` exec). Revisit if a
+# future threat model surfaces /proc/<helper-pid>/environ as a leak vector.
 Exec=lyra adapter clipool
 
 [Service]

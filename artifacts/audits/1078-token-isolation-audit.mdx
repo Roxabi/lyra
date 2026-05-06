@@ -52,6 +52,14 @@ These invariants require live-host verification — exercised by the manual runb
 | H-6 | provision.sh idempotent on repeat run (no diff in `podman secret inspect`) | T14 (`tests/runbooks/v4_provision_idempo.md`) |
 | H-7 | Mint failure → NATS event → Telegram alert (E2E) | T18 (depends on F-1 above being resolved) |
 
+## Decision Log (post-audit)
+
+| Date | Change | Rationale | Trigger to revisit |
+|------|--------|-----------|--------------------|
+| 2026-05-06 | Collapse from 2 Apps (Lyra-prod + Lyra-dev) to 1 App (`lyra-harness`, id 3619198, install_id 129952244) on both M₁ and M₂. T21 removed from plan. | Solo dev — operational cost of 2 registrations/PEMs/rotation flows outweighs audit-log separation benefit. | 2nd contributor joins, OR compliance/audit-isolation requirement surfaces. |
+
+Note: I-12 (hub container excluded from GitHub auth) is unchanged — the single App still does not go anywhere near the hub.
+
 ## Out-of-Scope Gaps Observed
 
 - **MintError → MintFailureEvent NATS publish** — see Finding F-1. This is the producer side of the V6 alert path. T17 subscriber + contract envelope are in place; only the helper-side `nc.publish(SUBJECTS.gh_mint_failure(machine), serialize(event))` call is missing. Implementing it requires giving the helper its own NATS connection + nkey identity (the helper runs as uid 1501; the existing clipool nkey at `/run/secrets/clipool-worker.seed` is mode 0400 uid 1500 only). Two design options for follow-up: (a) issue a dedicated `lyra-gh.seed` per ADR-046 + mount with uid 1501, or (b) widen the clipool seed to gid 1502 and let both uids read it (smaller change, marginally weaker isolation). Recommend (a).

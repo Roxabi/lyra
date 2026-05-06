@@ -1,7 +1,10 @@
 [Unit]
 Description=Lyra CliPool Worker
 After=lyra-nats.service
-# No Requires= — clipool connects directly to NATS; hub restarts must not cascade
+After=lyra-gh-pod.service
+# No Requires= on NATS — clipool connects directly; hub restarts must not cascade.
+# BindsTo= the pod so clipool is stopped when the pod (and helper) are torn down.
+BindsTo=lyra-gh-pod.service
 # Rate-limit restarts so a crash-loop cannot spam GitHub /app/installations/{id}/access_tokens
 StartLimitIntervalSec=60
 StartLimitBurst=5
@@ -10,11 +13,15 @@ StartLimitBurst=5
 Image=ghcr.io/roxabi/lyra:staging
 Label=io.containers.autoupdate=registry
 ContainerName=lyra-clipool
-Network=roxabi.network
+# Pod= moves network + user namespace ownership to lyra-gh.pod.
+# UserNS=keep-id:uid=1500 is now declared on the pod (lyra-gh.pod [Pod] section)
+# and shared by both containers. Removed from this unit to avoid conflict.
+Pod=lyra-gh.pod
 NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
-UserNS=keep-id:uid=1500,gid=1500
+# UserNS moved to lyra-gh.pod [Pod] section — do not re-declare here.
+# Network= moved to lyra-gh.pod — pod owns the network namespace.
 Environment=NATS_URL=nats://lyra-nats:4222
 Secret=lyra-nkey-clipool-worker,type=mount,target=clipool-worker.seed,mode=0400,uid=1500,gid=1500
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/clipool-worker.seed
@@ -30,30 +37,23 @@ Environment=LYRA_CLAUDE_CWD=/home/lyra/projects
 EnvironmentFile=-%h/.lyra/env/clipool.env
 
 # ── GitHub App identity (#1078) ─────────────────────────────────────────────
-# Tmpfs for token cache — mode 0700 owned by helper uid 1501 (≠ Claude uid 1500)
-# so /run/lyra-gh-token/token.json (mode 0600) is unreadable from inside the
-# Claude subprocess. Group lyra-tokenuser (gid 1502) gives the credential
-# helper + lyra-gh shim socket access via the dispenser at mode 0660.
-Tmpfs=/run/lyra-gh-token:mode=0700,uid=1501,gid=1501
+# Tmpfs for token cache — identical declaration on both pod containers.
+# Podman does NOT support Tmpfs= in [Pod] sections (verified: Podman 4.9–5.x
+# supportedPodKeys has no KeyTmpfs). Each container must declare it.
+# mode=0710: owned 1501:1502. dir traversal (x) for gid 1502 → uid 1500 can
+# connect() the socket but cannot ls the dir or cat token.json (invariants I-2/I-3).
+Tmpfs=/run/lyra-gh-token:mode=0710,uid=1501,gid=1502
 # Tmpfs for ~/.config/git so the git config template can be sourced read-only;
 # the runtime user has GIT_CONFIG_GLOBAL pointing into the image-baked /etc/lyra
 # template, so this tmpfs is reserved for any future per-process overrides.
 # Note: ReadOnly=true is preserved — only Tmpfs= additions for credentials.
 Tmpfs=/home/lyra/.config/git:mode=0755,uid=1500,gid=1500
 
-# Podman secret carrying the GitHub App PEM. Bootstrapped on the host by
-# deploy/provision.sh (T13). The secret is mounted read-only at uid 1501 only;
-# Claude (uid 1500) cannot read it.
-Secret=lyra-gh-pem,type=mount,target=gh-app.pem,mode=0400,uid=1501,gid=1501
-Environment=LYRA_GH_PEM_PATH=/run/secrets/gh-app.pem
+# PEM secret removed — invariant I-5: PEM mounts only on lyra-gh-helper.container.
+# lyra-gh shim (uid 1500) reads tokens via the dispenser socket, never the PEM.
 
-# GitHub App identity — App ID + installation ID per host (M₁ = Lyra-prod,
-# M₂ = Lyra-dev). Operator sets these in ~/.lyra/env/clipool.env or the
-# environment of the systemd --user invocation. Empty values disable the
-# helper at startup (caught by the dispenser entrypoint — clipool will
-# still run, just without `git push` capability).
-Environment=LYRA_GH_APP_ID=
-Environment=LYRA_GH_INSTALLATION_ID=
+# LYRA_GH_APP_ID / LYRA_GH_INSTALLATION_ID removed — consumed only by the helper
+# daemon (lyra-gh-helper.container). Clipool reads tokens via the dispenser socket.
 
 # Wire git's global config to the image-baked template so the credential
 # helper line resolves transparently for any `git push` from inside Claude.

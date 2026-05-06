@@ -66,12 +66,91 @@ Note: I-12 (hub container excluded from GitHub auth) is unchanged — the single
 
 - **Refresh-loop bootstrap caller** — RESOLVED in `src/lyra/tools/gh_token/daemon.py` (commit incoming). `run_daemon` starts both `Dispenser.serve()` and `refresh_loop` concurrently in one asyncio task group, with env-driven config (`LYRA_GH_APP_ID` + `LYRA_GH_INSTALLATION_ID` + `LYRA_GH_PEM_PATH`). 6 unit tests cover config validation, socket bind, and stale-socket cleanup. Entrypoint is `python -m lyra.tools.gh_token.daemon`.
 
-- **`lyra-gh-helper` Quadlet runtime wiring** — STILL DEFERRED. The daemon code is now ready (entry above), but the host wiring that launches `python -m lyra.tools.gh_token.daemon` as uid 1501 *while sharing the dispenser tmpfs with the lyra-clipool container running as uid 1500* is non-trivial and needs M₁-verified design. Three options on the table — pick one in a follow-up PR before T12 host smoke runs:
-  - **(a) Sidecar Quadlet `.pod`** — define `lyra-gh.pod` containing both `lyra-gh-helper.container` (uid 1501) and `lyra-clipool.container` (uid 1500). Pod-level Tmpfs= sharing semantics need verification on Podman 5.x.
-  - **(b) Host tmpfs + shared bind mount** — provision.sh creates `~/.lyra/run/gh-token/` (owned uid 1000); both containers bind-mount it. Simpler, but cross-container uid-mapping for tmpfs file ownership is awkward under `keep-id`.
-  - **(c) Single-container (regression)** — run the daemon inside lyra-clipool as uid 1500 via an inline ExecStartPre=. Preserves the env-isolation invariant (token never in Claude's env via `exec env GH_TOKEN=…`), but loses the cache-file-readability isolation. Documented regression for v1 if (a)/(b) ship later.
+- **`lyra-gh-helper` Quadlet runtime wiring** — RESOLVED in this PR (option a: sidecar `.pod`). See `## Quadlet Sidecar Pod Design` section below.
 
 - **MintError → MintFailureEvent NATS publish** — UNCHANGED. See Finding F-1 above. Independent of the Quadlet wiring decision.
+
+## Quadlet Sidecar Pod Design (resolves audit gap #2)
+
+### Pod topology
+
+```
+lyra-gh.pod (infra container — shared net/ipc namespace)
+├── lyra-gh-helper.container   uid 1501 / gid 1502 (lyra-gh / lyra-tokenuser)
+│     PEM secret (0400/1501) ──► python -m lyra.tools.gh_token.daemon
+│     Tmpfs /run/lyra-gh-token (0710 / 1501:1502)
+│         ├── token.json       0600 / 1501:1501  (unreadable to uid 1500)
+│         └── dispenser.sock   0660 / 1501:1502  (reachable by uid 1500 via gid 1502)
+│
+└── lyra-clipool.container     uid 1500 / gid 1500 (lyra / lyra-tokenuser member)
+      Tmpfs /run/lyra-gh-token (same path — Podman shares tmpfs between pod containers)
+      lyra-gh shim ──► connect(dispenser.sock) ──► read token ──► exec env GH_TOKEN=… gh …
+```
+
+### File responsibilities
+
+| File | Role |
+|---|---|
+| `lyra-gh.pod` | Pod: shared UserNS (`keep-id:uid=1500`), network, start-limit |
+| `lyra-gh-helper.container` | Daemon: uid 1501, PEM secret, `python -m lyra.tools.gh_token.daemon` |
+| `lyra-clipool.container` | Worker: uid 1500, Pod=lyra-gh.pod, no PEM, no GH_APP_ID env |
+| `gh-helper.env.example` | Template: `LYRA_GH_APP_ID` + `LYRA_GH_INSTALLATION_ID` per host |
+
+### Mode 0710 traversal rationale
+
+`/run/lyra-gh-token` dir: `mode=0710, uid=1501, gid=1502`
+
+| Bit | Who | Effect |
+|---|---|---|
+| `rwx` (owner=1501) | helper daemon | full access: create token.json, bind socket |
+| `--x` (group=1502) | uid 1500 (member gid 1502) | can `connect()` to socket path but **cannot `ls`** dir nor `cat` token.json |
+| `---` (other) | everyone else | no access |
+
+This is the minimum mode satisfying I-2 (token unreadable) + I-3 (socket reachable). The `x` bit grants traversal only — not read (`r`). A process needs `r` to list directory contents; the lyra-gh shim constructs the socket path explicitly.
+
+### Pod-level Tmpfs= — verification result
+
+**Pod-level `Tmpfs=` is NOT supported in any Podman version (4.9–5.x).**
+
+- Podman 4.9.3 quadlet source (`/usr/libexec/podman/quadlet`, strings analysis): no `KeyTmpfs` in pod section.
+- Podman 5.0 source (GitHub inspection): `supportedPodKeys` contains `Network`, `Volume`, `PublishPort`, `UserNS`, `PodName`, `PodmanArgs`, `GlobalArgs`, `ContainersConfModule` — no `Tmpfs`.
+- **Decision**: both containers declare identical `Tmpfs=/run/lyra-gh-token:mode=0710,uid=1501,gid=1502`. Podman mounts the tmpfs into both containers' namespaces within the pod.
+
+### Same-image constraint
+
+Both containers use `Image=ghcr.io/roxabi/lyra:staging`. No separate `lyra-gh-helper:latest` build.
+
+- uid 1501 (`lyra-gh`) + gid 1502 (`lyra-tokenuser`) are baked into the image at Dockerfile lines 49–51.
+- `python -m lyra.tools.gh_token.daemon` entrypoint is in the same installed package.
+- Build matrix stays simple: one image, two containers, different `User=` directives.
+
+### M₁ smoke verification steps
+
+```bash
+# 1. Install units + secret
+make quadlet-install
+make quadlet-secrets-install          # requires ~/.lyra/gh-app.pem
+
+# 2. Start pod
+systemctl --user start lyra-gh-pod
+
+# 3. Verify both containers running
+podman ps --filter label=app=lyra
+
+# 4. I-2: token cache unreadable from uid 1500
+podman exec lyra-clipool sh -c 'cat /run/lyra-gh-token/token.json'
+# expected: Permission denied
+
+# 5. I-3: socket reachable, dir not listable
+podman exec lyra-clipool sh -c 'ls /run/lyra-gh-token/'
+# expected: Permission denied
+podman exec lyra-clipool sh -c 'socat - UNIX-CONNECT:/run/lyra-gh-token/dispenser.sock'
+# expected: connects and returns token JSON
+
+# 6. I-5: no PEM in clipool
+podman exec lyra-clipool sh -c 'ls /run/secrets/'
+# expected: gh-app.pem absent
+```
 
 ## Cross-References
 

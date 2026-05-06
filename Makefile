@@ -131,7 +131,7 @@ quadlet-preflight:  ## advisory pre-flight checks before Quadlet install (non-bl
 
 quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/containers/systemd/ + reload
 	@mkdir -p "$(QUADLET_DIR)"
-	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container} "$(QUADLET_DIR)/nats.container" \
+	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container,pod} "$(QUADLET_DIR)/nats.container" \
 	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/lyra-nats.container"
 	@cp deploy/quadlet/roxabi.network                  "$(QUADLET_DIR)/roxabi.network"
 	@cp deploy/quadlet/lyra-data.volume                "$(QUADLET_DIR)/lyra-data.volume"
@@ -143,6 +143,8 @@ quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/contai
 	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"
 	@cp deploy/quadlet/lyra-telegram.container         "$(QUADLET_DIR)/lyra-telegram.container"
 	@cp deploy/quadlet/lyra-discord.container          "$(QUADLET_DIR)/lyra-discord.container"
+	@cp deploy/quadlet/lyra-gh.pod                     "$(QUADLET_DIR)/lyra-gh.pod"
+	@cp deploy/quadlet/lyra-gh-helper.container        "$(QUADLET_DIR)/lyra-gh-helper.container"
 	@cp deploy/quadlet/lyra-clipool.container          "$(QUADLET_DIR)/lyra-clipool.container"
 	@systemctl --user daemon-reload
 	@echo "Quadlet units installed."
@@ -162,6 +164,13 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 	@podman secret create --replace lyra-nkey-telegram-adapter  "$(LYRA_NKEYS_DIR)/telegram-adapter.seed"
 	@podman secret create --replace lyra-nkey-discord-adapter   "$(LYRA_NKEYS_DIR)/discord-adapter.seed"
 	@podman secret create --replace lyra-nkey-clipool-worker    "$(LYRA_NKEYS_DIR)/clipool-worker.seed"
+	@if [ -f "$(HOME)/.lyra/gh-app.pem" ]; then \
+		podman secret create --replace lyra-gh-pem "$(HOME)/.lyra/gh-app.pem"; \
+		echo "lyra-gh-pem secret created from ~/.lyra/gh-app.pem"; \
+	else \
+		echo "SKIP: ~/.lyra/gh-app.pem not found — lyra-gh-pem secret not created."; \
+		echo "      Copy the GitHub App PEM to ~/.lyra/gh-app.pem then re-run."; \
+	fi
 	@echo "Podman secrets installed. Verify: podman secret ls"
 
 # ── Deploy + remote ──────────────────────────────────────────────────────────

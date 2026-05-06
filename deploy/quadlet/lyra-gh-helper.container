@@ -1,0 +1,54 @@
+[Unit]
+Description=Lyra GitHub App token-mint helper (uid 1501)
+# Part of lyra-gh.pod — must start before clipool connects to the dispenser.
+# BindsTo= ensures helper and clipool are stopped together; if the helper crashes
+# permanently the pod is torn down rather than leaving clipool without a token source.
+BindsTo=lyra-gh-pod.service
+After=lyra-gh-pod.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+# Same image as clipool — lyra-gh user (uid 1501) + lyra-tokenuser group (gid 1502)
+# are baked into the image at Dockerfile lines 49–51. No separate helper image needed.
+Image=ghcr.io/roxabi/lyra:staging
+Label=io.containers.autoupdate=registry
+ContainerName=lyra-gh-helper
+Pod=lyra-gh.pod
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+
+# uid 1501 = lyra-gh user (created in Dockerfile); gid 1502 = lyra-tokenuser.
+# Primary group 1502 ensures the dispenser socket (mode 0660) is created with
+# gid=1502 so uid 1500 (member of gid 1502) can connect — invariant I-3.
+User=1501
+Group=1502
+
+# PEM secret — only on helper, never on clipool — invariant I-5.
+# mode=0400 uid=1501: only the helper process can read the key material.
+Secret=lyra-gh-pem,type=mount,target=gh-app.pem,mode=0400,uid=1501,gid=1501
+
+# GitHub App config — App ID + installation ID per host.
+# M₁ (roxabituwer) → Lyra-prod App; M₂ (ROXABITOWER) → Lyra-dev App.
+# Operator sets these in ~/.lyra/env/gh-helper.env (see deploy/quadlet/gh-helper.env.example).
+EnvironmentFile=-%h/.lyra/env/gh-helper.env
+Environment=LYRA_GH_PEM_PATH=/run/secrets/gh-app.pem
+
+# Tmpfs for token cache — declared identically on both pod containers.
+# mode=0710: dir owned by 1501:1502.
+#   owner (1501) rwx — helper can read/write token.json and the socket.
+#   group (1502) --x — uid 1500 (member of gid 1502) can traverse to connect()
+#                       the socket but CANNOT ls the dir or cat token.json.
+#   other       --- — no access.
+# This is the minimum that satisfies I-2 (token unreadable) + I-3 (socket reachable).
+Tmpfs=/run/lyra-gh-token:mode=0710,uid=1501,gid=1502
+
+Exec=python -m lyra.tools.gh_token.daemon
+
+[Service]
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

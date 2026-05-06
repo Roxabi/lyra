@@ -56,9 +56,14 @@ These invariants require live-host verification — exercised by the manual runb
 
 - **MintError → MintFailureEvent NATS publish** — see Finding F-1. This is the producer side of the V6 alert path. T17 subscriber + contract envelope are in place; only the helper-side `nc.publish(SUBJECTS.gh_mint_failure(machine), serialize(event))` call is missing. Implementing it requires giving the helper its own NATS connection + nkey identity (the helper runs as uid 1501; the existing clipool nkey at `/run/secrets/clipool-worker.seed` is mode 0400 uid 1500 only). Two design options for follow-up: (a) issue a dedicated `lyra-gh.seed` per ADR-046 + mount with uid 1501, or (b) widen the clipool seed to gid 1502 and let both uids read it (smaller change, marginally weaker isolation). Recommend (a).
 
-- **Refresh-loop bootstrap caller** — `refresh.refresh_loop` exists and is tested but is not yet started anywhere in the worktree; the dispenser handles cold-cache mints fine, so this is purely an optimisation. Wire it in the eventual `lyra-gh-helper` daemon entrypoint (a `Service=` unit not yet defined — currently the helper code is library-only, callers must be added).
+- **Refresh-loop bootstrap caller** — RESOLVED in `src/lyra/tools/gh_token/daemon.py` (commit incoming). `run_daemon` starts both `Dispenser.serve()` and `refresh_loop` concurrently in one asyncio task group, with env-driven config (`LYRA_GH_APP_ID` + `LYRA_GH_INSTALLATION_ID` + `LYRA_GH_PEM_PATH`). 6 unit tests cover config validation, socket bind, and stale-socket cleanup. Entrypoint is `python -m lyra.tools.gh_token.daemon`.
 
-- **`lyra-gh-helper` systemd service unit** — the gh_token helper is a library today. The runtime model (Quadlet `Exec=` line in lyra-clipool starts the dispenser as uid 1501) is not yet expressed. Likely needs either a sidecar Quadlet container or a `lyra-gh-helper.service` running inside the same container at startup. Track as a follow-up; T12 host smoke will fail without it (the dispenser socket won't exist).
+- **`lyra-gh-helper` Quadlet runtime wiring** — STILL DEFERRED. The daemon code is now ready (entry above), but the host wiring that launches `python -m lyra.tools.gh_token.daemon` as uid 1501 *while sharing the dispenser tmpfs with the lyra-clipool container running as uid 1500* is non-trivial and needs M₁-verified design. Three options on the table — pick one in a follow-up PR before T12 host smoke runs:
+  - **(a) Sidecar Quadlet `.pod`** — define `lyra-gh.pod` containing both `lyra-gh-helper.container` (uid 1501) and `lyra-clipool.container` (uid 1500). Pod-level Tmpfs= sharing semantics need verification on Podman 5.x.
+  - **(b) Host tmpfs + shared bind mount** — provision.sh creates `~/.lyra/run/gh-token/` (owned uid 1000); both containers bind-mount it. Simpler, but cross-container uid-mapping for tmpfs file ownership is awkward under `keep-id`.
+  - **(c) Single-container (regression)** — run the daemon inside lyra-clipool as uid 1500 via an inline ExecStartPre=. Preserves the env-isolation invariant (token never in Claude's env via `exec env GH_TOKEN=…`), but loses the cache-file-readability isolation. Documented regression for v1 if (a)/(b) ship later.
+
+- **MintError → MintFailureEvent NATS publish** — UNCHANGED. See Finding F-1 above. Independent of the Quadlet wiring decision.
 
 ## Cross-References
 

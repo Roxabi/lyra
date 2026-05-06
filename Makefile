@@ -144,7 +144,7 @@ quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment g
 	[ $$_bad -eq 0 ] || exit 1
 	@echo "quadlet-lint passed"
 
-quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/containers/systemd/ + reload
+quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify (NO_RESTART=1 skips restart/verify)
 	@mkdir -p "$(QUADLET_DIR)"
 	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container} "$(QUADLET_DIR)/nats.container" \
 	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/lyra-nats.container"
@@ -159,9 +159,12 @@ quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/contai
 	@cp deploy/quadlet/lyra-telegram.container         "$(QUADLET_DIR)/lyra-telegram.container"
 	@cp deploy/quadlet/lyra-discord.container          "$(QUADLET_DIR)/lyra-discord.container"
 	@cp deploy/quadlet/lyra-clipool.container          "$(QUADLET_DIR)/lyra-clipool.container"
-	@systemctl --user daemon-reload
-	@echo "Quadlet units installed."
-	@echo "Next: run 'make quadlet-secrets-install' to (re)create Podman secrets from ~/.lyra/nkeys/."
+	@echo "Quadlet units copied."
+	@if [ "$(NO_RESTART)" = "1" ]; then \
+		echo "NO_RESTART=1 — skipping daemon-reload, restart, and verification."; \
+	else \
+		bash deploy/quadlet-install-verify.sh; \
+	fi
 
 quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.lyra/nkeys/auth.conf
 	@lyra-acl genkeys --emit-merged-authconf

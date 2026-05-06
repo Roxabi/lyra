@@ -385,6 +385,14 @@ systemctl --user restart lyra-nats
 
 **Upgrade:** after `make quadlet-install`, run `systemctl --user daemon-reload && systemctl --user restart lyra-nats` to pick up unit file changes.
 
+**Lint:** before deploying, validate all Quadlet unit files locally:
+
+```bash
+make quadlet-lint
+```
+
+Runs `podman quadlet --dryrun` (parse errors) and a comment-guard that rejects inline `#` comments on value lines — Quadlet does not strip them and Podman receives the literal text as a mount-option string (incident 2026-05-06, issue #1083). CI enforces the same check on every PR that touches `deploy/quadlet/`.
+
 ### Voice (STT/TTS)
 
 | Variable | Default | Description |

@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -128,6 +128,21 @@ quadlet-preflight:  ## advisory pre-flight checks before Quadlet install (non-bl
 		echo "         Fix: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=4222"; \
 		echo "         (or persist in /etc/sysctl.d/99-rootless-ports.conf)"; \
 	fi
+
+quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment guard (issue #1083)
+	@echo "==> quadlet --dryrun"
+	@QUADLET_UNIT_DIRS=$(CURDIR)/deploy/quadlet /usr/libexec/podman/quadlet --dryrun --user
+	@echo "==> inline-comment check"
+	@_bad=0; \
+	for f in deploy/quadlet/*.container deploy/quadlet/*.volume deploy/quadlet/*.network; do \
+	    [ -f "$$f" ] || continue; \
+	    if grep -Pn '^\s*[^#;].*[[:space:]]#' "$$f"; then \
+	        echo "ERROR: $$f has inline # comments on value lines (Quadlet does not strip them)"; \
+	        _bad=1; \
+	    fi; \
+	done; \
+	[ $$_bad -eq 0 ] || exit 1
+	@echo "quadlet-lint passed"
 
 quadlet-install: quadlet-preflight  ## install Quadlet units to ~/.config/containers/systemd/ + reload
 	@mkdir -p "$(QUADLET_DIR)"

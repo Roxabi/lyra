@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
 # Lyra GitHub App PEM rotation — replaces the lyra-gh-pem Podman secret and
-# restarts lyra-clipool. Aim: ≤10s downtime end-to-end.
+# restarts the helper container that mounts it.
 #
-# WARNING: in-flight git/gh operations using the old token are TCP-reset on
-# container restart; retry-on-rotate is the caller's responsibility. This
-# script does NOT drain in-flight operations.
+# Sidecar Pod design (post #1078): the PEM is consumed only by lyra-gh-helper
+# (uid 1501). lyra-clipool reads tokens via the dispenser socket, never the PEM,
+# so it does NOT need to restart for a key rotation. The downtime budget covers
+# the helper restart window during which the dispenser socket is briefly absent.
+#
+# WARNING: in-flight git/gh operations that already hold a minted token continue
+# uninterrupted. New token requests during the helper restart window get
+# ECONNREFUSED on the dispenser socket. Retry-on-rotate is the caller's
+# responsibility — this script does NOT drain in-flight operations.
 #
 # Usage: rotate-gh-key.sh /abs/path/to/new.pem
 #
-# Exits non-zero if the new PEM is missing/invalid, or if lyra-clipool fails
-# to return to "Up" state within 10s after restart.
+# Acceptance (#1078 AC#15): ≤10s end-to-end from `secret rm` to dispenser
+# socket reachable from inside lyra-clipool. Measured 2026-05-06 on M₁
+# (Podman 5.7.0): 0.58s.
 set -euo pipefail
 export LC_ALL=C
 
@@ -24,17 +31,20 @@ if podman secret inspect lyra-gh-pem &>/dev/null; then
   podman secret rm lyra-gh-pem
 fi
 podman secret create lyra-gh-pem "$NEW_PEM"
-systemctl --user restart lyra-clipool
+systemctl --user restart lyra-gh-helper.service
 
-# Wait for clipool to return to "Up" — clipool has no published port today, so
-# we gate on container status as a placeholder. Bound the wait at 10s (20×0.5s).
+# Gate on helper Up AND dispenser socket reachable from clipool — the latter is
+# the actual user-visible criterion (clipool must be able to mint tokens again).
+# Bound the wait at 10s (20×0.5s).
 for _ in $(seq 20); do
-  if podman ps --filter name=lyra-clipool --format '{{.Status}}' \
-       | grep -q '^Up '; then
-    echo "lyra-clipool restarted, secret rotated."
+  if podman ps --filter name=lyra-gh-helper --format '{{.Status}}' \
+       | grep -q '^Up ' \
+     && podman exec lyra-clipool test -S /run/lyra-gh-token/dispenser.sock \
+          2>/dev/null; then
+    echo "lyra-gh-helper restarted, dispenser reachable, secret rotated."
     exit 0
   fi
   sleep 0.5
 done
-echo "lyra-clipool did not return to Up state within 10s" >&2
+echo "rotation did not complete within 10s" >&2
 exit 1

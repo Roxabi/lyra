@@ -60,6 +60,17 @@ RUN chmod 0755 /opt/lyra-gh/*.py 2>/dev/null || true \
  && { [ -f /opt/lyra-gh/lyra-gh ] && chmod 0755 /opt/lyra-gh/lyra-gh && ln -s /opt/lyra-gh/lyra-gh /usr/local/bin/lyra-gh || true; }
 COPY --chown=root:root deploy/lyra-gh/git.config.tmpl /etc/lyra/git.config.tmpl
 
+# Take `gh` off PATH (AC#5 from #1078): the base image ships /usr/bin/gh which
+# would let any process — including the Claude subprocess — invoke gh directly
+# and inherit the token if one ever leaked into env. Move it to a non-PATH
+# location and point LYRA_GH_BIN at it so the lyra-gh shim still finds it
+# without anyone else's `command -v gh` succeeding.
+RUN test -x /usr/bin/gh \
+ && mv /usr/bin/gh /opt/lyra-gh/gh \
+ && chmod 0755 /opt/lyra-gh/gh \
+ || true
+ENV LYRA_GH_BIN=/opt/lyra-gh/gh
+
 WORKDIR /app
 
 ENV PATH="/app/.venv/bin:$PATH"

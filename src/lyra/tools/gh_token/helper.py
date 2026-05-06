@@ -4,7 +4,10 @@ Runs as uid 1501 (lyra-gh) inside lyra-clipool. Token never reaches Claude's
 subprocess env (uid 1500). Tmpfs parent /run/lyra-gh-token/ is 0700
 helper-owned — mounted by Quadlet, NOT chmod'd here.
 
-TODO(T3): add Unix socket dispenser (serve() on /run/lyra-gh-token/dispenser.sock)
+Unix socket dispenser (serve() on /run/lyra-gh-token/dispenser.sock) lives in
+dispenser.py — it imports the primitives defined here (TokenCache, JWTSigner,
+InstallationToken, MintError, mint).
+
 TODO(T4): add refresh_loop + rate caps (1/45s hard-cap, asyncio.Lock mint guard)
 TODO(T4): MintError → publish as MintFailureEvent on NATS (roxabi-contracts gh/ schema)
 """

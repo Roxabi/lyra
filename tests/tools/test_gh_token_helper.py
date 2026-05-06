@@ -1,12 +1,14 @@
-"""Unit tests for lyra.tools.gh_token.helper.
+"""Unit tests for lyra.tools.gh_token.helper and dispenser.
 
 Covers: InstallationToken expiry logic, JWTSigner (RS256 round-trip,
 password-rejection), TokenCache (atomic write, perms, corrupt/expired
-reads), and mint() (stub HTTP, input validation, error paths).
+reads), mint() (stub HTTP, input validation, error paths), and
+Dispenser (socket protocol, mode, error propagation).
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import stat
@@ -19,6 +21,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
+from lyra.tools.gh_token.dispenser import Dispenser
 from lyra.tools.gh_token.helper import (
     InstallationToken,
     JWTSigner,
@@ -256,3 +259,134 @@ async def test_mint_raises_on_network_error(rsa_pem_path: Path) -> None:
     err = exc_info.value
     assert err.http_status is None
     assert "network" in err.reason.lower() or "transport" in err.reason.lower()
+
+
+# ── Section F: Dispenser ──────────────────────────────────────────────────────
+
+_FUTURE_EXPIRES = "2030-01-01T00:00:00Z"
+_DISPENSER_SUCCESS_BODY = json.dumps(
+    {"token": "ghs_test", "expires_at": _FUTURE_EXPIRES}
+)
+
+
+def _make_dispenser(
+    rsa_pem_path: Path,
+    tmp_path: Path,
+    *,
+    transport: httpx.MockTransport,
+) -> tuple[Dispenser, TokenCache]:
+    """Build a Dispenser wired to a tmp cache + injected transport."""
+    signer = JWTSigner(rsa_pem_path)
+    cache = TokenCache(tmp_path / "token.json")
+    http = httpx.AsyncClient(transport=transport)
+    dispenser = Dispenser(
+        cache,
+        signer,
+        http,
+        app_id="12345",
+        install_id="123",
+    )
+    return dispenser, cache
+
+
+async def _round_trip(sock_path: Path, request: bytes) -> bytes:
+    """Connect to sock_path, send request, read full response."""
+    reader, writer = await asyncio.open_unix_connection(str(sock_path))
+    writer.write(request)
+    await writer.drain()
+    writer.write_eof()
+    data = await reader.read()
+    writer.close()
+    await writer.wait_closed()
+    return data
+
+
+@pytest.mark.asyncio
+async def test_dispenser_get_returns_credential_lines(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    transport = _mock_transport(201, _DISPENSER_SUCCESS_BODY)
+    dispenser, _ = _make_dispenser(rsa_pem_path, tmp_path, transport=transport)
+
+    sock_path = tmp_path / "dispenser.sock"
+    server = await dispenser.serve(sock_path)
+    try:
+        response = await _round_trip(sock_path, b"get\n")
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    assert response == b"username=x-access-token\npassword=ghs_test\n\n"
+
+
+@pytest.mark.asyncio
+async def test_dispenser_peek_returns_same_credential_lines(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    transport = _mock_transport(201, _DISPENSER_SUCCESS_BODY)
+    dispenser, _ = _make_dispenser(rsa_pem_path, tmp_path, transport=transport)
+
+    sock_path = tmp_path / "dispenser.sock"
+    server = await dispenser.serve(sock_path)
+    try:
+        response = await _round_trip(sock_path, b"peek\n")
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    assert response == b"username=x-access-token\npassword=ghs_test\n\n"
+
+
+@pytest.mark.asyncio
+async def test_dispenser_unknown_request_returns_error(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    transport = _mock_transport(201, _DISPENSER_SUCCESS_BODY)
+    dispenser, _ = _make_dispenser(rsa_pem_path, tmp_path, transport=transport)
+
+    sock_path = tmp_path / "dispenser.sock"
+    server = await dispenser.serve(sock_path)
+    try:
+        response = await _round_trip(sock_path, b"bogus\n")
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    assert response.startswith(b"error=")
+
+
+@pytest.mark.asyncio
+async def test_dispenser_socket_mode_0660_after_serve(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    transport = _mock_transport(201, _DISPENSER_SUCCESS_BODY)
+    dispenser, _ = _make_dispenser(rsa_pem_path, tmp_path, transport=transport)
+
+    sock_path = tmp_path / "dispenser.sock"
+    server = await dispenser.serve(sock_path)
+    try:
+        mode = stat.S_IMODE(sock_path.stat().st_mode)
+        assert mode == 0o660, f"expected 0660, got {oct(mode)}"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_dispenser_swallows_mint_error(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    # Transport that always returns 500 → mint() raises MintError.
+    transport = _mock_transport(500, '{"message":"Internal Server Error"}')
+    dispenser, _ = _make_dispenser(rsa_pem_path, tmp_path, transport=transport)
+
+    sock_path = tmp_path / "dispenser.sock"
+    server = await dispenser.serve(sock_path)
+    try:
+        # Must not raise — dispenser catches MintError and writes error line.
+        response = await _round_trip(sock_path, b"get\n")
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    assert response.startswith(b"error=")

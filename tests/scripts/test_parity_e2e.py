@@ -30,10 +30,17 @@ except ImportError:
 
 NATS_PY_AVAILABLE: bool = _nats_py_available
 
-pytestmark = pytest.mark.skipif(
-    not (NATS_AVAILABLE and NK_AVAILABLE),
-    reason="nats-server and nk must be on PATH — CI installs both",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not (NATS_AVAILABLE and NK_AVAILABLE),
+        reason="nats-server and nk must be on PATH — CI installs both",
+    ),
+    # Pin all tests in this file to a single pytest-xdist worker. The module-
+    # scope `nats_server` fixture binds fixed ports (4223 client, 8222 monitor);
+    # without grouping, each xdist worker tries to bind them and races — one
+    # winner, the rest hit NoServersError.
+    pytest.mark.xdist_group(name="nats_server"),
+]
 
 
 # ── Module-scoped fixtures ────────────────────────────────────────────────────

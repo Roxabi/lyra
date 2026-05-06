@@ -1,0 +1,176 @@
+---
+title: "Audit: #1078 token-isolation invariants"
+issue: 1078
+plan: artifacts/plans/1078-github-app-identity-plan.mdx
+auditor: security-auditor
+date: 2026-05-06
+status: complete
+---
+
+## Summary
+
+**Verdict: ship.** All 15 token-isolation invariants verified at code level. Three host-level invariants (uid mapping, dispenser-socket reachability, `env | grep GH_TOKEN` empty) deferred to T12/T16/T18 host smoke runbooks — by design (cannot be unit-tested). Two non-blocking notes filed under "Out-of-scope gaps" for follow-up.
+
+## Invariant Verification
+
+| # | Invariant | Status | Evidence |
+|---|-----------|--------|----------|
+| I-1 | Token never enters Claude's subprocess env (uid 1500) | ✓ | `src/lyra/tools/gh_token/lyra-gh:46` `exec env GH_TOKEN="$TOKEN" "$GH_BIN" "$@"` — exec replaces shim; no leak path. Helper/dispenser never export GH_TOKEN. |
+| I-2 | Token cache file unreadable to uid 1500 | ✓ | `helper.py:175-177` `tmp.write_text → tmp.chmod(0o600) → os.replace`. Quadlet `Tmpfs=/run/lyra-gh-token:mode=0700,uid=1501,gid=1501`. |
+| I-3 | Dispenser socket reachable to uid 1500 (cache file isn't) | ✓ | `dispenser.py:88` `os.chmod(sock_path, 0o660)` post-bind. Dockerfile creates gid 1502 + adds both 1500/1501 to `lyra-tokenuser`. |
+| I-4 | ReadOnly=true preserved; no writable Volume= for creds | ✓ | `lyra-clipool.container` has `ReadOnly=true`; only `Tmpfs=` + `Secret=` for credentials. Existing `Volume=` lines mount `~/.claude` / `~/.claude.json` / `~/projects` — none carry GitHub credentials. |
+| I-5 | PEM unreadable to uid 1500 | ✓ | `Secret=lyra-gh-pem,type=mount,target=gh-app.pem,mode=0400,uid=1501,gid=1501` |
+| I-6 | JWT signing rejects non-RSA / password-protected keys | ✓ | `helper.py:87-92` — `load_pem_private_key(raw, password=None)` + `isinstance(key, RSAPrivateKey)` guard. |
+| I-7 | install_id numeric-validated before URL composition | ✓ | `helper.py:205-208` — `_INSTALL_ID_RE` match before any HTTP call; raises `ValueError`. |
+| I-8 | Rate-cap honoured under burst | ✓ | `refresh.py:mint_capped` — fast-path cache → `async with lock` → re-check → `await rate_limiter.wait()`. Test `test_refresh_and_caps` asserts 12 concurrent calls = 1 GitHub hit. |
+| I-9 | Token never logged | ✓ | All `log.*` call sites in helper.py / dispenser.py / refresh.py log only metadata (subject, exc, machine, reason) — never `token` or `password`. Shells never `echo $TOKEN`; only metadata error messages. |
+| I-10 | PEM rotation TCP-resets in-flight ops (documented) | ✓ | `rotate-gh-key.sh:5-7` header WARNING; `docs/ops/gh-key-rotation.md` §2 step 2 callout box. |
+| I-11 | StartLimit prevents crash-loop GitHub /access_tokens spam | ✓ | `lyra-clipool.container` `[Unit]`: `StartLimitIntervalSec=60` + `StartLimitBurst=5`. |
+| I-12 | Hub container excluded from GitHub auth | ✓ | `grep -iE 'pem\|gh_app\|gh-app\|lyra-gh\|LYRA_GH_' deploy/quadlet/lyra-hub.container` returns 0 matches (preserves issue #941 boundary). |
+| I-13 | No Dockerfile install of `gh` CLI | ✓ | `grep -E '^(RUN apt-get install.*\bgh\b\|.*github-cli)' Dockerfile` returns 0 matches. |
+| I-14 | provision GH_PEM_PATH validated against shell injection | ✓ | `provision.sh:384` `PEM_RE='^[A-Za-z0-9._/-]+$'` regex check before `podman secret create`; explicit `error` on mismatch + missing-file. |
+| I-15 | TokenCache write is atomic chmod-before-rename | ✓ | `helper.py:175-177` order: `write_text → chmod(0o600) → os.replace`. No 0644 read window. |
+
+## Findings
+
+| # | Severity | Location | Recommendation |
+|---|----------|----------|----------------|
+| F-1 | Info | `helper.py` MintError emit path | MintError carries the data needed to construct a `MintFailureEvent` envelope, but the helper does not yet wire a NATS publish. Hub-side subscriber (T17) is consumer-ready. Mint failures will not propagate until the publish path is wired. Track as a follow-up issue; T18 host-smoke RED-GATE will surface this gap empirically. Non-blocking for v1 ship — manual log inspection on host can substitute for the NATS event during the M₁ rollout. |
+| F-2 | Low | `dispenser.py` socket-mode chmod ordering | `os.chmod(sock_path, 0o660)` runs after `start_unix_server`. Between bind (umask-default mode) and the chmod call, a connector with the wrong group could in theory race the server. Practical risk is near-zero (sub-microsecond window inside the asyncio constructor on the same process). If tightened, pre-set process umask to 0117 before bind, or atomic socket creation with explicit perms. Non-blocking. |
+
+## Deferred to Host Smoke
+
+These invariants require live-host verification — exercised by the manual runbooks landing alongside this PR:
+
+| # | Invariant | Runbook |
+|---|-----------|---------|
+| H-1 | `cat /run/lyra-gh-token/token.json` from inside Claude (uid 1500) → `Permission denied` | T12 (`tests/runbooks/v3_smoke.md` — see plan; manual on M₁) |
+| H-2 | `env \| grep GH_TOKEN` from Claude's bash returns empty AND `git push` succeeds | T12 |
+| H-3 | `which gh` empty inside the clipool container; `which lyra-gh` resolves | T12 |
+| H-4 | StartLimit hold actually triggers after 5 quick fails | T12 |
+| H-5 | Rotation completes ≤10 s end-to-end on M₁ | T16 (`tests/runbooks/v5_rotate.md`) |
+| H-6 | provision.sh idempotent on repeat run (no diff in `podman secret inspect`) | T14 (`tests/runbooks/v4_provision_idempo.md`) |
+| H-7 | Mint failure → NATS event → Telegram alert (E2E) | T18 (depends on F-1 above being resolved) |
+
+## Decision Log (post-audit)
+
+| Date | Change | Rationale | Trigger to revisit |
+|------|--------|-----------|--------------------|
+| 2026-05-06 | Collapse from 2 Apps (Lyra-prod + Lyra-dev) to 1 App (`lyra-harness`, id 3619198, install_id 129952244) on both M₁ and M₂. T21 removed from plan. | Solo dev — operational cost of 2 registrations/PEMs/rotation flows outweighs audit-log separation benefit. | 2nd contributor joins, OR compliance/audit-isolation requirement surfaces. |
+| 2026-05-06 | Inline `LYRA_GH_APP_ID` + `LYRA_GH_INSTALLATION_ID` into `lyra-gh-helper.container` (deployment binding). Drop `gh-helper.env.example`. | Public values, invariant across hosts post single-App. Belongs in git-versioned unit, not runtime data or secret. | New App registered, OR BotIdentity registry phase 2. |
+| 2026-05-06 | Switch `/run/lyra-gh-token` from per-container `Tmpfs=` to a shared Quadlet `lyra-gh-token.volume` (tmpfs driver, mode 1777). Drop `uid=`/`gid=` from all `Tmpfs=` options. Drop `-` prefix on `EnvironmentFile=`. | M₁ host smoke (Podman 5.7.0) revealed: (a) pod containers do NOT share mount ns → `Tmpfs=` per-container creates split filesystems (helper sees socket, clipool sees empty dir), (b) Podman ≥5.x rejects `uid=`/`gid=` in `Tmpfs=` options, (c) Quadlet doesn't honor systemd's `-%h/...` silent-if-missing prefix. | Podman adds pod-level Tmpfs= or systemd-prefix support, OR move to mount-ns-shared design. |
+| 2026-05-06 | Cancel T22 (M₂ deploy + smoke). Convert to a follow-up issue tracked separately. | Single-App collapse made M₁/M₂ identity invariant — T22 became a re-run with no new spec dimension (same code, same image, same App). M₂ Podman is 4.9.3, incompatible with the chosen `Pod=` design (option a in audit gap #2); requires either Podman ≥5.x upgrade or the option-(b) host-bind variant — both off-scope for v1. M₁ T12 already validates the full identity chain end-to-end. | M₂ Podman upgraded to ≥5.x, OR option-(b) host-bind Quadlet variant is implemented, OR a 2nd contributor needs distinct dev-host validation. |
+| 2026-05-06 | Repoint `rotate-gh-key.sh` from restarting `lyra-clipool` to restarting `lyra-gh-helper`, and gate the wait loop on dispenser-socket reachability from inside clipool (in addition to helper container Up). Update the rotation runbook accordingly. | The script was authored before the sidecar Pod design landed — the PEM secret now mounts only into `lyra-gh-helper` (invariant I-5), so a clipool restart is a no-op for actual rotation while the helper would keep serving tokens minted from the old PEM. T16 measurement on M₁ (Podman 5.7.0) with the corrected sequence: 0.578 s end-to-end, 17× under the 10 s AC#15 budget. Functional smoke `lyra-gh issue list --repo Roxabi/lyra` returned a real issue post-rotation. | New container joins the pod that also mounts the PEM, OR rotation script is refactored to drain in-flight operations. |
+| 2026-05-06 | Move `gh` binary off PATH (Dockerfile: `mv /usr/bin/gh /opt/lyra-gh/gh` + `ENV LYRA_GH_BIN=/opt/lyra-gh/gh`). Image rebuilt as `:1078-smoke` on M₁; `command -v gh` returns 127 inside clipool while `lyra-gh` shim resolves the binary via `LYRA_GH_BIN`. | AC#5 review pass found `/usr/bin/gh` was inherited from `ghcr.io/roxabi/base:latest` (the Dockerfile never installs gh, but never removes the inherited binary either). The shim's PATH-based fallback meant any process — including a Claude prompt-injection attempt — could `command -v gh` and find it. Now it's only reachable through the explicit env-pointed path which the shim alone consumes. | Base image stops shipping gh, OR the LYRA_GH_BIN env contract changes. |
+| 2026-05-06 | Descope AC#11 (App permissions = exactly 3) to a follow-up — `lyra-harness` ships with 17 permissions for v1; trim tracked in Roxabi/lyra#1094. | T19's "verify permissions" gate was satisfied loosely (App created, perms inspected) but not strictly tightened to the 3 spec'd. Solo-dev judgment: token isolation invariants I-1/I-2/I-3 hold regardless of App scope (a leaked token is still capability-bounded by the App, just to a wider blast radius). Trimming requires GitHub UI action + re-acceptance — not a code change. Out of scope to block #1078 v1 ship. | Token compromise incident (urgent), OR a feature concretely needs a non-spec'd scope (re-evaluate then), OR compliance / least-privilege audit ask. |
+
+Notes:
+- I-12 (hub container excluded from GitHub auth) is unchanged — the single App still does not go anywhere near the hub.
+- I-2/I-3 still hold: file-level perms (cache 0600 owned uid 1501; socket 0660 group 1502) enforce isolation. Sticky bit on the volume root (1777) prevents cross-uid file deletion.
+- M₁ smoke verified 2026-05-06 13:36 CEST: `lyra-gh issue list --repo Roxabi/lyra` returned real issues; `cat /run/lyra-gh-token/token.json` from clipool returns Permission denied; `env | grep GH_TOKEN` empty.
+
+## Out-of-Scope Gaps Observed
+
+- **MintError → MintFailureEvent NATS publish** — see Finding F-1. This is the producer side of the V6 alert path. T17 subscriber + contract envelope are in place; only the helper-side `nc.publish(SUBJECTS.gh_mint_failure(machine), serialize(event))` call is missing. Implementing it requires giving the helper its own NATS connection + nkey identity (the helper runs as uid 1501; the existing clipool nkey at `/run/secrets/clipool-worker.seed` is mode 0400 uid 1500 only). Two design options for follow-up: (a) issue a dedicated `lyra-gh.seed` per ADR-046 + mount with uid 1501, or (b) widen the clipool seed to gid 1502 and let both uids read it (smaller change, marginally weaker isolation). Recommend (a).
+
+- **Refresh-loop bootstrap caller** — RESOLVED in `src/lyra/tools/gh_token/daemon.py` (commit incoming). `run_daemon` starts both `Dispenser.serve()` and `refresh_loop` concurrently in one asyncio task group, with env-driven config (`LYRA_GH_APP_ID` + `LYRA_GH_INSTALLATION_ID` + `LYRA_GH_PEM_PATH`). 6 unit tests cover config validation, socket bind, and stale-socket cleanup. Entrypoint is `python -m lyra.tools.gh_token.daemon`.
+
+- **`lyra-gh-helper` Quadlet runtime wiring** — RESOLVED in this PR (option a: sidecar `.pod`). See `## Quadlet Sidecar Pod Design` section below.
+
+- **MintError → MintFailureEvent NATS publish** — UNCHANGED. See Finding F-1 above. Independent of the Quadlet wiring decision.
+
+## Quadlet Sidecar Pod Design (resolves audit gap #2)
+
+### Pod topology
+
+```
+lyra-gh.pod (infra container — shared net/ipc namespace)
+├── lyra-gh-helper.container   uid 1501 / gid 1502 (lyra-gh / lyra-tokenuser)
+│     PEM secret (0400/1501) ──► python -m lyra.tools.gh_token.daemon
+│     Tmpfs /run/lyra-gh-token (0710 / 1501:1502)
+│         ├── token.json       0600 / 1501:1501  (unreadable to uid 1500)
+│         └── dispenser.sock   0660 / 1501:1502  (reachable by uid 1500 via gid 1502)
+│
+└── lyra-clipool.container     uid 1500 / gid 1500 (lyra / lyra-tokenuser member)
+      Tmpfs /run/lyra-gh-token (same path — Podman shares tmpfs between pod containers)
+      lyra-gh shim ──► connect(dispenser.sock) ──► read token ──► exec env GH_TOKEN=… gh …
+```
+
+### File responsibilities
+
+| File | Role |
+|---|---|
+| `lyra-gh.pod` | Pod: shared UserNS (`keep-id:uid=1500`), network, start-limit |
+| `lyra-gh-helper.container` | Daemon: uid 1501, PEM secret, App ID inlined, `python -m lyra.tools.gh_token.daemon` |
+| `lyra-clipool.container` | Worker: uid 1500, Pod=lyra-gh.pod, no PEM, no GH_APP_ID env |
+
+### Why App ID is inlined (not in env file or DB)
+
+- App ID + install_id are public, not secret — no reason to protect them via Podman secret or per-host file
+- They are invariant across M₁/M₂ after the single-App (`lyra-harness`) decision (Decision Log 2026-05-06)
+- Helper sidecar (uid 1501, ReadOnly=true) cannot read clipool's LyraKeyring SQLite (uid 1500) — pushing via NATS would be overkill for two static public strings
+- Deployment binding belongs in the unit file (git-versioned, audit-trailed) — not runtime data (DB/keyring) nor Podman secret (reserved for actual credentials)
+- Revisit trigger: a 2nd GitHub App is registered, OR BotIdentity registry lands per Phase 2 of the consensus mdx
+
+### Mode 0710 traversal rationale
+
+`/run/lyra-gh-token` dir: `mode=0710, uid=1501, gid=1502`
+
+| Bit | Who | Effect |
+|---|---|---|
+| `rwx` (owner=1501) | helper daemon | full access: create token.json, bind socket |
+| `--x` (group=1502) | uid 1500 (member gid 1502) | can `connect()` to socket path but **cannot `ls`** dir nor `cat` token.json |
+| `---` (other) | everyone else | no access |
+
+This is the minimum mode satisfying I-2 (token unreadable) + I-3 (socket reachable). The `x` bit grants traversal only — not read (`r`). A process needs `r` to list directory contents; the lyra-gh shim constructs the socket path explicitly.
+
+### Pod-level Tmpfs= — verification result
+
+**Pod-level `Tmpfs=` is NOT supported in any Podman version (4.9–5.x).**
+
+- Podman 4.9.3 quadlet source (`/usr/libexec/podman/quadlet`, strings analysis): no `KeyTmpfs` in pod section.
+- Podman 5.0 source (GitHub inspection): `supportedPodKeys` contains `Network`, `Volume`, `PublishPort`, `UserNS`, `PodName`, `PodmanArgs`, `GlobalArgs`, `ContainersConfModule` — no `Tmpfs`.
+- **Decision**: both containers declare identical `Tmpfs=/run/lyra-gh-token:mode=0710,uid=1501,gid=1502`. Podman mounts the tmpfs into both containers' namespaces within the pod.
+
+### Same-image constraint
+
+Both containers use `Image=ghcr.io/roxabi/lyra:staging`. No separate `lyra-gh-helper:latest` build.
+
+- uid 1501 (`lyra-gh`) + gid 1502 (`lyra-tokenuser`) are baked into the image at Dockerfile lines 49–51.
+- `python -m lyra.tools.gh_token.daemon` entrypoint is in the same installed package.
+- Build matrix stays simple: one image, two containers, different `User=` directives.
+
+### M₁ smoke verification steps
+
+```bash
+# 1. Install units + secret
+make quadlet-install
+make quadlet-secrets-install          # requires ~/.lyra/gh-app.pem
+
+# 2. Start pod
+systemctl --user start lyra-gh-pod
+
+# 3. Verify both containers running
+podman ps --filter label=app=lyra
+
+# 4. I-2: token cache unreadable from uid 1500
+podman exec lyra-clipool sh -c 'cat /run/lyra-gh-token/token.json'
+# expected: Permission denied
+
+# 5. I-3: socket reachable, dir not listable
+podman exec lyra-clipool sh -c 'ls /run/lyra-gh-token/'
+# expected: Permission denied
+podman exec lyra-clipool sh -c 'socat - UNIX-CONNECT:/run/lyra-gh-token/dispenser.sock'
+# expected: connects and returns token JSON
+
+# 6. I-5: no PEM in clipool
+podman exec lyra-clipool sh -c 'ls /run/secrets/'
+# expected: gh-app.pem absent
+```
+
+## Cross-References
+
+- [Plan #1078](../plans/1078-github-app-identity-plan.mdx)
+- [Spec #1078](../specs/1078-github-app-identity-spec.mdx)
+- [Consensus](../analyses/lyra-github-app-identity-consensus.mdx) — commit `8983d0f1` on `docs/github-app-consensus`
+- Host runbooks: `tests/runbooks/v4_provision_idempo.md`, `docs/ops/gh-key-rotation.md`, plan T12/T16/T18 entries (manual execution on M₁/M₂)

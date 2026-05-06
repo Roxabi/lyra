@@ -131,7 +131,7 @@ non-blocking for plan generation.
 | Agent | Tasks | Files |
 |-------|-------|-------|
 | backend-dev | T1, T2, T3, T4, T6, T7, T17 | `packages/roxabi-contracts/.../gh/`, `src/lyra/tools/gh_token/*`, `src/lyra/core/hub/mint_failure_subscriber.py` |
-| devops | T9, T10, T11, T13, T15, T19, T20, T21, T22 | `Dockerfile`, `deploy/quadlet/*.container`, `deploy/provision.sh`, `deploy/scripts/rotate-gh-key.sh`, github.com config |
+| devops | T9, T10, T11, T13, T15, T19, T20, ~~T21~~, T22 | `Dockerfile`, `deploy/quadlet/*.container`, `deploy/provision.sh`, `deploy/scripts/rotate-gh-key.sh`, github.com config |
 | tester | T5, T8, T12, T14, T16, T18 | `tests/tools/*`, `tests/core/test_mint_failure_subscriber.py`, smoke runbooks |
 | security-auditor | T23 | (read-only audit pass) |
 | doc-writer | T24 | `docs/ops/gh-key-rotation.md` |
@@ -148,7 +148,7 @@ non-blocking for plan generation.
 | 4 | T3+T9 done | 4 ∥ | backend-dev-A: T4 · backend-dev-B: T6 · backend-dev-C: T7 · devops-A: T10 |
 | 5 | T4,T6,T7,T10 done | 2 ∥ | tester-A: T5 (RG-V1) → T12 (RG-V3) · tester-B: T8 (RG-V2) → T16 |
 | 6 | Wave 5 + T17 done | 2 ∥ | tester-A: T18 (RG-V6) · security-auditor: T23 |
-| 7 | V1–V6 + T19+T20 done | 1 | devops-A: T21 → T22 |
+| 7 | V1–V6 + T19+T20 done | 1 | devops-A: T22 |
 
 ## Consistency Report
 
@@ -305,11 +305,12 @@ non-blocking for plan generation.
 - **Traces:** S4 · AC ops-#2
 - **Phase:** GREEN
 
-#### T16: Rotation test — measure ≤10 s downtime on M₁ → tester
+#### T16: Rotation test — measure ≤10 s downtime on M₁ → tester — **completed (2026-05-06)**
 - **File:** `tests/runbooks/v5_rotate.md` (manual on M₁)
 - **Snippet:** generate test PEM · `time bash deploy/scripts/rotate-gh-key.sh /tmp/test.pem` · record wall-clock
-- **Verify:** time field ≤10 s; healthcheck pass at end
+- **Verify:** time field ≤10 s; helper container Up + dispenser socket reachable from clipool at end
 - **Expected:** ≤10 s end-to-end
+- **Result:** **0.578 s** measured on M₁ (Podman 5.7.0). Functional smoke `lyra-gh issue list --repo Roxabi/lyra` returned a real issue post-rotation. Bug uncovered: original script restarted `lyra-clipool` (no-op for sidecar design) — fixed in commit 283a90db to restart `lyra-gh-helper` (PEM consumer, invariant I-5) and gate on dispenser-socket reachability. Audit Decision Log updated.
 - **Time:** 5 min · **Difficulty:** 2
 - **Traces:** AC ops-#2
 - **Phase:** RED-GATE
@@ -325,11 +326,12 @@ non-blocking for plan generation.
 - **Traces:** N9 → S5 · AC mint-failure-#1, #2
 - **Phase:** GREEN
 
-#### T18: RED-GATE V6 — end-to-end mint failure simulation (revoke installation token) → tester
+#### T18: RED-GATE V6 — end-to-end mint failure simulation (revoke installation token) → tester — **deferred (2026-05-06) → #1082**
 - **File:** `tests/runbooks/v6_mint_failure.md` (manual integrating real hub + clipool on M₁)
 - **Snippet:** revoke installation token via GitHub UI · trigger Claude `git push` → fail · `nats sub lyra.gh.mint_failure.>` shows event with `contract_version`/`trace_id`/`issued_at` · staging Telegram chat receives alert ≤30 s
 - **Verify:** both NATS event AND Telegram message observed
 - **Expected:** envelope schema valid; Telegram message arrives within 30 s
+- **Status:** Blocked on audit gap F-1 — helper-side NATS publish is not wired (helper has no nkey identity, would require ADR-046 changes). T17 subscriber + contract envelope are in place; only the producer call is missing. Tracked separately in Roxabi/lyra#1082.
 - **Time:** 10 min · **Difficulty:** 3
 - **Traces:** RED-GATE V6 · AC mint-failure-#1, #2
 - **Phase:** RED-GATE
@@ -356,21 +358,14 @@ non-blocking for plan generation.
 
 ### Slice V8 — M₂ Lyra-dev parallel deployment (configuration repeat)
 
-#### T21: Register `Lyra-dev` GitHub App on github.com (scoped to dev/test repos only, NOT org-wide) → devops
-- **File:** github.com/settings/apps (manual UI)
-- **Snippet:** App `Lyra-dev` · same 3 permissions · install scope = dev/test repos only · download PEM
-- **Verify:** `gh api /apps/lyra-dev --jq '.permissions'` matches; install scope reviewed
-- **Expected:** distinct App ID + installation ID from Lyra-prod; install scope confirmed not Roxabi/lyra prod
-- **Time:** 8 min · **Difficulty:** 2
-- **Traces:** N1 (dev) · AC identity-#1, #3
-- **Phase:** GREEN [manual]
+#### ~~T21: Register `Lyra-dev` GitHub App on github.com (scoped to dev/test repos only, NOT org-wide) → devops~~ — **removed (2026-05-06)**
 
-#### T22: M₂ deploy — provision + restart + smoke push from dev clipool → devops
+> Collapsed to single App `lyra-harness` (id 3619198, install_id 129952244) on both M₁ and M₂. See spec AC #10 update.
+
+#### ~~T22: M₂ deploy — provision + restart + smoke push from dev clipool → devops~~ — **cancelled (2026-05-06) → #1081**
 - **File:** M₂ host operations
-- **Snippet:** copy PEM · `GH_PEM_PATH=… bash deploy/provision.sh` · `make lyra-clipool restart` · smoke `git push` against test repo · verify Quadlet env on M₂ ≠ M₁
-- **Verify:** smoke push succeeds; M₁ unaffected (check M₁ healthcheck still ✓); `app_id` strings on each host differ
-- **Expected:** all 3 conditions hold
-- **Time:** 10 min · **Difficulty:** 3
+- **Snippet:** copy PEM · `GH_PEM_PATH=… bash deploy/provision.sh` · `make lyra-clipool restart` · smoke `git push` against test repo · verify Quadlet env on M₂ = M₁ (same `LYRA_GH_APP_ID=3619198`)
+- **Cancellation:** Single-App collapse made M₁/M₂ identity invariant — T22 added no new spec dimension (same code, image, App). M₂ Podman 4.9.3 is also incompatible with the chosen `Pod=` design (option (a) in audit gap #2). M₁ T12 already validates the full chain end-to-end. Tracked as a follow-up in Roxabi/lyra#1081 with two design options when un-deferred (Podman upgrade vs option-(b) host-bind variant).
 - **Traces:** UC7 · AC identity-#3
 - **Phase:** RED-GATE [manual]
 
@@ -458,8 +453,8 @@ non-blocking for plan generation.
 
 | Task | Agent instance | blockedBy | Subject |
 |------|---------------|-----------|---------|
-| T21 | devops-A | T19 | Register Lyra-dev App on M₂ |
-| T22 | devops-A | T21,T18 | M₂ deploy + smoke push |
+| ~~T21~~ | ~~devops-A~~ | ~~T19~~ | ~~Register Lyra-dev App on M₂~~ — removed (2026-05-06) |
+| T22 | devops-A | T18 | M₂ deploy + smoke push |
 
 ## Task IDs
 
@@ -484,7 +479,8 @@ non-blocking for plan generation.
 - T18: 18 — RED-GATE V6 mint failure E2E
 - T19: 19 — Register Lyra-prod App
 - T20: 20 — Set Roxabi/lyra branch protection
-- T21: 21 — Register Lyra-dev App on M₂
-- T22: 22 — M₂ deploy + smoke push
+- T21: 21 — Register Lyra-dev App on M₂ **(removed 2026-05-06 — collapsed to single App lyra-harness)**
+- T22: 22 — M₂ deploy + smoke push **(cancelled 2026-05-06 → #1081 follow-up)**
+- T18: 18 — RED-GATE V6 mint failure E2E **(deferred 2026-05-06 → #1082 follow-up; blocked on F-1)**
 - T23: 23 — Security audit token-isolation invariants
 - T24: 24 — Document gh-key-rotation runbook

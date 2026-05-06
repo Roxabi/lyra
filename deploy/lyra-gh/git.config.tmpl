@@ -1,0 +1,14 @@
+# git config template for lyra subprocess (#1078)
+# Loaded via GIT_CONFIG_GLOBAL=/etc/lyra/git.config.tmpl in the Quadlet env.
+# Note on email: GitHub App commits resolve to
+# <app_id>+lyra-bot[bot]@users.noreply.github.com server-side.
+# The fallback below is human-readable; the noreply mapping handles bot identity.
+[user]
+    name = lyra[bot]
+    email = lyra-bot@users.noreply.github.com
+[credential]
+    helper = /opt/lyra-gh/git-credential-lyra-gh
+[init]
+    defaultBranch = main
+[safe]
+    directory = /home/lyra/projects/*

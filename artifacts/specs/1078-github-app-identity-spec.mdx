@@ -230,9 +230,10 @@ Slice ordering rationale:
 **North star (single observable for "this shipped")**: from Claude's Bash tool inside `lyra-clipool` on M₁, `git push origin <branch>` against Roxabi/lyra succeeds AND `env | grep -iE 'gh_token|github_token'` returns empty in the same shell.
 
 ### Identity & permissions
-- [ ] Single GitHub App `Lyra-prod` registered on M₁ + `Lyra-dev` on M₂ with **distinct** `app_id` and `installation_id`. App-only — **no** `lyra-bot` machine user account exists or is referenced
-- [ ] App permissions on both Apps = exactly `contents:write`, `pull-requests:write`, `issues:write`. Verified via `gh api /apps/<slug>` showing no other permission keys
-- [ ] M₁ clipool `Environment=` shows prod values; M₂ clipool `Environment=` shows dev values; `app_id` values are non-equal
+- [ ] Single GitHub App `lyra-harness` (App ID `3619198`, install_id `129952244`) registered + installed on the Roxabi org. M₁ AND M₂ Quadlet env (`clipool.env`) point to the same `LYRA_GH_APP_ID` and `LYRA_GH_INSTALLATION_ID`. Verifiable: `grep LYRA_GH_APP_ID deploy/quadlet/clipool.env` returns `3619198` on both hosts. App-only — **no** `lyra-bot` machine user account exists or is referenced
+  - *Decision 2026-05-06: collapsed from 2 Apps to 1 for solo-dev. Trigger to split: 2nd contributor or compliance-driven audit-log isolation.*
+- [ ] App permissions on the App = exactly `contents:write`, `pull-requests:write`, `issues:write`. Verified via `gh api /apps/lyra-harness` showing no other permission keys ⚠ **descoped 2026-05-06 → Roxabi/lyra#1094** — App currently has 17 permissions. Token isolation invariants I-1/I-2/I-3 hold regardless; this is a least-privilege gap, not a token-leak vector. See audit Decision Log.
+- [ ] M₁ AND M₂ clipool `Environment=` show the same `LYRA_GH_APP_ID=3619198` and `LYRA_GH_INSTALLATION_ID=129952244`
 
 ### Token isolation (token never reaches Claude)
 - [ ] From inside `lyra-clipool` as user `lyra` (uid 1500): `cat /run/lyra-gh-token/token.json` exits non-zero with "Permission denied"

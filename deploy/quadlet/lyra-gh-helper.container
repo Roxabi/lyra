@@ -1,0 +1,55 @@
+[Unit]
+Description=Lyra GitHub App token-mint helper (uid 1501)
+# Part of lyra-gh.pod — must start before clipool connects to the dispenser.
+# BindsTo= ensures helper and clipool are stopped together; if the helper crashes
+# permanently the pod is torn down rather than leaving clipool without a token source.
+BindsTo=lyra-gh-pod.service
+After=lyra-gh-pod.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+# Same image as clipool — lyra-gh user (uid 1501) + lyra-tokenuser group (gid 1502)
+# are baked into the image at Dockerfile lines 49–51. No separate helper image needed.
+Image=ghcr.io/roxabi/lyra:staging
+Label=io.containers.autoupdate=registry
+ContainerName=lyra-gh-helper
+Pod=lyra-gh.pod
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+
+# uid 1501 = lyra-gh user (created in Dockerfile); gid 1502 = lyra-tokenuser.
+# Primary group 1502 ensures the dispenser socket (mode 0660) is created with
+# gid=1502 so uid 1500 (member of gid 1502) can connect — invariant I-3.
+User=1501
+Group=1502
+
+# PEM secret — only on helper, never on clipool — invariant I-5.
+# mode=0400 uid=1501: only the helper process can read the key material.
+Secret=lyra-gh-pem,type=mount,target=gh-app.pem,mode=0400,uid=1501,gid=1501
+
+# GitHub App config — deployment binding for lyra-harness App (id 3619198).
+# App ID + install_id are public, invariant across M₁/M₂ post single-App decision
+# (Decision Log 2026-05-06). Inlined here (not per-host env file) per deployment-binding
+# taxonomy: these belong in git-versioned unit files, not runtime data or Podman secrets.
+Environment=LYRA_GH_APP_ID=3619198
+Environment=LYRA_GH_INSTALLATION_ID=129952244
+Environment=LYRA_GH_PEM_PATH=/run/secrets/gh-app.pem
+
+# Token-mint runtime state — shared with lyra-clipool via Quadlet .volume unit.
+# Pod containers do NOT share mount namespaces; Tmpfs= on sibling containers
+# creates two independent filesystems. lyra-gh-token.volume mounts the same
+# tmpfs-backed named volume into both containers (verified on M₁ Podman 5.7.0).
+# See lyra-gh-token.volume for mode/isolation rationale (file-level perms enforce
+# I-2/I-3; sticky 1777 dir mode allows uid 1500/1501 cohabitation).
+Volume=lyra-gh-token.volume:/run/lyra-gh-token:rw
+
+Exec=python -m lyra.tools.gh_token.daemon
+
+[Service]
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -29,6 +29,7 @@ from lyra.bootstrap.standalone.hub_standalone_helpers import (
     build_pairing_manager,
     load_agent_configs,
     shutdown_hub_runtime,
+    start_mint_failure_subscriber,
 )
 from lyra.bootstrap.wiring.nats_wiring import (
     wire_nats_discord_proxies,
@@ -212,6 +213,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         for d in dispatchers:
             await d.start()
 
+        mint_failure_sub = await start_mint_failure_subscriber(nc)
+
         await announce_hub_ready(nc)
         readiness_sub = await start_readiness_responder(nc, [hub.inbound_bus])
 
@@ -262,6 +265,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — startup wiring
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        if mint_failure_sub is not None:
+            await mint_failure_sub.stop()
         await shutdown_hub_runtime(
             hub,
             readiness_sub=readiness_sub,

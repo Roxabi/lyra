@@ -3,14 +3,11 @@
 Helper processes that run inside `lyra-clipool` but with **isolated identity** from Claude (uid 1500).
 Each submodule is a self-contained utility — pure stdlib + project deps, no hub/core imports.
 
-TODO(T3): add Unix socket dispenser
-TODO(T4): add refresh_loop + rate caps
-
 ## Submodule map
 
 | Submodule | Process uid | Purpose |
 |-----------|-------------|---------|
-| `gh_token/` | 1501 (`lyra-gh`) | JWT signer → GitHub installation token → tmpfs cache → dispenser socket |
+| `gh_token/` | 1501 (`lyra-gh`) | JWT signer → GitHub installation token → tmpfs cache → dispenser socket → rate-capped refresh |
 
 ## Key invariants
 

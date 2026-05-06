@@ -12,6 +12,7 @@ import asyncio
 import base64
 import json
 import stat
+import unittest.mock as mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -29,6 +30,8 @@ from lyra.tools.gh_token.helper import (
     TokenCache,
     mint,
 )
+from lyra.tools.gh_token.rate_limit import RateLimiter
+from lyra.tools.gh_token.refresh import mint_capped, refresh_loop
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
@@ -390,3 +393,299 @@ async def test_dispenser_swallows_mint_error(
         await server.wait_closed()
 
     assert response.startswith(b"error=")
+
+
+_RL_SLEEP = "lyra.tools.gh_token.rate_limit.asyncio.sleep"
+_REFRESH_SLEEP = "lyra.tools.gh_token.refresh.asyncio.sleep"
+
+
+# ── Section G: RateLimiter ────────────────────────────────────────────────────
+
+
+class FakeClock:
+    """Monotonic fake clock for deterministic rate-limiter tests."""
+
+    def __init__(self, start: float = 0.0) -> None:
+        self._t = start
+
+    def now(self) -> float:
+        return self._t
+
+    def advance(self, seconds: float) -> None:
+        self._t += seconds
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_first_call_passes_immediately() -> None:
+    """The very first wait() must not block (last_release initialised to allow it)."""
+    clock = FakeClock(start=100.0)
+    rl = RateLimiter(min_interval_s=45.0, clock=clock.now)
+    slept: list[float] = []
+
+    async def fake_sleep(s: float) -> None:
+        slept.append(s)
+
+    with mock.patch(_RL_SLEEP, side_effect=fake_sleep):
+        await rl.wait()
+
+    assert slept == [], "first call must not sleep"
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_serialises_concurrent_waiters() -> None:
+    """Three concurrent waiters each call mark(); only one passes per interval."""
+    clock = FakeClock(start=0.0)
+    rl = RateLimiter(min_interval_s=45.0, clock=clock.now)
+
+    passage_order: list[int] = []
+
+    async def worker(idx: int) -> None:
+        await rl.wait()
+        passage_order.append(idx)
+        clock.advance(46.0)
+        rl.mark()
+
+    async def fake_sleep(s: float) -> None:
+        clock.advance(s)
+
+    with mock.patch(_RL_SLEEP, side_effect=fake_sleep):
+        await asyncio.gather(worker(0), worker(1), worker(2))
+
+    assert sorted(passage_order) == [0, 1, 2]
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_mark_resets_interval() -> None:
+    """After mark(), a call within min_interval_s must sleep the remainder."""
+    clock = FakeClock(start=0.0)
+    rl = RateLimiter(min_interval_s=45.0, clock=clock.now)
+    rl.mark()  # mark at t=0
+
+    clock.advance(10.0)  # now t=10; 35 s remain
+
+    slept: list[float] = []
+
+    async def fake_sleep(s: float) -> None:
+        slept.append(s)
+        clock.advance(s)
+
+    with mock.patch(_RL_SLEEP, side_effect=fake_sleep):
+        await rl.wait()
+
+    assert len(slept) == 1
+    assert abs(slept[0] - 35.0) < 0.01, f"expected ~35s sleep, got {slept[0]}"
+
+
+# ── Section H: mint_capped ────────────────────────────────────────────────────
+
+
+def _make_mint_capped_args(
+    rsa_pem_path: Path,
+    tmp_path: Path,
+    *,
+    transport: httpx.MockTransport,
+    min_interval_s: float = 0.0,
+    clock: "FakeClock | None" = None,
+) -> dict:
+    """Return kwargs suitable for a mint_capped() call."""
+    signer = JWTSigner(rsa_pem_path)
+    cache = TokenCache(tmp_path / "token.json")
+    http = httpx.AsyncClient(transport=transport)
+    if clock is None:
+        rl = RateLimiter(min_interval_s=min_interval_s)
+    else:
+        rl = RateLimiter(min_interval_s=min_interval_s, clock=clock.now)
+    return {
+        "app_id": "12345",
+        "install_id": "123",
+        "signer": signer,
+        "http": http,
+        "cache": cache,
+        "lock": asyncio.Lock(),
+        "rate_limiter": rl,
+    }
+
+
+@pytest.mark.asyncio
+async def test_mint_capped_uses_cache_when_fresh(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    """mint_capped returns cached token without hitting httpx when cache is fresh."""
+    http_hit_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal http_hit_count
+        http_hit_count += 1
+        return httpx.Response(201, text=_SUCCESS_BODY)
+
+    transport = httpx.MockTransport(handler)
+    args = _make_mint_capped_args(rsa_pem_path, tmp_path, transport=transport)
+
+    fresh_token = InstallationToken(
+        token="ghs_cached",
+        expires_at=datetime(2030, 1, 1, tzinfo=timezone.utc),
+    )
+    args["cache"].write(fresh_token)
+
+    result = await mint_capped(**args)
+
+    assert result.token == "ghs_cached"
+    assert http_hit_count == 0, "must not hit httpx when cache is fresh"
+
+
+@pytest.mark.asyncio
+async def test_mint_capped_locks_concurrent_callers(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    """5 concurrent mint_capped calls with empty cache must hit GitHub exactly once."""
+    http_hit_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal http_hit_count
+        http_hit_count += 1
+        return httpx.Response(201, text=_SUCCESS_BODY)
+
+    transport = httpx.MockTransport(handler)
+    args = _make_mint_capped_args(rsa_pem_path, tmp_path, transport=transport)
+
+    results = await asyncio.gather(*[mint_capped(**args) for _ in range(5)])
+
+    assert http_hit_count == 1, f"expected 1 http hit, got {http_hit_count}"
+    assert all(r.token == "ghs_test" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_mint_capped_rate_caps_at_45s(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    """Rate limiter blocks second mint within 45s; 2 total http hits after advance."""
+    http_hit_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal http_hit_count
+        http_hit_count += 1
+        return httpx.Response(201, text=_SUCCESS_BODY)
+
+    transport = httpx.MockTransport(handler)
+    clock = FakeClock(start=0.0)
+    args = _make_mint_capped_args(
+        rsa_pem_path, tmp_path, transport=transport, min_interval_s=45.0, clock=clock
+    )
+
+    # First call — cold cache.
+    await mint_capped(**args)
+    assert http_hit_count == 1
+
+    # Write near-expiry token to force mint path (expires in 4 min → leeway=300s).
+    from datetime import timedelta
+    near = InstallationToken(
+        token="ghs_near",
+        expires_at=datetime.now(tz=timezone.utc) + timedelta(minutes=4),
+    )
+    args["cache"].write(near)
+    clock.advance(10.0)  # only 10s elapsed — rate limiter will sleep 35s
+
+    slept: list[float] = []
+
+    async def fake_sleep(s: float) -> None:
+        slept.append(s)
+        clock.advance(s)
+
+    with mock.patch(_RL_SLEEP, side_effect=fake_sleep):
+        await mint_capped(**args, leeway_s=300)
+
+    assert http_hit_count == 2
+    assert len(slept) >= 1, "rate limiter must have slept"
+
+
+@pytest.mark.asyncio
+async def test_refresh_and_caps(rsa_pem_path: Path, tmp_path: Path) -> None:
+    """12 rapid mint_capped calls → 1 http hit; advance clock 46s → 2nd hit."""
+    http_hit_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal http_hit_count
+        http_hit_count += 1
+        return httpx.Response(201, text=_SUCCESS_BODY)
+
+    transport = httpx.MockTransport(handler)
+    clock = FakeClock(start=0.0)
+    args = _make_mint_capped_args(
+        rsa_pem_path, tmp_path, transport=transport, min_interval_s=45.0, clock=clock
+    )
+
+    # 12 rapid concurrent calls — empty cache → exactly 1 http hit.
+    results = await asyncio.gather(*[mint_capped(**args) for _ in range(12)])
+    assert http_hit_count == 1, (
+        f"expected 1 http hit after 12 rapid calls, got {http_hit_count}"
+    )
+    assert all(r.token == "ghs_test" for r in results)
+
+    # Advance clock past the cap and write near-expiry token.
+    clock.advance(46.0)
+    from datetime import timedelta
+    near = InstallationToken(
+        token="ghs_near",
+        expires_at=datetime.now(tz=timezone.utc) + timedelta(minutes=4),
+    )
+    args["cache"].write(near)
+
+    await mint_capped(**args, leeway_s=300)
+    assert http_hit_count == 2, (
+        f"expected 2 total http hits after clock advance, got {http_hit_count}"
+    )
+
+
+# ── Section I: refresh_loop ───────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_refresh_loop_warms_near_expiry_cache(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    """refresh_loop triggers a mint when cache is near expiry."""
+    http_hit_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal http_hit_count
+        http_hit_count += 1
+        return httpx.Response(201, text=_SUCCESS_BODY)
+
+    transport = httpx.MockTransport(handler)
+    signer = JWTSigner(rsa_pem_path)
+    cache = TokenCache(tmp_path / "token.json")
+    http = httpx.AsyncClient(transport=transport)
+    lock = asyncio.Lock()
+    rl = RateLimiter(min_interval_s=0.0)
+
+    # Near-expiry: expires in 4 minutes from now, leeway=600s → is_near_expiry True.
+    from datetime import timedelta
+    near = InstallationToken(
+        token="ghs_near",
+        expires_at=datetime.now(tz=timezone.utc) + timedelta(minutes=4),
+    )
+    cache.write(near)
+
+    sleep_count = 0
+
+    async def fake_sleep(s: float) -> None:
+        nonlocal sleep_count
+        sleep_count += 1
+        if sleep_count >= 2:
+            raise asyncio.CancelledError
+
+    with mock.patch(_REFRESH_SLEEP, side_effect=fake_sleep):
+        with pytest.raises(asyncio.CancelledError):
+            await refresh_loop(
+                app_id="12345",
+                install_id="123",
+                signer=signer,
+                http=http,
+                cache=cache,
+                lock=lock,
+                rate_limiter=rl,
+                sleep_interval_s=60,
+                near_expiry_leeway_s=600,
+            )
+
+    assert http_hit_count == 1, "refresh_loop must mint when cache is near expiry"

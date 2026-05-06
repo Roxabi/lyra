@@ -14,8 +14,6 @@ Protocol (per https://git-scm.com/docs/git-credential#IOFMT):
     password=<token>\\n
     \\n
   Anything else → server writes "error=unsupported request\\n" and closes.
-
-TODO(T4): add refresh_loop integration, asyncio.Lock mint guard, 1/45s hard-cap.
 """
 
 from __future__ import annotations
@@ -23,7 +21,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -34,9 +31,8 @@ from lyra.tools.gh_token.helper import (
     MintError,
     TokenCache,
 )
-from lyra.tools.gh_token.helper import (
-    mint as mint_fn,
-)
+from lyra.tools.gh_token.rate_limit import RateLimiter
+from lyra.tools.gh_token.refresh import mint_capped
 
 log = logging.getLogger(__name__)
 
@@ -47,9 +43,13 @@ class Dispenser:
     """Async Unix socket server that vends git-credential protocol responses.
 
     Constructed with injected cache/signer/http so tests can stub all I/O.
+
+    A single ``asyncio.Lock`` and ``RateLimiter`` are held per instance,
+    serialising concurrent mint operations and hard-capping GitHub API calls
+    to ≤1 per 45 s (well inside GitHub's 1/min limit).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         cache: TokenCache,
         signer: JWTSigner,
@@ -57,12 +57,16 @@ class Dispenser:
         *,
         app_id: str,
         install_id: str,
+        lock: asyncio.Lock | None = None,
+        rate_limiter: RateLimiter | None = None,
     ) -> None:
         self._cache = cache
         self._signer = signer
         self._http = http
         self._app_id = app_id
         self._install_id = install_id
+        self._lock = lock if lock is not None else asyncio.Lock()
+        self._rate_limiter = rate_limiter if rate_limiter is not None else RateLimiter()
 
     # ── public ────────────────────────────────────────────────────────────────
 
@@ -88,22 +92,20 @@ class Dispenser:
     # ── internal ──────────────────────────────────────────────────────────────
 
     async def _resolve_token(self) -> InstallationToken:
-        """Return a valid token from cache, minting a fresh one if needed."""
-        cached = self._cache.read()
-        if cached is not None:
-            now = datetime.now(tz=timezone.utc)
-            if not cached.is_near_expiry(now):
-                return cached
+        """Return a valid token from cache, minting a fresh one if needed.
 
-        # Cache empty or near-expiry — mint fresh.
-        it = await mint_fn(
+        Delegates to ``mint_capped`` which enforces the single-flight lock
+        and the 1/45 s rate cap.
+        """
+        return await mint_capped(
             self._app_id,
             self._install_id,
             signer=self._signer,
             http=self._http,
+            cache=self._cache,
+            lock=self._lock,
+            rate_limiter=self._rate_limiter,
         )
-        self._cache.write(it)
-        return it
 
     async def _handle(
         self,

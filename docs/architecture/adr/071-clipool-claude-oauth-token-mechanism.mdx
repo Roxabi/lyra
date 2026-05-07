@@ -47,7 +47,7 @@ This injects the secret value directly as an environment variable in the contain
 `type=env` carries known exposure risks that are accepted in our deployment:
 
 - **Token visible in `/proc/1/environ` of clipool**: bounded by single-tenant container (no co-tenant processes today). `DropCapability=all`, `ReadOnly=true`, and `UserNS=keep-id` confine the blast radius.
-- **`podman inspect` may expose value** ([containers/podman#23788](https://github.com/containers/podman/issues/23788), claimed fixed in PR #23959 — version unverified on M₁). Only readable by users with access to the Podman socket (= the daemon user).
+- **`podman inspect` value exposure** ([containers/podman#23788](https://github.com/containers/podman/issues/23788), value-leak fixed in PR #23959). Verified on M₁ (Podman 5.7.0, 2026-05-07): `Config.Env` contains an entry keyed by the *secret name* with the value masked — `lyra-claude-oauth=*******`. The actual token value never appears. Note: the entry is keyed by secret name, not by the `target=` alias, so `Config.Env` exposes which Podman secrets are bound but not their contents. Only readable by users with access to the Podman socket (= the daemon user) regardless.
 - **Token also in `/proc/<claude-pid>/environ` of every subprocess**: intrinsic to env-based auth; identical exposure regardless of upstream delivery mechanism.
 
 `hidepid=2` on the container's `/proc` mount is intentionally NOT set per `lyra-clipool.container:65-70` — it would break `podman exec` introspection valuable for ops, and the single-tenant scope makes the `/proc/environ` window already-bounded.
@@ -62,33 +62,85 @@ This injects the secret value directly as an environment variable in the contain
 - Rotation: `deploy/scripts/rotate-claude-oauth.sh /path/to/new.tok` — same pattern, plus `systemctl --user restart lyra-clipool.service` to pick up the new env var binding.
 - TTL: 1 year. No upstream programmatic revocation API ([anthropics/claude-code#34198](https://github.com/anthropics/claude-code/issues/34198) open). Stolen token = up to 1y exposure window.
 
-## Fallback path: `type=mount` if Podman bug #28075 forces it
+## Verification outcome (#1108, performed 2026-05-07 on M₁ — Podman 5.7.0)
 
-[containers/podman#28075](https://github.com/containers/podman/issues/28075) is a confirmed bug in Podman 5.7.1: `--secret name,type=env,target=X` loses the `target=` mapping after `Restart=on-failure` triggers a restart. The unit declares `Restart=on-failure` + `StartLimitBurst=5` (`lyra-clipool.container:9-10`), making it directly susceptible. Fix status in Ubuntu 26.04's apt podman 5.x is unverified.
+Two upstream Podman bugs intersect with our `type=env` choice. Both were tested empirically against the prod machine.
 
-**Verification preflight** (#1108):
+### #28075 — `target=` mapping survives `Restart=on-failure`?
 
-```bash
-# On M₁:
-podman version | grep -E '^Version'
-echo 'TEST_VALUE_42' > /tmp/test-restart-tok && chmod 600 /tmp/test-restart-tok
-podman secret create test-env-restart-1105 /tmp/test-restart-tok
-# In a throwaway test unit with Secret=...,type=env,target=TEST_VAR + Restart=on-failure:
-# force a restart, then:
-podman exec <test-container> printenv TEST_VAR  # MUST print "TEST_VALUE_42"
-# If it prints "test-env-restart-1105" → bug unfixed → switch to type=mount
-podman secret rm test-env-restart-1105 && shred -u /tmp/test-restart-tok
+[containers/podman#28075](https://github.com/containers/podman/issues/28075) reports that in Podman 5.7.1, `--secret name,type=env,target=X` loses the `target=` mapping after a systemd-triggered restart, leaving the variable named after the secret rather than the `target=` alias. The unit declares `Restart=on-failure` + `StartLimitBurst=5` (`lyra-clipool.container:9-10`), making it directly susceptible.
+
+**Outcome: NOT reproduced on M₁.** Tested via a throwaway Quadlet unit identical in shape to the real one (`Secret=…,type=env,target=TEST_VAR` + `Restart=on-failure` + alpine sleep loop). After forcing a crash with `podman kill --signal=KILL` so systemd restarts the unit:
+
+```
+--- BEFORE restart ---
+TEST_VALUE_42
+--- AFTER restart ---
+TEST_VALUE_42  ← target= mapping preserved; bug not present in 5.7.0
 ```
 
-**If the bug is unfixed on M₁**, switch to:
+Reproduction script kept inline below for re-running on future Podman bumps.
+
+### #23788 — `podman inspect` value exposure?
+
+[containers/podman#23788](https://github.com/containers/podman/issues/23788), value-leak fixed in PR #23959. **Outcome on M₁ (Podman 5.7.0):** the token value never appears in `Config.Env`, but the secret-name binding does, with the value masked:
+
+```
+$ podman inspect lyra-clipool | jq -r '.[].Config.Env[]'
+NATS_URL=nats://lyra-nats:4222
+LYRA_CLAUDE_CWD=/home/lyra/projects
+GIT_CONFIG_GLOBAL=/etc/lyra/git.config.tmpl
+…
+lyra-claude-oauth=*******            ← secret-name binding, value masked
+```
+
+Two observations:
+
+1. The actual `CLAUDE_CODE_OAUTH_TOKEN` value is only present in `/proc/1/environ` of the running container, not in inspect output.
+2. The masked entry is keyed by the **secret name** (`lyra-claude-oauth`), not the `target=` alias (`CLAUDE_CODE_OAUTH_TOKEN`). This means `podman inspect` exposes *which Podman secrets are bound* to the container, but not their values. Acceptable for our threat model; document as "secret-name metadata leak" if a future audit cares.
+
+### Re-verification recipe (run after Podman version bumps on M₁)
+
+```bash
+echo 'TEST_VALUE_42' > /tmp/test-restart-1108.tok && chmod 600 /tmp/test-restart-1108.tok
+podman secret create test-env-restart-1108 /tmp/test-restart-1108.tok
+cat > ~/.config/containers/systemd/test-restart-1108.container <<EOF
+[Unit]
+Description=Test #28075 reproduction (throwaway)
+[Container]
+ContainerName=test-restart-1108
+Image=docker.io/library/alpine:latest
+Secret=test-env-restart-1108,type=env,target=TEST_VAR
+Exec=sh -c "sleep infinity"
+[Service]
+Restart=on-failure
+RestartSec=2
+EOF
+systemctl --user daemon-reload
+systemctl --user start test-restart-1108.service
+sleep 2
+podman exec test-restart-1108 printenv TEST_VAR   # expect: TEST_VALUE_42
+podman kill --signal=KILL test-restart-1108
+sleep 5
+podman exec test-restart-1108 printenv TEST_VAR   # expect: TEST_VALUE_42 (literal name = bug present)
+# Cleanup:
+systemctl --user stop test-restart-1108.service
+rm -f ~/.config/containers/systemd/test-restart-1108.container
+systemctl --user daemon-reload
+podman rm -f test-restart-1108
+podman secret rm test-env-restart-1108
+shred -u /tmp/test-restart-1108.tok
+```
+
+## Fallback path: `type=mount` (deferred — not currently triggered)
+
+If a future Podman version on M₁ re-introduces #28075 (re-run the recipe above to detect), switch to:
 
 ```ini
 Secret=lyra-claude-oauth,type=mount,target=claude-oauth.tok,mode=0400,uid=1500,gid=1500
 ```
 
 And update `cli_pool_worker._spawn` to read `/run/secrets/claude-oauth.tok` once at spawn time, inject the contents into the subprocess `env` dict, then drop the value from the parent dict. This restores parity with the rest of the repo's `type=mount` convention at the cost of a 1-file Python change.
-
-This ADR is amended in place when the preflight outcome is known.
 
 ## Alternatives rejected
 
@@ -103,5 +155,5 @@ This ADR is amended in place when the preflight outcome is known.
 ## Consequences
 
 - One `type=env` secret in the repo, asymmetric with the otherwise-uniform `type=mount` convention. Documented here.
-- A Podman version regression on M₁ (revert to a build affected by #28075) would silently break clipool auth on every restart. Mitigation: #1108 verification preflight; long-term fallback to `type=mount` if reproducible.
+- A Podman version regression on M₁ (a future bump that re-introduces #28075) would silently break clipool auth on every restart. Mitigation: re-run the verification recipe in this ADR after Podman upgrades on M₁; switch to the documented `type=mount` fallback if reproducible.
 - The `_SAFE_ENV_KEYS` allowlist now mixes locale + auth concerns. If a second auth env var lands (e.g. MCP), revisit the split that was deferred in #1105 review.

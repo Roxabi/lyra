@@ -1,7 +1,7 @@
 ---
 title: Canonical lyra.llm wire — full ACL migration + hub switch to NatsLlmClient
 issue: 1104
-status: approved
+status: approved-with-pivot
 tier: F-lite
 date: 2026-05-07
 frame: artifacts/frames/1104-canonical-lyra-llm-wire-frame.mdx
@@ -24,13 +24,37 @@ canonical workers under epic
 Bring the LLM NATS wire to full canonical parity with voice (ADR-044) and
 image (ADR-046/050) so the harness path (`HarnessCLI → hub → llmCLI worker
 → LiteLLM → llama-server`) lights up end-to-end on M₁ once the sister PR
-[llmCLI #12](https://github.com/Roxabi/llmCLI/issues/12) lands.
+llmCLI [PR #18](https://github.com/Roxabi/llmCLI/pull/18) lands.
 
 **Why now:** epic [#987](https://github.com/Roxabi/lyra/issues/987)
 deprecates the Anthropic API path; the harness route via llmCLI + LiteLLM
 + local llama-server is its replacement. This issue is the lyra-side gate
 on that replacement landing — without it, P1-high traffic still requires
 external paid API keys.
+
+## Pivot Outcome (post-implementation amendment, 2026-05-07)
+
+This spec was approved on the premise that `NatsLlmClient` was a drop-in
+replacement for `NatsLlmDriver`. Implementation surfaced that
+`NatsLlmClient` does not implement the `LlmProvider` protocol — it lacks
+`capabilities` / `complete` / `is_alive` and its `stream(...)` yields
+`AsyncIterator[str]` rather than `AsyncIterator[LlmEvent]`. PR #1121
+pivoted to a subject-literal-only migration in `NatsLlmDriver`
+(which IS the `LlmProvider`). The full bootstrap swap originally scoped
+under AC-4 / AC-5 / AC-7 is deferred to follow-up issue
+[#1119](https://github.com/Roxabi/lyra/issues/1119).
+
+| Original AC | Status |
+|-------------|--------|
+| AC-1, AC-2, AC-3 (ACL canonical) | Met by PR #1121 |
+| AC-4 (`init_nats_llm` returns `NatsLlmClient`) | Deferred to #1119 |
+| AC-5 (5 wiring points reference `NatsLlmClient`) | Deferred to #1119 |
+| AC-6 (`NatsLlmClient` publishes `SUBJECTS.generate_request`) | Met by PR #1121 (still a useful change for #1119) |
+| AC-7 (`NatsLlmDriver` `# DEPRECATED` header) | N/A post-pivot — driver IS the canonical impl now; #1119 will remove it after `NatsLlmClient` reaches conformance |
+| AC-8 (`pytest tests/llm/drivers/test_nats_*` passes) | Met by PR #1121 (subject literals updated; full client-path migration deferred to #1119) |
+
+The user-visible outcome (canonical wire on the deployed broker, harness
+path unblocked, sister PR llmCLI [PR #18](https://github.com/Roxabi/llmCLI/pull/18) mergeable) is delivered by PR #1121.
 
 ## Users
 
@@ -41,8 +65,7 @@ external paid API keys.
   - HarnessCLI consumers — end-users running local-only LLM turns;
     failure mode if this lands broken = harness-driven turns time out
     with "no responder" or fail ACL check at the broker
-  - llmCLI worker (sister PR
-    [#12](https://github.com/Roxabi/llmCLI/issues/12)) — cannot deploy
+  - llmCLI worker (sister [PR #18](https://github.com/Roxabi/llmCLI/pull/18)) — cannot deploy
     its `LlmNatsAdapter` until canonical ACL is live on the broker
   - Epic [#987](https://github.com/Roxabi/lyra/issues/987) (Anthropic
     deprecation) — blocked end-to-end until both PRs merge
@@ -223,8 +246,7 @@ restarts onto the new client.
 Not a software AC — surfaced in PR description and enforced by reviewer
 at "ready for review" handoff:
 
-- PR #1104 and llmCLI
-  [#12](https://github.com/Roxabi/llmCLI/issues/12) MUST reach
+- PR #1104 and llmCLI [PR #18](https://github.com/Roxabi/llmCLI/pull/18) MUST reach
   "ready for review" simultaneously and merge in the same window. Either
   PR alone leaves the harness path red.
 - M₁ smoke test

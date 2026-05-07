@@ -29,7 +29,9 @@ TOKEN_PATH_RE='^[A-Za-z0-9._/-]+$'
 if podman secret inspect lyra-claude-oauth &>/dev/null; then
   podman secret rm lyra-claude-oauth
 fi
-podman secret create lyra-claude-oauth "$NEW_TOKEN"
+# Pipe via `tr -d '\n'` so a trailing newline (common from `cmd > file`) cannot
+# leak into the secret value and silently break auth at runtime.
+tr -d '\n' < "$NEW_TOKEN" | podman secret create lyra-claude-oauth -
 systemctl --user restart lyra-clipool.service
 
 # Gate on clipool Up — env vars are picked up at container start, so once the

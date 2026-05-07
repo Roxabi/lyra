@@ -429,13 +429,15 @@ if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
 else
   if [[ -z "$CLAUDE_OAUTH_TOKEN_PATH" ]]; then
     warn "CLAUDE_OAUTH_TOKEN_PATH not set — skipping lyra-claude-oauth bootstrap."
-    warn "  Generate the token: claude setup-token > /tmp/claude-oauth.tok"
-    warn "  Re-run with: CLAUDE_OAUTH_TOKEN_PATH=/tmp/claude-oauth.tok $0"
+    warn "  Generate the token: install -m 0600 /dev/null ~/.lyra/claude-oauth.tok && claude setup-token > ~/.lyra/claude-oauth.tok"
+    warn "  Re-run with: CLAUDE_OAUTH_TOKEN_PATH=~/.lyra/claude-oauth.tok $0"
   else
     [[ "$CLAUDE_OAUTH_TOKEN_PATH" =~ $TOKEN_PATH_RE ]] || error "Invalid CLAUDE_OAUTH_TOKEN_PATH: $CLAUDE_OAUTH_TOKEN_PATH"
     [[ -f "$CLAUDE_OAUTH_TOKEN_PATH" ]] || error "Token file not found: $CLAUDE_OAUTH_TOKEN_PATH"
-    sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-      podman secret create lyra-claude-oauth "$CLAUDE_OAUTH_TOKEN_PATH" \
+    # Pipe via `tr -d '\n'` so a trailing newline (common from `cmd > file`)
+    # cannot leak into the secret value and silently break auth at runtime.
+    sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" bash -c \
+      "tr -d '\n' < \"$CLAUDE_OAUTH_TOKEN_PATH\" | podman secret create lyra-claude-oauth -" \
       || error "Failed to create podman secret lyra-claude-oauth"
     info "Podman secret 'lyra-claude-oauth' created from $CLAUDE_OAUTH_TOKEN_PATH."
   fi

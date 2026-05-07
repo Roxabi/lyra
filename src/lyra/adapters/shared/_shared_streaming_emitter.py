@@ -90,6 +90,23 @@ class StreamingSession:
         self._outbound = outbound
         self._st = StreamState()
 
+    async def _on_toolcall_v2(
+        self,
+        event: ToolCallStartRenderEvent
+        | ToolCallArgsRenderEvent
+        | ToolCallEndRenderEvent
+        | ToolCallResultRenderEvent,
+    ) -> None:
+        """Per-platform override seam for Slice 3 (#1100) ToolCall* events.
+
+        Default no-op — parity is preserved by the v1 ``ToolSummaryRenderEvent``
+        dual-emit path that drives the existing summary-card UX. Platform
+        subclasses (Telegram, Discord) override this to render richer once they
+        migrate off v1 ToolSummary in Slice 5 (#1102). Discord's opt-in inline
+        args streaming (``LYRA_DISCORD_TOOLCALL_STREAM_ARGS``) hooks here.
+        """
+        return None
+
     async def _send_placeholder(self) -> tuple[Any, int | None] | None:
         """Send the placeholder and record reply_message_id on outbound.
 

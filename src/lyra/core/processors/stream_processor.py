@@ -20,8 +20,10 @@ Only stdlib and lyra-internal modules may be used.
 
 from __future__ import annotations
 
+import logging
 import time
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Iterator
+from typing import assert_never
 
 from lyra.core.messaging.error_extractor import _extract_worker_error
 from lyra.core.messaging.events import (
@@ -51,6 +53,49 @@ from lyra.core.messaging.render_events import (
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.trace import TraceContext
 from roxabi_contracts.errors import KNOWN_CODES
+
+log = logging.getLogger(__name__)
+
+# Slice 3 (#1100 review) — security boundary for ToolCallResultRenderEvent.
+# ``ToolResultLlmEvent.content`` carries raw tool output (file contents, shell
+# stdout, etc.). The output is published on the NATS bus where any subscriber
+# can read it. Mirror the ``RunErrorRenderEvent`` discipline:
+#  * for tools known to read sensitive payloads (Read/Bash/Edit/Write), replace
+#    content with a fixed redaction placeholder before encoding.
+#  * for everything else, truncate to MAX_CONTENT_BYTES with a ``[…truncated]``
+#    sentinel so a runaway tool output cannot exceed NATS message limits.
+_SENSITIVE_TOOL_NAMES_FOR_REDACTION: frozenset[str] = frozenset(
+    {"read", "bash", "edit", "write"}
+)
+_MAX_CONTENT_BYTES = 65_536
+_REDACTED_PLACEHOLDER = "[redacted — tool output suppressed for security]"
+_TRUNCATED_SENTINEL = "…[truncated]"
+
+
+def _sanitize_tool_result_content(content: str, tool_name: str | None) -> str:
+    """Apply secret-leak guard + size cap to ``ToolCallResultRenderEvent.content``.
+
+    Returns either:
+      * the redaction placeholder when the tool name matches a sensitive set
+        (file/shell I/O — file paths in errors, secrets in env, etc.), or
+      * the truncated content with a sentinel when length exceeds the NATS
+        message size budget, or
+      * the content unchanged.
+
+    ``tool_name`` is `None` when the parser receives a ``tool_result`` block
+    whose ``tool_use_id`` did not correlate with a prior ``ToolUseLlmEvent``
+    (orphan result). Treat orphans as sensitive — fail closed.
+    """
+    if tool_name is None or tool_name.lower() in _SENSITIVE_TOOL_NAMES_FOR_REDACTION:
+        return _REDACTED_PLACEHOLDER
+    encoded = content.encode("utf-8", errors="replace")
+    if len(encoded) <= _MAX_CONTENT_BYTES:
+        return content
+    sentinel_bytes = len(_TRUNCATED_SENTINEL.encode("utf-8"))
+    truncated = encoded[: _MAX_CONTENT_BYTES - sentinel_bytes].decode(
+        "utf-8", errors="ignore"
+    )
+    return f"{truncated}{_TRUNCATED_SENTINEL}"
 
 
 class StreamProcessor:
@@ -97,14 +142,17 @@ class StreamProcessor:
         self._pending_text: str = ""
 
         # --- Slice 3 (#1100) ToolCall* lifecycle state ---
-        # Dedupe: parser emits ``ToolUseLlmEvent`` from BOTH the streaming
-        # ``content_block_start`` path AND the post-hoc ``assistant``-message
-        # path. The second occurrence for the same ``tool_id`` is dropped.
-        self._seen_tool_ids: set[str] = set()
         # Open-call tracker for orphan ``ToolCallEnd`` synthesis. Populated on
         # ``ToolCallStart`` emission, cleared on ``ToolCallEnd``. Anything still
         # in the set at ``ResultLlmEvent`` time gets a synthesized end event.
+        # Dedupe of duplicate ``ToolUseLlmEvent``s lives in the parser
+        # (``cli_streaming_parser._emitted_tool_use_ids``) — wire-level
+        # artifacts of the Anthropic CLI stay below the application boundary.
         self._open_tool_call_ids: set[str] = set()
+        # tool_id → tool_name map populated on ``ToolUseLlmEvent`` so the
+        # ``_sanitize_tool_result_content`` boundary scrubber can decide whether
+        # to redact based on tool name (Read/Bash/Edit/Write are sensitive).
+        self._tool_id_to_name: dict[str, str] = {}
 
         # --- reuse guard ---
         self._consumed: bool = False
@@ -157,9 +205,12 @@ class StreamProcessor:
                     yield ToolCallEndRenderEvent(tool_call_id=event.tool_id)
 
                 elif isinstance(event, ToolResultLlmEvent):
+                    tool_name = self._tool_id_to_name.get(event.tool_id)
                     yield ToolCallResultRenderEvent(
                         tool_call_id=event.tool_id,
-                        content=event.content,
+                        content=_sanitize_tool_result_content(
+                            event.content, tool_name
+                        ),
                         is_error=event.is_error,
                     )
 
@@ -194,14 +245,12 @@ class StreamProcessor:
                     )
 
                 else:
-                    # Defensive: pyright's exhaustiveness on the LlmEvent union
-                    # makes this branch unreachable at type-check time. Kept as
-                    # a runtime guard against silent drop if the union widens
-                    # without dispatch update.
-                    raise TypeError(  # pyright: ignore[reportUnreachable]
-                        f"StreamProcessor.process: unhandled LlmEvent "
-                        f"{type(event).__name__}"
-                    )
+                    # Cross-slice invariant 3: no silent event drop. When the
+                    # ``LlmEvent`` union widens (e.g. Slice 4 reasoning events)
+                    # without updating this dispatch, ``assert_never`` surfaces
+                    # the gap at pyright time AND raises ``AssertionError`` at
+                    # runtime so a missing branch is never silently swallowed.
+                    assert_never(event)
 
             # Stream ended without ResultLlmEvent (truncation or upstream error)
             if not _result_received:
@@ -249,23 +298,19 @@ class StreamProcessor:
         """Handle a single ``ToolUseLlmEvent``, yielding any resulting ``RenderEvent``s.
 
         Slice 3 (#1100) emits ``ToolCallStartRenderEvent`` with cross-event
-        ``tool_call_id`` correlator. The parser emits ``ToolUseLlmEvent`` from
-        BOTH the streaming ``content_block_start`` path AND the post-hoc
-        ``assistant``-message path; we dedupe by ``tool_id`` so adapters see
-        exactly one ``ToolCallStart`` per call.
+        ``tool_call_id`` correlator. The parser already deduplicates the dual
+        emission of ``ToolUseLlmEvent`` (streaming + post-hoc paths), so this
+        handler sees each ``tool_id`` exactly once.
 
         Flushes pending text as an intermediate event when ``show_intermediate``
         is enabled, then accumulates the tool call (v1 ``ToolSummaryRenderEvent``
         dual-emit, kept until Slice 5).
         """
-        # Slice 3 dedupe: drop second emission for the same tool_id.
-        is_dupe = event.tool_id in self._seen_tool_ids
-        if not is_dupe:
-            self._seen_tool_ids.add(event.tool_id)
-            self._open_tool_call_ids.add(event.tool_id)
-            yield ToolCallStartRenderEvent(
-                tool_call_id=event.tool_id, tool_name=event.tool_name
-            )
+        self._open_tool_call_ids.add(event.tool_id)
+        self._tool_id_to_name[event.tool_id] = event.tool_name
+        yield ToolCallStartRenderEvent(
+            tool_call_id=event.tool_id, tool_name=event.tool_name
+        )
 
         # Flush any text accumulated before this tool call so adapters
         # can show inter-tool text progressively (show_intermediate gate).
@@ -287,26 +332,24 @@ class StreamProcessor:
 
     def _synth_orphan_tool_ends(
         self,
-    ) -> "list[ToolCallEndRenderEvent]":
+    ) -> Iterator[ToolCallEndRenderEvent]:
         """Synthesize ``ToolCallEndRenderEvent`` for any open tool_call_ids.
 
-        Called at ``ResultLlmEvent`` time (or at stream-end without result).
-        Tool calls that started but never received a ``content_block_stop``
-        leave adapters with a dangling open-call card; the synthesized end
-        closes it. WARN-logged once per orphan.
+        Called at ``ResultLlmEvent`` time. Tool calls that started but never
+        received a ``content_block_stop`` leave adapters with a dangling
+        open-call card; the synthesized end closes it. WARN-logged once per
+        orphan with a truncated id (last 6 chars) so cross-session correlation
+        of the full opaque tool_call_id is not exposed in shared log
+        aggregation (#1100 review S2).
         """
-        import logging
-
-        log = logging.getLogger(__name__)
-        events: list[ToolCallEndRenderEvent] = []
         for tid in sorted(self._open_tool_call_ids):
             log.warning(
-                "StreamProcessor: synthesizing orphan ToolCallEnd for tool_call_id=%s",
-                tid,
+                "StreamProcessor: synthesizing orphan ToolCallEnd for "
+                "tool_call_id=…%s",
+                tid[-6:],
             )
-            events.append(ToolCallEndRenderEvent(tool_call_id=tid))
+            yield ToolCallEndRenderEvent(tool_call_id=tid)
         self._open_tool_call_ids.clear()
-        return events
 
     # ------------------------------------------------------------------
     # Internal helpers

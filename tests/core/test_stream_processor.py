@@ -1014,15 +1014,20 @@ class TestToolCallLifecycle:
         ]
         assert all(e.tool_call_id == "t1" for e in v2)
 
-    async def test_dedupe_post_hoc_tool_use_event(self) -> None:
-        """Parser emits ToolUseLlmEvent twice (start + post-hoc); SP dedupes."""
+    async def test_each_tool_use_yields_one_start_event(self) -> None:
+        """Each ToolUseLlmEvent the SP receives produces one ToolCallStart.
+
+        Dedupe of CLI's dual emission (content_block_start + post-hoc
+        assistant message) lives in the parser since #1100 review (A1+B1):
+        wire-level artifacts stay below the application boundary. This SP
+        test asserts the post-dedupe contract — each `ToolUseLlmEvent` that
+        reaches `process()` corresponds to a unique tool_call. Parser-level
+        dedupe is verified separately in test_cli_streaming_parse.py.
+        """
         cfg_ = ToolDisplayConfig(throttle_window=0.0)
         processor = StreamProcessor(cfg_)
         events = async_events(
-            ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
-            ToolUseLlmEvent(
-                tool_name="Read", tool_id="t1", input={"path": "/x"}
-            ),
+            ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
             ToolUseEndLlmEvent(tool_id="t1"),
             ResultLlmEvent(is_error=False, duration_ms=10),
         )
@@ -1030,6 +1035,11 @@ class TestToolCallLifecycle:
         result = await collect(processor.process(events))
         starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
         assert len(starts) == 1
+        # T1 strengthening (#1100 review): also verify tool_call_id and
+        # tool_name correlation, so a regression that dropped the wrong fields
+        # would not silently pass.
+        assert starts[0].tool_call_id == "t1"
+        assert starts[0].tool_name == "Glob"
 
     async def test_orphan_end_synthesis_at_result(self) -> None:
         """Start without End triggers synthesized End at ResultLlmEvent time."""
@@ -1046,8 +1056,12 @@ class TestToolCallLifecycle:
         assert len(ends) == 1
         assert ends[0].tool_call_id == "t1"
 
-    async def test_dual_emit_tool_summary_preserved(self) -> None:
-        """v1 ToolSummaryRenderEvent still emitted at result with is_complete=True."""
+    async def test_dual_emit_v1_and_v2_both_present(self) -> None:
+        """T4 (#1100 review): assert BOTH v1 ToolSummary AND v2 ToolCall* are emitted.
+
+        The dual-emit contract is umbrella-spec invariant 5 (coexistence).
+        Asserting only v1 count would let a silent drop of ToolCallStart pass.
+        """
         cfg_ = ToolDisplayConfig(throttle_window=0.0)
         processor = StreamProcessor(cfg_)
         events = async_events(
@@ -1058,10 +1072,13 @@ class TestToolCallLifecycle:
         )
 
         result = await collect(processor.process(events))
-        summaries = [
+        v1_summaries = [
             e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
         ]
-        assert len(summaries) == 1
+        v2_starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
+        # Both halves of the dual-emit must fire for the same source event.
+        assert len(v1_summaries) == 1
+        assert len(v2_starts) == 1
 
     async def test_tool_call_args_passes_partial_json_verbatim(self) -> None:
         cfg_ = ToolDisplayConfig(throttle_window=0.0)
@@ -1080,8 +1097,10 @@ class TestToolCallLifecycle:
     async def test_tool_call_result_carries_is_error(self) -> None:
         cfg_ = ToolDisplayConfig(throttle_window=0.0)
         processor = StreamProcessor(cfg_)
+        # Use a non-sensitive tool name so the S1 boundary scrubber does not
+        # redact the content (Read/Bash/Edit/Write are sanitized by default).
         events = async_events(
-            ToolUseLlmEvent(tool_name="Bash", tool_id="t1", input={}),
+            ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
             ToolUseEndLlmEvent(tool_id="t1"),
             ToolResultLlmEvent(tool_id="t1", content="boom", is_error=True),
             ResultLlmEvent(is_error=False, duration_ms=10),
@@ -1092,6 +1111,75 @@ class TestToolCallLifecycle:
         assert len(results) == 1
         assert results[0].is_error is True
         assert results[0].content == "boom"
+
+    async def test_sensitive_tool_result_content_is_redacted(self) -> None:
+        """S1 (#1100 review): tool result for sensitive tools is redacted on the bus."""
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
+            ToolUseEndLlmEvent(tool_id="t1"),
+            ToolResultLlmEvent(
+                tool_id="t1",
+                content="aws_access_key_id=AKIA1234SECRETLEAK",
+                is_error=False,
+            ),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        results = [e for e in result if isinstance(e, ToolCallResultRenderEvent)]
+        assert len(results) == 1
+        assert "AKIA" not in results[0].content
+        assert results[0].content.startswith("[redacted")
+
+    async def test_orphan_tool_result_redacted_fail_closed(self) -> None:
+        """ToolResult without prior ToolUseLlmEvent (unknown tool_name) is redacted."""
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        # No ToolUseLlmEvent → tool_name unknown → fail-closed redaction.
+        events = async_events(
+            ToolResultLlmEvent(tool_id="t1", content="leaked", is_error=False),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        results = [e for e in result if isinstance(e, ToolCallResultRenderEvent)]
+        assert len(results) == 1
+        assert results[0].content.startswith("[redacted")
+
+    async def test_large_tool_result_content_truncated(self) -> None:
+        """S3 (#1100 review): content larger than MAX_CONTENT_BYTES is truncated."""
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        large = "x" * 100_000
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
+            ToolUseEndLlmEvent(tool_id="t1"),
+            ToolResultLlmEvent(tool_id="t1", content=large, is_error=False),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        results = [e for e in result if isinstance(e, ToolCallResultRenderEvent)]
+        assert len(results) == 1
+        assert len(results[0].content.encode("utf-8")) <= 65_536
+        assert results[0].content.endswith("…[truncated]")
+
+    async def test_multi_orphan_end_synthesis_preserves_ids(self) -> None:
+        """T2 (#1100 review): two open tools both get their own synthesized End."""
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
+            ToolUseLlmEvent(tool_name="Glob", tool_id="t2", input={}),
+            # Neither tool sees ToolUseEndLlmEvent.
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        ends = [e for e in result if isinstance(e, ToolCallEndRenderEvent)]
+        assert [e.tool_call_id for e in ends] == ["t1", "t2"]
 
     async def test_no_explicit_dispatch_silent_drop(self) -> None:
         """ToolUseDeltaLlmEvent reaches process() and is mapped, not absorbed."""

@@ -664,3 +664,80 @@ class TestStreamingIteratorToolDeltas:
         results = [e for e in events if isinstance(e, ToolResultLlmEvent)]
         assert len(results) == 1
         assert results[0].content == "first[image]third"
+
+    async def test_concurrent_tool_calls_interleaved_deltas(self) -> None:
+        """T3 (#1100 review): two simultaneous tool blocks at distinct indices,
+        interleaved deltas — each delta routes to its own tool_id.
+        """
+        proc = make_fake_proc(
+            [
+                INIT_LINE,
+                _tool_use_start_line(index=1, tool_id="t1", name="Read"),
+                _tool_use_start_line(index=2, tool_id="t2", name="Bash"),
+                _input_json_delta_line(index=2, partial_json='{"cmd":'),
+                _input_json_delta_line(index=1, partial_json='{"path":'),
+                _input_json_delta_line(index=2, partial_json='"ls"}'),
+                _input_json_delta_line(index=1, partial_json='"/tmp"}'),
+                _content_block_stop_line(index=1),
+                _content_block_stop_line(index=2),
+                RESULT_LINE,
+            ]
+        )
+        entry = make_entry(proc)
+
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        deltas = [e for e in events if isinstance(e, ToolUseDeltaLlmEvent)]
+        # Each delta must route to the correct tool_id by index, not by order.
+        assert [(e.tool_id, e.partial_json) for e in deltas] == [
+            ("t2", '{"cmd":'),
+            ("t1", '{"path":'),
+            ("t2", '"ls"}'),
+            ("t1", '"/tmp"}'),
+        ]
+
+        ends = [e for e in events if isinstance(e, ToolUseEndLlmEvent)]
+        assert [e.tool_id for e in ends] == ["t1", "t2"]
+
+    async def test_dedupe_tool_use_across_streaming_and_post_hoc(self) -> None:
+        """B1+A1 (#1100 review): parser dedupes the dual emission of tool_use.
+
+        CLI emits tool_use once at content_block_start and again post-hoc in
+        the assistant message. Parser must announce each tool_id exactly once.
+        """
+        post_hoc_line = _ndjson(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_AB",
+                            "name": "Read",
+                            "input": {"file_path": "/tmp/x"},
+                        }
+                    ],
+                },
+            }
+        )
+        proc = make_fake_proc(
+            [
+                INIT_LINE,
+                _tool_use_start_line(index=1, tool_id="toolu_AB", name="Read"),
+                post_hoc_line,
+                _content_block_stop_line(index=1),
+                RESULT_LINE,
+            ]
+        )
+        entry = make_entry(proc)
+
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        starts = [e for e in events if isinstance(e, ToolUseLlmEvent)]
+        # Exactly one ToolUseLlmEvent for toolu_AB despite both wire paths.
+        assert len(starts) == 1
+        assert starts[0].tool_id == "toolu_AB"
+        assert starts[0].tool_name == "Read"

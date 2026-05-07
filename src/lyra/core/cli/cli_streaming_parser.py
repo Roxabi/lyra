@@ -84,6 +84,12 @@ class CliStreamingParser:
         # block. Text blocks and tool_use blocks without an index do not
         # participate in the args-streaming lifecycle.
         self._open_tool_blocks: dict[int, str] = {}
+        # Slice 3 dedupe (#1100 review): tool_ids for which a ToolUseLlmEvent
+        # has already been emitted. Both content_block_start and the post-hoc
+        # assistant-message path can announce the same tool_use; the second
+        # emission is silently dropped so downstream consumers see exactly one
+        # ToolUseLlmEvent per tool_id.
+        self._emitted_tool_use_ids: set[str] = set()
 
     def parse_line(self, line: str) -> deque[LlmEvent]:  # noqa: C901, PLR0912, PLR0915 — protocol event dispatch
         """Parse a JSON line, update state, and return events to yield.
@@ -146,11 +152,22 @@ class CliStreamingParser:
         elif msg_type == "assistant":
             blocks = data.get("message", {}).get("content", [])
             for b in blocks:
-                if b.get("type") == "tool_use":
+                if b.get("type") == _BLOCK_TYPE_TOOL_USE:
+                    tool_id = b.get("id", "")
+                    # Slice 3 dedupe (#1100 review): CLI emits the tool_use
+                    # block twice — once at content_block_start (input={}) and
+                    # again post-hoc here (input populated). Skip the post-hoc
+                    # duplicate when the streaming path already announced this
+                    # tool_id; the args dict is reconstructed from
+                    # ToolUseDeltaLlmEvent stream downstream.
+                    if tool_id and tool_id in self._emitted_tool_use_ids:
+                        continue
+                    if tool_id:
+                        self._emitted_tool_use_ids.add(tool_id)
                     self._pending.append(
                         ToolUseLlmEvent(
                             tool_name=b.get("name", ""),
-                            tool_id=b.get("id", ""),
+                            tool_id=tool_id,
                             input=b.get("input", {}),
                         )
                     )
@@ -165,13 +182,15 @@ class CliStreamingParser:
                     idx = event_data.get("index")
                     if isinstance(idx, int) and tool_id:
                         self._open_tool_blocks[idx] = tool_id
-                    self._pending.append(
-                        ToolUseLlmEvent(
-                            tool_name=cb.get("name", ""),
-                            tool_id=tool_id,
-                            input={},
+                    if tool_id and tool_id not in self._emitted_tool_use_ids:
+                        self._emitted_tool_use_ids.add(tool_id)
+                        self._pending.append(
+                            ToolUseLlmEvent(
+                                tool_name=cb.get("name", ""),
+                                tool_id=tool_id,
+                                input={},
+                            )
                         )
-                    )
             elif event_type == "content_block_delta":
                 delta = event_data.get("delta", {})
                 delta_type = delta.get("type", "")

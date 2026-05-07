@@ -160,11 +160,12 @@ Exactly one of `image_b64` or `file_path` MUST be present on a success reply. Bo
 
 | Code | Trigger | Notes |
 |---|---|---|
-| `missing_required_field` | `prompt` or `engine` absent; `width`/`height` > 4096; `steps` > 200; `lora_path` or `embedding_path` outside allowlist | Consolidates validation failures. Tokens are for logs and metrics, not control flow. |
+| `missing_required_field` | `prompt` or `engine` absent; `request_id` outside `[A-Za-z0-9_-]{1,128}`; `format` outside `{png,jpeg,webp}`; `width`/`height` > 4096; `steps` > 200; `lora_path` or `embedding_path` outside allowlist | Consolidates validation failures. Tokens are for logs and metrics, not control flow. The `request_id` and `format` allowlists close the path-traversal vector that those fields opened when used as filename components in `file`-mode replies. |
 | `unknown_engine` | Engine name not found in satellite registry | |
 | `engine_load_failed` | Engine import error or initialization failure | e.g. missing torch extension |
 | `insufficient_resources` | Preflight VRAM/RAM check fails; `InsufficientResourcesError` or `MemoryError` during load | |
-| `generation_failed` | Runtime error during image generation or response encoding | Catch-all for unclassified failures |
+| `generation_failed` | Runtime error during image generation or response encoding | Catch-all for unclassified model failures (see `delivery_failed` for storage faults). |
+| `delivery_failed` | Generation succeeded but the satellite could not persist the file in `file`-mode delivery (`OSError`, `shutil.Error`, or path-escape `ValueError` raised by the defence-in-depth guard in `move_to_nats_output`). | Distinct from `generation_failed` so the hub can differentiate retriable storage faults from non-retriable model failures. |
 
 The hub raises `ImageUnavailableError` (or equivalent) on `ok: false` regardless of the specific `error` value — the token is for logs and metrics, not for branching control flow.
 
@@ -214,11 +215,12 @@ The NATS server is configured with `max_payload: 52428800` (50 MB) in `deploy/na
 
 ADR-047 Rule 4 states: "Default 1 MB. Domains with legitimate binary payloads (audio, image) MUST declare the cap in their contract ADR." This ADR hereby declares the 50 MB server cap for the image domain.
 
-The satellite additionally enforces a **conservative base64 ceiling of 750 KB** in `imagecli/src/imagecli/nats/adapter.py` (file-write block in `handle()` + helpers `_nats_output_dir` / `_move_to_persistent_output`):
+The satellite additionally enforces a **conservative base64 ceiling of 750 KB** in `imagecli/src/imagecli/nats/adapter.py` (file-write block in `handle()`) + `imagecli/src/imagecli/paths.py` (`nats_output_dir` / `move_to_nats_output`):
 
 - Base64 overhead is approximately 4/3, so 750 KB of base64 corresponds to roughly 562 KB of raw image bytes.
 - When the encoded length exceeds 750 KB, the satellite automatically downgrades to `file_path` mode regardless of the requested `output_mode`. It writes the image to `~/.roxabi/imagecli/nats_out/nats_{request_id[:8]}.{fmt}` (absolute), then replies with the resolved path from `Path.resolve()`. The output directory is overridable via the `IMAGECLI_NATS_OUTPUT_DIR` environment variable.
 - `file_path` mode requires a **shared view of the path** between hub and worker. This holds today through two compounding mechanisms: (a) hub and imageCLI satellite both run on Machine 1 (`roxabituwer`), and (b) `~/.roxabi/` is Syncthing-replicated between M₁ (`roxabituwer`) and M₂ (`ROXABITOWER`) per `~/projects/CLAUDE.md`, so the same absolute path resolves on either host once Syncthing has converged. Any future hub/worker split to a host *outside* the Syncthing mesh will require replacing the `file_path` fallback with an alternative binary transfer mechanism (e.g. NATS Object Store). This dependency is flagged as a known architectural constraint.
+- **Syncthing-replication caveat (eventual consistency).** Cross-host deployments inside the M₁↔M₂ Syncthing mesh are *eventually* consistent, not transparently shared: Syncthing's default scan/sync interval is 30–60 s. A hub on M₁ that receives a `file_path` reply from a satellite on M₂ may briefly see `FileNotFoundError` until convergence. The hub MUST therefore either (1) poll the path with bounded retry (e.g. every 500 ms, ≤30 s ceiling) before treating the reply as actionable, (2) restrict `output_mode: "file"` to co-located deployments where convergence is instantaneous, or (3) switch to a non-shared-FS delivery mechanism. Co-located deployments (today's default on M₁) are unaffected.
 - The hub MUST treat `file_path` as satellite-resolved and hub-opaque: no validation, no traversal, no path normalization. The hub reads the file at the given path to deliver the image to the user.
 
 ### User-controlled fields (sanitization contract)

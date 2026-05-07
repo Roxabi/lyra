@@ -18,9 +18,13 @@ accumulator reference with an already-emitted event.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 SCHEMA_VERSION_TEXT_RENDER_EVENT = 1
 SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT = 1
+SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT = 1
+SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT = 1
+SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT = 1
 
 
 @dataclass(frozen=True)
@@ -102,12 +106,68 @@ class ToolSummaryRenderEvent:
     schema_version: int = 1
 
 
+@dataclass(frozen=True)
+class RunStartedRenderEvent:
+    """Run lifecycle: stream begin. ``run_id`` mirrors the per-turn ``trace_id``.
+
+    Slice 1 of #1096 — additive surface. Adapters initially ignore (no UX).
+    Future slices may render a banner or expose the run_id in observability.
+    """
+
+    run_id: str
+    schema_version: int = SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT
+
+
+@dataclass(frozen=True)
+class RunFinishedRenderEvent:
+    """Run lifecycle: clean stream end (no exception).
+
+    ``outcome=success`` is the normal terminal state. ``outcome=interrupt``
+    is reserved for future cancellation paths and is not emitted in Slice 1.
+    """
+
+    run_id: str
+    outcome: Literal["success", "interrupt"] = "success"
+    schema_version: int = SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT
+
+
+@dataclass(frozen=True)
+class RunErrorRenderEvent:
+    """Run lifecycle: stream terminated by an exception in StreamProcessor.
+
+    Soft errors (``ResultLlmEvent.is_error=True`` without an exception) emit
+    ``RunFinishedRenderEvent(outcome="success")`` instead — the LLM run still
+    completed, the model just returned an error response. This event is for
+    infrastructure-level failures.
+
+    ``code`` is reserved for a future taxonomy (carry-over from #1097 review);
+    Slice 1 always passes ``None``.
+    """
+
+    run_id: str
+    message: str
+    code: str | None = None
+    schema_version: int = SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT
+
+
 # Union type exported for type annotations and ``isinstance`` checks.
-RenderEvent = TextRenderEvent | ToolSummaryRenderEvent
+RenderEvent = (
+    TextRenderEvent
+    | ToolSummaryRenderEvent
+    | RunStartedRenderEvent
+    | RunFinishedRenderEvent
+    | RunErrorRenderEvent
+)
 
 __all__ = [
     "FileEditSummary",
     "RenderEvent",
+    "RunErrorRenderEvent",
+    "RunFinishedRenderEvent",
+    "RunStartedRenderEvent",
+    "SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT",
+    "SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT",
+    "SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT",
     "SCHEMA_VERSION_TEXT_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT",
     "SilentCounts",

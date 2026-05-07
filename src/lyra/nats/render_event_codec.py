@@ -8,12 +8,19 @@ change here — there is no way to silently drop it on the other side.
 from __future__ import annotations
 
 import json
+import logging
 
 from lyra.core.messaging.render_events import (
+    SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT,
+    SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT,
+    SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT,
     SCHEMA_VERSION_TEXT_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
     FileEditSummary,
     RenderEvent,
+    RunErrorRenderEvent,
+    RunFinishedRenderEvent,
+    RunStartedRenderEvent,
     SilentCounts,
     TextRenderEvent,
     ToolSummaryRenderEvent,
@@ -22,6 +29,8 @@ from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize, serialize
 from roxabi_nats._version_check import check_schema_version
+
+log = logging.getLogger(__name__)
 
 
 class NatsRenderEventCodec:
@@ -32,13 +41,16 @@ class NatsRenderEventCodec:
         {
             "stream_id": str,
             "seq":        int,
-            "event_type": "text" | "tool_summary" | "stream_end",
+            "event_type": "text" | "tool_summary"
+                          | "run_started" | "run_finished" | "run_error"
+                          | "stream_end",
             "payload":    dict,   # serialized event fields
             "done":       bool,
         }
 
     ``"stream_end"`` is a synthetic terminal sentinel emitted by
-    ``NatsChannelProxy``; ``decode()`` returns ``None`` for it.
+    ``NatsChannelProxy``; ``decode()`` returns ``None`` for it. The
+    ``run_*`` types were added by Slice 1 of #1096 (#1098).
     """
 
     def __init__(self, *, resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER) -> None:
@@ -48,16 +60,27 @@ class NatsRenderEventCodec:
     def encode(event: RenderEvent) -> tuple[str, dict, bool]:
         """Return ``(event_type, payload_dict, is_done)`` for *event*.
 
-        ``is_done`` is ``True`` for a final ``TextRenderEvent`` (``is_final``)
-        or a complete ``ToolSummaryRenderEvent`` (``is_complete``).
+        ``is_done`` is ``True`` for a final ``TextRenderEvent`` (``is_final``),
+        a complete ``ToolSummaryRenderEvent`` (``is_complete``), or any of the
+        terminal Run lifecycle events (``RunFinishedRenderEvent``,
+        ``RunErrorRenderEvent``). ``RunStartedRenderEvent`` is not terminal.
         """
         payload: dict = json.loads(serialize(event).decode("utf-8"))
         if isinstance(event, TextRenderEvent):
             return "text", payload, event.is_final
-        # ToolSummaryRenderEvent
-        return "tool_summary", payload, event.is_complete
+        if isinstance(event, ToolSummaryRenderEvent):
+            return "tool_summary", payload, event.is_complete
+        if isinstance(event, RunStartedRenderEvent):
+            return "run_started", payload, False
+        if isinstance(event, RunFinishedRenderEvent):
+            return "run_finished", payload, True
+        if isinstance(event, RunErrorRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+            return "run_error", payload, True
+        raise TypeError(  # pyright: ignore[reportUnreachable]
+            f"Unsupported RenderEvent subtype: {type(event)!r}"
+        )
 
-    def decode(
+    def decode(  # noqa: C901 — per-event-type version-check + decode; refactored when Slice 5 sunsets v1
         self,
         event_type: str,
         payload: dict,
@@ -112,22 +135,79 @@ class NatsRenderEventCodec:
                 ),
                 is_complete=payload.get("is_complete", False),
             )
-        return None  # "stream_end" or unknown
+        if event_type == "run_started":
+            if not check_schema_version(
+                payload,
+                envelope_name="RunStartedRenderEvent",
+                expected=SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                RunStartedRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "run_finished":
+            if not check_schema_version(
+                payload,
+                envelope_name="RunFinishedRenderEvent",
+                expected=SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                RunFinishedRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "run_error":
+            if not check_schema_version(
+                payload,
+                envelope_name="RunErrorRenderEvent",
+                expected=SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                RunErrorRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "stream_end":
+            return None
+        # Unknown event_type — surface via log + counter so partial-deploy
+        # mismatches are visible. Synthetic transport sentinels (stream_end /
+        # stream_error) are handled above.
+        log.warning(
+            "NatsRenderEventCodec: unknown event_type=%r; dropping chunk",
+            event_type,
+        )
+        if counter is not None:
+            key = f"unknown:{event_type}"
+            counter[key] = counter.get(key, 0) + 1
+        return None
 
     @staticmethod
-    def is_terminal(event_type: str, is_done: bool) -> bool:
+    def is_terminal(event_type: str) -> bool:
         """Return ``True`` when this chunk signals end-of-stream.
 
         Rules:
 
-        * ``"stream_end"`` — always terminal (explicit sentinel from hub).
-        * ``"tool_summary"`` — never terminal; the final ``TextRenderEvent``
-          follows unconditionally.
-        * All other types (including ``"text"``) — terminal when ``is_done``
-          is ``True``.
+        * ``"stream_end"`` / ``"stream_error"`` — always terminal (explicit
+          sentinels from hub / transport).
+        * ``"run_finished"`` / ``"run_error"`` — always terminal (Slice 1 of
+          #1096 moved the canonical run terminator off ``text``/``done`` so
+          adapters always see Run lifecycle events before the loop exits).
+        * ``"tool_summary"`` — never terminal; subsequent events follow.
+        * ``"text"`` — never terminal; ``run_finished``/``run_error``
+          arrives after the final ``TextRenderEvent``. ``stream_end`` is
+          still published unconditionally as a backward-compat safety net
+          for receivers that pre-date Slice 1.
         """
-        if event_type in ("stream_end", "stream_error"):
-            return True
-        if event_type == "tool_summary":
-            return False
-        return is_done
+        return event_type in (
+            "stream_end",
+            "stream_error",
+            "run_finished",
+            "run_error",
+        )

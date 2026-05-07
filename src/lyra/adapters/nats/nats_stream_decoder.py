@@ -85,11 +85,10 @@ async def decode_stream_events(
         if event_type == "stream_error":
             break
         payload = chunk.get("payload", {})
-        is_done = chunk.get("done", False)
         event = _codec.decode(event_type, payload, counter=counter)
         if event is not None:
             yield event
-        if NatsRenderEventCodec.is_terminal(event_type, is_done):
+        if NatsRenderEventCodec.is_terminal(event_type):
             break
 
 

@@ -37,7 +37,7 @@ Agents ∈ A (SQLite) | T files = seed only → `lyra agent init` before use
 Search: `~/.lyra/agents/` (override) → `src/lyra/agents/` (default)
 `cwd` → `config.toml [defaults]` (¬T)
 
-→ `docs/agent-management.md` — CLI: `init | list | show | edit | validate | create | delete`
+→ `docs/agent-management.md` — CLI: `init | list | show | edit | patch | validate | create | delete | assign | unassign | refine`
 
 ## Conventions
 

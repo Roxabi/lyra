@@ -30,7 +30,7 @@
 | `voiceCLI` | `voicecli` | `generate`, `generate_async`, `clone`, `clone_async`, `transcribe`, `transcribe_async`, `list_engines`, `list_voices` | `voicecli` |
 | `imageCLI` | `imagecli` | `generate`, `get_engine`, `list_engines`, `preflight_check`, `load_config`, `parse_prompt_file` | `imagecli` |
 | `lyra` | `lyra` | Hub, Agent, Pool, InboundMessage, OutboundMessage, ChannelAdapter (internal SDK — not public) | daemon via Podman Quadlet |
-| `2ndBrain` | `knowledge` | Vault read/write/search (internal SDK) | `knowledge_bot` daemon |
+| `roxabi-vault` | `roxabi_vault` | AsyncMemoryDB (memory backend) | — |
 
 ### Rules
 
@@ -71,7 +71,7 @@ Goal: take the best of each. Lightweight like NullClaw, feature-rich like OpenCl
 | CPU | AMD Ryzen 7 5800X |
 | RAM | 32GB |
 | GPU | RTX 3080 10GB VRAM |
-| OS | Ubuntu Server 24.04 LTS (dual boot Windows, default Linux) |
+| OS | Ubuntu Server 26.04 LTS |
 | Access | SSH from Machine 2 |
 
 **Role**: Central hub, channels, database, TTS, embeddings. Never shuts down.
@@ -104,7 +104,7 @@ Default (`large-v3-turbo`) adds ~3GB → total **~8.5GB / 10GB** with 1.5GB head
 | CPU | AMD Ryzen 7 9800X3D (96MB L3 V-Cache) |
 | RAM | 32GB |
 | GPU | RTX 5070Ti 16GB VRAM |
-| OS | Windows (managed via SSH) |
+| OS | Pop!_OS |
 
 **Role**: Heavy LLM on demand. Powered on as needed.
 
@@ -328,16 +328,17 @@ After the Phase 1b refactoring and V4 decomposition (#773), every module is ≤3
 | **Pool** | `pool/pool.py` | `pool_processor.py` (debounce/cancel/dispatch), `pool_observer.py` (turn logging), `pool_context.py` (protocol) |
 | **Commands** | `commands/command_router.py` | `builtin_commands.py`, `workspace_commands.py`, `command_loader.py` |
 | **Memory** | `memory/memory.py` | `memory_freshness.py`, `memory_schema.py`, `memory_types.py` |
-| **Auth** | `auth/auth.py` (config parsing) | `authenticator.py` (Authenticator), `guard.py` (GuardChain), `identity.py`, `trust.py` |
+| **Auth** | `auth/authenticator.py` (Authenticator) | `guard.py` (GuardChain), `identity.py`, `trust.py` |
 | **Stores** | `infrastructure/stores/` | `agent_store.py`, `auth_store.py`, `turn_store.py`, `pairing.py`, `thread_store.py`, `prefs_store.py`, `message_index.py`, `identity_alias_store.py` |
-| **Outbound** | `hub/outbound.py` | `OutboundDispatcher`, `OutboundRouter`, `AudioDispatch`, `TtsDispatch` |
+| **Outbound** | `hub/outbound/` | `OutboundDispatcher`, `OutboundRouter`, `AudioDispatch`, `TtsDispatch` |
 | **Telegram** | `adapters/telegram/telegram.py` | `telegram_inbound.py`, `telegram_outbound.py`, `telegram_normalize.py`, `telegram_audio.py`, `telegram_formatting.py` |
 | **Discord** | `adapters/discord/adapter.py` | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_config.py`, `lifecycle.py`, `voice/` |
 | **Bootstrap** | `bootstrap/standalone/` | `hub_standalone.py`, `adapter_standalone.py`, `clipool_standalone.py`; `factory/` (hub_builder, agent_factory, config, unified); `wiring/` (nats_wiring); `lifecycle/`; `infra/` (health, lockfile, notify, embedded_nats) |
 | **Shared** | `adapters/shared/_shared.py` | Common adapter utilities (typing control, push_to_hub_guarded) |
 | **Shared** | `adapters/shared/_shared_streaming_emitter.py` | `StreamingSession`, `PlatformCallbacks` — centralized edit-in-place streaming for all adapters |
 | **Shared** | `adapters/shared/_base_outbound.py` | `OutboundAdapterBase` — abstract base class for all platform outbound adapters |
-| **NATS** | `nats/nats_bus.py` | `nats_outbound_listener.py`, `nats_stt_client.py`, `nats_tts_client.py`, `nats_channel_proxy.py`, `render_event_codec.py` |
+| **NATS** | `nats/nats_bus.py` | `nats_stt_client.py`, `nats_tts_client.py`, `nats_channel_proxy.py`, `render_event_codec.py`, `queue_groups.py`, `type_registry.py`, `worker_registry.py`, `nats_image_client.py`, `nats_llm_client.py` |
+| **NATS adapters** | `adapters/nats/nats_outbound_listener.py` | `mint_failure_subscriber.py`, `nats_envelope_handlers.py`, `nats_stream_decoder.py` |
 | **LLM** | `llm/base.py` | `llm/drivers/` (cli.py, nats_driver.py, cli_nats.py), `llm/decorators.py`, `llm/registry.py` |
 
 ### Adapter Streaming Pattern
@@ -376,7 +377,7 @@ class InboundMessage:
 
 Every hub↔adapter envelope (`InboundMessage`, `InboundAudio`, `OutboundMessage`, `TextRenderEvent`, `ToolSummaryRenderEvent`) carries a `schema_version: int = 1` field. The current version for each envelope lives in a `SCHEMA_VERSION_*` module-level constant in `src/lyra/core/message.py` and `src/lyra/core/render_events.py`.
 
-A receiver accepts any payload where `schema_version <= expected`. Strictly-greater versions are **dropped** with an ERROR log and an in-process counter increment via `check_schema_version` in `src/lyra/nats/_version_check.py`. Legacy payloads without a `schema_version` key default to version 1, so existing wire traffic is never dropped.
+A receiver accepts any payload where `schema_version <= expected`. Strictly-greater versions are **dropped** with an ERROR log and an in-process counter increment via `check_schema_version` in `packages/roxabi-nats/src/roxabi_nats/_version_check.py`. Legacy payloads without a `schema_version` key default to version 1, so existing wire traffic is never dropped.
 
 Versioning does **not** enable rolling deploys across breaking schema changes — coordinated deploy of `lyra_hub`, `lyra_telegram`, and `lyra_discord` is still required. It exists to make failures **loud** (ERROR log + counter) instead of silent (mis-interpreted fields).
 
@@ -461,7 +462,7 @@ One pool per conversation scope. Contains:
 
 #### PoolManager threading model
 
-`PoolManager` (`src/lyra/core/hub/pipeline.py` as `PoolManager` class) is a **hybrid sync/async** coordinator. It owns an `OrderedDict[str, Pool]` and must support both synchronous callers (LRU touch, runtime-config setters like `set_debounce_ms`, `set_cancel_on_new_message`) and asynchronous flush paths (eviction → `agent.flush_session`).
+`PoolManager` (`src/lyra/core/hub/pipeline/pool_manager.py` as `PoolManager` class) is a **hybrid sync/async** coordinator. It owns an `OrderedDict[str, Pool]` and must support both synchronous callers (LRU touch, runtime-config setters like `set_debounce_ms`, `set_cancel_on_new_message`) and asynchronous flush paths (eviction → `agent.flush_session`).
 
 | Concern | Primitive | Scope |
 |---|---|---|
@@ -775,7 +776,7 @@ client = AsyncOpenAI(
 - **Reduced Phase 1 memory scope** — Level 0 (working, L0 compaction ✅ #83) + Level 3 (semantic ✅ #78/#81/#82). Levels 1, 2, 4 added when the real need arises.
 - **Memory agent integration** (#83 ✅) — `MemoryManager` wired into Pool identity fields, AgentBase lifecycle (`build_system_prompt`, `compact`, `flush_session`, `_schedule_extraction`), and Hub (`set_memory`, `_memory_tasks`, shutdown drain). Identity anchor seeded in L3 on first boot. FTS isolated per user via `namespace:user_id` sub-namespace. 7 slices delivered: Pool identity, MemoryManager infra, identity anchor, session flush, compaction, cross-session recall, concept/preference extraction.
 - **AgentStore** (#268 ✅) — SQLite-backed agent registry (`~/.lyra/config.db`, renamed from `auth.db` in v15). TOML files are seed sources only — imported via `lyra agent init`. Runtime reads from DB. CLI: `init`, `list`, `show`, `edit`, `validate`, `assign`, `unassign`, `delete`. In-memory cache warmed at `connect()` — no per-message file I/O. Includes `tts_json`/`stt_json` columns for per-agent TTS/STT config (serialized from TOML `[tts]`/`[stt]` sections, deserialized into `AgentTTSConfig`/`AgentSTTConfig`). See ADR-024.
-- **Raw turn logging** (#67 ✅) — `TurnStore` (`src/lyra/core/turn_store.py`) persists every user + assistant turn to `~/.lyra/turns.db` (SQLite, separate from vault). Fire-and-forget writes via `asyncio.create_task`. Query: `get_session_turns()`, `get_pool_turns()`, `get_user_turns()`. This is the L1 memory layer.
+- **Raw turn logging** (#67 ✅) — `TurnStore` (`src/lyra/infrastructure/stores/turn_store.py`) persists every user + assistant turn to `~/.lyra/turns.db` (SQLite, separate from vault). Fire-and-forget writes via `asyncio.create_task`. Query: `get_session_turns()`, `get_pool_turns()`, `get_user_turns()`. This is the L1 memory layer.
 - **Retryable LlmResult** (#276 ✅) — `LlmResult` carries a `retryable: bool` flag. Non-retryable errors (auth failures, invalid requests) skip the retry/backoff loop in decorators.
 - **Hub command sessions** (#99 ✅, refactored to processor commands #363) — Processor command layer: `BaseProcessor` from `processor_registry.py`, registered via `@register()` decorators. `/vault-add` (scrape → LLM summary → vault write), `/explain` (scrape → LLM plain-language explanation), `/summarize` (scrape → LLM bullet points), `/search` (vault FTS). Bare URL messages auto-rewritten to `/vault-add <url>` — target command configurable in `src/lyra/config/patterns.toml` `[bare_url].command`. Processor commands land responses in pool history, enabling follow-up questions (unlike the old `SessionCommandHandler` pattern). `commands/search/` plugin implements `/search`.
 

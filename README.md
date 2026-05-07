@@ -118,8 +118,12 @@ lyra agent init --force     # overwrite existing
 lyra agent list             # list all agents
 lyra agent show <name>      # full config for one agent
 lyra agent edit <name>      # interactive edit
+lyra agent patch <name>     # patch fields via JSON
 lyra agent validate <name>  # validate schema
 lyra agent create           # create new agent (writes TOML)
+lyra agent assign <agent>   # assign agent to a bot
+lyra agent unassign         # unassign agent from a bot
+lyra agent refine <name>    # LLM-guided profile refinement
 ```
 
 ### Bot credentials

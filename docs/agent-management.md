@@ -84,6 +84,16 @@ lyra agent assign researcher --platform telegram --bot 123456
 lyra agent list              # shows assignment
 ```
 
+## Deprecated alias
+
+`lyra-agent` is a deprecated entry point. Invoking it prints:
+
+```
+Warning: lyra-agent is deprecated, use 'lyra agent ...' instead.
+```
+
+Use `lyra agent <subcommand>` instead.
+
 ## Workspaces & cwd
 
 | Field | Scope | Location |

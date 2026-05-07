@@ -18,7 +18,14 @@ from lyra.adapters.shared._shared_streaming_state import (
     StreamState,
     classify_stream_error,
 )
-from lyra.core.messaging import RenderEvent, TextRenderEvent, ToolSummaryRenderEvent
+from lyra.core.messaging import (
+    RenderEvent,
+    RunErrorRenderEvent,
+    RunFinishedRenderEvent,
+    RunStartedRenderEvent,
+    TextRenderEvent,
+    ToolSummaryRenderEvent,
+)
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
 from lyra.core.messaging.tool_recap_format import format_tool_lines
 
@@ -111,7 +118,7 @@ class StreamingSession:
         if self._outbound is not None and fallback_message_id is not None:
             self._outbound.metadata["reply_message_id"] = fallback_message_id
 
-    async def _run_event_loop(
+    async def _run_event_loop(  # noqa: C901 — full v1+v2 dispatch ladder lands in Slice 2 (#1099)
         self,
         events: AsyncIterator[RenderEvent],
         placeholder_obj: Any,
@@ -119,6 +126,17 @@ class StreamingSession:
         """Iterate over events, updating the placeholder with debounced edits."""
         try:
             async for event in events:
+                if isinstance(
+                    event,
+                    RunStartedRenderEvent
+                    | RunFinishedRenderEvent
+                    | RunErrorRenderEvent,
+                ):
+                    # Slice 1 (#1098): Run lifecycle events are pure additive
+                    # surface — adapters initially ignore (no UX). Future slices
+                    # may render banners or expose run_id in observability.
+                    continue
+
                 if isinstance(event, ToolSummaryRenderEvent):
                     self._st.had_tool_events = True
                     header = "🔧 Done ✅" if event.is_complete else "🔧 Working…"

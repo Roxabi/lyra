@@ -8,11 +8,33 @@ from typing import AsyncIterator
 
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from lyra.core.messaging.render_events import (
+    RenderEvent,
+    RunErrorRenderEvent,
+    RunFinishedRenderEvent,
+    RunStartedRenderEvent,
     TextRenderEvent,
     ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.processors.stream_processor import StreamProcessor
+from lyra.core.trace import TraceContext
+
+_RUN_LIFECYCLE_TYPES = (
+    RunStartedRenderEvent,
+    RunFinishedRenderEvent,
+    RunErrorRenderEvent,
+)
+
+
+def strip_run_lifecycle(events: list[RenderEvent]) -> list[RenderEvent]:
+    """Drop ``Run{Started,Finished,Error}RenderEvent`` from a result list.
+
+    Slice 1 of #1096 added unconditional Run lifecycle bookends to every
+    ``StreamProcessor.process()`` invocation. Tests that focus on text/tool
+    payload count and ordering use this helper to keep their original
+    assertions intact; lifecycle-specific tests live in ``TestRunLifecycle``.
+    """
+    return [e for e in events if not isinstance(e, _RUN_LIFECYCLE_TYPES)]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -61,7 +83,7 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        result = strip_run_lifecycle(await collect(processor.process(events)))
 
         # Assert
         assert len(result) == 1
@@ -94,7 +116,7 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        result = strip_run_lifecycle(await collect(processor.process(events)))
 
         # Assert — 3 events: intermediate text, final summary, final text
         # Mid-turn ToolSummaryRenderEvent is suppressed when intermediate text
@@ -123,7 +145,7 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        result = strip_run_lifecycle(await collect(processor.process(events)))
 
         # Assert — 3 events: mid-turn summary, final summary, text
         # show_intermediate=False keeps text accumulated until ResultLlmEvent.
@@ -662,7 +684,9 @@ class TestStreamProcessor:
         processor = StreamProcessor(cfg())
 
         # Act
-        result = await collect(processor.process(async_events()))
+        result = strip_run_lifecycle(
+            await collect(processor.process(async_events()))
+        )
 
         # Assert — backend produced nothing: emit an error so the "…"
         # placeholder is replaced instead of staying stuck.
@@ -719,3 +743,139 @@ class TestStreamProcessor:
                         assert not (name or "").startswith(f), (
                             f"{source_path}: forbidden import '{name}'"
                         )
+
+
+# ---------------------------------------------------------------------------
+# Slice 1 of #1096 — Run lifecycle events (#1098)
+# ---------------------------------------------------------------------------
+
+
+class TestRunLifecycle:
+    """RunStarted/RunFinished/RunError emission contract (#1098)."""
+
+    async def test_emission_order_text_only(self) -> None:
+        """Text-only turn emits RunStarted first and RunFinished last."""
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            TextLlmEvent(text="hello"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+
+        assert isinstance(result[0], RunStartedRenderEvent)
+        assert isinstance(result[-1], RunFinishedRenderEvent)
+        assert result[-1].outcome == "success"
+        # The text event is sandwiched between the lifecycle bookends.
+        assert any(isinstance(e, TextRenderEvent) for e in result[1:-1])
+
+    async def test_emission_order_with_tool(self) -> None:
+        """Tool-using turn keeps lifecycle bookends around tool/text events."""
+        processor = StreamProcessor(cfg(), show_intermediate=False)
+        events = async_events(
+            ToolUseLlmEvent(
+                tool_name="Edit", tool_id="t1", input={"path": "src/foo.py"}
+            ),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+
+        assert isinstance(result[0], RunStartedRenderEvent)
+        assert isinstance(result[-1], RunFinishedRenderEvent)
+        # Mid-turn payload: at least one ToolSummaryRenderEvent and one TextRenderEvent.
+        middle = result[1:-1]
+        assert any(isinstance(e, ToolSummaryRenderEvent) for e in middle)
+        assert any(isinstance(e, TextRenderEvent) for e in middle)
+
+    async def test_run_id_matches_trace_id(self) -> None:
+        """RunStarted/RunFinished both carry run_id == TraceContext.trace_id."""
+        token = TraceContext.set_trace_id("abc-123")
+        try:
+            processor = StreamProcessor(cfg())
+            events = async_events(
+                TextLlmEvent(text="x"),
+                ResultLlmEvent(is_error=False, duration_ms=1),
+            )
+            result = await collect(processor.process(events))
+        finally:
+            TraceContext.reset_trace_id(token)
+
+        started = next(e for e in result if isinstance(e, RunStartedRenderEvent))
+        finished = next(e for e in result if isinstance(e, RunFinishedRenderEvent))
+        assert started.run_id == "abc-123"
+        assert finished.run_id == "abc-123"
+
+    async def test_run_id_synthetic_when_trace_unset(self) -> None:
+        """No active TraceContext → synthetic prefix; both bookends carry it."""
+        # No set_trace_id call — TraceContext.get_trace_id() returns None.
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            TextLlmEvent(text="x"),
+            ResultLlmEvent(is_error=False, duration_ms=1),
+        )
+        result = await collect(processor.process(events))
+
+        started = next(e for e in result if isinstance(e, RunStartedRenderEvent))
+        finished = next(e for e in result if isinstance(e, RunFinishedRenderEvent))
+        assert started.run_id.startswith("synthetic-")
+        assert started.run_id == finished.run_id
+
+    async def test_run_error_on_input_exception(self) -> None:
+        """Exception while iterating LlmEvent stream → RunError + re-raise."""
+
+        class _Boom(RuntimeError):
+            pass
+
+        async def _raising_events():
+            yield TextLlmEvent(text="partial")
+            raise _Boom("input died")
+
+        processor = StreamProcessor(cfg())
+        seen: list[RenderEvent] = []
+        with __import__("pytest").raises(_Boom):
+            async for ev in processor.process(_raising_events()):
+                seen.append(ev)
+
+        # Order: RunStarted → ... → RunError (immediately before re-raise).
+        assert isinstance(seen[0], RunStartedRenderEvent)
+        assert isinstance(seen[-1], RunErrorRenderEvent)
+        assert seen[-1].message == "input died"
+        assert seen[-1].code is None
+        assert seen[-1].run_id == seen[0].run_id
+        # No RunFinished must be emitted on the error path.
+        assert not any(isinstance(e, RunFinishedRenderEvent) for e in seen)
+
+    async def test_soft_error_emits_finished_not_error(self) -> None:
+        """ResultLlmEvent.is_error=True (soft error) → RunFinished, not RunError."""
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ResultLlmEvent(is_error=True, duration_ms=10, error_text="model error"),
+        )
+
+        result = await collect(processor.process(events))
+
+        assert isinstance(result[-1], RunFinishedRenderEvent)
+        assert result[-1].outcome == "success"
+        assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
+        # The soft error still surfaces via TextRenderEvent.is_error=True.
+        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+        assert any(e.is_error for e in text_events)
+
+    def test_schema_versions(self) -> None:
+        """Each new event type carries its own SCHEMA_VERSION_* constant."""
+        from lyra.core.messaging.render_events import (
+            SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT,
+            SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT,
+            SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT,
+        )
+
+        assert RunStartedRenderEvent(run_id="x").schema_version == (
+            SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT
+        )
+        assert RunFinishedRenderEvent(run_id="x").schema_version == (
+            SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT
+        )
+        assert RunErrorRenderEvent(run_id="x", message="m").schema_version == (
+            SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT
+        )

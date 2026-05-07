@@ -227,6 +227,12 @@ class TestRenderEventUnion:
         assert set(_mod.__all__) == {
             "FileEditSummary",
             "RenderEvent",
+            "RunErrorRenderEvent",
+            "RunFinishedRenderEvent",
+            "RunStartedRenderEvent",
+            "SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT",
+            "SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT",
+            "SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT",
             "SCHEMA_VERSION_TEXT_RENDER_EVENT",
             "SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT",
             "SilentCounts",

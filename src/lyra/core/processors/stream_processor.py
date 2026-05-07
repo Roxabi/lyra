@@ -29,11 +29,15 @@ from lyra.core.messaging.metrics import emit_received_total
 from lyra.core.messaging.render_events import (
     FileEditSummary,
     RenderEvent,
+    RunErrorRenderEvent,
+    RunFinishedRenderEvent,
+    RunStartedRenderEvent,
     SilentCounts,
     TextRenderEvent,
     ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
+from lyra.core.trace import TraceContext
 from roxabi_contracts.errors import KNOWN_CODES
 
 
@@ -109,57 +113,68 @@ class StreamProcessor:
             turn end.
         """
         self._mark_consumed()
+        run_id = TraceContext.get_trace_id() or f"synthetic-{TraceContext.generate()}"
+        yield RunStartedRenderEvent(run_id=run_id)
         _result_received = False
-        async for event in events:
-            if isinstance(event, TextLlmEvent):
-                self._pending_text += event.text
+        try:
+            async for event in events:
+                if isinstance(event, TextLlmEvent):
+                    self._pending_text += event.text
 
-            elif isinstance(event, ToolUseLlmEvent):
-                async for render_event in self._handle_tool_event(event):
-                    yield render_event
+                elif isinstance(event, ToolUseLlmEvent):
+                    async for render_event in self._handle_tool_event(event):
+                        yield render_event
 
-            else:  # ResultLlmEvent
-                _result_received = True
+                else:  # ResultLlmEvent
+                    _result_received = True
+                    if self._has_any_tool_events():
+                        yield self._emit_snapshot(is_complete=True)
+                    # On error with no streamed text, surface the structured WorkerError
+                    # message (P1 path) or the legacy error_text shim (P2 transitional).
+                    if event.is_error and not self._pending_text:
+                        we = _extract_worker_error(event)
+                        if we is not None:
+                            meta = KNOWN_CODES.get(we.code)
+                            domain = meta.domain if meta else we.code.split(".")[0]
+                            emit_received_total(code=we.code, domain=domain)
+                            error_text = we.message
+                        else:
+                            # P2 transitional: fall back to legacy error_text shim.
+                            error_text = event.error_text or ""
+                        final_text = error_text
+                    else:
+                        final_text = self._pending_text
+                    yield TextRenderEvent(
+                        text=final_text,
+                        is_final=True,
+                        is_error=event.is_error,  # #392: propagate error state
+                    )
+
+            # Stream ended without ResultLlmEvent (truncation or upstream error)
+            if not _result_received:
                 if self._has_any_tool_events():
                     yield self._emit_snapshot(is_complete=True)
-                # On error with no streamed text, surface the structured WorkerError
-                # message (P1 path) or the legacy error_text shim (P2 transitional).
-                if event.is_error and not self._pending_text:
-                    we = _extract_worker_error(event)
-                    if we is not None:
-                        meta = KNOWN_CODES.get(we.code)
-                        domain = meta.domain if meta else we.code.split(".")[0]
-                        emit_received_total(code=we.code, domain=domain)
-                        error_text = we.message
-                    else:
-                        # P2 transitional: fall back to legacy error_text shim.
-                        error_text = event.error_text or ""
-                    final_text = error_text
-                else:
-                    final_text = self._pending_text
-                yield TextRenderEvent(
-                    text=final_text,
-                    is_final=True,
-                    is_error=event.is_error,  # #392: propagate error state
-                )
-
-        # Stream ended without ResultLlmEvent (truncation or upstream error)
-        if not _result_received:
-            if self._has_any_tool_events():
-                yield self._emit_snapshot(is_complete=True)
-            if self._pending_text:
-                yield TextRenderEvent(text=self._pending_text, is_final=False)
-            elif not self._has_any_tool_events():
-                # No text, no tools, no result — backend died before producing
-                # anything (e.g. auth failure, crash).  Emit an error event so
-                # the adapter replaces the "…" placeholder instead of leaving
-                # it stuck forever.
-                _upstream_error = getattr(events, "error", None)
-                yield TextRenderEvent(
-                    text=str(_upstream_error) if _upstream_error else "",
-                    is_final=True,
-                    is_error=True,
-                )
+                if self._pending_text:
+                    yield TextRenderEvent(text=self._pending_text, is_final=False)
+                elif not self._has_any_tool_events():
+                    # No text, no tools, no result — backend died before producing
+                    # anything (e.g. auth failure, crash).  Emit an error event so
+                    # the adapter replaces the "…" placeholder instead of leaving
+                    # it stuck forever.
+                    _upstream_error = getattr(events, "error", None)
+                    yield TextRenderEvent(
+                        text=str(_upstream_error) if _upstream_error else "",
+                        is_final=True,
+                        is_error=True,
+                    )
+        except Exception as exc:
+            # Slice 1 (#1098): infrastructure-level exception during stream
+            # processing. Surface a RunErrorRenderEvent then re-raise so the
+            # adapter's existing exception handler (sets stream_error and
+            # falls through to classify_stream_error) keeps working.
+            yield RunErrorRenderEvent(run_id=run_id, message=str(exc), code=None)
+            raise
+        yield RunFinishedRenderEvent(run_id=run_id, outcome="success")
 
     async def _handle_tool_event(
         self, event: ToolUseLlmEvent

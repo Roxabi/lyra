@@ -182,6 +182,10 @@ section "Done"
 
 # ── 10. Wire NATS env vars into .env ─────────────────────────────────────
 LYRA_USER="${SUDO_USER:-$(id -un)}"
+# Security: validate LYRA_USER before any use — SUDO_USER is attacker-controllable
+# (sudo -E / env_keep). Reject anything that doesn't look like a valid Unix username.
+[[ "$LYRA_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] \
+  || { echo "[!] Invalid LYRA_USER: $LYRA_USER"; exit 1; }
 LYRA_HOME=$(getent passwd "$LYRA_USER" | cut -d: -f6)
 ENV_FILE="${LYRA_DIR}/.env"
 HUB_SEED="${LYRA_HOME}/.lyra/nkeys/hub.seed"
@@ -191,21 +195,21 @@ if [ -f "${ENV_FILE}" ]; then
   if grep -q "^NATS_URL=" "${ENV_FILE}"; then
     info ".env already has NATS_URL — not overwriting."
   else
-    echo "NATS_URL=tls://127.0.0.1:4222" >> "${ENV_FILE}"
+    printf 'NATS_URL=tls://127.0.0.1:4222\n' >> "${ENV_FILE}"
     info "NATS_URL=tls://127.0.0.1:4222 added to .env."
   fi
   # NATS_NKEY_SEED_PATH — nkey authentication
   if grep -q "^NATS_NKEY_SEED_PATH=" "${ENV_FILE}"; then
     info ".env already has NATS_NKEY_SEED_PATH — not overwriting."
   else
-    echo "NATS_NKEY_SEED_PATH=${HUB_SEED}" >> "${ENV_FILE}"
+    printf 'NATS_NKEY_SEED_PATH=%s\n' "${HUB_SEED}" >> "${ENV_FILE}"
     info "NATS_NKEY_SEED_PATH=${HUB_SEED} added to .env."
   fi
   # NATS_CA_CERT — CA certificate for TLS verification
   if grep -q "^NATS_CA_CERT=" "${ENV_FILE}"; then
     info ".env already has NATS_CA_CERT — not overwriting."
   else
-    echo "NATS_CA_CERT=${NATS_CA}" >> "${ENV_FILE}"
+    printf 'NATS_CA_CERT=%s\n' "${NATS_CA}" >> "${ENV_FILE}"
     info "NATS_CA_CERT=${NATS_CA} added to .env."
   fi
 else

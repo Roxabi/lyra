@@ -1,14 +1,13 @@
 # File size exemptions (≤300 lines per file)
 # Each entry must have a tracking issue.
 # Format: <path>  # <lines> lines — <issue> <description>
-src/lyra/core/pool/pool.py  # 326 lines — #858 backward-compat param overrides
-src/lyra/bootstrap/factory/wiring_helpers.py  # 400 lines — ADR-059/V10 bootstrap helper aggregator (imports + 10 focused functions)
-src/lyra/bootstrap/bootstrap_stores.py  # 305 lines — #957 idx_sql DDL validation adds allowlist guard before sqlite_master replay
+src/lyra/bootstrap/factory/wiring_helpers.py  # 410 lines — ADR-059/V10 bootstrap helper aggregator (imports + 10 focused functions)
+src/lyra/bootstrap/bootstrap_stores.py  # 307 lines — #957 idx_sql DDL validation adds allowlist guard before sqlite_master replay
 src/lyra/core/cli/cli_pool.py  # 327 lines — #1008 resume_direct() method added for hub-side session resolution
 src/lyra/agents/simple_agent.py  # 309 lines — #1008 cli_nats_driver wiring for NATS-mode resume + link_lyra_session
-src/lyra/bootstrap/standalone/adapter_standalone.py  # 303 lines — #1016 WorkerError startup version log
-src/lyra/core/processors/stream_processor.py  # 322 lines — #1016 WorkerError extractor + #1098 Run lifecycle emission (Slice 2 of #1096 will refactor _handle_text_event)
-src/lyra/adapters/shared/_shared_streaming_emitter.py  # 315 lines — #1098 Run lifecycle skip branch (Slice 2 of #1096 lands the full v1+v2 isinstance ladder)
-src/lyra/llm/drivers/nats_driver.py  # 364 lines — #1016 WorkerError population on transport.* failures (P3 will refactor with NatsDriverBase)
-src/lyra/adapters/clipool/clipool_worker.py  # 334 lines — #1016 WorkerError population + exception classifier
+src/lyra/bootstrap/standalone/adapter_standalone.py  # 301 lines — #1016 WorkerError startup version log
+src/lyra/core/processors/stream_processor.py  # 468 lines — #1016 WorkerError extractor + #1098 Run lifecycle emission (Slice 2 of #1096 will refactor _handle_text_event)
+src/lyra/adapters/shared/_shared_streaming_emitter.py  # 362 lines — #1098 Run lifecycle skip branch (Slice 2 of #1096 lands the full v1+v2 isinstance ladder)
+src/lyra/llm/drivers/nats_driver.py  # 434 lines — #1016 WorkerError population on transport.* failures (P3 will refactor with NatsDriverBase)
+src/lyra/adapters/clipool/clipool_worker.py  # 371 lines — #1016 WorkerError population + exception classifier
 src/lyra/core/cli/cli_streaming_parser.py  # 310 lines — #1100 ToolCall streamed events (input_json_delta + content_block_stop + user-message tool_result; cleanup in Slice 5 / #1102)

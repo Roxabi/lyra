@@ -476,8 +476,9 @@ class TestStreamHappyPath:
 
         await collect()
 
-        # Assert publish was called with stream=true in payload
+        # Assert publish was called with stream=true in payload on canonical subject
         assert nc.publish.await_count == 1
+        assert nc.publish.call_args.args[0] == "lyra.llm.generate.request"
         payload = json.loads(nc.publish.call_args.args[1])
         assert payload["stream"] is True
 

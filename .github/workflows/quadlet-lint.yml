@@ -49,11 +49,32 @@ jobs:
             'conmon=2.1.12-4' \
             'crun=1.20-1syncable1'
           # Assert no other plucky packages leaked in via transitive deps.
-          PLUCKY_EXTRA=$(dpkg-query -W -f='${Package} ${Status}\n' \
-            | awk '{print $1}' \
-            | xargs -I{} apt-cache policy {} 2>/dev/null \
-            | grep -B20 'Installed:' \
-            | awk '/^[^ ]/{pkg=$1} /plucky/ && /\*\*\*/{print pkg}' \
+          # Gather full apt-cache policy output in one batch call (no -I{} to
+          # avoid one subprocess per package; xargs batches all names at once).
+          RAW=$(dpkg-query -W -f='${Package}\n' \
+            | xargs apt-cache policy 2>/dev/null)
+          # Stateful awk over the full stream — no grep -B context window needed.
+          # apt-cache policy format (exact indentation matters):
+          #   podman:                          ← package header (no leading whitespace, ends in ':')
+          #     Installed: 5.4.1+ds1-1
+          #     Version table:
+          #    *** 5.4.1+ds1-1 100            ← active candidate (1 leading space + ***)
+          #           100 https://.../plucky  ← archive source (8 leading spaces)
+          #        4.9.0 500                  ← non-active version (5 leading spaces + non-space)
+          #           500 https://.../noble
+          # Rules:
+          #   - New package: line with no leading whitespace ending in ':'  → reset state
+          #   - Active candidate: " *** ..."                                → set in_cand=1
+          #   - Non-active version: "     <non-space>..."                   → set in_cand=0
+          #   - Archive line while in_cand && contains "plucky"             → print pkg (once)
+          PLUCKY_PKGS=$(printf '%s\n' "${RAW}" \
+            | awk '/^[^ \t].*:$/ { pkg = $0; sub(/:$/, "", pkg); in_cand = 0; next }
+                   /^ \*\*\*/     { in_cand = 1; next }
+                   /^     [^ ]/   { in_cand = 0; next }
+                   in_cand && /plucky/ { print pkg; in_cand = 0 }')
+          # grep -Fxv exits 1 when all lines are excluded (list is clean) — that
+          # is the expected happy path, so || true is scoped only to this step.
+          PLUCKY_EXTRA=$(printf '%s\n' "${PLUCKY_PKGS}" \
             | grep -Fxv -e podman -e conmon -e crun || true)
           if [[ -n "${PLUCKY_EXTRA}" ]]; then
             echo "::error::Unexpected plucky packages installed: ${PLUCKY_EXTRA}"

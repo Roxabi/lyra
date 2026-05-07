@@ -17,8 +17,9 @@
 # Token format: single line, no trailing newline. Generate with
 #   `claude setup-token > /tmp/claude-oauth.tok` on an interactive workstation.
 #
-# Acceptance (#1108): ≤5s end-to-end from `secret rm` to lyra-clipool serving
-# the new token. Measured 2026-05-07 on M₁ (Podman 5.7.0): 0.617s.
+# Acceptance (#1108): script gate is the 30s `podman ps` poll loop below
+# (line 51-58). Measured 0.617s end-to-end on M₁ (Podman 5.7.0, 2026-05-07)
+# from `secret rm` to lyra-clipool reporting `Up`.
 set -euo pipefail
 export LC_ALL=C
 # Required when invoked via `make remote` (SSH non-interactive shell): without

@@ -68,9 +68,9 @@ Two upstream Podman bugs intersect with our `type=env` choice. Both were tested 
 
 ### #28075 — `target=` mapping survives `Restart=on-failure`?
 
-[containers/podman#28075](https://github.com/containers/podman/issues/28075) reports that in Podman 5.7.1, `--secret name,type=env,target=X` loses the `target=` mapping after a systemd-triggered restart, leaving the variable named after the secret rather than the `target=` alias. The unit declares `Restart=on-failure` + `StartLimitBurst=5` (`lyra-clipool.container:9-10`), making it directly susceptible.
+[containers/podman#28075](https://github.com/containers/podman/issues/28075) reports that in Podman 5.7.1, `--secret name,type=env,target=X` loses the `target=` mapping after a systemd-triggered restart, leaving the variable named after the secret rather than the `target=` alias. The unit declares `[Unit] StartLimitBurst=5` and `[Service] Restart=on-failure` (see `lyra-clipool.container`), making it directly susceptible.
 
-**Outcome: NOT reproduced on M₁.** Tested via a throwaway Quadlet unit identical in shape to the real one (`Secret=…,type=env,target=TEST_VAR` + `Restart=on-failure` + alpine sleep loop). After forcing a crash with `podman kill --signal=KILL` so systemd restarts the unit:
+**Outcome: NOT reproduced on M₁ at the tested version.** `podman --version` on M₁ (2026-05-07) returned `podman version 5.7.0` — one patch level below the version cited in #28075. Tested via a throwaway Quadlet unit identical in shape to the real one (`Secret=…,type=env,target=TEST_VAR` + `Restart=on-failure` + alpine sleep loop). After forcing a crash with `podman kill --signal=KILL` so systemd restarts the unit:
 
 ```
 --- BEFORE restart ---
@@ -79,7 +79,7 @@ TEST_VALUE_42
 TEST_VALUE_42  ← target= mapping preserved; bug not present in 5.7.0
 ```
 
-Reproduction script kept inline below for re-running on future Podman bumps.
+The single kill→restart cycle is sufficient evidence because #28075 is a per-create env-setup error (the `target=` resolution happens once when podman builds the container's env block), not cumulative across restart bursts. Re-run the recipe if M₁'s `podman --version` advances to 5.7.1 or later. Reproduction script kept inline below.
 
 ### #23788 — `podman inspect` value exposure?
 
@@ -92,18 +92,32 @@ LYRA_CLAUDE_CWD=/home/lyra/projects
 GIT_CONFIG_GLOBAL=/etc/lyra/git.config.tmpl
 …
 lyra-claude-oauth=*******            ← secret-name binding, value masked
+
+$ podman inspect lyra-clipool | jq -r '.[].Config.Env[] | select(test("CLAUDE_CODE_OAUTH_TOKEN"))'
+(empty — the target= alias does not appear as a separate Config.Env entry)
 ```
 
 Two observations:
 
-1. The actual `CLAUDE_CODE_OAUTH_TOKEN` value is only present in `/proc/1/environ` of the running container, not in inspect output.
+1. The actual `CLAUDE_CODE_OAUTH_TOKEN` value is only present in `/proc/1/environ` of the running container, not in inspect output. Verified by the second query above — no entry keyed by the alias name appears in `Config.Env` at all.
 2. The masked entry is keyed by the **secret name** (`lyra-claude-oauth`), not the `target=` alias (`CLAUDE_CODE_OAUTH_TOKEN`). This means `podman inspect` exposes *which Podman secrets are bound* to the container, but not their values. Acceptable for our threat model; document as "secret-name metadata leak" if a future audit cares.
 
 ### Re-verification recipe (run after Podman version bumps on M₁)
 
+The recipe is idempotent — the leading teardown removes any orphan state from a previously-interrupted run, so re-running from the top is always safe. If adapting this for a real token (rather than the throwaway `TEST_VALUE_42`), shred the source file immediately after `podman secret create` (the rotate script does this at `rotate-claude-oauth.sh:45`).
+
 ```bash
+# Idempotent teardown — clears orphans from a previously-interrupted run
+systemctl --user stop test-restart-1108.service 2>/dev/null || true
+podman rm -f test-restart-1108 2>/dev/null || true
+podman secret rm test-env-restart-1108 2>/dev/null || true
+rm -f ~/.config/containers/systemd/test-restart-1108.container /tmp/test-restart-1108.tok
+systemctl --user daemon-reload
+
+# Setup
 echo 'TEST_VALUE_42' > /tmp/test-restart-1108.tok && chmod 600 /tmp/test-restart-1108.tok
 podman secret create test-env-restart-1108 /tmp/test-restart-1108.tok
+shred -u /tmp/test-restart-1108.tok   # token now in podman secret store; source no longer needed
 cat > ~/.config/containers/systemd/test-restart-1108.container <<EOF
 [Unit]
 Description=Test #28075 reproduction (throwaway)
@@ -123,13 +137,13 @@ podman exec test-restart-1108 printenv TEST_VAR   # expect: TEST_VALUE_42
 podman kill --signal=KILL test-restart-1108
 sleep 5
 podman exec test-restart-1108 printenv TEST_VAR   # expect: TEST_VALUE_42 (literal name = bug present)
-# Cleanup:
+
+# Cleanup
 systemctl --user stop test-restart-1108.service
 rm -f ~/.config/containers/systemd/test-restart-1108.container
 systemctl --user daemon-reload
 podman rm -f test-restart-1108
 podman secret rm test-env-restart-1108
-shred -u /tmp/test-restart-1108.tok
 ```
 
 ## Fallback path: `type=mount` (deferred — not currently triggered)

@@ -148,3 +148,71 @@ class TestRotateClaudeOauthPathTraversal:
         result = _run_script(ROTATE_CLAUDE, "")
         assert result.returncode == 2
         assert "usage" in result.stderr.lower()
+
+    def test_symlink_pointing_outside_trusted_dir_is_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        """Symlink inside trusted-dir prefix that resolves outside must be rejected.
+
+        This is the TOCTOU vector: an attacker swaps a legitimate path for a
+        symlink to an arbitrary file. realpath -e follows the symlink; the
+        allowlist guard must then reject the resolved destination.
+
+        # verified: removing the trusted-dir check → script proceeds to chmod
+        # the symlink target → exit 0 (or podman error) → RED
+        """
+        evil_target = tmp_path / "evil.tok"
+        evil_target.write_text("should-not-be-read")
+        evil_target.chmod(0o600)
+
+        # Symlink lives in /tmp (outside trusted dirs) — simulates a link that
+        # could be placed inside /home/lyra/secrets/ in the real TOCTOU scenario.
+        link = tmp_path / "link.tok"
+        link.symlink_to(evil_target)
+
+        result = _run_script(ROTATE_CLAUDE, str(link))
+
+        assert result.returncode != 0, (
+            f"Expected non-zero exit for symlink outside trusted dirs\n"
+            f"stderr: {result.stderr}"
+        )
+        assert any(
+            kw in result.stderr.lower()
+            for kw in ("trusted", "outside", "/home/lyra/secrets", "/etc/lyra")
+        ), f"Expected trusted-dir rejection in stderr; got: {result.stderr!r}"
+
+    def test_crlf_in_path_argument_is_rejected(self, tmp_path: Path) -> None:
+        """Path argument containing CRLF must not inject a raw newline into output.
+
+        The real log-injection vector is a raw CR+LF that causes the spoofed
+        text to appear as a *separate line* in stderr (fooling log parsers).
+        The script uses printf '%q' to escape the user-supplied value — the
+        CRLF is rendered as the literal characters \\r\\n inside $'...', not as
+        a real control sequence. This test verifies:
+          1. exit non-zero (realpath -e rejects the non-existent path)
+          2. the spoofed phrase does NOT appear as a standalone line in stderr
+          3. the spoofed phrase does NOT appear in stdout at all
+        """
+        # Construct a path with an embedded carriage-return + newline.
+        crlf_path = str(tmp_path / "real.tok") + "\r\nINFO: secret rotated OK"
+
+        result = _run_script(ROTATE_CLAUDE, crlf_path)
+
+        assert result.returncode != 0, (
+            f"Expected non-zero exit for CRLF-injected path\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        # The spoofed phrase must not appear in stdout.
+        assert "secret rotated OK" not in result.stdout, (
+            "CRLF injection reached stdout"
+        )
+        # The spoofed phrase must not appear as a raw line in stderr.
+        # printf '%q' escapes CR+LF to \\r\\n — so the injection is contained
+        # inside the $'...' quoting, not emitted as a standalone line.
+        stderr_lines = result.stderr.splitlines()
+        assert not any(
+            line.strip() == "INFO: secret rotated OK" for line in stderr_lines
+        ), (
+            f"CRLF injection produced a standalone spoofed line in stderr.\n"
+            f"stderr lines: {stderr_lines!r}"
+        )

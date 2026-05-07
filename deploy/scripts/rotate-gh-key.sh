@@ -30,7 +30,7 @@ NEW_PEM="${1:-}"
 # Resolve symlinks and eliminate any '..' components before existence check;
 # this blocks path-traversal via '..' sequences (issue #1118).
 RESOLVED=$(realpath -e "$NEW_PEM" 2>/dev/null) \
-  || { echo "PEM file not found or unresolvable: $NEW_PEM" >&2; exit 2; }
+  || { printf 'PEM file not found or unresolvable: %q\n' "$NEW_PEM" >&2; exit 2; }
 # Reject paths outside trusted directories.
 [[ "$RESOLVED" == /home/lyra/secrets/* || "$RESOLVED" == /etc/lyra/* ]] \
   || { echo "PEM path outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED" >&2; exit 2; }
@@ -39,7 +39,7 @@ RESOLVED=$(realpath -e "$NEW_PEM" 2>/dev/null) \
 if podman secret inspect lyra-gh-pem &>/dev/null; then
   podman secret rm lyra-gh-pem
 fi
-podman secret create lyra-gh-pem "$NEW_PEM"
+podman secret create lyra-gh-pem "$RESOLVED"
 systemctl --user restart lyra-gh-helper.service
 
 # Gate on helper Up AND dispenser socket reachable from clipool — the latter is

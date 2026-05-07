@@ -33,13 +33,13 @@ NEW_TOKEN="${1:-}"
 # Resolve symlinks and eliminate any '..' components before existence check;
 # this blocks path-traversal via '..' sequences (sister fix to #1118).
 RESOLVED=$(realpath -e "$NEW_TOKEN" 2>/dev/null) \
-  || { echo "Token file not found or unresolvable: $NEW_TOKEN" >&2; exit 2; }
+  || { printf 'Token file not found or unresolvable: %q\n' "$NEW_TOKEN" >&2; exit 2; }
 # Reject paths outside trusted directories.
 [[ "$RESOLVED" == /home/lyra/secrets/* || "$RESOLVED" == /etc/lyra/* ]] \
   || { echo "Token path outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED" >&2; exit 2; }
-chmod 600 "$NEW_TOKEN"
-token_mode=$(stat -c '%a' "$NEW_TOKEN")
-[[ "$token_mode" == "600" ]] || { echo "Token file must be mode 0600 (got $token_mode): $NEW_TOKEN" >&2; exit 2; }
+chmod 600 "$RESOLVED"
+token_mode=$(stat -c '%a' "$RESOLVED")
+[[ "$token_mode" == "600" ]] || { echo "Token file must be mode 0600 (got $token_mode): $RESOLVED" >&2; exit 2; }
 
 # Tolerate first-time creation: rm only if exists.
 if podman secret inspect lyra-claude-oauth &>/dev/null; then
@@ -47,10 +47,10 @@ if podman secret inspect lyra-claude-oauth &>/dev/null; then
 fi
 # Pipe via `tr -d '\n'` so a trailing newline (common from `cmd > file`) cannot
 # leak into the secret value and silently break auth at runtime.
-tr -d '\n' < "$NEW_TOKEN" | podman secret create lyra-claude-oauth -
+tr -d '\n' < "$RESOLVED" | podman secret create lyra-claude-oauth -
 # Wipe source file — best-effort. shred is a no-op on CoW filesystems
 # (btrfs, tmpfs, ZFS); rely on encrypted home for at-rest protection.
-shred -u "$NEW_TOKEN" || rm -f "$NEW_TOKEN"
+shred -u "$RESOLVED" || rm -f "$RESOLVED"
 systemctl --user restart lyra-clipool.service
 
 # Gate on clipool Up — env vars are picked up at container start, so once the

@@ -331,7 +331,7 @@ These are tested at every slice merge, not just at epic close:
 
 1. **Hexagonal boundary preserved.** Every new event type lives in `core/messaging/render_events.py`. No platform imports leak in. Verified by `import-linter`.
 2. **All event classes are `frozen=True`.** Per `render_events.py:8-15` immutability contract.
-3. **No silent event drop.** `StreamingSession.dispatch` raises `TypeError` on unknown event types. No fall-through `pass` allowed.
+3. **No silent event drop.** `StreamingSession.dispatch` fails loudly on unknown event types — either via an explicit `raise TypeError(...)`, or via `typing.assert_never(event)` (which raises `AssertionError` at runtime AND surfaces a pyright compile error when the union widens without updating dispatch). No fall-through `pass` allowed.
 4. **Per-event schema constant.** Every new event type has its own `SCHEMA_VERSION_*` constant; the event's `schema_version` field defaults to that constant. (Same pattern as `render_events.py:22-23`.)
 5. **Coexistence is the default.** Within a slice, v1 paths must keep working. v1 deletion only in Slice 5.
 
@@ -339,7 +339,7 @@ These are tested at every slice merge, not just at epic close:
 
 6. **Dual emission during coexistence.** Within slices 2-4, StreamProcessor emits BOTH the v1 event and the new v2 events for the same source `LlmEvent`. Doubles wire traffic temporarily; gives ironclad parity test ground truth (v2 receivers compared against v1 baseline edit-in-place output, byte-for-byte). Slice 5 removes v1 emission and the dual-write path.
 
-7. **`runId` == `trace_id` verbatim.** Simplest mapping, aligned with existing observability. No fresh UUID, no `metadata.trace_id` indirection. Re-visit only if interrupt+resume becomes a concrete requirement (out of scope for this epic).
+7. **`runId` == `trace_id` verbatim (when set).** Simplest mapping, aligned with existing observability. No fresh UUID, no `metadata.trace_id` indirection. **Edge case (clarified 2026-05-07 from #1109 review):** when `TraceContext.get_trace_id()` returns falsy (`None` from missing context, or empty string from a misconfigured caller), StreamProcessor falls back to `f"synthetic-{uuid4()}"` so the `run_id` field is always non-empty on the wire. Slice 2+ consumers that compare `run_id` across events MAY see a `synthetic-*` prefix when the trace context is unset; treat that as a valid identifier, not an error. Re-visit only if interrupt+resume becomes a concrete requirement (out of scope for this epic).
 
 8. **`message_id` per text block.** New id per `TextStart` (not per turn). Supports interleaved `text → tool → text` patterns natural to agentic flows and matches AG-UI's modeling. Slice 3 sub-analysis (`artifacts/analyses/NNN-toolcall-streaming-cli-instrumentation.mdx`) must capture Claude CLI text-block boundary semantics (U2) and confirm; if CLI emits a single block per turn, the per-block id collapses harmlessly to per-turn behavior.
 

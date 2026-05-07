@@ -58,14 +58,20 @@ log = logging.getLogger(__name__)
 
 # Slice 3 (#1100 review) — security boundary for ToolCallResultRenderEvent.
 # ``ToolResultLlmEvent.content`` carries raw tool output (file contents, shell
-# stdout, etc.). The output is published on the NATS bus where any subscriber
-# can read it. Mirror the ``RunErrorRenderEvent`` discipline:
-#  * for tools known to read sensitive payloads (Read/Bash/Edit/Write), replace
-#    content with a fixed redaction placeholder before encoding.
-#  * for everything else, truncate to MAX_CONTENT_BYTES with a ``[…truncated]``
-#    sentinel so a runaway tool output cannot exceed NATS message limits.
-_SENSITIVE_TOOL_NAMES_FOR_REDACTION: frozenset[str] = frozenset(
-    {"read", "bash", "edit", "write"}
+# stdout, web fetch responses, etc.). The output is published on the NATS bus
+# where any subscriber can read it. Mirror the ``RunErrorRenderEvent``
+# discipline: secure-by-default — redact unless explicitly safe.
+#
+# Rationale (per #1131 iter-2 review): an inclusion list of "sensitive" names
+# leaves any future tool (MCP servers, ``WebFetch`` to a metadata endpoint,
+# third-party plugins) leaking credentials unredacted. The allowlist below
+# names tools that return path-only / structural data — never file content,
+# shell output, or arbitrary network responses. Everything else is redacted
+# by default. Slice 5 (#1102) is the natural place to refine with a per-tool
+# ``is_sensitive: bool`` flag in ``ToolDisplayConfig`` if richer rendering is
+# needed.
+_NON_SENSITIVE_TOOL_NAMES: frozenset[str] = frozenset(
+    {"glob", "grep", "ls", "todoread", "todowrite"}
 )
 _MAX_CONTENT_BYTES = 65_536
 _REDACTED_PLACEHOLDER = "[redacted — tool output suppressed for security]"
@@ -75,18 +81,16 @@ _TRUNCATED_SENTINEL = "…[truncated]"
 def _sanitize_tool_result_content(content: str, tool_name: str | None) -> str:
     """Apply secret-leak guard + size cap to ``ToolCallResultRenderEvent.content``.
 
-    Returns either:
-      * the redaction placeholder when the tool name matches a sensitive set
-        (file/shell I/O — file paths in errors, secrets in env, etc.), or
-      * the truncated content with a sentinel when length exceeds the NATS
-        message size budget, or
-      * the content unchanged.
+    Secure-by-default: returns the redaction placeholder UNLESS the tool name
+    is in the explicit ``_NON_SENSITIVE_TOOL_NAMES`` allowlist (path-only or
+    structural-data tools). For allowlisted tools, content passes through with
+    only the size cap applied.
 
-    ``tool_name`` is `None` when the parser receives a ``tool_result`` block
+    ``tool_name`` is ``None`` when the parser receives a ``tool_result`` block
     whose ``tool_use_id`` did not correlate with a prior ``ToolUseLlmEvent``
-    (orphan result). Treat orphans as sensitive — fail closed.
+    (orphan result). Treated as sensitive — fail-closed.
     """
-    if tool_name is None or tool_name.lower() in _SENSITIVE_TOOL_NAMES_FOR_REDACTION:
+    if tool_name is None or tool_name.lower() not in _NON_SENSITIVE_TOOL_NAMES:
         return _REDACTED_PLACEHOLDER
     encoded = content.encode("utf-8", errors="replace")
     if len(encoded) <= _MAX_CONTENT_BYTES:

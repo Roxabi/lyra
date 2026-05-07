@@ -172,9 +172,11 @@ class StreamingSession:
                     # Slice 3 (#1100): ToolCall* lifecycle events. v1
                     # ``ToolSummaryRenderEvent`` is dual-emitted alongside, so
                     # the existing summary-card UX still drives the placeholder
-                    # edits below. Per-platform overrides may render richer
-                    # (e.g. Discord opt-in args streaming) by hooking into the
-                    # platform callbacks. Sunset planned in Slice 5 (#1102).
+                    # edits below. Per-platform overrides hook
+                    # ``_on_toolcall_v2`` to render richer once they migrate
+                    # off v1 ToolSummary in Slice 5 (#1102). Default is
+                    # no-op (parity).
+                    await self._on_toolcall_v2(event)
                     continue
 
                 if isinstance(event, ToolSummaryRenderEvent):

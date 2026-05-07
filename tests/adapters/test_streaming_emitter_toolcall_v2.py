@@ -103,3 +103,44 @@ class TestSharedEmitterIgnoresToolCallV2:
             )
         )
         cb.edit_placeholder_tool.assert_called()  # type: ignore[attr-defined]
+
+    async def test_subclass_override_receives_toolcall_v2(self) -> None:
+        """PL1 (#1100 review): _on_toolcall_v2 override seam is invoked.
+
+        Ensures the dispatch actually awaits the method on the session, so
+        platform subclasses can render richer when they migrate off v1.
+        """
+        captured: list[RenderEvent] = []
+
+        class _RecordingSession(StreamingSession):
+            async def _on_toolcall_v2(
+                self,
+                event: ToolCallStartRenderEvent
+                | ToolCallArgsRenderEvent
+                | ToolCallEndRenderEvent
+                | ToolCallResultRenderEvent,
+            ) -> None:
+                captured.append(event)
+
+        cb = _make_callbacks()
+        outbound = OutboundMessage.from_text("hi")
+        session = _RecordingSession(cb, outbound=outbound)
+        await session.run(
+            _events(
+                RunStartedRenderEvent(run_id="r1"),
+                ToolCallStartRenderEvent(tool_call_id="t1", tool_name="Read"),
+                ToolCallArgsRenderEvent(tool_call_id="t1", delta='{"k":'),
+                ToolCallEndRenderEvent(tool_call_id="t1"),
+                ToolCallResultRenderEvent(tool_call_id="t1", content="ok"),
+                TextRenderEvent("bye", is_final=True),
+                RunFinishedRenderEvent(run_id="r1"),
+            )
+        )
+        # All 4 ToolCall* event types must reach the override.
+        types = [type(e).__name__ for e in captured]
+        assert types == [
+            "ToolCallStartRenderEvent",
+            "ToolCallArgsRenderEvent",
+            "ToolCallEndRenderEvent",
+            "ToolCallResultRenderEvent",
+        ]

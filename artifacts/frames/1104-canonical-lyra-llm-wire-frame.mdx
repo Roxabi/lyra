@@ -1,0 +1,74 @@
+---
+title: Canonical lyra.llm wire — full ACL migration + hub switch to NatsLlmClient
+issue: 1104
+status: approved
+tier: F-lite
+date: 2026-05-07
+---
+
+## Problem
+
+The LLM domain on Lyra's NATS broker is in a half-migrated state. Code-side
+canonicals exist (`packages/roxabi-contracts/src/roxabi_contracts/llm/subjects.py`
+declares `lyra.llm.generate.request` + `lyra.llm.heartbeat`; `NatsLlmClient`
+implements the canonical hub-side path), but the deployed broker ACL
+(`deploy/nats/auth.conf`) still allows only the legacy ad-hoc subjects
+(`lyra.llm.request` / `lyra.llm.health.*`). Hub bootstrap also still wires the
+legacy `NatsLlmDriver` rather than `NatsLlmClient`.
+
+Net effect: the canonical hub client and any canonical worker (e.g. llmCLI's
+`LlmNatsAdapter` from sister PR llmCLI #12) cannot exchange traffic — both the
+canonical request **and** heartbeat subjects are blocked at the ACL layer.
+Closing both gaps unblocks the harness path under epic #987 and brings the LLM
+domain to parity with voice (ADR-044) and image (ADR-046/050).
+
+## Who
+
+- **Primary:** Lyra hub — needs to publish on canonical request subject and
+  subscribe canonical heartbeat for harness/llmCLI integration
+- **Secondary:**
+  - llmCLI worker (sister PR #12) — cannot land without lyra-side ACL +
+    bootstrap migration
+  - Epic #987 (Anthropic deprecation via llmCLI NATS backend + HarnessCLI) —
+    blocked end-to-end until both PRs merge
+
+## Constraints
+
+- Canonical envelopes (`LlmRequest`, `LlmChunkEvent`, `LlmResponse`) and subject
+  constants already exist in `roxabi-contracts` — must use them, not re-define
+- ACL regeneration uses `sudo lyra-acl genkeys --regenerate` — YAML source is
+  the SSoT, `auth.conf` is generated
+- Coordinated merge with llmCLI #12: either PR alone leaves the harness path
+  red (this PR alone = no responder; llmCLI #12 alone = ACL still blocks) — both
+  must reach "ready" simultaneously and merge in the same window
+- M₁ smoke gate: harness CLI → hub → llmCLI worker → LiteLLM → llama-server
+  must pass before merge
+- `NatsLlmClient` uses async-iterator streaming + Pydantic envelope parsing
+  (vs. driver's ad-hoc JSON callback) — callsites in `hub_builder.py`,
+  `agent_factory.py`, `hub_standalone_helpers.py` need adjustment
+
+## Out of Scope
+
+- Per-worker score-routed subjects (`lyra.llm.generate.request.{worker_id}`) —
+  separate issue when load-balancing multiple `llm-worker` instances becomes
+  needed
+- ADR-045 `roxabi-nats` SDK uv-workspace extraction — orthogonal track
+- Full removal of `lyra.llm.drivers.nats_driver` (`NatsLlmDriver`) — follow-up
+  issue after consumer migration
+- LiteLLM proxy work — owned by llmCLI #12 (worker-side downstream switch)
+
+## Complexity
+
+**Tier: F-lite** — Single domain (NATS LLM transport), clear scope (5 files +
+ACL YAML + tests), no unknown architecture. Coordination overhead with llmCLI
+#12 is process, not technical complexity.
+
+Signals observed:
+- Issue label `size:F-lite` already applied during triage
+- Bounded file set: `llm_overlay.py`, `wiring_helpers.py`, `hub_builder.py`,
+  `agent_factory.py`, `hub_standalone_helpers.py`, ACL YAML, `auth.conf`,
+  one test file
+- No new patterns — reuses canonical envelope pattern from voice/image
+  domains (ADR-044/046/049/050)
+- Risk concentrated in coordination (sister PR timing) + ACL regeneration
+  (root-required), not implementation

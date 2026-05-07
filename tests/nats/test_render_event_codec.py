@@ -15,7 +15,14 @@ import logging
 
 import pytest
 
-from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
+from lyra.core.messaging.render_events import (
+    TextRenderEvent,
+    ToolCallArgsRenderEvent,
+    ToolCallEndRenderEvent,
+    ToolCallResultRenderEvent,
+    ToolCallStartRenderEvent,
+    ToolSummaryRenderEvent,
+)
 from lyra.nats.render_event_codec import NatsRenderEventCodec
 
 
@@ -189,3 +196,109 @@ class TestRenderEventCodecVersionCheck:
         # Assert — counts are independent
         assert c1 == {"TextRenderEvent:schema": 2}
         assert c2 == {"TextRenderEvent:schema": 1}
+
+
+# ---------------------------------------------------------------------------
+# ToolCall* round-trip + schema floor (Slice 3 of #1096)
+# ---------------------------------------------------------------------------
+
+
+class TestToolCallCodecRoundTrip:
+    """Encode then decode each ToolCall* event and assert byte-for-byte fidelity."""
+
+    def test_tool_call_start_round_trip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = ToolCallStartRenderEvent(tool_call_id="toolu_AB", tool_name="Read")
+
+        event_type, payload, is_done = codec.encode(original)
+
+        assert event_type == "tool_call_start"
+        assert is_done is False
+        assert payload["tool_call_id"] == "toolu_AB"
+        assert payload["tool_name"] == "Read"
+        assert payload["schema_version"] == 1
+
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_tool_call_args_round_trip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = ToolCallArgsRenderEvent(tool_call_id="toolu_AB", delta='{"foo":')
+
+        event_type, payload, is_done = codec.encode(original)
+
+        assert event_type == "tool_call_args"
+        assert is_done is False
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_tool_call_end_round_trip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = ToolCallEndRenderEvent(tool_call_id="toolu_AB")
+
+        event_type, payload, is_done = codec.encode(original)
+
+        assert event_type == "tool_call_end"
+        assert is_done is False
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_tool_call_result_round_trip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = ToolCallResultRenderEvent(
+            tool_call_id="toolu_AB", content="ok", is_error=False
+        )
+
+        event_type, payload, is_done = codec.encode(original)
+
+        assert event_type == "tool_call_result"
+        assert is_done is False
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_tool_call_result_is_error_round_trip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = ToolCallResultRenderEvent(
+            tool_call_id="toolu_AB", content="boom", is_error=True
+        )
+
+        event_type, payload, _is_done = codec.encode(original)
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_tool_call_is_terminal_false(self) -> None:
+        # ToolCall* are mid-stream — never terminal sentinels.
+        for et in (
+            "tool_call_start",
+            "tool_call_args",
+            "tool_call_end",
+            "tool_call_result",
+        ):
+            assert NatsRenderEventCodec.is_terminal(et) is False
+
+    def test_tool_call_start_schema_floor_drops(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+
+        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+            result = codec.decode(
+                "tool_call_start",
+                {"schema_version": 99, "tool_call_id": "x", "tool_name": "Read"},
+                counter=counter,
+            )
+
+        assert result is None
+        assert counter == {"ToolCallStartRenderEvent:schema": 1}
+
+    def test_tool_call_args_schema_floor_drops(self) -> None:
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+        result = codec.decode(
+            "tool_call_args",
+            {"schema_version": 99, "tool_call_id": "x", "delta": "y"},
+            counter=counter,
+        )
+        assert result is None
+        assert counter == {"ToolCallArgsRenderEvent:schema": 1}

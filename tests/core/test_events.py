@@ -150,5 +150,8 @@ class TestLlmEventUnion:
             "LlmEvent",
             "ResultLlmEvent",
             "TextLlmEvent",
+            "ToolResultLlmEvent",
+            "ToolUseDeltaLlmEvent",
+            "ToolUseEndLlmEvent",
             "ToolUseLlmEvent",
         }

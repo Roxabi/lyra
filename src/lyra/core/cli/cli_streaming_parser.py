@@ -12,8 +12,22 @@ from collections import deque
 
 from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 
-from ..messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from ..messaging.events import (
+    LlmEvent,
+    ResultLlmEvent,
+    TextLlmEvent,
+    ToolResultLlmEvent,
+    ToolUseDeltaLlmEvent,
+    ToolUseEndLlmEvent,
+    ToolUseLlmEvent,
+)
 from ..messaging.metrics import emit_populated_total
+
+# Anthropic CLI NDJSON wire constants — kept here so the parser is the single
+# source of truth on what shapes upstream emits.
+_DELTA_INPUT_JSON = "input_json_delta"
+_BLOCK_TYPE_TOOL_USE = "tool_use"
+_BLOCK_TYPE_TOOL_RESULT = "tool_result"
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +78,12 @@ class CliStreamingParser:
         self._had_text_delta = False
         self._done = False
         self._pending: deque[LlmEvent] = deque()
+        # Slice 3 (#1100): index → tool_id map for content_block_delta /
+        # content_block_stop correlation. Only populated when the CLI provides
+        # an `index` field on the content_block_start event for a tool_use
+        # block. Text blocks and tool_use blocks without an index do not
+        # participate in the args-streaming lifecycle.
+        self._open_tool_blocks: dict[int, str] = {}
 
     def parse_line(self, line: str) -> deque[LlmEvent]:  # noqa: C901, PLR0912, PLR0915 — protocol event dispatch
         """Parse a JSON line, update state, and return events to yield.
@@ -140,21 +160,72 @@ class CliStreamingParser:
             event_type = event_data.get("type", "")
             if event_type == "content_block_start":
                 cb = event_data.get("content_block", {})
-                if cb.get("type") == "tool_use":
+                if cb.get("type") == _BLOCK_TYPE_TOOL_USE:
+                    tool_id = cb.get("id", "")
+                    idx = event_data.get("index")
+                    if isinstance(idx, int) and tool_id:
+                        self._open_tool_blocks[idx] = tool_id
                     self._pending.append(
                         ToolUseLlmEvent(
                             tool_name=cb.get("name", ""),
-                            tool_id=cb.get("id", ""),
+                            tool_id=tool_id,
                             input={},
                         )
                     )
             elif event_type == "content_block_delta":
                 delta = event_data.get("delta", {})
-                if delta.get("type") == "text_delta":
+                delta_type = delta.get("type", "")
+                if delta_type == "text_delta":
                     text = delta.get("text", "")
                     if text:
                         self._had_text_delta = True
                         self._pending.append(TextLlmEvent(text=text))
+                elif delta_type == _DELTA_INPUT_JSON:
+                    idx = event_data.get("index")
+                    partial_json = delta.get("partial_json", "")
+                    if (
+                        isinstance(idx, int)
+                        and idx in self._open_tool_blocks
+                        and partial_json
+                    ):
+                        self._pending.append(
+                            ToolUseDeltaLlmEvent(
+                                tool_id=self._open_tool_blocks[idx],
+                                partial_json=partial_json,
+                            )
+                        )
+            elif event_type == "content_block_stop":
+                idx = event_data.get("index")
+                if isinstance(idx, int) and idx in self._open_tool_blocks:
+                    self._pending.append(
+                        ToolUseEndLlmEvent(tool_id=self._open_tool_blocks.pop(idx))
+                    )
+
+        elif msg_type == "user":
+            blocks = data.get("message", {}).get("content", [])
+            for b in blocks:
+                if b.get("type") != _BLOCK_TYPE_TOOL_RESULT:
+                    continue
+                content = b.get("content", "")
+                # Anthropic CLI may pack content as a list of typed blocks.
+                # Render text-only this slice; non-text blocks placeholder as
+                # `[{type}]` so non-renderable payloads never silently vanish.
+                if isinstance(content, list):
+                    parts = []
+                    for blk in content:
+                        if isinstance(blk, dict):
+                            if blk.get("type") == "text":
+                                parts.append(str(blk.get("text", "")))
+                            else:
+                                parts.append(f"[{blk.get('type', '?')}]")
+                    content = "".join(parts)
+                self._pending.append(
+                    ToolResultLlmEvent(
+                        tool_id=b.get("tool_use_id", ""),
+                        content=str(content),
+                        is_error=bool(b.get("is_error", False)),
+                    )
+                )
 
         elif msg_type == "result":
             sid = data.get("session_id", "")

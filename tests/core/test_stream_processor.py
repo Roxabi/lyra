@@ -6,13 +6,24 @@ import ast
 from pathlib import Path
 from typing import AsyncIterator
 
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.messaging.events import (
+    ResultLlmEvent,
+    TextLlmEvent,
+    ToolResultLlmEvent,
+    ToolUseDeltaLlmEvent,
+    ToolUseEndLlmEvent,
+    ToolUseLlmEvent,
+)
 from lyra.core.messaging.render_events import (
     RenderEvent,
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
     TextRenderEvent,
+    ToolCallArgsRenderEvent,
+    ToolCallEndRenderEvent,
+    ToolCallResultRenderEvent,
+    ToolCallStartRenderEvent,
     ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
@@ -25,16 +36,31 @@ _RUN_LIFECYCLE_TYPES = (
     RunErrorRenderEvent,
 )
 
+# Slice 3 (#1100) v2 events. Stripped from v1-focused test results so the
+# existing assertions remain stable; ToolCall*-specific tests live in
+# TestToolCallLifecycle and inspect the unstripped stream.
+_TOOLCALL_V2_TYPES = (
+    ToolCallStartRenderEvent,
+    ToolCallArgsRenderEvent,
+    ToolCallEndRenderEvent,
+    ToolCallResultRenderEvent,
+)
+
 
 def strip_run_lifecycle(events: list[RenderEvent]) -> list[RenderEvent]:
-    """Drop ``Run{Started,Finished,Error}RenderEvent`` from a result list.
+    """Drop ``Run{Started,Finished,Error}`` + ``ToolCall*`` events.
 
-    Slice 1 of #1096 added unconditional Run lifecycle bookends to every
-    ``StreamProcessor.process()`` invocation. Tests that focus on text/tool
-    payload count and ordering use this helper to keep their original
-    assertions intact; lifecycle-specific tests live in ``TestRunLifecycle``.
+    Slice 1 added Run lifecycle bookends; Slice 3 added per-call ToolCall*
+    streaming. v1-focused tests strip both so their original (v1
+    ``TextRenderEvent`` + ``ToolSummaryRenderEvent``) assertions remain
+    stable. v2 lifecycle is asserted in dedicated test classes
+    (``TestRunLifecycle``, ``TestToolCallLifecycle``).
     """
-    return [e for e in events if not isinstance(e, _RUN_LIFECYCLE_TYPES)]
+    return [
+        e
+        for e in events
+        if not isinstance(e, (*_RUN_LIFECYCLE_TYPES, *_TOOLCALL_V2_TYPES))
+    ]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -940,3 +966,144 @@ class TestRunLifecycle:
         assert RunErrorRenderEvent(run_id="x", message="m").schema_version == (
             SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT
         )
+
+
+# ---------------------------------------------------------------------------
+# Slice 3 of #1096 — ToolCall* lifecycle
+# ---------------------------------------------------------------------------
+
+
+class TestToolCallLifecycle:
+    """ToolCall{Start,Args,End,Result} streamed events with dual-emit + dedupe."""
+
+    async def test_emission_order_single_call(self) -> None:
+        """Start → Args (×N) → End → Result, all sharing tool_call_id."""
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
+            ToolUseDeltaLlmEvent(tool_id="t1", partial_json='{"file_path":'),
+            ToolUseDeltaLlmEvent(tool_id="t1", partial_json='"/tmp/x"}'),
+            ToolUseEndLlmEvent(tool_id="t1"),
+            ToolResultLlmEvent(tool_id="t1", content="ok"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+
+        v2 = [
+            e
+            for e in result
+            if isinstance(
+                e,
+                (
+                    ToolCallStartRenderEvent,
+                    ToolCallArgsRenderEvent,
+                    ToolCallEndRenderEvent,
+                    ToolCallResultRenderEvent,
+                ),
+            )
+        ]
+        types = [type(e).__name__ for e in v2]
+        assert types == [
+            "ToolCallStartRenderEvent",
+            "ToolCallArgsRenderEvent",
+            "ToolCallArgsRenderEvent",
+            "ToolCallEndRenderEvent",
+            "ToolCallResultRenderEvent",
+        ]
+        assert all(e.tool_call_id == "t1" for e in v2)
+
+    async def test_dedupe_post_hoc_tool_use_event(self) -> None:
+        """Parser emits ToolUseLlmEvent twice (start + post-hoc); SP dedupes."""
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
+            ToolUseLlmEvent(
+                tool_name="Read", tool_id="t1", input={"path": "/x"}
+            ),
+            ToolUseEndLlmEvent(tool_id="t1"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
+        assert len(starts) == 1
+
+    async def test_orphan_end_synthesis_at_result(self) -> None:
+        """Start without End triggers synthesized End at ResultLlmEvent time."""
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
+            # NO ToolUseEndLlmEvent
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        ends = [e for e in result if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(ends) == 1
+        assert ends[0].tool_call_id == "t1"
+
+    async def test_dual_emit_tool_summary_preserved(self) -> None:
+        """v1 ToolSummaryRenderEvent still emitted at result with is_complete=True."""
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(
+                tool_name="Edit", tool_id="t1", input={"path": "src/x.py"}
+            ),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        summaries = [
+            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
+        ]
+        assert len(summaries) == 1
+
+    async def test_tool_call_args_passes_partial_json_verbatim(self) -> None:
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
+            ToolUseDeltaLlmEvent(tool_id="t1", partial_json="{\"a\":"),
+            ToolUseDeltaLlmEvent(tool_id="t1", partial_json="1}"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        args = [e for e in result if isinstance(e, ToolCallArgsRenderEvent)]
+        assert [e.delta for e in args] == ["{\"a\":", "1}"]
+
+    async def test_tool_call_result_carries_is_error(self) -> None:
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Bash", tool_id="t1", input={}),
+            ToolUseEndLlmEvent(tool_id="t1"),
+            ToolResultLlmEvent(tool_id="t1", content="boom", is_error=True),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        results = [e for e in result if isinstance(e, ToolCallResultRenderEvent)]
+        assert len(results) == 1
+        assert results[0].is_error is True
+        assert results[0].content == "boom"
+
+    async def test_no_explicit_dispatch_silent_drop(self) -> None:
+        """ToolUseDeltaLlmEvent reaches process() and is mapped, not absorbed."""
+        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
+            ToolUseDeltaLlmEvent(tool_id="t1", partial_json="{}"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        # If the bare-else regressed, the delta would crash on event.is_error
+        # access. Successful dispatch surfaces a ToolCallArgsRenderEvent.
+        assert any(isinstance(e, ToolCallArgsRenderEvent) for e in result)

@@ -24,6 +24,10 @@ from lyra.core.messaging import (
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
     TextRenderEvent,
+    ToolCallArgsRenderEvent,
+    ToolCallEndRenderEvent,
+    ToolCallResultRenderEvent,
+    ToolCallStartRenderEvent,
     ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
@@ -139,6 +143,21 @@ class StreamingSession:
                     # Slice 1 (#1098): Run lifecycle events are pure additive
                     # surface — adapters initially ignore (no UX). Future slices
                     # may render banners or expose run_id in observability.
+                    continue
+
+                if isinstance(
+                    event,
+                    ToolCallStartRenderEvent
+                    | ToolCallArgsRenderEvent
+                    | ToolCallEndRenderEvent
+                    | ToolCallResultRenderEvent,
+                ):
+                    # Slice 3 (#1100): ToolCall* lifecycle events. v1
+                    # ``ToolSummaryRenderEvent`` is dual-emitted alongside, so
+                    # the existing summary-card UX still drives the placeholder
+                    # edits below. Per-platform overrides may render richer
+                    # (e.g. Discord opt-in args streaming) by hooking into the
+                    # platform callbacks. Sunset planned in Slice 5 (#1102).
                     continue
 
                 if isinstance(event, ToolSummaryRenderEvent):

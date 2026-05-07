@@ -49,6 +49,46 @@ class ToolUseLlmEvent:
 
 
 @dataclass(frozen=True)
+class ToolUseDeltaLlmEvent:
+    """Tool-use input streaming chunk (partial JSON fragment).
+
+    Slice 3 of #1096. Emitted on Anthropic CLI ``content_block_delta`` events
+    whose ``delta.type == "input_json_delta"`` (per ADR-028
+    ``--include-partial-messages``). ``partial_json`` is only valid JSON when
+    concatenated with the rest of the deltas for the same ``tool_id``.
+    """
+
+    tool_id: str
+    partial_json: str
+
+
+@dataclass(frozen=True)
+class ToolUseEndLlmEvent:
+    """Tool-use content block end (input streaming complete).
+
+    Slice 3 of #1096. Emitted on Anthropic CLI ``content_block_stop`` events
+    that close a previously-opened ``tool_use`` block.
+    """
+
+    tool_id: str
+
+
+@dataclass(frozen=True)
+class ToolResultLlmEvent:
+    """Tool execution result, paired by ``tool_id`` with a prior ``ToolUseLlmEvent``.
+
+    Slice 3 of #1096. Emitted on Anthropic CLI user-message blocks of
+    ``type=tool_result``. ``content`` is rendered text-only this slice;
+    list-of-typed-blocks are concatenated with ``[{type}]`` placeholders for
+    non-text blocks (rich rendering deferred to a later slice).
+    """
+
+    tool_id: str
+    content: str
+    is_error: bool = False
+
+
+@dataclass(frozen=True)
 class ResultLlmEvent:
     """Final event in every stream — signals turn completion.
 
@@ -70,11 +110,21 @@ class ResultLlmEvent:
 
 
 # Union type exported for type annotations and ``isinstance`` checks.
-LlmEvent = TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent
+LlmEvent = (
+    TextLlmEvent
+    | ToolUseLlmEvent
+    | ToolUseDeltaLlmEvent
+    | ToolUseEndLlmEvent
+    | ToolResultLlmEvent
+    | ResultLlmEvent
+)
 
 __all__ = [
     "LlmEvent",
     "ResultLlmEvent",
     "TextLlmEvent",
+    "ToolResultLlmEvent",
+    "ToolUseDeltaLlmEvent",
+    "ToolUseEndLlmEvent",
     "ToolUseLlmEvent",
 ]

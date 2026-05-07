@@ -24,7 +24,15 @@ import time
 from collections.abc import AsyncGenerator, AsyncIterator
 
 from lyra.core.messaging.error_extractor import _extract_worker_error
-from lyra.core.messaging.events import LlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.messaging.events import (
+    LlmEvent,
+    ResultLlmEvent,
+    TextLlmEvent,
+    ToolResultLlmEvent,
+    ToolUseDeltaLlmEvent,
+    ToolUseEndLlmEvent,
+    ToolUseLlmEvent,
+)
 from lyra.core.messaging.metrics import emit_received_total
 from lyra.core.messaging.render_events import (
     FileEditSummary,
@@ -34,6 +42,10 @@ from lyra.core.messaging.render_events import (
     RunStartedRenderEvent,
     SilentCounts,
     TextRenderEvent,
+    ToolCallArgsRenderEvent,
+    ToolCallEndRenderEvent,
+    ToolCallResultRenderEvent,
+    ToolCallStartRenderEvent,
     ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
@@ -84,6 +96,16 @@ class StreamProcessor:
         # --- pending text ---
         self._pending_text: str = ""
 
+        # --- Slice 3 (#1100) ToolCall* lifecycle state ---
+        # Dedupe: parser emits ``ToolUseLlmEvent`` from BOTH the streaming
+        # ``content_block_start`` path AND the post-hoc ``assistant``-message
+        # path. The second occurrence for the same ``tool_id`` is dropped.
+        self._seen_tool_ids: set[str] = set()
+        # Open-call tracker for orphan ``ToolCallEnd`` synthesis. Populated on
+        # ``ToolCallStart`` emission, cleared on ``ToolCallEnd``. Anything still
+        # in the set at ``ResultLlmEvent`` time gets a synthesized end event.
+        self._open_tool_call_ids: set[str] = set()
+
         # --- reuse guard ---
         self._consumed: bool = False
 
@@ -91,7 +113,7 @@ class StreamProcessor:
     # Public interface
     # ------------------------------------------------------------------
 
-    async def process(  # noqa: C901 — event-type dispatch + terminal fallbacks
+    async def process(  # noqa: C901, PLR0915 — event-type dispatch + terminal fallbacks
         self, events: AsyncIterator[LlmEvent]
     ) -> AsyncGenerator[RenderEvent, None]:
         """Process an async stream of ``LlmEvent`` objects.
@@ -125,8 +147,29 @@ class StreamProcessor:
                     async for render_event in self._handle_tool_event(event):
                         yield render_event
 
-                else:  # ResultLlmEvent
+                elif isinstance(event, ToolUseDeltaLlmEvent):
+                    yield ToolCallArgsRenderEvent(
+                        tool_call_id=event.tool_id, delta=event.partial_json
+                    )
+
+                elif isinstance(event, ToolUseEndLlmEvent):
+                    self._open_tool_call_ids.discard(event.tool_id)
+                    yield ToolCallEndRenderEvent(tool_call_id=event.tool_id)
+
+                elif isinstance(event, ToolResultLlmEvent):
+                    yield ToolCallResultRenderEvent(
+                        tool_call_id=event.tool_id,
+                        content=event.content,
+                        is_error=event.is_error,
+                    )
+
+                elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
                     _result_received = True
+                    # Synthesize ToolCallEnd for any open tool_call_ids that
+                    # never received a content_block_stop (truncated stream,
+                    # partial tool call). Loud WARN log per orphan.
+                    for orphan_event in self._synth_orphan_tool_ends():
+                        yield orphan_event
                     if self._has_any_tool_events():
                         yield self._emit_snapshot(is_complete=True)
                     # On error with no streamed text, surface the structured WorkerError
@@ -148,6 +191,16 @@ class StreamProcessor:
                         text=final_text,
                         is_final=True,
                         is_error=event.is_error,  # #392: propagate error state
+                    )
+
+                else:
+                    # Defensive: pyright's exhaustiveness on the LlmEvent union
+                    # makes this branch unreachable at type-check time. Kept as
+                    # a runtime guard against silent drop if the union widens
+                    # without dispatch update.
+                    raise TypeError(  # pyright: ignore[reportUnreachable]
+                        f"StreamProcessor.process: unhandled LlmEvent "
+                        f"{type(event).__name__}"
                     )
 
             # Stream ended without ResultLlmEvent (truncation or upstream error)
@@ -195,16 +248,25 @@ class StreamProcessor:
     ) -> AsyncGenerator[RenderEvent, None]:
         """Handle a single ``ToolUseLlmEvent``, yielding any resulting ``RenderEvent``s.
 
-        Flushes pending text as an intermediate event when ``show_intermediate``
-        is enabled, then accumulates the tool call and emits a throttled
-        ``ToolSummaryRenderEvent`` if the window has elapsed.
+        Slice 3 (#1100) emits ``ToolCallStartRenderEvent`` with cross-event
+        ``tool_call_id`` correlator. The parser emits ``ToolUseLlmEvent`` from
+        BOTH the streaming ``content_block_start`` path AND the post-hoc
+        ``assistant``-message path; we dedupe by ``tool_id`` so adapters see
+        exactly one ``ToolCallStart`` per call.
 
-        When intermediate text is flushed, the ``ToolSummaryRenderEvent`` is
-        intentionally skipped for this iteration so adapters have time to display
-        the text before the tool card overwrites it.  The summary will still be
-        emitted by the next tool event (once the throttle window elapses) or
-        unconditionally by the final ``ResultLlmEvent``.
+        Flushes pending text as an intermediate event when ``show_intermediate``
+        is enabled, then accumulates the tool call (v1 ``ToolSummaryRenderEvent``
+        dual-emit, kept until Slice 5).
         """
+        # Slice 3 dedupe: drop second emission for the same tool_id.
+        is_dupe = event.tool_id in self._seen_tool_ids
+        if not is_dupe:
+            self._seen_tool_ids.add(event.tool_id)
+            self._open_tool_call_ids.add(event.tool_id)
+            yield ToolCallStartRenderEvent(
+                tool_call_id=event.tool_id, tool_name=event.tool_name
+            )
+
         # Flush any text accumulated before this tool call so adapters
         # can show inter-tool text progressively (show_intermediate gate).
         flushed_intermediate = False
@@ -222,6 +284,29 @@ class StreamProcessor:
             and self._has_any_tool_events()
         ):
             yield self._emit_snapshot()
+
+    def _synth_orphan_tool_ends(
+        self,
+    ) -> "list[ToolCallEndRenderEvent]":
+        """Synthesize ``ToolCallEndRenderEvent`` for any open tool_call_ids.
+
+        Called at ``ResultLlmEvent`` time (or at stream-end without result).
+        Tool calls that started but never received a ``content_block_stop``
+        leave adapters with a dangling open-call card; the synthesized end
+        closes it. WARN-logged once per orphan.
+        """
+        import logging
+
+        log = logging.getLogger(__name__)
+        events: list[ToolCallEndRenderEvent] = []
+        for tid in sorted(self._open_tool_call_ids):
+            log.warning(
+                "StreamProcessor: synthesizing orphan ToolCallEnd for tool_call_id=%s",
+                tid,
+            )
+            events.append(ToolCallEndRenderEvent(tool_call_id=tid))
+        self._open_tool_call_ids.clear()
+        return events
 
     # ------------------------------------------------------------------
     # Internal helpers

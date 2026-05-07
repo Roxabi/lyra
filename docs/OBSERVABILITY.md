@@ -29,7 +29,7 @@ A `TraceIdFilter` (attached to all logging handlers at startup) reads `trace_id`
 To isolate a single turn's log lines:
 
 ```bash
-grep 'abc-123-...' /var/log/supervisor/lyra_hub.stdout.log
+journalctl --user -u lyra-hub | grep 'abc-123-...'
 ```
 
 **Scope boundary:** Log lines emitted in `Hub.run()` outside of pipeline processing (e.g., the main loop itself) do not carry a `trace_id`. Only per-turn processing is traced.
@@ -50,7 +50,7 @@ The `pool_id` is a stable string that identifies a conversation scope and appear
 To reconstruct a full conversation scope:
 
 ```bash
-grep "telegram:main:chat:123456" /var/log/supervisor/lyra_hub.stdout.log
+journalctl --user -u lyra-hub | grep "telegram:main:chat:123456"
 ```
 
 ---

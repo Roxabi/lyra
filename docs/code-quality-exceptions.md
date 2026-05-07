@@ -11,7 +11,6 @@ Summary of all inline and configured exceptions to quality rules.
 | Path | Lines | Issue | Reason |
 |------|-------|-------|--------|
 | `src/lyra/core/pool/pool.py` | 326 | #858 | Backward-compat param overrides |
-| `src/lyra/core/commands/command_router.py` | 303 | #858 | Backward-compat param overrides |
 | `src/lyra/bootstrap/factory/wiring_helpers.py` | 400 | ADR-059/V10 | Bootstrap helper aggregator |
 
 ### Folder Size (>12 files)

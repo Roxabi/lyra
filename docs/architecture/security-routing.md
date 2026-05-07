@@ -31,6 +31,8 @@ Without auth, any user can send a message that reaches the Bus and consumes reso
 
 Auth at the Adapter level, **before** the Bus. The message is rejected at the source.
 
+> **Updated (2026-05-07) — C3 pattern:** In the containerized deployment, adapters always forward messages with `trust=PUBLIC` and trust resolution is performed Hub-side by the Authenticator (middleware stage 2–3). The adapter still validates transport-level auth (Telegram HMAC, Discord gateway token) before publishing to NATS. See `docs/architecture/container-split.md` — *Security* section — for the current C3 model.
+
 ```python
 class TrustLevel(Enum):
     OWNER   = "owner"    # full access, all commands

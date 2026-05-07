@@ -396,7 +396,7 @@ CommandRouter → builtin /clear handler
 
 ### 4.3 Pool Eviction (TTL)
 
-**Trigger:** Pool idle for >1 hour (configurable `pool_ttl`).
+**Trigger:** Pool idle for >7 days (`pool_ttl=604800.0`, configurable).
 
 **Flow:**
 

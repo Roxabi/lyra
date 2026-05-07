@@ -184,7 +184,7 @@
 | #52 | Health check system — heartbeat + worker status | P2 | Planned |
 | #56 | JetStream persistence — survive restarts, replay | P3 | Planned |
 | #57 | NATS observability — Prometheus + Grafana | P3 | Planned |
-| #58 | NATS auth — nkey/JWT | P3 | Planned |
+| #58 | NATS auth — nkey/JWT | P3 | ✅ Done (nkeys in production via Quadlet secrets; JWT scoping per ADR-054) |
 | #23 | Machine 2 timeout + circuit breaker + cloud fallback | P2 | Planned |
 
 ---

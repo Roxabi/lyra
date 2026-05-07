@@ -60,7 +60,7 @@ source .venv/bin/activate
 | `lyra hub` | Start the standalone Hub process (requires NATS) |
 | `lyra adapter telegram` | Start the standalone Telegram adapter (requires NATS) |
 | `lyra adapter discord` | Start the standalone Discord adapter (requires NATS) |
-| `lyra clipool` | Start the standalone CliPool NATS worker (requires NATS) |
+| `lyra adapter clipool` | Start the standalone CliPool NATS worker (requires NATS) |
 
 **Config management**
 

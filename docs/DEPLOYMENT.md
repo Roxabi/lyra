@@ -277,7 +277,7 @@ loginctl enable-linger $USER
 systemctl --user enable --now podman-auto-update.timer
 
 # Check all Lyra unit statuses
-systemctl --user status 'lyra-*.service' nats.service
+systemctl --user status 'lyra-*.service' lyra-nats.service
 
 # View journald logs
 journalctl --user -u lyra-hub --no-pager -n 50
@@ -294,7 +294,7 @@ When the subject→identity ACL matrix changes (spec #706), regenerate nkeys and
 
 ```bash
 cd ~/projects/lyra
-lyra-acl genkeys --regenerate --yes
+lyra-acl genkeys --regen-authconf
 ```
 
 This rotates all nkeys — old seeds are backed up to `~/.lyra/nkeys.bak.{epoch}/` and the old

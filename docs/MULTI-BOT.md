@@ -46,6 +46,8 @@ The flat `[telegram]` and `[discord]` sections use `bot_id = "main"` internally.
 
 Replace the flat sections with `[[telegram.bots]]` and `[[discord.bots]]` arrays. Each entry takes a `bot_id` that must match a corresponding `[[auth.telegram_bots]]` or `[[auth.discord_bots]]` entry.
 
+> **Note:** In production multi-bot deployments, tokens are resolved via CredentialStore at bootstrap (see `docs/CONFIGURATION.md`). The `token` fields below illustrate the legacy single-bot `env:` path only.
+
 ```toml
 [admin]
 user_ids = ["tg:user:7377831990", "dc:user:389408866774810625"]

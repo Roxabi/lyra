@@ -163,8 +163,9 @@ Adapter mounts are per-file inline binds (not the full `lyra-data.volume`) — a
 | `lyra.inbound.discord.<bot_id>` | Adapter → Hub | Discord messages |
 | `lyra.outbound.telegram.<bot_id>` | Hub → Adapter | Responses to Telegram |
 | `lyra.outbound.discord.<bot_id>` | Hub → Adapter | Responses to Discord |
-| `lyra.clipool.cmd.<pool_id>` | Hub → CliPool | Submit turn + resume UUID *(new)* |
-| `lyra.clipool.reply.<pool_id>` | CliPool → Hub | Streaming events + session_id *(new)* |
+| `lyra.clipool.cmd` | Hub → CliPool | Submit turn + resume UUID |
+| `lyra.clipool.heartbeat` | CliPool → Hub | Periodic worker health announcements |
+| `lyra.clipool.control` | Hub → CliPool | Control commands (reset, drain) |
 
 ---
 

@@ -184,8 +184,9 @@ section "Done"
 LYRA_USER="${SUDO_USER:-$(id -un)}"
 # Security: validate LYRA_USER before any use — SUDO_USER is attacker-controllable
 # (sudo -E / env_keep). Reject anything that doesn't look like a valid Unix username.
-[[ "$LYRA_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] \
-  || { echo "[!] Invalid LYRA_USER: $LYRA_USER"; exit 1; }
+# Regex matches deploy/provision.sh USER_RE — 32-char POSIX cap.
+[[ "$LYRA_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] \
+  || error "Invalid LYRA_USER: $LYRA_USER"
 LYRA_HOME=$(getent passwd "$LYRA_USER" | cut -d: -f6)
 ENV_FILE="${LYRA_DIR}/.env"
 HUB_SEED="${LYRA_HOME}/.lyra/nkeys/hub.seed"

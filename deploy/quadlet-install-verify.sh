@@ -10,6 +10,11 @@
 #
 # Exits non-zero if any unit fails to reach `active`.
 set -euo pipefail
+# Required when invoked via `make remote` (SSH non-interactive shell): without
+# it, `systemctl --user` fails to locate the dbus session ("Failed to connect
+# to bus: No such file or directory"). Provision.sh sets this consistently;
+# the deploy scripts must too.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 # Units derived from .container files.  Quadlet maps <name>.container → <name>.service.
 UNITS=(

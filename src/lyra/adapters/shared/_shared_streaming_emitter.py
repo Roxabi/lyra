@@ -24,6 +24,10 @@ from lyra.core.messaging import (
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
     TextRenderEvent,
+    ToolCallArgsRenderEvent,
+    ToolCallEndRenderEvent,
+    ToolCallResultRenderEvent,
+    ToolCallStartRenderEvent,
     ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
@@ -86,6 +90,23 @@ class StreamingSession:
         self._outbound = outbound
         self._st = StreamState()
 
+    async def _on_toolcall_v2(
+        self,
+        event: ToolCallStartRenderEvent
+        | ToolCallArgsRenderEvent
+        | ToolCallEndRenderEvent
+        | ToolCallResultRenderEvent,
+    ) -> None:
+        """Per-platform override seam for Slice 3 (#1100) ToolCall* events.
+
+        Default no-op — parity is preserved by the v1 ``ToolSummaryRenderEvent``
+        dual-emit path that drives the existing summary-card UX. Platform
+        subclasses (Telegram, Discord) override this to render richer once they
+        migrate off v1 ToolSummary in Slice 5 (#1102). Discord's opt-in inline
+        args streaming (``LYRA_DISCORD_TOOLCALL_STREAM_ARGS``) hooks here.
+        """
+        return None
+
     async def _send_placeholder(self) -> tuple[Any, int | None] | None:
         """Send the placeholder and record reply_message_id on outbound.
 
@@ -139,6 +160,23 @@ class StreamingSession:
                     # Slice 1 (#1098): Run lifecycle events are pure additive
                     # surface — adapters initially ignore (no UX). Future slices
                     # may render banners or expose run_id in observability.
+                    continue
+
+                if isinstance(
+                    event,
+                    ToolCallStartRenderEvent
+                    | ToolCallArgsRenderEvent
+                    | ToolCallEndRenderEvent
+                    | ToolCallResultRenderEvent,
+                ):
+                    # Slice 3 (#1100): ToolCall* lifecycle events. v1
+                    # ``ToolSummaryRenderEvent`` is dual-emitted alongside, so
+                    # the existing summary-card UX still drives the placeholder
+                    # edits below. Per-platform overrides hook
+                    # ``_on_toolcall_v2`` to render richer once they migrate
+                    # off v1 ToolSummary in Slice 5 (#1102). Default is
+                    # no-op (parity).
+                    await self._on_toolcall_v2(event)
                     continue
 
                 if isinstance(event, ToolSummaryRenderEvent):

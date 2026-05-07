@@ -5,7 +5,14 @@ from __future__ import annotations
 import pytest
 
 from lyra.core.cli.cli_protocol import StreamingIterator
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from lyra.core.messaging.events import (
+    ResultLlmEvent,
+    TextLlmEvent,
+    ToolResultLlmEvent,
+    ToolUseDeltaLlmEvent,
+    ToolUseEndLlmEvent,
+    ToolUseLlmEvent,
+)
 
 from .conftest import (
     ASSISTANT_INTERMEDIATE_LINE,
@@ -19,6 +26,71 @@ from .conftest import (
     make_entry,
     make_fake_proc,
 )
+
+
+def _tool_use_start_line(
+    index: int = 1, tool_id: str = "toolu_AB", name: str = "Read"
+) -> bytes:
+    return _ndjson(
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "index": index,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": tool_id,
+                    "name": name,
+                    "input": {},
+                },
+            },
+        }
+    )
+
+
+def _input_json_delta_line(index: int = 1, partial_json: str = '{"key":') -> bytes:
+    return _ndjson(
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "index": index,
+                "delta": {"type": "input_json_delta", "partial_json": partial_json},
+            },
+        }
+    )
+
+
+def _content_block_stop_line(index: int = 1) -> bytes:
+    return _ndjson(
+        {
+            "type": "stream_event",
+            "event": {"type": "content_block_stop", "index": index},
+        }
+    )
+
+
+def _tool_result_user_line(
+    tool_use_id: str = "toolu_AB",
+    content: object = "ok",
+    is_error: bool = False,
+) -> bytes:
+    return _ndjson(
+        {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": content,
+                        "is_error": is_error,
+                    }
+                ],
+            },
+        }
+    )
 
 # ---------------------------------------------------------------------------
 # TestStreamingIteratorYields
@@ -415,3 +487,257 @@ class TestStreamingIteratorAssistant:
             TextLlmEvent(text=" world"),
             ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
         ]
+
+
+# ---------------------------------------------------------------------------
+# TestStreamingIteratorToolDeltas — Slice 3 of #1096
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingIteratorToolDeltas:
+    """Parser surfaces input_json_delta + content_block_stop + tool_result."""
+
+    async def test_input_json_delta_after_tool_use_start_yields_delta_event(
+        self,
+    ) -> None:
+        # Arrange — content_block_start tool_use opens index=1; subsequent
+        # input_json_delta on the same index yields ToolUseDeltaLlmEvent.
+        proc = make_fake_proc(
+            [
+                INIT_LINE,
+                _tool_use_start_line(index=1, tool_id="toolu_AB", name="Read"),
+                _input_json_delta_line(index=1, partial_json='{"file_path":'),
+                _input_json_delta_line(index=1, partial_json='"/tmp/x"}'),
+                _content_block_stop_line(index=1),
+                RESULT_LINE,
+            ]
+        )
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert — Start, Delta, Delta, End, Result, all sharing tool_id
+        assert events == [
+            ToolUseLlmEvent(tool_name="Read", tool_id="toolu_AB", input={}),
+            ToolUseDeltaLlmEvent(tool_id="toolu_AB", partial_json='{"file_path":'),
+            ToolUseDeltaLlmEvent(tool_id="toolu_AB", partial_json='"/tmp/x"}'),
+            ToolUseEndLlmEvent(tool_id="toolu_AB"),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
+        ]
+
+    async def test_input_json_delta_without_open_tool_block_silently_skipped(
+        self,
+    ) -> None:
+        # Arrange — input_json_delta arrives without a prior content_block_start;
+        # parser must silently drop (existing pre-Slice-3 behaviour preserved).
+        proc = make_fake_proc(
+            [INIT_LINE, INPUT_JSON_DELTA_LINE, TEXT_DELTA_LINE, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert
+        assert events == [
+            TextLlmEvent(text="Hello"),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
+        ]
+
+    async def test_empty_partial_json_delta_skipped(self) -> None:
+        # Arrange — empty partial_json should not yield a delta event.
+        proc = make_fake_proc(
+            [
+                INIT_LINE,
+                _tool_use_start_line(),
+                _input_json_delta_line(partial_json=""),
+                RESULT_LINE,
+            ]
+        )
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert — no ToolUseDeltaLlmEvent
+        assert events == [
+            ToolUseLlmEvent(tool_name="Read", tool_id="toolu_AB", input={}),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
+        ]
+
+    async def test_content_block_stop_unknown_index_silent(self) -> None:
+        # Arrange — content_block_stop for a text block (no open tool block at
+        # index=0) must not emit ToolUseEndLlmEvent.
+        proc = make_fake_proc(
+            [INIT_LINE, _content_block_stop_line(index=0), TEXT_DELTA_LINE, RESULT_LINE]
+        )
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert
+        assert events == [
+            TextLlmEvent(text="Hello"),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
+        ]
+
+    async def test_user_message_tool_result_yields_event(self) -> None:
+        # Arrange — user message with tool_result block.
+        proc = make_fake_proc(
+            [
+                INIT_LINE,
+                _tool_use_start_line(),
+                _content_block_stop_line(),
+                _tool_result_user_line(content="file contents…", is_error=False),
+                RESULT_LINE,
+            ]
+        )
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert
+        assert events == [
+            ToolUseLlmEvent(tool_name="Read", tool_id="toolu_AB", input={}),
+            ToolUseEndLlmEvent(tool_id="toolu_AB"),
+            ToolResultLlmEvent(
+                tool_id="toolu_AB", content="file contents…", is_error=False
+            ),
+            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
+        ]
+
+    async def test_user_message_tool_result_error_propagates(self) -> None:
+        # Arrange — is_error=True flows through verbatim.
+        proc = make_fake_proc(
+            [
+                INIT_LINE,
+                _tool_use_start_line(),
+                _tool_result_user_line(content="boom", is_error=True),
+                RESULT_LINE,
+            ]
+        )
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert
+        assert any(
+            isinstance(e, ToolResultLlmEvent) and e.is_error and e.content == "boom"
+            for e in events
+        )
+
+    async def test_user_message_tool_result_list_content_concatenates(self) -> None:
+        # Arrange — content can be a list of typed blocks; parser concatenates
+        # text-only with placeholders for non-text.
+        proc = make_fake_proc(
+            [
+                INIT_LINE,
+                _tool_use_start_line(),
+                _tool_result_user_line(
+                    content=[
+                        {"type": "text", "text": "first"},
+                        {"type": "image", "data": "..."},
+                        {"type": "text", "text": "third"},
+                    ],
+                    is_error=False,
+                ),
+                RESULT_LINE,
+            ]
+        )
+        entry = make_entry(proc)
+
+        # Act
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        # Assert — non-text block placeholdered as [image]
+        results = [e for e in events if isinstance(e, ToolResultLlmEvent)]
+        assert len(results) == 1
+        assert results[0].content == "first[image]third"
+
+    async def test_concurrent_tool_calls_interleaved_deltas(self) -> None:
+        """T3 (#1100 review): two simultaneous tool blocks at distinct indices,
+        interleaved deltas — each delta routes to its own tool_id.
+        """
+        proc = make_fake_proc(
+            [
+                INIT_LINE,
+                _tool_use_start_line(index=1, tool_id="t1", name="Read"),
+                _tool_use_start_line(index=2, tool_id="t2", name="Bash"),
+                _input_json_delta_line(index=2, partial_json='{"cmd":'),
+                _input_json_delta_line(index=1, partial_json='{"path":'),
+                _input_json_delta_line(index=2, partial_json='"ls"}'),
+                _input_json_delta_line(index=1, partial_json='"/tmp"}'),
+                _content_block_stop_line(index=1),
+                _content_block_stop_line(index=2),
+                RESULT_LINE,
+            ]
+        )
+        entry = make_entry(proc)
+
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        deltas = [e for e in events if isinstance(e, ToolUseDeltaLlmEvent)]
+        # Each delta must route to the correct tool_id by index, not by order.
+        assert [(e.tool_id, e.partial_json) for e in deltas] == [
+            ("t2", '{"cmd":'),
+            ("t1", '{"path":'),
+            ("t2", '"ls"}'),
+            ("t1", '"/tmp"}'),
+        ]
+
+        ends = [e for e in events if isinstance(e, ToolUseEndLlmEvent)]
+        assert [e.tool_id for e in ends] == ["t1", "t2"]
+
+    async def test_dedupe_tool_use_across_streaming_and_post_hoc(self) -> None:
+        """B1+A1 (#1100 review): parser dedupes the dual emission of tool_use.
+
+        CLI emits tool_use once at content_block_start and again post-hoc in
+        the assistant message. Parser must announce each tool_id exactly once.
+        """
+        post_hoc_line = _ndjson(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_AB",
+                            "name": "Read",
+                            "input": {"file_path": "/tmp/x"},
+                        }
+                    ],
+                },
+            }
+        )
+        proc = make_fake_proc(
+            [
+                INIT_LINE,
+                _tool_use_start_line(index=1, tool_id="toolu_AB", name="Read"),
+                post_hoc_line,
+                _content_block_stop_line(index=1),
+                RESULT_LINE,
+            ]
+        )
+        entry = make_entry(proc)
+
+        it = StreamingIterator(entry, DEFAULT_POOL_ID)
+        events = [ev async for ev in it]
+
+        starts = [e for e in events if isinstance(e, ToolUseLlmEvent)]
+        # Exactly one ToolUseLlmEvent for toolu_AB despite both wire paths.
+        assert len(starts) == 1
+        assert starts[0].tool_id == "toolu_AB"
+        assert starts[0].tool_name == "Read"

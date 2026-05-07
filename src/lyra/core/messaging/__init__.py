@@ -16,6 +16,10 @@ from .render_events import (
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
     TextRenderEvent,
+    ToolCallArgsRenderEvent,
+    ToolCallEndRenderEvent,
+    ToolCallResultRenderEvent,
+    ToolCallStartRenderEvent,
     ToolSummaryRenderEvent,
 )
 
@@ -35,5 +39,9 @@ __all__ = [
     "SessionUpdateFn",
     "TelegramMeta",
     "TextRenderEvent",
+    "ToolCallArgsRenderEvent",
+    "ToolCallEndRenderEvent",
+    "ToolCallResultRenderEvent",
+    "ToolCallStartRenderEvent",
     "ToolSummaryRenderEvent",
 ]

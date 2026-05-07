@@ -11,3 +11,4 @@ src/lyra/core/processors/stream_processor.py  # 322 lines — #1016 WorkerError 
 src/lyra/adapters/shared/_shared_streaming_emitter.py  # 315 lines — #1098 Run lifecycle skip branch (Slice 2 of #1096 lands the full v1+v2 isinstance ladder)
 src/lyra/llm/drivers/nats_driver.py  # 364 lines — #1016 WorkerError population on transport.* failures (P3 will refactor with NatsDriverBase)
 src/lyra/adapters/clipool/clipool_worker.py  # 334 lines — #1016 WorkerError population + exception classifier
+src/lyra/core/cli/cli_streaming_parser.py  # 310 lines — #1100 ToolCall streamed events (input_json_delta + content_block_stop + user-message tool_result; cleanup in Slice 5 / #1102)

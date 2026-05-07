@@ -8,6 +8,7 @@ change here — there is no way to silently drop it on the other side.
 from __future__ import annotations
 
 import json
+import logging
 
 from lyra.core.messaging.render_events import (
     SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT,
@@ -28,6 +29,8 @@ from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize, serialize
 from roxabi_nats._version_check import check_schema_version
+
+log = logging.getLogger(__name__)
 
 
 class NatsRenderEventCodec:
@@ -71,8 +74,11 @@ class NatsRenderEventCodec:
             return "run_started", payload, False
         if isinstance(event, RunFinishedRenderEvent):
             return "run_finished", payload, True
-        # RunErrorRenderEvent
-        return "run_error", payload, True
+        if isinstance(event, RunErrorRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+            return "run_error", payload, True
+        raise TypeError(  # pyright: ignore[reportUnreachable]
+            f"Unsupported RenderEvent subtype: {type(event)!r}"
+        )
 
     def decode(  # noqa: C901 — per-event-type version-check + decode; refactored when Slice 5 sunsets v1
         self,
@@ -168,10 +174,22 @@ class NatsRenderEventCodec:
                 RunErrorRenderEvent,
                 resolver=self._resolver,
             )
-        return None  # "stream_end" or unknown
+        if event_type == "stream_end":
+            return None
+        # Unknown event_type — surface via log + counter so partial-deploy
+        # mismatches are visible. Synthetic transport sentinels (stream_end /
+        # stream_error) are handled above.
+        log.warning(
+            "NatsRenderEventCodec: unknown event_type=%r; dropping chunk",
+            event_type,
+        )
+        if counter is not None:
+            key = f"unknown:{event_type}"
+            counter[key] = counter.get(key, 0) + 1
+        return None
 
     @staticmethod
-    def is_terminal(event_type: str, is_done: bool) -> bool:
+    def is_terminal(event_type: str) -> bool:
         """Return ``True`` when this chunk signals end-of-stream.
 
         Rules:
@@ -187,11 +205,9 @@ class NatsRenderEventCodec:
           still published unconditionally as a backward-compat safety net
           for receivers that pre-date Slice 1.
         """
-        if event_type in (
+        return event_type in (
             "stream_end",
             "stream_error",
             "run_finished",
             "run_error",
-        ):
-            return True
-        return False
+        )

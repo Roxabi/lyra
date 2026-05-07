@@ -172,8 +172,22 @@ class StreamProcessor:
             # processing. Surface a RunErrorRenderEvent then re-raise so the
             # adapter's existing exception handler (sets stream_error and
             # falls through to classify_stream_error) keeps working.
-            yield RunErrorRenderEvent(run_id=run_id, message=str(exc), code=None)
+            #
+            # message=type(exc).__name__ — never str(exc): exception strings can
+            # carry file paths, internal hostnames, auth-token fragments from
+            # httpx/aiohttp errors, DB connection strings, etc. RunErrorRenderEvent
+            # is published on the NATS bus where any subscriber can read it.
+            yield RunErrorRenderEvent(
+                run_id=run_id, message=type(exc).__name__, code=None
+            )
             raise
+        finally:
+            # Eagerly finalize the input iterator on both success and exception
+            # paths so generators holding resources (e.g. CLI subprocess pipes)
+            # release them deterministically rather than on GC.
+            _aclose = getattr(events, "aclose", None)
+            if _aclose is not None:
+                await _aclose()
         yield RunFinishedRenderEvent(run_id=run_id, outcome="success")
 
     async def _handle_tool_event(

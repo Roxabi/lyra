@@ -808,7 +808,11 @@ class TestRunLifecycle:
 
     async def test_run_id_synthetic_when_trace_unset(self) -> None:
         """No active TraceContext → synthetic prefix; both bookends carry it."""
-        # No set_trace_id call — TraceContext.get_trace_id() returns None.
+        # Sanity: prior test must have cleaned up. ContextVar has no "unset"
+        # token, so a missing try/finally elsewhere would leak in here.
+        assert TraceContext.get_trace_id() is None, (
+            "test leaked trace_id from a prior test — see test_run_id_matches_trace_id"
+        )
         processor = StreamProcessor(cfg())
         events = async_events(
             TextLlmEvent(text="x"),
@@ -821,6 +825,27 @@ class TestRunLifecycle:
         assert started.run_id.startswith("synthetic-")
         assert started.run_id == finished.run_id
 
+    async def test_run_id_empty_trace_id_falls_back_to_synthetic(self) -> None:
+        """Empty-string trace_id is falsy → synthetic fallback kicks in.
+
+        Documents current `or` semantics in StreamProcessor.process. If the
+        invariant should hold for empty strings too (run_id == ""), tighten
+        the source to `is None` and update this test.
+        """
+        token = TraceContext.set_trace_id("")
+        try:
+            processor = StreamProcessor(cfg())
+            events = async_events(
+                TextLlmEvent(text="x"),
+                ResultLlmEvent(is_error=False, duration_ms=1),
+            )
+            result = await collect(processor.process(events))
+        finally:
+            TraceContext.reset_trace_id(token)
+
+        started = next(e for e in result if isinstance(e, RunStartedRenderEvent))
+        assert started.run_id.startswith("synthetic-")
+
     async def test_run_error_on_input_exception(self) -> None:
         """Exception while iterating LlmEvent stream → RunError + re-raise."""
 
@@ -829,7 +854,7 @@ class TestRunLifecycle:
 
         async def _raising_events():
             yield TextLlmEvent(text="partial")
-            raise _Boom("input died")
+            raise _Boom("input died — this string MUST NOT reach the wire")
 
         processor = StreamProcessor(cfg())
         seen: list[RenderEvent] = []
@@ -840,11 +865,47 @@ class TestRunLifecycle:
         # Order: RunStarted → ... → RunError (immediately before re-raise).
         assert isinstance(seen[0], RunStartedRenderEvent)
         assert isinstance(seen[-1], RunErrorRenderEvent)
-        assert seen[-1].message == "input died"
+        # message carries the exception class name, NOT str(exc) — str(exc)
+        # can leak file paths, hostnames, auth tokens onto the wire.
+        assert seen[-1].message == "_Boom"
+        assert "input died" not in seen[-1].message
         assert seen[-1].code is None
         assert seen[-1].run_id == seen[0].run_id
-        # No RunFinished must be emitted on the error path.
-        assert not any(isinstance(e, RunFinishedRenderEvent) for e in seen)
+        # Position-aware: no RunFinished must appear before RunError, and
+        # exactly two lifecycle events should be present (started + error).
+        error_idx = next(
+            i for i, e in enumerate(seen) if isinstance(e, RunErrorRenderEvent)
+        )
+        assert not any(
+            isinstance(seen[i], RunFinishedRenderEvent) for i in range(error_idx)
+        )
+        lifecycle = [
+            e
+            for e in seen
+            if isinstance(
+                e,
+                (
+                    RunStartedRenderEvent,
+                    RunFinishedRenderEvent,
+                    RunErrorRenderEvent,
+                ),
+            )
+        ]
+        assert len(lifecycle) == 2  # exactly RunStarted + RunError
+
+    async def test_emission_order_empty_stream(self) -> None:
+        """Zero-event input still emits RunStarted + RunFinished bookends.
+
+        Confirms the `if not _result_received` branch flows through the success
+        path and does NOT trigger RunError (no exception raised). Pairs with
+        the pre-existing `test_empty_stream` which strips lifecycle events.
+        """
+        processor = StreamProcessor(cfg())
+        result = await collect(processor.process(async_events()))
+
+        assert isinstance(result[0], RunStartedRenderEvent)
+        assert isinstance(result[-1], RunFinishedRenderEvent)
+        assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
 
     async def test_soft_error_emits_finished_not_error(self) -> None:
         """ResultLlmEvent.is_error=True (soft error) → RunFinished, not RunError."""

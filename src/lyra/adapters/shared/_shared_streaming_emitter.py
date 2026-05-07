@@ -11,7 +11,7 @@ import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, assert_never
 
 from lyra.adapters.shared._shared_streaming_state import (
     STREAMING_EDIT_INTERVAL,
@@ -107,6 +107,10 @@ class StreamingSession:
         """Drain remaining events, accumulate text, send via fallback callback."""
         parts: list[str] = []
         async for event in events:
+            # Slice 1 (#1098): only TextRenderEvent contributes to the fallback
+            # text — Run lifecycle events are silently skipped here. Slice 2
+            # (#1099) must extend this branch when TextDeltaRenderEvent lands
+            # so delta text is not lost on fallback.
             if isinstance(event, TextRenderEvent):
                 parts.append(event.text)
         fallback_text = "".join(parts) or self._cb.placeholder_text
@@ -167,7 +171,7 @@ class StreamingSession:
                                 log.debug("Tool summary edit skipped: %s", edit_exc)
                             self._st.last_tool_edit = now
 
-                else:  # TextRenderEvent
+                elif isinstance(event, TextRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
                     if event.is_final:
                         self._st.on_final_text(event)
                     else:
@@ -187,6 +191,11 @@ class StreamingSession:
                                     "Intermediate text edit skipped: %s", edit_exc
                                 )
                             self._st.last_intermediate_edit = now
+                else:
+                    # Cross-slice invariant 3: no silent event drop. When Slice 2
+                    # (#1099) extends RenderEvent with TextStart/Delta/End, pyright
+                    # will fail this assert_never until the dispatch is updated.
+                    assert_never(event)
 
         except Exception as exc:
             self._st.stream_error = exc

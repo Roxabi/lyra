@@ -308,6 +308,8 @@ Each slice that adds new event types adds new constants; existing constants stay
 
 **Coordinated deploy rule:** any slice that introduces new event types requires `lyra_hub` + `lyra_telegram` + `lyra_discord` to be deployed together. Receivers reject (loud-fail per `_version_check.check_schema_version`) any payload with a newer schema_version than their compiled-in floor.
 
+**Slice 1 deploy ordering (added 2026-05-07 from #1109 review):** Slice 1 (#1098) moved the canonical NATS terminal signal off `text`/`done=True` onto `run_finished` / `run_error`. A new adapter connected to an old hub (which never emits `run_finished`) still terminates correctly via the unconditional `stream_end` sentinel published by `nats_channel_proxy.py`, but loses the previous fast-path. Therefore: **deploy `lyra_hub` before `lyra_telegram`/`lyra_discord` for Slice 1+**. The reverse ordering is safe but degrades adapter latency to one extra NATS round-trip per turn. Old adapter + new hub is unaffected — old adapters continue using the old `is_terminal` fast-path on `text`/`done=True`.
+
 ## Success Criteria
 
 Umbrella-level. Each `- [ ]` is binary pass/fail at the **end of the epic** (after Slice 5 merges).

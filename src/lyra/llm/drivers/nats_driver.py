@@ -1,10 +1,16 @@
-"""NatsLlmDriver — LlmProvider over NATS request-reply (complete + stream)."""
+"""NatsLlmDriver — LlmProvider over NATS request-reply (complete + stream).
+
+Canonical wire subjects (updated in #1104):
+  requests  → lyra.llm.generate.request
+  heartbeat → lyra.llm.heartbeat  (literal; worker identity via payload worker_id)
+"""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import re
 import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
@@ -52,17 +58,20 @@ def _decode_worker_error(raw: Any) -> WorkerError | None:
         return None
 
 
+_WORKER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
 # Module-level aliases kept for backward compatibility (tests may import these).
-SUBJECT_REQUEST = "lyra.llm.request"
-HB_SUBJECT_PATTERN = "lyra.llm.health.*"
+SUBJECT_REQUEST = "lyra.llm.generate.request"
+HB_SUBJECT_PATTERN = "lyra.llm.heartbeat"  # canonical literal — no longer a wildcard
 HB_TTL = 30.0  # worker considered alive if last heartbeat is within this window
 
 
 class NatsLlmDriver:
     """LlmProvider dispatching inference to a NATS worker."""
 
-    SUBJECT_REQUEST: str = "lyra.llm.request"
-    HB_SUBJECT_PATTERN: str = "lyra.llm.health.*"
+    SUBJECT_REQUEST: str = "lyra.llm.generate.request"
+    # canonical literal — no longer a wildcard
+    HB_SUBJECT_PATTERN: str = "lyra.llm.heartbeat"
     #: Worker considered alive if last heartbeat is within this window.
     HB_TTL: float = 30.0
 
@@ -98,6 +107,11 @@ class NatsLlmDriver:
             worker_id = data.get("worker_id")
             if not worker_id:
                 log.warning("nats_llm: heartbeat missing worker_id, ignoring")
+                return
+            if not _WORKER_ID_RE.match(worker_id):
+                log.warning(
+                    "nats_llm: heartbeat invalid worker_id=%r, ignoring", worker_id
+                )
                 return
             self._worker_freshness[worker_id] = time.monotonic()
             log.debug("nats_llm: heartbeat from worker_id=%s", worker_id)

@@ -34,8 +34,8 @@ and is verified by `scripts/check-acl-matrix-spec.sh` on every CI run.
 | `lyra.image.heartbeat` | SUB | — | — | — | — | — | PUB | — | — | — |
 | `lyra.inbound.discord.>` | SUB | — | PUB | — | — | — | — | — | — | — |
 | `lyra.inbound.telegram.>` | SUB | PUB | — | — | — | — | — | — | — | — |
-| `lyra.llm.health.*` | SUB | — | — | — | — | PUB | — | — | — | — |
-| `lyra.llm.request` | PUB | — | — | — | — | SUB | — | — | — | — |
+| `lyra.llm.generate.request` | PUB | — | — | — | — | SUB | — | — | — | — |
+| `lyra.llm.heartbeat` | SUB | — | — | — | — | PUB | — | — | — | — |
 | `lyra.monitor.>` | — | — | — | — | — | — | — | PUB+SUB | — | — |
 | `lyra.outbound.discord.>` | PUB | — | SUB | — | — | — | — | — | — | — |
 | `lyra.outbound.telegram.>` | PUB | SUB | — | — | — | — | — | — | — | — |

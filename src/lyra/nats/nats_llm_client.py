@@ -1,10 +1,15 @@
 """NatsLlmClient — hub-side NATS client for LLM generation.
 
-Maintains a ``WorkerRegistry`` populated from heartbeats, and routes each
-generation request to workers in score order via their per-worker subject
-``lyra.llm.generate.request.{worker_id}``.
+Maintains a ``WorkerRegistry`` populated from heartbeats. Publishes each
+generation request to the canonical literal subject ``lyra.llm.generate.request``
+— the NATS broker dispatches to a worker via the ``llm-workers`` queue group.
 
-Implements the ``LlmProvider`` protocol — drop-in replacement for
+Per-worker score-routed subjects (``lyra.llm.generate.request.{worker_id}``)
+were dropped in lyra#1104 to match the canonical ACL allow list. Score-routing
+will return when finishing the LlmProvider conformance + bootstrap migration
+tracked in lyra#1119.
+
+Implements the ``LlmProvider`` protocol — future replacement candidate for
 ``NatsLlmDriver`` using ADR-049 Pydantic contracts.
 """
 
@@ -32,7 +37,6 @@ from roxabi_contracts.llm import (
     LlmChunkEvent,
     LlmRequest,
     LlmResponse,
-    per_worker_llm,
     validate_worker_id,
 )
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
@@ -211,7 +215,7 @@ class NatsLlmClient:
         inbox = self._nc.new_inbox()
         sub = await self._nc.subscribe(inbox)
         try:
-            target = per_worker_llm(candidates[0].worker_id)
+            target = SUBJECTS.generate_request
             await self._nc.publish(target, payload, reply=inbox)
             while True:
                 try:
@@ -243,7 +247,7 @@ class NatsLlmClient:
 
         last_exc: Exception | None = None
         for worker in candidates:
-            target = per_worker_llm(worker.worker_id)
+            target = SUBJECTS.generate_request
             try:
                 reply = await self._nc.request(target, payload, timeout=self._timeout)
                 resp = LlmResponse.model_validate_json(reply.data)

@@ -21,11 +21,8 @@
 # To rotate keys: sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.lyra/nkeys && make nats-setup
 
 set -euo pipefail
-# Required when invoked via `make remote` (SSH non-interactive shell): without
-# it, `systemctl --user` fails to locate the dbus session ("Failed to connect
-# to bus: No such file or directory"). Provision.sh sets this consistently;
-# the deploy scripts must too.
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# shellcheck source=../lib/env.sh
+source "$(dirname "$0")/../lib/env.sh"
 
 [[ $EUID -eq 0 ]] && { echo "[!] Do not run as root — use: make nats-setup"; exit 1; }
 

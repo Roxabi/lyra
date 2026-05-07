@@ -206,6 +206,7 @@ deploy:
 	@echo "Deploying quadlet units to $(DEPLOY_HOST)..."
 	@ssh $(DEPLOY_HOST) '\
 	set -eu; \
+	export XDG_RUNTIME_DIR="/run/user/$$(id -u)"; \
 	LYRA_DIR=$(DEPLOY_DIR); \
 	VOICE_DIR=$$(grep "^VOICE_DEPLOY_DIR=" "$$LYRA_DIR/.env" 2>/dev/null | cut -d= -f2); \
 	VOICE_DIR=$${VOICE_DIR:-$$HOME/projects/voiceCLI}; \
@@ -228,6 +229,7 @@ full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf
 	@echo "Full deploy to $(DEPLOY_HOST)..."
 	@ssh $(DEPLOY_HOST) '\
 	set -eu; \
+	export XDG_RUNTIME_DIR="/run/user/$$(id -u)"; \
 	LYRA_DIR=$(DEPLOY_DIR); \
 	VOICE_DIR=$$(grep "^VOICE_DEPLOY_DIR=" "$$LYRA_DIR/.env" 2>/dev/null | cut -d= -f2); \
 	VOICE_DIR=$${VOICE_DIR:-$$HOME/projects/voiceCLI}; \

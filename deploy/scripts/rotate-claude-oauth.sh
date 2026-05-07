@@ -22,11 +22,8 @@
 # from `secret rm` to lyra-clipool reporting `Up`.
 set -euo pipefail
 export LC_ALL=C
-# Required when invoked via `make remote` (SSH non-interactive shell): without
-# it, `systemctl --user` fails to locate the dbus session ("Failed to connect
-# to bus: No such file or directory"). Provision.sh sets this consistently;
-# the rotate scripts must too.
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# shellcheck source=../lib/env.sh
+source "$(dirname "$0")/../lib/env.sh"
 
 NEW_TOKEN="${1:-}"
 TOKEN_PATH_RE='^[A-Za-z0-9._/-]+$'

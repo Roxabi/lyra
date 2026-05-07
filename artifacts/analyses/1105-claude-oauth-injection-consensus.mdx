@@ -34,7 +34,7 @@ Long-term direction:
 
 1. **Phase 1 (this PR + small follow-ups):**
    - **Verify** podman patch level on M₁ before next merge: install the secret, trigger `Restart=on-failure`, confirm `CLAUDE_CODE_OAUTH_TOKEN` survives the restart. If it does → keep `type=env`. If it reverts to the literal secret name → switch to `type=mount`.
-   - **ADR-070** documents the `type=env` exception (reason: `claude` CLI accepts no `--token-file` flag), threat-model scope (single-tenant M₁), and the `type=mount` fallback path.
+   - **ADR-071** documents the `type=env` exception (reason: `claude` CLI accepts no `--token-file` flag), threat-model scope (single-tenant M₁), and the `type=mount` fallback path.
    - **Apply** secret-hygiene items: `chmod 600` + `shred -u` on token file in `provision.sh` and `rotate-claude-oauth.sh`; forwarding unit test asserting `CLAUDE_CODE_OAUTH_TOKEN` propagates AND `ANTHROPIC_API_KEY` is excluded.
    - **Defer:** `# Acceptance` block on `rotate-claude-oauth.sh` (no measurement yet); split `_SAFE_ENV_KEYS` (cosmetic, single-token); `Volume=%h/.claude` cleanup (separate issue, requires verifying nothing else writes there).
 
@@ -55,7 +55,7 @@ Long-term direction:
 
 ### Trade-offs
 
-1. **Mechanism flexibility vs simplicity** — the hybrid keeps two possible delivery paths (env vs mount-then-read), which is more code surface than committing to one. Mitigated by ADR-070 making the choice explicit and by the verification preflight being a one-time check.
+1. **Mechanism flexibility vs simplicity** — the hybrid keeps two possible delivery paths (env vs mount-then-read), which is more code surface than committing to one. Mitigated by ADR-071 making the choice explicit and by the verification preflight being a one-time check.
 2. **Subscription billing preservation vs API key simplicity** — `CLAUDE_CODE_OAUTH_TOKEN` preserves Pro/Max subscription billing, which is the user's primary cost constraint. `ANTHROPIC_API_KEY` would simplify auth (no expiry, no Podman bugs) but reroutes to Console pay-per-token, an unacceptable cost shift. The `_SAFE_ENV_KEYS` guard comment is load-bearing.
 3. **1-year TTL with no revocation API** — dominant residual risk regardless of mechanism. A stolen token = up to 1y exposure window with no programmatic mitigation. Accepted; rotation script provides manual mitigation if compromise is suspected.
 
@@ -92,14 +92,14 @@ podman secret rm test-env-restart
 ```
 
 **If verification passes (current PR is good as merged):**
-- Add ADR-070 documenting the type=env exception
+- Add ADR-071 documenting the type=env exception
 - Apply hygiene items (chmod+shred, forwarding test, /proc/environ accepted-risk doc)
 - Done.
 
 **If verification fails (#28075 unfixed):**
 - Change `lyra-clipool.container`: `Secret=lyra-claude-oauth,type=mount,target=claude-oauth.tok,mode=0400,uid=1500,gid=1500`
 - Update `cli_pool_worker._spawn`: read `/run/secrets/claude-oauth.tok` once at module load (or on first spawn), inject into the subprocess `env` dict at spawn time
-- Update ADR-070 to document the mount path as the chosen mechanism
+- Update ADR-071 to document the mount path as the chosen mechanism
 
 **Token file lifecycle (apply regardless of mechanism):**
 
@@ -120,6 +120,6 @@ mode=$(stat -c '%a' "$TOKEN_PATH")
 ## Next
 
 - `/fix` to apply the hygiene items in PR #1106 (chmod+shred, forwarding test, accepted-risk comment) — **applied**
-- ADR-070 — **landed in this PR** (`docs/architecture/adr/070-clipool-claude-oauth-token-mechanism.mdx`)
-- Podman verification preflight tracked in #1108 — must run before next prod cutover; ADR-070 is amended in place when outcome is known
+- ADR-071 — **landed in this PR** (`docs/architecture/adr/071-clipool-claude-oauth-token-mechanism.mdx`)
+- Podman verification preflight tracked in #1108 — must run before next prod cutover; ADR-071 is amended in place when outcome is known
 - Open backlog issue: "evaluate Anthropic SDK migration to remove CLI auth layer" (Theme C, no current trigger)

@@ -10,7 +10,14 @@ from .message import (
     SessionUpdateFn,
     TelegramMeta,
 )
-from .render_events import RenderEvent, TextRenderEvent, ToolSummaryRenderEvent
+from .render_events import (
+    RenderEvent,
+    RunErrorRenderEvent,
+    RunFinishedRenderEvent,
+    RunStartedRenderEvent,
+    TextRenderEvent,
+    ToolSummaryRenderEvent,
+)
 
 __all__ = [
     "Bus",
@@ -22,6 +29,9 @@ __all__ = [
     "OutboundMessage",
     "PlatformMeta",
     "RenderEvent",
+    "RunErrorRenderEvent",
+    "RunFinishedRenderEvent",
+    "RunStartedRenderEvent",
     "SessionUpdateFn",
     "TelegramMeta",
     "TextRenderEvent",

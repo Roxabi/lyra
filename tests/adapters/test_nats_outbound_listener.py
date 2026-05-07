@@ -832,13 +832,25 @@ async def test_version_mismatch_counter_flows_from_listener() -> None:
             "done": False,
         }
     )
-    # Chunk 2: v1 payload → should decode and be yielded; is_final=True → terminal
+    # Chunk 2: v1 payload → should decode and be yielded.
     await q.put(
         {
             "stream_id": stream_id,
             "seq": 1,
             "event_type": "text",
             "payload": {"schema_version": 1, "text": "good", "is_final": True},
+            "done": True,
+        }
+    )
+    # Chunk 3: terminal sentinel — Slice 1 of #1096 moved the canonical
+    # run terminator off ``text``/``done`` so adapters see lifecycle events
+    # before the loop exits. ``stream_end`` always arrives from the proxy.
+    await q.put(
+        {
+            "stream_id": stream_id,
+            "seq": 2,
+            "event_type": "stream_end",
+            "payload": {},
             "done": True,
         }
     )

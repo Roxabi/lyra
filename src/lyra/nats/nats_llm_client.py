@@ -32,7 +32,6 @@ from roxabi_contracts.llm import (
     LlmChunkEvent,
     LlmRequest,
     LlmResponse,
-    per_worker_llm,
     validate_worker_id,
 )
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
@@ -211,7 +210,7 @@ class NatsLlmClient:
         inbox = self._nc.new_inbox()
         sub = await self._nc.subscribe(inbox)
         try:
-            target = per_worker_llm(candidates[0].worker_id)
+            target = SUBJECTS.generate_request
             await self._nc.publish(target, payload, reply=inbox)
             while True:
                 try:
@@ -243,7 +242,7 @@ class NatsLlmClient:
 
         last_exc: Exception | None = None
         for worker in candidates:
-            target = per_worker_llm(worker.worker_id)
+            target = SUBJECTS.generate_request
             try:
                 reply = await self._nc.request(target, payload, timeout=self._timeout)
                 resp = LlmResponse.model_validate_json(reply.data)

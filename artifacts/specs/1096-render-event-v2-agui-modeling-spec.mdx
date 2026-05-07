@@ -333,11 +333,13 @@ These are tested at every slice merge, not just at epic close:
 4. **Per-event schema constant.** Every new event type has its own `SCHEMA_VERSION_*` constant; the event's `schema_version` field defaults to that constant. (Same pattern as `render_events.py:22-23`.)
 5. **Coexistence is the default.** Within a slice, v1 paths must keep working. v1 deletion only in Slice 5.
 
-[NEEDS CLARIFICATION: should StreamProcessor emit BOTH v1 and v2 events for the same source LlmEvent during coexistence (dual emission), OR emit only v2 with v1 still available at the type level for receivers? Dual emission doubles wire traffic but provides ironclad parity test ground truth.]
+## Resolved decisions
 
-[NEEDS CLARIFICATION: `runId` semantics — equal to `trace_id` verbatim (simplest, observability-aligned), or a fresh UUID with `trace_id` carried as `metadata.trace_id` (allows multiple runs per trace, e.g., interrupt+resume)? Recommendation lean: verbatim `trace_id` for now; revisit if interrupt+resume becomes a feature.]
+6. **Dual emission during coexistence.** Within slices 2-4, StreamProcessor emits BOTH the v1 event and the new v2 events for the same source `LlmEvent`. Doubles wire traffic temporarily; gives ironclad parity test ground truth (v2 receivers compared against v1 baseline edit-in-place output, byte-for-byte). Slice 5 removes v1 emission and the dual-write path.
 
-[NEEDS CLARIFICATION: `message_id` for Text/Reasoning triplets — one per turn (single text block expected), or new id per text block (allows interleaved text↔tool↔text patterns natural in agentic flows)? Claude CLI behavior on this is U2 from analysis — needs CLI capture to confirm.]
+7. **`runId` == `trace_id` verbatim.** Simplest mapping, aligned with existing observability. No fresh UUID, no `metadata.trace_id` indirection. Re-visit only if interrupt+resume becomes a concrete requirement (out of scope for this epic).
+
+8. **`message_id` per text block.** New id per `TextStart` (not per turn). Supports interleaved `text → tool → text` patterns natural to agentic flows and matches AG-UI's modeling. Slice 3 sub-analysis (`artifacts/analyses/NNN-toolcall-streaming-cli-instrumentation.mdx`) must capture Claude CLI text-block boundary semantics (U2) and confirm; if CLI emits a single block per turn, the per-block id collapses harmlessly to per-turn behavior.
 
 ## Pre-check
 
@@ -345,7 +347,7 @@ These are tested at every slice merge, not just at epic close:
 |---|---|
 | Testable criteria (each `- [ ]` binary) | ✓ all binary |
 | No dangling refs (U*/N*/S* IDs in slices) | ✓ U1-U8, N1-N2 mapped to S1-S5 in Slices table |
-| Ambiguity budget (≤5 χ items) | ✓ 3 χ items |
+| Ambiguity budget (≤5 χ items) | ✓ 0 χ items (3 resolved 2026-05-07) |
 | Slice coverage (every affordance in ≥1 slice) | ✓ |
 | Edge completeness | ✓ coexistence + sunset path documented |
 

@@ -115,7 +115,7 @@ These deferrals are **not** rejections — they are gated on a concrete consumer
 
 Each slice that introduces new event types adds new `SCHEMA_VERSION_*` constants. Receivers drop payloads with a newer `schema_version` than their compiled-in floor and emit a rate-limited ERROR log (one per envelope name per 60s, per `_version_check.check_schema_version` at `packages/roxabi-nats/src/roxabi_nats/_version_check.py:111-113`); they do not raise. Slices that touch the wire require deploying `lyra-hub` + `lyra-telegram` + `lyra-discord` together — same coordination tax as ADR-049 §Versioning, surfaced explicitly in each slice's CHANGELOG entry. Slice 5 raises the floor by removing legacy types and their constants.
 
-`lyra-clipool` is intentionally excluded from the RenderEvent co-deploy gate. It operates upstream of `StreamProcessor` and is an `LlmEvent` producer only (`clipool_worker.py:20-21` imports `TextLlmEvent` / `ResultLlmEvent` from `lyra.core.messaging.events`; no `render_events` import). Slices that change `LlmEvent` shape (Slice 3 extends `ToolUseLlmEvent` for args streaming) include `lyra-clipool` in the co-deploy set; pure `RenderEvent`-only slices (S1, S2, S4) do not.
+`lyra-clipool` is intentionally excluded from the RenderEvent co-deploy gate. It operates upstream of `StreamProcessor` and is an `LlmEvent` producer only (`clipool_worker.py:20` imports `TextLlmEvent` / `ResultLlmEvent` from `lyra.core.messaging.events`; no `render_events` import). Slices that change `LlmEvent` shape (Slice 3 extends `ToolUseLlmEvent` for args streaming) include `lyra-clipool` in the co-deploy set; pure `RenderEvent`-only slices (S1, S2, S4) do not.
 
 ## Consequences
 

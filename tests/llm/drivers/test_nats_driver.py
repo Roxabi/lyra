@@ -93,7 +93,7 @@ class TestCompleteHappyPath:
         call_args = nc.request.call_args
         subject = call_args.args[0]
         payload = json.loads(call_args.args[1])
-        assert subject == "lyra.llm.request"
+        assert subject == "lyra.llm.generate.request"
         assert payload["stream"] is False
         assert payload["pool_id"] == "pool:1"
         assert payload["text"] == "hi"
@@ -664,7 +664,7 @@ class TestLifecycle:
         # Assert
         nc.subscribe.assert_awaited_once()
         subject = nc.subscribe.call_args.args[0]
-        assert subject == "lyra.llm.health.*"
+        assert subject == "lyra.llm.heartbeat"
 
     async def test_start_is_idempotent(self) -> None:
         # Arrange

@@ -23,16 +23,20 @@ export LC_ALL=C
 source "$(dirname "$0")/../lib/env.sh"
 
 NEW_PEM="${1:-}"
-PEM_RE='^[A-Za-z0-9._/-]+$'
 [[ -n "$NEW_PEM" ]] || { echo "usage: $0 /path/to/new.pem" >&2; exit 2; }
-[[ "$NEW_PEM" =~ $PEM_RE ]] || { echo "Invalid PEM path: $NEW_PEM" >&2; exit 2; }
-[[ -f "$NEW_PEM" ]] || { echo "PEM file not found: $NEW_PEM" >&2; exit 2; }
+# Resolve symlinks and eliminate any '..' components before existence check;
+# this blocks path-traversal via '..' sequences (issue #1118).
+RESOLVED=$(realpath -e "$NEW_PEM" 2>/dev/null) \
+  || { printf 'PEM file not found or unresolvable: %q\n' "$NEW_PEM" >&2; exit 2; }
+# Reject paths outside trusted directories.
+[[ "$RESOLVED" == /home/lyra/secrets/* || "$RESOLVED" == /etc/lyra/* ]] \
+  || { echo "PEM path outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED" >&2; exit 2; }
 
 # Tolerate first-time creation: rm only if exists.
 if podman secret inspect lyra-gh-pem &>/dev/null; then
   podman secret rm lyra-gh-pem
 fi
-podman secret create lyra-gh-pem "$NEW_PEM"
+podman secret create lyra-gh-pem "$RESOLVED"
 systemctl --user restart lyra-gh-helper.service
 
 # Gate on helper Up AND dispenser socket reachable from clipool — the latter is

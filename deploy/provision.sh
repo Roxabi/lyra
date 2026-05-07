@@ -392,7 +392,8 @@ info "Lyra env-file dir prepared at $LYRA_ENV_DIR (clipool.env touched)."
 
 section "Lyra GitHub App PEM (Podman secret)"
 GH_PEM_PATH="${GH_PEM_PATH:-}"
-PEM_RE='^[A-Za-z0-9._/-]+$'  # path validation — reject shell metachars (env-driven via curl|bash)
+# Trusted dirs for secret files — same allowlist as rotate-gh-key.sh / rotate-claude-oauth.sh.
+LYRA_SECRETS_TRUSTED='/home/lyra/secrets/*|/etc/lyra/*'
 if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
      podman secret inspect lyra-gh-pem &>/dev/null; then
   info "Podman secret 'lyra-gh-pem' already present, skipping."
@@ -401,12 +402,14 @@ else
     warn "GH_PEM_PATH not set — skipping lyra-gh-pem bootstrap."
     warn "  Re-run with: GH_PEM_PATH=/abs/path/to/lyra-app.pem $0"
   else
-    [[ "$GH_PEM_PATH" =~ $PEM_RE ]] || error "Invalid GH_PEM_PATH: $GH_PEM_PATH"
-    [[ -f "$GH_PEM_PATH" ]] || error "PEM file not found: $GH_PEM_PATH"
+    RESOLVED_PEM=$(realpath -e "$GH_PEM_PATH" 2>/dev/null) \
+      || error "PEM file not found or unresolvable: $(printf '%q' "$GH_PEM_PATH")"
+    [[ "$RESOLVED_PEM" == /home/lyra/secrets/* || "$RESOLVED_PEM" == /etc/lyra/* ]] \
+      || error "GH_PEM_PATH outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED_PEM"
     sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-      podman secret create lyra-gh-pem "$GH_PEM_PATH" \
+      podman secret create lyra-gh-pem "$RESOLVED_PEM" \
       || error "Failed to create podman secret lyra-gh-pem"
-    info "Podman secret 'lyra-gh-pem' created from $GH_PEM_PATH."
+    info "Podman secret 'lyra-gh-pem' created from $RESOLVED_PEM."
   fi
 fi
 
@@ -422,7 +425,6 @@ fi
 
 section "Lyra Claude Code OAuth token (Podman secret)"
 CLAUDE_OAUTH_TOKEN_PATH="${CLAUDE_OAUTH_TOKEN_PATH:-}"
-TOKEN_PATH_RE='^[A-Za-z0-9._/-]+$'  # path validation — reject shell metachars (env-driven via curl|bash)
 if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
      podman secret inspect lyra-claude-oauth &>/dev/null; then
   info "Podman secret 'lyra-claude-oauth' already present, skipping."
@@ -432,22 +434,24 @@ else
     warn "  Generate the token: install -m 0600 /dev/null ~/.lyra/claude-oauth.tok && claude setup-token > ~/.lyra/claude-oauth.tok"
     warn "  Re-run with: CLAUDE_OAUTH_TOKEN_PATH=~/.lyra/claude-oauth.tok $0"
   else
-    [[ "$CLAUDE_OAUTH_TOKEN_PATH" =~ $TOKEN_PATH_RE ]] || error "Invalid CLAUDE_OAUTH_TOKEN_PATH: $CLAUDE_OAUTH_TOKEN_PATH"
-    [[ -f "$CLAUDE_OAUTH_TOKEN_PATH" ]] || error "Token file not found: $CLAUDE_OAUTH_TOKEN_PATH"
+    RESOLVED_TOKEN=$(realpath -e "$CLAUDE_OAUTH_TOKEN_PATH" 2>/dev/null) \
+      || error "Token file not found or unresolvable: $(printf '%q' "$CLAUDE_OAUTH_TOKEN_PATH")"
+    [[ "$RESOLVED_TOKEN" == /home/lyra/secrets/* || "$RESOLVED_TOKEN" == /etc/lyra/* ]] \
+      || error "CLAUDE_OAUTH_TOKEN_PATH outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED_TOKEN"
     # Auto-fix mode (operator's `>` redirect may inherit umask 0644); then assert.
-    chmod 600 "$CLAUDE_OAUTH_TOKEN_PATH"
-    token_mode=$(stat -c '%a' "$CLAUDE_OAUTH_TOKEN_PATH")
-    [[ "$token_mode" == "600" ]] || error "Token file must be mode 0600 (got $token_mode): $CLAUDE_OAUTH_TOKEN_PATH"
+    chmod 600 "$RESOLVED_TOKEN"
+    token_mode=$(stat -c '%a' "$RESOLVED_TOKEN")
+    [[ "$token_mode" == "600" ]] || error "Token file must be mode 0600 (got $token_mode): $RESOLVED_TOKEN"
     # Pipe via `tr -d '\n'` so a trailing newline (common from `cmd > file`)
     # cannot leak into the secret value and silently break auth at runtime.
     sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" bash -c \
-      "tr -d '\n' < \"$CLAUDE_OAUTH_TOKEN_PATH\" | podman secret create lyra-claude-oauth -" \
+      "tr -d '\n' < \"$RESOLVED_TOKEN\" | podman secret create lyra-claude-oauth -" \
       || error "Failed to create podman secret lyra-claude-oauth"
-    info "Podman secret 'lyra-claude-oauth' created from $CLAUDE_OAUTH_TOKEN_PATH."
+    info "Podman secret 'lyra-claude-oauth' created from $RESOLVED_TOKEN."
     # Wipe source file — best-effort. shred is a no-op on CoW filesystems
     # (btrfs, tmpfs, ZFS); rely on encrypted home for at-rest protection.
-    shred -u "$CLAUDE_OAUTH_TOKEN_PATH" || rm -f "$CLAUDE_OAUTH_TOKEN_PATH"
-    info "Token source file removed: $CLAUDE_OAUTH_TOKEN_PATH"
+    shred -u "$RESOLVED_TOKEN" || rm -f "$RESOLVED_TOKEN"
+    info "Token source file removed: $RESOLVED_TOKEN"
   fi
 fi
 

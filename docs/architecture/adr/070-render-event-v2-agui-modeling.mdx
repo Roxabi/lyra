@@ -28,8 +28,6 @@ The decision is whether (and how) to back-port the modeling. Three architectural
 
 This ADR covers the decision and the slice plan. Implementation lands across child issues #1098–#1102 per spec #1096.
 
----
-
 ## Options Considered
 
 ### Option A: Translate-at-edge (adopt AG-UI as wire format)
@@ -57,7 +55,7 @@ Back-port four modeling improvements into `core/messaging/render_events.py`. Add
   - **Future AG-UI adoption becomes mechanical** — the internal model is a structural superset of AG-UI's `BaseEvent` for the four chosen dimensions. An edge adapter is a `match`-statement, not a synthesis effort.
   - Aligns with the existing slicing culture (ADR-032 shipped as 5 phases). 5 child slices + 1 ADR fit the established cadence.
 - **Cons:**
-  - 4-week incremental migration with v1/v2 coexistence in `StreamingSession.dispatch()`. Temporary surface-area inflation in `render_events.py`.
+  - Multi-slice incremental migration with v1/v2 coexistence in `StreamingSession.dispatch()`. Temporary surface-area inflation in `render_events.py`. Schedule estimate lives in spec #1096 / plan, not in this ADR.
   - StreamProcessor refactor is cross-cutting (ADR-032's existing pipeline gains 4 new emit paths). Slice 3 (ToolCall split) requires a CLI sub-analysis (Claude CLI `--include-partial-messages` JSON shape unverified).
   - Schema-bump cadence — each slice that introduces new event types adds new `SCHEMA_VERSION_*` constants and requires coordinated deploy of `lyra-hub` + `lyra-telegram` + `lyra-discord`.
 
@@ -74,8 +72,6 @@ Drop `RenderEvent` and re-implement the streaming pipeline directly on AG-UI's `
   - `BaseEvent.timestamp` and `raw_event` fields impose AG-UI semantics on internal events that have no equivalent today (Lyra carries `trace_id` via middleware, not per-event timestamps).
   - AG-UI events that do not fit Lyra's domain (`StateSnapshot`, `ActivitySnapshot`, frontend-declared `tools[]`) leak into the internal model with no consumer.
   - Violates ADR-032's hexagonal contract — the domain model becomes shaped by an external protocol, not by Lyra's needs.
-
----
 
 ## Decision
 
@@ -117,9 +113,9 @@ These deferrals are **not** rejections — they are gated on a concrete consumer
 
 ### Coordinated deploy discipline
 
-Each slice that introduces new event types adds new `SCHEMA_VERSION_*` constants. Receivers loud-fail on payloads with a newer schema_version than their compiled-in floor (per `_version_check.check_schema_version`). Slices that touch the wire require deploying `lyra-hub` + `lyra-telegram` + `lyra-discord` together — same coordination tax as ADR-049 §Versioning, surfaced explicitly in each slice's CHANGELOG entry. Slice 5 raises the floor by removing legacy types and their constants.
+Each slice that introduces new event types adds new `SCHEMA_VERSION_*` constants. Receivers drop payloads with a newer `schema_version` than their compiled-in floor and emit a rate-limited ERROR log (one per envelope name per 60s, per `_version_check.check_schema_version` at `packages/roxabi-nats/src/roxabi_nats/_version_check.py:111-113`); they do not raise. Slices that touch the wire require deploying `lyra-hub` + `lyra-telegram` + `lyra-discord` together — same coordination tax as ADR-049 §Versioning, surfaced explicitly in each slice's CHANGELOG entry. Slice 5 raises the floor by removing legacy types and their constants.
 
----
+`lyra-clipool` is intentionally excluded from the RenderEvent co-deploy gate. It operates upstream of `StreamProcessor` and is an `LlmEvent` producer only (`clipool_worker.py:20-21` imports `TextLlmEvent` / `ResultLlmEvent` from `lyra.core.messaging.events`; no `render_events` import). Slices that change `LlmEvent` shape (Slice 3 extends `ToolUseLlmEvent` for args streaming) include `lyra-clipool` in the co-deploy set; pure `RenderEvent`-only slices (S1, S2, S4) do not.
 
 ## Consequences
 
@@ -134,11 +130,12 @@ Each slice that introduces new event types adds new `SCHEMA_VERSION_*` constants
 
 ### Negative
 
-- 4-week incremental migration. Temporary v1+v2 coexistence in `StreamingSession.dispatch()` adds an `isinstance` ladder branch per slice; cleanup centralized in Slice 5.
+- Multi-slice incremental migration. Temporary v1+v2 coexistence in `StreamingSession.dispatch()` adds an `isinstance` ladder branch per slice; cleanup centralized in Slice 5.
 - StreamProcessor refactor is cross-cutting — every slice except S1 (additive Run lifecycle) modifies `core/processors/stream_processor.py`. Coordination required across overlapping PRs.
 - Slice 3 carries a real unknown: the Claude CLI subprocess `--include-partial-messages` `InputJsonDelta` JSON shape is unverified in Lyra's code path (current `cli_streaming_parser` drops args). Slice 3 requires a sub-analysis artifact (`artifacts/analyses/1100-toolcall-cli-instrumentation.mdx`) before its `/spec` runs.
 - Schema-bump cadence — multiple coordinated deploys across `lyra-hub` + `lyra-telegram` + `lyra-discord` over the epic. Operational discipline load increases temporarily.
 - Within Slices 2–4, StreamProcessor dual-emits both v1 and v2 events for the same source `LlmEvent`. Doubles wire traffic temporarily; gives ironclad parity test ground truth (v2 receivers compared byte-for-byte against v1 baseline). Slice 5 removes the dual-write path.
+- `ToolCallArgsRenderEvent` (Slice 3) is the first event type to surface raw tool arguments onto the bus — bash commands, file paths, agent prompts, all user-controlled. Slice 3 must apply the same content-sanitization obligations ADR-049 §Trust Model assigns to satellite workers (NUL-byte stripping, path normalization, length caps) **before emit** in `StreamProcessor`, since `ToolCallArgsRenderEvent` is an internal event rather than a `ContractEnvelope` and ADR-049's worker-side rules are not auto-triggered. Tracked as a Slice 3 (#1100) acceptance criterion.
 
 ### Neutral
 
@@ -146,8 +143,6 @@ Each slice that introduces new event types adds new `SCHEMA_VERSION_*` constants
 - `core/messaging/render_events.py` size grows from ~117 lines to ~250 lines through Slice 4, then settles at ~200 lines after Slice 5 deletes the v1 types. File-length quality gate (300 lines for `src/**/*.py` per `.claude/stack.yml`) still satisfied.
 - Future AG-UI HTTP/SSE adapter remains an open option, not a commitment. If a consumer drives it, the work is mechanical translation; if not, no orphaned scaffolding accumulates.
 - Out-of-band protocols (MCP, A2A) — adoption decisions remain independent and orthogonal. This ADR makes none of them harder.
-
----
 
 ## Implementation
 
@@ -162,15 +157,15 @@ The 5-slice plan is defined in spec #1096. Cross-references:
 | 4 — Reasoning typed | #1101 | F-lite | `ReasoningStart/Delta/End`; StreamProcessor positional heuristic | — | #1098 |
 | 5 — Cleanup + floor | #1102 | S | — | `TextRenderEvent` (v1), `ToolSummaryRenderEvent` (v1) | #1099, #1100, #1101 |
 
-Slice ordering invariant: `ADR → S1 → {S2, S3, S4 in any order} → S5`. S2/S3/S4 touch disjoint subsystems (text accumulator / tool accumulator / reasoning routing) so they parallelize cleanly. S1 is the canary — its Run lifecycle events are pure additive surface; if the schema-bump + coordinated-deploy mechanics break, S1 catches it before any semantic refactor lands. S5 must run last because v1 deletions only become safe after every dependent has migrated.
+The ADR row above is a pre-requisite artifact, not an implementation slice. The five implementation slices are S1–S5 (#1098–#1102).
 
----
+Slice ordering invariant: `ADR → S1 → {S2, S3, S4 in any order} → S5`. S2/S3/S4 touch disjoint subsystems (text accumulator / tool accumulator / reasoning routing) so they parallelize cleanly. S1 is the canary — its Run lifecycle events are pure additive surface; if the schema-bump + coordinated-deploy mechanics break, S1 catches it before any semantic refactor lands. S5 must run last because v1 deletions only become safe after every dependent has migrated.
 
 ## References
 
-- **ADR-032** — `LlmEvent → StreamProcessor → RenderEvent` hexagonal streaming pipeline. This ADR extends, does not replace.
-- **ADR-049** — `roxabi-contracts` shared schema package. Forward-compat invariants (`ConfigDict(extra="ignore")`, per-event `schema_version`) and security-bearing-field exclusion apply to every new event type added by this ADR's slices.
-- **ADR-028** — Token-level streaming path shape. Governs the Claude CLI `--include-partial-messages` contract that Slice 3 builds on.
+- **ADR-032** — `LlmEvent → StreamProcessor → RenderEvent` hexagonal streaming pipeline (partially superseded by #666 for SDK-specific content; the hexagonal pipeline contract remains normative for the CLI driver path). This ADR extends that contract, does not replace.
+- **ADR-049** — `roxabi-contracts` shared schema package. ADR-049 §Forward-compat invariant (`ConfigDict(extra="ignore")`) and §Versioning (security-bearing-field exclusion) are adopted by analogy for the new RenderEvent schema constants — this ADR extends ADR-049's discipline from NATS wire envelopes to internal Python domain events (the per-event `schema_version` field is the carry-over).
+- **ADR-028** — Token-level streaming path shape (partially superseded by #666 for SDK-specific content; the CLI streaming-path contract and three of its four edge-case contracts remain normative). ADR-028 §Edge-Case Contract 3 mandated discarding `input_json_delta` events as not human-readable; **Slice 3 (#1100) supersedes that single edge-case contract** by surfacing them as `ToolCallArgsRenderEvent`. ADR-028 retains authority over path shape and the remaining three edge-case contracts (cancel-in-flight, session ID propagation, `--include-partial-messages` spawn-time toggle); a follow-up will add a partial-supersession banner to ADR-028 on merge of #1100.
 - **AG-UI protocol specification** — https://github.com/ag-ui-protocol/ag-ui (event taxonomy comparison source; not adopted as a wire format).
 - **Frame** — `artifacts/frames/1096-render-event-v2-agui-modeling-frame.mdx`
 - **Analysis** — `artifacts/analyses/1096-render-event-v2-agui-modeling-analysis.mdx`

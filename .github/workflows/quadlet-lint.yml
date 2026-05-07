@@ -40,9 +40,25 @@ jobs:
           printf 'Package: *\nPin: release n=plucky\nPin-Priority: 100\n' \
             | sudo tee /etc/apt/preferences.d/plucky-pin
           sudo apt-get update -qq
-          # Install Podman and its direct runtime deps from plucky explicitly.
+          # Install Podman and its direct runtime deps from plucky with pinned
+          # versions for reproducibility (captured from plucky archive 2026-05-07).
+          # Update intentionally when upgrading: apt-cache policy podman conmon crun
           sudo apt-get install -y --no-install-recommends \
-            -t plucky podman conmon crun
+            -t plucky \
+            'podman=5.4.1+ds1-1' \
+            'conmon=2.1.12-4' \
+            'crun=1.20-1syncable1'
+          # Assert no other plucky packages leaked in via transitive deps.
+          PLUCKY_EXTRA=$(dpkg-query -W -f='${Package} ${Status}\n' \
+            | awk '{print $1}' \
+            | xargs -I{} apt-cache policy {} 2>/dev/null \
+            | grep -B20 'Installed:' \
+            | awk '/^[^ ]/{pkg=$1} /plucky/ && /\*\*\*/{print pkg}' \
+            | grep -Fxv -e podman -e conmon -e crun || true)
+          if [[ -n "${PLUCKY_EXTRA}" ]]; then
+            echo "::error::Unexpected plucky packages installed: ${PLUCKY_EXTRA}"
+            exit 1
+          fi
           # Verify we have Podman ≥ 5.x before proceeding.
           PODMAN_VERSION=$(podman --version | awk '{print $3}')
           echo "Installed Podman ${PODMAN_VERSION}"

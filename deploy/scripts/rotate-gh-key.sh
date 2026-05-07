@@ -19,6 +19,11 @@
 # (Podman 5.7.0): 0.58s.
 set -euo pipefail
 export LC_ALL=C
+# Required when invoked via `make remote` (SSH non-interactive shell): without
+# it, `systemctl --user` fails to locate the dbus session ("Failed to connect
+# to bus: No such file or directory"). Provision.sh sets this consistently;
+# the rotate scripts must too.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 NEW_PEM="${1:-}"
 PEM_RE='^[A-Za-z0-9._/-]+$'

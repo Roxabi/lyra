@@ -415,7 +415,7 @@ class TestCliPoolSpawnEnv:
     async def test_oauth_token_forwarded_to_subprocess(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-test-value")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "FAKE-OAUTH-TOKEN-FOR-TESTING")
         proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
         spawn_mock = AsyncMock(return_value=proc)
         pool = CliPool()
@@ -424,7 +424,7 @@ class TestCliPoolSpawnEnv:
             await pool.send("pool-1", "hello", DEFAULT_MODEL)
 
         env_kwarg = spawn_mock.call_args.kwargs["env"]
-        assert env_kwarg["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-oat01-test-value"
+        assert env_kwarg["CLAUDE_CODE_OAUTH_TOKEN"] == "FAKE-OAUTH-TOKEN-FOR-TESTING"
 
     async def test_anthropic_api_key_not_forwarded(
         self, monkeypatch: pytest.MonkeyPatch
@@ -432,7 +432,7 @@ class TestCliPoolSpawnEnv:
         # Setting ANTHROPIC_API_KEY in the parent env must NOT reach the
         # subprocess — forwarding it would override Pro/Max subscription
         # billing and silently route to Console pay-per-token.
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-leak-canary")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "FAKE-API-KEY-LEAK-CANARY")
         proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
         spawn_mock = AsyncMock(return_value=proc)
         pool = CliPool()
@@ -442,3 +442,32 @@ class TestCliPoolSpawnEnv:
 
         env_kwarg = spawn_mock.call_args.kwargs["env"]
         assert "ANTHROPIC_API_KEY" not in env_kwarg
+
+    async def test_env_is_closed_allowlist(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Closed-world contract: only _SAFE_ENV_KEYS members + HOME may reach
+        # the subprocess. Catches "forward everything" regressions that the
+        # positive token test alone would not (the positive test passes even
+        # if `env = os.environ.copy()`).
+        monkeypatch.setenv("UNSAFE_LEAK_VAR", "should-not-propagate")
+        monkeypatch.setenv("ANOTHER_LEAK", "also-blocked")
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        spawn_mock = AsyncMock(return_value=proc)
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=spawn_mock):
+            await pool.send("pool-1", "hello", DEFAULT_MODEL)
+
+        env_kwarg = spawn_mock.call_args.kwargs["env"]
+        allowed = {
+            "PATH",
+            "LANG",
+            "LC_ALL",
+            "LC_CTYPE",
+            "TMPDIR",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "HOME",  # injected unconditionally at spawn (¬from os.environ)
+        }
+        leaked = set(env_kwarg.keys()) - allowed
+        assert not leaked, f"unexpected env vars leaked to subprocess: {leaked}"

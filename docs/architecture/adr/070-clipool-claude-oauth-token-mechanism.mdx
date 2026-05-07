@@ -1,0 +1,107 @@
+---
+title: "ADR-070: CLI pool Claude OAuth token injection mechanism"
+description: Documents the type=env Podman secret exception for CLAUDE_CODE_OAUTH_TOKEN injection into lyra-clipool, the threat-model scope that bounds it, and the type=mount fallback if Podman bug #28075 forces a switch.
+---
+
+## Status
+
+Accepted (2026-05-07)
+
+Related: ADR-054 (Quadlet credential-store, established `type=mount` Podman secret pattern).
+Issue: #1105 (this ADR's implementation), #1108 (Podman version verification preflight).
+
+## Context
+
+The `claude` CLI subprocess spawned by `lyra-clipool` requires authentication to call Anthropic. Three upstream constraints frame the choice:
+
+1. **OAuth refresh broken in headless subprocess contexts** ([anthropics/claude-code#50743](https://github.com/anthropics/claude-code/issues/50743), closed-as-duplicate, no fix planned). The `accessToken` in `~/.claude/.credentials.json` expires every ~6–8h; the CLI does not auto-refresh in non-TTY invocations. Cloudflare WAF additionally blocks the OAuth refresh endpoint from headless Linux ([#47754](https://github.com/anthropics/claude-code/issues/47754)). Production lyra-clipool fails with `401 authentication_error` every ~6–8h until interactive re-login.
+
+2. **Auth precedence chain in Claude Code** ([docs](https://code.claude.com/docs/en/authentication)):
+   1. Bedrock/Vertex/Foundry env
+   2. `ANTHROPIC_AUTH_TOKEN`
+   3. `ANTHROPIC_API_KEY` ← Console pay-per-token billing
+   4. `apiKeyHelper`
+   5. **`CLAUDE_CODE_OAUTH_TOKEN`** — 1-year setup-token, preserves Pro/Max subscription billing
+   6. Interactive OAuth (`~/.claude/.credentials.json`) — broken, see #1
+
+3. **The `claude` CLI accepts auth ONLY via env or `credentials.json`**. There is no `--token-file` flag. Whatever delivery mechanism Lyra uses ultimately must inject the token into the subprocess environment.
+
+ADR-054 established `type=mount` as the standard Podman secret delivery pattern for Lyra (NATS nkeys, GitHub App PEM). All existing secrets follow this convention.
+
+## Decisions
+
+### 1. Use `Secret=…,type=env,target=CLAUDE_CODE_OAUTH_TOKEN`
+
+`lyra-clipool.container` declares:
+
+```ini
+Secret=lyra-claude-oauth,type=env,target=CLAUDE_CODE_OAUTH_TOKEN
+```
+
+This injects the secret value directly as an environment variable in the container. The Python forwarder in `cli_pool_worker._spawn` passes it through `_SAFE_ENV_KEYS` allowlist to the spawned `claude` subprocess.
+
+**Rationale for `type=env` over `type=mount`:** the `claude` CLI must receive the token in its environment regardless of upstream delivery — there is no `--token-file` flag. Using `type=mount` would require Python to read `/run/secrets/claude-oauth.tok` and inject the contents into `env` at spawn time, achieving identical `/proc/<claude-pid>/environ` exposure with one extra syscall and a parent-process token lifecycle to manage. The architect's analysis on the consensus panel (`artifacts/analyses/1105-claude-oauth-injection-consensus.mdx`) concluded: "mount-then-read achieves *identical* exposure with more indirection. No benefit."
+
+### 2. Threat-model scope that bounds the residual exposure
+
+`type=env` carries known exposure risks that are accepted in our deployment:
+
+- **Token visible in `/proc/1/environ` of clipool**: bounded by single-tenant container (no co-tenant processes today). `DropCapability=all`, `ReadOnly=true`, and `UserNS=keep-id` confine the blast radius.
+- **`podman inspect` may expose value** ([containers/podman#23788](https://github.com/containers/podman/issues/23788), claimed fixed in PR #23959 — version unverified on M₁). Only readable by users with access to the Podman socket (= the daemon user).
+- **Token also in `/proc/<claude-pid>/environ` of every subprocess**: intrinsic to env-based auth; identical exposure regardless of upstream delivery mechanism.
+
+`hidepid=2` on the container's `/proc` mount is intentionally NOT set per `lyra-clipool.container:65-70` — it would break `podman exec` introspection valuable for ops, and the single-tenant scope makes the `/proc/environ` window already-bounded.
+
+### 3. ANTHROPIC_API_KEY explicitly excluded from `_SAFE_ENV_KEYS`
+
+`src/lyra/core/cli/cli_pool_worker.py` carries a load-bearing comment forbidding the addition of `ANTHROPIC_API_KEY` to the allowlist. Forwarding it would override Pro/Max subscription billing and silently route inference to Console pay-per-token (precedence #3 > #5). The constraint is enforced by the unit test `tests/core/test_cli_pool_process.py::TestCliPoolSpawnEnv::test_anthropic_api_key_not_forwarded`.
+
+### 4. Bootstrap and rotation — manual, annual
+
+- Bootstrap (1×): `claude setup-token > ~/.lyra/claude-oauth.tok` on an interactive workstation, then `make quadlet-secrets-install` (or `CLAUDE_OAUTH_TOKEN_PATH=… deploy/provision.sh`) creates the Podman secret. The provision path validates 0600 mode, strips trailing newlines, and shreds the source file after secret creation.
+- Rotation: `deploy/scripts/rotate-claude-oauth.sh /path/to/new.tok` — same pattern, plus `systemctl --user restart lyra-clipool.service` to pick up the new env var binding.
+- TTL: 1 year. No upstream programmatic revocation API ([anthropics/claude-code#34198](https://github.com/anthropics/claude-code/issues/34198) open). Stolen token = up to 1y exposure window.
+
+## Fallback path: `type=mount` if Podman bug #28075 forces it
+
+[containers/podman#28075](https://github.com/containers/podman/issues/28075) is a confirmed bug in Podman 5.7.1: `--secret name,type=env,target=X` loses the `target=` mapping after `Restart=on-failure` triggers a restart. The unit declares `Restart=on-failure` + `StartLimitBurst=5` (`lyra-clipool.container:9-10`), making it directly susceptible. Fix status in Ubuntu 26.04's apt podman 5.x is unverified.
+
+**Verification preflight** (#1108):
+
+```bash
+# On M₁:
+podman version | grep -E '^Version'
+echo 'TEST_VALUE_42' > /tmp/test-restart-tok && chmod 600 /tmp/test-restart-tok
+podman secret create test-env-restart-1105 /tmp/test-restart-tok
+# In a throwaway test unit with Secret=...,type=env,target=TEST_VAR + Restart=on-failure:
+# force a restart, then:
+podman exec <test-container> printenv TEST_VAR  # MUST print "TEST_VALUE_42"
+# If it prints "test-env-restart-1105" → bug unfixed → switch to type=mount
+podman secret rm test-env-restart-1105 && shred -u /tmp/test-restart-tok
+```
+
+**If the bug is unfixed on M₁**, switch to:
+
+```ini
+Secret=lyra-claude-oauth,type=mount,target=claude-oauth.tok,mode=0400,uid=1500,gid=1500
+```
+
+And update `cli_pool_worker._spawn` to read `/run/secrets/claude-oauth.tok` once at spawn time, inject the contents into the subprocess `env` dict, then drop the value from the parent dict. This restores parity with the rest of the repo's `type=mount` convention at the cost of a 1-file Python change.
+
+This ADR is amended in place when the preflight outcome is known.
+
+## Alternatives rejected
+
+| Alternative | Reason |
+|---|---|
+| `ANTHROPIC_API_KEY` (Console) | Reroutes billing to Console pay-per-token; silent cost shift unacceptable |
+| `apiKeyHelper` script + secret manager | Vault/1Password infra not present; over-engineering for single-machine prod with annual rotation |
+| `hidepid=2` on container `/proc` | Breaks `podman exec` introspection valuable for ops; single-tenant scope makes the `/proc/environ` window already-bounded |
+| Anthropic SDK direct API migration | Eliminates `--resume`, MCP bridge, tool-use protocol — out of scope; backlog item if CLI auth pain compounds |
+| Pure `type=mount` (without env injection in `_spawn`) | Impossible: `claude` CLI accepts no `--token-file` flag |
+
+## Consequences
+
+- One `type=env` secret in the repo, asymmetric with the otherwise-uniform `type=mount` convention. Documented here.
+- A Podman version regression on M₁ (revert to a build affected by #28075) would silently break clipool auth on every restart. Mitigation: #1108 verification preflight; long-term fallback to `type=mount` if reproducible.
+- The `_SAFE_ENV_KEYS` allowlist now mixes locale + auth concerns. If a second auth env var lands (e.g. MCP), revisit the split that was deferred in #1105 review.

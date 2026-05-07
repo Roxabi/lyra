@@ -18,12 +18,18 @@
 #   `claude setup-token > /tmp/claude-oauth.tok` on an interactive workstation.
 set -euo pipefail
 export LC_ALL=C
+# Required when invoked via `make remote` (SSH non-interactive shell): without
+# it, `systemctl --user` fails to locate the dbus session ("Failed to connect
+# to bus: No such file or directory"). Provision.sh sets this consistently;
+# the rotate scripts must too.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 NEW_TOKEN="${1:-}"
 TOKEN_PATH_RE='^[A-Za-z0-9._/-]+$'
 [[ -n "$NEW_TOKEN" ]] || { echo "usage: $0 /path/to/new-token-file" >&2; exit 2; }
 [[ "$NEW_TOKEN" =~ $TOKEN_PATH_RE ]] || { echo "Invalid token path: $NEW_TOKEN" >&2; exit 2; }
 [[ -f "$NEW_TOKEN" ]] || { echo "Token file not found: $NEW_TOKEN" >&2; exit 2; }
+chmod 600 "$NEW_TOKEN"
 token_mode=$(stat -c '%a' "$NEW_TOKEN")
 [[ "$token_mode" == "600" ]] || { echo "Token file must be mode 0600 (got $token_mode): $NEW_TOKEN" >&2; exit 2; }
 
@@ -34,8 +40,9 @@ fi
 # Pipe via `tr -d '\n'` so a trailing newline (common from `cmd > file`) cannot
 # leak into the secret value and silently break auth at runtime.
 tr -d '\n' < "$NEW_TOKEN" | podman secret create lyra-claude-oauth -
-# Wipe source file — the token now lives only in podman's encrypted store.
-shred -u "$NEW_TOKEN" 2>/dev/null || rm -f "$NEW_TOKEN"
+# Wipe source file — best-effort. shred is a no-op on CoW filesystems
+# (btrfs, tmpfs, ZFS); rely on encrypted home for at-rest protection.
+shred -u "$NEW_TOKEN" || rm -f "$NEW_TOKEN"
 systemctl --user restart lyra-clipool.service
 
 # Gate on clipool Up — env vars are picked up at container start, so once the

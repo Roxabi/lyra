@@ -119,6 +119,7 @@ mode=$(stat -c '%a' "$TOKEN_PATH")
 
 ## Next
 
-- `/fix` to apply the hygiene items in PR #1106 (chmod+shred, forwarding test, accepted-risk comment)
-- Defer ADR-070 + Podman verification preflight to a follow-up issue (allows merging the current PR after hygiene fixes; verification can land before the prod cutover)
+- `/fix` to apply the hygiene items in PR #1106 (chmod+shred, forwarding test, accepted-risk comment) — **applied**
+- ADR-070 — **landed in this PR** (`docs/architecture/adr/070-clipool-claude-oauth-token-mechanism.mdx`)
+- Podman verification preflight tracked in #1108 — must run before next prod cutover; ADR-070 is amended in place when outcome is known
 - Open backlog issue: "evaluate Anthropic SDK migration to remove CLI auth layer" (Theme C, no current trigger)

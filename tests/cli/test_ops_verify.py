@@ -121,7 +121,7 @@ def matrix_two(tmp_path: Path) -> Path:
         p,
         {
             "hub": {
-                "publish": ["lyra.outbound.telegram.>", "lyra.llm.request"],
+                "publish": ["lyra.outbound.telegram.>", "lyra.llm.generate.request"],
                 "subscribe": [],
             },
             "monitor": {

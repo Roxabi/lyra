@@ -17,9 +17,40 @@ concurrency:
 jobs:
   quadlet-lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Podman 5.x
+        # ubuntu-latest (24.04) ships Podman 4.9.3 which does not recognise the
+        # 'Pod=' Quadlet directive (introduced in Podman 5.0).  lyra-clipool.container
+        # and lyra-gh-helper.container both use 'Pod=lyra-gh.pod', so the dryrun
+        # step fails on the default runner Podman.
+        #
+        # Fix: pull Podman 5.x from Ubuntu 25.04 (plucky) universe.  We add the
+        # plucky apt source with lowest priority (pin = 100) so only the explicitly
+        # named packages are upgraded; the rest of the system stays on noble.
+        run: |
+          set -euo pipefail
+          # Add Ubuntu 25.04 (plucky) as a supplementary source at low priority.
+          echo "deb https://archive.ubuntu.com/ubuntu plucky main universe" \
+            | sudo tee /etc/apt/sources.list.d/plucky.list
+          # Pin plucky to priority 100 (below the default 500 for noble) so apt
+          # never auto-selects plucky packages for unrelated deps.
+          printf 'Package: *\nPin: release n=plucky\nPin-Priority: 100\n' \
+            | sudo tee /etc/apt/preferences.d/plucky-pin
+          sudo apt-get update -qq
+          # Install Podman and its direct runtime deps from plucky explicitly.
+          sudo apt-get install -y --no-install-recommends \
+            -t plucky podman conmon crun
+          # Verify we have Podman ≥ 5.x before proceeding.
+          PODMAN_VERSION=$(podman --version | awk '{print $3}')
+          echo "Installed Podman ${PODMAN_VERSION}"
+          MAJOR=$(echo "${PODMAN_VERSION}" | cut -d. -f1)
+          if [[ "${MAJOR}" -lt 5 ]]; then
+            echo "::error::Expected Podman ≥ 5; got ${PODMAN_VERSION}"
+            exit 1
+          fi
 
       - name: Quadlet dryrun — parse errors
         env:

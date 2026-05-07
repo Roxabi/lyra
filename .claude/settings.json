@@ -11,7 +11,8 @@
     "roxabi-vault@roxabi-vault-marketplace": true,
     "typescript-lsp@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
-    "mattpocock-skills@roxabi-marketplace": true
+    "mattpocock-skills@roxabi-marketplace": true,
+    "cocoindex-code@cocoindex-code": true
   },
   "extraKnownMarketplaces": {
     "roxabi-marketplace": {

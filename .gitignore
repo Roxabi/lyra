@@ -32,3 +32,5 @@ tests/data/traces/*.json
 .image-digest
 
 .gitnexus
+# CocoIndex Code (ccc)
+/.cocoindex_code/

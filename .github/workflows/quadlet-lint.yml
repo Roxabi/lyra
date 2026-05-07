@@ -23,7 +23,7 @@ jobs:
 
       - name: Install Podman 5.x
         # ubuntu-latest (24.04) ships Podman 4.9.3 which does not recognise the
-        # 'Pod=' Quadlet directive (introduced in Podman 5.4+).  lyra-clipool.container
+        # 'Pod=' Quadlet directive (introduced in Podman 5.0).  lyra-clipool.container
         # and lyra-gh-helper.container both use 'Pod=lyra-gh.pod', so the dryrun
         # step fails on the default runner Podman.
         #
@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           # Add Ubuntu 25.04 (plucky) as a supplementary source at low priority.
-          echo "deb http://archive.ubuntu.com/ubuntu plucky main universe" \
+          echo "deb https://archive.ubuntu.com/ubuntu plucky main universe" \
             | sudo tee /etc/apt/sources.list.d/plucky.list
           # Pin plucky to priority 100 (below the default 500 for noble) so apt
           # never auto-selects plucky packages for unrelated deps.

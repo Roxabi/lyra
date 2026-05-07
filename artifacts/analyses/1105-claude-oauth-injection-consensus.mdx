@@ -1,0 +1,125 @@
+---
+title: "Claude Code OAuth token injection — long-term direction (Expert Consensus)"
+issue: 1105
+status: consensus-reached
+date: 2026-05-07
+panel: architect, devops, security-auditor
+confidence: medium
+---
+
+## Problem
+
+PR #1106 injects `CLAUDE_CODE_OAUTH_TOKEN` (1-year Claude Code setup-token, account-scoped) into `lyra-clipool` via Podman secret `type=env`, replacing the broken interactive-OAuth refresh path (anthropics/claude-code#50743) for headless `claude` CLI subprocesses. Code review surfaced 11+ findings clustering into four themes; this consensus addresses the long-term shape rather than mechanical fixes.
+
+**Themes from review:**
+
+- **A — Delivery mechanism:** `type=env` (current) vs `type=mount + Python read-and-inject` (matches existing repo convention, ADR-054)
+- **B — Subprocess env exposure:** `claude` CLI accepts auth ONLY via env or `credentials.json` — token leaks into `/proc/<claude-pid>/environ` regardless of upstream delivery
+- **C — Bigger architectural alternative:** migrate from `claude` CLI subprocess to direct Anthropic SDK, eliminating the entire CLI-auth surface
+- **D — Operational hygiene:** trailing-newline strip, Makefile gap, ANTHROPIC_API_KEY guard (all auto-applied), chmod+shred, forwarding test, Podman version verification
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| **architect** | pattern coherence, maintainability, scope boundaries |
+| **devops** | operational reliability, real Podman behavior, deploy/rotation surface |
+| **security-auditor** | attack surface, threat modeling, blast-radius bounding |
+
+## Consensus ρ
+
+**Hybrid path: keep `type=env` as the default, with a documented escape hatch to `type=mount + Python-side read-and-inject` if Podman bug #28075 is unfixed in Ubuntu 26.04's apt-distributed podman 5.x.**
+
+Long-term direction:
+
+1. **Phase 1 (this PR + small follow-ups):**
+   - **Verify** podman patch level on M₁ before next merge: install the secret, trigger `Restart=on-failure`, confirm `CLAUDE_CODE_OAUTH_TOKEN` survives the restart. If it does → keep `type=env`. If it reverts to the literal secret name → switch to `type=mount`.
+   - **ADR-070** documents the `type=env` exception (reason: `claude` CLI accepts no `--token-file` flag), threat-model scope (single-tenant M₁), and the `type=mount` fallback path.
+   - **Apply** secret-hygiene items: `chmod 600` + `shred -u` on token file in `provision.sh` and `rotate-claude-oauth.sh`; forwarding unit test asserting `CLAUDE_CODE_OAUTH_TOKEN` propagates AND `ANTHROPIC_API_KEY` is excluded.
+   - **Defer:** `# Acceptance` block on `rotate-claude-oauth.sh` (no measurement yet); split `_SAFE_ENV_KEYS` (cosmetic, single-token); `Volume=%h/.claude` cleanup (separate issue, requires verifying nothing else writes there).
+
+2. **Phase 2 (separate frame/spec, when triggered):**
+   - **SDK migration** (Theme C) is the architecturally cleaner long-term direction but is a substantial refactor: it eliminates `--resume` session continuity, the MCP subprocess bridge, and the tool-use protocol that the CLI provides. Track as a backlog item; revisit when CLI auth pain compounds or when MCP/session features become available natively in the SDK.
+
+### Rationale
+
+**Why hybrid (not pure type=env or pure type=mount):**
+
+- `type=env` is *necessary* for Anthropic CLI compatibility — there is no `--token-file` flag, and any "mount" path still requires injecting the value into the subprocess env in `_spawn()`. The architect noted: mount-then-read achieves *identical* `/proc/<claude-pid>/environ` exposure with more indirection.
+- BUT `type=env` has known Podman reliability bugs (containers/podman#28075 — env var loses target= mapping after `Restart=on-failure`; #23788 — value visible in `podman inspect`). The unit declares `Restart=on-failure` + `StartLimitBurst=5`, so #28075 is not theoretical. Devops correctly flagged this as a *blocking* operational concern — silent auth failure after every restart would be production-breaking.
+- The verification preflight resolves the disagreement empirically: if the bug is fixed in M₁'s podman, keep the simpler design; if not, pay the indirection cost in `_spawn()` for reliability.
+
+**Why defer SDK migration:**
+
+- Migrating from `claude` CLI subprocess to `anthropic.messages.create` removes the auth problem entirely but eliminates `--resume` session semantics, the MCP bridge, and tool-use protocol features that lyra-clipool currently relies on. Out of scope for this PR — needs its own frame + spec.
+
+### Trade-offs
+
+1. **Mechanism flexibility vs simplicity** — the hybrid keeps two possible delivery paths (env vs mount-then-read), which is more code surface than committing to one. Mitigated by ADR-070 making the choice explicit and by the verification preflight being a one-time check.
+2. **Subscription billing preservation vs API key simplicity** — `CLAUDE_CODE_OAUTH_TOKEN` preserves Pro/Max subscription billing, which is the user's primary cost constraint. `ANTHROPIC_API_KEY` would simplify auth (no expiry, no Podman bugs) but reroutes to Console pay-per-token, an unacceptable cost shift. The `_SAFE_ENV_KEYS` guard comment is load-bearing.
+3. **1-year TTL with no revocation API** — dominant residual risk regardless of mechanism. A stolen token = up to 1y exposure window with no programmatic mitigation. Accepted; rotation script provides manual mitigation if compromise is suspected.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| Pure `type=env` (status quo PR) | architect, security-auditor | Devops blocking concern (#28075) is verifiable and credible — must verify before claiming the simpler design is safe |
+| Pure `type=mount` + Python read-inject | devops | Architect: mount-then-read does not reduce subprocess `/proc/environ` exposure; security: marginal improvement on single-tenant. Pay the cost only if #28075 forces it. |
+| `ANTHROPIC_API_KEY` | (implicit fallback) | Reroutes billing to Console pay-per-token (auth precedence #3 > #5); silent cost shift; explicitly guarded against in code |
+| `apiKeyHelper` script + secret manager | (Anthropic docs) | Vault/1Password infra not present; over-engineering for single-machine prod with annual rotation |
+| `hidepid=2` on container `/proc` | (security defense-in-depth) | Breaks `podman exec` introspection valuable for ops; single-tenant scope makes the `/proc/environ` window already-bounded |
+| SDK migration to direct API | architect, devops, security-auditor (all Theme C) | Eliminates `--resume`, MCP bridge, tool-use protocol — too large for this PR; defer to dedicated frame/spec |
+
+## Dissent
+
+**Devops dissent → reconciled via verification preflight.**
+
+Devops recommended `type=mount` outright. Architect + security-auditor recommended `type=env` (status quo). Reconciliation: devops's blocking concern is *empirically verifiable* against M₁'s actual podman patch level. Hybrid path keeps both options open and resolves the disagreement with a runtime check rather than a theoretical decision. All three panelists endorse the hybrid as a proper extension of their individual recommendations.
+
+## Implementation Notes
+
+**Verification preflight (must run before next merge or before next prod deployment):**
+
+```bash
+# On M₁:
+podman version | grep -E '^Version'                    # Confirm 5.x patch level
+podman secret create test-env-restart -                # paste a literal value
+# In a throwaway test unit with: Secret=test-env-restart,type=env,target=TEST_VAR + Restart=on-failure
+# Trigger restart, then:
+podman exec <container> printenv TEST_VAR             # Should print the original value
+# If it prints "test-env-restart" instead → bug is unfixed → switch to type=mount
+podman secret rm test-env-restart
+```
+
+**If verification passes (current PR is good as merged):**
+- Add ADR-070 documenting the type=env exception
+- Apply hygiene items (chmod+shred, forwarding test, /proc/environ accepted-risk doc)
+- Done.
+
+**If verification fails (#28075 unfixed):**
+- Change `lyra-clipool.container`: `Secret=lyra-claude-oauth,type=mount,target=claude-oauth.tok,mode=0400,uid=1500,gid=1500`
+- Update `cli_pool_worker._spawn`: read `/run/secrets/claude-oauth.tok` once at module load (or on first spawn), inject into the subprocess `env` dict at spawn time
+- Update ADR-070 to document the mount path as the chosen mechanism
+
+**Token file lifecycle (apply regardless of mechanism):**
+
+In `provision.sh` and `rotate-claude-oauth.sh`, after `podman secret create` succeeds:
+
+```bash
+# Wipe the source file — token now lives only in podman's encrypted store.
+shred -u "$TOKEN_PATH" 2>/dev/null || rm -f "$TOKEN_PATH"
+```
+
+Pre-create check for input file mode:
+
+```bash
+mode=$(stat -c '%a' "$TOKEN_PATH")
+[[ "$mode" == "600" ]] || { warn "Token file mode is $mode; expected 600. chmod 600 first."; exit 1; }
+```
+
+## Next
+
+- `/fix` to apply the hygiene items in PR #1106 (chmod+shred, forwarding test, accepted-risk comment) — **applied**
+- ADR-070 — **landed in this PR** (`docs/architecture/adr/070-clipool-claude-oauth-token-mechanism.mdx`)
+- Podman verification preflight tracked in #1108 — must run before next prod cutover; ADR-070 is amended in place when outcome is known
+- Open backlog issue: "evaluate Anthropic SDK migration to remove CLI auth layer" (Theme C, no current trigger)

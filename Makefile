@@ -190,6 +190,13 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 		echo "SKIP: ~/.lyra/gh-app.pem not found — lyra-gh-pem secret not created."; \
 		echo "      Copy the GitHub App PEM to ~/.lyra/gh-app.pem then re-run."; \
 	fi
+	@if [ -f "$(HOME)/.lyra/claude-oauth.tok" ]; then \
+		tr -d '\n' < "$(HOME)/.lyra/claude-oauth.tok" | podman secret create --replace lyra-claude-oauth -; \
+		echo "lyra-claude-oauth secret created from ~/.lyra/claude-oauth.tok"; \
+	else \
+		echo "SKIP: ~/.lyra/claude-oauth.tok not found — lyra-claude-oauth secret not created."; \
+		echo "      Generate with: claude setup-token > ~/.lyra/claude-oauth.tok && chmod 600 ~/.lyra/claude-oauth.tok"; \
+	fi
 	@echo "Podman secrets installed. Verify: podman secret ls"
 
 # ── Deploy + remote ──────────────────────────────────────────────────────────

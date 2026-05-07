@@ -395,3 +395,50 @@ class TestCliPoolIsAlive:
         )
         pool._entries["test-pool"] = entry
         assert pool.is_alive("test-pool") is False
+
+
+# ---------------------------------------------------------------------------
+# TestCliPoolSpawnEnv — env allowlist forwarding contract (#1105)
+# ---------------------------------------------------------------------------
+
+
+class TestCliPoolSpawnEnv:
+    """Locks the CliPool _SAFE_ENV_KEYS contract for the claude subprocess.
+
+    Without this test, a refactor that drops or renames CLAUDE_CODE_OAUTH_TOKEN
+    from the allowlist would silently break headless auth in prod (the symptom
+    is a 401 from the claude CLI, hours after deploy). Equally, accidentally
+    forwarding ANTHROPIC_API_KEY would silently switch billing to Console
+    pay-per-token (auth precedence #3 > #5).
+    """
+
+    async def test_oauth_token_forwarded_to_subprocess(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-test-value")
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        spawn_mock = AsyncMock(return_value=proc)
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=spawn_mock):
+            await pool.send("pool-1", "hello", DEFAULT_MODEL)
+
+        env_kwarg = spawn_mock.call_args.kwargs["env"]
+        assert env_kwarg["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-oat01-test-value"
+
+    async def test_anthropic_api_key_not_forwarded(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Setting ANTHROPIC_API_KEY in the parent env must NOT reach the
+        # subprocess — forwarding it would override Pro/Max subscription
+        # billing and silently route to Console pay-per-token.
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-leak-canary")
+        proc = make_fake_proc([INIT_LINE, ASSISTANT_LINE, RESULT_LINE])
+        spawn_mock = AsyncMock(return_value=proc)
+        pool = CliPool()
+
+        with patch(_PATCH_TARGET, new=spawn_mock):
+            await pool.send("pool-1", "hello", DEFAULT_MODEL)
+
+        env_kwarg = spawn_mock.call_args.kwargs["env"]
+        assert "ANTHROPIC_API_KEY" not in env_kwarg

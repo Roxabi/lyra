@@ -434,12 +434,17 @@ else
   else
     [[ "$CLAUDE_OAUTH_TOKEN_PATH" =~ $TOKEN_PATH_RE ]] || error "Invalid CLAUDE_OAUTH_TOKEN_PATH: $CLAUDE_OAUTH_TOKEN_PATH"
     [[ -f "$CLAUDE_OAUTH_TOKEN_PATH" ]] || error "Token file not found: $CLAUDE_OAUTH_TOKEN_PATH"
+    token_mode=$(stat -c '%a' "$CLAUDE_OAUTH_TOKEN_PATH")
+    [[ "$token_mode" == "600" ]] || error "Token file must be mode 0600 (got $token_mode): $CLAUDE_OAUTH_TOKEN_PATH"
     # Pipe via `tr -d '\n'` so a trailing newline (common from `cmd > file`)
     # cannot leak into the secret value and silently break auth at runtime.
     sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" bash -c \
       "tr -d '\n' < \"$CLAUDE_OAUTH_TOKEN_PATH\" | podman secret create lyra-claude-oauth -" \
       || error "Failed to create podman secret lyra-claude-oauth"
     info "Podman secret 'lyra-claude-oauth' created from $CLAUDE_OAUTH_TOKEN_PATH."
+    # Wipe source file — the token now lives only in podman's encrypted store.
+    shred -u "$CLAUDE_OAUTH_TOKEN_PATH" 2>/dev/null || rm -f "$CLAUDE_OAUTH_TOKEN_PATH"
+    info "Token source file shredded: $CLAUDE_OAUTH_TOKEN_PATH"
   fi
 fi
 

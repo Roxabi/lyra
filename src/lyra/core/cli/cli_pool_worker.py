@@ -37,6 +37,9 @@ log = logging.getLogger(__name__)
 # CLAUDE_CODE_OAUTH_TOKEN: 1-year setup-token (auth precedence #5) bypasses the
 # broken interactive-OAuth refresh path on headless subprocess invocations
 # (anthropics/claude-code#50743). Injected via Podman secret in prod (ADR-054).
+# The token reaches /proc/<claude-pid>/environ — accepted residual risk per
+# the single-tenant container threat model (DropCapability=all, ReadOnly=true,
+# UserNS=keep-id; claude CLI accepts auth ONLY via env, no file alternative).
 #
 # DO NOT add ANTHROPIC_API_KEY here. Forwarding it overrides Pro/Max
 # subscription billing and silently routes inference to Console pay-per-token

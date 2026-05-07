@@ -24,6 +24,8 @@ TOKEN_PATH_RE='^[A-Za-z0-9._/-]+$'
 [[ -n "$NEW_TOKEN" ]] || { echo "usage: $0 /path/to/new-token-file" >&2; exit 2; }
 [[ "$NEW_TOKEN" =~ $TOKEN_PATH_RE ]] || { echo "Invalid token path: $NEW_TOKEN" >&2; exit 2; }
 [[ -f "$NEW_TOKEN" ]] || { echo "Token file not found: $NEW_TOKEN" >&2; exit 2; }
+token_mode=$(stat -c '%a' "$NEW_TOKEN")
+[[ "$token_mode" == "600" ]] || { echo "Token file must be mode 0600 (got $token_mode): $NEW_TOKEN" >&2; exit 2; }
 
 # Tolerate first-time creation: rm only if exists.
 if podman secret inspect lyra-claude-oauth &>/dev/null; then
@@ -32,6 +34,8 @@ fi
 # Pipe via `tr -d '\n'` so a trailing newline (common from `cmd > file`) cannot
 # leak into the secret value and silently break auth at runtime.
 tr -d '\n' < "$NEW_TOKEN" | podman secret create lyra-claude-oauth -
+# Wipe source file — the token now lives only in podman's encrypted store.
+shred -u "$NEW_TOKEN" 2>/dev/null || rm -f "$NEW_TOKEN"
 systemctl --user restart lyra-clipool.service
 
 # Gate on clipool Up — env vars are picked up at container start, so once the

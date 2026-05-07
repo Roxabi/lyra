@@ -1,0 +1,172 @@
+---
+title: "ADR-070: RenderEvent v2 — Selective Adoption of AG-UI Modeling"
+description: Extends ADR-032 by back-porting four AG-UI modeling improvements (Run lifecycle, Text triplet, ToolCall split, typed Reasoning) into Lyra's internal RenderEvent hierarchy without adopting AG-UI as a wire format. Defers three (StateSnapshot/Delta, ActivitySnapshot/Delta, HTTP/SSE adapter) until concrete consumers drive requirements.
+---
+
+## Status
+
+Accepted
+
+## Context
+
+ADR-032 defined Lyra's hexagonal streaming pipeline (`LlmEvent → StreamProcessor → RenderEvent`) with two render event types — `TextRenderEvent` and `ToolSummaryRenderEvent`. The model is sufficient for Telegram's "edit one message in place" rendering but loses information on four dimensions:
+
+| Surface | Today (`render_events.py`) | Loss |
+|---|---|---|
+| Text streaming | Single `TextRenderEvent(text, is_final, is_error)` accumulated and emitted at turn end | No `message_id` correlation, no start/end brackets, no role declaration, adapters cannot pre-allocate UI containers |
+| Tool calls | `ToolSummaryRenderEvent` — bucketed snapshot (files / bash / web / agent) emitted post-hoc | No per-call args streaming, no per-call result, no `tool_call_id`, args fully discarded — `ToolUseLlmEvent.input` is empty per `events.py:42-44` |
+| Run lifecycle | Implicit — turn boundaries inferred from inbound→pool→outbound traversal + `trace_id` from `TraceMiddleware` | No explicit `RunStarted/Finished/Error` on the bus; observability and dashboards must reconstruct boundaries |
+| Reasoning | Streaming pre-tool text dispatched via `TextRenderEvent(is_final=False)` when `show_intermediate=true`; non-streaming via `⏳`-prefixed text turns | Reasoning conflated with assistant output; adapters cannot dim, suppress, or reformat selectively |
+
+The AG-UI protocol (https://github.com/ag-ui-protocol/ag-ui) ships ~20 typed events covering Run lifecycle (`RunStarted/Finished/Error`), Text streaming (`TextMessageStart/Content/End`), ToolCall streaming (`ToolCallStart/Args/End/Result`), and typed Reasoning (`ThinkingStart/Content/End`). After dimension-by-dimension comparison (analysis #1096), four of those modeling improvements are strictly better for Lyra's use case **independently of whether AG-UI itself is ever adopted as a wire format**.
+
+The decision is whether (and how) to back-port the modeling. Three architectural choices follow:
+
+1. **Translate-at-edge** — adopt AG-UI as Lyra's wire format. Internal model unchanged.
+2. **Extend internal selectively** — back-port the 4 information-rich event families into `core/messaging/render_events.py`. Keep AG-UI off the wire.
+3. **Replace internal model** — re-implement `RenderEvent` directly as AG-UI's `BaseEvent` hierarchy.
+
+This ADR covers the decision and the slice plan. Implementation lands across child issues #1098–#1102 per spec #1096.
+
+## Options Considered
+
+### Option A: Translate-at-edge (adopt AG-UI as wire format)
+
+Lyra's internal `RenderEvent` stays as-is. A new adapter at the channel boundary translates the existing 2-event stream into AG-UI's `BaseEvent` taxonomy on egress, and AG-UI events into Lyra events on ingress (for any future AG-UI-speaking client).
+
+- **Pros:**
+  - Single coordinated change at the edge — internal call sites untouched.
+  - Aligns Lyra with an external standard, easing future interop with CopilotKit-style frontends.
+  - Internal hexagonal split (ADR-032) stays bit-for-bit unchanged.
+- **Cons:**
+  - **Translation cannot synthesize information that does not exist.** `ToolSummaryRenderEvent` does not carry per-call args; the edge cannot fabricate `ToolCallArgs` deltas. Run lifecycle is implicit; the edge can only emit a synthetic `RunStarted/Finished` pair around the existing stream — not the typed step boundaries an AG-UI consumer expects.
+  - Locks Lyra to the AG-UI protocol's evolution. AG-UI is young (`v0.x`), the spec is in flux, and no production Roxabi consumer exists yet. Premature wire-format commitment.
+  - Telegram + Discord adapters do not benefit — they consume Lyra's internal model, not the wire format. The information-loss problem on those channels (post-hoc tool summaries, reasoning conflation) remains.
+  - The edge adapter doubles maintenance: every internal event change requires both an internal handler and a wire translator update.
+
+### Option B: Extend internal selectively (chosen)
+
+Back-port four modeling improvements into `core/messaging/render_events.py`. Add ~12 new event types, extend `LlmEvent` to surface `InputJsonDelta` for tool args streaming, refactor `StreamProcessor` to emit the richer stream. Adapters consume the new internal types directly. AG-UI is **not** adopted as a wire format — if/when a concrete AG-UI consumer materializes (e.g., a roxabi-dashboard frontend, a CopilotKit integration), a separate edge adapter does the 1:1 translation, which is mechanical because the internal model already carries the information.
+
+- **Pros:**
+  - Solves the information-loss problem at the source. Telegram + Discord gain real-time tool-call args, typed reasoning, and explicit run lifecycle without requiring AG-UI on the wire.
+  - The four chosen event families (Run lifecycle, Text triplet, ToolCall split, typed Reasoning) are independently valuable. Each one improves Lyra's existing surface even if AG-UI itself never ships.
+  - Decouples modeling from protocol. AG-UI can pivot, fragment, or be replaced; the internal model remains correct.
+  - **Future AG-UI adoption becomes mechanical** — the internal model is a structural superset of AG-UI's `BaseEvent` for the four chosen dimensions. An edge adapter is a `match`-statement, not a synthesis effort.
+  - Aligns with the existing slicing culture (ADR-032 shipped as 5 phases). 5 child slices + 1 ADR fit the established cadence.
+- **Cons:**
+  - Multi-slice incremental migration with v1/v2 coexistence in `StreamingSession.dispatch()`. Temporary surface-area inflation in `render_events.py`. Schedule estimate lives in spec #1096 / plan, not in this ADR.
+  - StreamProcessor refactor is cross-cutting (ADR-032's existing pipeline gains 4 new emit paths). Slice 3 (ToolCall split) requires a CLI sub-analysis (Claude CLI `--include-partial-messages` JSON shape unverified).
+  - Schema-bump cadence — each slice that introduces new event types adds new `SCHEMA_VERSION_*` constants and requires coordinated deploy of `lyra-hub` + `lyra-telegram` + `lyra-discord`.
+
+### Option C: Replace internal model with AG-UI types
+
+Drop `RenderEvent` and re-implement the streaming pipeline directly on AG-UI's `BaseEvent` hierarchy. `core/messaging/render_events.py` becomes a re-export of AG-UI's Pydantic models.
+
+- **Pros:**
+  - Zero translation overhead at any boundary. Internal model = wire format.
+  - Maximum AG-UI ecosystem alignment.
+- **Cons:**
+  - **Couples Lyra's domain model to an external evolving spec.** Every AG-UI breaking change becomes a Lyra breaking change, propagating through the entire `core → adapters` surface.
+  - AG-UI's `BaseEvent` does **not** carry a per-event `schema_version` field — Lyra's discipline (ADR-049) is stricter. Adopting AG-UI verbatim regresses the schema-floor enforcement that `_version_check.check_schema_version` relies on.
+  - `BaseEvent.timestamp` and `raw_event` fields impose AG-UI semantics on internal events that have no equivalent today (Lyra carries `trace_id` via middleware, not per-event timestamps).
+  - AG-UI events that do not fit Lyra's domain (`StateSnapshot`, `ActivitySnapshot`, frontend-declared `tools[]`) leak into the internal model with no consumer.
+  - Violates ADR-032's hexagonal contract — the domain model becomes shaped by an external protocol, not by Lyra's needs.
+
+## Decision
+
+**Option B: Extend internal selectively.**
+
+Option A is rejected because translation cannot manufacture information the source did not emit; the four targeted improvements require source-side changes regardless of wire format. Option C is rejected because coupling Lyra's domain model to an evolving external protocol regresses schema-floor discipline and dilutes the hexagonal boundary that ADR-032 established.
+
+Option B back-ports the modeling without the protocol. The internal `RenderEvent` hierarchy becomes a structural superset of AG-UI's `BaseEvent` for the four chosen dimensions — if/when a concrete AG-UI adapter ships, edge translation is mechanical. If AG-UI evolves, fragments, or is supplanted, Lyra retains the better internal model with zero migration debt.
+
+### Back-ported event families (4)
+
+| Family | New events | Slice | Issue | Replaces (Slice 5) |
+|---|---|---|---|---|
+| Run lifecycle | `RunStartedRenderEvent`, `RunFinishedRenderEvent`, `RunErrorRenderEvent` | 1 | #1098 | — (additive) |
+| Text triplet | `TextStartRenderEvent`, `TextDeltaRenderEvent`, `TextEndRenderEvent`, `TextChunkRenderEvent` | 2 | #1099 | `TextRenderEvent` |
+| ToolCall split | `ToolCallStartRenderEvent`, `ToolCallArgsRenderEvent`, `ToolCallEndRenderEvent`, `ToolCallResultRenderEvent` | 3 | #1100 | `ToolSummaryRenderEvent` |
+| Reasoning typed | `ReasoningStartRenderEvent`, `ReasoningDeltaRenderEvent`, `ReasoningEndRenderEvent` | 4 | #1101 | (split from `TextRenderEvent`) |
+
+All new events keep the existing immutability contract (`frozen=True` per `render_events.py:8-15`), each carries its own `SCHEMA_VERSION_*` constant (ADR-049 §Forward-compat invariant), and the union remains in `core/messaging/render_events.py` so `import-linter` continues to enforce that no platform types cross the hexagonal boundary.
+
+### Deferred (3)
+
+| AG-UI feature | Reason for deferral |
+|---|---|
+| `StateSnapshot` / `StateDelta` (bidirectional state sync) | No consumer drives requirements. Defining "what is agent state" prematurely is speculative design. roxabi-dashboard does not yet exist as a concrete product; revisit when it does. |
+| `ActivitySnapshot` / `ActivityDelta` | Same — no consumer. Activity = a UI affordance for clients that render running-step UIs. Lyra's current surface (Telegram, Discord, voice) has no use for it. |
+| AG-UI HTTP/SSE adapter (5th channel) | Wire-format adoption is independent of modeling. Defer until a concrete consumer (CopilotKit, web frontend) drives requirements. With Option B, the eventual adapter is a near-1:1 mapping at the edge — not a redesign. |
+
+These deferrals are **not** rejections — they are gated on a concrete consumer existing. When one materializes, each becomes its own ADR. The internal model chosen here does not preclude any of them; it just does not pre-build them.
+
+### What stays unchanged
+
+- **Hexagonal pipeline (ADR-032).** `LlmEvent → StreamProcessor → RenderEvent` is preserved; this ADR adds events to the right-hand side of the arrow, not new layers.
+- **Per-event `schema_version`.** Every new event declares `SCHEMA_VERSION_*` — same pattern as `render_events.py:22-23`. AG-UI's `BaseEvent` lacks this; Lyra's discipline is stricter and stays.
+- **`ToolUseLlmEvent.tool_id` semantics.** Direct map to `tool_call_id`; no new identifier scheme.
+- **`runId == trace_id` verbatim.** Reuse the existing trace identifier from `TraceMiddleware`. No fresh UUID, no `metadata.trace_id` indirection. (Re-visit only if interrupt+resume becomes a concrete requirement.)
+- **`message_id` per text block.** A fresh id per `TextStart`, not per turn — supports interleaved `text → tool → text` patterns natural to agentic flows. If the Claude CLI emits a single block per turn, the per-block id collapses harmlessly to per-turn behavior.
+- **`StreamingSession.dispatch()` is the dispatch shim.** During Slices 2–4 it routes both v1 and v2 events via an `isinstance` ladder. Slice 5 deletes the v1 branches.
+
+### Coordinated deploy discipline
+
+Each slice that introduces new event types adds new `SCHEMA_VERSION_*` constants. Receivers drop payloads with a newer `schema_version` than their compiled-in floor and emit a rate-limited ERROR log (one per envelope name per 60s, per `_version_check.check_schema_version` at `packages/roxabi-nats/src/roxabi_nats/_version_check.py:111-113`); they do not raise. Slices that touch the wire require deploying `lyra-hub` + `lyra-telegram` + `lyra-discord` together — same coordination tax as ADR-049 §Versioning, surfaced explicitly in each slice's CHANGELOG entry. Slice 5 raises the floor by removing legacy types and their constants.
+
+`lyra-clipool` is intentionally excluded from the RenderEvent co-deploy gate. It operates upstream of `StreamProcessor` and is an `LlmEvent` producer only (`clipool_worker.py:20` imports `TextLlmEvent` / `ResultLlmEvent` from `lyra.core.messaging.events`; no `render_events` import). Slices that change `LlmEvent` shape (Slice 3 extends `ToolUseLlmEvent` for args streaming) include `lyra-clipool` in the co-deploy set; pure `RenderEvent`-only slices (S1, S2, S4) do not.
+
+## Consequences
+
+### Positive
+
+- Real-time tool-call args streaming becomes possible on Telegram and Discord (currently lost in `ToolSummaryRenderEvent`).
+- Reasoning can be styled, dimmed, suppressed, or rerouted per adapter — separated from final assistant text at the source.
+- Run lifecycle becomes explicit on the bus — observability tooling and future dashboards no longer reconstruct boundaries from `trace_id` heuristics.
+- Internal model is a structural superset of AG-UI's relevant subset. A future AG-UI HTTP/SSE adapter is a `match`-on-type translator at the edge, not a synthesis effort.
+- Adapter parity preserved through migration. v1 paths coexist with v2 during Slices 2–4; Slice 5 removes v1 once every consumer has migrated.
+- Aligns with the slicing culture established in ADR-032 (5-phase rollout). Each slice is independently mergeable to staging.
+
+### Negative
+
+- Multi-slice incremental migration. Temporary v1+v2 coexistence in `StreamingSession.dispatch()` adds an `isinstance` ladder branch per slice; cleanup centralized in Slice 5.
+- StreamProcessor refactor is cross-cutting — every slice except S1 (additive Run lifecycle) modifies `core/processors/stream_processor.py`. Coordination required across overlapping PRs.
+- Slice 3 carries a real unknown: the Claude CLI subprocess `--include-partial-messages` `InputJsonDelta` JSON shape is unverified in Lyra's code path (current `cli_streaming_parser` drops args). Slice 3 requires a sub-analysis artifact (`artifacts/analyses/1100-toolcall-cli-instrumentation.mdx`) before its `/spec` runs.
+- Schema-bump cadence — multiple coordinated deploys across `lyra-hub` + `lyra-telegram` + `lyra-discord` over the epic. Operational discipline load increases temporarily.
+- Within Slices 2–4, StreamProcessor dual-emits both v1 and v2 events for the same source `LlmEvent`. Doubles wire traffic temporarily; gives ironclad parity test ground truth (v2 receivers compared byte-for-byte against v1 baseline). Slice 5 removes the dual-write path.
+- `ToolCallArgsRenderEvent` (Slice 3) is the first event type to surface raw tool arguments onto the bus — bash commands, file paths, agent prompts, all user-controlled. Slice 3 must apply the same content-sanitization obligations ADR-049 §Trust Model assigns to satellite workers (NUL-byte stripping, path normalization, length caps) **before emit** in `StreamProcessor`, since `ToolCallArgsRenderEvent` is an internal event rather than a `ContractEnvelope` and ADR-049's worker-side rules are not auto-triggered. Tracked as a Slice 3 (#1100) acceptance criterion.
+
+### Neutral
+
+- ADR-032 gains a "extended-by ADR-070 (#1097)" cross-reference banner. The hexagonal pipeline it defined is unchanged; this ADR adds events to the existing right-hand surface, not new layers.
+- `core/messaging/render_events.py` size grows from ~117 lines to ~250 lines through Slice 4, then settles at ~200 lines after Slice 5 deletes the v1 types. File-length quality gate (300 lines for `src/**/*.py` per `.claude/stack.yml`) still satisfied.
+- Future AG-UI HTTP/SSE adapter remains an open option, not a commitment. If a consumer drives it, the work is mechanical translation; if not, no orphaned scaffolding accumulates.
+- Out-of-band protocols (MCP, A2A) — adoption decisions remain independent and orthogonal. This ADR makes none of them harder.
+
+## Implementation
+
+The 5-slice plan is defined in spec #1096. Cross-references:
+
+| Slice | Issue | Tier | Adds | Removes | Depends on |
+|---|---|---|---|---|---|
+| ADR | #1097 (this) | XS | Decision document | — | — |
+| 1 — Run lifecycle | #1098 | S | `RunStarted/Finished/Error` events; StreamProcessor emit at process() entry/exit; adapters ignore (canary) | — | #1097 |
+| 2 — Text triplet | #1099 | F-lite | `TextStart/Delta/End/Chunk`; `StreamingSession` dispatch shim; coexistence with v1 `TextRenderEvent` | — | #1098 |
+| 3 — ToolCall split | #1100 | F-lite | `ToolCallStart/Args/End/Result`; CLI parser `InputJsonDelta` support; `LlmEvent` extension | — | #1098 + sub-analysis |
+| 4 — Reasoning typed | #1101 | F-lite | `ReasoningStart/Delta/End`; StreamProcessor positional heuristic | — | #1098 |
+| 5 — Cleanup + floor | #1102 | S | — | `TextRenderEvent` (v1), `ToolSummaryRenderEvent` (v1) | #1099, #1100, #1101 |
+
+The ADR row above is a pre-requisite artifact, not an implementation slice. The five implementation slices are S1–S5 (#1098–#1102).
+
+Slice ordering invariant: `ADR → S1 → {S2, S3, S4 in any order} → S5`. S2/S3/S4 touch disjoint subsystems (text accumulator / tool accumulator / reasoning routing) so they parallelize cleanly. S1 is the canary — its Run lifecycle events are pure additive surface; if the schema-bump + coordinated-deploy mechanics break, S1 catches it before any semantic refactor lands. S5 must run last because v1 deletions only become safe after every dependent has migrated.
+
+## References
+
+- **ADR-032** — `LlmEvent → StreamProcessor → RenderEvent` hexagonal streaming pipeline (partially superseded by #666 for SDK-specific content; the hexagonal pipeline contract remains normative for the CLI driver path). This ADR extends that contract, does not replace.
+- **ADR-049** — `roxabi-contracts` shared schema package. ADR-049 §Forward-compat invariant (`ConfigDict(extra="ignore")`) and §Versioning (security-bearing-field exclusion) are adopted by analogy for the new RenderEvent schema constants — this ADR extends ADR-049's discipline from NATS wire envelopes to internal Python domain events (the per-event `schema_version` field is the carry-over).
+- **ADR-028** — Token-level streaming path shape (partially superseded by #666 for SDK-specific content; the CLI streaming-path contract and three of its four edge-case contracts remain normative). ADR-028 §Edge-Case Contract 3 mandated discarding `input_json_delta` events as not human-readable; **Slice 3 (#1100) supersedes that single edge-case contract** by surfacing them as `ToolCallArgsRenderEvent`. ADR-028 retains authority over path shape and the remaining three edge-case contracts (cancel-in-flight, session ID propagation, `--include-partial-messages` spawn-time toggle); a follow-up will add a partial-supersession banner to ADR-028 on merge of #1100.
+- **AG-UI protocol specification** — https://github.com/ag-ui-protocol/ag-ui (event taxonomy comparison source; not adopted as a wire format).
+- **Frame** — `artifacts/frames/1096-render-event-v2-agui-modeling-frame.mdx`
+- **Analysis** — `artifacts/analyses/1096-render-event-v2-agui-modeling-analysis.mdx`
+- **Spec** — `artifacts/specs/1096-render-event-v2-agui-modeling-spec.mdx`

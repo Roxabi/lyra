@@ -29,10 +29,14 @@ export LC_ALL=C
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 NEW_TOKEN="${1:-}"
-TOKEN_PATH_RE='^[A-Za-z0-9._/-]+$'
 [[ -n "$NEW_TOKEN" ]] || { echo "usage: $0 /path/to/new-token-file" >&2; exit 2; }
-[[ "$NEW_TOKEN" =~ $TOKEN_PATH_RE ]] || { echo "Invalid token path: $NEW_TOKEN" >&2; exit 2; }
-[[ -f "$NEW_TOKEN" ]] || { echo "Token file not found: $NEW_TOKEN" >&2; exit 2; }
+# Resolve symlinks and eliminate any '..' components before existence check;
+# this blocks path-traversal via '..' sequences (sister fix to #1118).
+RESOLVED=$(realpath -e "$NEW_TOKEN" 2>/dev/null) \
+  || { echo "Token file not found or unresolvable: $NEW_TOKEN" >&2; exit 2; }
+# Reject paths outside trusted directories.
+[[ "$RESOLVED" == /home/lyra/secrets/* || "$RESOLVED" == /etc/lyra/* ]] \
+  || { echo "Token path outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED" >&2; exit 2; }
 chmod 600 "$NEW_TOKEN"
 token_mode=$(stat -c '%a' "$NEW_TOKEN")
 [[ "$token_mode" == "600" ]] || { echo "Token file must be mode 0600 (got $token_mode): $NEW_TOKEN" >&2; exit 2; }

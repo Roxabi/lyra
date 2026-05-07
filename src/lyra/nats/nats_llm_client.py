@@ -1,10 +1,15 @@
 """NatsLlmClient — hub-side NATS client for LLM generation.
 
-Maintains a ``WorkerRegistry`` populated from heartbeats, and routes each
-generation request to workers in score order via their per-worker subject
-``lyra.llm.generate.request.{worker_id}``.
+Maintains a ``WorkerRegistry`` populated from heartbeats. Publishes each
+generation request to the canonical literal subject ``lyra.llm.generate.request``
+— the NATS broker dispatches to a worker via the ``llm-workers`` queue group.
 
-Implements the ``LlmProvider`` protocol — drop-in replacement for
+Per-worker score-routed subjects (``lyra.llm.generate.request.{worker_id}``)
+were dropped in lyra#1104 to match the canonical ACL allow list. Score-routing
+will return when finishing the LlmProvider conformance + bootstrap migration
+tracked in lyra#1119.
+
+Implements the ``LlmProvider`` protocol — future replacement candidate for
 ``NatsLlmDriver`` using ADR-049 Pydantic contracts.
 """
 

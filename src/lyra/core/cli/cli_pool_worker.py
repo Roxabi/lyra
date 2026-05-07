@@ -34,12 +34,16 @@ __all__ = ["_ProcessEntry", "CliPoolWorkerMixin", "_LYRA_ROOT"]
 log = logging.getLogger(__name__)
 
 # Explicit env allowlist — only forward safe vars to the claude subprocess.
+# CLAUDE_CODE_OAUTH_TOKEN: 1-year setup-token (auth precedence #5) bypasses the
+# broken interactive-OAuth refresh path on headless subprocess invocations
+# (anthropics/claude-code#50743). Injected via Podman secret in prod (ADR-054).
 _SAFE_ENV_KEYS = {
     "PATH",
     "LANG",
     "LC_ALL",
     "LC_CTYPE",
     "TMPDIR",
+    "CLAUDE_CODE_OAUTH_TOKEN",
 }
 
 

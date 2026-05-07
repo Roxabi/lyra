@@ -410,6 +410,37 @@ else
   fi
 fi
 
+# ── Lyra Claude Code OAuth token (Podman secret) ────────────────────────────
+#
+# The `claude` subprocess in lyra-clipool uses a 1-year OAuth setup-token
+# (auth precedence #5) instead of the interactive-OAuth credentials file
+# (#6), because the latter's auto-refresh is broken in non-TTY subprocess
+# contexts (anthropics/claude-code#50743). Bootstrap the token by running
+# `claude setup-token` interactively on a workstation, then re-run this
+# script with CLAUDE_OAUTH_TOKEN_PATH=/abs/path/to/token-file (single line,
+# no newline).
+
+section "Lyra Claude Code OAuth token (Podman secret)"
+CLAUDE_OAUTH_TOKEN_PATH="${CLAUDE_OAUTH_TOKEN_PATH:-}"
+TOKEN_PATH_RE='^[A-Za-z0-9._/-]+$'  # path validation — reject shell metachars (env-driven via curl|bash)
+if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+     podman secret inspect lyra-claude-oauth &>/dev/null; then
+  info "Podman secret 'lyra-claude-oauth' already present, skipping."
+else
+  if [[ -z "$CLAUDE_OAUTH_TOKEN_PATH" ]]; then
+    warn "CLAUDE_OAUTH_TOKEN_PATH not set — skipping lyra-claude-oauth bootstrap."
+    warn "  Generate the token: claude setup-token > /tmp/claude-oauth.tok"
+    warn "  Re-run with: CLAUDE_OAUTH_TOKEN_PATH=/tmp/claude-oauth.tok $0"
+  else
+    [[ "$CLAUDE_OAUTH_TOKEN_PATH" =~ $TOKEN_PATH_RE ]] || error "Invalid CLAUDE_OAUTH_TOKEN_PATH: $CLAUDE_OAUTH_TOKEN_PATH"
+    [[ -f "$CLAUDE_OAUTH_TOKEN_PATH" ]] || error "Token file not found: $CLAUDE_OAUTH_TOKEN_PATH"
+    sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
+      podman secret create lyra-claude-oauth "$CLAUDE_OAUTH_TOKEN_PATH" \
+      || error "Failed to create podman secret lyra-claude-oauth"
+    info "Podman secret 'lyra-claude-oauth' created from $CLAUDE_OAUTH_TOKEN_PATH."
+  fi
+fi
+
 # ── Dev tools ────────────────────────────────────────────────────────────────
 
 section "uv (Python package manager)"

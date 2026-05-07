@@ -90,9 +90,7 @@ async def refresh_loop(  # noqa: PLR0913
         now = datetime.now(tz=timezone.utc)
         cached = cache.read()
         if cached is None or cached.is_near_expiry(now, near_expiry_leeway_s):
-            log.debug(
-                "refresh_loop: token near expiry or absent — minting proactively"
-            )
+            log.debug("refresh_loop: token near expiry or absent — minting proactively")
             try:
                 await mint_capped(
                     app_id,
@@ -104,5 +102,5 @@ async def refresh_loop(  # noqa: PLR0913
                     rate_limiter=rate_limiter,
                     leeway_s=near_expiry_leeway_s,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 — resilient: mint failure is logged and the loop continues to the next refresh cycle
                 log.warning("refresh_loop: mint failed: %s", exc)

@@ -118,6 +118,7 @@ class JWTSigner:
 
 # ── Section D: TokenCache ─────────────────────────────────────────────────────
 
+
 def _parse_expires_at(raw: str) -> datetime:
     """Parse ISO-8601 datetime with mandatory timezone component."""
     # Python 3.11+ fromisoformat handles Z; 3.12 enforces it too.
@@ -154,7 +155,7 @@ class TokenCache:
                 log.debug("TokenCache: cached token expired at %s", expires_at)
                 return None
             return InstallationToken(token=token, expires_at=expires_at)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — resilient: corrupted or missing cache file is treated as a cold-cache miss
             log.debug("TokenCache read error (cold cache): %s", exc)
             return None
 
@@ -203,9 +204,7 @@ async def mint(
         MintError:   Any non-201 HTTP response or network failure.
     """
     if not _INSTALL_ID_RE.match(install_id):
-        raise ValueError(
-            f"install_id must be purely numeric, got: {install_id!r}"
-        )
+        raise ValueError(f"install_id must be purely numeric, got: {install_id!r}")
 
     now = datetime.now(tz=timezone.utc)
     jwt = signer.sign(app_id, now=now)
@@ -246,7 +245,7 @@ async def mint(
         expires_at = _parse_expires_at(body["expires_at"])
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — resilient: wraps any json/key/parse error into a typed MintError for callers
         raise MintError(
             reason=f"failed to parse GitHub API response: {exc}",
             http_status=resp.status_code,

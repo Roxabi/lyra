@@ -200,7 +200,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 model_cfg,
                 cmd.system_prompt,
             )
-        except Exception as exc:  # noqa: BLE001 - external boundary: catch all to ensure error reply
+        except Exception as exc:  # noqa: BLE001 — external boundary: catch all to ensure error reply
             log.exception(
                 "clipool_worker: send_streaming failed for pool_id=%r", cmd.pool_id
             )
@@ -262,7 +262,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 model_cfg,
                 cmd.system_prompt,
             )
-        except Exception as exc:  # noqa: BLE001 - external boundary: catch all to ensure error reply
+        except Exception as exc:  # noqa: BLE001 — external boundary: catch all to ensure error reply
             log.exception("clipool_worker: send failed for pool_id=%r", cmd.pool_id)
             worker_error = _classify_exception(exc)
             emit_populated_total(domain="cli")
@@ -301,7 +301,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
 
         try:
             ack_bytes = await self._dispatch_control(cmd)
-        except Exception:  # noqa: BLE001 - external boundary: catch all to ensure error ack
+        except Exception:  # noqa: BLE001 — external boundary: catch all to ensure error ack
             log.exception(
                 "clipool_worker: control op %r failed for pool_id=%r",
                 cmd.op,

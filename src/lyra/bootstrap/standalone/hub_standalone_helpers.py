@@ -52,7 +52,7 @@ async def start_mint_failure_subscriber(nc: Any) -> "MintFailureSubscriber | Non
             ops_telegram_chat_id=int(chat_id_raw),
         )
         await sub.start()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — resilient: ops alerting subscriber is optional, startup failure is logged and skipped
         log.warning("MintFailureSubscriber failed to start: %s", exc)
         return None
     return sub

@@ -159,5 +159,5 @@ class Dispenser:
             writer.close()
             try:
                 await writer.wait_closed()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — resilient: writer is already closed, wait_closed failure is harmless
                 pass

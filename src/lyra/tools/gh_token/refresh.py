@@ -104,5 +104,5 @@ async def refresh_loop(  # noqa: PLR0913
                     rate_limiter=rate_limiter,
                     leeway_s=near_expiry_leeway_s,
                 )
-            except Exception as exc:  # noqa: BLE001 — resilient loop: mint_capped raises MintError, httpx errors, or token parse failures; loop must survive and retry on next interval
+            except Exception as exc:  # noqa: BLE001 — resilient loop: mint_capped raises MintError (which already wraps network errors, non-201 responses, and parse failures); loop must survive and retry on next interval
                 log.warning("refresh_loop: mint failed: %s", exc)

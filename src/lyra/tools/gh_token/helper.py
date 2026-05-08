@@ -154,7 +154,7 @@ class TokenCache:
                 log.debug("TokenCache: cached token expired at %s", expires_at)
                 return None
             return InstallationToken(token=token, expires_at=expires_at)
-        except Exception as exc:  # noqa: BLE001 — cold-cache fallback: file may be missing, contain corrupt JSON, or have unexpected schema; all read errors are non-fatal
+        except Exception as exc:  # noqa: BLE001 — cold-cache fallback: file may be missing, unreadable (PermissionError on misconfigured tmpfs), contain corrupt JSON, or have unexpected schema; all read errors are non-fatal — caller mints a fresh token
             log.debug("TokenCache read error (cold cache): %s", exc)
             return None
 
@@ -246,7 +246,7 @@ async def mint(
         expires_at = _parse_expires_at(body["expires_at"])
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
-    except Exception as exc:  # noqa: BLE001 — response parse: resp.json() raises JSONDecodeError, body["token"]/["expires_at"] raise KeyError, _parse_expires_at raises ValueError; all wrapped into MintError
+    except Exception as exc:  # noqa: BLE001 — response parse: resp.json() raises JSONDecodeError, body["token"]/["expires_at"] raise KeyError (or TypeError if body is not a dict), _parse_expires_at raises ValueError; all wrapped into MintError
         raise MintError(
             reason=f"failed to parse GitHub API response: {exc}",
             http_status=resp.status_code,

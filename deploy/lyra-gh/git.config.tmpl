@@ -12,3 +12,11 @@
     defaultBranch = main
 [safe]
     directory = /home/lyra/projects/*
+# Force HTTPS for github.com so the lyra-gh credential helper handles auth.
+# The lyra-clipool container is ReadOnly=true with no ~/.ssh and no SSH key,
+# so any SSH-form remote (git@github.com:..., ssh://git@github.com/...) would
+# fail with 'Host key verification failed'. insteadOf rewrites at command time
+# without mutating per-repo remotes on the host.
+[url "https://github.com/"]
+    insteadOf = git@github.com:
+    insteadOf = ssh://git@github.com/

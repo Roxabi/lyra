@@ -5,6 +5,7 @@ Source: src/lyra/core/messaging/render_events.py
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from typing import Any
 
 import pytest
@@ -234,11 +235,94 @@ class TestRenderEventUnion:
             "SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT",
             "SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT",
             "SCHEMA_VERSION_TEXT_RENDER_EVENT",
+            "SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT",
+            "SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT",
+            "SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT",
+            "SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT",
             "SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT",
             "SilentCounts",
             "TextRenderEvent",
+            "ToolCallArgsRenderEvent",
+            "ToolCallEndRenderEvent",
+            "ToolCallResultRenderEvent",
+            "ToolCallStartRenderEvent",
             "ToolSummaryRenderEvent",
         }
+
+
+# ---------------------------------------------------------------------------
+# ToolCall* lifecycle events (Slice 3 of #1096)
+# ---------------------------------------------------------------------------
+
+
+class TestToolCallEvents:
+    def test_tool_call_start_frozen_and_default_schema(self) -> None:
+        from lyra.core.messaging.render_events import (
+            SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT,
+            ToolCallStartRenderEvent,
+        )
+
+        e = ToolCallStartRenderEvent(tool_call_id="toolu_AB", tool_name="Read")
+        assert e.tool_call_id == "toolu_AB"
+        assert e.tool_name == "Read"
+        assert e.schema_version == SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT == 1
+        with pytest.raises(FrozenInstanceError):
+            e.tool_call_id = "x"  # type: ignore[misc]
+
+    def test_tool_call_args_frozen_and_default_schema(self) -> None:
+        from lyra.core.messaging.render_events import (
+            SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
+            ToolCallArgsRenderEvent,
+        )
+
+        e = ToolCallArgsRenderEvent(tool_call_id="toolu_AB", delta='{"foo":')
+        assert e.delta == '{"foo":'
+        assert e.schema_version == SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT == 1
+        with pytest.raises(FrozenInstanceError):
+            e.delta = "y"  # type: ignore[misc]
+
+    def test_tool_call_end_frozen_and_default_schema(self) -> None:
+        from lyra.core.messaging.render_events import (
+            SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT,
+            ToolCallEndRenderEvent,
+        )
+
+        e = ToolCallEndRenderEvent(tool_call_id="toolu_AB")
+        assert e.schema_version == SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT == 1
+        with pytest.raises(FrozenInstanceError):
+            e.tool_call_id = "x"  # type: ignore[misc]
+
+    def test_tool_call_result_frozen_and_default_schema(self) -> None:
+        from lyra.core.messaging.render_events import (
+            SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
+            ToolCallResultRenderEvent,
+        )
+
+        e = ToolCallResultRenderEvent(tool_call_id="toolu_AB", content="ok")
+        assert e.is_error is False
+        assert e.schema_version == SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT == 1
+        e_err = ToolCallResultRenderEvent(
+            tool_call_id="toolu_AB", content="boom", is_error=True
+        )
+        assert e_err.is_error is True
+        with pytest.raises(FrozenInstanceError):
+            e.content = "y"  # type: ignore[misc]
+
+    def test_tool_call_events_in_union(self) -> None:
+        from lyra.core.messaging.render_events import (
+            ToolCallArgsRenderEvent,
+            ToolCallEndRenderEvent,
+            ToolCallResultRenderEvent,
+            ToolCallStartRenderEvent,
+        )
+
+        events: list[RenderEvent] = [
+            ToolCallStartRenderEvent(tool_call_id="x", tool_name="Read"),
+            ToolCallArgsRenderEvent(tool_call_id="x", delta="{}"),
+            ToolCallEndRenderEvent(tool_call_id="x"),
+            ToolCallResultRenderEvent(tool_call_id="x", content="ok"),
+        ]
+        assert len(events) == 4
 
 
 # ---------------------------------------------------------------------------

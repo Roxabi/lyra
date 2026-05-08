@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
@@ -180,6 +181,9 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
+    # Isolate vault dir per test to prevent parallel-worker races on
+    # ~/.lyra/discord.db (_ensure_discord_db TOCTOU with -n auto).
+    monkeypatch.setenv("LYRA_VAULT_DIR", tempfile.mkdtemp())
 
 
 def make_fake_stores(

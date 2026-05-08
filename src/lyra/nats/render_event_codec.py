@@ -15,6 +15,10 @@ from lyra.core.messaging.render_events import (
     SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT,
     SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT,
     SCHEMA_VERSION_TEXT_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
     FileEditSummary,
     RenderEvent,
@@ -23,6 +27,10 @@ from lyra.core.messaging.render_events import (
     RunStartedRenderEvent,
     SilentCounts,
     TextRenderEvent,
+    ToolCallArgsRenderEvent,
+    ToolCallEndRenderEvent,
+    ToolCallResultRenderEvent,
+    ToolCallStartRenderEvent,
     ToolSummaryRenderEvent,
 )
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
@@ -74,8 +82,16 @@ class NatsRenderEventCodec:
             return "run_started", payload, False
         if isinstance(event, RunFinishedRenderEvent):
             return "run_finished", payload, True
-        if isinstance(event, RunErrorRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if isinstance(event, RunErrorRenderEvent):
             return "run_error", payload, True
+        if isinstance(event, ToolCallStartRenderEvent):
+            return "tool_call_start", payload, False
+        if isinstance(event, ToolCallArgsRenderEvent):
+            return "tool_call_args", payload, False
+        if isinstance(event, ToolCallEndRenderEvent):
+            return "tool_call_end", payload, False
+        if isinstance(event, ToolCallResultRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+            return "tool_call_result", payload, False
         raise TypeError(  # pyright: ignore[reportUnreachable]
             f"Unsupported RenderEvent subtype: {type(event)!r}"
         )
@@ -172,6 +188,58 @@ class NatsRenderEventCodec:
             return deserialize(
                 json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                 RunErrorRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "tool_call_start":
+            if not check_schema_version(
+                payload,
+                envelope_name="ToolCallStartRenderEvent",
+                expected=SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                ToolCallStartRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "tool_call_args":
+            if not check_schema_version(
+                payload,
+                envelope_name="ToolCallArgsRenderEvent",
+                expected=SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                ToolCallArgsRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "tool_call_end":
+            if not check_schema_version(
+                payload,
+                envelope_name="ToolCallEndRenderEvent",
+                expected=SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                ToolCallEndRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "tool_call_result":
+            if not check_schema_version(
+                payload,
+                envelope_name="ToolCallResultRenderEvent",
+                expected=SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                ToolCallResultRenderEvent,
                 resolver=self._resolver,
             )
         if event_type == "stream_end":

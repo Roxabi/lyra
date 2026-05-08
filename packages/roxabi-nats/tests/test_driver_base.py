@@ -15,6 +15,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import time
 from collections.abc import AsyncIterator
@@ -200,6 +201,68 @@ class TestStreamGen:
         assert collected == []
         # The unsubscribe finaliser must have been called.
         sub_mock.unsubscribe.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_stream_gen_absolute_deadline(self) -> None:
+        """Stream stops at max_total_duration even if keepalive chunks keep arriving.
+
+        Backstop against a stuck worker that emits tool_use keepalives forever
+        without ever reaching a terminal chunk: the per-chunk timer resets on
+        every arrival, but the absolute deadline must still cut the stream.
+        """
+        # Arrange — long per-chunk timeout, short absolute deadline.
+        nc = _make_mock_nc()
+        driver = _ConcreteDriver(nc, timeout=5.0, max_total_duration=0.2)
+
+        captured_cb = None
+
+        async def _fake_subscribe(inbox: str, *, cb) -> MagicMock:
+            nonlocal captured_cb
+            captured_cb = cb
+            sub = MagicMock()
+            sub.unsubscribe = AsyncMock()
+            return sub
+
+        nc.subscribe = AsyncMock(side_effect=_fake_subscribe)
+
+        collected: list[dict] = []
+        keepalive_pump_done = asyncio.Event()
+
+        async def _run() -> None:
+            gen = driver._stream_gen("lyra.clipool.exec", {"cmd": "ls"})
+
+            async def _consume() -> None:
+                async for chunk in gen:
+                    collected.append(chunk)
+
+            consume_task = asyncio.create_task(_consume())
+            await asyncio.sleep(0)
+            assert captured_cb is not None
+
+            # Pump keepalive chunks faster than the per-chunk timeout.
+            async def _pump() -> None:
+                for _ in range(20):
+                    if consume_task.done():
+                        break
+                    await captured_cb(
+                        _make_msg({"event_type": "tool_use", "done": False})
+                    )
+                    await asyncio.sleep(0.05)
+                keepalive_pump_done.set()
+
+            pump_task = asyncio.create_task(_pump())
+            await consume_task
+            pump_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await pump_task
+
+        await _run()
+
+        # Assert — absolute deadline tripped while chunks were still arriving.
+        # The pump fed at least one keepalive (so the per-chunk timer was reset),
+        # then the deadline cut the stream short of the 20 it would have sent.
+        assert 1 <= len(collected) < 20
+        assert all(c.get("event_type") == "tool_use" for c in collected)
 
 
 # ---------------------------------------------------------------------------

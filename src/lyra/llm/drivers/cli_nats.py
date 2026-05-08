@@ -53,8 +53,14 @@ class CliNatsDriver(NatsDriverBase):
     HB_SUBJECT = "lyra.clipool.heartbeat"
     capabilities: dict[str, Any] = {"streaming": True, "auth": "nats"}
 
-    def __init__(self, nc: "NATS", *, timeout: float = 120.0) -> None:
-        super().__init__(nc, timeout=timeout)
+    def __init__(
+        self,
+        nc: "NATS",
+        *,
+        timeout: float = 120.0,
+        max_total_duration: float | None = None,
+    ) -> None:
+        super().__init__(nc, timeout=timeout, max_total_duration=max_total_duration)
         self._lyra_sessions: dict[str, str] = {}
         self._turn_store: _CliSessionStore | None = None
 

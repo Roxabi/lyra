@@ -32,10 +32,25 @@ class NatsDriverBase:
     # Subclasses set this to the heartbeat subject they subscribe to.
     # NatsDriverBase uses it in start()/stop() only if set.
     HB_SUBJECT: str = ""
+    # Absolute upper bound on a single _stream_gen call. Backstop against a
+    # hung worker that keeps emitting keepalive chunks forever; the per-chunk
+    # `timeout` is a liveness check, not a duration cap.
+    DEFAULT_MAX_TOTAL_DURATION: float = 1800.0
 
-    def __init__(self, nc: "NATS", *, timeout: float = 120.0) -> None:
+    def __init__(
+        self,
+        nc: "NATS",
+        *,
+        timeout: float = 120.0,
+        max_total_duration: float | None = None,
+    ) -> None:
         self._nc = nc
         self._timeout = timeout
+        self._max_total_duration = (
+            max_total_duration
+            if max_total_duration is not None
+            else self.DEFAULT_MAX_TOTAL_DURATION
+        )
         self._worker_freshness: dict[str, float] = {}
         self._hb_sub: "Subscription | None" = None
 
@@ -83,10 +98,28 @@ class NatsDriverBase:
         return self._nc.is_connected and self._any_worker_alive()
 
     async def _stream_gen(
-        self, subject: str, payload_dict: dict, *, timeout: float | None = None
+        self,
+        subject: str,
+        payload_dict: dict,
+        *,
+        timeout: float | None = None,
+        max_total_duration: float | None = None,
     ) -> AsyncIterator[dict]:
-        """Publish to subject with ephemeral inbox reply, yield raw dict chunks."""
+        """Publish to subject with ephemeral inbox reply, yield raw dict chunks.
+
+        Two timers govern stream lifetime:
+        - ``timeout`` (per-chunk): max idle time between chunks. Reset on every
+          arrival, including keepalive chunks (e.g. ``event_type="tool_use"``).
+        - ``max_total_duration`` (absolute): hard cap on total stream duration
+          regardless of activity. Backstop against a worker that keeps emitting
+          keepalives but never reaches a terminal chunk.
+        """
         timeout = timeout if timeout is not None else self._timeout
+        max_total = (
+            max_total_duration
+            if max_total_duration is not None
+            else self._max_total_duration
+        )
         inbox = self._nc.new_inbox()
         queue: asyncio.Queue = asyncio.Queue(maxsize=512)
 
@@ -102,11 +135,24 @@ class NatsDriverBase:
 
         sub = await self._nc.subscribe(inbox, cb=_on_msg)
         payload = json.dumps(payload_dict, ensure_ascii=False).encode("utf-8")
+        deadline = time.monotonic() + max_total
         try:
             await self._nc.publish(subject, payload, reply=inbox)
             while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    log.warning(
+                        "nats_driver_base: _stream_gen absolute deadline (%.0fs) "
+                        "exceeded on %s",
+                        max_total,
+                        subject,
+                    )
+                    return
+                effective_timeout = min(timeout, remaining)
                 try:
-                    msg = await asyncio.wait_for(queue.get(), timeout=timeout)
+                    msg = await asyncio.wait_for(
+                        queue.get(), timeout=effective_timeout
+                    )
                 except TimeoutError:
                     log.warning("nats_driver_base: _stream_gen timeout on %s", subject)
                     return

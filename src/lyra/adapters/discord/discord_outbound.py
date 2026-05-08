@@ -231,8 +231,11 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
 
     async def _edit_placeholder_tool(ph, event, header: str = ""):
         embed = _build_tool_embed(event)
+        # header = istate.display() = combined intermediate text + tool summary.
+        # Preserve it as content so ⏳ thinking text stays visible alongside embed.
+        content = header[-DISCORD_MAX_LENGTH:] if header else "​"
         await send_with_retry(
-            lambda e=embed: ph.edit(content="", embed=e),
+            lambda e=embed, c=content: ph.edit(content=c, embed=e),
             label="Tool summary embed",
         )
 
@@ -275,4 +278,5 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         cancel_typing=lambda: adapter._cancel_typing(send_to_id),
         get_msg=adapter._msg,
         placeholder_text=_placeholder_text,
+        guard_tool_on_intermediate=False,
     )

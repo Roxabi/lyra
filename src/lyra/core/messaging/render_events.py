@@ -25,6 +25,10 @@ SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT = 1
 SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT = 1
 SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT = 1
 SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT = 1
+SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT = 1
+SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT = 1
+SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT = 1
+SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT = 1
 
 
 @dataclass(frozen=True)
@@ -150,6 +154,65 @@ class RunErrorRenderEvent:
     schema_version: int = SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT
 
 
+@dataclass(frozen=True)
+class ToolCallStartRenderEvent:
+    """Tool-call lifecycle: a single tool invocation begins.
+
+    Slice 3 of #1096. Streamed alternative to the post-hoc
+    ``ToolSummaryRenderEvent`` accumulator. ``tool_call_id`` is the cross-event
+    correlator — a verbatim pass-through of the CLI's ``content_block.id`` for
+    the corresponding ``tool_use`` block.
+    """
+
+    tool_call_id: str
+    tool_name: str
+    schema_version: int = SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT
+
+
+@dataclass(frozen=True)
+class ToolCallArgsRenderEvent:
+    """Tool-call lifecycle: a chunk of streamed tool input arguments.
+
+    ``delta`` is a *partial JSON fragment* (e.g. ``'{"foo": '``) — it is only
+    valid JSON when concatenated with the rest of the deltas for the same
+    ``tool_call_id``. Adapters that need parsed args wait for ``ToolCallEnd``
+    and reconstruct from accumulated deltas.
+    """
+
+    tool_call_id: str
+    delta: str
+    schema_version: int = SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT
+
+
+@dataclass(frozen=True)
+class ToolCallEndRenderEvent:
+    """Tool-call lifecycle: tool input streaming complete (no more args).
+
+    Emitted on the CLI's ``content_block_stop`` for the corresponding
+    ``tool_use`` block, OR synthesized by ``StreamProcessor`` at end-of-turn
+    for any ``tool_call_id`` that saw a ``Start`` but no matching ``stop``
+    (orphan recovery; logged at WARN level).
+    """
+
+    tool_call_id: str
+    schema_version: int = SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT
+
+
+@dataclass(frozen=True)
+class ToolCallResultRenderEvent:
+    """Tool-call lifecycle: the executed tool returned a result.
+
+    Emitted from the CLI's user-message ``tool_result`` block. ``content`` is
+    rendered text-only this slice — list-of-typed-blocks are concatenated with
+    placeholders for non-text content (rich rendering deferred).
+    """
+
+    tool_call_id: str
+    content: str
+    is_error: bool = False
+    schema_version: int = SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT
+
+
 # Union type exported for type annotations and ``isinstance`` checks.
 RenderEvent = (
     TextRenderEvent
@@ -157,6 +220,10 @@ RenderEvent = (
     | RunStartedRenderEvent
     | RunFinishedRenderEvent
     | RunErrorRenderEvent
+    | ToolCallStartRenderEvent
+    | ToolCallArgsRenderEvent
+    | ToolCallEndRenderEvent
+    | ToolCallResultRenderEvent
 )
 
 __all__ = [
@@ -169,8 +236,16 @@ __all__ = [
     "SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT",
     "SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT",
     "SCHEMA_VERSION_TEXT_RENDER_EVENT",
+    "SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT",
+    "SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT",
+    "SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT",
+    "SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT",
     "SilentCounts",
     "TextRenderEvent",
+    "ToolCallArgsRenderEvent",
+    "ToolCallEndRenderEvent",
+    "ToolCallResultRenderEvent",
+    "ToolCallStartRenderEvent",
     "ToolSummaryRenderEvent",
 ]

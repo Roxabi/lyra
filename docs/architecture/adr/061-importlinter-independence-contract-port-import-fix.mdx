@@ -5,7 +5,7 @@ description: Fix core modules to import from lyra.core.ports.* directly instead 
 
 ## Status
 
-Accepted
+Partially implemented — import sites not yet updated (see Update note below)
 
 ## Context
 
@@ -58,6 +58,8 @@ Root cause analysis reveals:
 
 **Option B.** Fix the three import sites to reference `lyra.core.ports.*` directly, and introduce `SessionToolsProtocol` in `lyra.core.ports.integrations`.
 
+**As of 2026-05-08:** import site updates (`agent.py`, `processor_registry.py`) and `SessionToolsProtocol` extraction are not yet executed. `src/lyra/core/agent/agent.py:12-13` still imports `STTProtocol` from `lyra.stt` and `TtsProtocol` from `lyra.tts`. `processor_registry.py:36` still imports `SessionTools` from `lyra.integrations.base`. `src/lyra/core/ports/integrations.py` does not exist. The `ignore_imports` count remains 4 in the `shared-modules-independence` contract.
+
 Concrete changes:
 
 | File | Change |
@@ -78,7 +80,7 @@ Backward-compat re-exports in `lyra.stt.__init__` and `lyra.tts.__init__` are pr
 ### Positive
 - The `shared-modules-independence` contract becomes authoritative: any future peer coupling between floating modules will be caught, not masked.
 - `lyra.core.agent.agent` and `lyra.core.processors.processor_registry` are clean of floating-module runtime coupling.
-- `ignore_imports` count in the independence contract drops from 4 to 2 (or 1, depending on the `engine_selector` path resolution after the fix).
+- `ignore_imports` count in the independence contract drops from 4 to 2 (pending: count remains 4 until import sites are updated).
 
 ### Negative
 - `lyra.core.ports.integrations` adds a new file to maintain. If `SessionTools` evolves, the protocol must be kept in sync — type-checking will catch drift at check time, not runtime.
@@ -87,3 +89,17 @@ Backward-compat re-exports in `lyra.stt.__init__` and `lyra.tts.__init__` are pr
 ### Neutral
 - `SynthesisResult` and `TranscriptionResult` remaining in `lyra.stt` / `lyra.tts` is the current state. Migrating them to `lyra.core.ports.*` as proper value objects is a larger follow-on tracked separately; it is not a blocker for this ADR.
 - ADR-059 V8 migration work is validated by this decision — the ports were placed correctly; only the call-site imports were not updated.
+
+## Update 2026-05-08
+
+Code-truth audit (#1145, cluster A) found this ADR is only partially executed:
+
+- `src/lyra/core/ports/integrations.py` does not exist — `SessionToolsProtocol` was not created.
+- `src/lyra/core/agent/agent.py:12-13` still imports `STTProtocol` from `lyra.stt` and
+  `TtsProtocol` from `lyra.tts` (not from `lyra.core.ports.*`).
+- `src/lyra/core/processors/processor_registry.py:36` still imports `SessionTools` from
+  `lyra.integrations.base`.
+- `ignore_imports` count in the `shared-modules-independence` contract remains 4 (not 2).
+
+The ports (`STTProtocol`, `TtsProtocol`) were correctly placed in `lyra.core.ports` per ADR-059
+V8; only the call-site imports were not updated. The plan remains valid and actionable.

@@ -5,7 +5,7 @@ description: How to expose lyra agent create|list|validate without coupling daem
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -128,3 +128,9 @@ is handled by Typer's own `app()` call, not by hand-rolled `sys.argv` inspection
 - supervisord, `make lyra`, and the production deploy path are unaffected.
 - The no-regression success criterion (`python -m lyra` with no extra args still
   starts the server) remains valid and testable.
+
+## Update 2026-05-08
+
+Option A is implemented. `pyproject.toml:33` confirms `lyra-agent = "lyra.cli:agent_main"`
+as a `[project.scripts]` entry. The dedicated entrypoint is live. Status updated from
+Proposed to Accepted.

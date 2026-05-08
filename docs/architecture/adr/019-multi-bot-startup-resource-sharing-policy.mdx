@@ -5,7 +5,7 @@ description: Documents the trade-offs between per-agent and per-process resource
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -92,3 +92,10 @@ The `CliPool` sharing in Option A is correct and must be preserved in Option B: 
 
 - `_resolve_value()` (env-var indirection in multi-bot config parsing) is unaffected by this decision.
 - The `AuthMiddleware.from_bot_config()` coupling concern (ADR-019 review finding) is orthogonal and should be addressed separately.
+
+## Update 2026-05-08
+
+Option B is implemented. `src/lyra/bootstrap/factory/agent_factory.py:93` contains
+`_build_per_agent_registry()` which constructs a per-agent `ProviderRegistry`. The
+`build_agent_factory()` function uses per-agent registry construction as the live code path.
+Status updated from Proposed to Accepted.

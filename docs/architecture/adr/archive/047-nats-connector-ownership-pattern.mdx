@@ -1,11 +1,12 @@
 ---
 title: "ADR-047: NATS connector ownership pattern — lyra owns subjects + contracts, satellites own workers"
 description: "Establish that lyra owns the wire contract (subjects, envelopes, contract ADRs) for all lyra.* NATS domains, provisions per-worker nkey identities, and ships hub-side publishers. Satellite repos (voiceCLI, imageCLI, roxabi-vault) own the worker process and confine lyra.* subject literals to a single designated adapter module per satellite."
+superseded_by: ADR-045
 ---
 
 ## Status
 
-Accepted
+Superseded by ADR-045 — all 7 ownership rules, subject/nkey ownership table, satellite grep-gate enforcement pattern, and dependency graph absorbed into ADR-045 §Supersedes.
 
 ## Context
 

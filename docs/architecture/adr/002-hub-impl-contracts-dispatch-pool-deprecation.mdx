@@ -5,7 +5,7 @@ description: Codify the implementation-level invariants that ADR-001 left implic
 
 ## Status
 
-Accepted
+Accepted (see Update note below)
 
 ## Context
 
@@ -84,25 +84,21 @@ must not reverse without understanding the rationale.
 
 ### Requirement 1 — Adapter lookup failure handling
 
-`Hub.run()` must catch `KeyError` from `dispatch_response` and log it as `log.error(...)` with the
-routing key, then `continue`. The hub event-loop task must never be killed by a missing adapter.
-A guard in `register_binding` should emit `log.warning(...)` if no adapter is registered yet for
-`(platform, bot_id)`, without making it fatal (adapters may register after bindings at startup).
+The hub event-loop task must never be killed by a missing adapter. This invariant is
+preserved in the current middleware pipeline architecture (see ADR-059 for the current
+dispatch model). The original `Hub.run()` monolith has been decomposed into
+`hub/middleware/` and `hub/pipeline/` sub-packages; error handling is absorbed by the
+middleware layer in `src/lyra/core/hub/hub_dispatch.py:136`.
 
 ### Requirement 2 — Pool creation atomicity
 
-`get_or_create_pool` must use:
+Pool creation is atomically guarded via `PoolManager._lock` (a `threading.Lock`). The lock
+wraps an explicit `if pool_id in self._pools` check plus `OrderedDict.move_to_end()` for LRU
+eviction — this is strictly stronger than `setdefault` for the TOCTOU case.
 
-```python
-pool = self.pools.setdefault(
-    pool_id,
-    Pool(pool_id=pool_id, agent_name=agent_name),
-)
-return pool
-```
-
-The `if pool_id not in self.pools` pattern is explicitly prohibited in this method. This rule
-must survive any future refactor of `get_or_create_pool`.
+The original `dict.setdefault()` mandate and the `if pool_id not in self.pools` prohibition
+are superseded by this lock-based implementation in `src/lyra/core/hub/pipeline/pool_manager.py:39-72`.
+Any future refactor of pool creation must preserve the lock guard.
 
 ### Requirement 3 — Pool ID derivation from RoutingKey
 
@@ -117,16 +113,13 @@ All registration paths that compute a pool ID must call `RoutingKey(...).to_pool
 `f"{platform}:{bot_id}:{user_id}"` strings in hub code are prohibited; they must be replaced by
 this method. This keeps the canonical format defined in one place.
 
-### Requirement 4 — channel deprecation enforcement
+### Requirement 4 — channel removal
 
-`Message.channel` must be implemented as a `@property` that:
-
-1. Calls `warnings.warn("Message.channel is deprecated; use Message.platform.value", DeprecationWarning, stacklevel=2)`.
-2. Returns `self.platform.value`.
-
-The field must be removed from `__init__` and from any `@dataclass` field declaration. Existing
-code that passes `channel=` as a constructor argument must be updated to pass `platform=` instead.
-The property docstring must reference the GitHub issue number for removal once it is created.
+`Message.channel` was removed entirely (not deprecated) during the Phase 1b→2 refactor.
+`src/lyra/core/messaging/message.py` no longer contains a `channel` field or property.
+The canonical routing field is now `scope_id`; `channel_id` and `channel_type` are the
+structural replacements. No `DeprecationWarning` pattern was needed — the field was cleaned
+up completely.
 
 ## Consequences
 
@@ -153,3 +146,18 @@ The property docstring must reference the GitHub issue number for removal once i
   side effects and does not change the routing model.
 - Requiring `dispatch_response` errors to be caught in `run()` does not change the Protocol
   contract of `ChannelAdapter.send()`.
+
+## Update 2026-05-08
+
+Code-truth audit (#1145, cluster A) found three requirements have drifted from the original text:
+
+- **Requirement 1:** `Hub.run()` monolith is decomposed. Adapter-lookup error handling is now
+  absorbed by the middleware pipeline (`hub/middleware/`, `hub/pipeline/`). See ADR-059 for the
+  current dispatch model.
+- **Requirement 2:** Pool creation uses `threading.Lock` in `PoolManager` (not `setdefault()`).
+  The lock-based approach is strictly stronger for TOCTOU safety. The `setdefault` mandate and
+  prohibition of `if pool_id not in self.pools` are superseded by the lock guard.
+- **Requirement 4:** `Message.channel` was removed entirely (not deprecated via `@property`).
+  `scope_id` / `channel_id` / `channel_type` are the current canonical routing fields.
+
+Requirement 3 (`RoutingKey.to_pool_id()`) remains accurate and in force.

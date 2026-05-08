@@ -1,11 +1,12 @@
 ---
 title: "ADR-066: Unified WorkerError envelope across NATS reply contracts"
 description: Establish a single canonical structured error payload (WorkerError) on every NATS worker→hub reply envelope, with an open-string code namespace governed by a registry, additive rollout per ADR-049, and adoption telemetry as the gate metric for transition phases.
+superseded_by: ADR-049
 ---
 
 ## Status
 
-Accepted
+Superseded by ADR-049 — WorkerError envelope absorbed as v2 additive extension of roxabi-contracts
 
 Extends ADR-006 (hub run-loop error/response gap) from the hub→adapter direction to the worker→hub NATS reply boundary. Complementary to ADR-058 (typed error boundary inside adapters); orthogonal — different boundary.
 

@@ -5,7 +5,7 @@ description: Documents the decision to use a module-level singleton for EventBus
 
 ## Status
 
-Accepted
+Accepted (see Update note below)
 
 ## Context
 
@@ -87,6 +87,12 @@ The DI approach (Option B) is the preferred long-term direction and should be re
 a second EventBus consumer is added that is not reachable through Hub (e.g., an adapter that
 needs to emit events before Hub starts).
 
+**Subsequently migrated to DI in ADR-025 F-10.** `PipelineEventBus` is now injected via
+`Hub.__init__` constructor (parameter `event_bus: "PipelineEventBus | None" = None`);
+bootstrap wiring lives in `bootstrap/factory/wiring_helpers.py:262`. No module-level
+singleton exists. The `get_event_bus()`/`set_event_bus()` pattern documented in Option A
+is no longer present in the codebase. Decision was revisited per ADR-025 F-10.
+
 ## Consequences
 
 ### Positive
@@ -98,8 +104,10 @@ needs to emit events before Hub starts).
 ### Negative
 
 - Module-level mutable state is re-introduced after ADR-017 worked to remove it.
+  **Resolved:** the singleton was removed per ADR-025 F-10; DI is now in place and
+  module-level mutable state no longer exists for EventBus.
 - Test isolation requires an explicit autouse fixture; forgetting it causes subtle
-  cross-test pollution.
+  cross-test pollution. (No longer applies since singleton is removed.)
 
 ### Neutral
 
@@ -107,3 +115,16 @@ needs to emit events before Hub starts).
   consistent application of that pattern rather than a new one.
 - If the codebase grows to multiple Hub instances in a single process (currently not
   planned), the singleton would need to become instance-scoped or be replaced with DI.
+
+## Update 2026-05-08
+
+Code-truth audit (#1145, cluster A) confirmed the "preferred long-term direction" (DI) has
+been executed per ADR-025 F-10:
+
+- `PipelineEventBus` is injected via `Hub.__init__` — no module-level singleton exists.
+- Bootstrap wiring is in `bootstrap/factory/wiring_helpers.py:262`.
+- The `get_event_bus()`/`set_event_bus()` functions documented in Option A are absent from
+  the codebase.
+- The Negative consequence "module-level mutable state re-introduced" is resolved.
+
+The historical rationale (why DI was deferred, specific mitigations) remains valuable context.

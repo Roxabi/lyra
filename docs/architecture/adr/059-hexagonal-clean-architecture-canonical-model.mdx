@@ -7,6 +7,15 @@ description: Establishes the authoritative 4-layer dependency model, layer place
 
 Accepted
 
+## Supersedes
+
+This ADR is the canonical model for hexagonal/clean architecture across the Roxabi ecosystem. As part of #1145 consolidation, the following predecessor ADRs are absorbed here:
+
+- **ADR-048 — Introduce `lyra.infrastructure` layer for persistence** (founding precedent): the infrastructure layer concept it established is generalized in this ADR's 4-layer model. The specific rules for where SQLite/store adapters land are codified in `## Design` (infrastructure layer placement) below.
+- **ADR-060 — CLI protocol circular import resolution**: the P0 remediation it documented is captured in `## Migration path` below as the canonical "core port lives in core, infrastructure imports the port" pattern. The Mermaid diagrams of the broken vs fixed import shape are preserved in the archive entry for reference.
+
+ADR-061 (importlinter independence contract) remains live as it tracks ongoing enforcement work (some ports still resolve to floating module names rather than `lyra.core.ports.*` — see ADR-061's `## Update 2026-05-08` for the partial-execution status).
+
 ## Context
 
 Three repositories have been audited for architectural violations:
@@ -309,9 +318,9 @@ allow_indirect_imports = true
 
 ### Lyra — P0
 
-1. Move `make_agent_store()` factory from `core/stores/agent_store_protocol.py:106` to `bootstrap/bootstrap_stores.py` (Composition Root).
+1. Move `make_agent_store()` factory from `core/stores/agent_store_protocol.py:106` to `bootstrap/factory/agent_store_factory.py` (Composition Root). Note: the factory moved to `bootstrap/factory/agent_store_factory.py`, not `bootstrap/bootstrap_stores.py` as originally specified; the docstring in `core/stores/agent_store_protocol.py` confirms this path.
 2. Move `core/stores/agent_store_migrations.py` to `infrastructure/stores/agent_store_migrations.py`.
-3. Add `PairingManagerProtocol` to `core/` (or `core/stores/`); update `commands/pairing/handlers.py` to receive it by injection rather than importing `get_pairing_manager` from Infrastructure.
+3. Add `PairingManagerProtocol` to `core/` (or `core/stores/`); update `commands/pairing/handlers.py` to receive it by injection rather than importing `get_pairing_manager` from Infrastructure. **Status (2026-05-08):** `PairingManagerProtocol` exists at `core/stores/pairing_protocol.py`. `commands/pairing/handlers.py:13` calls `get_pairing_manager()` via a facade that uses a deferred `from lyra.infrastructure.stores.pairing` import — tracked in `.importlinter` under the `pairing_protocol -> infrastructure.stores.pairing` exemption. Full DI injection is not yet complete.
 4. Add `IdentityAliasStoreProtocol` to `core/stores/`; update `commands/identity/handlers.py` to type-hint against the protocol.
 
 ### Lyra — P1
@@ -319,7 +328,7 @@ allow_indirect_imports = true
 5. Add `ThreadStoreProtocol` to `core/stores/`; update `adapters/discord/adapter.py:51` to receive it by injection.
 6. Move `LlmProvider` port from `lyra.llm.base` to `lyra.core.ports.llm` (or `lyra.core.llm`); update `lyra.llm` implementations to import the protocol from `core`.
 7. Move `STTProtocol`, `TtsProtocol` from `stt/__init__.py`, `tts/__init__.py` to `lyra.core.ports`; add importlinter forbidden contracts covering these modules.
-8. Add `lyra.commands` and `lyra.agents` to the layers contract in `.importlinter` at the Application tier.
+8. Add `lyra.commands` and `lyra.agents` to the layers contract in `.importlinter` at the Application tier. **Status (2026-05-08):** `lyra.commands` and `lyra.agents` are absent from the layers contract but have dedicated `forbidden` contracts (`commands-no-infra`, `agents-no-bootstrap`). Practical enforcement is in place via forbidden contracts; the specific layers entry remains an open gap.
 9. Restructure `config.py` to eliminate the `adapters.discord` + `adapters.telegram` imports (extract adapter config into adapter modules).
 
 ### voiceCLI — P0

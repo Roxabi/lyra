@@ -1,13 +1,14 @@
 ---
 title: "ADR-016: LLM Provider Protocol and Driver Registry"
 description: Extract LLM dispatch into a dedicated lyra.llm module with a Protocol, concrete drivers, composable decorators, and a ProviderRegistry.
+superseded_by: "historical (#666 SDK removal)"
 ---
 
 > **Superseded by #666.** `AnthropicSdkDriver` and the `anthropic-sdk` backend have been removed; Lyra is CLI-only. Historical content below is preserved for context.
 
 ## Status
 
-Accepted
+Superseded — `AnthropicSdkDriver` removed (#666). Lyra is CLI-only; LLM dispatch is now governed by the cli-pool path.
 
 ## Context
 

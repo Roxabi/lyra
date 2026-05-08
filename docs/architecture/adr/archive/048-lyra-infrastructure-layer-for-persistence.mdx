@@ -1,11 +1,12 @@
 ---
 title: "ADR-048: Introduce lyra.infrastructure layer for persistence — move SQLite store implementations out of lyra.core"
 description: Add a new lyra.infrastructure layer between lyra.core and lyra.adapters to house SQLite store implementations, eliminating the aiosqlite import violation in the innermost layer while preserving dependency-inversion via protocols in core/stores/.
+superseded_by: ADR-059
 ---
 
 ## Status
 
-Accepted
+Superseded by ADR-059 — infrastructure layer concept absorbed into the canonical hexagonal/clean model.
 
 ## Context
 

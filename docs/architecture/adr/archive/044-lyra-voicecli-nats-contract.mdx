@@ -1,11 +1,12 @@
 ---
 title: "ADR-044: lyra ↔ voicecli NATS voice contract (STT + TTS)"
 description: Freeze the request/reply and heartbeat payloads exchanged between lyra (hub) and voicecli (satellite) over NATS, including the contract_version additive field for forward compatibility.
+superseded_by: ADR-049
 ---
 
 ## Status
 
-Accepted
+Superseded by ADR-049 — voice subjects table, contract_version rationale, heartbeat cadence/TTL rules, and queue group names absorbed into ADR-049 §Supersedes. Normative wire schemas now live in roxabi_contracts.voice.models.
 
 ## Context
 

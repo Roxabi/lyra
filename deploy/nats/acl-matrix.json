@@ -115,13 +115,14 @@
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "reserved",
-      "description": "Reserved LLM worker identity — publishes heartbeat, subscribes to lyra.llm.generate.request queue. Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "description": "llmCLI nats-serve worker. Worker uses inbox_prefix=_inbox.llmcli-llm (does not match the llm-worker role name), so the renderer's request_reply_flows derivation cannot auto-grant it — the inbox is listed explicitly in subscribe. See #1142.",
       "allow_responses": true,
       "publish": [
         "lyra.llm.heartbeat"
       ],
       "subscribe": [
-        "lyra.llm.generate.request"
+        "lyra.llm.generate.request",
+        "_inbox.llmcli-llm.>"
       ]
     },
     "image-worker": {

@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.cli.cli_pool import CliPool
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from lyra.core.messaging.metrics import emit_populated_total
 from roxabi_contracts.cli.models import (
     CliChunkEvent,
@@ -228,6 +228,18 @@ class CliPoolNatsWorker(NatsAdapterBase):
                     done=False,
                 )
                 await self.reply(msg, chunk)
+            elif isinstance(event, ToolUseLlmEvent):
+                # Forward as a keepalive on the inbox: tool execution can take
+                # minutes without producing TextLlmEvents, and the hub-side
+                # `_stream_gen` per-chunk timer would otherwise kill a healthy
+                # session. Any chunk arrival resets that timer. The hub's
+                # `_stream_gen_llm` ignores `event_type="tool_use"` (no yield).
+                chunk = _make_chunk(
+                    cmd.pool_id,
+                    event_type="tool_use",
+                    done=False,
+                )
+                await self.reply(msg, chunk)
             elif isinstance(event, ResultLlmEvent):
                 # Forward the structured envelope. CliStreamingParser populates
                 # `worker_error` on cli.auth / cli.session_lost / cli.parse;
@@ -245,7 +257,6 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 )
                 await self.reply(msg, chunk)
                 return
-            # ToolUseLlmEvent — skip; tool use is internal to claude CLI
         # Iterator exhausted without a ResultLlmEvent — send synthetic terminal chunk.
         await self.reply(
             msg,

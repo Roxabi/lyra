@@ -45,11 +45,16 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-async def build_cli_nats_driver(nc: NATS, *, timeout: float = 120.0) -> "CliNatsDriver":
+async def build_cli_nats_driver(
+    nc: NATS,
+    *,
+    timeout: float = 120.0,
+    max_total_duration: float | None = None,
+) -> "CliNatsDriver":
     """Build and start a CliNatsDriver connected to the clipool worker."""
     from lyra.llm.drivers.cli_nats import CliNatsDriver
 
-    driver = CliNatsDriver(nc, timeout=timeout)
+    driver = CliNatsDriver(nc, timeout=timeout, max_total_duration=max_total_duration)
     await driver.start()
     return driver
 

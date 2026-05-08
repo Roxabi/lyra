@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.core.cli.cli_pool import CliPool, CliResult
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -241,6 +241,42 @@ async def test_handle_cmd_publishes_done_chunk_after_stream() -> None:
         if len(call.args) > 1
     ]
     assert any(p.get("done") is True for p in published_payloads)
+
+
+async def test_handle_cmd_streaming_forwards_tool_use_as_keepalive() -> None:
+    """ToolUseLlmEvent is forwarded as event_type='tool_use' chunk (done=False).
+
+    Tool execution can take minutes without producing TextLlmEvents; without
+    this forward, the hub-side `_stream_gen` per-chunk timer would kill the
+    healthy session. The chunk acts as a keepalive — the hub ignores its
+    payload but the arrival resets the timer.
+    """
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    # Arrange
+    pool = _make_pool()
+    tool_event = ToolUseLlmEvent(tool_name="Bash", tool_id="toolu_01")
+    result_event = ResultLlmEvent(is_error=False, duration_ms=0)
+    pool.send_streaming.return_value = _make_event_iter([tool_event, result_event])
+
+    worker = CliPoolNatsWorker(pool)
+    nc = AsyncMock()
+    worker._nc = nc
+
+    msg = _make_nats_msg(reply="_INBOX.reply")
+
+    # Act
+    await worker._handle_cmd(msg, _cmd_payload(stream=True))
+
+    # Assert — a tool_use chunk was published with done=False
+    payloads = [
+        json.loads(call.args[1].decode())
+        for call in nc.publish.call_args_list
+        if len(call.args) > 1
+    ]
+    tool_chunks = [p for p in payloads if p.get("event_type") == "tool_use"]
+    assert tool_chunks, f"no tool_use chunk published; got {payloads}"
+    assert tool_chunks[0]["done"] is False
 
 
 async def test_handle_cmd_streaming_forwards_worker_error_from_result_event() -> None:

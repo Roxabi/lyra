@@ -223,8 +223,10 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
                 log.debug("Placeholder text edit skipped: %s", exc)
 
     async def _edit_placeholder_tool(ph: Any, event: Any, header: str = "") -> None:
-        summary = _format_tool_summary(event)
-        rendered = _render_text(summary)
+        # header = istate.display() = combined intermediate text + tool summary.
+        # Use it directly so ⏳ thinking text stays visible alongside 🔧 recap.
+        text = header if header else _format_tool_summary(event)
+        rendered = _render_text(text)
         if rendered:
             try:
                 await adapter.bot.edit_message_text(
@@ -271,4 +273,5 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         cancel_typing=lambda: adapter._cancel_typing(chat_id),
         get_msg=adapter._msg,
         placeholder_text=_placeholder_text,
+        guard_tool_on_intermediate=False,
     )

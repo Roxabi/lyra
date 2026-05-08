@@ -124,7 +124,8 @@ S1 is mandatory and gates S2–S7. S2 can run in parallel with S3–S6 once S1 i
 - [ ] No two live ADRs in `docs/architecture/adr/*.mdx` share a numeric prefix (017 collision resolved)
 - [ ] Every file in `docs/architecture/adr/archive/*.mdx` has a `superseded_by:` frontmatter field whose value matches a live ADR id
 - [ ] Every archived ADR's body `## Status` reads `Superseded by ADR-NNN` (or equivalent), with the live target's body listing `supersedes:` either in frontmatter or a `## Supersedes` body section
-- [ ] Live ADR count is between **25 and 35** (target ~30 — exact number locked in S1 audit)
+- [ ] Every live ADR's normative content reflects the current codebase reality (verified by per-cluster code↔ADR architect audit). ADRs whose premise the code has moved past are either rewritten to match, partially-superseded with a banner pointing to current truth, or fully archived. **Truth is the code; the live ADR set is its rationale layer, not a parallel narrative.**
+- [ ] Live ADR count is incidental — driven by the truth audit, not a target. Expected outcome ~30–45 after this PR; the exact number is whatever survives validation, not a constraint to hit
 - [ ] At least the four canonical buckets land: ADR-045, ADR-049, ADR-055, ADR-059 each absorbed their planned sources from the issue body, with any deviations explicitly justified in the S1 audit doc
 - [ ] ADR-066–071 each have a documented placement decision (live, merged into bucket, or archived) recorded in S1 audit
 - [ ] `meta.json` `pages` array contains only live ADR slugs (or live + an archive sub-page entry — choice locked in S1)

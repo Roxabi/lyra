@@ -168,6 +168,8 @@ mv ~/.lyra/nkeys/voice-stt.seed ~/.voicecli/nkeys/
 
 **Chosen:** Shared shell library in Lyra repo, installed at bootstrap time.
 
+> ⚠️ **Superseded (2026-05-03, #1035):** `deploy-lib.sh` and `deploy-quadlet.sh` were retired before ecosystem-wide adoption. Canonical deploy path is `podman auto-update.timer` (GHCR registry auto-pull); manual fallback is `make full-deploy`. D5 is partially superseded — the shared-library pattern was replaced by the Podman auto-update mechanism.
+
 **Versioning:** Each project's `make quadlet-install` copies `deploy-lib.sh` to `~/.local/lib/roxabi/deploy-lib.sh`, pinning commit hash:
 
 ```sh

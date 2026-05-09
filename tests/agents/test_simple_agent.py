@@ -653,7 +653,9 @@ class TestSimpleAgentNatsLifecycle:
         result = await pool.resume_session("sess-nats-1")
 
         assert result is True
-        nats_driver.resume_and_reset.assert_called_once_with(pool.pool_id, "sess-nats-1")
+        nats_driver.resume_and_reset.assert_called_once_with(
+            pool.pool_id, "sess-nats-1"
+        )
 
 
 # ---------------------------------------------------------------------------

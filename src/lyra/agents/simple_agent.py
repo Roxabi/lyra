@@ -166,6 +166,13 @@ class SimpleAgent(AgentBase):
                 reset_fn=lambda: _cli_pool.reset(_pool_id),
                 workspace_fn=lambda cwd: _cli_pool.switch_cwd(_pool_id, cwd),
             )
+        elif self._cli_nats_driver is not None:
+            _driver = self._cli_nats_driver
+            _pool_id = pool.pool_id
+            pool.register_session_callbacks(
+                reset_fn=lambda: _driver.reset(_pool_id),
+                workspace_fn=lambda cwd: _driver.switch_cwd(_pool_id, cwd),
+            )
 
     def _maybe_register_resume(self, pool: Pool) -> None:
         """Register session resume callback on the pool.

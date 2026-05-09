@@ -16,9 +16,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any, AsyncGenerator
 
-from lyra.core.exceptions import StreamChunkTimeout
+from lyra.core.exceptions import HubUnavailableError, StreamChunkTimeout
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import RenderEvent
@@ -26,7 +27,50 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _CHUNK_TIMEOUT_SECONDS = 120.0
+_LIVENESS_POLL_SECONDS = 5.0
 _MAX_TERMINATED_STREAMS = 500
+
+
+async def _wait_for_chunk(
+    stream_id: str,
+    q: asyncio.Queue[dict],
+    health_check_fn: "Callable[[], Coroutine[Any, Any, bool]] | None",
+) -> dict:
+    """Poll *q* in short intervals, checking hub liveness between polls.
+
+    Raises :exc:`HubUnavailableError` when *health_check_fn* returns ``False``.
+    Raises :exc:`StreamChunkTimeout` after ``_CHUNK_TIMEOUT_SECONDS`` without a chunk.
+    """
+    poll = min(_LIVENESS_POLL_SECONDS, _CHUNK_TIMEOUT_SECONDS)
+    elapsed_idle = 0.0
+    while True:
+        try:
+            return await asyncio.wait_for(q.get(), timeout=poll)
+        except TimeoutError:
+            elapsed_idle += poll
+            if health_check_fn is not None:
+                healthy = await health_check_fn()
+                if not healthy:
+                    log.warning(
+                        "NatsOutboundListener: hub health check failed, aborting"
+                        " stream stream_id=%r",
+                        stream_id,
+                    )
+                    raise HubUnavailableError(
+                        f"hub health check failed during stream"
+                        f" (stream_id={stream_id!r})"
+                    )
+            if elapsed_idle >= _CHUNK_TIMEOUT_SECONDS:
+                log.warning(
+                    "NatsOutboundListener: stream timed out waiting for chunk"
+                    " stream_id=%r (120s)",
+                    stream_id,
+                )
+                raise StreamChunkTimeout(
+                    f"no chunk received for {_CHUNK_TIMEOUT_SECONDS:.0f}s"
+                    f" (stream_id={stream_id!r})"
+                )
+            poll = min(_LIVENESS_POLL_SECONDS, _CHUNK_TIMEOUT_SECONDS - elapsed_idle)
 
 
 async def decode_stream_events(
@@ -34,6 +78,7 @@ async def decode_stream_events(
     q: asyncio.Queue[dict],
     *,
     counter: dict[str, int] | None = None,
+    health_check_fn: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
 ) -> AsyncGenerator["RenderEvent", None]:
     """Drain chunks from *q* and yield decoded :class:`RenderEvent` objects.
 
@@ -42,11 +87,17 @@ async def decode_stream_events(
     forever.
 
     Args:
-        stream_id: Logical stream identifier (used only for log correlation).
-        q:         Queue populated by :meth:`NatsOutboundListener._handle_chunk`.
-        counter:   Caller-owned mutable dict passed through to
-                   :meth:`NatsRenderEventCodec.decode` for version-mismatch
-                   drop counting.  ``None`` skips counting.
+        stream_id:       Logical stream identifier (used only for log correlation).
+        q:               Queue populated by :meth:`NatsOutboundListener._handle_chunk`.
+        counter:         Caller-owned mutable dict passed through to
+                         :meth:`NatsRenderEventCodec.decode` for version-mismatch
+                         drop counting.  ``None`` skips counting.
+        health_check_fn: Optional async callable returning ``True`` when the hub is
+                         healthy.  Called every ``_LIVENESS_POLL_SECONDS`` while
+                         waiting for the next chunk.  When it returns ``False``,
+                         :exc:`HubUnavailableError` is raised immediately instead of
+                         waiting for the full 120 s backstop.  Defaults to ``None``
+                         (liveness check skipped; existing behaviour preserved).
 
     Yields:
         Decoded render events until a terminal chunk arrives or the timeout
@@ -57,18 +108,7 @@ async def decode_stream_events(
     _codec = NatsRenderEventCodec()
     expected_seq = 0
     while True:
-        try:
-            chunk = await asyncio.wait_for(q.get(), timeout=_CHUNK_TIMEOUT_SECONDS)
-        except TimeoutError:
-            log.warning(
-                "NatsOutboundListener: stream timed out waiting for chunk"
-                " stream_id=%r (120s)",
-                stream_id,
-            )
-            raise StreamChunkTimeout(
-                f"no chunk received for {_CHUNK_TIMEOUT_SECONDS:.0f}s"
-                f" (stream_id={stream_id!r})"
-            )
+        chunk = await _wait_for_chunk(stream_id, q, health_check_fn)
         seq = chunk.get("seq")
         if seq is not None and seq != expected_seq:
             log.warning(

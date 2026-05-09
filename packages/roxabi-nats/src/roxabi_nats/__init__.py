@@ -14,12 +14,13 @@ from roxabi_contracts.envelope import CONTRACT_VERSION
 from ._serialize import _TypeHintResolver as TypeHintResolver
 from .adapter_base import NatsAdapterBase
 from .connect import nats_connect
-from .driver_base import NatsDriverBase
+from .driver_base import NatsDriverBase, WorkerUnavailableError
 
 __all__ = [
     "CONTRACT_VERSION",
     "NatsAdapterBase",
     "NatsDriverBase",
     "TypeHintResolver",
+    "WorkerUnavailableError",
     "nats_connect",
 ]

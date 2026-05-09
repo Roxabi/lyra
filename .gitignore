@@ -17,6 +17,7 @@ coverage.xml
 *.db-wal
 .ruff_cache/
 .claude/worktrees/
+.claude/*.lock
 src/lyra/agents/lyra_runtime.toml
 lyra.toml
 config.toml

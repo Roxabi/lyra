@@ -229,14 +229,16 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 )
                 await self.reply(msg, chunk)
             elif isinstance(event, ToolUseLlmEvent):
-                # Forward as a keepalive on the inbox: tool execution can take
-                # minutes without producing TextLlmEvents, and the hub-side
-                # `_stream_gen` per-chunk timer would otherwise kill a healthy
-                # session. Any chunk arrival resets that timer. The hub's
-                # `_stream_gen_llm` ignores `event_type="tool_use"` (no yield).
+                # Forward tool metadata so the hub can yield ToolUseLlmEvent to
+                # StreamProcessor. Also serves as keepalive: any chunk resets the
+                # hub-side per-chunk timer, preventing false timeouts during long
+                # tool executions.
                 chunk = _make_chunk(
                     cmd.pool_id,
                     event_type="tool_use",
+                    tool_name=event.tool_name,
+                    tool_id=event.tool_id,
+                    tool_input=event.input,
                     done=False,
                 )
                 await self.reply(msg, chunk)

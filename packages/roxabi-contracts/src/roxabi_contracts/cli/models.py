@@ -34,6 +34,9 @@ class CliChunkEvent(ContractEnvelope):
     pool_id: str
     event_type: Literal["text", "tool_use", "session_id", "result", "error"]
     text: str | None = None
+    tool_name: str | None = None  # tool name for tool_use events
+    tool_id: str | None = None  # tool call id for tool_use events
+    tool_input: dict | None = None  # tool input dict for tool_use events
     session_id: str | None = None
     is_error: bool = False
     done: bool = False

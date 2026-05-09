@@ -6,7 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "roxabi-vault",
     "cryptography>=48.0.0",
-    "pydantic>=2.12.5",
+    "pydantic>=2.13.4",
     # Adapters
     "aiogram>=3.27.0",       # Telegram — asyncio-native, tracks Bot API same-day
     "discord.py[voice]>=2.7.1",  # Discord — gateway WebSocket + voice support (voice extra pulls pynacl + davey for crypto; keep updated)

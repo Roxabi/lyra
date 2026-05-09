@@ -550,6 +550,113 @@ class TestSimpleAgentCliLifecycle:
 
 
 # ---------------------------------------------------------------------------
+# Helpers for NATS lifecycle tests
+# ---------------------------------------------------------------------------
+
+
+def make_agent_with_nats_driver(provider: object, nats_driver: object) -> SimpleAgent:
+    """Return a SimpleAgent wired with a CliNatsDriver (4-process NATS mode)."""
+    from lyra.llm.drivers.cli_nats import CliNatsDriver
+
+    config = Agent(
+        name="lyra",
+        system_prompt="You are Lyra.",
+        memory_namespace="lyra",
+        llm_config=ModelConfig(),
+    )
+    return SimpleAgent(
+        config,
+        cast("LlmProvider", provider),
+        cli_nats_driver=cast(CliNatsDriver, nats_driver),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TestSimpleAgentNatsLifecycle
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleAgentNatsLifecycle:
+    """Regression tests for /clear in NATS 4-process mode (#1147).
+
+    When cli_pool=None and cli_nats_driver is set, _maybe_register_reset must
+    wire reset_fn and workspace_fn through the NATS driver, not leave them None.
+
+    T8n / T9an mirror T8 / T9a from TestSimpleAgentCliLifecycle for the NATS path.
+    """
+
+    # ------------------------------------------------------------------
+    # T8n — regression: /clear routes reset through CliNatsDriver
+    # ------------------------------------------------------------------
+
+    async def test_t8n_reset_routes_through_nats_driver(self) -> None:
+        """T8n: pool.reset_session() → nats_driver.reset(pool_id) in NATS mode.
+
+        Regression: before the fix, _session_reset_fn was never registered when
+        cli_pool=None, so /clear left the clipool worker's session intact.
+        """
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        nats_driver = MagicMock()
+        nats_driver.reset = AsyncMock()
+
+        agent = make_agent_with_nats_driver(provider, nats_driver)
+        pool = make_pool()
+        agent.configure_pool(pool)
+
+        # _session_reset_fn must be registered (was None before the fix)
+        assert pool._session_reset_fn is not None, (
+            "_session_reset_fn not registered for NATS driver — /clear is broken"
+        )
+
+        await pool.reset_session()
+
+        nats_driver.reset.assert_called_once_with(pool.pool_id)
+
+    # ------------------------------------------------------------------
+    # T9an — workspace switch routes through CliNatsDriver
+    # ------------------------------------------------------------------
+
+    async def test_t9an_switch_cwd_routes_through_nats_driver(self) -> None:
+        """T9an: pool.switch_workspace() → nats_driver.switch_cwd(pool_id, cwd)."""
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        nats_driver = MagicMock()
+        nats_driver.switch_cwd = AsyncMock()
+
+        agent = make_agent_with_nats_driver(provider, nats_driver)
+        pool = make_pool()
+        agent.configure_pool(pool)
+
+        assert pool._switch_workspace_fn is not None, (
+            "_switch_workspace_fn not registered for NATS driver"
+        )
+
+        await pool.switch_workspace(Path("/new/cwd"))
+
+        nats_driver.switch_cwd.assert_called_once_with(pool.pool_id, Path("/new/cwd"))
+
+    # ------------------------------------------------------------------
+    # T9bn — resume routes through CliNatsDriver (sanity / existing behaviour)
+    # ------------------------------------------------------------------
+
+    async def test_t9bn_resume_routes_through_nats_driver(self) -> None:
+        """T9bn: pool.resume_session() → nats_driver.resume_and_reset(pool_id, sid)."""
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        nats_driver = MagicMock()
+        nats_driver.resume_and_reset = AsyncMock(return_value=True)
+
+        agent = make_agent_with_nats_driver(provider, nats_driver)
+        pool = make_pool()
+        agent.configure_pool(pool)
+
+        assert pool._session_resume_fn is not None
+
+        result = await pool.resume_session("sess-nats-1")
+
+        assert result is True
+        nats_driver.resume_and_reset.assert_called_once_with(pool.pool_id, "sess-nats-1")
+
+
+# ---------------------------------------------------------------------------
 # TestSimpleAgentIsBackendAlive
 # ---------------------------------------------------------------------------
 

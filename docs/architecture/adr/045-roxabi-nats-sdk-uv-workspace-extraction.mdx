@@ -183,6 +183,8 @@ Both blocking prerequisites are resolved; the `roxabi-nats/v0.1.0` tag is unbloc
 ### Known design debt
 
 - **Resolved in #729 (v0.2.0 — clean break, no deprecation shim).** The process-global `_TYPE_CHECKING_IMPORTS` list and its `_register_type_checking_import` mutator were deleted outright. Adapters now pass TYPE_CHECKING-only types via an explicit keyword-only `type_registry` argument on `NatsAdapterBase.__init__`; direct `serialize`/`deserialize` consumers pass a `resolver=` keyword argument. Lyra owns a single `TYPE_REGISTRY_RESOLVER` module constant in `src/lyra/nats/type_registry.py`. External `v0.1.x` consumers importing the removed private symbols hit a loud `ImportError` at load — the chosen failure mode over a silent `DeprecationWarning + no-op` shim that would have masked degraded type coercion.
+- **Post-extraction addition: `driver_base.py`.** `packages/roxabi-nats/src/roxabi_nats/driver_base.py` (`NatsDriverBase`) was added after the initial extraction (not listed in the original Cohort A). It was extracted for ADR-066 P3 to consolidate `NatsLlmDriver` duplicate heartbeat logic. This is an additive forward extension, not a violation of the Cohort A boundary.
+- **CONTRACT_VERSION compat shim status.** Per the migration plan, `CONTRACT_VERSION` migrated to `roxabi_contracts.envelope`. The compat re-export in `roxabi_nats` (with a `DeprecationWarning` on `adapter_base.py:43`) is present through `roxabi-nats/v0.3.0`, at which point it will be removed with a `BREAKING CHANGE:` commit trailer.
 - **Public vs private submodule asymmetry** — lyra (as workspace host) imports `roxabi_nats._serialize`, `_sanitize`, etc. directly; external consumers are restricted to `__all__`. Python's underscore convention is social, not enforced — the contract is maintained via README and ADR documentation, not runtime guard.
 
 ### Neutral
@@ -190,3 +192,94 @@ Both blocking prerequisites are resolved; the `roxabi-nats/v0.1.0` tag is unbloc
 - Cohort B stays in `src/lyra/nats/`. The directory remains a mix of extracted and hub-internal code; this is by design and documented in the root `CLAUDE.md`.
 - External plugin authors see two import namespaces (`roxabi_nats` for transport, `nats` for the underlying nats-py client). Unchanged from today's experience with `voicecli.nats.*`.
 - voiceCLI's current `voicecli/nats/base.py` copy is not deleted by this ADR — removal is a voiceCLI-side PR that lands after `roxabi-nats/v0.1.0` is tagged.
+
+## Supersedes
+
+This ADR absorbs the decisions from the following superseded ADRs (2026-05-08 consolidation, issue #1145):
+
+### ADR-037 — NatsOutboundListener Placement and Adapter Standalone Bootstrap
+
+**Decision absorbed:** `NatsOutboundListener` MUST live in `src/lyra/adapters/nats/nats_outbound_listener.py` (adapters layer), not in `src/lyra/nats/` (transport layer). The dependency direction is the deciding factor: `nats/` is a pure infrastructure module; `adapters/` imports `nats/`, not the reverse.
+
+**Bootstrap wiring order** for `adapter_standalone.py`:
+1. NATS connection — `nc` shared across `NatsBus` (inbound publish) and `NatsOutboundListener` (outbound subscribe).
+2. `inbound_bus` — `NatsBus[InboundMessage]` constructed with `nc`, one registration per `(platform, bot_id)` pair.
+3. `inbound_audio_bus` — `LocalBus[InboundAudio]` no-op sink.
+4. Adapter construction — adapters receive `inbound_bus`; trust elevation is Hub-side only; `circuit_registry=None` acceptable.
+5. `resolve_identity()` — called before starting the webhook server or Gateway connection.
+6. `NatsOutboundListener` — constructed with `nc`, `platform`, `bot_id`, and the adapter instance; started via `await listener.start()`.
+7. HTTP server (Telegram only) — `uvicorn` serves `adapter.app` on the configured webhook port.
+8. Shutdown — on SIGTERM/SIGINT: stop listeners, call `adapter.close()`, stop `inbound_bus`, close `nc`.
+
+**Rejected patterns (physically realized in code):**
+- `lyra.outbound.stream.*` subject hierarchy — rejected; all outbound flows on `lyra.outbound.{platform}.{bot_id}` with `stream_id` multiplexing.
+- `NatsOutboundEnvelope.original_msg` — rejected; listener maintains a local `_cache` dict keyed by `msg_id`.
+
+### ADR-040 — NATS Messaging Architecture Review (9-Finding Issues Table)
+
+Systematic structural review of the NATS layer. Key findings and resolution status (2026-05-08):
+
+| # | Finding | Severity | Resolution |
+|---|---------|----------|------------|
+| 1 | `_drain_stream` blocks indefinitely on hub crash; no stream timeout | High | Resolved — `nats_stream_decoder.py:64` has timeout logic |
+| 2 | `stream_error` envelope missing; adapter blocks on hub crash mid-stream | High | Resolved — `nats_envelope_handlers.py:204` handles `"stream_error"`; `nats_stream_decoder.py:143` provides `handle_stream_error()` |
+| 3 | `NatsBus` staging queue hardcoded to 500; `platform_queue_maxsize` config ignored | Medium | Open (pre-dates ADR-065 JetStream adoption) |
+| 4 | No schema versioning in wire format; rolling deploys risk silent mismatch | Medium | Partially mitigated by `contract_version` (ADR-044/049) |
+| 5 | `task_done()` is no-op on `NatsBus`; join semantics would silently not work | Low | Documented asymmetry |
+| 6 | `_get_hints` lacks a per-type cache; reflection on every deserialization | Low | Open |
+| 7 | Outbound queue is unbounded; no max-age drain before circuit opens | Low | Open |
+| 8 | `_on_dispatched` in metadata is a hidden control channel stripped by serializer | Low (by design) | By design; documented |
+| 9 | No `OutboundListener` protocol; adapter process NATS-specific | Low | **Resolved by PR #550 / issue #529** — `OutboundListener` structural Protocol introduced in `src/lyra/adapters/shared/outbound_listener.py` |
+| 10 | `TYPE_CHECKING`-only import workaround in `_get_hints` | Low | Resolved in #729 (v0.2.0) |
+
+**OutboundListener protocol resolution note (Finding 9):** `OutboundListener` (structural `typing.Protocol` in `src/lyra/adapters/shared/outbound_listener.py`) provides the 3-method surface (`cache_inbound`, `start`, `stop`). `TelegramAdapter` and `DiscordAdapter` annotate `_outbound_listener` as `OutboundListener | None`. `NatsOutboundListener` satisfies the protocol structurally without inheritance.
+
+### ADR-047 — NATS Connector Ownership Pattern (7 Rules + Satellite Grep-Gate)
+
+**The 7 ownership rules:**
+
+1. `packages/roxabi-nats/` is pure transport — zero knowledge of lyra subjects, envelope field names, or domain semantics.
+2. All `lyra.<domain>.<action>.<verb>` subject registries, queue group names, envelope schemas, and request/reply contracts are documented in **lyra-side contract ADRs** (ADR-044 for voice, ADR-050 for image). The contract text is authoritative; satellites implement against it.
+3. Satellite repos consume `roxabi-nats` as a generic SDK. They MAY implement worker processes subscribing to lyra-owned subjects, but MUST confine `lyra.*` subject literals to a **single designated adapter module** per satellite. They MUST NOT redefine envelope schemas.
+4. Worker processes live in the satellite repo as a CLI entry point (`voicecli nats-serve`, `imagecli nats-serve`). Workers MUST enforce a max-payload byte limit BEFORE calling `deserialize()` (default 1 MB; binary domains declare the cap in their contract ADR). Workers MUST sanitize user-controlled fields listed in the contract ADR.
+5. Hub-side client code (publishers, heartbeat listeners) stays at `src/lyra/nats/nats_<domain>_client.py`.
+6. Each worker role has its own NATS nkey with subject-scoped ACL. Identities are provisioned by lyra per ADR-046.
+7. Every new `lyra.<domain>.*` subject namespace requires a contract ADR **before** any satellite ships a worker subscribing to it.
+
+**Subject and nkey ownership table (current state):**
+
+| Domain | Subjects | Queue group | lyra nkey identity | Satellite adapter module | Status |
+|---|---|---|---|---|---|
+| STT | `lyra.voice.stt.request`, `lyra.voice.stt.heartbeat` | `STT_WORKERS` | `stt-adapter` | `voicecli/src/voicecli/nats/stt_adapter.py` | Partial |
+| TTS | `lyra.voice.tts.request`, `lyra.voice.tts.heartbeat` | `TTS_WORKERS` | `tts-adapter` | `voicecli/src/voicecli/nats/tts_adapter.py` | Partial |
+| Image | `lyra.image.generate.request`, `lyra.image.heartbeat` | `IMAGE_WORKERS` | `image-worker` | `imagecli/src/imagecli/nats/adapter.py` | Shipped |
+| Memory | TBD — requires contract ADR | TBD | TBD | `roxabi-vault` TBD | TBD |
+
+**Satellite grep-gate enforcement pattern:**
+
+```bash
+ALLOWED="src/voicecli/nats/stt_adapter.py|src/voicecli/nats/tts_adapter.py"
+VIOLATORS=$(grep -rln "lyra\." src/ --include='*.py' | grep -Ev "^($ALLOWED)$" || true)
+if [ -n "$VIOLATORS" ]; then
+  echo "ERROR: lyra.* subject literal outside designated adapter module:"
+  echo "$VIOLATORS"
+  exit 1
+fi
+```
+
+MUST land in each satellite repo as a follow-up to voiceCLI#69 and imageCLI#50-equivalent.
+
+### ADR-062 — NATS ACL Inbox Case Normalization (Lowercase Rollout + `allow_responses` Finding)
+
+**Decision absorbed:** Standardize all inbox prefixes to lowercase `_inbox.<identity>` everywhere (Fix 1). Every NATS identity connecting through `roxabi_nats.nats_connect` MUST use `inbox_prefix="_inbox.<identity-name>"` (lowercase). Verified in `connect.py:184` — when `identity_name` is provided, derives `kwargs["inbox_prefix"] = f"_inbox.{identity_name}"`. `acl-matrix.json` uses only lowercase `_inbox.<identity>.>` entries; no uppercase `_INBOX` entries remain.
+
+**`allow_responses` case-sensitivity finding (load-bearing context for ADR-064):** `allow_responses: true` grants evaluate case-insensitively for publish permission, but NATS subscription filters apply case-sensitively. A case mismatch passes the publish side but silently drops messages on the subscribe side. This finding motivated ADR-064's explicit `request_reply_flows` derivation replacing Fix 2's hand-written grants.
+
+**Rollout procedure per identity (for future reference):**
+1. Update connect site to lowercase prefix.
+2. Update `acl-matrix.json` subscribe entry to lowercase (dual-hold during migration: add lowercase, keep uppercase until step 3).
+3. Regenerate `auth.conf` via `deploy/nats/setup.sh`.
+4. Recreate Podman secret and reload NATS.
+5. Remove uppercase entry from `acl-matrix.json` in a follow-up.
+
+**Fix 3 — CI integration test requirement:** A CI test (`make test-acl`) MUST connect as each identity using its nkey and assert all subscribe/publish ACLs function correctly; assert hub→responder→hub round-trips succeed end-to-end; assert each identity is denied on out-of-ACL subjects; explicitly test lowercase `_inbox.hub` prefix receives replies published to `_inbox.hub.<TOKEN>` (regression guard).

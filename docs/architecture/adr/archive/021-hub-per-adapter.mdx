@@ -1,11 +1,12 @@
 ---
 title: "ADR-021: Hub-Per-Adapter Process Model"
 description: Each adapter process embeds its own Hub instance and agent pool rather than sharing a single hub across adapters or using IPC
+superseded_by: "ADR-035, ADR-045"
 ---
 
 ## Status
 
-Superseded by ADR-035, ADR-037, ADR-040 (NATS three-process architecture introduced in #445 Slice C)
+Superseded by ADR-035 (NATS subject naming convention) and ADR-045 (roxabi-nats SDK; absorbs ADR-037 outbound listener placement and ADR-040 messaging architecture) — hub-and-spoke topology now codified in the NATS subject convention and SDK contract.
 
 ## Superseded
 

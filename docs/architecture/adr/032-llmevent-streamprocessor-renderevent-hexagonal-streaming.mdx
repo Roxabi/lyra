@@ -1,13 +1,16 @@
 ---
 title: "ADR-032: LlmEvent → StreamProcessor → RenderEvent — Hexagonal Streaming Pipeline"
 description: Replace AsyncIterator[str] end-to-end with a typed event hierarchy (LlmEvent → RenderEvent) and a domain-layer StreamProcessor, closing the six architectural gaps that block real-time tool-call visibility.
+superseded_by: "ADR-070 (partial — SDK streaming content; hexagonal pipeline contract remains in force)"
 ---
 
 > **Superseded by #666.** `AnthropicSdkDriver` and the `anthropic-sdk` backend have been removed; Lyra is CLI-only. Historical content below is preserved for context.
 
 ## Status
 
-Accepted
+Accepted — partially superseded
+
+> **Partial supersession:** The `AnthropicSdkDriver` streaming path described in this ADR was removed in #666. The hexagonal pipeline contract (`LlmEvent → StreamProcessor → RenderEvent`) remains normative and is verified in live code (`src/lyra/core/messaging/render_events.py`, `src/lyra/adapters/shared/_shared_streaming_emitter.py`). This ADR is extended by ADR-070 (RenderEvent v2 AG-UI Modeling), which adds new event families to the `RenderEvent` hierarchy — ADR-070 cites this ADR as normative.
 
 ## Context
 

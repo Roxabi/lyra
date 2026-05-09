@@ -1,11 +1,12 @@
 ---
 title: "ADR-041: Hub-and-Spoke Supervisor Pattern"
 description: Supervisor architecture consolidation — hub aggregator for local dev, standalone supervisor + systemd for prod, cross-project service registration via symlinks.
+superseded_by: ADR-055
 ---
 
 ## Status
 
-Superseded by [ADR-047](047-nats-connector-ownership-pattern.mdx)
+Superseded by ADR-055 (Quadlet ecosystem conventions) — supervisor pattern fully replaced by Podman Quadlet for Lyra. Original supersession by ADR-047 still applies for the connector-ownership decision.
 
 > **Note (#886/#1036):** This ADR originally described a lyra-owned standalone supervisor
 > under a repo-local `deploy/` subtree. That was removed in #886. The subsequent

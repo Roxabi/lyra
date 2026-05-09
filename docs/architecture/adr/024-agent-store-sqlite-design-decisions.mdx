@@ -120,3 +120,10 @@ intentional and should be documented in `AgentStore`'s class docstring.
 - `agent_runtime_state` does not participate in hub routing decisions today. If a future
   feature needs sync access to runtime state (e.g., load-aware routing), a cache will be
   needed at that time.
+
+## Update 2026-05-08
+
+`AgentStore` has moved to `lyra.infrastructure.stores.agent_store` as part of the ADR-059
+hexagonal remediation. The class is at `src/lyra/infrastructure/stores/agent_store.py` and
+inherits from `SqliteStore`. The design decisions recorded in this ADR remain in force; only
+the implementation file location changed.

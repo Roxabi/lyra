@@ -1,11 +1,12 @@
 ---
 title: "ADR-062: NATS ACL inbox case normalization and explicit reply-path grants"
 description: Standardize all inbox prefixes to lowercase _inbox.<identity> and encode requester-to-responder publish paths explicitly in acl-matrix.json, eliminating the dual-variant maintenance burden and making the ACL dependency graph fully auditable.
+superseded_by: ADR-045
 ---
 
 ## Status
 
-Accepted
+Superseded by ADR-045 — lowercase normalization rollout procedure, allow_responses case-sensitivity finding, and Fix 3 CI test requirement absorbed into ADR-045 §Supersedes. Fix 2 (explicit hand-written grants) superseded by ADR-064 (declarative derivation).
 
 ## Context
 

@@ -1,11 +1,12 @@
 ---
 title: "ADR-068: SELinux :z Label Policy for Quadlet Bind-Mount Volumes"
 description: Decides how to handle the container volume relabelling directive (:z) on bind-mount-backed Quadlet volumes for hosts that run AppArmor rather than SELinux, with long-term portability as the governing criterion.
+superseded_by: "ADR-055"
 ---
 
 ## Status
 
-Accepted
+Superseded by ADR-055 — `:z` bind-volume policy absorbed into ADR-055 `## Supersedes` section (ADR-068 subsection). Both phases (b and a) of the ADR's lifecycle are complete.
 
 **Context:** PR #1062 (JetStream persistent volume — Phase 1 prereq for #1049) introduced `lyra-jetstream.volume`, a Quadlet `.volume` unit backed by a bind-mount of `%h/.lyra/jetstream`. The `lyra-nats.container` mounts it as `Volume=lyra-jetstream.volume:/var/lib/nats/jetstream:z`. The `:z` label relabels the bind-mount target for shared SELinux context. On AppArmor-only hosts `:z` is a silent no-op. On SELinux hosts it is load-bearing. Three options were debated in an F3 panel (architect, security-auditor, devops).
 

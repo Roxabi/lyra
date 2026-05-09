@@ -7,7 +7,7 @@ description: Resolves seven cross-project design questions that block Phase 2 of
 
 Accepted (2026-04-24)
 
-**Parent ADR:** ADR-053 (Deployment topology and container-image hardening — Lyra reference implementation)
+**Absorbs:** ADR-053 (deployment topology + container hardening, archived), ADR-054 (credential store + UID rework, archived), ADR-056 (container publishing workflow, archived), ADR-068 (SELinux `:z` Quadlet bind-volume policy, archived) — see `## Supersedes` below for the absorbed content.
 **Migration doc:** `docs/PROD-MIGRATION-STRATEGY.md` — Phase 2 entry criterion; §6 enumerates the seven questions resolved here.
 
 ---
@@ -60,11 +60,18 @@ These decisions are cross-project. No single project owns them. They must be set
 | A. Project name only | `localhost/lyra-hub:latest`, `localhost/voicecli-tts:latest` | Each project owns its namespace; consistent with per-project runtime dirs (`~/.lyra/`, `~/.voicecli/`); no rename cost |
 | B. `roxabi-` prefix | `localhost/roxabi-lyra:latest` | Groups images in `podman images` output; imposes a shared prefix on artifacts that are per-project by nature |
 
-**Chosen:** Option A — `localhost/<project>-<service>:latest` for all projects.
+**Chosen:** Option A — project-named, no `roxabi-` prefix, for all projects.
 
-**Rationale:** Container images are per-project artifacts, not shared infra. `~/.lyra/` is Lyra's runtime dir; `localhost/lyra-hub:latest` is Lyra's image. `~/.voicecli/` is voiceCLI's runtime dir; `localhost/voicecli-tts:latest` is voiceCLI's image. The naming follows ownership, not ecosystem branding. The `roxabi-` prefix is reserved for code genuinely extracted as multi-consumer SDKs (ADR-045: `roxabi-nats`, ADR-049: `roxabi-contracts`) — it is not a registry namespace for per-project container images.
+**Rationale:** Container images are per-project artifacts, not shared infra. The naming follows ownership, not ecosystem branding. The `roxabi-` prefix is reserved for code genuinely extracted as multi-consumer SDKs (ADR-045: `roxabi-nats`, ADR-049: `roxabi-contracts`) — it is not a registry namespace for per-project container images.
 
-`podman images | grep lyra` and `podman images | grep voicecli` are unambiguous per-project filters. A shared prefix provides no operational benefit that project-scoped filters do not already cover. Lyra uses `localhost/lyra-hub:latest`, `localhost/lyra-telegram:latest`, `localhost/lyra-discord:latest`, `localhost/lyra-nats:latest` — already established in prod, no rename needed.
+**Registry split (updated to reflect ADR-056 / CI/prod reality):** This ADR was written before the GHCR publishing pattern was established. The current convention is:
+
+| Context | Registry | Example |
+|---|---|---|
+| CI / prod images | `ghcr.io/roxabi/<project>` | `ghcr.io/roxabi/lyra` |
+| Local dev builds | `localhost/<project>-<service>:dev` | `localhost/lyra-hub:dev` |
+
+`podman images | grep lyra` and `podman images | grep voicecli` remain unambiguous per-project filters in both contexts. A shared `roxabi-` prefix provides no operational benefit that project-scoped filters do not already cover.
 
 ---
 
@@ -382,9 +389,11 @@ The migration doc §2c recommends shared `nats.container` immediately. This ADR 
 
 ---
 
-## Relationship to ADR-053 and Migration Phases
+## Historical: Migration Phases (ADR-053 / ADR-054 era)
 
-| Phase | ADR-053 scope | ADR-055 scope |
+> ADR-053 and ADR-054 are now **archived and absorbed into this ADR** (see `## Supersedes` below). Their decisions are no longer separate live documents — they live here. The phase table below is preserved as historical migration context.
+
+| Phase | ADR-053 (now absorbed) scope | ADR-055 scope |
 |---|---|---|
 | Phase 0 (dry run) | Lyra Quadlet on M₂ | N/A |
 | Phase 1 (Lyra prod) | Lyra Quadlet on M₁ — complete | N/A |
@@ -393,7 +402,7 @@ The migration doc §2c recommends shared `nats.container` immediately. This ADR 
 | Phase 4 (NATS consolidation) | Follow-up 7 (4223→4222 path) | D2 (shared NATS), D3 (join roxabi.network), D7 (Lyra repo as infra home) |
 | Phase 5 (supervisord retire) | Endgame condition | Unaffected |
 
-ADR-053 remains in force for Decisions 1–3 (Quadlet as strategic target, naming normalization, image digest pinning). ADR-054 remains in force for its decisions (bind-mount layout, `UserNS=keep-id`, Podman secrets for nkeys). ADR-055 extends these patterns ecosystem-wide.
+ADR-053 Decisions 1–3 (Quadlet as strategic target, naming normalization, image digest pinning) and ADR-054 decisions (bind-mount layout, `UserNS=keep-id`, Podman secrets for nkeys) **are absorbed into this ADR** — see `## Supersedes` for the full content. ADR-055 extends these patterns ecosystem-wide.
 
 ---
 
@@ -402,3 +411,67 @@ ADR-053 remains in force for Decisions 1–3 (Quadlet as strategic target, namin
 1. **roxabi-vault daemon status** — is it a persistent NATS subscriber that needs Quadlet units, or a CLI/library? Determines Phase 4 auth.conf scope. (Follow-up 8 above.)
 2. **imageCLI NATS usage** — supervisord conf shows `autostart=false`; NATS not confirmed. (Follow-up 7.)
 3. **Port assignment registry** — per-project NATS ports are 4223 (Lyra), 4224 (voiceCLI), etc. Authoritative list: `docs/PROD-MIGRATION-STRATEGY.md` §1c (permanent home in Lyra).
+
+---
+
+## Supersedes
+
+This ADR absorbs the following superseded ADRs. Their normative content is summarised below.
+
+### ADR-053 — Deployment Topology and Container Hardening (historical context preserved)
+
+ADR-053 made Lyra the reference implementation of the Roxabi ecosystem's migration from supervisord to Podman Quadlet and closed five security/operational gaps (Decisions 1–5). Decisions 4 and 5 were superseded by ADR-054. Decisions 1–3 remain normative:
+
+- **D1 (Tier strategy):** Quadlet is the ecosystem-wide strategic target; Lyra is the reference implementation. Supervisord retires when the last roxabi project on M₁ has migrated to Quadlet.
+- **D2 (Naming normalization):** Hyphen convention for all unit names (`lyra-hub`, `lyra-telegram`, `lyra-discord`).
+- **D3 (Image digest pinning):** Original enforcement via `scripts/deploy-quadlet.sh` (retired in #1035). Current path is `podman auto-update` (GHCR) + `lyra-nats.container` uses `Image=...@sha256:` digest pin for the NATS image.
+
+**Ecosystem migration order (from ADR-053):**
+
+| Project | Quadlet status |
+|---|---|
+| `lyra` | Migrated — reference implementation |
+| `voiceCLI`, `imageCLI`, `llmCLI`, `2ndBrain` | Next wave — migration planned |
+| `idna`, `roxabi-forge`, `roxabi-intel`, `roxabi-live` | Deferred |
+| Endgame | Quadlet everywhere on M₁; supervisord retires |
+
+---
+
+### ADR-054 — Quadlet Credential-Store and UID Rework
+
+ADR-054 fixed two runtime failures from ADR-053's Quadlet assumptions. All decisions remain normative (verified in `deploy/quadlet/*.container`):
+
+- **D1:** `lyra-data.volume` is a bind-mount of `%h/.lyra` (`Type=none; Device=%h/.lyra; Options=bind`).
+- **D2:** `UserNS=keep-id:uid=1500,gid=1500` in all containers (replaces `User=lyra`). Container processes run as host UID 1000 (`mickael`); all `~/.lyra/` files are readable without permission errors.
+- **D3:** Adapter data mounts use `:z` (read-write) without `:ro`.
+- **D4:** `telegram.env.example` and `discord.env.example` are deleted. `hub.env.example` is retained for `LYRA_HEALTH_SECRET` and `LYRA_HEALTH_PORT`.
+- **D5:** File-based credentials (nkey seeds, NATS auth) are delivered as Podman secrets (`type=mount`). `config.toml` is mounted inline via `Volume=%h/.lyra/config.toml:/app/config.toml:ro,z`. No `.volume` units wrapping single files (they trigger Podman's loop-device code path).
+
+---
+
+### ADR-056 — Container Publishing Workflow Pattern
+
+ADR-056 established the canonical cross-project container publishing pattern via a reusable GHA workflow. All seven findings from the code review were resolved before adoption (verified in `.github/workflows/publish.yml`):
+
+| # | Finding | Resolution |
+|---|---------|------------|
+| 1 | Semver parsing breaks on `lyra/v0.3.0` | Strip-prefix step added; bare version fed to `type=raw` in metadata-action |
+| 2 | Floating action tags on workflow with org-wide `packages: write` | All 5 actions SHA-pinned; Renovate config added |
+| 3 | `${{ }}` in multiline `tags:` block | Split into 2 metadata+push step pairs with step-level `if:` guards |
+| 4 | `secrets: inherit` over-scopes callee | Dropped; callee uses only built-in `GITHUB_TOKEN` |
+| 5 | `@v1` is a mutable branch | Annotated tag + CODEOWNERS gate on reusable workflow ref |
+| 6 | `LYRA_IMAGE` conflates local build tag with registry name | Separated: `LYRA_IMAGE ?= localhost/lyra:dev` (local) and `GHCR_IMAGE` (registry) |
+| 7 | `release_please_component` required but never consumed | Marked `required: false`, default `""` |
+
+Live reference: `.github/workflows/publish.yml` calls `Roxabi/.github/.github/workflows/publish-container.yml@v1`.
+
+---
+
+### ADR-068 — SELinux `:z` Label Policy for Quadlet Bind-Mount Volumes
+
+ADR-068 resolved the bind-mount label policy for `lyra-jetstream.volume`. Both phases of the two-phase plan have been executed:
+
+- **Phase (b) — PR #1062:** Keep `:z` on `Volume=lyra-jetstream.volume:/var/lib/nats/jetstream:z`; document AppArmor-only assumption. Verified: `deploy/quadlet/lyra-nats.container` retains `:z`.
+- **Phase (a) — follow-up:** Move JetStream data to `~/.lyra/nats/jetstream/`. Verified: `deploy/quadlet/lyra-jetstream.volume` now uses `Device=%h/.lyra/nats/jetstream`. The LSM overlap comment added by PR #1062 was removed as the ADR's follow-up instructions required.
+
+**Normative policy:** All Quadlet bind-mount volumes carry `:z` for portability. On the current production host (Ubuntu 26.04 LTS, AppArmor-only), `:z` is a no-op. On SELinux hosts, `:z` is load-bearing. Do not drop `:z` from bind-mounts.

@@ -5,7 +5,7 @@ description: Documents the design trade-offs for PrefsStore, AgentTTSConfig star
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -83,3 +83,11 @@ Option C is rejected: TTSService is a hardware resource, not an agent-configurat
 
 - `InboundMessage.language` adds a new optional field to the frozen dataclass; adapters that do not detect language leave it as `None` with no behaviour change.
 - `AgentTTSConfig` and `AgentSTTConfig` on `Agent` are config-only fields; they do not affect pool routing, trust, or the stateless-singleton agent contract.
+
+## Update 2026-05-08
+
+Multi-agent `ProviderRegistry` concern resolved per ADR-019 implementation: per-agent
+registry is now live in `bootstrap/factory/agent_factory.py`. Option B (per-call
+language/voice override on `TTSService.synthesize()`) implementation status needs
+verification against `AudioPipeline` / `TTSService` call sites. Status updated from
+Proposed to Accepted.

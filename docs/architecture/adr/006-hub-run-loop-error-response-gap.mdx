@@ -167,3 +167,11 @@ prompt or a per-adapter locale setting. This is deferred.
   bounded retry in `CliPool.send()` (not in the hub) is the correct layer for it.
 - The pre-flight adapter check in `Hub.run()` is retained as an optimisation that prevents
   spending LLM tokens when the adapter is provably absent at message arrival time.
+
+## Update 2026-05-08
+
+Implementation moved: error dispatch now lives in the pool processor exec layer (middleware
+pipeline), not directly in `Hub.run()` which was refactored during the ADR-059 hexagonal
+remediation. The monolithic `Hub.run()` loop was replaced with a composable middleware
+pipeline; the actual error dispatch path migrated to `pool_processor_exec.py`. The decision
+(Option A: user-facing error response on agent failure) remains in force.

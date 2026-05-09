@@ -31,6 +31,58 @@ limits by switching chats.
 
 → ADR-001
 
+### RoutingContext
+
+`RoutingContext` is the outbound companion to `RoutingKey` — it carries the per-response routing struct needed for the adapter to deliver a response to exactly the right bot, chat, and thread. Defined in `src/lyra/core/message.py`.
+
+```python
+class RoutingContext:
+    channel: str            # "telegram" | "discord" | "cli"
+    bot_id: str             # identifier of the bot that must reply
+    chat_id: str            # Telegram chat_id / Discord guild+channel
+    thread_id: str | None   # forum thread, Discord thread
+    reply_to_message_id: str | None  # native Telegram/Discord threading
+    user_id: str
+    session_id: str
+```
+
+**Populated at intake (in `normalize()`):**
+
+```python
+def normalize(self, update: TelegramUpdate) -> Message:
+    return Message(
+        ...
+        routing=RoutingContext(
+            channel="telegram",
+            bot_id=self.bot_id,
+            chat_id=str(update.message.chat.id),
+            thread_id=str(update.message.message_thread_id) if update.message.is_topic_message else None,
+            reply_to_message_id=str(update.message.message_id),
+            user_id=str(update.message.from_user.id),
+            session_id=self.make_session_id(update),
+        )
+    )
+```
+
+**Verified at outbound (in the Adapter):**
+
+```python
+async def send(self, response: Response) -> None:
+    ctx = response.routing
+    assert ctx.channel == self.channel, f"Wrong channel: {ctx.channel}"
+    assert ctx.bot_id == self.bot_id,   f"Wrong bot: {ctx.bot_id}"
+    await self.bot.send_message(
+        chat_id=ctx.chat_id,
+        text=response.content,
+        message_thread_id=ctx.thread_id,
+        reply_to_message_id=ctx.reply_to_message_id,
+    )
+```
+
+Security invariant (outbound verification) → `security-routing.md` (#routing).
+
+→ ADR-002 (#152)
+
 ### Hub dispatch
 
 Adapter lookup errors never kill the hub event-loop; error handling is absorbed by the
@@ -82,6 +134,19 @@ chunks. A gap in `seq` or a missing `done=true` after `stream_timeout_s` (defaul
 is treated as `STREAM_ABORTED`.
 
 → ADR-036
+
+### Schema versioning
+
+Every hub↔adapter envelope (`InboundMessage`, `InboundAudio`, `OutboundMessage`, `TextRenderEvent`, `ToolSummaryRenderEvent`) carries a `schema_version: int` field guarded by a `SCHEMA_VERSION_*` module-level constant in `src/lyra/core/message.py` and `src/lyra/core/render_events.py`. The outer `NatsChunkEnvelope` (`{stream_id, seq, event_type, payload, done}`) is intentionally unversioned — only the inner payload is guarded.
+
+**Schema version bump procedure (4 steps):**
+
+1. Bump the `SCHEMA_VERSION_<ENVELOPE>` constant in `src/lyra/core/message.py` or `src/lyra/core/render_events.py` by 1.
+2. Update the `schema_version` field default on the corresponding envelope to match.
+3. Coordinate a simultaneous deploy of `lyra_hub` + `lyra_telegram` + `lyra_discord`. Rolling deploys across a version bump produce loud ERROR logs on still-old receivers.
+4. Verify: `grep SCHEMA_VERSION_ src/lyra/core/*.py`.
+
+→ See `ARCHITECTURE.md` (Schema versioning section) for full detail on the receiver drop-and-log policy and the unversioned outer envelope note.
 
 ### Hub readiness probe
 

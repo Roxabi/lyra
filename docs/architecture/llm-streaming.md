@@ -102,7 +102,7 @@ Every new event carries a `SCHEMA_VERSION_*` constant (ADR-049 discipline). `run
   attribute (set on `result` event; `None` if cancelled before `result`).
 - `--include-partial-messages` is a spawn-time flag; `ModelConfig` change (including toggling
   `streaming`) triggers an automatic process respawn via the existing mismatch check.
-- Every `RenderEvent` subtype carries its own `SCHEMA_VERSION_*` constant.
+- Every `RenderEvent` subtype carries its own `SCHEMA_VERSION_*` constant. → See `messaging.md` (Schema versioning) and `ARCHITECTURE.md` (Schema versioning section) for the bump procedure and receiver policy.
 - `lyra-clipool` is excluded from the RenderEvent co-deploy gate (it is an `LlmEvent`
   producer only, no `render_events` import). Slices that change `LlmEvent` shape include it.
 - Slices that introduce new `RenderEvent` types require co-deploying `lyra-hub` +

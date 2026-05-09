@@ -97,64 +97,9 @@ Module-level registry: `lyra.core.admin` — `is_admin(user_id)` / `set_admin_us
 
 ## #routing — RoutingContext + Adapter outbound verification — ✅ Shipped (#152)
 
-### Problem
+Security invariant: adapters must verify `channel` and `bot_id` from `RoutingContext` before sending any response — a response may never be delivered by the wrong bot or to the wrong channel.
 
-Without a complete `RoutingContext` in the `Response`, the outbound Adapter does not know which bot, which chat, or which thread to send to — risking delivery to the wrong destination in a multi-bot or multi-channel setup.
-
-### Solution
-
-Every `Response` carries a complete `RoutingContext`, populated at `InboundMessage` creation time.
-
-```python
-class RoutingContext:
-    channel: str            # "telegram" | "discord" | "cli"
-    bot_id: str             # identifier of the bot that must reply
-    chat_id: str            # Telegram chat_id / Discord guild+channel
-    thread_id: str | None   # forum thread, Discord thread
-    reply_to_message_id: str | None  # native Telegram/Discord threading
-    user_id: str
-    session_id: str
-```
-
-**Populated at intake (in `normalize()`):**
-
-```python
-def normalize(self, update: TelegramUpdate) -> Message:
-    return Message(
-        ...
-        routing=RoutingContext(
-            channel="telegram",
-            bot_id=self.bot_id,
-            chat_id=str(update.message.chat.id),
-            thread_id=str(update.message.message_thread_id) if update.message.is_topic_message else None,
-            reply_to_message_id=str(update.message.message_id),
-            user_id=str(update.message.from_user.id),
-            session_id=self.make_session_id(update),
-        )
-    )
-```
-
-**Verified at outbound (in the Adapter):**
-
-```python
-async def send(self, response: Response) -> None:
-    ctx = response.routing
-    assert ctx.channel == self.channel, f"Wrong channel: {ctx.channel}"
-    assert ctx.bot_id == self.bot_id,   f"Wrong bot: {ctx.bot_id}"
-    await self.bot.send_message(
-        chat_id=ctx.chat_id,
-        text=response.content,
-        message_thread_id=ctx.thread_id,
-        reply_to_message_id=ctx.reply_to_message_id,
-    )
-```
-
-### Implementation — ✅ Shipped (#152)
-
-- [x] `RoutingContext` dataclass in `src/lyra/core/message.py`
-- [x] Population in TelegramAdapter + DiscordAdapter `normalize()`
-- [x] Outbound verification (channel + bot_id) in each adapter
-- [x] Propagation of RoutingContext from InboundMessage → Response
+→ See `messaging.md` (RoutingContext) for the full dataclass definition, populate-at-intake pattern, and outbound verification code.
 
 ---
 
@@ -200,39 +145,7 @@ COMMAND_ROUTING = {
 }
 ```
 
-### ComplexityEstimator
-
-Model selection based on message complexity — avoids using a heavyweight model for "hello".
-
-```python
-class ComplexityLevel(Enum):
-    LOW    = "low"     # Haiku / Qwen-fast
-    MEDIUM = "medium"  # Sonnet
-    HIGH   = "high"    # Opus / Qwen full
-
-class ComplexityEstimator:
-    def estimate(self, msg: Message) -> ComplexityLevel:
-        signals = [
-            len(msg.content) > 500,
-            self._contains_code(msg.content),
-            len(msg.attachments) > 0,
-            msg.command and msg.command.name in HIGH_COMPLEXITY_CMDS,
-            msg.session_turn_count > 10,
-            self._contains_question_chain(msg.content),
-        ]
-        score = sum(signals)
-        if score == 0:
-            return ComplexityLevel.LOW
-        if score <= 2:
-            return ComplexityLevel.MEDIUM
-        return ComplexityLevel.HIGH
-
-COMPLEXITY_TO_MODEL = {
-    ComplexityLevel.LOW:    LLMConfig(provider="anthropic", model="claude-haiku-4-5-20251001"),
-    ComplexityLevel.MEDIUM: LLMConfig(provider="anthropic", model="claude-sonnet-4-6"),
-    ComplexityLevel.HIGH:   LLMConfig(provider="anthropic", model="claude-opus-4-6"),
-}
-```
+→ See `workers-tooling.md` (Model selection) for `ComplexityEstimator` and `COMPLEXITY_TO_MODEL` mapping. Model selection is a worker routing concern, not a security concern.
 
 ### Implementation status
 

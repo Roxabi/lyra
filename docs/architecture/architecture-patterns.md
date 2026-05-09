@@ -234,8 +234,9 @@ src/lyra/
 │   ├── base.py              # LlmProvider protocol
 │   └── drivers/             # Concrete implementations
 │
-├── stores/                  # OUTBOUND ADAPTERS (Storage)
-│   └── sqlite_store.py      # DB implementation
+├── infrastructure/          # OUTBOUND ADAPTERS (Storage, per ADR-048)
+│   └── stores/
+│       └── sqlite_store.py  # DB implementation
 │
 └── commands/                # PLUGINS (commands/skills)
     └── vault_add.py         # Command implementation

@@ -414,11 +414,11 @@ Scope extraction:
 - Discord channel → `channel:{channel_id}`
 
 Examples:
-- Telegram chat 555 → agent `lyra`, pool `telegram:main:chat:555`
-- Discord thread 888 → agent `lyra`, pool `discord:main:thread:888`
+- Telegram chat 555 → agent `lyra`, pool `telegram:lyra:chat:555`
+- Discord thread 888 → agent `lyra`, pool `discord:lyra:thread:888`
 - Wildcard `*` possible for an entire platform/bot
 
-> **Note:** `"main"` is the legacy single-bot sentinel used in the examples above. In multi-bot mode, `"main"` is replaced with the configured `bot_id` (e.g., `"lyra"`, `"aryl"`), so the pool ID becomes `telegram:lyra:chat:555`.
+> **Historical note:** Early docs used `"main"` as the bot_id in pool ID examples (e.g., `telegram:main:chat:555`). `"main"` was a legacy single-bot sentinel; it is replaced with the configured `bot_id` in all current and new deployments.
 
 ### Multi-Bot Architecture
 

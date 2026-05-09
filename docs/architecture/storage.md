@@ -29,6 +29,8 @@ indexed columns for O(1) URL dedup. Levels 1 (session), 2 (episodic), and 4 (pro
 are deferred until a concrete, measurable trigger arises for each. Deferred ≠ rejected — the
 five-level taxonomy in `ARCHITECTURE.md` is the long-term target. → ADR-008
 
+→ See `ARCHITECTURE.md` (Memory Layer) for the full 5-level breakdown with implementation status, compaction details, and L1 TurnStore details.
+
 ### Memory level taxonomy (L0–L4)
 
 | Level | Name | Isolation |

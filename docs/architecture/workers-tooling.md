@@ -53,9 +53,45 @@ External CLIs (voicecli, imagecli, gws, scraper) follow a 3-layer Install–Wrap
 
 `ScrapeProvider` and `VaultProvider` are async Protocols defined in `lyra.integrations.base`. Concrete implementations (`WebIntelScraper`, `VaultCli`) live in `lyra.integrations.web_intel` and `lyra.integrations.vault_cli`. Both are bundled into a `SessionTools` dataclass injected into every `SessionCommandEntry` as a required (non-optional) parameter. `session_helpers.py` (which previously hardcoded subprocess invocations inside `lyra.core`) is deleted. The `commands/search` plugin receives `VaultProvider` via a module-level injectable set at agent startup, a separate injection path from `SessionCommandEntry`. → ADR-030
 
+#### Model selection (ComplexityEstimator)
+
+Model selection is based on message complexity to avoid using a heavyweight model for simple inputs. `ComplexityEstimator.estimate()` scores a set of signals (message length, code content, attachments, command type, turn count, question chains) and returns a `ComplexityLevel` (LOW / MEDIUM / HIGH). The `COMPLEXITY_TO_MODEL` mapping translates the level to an `LLMConfig`:
+
+```python
+class ComplexityLevel(Enum):
+    LOW    = "low"     # Haiku / Qwen-fast
+    MEDIUM = "medium"  # Sonnet
+    HIGH   = "high"    # Opus / Qwen full
+
+class ComplexityEstimator:
+    def estimate(self, msg: Message) -> ComplexityLevel:
+        signals = [
+            len(msg.content) > 500,
+            self._contains_code(msg.content),
+            len(msg.attachments) > 0,
+            msg.command and msg.command.name in HIGH_COMPLEXITY_CMDS,
+            msg.session_turn_count > 10,
+            self._contains_question_chain(msg.content),
+        ]
+        score = sum(signals)
+        if score == 0:
+            return ComplexityLevel.LOW
+        if score <= 2:
+            return ComplexityLevel.MEDIUM
+        return ComplexityLevel.HIGH
+
+COMPLEXITY_TO_MODEL = {
+    ComplexityLevel.LOW:    LLMConfig(provider="anthropic", model="claude-haiku-4-5-20251001"),
+    ComplexityLevel.MEDIUM: LLMConfig(provider="anthropic", model="claude-sonnet-4-6"),
+    ComplexityLevel.HIGH:   LLMConfig(provider="anthropic", model="claude-opus-4-6"),
+}
+```
+
+`ComplexityEstimator` / `SmartRoutingDecorator` exist in code but are disabled: `smart_routing.enabled=true` is rejected by the validator. Model selection is fixed per agent config. The `COMPLEXITY_TO_MODEL` routing table is therefore not active.
+
 #### ProcessorRegistry concurrent dispatch
 
-Slash commands that need conversation history are implemented as `BaseProcessor` subclasses registered via `@register("/cmd")` against a module-level `ProcessorRegistry` singleton. `PoolProcessor._process_one()` calls `pre(msg)` before `agent.process()` and `post(msg, response)` after; responses enter pool history through the normal flow. Self-registration via import in `processors/__init__.py` — a new processor file not listed there is silently invisible. `post()` is only invoked in the non-streaming branch; a streaming agent raises `NotImplementedError` at request time. Outbound delivery uses per-scope `asyncio.Lock` fan-out: tasks for different scopes run concurrently; tasks within the same scope are ordered. Idle locks are reaped when `_scope_locks` exceeds 256 entries. → ADR-031
+Slash commands that need conversation history are implemented as `BaseProcessor` subclasses registered via `@register("/cmd")` against a module-level `ProcessorRegistry` singleton. `PoolProcessor._process_one()` calls `pre(msg)` before `agent.process()` and `post(msg, response)` after; responses enter pool history through the normal flow. Self-registration via import in `processors/__init__.py` — a new processor file not listed there is silently invisible. `post()` is only invoked in the non-streaming branch; a streaming agent raises `NotImplementedError` at request time. Outbound delivery uses per-scope `asyncio.Lock` fan-out: tasks for different scopes run concurrently; tasks within the same scope are ordered. Idle locks are reaped when `_scope_locks` exceeds 256 entries. `ProcessorRegistry` handles post-parse execution; pre-parse tokenization is owned by `CommandParser`. → See `security-routing.md` (#commands — CommandParser). → ADR-031
 
 ---
 

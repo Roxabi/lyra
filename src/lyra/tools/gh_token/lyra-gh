@@ -15,6 +15,14 @@ SOCK="${LYRA_GH_DISPENSER_SOCK:-/run/lyra-gh-token/dispenser.sock}"
 GH_BIN="${LYRA_GH_BIN:-}"
 if [ -z "$GH_BIN" ]; then
   GH_BIN=$(command -v gh 2>/dev/null || true)
+  # /usr/local/bin/gh is symlinked to this shim, so without LYRA_GH_BIN the
+  # PATH fallback resolves to ourselves — exec'ing it would loop forever.
+  SELF=$(readlink -f "$0" 2>/dev/null || echo "$0")
+  RESOLVED=$(readlink -f "$GH_BIN" 2>/dev/null || echo "$GH_BIN")
+  if [ -n "$GH_BIN" ] && [ "$RESOLVED" = "$SELF" ]; then
+    echo "lyra-gh: LYRA_GH_BIN unset and \`gh\` resolves to this shim — set LYRA_GH_BIN to the real gh binary." >&2
+    exit 127
+  fi
 fi
 if [ -z "$GH_BIN" ] || [ ! -x "$GH_BIN" ]; then
   echo "lyra-gh: gh CLI not found. Set LYRA_GH_BIN to its absolute path or install gh into the container." >&2

@@ -39,7 +39,7 @@ On github.com, navigate to Settings → Developer settings → GitHub Apps → L
 For M₁:
 
 ```bash
-scp ~/Downloads/lyra-harness.private-key.YYYY-MM-DD.pem mickael@192.168.1.16:/tmp/new-lyra-harness.pem
+scp ~/Downloads/lyra-harness.private-key.YYYY-MM-DD.pem mickael@192.168.1.16:/home/lyra/secrets/new-lyra-harness.pem
 ```
 
 For M₂, use the equivalent path on ROXABITOWER — the script runs locally, so no SCP is needed if you are already on M₂.
@@ -68,7 +68,7 @@ On the target host:
 
 ```bash
 cd ~/projects/lyra
-time bash deploy/scripts/rotate-gh-key.sh /tmp/new-lyra-harness.pem
+time bash deploy/scripts/rotate-gh-key.sh /home/lyra/secrets/new-lyra-harness.pem
 ```
 
 The script:
@@ -118,7 +118,7 @@ Expected: a real issue line is printed. The `lyra-gh` shim resolves a fresh inst
 **3.4 Wipe the staging copy of the PEM from the host.**
 
 ```bash
-shred -u /tmp/new-lyra-harness.pem
+shred -u /home/lyra/secrets/new-lyra-harness.pem
 ```
 
 ---
@@ -156,6 +156,14 @@ Record the rotation in your operations journal:
 - **Wall-clock downtime measured** — from `time` output in Step 2
 - **Verifier** — who ran Steps 3.1–3.3
 - **Disposition of the old PEM** — shredded on host / archived for forensics / still active (rollback case)
+
+---
+
+## 7. Notes / Behavior
+
+### SSH→HTTPS URL rewrite in the clipool container
+
+`deploy/lyra-gh/git.config.tmpl` is loaded as `GIT_CONFIG_GLOBAL` inside `lyra-clipool`. It contains `[url "https://github.com/"] insteadOf` rules that silently rewrite `git@github.com:` and `ssh://git@github.com/` remote URLs to HTTPS at command time. This is intentional: the container runs with `ReadOnly=true` and no `~/.ssh` mount, so SSH-form remotes would fail with "Host key verification failed". When adding new git remotes inside the container, always use HTTPS form (`https://github.com/<org>/<repo>.git`); SSH-form URLs will work (they are rewritten transparently), but the rewrite may surprise operators who expect SSH authentication.
 
 ---
 

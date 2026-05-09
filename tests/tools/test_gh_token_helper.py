@@ -434,6 +434,46 @@ async def test_dispenser_swallows_mint_error(
     assert response.startswith(b"error=")
 
 
+@pytest.mark.asyncio
+async def test_dispenser_forces_mint_when_cached_token_near_expiry(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    """Dispenser mints a fresh token when cached token has <5 min TTL.
+
+    Regression guard for the 1-hour boundary failure mode: a long-running
+    git push that starts with a token expiring in <5 min may fail
+    mid-operation.  The dispenser's _resolve_token() must detect this and
+    force a mint that bypasses the rate limiter.
+    """
+    http_hit_count = 0
+
+    fresh_body = json.dumps(
+        {"token": "ghs_fresh", "expires_at": "2030-01-01T01:00:00Z"}
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal http_hit_count
+        http_hit_count += 1
+        return httpx.Response(201, text=fresh_body)
+
+    transport = httpx.MockTransport(handler)
+    dispenser, cache = _make_dispenser(rsa_pem_path, tmp_path, transport=transport)
+
+    # Seed cache with a token expiring in 60 s — inside MIN_TOKEN_TTL_SECONDS (300 s).
+    near_expiry = InstallationToken(
+        token="ghs_near_expiry",
+        expires_at=datetime.now(tz=timezone.utc) + timedelta(seconds=60),
+    )
+    cache.write(near_expiry)
+
+    result = await dispenser._resolve_token()  # noqa: SLF001
+
+    assert http_hit_count == 1, (
+        "dispenser must mint fresh token when cached TTL < MIN_TOKEN_TTL_SECONDS"
+    )
+    assert result.token == "ghs_fresh"
+
+
 _RL_SLEEP = "lyra.tools.gh_token.rate_limit.asyncio.sleep"
 _REFRESH_SLEEP = "lyra.tools.gh_token.refresh.asyncio.sleep"
 

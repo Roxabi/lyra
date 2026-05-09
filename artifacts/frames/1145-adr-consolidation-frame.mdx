@@ -1,0 +1,49 @@
+---
+title: Re-audit and consolidate ADRs (live/archive split, fix #017 collision)
+issue: 1145
+status: approved
+tier: F-lite
+date: 2026-05-08
+---
+
+## Problem
+
+`docs/architecture/adr/` contains **73 live ADRs** with **0 archived**, up from 37 when consolidation was first scoped (#1002, closed). Superseded decisions sit alongside active ones, multiple ADRs overlap thematically (NATS core, NATS contracts, Quadlet, architecture), and there is an active **ADR-017 number collision** (`017-coupling-hotspots` and `017-srp-violations` both exist). Navigability and signal-to-noise have degraded; new contributors and `dev-core` skills can't reliably resolve "the canonical ADR for X."
+
+PR #1004 attempted this consolidation 72 commits ago and went stale; its bulk-move of ~27 archive relocations is likely still applicable as raw material but must be re-validated against six new ADRs (066–071) added since.
+
+## Who
+
+- **Primary:** Lyra contributors browsing `docs/architecture/adr/` to understand current decisions; agents (architect, doc-writer) that cite ADRs in plans/specs.
+- **Secondary:** Cross-project consumers (roxabi-* repos that mirror the ADR pattern) using Lyra as the reference template.
+
+## Constraints
+
+- Pre-commit hooks must pass (lint, typecheck, file-length, folder-size, import-layers).
+- No broken cross-references — every internal link in remaining live ADRs must resolve.
+- Every archived ADR needs a `superseded_by` frontmatter pointer.
+- `superseded_by` chains must be acyclic and terminate in a live ADR.
+- Re-validate PR #1004 buckets against current state (six new ADRs since: 066–071); do not blindly replay them.
+- Original buckets to re-audit:
+  - NATS Core: 037, 040, 047, 062 → ADR-045
+  - NATS Contracts: 044, 050 → ADR-049 (audit ADR-066 WorkerError envelope as candidate)
+  - Quadlet: 053, 054, 056 → ADR-055 (audit ADR-068 SELinux `:z` policy as candidate)
+  - Architecture: 048, 060, 061 → ADR-059
+- ADR-017 collision: one of the two must be renumbered; all inbound links updated.
+
+## Out of Scope
+
+- Authoring new architectural decisions (this is a content reorg, not a design exercise).
+- Migrating ADRs to a different format/tool (still MDX with frontmatter).
+- Cross-repo ADR consolidation (other roxabi-* projects out of scope here).
+- Building tooling/lints to enforce the live/archive split going forward — track separately if desired.
+
+## Complexity
+
+**Tier: F-lite** — single domain (docs only), clear scope (audit + merge + move), but enough moving parts (4 buckets, 6 new ADRs to audit, collision fix, link integrity) to warrant frame → spec → plan before implementing.
+
+Signals observed:
+- Single domain (`docs/architecture/adr/`)
+- Clear acceptance criteria already defined in the issue
+- Label `size:F-lite` confirms
+- ¬new architecture, ¬multi-domain, ¬unknown patterns

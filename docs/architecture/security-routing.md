@@ -27,11 +27,9 @@
 
 Without auth, any user can send a message that reaches the Bus and consumes resources (LLM tokens, memory, CPU).
 
-### Solution
+### Solution — C3 pattern (current)
 
-Auth at the Adapter level, **before** the Bus. The message is rejected at the source.
-
-> **Updated (2026-05-07) — C3 pattern:** In the containerized deployment, adapters always forward messages with `trust=PUBLIC` and trust resolution is performed Hub-side by the Authenticator (middleware stage 2–3). The adapter still validates transport-level auth (Telegram HMAC, Discord gateway token) before publishing to NATS. See `docs/architecture/deployment.md` — *Security* section — for the current C3 model.
+Adapters do transport-level auth only (Telegram HMAC webhook secret, Discord gateway token). They always forward messages with `trust=PUBLIC` to NATS. Trust resolution is performed Hub-side by the Authenticator at middleware stages 2–3 (`ResolveTrustMiddleware` → `TrustGuardMiddleware`). BLOCKED users are dropped at the Hub before reaching the Bus or any agent.
 
 ```python
 class TrustLevel(Enum):
@@ -58,21 +56,7 @@ class GuardChain:
         return None
 ```
 
-**Integration in each Adapter:**
-
-```python
-async def on_event(self, raw_event) -> Message | None:
-    user_id = self.extract_user_id(raw_event)
-    trust = self.authenticator.resolve(user_id)
-    if trust == TrustLevel.BLOCKED:
-        return None  # dropped — never reaches the Bus
-    msg = self.normalize(raw_event)
-    msg.trust_level = trust
-    rejection = await self.guard_chain.check(msg)
-    if rejection:
-        return None  # guard rejected
-    return msg
-```
+> **Pre-C3 historical (superseded):** Before containerization, adapters resolved trust themselves and dropped BLOCKED messages before calling `normalize()`. This pattern is no longer used — adapters are untrusted normalizers that always send `PUBLIC`.
 
 ### Config
 
@@ -266,91 +250,13 @@ COMPLEXITY_TO_MODEL = {
 
 ### Problem
 
-Without a strict partition by `user_id`, a bug or malformed query could return memories belonging to a different user. Without metadata, housekeeping (purge, stats, audit) is impossible.
+Without a strict partition by `user_id`, a bug or malformed query could return memories belonging to a different user.
 
-### Extended MemoryEntry schema
+### Security invariant
 
-```python
-class MemoryEntry:
-    # --- Identity ---
-    id: UUID
-    user_id: str            # ← ABSOLUTE partition key, never omitted
+Every memory query at every level (L0–L4) must include `user_id` as an explicit filter. Never run a global query without a `user_id` filter. Even for stats, aggregate per user.
 
-    # --- Sessions ---
-    session_id_created: str
-    session_id_modified: str
-
-    # --- Content ---
-    level: MemoryLevel      # L1 → L5
-    content: str
-    embedding: bytes        # sqlite-vec (L4 only)
-    tags: list[str]
-
-    # --- Metadata ---
-    created_at: datetime
-    updated_at: datetime
-    count_usage: int        # incremented on each retrieve
-    count_edits: int        # incremented on each write/update
-    confidence: float       # reliability score (0.0 → 1.0)
-    ttl: datetime | None    # auto-expiry (L1/L2)
-    source: str             # "user" | "agent" | "system"
-```
-
-### SQL isolation rule (non-negotiable)
-
-```sql
--- Every memory query must include user_id:
-SELECT * FROM memory
-WHERE user_id = :user_id        -- absolute isolation
-  AND level IN (3, 4)           -- requested scope
-  AND (ttl IS NULL OR ttl > datetime('now'))
-ORDER BY count_usage DESC, updated_at DESC
-LIMIT 20;
-```
-
-**Never run a global query without a `user_id` filter.** Even for stats, aggregate per user.
-
-### Storage by level
-
-| Level | Isolation |
-|-------|-----------|
-| L1 Working | `dict` in memory, scoped by `pool_id` |
-| L2 Session | Store keyed by `(user_id, session_id)` |
-| L3 Episodic | `~/.lyra/memory/episodic/{user_id}/YYYY-MM-DD/` — user_id in path |
-| L4 Semantic | SQLite, `WHERE user_id = ?` mandatory on all queries |
-| L5 Procedural | Global (skills = agent capabilities, not user data) |
-
-### Counter updates
-
-```python
-async def retrieve(self, user_id: str, query: str, level: MemoryLevel) -> list[MemoryEntry]:
-    entries = await self._search(user_id, query, level)
-    for entry in entries:
-        await self._increment_usage(entry.id)  # count_usage + 1
-    return entries
-
-async def write(self, user_id: str, content: str, level: MemoryLevel, session_id: str) -> MemoryEntry:
-    existing = await self._find_similar(user_id, content)
-    if existing:
-        existing.content = content
-        existing.count_edits += 1
-        existing.updated_at = datetime.utcnow()
-        existing.session_id_modified = session_id
-        await self._save(existing)
-        return existing
-    return await self._create(user_id, content, level, session_id)
-```
-
-### Implementation status
-
-`user_id` partitioning is active in `prefs_store.py` (L4 queries use `WHERE user_id = ?`). The full `MemoryEntry` metadata schema (count_usage, count_edits, confidence, ttl, source) is not yet applied uniformly — this was tracked as an extension to #83.
-
-- [x] `user_id` isolation enforced in `prefs_store.py` queries
-- [x] L3 path structure uses `{user_id}/` directories (session_lifecycle.py)
-- [ ] Full `MemoryEntry` metadata schema with all fields above
-- [ ] `count_usage` + `count_edits` auto-increment
-- [ ] TTL auto-purge for L1/L2
-- [ ] Per-user stats endpoint (usage, size, last activity)
+→ See `storage.md` for the full L0–L4 taxonomy, `MemoryEntry` schema, SQL isolation rule, counter-update code, and implementation checklist.
 
 ---
 

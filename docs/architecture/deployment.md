@@ -35,18 +35,9 @@
 
 ### Middleware pipeline (in order)
 
-| Stage | Middleware | Role |
-|---|---|---|
-| 0 | TraceMiddleware | Per-turn `trace_id` via contextvars |
-| 1 | ValidatePlatformMiddleware | Drop unknown platforms |
-| 2 | ResolveTrustMiddleware | Auth lookup via `Authenticator` + `AuthStore` |
-| 3 | TrustGuardMiddleware | Drop BLOCKED users |
-| 4 | RateLimitMiddleware | Per-user throttle |
-| 5 | SttMiddleware | Audio → text |
-| 6 | ResolveBindingMiddleware | Route `(platform, bot_id, scope_id)` → agent |
-| 7 | CreatePoolMiddleware | Pool get-or-create, command configure |
-| 8 | CommandMiddleware | `/slash` command dispatch |
-| 9 | SubmitToPoolMiddleware | Session resume + submit to CliPool |
+10 stages: trace → platform validation → trust resolution → trust guard → rate limit → STT → binding resolution → pool create → command dispatch → submit to CliPool.
+
+→ See `ARCHITECTURE.md` (Inbound Message Pipeline) for the full annotated 10-stage table.
 
 ---
 
@@ -99,15 +90,14 @@ command argument from the Hub over NATS.
 ## Security
 
 All trust resolution is Hub-side. Adapters are untrusted normalizers.
+→ See `security-routing.md` for trust levels, Authenticator design, GuardChain, and NATS infra hardening.
 
 | Layer | Mechanism | Location |
 |---|---|---|
-| Transport auth | Telegram HMAC webhook secret; Discord gateway token | Adapter |
+| Transport auth | Telegram HMAC webhook secret; Discord gateway token | Adapter container |
 | Trust resolution | C3 — adapters always send PUBLIC, hub resolves via Authenticator | Hub middleware stage 2–3 |
-| Trust levels | `OWNER > TRUSTED > PUBLIC > BLOCKED` | `core/auth/authenticator.py` |
-| Cross-platform identity | `tg:user:X ↔ dc:user:Y` aliases | `auth.db → identity_aliases` |
+| `auth.db` | Identity grants, trust assignments, cross-platform aliases | Hub container (`~/.lyra/auth.db`) |
 | Secrets | Bot tokens AES-encrypted via `LyraKeyring` | `config.db`, key in `keyring.key` |
-| Admin | `[admin].user_ids` in TOML → OWNER across all bots | Config + AuthStore |
 | NATS channel | TLS + auth tokens required in production | Infrastructure |
 
 ---

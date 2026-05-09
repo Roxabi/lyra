@@ -29,6 +29,91 @@ indexed columns for O(1) URL dedup. Levels 1 (session), 2 (episodic), and 4 (pro
 are deferred until a concrete, measurable trigger arises for each. Deferred ≠ rejected — the
 five-level taxonomy in `ARCHITECTURE.md` is the long-term target. → ADR-008
 
+### Memory level taxonomy (L0–L4)
+
+| Level | Name | Isolation |
+|-------|------|-----------|
+| L0 Working | `dict` in memory, scoped by `pool_id` | Pool-scoped |
+| L1 Session | Store keyed by `(user_id, session_id)` | User + session scoped |
+| L2 Episodic | `~/.lyra/memory/episodic/{user_id}/YYYY-MM-DD/` — user_id in path | User-scoped path |
+| L3 Semantic | SQLite, `WHERE user_id = ?` mandatory on all queries | User-scoped query |
+| L4 Procedural | Global (skills = agent capabilities, not user data) | Global |
+
+### MemoryEntry schema
+
+```python
+class MemoryEntry:
+    # --- Identity ---
+    id: UUID
+    user_id: str            # ← ABSOLUTE partition key, never omitted
+
+    # --- Sessions ---
+    session_id_created: str
+    session_id_modified: str
+
+    # --- Content ---
+    level: MemoryLevel      # L0 → L4
+    content: str
+    embedding: bytes        # sqlite-vec (L3 only)
+    tags: list[str]
+
+    # --- Metadata ---
+    created_at: datetime
+    updated_at: datetime
+    count_usage: int        # incremented on each retrieve
+    count_edits: int        # incremented on each write/update
+    confidence: float       # reliability score (0.0 → 1.0)
+    ttl: datetime | None    # auto-expiry (L1/L2)
+    source: str             # "user" | "agent" | "system"
+```
+
+### SQL isolation rule (non-negotiable)
+
+Every memory query must include `user_id`. Even for stats, aggregate per user.
+
+```sql
+SELECT * FROM memory
+WHERE user_id = :user_id        -- absolute isolation
+  AND level IN (3, 4)           -- requested scope
+  AND (ttl IS NULL OR ttl > datetime('now'))
+ORDER BY count_usage DESC, updated_at DESC
+LIMIT 20;
+```
+
+Security invariant: → See `security-routing.md` (#memory-isolation).
+
+### Counter updates
+
+```python
+async def retrieve(self, user_id: str, query: str, level: MemoryLevel) -> list[MemoryEntry]:
+    entries = await self._search(user_id, query, level)
+    for entry in entries:
+        await self._increment_usage(entry.id)  # count_usage + 1
+    return entries
+
+async def write(self, user_id: str, content: str, level: MemoryLevel, session_id: str) -> MemoryEntry:
+    existing = await self._find_similar(user_id, content)
+    if existing:
+        existing.content = content
+        existing.count_edits += 1
+        existing.updated_at = datetime.utcnow()
+        existing.session_id_modified = session_id
+        await self._save(existing)
+        return existing
+    return await self._create(user_id, content, level, session_id)
+```
+
+### Memory implementation status
+
+`user_id` partitioning is active in `prefs_store.py` (L3 queries use `WHERE user_id = ?`). The full `MemoryEntry` metadata schema (count_usage, count_edits, confidence, ttl, source) is not yet applied uniformly — tracked as an extension to #83.
+
+- [x] `user_id` isolation enforced in `prefs_store.py` queries
+- [x] L2 path structure uses `{user_id}/` directories (session_lifecycle.py)
+- [ ] Full `MemoryEntry` metadata schema with all fields above
+- [ ] `count_usage` + `count_edits` auto-increment
+- [ ] TTL auto-purge for L1/L2
+- [ ] Per-user stats endpoint (usage, size, last activity)
+
 ### Agent store (SQLite)
 
 `AgentStore` lives at `lyra.infrastructure.stores.agent_store` (moved from `lyra.core` during

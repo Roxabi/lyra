@@ -56,7 +56,10 @@ All subjects follow `lyra.{domain}.{qualifier...}` (domain-first, NATS conventio
 | `lyra.inbound.{platform}.{bot_id}` | adapter → hub | User message delivery |
 | `lyra.outbound.{platform}.{bot_id}` | hub → adapter | Response chunk delivery |
 | `lyra.llm.request` | hub → worker | LLM compute offload |
-| `lyra.llm.health.{worker_id}` | worker → hub | Worker heartbeats |
+| `lyra.llm.health.{worker_id}` | worker → hub | Satellite LLM worker heartbeats |
+| `lyra.clipool.cmd` | hub → CliPool | Submit turn + resume UUID |
+| `lyra.clipool.heartbeat` | CliPool → hub | CliPool subprocess runner health announcements |
+| `lyra.clipool.control` | hub → CliPool | Control commands (reset, drain) |
 
 `{platform}` is lowercase ASCII (`telegram`, `discord`). `{bot_id}` is a numeric string
 matching `^[1-9][0-9]*$` — a leading-zero or non-numeric value produces a shadow subject

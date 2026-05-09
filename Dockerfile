@@ -57,7 +57,7 @@ RUN mkdir -p /opt/lyra-gh /etc/lyra
 COPY --chown=root:root src/lyra/tools/gh_token/ /opt/lyra-gh/
 RUN chmod 0755 /opt/lyra-gh/*.py 2>/dev/null || true \
  && { [ -f /opt/lyra-gh/git-credential-lyra-gh ] && chmod 0755 /opt/lyra-gh/git-credential-lyra-gh || true; } \
- && { [ -f /opt/lyra-gh/lyra-gh ] && chmod 0755 /opt/lyra-gh/lyra-gh && ln -s /opt/lyra-gh/lyra-gh /usr/local/bin/lyra-gh || true; }
+ && { [ -f /opt/lyra-gh/lyra-gh ] && chmod 0755 /opt/lyra-gh/lyra-gh && ln -s /opt/lyra-gh/lyra-gh /usr/local/bin/lyra-gh && ln -s /opt/lyra-gh/lyra-gh /usr/local/bin/gh || true; }
 COPY --chown=root:root deploy/lyra-gh/git.config.tmpl /etc/lyra/git.config.tmpl
 
 # Take `gh` off PATH (AC#5 from #1078): the base image ships /usr/bin/gh which
@@ -65,6 +65,9 @@ COPY --chown=root:root deploy/lyra-gh/git.config.tmpl /etc/lyra/git.config.tmpl
 # and inherit the token if one ever leaked into env. Move it to a non-PATH
 # location and point LYRA_GH_BIN at it so the lyra-gh shim still finds it
 # without anyone else's `command -v gh` succeeding.
+# /usr/local/bin/gh is a transparent shim alias (→ lyra-gh) — callers that
+# hardcode `gh` go through the dispenser automatically; no token recursion
+# because the shim resolves via LYRA_GH_BIN before any `command -v gh` fallback.
 RUN test -x /usr/bin/gh \
  && mv /usr/bin/gh /opt/lyra-gh/gh \
  && chmod 0755 /opt/lyra-gh/gh \

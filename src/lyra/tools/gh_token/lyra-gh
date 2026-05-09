@@ -2,10 +2,10 @@
 # lyra-gh — invoke `gh` with a fresh installation token sourced from the
 # lyra-gh dispenser Unix socket (#1078).
 #
-# This shim is the ONLY supported way to call `gh` from inside the
-# lyra-clipool container. Plain `gh` is NOT on PATH. The token is scoped to
-# the child gh process via `env GH_TOKEN=… gh "$@"` and never enters the
-# parent shell's environment, preserving AC isolation-#2.
+# Both `lyra-gh` and `gh` invoke this shim — /usr/local/bin/gh is symlinked
+# here, so plain `gh …` and `lyra-gh …` are equivalent and both go through the
+# dispenser. The token is scoped to the child process via `env GH_TOKEN=… gh
+# "$@"` and never enters the parent shell's environment (AC isolation-#2).
 
 set -eu
 

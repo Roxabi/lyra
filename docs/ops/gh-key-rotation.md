@@ -39,7 +39,7 @@ On github.com, navigate to Settings → Developer settings → GitHub Apps → L
 For M₁:
 
 ```bash
-scp ~/Downloads/lyra-harness.private-key.YYYY-MM-DD.pem mickael@192.168.1.16:/tmp/new-lyra-harness.pem
+scp ~/Downloads/lyra-harness.private-key.YYYY-MM-DD.pem mickael@192.168.1.16:/home/lyra/secrets/new-lyra-harness.pem
 ```
 
 For M₂, use the equivalent path on ROXABITOWER — the script runs locally, so no SCP is needed if you are already on M₂.
@@ -68,7 +68,7 @@ On the target host:
 
 ```bash
 cd ~/projects/lyra
-time bash deploy/scripts/rotate-gh-key.sh /tmp/new-lyra-harness.pem
+time bash deploy/scripts/rotate-gh-key.sh /home/lyra/secrets/new-lyra-harness.pem
 ```
 
 The script:
@@ -118,7 +118,7 @@ Expected: a real issue line is printed. The `lyra-gh` shim resolves a fresh inst
 **3.4 Wipe the staging copy of the PEM from the host.**
 
 ```bash
-shred -u /tmp/new-lyra-harness.pem
+shred -u /home/lyra/secrets/new-lyra-harness.pem
 ```
 
 ---

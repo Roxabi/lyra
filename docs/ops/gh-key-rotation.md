@@ -159,18 +159,11 @@ Record the rotation in your operations journal:
 
 ---
 
-## 7. Notes / Behavior
-
-### SSH→HTTPS URL rewrite in the clipool container
-
-`deploy/lyra-gh/git.config.tmpl` is loaded as `GIT_CONFIG_GLOBAL` inside `lyra-clipool`. It contains `[url "https://github.com/"] insteadOf` rules that silently rewrite `git@github.com:` and `ssh://git@github.com/` remote URLs to HTTPS at command time. This is intentional: the container runs with `ReadOnly=true` and no `~/.ssh` mount, so SSH-form remotes would fail with "Host key verification failed". When adding new git remotes inside the container, always use HTTPS form (`https://github.com/<org>/<repo>.git`); SSH-form URLs will work (they are rewritten transparently), but the rewrite may surprise operators who expect SSH authentication.
-
----
-
 ## 6. Cross-References
 
 - [Plan #1078](../../artifacts/plans/1078-github-app-identity-plan.mdx) — T15 (rotation script) + T24 (this runbook)
 - [Spec #1078](../../artifacts/specs/1078-github-app-identity-spec.mdx) — slice V5 (UC6 key rotation), AC ops-#2 (≤10 s downtime)
 - [`deploy/scripts/rotate-gh-key.sh`](../../deploy/scripts/rotate-gh-key.sh) — the rotation script
 - [`deploy/provision.sh`](../../deploy/provision.sh) — section "Lyra GitHub App PEM (Podman secret)" for first-time bootstrap
+- [`docs/ops/clipool-git.md`](clipool-git.md) — clipool git behavior reference (SSH rewrite, identity, safe.directory)
 - [`docs/ops/nkey-rotation.md`](nkey-rotation.md) — sibling runbook for NATS nkey rotation

@@ -1,0 +1,32 @@
+{
+  "title": "Archive",
+  "description": "Superseded ADRs preserved for historical context.",
+  "pages": [
+    "011-memory-layer-package-structure-vault-vs-standalone",
+    "012-anthropic-agent-streaming-dispatch-and-dual-agent-pattern",
+    "016-llm-provider-protocol-and-driver-registry",
+    "017-coupling-hotspots-and-decoupling-strategy",
+    "017-srp-violations-and-remediation-strategy",
+    "018-intermediate-turns-typing-indicator-and-provider-protocol-evolution",
+    "021-hub-per-adapter",
+    "025-simplification-audit",
+    "027-300-line-cap-refactoring-plan",
+    "033-pulid-flux2-face-lock-strategy",
+    "034-brand-asset-pipeline-structure",
+    "037-nats-outbound-listener-placement-and-adapter-standalone-bootstrap",
+    "040-nats-messaging-architecture-review",
+    "041-supervisor-pattern",
+    "043-roxabi-autodeploy-per-project-manifests",
+    "044-lyra-voicecli-nats-contract",
+    "047-nats-connector-ownership-pattern",
+    "048-lyra-infrastructure-layer-for-persistence",
+    "050-lyra-image-nats-contract",
+    "053-deployment-topology-and-container-hardening",
+    "054-credential-store-and-uid-rework",
+    "056-container-publishing-workflow-pattern",
+    "060-cli-protocol-circular-import-resolution",
+    "062-nats-acl-inbox-case-normalization-and-explicit-reply-paths",
+    "066-unified-worker-error-envelope-nats-reply-contracts",
+    "068-selinux-z-label-quadlet-bind-volume-policy"
+  ]
+}

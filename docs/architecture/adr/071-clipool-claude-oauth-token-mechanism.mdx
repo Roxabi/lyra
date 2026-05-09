@@ -7,7 +7,7 @@ description: Documents the type=env Podman secret exception for CLAUDE_CODE_OAUT
 
 Accepted (2026-05-07)
 
-Related: ADR-054 (Quadlet credential-store, established `type=mount` Podman secret pattern).
+Related: ADR-055 (Quadlet ecosystem conventions, absorbs ADR-054 archived — the `type=mount` Podman secret pattern lives there now).
 Issue: #1105 (this ADR's implementation), #1108 (Podman version verification preflight).
 
 ## Context
@@ -26,7 +26,7 @@ The `claude` CLI subprocess spawned by `lyra-clipool` requires authentication to
 
 3. **The `claude` CLI accepts auth ONLY via env or `credentials.json`**. There is no `--token-file` flag. Whatever delivery mechanism Lyra uses ultimately must inject the token into the subprocess environment.
 
-ADR-054 established `type=mount` as the standard Podman secret delivery pattern for Lyra (NATS nkeys, GitHub App PEM). All existing secrets follow this convention.
+ADR-055 (which absorbs the archived ADR-054) establishes `type=mount` as the standard Podman secret delivery pattern for Lyra (NATS nkeys, GitHub App PEM). All existing secrets follow this convention.
 
 ## Decisions
 

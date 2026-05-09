@@ -209,3 +209,18 @@ and prepare for the `InboundAudioBus` path.
   5. Thread `OutboundMessage` through `send_streaming()` (B1 / #67).
   Steps 2 and 3 are independent of each other and of step 1. Steps 4 and 5 both
   require step 1.
+
+## Update 2026-05-08
+
+Implementation status of the four findings:
+
+- **Finding A** (render_audio() dispatch gap — Option A1): resolved via `AudioPipeline`
+  integration wired into `OutboundRouter` (`src/lyra/core/hub/outbound/outbound_router.py`).
+  Audio dispatch now routes through `AudioPipeline` rather than bypassing `OutboundDispatcher`.
+- **Finding B** (send_streaming() reply_message_id — Option B1): status unclear; still
+  tracked in issue #67.
+- **Finding C** (OutboundAudio mutability — Option C1): implemented — `OutboundAudio` is
+  `@dataclass(frozen=True)` at `src/lyra/core/messaging/message.py:160–168`.
+- **Finding D** (adapter backpressure inconsistency — Option D1): implemented — per-scope
+  lock fan-out with `_scope_locks` dict and `_SCOPE_REAP_THRESHOLD` in
+  `outbound_dispatcher.py:177–212`.

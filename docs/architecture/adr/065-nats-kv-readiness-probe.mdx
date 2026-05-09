@@ -9,7 +9,7 @@ Accepted
 
 ## Context
 
-ADR-062 and ADR-064 established per-identity inbox prefixes and derived responder grants in `acl-matrix.json`. The hub identity carries `allow_responses: false` as a security invariant — it does not need to reply to arbitrary inboxes.
+ADR-045 (which absorbs the archived ADR-062) and ADR-064 established per-identity inbox prefixes and derived responder grants in `acl-matrix.json`. The hub identity carries `allow_responses: false` as a security invariant — it does not need to reply to arbitrary inboxes.
 
 The existing readiness probe used NATS request/reply: adapters sent a request to `lyra.system.ready`; the hub replied to the dynamically generated `_INBOX.adapter.*` subject. This worked only when the hub ACL permitted publishing to adapter inboxes. Under `allow_responses: false`, the hub could not publish to any reply subject. The result was a 20-minute startup stall and ~1 200 ACL violations per second as the `nats-py` library retried delivery.
 

@@ -88,9 +88,9 @@ events emitted in the final seconds of operation may be silently dropped.
 
 ### Bootstrap coverage
 
-`hub_standalone.py` wires the sink. `bootstrap/factory/unified.py` (`lyra start`)
-must also wire it — this is tracked as a known gap in issue #855 and must be addressed
-before the feature is considered complete.
+`hub_standalone.py` wires the sink. `bootstrap/factory/wiring_helpers.py` (`lyra start` unified
+bootstrap) also wires `JetStreamAuditSink` at line 309 — the gap noted in issue #855 is
+resolved.
 
 ## Consequences
 
@@ -106,8 +106,9 @@ before the feature is considered complete.
 
 ### Negative
 
-- Unified bootstrap (`lyra start`) does not yet emit audit events — gap until #855
-  is fully closed.
+- Unified bootstrap (`lyra start`) gap (#855) is resolved — `wiring_helpers.py:309` wires
+  `JetStreamAuditSink` in the unified factory. Both `hub_standalone.py` and `lyra start`
+  now emit audit events.
 - No server-side consumer filter by pool/agent today; payload scanning required if
   per-agent audit trails are needed before subject hierarchy is adopted.
 

@@ -140,3 +140,19 @@ does not require a mismatch resolution change.
   subprocess communication during a hypothetical respawn. The locking model is already
   correct for Option B when it is implemented.
 - `ModelConfig` is a frozen dataclass — equality comparison via `!=` is correct and structural.
+
+## Update 2026-05-08
+
+Phase 2 is partially implemented with an asymmetry between pool types:
+
+- **Streaming path** (`cli_pool_streaming.py:68–74`): implements Phase 2 (respawn on
+  mismatch) — `elif entry.model_config != model_config: log.warning("[pool:%s] model_config
+  mismatch — respawning (streaming)...")`.
+- **Non-streaming path** (`cli_pool.py:145–151`): still implements Phase 1 (silent ignore)
+  — `elif entry.model_config != model_config: log.warning("[pool:%s] model_config mismatch
+  — ignoring new config...")`.
+
+The ADR's "Phase 2 deferred — gate: model selector SLM introduction" claim is incomplete.
+Streaming path respawns on mismatch today; non-streaming path silently ignores — consistent
+with the original Phase 1 decision. Full Phase 2 migration for the non-streaming path is
+pending model-selector introduction.

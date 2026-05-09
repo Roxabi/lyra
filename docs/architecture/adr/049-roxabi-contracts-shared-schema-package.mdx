@@ -351,3 +351,90 @@ CI check: a `tests/test_fixture_provenance.py` asserts each fixture is byte-iden
 - `CONTRACT_VERSION` constant migrates from `roxabi_nats.adapter_base` to `roxabi_contracts.envelope`. A compat re-export stays in `roxabi_nats` for one release cycle (until `roxabi-nats/v0.3.0`), then is removed. The `roxabi-nats/v0.3.0` release MUST carry a `BREAKING CHANGE:` trailer in its Conventional Commit so release-please surfaces the removal prominently in the changelog and so Renovate opens a major-bump PR in each satellite — any external pin on `roxabi_nats.CONTRACT_VERSION` breaks at that point and requires a source update.
 - ADR-044 remains the human-readable voice contract; it gains a canonical link to `roxabi_contracts.voice`. Future contract ADRs follow the same pattern.
 - Subject constants move from scattered `f"lyra.voice.tts.request"` literals into `SUBJECTS.tts_request`. Grep-gate in each satellite (ADR-047 §14.3) is updated: the check shifts from "no `lyra.*` string literal outside adapter module" to "no `import roxabi_contracts.<domain>` outside the designated adapter module." One PR per satellite to update the gate configuration.
+
+## Update 2026-05-08
+
+**Phase 2 (image) is complete.** `roxabi_contracts.image/` submodule is live with `subjects.py`, `models.py`, `fixtures.py`, and `testing.py`. `NatsImageClient` ships at `src/lyra/nats/nats_image_client.py`. imageCLI satellite adopted `roxabi-contracts` per imageCLI#50.
+
+**Post-v0.1.0 expansion (Phase 2/3 partial):** The following submodules are live and were not in the original v0.1.0 voice-only layout: `cli/`, `llm/`, `image/`, `jobs/`, `gh/`, `audit/`. The `llm/` submodule exists and was not in the original Phase 3 plan — it landed ahead of schedule. The `jobs/` submodule adds `JobResult` with `WorkerError` support per ADR-066.
+
+## Supersedes
+
+This ADR absorbs the decisions from the following superseded ADRs (2026-05-08 consolidation, issue #1145):
+
+### ADR-044 — lyra ↔ voicecli NATS Voice Contract
+
+**Voice subjects table:**
+
+| Subject | Direction | Producer | Consumer | Purpose |
+|---|---|---|---|---|
+| `lyra.voice.stt.request` | request-reply | `NatsSttClient.transcribe` (hub) | `SttAdapterStandalone.handle` (satellite) | Transcribe audio to text |
+| `lyra.voice.tts.request` | request-reply | `NatsTtsClient.synthesize` (hub) | `TtsAdapterStandalone.handle` (satellite) | Synthesize speech from text |
+| `lyra.voice.stt.heartbeat` | fire-and-forget | `SttAdapterStandalone` (satellite) | `NatsSttClient._on_heartbeat` (hub) | Liveness + capacity |
+| `lyra.voice.tts.heartbeat` | fire-and-forget | `TtsAdapterStandalone` (satellite) | `NatsTtsClient._on_heartbeat` (hub) | Liveness + capacity |
+
+**Queue group names:** `STT_WORKERS` for STT; `TTS_WORKERS` for TTS. Replies use NATS request-reply inbox; no dedicated reply subject.
+
+**`contract_version` rationale (first instance — canonical):** Every payload carries `contract_version: "1"` as a top-level string field. Producers MUST emit it; consumers MUST ignore unknown values. The field is additive, not a handshake — goal is observability, not version negotiation. When an incompatible change is needed, it ships as a new subject (or a new ADR), not a bumped version. String not integer: string comparison works across all language bindings; mixing numeric and string types in the same field across bumps is a bug class to avoid.
+
+**Heartbeat cadence and TTL:** Satellites emit a heartbeat every **5 s**. Hub marks a worker alive if a heartbeat landed within the last **15 s** (`_HB_TTL`); older entries pruned after `2 × _HB_TTL`. No worker alive → `STTUnavailableError` / `TtsUnavailableError` before any request is dispatched.
+
+**S4 complete (#690):** The in-process `STTService`/`TTSService` path and satellite bootstrap files (`stt_adapter_standalone.py`, `tts_adapter_standalone.py`) are deleted. Only the NATS path remains.
+
+### ADR-050 — lyra ↔ imagecli NATS Image Contract
+
+**Image subjects table:**
+
+| Subject | Type | Direction | Producer | Consumer | Purpose |
+|---|---|---|---|---|---|
+| `lyra.image.generate.request` | request-reply | hub → satellite | `NatsImageClient` (hub) | `ImageNatsAdapter.handle` (satellite) | Generate image from prompt |
+| `lyra.image.heartbeat` | fire-and-forget | satellite → hub | `ImageNatsAdapter` (satellite) | `NatsImageClient._on_heartbeat` (hub) | Liveness + capacity |
+
+**Heartbeat subject reconciliation note:** The heartbeat subject is `lyra.image.heartbeat` (NOT `lyra.image.generate.heartbeat`). Heartbeats are worker-level liveness signals, not scoped to a single verb. This matches the shipped satellite code (`imagecli/src/imagecli/nats/adapter.py:18`) and is consistent with future additional image-domain verbs sharing the same worker heartbeat.
+
+**Queue group:** `IMAGE_WORKERS`. Replies use NATS request-reply inbox; no dedicated reply subject.
+
+**750 KB base64 ceiling:** The satellite enforces a conservative base64 ceiling of 750 KB (≈562 KB raw). When the encoded length exceeds 750 KB, the satellite automatically downgrades to `file_path` mode regardless of `output_mode`, writing to `~/.roxabi/imagecli/nats_out/nats_{request_id[:8]}.{fmt}`.
+
+**`file_path` Syncthing caveat:** `file_path` mode requires a shared view between hub and worker. Hub and imageCLI run on M₁ (`roxabituwer`); `~/.roxabi/` is Syncthing-replicated to M₂. Cross-host deployments inside the M₁↔M₂ Syncthing mesh are eventually consistent (30–60 s scan interval). Hub MUST poll with bounded retry or restrict `output_mode: "file"` to co-located deployments. Any future hub/worker split to a host outside the Syncthing mesh requires replacing `file_path` fallback with an alternative (e.g. NATS Object Store).
+
+**Path sanitization allowlist:** `lora_path` MUST resolve under `~/ComfyUI/models/{loras,lora}`; `embedding_path` MUST resolve under `~/ComfyUI/models/embeddings`. `Path.resolve()` used to canonicalize before `relative_to` check — symlinks and `..` traversal blocked. Error detail MUST NOT leak resolved paths or allowlist structure.
+
+**50 MB server cap:** `max_payload: 52428800` in `deploy/nats/nats-container.conf`. Covers audio, images, and video across all lyra domains (ADR-047 Rule 4 compliance).
+
+### ADR-066 — Unified WorkerError Envelope (Additive Extension)
+
+**WorkerError model** (in `packages/roxabi-contracts/src/roxabi_contracts/errors.py`):
+
+```python
+class WorkerError(BaseModel):
+    code: str = Field(min_length=1)        # hierarchical, dot-delimited, registry-governed
+    message: str = Field(min_length=1)     # human-readable, surfaced to user
+    retryable: bool = True                 # drives hub circuit-breaker / retry-prompt
+    detail: str | None = Field(default=None, max_length=2048)  # internal log context, not user-facing
+```
+
+Note: `_scrub_url` credential scrubbing is present in `errors.py` as a post-ADR security hardening addition.
+
+**5 reply envelope adoption surface:** `worker_error: WorkerError | None = None` on `CliChunkEvent`, `LlmChunkEvent`, `LlmResponse`, `TtsResponse`, `SttResponse`, `ImageResponse`. Excluded: `CliControlAck` (no error path). `ImageResponse.error_detail` deleted (dead field, zero call sites).
+
+**Code namespace registry** — hierarchical, dot-delimited, open string (not `Literal`; would force `CONTRACT_VERSION` bump per new code):
+
+```
+transport.{timeout, no_responders, parse, contract_mismatch, slow_consumer}
+worker.{crash, validation, internal, busy}
+cli.{auth, session_lost, parse}
+llm.{rate_limit, context_too_long, model_unavailable}
+voice.{engine_unavailable, audio_invalid}
+image.{engine_unavailable, prompt_rejected}
+```
+
+Registry shipped in `errors.py` (`KNOWN_CODES: dict[str, CodeMeta]`) and `packages/roxabi-contracts/docs/error-codes.md`. CI sync check (`check_codes_sync.py`) asserts lockstep.
+
+**SDK transport-error synthesis (P3 boundary):** `roxabi-nats` synthesizes `WorkerError(code="transport.*", …)` on driver-side timeouts, parse failures, and no-responders — on the driver side only. `NatsAdapterBase._dispatch` (worker-receive direction) cannot synthesize: no reply subject available.
+
+**`is_error`/`ok` retention rationale:** Existing boolean predicates retained alongside `worker_error`. Not deprecated. `LlmResponse`, `TtsResponse`, `SttResponse`, `ImageResponse` use `ok` as predicate for `@model_validator` invariants. Removing `ok` requires rewriting those validators — semantic break for consumers pattern-matching `if not response.ok`.
+
+**Metric-gated soak gate (P2):** P2 shim deletion gated on `worker_error_populated_total{domain="cli"}` > 0 AND `worker_error_populated_total{domain="llm"}` > 0 AND legacy `error_text` counter == 0 for 48 consecutive hours in production. Executable one-liner prints `PASS` or `FAIL`.
+
+**Rollout:** P1 (model + additive field on 5 envelopes + registry + CI sync check) is complete. Additive-only per ADR-049 `extra="ignore"` — no `CONTRACT_VERSION` bump required.

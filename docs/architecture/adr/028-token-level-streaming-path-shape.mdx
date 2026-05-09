@@ -1,13 +1,16 @@
 ---
 title: "ADR-028: Token-Level Streaming Path — Parallel Methods over Unified Path"
 description: Documents the decision to implement token-level CLI streaming as a separate parallel code path rather than modifying existing non-streaming methods, and specifies the edge-case contracts that the implementation must satisfy.
+superseded_by: "ADR-070 (partial — Edge-Case Contract 3 only)"
 ---
 
 > **Superseded by #666.** `AnthropicSdkDriver` and the `anthropic-sdk` backend have been removed; Lyra is CLI-only. Historical content below is preserved for context.
 
 ## Status
 
-Accepted
+Accepted — partially superseded
+
+> **Partial supersession (ADR-070, Slice 3 / #1100):** Edge-Case Contract 3 (discard `input_json_delta` tool-use JSON fragments) is superseded by ADR-070 Slice 3, which surfaces these fragments via `ToolCallArgsRenderEvent`. Edge-Case Contracts 1 (cancel-in-flight `aclose`/reset), 2 (session ID propagation on exhausted generator), and 4 (`--include-partial-messages` spawn-time flag → respawn) remain in force.
 
 ## Context
 

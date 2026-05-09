@@ -258,7 +258,7 @@ is required when voice adapters come up later.
 
 > **Note (#886/#1036):** `deploy/supervisor/` was removed in #886; `deploy/conf.d/` and
 > `deploy/scripts/run_*.sh` were removed in #1036 (supervisord scaffolding retired in favour
-> of Quadlet). For current deployments (ADR-053), these programs run as systemd units via
+> of Quadlet). For current deployments (ADR-055, which absorbs the archived ADR-053), these programs run as systemd units via
 > `deploy/quadlet/*.container`. The paths below reflect the state at the time this ADR was written.
 
 Two new supervisor configs in `deploy/conf.d/` (formerly `deploy/supervisor/conf.d/`):

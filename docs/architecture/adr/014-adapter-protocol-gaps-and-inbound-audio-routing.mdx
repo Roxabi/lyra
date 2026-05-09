@@ -159,3 +159,16 @@ a third platform is added. This is deferred but documented here as a hard prereq
 - The outbound queue in `OutboundDispatcher` is unbounded (`asyncio.Queue()` with no
   `maxsize`). This is a separate resilience concern documented in the same review but
   not part of this ADR's scope. It should be addressed independently.
+
+## Update 2026-05-08
+
+Audio routing gap (Option C) resolved via ADR-039 NATS adapter decoupling — `InboundAudio`
+is no longer a dead type; it was replaced by `AudioPayload` (`src/lyra/core/audio_payload.py`)
+which the comment "Replaces the parallel InboundAudio envelope in the unified inbound path"
+confirms. Both adapters (`telegram_normalize.py:217`, `discord_audio.py:60`) produce live
+`normalize_audio()` envelopes consumed by the NATS `AudioPipeline`. The design intent
+(typed audio envelope, distinct from text) was achieved via `AudioPayload` + `AudioPipeline`
+rather than the `InboundEnvelope` union proposed in Option C. `normalize_audio()` is present
+on the `ChannelAdapter` Protocol (`hub_protocol.py:36`). `start()` / `stop()` lifecycle
+methods on the Protocol are still not present — open item. `platform_meta` → typed
+`PlatformContext` migration status: partial.

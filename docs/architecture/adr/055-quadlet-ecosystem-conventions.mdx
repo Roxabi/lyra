@@ -7,7 +7,7 @@ description: Resolves seven cross-project design questions that block Phase 2 of
 
 Accepted (2026-04-24)
 
-**Parent ADR:** ADR-053 (Deployment topology and container-image hardening — Lyra reference implementation)
+**Absorbs:** ADR-053 (deployment topology + container hardening, archived), ADR-054 (credential store + UID rework, archived), ADR-056 (container publishing workflow, archived), ADR-068 (SELinux `:z` Quadlet bind-volume policy, archived) — see `## Supersedes` below for the absorbed content.
 **Migration doc:** `docs/PROD-MIGRATION-STRATEGY.md` — Phase 2 entry criterion; §6 enumerates the seven questions resolved here.
 
 ---
@@ -389,9 +389,11 @@ The migration doc §2c recommends shared `nats.container` immediately. This ADR 
 
 ---
 
-## Relationship to ADR-053 and Migration Phases
+## Historical: Migration Phases (ADR-053 / ADR-054 era)
 
-| Phase | ADR-053 scope | ADR-055 scope |
+> ADR-053 and ADR-054 are now **archived and absorbed into this ADR** (see `## Supersedes` below). Their decisions are no longer separate live documents — they live here. The phase table below is preserved as historical migration context.
+
+| Phase | ADR-053 (now absorbed) scope | ADR-055 scope |
 |---|---|---|
 | Phase 0 (dry run) | Lyra Quadlet on M₂ | N/A |
 | Phase 1 (Lyra prod) | Lyra Quadlet on M₁ — complete | N/A |
@@ -400,7 +402,7 @@ The migration doc §2c recommends shared `nats.container` immediately. This ADR 
 | Phase 4 (NATS consolidation) | Follow-up 7 (4223→4222 path) | D2 (shared NATS), D3 (join roxabi.network), D7 (Lyra repo as infra home) |
 | Phase 5 (supervisord retire) | Endgame condition | Unaffected |
 
-ADR-053 remains in force for Decisions 1–3 (Quadlet as strategic target, naming normalization, image digest pinning). ADR-054 remains in force for its decisions (bind-mount layout, `UserNS=keep-id`, Podman secrets for nkeys). ADR-055 extends these patterns ecosystem-wide.
+ADR-053 Decisions 1–3 (Quadlet as strategic target, naming normalization, image digest pinning) and ADR-054 decisions (bind-mount layout, `UserNS=keep-id`, Podman secrets for nkeys) **are absorbed into this ADR** — see `## Supersedes` for the full content. ADR-055 extends these patterns ecosystem-wide.
 
 ---
 

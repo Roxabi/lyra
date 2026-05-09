@@ -353,3 +353,33 @@ allow_indirect_imports = true
    - Extract to a `roxabi-contracts-testkit` package (separate wheel, optional dep).
    - Move implementations into the consuming repos' test utilities.
 2. Verify no remaining `roxabi-nats` import exists in the main `roxabi-contracts` package (only in the separated test utilities).
+
+---
+
+## Update 2026-05-09 — Migration status
+
+Captured during #1145 cluster A code-as-truth audit. Inline notes at lines 321 and 331 corrected the originally specified factory path and the layers-contract status; this section consolidates the structured status of every migration item.
+
+### Lyra P0
+
+| Item | Status | Evidence |
+|---|---|---|
+| P0-1 — `make_agent_store()` to Composition Root | ✓ Done | Factory at `bootstrap/factory/agent_store_factory.py` (path corrected from original `bootstrap/bootstrap_stores.py` in the inline note above). |
+| P0-2 — Move `agent_store_migrations.py` to `infrastructure/stores/` | ✓ Done | File present at `src/lyra/infrastructure/stores/agent_store_migrations.py`. |
+| P0-3 — `PairingManagerProtocol` injection | ◐ Partial | Protocol exists at `core/stores/pairing_protocol.py`. `commands/pairing/handlers.py:13` still calls `get_pairing_manager()` via a facade with deferred `from lyra.infrastructure.stores.pairing` import; tracked in `.importlinter` `pairing_protocol -> infrastructure.stores.pairing` exemption. Full DI injection pending. |
+| P0-4 — `IdentityAliasStoreProtocol` | ✓ Done | Protocol present in `core/stores/`; `commands/identity/handlers.py` type-hints against it. |
+
+### Lyra P1
+
+| Item | Status | Evidence |
+|---|---|---|
+| P1-5 — `ThreadStoreProtocol` | (verify) | `core/stores/` contains the protocol; `adapters/discord/adapter.py:51` injection status not re-verified in this pass. |
+| P1-6 — `LlmProvider` port to `lyra.core.ports.llm` | (verify) | Drift flagged in ADR-061 `## Update 2026-05-08` — current import sites still point at floating module names (`lyra.stt`, `lyra.tts`, `lyra.integrations.base`); see ADR-061 for the partial-execution status. |
+| P1-7 — `STTProtocol`/`TtsProtocol` to `lyra.core.ports` | (verify) | Same as P1-6 — partial; see ADR-061. |
+| P1-8 — `lyra.commands` + `lyra.agents` in layers contract | ◐ Partial | Forbidden contracts (`commands-no-infra`, `agents-no-bootstrap`) are in place and provide practical enforcement. The specific entry in the `layers` contract is still absent. |
+| P1-9 — `config.py` adapter-import elimination | (verify) | Open. |
+
+### voiceCLI / roxabi-nats / roxabi-contracts
+
+Out of Lyra-repo scope; no in-repo evidence to validate from this pass.
+

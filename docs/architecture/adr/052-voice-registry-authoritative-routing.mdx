@@ -145,7 +145,7 @@ async def _walk_registry(self, payload: bytes) -> Response:
 
 ## Relation to other ADRs
 
-- **ADR-044** — lyra ↔ voicecli NATS voice contract. Defines the request/reply payload structure. This ADR modifies the routing behavior without changing the wire contract.
+- **ADR-049** — `roxabi-contracts` shared schema package (absorbs ADR-044, archived). Defines the request/reply payload structure. This ADR modifies the routing behavior without changing the wire contract.
 - **ADR-035** — NATS subject naming convention. Per-worker subjects follow the `<namespace>.<capability>.<service>.<verb>.<worker_id>` pattern.
 - **ADR-039** — STT/TTS NATS adapter decoupling. Establishes the satellite-bootstrap pattern. Workers publish heartbeats; the hub consumes them via `WorkerRegistry`.
 - **ADR-045** — roxabi-nats SDK extraction. `WorkerRegistry` is part of lyra's NATS client layer, not the shared SDK.

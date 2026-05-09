@@ -119,8 +119,8 @@ Lane B (containerize, #727/#728) remains independent — it does not need to lan
 
 - **ADR-035** — NATS subject naming convention. IDENTITIES in gen-nkeys.sh must align with the subject catalogue defined there.
 - **ADR-039** — STT/TTS NATS adapter decoupling. Establishes lyra_stt / lyra_tts as new supervisor programs; Invariant 2 requires their identities (stt-adapter, tts-adapter) to be in IDENTITIES.
-- **ADR-041** — Supervisor pattern. Invariant 4 (fail-fast on missing seed) must be implemented in the supervisor launch scripts, not in the Python process itself.
-- **ADR-044** — lyra ↔ voicecli NATS voice contract. voice-tts and voice-stt are the voicecli-side identities; they are distinct from tts-adapter / stt-adapter (lyra-side). Both sets must appear in IDENTITIES.
+- **ADR-055** — Quadlet ecosystem conventions (absorbs ADR-041 supervisor pattern, archived). Invariant 4 (fail-fast on missing seed) is enforced at Quadlet `Secret=` declaration time; legacy supervisor-launch-script implementation is historical.
+- **ADR-049** — `roxabi-contracts` shared schema package (absorbs ADR-044, archived). voice-tts and voice-stt are the voicecli-side identities; they are distinct from tts-adapter / stt-adapter (lyra-side). Both sets must appear in IDENTITIES.
 - **ADR-045** — roxabi-nats SDK extraction. Plugin identities provisioned via the SDK will need their own IDENTITIES entries; this ADR's invariants apply to that provisioning as well.
 
 ## References

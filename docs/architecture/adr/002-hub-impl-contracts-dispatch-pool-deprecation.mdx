@@ -135,10 +135,12 @@ up completely.
 ### Negative
 
 - `Message.channel` as a property requires updating adapter constructors that pass `channel=` as
-  a kwarg. This is a one-time migration cost, bounded to the Telegram adapter (the only adapter
-  in Phase 1).
-- `setdefault()` constructs a `Pool(...)` object on every call even when the pool already exists.
-  At personal-use scale (tens of pools) this is negligible; the TOCTOU safety justifies it.
+  a kwarg. **Resolved:** the property/deprecation pattern was abandoned during the Phase 1b→2
+  refactor; `Message.channel` was removed outright. See Requirement 4 above.
+- ~~`setdefault()` constructs a `Pool(...)` object on every call even when the pool already exists.~~
+  **Superseded:** pool creation is now lock-based (`PoolManager._lock` in
+  `src/lyra/core/hub/pipeline/pool_manager.py:39-72`); the `setdefault` cost concern no longer
+  applies. See Requirement 2 above.
 
 ### Neutral
 

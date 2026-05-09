@@ -1,7 +1,12 @@
 ---
 title: "ADR-070: RenderEvent v2 — Selective Adoption of AG-UI Modeling"
 description: Extends ADR-032 by back-porting four AG-UI modeling improvements (Run lifecycle, Text triplet, ToolCall split, typed Reasoning) into Lyra's internal RenderEvent hierarchy without adopting AG-UI as a wire format. Defers three (StateSnapshot/Delta, ActivitySnapshot/Delta, HTTP/SSE adapter) until concrete consumers drive requirements.
+status: accepted
 ---
+
+> **Current truth** → [`docs/architecture/llm-streaming.md`](../llm-streaming.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
 
 ## Status
 

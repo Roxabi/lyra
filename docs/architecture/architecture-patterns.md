@@ -1,5 +1,7 @@
 # Architecture Patterns — Roxabi Standard
 
+> Last updated: 2026-05-09
+
 > **Status: REFERENCE**
 > Scope: All Roxabi projects (lyra, voiceCLI, imageCLI, 2ndBrain, roxabi-plugins)
 > Purpose: Define the architectural patterns and rules to follow
@@ -265,6 +267,46 @@ src/lyra/
 | Mutable global | `state = {}` at module level | Use frozen dataclass + explicit state |
 | Adapter imports adapter | `from telegram import ...` in `discord.py` | Communicate via events |
 | Core imports adapter | `from adapters import ...` in `core/` | Define port in core, implement in adapter |
+
+---
+
+## Engineering Invariants (ADR-anchored)
+
+> Concrete invariants from accepted ADRs that codify the patterns above. Each is enforceable by importlinter, code review, or test.
+
+### Hexagonal canonical model
+
+Four layers, innermost to outermost: **Domain** (entities, port protocols, business rules — zero I/O imports) → **Application** (use cases, command handlers — depends on Domain ports only) → **Infrastructure** (SQLite stores, NATS transport, model loaders — implements Domain ports; lives in `lyra.infrastructure.*` per ADR-048) → **Adapters** (Telegram, Discord, CLI, NATS adapters — outermost ring, never imported by inner layers).
+
+The **CLI protocol circular import** (ADR-060, absorbed here) established the canonical fix shape: when a CLI protocol port was co-located with its Infrastructure importer, the solution was to define the port in `lyra.core` (Domain) and have Infrastructure import it from there. The **Composition Root** (`src/lyra/bootstrap/`) is the only site that wires concrete Infrastructure implementations to Domain ports. → ADR-059 (absorbs ADR-048, ADR-060)
+
+### Typed error boundary
+
+`LyraUserError` (defined in `lyra.core.errors`) is the base class for all errors that must produce a user-visible reply. Subclasses (`AudioDownloadError`, `AudioTooLargeError`, `AudioInvalidFormatError`, `SttError`) map to specific failure modes and carry a `key` for `MessageManager` template lookup plus a `fallback_text` for degraded mode.
+
+`ErrorBoundaryMiddleware` sits at position 0 of the pipeline — it catches `LyraUserError` and any unhandled exception, dispatches a reply, and returns `_DROP`. It is a safety net for pipeline-internal failures; adapter-level download failures raise typed exceptions before the pipeline and are caught in the adapter's download function directly.
+
+`NullMessageManager` replaces `if hub._msg_manager is None: return _DROP` guards, making misconfiguration observable instead of silently dropping messages. → ADR-058
+
+### Generic error reply placement
+
+`GENERIC_ERROR_REPLY` lives in `lyra.core.message`, co-located with the `Response` type it populates. It was moved from `lyra.core.hub` to break an agents → hub import coupling: `SimpleAgent` (a spoke) was importing a UI-primitive string from the hub coordinator. Since `message.py` is already a shared dependency with no upward coupling, all agents and the hub now import the constant from the same low-dependency module. The agents layer has no import dependency on `hub.py`. → ADR-009
+
+### Invariants summary
+
+- Domain layer imports nothing outside its own module (no I/O libs, no adapters, no infrastructure)
+- Application orchestrates Domain via ports defined in Domain; it never imports Infrastructure concretions
+- Infrastructure implements ports; lives in `lyra.infrastructure.*`; is the only layer that may hold migration runners and connection pools
+- Adapters are the outer ring; never imported by inner layers; lateral adapter-to-adapter imports are forbidden
+- All user-visible errors are `LyraUserError` subclasses raised at the point of failure
+- All unhandled pipeline errors are caught at `ErrorBoundaryMiddleware` and translated into a user reply, never silently dropped
+- Shared UI-primitive constants (`GENERIC_ERROR_REPLY`) live in `lyra.core.message`, not in hub or adapter modules
+- Concrete implementations are instantiated only in the Composition Root (`lyra.bootstrap`); no factory that selects concretions may live in Domain or Application
+
+### See also
+
+- Storage layer (uses `lyra.infrastructure`) → `storage.md`
+- Importlinter enforcement of these invariants → `workers-tooling.md` (ADR-061)
 
 ---
 

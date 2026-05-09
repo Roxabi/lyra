@@ -1,6 +1,6 @@
 # Lyra — Security, Routing & Memory Isolation
 
-> Reference document. Last updated: 2026-04-27.
+> Reference document. Last updated: 2026-05-09.
 > **Status**: #auth (#151 ✅), #routing (#152 ✅), #commands ✅ (CommandParser shipped), #memory-isolation — partially implemented (user_id partition active in prefs_store; full MemoryEntry metadata schema not yet applied).
 
 ---
@@ -31,7 +31,7 @@ Without auth, any user can send a message that reaches the Bus and consumes reso
 
 Auth at the Adapter level, **before** the Bus. The message is rejected at the source.
 
-> **Updated (2026-05-07) — C3 pattern:** In the containerized deployment, adapters always forward messages with `trust=PUBLIC` and trust resolution is performed Hub-side by the Authenticator (middleware stage 2–3). The adapter still validates transport-level auth (Telegram HMAC, Discord gateway token) before publishing to NATS. See `docs/architecture/container-split.md` — *Security* section — for the current C3 model.
+> **Updated (2026-05-07) — C3 pattern:** In the containerized deployment, adapters always forward messages with `trust=PUBLIC` and trust resolution is performed Hub-side by the Authenticator (middleware stage 2–3). The adapter still validates transport-level auth (Telegram HMAC, Discord gateway token) before publishing to NATS. See `docs/architecture/deployment.md` — *Security* section — for the current C3 model.
 
 ```python
 class TrustLevel(Enum):
@@ -354,6 +354,48 @@ async def write(self, user_id: str, content: str, level: MemoryLevel, session_id
 
 ---
 
+## #nats-infra — Brokered transport security
+
+> Container-split (C3) introduced NATS as the inter-process bus. These 5 ADRs harden it: identity, scope, audit, ACL derivation, defensive provisioning.
+
+### Nkey identity provisioning
+
+`auth.conf` is a pure function of two inputs: the `IDENTITIES` manifest (constants in `gen-nkeys.sh`) and the seed directory on disk. A `--regen-authconf` mode re-renders the full file without rotating existing seeds — non-destructively closing drift caused by new identities added since the last generation. Missing seeds are auto-created; no identity in the manifest may be silently skipped. Each supervisor program must reference its own named seed file and fail fast if absent — the old `.env` fallback to `hub.seed` (which caused adapters to silently authenticate as hub) is classified as a misconfiguration, not a feature. A `lyra ops verify` command detects gaps between the manifest, disk seeds, and live `auth.conf` before harm occurs. → ADR-046
+
+### Per-identity NATS inbox prefix
+
+Every NATS identity must connect with `inbox_prefix="_INBOX.<identity-name>"`. This scopes all ephemeral inboxes that identity creates to `_INBOX.<identity>.>`, narrowing the ACL grant from the former bus-wide `_INBOX.>`. A leaked seed is therefore bounded to the compromised identity's own inbox namespace — it cannot be used to wiretap other identities' request-reply traffic. The fix is enforced at connect time via `roxabi_nats.nats_connect` with no changes to streaming logic. All current identities (hub, telegram-adapter, discord-adapter, tts-adapter, stt-adapter, voice-tts, voice-stt, image-worker) are covered. New identities added to `IDENTITIES` must supply `inbox_prefix` from their first connection. → ADR-051
+
+### Security event audit
+
+`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID, pool_id, agent_name) are audited via a port/adapter split that respects import layer boundaries. `AuditSink` is a `Protocol` defined in `lyra.core.cli` — the port. `JetStreamAuditSink` in `lyra.infrastructure.audit` is the concrete adapter; it publishes `SecurityEvent` (a `roxabi-contracts` Pydantic model) to the `LYRA_AUDIT` JetStream stream (`lyra.audit.>`, FILE storage, 90-day retention, 1 GiB cap). When JetStream is unavailable, the sink falls back to the `lyra.security` logger without crashing the runtime. Both `hub_standalone.py` and the unified `lyra start` bootstrap (`wiring_helpers.py:309`) wire the sink. → ADR-057
+
+### ACL request/reply derivation
+
+Responder inbox grants are no longer hand-written. A `request_reply_flows` section in `acl-matrix.json` declares each flow as `{ requester, responder, subject }`. The `load_matrix()` function in `gen-nkeys.sh` derives and injects the corresponding `_inbox.<requester>.>` publish grant for each responder automatically. Adding a new responder requires one JSON entry; the copy-paste pattern from ADR-062 Fix 2 — which had no enforcement and caused silent auth failures when any step was missed — is retired. A dedicated CI script (`scripts/check-request-reply-flows.sh`) validates identity existence, subject coverage, and that `--template-only` output contains the derived grants. → ADR-064
+
+### Provisioning posture
+
+`deploy/provision.sh` distinguishes missing `/etc/subuid` / `/etc/subgid` files (normal on a fresh install — silent skip) from unreadable-but-present files (permissions problem — emit `warn` and skip). This distinction applies to both `warn_subid_overlap` (advisory, no exit) and `assert_no_subid_overlap` (hard abort path). A whitelist guard rejects unexpected file paths in both functions, preventing misdirected `awk` scans in `curl | bash` execution contexts. The contract rule: advisory-path functions must still distinguish missing vs unreadable — they must not silently drop the entire check when a file exists but is unreadable. → ADR-069
+
+### Key invariants
+
+- No NATS identity may connect without an entry in the `IDENTITIES` manifest in `gen-nkeys.sh`.
+- `auth.conf` is always regenerated from manifest + seed dir — it is never hand-edited, patched, or appended to incrementally.
+- Every supervisor program references its own named seed file; missing seed → process exits non-zero (no silent fallback to another identity's seed).
+- Every identity's `nats_connect` call supplies `inbox_prefix="_INBOX.<identity>"` — the bus-wide `_INBOX.>` grant is retired for all roles.
+- Responder inbox grants are derived from `request_reply_flows` in `acl-matrix.json` — no hand-written `_inbox.<requester>.>` entries in identity publish lists.
+- `CliPool` subprocess spawns are audited to `LYRA_AUDIT` JetStream stream; NATS unavailability degrades to logger, not crash.
+- Advisory provisioning checks (`warn_subid_overlap`) distinguish missing files (skip silently) from unreadable files (warn operator); they do not suppress the check without notice.
+
+### See also
+
+- NATS subject naming, KV readiness probe → `messaging.md`
+- Cross-project NATS SDK (absorbs ACL inbox case ADR-062) → `contracts.md` (ADR-045)
+- Quadlet credential-store (absorbs ADR-054) → `deployment.md` (ADR-055)
+
+---
+
 ## Priority table
 
 | Domain | Priority | Size | Dependencies | Status |
@@ -362,3 +404,4 @@ async def write(self, user_id: str, content: str, level: MemoryLevel, session_id
 | `#routing` | P0 | M | `#auth` | ✅ Shipped |
 | `#commands` | P1 | M | `#routing` | Partial (CommandParser ✅, ComplexityEstimator disabled) |
 | `#memory-isolation` | P1 | M (extend #83) | — | Partial (user_id partition active, full schema open) |
+| `#nats-infra` | P0 | M | `#auth` | ✅ Shipped (NATS C3 pattern) |

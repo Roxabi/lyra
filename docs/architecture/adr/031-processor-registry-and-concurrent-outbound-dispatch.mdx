@@ -1,7 +1,12 @@
 ---
 title: "ADR-031: Processor Registry and Concurrent Outbound Dispatch"
 description: Replace session command handlers with a decorator-based processor registry (pre/post hooks into the pool flow), and add per-scope asyncio.Lock fan-out to the outbound dispatcher for concurrent message delivery.
+status: accepted
 ---
+
+> **Current truth** → [`docs/architecture/workers-tooling.md`](../workers-tooling.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
 
 ## Status
 

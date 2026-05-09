@@ -1,7 +1,12 @@
 ---
 title: "ADR-022: EventBus Singleton vs Dependency Injection for Monitoring Emission"
 description: Documents the decision to use a module-level singleton for EventBus access in emitters (Pool, CircuitBreaker, InboundBus) rather than injecting the bus through the existing dependency graph.
+status: amended
 ---
+
+> **Current truth** → [`docs/architecture/storage.md`](../storage.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
 
 ## Status
 
@@ -87,11 +92,11 @@ The DI approach (Option B) is the preferred long-term direction and should be re
 a second EventBus consumer is added that is not reachable through Hub (e.g., an adapter that
 needs to emit events before Hub starts).
 
-**Subsequently migrated to DI in ADR-025 F-10.** `PipelineEventBus` is now injected via
+**Subsequently migrated to DI in the F-10 migration tracked in #1036.** `PipelineEventBus` is now injected via
 `Hub.__init__` constructor (parameter `event_bus: "PipelineEventBus | None" = None`);
 bootstrap wiring lives in `bootstrap/factory/wiring_helpers.py:262`. No module-level
 singleton exists. The `get_event_bus()`/`set_event_bus()` pattern documented in Option A
-is no longer present in the codebase. Decision was revisited per ADR-025 F-10.
+is no longer present in the codebase. Decision was revisited per the F-10 migration tracked in #1036.
 
 ## Consequences
 
@@ -104,7 +109,7 @@ is no longer present in the codebase. Decision was revisited per ADR-025 F-10.
 ### Negative
 
 - Module-level mutable state is re-introduced after ADR-017 worked to remove it.
-  **Resolved:** the singleton was removed per ADR-025 F-10; DI is now in place and
+  **Resolved:** the singleton was removed per the F-10 migration tracked in #1036; DI is now in place and
   module-level mutable state no longer exists for EventBus.
 - Test isolation requires an explicit autouse fixture; forgetting it causes subtle
   cross-test pollution. (No longer applies since singleton is removed.)
@@ -119,7 +124,7 @@ is no longer present in the codebase. Decision was revisited per ADR-025 F-10.
 ## Update 2026-05-08
 
 Code-truth audit (#1145, cluster A) confirmed the "preferred long-term direction" (DI) has
-been executed per ADR-025 F-10:
+been executed per the F-10 migration tracked in #1036:
 
 - `PipelineEventBus` is injected via `Hub.__init__` — no module-level singleton exists.
 - Bootstrap wiring is in `bootstrap/factory/wiring_helpers.py:262`.

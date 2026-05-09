@@ -1,7 +1,12 @@
 ---
 title: "ADR-045: Extract roxabi-nats SDK as uv workspace subpackage"
 description: Extract NATS transport primitives from src/lyra/nats/ into a packages/roxabi-nats/ uv workspace member, consumed by external plugins (voiceCLI, roxabi-vault, imageCLI) via git+subdirectory dependency — colocated with the hub and ADR-044 contract during pre-1.0.
+status: accepted
 ---
+
+> **Current truth** → [`docs/architecture/contracts.md`](../contracts.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
 
 ## Status
 

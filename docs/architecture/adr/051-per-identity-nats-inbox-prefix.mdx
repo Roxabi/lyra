@@ -1,7 +1,12 @@
 ---
 title: "ADR-051: Per-identity NATS inbox prefix as a security invariant"
 description: Eliminate bus-wide _INBOX.> ACL grants by assigning each NATS identity a scoped inbox_prefix at connect time, so that an identity's ephemeral inboxes are confined to _INBOX.<identity>.> and a leaked seed cannot be used to read other identities' request-reply traffic.
+status: accepted
 ---
+
+> **Current truth** → [`docs/architecture/security-routing.md`](../security-routing.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
 
 ## Status
 

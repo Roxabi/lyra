@@ -1,7 +1,12 @@
 ---
 title: "ADR-003: Telegram webhook dispatch strategy — feed_update() vs SimpleRequestHandler"
 description: Decide how the FastAPI webhook route feeds incoming Telegram updates into the aiogram dispatcher, and document the discovered stub that leaves _on_message unwired in the current PR.
+status: accepted
 ---
+
+> **Current truth** → [`docs/architecture/adapters.md`](../adapters.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
 
 ## Status
 

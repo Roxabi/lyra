@@ -1,7 +1,12 @@
 ---
 title: "ADR-026: Pool Callback Wiring — Eager at Pool Resolution vs Lazy at First Turn"
 description: Fix a temporal coupling bug where pool callbacks (resume, reset, switch_cwd) are wired too late to be useful on the first message after a daemon restart.
+status: accepted
 ---
+
+> **Current truth** → [`docs/architecture/workers-tooling.md`](../workers-tooling.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
 
 ## Status
 

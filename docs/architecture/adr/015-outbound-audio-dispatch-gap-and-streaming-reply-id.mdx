@@ -1,7 +1,12 @@
 ---
 title: "ADR-015: Outbound Audio Dispatch Gap, Streaming Reply-ID Gap, and Adapter Consistency Findings"
 description: Documents four structural gaps in the outbound layer identified during the Phase 1b adapter architecture review — render_audio() bypass of OutboundDispatcher, send_streaming() missing reply_message_id, OutboundAudio mutability asymmetry, and divergent backpressure helpers across adapters.
+status: accepted
 ---
+
+> **Current truth** → [`docs/architecture/adapters.md`](../adapters.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
 
 ## Status
 

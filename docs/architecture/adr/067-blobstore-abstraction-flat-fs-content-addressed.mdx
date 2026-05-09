@@ -1,7 +1,12 @@
 ---
 title: "ADR-067: BlobStore abstraction for large binary payloads — content-addressed flat-FS v1"
 description: Drop NATS Object Store from the design. Adopt a `BlobStore` interface backed by a SHA-256-addressed flat-FS + SQLite metadata index for v1; FS implementation is swappable for MinIO/S3 when multi-host emerges.
+status: accepted
 ---
+
+> **Current truth** → [`docs/architecture/storage.md`](../storage.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
 
 ## Status
 

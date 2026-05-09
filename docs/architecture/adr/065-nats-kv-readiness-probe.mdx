@@ -1,7 +1,12 @@
 ---
 title: "ADR-065: NATS KV readiness probe replaces request/reply"
 description: Replace the hub readiness req/reply probe with a JetStream KV key (hub.ready in lyra-state) to eliminate inbox-subject ACL violations under allow_responses:false.
+status: accepted
 ---
+
+> **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
 
 ## Status
 

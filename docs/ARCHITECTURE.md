@@ -1,16 +1,29 @@
 # Lyra — Architecture & Decisions
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-04-27 (NATS four-process mode: hub + adapters + clipool — #941)
+> Last updated: 2026-05-09 (ADR consolidation: 46 ADRs → 9 living domain pages)
 
 ---
 
-## Architecture Reference Docs
+## How to read this docs tree
 
-| Doc | Purpose |
-|-----|---------|
-| [architecture-patterns.md](architecture/architecture-patterns.md) | **Standard patterns** — Clean, Hexagonal, Kernel architecture rules |
-| [target-architecture.md](architecture/target-architecture.md) | **Implementation truth** — Hexagonal/Ports & Adapters as implemented |
+**Start here for current state**: 9 living domain pages, each the single source of truth for its area. Open the one matching your concern.
+
+| Domain page | What it owns |
+|---|---|
+| [messaging.md](architecture/messaging.md) | NATS subjects, routing key, hub dispatch, KV readiness, chunk protocol |
+| [llm-streaming.md](architecture/llm-streaming.md) | LlmEvent → StreamProcessor → RenderEvent pipeline, AG-UI v2 |
+| [adapters.md](architecture/adapters.md) | Telegram, Discord, CLI inbound, audio routing, TTS overlay |
+| [storage.md](architecture/storage.md) | Agent / thread / blob stores, memory scope, event bus DI |
+| [security-routing.md](architecture/security-routing.md) | Auth, trust, command parser, memory isolation, NATS infra security |
+| [deployment.md](architecture/deployment.md) | C3 container split, Quadlet ecosystem, autodeploy |
+| [contracts.md](architecture/contracts.md) | roxabi-nats SDK, roxabi-contracts schemas, voice routing |
+| [workers-tooling.md](architecture/workers-tooling.md) | CliPool, processor registry, tool integration, importlinter |
+| [architecture-patterns.md](architecture/architecture-patterns.md) | Clean / Hexagonal / Kernel patterns + engineering invariants |
+
+**Decision archive** — 46 ADRs in [`architecture/adr/`](architecture/adr/) preserve historical reasoning. Each ADR has a redirect banner pointing back to its domain page; **read ADRs only when you need the *why* behind a decision**, not the *what*. Index grouped by domain in [`adr/meta.json`](architecture/adr/meta.json).
+
+**Implementation reference** — [target-architecture.md](architecture/target-architecture.md) shows the Hexagonal/Ports & Adapters layout as implemented (file paths, module structure).
 
 ---
 

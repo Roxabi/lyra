@@ -2,10 +2,10 @@
 # lyra-gh — invoke `gh` with a fresh installation token sourced from the
 # lyra-gh dispenser Unix socket (#1078).
 #
-# This shim is the ONLY supported way to call `gh` from inside the
-# lyra-clipool container. Plain `gh` is NOT on PATH. The token is scoped to
-# the child gh process via `env GH_TOKEN=… gh "$@"` and never enters the
-# parent shell's environment, preserving AC isolation-#2.
+# Both `lyra-gh` and `gh` invoke this shim — /usr/local/bin/gh is symlinked
+# here, so plain `gh …` and `lyra-gh …` are equivalent and both go through the
+# dispenser. The token is scoped to the child process via `env GH_TOKEN=… gh
+# "$@"` and never enters the parent shell's environment (AC isolation-#2).
 
 set -eu
 
@@ -15,6 +15,18 @@ SOCK="${LYRA_GH_DISPENSER_SOCK:-/run/lyra-gh-token/dispenser.sock}"
 GH_BIN="${LYRA_GH_BIN:-}"
 if [ -z "$GH_BIN" ]; then
   GH_BIN=$(command -v gh 2>/dev/null || true)
+fi
+# Guard against shim self-reference regardless of resolution source. Both the
+# PATH fallback (when LYRA_GH_BIN is unset) and an explicit LYRA_GH_BIN that
+# points at /usr/local/bin/gh (which symlinks to this shim) would otherwise
+# loop forever via the exec at the end of this script.
+if [ -n "$GH_BIN" ]; then
+  SELF=$(readlink -f "$0" 2>/dev/null || echo "$0")
+  RESOLVED=$(readlink -f "$GH_BIN" 2>/dev/null || echo "$GH_BIN")
+  if [ "$RESOLVED" = "$SELF" ]; then
+    echo "lyra-gh: \`gh\` resolves to this shim (loop hazard) — set LYRA_GH_BIN to the real gh binary." >&2
+    exit 127
+  fi
 fi
 if [ -z "$GH_BIN" ] || [ ! -x "$GH_BIN" ]; then
   echo "lyra-gh: gh CLI not found. Set LYRA_GH_BIN to its absolute path or install gh into the container." >&2

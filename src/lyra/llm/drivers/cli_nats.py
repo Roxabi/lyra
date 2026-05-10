@@ -12,7 +12,12 @@ from uuid import uuid4
 
 import nats.errors
 
-from lyra.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
+from lyra.core.messaging.events import (
+    LlmEvent,
+    ResultLlmEvent,
+    TextLlmEvent,
+    ToolUseLlmEvent,
+)
 from lyra.llm.base import LlmResult
 from roxabi_contracts.cli.models import CliCmdPayload, CliControlCmd
 from roxabi_nats.driver_base import NatsDriverBase
@@ -99,6 +104,15 @@ class CliNatsDriver(NatsDriverBase):
                 t = chunk.get("text") or ""
                 if t:
                     yield TextLlmEvent(text=t)
+            elif event_type == "tool_use":
+                tool_name = chunk.get("tool_name") or ""
+                tool_id = chunk.get("tool_id") or ""
+                if tool_name and tool_id:
+                    yield ToolUseLlmEvent(
+                        tool_name=tool_name,
+                        tool_id=tool_id,
+                        input=chunk.get("tool_input") or {},
+                    )
             elif event_type == "result":
                 _cli_sid = chunk.get("session_id")
                 if _cli_sid and self._turn_store and pool_id in self._lyra_sessions:

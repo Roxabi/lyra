@@ -6,7 +6,9 @@ Discord, TTS tee, turn logger).
 
 Pipeline contract
 -----------------
-- ``TextLlmEvent``    → accumulate text; hold until ``ResultLlmEvent``
+- ``TextLlmEvent``    → stream each chunk as ``TextRenderEvent(is_final=False)``
+                         immediately; also accumulate in ``_total_text`` for the
+                         final ``TextRenderEvent(is_final=True)``
 - ``ToolUseLlmEvent`` → accumulate into per-tool buckets; emit throttled
                          ``ToolSummaryRenderEvent`` mid-turn
 - ``ResultLlmEvent``  → unconditionally emit final ``ToolSummaryRenderEvent``
@@ -144,6 +146,7 @@ class StreamProcessor:
 
         # --- pending text ---
         self._pending_text: str = ""
+        self._total_text: str = ""  # full accumulated text for final emit
 
         # --- Slice 3 (#1100) ToolCall* lifecycle state ---
         # Open-call tracker for orphan ``ToolCallEnd`` synthesis. Populated on
@@ -180,11 +183,13 @@ class StreamProcessor:
         Yields
         ------
         RenderEvent
-            When ``show_intermediate=True``, ``TextRenderEvent(is_final=False)``
-            is emitted for any text that precedes a tool call (inter-tool text).
+            ``TextRenderEvent(is_final=False)`` is emitted for EVERY text chunk
+            as it arrives, enabling real-time streaming to adapters (1 s debounce).
+            When ``show_intermediate=True``, the per-segment buffer is cleared on
+            each tool call so the tool snapshot does not overwrite streamed text.
             ``ToolSummaryRenderEvent`` mid-turn (throttled) and at turn end
             (unconditional), followed by ``TextRenderEvent(is_final=True)`` at
-            turn end.
+            turn end (using the full ``_total_text`` accumulator).
         """
         self._mark_consumed()
         run_id = TraceContext.get_trace_id() or f"synthetic-{TraceContext.generate()}"
@@ -194,6 +199,13 @@ class StreamProcessor:
             async for event in events:
                 if isinstance(event, TextLlmEvent):
                     self._pending_text += event.text
+                    self._total_text += event.text
+                    # Stream each chunk progressively so adapters can
+                    # edit the placeholder in real time (1 s debounce).
+                    # Gated by show_intermediate so show_intermediate=False
+                    # preserves the legacy hold-until-result behaviour.
+                    if self._show_intermediate:
+                        yield TextRenderEvent(text=event.text, is_final=False)
 
                 elif isinstance(event, ToolUseLlmEvent):
                     async for render_event in self._handle_tool_event(event):
@@ -212,9 +224,7 @@ class StreamProcessor:
                     tool_name = self._tool_id_to_name.get(event.tool_id)
                     yield ToolCallResultRenderEvent(
                         tool_call_id=event.tool_id,
-                        content=_sanitize_tool_result_content(
-                            event.content, tool_name
-                        ),
+                        content=_sanitize_tool_result_content(event.content, tool_name),
                         is_error=event.is_error,
                     )
 
@@ -229,7 +239,7 @@ class StreamProcessor:
                         yield self._emit_snapshot(is_complete=True)
                     # On error with no streamed text, surface the structured WorkerError
                     # message (P1 path) or the legacy error_text shim (P2 transitional).
-                    if event.is_error and not self._pending_text:
+                    if event.is_error and not self._total_text:
                         we = _extract_worker_error(event)
                         if we is not None:
                             meta = KNOWN_CODES.get(we.code)
@@ -241,7 +251,7 @@ class StreamProcessor:
                             error_text = event.error_text or ""
                         final_text = error_text
                     else:
-                        final_text = self._pending_text
+                        final_text = self._total_text
                     yield TextRenderEvent(
                         text=final_text,
                         is_final=True,
@@ -260,8 +270,8 @@ class StreamProcessor:
             if not _result_received:
                 if self._has_any_tool_events():
                     yield self._emit_snapshot(is_complete=True)
-                if self._pending_text:
-                    yield TextRenderEvent(text=self._pending_text, is_final=False)
+                if self._total_text:
+                    yield TextRenderEvent(text=self._total_text, is_final=False)
                 elif not self._has_any_tool_events():
                     # No text, no tools, no result — backend died before producing
                     # anything (e.g. auth failure, crash).  Emit an error event so
@@ -320,7 +330,10 @@ class StreamProcessor:
         # can show inter-tool text progressively (show_intermediate gate).
         flushed_intermediate = False
         if self._show_intermediate and self._pending_text:
-            yield TextRenderEvent(text=self._pending_text, is_final=False)
+            # Text was already streamed chunk-by-chunk in process(); just
+            # clear the per-segment buffer and mark as flushed so the
+            # immediate tool snapshot is suppressed (avoids overwriting
+            # the streamed text with the tool card before the user sees it).
             self._pending_text = ""
             flushed_intermediate = True
         self._accumulate(event)
@@ -348,8 +361,7 @@ class StreamProcessor:
         """
         for tid in sorted(self._open_tool_call_ids):
             log.warning(
-                "StreamProcessor: synthesizing orphan ToolCallEnd for "
-                "tool_call_id=…%s",
+                "StreamProcessor: synthesizing orphan ToolCallEnd for tool_call_id=…%s",
                 tid[-6:],
             )
             yield ToolCallEndRenderEvent(tool_call_id=tid)

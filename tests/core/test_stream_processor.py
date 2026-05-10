@@ -99,7 +99,7 @@ class TestStreamProcessor:
     # ------------------------------------------------------------------
 
     async def test_text_only(self) -> None:
-        """Text-only turn: one TextRenderEvent, no ToolSummaryRenderEvent."""
+        """Text-only turn: two intermediate chunks + one final TextRenderEvent."""
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -111,12 +111,19 @@ class TestStreamProcessor:
         # Act
         result = strip_run_lifecycle(await collect(processor.process(events)))
 
-        # Assert
-        assert len(result) == 1
-        event = result[0]
-        assert isinstance(event, TextRenderEvent)
-        assert event.text == "Hello world"
-        assert event.is_final is True
+        # Assert — each TextLlmEvent streams as is_final=False, then a single
+        # is_final=True with the full accumulated text at ResultLlmEvent.
+        assert len(result) == 3
+        chunk1, chunk2, final = result
+        assert isinstance(chunk1, TextRenderEvent)
+        assert chunk1.text == "Hello "
+        assert chunk1.is_final is False
+        assert isinstance(chunk2, TextRenderEvent)
+        assert chunk2.text == "world"
+        assert chunk2.is_final is False
+        assert isinstance(final, TextRenderEvent)
+        assert final.text == "Hello world"
+        assert final.is_final is True
 
     # ------------------------------------------------------------------
     # T10 — Single Edit tool call (SC-1, SC-2)
@@ -156,7 +163,8 @@ class TestStreamProcessor:
         assert final.is_complete is True
         assert isinstance(text, TextRenderEvent)
         assert text.is_final is True
-        assert text.text == ""  # pending_text was flushed before the tool call
+        # _total_text preserves pre-tool text even after _pending_text is cleared
+        assert text.text == "Refactoring..."
 
     async def test_single_edit_no_intermediate(self) -> None:
         """Single Edit with show_intermediate=False: text held until final event."""
@@ -601,7 +609,7 @@ class TestStreamProcessor:
     # ------------------------------------------------------------------
 
     async def test_text_accumulation(self) -> None:
-        """Multiple TextLlmEvent chunks are concatenated into one TextRenderEvent."""
+        """Chunks streamed individually; final TextRenderEvent has full concat text."""
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -614,10 +622,11 @@ class TestStreamProcessor:
         # Act
         result = await collect(processor.process(events))
 
-        # Assert
+        # Assert — 3 intermediate chunks + 1 final with full concatenated text.
         text_events = [e for e in result if isinstance(e, TextRenderEvent)]
-        assert len(text_events) == 1
-        assert text_events[0].text == "Hello world"
+        assert len(text_events) == 4
+        assert text_events[-1].text == "Hello world"
+        assert text_events[-1].is_final is True
 
     # ------------------------------------------------------------------
     # B3 — is_error propagation from ResultLlmEvent → TextRenderEvent (#392)
@@ -634,13 +643,17 @@ class TestStreamProcessor:
 
         # Act
         result = await collect(processor.process(events))
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+        # One intermediate (is_final=False) + one final (is_final=True).
+        # is_error is only set on the final event.
+        final_text = [
+            e for e in result if isinstance(e, TextRenderEvent) and e.is_final
+        ]
 
         # Assert
-        assert len(text_events) == 1
-        assert text_events[0].text == "error response"
-        assert text_events[0].is_error is True
-        assert text_events[0].is_final is True
+        assert len(final_text) == 1
+        assert final_text[0].text == "error response"
+        assert final_text[0].is_error is True
+        assert final_text[0].is_final is True
 
     async def test_is_error_false_propagated_to_text_render_event(self) -> None:
         """ResultLlmEvent(is_error=False) → TextRenderEvent(is_error=False)."""
@@ -653,11 +666,13 @@ class TestStreamProcessor:
 
         # Act
         result = await collect(processor.process(events))
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+        final_text = [
+            e for e in result if isinstance(e, TextRenderEvent) and e.is_final
+        ]
 
         # Assert
-        assert len(text_events) == 1
-        assert text_events[0].is_error is False
+        assert len(final_text) == 1
+        assert final_text[0].is_error is False
 
     async def test_error_text_surfaces_when_no_streamed_text(self) -> None:
         """ResultLlmEvent(is_error=True, error_text=...) with no streamed text
@@ -698,11 +713,14 @@ class TestStreamProcessor:
 
         # Act
         result = await collect(processor.process(events))
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+        # Final event carries the full accumulated text, not the error_text shim.
+        final_text = [
+            e for e in result if isinstance(e, TextRenderEvent) and e.is_final
+        ]
 
         # Assert
-        assert len(text_events) == 1
-        assert text_events[0].text == "recovered output"
+        assert len(final_text) == 1
+        assert final_text[0].text == "recovered output"
 
     async def test_empty_stream(self) -> None:
         """Empty event stream emits a terminal error event (backend died)."""
@@ -730,11 +748,12 @@ class TestStreamProcessor:
         # Act
         result = await collect(processor.process(events))
 
-        # Assert — pending text emitted with is_final=False to signal truncation
+        # Assert — chunk streamed immediately as is_final=False, then truncation
+        # path emits _total_text again as is_final=False to signal truncation.
         text_events = [e for e in result if isinstance(e, TextRenderEvent)]
-        assert len(text_events) == 1
-        assert text_events[0].text == "partial response"
-        assert text_events[0].is_final is False
+        assert len(text_events) == 2
+        assert all(e.text == "partial response" for e in text_events)
+        assert all(e.is_final is False for e in text_events)
 
     # ------------------------------------------------------------------
     # T24 — Hexagonal boundary (no framework imports in stream_processor)

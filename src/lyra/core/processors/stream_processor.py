@@ -202,7 +202,10 @@ class StreamProcessor:
                     self._total_text += event.text
                     # Stream each chunk progressively so adapters can
                     # edit the placeholder in real time (1 s debounce).
-                    yield TextRenderEvent(text=event.text, is_final=False)
+                    # Gated by show_intermediate so show_intermediate=False
+                    # preserves the legacy hold-until-result behaviour.
+                    if self._show_intermediate:
+                        yield TextRenderEvent(text=event.text, is_final=False)
 
                 elif isinstance(event, ToolUseLlmEvent):
                     async for render_event in self._handle_tool_event(event):

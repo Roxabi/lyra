@@ -183,10 +183,14 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         async def _noop_fallback(text: str) -> None:
             return None
 
+        async def _noop_trace() -> tuple[None, None]:
+            raise ValueError("invalid inbound message")
+
         return PlatformCallbacks(
             send_placeholder=_noop_placeholder,
             edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
-            edit_placeholder_tool=lambda ph, ev, h: asyncio.sleep(0),
+            send_trace_placeholder=_noop_trace,
+            edit_trace=lambda ph, ev: asyncio.sleep(0),
             send_message=_noop_fallback,
             send_fallback=_noop_fallback,
             chunk_text=lambda text: [text],
@@ -222,21 +226,32 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
             except TelegramAPIError as exc:
                 log.debug("Placeholder text edit skipped: %s", exc)
 
-    async def _edit_placeholder_tool(ph: Any, event: Any, header: str = "") -> None:
-        # header = istate.display() = combined intermediate text + tool summary.
-        # Use it directly so ⏳ thinking text stays visible alongside 🔧 recap.
-        text = header if header else _format_tool_summary(event)
+    async def _send_trace_placeholder() -> tuple[Any, int | None]:
+        msg = await adapter.bot.send_message(
+            chat_id=chat_id,
+            text="🔧 …",
+            **({"reply_to_message_id": reply_to} if reply_to is not None else {}),
+        )
+        return msg, msg.message_id
+
+    async def _edit_trace(trace_obj: Any, event: ToolSummaryRenderEvent) -> None:
+        from lyra.adapters.shared._shared import format_tool_summary_header
+        from lyra.core.messaging.tool_recap_format import format_tool_lines
+
+        header = format_tool_summary_header(event)
+        body = "\n".join(format_tool_lines(event))
+        text = f"{header}\n{body}".strip() if body else header
         rendered = _render_text(text)
         if rendered:
             try:
                 await adapter.bot.edit_message_text(
                     chat_id=chat_id,
-                    message_id=ph.message_id,
+                    message_id=trace_obj.message_id,
                     text=rendered[0],
                     parse_mode="MarkdownV2",
                 )
             except TelegramAPIError as exc:
-                log.debug("Tool summary edit skipped: %s", exc)
+                log.debug("Trace edit skipped: %s", exc)
 
     async def _send_message(text: str) -> int | None:
         rendered = _render_text(text)
@@ -265,7 +280,8 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
     return PlatformCallbacks(
         send_placeholder=_send_placeholder,
         edit_placeholder_text=_edit_placeholder_text,
-        edit_placeholder_tool=_edit_placeholder_tool,
+        send_trace_placeholder=_send_trace_placeholder,
+        edit_trace=_edit_trace,
         send_message=_send_message,
         send_fallback=_send_fallback,
         chunk_text=lambda text: _render_text(text) or [text],
@@ -273,5 +289,4 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         cancel_typing=lambda: adapter._cancel_typing(chat_id),
         get_msg=adapter._msg,
         placeholder_text=_placeholder_text,
-        guard_tool_on_intermediate=False,
     )

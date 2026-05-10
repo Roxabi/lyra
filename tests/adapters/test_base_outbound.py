@@ -60,7 +60,8 @@ class TestableAdapter(OutboundAdapterBase):
         return PlatformCallbacks(
             send_placeholder=AsyncMock(return_value=(MagicMock(), 42)),
             edit_placeholder_text=AsyncMock(),
-            edit_placeholder_tool=AsyncMock(),
+            send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
+            edit_trace=AsyncMock(),
             send_message=AsyncMock(return_value=99),
             send_fallback=AsyncMock(return_value=77),
             chunk_text=lambda text: [text],
@@ -232,7 +233,8 @@ class TestOutboundAdapterBaseSendStreaming:
                 return PlatformCallbacks(
                     send_placeholder=AsyncMock(return_value=(MagicMock(), 42)),
                     edit_placeholder_text=AsyncMock(),
-                    edit_placeholder_tool=AsyncMock(),
+                    send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
+                    edit_trace=AsyncMock(),
                     send_message=AsyncMock(return_value=99),
                     send_fallback=AsyncMock(return_value=77),
                     chunk_text=lambda text: [text],

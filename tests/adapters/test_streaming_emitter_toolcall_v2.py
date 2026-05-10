@@ -34,7 +34,8 @@ def _make_callbacks() -> PlatformCallbacks:
     return PlatformCallbacks(
         send_placeholder=AsyncMock(return_value=(object(), 42)),
         edit_placeholder_text=AsyncMock(),
-        edit_placeholder_tool=AsyncMock(),
+        send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
+        edit_trace=AsyncMock(),
         send_message=AsyncMock(return_value=99),
         send_fallback=AsyncMock(return_value=77),
         chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
@@ -70,10 +71,10 @@ class TestSharedEmitterIgnoresToolCallV2:
             )
         )
 
-    async def test_toolcall_v2_does_not_call_edit_placeholder_tool(self) -> None:
-        # Parity contract: v1 ``ToolSummaryRenderEvent`` drives the tool card edit;
+    async def test_toolcall_v2_does_not_call_edit_trace_directly(self) -> None:
+        # Parity contract: v1 ``ToolSummaryRenderEvent`` drives the trace edit;
         # v2 ToolCall* events are silently absorbed (no extra
-        # ``edit_placeholder_tool`` invocation against the v2 events directly).
+        # ``edit_trace`` invocation against the v2 events directly).
         cb = _make_callbacks()
         outbound = OutboundMessage.from_text("hi")
         session = StreamingSession(cb, outbound=outbound)
@@ -86,7 +87,7 @@ class TestSharedEmitterIgnoresToolCallV2:
                 RunFinishedRenderEvent(run_id="r1"),
             )
         )
-        cb.edit_placeholder_tool.assert_not_called()  # type: ignore[attr-defined]
+        cb.edit_trace.assert_not_called()  # type: ignore[attr-defined]
 
     async def test_v1_tool_summary_still_drives_tool_card(self) -> None:
         cb = _make_callbacks()
@@ -102,7 +103,7 @@ class TestSharedEmitterIgnoresToolCallV2:
                 RunFinishedRenderEvent(run_id="r1"),
             )
         )
-        cb.edit_placeholder_tool.assert_called()  # type: ignore[attr-defined]
+        cb.edit_trace.assert_called()  # type: ignore[attr-defined]
 
     async def test_subclass_override_receives_toolcall_v2(self) -> None:
         """PL1 (#1100 review): _on_toolcall_v2 override seam is invoked.

@@ -607,17 +607,29 @@ class TestDiscordIntermediateText:
         assert len(content_edits) >= 1
         assert len(content_edits[0].kwargs["content"]) <= DISCORD_MAX_LENGTH
 
-    async def test_intermediate_text_not_overwritten_by_tool_embed(self) -> None:
-        """Tool embed must preserve intermediate text already shown in placeholder.
+    async def test_trace_placeholder_sent_on_tool_event(self) -> None:
+        """ToolSummaryRenderEvent sends a separate trace placeholder message.
 
-        When intermediate text is displayed first, a subsequent ToolSummaryRenderEvent
-        edits the same placeholder.  The adapter passes the combined header
-        (intermediate text + tool summary) as content alongside the embed, so the
-        ⏳ thinking text stays visible while the 🔧 embed shows tool details — the
-        text is preserved, not erased.
+        The response placeholder continues to show intermediate text (⏳).
+        The tool summary goes to a new trace message (🔧 …) which is then
+        edited in-place with the tool details.  Final text edits the response
+        placeholder, not a new message.
         """
         adapter, channel, placeholder = self._make_adapter()
         msg = make_dc_message()
+
+        trace_obj = AsyncMock()
+        trace_obj.edit = AsyncMock()
+        # The trace placeholder is sent via channel.send (not reply)
+        # We capture it as a separate send call
+        trace_sends: list = []
+
+        async def capturing_send(*args, **kwargs):
+            m = trace_obj
+            trace_sends.append((args, kwargs))
+            return m
+
+        channel.send = capturing_send
 
         async def inter_then_tool():
             yield TextRenderEvent(text="Pre-tool text.", is_final=False)
@@ -626,20 +638,18 @@ class TestDiscordIntermediateText:
 
         await adapter.send_streaming(msg, inter_then_tool())
 
-        # Tool embed edits must preserve the intermediate text in their content.
-        embed_edits = [
+        # Trace placeholder was sent (🔧 …)
+        assert len(trace_sends) >= 1, "Trace placeholder must be sent on tool event"
+        # Response placeholder still shows intermediate text (not erased by tool)
+        intermediate_edits = [
             c
             for c in placeholder.edit.call_args_list
-            if c.kwargs.get("embed") is not None
+            if c.kwargs.get("embed") is None and c.kwargs.get("content")
         ]
-        assert len(embed_edits) >= 1, "Tool summary embed must be emitted"
-        for edit in embed_edits:
-            assert "Pre-tool text." in edit.kwargs.get("content", ""), (
-                "Tool summary embed must not erase intermediate text from placeholder"
-            )
-
-        # Final text must be sent as a new message (had_tool_events=True path).
-        assert channel.send.await_count >= 1
+        assert len(intermediate_edits) >= 1, "Intermediate text edit must occur"
+        assert "Pre-tool text." in intermediate_edits[0].kwargs["content"]
+        # Trace obj was edited with the tool embed
+        trace_obj.edit.assert_awaited()
 
 
 # ---------------------------------------------------------------------------

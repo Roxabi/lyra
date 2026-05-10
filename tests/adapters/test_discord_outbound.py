@@ -488,15 +488,8 @@ async def test_streaming_edit_placeholder_text() -> None:
 
 
 @pytest.mark.asyncio
-async def test_streaming_edit_placeholder_tool() -> None:
-    """edit_placeholder_tool preserves header as content alongside the tool embed.
-
-    When header is empty, content falls back to a zero-width space so Discord
-    accepts the edit (an empty string with an embed is rejected).  When header
-    is non-empty (e.g. accumulated intermediate text + tool summary), it is
-    passed through as content so ⏳ thinking text stays visible alongside the
-    🔧 embed.
-    """
+async def test_streaming_edit_trace() -> None:
+    """edit_trace calls trace_obj.edit with the tool summary header and embed."""
     from lyra.adapters.discord import DiscordAdapter
     from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
     from lyra.core.messaging.render_events import ToolSummaryRenderEvent
@@ -507,27 +500,16 @@ async def test_streaming_edit_placeholder_tool() -> None:
         intents=discord.Intents.none(),
     )
 
-    ph = AsyncMock()
-    ph.edit = AsyncMock()
+    trace_obj = AsyncMock()
+    trace_obj.edit = AsyncMock()
     event = ToolSummaryRenderEvent(is_complete=True)
 
     outbound = OutboundMessage.from_text("")
     callbacks = build_streaming_callbacks(adapter, make_dc_inbound_msg(), outbound)
 
-    # Empty header → zero-width space placeholder so Discord accepts the edit.
-    await callbacks.edit_placeholder_tool(ph, event, "")
-    ph.edit.assert_awaited_once()
-    call_kwargs = ph.edit.call_args.kwargs
-    assert call_kwargs["content"] == "​"
-    assert isinstance(call_kwargs["embed"], discord.Embed)
-
-    # Non-empty header → preserved verbatim as content alongside the embed.
-    ph.edit.reset_mock()
-    header = "⏳ Pre-tool text.\n\n🔧 Done ✅"
-    await callbacks.edit_placeholder_tool(ph, event, header)
-    ph.edit.assert_awaited_once()
-    call_kwargs = ph.edit.call_args.kwargs
-    assert call_kwargs["content"] == header
+    await callbacks.edit_trace(trace_obj, event)
+    trace_obj.edit.assert_awaited_once()
+    call_kwargs = trace_obj.edit.call_args.kwargs
     assert isinstance(call_kwargs["embed"], discord.Embed)
 
 

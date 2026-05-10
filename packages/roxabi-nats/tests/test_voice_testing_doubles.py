@@ -356,7 +356,7 @@ def test_g1_import_without_extra(tmp_path: Path) -> None:
         # the Guard 1 tripwire in testing/voice.py consumes the sabotage.
         _stub("roxabi_nats.adapter_base", NatsAdapterBase=None)
         _stub("roxabi_nats.connect", nats_connect=None)
-        _stub("roxabi_nats.driver_base", NatsDriverBase=None)
+        _stub("roxabi_nats.driver_base", NatsDriverBase=None, WorkerUnavailableError=RuntimeError)
         _stub("roxabi_nats._serialize", _TypeHintResolver=object)
         _stub(
             "roxabi_nats.testing._guards",

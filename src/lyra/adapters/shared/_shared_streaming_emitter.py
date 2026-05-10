@@ -31,6 +31,7 @@ from lyra.core.messaging import (
     ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
+
 log = logging.getLogger(__name__)
 
 
@@ -186,13 +187,17 @@ class StreamingSession:
                         try:
                             self._trace_obj, _ = await self._cb.send_trace_placeholder()
                         except Exception:
-                            log.exception("Failed to send trace placeholder — tool activity will not be shown")
+                            log.exception(
+                                "Failed to send trace placeholder"
+                                " — tool activity will not be shown"
+                            )
                     if self._trace_obj is not None:
                         now = time.monotonic()
                         if (
                             event.is_complete
                             or self._st.last_tool_edit is None
-                            or (now - self._st.last_tool_edit) >= STREAMING_EDIT_INTERVAL
+                            or (now - self._st.last_tool_edit)
+                            >= STREAMING_EDIT_INTERVAL
                         ):
                             try:
                                 await self._cb.edit_trace(self._trace_obj, event)

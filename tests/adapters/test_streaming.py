@@ -622,7 +622,6 @@ class TestDiscordIntermediateText:
         trace_obj.edit = AsyncMock()
         # The trace placeholder is sent via channel.send (not reply)
         # We capture it as a separate send call
-        real_channel_send = channel.send
         trace_sends: list = []
 
         async def capturing_send(*args, **kwargs):

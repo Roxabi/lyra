@@ -8,8 +8,7 @@ All tests use mock PlatformCallbacks — no platform SDK imports required.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import cast
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -81,7 +80,7 @@ async def test_text_only_turn():
 
 
 async def test_tool_then_text_turn():
-    """Tool event + final text: trace placeholder sent, text edits response placeholder."""
+    """Tool event + final text: trace placeholder sent, response placeholder edited."""
     outbound = OutboundMessage.from_text("x")
     cb = _make_callbacks()
     placeholder_obj = object()

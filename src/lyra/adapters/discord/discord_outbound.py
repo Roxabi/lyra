@@ -240,9 +240,8 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
 
     async def _edit_trace(trace_obj: Any, event: ToolSummaryRenderEvent) -> None:
         embed = _build_tool_embed(event)
-        header = format_tool_summary_header(event)
         await send_with_retry(
-            lambda e=embed, h=header: trace_obj.edit(content=h, embed=e),
+            lambda e=embed: trace_obj.edit(content=None, embed=e),
             label="Trace embed edit",
         )
 

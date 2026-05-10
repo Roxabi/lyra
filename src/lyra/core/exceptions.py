@@ -11,6 +11,14 @@ class StreamChunkTimeout(TimeoutError):
     """Raised when the outbound chunk queue was idle past the timeout threshold."""
 
 
+class WorkerUnavailableError(RuntimeError):
+    """Raised when the LLM worker's heartbeat stops during an active stream."""
+
+
+class HubUnavailableError(RuntimeError):
+    """Raised when the hub health check fails during adapter-side stream drain."""
+
+
 class ScrapeFailed(Exception):
     """Raised when the scraper fails or is not available."""
 

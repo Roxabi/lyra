@@ -182,6 +182,9 @@ class TestStreamGen:
         # Arrange
         nc = _make_mock_nc()
         driver = _ConcreteDriver(nc, timeout=0.05)
+        # Seed a fresh heartbeat so the liveness check passes; this test exercises
+        # the per-chunk idle-timeout path, not the worker-unavailable path.
+        driver._worker_freshness["worker-test"] = time.monotonic()
 
         sub_mock = MagicMock()
         sub_mock.unsubscribe = AsyncMock()
@@ -213,6 +216,9 @@ class TestStreamGen:
         # Arrange — long per-chunk timeout, short absolute deadline.
         nc = _make_mock_nc()
         driver = _ConcreteDriver(nc, timeout=5.0, max_total_duration=0.2)
+        # Seed a fresh heartbeat so the liveness check passes; this test exercises
+        # the absolute-deadline path, not the worker-unavailable path.
+        driver._worker_freshness["worker-test"] = time.monotonic()
 
         captured_cb = None
 
@@ -713,3 +719,51 @@ class TestConstruction:
         """HB_TTL class constant is 30.0."""
         # Arrange / Act / Assert
         assert _ConcreteDriver.HB_TTL == 30.0
+
+
+# ---------------------------------------------------------------------------
+# T_stream_gen_liveness — health-check-driven stream abort
+# ---------------------------------------------------------------------------
+
+
+class TestStreamGenLiveness:
+    """_stream_gen raises WorkerUnavailableError when worker heartbeats stop."""
+
+    @pytest.mark.asyncio
+    async def test_worker_unavailable_raises(self) -> None:
+        """WorkerUnavailableError raised when HB_SUBJECT set and no live workers."""
+        nc = _make_mock_nc()
+        driver = _ConcreteDriver(nc, timeout=30.0)
+        driver.LIVENESS_POLL_INTERVAL = 0.05  # fast poll for test
+
+        sub_mock = MagicMock()
+        sub_mock.unsubscribe = AsyncMock()
+        nc.subscribe = AsyncMock(return_value=sub_mock)
+
+        # No heartbeats → _any_worker_alive() returns False immediately
+        from roxabi_nats.driver_base import WorkerUnavailableError
+
+        with pytest.raises(WorkerUnavailableError):
+            async for _ in driver._stream_gen("lyra.clipool.exec", {"cmd": "ls"}):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_no_hb_subject_falls_back_to_timeout(self) -> None:
+        """With no HB_SUBJECT, liveness check is skipped and 120s backstop applies."""
+
+        class _NoHBDriver(NatsDriverBase):
+            HB_SUBJECT: str = ""  # no heartbeat subject
+
+        nc = _make_mock_nc()
+        driver = _NoHBDriver(nc, timeout=0.1)  # short timeout for test
+
+        sub_mock = MagicMock()
+        sub_mock.unsubscribe = AsyncMock()
+        nc.subscribe = AsyncMock(return_value=sub_mock)
+
+        collected: list[dict] = []
+        async for chunk in driver._stream_gen("lyra.test.exec", {"cmd": "ls"}):
+            collected.append(chunk)
+
+        # Falls back to timeout exit — no error raised
+        assert collected == []

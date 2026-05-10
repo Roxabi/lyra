@@ -23,8 +23,12 @@ if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
     from nats.aio.subscription import Subscription
 
-__all__ = ["NatsDriverBase"]
+__all__ = ["NatsDriverBase", "WorkerUnavailableError"]
 log = logging.getLogger(__name__)
+
+
+class WorkerUnavailableError(RuntimeError):
+    """Raised when the worker's heartbeat stops during an active stream."""
 
 
 class NatsDriverBase:
@@ -36,6 +40,8 @@ class NatsDriverBase:
     # hung worker that keeps emitting keepalive chunks forever; the per-chunk
     # `timeout` is a liveness check, not a duration cap.
     DEFAULT_MAX_TOTAL_DURATION: float = 1800.0
+    # How often to poll the queue before checking worker liveness.
+    LIVENESS_POLL_INTERVAL: float = 5.0
 
     def __init__(
         self,
@@ -97,6 +103,43 @@ class NatsDriverBase:
         del pool_id
         return self._nc.is_connected and self._any_worker_alive()
 
+    async def _wait_for_chunk(
+        self,
+        queue: asyncio.Queue,
+        effective_timeout: float,
+        deadline: float,
+        subject: str,
+    ) -> Any | None:
+        """Poll *queue* in short intervals, checking worker liveness between polls.
+
+        Returns the next message, or ``None`` if the per-chunk timeout elapsed
+        (last-resort backstop path).  Raises :exc:`WorkerUnavailableError` when
+        ``HB_SUBJECT`` is set and no live worker is detected.
+        """
+        poll = min(self.LIVENESS_POLL_INTERVAL, effective_timeout)
+        elapsed_idle = 0.0
+        while True:
+            try:
+                return await asyncio.wait_for(queue.get(), timeout=poll)
+            except TimeoutError:
+                elapsed_idle += poll
+                if self.HB_SUBJECT and not self._any_worker_alive():
+                    log.warning(
+                        "nats_driver_base: worker unavailable, aborting stream on %s",
+                        subject,
+                    )
+                    raise WorkerUnavailableError(
+                        f"worker heartbeat stopped during stream on {subject!r}"
+                    )
+                if elapsed_idle >= effective_timeout:
+                    # Last-resort: 120s backstop (no liveness signal)
+                    log.warning("nats_driver_base: _stream_gen timeout on %s", subject)
+                    return None
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
+                poll = min(self.LIVENESS_POLL_INTERVAL, remaining)
+
     async def _stream_gen(
         self,
         subject: str,
@@ -149,12 +192,10 @@ class NatsDriverBase:
                     )
                     return
                 effective_timeout = min(timeout, remaining)
-                try:
-                    msg = await asyncio.wait_for(
-                        queue.get(), timeout=effective_timeout
-                    )
-                except TimeoutError:
-                    log.warning("nats_driver_base: _stream_gen timeout on %s", subject)
+                msg = await self._wait_for_chunk(
+                    queue, effective_timeout, deadline, subject
+                )
+                if msg is None:
                     return
                 try:
                     chunk: dict = json.loads(msg.data)

@@ -435,10 +435,8 @@ async def test_streaming_edit_placeholder_text_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_streaming_edit_placeholder_tool() -> None:
-    """edit_placeholder_tool closure formats tool summary + calls edit_message_text.
-    Covers L221-232.
-    """
+async def test_streaming_edit_trace() -> None:
+    """edit_trace closure formats tool summary + calls edit_message_text."""
     from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
 
     adapter = _make_telegram_adapter()
@@ -449,11 +447,11 @@ async def test_streaming_edit_placeholder_tool() -> None:
     outbound = OutboundMessage.from_text("")
 
     callbacks = build_streaming_callbacks(adapter, original_msg, outbound)
-    ph = SimpleNamespace(message_id=7)
+    trace_obj = SimpleNamespace(message_id=7)
     event = ToolSummaryRenderEvent(bash_commands=["ls"], is_complete=True)
 
     # Act
-    await callbacks.edit_placeholder_tool(ph, event, "")
+    await callbacks.edit_trace(trace_obj, event)
 
     # Assert
     adapter.bot.edit_message_text.assert_awaited_once()

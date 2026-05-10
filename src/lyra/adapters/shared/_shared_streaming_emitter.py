@@ -31,8 +31,6 @@ from lyra.core.messaging import (
     ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
-from lyra.core.messaging.tool_recap_format import format_tool_lines
-
 log = logging.getLogger(__name__)
 
 
@@ -47,7 +45,8 @@ class PlatformCallbacks:
 
     send_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
     edit_placeholder_text: Callable[[Any, str], Awaitable[None]]
-    edit_placeholder_tool: Callable[[Any, ToolSummaryRenderEvent, str], Awaitable[None]]
+    send_trace_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
+    edit_trace: Callable[[Any, ToolSummaryRenderEvent], Awaitable[None]]
     send_message: Callable[[str], Awaitable[int | None]]
     send_fallback: Callable[[str], Awaitable[int | None]]
     chunk_text: Callable[[str], list[str]]
@@ -55,7 +54,6 @@ class PlatformCallbacks:
     cancel_typing: Callable[[], None]
     get_msg: Callable[[str, str], str]
     placeholder_text: str
-    guard_tool_on_intermediate: bool = True
 
 
 async def _prepend(
@@ -71,10 +69,11 @@ class StreamingSession:
     """Platform-agnostic streaming session.
 
     Orchestrates the streaming lifecycle:
-      1. Send placeholder
-      2. Edit placeholder on each event (debounced)
-      3. Deliver final text (edit placeholder or send new message for tool turns)
-      4. Manage typing indicator tail
+      1. Send response placeholder
+      2. Edit response placeholder on each text event (debounced)
+      3. On first tool event: lazily send trace placeholder, edit it with tool activity
+      4. Deliver final text by editing the response placeholder in-place (always)
+      5. Manage typing indicator tail
 
     Platform-specific behaviour (API calls, text formatting) is injected via
     ``PlatformCallbacks``. The session is single-use — create a new instance
@@ -89,6 +88,7 @@ class StreamingSession:
         self._cb = callbacks
         self._outbound = outbound
         self._st = StreamState()
+        self._trace_obj: Any | None = None
 
     async def _on_toolcall_v2(
         self,
@@ -181,32 +181,23 @@ class StreamingSession:
 
                 if isinstance(event, ToolSummaryRenderEvent):
                     self._st.had_tool_events = True
-                    header = "🔧 Done ✅" if event.is_complete else "🔧 Working…"
-                    body = "\n".join(format_tool_lines(event))
-                    summary = f"{header}\n{body}".strip() if body else header
-                    self._st.istate.set_tool_summary(summary)
-                    # Guard: on Discord, don't overwrite intermediate text already
-                    # visible in the placeholder (tool summary lives in a separate
-                    # embed). On Telegram, tool summary is combined with intermediate
-                    # text via IntermediateTextState.display(combine_recap=True).
-                    if not (
-                        self._cb.guard_tool_on_intermediate
-                        and self._st.istate.has_intermediate_text
-                    ):
+                    # Lazily send trace placeholder on first tool event
+                    if self._trace_obj is None:
+                        try:
+                            self._trace_obj, _ = await self._cb.send_trace_placeholder()
+                        except Exception:
+                            log.exception("Failed to send trace placeholder — tool activity will not be shown")
+                    if self._trace_obj is not None:
                         now = time.monotonic()
                         if (
                             event.is_complete
                             or self._st.last_tool_edit is None
-                            or (now - self._st.last_tool_edit)
-                            >= STREAMING_EDIT_INTERVAL
+                            or (now - self._st.last_tool_edit) >= STREAMING_EDIT_INTERVAL
                         ):
-                            display_text = self._st.istate.display()
                             try:
-                                await self._cb.edit_placeholder_tool(
-                                    placeholder_obj, event, display_text
-                                )
-                            except Exception as edit_exc:  # noqa: BLE001  # streaming edit: any send failure is non-fatal
-                                log.debug("Tool summary edit skipped: %s", edit_exc)
+                                await self._cb.edit_trace(self._trace_obj, event)
+                            except Exception as exc:  # noqa: BLE001
+                                log.debug("Trace edit skipped: %s", exc)
                             self._st.last_tool_edit = now
 
                 elif isinstance(event, TextRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
@@ -238,20 +229,6 @@ class StreamingSession:
         except Exception as exc:
             self._st.stream_error = exc
             log.exception("Stream interrupted")
-
-    async def _deliver_tool_chunks(
-        self,
-        final_chunks: list[str],
-    ) -> None:
-        """Send final text as new messages (tool-using turns)."""
-        last_msg_id: int | None = None
-        for chunk in final_chunks:
-            try:
-                last_msg_id = await self._cb.send_message(chunk)
-            except Exception:
-                log.exception("Failed to send final text chunk")
-        if self._outbound is not None and last_msg_id is not None:
-            self._outbound.metadata["reply_message_id"] = last_msg_id
 
     async def _deliver_text_chunks(
         self,
@@ -285,19 +262,15 @@ class StreamingSession:
         display_text = self._st.build_display_text(self._cb.get_msg)
         chunks = self._cb.chunk_text(display_text) if display_text else []
         if chunks:
-            if self._st.had_tool_events:
-                await self._deliver_tool_chunks(chunks)
-            else:
-                await self._deliver_text_chunks(placeholder_obj, chunks)
+            await self._deliver_text_chunks(placeholder_obj, chunks)
             return
 
         # No deliverable content — surface a descriptive error rather than "…".
         log.warning(
             "streaming turn ended with no display text"
-            " (final_text=%r stream_error=%r had_tool_events=%s)",
+            " (final_text=%r stream_error=%r)",
             self._st.final_text,
             self._st.stream_error,
-            self._st.had_tool_events,
         )
         error_text = (
             classify_stream_error(

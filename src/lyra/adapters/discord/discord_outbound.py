@@ -188,10 +188,14 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         async def _noop(text=""):
             return None
 
+        async def _bad_trace():
+            raise ValueError("not a discord message")
+
         return PlatformCallbacks(
             send_placeholder=_bad_placeholder,
             edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
-            edit_placeholder_tool=lambda ph, ev, h: asyncio.sleep(0),
+            send_trace_placeholder=_bad_trace,
+            edit_trace=lambda ph, ev: asyncio.sleep(0),
             send_message=_noop,
             send_fallback=_noop,
             chunk_text=lambda t: [t],
@@ -229,14 +233,17 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
             label="Intermediate text edit",
         )
 
-    async def _edit_placeholder_tool(ph, event, header: str = ""):
+    async def _send_trace_placeholder() -> tuple[Any, int | None]:
+        messageable = await adapter._resolve_channel(send_to_id)
+        msg = await messageable.send("🔧 …")
+        return msg, msg.id
+
+    async def _edit_trace(trace_obj: Any, event: ToolSummaryRenderEvent) -> None:
         embed = _build_tool_embed(event)
-        # header = istate.display() = combined intermediate text + tool summary.
-        # Preserve it as content so ⏳ thinking text stays visible alongside embed.
-        content = header[-DISCORD_MAX_LENGTH:] if header else "​"
+        header = format_tool_summary_header(event)
         await send_with_retry(
-            lambda e=embed, c=content: ph.edit(content=c, embed=e),
-            label="Tool summary embed",
+            lambda e=embed, h=header: trace_obj.edit(content=h, embed=e),
+            label="Trace embed edit",
         )
 
     async def _send_message(text: str) -> int | None:
@@ -270,7 +277,8 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
     return PlatformCallbacks(
         send_placeholder=_send_placeholder,
         edit_placeholder_text=_edit_placeholder_text,
-        edit_placeholder_tool=_edit_placeholder_tool,
+        send_trace_placeholder=_send_trace_placeholder,
+        edit_trace=_edit_trace,
         send_message=_send_message,
         send_fallback=_send_fallback,
         chunk_text=lambda text: render_text(text, DISCORD_MAX_LENGTH),
@@ -278,5 +286,4 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
         cancel_typing=lambda: adapter._cancel_typing(send_to_id),
         get_msg=adapter._msg,
         placeholder_text=_placeholder_text,
-        guard_tool_on_intermediate=False,
     )

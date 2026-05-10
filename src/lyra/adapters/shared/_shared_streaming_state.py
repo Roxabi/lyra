@@ -29,34 +29,26 @@ _MAX_INTERMEDIATE_CHARS = 8_000
 
 
 class IntermediateTextState:
-    """Tracks accumulated intermediate text and tool recap for streaming display.
+    """Tracks accumulated intermediate text for streaming display.
 
     Extracted from TelegramAdapter and DiscordAdapter to eliminate identical
     intermediate-text accumulation and formatting logic. Each new segment gets
     a ⏳ prefix and is separated by a newline so multiple thoughts stack
-    vertically. The latest tool recap can optionally be combined below the text.
+    vertically.
 
     Usage::
 
         state = IntermediateTextState()
         state.append(event.text)           # on TextRenderEvent(is_final=False)
-        state.set_tool_summary(recap)      # on ToolSummaryRenderEvent
-        display = state.display()          # text + recap (Telegram)
-        display = state.display(combine_recap=False)  # text only (Discord)
+        display = state.display()          # accumulated intermediate text
     """
 
     def __init__(self) -> None:
         self._text: str = ""
-        self._tool_summary: str = ""
-
-    @property
-    def has_intermediate_text(self) -> bool:
-        """True once at least one intermediate segment has been appended."""
-        return bool(self._text)
 
     @property
     def text(self) -> str:
-        """Raw accumulated intermediate text (without tool summary)."""
+        """Raw accumulated intermediate text."""
         return self._text
 
     def append(self, new_text: str) -> None:
@@ -75,21 +67,9 @@ class IntermediateTextState:
         else:
             self._text = "⏳ " + new_text
 
-    def set_tool_summary(self, summary: str) -> None:
-        """Update the latest tool recap text."""
-        self._tool_summary = summary
-
-    def display(self, *, combine_recap: bool = True) -> str:
-        """Return the string to render in the placeholder message.
-
-        When *combine_recap* is ``True`` (default) and both intermediate text
-        and a tool recap are present, they are joined with a blank line so both
-        remain visible in the same message edit.  Pass ``combine_recap=False``
-        on Discord, where the recap lives in a separate embed.
-        """
-        if combine_recap and self._text and self._tool_summary:
-            return self._text + "\n\n" + self._tool_summary
-        return self._text or self._tool_summary
+    def display(self) -> str:
+        """Return the accumulated intermediate text for the placeholder."""
+        return self._text
 
 
 _ERR_TIMEOUT_FALLBACK = (

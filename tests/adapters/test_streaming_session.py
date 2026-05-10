@@ -30,7 +30,8 @@ def _make_callbacks(**overrides) -> PlatformCallbacks:
     cb = PlatformCallbacks(
         send_placeholder=AsyncMock(return_value=(object(), 42)),
         edit_placeholder_text=AsyncMock(),
-        edit_placeholder_tool=AsyncMock(),
+        send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
+        edit_trace=AsyncMock(),
         send_message=AsyncMock(return_value=99),
         send_fallback=AsyncMock(return_value=77),
         chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
@@ -80,12 +81,13 @@ async def test_text_only_turn():
 
 
 async def test_tool_then_text_turn():
-    """Tool event + final text: tool edits placeholder, text sent as new message."""
+    """Tool event + final text: trace placeholder sent, text edits response placeholder."""
     outbound = OutboundMessage.from_text("x")
     cb = _make_callbacks()
     placeholder_obj = object()
+    trace_obj = object()
     cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
-    cb.send_message = AsyncMock(return_value=99)
+    cb.send_trace_placeholder = AsyncMock(return_value=(trace_obj, 43))
 
     session = StreamingSession(cb, outbound=outbound)
     await session.run(
@@ -95,9 +97,11 @@ async def test_tool_then_text_turn():
         )
     )
 
-    cb.edit_placeholder_tool.assert_called_once()
-    cb.send_message.assert_called_once_with("result")
-    assert outbound.metadata["reply_message_id"] == 99
+    cb.send_trace_placeholder.assert_called_once()
+    cb.edit_trace.assert_called_once()
+    cb.edit_placeholder_text.assert_called_with(placeholder_obj, "result")
+    cb.send_message.assert_not_called()
+    assert outbound.metadata["reply_message_id"] == 42
 
 
 async def test_tool_then_text_turn_outbound_none():
@@ -115,7 +119,8 @@ async def test_tool_then_text_turn_outbound_none():
         )
     )
 
-    cb.send_message.assert_called_once_with("result")
+    cb.edit_placeholder_text.assert_called_with(placeholder_obj, "result")
+    cb.send_message.assert_not_called()
 
 
 async def test_stream_error_no_text():
@@ -307,13 +312,13 @@ async def test_typing_tail_final():
 
 
 # ---------------------------------------------------------------------------
-# Tests — intermediate text guard
+# Tests — trace placeholder
 # ---------------------------------------------------------------------------
 
 
-async def test_intermediate_text_guard_discord():
-    """Tool edit NOT called when guard=True and intermediate text is visible."""
-    cb = _make_callbacks(guard_tool_on_intermediate=True)
+async def test_trace_placeholder_sent_on_tool_event():
+    """edit_trace IS called when a ToolSummaryRenderEvent is received."""
+    cb = _make_callbacks()
     placeholder_obj = object()
     cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
 
@@ -326,25 +331,25 @@ async def test_intermediate_text_guard_discord():
         )
     )
 
-    cb.edit_placeholder_tool.assert_not_called()
+    cb.send_trace_placeholder.assert_called_once()
+    cb.edit_trace.assert_called_once()
 
 
-async def test_intermediate_text_guard_telegram():
-    """Tool edit IS called when guard=False (Telegram: combine_recap=True)."""
-    cb = _make_callbacks(guard_tool_on_intermediate=False)
+async def test_trace_placeholder_not_sent_on_text_only():
+    """send_trace_placeholder NOT called on text-only turns."""
+    cb = _make_callbacks()
     placeholder_obj = object()
     cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
 
     session = StreamingSession(cb, outbound=None)
     await session.run(
         _events(
-            TextRenderEvent("thinking", is_final=False),
-            ToolSummaryRenderEvent(is_complete=True),
             TextRenderEvent("done", is_final=True),
         )
     )
 
-    cb.edit_placeholder_tool.assert_called_once()
+    cb.send_trace_placeholder.assert_not_called()
+    cb.edit_trace.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -367,20 +372,16 @@ async def test_overflow_chunks():
 
 
 async def test_had_tool_events_reply_id_last_chunk_only():
-    """reply_message_id updated only for the last chunk in had_tool_events branch."""
+    """reply_message_id is the placeholder's ID when tool events present.
+
+    Final text edits the response placeholder (not new messages), so the
+    reply_message_id stays as the placeholder's ID.
+    """
     outbound = OutboundMessage.from_text("x")
     cb = _make_callbacks()
     placeholder_obj = object()
     cb.send_placeholder = AsyncMock(return_value=(placeholder_obj, 42))
     cb.chunk_text = MagicMock(return_value=["part1", "part2"])
-    send_call_count = 0
-
-    async def _send_message(_chunk: str) -> int:
-        nonlocal send_call_count
-        send_call_count += 1
-        return 100 + send_call_count
-
-    cb.send_message = cast(Callable[[str], Awaitable[int | None]], _send_message)
 
     session = StreamingSession(cb, outbound=outbound)
     await session.run(
@@ -390,7 +391,8 @@ async def test_had_tool_events_reply_id_last_chunk_only():
         )
     )
 
-    assert outbound.metadata["reply_message_id"] == 102
+    # Placeholder ID (42) set at placeholder send; final text edits placeholder
+    assert outbound.metadata["reply_message_id"] == 42
 
 
 # ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@ TURN_TIMEOUT_DEFAULT: float | None = None  # CliPool handles liveness
 class Pool:
     """One pool per conversation scope. Holds history and a per-session asyncio.Task."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913 — POLICY:wiring
         self,
         pool_id: str,
         agent_name: str,
@@ -42,7 +42,7 @@ class Pool:
         safe_dispatch_timeout: float | None = None,
         max_merged_chars: int | None = None,
         cancel_on_new_message: bool | None = None,
-    ) -> None:  # noqa: PLR0913
+    ) -> None:  # noqa: PLR0913 — POLICY:wiring
         cfg: PoolConfig = config if config is not None else PoolConfig()
         # Allow individual param overrides for backward compat
         tt_default = turn_timeout != TURN_TIMEOUT_DEFAULT
@@ -215,7 +215,7 @@ class Pool:
             if self._on_resume_fn is not None:
                 try:
                     await self._on_resume_fn(session_id)
-                except Exception:  # noqa: BLE001 — resilient: TurnStore errors must not abort session
+                except Exception:  # noqa: BLE001 — POLICY:boundary — resilient: TurnStore errors must not abort session
                     log.exception(
                         "[pool:%s] resume count increment failed for %r",
                         self.pool_id,
@@ -240,7 +240,7 @@ class Pool:
                 await self._observer._turn_store.start_session(
                     self.session_id, self.pool_id
                 )
-            except Exception:  # noqa: BLE001 — resilient: TurnStore errors must not abort session
+            except Exception:  # noqa: BLE001 — POLICY:boundary — resilient: TurnStore errors must not abort session
                 log.exception("[pool:%s] start_session failed", self.pool_id)
         self._observer.reset_session_persisted()
         if self._session_reset_fn is not None:

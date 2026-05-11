@@ -29,7 +29,7 @@ class StreamingIterator:
     *pool_reset_fn* to kill the subprocess on cancellation.
     """
 
-    def __init__(  # noqa: PLR0913 — protocol fn: positional args map 1:1 to wire-level concerns
+    def __init__(  # noqa: PLR0913 — POLICY:wiring — protocol fn: positional args map 1:1 to wire-level concerns
         self,
         entry: _ProcessEntry,
         pool_id: str,
@@ -69,7 +69,7 @@ class StreamingIterator:
     def __aiter__(self) -> "StreamingIterator":
         return self
 
-    async def __anext__(self) -> LlmEvent:  # noqa: C901 — protocol event dispatch with I/O
+    async def __anext__(self) -> LlmEvent:  # noqa: C901 — DEBT:complexity-residual — protocol event dispatch with I/O
         if self._done or self._parser._done:
             self._done = True
             raise StopAsyncIteration
@@ -161,7 +161,7 @@ class StreamingIterator:
         if not self._done and self._pool_reset_fn is not None:
             try:
                 await self._pool_reset_fn()
-            except Exception:  # noqa: BLE001   — POLICY:boundary# top-level boundary
+            except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
                 log.warning(
                     "[pool:%s] pool_reset_fn failed in streaming cleanup",
                     self._pool_id,
@@ -174,7 +174,7 @@ class StreamingIterator:
         await self._cleanup()
 
 
-async def send_and_read_stream(  # noqa: PLR0913 -- protocol fn: positional args map 1:1 to wire-level concerns
+async def send_and_read_stream(  # noqa: PLR0913 — POLICY:wiring-- protocol fn: positional args map 1:1 to wire-level concerns
     entry: _ProcessEntry,
     message: str,
     pool_id: str,

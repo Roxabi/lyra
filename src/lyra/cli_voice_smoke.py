@@ -15,7 +15,7 @@ import nats.errors
 import typer
 from nats.aio.client import Client as NATS
 
-from roxabi_nats.connect import nats_connect  # noqa: F401 — module-level for patching
+from roxabi_nats.connect import nats_connect  # noqa: F401 — POLICY:re-export
 
 _SMOKE_TEXT = "Voice cutover smoke test one two three"
 _SMOKE_KEYWORDS = {"voice", "cutover", "smoke", "one", "two", "three"}
@@ -79,7 +79,7 @@ def voice_smoke(
         )
     except SystemExit:
         raise
-    except Exception as exc:  # noqa: BLE001  — POLICY:boundary— resilient: CLI entry-point catch-all for unexpected async errors
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary — resilient: CLI entry-point catch-all for unexpected async errors
         typer.echo(f"FAIL: unexpected error — {exc}", err=True)
         raise typer.Exit(1)
 
@@ -98,7 +98,7 @@ async def _run_smoke(
     """Execute the round-trip and exit with 0 (pass) or 1 (fail)."""
     try:
         nc = await nats_connect(nats_url)
-    except Exception as exc:  # noqa: BLE001  — POLICY:boundary— resilient: NATS connect errors span auth, TLS, DNS, and OS-level failures
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary — resilient: NATS connect errors span auth, TLS, DNS, and OS-level failures
         typer.echo(f"FAIL: cannot connect to NATS at {nats_url!r} — {exc}", err=True)
         raise typer.Exit(1)
 
@@ -199,7 +199,7 @@ async def _step_tts(nc: NATS, timeout: float) -> tuple[bytes, str]:
             err=True,
         )
         raise typer.Exit(1)
-    except Exception as exc:  # noqa: BLE001  — POLICY:boundary— resilient: NATS request can raise varied errors beyond timeout
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary — resilient: NATS request can raise varied errors beyond timeout
         typer.echo("")
         typer.echo(f"FAIL: TTS request error — {exc}", err=True)
         raise typer.Exit(1)
@@ -246,7 +246,7 @@ async def _step_stt(
             err=True,
         )
         raise typer.Exit(1)
-    except Exception as exc:  # noqa: BLE001  — POLICY:boundary— resilient: NATS request can raise varied errors beyond timeout
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary — resilient: NATS request can raise varied errors beyond timeout
         typer.echo("")
         typer.echo(f"FAIL: STT request error — {exc}", err=True)
         raise typer.Exit(1)

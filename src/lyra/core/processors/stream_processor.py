@@ -168,7 +168,7 @@ class StreamProcessor:
     # Public interface
     # ------------------------------------------------------------------
 
-    async def process(  # noqa: C901, PLR0915  — POLICY:wiring— event-type dispatch + terminal fallbacks
+    async def process(  # noqa: C901, PLR0915 — POLICY:wiring — event-type dispatch + terminal fallbacks
         self, events: AsyncIterator[LlmEvent]
     ) -> AsyncGenerator[RenderEvent, None]:
         """Process an async stream of ``LlmEvent`` objects.

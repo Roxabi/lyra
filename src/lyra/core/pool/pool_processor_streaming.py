@@ -55,7 +55,7 @@ def build_streaming_capture(
     return _capture()
 
 
-def build_streaming_turn_logger(  # noqa: PLR0913 — internal helper, params bundled for streaming context
+def build_streaming_turn_logger(  # noqa: PLR0913 — POLICY:wiring — internal helper, params bundled for streaming context
     pool: Pool,
     result_iter_for_sid: collections.abc.AsyncIterator[RenderEvent],
     original_msg: InboundMessage,
@@ -115,5 +115,5 @@ async def run_streaming_turn_post(
         import asyncio
 
         await asyncio.create_task(processor.post(original_msg, streamed))  # type: ignore[misc] — POLICY:defensive-narrow
-    except Exception:  # noqa: BLE001  # top-level boundary
+    except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
         log.warning("Processor post() failed (streaming)", exc_info=True)

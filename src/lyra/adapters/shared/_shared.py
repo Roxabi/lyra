@@ -73,7 +73,7 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 
-async def push_to_hub_guarded(  # noqa: PLR0913 — each arg is a distinct guard/callback dependency
+async def push_to_hub_guarded(  # noqa: PLR0913 — POLICY:wiring — each arg is a distinct guard/callback dependency
     *,
     inbound_bus: "Bus[Any]",
     platform: Platform,

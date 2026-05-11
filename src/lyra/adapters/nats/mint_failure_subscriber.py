@@ -126,7 +126,7 @@ class MintFailureSubscriber:
 
         try:
             await self._nc.publish(self._subject, payload)
-        except Exception as exc:  # noqa: BLE001   — POLICY:boundary# NATS publish: exception type varies
+        except Exception as exc:  # noqa: BLE001  — POLICY:boundary# NATS publish: exception type varies
             log.warning(
                 "MintFailureSubscriber: failed to publish alert for machine=%r: %s",
                 event.machine,

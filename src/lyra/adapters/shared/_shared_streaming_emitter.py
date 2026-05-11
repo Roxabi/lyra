@@ -144,7 +144,7 @@ class StreamingSession:
         if self._outbound is not None and fallback_message_id is not None:
             self._outbound.metadata["reply_message_id"] = fallback_message_id
 
-    async def _run_event_loop(  # noqa: C901  — POLICY:wiring— full v1+v2 dispatch ladder lands in Slice 2 (#1099)
+    async def _run_event_loop(  # noqa: C901 — POLICY:wiring — full v1+v2 dispatch ladder lands in Slice 2 (#1099)
         self,
         events: AsyncIterator[RenderEvent],
         placeholder_obj: Any,
@@ -220,7 +220,7 @@ class StreamingSession:
                                 await self._cb.edit_placeholder_text(
                                     placeholder_obj, self._st.istate.display()
                                 )
-                            except Exception as edit_exc:  # noqa: BLE001   — POLICY:boundary# streaming edit: any send failure is non-fatal
+                            except Exception as edit_exc:  # noqa: BLE001  — POLICY:boundary# streaming edit: any send failure is non-fatal
                                 log.debug(
                                     "Intermediate text edit skipped: %s", edit_exc
                                 )
@@ -288,7 +288,7 @@ class StreamingSession:
         )
         try:
             await self._cb.edit_placeholder_text(placeholder_obj, error_text)
-        except Exception as edit_exc:  # noqa: BLE001   — POLICY:boundary# streaming edit: any send failure is non-fatal
+        except Exception as edit_exc:  # noqa: BLE001  — POLICY:boundary# streaming edit: any send failure is non-fatal
             log.debug("Error edit skipped: %s", edit_exc)
 
     def _handle_typing_tail(self) -> None:
@@ -312,7 +312,7 @@ class StreamingSession:
             first_event = await events.__anext__()
         except StopAsyncIteration:
             pass
-        except Exception as exc:  # noqa: BLE001   — POLICY:boundary# streaming edit: any send failure is non-fatal
+        except Exception as exc:  # noqa: BLE001  — POLICY:boundary# streaming edit: any send failure is non-fatal
             peek_error = exc
         if first_event is None and peek_error is None:
             await self._drain_fallback(events)

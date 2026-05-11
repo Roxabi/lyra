@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from lyra.core.messaging.bus import Bus
     from lyra.infrastructure.stores.turn_store import TurnStore
 
-from lyra.adapters.telegram import telegram_audio  # noqa: I001
+from lyra.adapters.telegram import telegram_audio  # noqa: I001 — DEBT:lint-residual
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.adapters.shared._shared import TypingTaskManager, resolve_msg
 from lyra.adapters.telegram.telegram_formatting import (
@@ -32,7 +32,7 @@ from lyra.adapters.telegram.telegram_normalize import (
     normalize_audio as _normalize_audio_impl,
 )
 from lyra.adapters.telegram.telegram_outbound import (
-    _typing_loop as _typing_loop,  # noqa: F401
+    _typing_loop as _typing_loop,  # noqa: F401 — POLICY:re-export
     _typing_worker,
     build_streaming_callbacks as _build_streaming_callbacks,
     send as _send_impl,
@@ -72,7 +72,7 @@ def _make_verifier(secret: str):
 class TelegramAdapter(OutboundAdapterBase):
     """Telegram adapter — aiogram v3 webhook. Never logs the bot token."""
 
-    def __init__(  # noqa: PLR0913 — DI constructor
+    def __init__(  # noqa: PLR0913 — POLICY:wiring — DI constructor
         self,
         bot_id: str,
         token: str,

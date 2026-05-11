@@ -1,5 +1,15 @@
 [
   {
+    "path": "scripts/_loader.py",
+    "line": 54,
+    "rule": "return-value",
+    "suggested_bucket": "DEBT",
+    "debt_slug": "lint-residual",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
     "path": "scripts/check_acl_matrix_retired.py",
     "line": 26,
     "rule": "E402",
@@ -70,38 +80,8 @@
     "reason": "matched"
   },
   {
-    "path": "src/lyra/adapters/discord/discord_outbound.py",
-    "line": 168,
-    "rule": "C901",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "wiring",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/adapters/discord/discord_outbound.py",
-    "line": 258,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/adapters/nats/mint_failure_subscriber.py",
-    "line": 129,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/adapters/nats/nats_outbound_listener.py",
-    "line": 40,
+    "path": "src/lyra/adapters/discord/discord_threads.py",
+    "line": 45,
     "rule": "PLR0913",
     "suggested_bucket": "POLICY",
     "debt_slug": "wiring",
@@ -110,39 +90,9 @@
     "reason": "matched"
   },
   {
-    "path": "src/lyra/adapters/nats/nats_outbound_listener.py",
-    "line": 124,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/adapters/shared/_inbound_cache.py",
-    "line": 95,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/adapters/shared/_shared_audio.py",
-    "line": 74,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-    "line": 147,
-    "rule": "C901",
+    "path": "src/lyra/adapters/shared/_shared.py",
+    "line": 76,
+    "rule": "PLR0913",
     "suggested_bucket": "POLICY",
     "debt_slug": "wiring",
     "fix_class": "easy",
@@ -150,19 +100,39 @@
     "reason": "matched"
   },
   {
-    "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-    "line": 204,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
+    "path": "src/lyra/adapters/telegram/telegram.py",
+    "line": 22,
+    "rule": "I001",
+    "suggested_bucket": "DEBT",
+    "debt_slug": "lint-residual",
     "fix_class": "easy",
     "fix_loc_estimate": 1,
     "reason": "matched"
   },
   {
-    "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-    "line": 208,
-    "rule": "reportUnnecessaryIsInstance",
+    "path": "src/lyra/adapters/telegram/telegram.py",
+    "line": 35,
+    "rule": "F401",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "re-export",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/adapters/telegram/telegram.py",
+    "line": 75,
+    "rule": "PLR0913",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/adapters/telegram/telegram_formatting.py",
+    "line": 33,
+    "rule": "import-untyped",
     "suggested_bucket": "POLICY",
     "debt_slug": "defensive-narrow",
     "fix_class": "easy",
@@ -170,49 +140,9 @@
     "reason": "matched"
   },
   {
-    "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-    "line": 223,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-    "line": 291,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-    "line": 315,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
     "path": "src/lyra/adapters/telegram/telegram_normalize.py",
-    "line": 119,
-    "rule": "C901",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "wiring",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/adapters/telegram/telegram_outbound.py",
-    "line": 165,
-    "rule": "C901",
+    "line": 93,
+    "rule": "PLR0913",
     "suggested_bucket": "POLICY",
     "debt_slug": "wiring",
     "fix_class": "easy",
@@ -221,67 +151,77 @@
   },
   {
     "path": "src/lyra/bootstrap/factory/agent_factory.py",
-    "line": 171,
-    "rule": "BLE001",
+    "line": 9,
+    "rule": "F401",
     "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
+    "debt_slug": "re-export",
     "fix_class": "easy",
     "fix_loc_estimate": 1,
     "reason": "matched"
   },
   {
-    "path": "src/lyra/bootstrap/factory/bot_agent_map.py",
-    "line": 78,
-    "rule": "BLE001",
+    "path": "src/lyra/bootstrap/factory/agent_factory.py",
+    "line": 22,
+    "rule": "F401",
     "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/bootstrap/factory/voice_overlay.py",
-    "line": 87,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/bootstrap/infra/embedded_nats.py",
-    "line": 181,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/bootstrap/infra/health.py",
-    "line": 61,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
-    "fix_class": "easy",
-    "fix_loc_estimate": 1,
-    "reason": "matched"
-  },
-  {
-    "path": "src/lyra/bootstrap/infra/notify.py",
-    "line": 35,
-    "rule": "BLE001",
-    "suggested_bucket": "POLICY",
-    "debt_slug": "boundary",
+    "debt_slug": "re-export",
     "fix_class": "easy",
     "fix_loc_estimate": 1,
     "reason": "matched"
   },
   {
     "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
+    "line": 108,
+    "rule": "type-arg",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "defensive-narrow",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
+    "line": 244,
+    "rule": "type-arg",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "defensive-narrow",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/cli.py",
+    "line": 25,
+    "rule": "F401",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "re-export",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/cli_agent_create.py",
     "line": 53,
+    "rule": "PLR0913",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/cli_voice_smoke.py",
+    "line": 18,
+    "rule": "F401",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "re-export",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/core/agent/agent_commands.py",
+    "line": 65,
     "rule": "BLE001",
     "suggested_bucket": "POLICY",
     "debt_slug": "boundary",
@@ -290,11 +230,71 @@
     "reason": "matched"
   },
   {
-    "path": "src/lyra/bootstrap/standalone/hub_standalone.py",
-    "line": 86,
+    "path": "src/lyra/core/agent/agent_commands.py",
+    "line": 115,
     "rule": "BLE001",
     "suggested_bucket": "POLICY",
     "debt_slug": "boundary",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/core/agent/agent_loader.py",
+    "line": 10,
+    "rule": "PLC0414",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "re-export",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/core/cli/cli_non_streaming.py",
+    "line": 19,
+    "rule": "PLR0913",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/core/cli/cli_pool.py",
+    "line": 49,
+    "rule": "E501",
+    "suggested_bucket": "DEBT",
+    "debt_slug": "lint-residual",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/core/cli/cli_pool.py",
+    "line": 68,
+    "rule": "PLR0913",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/core/cli/cli_streaming.py",
+    "line": 32,
+    "rule": "PLR0913",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1,
+    "reason": "matched"
+  },
+  {
+    "path": "src/lyra/core/cli/cli_streaming.py",
+    "line": 177,
+    "rule": "PLR0913",
+    "suggested_bucket": "POLICY",
+    "debt_slug": "wiring",
     "fix_class": "easy",
     "fix_loc_estimate": 1,
     "reason": "matched"

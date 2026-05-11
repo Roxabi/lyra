@@ -50,7 +50,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — POLICY:migra
             "adapter_standalone: connected to NATS at %s",
             scrub_nats_url(nats_url),
         )
-    except Exception as exc:  # noqa: BLE001   — POLICY:boundary# NATS connect failure: process exits
+    except Exception as exc:  # noqa: BLE001  — POLICY:boundary# NATS connect failure: process exits
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
     from lyra.nats.nats_bus import NatsBus
@@ -105,7 +105,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — POLICY:migra
                     continue
                 token, webhook_secret = tg_creds[bot_id]
 
-                inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
+                inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg] — POLICY:defensive-narrow
                     nc=nc,
                     bot_id=bot_id,
                     item_type=InboundMessage,
@@ -241,7 +241,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — POLICY:migra
                     continue
                 token = dc_creds[bot_id]
 
-                inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
+                inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg] — POLICY:defensive-narrow
                     nc=nc,
                     bot_id=bot_id,
                     item_type=InboundMessage,

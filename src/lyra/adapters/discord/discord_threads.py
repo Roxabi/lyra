@@ -42,7 +42,7 @@ async def persist_thread_claim(
         )
 
 
-async def persist_thread_session(  # noqa: PLR0913 — each arg is a distinct required dependency
+async def persist_thread_session(  # noqa: PLR0913 — POLICY:wiring — each arg is a distinct required dependency
     thread_store: "ThreadStoreProtocol",
     msg: "InboundMessage",
     session_id: str,

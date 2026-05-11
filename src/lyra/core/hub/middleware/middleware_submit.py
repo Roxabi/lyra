@@ -34,7 +34,7 @@ class SubmitToPoolMiddleware:
         self,
         msg: InboundMessage,
         ctx: PipelineContext,
-        next: Next,  # noqa: A002 — terminal stage; Next required by protocol, intentionally unused
+        next: Next,  # noqa: A002 — DEBT:lint-residual — terminal stage; Next required by protocol, intentionally unused
     ) -> PipelineResult:
         if ctx.pool is None:
             raise RuntimeError(
@@ -89,7 +89,7 @@ class SubmitToPoolMiddleware:
 
         try:
             status = await resolve_context(msg, pool, pool.pool_id, ctx)
-        except Exception:  # noqa: BLE001  # top-level boundary
+        except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
             log.warning(
                 "_resolve_context failed — continuing with active session",
                 exc_info=True,

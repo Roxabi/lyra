@@ -90,7 +90,7 @@ def _make_scope_id(
     return f"chat:{chat_id}"
 
 
-def _build_routing(  # noqa: PLR0913 — groups related metadata fields
+def _build_routing(  # noqa: PLR0913 — POLICY:wiring — groups related metadata fields
     adapter: TelegramAdapter,
     chat_id: int,
     topic_id: int | None,

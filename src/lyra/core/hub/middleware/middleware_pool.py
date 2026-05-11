@@ -156,7 +156,7 @@ class CommandMiddleware:
             return await self._dispatch_command(msg, _cmd, router, ctx, next)
         return await next(msg, ctx)
 
-    async def _dispatch_command(  # noqa: PLR0913
+    async def _dispatch_command(  # noqa: PLR0913 — POLICY:wiring
         self,
         msg: InboundMessage,
         cmd: str,

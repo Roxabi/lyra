@@ -52,7 +52,7 @@ def normalize_language(lang: str | None) -> str | None:
     return LANG_ISO_TO_QWEN.get(lang.lower(), lang)
 
 
-def build_generate_kwargs(  # noqa: PLR0913 -- merge-order inputs map 1:1 to config layers
+def build_generate_kwargs(  # noqa: PLR0913 — POLICY:wiring-- merge-order inputs map 1:1 to config layers
     output: "Path",
     *,
     global_engine: str | None,

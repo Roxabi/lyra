@@ -68,7 +68,7 @@ class SttMiddleware:
     and return ``_DROP``.
     """
 
-    async def __call__(  # noqa: C901, PLR0915
+    async def __call__(  # noqa: C901, PLR0915 — DEBT:complexity-residual
         self,
         msg: InboundMessage,
         ctx: PipelineContext,

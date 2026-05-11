@@ -173,7 +173,7 @@ def _write_flat_toml(data: dict[str, object]) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
-def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:  # noqa: C901, PLR0915
+def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:  # noqa: C901, PLR0915 — DEBT:complexity-residual
     """Validate and apply a single key=value update to RuntimeConfig.
 
     Returns a new RuntimeConfig instance via model_copy().

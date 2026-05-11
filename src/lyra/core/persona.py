@@ -18,7 +18,7 @@ _VOICE_TRANSCRIPT_INSTRUCTION = (
 )
 
 
-def compose_system_prompt_from_json(persona_dict: dict) -> str:  # noqa: C901
+def compose_system_prompt_from_json(persona_dict: dict) -> str:  # noqa: C901 — DEBT:complexity-residual
     """Build system prompt from inline persona JSON (DB persona_json column).
 
     Accepts the dict deserialized from ``agents.persona_json``.

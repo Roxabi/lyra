@@ -46,7 +46,7 @@ class LlmResult:
 class LlmProvider(Protocol):
     capabilities: dict[str, Any]
 
-    async def complete(  # noqa: PLR0913
+    async def complete(  # noqa: PLR0913 — POLICY:wiring
         self,
         pool_id: str,
         text: str,

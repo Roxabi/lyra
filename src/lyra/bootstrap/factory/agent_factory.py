@@ -6,7 +6,9 @@ import logging
 from typing import TYPE_CHECKING
 
 # Re-exported for backward compatibility (tests import these from agent_factory)
-from lyra.bootstrap.factory.bot_agent_map import resolve_bot_agent_map  # noqa: F401
+from lyra.bootstrap.factory.bot_agent_map import (
+    resolve_bot_agent_map,  # noqa: F401 — POLICY:re-export
+)
 from lyra.bootstrap.factory.config import LlmConfig
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
@@ -19,7 +21,7 @@ from lyra.stt import STTProtocol
 from lyra.tts import TtsProtocol
 
 if TYPE_CHECKING:
-    from lyra.llm.drivers.cli_nats import CliNatsDriver  # noqa: F401
+    from lyra.llm.drivers.cli_nats import CliNatsDriver  # noqa: F401 — POLICY:re-export
     from lyra.llm.drivers.nats_driver import NatsLlmDriver
 
 log = logging.getLogger(__name__)
@@ -124,7 +126,7 @@ def _build_provider_registry(
     return _build_per_agent_registry(shared)
 
 
-def _create_agent(  # noqa: PLR0913  — POLICY:wiring-- factory with optional overrides for each agent dependency
+def _create_agent(  # noqa: PLR0913 — POLICY:wiring-- factory with optional overrides for each agent dependency
     config: Agent,
     cli_pool: CliPool | None,
     circuit_registry: CircuitRegistry | None = None,
@@ -168,7 +170,7 @@ def _create_agent(  # noqa: PLR0913  — POLICY:wiring-- factory with optional o
             session_tools: SessionTools | None = SessionTools(
                 scraper=WebIntelScraper(), vault=VaultCli()
             )
-        except Exception:  # noqa: BLE001   — POLICY:boundary# top-level boundary
+        except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
             log.warning(
                 "agent_factory: could not build SessionTools — passing None",
                 exc_info=True,

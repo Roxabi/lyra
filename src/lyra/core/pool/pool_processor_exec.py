@@ -101,7 +101,7 @@ async def guarded_process_one(
         TraceContext.reset_agent_name(token_an)
 
 
-async def process_one(  # noqa: C901, PLR0915 — session-id update adds branches
+async def process_one(  # noqa: C901, PLR0915 — DEBT:complexity-residual — session-id update adds branches
     msg: InboundMessage, agent: AgentBase, pool: Pool
 ) -> None:
     """Run agent.process and dispatch result (streaming or non-streaming)."""
@@ -148,7 +148,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
             if _processor is not None:
                 try:
                     msg = await _processor.pre(msg)
-                except Exception:  # noqa: BLE001  # top-level boundary
+                except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
                     log.warning(
                         "Processor pre() failed for %s", _cmd_name, exc_info=True
                     )
@@ -173,7 +173,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
         if _processor is not None and isinstance(result, Response):
             try:
                 result = await _processor.post(_original_msg, result)
-            except Exception:  # noqa: BLE001  # top-level boundary
+            except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
                 log.warning("Processor post() failed", exc_info=True)
 
     # Capture values for the deferred turn-logging callback (#316).

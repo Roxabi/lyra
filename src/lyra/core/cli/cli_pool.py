@@ -46,7 +46,7 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 
-class CliPool(  # noqa: E501
+class CliPool(  # noqa: E501 — DEBT:lint-residual
     CliPoolLifecycleMixin,
     CliPoolStreamingMixin,
     CliPoolSessionMixin,
@@ -65,7 +65,7 @@ class CliPool(  # noqa: E501
         await pool.stop()
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913 — POLICY:wiring
         self,
         idle_ttl: int = 1200,
         default_timeout: int = 1200,  # 20 min × 3 retries = 60 min max idle
@@ -107,7 +107,7 @@ class CliPool(  # noqa: E501
         # before completion. Done-callback removes each task on completion.
         self._audit_tasks: set[asyncio.Task[None]] = set()
 
-    async def send(  # noqa: C901
+    async def send(  # noqa: C901 — DEBT:complexity-residual
         self,
         pool_id: str,
         message: str,

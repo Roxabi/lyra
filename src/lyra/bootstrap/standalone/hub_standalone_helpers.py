@@ -52,7 +52,7 @@ async def start_mint_failure_subscriber(nc: Any) -> "MintFailureSubscriber | Non
             ops_telegram_chat_id=int(chat_id_raw),
         )
         await sub.start()
-    except Exception as exc:  # noqa: BLE001  — POLICY:boundary— opt-in subscriber: NATS subscribe or int() parse of chat_id may raise; failure is non-fatal, hub starts without it
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary — opt-in subscriber: NATS subscribe or int() parse of chat_id may raise; failure is non-fatal, hub starts without it
         log.warning("MintFailureSubscriber failed to start: %s", exc)
         return None
     return sub
@@ -103,7 +103,7 @@ async def build_pairing_manager(
     return pm
 
 
-async def shutdown_hub_runtime(  # noqa: PLR0913  — POLICY:wiring— unavoidable wiring surface
+async def shutdown_hub_runtime(  # noqa: PLR0913 — POLICY:wiring — unavoidable wiring surface
     hub: Hub,
     *,
     readiness_sub,

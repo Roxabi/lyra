@@ -33,7 +33,7 @@ class PoolProcessor:
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 
-    async def process_loop(self) -> None:  # noqa: C901  — POLICY:wiring— debounce + cancel-in-flight adds inherent branches
+    async def process_loop(self) -> None:  # noqa: C901 — POLICY:wiring — debounce + cancel-in-flight adds inherent branches
         """Consume inbox with debounce aggregation and cancel-in-flight."""
         pool = self._pool
         _last_msg: InboundMessage | None = None
@@ -147,7 +147,7 @@ class PoolProcessor:
                 if inbox_waiter in done and not inbox_waiter.cancelled():
                     try:
                         pool._inbox.put_nowait(inbox_waiter.result())
-                    except Exception:  # noqa: BLE001  # top-level boundary
+                    except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
                         log.warning(
                             "pool %s: message lost in inbox race",
                             pool.pool_id,

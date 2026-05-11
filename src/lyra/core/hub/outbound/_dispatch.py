@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-async def dispatch_outbound_item(  # noqa: C901, PLR0913, PLR0915
+async def dispatch_outbound_item(  # noqa: C901, PLR0913, PLR0915 — DEBT:complexity-residual
     platform_name: str,
     adapter: "ChannelAdapter",
     circuit: CircuitBreaker | None,

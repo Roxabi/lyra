@@ -121,7 +121,7 @@ class NatsOutboundListener:
                     original_msg = _deserialize_dict(
                         raw, InboundMessage, resolver=self._resolver
                     )
-                except Exception:  # noqa: BLE001   — POLICY:boundary# deserialization: exception type varies by payload
+                except Exception:  # noqa: BLE001  — POLICY:boundary# deserialization: exception type varies by payload
                     log.warning(
                         "NatsOutboundListener: bad embedded original_msg"
                         " for stream_id=%r",

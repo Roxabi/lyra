@@ -330,8 +330,8 @@ def test_ble001_nats_listener_basename_is_boundary(tmp_path: Path) -> None:
                for r in rows), f"got rows={rows}"
 
 
-def test_ble001_unrelated_path_not_boundary(tmp_path: Path) -> None:
-    """BLE001 in a non-boundary path -> needs_review (no false positive)."""
+def test_ble001_unrelated_path_falls_back_to_boundary(tmp_path: Path) -> None:
+    """BLE001 anywhere -> POLICY:boundary (rule-only fallback after path heuristics)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/core/utils.py"
     _src(tmp_path, sp, "def helper():  # noqa: BLE001\n    pass\n")
@@ -341,8 +341,8 @@ def test_ble001_unrelated_path_not_boundary(tmp_path: Path) -> None:
 
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
-    assert any(r["rule"] == "BLE001" and r["fix_class"] == "needs_review"
-               for r in rows), f"expected needs_review; got rows={rows}"
+    assert any(r["rule"] == "BLE001" and r["suggestion"] == "POLICY:boundary"
+               for r in rows), f"expected boundary; got rows={rows}"
 
 
 # ---------------------------------------------------------------------------
@@ -395,8 +395,8 @@ def test_plr0913_authenticator_basename_is_wiring(tmp_path: Path) -> None:
                for r in rows), f"got rows={rows}"
 
 
-def test_plr0913_unrelated_basename_not_wiring(tmp_path: Path) -> None:
-    """PLR0913 in a plain module (not wiring/bootstrap/dispatch) -> needs_review."""
+def test_plr0913_unrelated_basename_falls_back_to_wiring(tmp_path: Path) -> None:
+    """PLR0913 anywhere -> POLICY:wiring (rule-only fallback after path heuristics)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/core/processor.py"
     _src(tmp_path, sp, "def do(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
@@ -406,8 +406,8 @@ def test_plr0913_unrelated_basename_not_wiring(tmp_path: Path) -> None:
 
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
-    assert any(r["rule"] == "PLR0913" and r["fix_class"] == "needs_review"
-               for r in rows), f"expected needs_review; got rows={rows}"
+    assert any(r["rule"] == "PLR0913" and r["suggestion"] == "POLICY:wiring"
+               for r in rows), f"expected wiring; got rows={rows}"
 
 
 # ---------------------------------------------------------------------------
@@ -460,8 +460,8 @@ def test_c901_dispatcher_basename_is_wiring(tmp_path: Path) -> None:
                for r in rows), f"got rows={rows}"
 
 
-def test_c901_unrelated_path_is_needs_review(tmp_path: Path) -> None:
-    """C901 in a non-bootstrap, non-dispatcher path -> needs_review."""
+def test_c901_unrelated_path_falls_back_to_complexity_residual(tmp_path: Path) -> None:
+    """C901 in a non-bootstrap, non-dispatcher path -> DEBT:complexity-residual."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/core/helpers.py"
     _src(tmp_path, sp, "def complex_helper():  # noqa: C901\n    pass\n")
@@ -471,8 +471,8 @@ def test_c901_unrelated_path_is_needs_review(tmp_path: Path) -> None:
 
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
-    assert any(r["rule"] == "C901" and r["fix_class"] == "needs_review"
-               for r in rows), f"expected needs_review; got rows={rows}"
+    assert any(r["rule"] == "C901" and r["suggestion"] == "DEBT:complexity-residual"
+               for r in rows), f"expected complexity-residual; got rows={rows}"
 
 
 # ---------------------------------------------------------------------------
@@ -510,8 +510,10 @@ def test_plr0915_dispatcher_path_is_wiring(tmp_path: Path) -> None:
                for r in rows), f"got rows={rows}"
 
 
-def test_plr0915_unrelated_path_is_needs_review(tmp_path: Path) -> None:
-    """PLR0915 in a non-bootstrap, non-dispatcher path -> needs_review."""
+def test_plr0915_unrelated_path_falls_back_to_complexity_residual(
+    tmp_path: Path,
+) -> None:
+    """PLR0915 in non-bootstrap, non-dispatcher path -> DEBT:complexity-residual."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/core/utils.py"
     _src(tmp_path, sp, "def do_stuff():  # noqa: PLR0915\n    pass\n")
@@ -521,8 +523,8 @@ def test_plr0915_unrelated_path_is_needs_review(tmp_path: Path) -> None:
 
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
-    assert any(r["rule"] == "PLR0915" and r["fix_class"] == "needs_review"
-               for r in rows), f"expected needs_review; got rows={rows}"
+    assert any(r["rule"] == "PLR0915" and r["suggestion"] == "DEBT:complexity-residual"
+               for r in rows), f"expected complexity-residual; got rows={rows}"
 
 
 # ---------------------------------------------------------------------------
@@ -545,8 +547,8 @@ def test_f401_in_init_is_reexport(tmp_path: Path) -> None:
                and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
 
 
-def test_f401_not_in_init_is_needs_review(tmp_path: Path) -> None:
-    """F401 in a non-__init__.py file -> needs_review (TYPE_CHECKING etc.)."""
+def test_f401_not_in_init_is_reexport(tmp_path: Path) -> None:
+    """F401 anywhere -> POLICY:re-export (rule-only classification)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/core/types.py"
     _src(tmp_path, sp, "from lyra.x.impl import Foo  # noqa: F401\n")
@@ -556,8 +558,8 @@ def test_f401_not_in_init_is_needs_review(tmp_path: Path) -> None:
 
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
-    assert any(r["rule"] == "F401" and r["fix_class"] == "needs_review"
-               for r in rows), f"expected needs_review; got rows={rows}"
+    assert any(r["rule"] == "F401" and r["suggestion"] == "POLICY:re-export"
+               for r in rows), f"expected re-export; got rows={rows}"
 
 
 # ---------------------------------------------------------------------------
@@ -790,8 +792,9 @@ def test_json_mode_needs_review_rows_included(tmp_path: Path) -> None:
     """--dry-run --json includes needs_review rows with empty suggestion."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/core/utils.py"
-    _src(tmp_path, sp, "from lyra.x import Foo  # noqa: F401\n")
-    _write_report(rpt, [_row(sp, "F401")])
+    # Use an unknown rule so it falls to needs_review (every known rule now classifies).
+    _src(tmp_path, sp, "x = 1  # noqa: UNKNOWN999\n")
+    _write_report(rpt, [_row(sp, "UNKNOWN999")])
 
     cp = _run_json(tmp_path, rpt)
 
@@ -799,5 +802,5 @@ def test_json_mode_needs_review_rows_included(tmp_path: Path) -> None:
     data = json.loads(cp.stdout)
     assert len(data) == 1
     rec = data[0]
-    assert rec["rule"] == "F401"
+    assert rec["rule"] == "UNKNOWN999"
     assert rec["fix_class"] == "needs_review"

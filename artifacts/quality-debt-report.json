@@ -1,0 +1,2716 @@
+{
+  "counts_by_rule_bucket_slug": {
+    "A002": {
+      "DEBT": {
+        "lint-residual": 1
+      }
+    },
+    "ARG002": {
+      "POLICY": {
+        "protocol-private": 2
+      }
+    },
+    "B008": {
+      "POLICY": {
+        "typer-default": 10
+      }
+    },
+    "BLE001": {
+      "POLICY": {
+        "boundary": 73
+      }
+    },
+    "C901": {
+      "DEBT": {
+        "adapter-dispatch-complexity": 2,
+        "complexity-residual": 22
+      },
+      "POLICY": {
+        "migration-sequence": 3,
+        "wiring": 10
+      }
+    },
+    "D401": {
+      "DEBT": {
+        "d401-property-accessor": 2
+      }
+    },
+    "E402": {
+      "POLICY": {
+        "module-level-patch": 2
+      },
+      "UNTAGGED": {
+        "__none__": 7
+      }
+    },
+    "E501": {
+      "DEBT": {
+        "lint-residual": 1
+      }
+    },
+    "F401": {
+      "POLICY": {
+        "re-export": 10
+      }
+    },
+    "I001": {
+      "DEBT": {
+        "lint-residual": 1
+      },
+      "POLICY": {
+        "module-level-patch": 1
+      }
+    },
+    "PLC0414": {
+      "POLICY": {
+        "re-export": 1
+      }
+    },
+    "PLC0415": {
+      "DEBT": {
+        "plc0415-deferred-import": 3
+      }
+    },
+    "PLR0912": {
+      "DEBT": {
+        "complexity-residual": 1
+      }
+    },
+    "PLR0913": {
+      "DEBT": {
+        "complexity-residual": 2
+      },
+      "POLICY": {
+        "wiring": 53,
+        "wiring--": 3
+      }
+    },
+    "PLR0915": {
+      "DEBT": {
+        "complexity-residual": 10
+      },
+      "POLICY": {
+        "migration-sequence": 2,
+        "wiring": 2
+      }
+    },
+    "PLR2004": {
+      "DEBT": {
+        "adapter-magic-constants": 4
+      }
+    },
+    "TRY401": {
+      "POLICY": {
+        "boundary": 1
+      }
+    },
+    "import-untyped": {
+      "POLICY": {
+        "defensive-narrow": 1
+      }
+    },
+    "lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.agent.agent -> lyra.infrastructure.stores.agent_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.agent.agent -> lyra.stt": {
+      "DEBT": {
+        "importlinter-shared-modules-transitive": 1
+      }
+    },
+    "lyra.core.agent.agent -> lyra.tts": {
+      "DEBT": {
+        "importlinter-shared-modules-transitive": 1
+      }
+    },
+    "lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.auth.authenticator -> lyra.infrastructure.stores.auth_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.auth.authenticator -> lyra.infrastructure.stores.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.cli.cli_pool -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub -> lyra.infrastructure.stores.message_index": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub -> lyra.infrastructure.stores.pairing": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub -> lyra.infrastructure.stores.prefs_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.message_index": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.message_index": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.memory.memory -> lyra.infrastructure.stores.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.processors.processor_registry -> lyra.integrations.base": {
+      "DEBT": {
+        "importlinter-shared-modules-transitive": 1
+      }
+    },
+    "lyra.core.stores.pairing_protocol -> lyra.infrastructure.stores.pairing": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.tts.engine_selector -> lyra.core.agent.agent_config": {
+      "DEBT": {
+        "importlinter-shared-modules-transitive": 1
+      }
+    },
+    "misc": {
+      "POLICY": {
+        "defensive-narrow": 5
+      }
+    },
+    "no-any-return": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "reportUnnecessaryIsInstance": {
+      "POLICY": {
+        "defensive-narrow": 6
+      }
+    },
+    "reportUnreachable": {
+      "POLICY": {
+        "defensive-narrow": 1
+      }
+    },
+    "reportUnusedClass": {
+      "POLICY": {
+        "protocol-private": 2
+      }
+    },
+    "reportUnusedImport": {
+      "POLICY": {
+        "re-export": 1
+      }
+    },
+    "return-value": {
+      "DEBT": {
+        "lint-residual": 1
+      },
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "src/lyra/adapters/clipool/clipool_worker.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/adapters/shared/_shared_streaming_emitter.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/agents/simple_agent.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/bootstrap/bootstrap_stores.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/bootstrap/factory/wiring_helpers.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/bootstrap/standalone/adapter_standalone.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/core": {
+      "DEBT": {
+        "folder-exemptions": 1
+      }
+    },
+    "src/lyra/core/cli": {
+      "DEBT": {
+        "folder-exemptions": 1
+      }
+    },
+    "src/lyra/core/cli/cli_pool.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/core/cli/cli_streaming_parser.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/core/messaging": {
+      "DEBT": {
+        "folder-exemptions": 1
+      }
+    },
+    "src/lyra/core/processors/stream_processor.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/infrastructure/stores": {
+      "DEBT": {
+        "folder-exemptions": 1
+      }
+    },
+    "src/lyra/llm/drivers/nats_driver.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "type-arg": {
+      "POLICY": {
+        "defensive-narrow": 8
+      }
+    },
+    "union-attr": {
+      "POLICY": {
+        "defensive-narrow": 3
+      }
+    }
+  },
+  "generated_at": "2026-05-11T22:04:14.757469+00:00",
+  "rows": [
+    {
+      "bucket": "UNTAGGED",
+      "line": 54,
+      "path": "scripts/_loader.py",
+      "rule": "return-value",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 26,
+      "path": "scripts/check_acl_matrix_retired.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 24,
+      "path": "scripts/check_request_reply_flows.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 19,
+      "path": "scripts/gen_nkeys.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 20,
+      "path": "scripts/gen_nkeys.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 21,
+      "path": "scripts/gen_nkeys.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 33,
+      "path": "scripts/gen_nkeys.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 34,
+      "path": "scripts/gen_nkeys.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 203,
+      "path": "src/lyra/adapters/clipool/clipool_worker.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 278,
+      "path": "src/lyra/adapters/clipool/clipool_worker.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 317,
+      "path": "src/lyra/adapters/clipool/clipool_worker.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 21,
+      "path": "src/lyra/adapters/discord/adapter.py",
+      "rule": "I001",
+      "source": "noqa",
+      "tag": "module-level-patch"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 67,
+      "path": "src/lyra/adapters/discord/adapter.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 34,
+      "path": "src/lyra/adapters/discord/discord_audio.py",
+      "rule": "PLR2004",
+      "slug": "adapter-magic-constants",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 43,
+      "path": "src/lyra/adapters/discord/discord_audio.py",
+      "rule": "PLR2004",
+      "slug": "adapter-magic-constants",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 55,
+      "path": "src/lyra/adapters/discord/discord_audio.py",
+      "rule": "PLR2004",
+      "slug": "adapter-magic-constants",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 118,
+      "path": "src/lyra/adapters/discord/discord_audio.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 222,
+      "path": "src/lyra/adapters/discord/discord_audio.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 33,
+      "path": "src/lyra/adapters/discord/discord_formatting.py",
+      "rule": "PLR2004",
+      "slug": "adapter-magic-constants",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 29,
+      "path": "src/lyra/adapters/discord/discord_inbound.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 29,
+      "path": "src/lyra/adapters/discord/discord_inbound.py",
+      "rule": "PLR0915",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 83,
+      "path": "src/lyra/adapters/discord/discord_inbound.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 140,
+      "path": "src/lyra/adapters/discord/discord_inbound.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 203,
+      "path": "src/lyra/adapters/discord/discord_inbound.py",
+      "rule": "TRY401",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 26,
+      "path": "src/lyra/adapters/discord/discord_normalize.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 43,
+      "path": "src/lyra/adapters/discord/discord_outbound.py",
+      "rule": "C901",
+      "slug": "adapter-dispatch-complexity",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 105,
+      "path": "src/lyra/adapters/discord/discord_outbound.py",
+      "rule": "C901",
+      "slug": "adapter-dispatch-complexity",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 168,
+      "path": "src/lyra/adapters/discord/discord_outbound.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 258,
+      "path": "src/lyra/adapters/discord/discord_outbound.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 45,
+      "path": "src/lyra/adapters/discord/discord_threads.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 129,
+      "path": "src/lyra/adapters/nats/mint_failure_subscriber.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 40,
+      "path": "src/lyra/adapters/nats/nats_outbound_listener.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 124,
+      "path": "src/lyra/adapters/nats/nats_outbound_listener.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 95,
+      "path": "src/lyra/adapters/shared/_inbound_cache.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 76,
+      "path": "src/lyra/adapters/shared/_shared.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 74,
+      "path": "src/lyra/adapters/shared/_shared_audio.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 147,
+      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 204,
+      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 208,
+      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "source": "pyright-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 223,
+      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 291,
+      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 315,
+      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 22,
+      "path": "src/lyra/adapters/telegram/telegram.py",
+      "rule": "I001",
+      "slug": "lint-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 35,
+      "path": "src/lyra/adapters/telegram/telegram.py",
+      "rule": "F401",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 75,
+      "path": "src/lyra/adapters/telegram/telegram.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 33,
+      "path": "src/lyra/adapters/telegram/telegram_formatting.py",
+      "rule": "import-untyped",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 93,
+      "path": "src/lyra/adapters/telegram/telegram_normalize.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 119,
+      "path": "src/lyra/adapters/telegram/telegram_normalize.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 165,
+      "path": "src/lyra/adapters/telegram/telegram_outbound.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 52,
+      "path": "src/lyra/agent_cmd/agents/init.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 70,
+      "path": "src/lyra/agent_cmd/agents/init.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 76,
+      "path": "src/lyra/agent_cmd/agents/init.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 65,
+      "path": "src/lyra/agents/simple_agent.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 138,
+      "path": "src/lyra/agents/simple_agent.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 207,
+      "path": "src/lyra/agents/simple_agent.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 66,
+      "path": "src/lyra/bootstrap/bootstrap_stores.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "migration-sequence"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 10,
+      "path": "src/lyra/bootstrap/factory/agent_factory.py",
+      "rule": "F401",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 24,
+      "path": "src/lyra/bootstrap/factory/agent_factory.py",
+      "rule": "F401",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 129,
+      "path": "src/lyra/bootstrap/factory/agent_factory.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring--"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 173,
+      "path": "src/lyra/bootstrap/factory/agent_factory.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 195,
+      "path": "src/lyra/bootstrap/factory/agent_factory.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 78,
+      "path": "src/lyra/bootstrap/factory/bot_agent_map.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 77,
+      "path": "src/lyra/bootstrap/factory/hub_builder.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 151,
+      "path": "src/lyra/bootstrap/factory/hub_builder.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 87,
+      "path": "src/lyra/bootstrap/factory/voice_overlay.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 247,
+      "path": "src/lyra/bootstrap/factory/wiring_helpers.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 336,
+      "path": "src/lyra/bootstrap/factory/wiring_helpers.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 181,
+      "path": "src/lyra/bootstrap/infra/embedded_nats.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 61,
+      "path": "src/lyra/bootstrap/infra/health.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 66,
+      "path": "src/lyra/bootstrap/infra/health.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 35,
+      "path": "src/lyra/bootstrap/infra/notify.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 24,
+      "path": "src/lyra/bootstrap/lifecycle/bootstrap_lifecycle.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 26,
+      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
+      "rule": "PLR0915",
+      "source": "noqa",
+      "tag": "migration-sequence"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 26,
+      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "migration-sequence"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 53,
+      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 108,
+      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
+      "rule": "type-arg",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 244,
+      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
+      "rule": "type-arg",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 47,
+      "path": "src/lyra/bootstrap/standalone/hub_standalone.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "migration-sequence"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 47,
+      "path": "src/lyra/bootstrap/standalone/hub_standalone.py",
+      "rule": "PLR0915",
+      "source": "noqa",
+      "tag": "migration-sequence"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 86,
+      "path": "src/lyra/bootstrap/standalone/hub_standalone.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 284,
+      "path": "src/lyra/bootstrap/standalone/hub_standalone.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 55,
+      "path": "src/lyra/bootstrap/standalone/hub_standalone_helpers.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 106,
+      "path": "src/lyra/bootstrap/standalone/hub_standalone_helpers.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 37,
+      "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 110,
+      "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 110,
+      "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 230,
+      "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 28,
+      "path": "src/lyra/bootstrap/wiring/nats_wiring.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 85,
+      "path": "src/lyra/bootstrap/wiring/nats_wiring.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 26,
+      "path": "src/lyra/cli.py",
+      "rule": "F401",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 155,
+      "path": "src/lyra/cli.py",
+      "rule": "B008",
+      "source": "noqa",
+      "tag": "typer-default"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 74,
+      "path": "src/lyra/cli_agent.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 87,
+      "path": "src/lyra/cli_agent.py",
+      "rule": "E402",
+      "source": "noqa",
+      "tag": "module-level-patch"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 88,
+      "path": "src/lyra/cli_agent.py",
+      "rule": "E402",
+      "source": "noqa",
+      "tag": "module-level-patch"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 53,
+      "path": "src/lyra/cli_agent_create.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 107,
+      "path": "src/lyra/cli_agent_create.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 167,
+      "path": "src/lyra/cli_ops.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 207,
+      "path": "src/lyra/cli_ops.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 214,
+      "path": "src/lyra/cli_ops.py",
+      "rule": "B008",
+      "source": "noqa",
+      "tag": "typer-default"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 219,
+      "path": "src/lyra/cli_ops.py",
+      "rule": "B008",
+      "source": "noqa",
+      "tag": "typer-default"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 224,
+      "path": "src/lyra/cli_ops.py",
+      "rule": "B008",
+      "source": "noqa",
+      "tag": "typer-default"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 229,
+      "path": "src/lyra/cli_ops.py",
+      "rule": "B008",
+      "source": "noqa",
+      "tag": "typer-default"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 22,
+      "path": "src/lyra/cli_setup.py",
+      "rule": "B008",
+      "source": "noqa",
+      "tag": "typer-default"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 87,
+      "path": "src/lyra/cli_setup.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 113,
+      "path": "src/lyra/cli_setup.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 18,
+      "path": "src/lyra/cli_voice_smoke.py",
+      "rule": "F401",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 43,
+      "path": "src/lyra/cli_voice_smoke.py",
+      "rule": "B008",
+      "source": "noqa",
+      "tag": "typer-default"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 50,
+      "path": "src/lyra/cli_voice_smoke.py",
+      "rule": "B008",
+      "source": "noqa",
+      "tag": "typer-default"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 56,
+      "path": "src/lyra/cli_voice_smoke.py",
+      "rule": "B008",
+      "source": "noqa",
+      "tag": "typer-default"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 65,
+      "path": "src/lyra/cli_voice_smoke.py",
+      "rule": "B008",
+      "source": "noqa",
+      "tag": "typer-default"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 82,
+      "path": "src/lyra/cli_voice_smoke.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 101,
+      "path": "src/lyra/cli_voice_smoke.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 202,
+      "path": "src/lyra/cli_voice_smoke.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 249,
+      "path": "src/lyra/cli_voice_smoke.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 91,
+      "path": "src/lyra/commands/svc/handlers.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 30,
+      "path": "src/lyra/core/agent/agent.py",
+      "rule": "F401",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 32,
+      "path": "src/lyra/core/agent/agent.py",
+      "rule": "F401",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 46,
+      "path": "src/lyra/core/agent/agent.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 87,
+      "path": "src/lyra/core/agent/agent.py",
+      "rule": "D401",
+      "slug": "d401-property-accessor",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 95,
+      "path": "src/lyra/core/agent/agent.py",
+      "rule": "D401",
+      "slug": "d401-property-accessor",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 124,
+      "path": "src/lyra/core/agent/agent.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 131,
+      "path": "src/lyra/core/agent/agent.py",
+      "rule": "PLC0415",
+      "slug": "plc0415-deferred-import",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 145,
+      "path": "src/lyra/core/agent/agent.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 179,
+      "path": "src/lyra/core/agent/agent_builder.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 65,
+      "path": "src/lyra/core/agent/agent_commands.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 115,
+      "path": "src/lyra/core/agent/agent_commands.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 34,
+      "path": "src/lyra/core/agent/agent_db_loader.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 34,
+      "path": "src/lyra/core/agent/agent_db_loader.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 11,
+      "path": "src/lyra/core/agent/agent_loader.py",
+      "rule": "PLC0414",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 49,
+      "path": "src/lyra/core/agent/agent_seeder.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 40,
+      "path": "src/lyra/core/auth/authenticator.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 244,
+      "path": "src/lyra/core/auth/authenticator.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 19,
+      "path": "src/lyra/core/cli/cli_non_streaming.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 57,
+      "path": "src/lyra/core/cli/cli_non_streaming.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 57,
+      "path": "src/lyra/core/cli/cli_non_streaming.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 49,
+      "path": "src/lyra/core/cli/cli_pool.py",
+      "rule": "E501",
+      "slug": "lint-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 68,
+      "path": "src/lyra/core/cli/cli_pool.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 110,
+      "path": "src/lyra/core/cli/cli_pool.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 20,
+      "path": "src/lyra/core/cli/cli_pool_entry.py",
+      "rule": "reportUnusedClass",
+      "source": "pyright-ignore",
+      "tag": "protocol-private"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 51,
+      "path": "src/lyra/core/cli/cli_pool_entry.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 38,
+      "path": "src/lyra/core/cli/cli_pool_streaming.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 12,
+      "path": "src/lyra/core/cli/cli_pool_types.py",
+      "rule": "reportUnusedClass",
+      "source": "pyright-ignore",
+      "tag": "protocol-private"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 129,
+      "path": "src/lyra/core/cli/cli_pool_worker.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 284,
+      "path": "src/lyra/core/cli/cli_pool_worker.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 32,
+      "path": "src/lyra/core/cli/cli_streaming.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 72,
+      "path": "src/lyra/core/cli/cli_streaming.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 164,
+      "path": "src/lyra/core/cli/cli_streaming.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 177,
+      "path": "src/lyra/core/cli/cli_streaming.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring--"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 94,
+      "path": "src/lyra/core/cli/cli_streaming_parser.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 94,
+      "path": "src/lyra/core/cli/cli_streaming_parser.py",
+      "rule": "PLR0912",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 94,
+      "path": "src/lyra/core/cli/cli_streaming_parser.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 42,
+      "path": "src/lyra/core/commands/builtin_commands.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 73,
+      "path": "src/lyra/core/commands/builtin_commands.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 107,
+      "path": "src/lyra/core/commands/builtin_commands.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 114,
+      "path": "src/lyra/core/commands/command_loader.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 46,
+      "path": "src/lyra/core/commands/command_router.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 119,
+      "path": "src/lyra/core/commands/command_router.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 236,
+      "path": "src/lyra/core/commands/command_router.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 19,
+      "path": "src/lyra/core/hub/hub.py",
+      "rule": "F401",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 65,
+      "path": "src/lyra/core/hub/hub.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 46,
+      "path": "src/lyra/core/hub/hub_registration.py",
+      "rule": "ARG002",
+      "source": "noqa",
+      "tag": "protocol-private"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 47,
+      "path": "src/lyra/core/hub/hub_registration.py",
+      "rule": "ARG002",
+      "source": "noqa",
+      "tag": "protocol-private"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 64,
+      "path": "src/lyra/core/hub/middleware/middleware.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 112,
+      "path": "src/lyra/core/hub/middleware/middleware_guards.py",
+      "rule": "PLC0415",
+      "slug": "plc0415-deferred-import",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 159,
+      "path": "src/lyra/core/hub/middleware/middleware_pool.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 71,
+      "path": "src/lyra/core/hub/middleware/middleware_stt.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 71,
+      "path": "src/lyra/core/hub/middleware/middleware_stt.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 173,
+      "path": "src/lyra/core/hub/middleware/middleware_stt.py",
+      "rule": "union-attr",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 174,
+      "path": "src/lyra/core/hub/middleware/middleware_stt.py",
+      "rule": "union-attr",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 37,
+      "path": "src/lyra/core/hub/middleware/middleware_submit.py",
+      "rule": "A002",
+      "slug": "lint-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 92,
+      "path": "src/lyra/core/hub/middleware/middleware_submit.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 27,
+      "path": "src/lyra/core/hub/outbound/_dispatch.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 27,
+      "path": "src/lyra/core/hub/outbound/_dispatch.py",
+      "rule": "PLR0913",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 27,
+      "path": "src/lyra/core/hub/outbound/_dispatch.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 122,
+      "path": "src/lyra/core/hub/outbound/outbound_errors.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 55,
+      "path": "src/lyra/core/hub/outbound/outbound_router.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 47,
+      "path": "src/lyra/core/hub/outbound/outbound_streaming.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 47,
+      "path": "src/lyra/core/hub/outbound/outbound_streaming.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 9,
+      "path": "src/lyra/core/hub/pipeline/message_pipeline.py",
+      "rule": "F401",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 90,
+      "path": "src/lyra/core/memory/memory_schema.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 31,
+      "path": "src/lyra/core/messaging/callbacks.py",
+      "rule": "return-value",
+      "slug": "lint-residual",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 21,
+      "path": "src/lyra/core/persona.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 32,
+      "path": "src/lyra/core/pool/pool.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 45,
+      "path": "src/lyra/core/pool/pool.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 218,
+      "path": "src/lyra/core/pool/pool.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 243,
+      "path": "src/lyra/core/pool/pool.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 92,
+      "path": "src/lyra/core/pool/pool_observer.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 36,
+      "path": "src/lyra/core/pool/pool_processor.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 150,
+      "path": "src/lyra/core/pool/pool_processor.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 104,
+      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 104,
+      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 151,
+      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 165,
+      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "source": "pyright-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 168,
+      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "rule": "misc",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 176,
+      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 232,
+      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "source": "pyright-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 239,
+      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "source": "pyright-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 51,
+      "path": "src/lyra/core/pool/pool_processor_streaming.py",
+      "rule": "misc",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 53,
+      "path": "src/lyra/core/pool/pool_processor_streaming.py",
+      "rule": "misc",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 58,
+      "path": "src/lyra/core/pool/pool_processor_streaming.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 111,
+      "path": "src/lyra/core/pool/pool_processor_streaming.py",
+      "rule": "misc",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 117,
+      "path": "src/lyra/core/pool/pool_processor_streaming.py",
+      "rule": "misc",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 118,
+      "path": "src/lyra/core/pool/pool_processor_streaming.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 49,
+      "path": "src/lyra/core/ports/llm.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 171,
+      "path": "src/lyra/core/processors/stream_processor.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 171,
+      "path": "src/lyra/core/processors/stream_processor.py",
+      "rule": "PLR0915",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 231,
+      "path": "src/lyra/core/processors/stream_processor.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "source": "pyright-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 97,
+      "path": "src/lyra/core/processors/vault_add.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 176,
+      "path": "src/lyra/core/runtime_config.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 176,
+      "path": "src/lyra/core/runtime_config.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 146,
+      "path": "src/lyra/core/session_lifecycle.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 182,
+      "path": "src/lyra/core/session_lifecycle.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 51,
+      "path": "src/lyra/core/stores/pairing_protocol.py",
+      "rule": "PLC0415",
+      "slug": "plc0415-deferred-import",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 143,
+      "path": "src/lyra/core/trace.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 172,
+      "path": "src/lyra/core/tts_dispatch.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 172,
+      "path": "src/lyra/core/tts_dispatch.py",
+      "rule": "C901",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 201,
+      "path": "src/lyra/core/tts_dispatch.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 35,
+      "path": "src/lyra/infrastructure/stores/sqlite_base.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 125,
+      "path": "src/lyra/infrastructure/stores/turn_store.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 31,
+      "path": "src/lyra/integrations/base.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 29,
+      "path": "src/lyra/integrations/vault_cli.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 36,
+      "path": "src/lyra/llm/decorators.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 83,
+      "path": "src/lyra/llm/decorators.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 115,
+      "path": "src/lyra/llm/decorators.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 146,
+      "path": "src/lyra/llm/decorators.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 234,
+      "path": "src/lyra/llm/drivers/cli_nats.py",
+      "rule": "union-attr",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 137,
+      "path": "src/lyra/llm/drivers/nats_driver.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 274,
+      "path": "src/lyra/llm/drivers/nats_driver.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 297,
+      "path": "src/lyra/llm/drivers/nats_driver.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 297,
+      "path": "src/lyra/llm/drivers/nats_driver.py",
+      "rule": "PLR0913",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 297,
+      "path": "src/lyra/llm/drivers/nats_driver.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 50,
+      "path": "src/lyra/monitoring/__main__.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 56,
+      "path": "src/lyra/monitoring/__main__.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 67,
+      "path": "src/lyra/monitoring/__main__.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 86,
+      "path": "src/lyra/monitoring/checks.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 65,
+      "path": "src/lyra/monitoring/checks_varz.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 62,
+      "path": "src/lyra/nats/nats_bus.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 85,
+      "path": "src/lyra/nats/nats_stt_client.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 93,
+      "path": "src/lyra/nats/render_event_codec.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "source": "pyright-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 95,
+      "path": "src/lyra/nats/render_event_codec.py",
+      "rule": "reportUnreachable",
+      "source": "pyright-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 99,
+      "path": "src/lyra/nats/render_event_codec.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 9,
+      "path": "src/lyra/stt/__init__.py",
+      "rule": "F401",
+      "source": "noqa",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 9,
+      "path": "src/lyra/stt/__init__.py",
+      "rule": "reportUnusedImport",
+      "source": "pyright-ignore",
+      "tag": "re-export"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 64,
+      "path": "src/lyra/tools/gh_token/dispenser.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 215,
+      "path": "src/lyra/tools/gh_token/dispenser.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 157,
+      "path": "src/lyra/tools/gh_token/helper.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 249,
+      "path": "src/lyra/tools/gh_token/helper.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 33,
+      "path": "src/lyra/tools/gh_token/refresh.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 68,
+      "path": "src/lyra/tools/gh_token/refresh.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 107,
+      "path": "src/lyra/tools/gh_token/refresh.py",
+      "rule": "BLE001",
+      "source": "noqa",
+      "tag": "boundary"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 55,
+      "path": "src/lyra/tts/engine_selector.py",
+      "rule": "PLR0913",
+      "source": "noqa",
+      "tag": "wiring--"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 150,
+      "path": "tools/license_check.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 27,
+      "path": "tools/rebaseline_quality_debt.py",
+      "rule": "type-arg",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 31,
+      "path": "tools/rebaseline_quality_debt.py",
+      "rule": "no-any-return",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 36,
+      "path": "tools/rebaseline_quality_debt.py",
+      "rule": "type-arg",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 54,
+      "path": "tools/rebaseline_quality_debt.py",
+      "rule": "type-arg",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 56,
+      "path": "tools/rebaseline_quality_debt.py",
+      "rule": "type-arg",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 58,
+      "path": "tools/rebaseline_quality_debt.py",
+      "rule": "type-arg",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "POLICY",
+      "line": 59,
+      "path": "tools/rebaseline_quality_debt.py",
+      "rule": "type-arg",
+      "source": "type-ignore",
+      "tag": "defensive-narrow"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 17,
+      "path": "lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 18,
+      "path": "lyra.core.auth.authenticator -> lyra.infrastructure.stores.auth_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 19,
+      "path": "lyra.core.auth.authenticator -> lyra.infrastructure.stores.identity_alias_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 20,
+      "path": "lyra.core.agent.agent -> lyra.infrastructure.stores.agent_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 21,
+      "path": "lyra.core.memory.memory -> lyra.infrastructure.stores.identity_alias_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 22,
+      "path": "lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 23,
+      "path": "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.identity_alias_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 25,
+      "path": "lyra.core.hub.hub -> lyra.infrastructure.stores.message_index",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 26,
+      "path": "lyra.core.hub.hub -> lyra.infrastructure.stores.pairing",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 27,
+      "path": "lyra.core.hub.hub -> lyra.infrastructure.stores.prefs_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 28,
+      "path": "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.message_index",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 29,
+      "path": "lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.message_index",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 30,
+      "path": "lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 32,
+      "path": "lyra.core.stores.pairing_protocol -> lyra.infrastructure.stores.pairing",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 34,
+      "path": "lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 35,
+      "path": "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 36,
+      "path": "lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 37,
+      "path": "lyra.core.cli.cli_pool -> lyra.infrastructure.stores.turn_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 38,
+      "path": "lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 39,
+      "path": "lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 40,
+      "path": "lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 70,
+      "path": "lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store",
+      "slug": "importlinter-adr048-transition",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 89,
+      "path": "lyra.tts.engine_selector -> lyra.core.agent.agent_config",
+      "slug": "importlinter-shared-modules-transitive",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 90,
+      "path": "lyra.core.processors.processor_registry -> lyra.integrations.base",
+      "slug": "importlinter-shared-modules-transitive",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 91,
+      "path": "lyra.core.agent.agent -> lyra.stt",
+      "slug": "importlinter-shared-modules-transitive",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 92,
+      "path": "lyra.core.agent.agent -> lyra.tts",
+      "slug": "importlinter-shared-modules-transitive",
+      "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 4,
+      "path": "src/lyra/bootstrap/factory/wiring_helpers.py",
+      "slug": "file-exemptions",
+      "source": "file-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 5,
+      "path": "src/lyra/bootstrap/bootstrap_stores.py",
+      "slug": "file-exemptions",
+      "source": "file-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 6,
+      "path": "src/lyra/core/cli/cli_pool.py",
+      "slug": "file-exemptions",
+      "source": "file-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 7,
+      "path": "src/lyra/agents/simple_agent.py",
+      "slug": "file-exemptions",
+      "source": "file-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 8,
+      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
+      "slug": "file-exemptions",
+      "source": "file-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 9,
+      "path": "src/lyra/core/processors/stream_processor.py",
+      "slug": "file-exemptions",
+      "source": "file-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 10,
+      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
+      "slug": "file-exemptions",
+      "source": "file-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 11,
+      "path": "src/lyra/llm/drivers/nats_driver.py",
+      "slug": "file-exemptions",
+      "source": "file-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 12,
+      "path": "src/lyra/adapters/clipool/clipool_worker.py",
+      "slug": "file-exemptions",
+      "source": "file-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 13,
+      "path": "src/lyra/core/cli/cli_streaming_parser.py",
+      "slug": "file-exemptions",
+      "source": "file-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 9,
+      "path": "src/lyra/core",
+      "slug": "folder-exemptions",
+      "source": "folder-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 10,
+      "path": "src/lyra/infrastructure/stores",
+      "slug": "folder-exemptions",
+      "source": "folder-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 11,
+      "path": "src/lyra/core/cli",
+      "slug": "folder-exemptions",
+      "source": "folder-exemptions"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 12,
+      "path": "src/lyra/core/messaging",
+      "slug": "folder-exemptions",
+      "source": "folder-exemptions"
+    }
+  ],
+  "sources": [
+    "noqa",
+    "pyright-ignore",
+    "type-ignore",
+    "importlinter",
+    "file-exemptions",
+    "folder-exemptions"
+  ],
+  "stale_references": []
+}

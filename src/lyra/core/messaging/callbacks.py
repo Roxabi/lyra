@@ -28,7 +28,7 @@ class TrustedCallback[T]:
         result = self.fn(*args, **kwargs)
         if inspect.isawaitable(result):
             return await result
-        return result  # type: ignore[return-value]
+        return result  # type: ignore[return-value] — DEBT:lint-residual
 
 
 def unwrap_callback(

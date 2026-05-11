@@ -294,7 +294,7 @@ class NatsLlmDriver:
             pool_id, text, model_cfg, system_prompt, messages=messages
         )
 
-    async def _stream_gen(  # noqa: C901, PLR0913, PLR0915
+    async def _stream_gen(  # noqa: C901, PLR0913, PLR0915 — DEBT:complexity-residual
         self,
         pool_id: str,
         text: str,

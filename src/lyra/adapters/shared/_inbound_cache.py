@@ -92,7 +92,7 @@ class InboundCache:
             if raw is not None:
                 try:
                     msg = deserialize_dict(raw, InboundMessage, resolver=self._resolver)
-                except Exception:  # noqa: BLE001   — POLICY:boundary# cache op: non-fatal
+                except Exception:  # noqa: BLE001  — POLICY:boundary# cache op: non-fatal
                     log.warning(
                         "InboundCache: bad embedded original_msg for %s stream_id=%r",
                         kind,

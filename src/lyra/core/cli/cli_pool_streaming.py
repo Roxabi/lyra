@@ -35,7 +35,7 @@ class CliPoolStreamingMixin:
     # the asyncio child watcher plenty of time to set proc.returncode.
     _STALE_RESUME_CHECK_DELAY = 0.05
 
-    async def send_streaming(  # noqa: C901
+    async def send_streaming(  # noqa: C901 — DEBT:complexity-residual
         self,
         pool_id: str,
         message: str,

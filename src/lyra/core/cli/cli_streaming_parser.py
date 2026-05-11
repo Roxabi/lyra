@@ -91,7 +91,7 @@ class CliStreamingParser:
         # ToolUseLlmEvent per tool_id.
         self._emitted_tool_use_ids: set[str] = set()
 
-    def parse_line(self, line: str) -> deque[LlmEvent]:  # noqa: C901, PLR0912, PLR0915 — protocol event dispatch
+    def parse_line(self, line: str) -> deque[LlmEvent]:  # noqa: C901, PLR0912, PLR0915 — DEBT:complexity-residual — protocol event dispatch
         """Parse a JSON line, update state, and return events to yield.
 
         Returns a deque of LlmEvent objects. Caller should pop from left.

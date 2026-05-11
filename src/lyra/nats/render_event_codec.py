@@ -96,7 +96,7 @@ class NatsRenderEventCodec:
             f"Unsupported RenderEvent subtype: {type(event)!r}"
         )
 
-    def decode(  # noqa: C901 — per-event-type version-check + decode; refactored when Slice 5 sunsets v1
+    def decode(  # noqa: C901 — DEBT:complexity-residual — per-event-type version-check + decode; refactored when Slice 5 sunsets v1
         self,
         event_type: str,
         payload: dict,

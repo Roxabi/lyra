@@ -1,0 +1,50 @@
+---
+title: Quality-debt drain pass — REFACTOR-NOW + first DEBT batch (P2a)
+issue: 1163
+status: approved
+tier: F-lite
+date: 2026-05-11
+---
+
+## Problem
+
+#1162 established the quality-debt invariant infrastructure: POLICY/DEBT tag grammar, audit, ratchet (soft/hard cutover), and the registry schema. The classifier's `--apply` pass backfilled ~37 narrow POLICY tags, but the bulk of the debt remains:
+
+- **REFACTOR-NOW queue** (`artifacts/quality-debt-drain-queue.json`): 30 "easy" entries surfaced as good refactor candidates by the classifier.
+- **UNTAGGED rows in `src/`**: ~496 remaining after the narrow backfill. Each must be either refactored away or tagged (POLICY or DEBT) with a registry entry.
+
+The hard-cutover date is **2026-05-18** (today + 7d). After that, CI ratchet fails on any new untagged exception or drift. P2a is the drain pass that gets `make quality-debt-report` to zero before the deadline (or pushes the cutover deliberately via rebaseline).
+
+Observable impact: 496 untagged exceptions currently block a zero-debt-report state; the ratchet is in soft mode and the invariant is not yet enforced.
+
+## Who
+
+- **Primary:** Mickael / quality-debt operator running drain passes. Decides per-entry refactor vs POLICY vs DEBT.
+- **Secondary:** Future contributors who hit ratchet failures on new untagged exceptions once the cutover is hard.
+
+## Constraints
+
+- Hard-cutover deadline: 2026-05-18 (defined in `tools/quality_debt_baseline.json`). PR should land before, or cutover is pushed via `make quality-debt-rebaseline`.
+- Per drained slug: registry file is **flipped to `status: drained`** (not deleted) — preserves history.
+- DEBT entries must conform to schema in `docs/quality-policy.md` and live under `artifacts/debt/`.
+- Read→write tool scope rule (memory: `feedback_scan_tool_read_vs_write_scope`): tag-application tools must default-exclude tests/fixtures/packages to avoid mutating non-source files.
+- Annotation grammar portability (memory: `feedback_annotation_grammar_portability`): `# tag` only valid in .py/.sh — never extend to config formats that parse `#` differently.
+- Audit exit-code rule (memory: `feedback_audit_exit_codes_in_gates`): scanners return 0 for "ran OK"; verdict goes in the report. Don't regress the #1162 hotfix.
+
+## Out of Scope
+
+- Refactoring all 496 untagged rows in one PR — acceptance allows ≥50% drain-queue shrink + zero UNTAGGED via mix of refactor/tag.
+- Changes to the invariant infrastructure itself (POLICY/DEBT grammar, audit, ratchet, classifier) — those landed in #1162.
+- Hardening the cutover date — pushing the deadline if needed is a separate operator action via rebaseline.
+- Drain passes for packages outside `src/` (tests, tools, fixtures).
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (quality-debt invariant), no new architecture, well-defined acceptance.
+
+Signals observed:
+- Issue labeled `size:F-lite`.
+- Spec + plan from #1162 already exist; this is operator drain work against established infra.
+- Single domain: quality gates / tooling.
+- No unknowns — schema and pipeline are documented (`docs/quality-policy.md`, `docs/playbooks/quality-debt-pipeline.md`).
+- Multi-file edits across `src/`, `artifacts/debt/`, plus registry bookkeeping — beyond S-tier scope.

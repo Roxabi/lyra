@@ -161,8 +161,8 @@ def test_c901_migration_function_suggests_policy_migration_sequence(
                and r["fix_class"] == "medium" for r in rows), f"got rows={rows}"
 
 
-def test_f401_in_init_flagged_needs_review(tmp_path: Path) -> None:
-    """F401 in __init__.py -> needs_review (excluded from 80% denominator)."""
+def test_f401_in_init_is_reexport_legacy(tmp_path: Path) -> None:
+    """F401 in __init__.py -> POLICY:re-export (Rule 5, was needs_review before)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/x/__init__.py"
     _src(tmp_path, sp, "from lyra.x.impl import Foo  # noqa: F401\n")
@@ -172,8 +172,8 @@ def test_f401_in_init_flagged_needs_review(tmp_path: Path) -> None:
 
     assert cp.returncode == 0, f"rc={cp.returncode}\n{cp.stderr}"
     rows = _tsv(cp.stdout)
-    assert any(r["rule"] == "F401" and r["fix_class"] == "needs_review"
-               for r in rows), f"got rows={rows}"
+    assert any(r["rule"] == "F401" and r["suggestion"] == "POLICY:re-export"
+               and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
 
 
 def test_classification_ratio_above_80pct(tmp_path: Path) -> None:
@@ -263,3 +263,541 @@ def test_apply_produces_drain_queue_with_cap(tmp_path: Path) -> None:
     assert isinstance(queue, list) and len(queue) > 0, "drain queue empty"
     easy = [e for e in queue if e.get("fix_class") == "easy"]
     assert len(easy) <= 30, f"easy cap exceeded: {len(easy)} > 30"
+
+
+# ---------------------------------------------------------------------------
+# Rule 1: BLE001 — broadened boundary detection
+# ---------------------------------------------------------------------------
+
+
+def test_ble001_adapter_path_is_boundary(tmp_path: Path) -> None:
+    """BLE001 in src/lyra/adapters/* -> POLICY:boundary, easy."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/adapters/telegram/handler.py"
+    _src(tmp_path, sp, "def run():  # noqa: BLE001\n    pass\n")
+    _write_report(rpt, [_row(sp, "BLE001")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "BLE001" and r["suggestion"] == "POLICY:boundary"
+               and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
+
+
+def test_ble001_bootstrap_path_is_boundary(tmp_path: Path) -> None:
+    """BLE001 in src/lyra/bootstrap/* -> POLICY:boundary, easy."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/bootstrap/startup.py"
+    _src(tmp_path, sp, "def start():  # noqa: BLE001\n    pass\n")
+    _write_report(rpt, [_row(sp, "BLE001")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "BLE001" and r["suggestion"] == "POLICY:boundary"
+               for r in rows), f"got rows={rows}"
+
+
+def test_ble001_hub_listener_basename_is_boundary(tmp_path: Path) -> None:
+    """BLE001 in hub_events.py -> POLICY:boundary (hub_* basename match)."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/hub_events.py"
+    _src(tmp_path, sp, "def listen():  # noqa: BLE001\n    pass\n")
+    _write_report(rpt, [_row(sp, "BLE001")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "BLE001" and r["suggestion"] == "POLICY:boundary"
+               for r in rows), f"got rows={rows}"
+
+
+def test_ble001_nats_listener_basename_is_boundary(tmp_path: Path) -> None:
+    """BLE001 in nats_outbound_listener.py -> POLICY:boundary (*_listener match)."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/adapters/nats/nats_outbound_listener.py"
+    _src(tmp_path, sp, "def consume():  # noqa: BLE001\n    pass\n")
+    _write_report(rpt, [_row(sp, "BLE001")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "BLE001" and r["suggestion"] == "POLICY:boundary"
+               for r in rows), f"got rows={rows}"
+
+
+def test_ble001_unrelated_path_not_boundary(tmp_path: Path) -> None:
+    """BLE001 in a non-boundary path -> needs_review (no false positive)."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/utils.py"
+    _src(tmp_path, sp, "def helper():  # noqa: BLE001\n    pass\n")
+    _write_report(rpt, [_row(sp, "BLE001")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "BLE001" and r["fix_class"] == "needs_review"
+               for r in rows), f"expected needs_review; got rows={rows}"
+
+
+# ---------------------------------------------------------------------------
+# Rule 2: PLR0913 — broadened wiring detection
+# ---------------------------------------------------------------------------
+
+
+def test_plr0913_dispatcher_basename_is_wiring(tmp_path: Path) -> None:
+    """PLR0913 in *_dispatch.py -> POLICY:wiring, easy."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/message_dispatch.py"
+    _src(tmp_path, sp, "def route(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
+    _write_report(rpt, [_row(sp, "PLR0913")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "PLR0913" and r["suggestion"] == "POLICY:wiring"
+               and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
+
+
+def test_plr0913_builder_basename_is_wiring(tmp_path: Path) -> None:
+    """PLR0913 in agent_builder.py -> POLICY:wiring."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/agents/agent_builder.py"
+    _src(tmp_path, sp, "def build(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
+    _write_report(rpt, [_row(sp, "PLR0913")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "PLR0913" and r["suggestion"] == "POLICY:wiring"
+               for r in rows), f"got rows={rows}"
+
+
+def test_plr0913_authenticator_basename_is_wiring(tmp_path: Path) -> None:
+    """PLR0913 in authenticator.py -> POLICY:wiring."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/authenticator.py"
+    _src(tmp_path, sp, "def auth(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
+    _write_report(rpt, [_row(sp, "PLR0913")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "PLR0913" and r["suggestion"] == "POLICY:wiring"
+               for r in rows), f"got rows={rows}"
+
+
+def test_plr0913_unrelated_basename_not_wiring(tmp_path: Path) -> None:
+    """PLR0913 in a plain module (not wiring/bootstrap/dispatch) -> needs_review."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/processor.py"
+    _src(tmp_path, sp, "def do(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
+    _write_report(rpt, [_row(sp, "PLR0913")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "PLR0913" and r["fix_class"] == "needs_review"
+               for r in rows), f"expected needs_review; got rows={rows}"
+
+
+# ---------------------------------------------------------------------------
+# Rule 3: C901 — bootstrap entry + dispatcher fallback
+# ---------------------------------------------------------------------------
+
+
+def test_c901_bootstrap_main_is_migration_sequence(tmp_path: Path) -> None:
+    """C901 on def main() in bootstrap/** -> POLICY:migration-sequence."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/bootstrap/entry.py"
+    _src(tmp_path, sp, "def main():  # noqa: C901\n    pass\n")
+    _write_report(rpt, [_row(sp, "C901")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "C901" and r["suggestion"] == "POLICY:migration-sequence"
+               for r in rows), f"got rows={rows}"
+
+
+def test_c901_bootstrap_standalone_is_migration_sequence(tmp_path: Path) -> None:
+    """C901 on def hub_standalone() in bootstrap/** -> POLICY:migration-sequence."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/bootstrap/hub.py"
+    _src(tmp_path, sp, "def hub_standalone():  # noqa: C901\n    pass\n")
+    _write_report(rpt, [_row(sp, "C901")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "C901" and r["suggestion"] == "POLICY:migration-sequence"
+               for r in rows), f"got rows={rows}"
+
+
+def test_c901_dispatcher_basename_is_wiring(tmp_path: Path) -> None:
+    """C901 in message_pipeline.py -> POLICY:wiring (dispatcher basename)."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/message_pipeline.py"
+    _src(tmp_path, sp, "def process():  # noqa: C901\n    pass\n")
+    _write_report(rpt, [_row(sp, "C901")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "C901" and r["suggestion"] == "POLICY:wiring"
+               for r in rows), f"got rows={rows}"
+
+
+def test_c901_unrelated_path_is_needs_review(tmp_path: Path) -> None:
+    """C901 in a non-bootstrap, non-dispatcher path -> needs_review."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/helpers.py"
+    _src(tmp_path, sp, "def complex_helper():  # noqa: C901\n    pass\n")
+    _write_report(rpt, [_row(sp, "C901")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "C901" and r["fix_class"] == "needs_review"
+               for r in rows), f"expected needs_review; got rows={rows}"
+
+
+# ---------------------------------------------------------------------------
+# Rule 4: PLR0915 — same heuristics as C901
+# ---------------------------------------------------------------------------
+
+
+def test_plr0915_bootstrap_main_is_migration_sequence(tmp_path: Path) -> None:
+    """PLR0915 on def main() in bootstrap/** -> POLICY:migration-sequence."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/bootstrap/runner.py"
+    _src(tmp_path, sp, "def main():  # noqa: PLR0915\n    pass\n")
+    _write_report(rpt, [_row(sp, "PLR0915")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "PLR0915" and r["suggestion"] == "POLICY:migration-sequence"
+               for r in rows), f"got rows={rows}"
+
+
+def test_plr0915_dispatcher_path_is_wiring(tmp_path: Path) -> None:
+    """PLR0915 in event_emitter.py -> POLICY:wiring."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/event_emitter.py"
+    _src(tmp_path, sp, "def emit():  # noqa: PLR0915\n    pass\n")
+    _write_report(rpt, [_row(sp, "PLR0915")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "PLR0915" and r["suggestion"] == "POLICY:wiring"
+               for r in rows), f"got rows={rows}"
+
+
+def test_plr0915_unrelated_path_is_needs_review(tmp_path: Path) -> None:
+    """PLR0915 in a non-bootstrap, non-dispatcher path -> needs_review."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/utils.py"
+    _src(tmp_path, sp, "def do_stuff():  # noqa: PLR0915\n    pass\n")
+    _write_report(rpt, [_row(sp, "PLR0915")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "PLR0915" and r["fix_class"] == "needs_review"
+               for r in rows), f"expected needs_review; got rows={rows}"
+
+
+# ---------------------------------------------------------------------------
+# Rule 5: F401 in __init__.py -> re-export (changed from needs_review)
+# ---------------------------------------------------------------------------
+
+
+def test_f401_in_init_is_reexport(tmp_path: Path) -> None:
+    """F401 in __init__.py -> POLICY:re-export, easy (changed from needs_review)."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/x/__init__.py"
+    _src(tmp_path, sp, "from lyra.x.impl import Foo  # noqa: F401\n")
+    _write_report(rpt, [_row(sp, "F401")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "F401" and r["suggestion"] == "POLICY:re-export"
+               and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
+
+
+def test_f401_not_in_init_is_needs_review(tmp_path: Path) -> None:
+    """F401 in a non-__init__.py file -> needs_review (TYPE_CHECKING etc.)."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/types.py"
+    _src(tmp_path, sp, "from lyra.x.impl import Foo  # noqa: F401\n")
+    _write_report(rpt, [_row(sp, "F401")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "F401" and r["fix_class"] == "needs_review"
+               for r in rows), f"expected needs_review; got rows={rows}"
+
+
+# ---------------------------------------------------------------------------
+# Rule 6: E402 -> module-level-patch
+# ---------------------------------------------------------------------------
+
+
+def test_e402_is_module_level_patch(tmp_path: Path) -> None:
+    """E402 -> POLICY:module-level-patch, easy."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/patching.py"
+    _src(tmp_path, sp, "import os  # noqa: E402\n")
+    _write_report(rpt, [_row(sp, "E402")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "E402" and r["suggestion"] == "POLICY:module-level-patch"
+               and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
+
+
+def test_e402_no_path_filter(tmp_path: Path) -> None:
+    """E402 fires regardless of path (no path filter)."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/adapters/discord/setup.py"
+    _src(tmp_path, sp, "import sys  # noqa: E402\n")
+    _write_report(rpt, [_row(sp, "E402")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "E402" and r["suggestion"] == "POLICY:module-level-patch"
+               for r in rows), f"got rows={rows}"
+
+
+# ---------------------------------------------------------------------------
+# Rule 7: PLR0912 — same heuristics as C901
+# ---------------------------------------------------------------------------
+
+
+def test_plr0912_bootstrap_entry_is_migration_sequence(tmp_path: Path) -> None:
+    """PLR0912 on def bootstrap_hub() in bootstrap/** -> POLICY:migration-sequence."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/bootstrap/hub.py"
+    _src(tmp_path, sp, "def bootstrap_hub():  # noqa: PLR0912\n    pass\n")
+    _write_report(rpt, [_row(sp, "PLR0912")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "PLR0912" and r["suggestion"] == "POLICY:migration-sequence"
+               for r in rows), f"got rows={rows}"
+
+
+def test_plr0912_dispatcher_is_wiring(tmp_path: Path) -> None:
+    """PLR0912 in outbound_processor.py -> POLICY:wiring."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/outbound_processor.py"
+    _src(tmp_path, sp, "def route():  # noqa: PLR0912\n    pass\n")
+    _write_report(rpt, [_row(sp, "PLR0912")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "PLR0912" and r["suggestion"] == "POLICY:wiring"
+               for r in rows), f"got rows={rows}"
+
+
+# ---------------------------------------------------------------------------
+# Rule 8: pyright / mypy type annotation rules
+# ---------------------------------------------------------------------------
+
+
+def test_report_unnecessary_isinstance_is_defensive_narrow(tmp_path: Path) -> None:
+    """reportUnnecessaryIsInstance -> POLICY:defensive-narrow, easy."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/types.py"
+    _src(tmp_path, sp,
+         "if isinstance(x, str):  # pyright: ignore[reportUnnecessaryIsInstance]\n"
+         "    pass\n")
+    _write_report(rpt, [_row(sp, "reportUnnecessaryIsInstance")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "reportUnnecessaryIsInstance"
+               and r["suggestion"] == "POLICY:defensive-narrow"
+               and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
+
+
+def test_report_unused_class_is_protocol_private(tmp_path: Path) -> None:
+    """reportUnusedClass -> POLICY:protocol-private, easy."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/protocols.py"
+    _src(tmp_path, sp,
+         "class _Internal:  # pyright: ignore[reportUnusedClass]\n    pass\n")
+    _write_report(rpt, [_row(sp, "reportUnusedClass")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "reportUnusedClass"
+               and r["suggestion"] == "POLICY:protocol-private"
+               and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
+
+
+def test_union_attr_is_defensive_narrow(tmp_path: Path) -> None:
+    """union-attr -> POLICY:defensive-narrow, easy."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/resolver.py"
+    _src(tmp_path, sp, "x.method()  # type: ignore[union-attr]\n")
+    _write_report(rpt, [_row(sp, "union-attr")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(
+        r["rule"] == "union-attr" and r["suggestion"] == "POLICY:defensive-narrow"
+        and r["fix_class"] == "easy" for r in rows
+    ), f"got rows={rows}"
+
+
+def test_misc_type_ignore_is_defensive_narrow(tmp_path: Path) -> None:
+    """misc (type: ignore[misc]) -> POLICY:defensive-narrow, easy."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/compat.py"
+    _src(tmp_path, sp, "result = fn()  # type: ignore[misc]\n")
+    _write_report(rpt, [_row(sp, "misc")])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "misc" and r["suggestion"] == "POLICY:defensive-narrow"
+               and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
+
+
+# ---------------------------------------------------------------------------
+# Rule 9: PLC0415 -> DEBT:plc0415-deferred-import
+# ---------------------------------------------------------------------------
+
+
+def test_plc0415_is_deferred_import_debt(tmp_path: Path) -> None:
+    """PLC0415 -> DEBT:plc0415-deferred-import, easy."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/lazy.py"
+    _src(tmp_path, sp,
+         "def get_thing():\n    import heavy  # noqa: PLC0415\n    return heavy\n")
+    _write_report(rpt, [_row(sp, "PLC0415", line=2)])
+
+    cp = _run(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    rows = _tsv(cp.stdout)
+    assert any(r["rule"] == "PLC0415"
+               and r["suggestion"] == "DEBT:plc0415-deferred-import"
+               and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
+
+
+def test_plc0415_apply_creates_debt_registry(tmp_path: Path) -> None:
+    """--apply with PLC0415 creates artifacts/debt/plc0415-deferred-import.md."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    _debt_dir(tmp_path)
+    sp = "src/lyra/core/lazy.py"
+    _src(tmp_path, sp,
+         "def get_thing():\n    import heavy  # noqa: PLC0415\n    return heavy\n")
+    _write_report(rpt, [_row(sp, "PLC0415", line=2)])
+
+    cp = _run(tmp_path, rpt, "--apply")
+
+    assert cp.returncode == 0, cp.stderr
+    reg = tmp_path / "artifacts" / "debt" / "plc0415-deferred-import.md"
+    assert reg.exists(), f"registry file missing; stderr:\n{cp.stderr}"
+
+
+# ---------------------------------------------------------------------------
+# --json mode
+# ---------------------------------------------------------------------------
+
+
+def _run_json(root: Path, report: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(TOOL), "--dry-run", "--json", "--report", str(report)],
+        capture_output=True, text=True, check=False, cwd=str(root),
+    )
+
+
+def test_json_mode_emits_valid_json_array(tmp_path: Path) -> None:
+    """--dry-run --json emits a JSON array, not TSV."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/cli/cli_main.py"
+    _src(tmp_path, sp, "def h():  # noqa: BLE001\n    pass\n")
+    _write_report(rpt, [_row(sp, "BLE001")])
+
+    cp = _run_json(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    data = json.loads(cp.stdout)
+    assert isinstance(data, list), f"expected list; got {type(data)}"
+    assert len(data) == 1
+    rec = data[0]
+    assert rec["rule"] == "BLE001"
+    assert rec["suggestion"] == "POLICY:boundary"
+    assert rec["fix_class"] == "easy"
+    assert "path" in rec and "line" in rec and "reason" in rec
+
+
+def test_json_mode_no_tsv_header(tmp_path: Path) -> None:
+    """--dry-run --json stdout contains no TSV 'path\\tline' header line."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/bootstrap/startup.py"
+    _src(tmp_path, sp, "def start():  # noqa: BLE001\n    pass\n")
+    _write_report(rpt, [_row(sp, "BLE001")])
+
+    cp = _run_json(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    assert "path\tline" not in cp.stdout, "TSV header leaked into JSON output"
+    assert "CLASSIFIED:" not in cp.stdout, "summary line leaked into JSON output"
+
+
+def test_json_mode_needs_review_rows_included(tmp_path: Path) -> None:
+    """--dry-run --json includes needs_review rows with empty suggestion."""
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    sp = "src/lyra/core/utils.py"
+    _src(tmp_path, sp, "from lyra.x import Foo  # noqa: F401\n")
+    _write_report(rpt, [_row(sp, "F401")])
+
+    cp = _run_json(tmp_path, rpt)
+
+    assert cp.returncode == 0, cp.stderr
+    data = json.loads(cp.stdout)
+    assert len(data) == 1
+    rec = data[0]
+    assert rec["rule"] == "F401"
+    assert rec["fix_class"] == "needs_review"

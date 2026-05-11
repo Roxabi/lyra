@@ -6,6 +6,13 @@ Usage:
 
 Default report: artifacts/quality-debt-report.json (resolved from cwd).
 Default mode: --dry-run.
+
+Output modes:
+    --dry-run          Print TSV preview + summary line to stdout (default).
+    --dry-run --json   Print JSON array to stdout:
+                       [{path, line, rule, suggestion, fix_class, reason}, ...]
+                       Summary line is suppressed; parse the array length directly.
+    --apply            Apply inline suffixes, create registry files, write drain queue.
 """
 
 from __future__ import annotations
@@ -69,6 +76,20 @@ _INDEX_HEADER = (
     "<!-- rows inserted here -->\n"
 )
 
+# Rule 8 + Rule 9: fixed suggestion per rule (no path inspection required).
+# rule -> suggestion string; fix_class is always "easy" for these.
+_RULE_SUGGESTION_MAP: dict[str, str] = {
+    # Rule 6: E402 — imports after side effects (no path filter needed)
+    "E402": "POLICY:module-level-patch",
+    # Rule 8: pyright/mypy type annotation rules
+    "reportUnnecessaryIsInstance": "POLICY:defensive-narrow",
+    "reportUnusedClass": "POLICY:protocol-private",
+    "union-attr": "POLICY:defensive-narrow",
+    "misc": "POLICY:defensive-narrow",
+    # Rule 9: PLC0415 — lazy/deferred import
+    "PLC0415": "DEBT:plc0415-deferred-import",
+}
+
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)^---\s*\n", re.DOTALL | re.MULTILINE)
 _FM_FIELD_RE = re.compile(r"^(\w+):\s*(.+)$", re.MULTILINE)
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
@@ -90,7 +111,7 @@ def _safe_repo_path(root: Path, path_str: str) -> Path | None:
 
 
 def _read_line(root: Path, path_str: str, lineno: int) -> str:
-    """Read a specific line (1-based) from a source file; return \'\'\' on error."""
+    """Read a specific line (1-based) from a source file; return '' on error."""
     p = _safe_repo_path(root, path_str)
     if p is None:
         print(f"skipped path outside root: {path_str}", file=sys.stderr)
@@ -120,68 +141,132 @@ def _read_lines(root: Path, path_str: str) -> list[str]:
         return []
 
 
+def _classify_complexity_rule(
+    path: str, lineno: int, root: Path
+) -> tuple[str, str | None, str, str]:
+    """Shared logic for C901/PLR0915/PLR0912 (complexity rules).
+
+    Priority: _atomic_/_migrate_ def > bootstrap entry func > dispatcher path > review.
+    """
+    all_lines = _read_lines(root, path)
+    if _is_migration_function(all_lines, lineno):
+        return CLASSIFIED, "POLICY:migration-sequence", "medium", "matched"
+    if _is_bootstrap_entry_function(path, all_lines, lineno):
+        return CLASSIFIED, "POLICY:migration-sequence", "medium", "matched"
+    if _is_dispatcher_path(path):
+        return CLASSIFIED, "POLICY:wiring", "easy", "matched"
+    return NEEDS_REVIEW, None, "needs_review", "not-implemented"
+
+
 def _classify_row(row: Row, root: Path) -> tuple[str, str | None, str, str]:
     """Return (status, suggestion, fix_class, reason).
 
-    status: \'classified\' | \'needs_review\'
-    suggestion: e.g. \'POLICY:boundary\' or None
-    fix_class: \'easy\' | \'medium\' | \'needs_review\'
-    reason: \'matched\' | \'f401-init\' | \'not-implemented\'
+    status: 'classified' | 'needs_review'
+    suggestion: e.g. 'POLICY:boundary' or None
+    fix_class: 'easy' | 'medium' | 'needs_review'
+    reason: 'matched' | 'f401-init' | 'not-implemented'
     """
     rule: str = row.get("rule", "")
     path: str = row.get("path", "")
     lineno: int = int(row.get("line", 1))
 
-    # BLE001 — CLI top-level boundary
-    if rule == "BLE001":
-        if _is_cli_path(path):
-            return CLASSIFIED, "POLICY:boundary", "easy", "matched"
+    # Rules 8/9: lookup table — fixed suggestion, no path/line inspection.
+    suggestion = _RULE_SUGGESTION_MAP.get(rule)
+    if suggestion is not None:
+        return CLASSIFIED, suggestion, "easy", "matched"
 
-    # B008 — typer.Option / typer.Argument as default
+    # Rules 3/4/7: complexity rules — migration-sequence + wiring fallback.
+    if rule in ("C901", "PLR0915", "PLR0912"):
+        return _classify_complexity_rule(path, lineno, root)
+
+    # Rule 5: F401 — re-export in __init__.py; else needs_review.
+    if rule == "F401":
+        if path.endswith("__init__.py"):
+            return CLASSIFIED, "POLICY:re-export", "easy", "matched"
+        return NEEDS_REVIEW, None, "needs_review", "not-implemented"
+
+    # Rule 1: BLE001 — boundary path detection.
+    if rule == "BLE001" and _is_boundary_path(path):
+        return CLASSIFIED, "POLICY:boundary", "easy", "matched"
+
+    # B008 — typer default argument.
     if rule == "B008":
         line_text = _read_line(root, path, lineno)
         if "typer.Option(" in line_text or "typer.Argument(" in line_text:
             return CLASSIFIED, "POLICY:typer-default", "easy", "matched"
 
-    # PLR0913 — wiring / bootstrap / factory
-    if rule == "PLR0913":
-        if _is_wiring_path(path):
-            return CLASSIFIED, "POLICY:wiring", "easy", "matched"
+    # Rule 2: PLR0913 — wiring path detection.
+    if rule == "PLR0913" and _is_wiring_path(path):
+        return CLASSIFIED, "POLICY:wiring", "easy", "matched"
 
-    # C901 — migration sequence functions
-    if rule == "C901":
-        all_lines = _read_lines(root, path)
-        if _is_migration_function(all_lines, lineno):
-            return CLASSIFIED, "POLICY:migration-sequence", "medium", "matched"
-
-    # F401 in __init__.py — defer to human review
-    if rule == "F401" and path.endswith("__init__.py"):
-        return NEEDS_REVIEW, None, "needs_review", "f401-init"
-
-    # Fallback
+    # Rule 10 + fallback: singletons and unrecognized rules -> needs_review.
     return NEEDS_REVIEW, None, "needs_review", "not-implemented"
 
 
-def _is_cli_path(path: str) -> bool:
-    """True if path matches CLI top-level heuristic."""
-    filename = Path(path).name
-    if filename.startswith("cli_"):
-        return True
+def _is_boundary_path(path: str) -> bool:
+    """True if path is a CLI, adapter, bootstrap, command-dispatcher, or tools boundary.
+
+    Replaces the old _is_cli_path with broader coverage:
+      - cli/ directory or cli_* filenames (original)
+      - src/lyra/adapters/** (channel boundary event loops)
+      - src/lyra/bootstrap/** (supervisor entry points)
+      - basenames matching command/event dispatchers
+      - src/lyra/tools/** (CLI script entry points)
+    """
     parts = Path(path).parts
+    filename = Path(path).stem  # without extension
+
+    # Original cli heuristics
+    if Path(path).name.startswith("cli_"):
+        return True
     if "cli" in parts:
         return True
+
+    # Adapters and bootstrap directories
+    lower = path.lower()
+    if "/adapters/" in lower or "/bootstrap/" in lower:
+        return True
+
+    # Tools directory
+    if "/tools/" in lower:
+        return True
+
+    # Command/event dispatcher basenames
+    _BOUNDARY_BASENAME_RE = re.compile(
+        r"^(command_loader|builtin_commands|hub_.+|.+_listener)$"
+    )
+    if _BOUNDARY_BASENAME_RE.fullmatch(filename):
+        return True
+
     return False
 
 
+# Keep old name as alias for backward compatibility with any external callers
+_is_cli_path = _is_boundary_path
+
+
 def _is_wiring_path(path: str) -> bool:
-    """True if path is a bootstrap / wiring / factory module."""
+    """True if path is a bootstrap/wiring/factory/dispatcher/builder/loader module."""
     lower = path.lower()
-    return (
+    basename = Path(path).stem.lower()
+
+    # Original path-level heuristics
+    if (
         "/bootstrap/" in lower
         or lower.startswith("bootstrap/")
         or "wiring" in lower
         or "factory" in lower
+    ):
+        return True
+
+    # Rule 2 extension: basename patterns for wiring modules
+    _WIRING_BASENAME_RE = re.compile(
+        r"^(.+_dispatch|.+_builder|.+_loader|.+_seeder|authenticator|.+_listener|.+_pipeline)$"
     )
+    if _WIRING_BASENAME_RE.fullmatch(basename):
+        return True
+
+    return False
 
 
 def _is_migration_function(lines: list[str], lineno: int) -> bool:
@@ -194,6 +279,37 @@ def _is_migration_function(lines: list[str], lineno: int) -> bool:
         if re.search(r"\bdef\s+(_atomic_|_migrate_)\w+", stripped):
             return True
     return False
+
+
+def _is_bootstrap_entry_function(path: str, lines: list[str], lineno: int) -> bool:
+    """True if in bootstrap/** and function is a known entry-point pattern.
+
+    Rule 3a/4a: bootstrap path + def bootstrap_*|main|run|setup_*|*_standalone.
+    """
+    lower = path.lower()
+    if "/bootstrap/" not in lower and not lower.startswith("bootstrap/"):
+        return False
+    start = max(0, lineno - 4)
+    end = min(len(lines), lineno + 2)
+    for line in lines[start:end]:
+        stripped = line.strip()
+        if re.search(
+            r"\bdef\s+(bootstrap_\w+|main|run|setup_\w+|\w+_standalone)\b", stripped
+        ):
+            return True
+    return False
+
+
+def _is_dispatcher_path(path: str) -> bool:
+    """True if basename matches router/dispatcher complexity patterns.
+
+    Rule 3b/4b: dispatcher/pipeline/processor/normalize/outbound/emitter basenames.
+    """
+    basename = Path(path).stem.lower()
+    _DISPATCHER_RE = re.compile(
+        r"^(.+_dispatch|.+_pipeline|.+_processor|.+_normalize|.+_outbound|.+_emitter)$"
+    )
+    return bool(_DISPATCHER_RE.fullmatch(basename))
 
 
 # ---------------------------------------------------------------------------
@@ -351,8 +467,30 @@ TSV_HEADER = "path\tline\trule\tsuggestion\tfix_class"
 
 def _print_dry_run(
     classified: list[tuple[Row, str, str | None, str, str]],
+    as_json: bool = False,
 ) -> None:
-    """Print TSV + summary to stdout."""
+    """Print dry-run output to stdout.
+
+    as_json=False (default): TSV rows + summary line.
+    as_json=True: JSON array [{path, line, rule, suggestion, fix_class, reason}].
+                  Summary line is omitted; callers inspect array length directly.
+    """
+    if as_json:
+        records = []
+        for row, _status, suggestion, fix_class, reason in classified:
+            records.append(
+                {
+                    "path": row.get("path", ""),
+                    "line": row.get("line", ""),
+                    "rule": row.get("rule", ""),
+                    "suggestion": suggestion or "",
+                    "fix_class": fix_class,
+                    "reason": reason,
+                }
+            )
+        print(json.dumps(records, indent=2, ensure_ascii=False))
+        return
+
     n_classified = sum(1 for _, s, _, _, _ in classified if s == CLASSIFIED)
     n_needs_review = sum(1 for _, s, _, _, _ in classified if s == NEEDS_REVIEW)
     total = len(classified)
@@ -494,7 +632,11 @@ def main(argv: list[str] | None = None) -> int:
         "--json",
         action="store_true",
         default=False,
-        help="Output JSON instead of TSV (dry-run only).",
+        help=(
+            "Output JSON array instead of TSV (dry-run only). "
+            "Emits [{path, line, rule, suggestion, fix_class, reason}] on stdout. "
+            "Summary line is omitted in this mode."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -517,7 +659,7 @@ def main(argv: list[str] | None = None) -> int:
     classified = _classify_all(rows, root)
 
     if args.dry_run:
-        _print_dry_run(classified)
+        _print_dry_run(classified, as_json=args.json)
     else:
         _run_apply(classified, root, report_path)
 

@@ -1,0 +1,140 @@
+---
+title: CLIpool git audit response — open findings
+epic: 1158
+issue: null
+status: draft
+tier: F-full
+date: 2026-05-10
+children:
+  - 1149
+  - 1150
+  - 1151
+---
+
+## Problem
+
+The CLIpool git audit (2026-05-08, 6 findings) produced 3 fixes shipped in-flight without tickets — SSH→HTTPS rewrite (`32a3ca37`), TTL safety belt (`d5933e3c`), and one unrecovered. The 3 open findings (#1149, #1150, #1151) share a surface: a path-based wildcard baked into the container image's git config, a single bot identity stamped on all commits regardless of which agent ran the session, and a token refresh policy that provides no TTL floor guarantee. These are visible in `deploy/lyra-gh/git.config.tmpl` and the CLIpool runtime today.
+
+The deeper driver is a threat-model migration. When CLIpool was first built, "trust Claude" implied "trust everything Claude touches" — path-based grants were acceptable, a single image-baked bot identity was fine, reactive token refresh was fine. Claude now ingests untrusted input: cloned repos, prompt-routed URLs, tool outputs originating from external sources. "Trust Claude" no longer implies "trust everything Claude reads." The trust boundary has migrated outward from "the agent" to "what the agent can prove provenance of."
+
+Every open finding is one trust-grant misalignment with the new boundary. The wildcard (`/projects/*` in `safe.directory`) is a CWE-426/427 untrusted search-path pattern (CVE-2022-24765 lineage) — a deliberate concession that became unacceptable as the threat model shifted, not a bug that appeared spontaneously. The same logic applies to identity and token policy. This epic realigns all three grants.
+
+## Who
+
+- **Primary:** the Lyra clipool subsystem (containerized Claude Code agent runner) and any operator running `lyra adapter clipool`
+- **Secondary:** future Roxabi Quadlet adopters (forge, intel, etc.) that bind-mount host trees — they inherit the idmap pattern this epic establishes; lyra is the reference impl
+- **Tertiary:** anyone reading commit history needing per-session attribution (audit, debugging, downstream tooling)
+
+## Trust-model migration (central thesis)
+
+```
+t₀ (CLIpool first built):  "Trust Claude" implied "trust everything Claude touches"
+                            → path-based grants were fine
+                            → image-baked single bot identity was fine
+                            → reactive token refresh was fine
+
+t₁ (now, post-audit):       Claude ingests untrusted input — cloned repos, prompt-routed
+                            URLs, tool outputs originating from external sources
+                            → "trust Claude" no longer implies "trust everything Claude reads"
+                            → trust boundary migrated outward from "the agent" to
+                              "what the agent can prove provenance of"
+                            → every audit finding is one trust-grant misalignment
+                              with the new boundary
+```
+
+Per-child realignment:
+
+| Child | Trust grant being realigned | Mechanism |
+|---|---|---|
+| #1149 | "Trust by path" (`/projects/*` wildcard) → "Trust by ownership" | Quadlet `Volume=...:idmap` aligns container uid 1500 ↔ host uid 1000 at kernel level; wildcard becomes redundant and is deleted; git's native ownership check is restored as a meaningful boundary |
+| #1150 | "All commits = single bot identity" → "Per-agent / per-session identity" | Inject `GIT_COMMITTER_*` per subprocess from agent profile (`~/.lyra/auth.db`); append `Lyra-Session-Id` / `Lyra-Agent` trailers; GitHub App push identity unchanged — this is human-readable provenance, not auth |
+| #1151 | "Reactive token mint, hope for the best" → "Time-horizon guarantee" | Refresh loop targets a horizon (mint when <15min TTL); every dispenser read returns ≥15min TTL by invariant, not by hope; rate limiter semantics change from "brake on demand" to "minimum mint cadence floor" |
+
+## Children — what each realigns
+
+### #1149 — safe.directory wildcard / uid mapping
+
+**Trust grant:** "trust by path" (`/projects/*` wildcard in `deploy/lyra-gh/git.config.tmpl`) → "trust by ownership."
+
+The wildcard suppresses git's ownership check for everything under `/projects`. With idmap enabled on the Quadlet volume (`deploy/quadlet/lyra-clipool.container`), the kernel remaps host uid 1000 ↔ container uid 1500, so the container sees its own files as natively owned. Git's ownership check passes without any override. The wildcard is then deleted — the check becomes a meaningful boundary again instead of a bypassed formality.
+
+**Deliverable:** updated `deploy/quadlet/lyra-clipool.container` (idmap on the bind volume) + updated `deploy/lyra-gh/git.config.tmpl` (wildcard line removed) + new `docs/ops/quadlet-idmap-migration.md` (migration recipe for lyra and future adopters).
+
+### #1150 — agent identity propagation
+
+**Trust grant:** "all commits carry a single image-baked bot identity" → "commits carry per-agent, per-session attribution."
+
+`src/lyra/adapters/clipool/clipool_worker.py` injects `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL` into the subprocess environment on spawn, sourced from the agent's profile in `~/.lyra/auth.db`. Git trailers `Lyra-Session-Id` and `Lyra-Agent` are appended to commit messages. The GitHub App push identity is not changed — this is human-readable provenance for audit and debugging, not an auth layer.
+
+**Deliverable:** updated `clipool_worker.py` (env injection) + updated `deploy/lyra-gh/git.config.tmpl` (identity template slots).
+
+### #1151 — gh-token horizon refresh
+
+**Trust grant:** "reactive token mint, tolerate expiry mid-operation" → "≥15min TTL by invariant at every dispenser read."
+
+`src/lyra/tools/gh_token/refresh.py` gains a horizon-based refresh loop: it mints proactively when remaining TTL drops below 15min, not on failure. `src/lyra/tools/gh_token/dispenser.py` enforces the invariant — a token returned to callers always has ≥15min remaining. `src/lyra/tools/gh_token/rate_limit.py` semantics change from "brake on excess demand" to "minimum mint cadence floor," preventing churn on the refresh loop itself.
+
+**Deliverable:** updated `dispenser.py`, `refresh.py`, `rate_limit.py`.
+
+## Approach (shared)
+
+Data-flow layer by layer, today vs. target:
+
+```
+LAYER                  │ TODAY                          │ TARGET
+───────────────────────┼────────────────────────────────┼──────────────────────────────────
+1. Host fs             │ uid 1000 owns file             │ uid 1000 owns file (∅ change)
+2. Quadlet Volume=     │ pass-through bind              │ idmap remap 1000↔1500
+3. Container view      │ uid 1000 (alien)               │ uid 1500 (lyra, native)
+4. git ownership chk   │ FAIL → wildcard bypass         │ PASS naturally
+5. Container writes    │ uid 1500 stamped on host       │ uid 1500→1000 on writeback
+6. Syncthing M₁↔M₂     │ sees uid drift on writes       │ sees uid 1000 only (clean)
+7. Trust surface       │ "trust by path"                │ "trust by ownership"
+8. Commit identity     │ single bot, all sessions       │ per-agent, per-session attribution
+9. Token TTL guarantee │ best-effort, may expire mid-op │ ≥15min horizon by invariant
+```
+
+Rows 1–7: #1149. Row 8: #1150. Row 9: #1151.
+
+Each child ships independently. No cross-dependency among the three. Shared only by the threat-model frame that explains why they belong together.
+
+## Constraints
+
+- **Podman 5.x required** for `Volume=...:idmap` — satisfied: M₁ (roxabituwer) ships Podman 5.x natively on Ubuntu 26.04 LTS; M₂ (roxabitower, Pop!_OS) also has it.
+- **Syncthing M₁↔M₂** — idmap is a kernel-side remap; host fs ownership is invariant from Syncthing's perspective; no Syncthing config change needed.
+- **Backwards compat for GitHub App push identity** — #1150 changes commit metadata only (committer name/email, trailers), not the auth identity used for `git push`. Push auth is unchanged.
+- **No supervisord migration in scope** — Quadlet is the strategic target per ecosystem decision (lyra = reference impl); supervisord is legacy and is not touched here.
+- **PR review loop applies** — each child PR goes through `/code-review`; may require `/fix` iteration before merge.
+
+## Out of Scope
+
+- The 3 already-shipped audit fixes: SSH→HTTPS rewrite (`32a3ca37`), TTL safety belt (`d5933e3c`), and the unrecovered third fix — closed, not re-litigated.
+- Recovering the original audit document — not checked in; reconstruction abandoned by user decision.
+- Other Roxabi Quadlet adopters (forge, intel) — they inherit the idmap pattern this epic establishes, but their own migration is out of scope for #1158.
+- Replacing the bind-mount architecture (e.g., switching to git push/pull for agent code access) — explicitly considered and rejected; bind mount is the chosen UX.
+- Path-based confinement layered on top of identity-based trust (e.g., "agent X can only touch repos under /projects/A") — a different architectural concern, not this audit.
+- Reconstructing or filing tickets for the remaining untracked audit gaps — user decision to ignore.
+
+## Migration notes (#1149-specific)
+
+Existing files in `~/projects` may be owned by uid 1500 on the host — written through the container before idmap was enabled. After enabling idmap, those files appear at the wrong uid inside the container.
+
+**Pre-flight sweep (before `systemctl --user daemon-reload`):**
+
+```bash
+find ~/projects -uid 1500 -exec chown 1000:1000 {} +
+```
+
+**Rollout order:** M₂ (roxabitower) first → verify git operations clean → then M₁ (roxabituwer, prod). This matches the subtask structure in #1149.
+
+**Reference doc:** `docs/ops/quadlet-idmap-migration.md` (new file, deliverable of #1149) — the canonical recipe for any future Roxabi Quadlet service that bind-mounts a host tree.
+
+## Complexity
+
+**Tier: F-full** — epic-level, 3 children spanning Quadlet config, container runtime, git surface, and token lifecycle. Each child is itself F-lite and ships independently.
+
+Signals:
+- Multi-domain: deploy (`lyra-clipool.container`, `git.config.tmpl`) / clipool runtime (`clipool_worker.py`) / gh-token tooling (`dispenser.py`, `refresh.py`, `rate_limit.py`)
+- Threat-model migration — architectural reframing, not a localized fix
+- Reference impl: lyra establishes the idmap pattern that forge, intel, and future Roxabi Quadlet services will inherit
+- Migration friction on #1149: one-time host fs chown sweep coordinated with Syncthing, sequenced M₂-then-M₁

@@ -91,16 +91,27 @@ def _scan_py(root: Path, py_file: Path) -> list[Row]:
 
 
 def _scan_importlinter(root: Path) -> list[Row]:
+    """Parse ``.importlinter`` ``ignore_imports`` blocks.
+
+    importlinter rejects trailing inline comments on entry lines, so the
+    POLICY/DEBT suffix must live on a preceding indented comment-only line
+    that serves as a section header. We track that header's tag/slug and
+    apply it to subsequent untagged entries in the same block.
+    """
     il_path = root / ".importlinter"
     if not il_path.exists():
         return []
     rows: list[Row] = []
     in_block = False
+    section_bucket = "UNTAGGED"
+    section_tag: str | None = None
+    section_slug: str | None = None
     for lineno, raw in enumerate(
         il_path.read_text(encoding="utf-8").splitlines(), 1
     ):
         if _IGNORE_IMPORTS_RE.match(raw):
             in_block = True
+            section_bucket, section_tag, section_slug = "UNTAGGED", None, None
             continue
         if in_block:
             m = _INDENTED_RE.match(raw)
@@ -109,6 +120,12 @@ def _scan_importlinter(root: Path) -> list[Row]:
                 continue
             entry, tail = _split_comment(m.group(1))
             bucket, tag, slug = _parse_suffix(tail)
+            if not entry:
+                if bucket != "UNTAGGED":
+                    section_bucket, section_tag, section_slug = bucket, tag, slug
+                continue
+            if bucket == "UNTAGGED" and section_bucket != "UNTAGGED":
+                bucket, tag, slug = section_bucket, section_tag, section_slug
             row = _base_row("importlinter", entry, bucket)
             row["line"] = lineno
             rows.append(_finalize_row(row, bucket, tag, slug))

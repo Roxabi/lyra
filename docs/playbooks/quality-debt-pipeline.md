@@ -37,6 +37,15 @@ Do NOT set `RATCHET_MODE=hard` manually before the backfill is merged. CI never 
 
 5. **Regenerate baseline.** `make quality-debt-rebaseline` overwrites `tools/quality_debt_baseline.json` with per-(rule, bucket, slug) counts and stamps `generated_by: "make quality-debt-rebaseline"`. Ratchet rejects baselines missing this field (forge-resistant).
 
+   **`--reset-cutover` flag** — `rebaseline_quality_debt.py` accepts `--reset-cutover` to force the cutover date forward.
+
+   | Scenario | Command | Effect |
+   |---|---|---|
+   | Routine rebaseline (default) | `make quality-debt-rebaseline` | Preserves existing `cutover_date` — no deadline drift |
+   | Intentional reset after a clean slice ships | `make quality-debt-rebaseline EXTRA_ARGS=--reset-cutover` | Sets `cutover_date = today + 7d` — defers hard mode by 7 days |
+
+   Use `--reset-cutover` only when the new backlog legitimately warrants a fresh soft window (e.g., a scope extension that adds many UNTAGGED sites). Avoid it on routine rebaselines — the default preserve behavior prevents indefinite soft-mode deferral.
+
 6. **Set cutover date.** First rebaseline writes `cutover_date = merge-date + 7d`. Subsequent rebaselines preserve it. After that date ratchet auto-promotes to hard mode — no follow-up PR, no manual flip, no forget risk.
 
 7. **File P2a drain epic + populate registry bodies.** One GH issue: `"Quality-debt drain pass — REFACTOR-NOW + first DEBT batch (P2a)"`, blocked-by #1162. Registry files (`artifacts/debt/<slug>.md`) already exist from step 4; populate `## Drain plan` bodies per slug.

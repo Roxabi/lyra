@@ -34,8 +34,8 @@ slug: {slug}
 title: {title}
 status: open
 created: {today}
-drain_slice: P2a
-parent_slice: '#1162'
+drain_slice: TBD  # TODO: set to actual slice (e.g., P2a) when promoting
+parent_slice: TBD  # TODO: set to actual parent issue (e.g., '#1162') when promoting
 rule: {rule}
 rules:
   - {rule}

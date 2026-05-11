@@ -24,6 +24,18 @@ BASELINE="${QG_BASELINE:-${REPO_ROOT}/tools/quality_debt_baseline.json}"
 AUDIT_REPORT="${QG_AUDIT_REPORT:-${REPO_ROOT}/artifacts/quality-debt-report.json}"
 
 # ---------------------------------------------------------------------------
+# Cleanup - single EXIT trap covering all temp files created by this script.
+# Variables are pre-declared empty so the guard is safe before mktemp runs.
+# ---------------------------------------------------------------------------
+tmp_report=""
+jq_log=""
+_cleanup() {
+    [[ -f "$tmp_report" ]] && rm -f "$tmp_report"
+    [[ -f "$jq_log" ]] && rm -f "$jq_log"
+}
+trap '_cleanup' EXIT
+
+# ---------------------------------------------------------------------------
 # Dependency check
 # ---------------------------------------------------------------------------
 if ! command -v jq &>/dev/null; then
@@ -35,13 +47,13 @@ fi
 # Load baseline
 # ---------------------------------------------------------------------------
 if [[ ! -f "$BASELINE" ]]; then
-    echo "baseline missing: $BASELINE — run 'make quality-debt-rebaseline' to create it." >&2
+    echo "baseline missing: $BASELINE - run 'make quality-debt-rebaseline' to create it." >&2
     exit 1
 fi
 
 generated_by="$(jq -r '.generated_by // empty' "$BASELINE")"
 if [[ "$generated_by" != "make quality-debt-rebaseline" ]]; then
-    echo "baseline generated_by mismatch ('${generated_by}') — regenerate via 'make quality-debt-rebaseline'" >&2
+    echo "baseline generated_by mismatch ('${generated_by}') - regenerate via 'make quality-debt-rebaseline'" >&2
     exit 1
 fi
 
@@ -54,10 +66,9 @@ if [[ -f "$AUDIT_REPORT" ]]; then
     report="$AUDIT_REPORT"
 else
     tmp_report="$(mktemp /tmp/quality-debt-report.XXXXXX.json)"
-    trap 'rm -f "$tmp_report"' EXIT
     # Audit exits non-zero when UNTAGGED rows or stale_references exist in src/,
     # but it ALWAYS writes the report first. Ratchet is the gate that decides
-    # whether violations block the push (soft/hard) — so we tolerate the
+    # whether violations block the push (soft/hard) - so we tolerate the
     # non-zero exit here and rely on the report content + mode logic below.
     uv run python "${REPO_ROOT}/tools/audit_quality_debt.py" \
         --root "${REPO_ROOT}" \
@@ -81,7 +92,7 @@ fi
 case "$mode" in
     soft|hard) ;;
     "")
-        echo "ratchet: internal error — mode not determined" >&2
+        echo "ratchet: internal error - mode not determined" >&2
         exit 1
         ;;
     *)
@@ -98,7 +109,7 @@ violations=0
 # (a) UNTAGGED rows in src/
 untagged_count="$(jq '[.rows[] | select(.bucket == "UNTAGGED" and (.path | startswith("src/")))] | length' "$report")"
 if [[ "$untagged_count" -gt 0 ]]; then
-    echo "WARN: ${untagged_count} untagged suppression(s) found in src/ — add POLICY:<tag> or DEBT:<slug> suffix." >&2
+    echo "WARN: ${untagged_count} untagged suppression(s) found in src/ - add POLICY:<tag> or DEBT:<slug> suffix." >&2
     violations=1
 fi
 
@@ -108,12 +119,11 @@ fi
 
 # Pre-validate report structure before iterating.
 if ! jq -e '.counts_by_rule_bucket_slug | type == "object"' "$report" >/dev/null 2>&1; then
-    echo "ratchet: report missing or malformed counts_by_rule_bucket_slug — regenerate via 'make quality-debt-report'" >&2
+    echo "ratchet: report missing or malformed counts_by_rule_bucket_slug - regenerate via 'make quality-debt-report'" >&2
     exit 1
 fi
 
 jq_log="$(mktemp)"
-trap 'rm -f "$jq_log"' EXIT
 while IFS=$'\t' read -r rule slug report_count; do
     baseline_count="$(jq -r --arg rule "$rule" --arg slug "$slug" \
         '.counts[$rule].DEBT[$slug] // 0' "$BASELINE")"
@@ -138,7 +148,7 @@ done < <(jq -r '
 # (c) Stale registry references in src/
 stale_src_count="$(jq '[.stale_references[] | select(.path | startswith("src/"))] | length' "$report")"
 if [[ "$stale_src_count" -gt 0 ]]; then
-    echo "WARN: ${stale_src_count} stale registry reference(s) in src/ — update or remove debt registry entries." >&2
+    echo "WARN: ${stale_src_count} stale registry reference(s) in src/ - update or remove debt registry entries." >&2
     violations=1
 fi
 

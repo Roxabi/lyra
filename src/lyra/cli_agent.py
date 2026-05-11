@@ -71,7 +71,7 @@ def _list_from_dir(
             model = data.get("model", {}).get("model", "?")
             sr = data.get("agent", {}).get("smart_routing", {})
             sr_status = "enabled" if sr.get("enabled") else "disabled"
-        except Exception as e:  # noqa: BLE001  # top-level boundary
+        except Exception as e:  # noqa: BLE001   — POLICY:boundary# top-level boundary
             typer.echo(f"  [warn] skipped {toml_file.name}: {e}", err=True)
             continue
         source = f"  {source_label}" if source_label else ""

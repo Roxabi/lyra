@@ -150,7 +150,7 @@ def _version_callback(value: bool) -> None:
 @lyra_app.callback(invoke_without_command=True)
 def _root_callback(
     ctx: typer.Context,
-    version: bool = typer.Option(  # noqa: B008
+    version: bool = typer.Option(  # noqa: B008 — POLICY:typer-default
         False,
         "--version",
         "-V",

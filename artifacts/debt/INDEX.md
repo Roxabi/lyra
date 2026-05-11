@@ -4,5 +4,5 @@
      update the underlying registry file (artifacts/debt/<slug>.md) instead. -->
 
 | Slug | Status | Rules | Sites | Drain slice | Created |
-|------|--------|-------|-------|-------------|---------|
+|------|--------|-------|-------|-------------|------|
 <!-- rows inserted here -->

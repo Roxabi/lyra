@@ -74,6 +74,18 @@ else
     mode="soft"
 fi
 
+case "$mode" in
+    soft|hard) ;;
+    "")
+        echo "ratchet: internal error — mode not determined" >&2
+        exit 1
+        ;;
+    *)
+        echo "ratchet: invalid mode '$mode' (expected 'soft' or 'hard')" >&2
+        exit 1
+        ;;
+esac
+
 # ---------------------------------------------------------------------------
 # Violation detection
 # ---------------------------------------------------------------------------
@@ -89,6 +101,15 @@ fi
 # (b) DEBT counts above baseline
 # Iterate over all (rule, DEBT, slug) triples where baseline count is set.
 # Also flag any new triples that appear in report but not in baseline.
+
+# Pre-validate report structure before iterating.
+if ! jq -e '.counts_by_rule_bucket_slug | type == "object"' "$report" >/dev/null 2>&1; then
+    echo "ratchet: report missing or malformed counts_by_rule_bucket_slug — regenerate via 'make quality-debt-report'" >&2
+    exit 1
+fi
+
+jq_log="$(mktemp)"
+trap 'rm -f "$jq_log"' EXIT
 while IFS=$'\t' read -r rule slug report_count; do
     baseline_count="$(jq -r --arg rule "$rule" --arg slug "$slug" \
         '.counts[$rule].DEBT[$slug] // 0' "$BASELINE")"
@@ -104,7 +125,11 @@ done < <(jq -r '
     | to_entries[]
     | [$rule, .key, (.value | tostring)]
     | @tsv
-' "$report" 2>/dev/null || true)
+' "$report" 2>"$jq_log") || {
+    echo "ratchet: jq failed parsing $report:" >&2
+    cat "$jq_log" >&2
+    exit 1
+}
 
 # (c) Stale registry references in src/
 stale_src_count="$(jq '[.stale_references[] | select(.path | startswith("src/"))] | length' "$report")"

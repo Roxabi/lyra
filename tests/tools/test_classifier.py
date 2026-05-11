@@ -67,12 +67,18 @@ def _run(
     )
 
 
-def _tsv(stdout: str) -> list[dict[str, str]]:
-    """Parse TSV lines: path\\tline\\trule\\tsuggestion\\tfix_class."""
+def _tsv(stdout: str, skip_header: bool = True) -> list[dict[str, str]]:
+    """Parse TSV lines: path\\tline\\trule\\tsuggestion\\tfix_class.
+
+    skip_header=True (default) filters the header row so callers only
+    see real data rows.
+    """
     out = []
     for line in stdout.splitlines():
         parts = line.split("\t")
         if len(parts) == 5:
+            if skip_header and parts[0] == "path":
+                continue
             out.append({"path": parts[0], "line": parts[1], "rule": parts[2],
                         "suggestion": parts[3], "fix_class": parts[4]})
     return out
@@ -208,8 +214,8 @@ def test_classification_ratio_above_80pct(tmp_path: Path) -> None:
     assert float(m.group(1)) >= 0.80, f"ratio too low: {ratio_line}"
 
 
-def test_apply_writes_inline_suffix_and_creates_registry(tmp_path: Path) -> None:
-    """--apply: source line gets POLICY suffix; INDEX.md updated."""
+def test_apply_writes_inline_policy_suffix(tmp_path: Path) -> None:
+    """--apply writes the inline POLICY:<tag> suffix on UNTAGGED rows."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     _debt_dir(tmp_path)
     sp = "src/lyra/cli/cli_main.py"
@@ -222,6 +228,16 @@ def test_apply_writes_inline_suffix_and_creates_registry(tmp_path: Path) -> None
     edited = (tmp_path / sp).read_text()
     assert "POLICY:boundary" in edited, (
         f"expected POLICY:boundary in source; got:\n{edited}"
+    )
+
+
+def test_apply_creates_registry_for_debt_suggestion(tmp_path: Path) -> None:
+    """--apply creates artifacts/debt/<slug>.md on DEBT:<slug> suggestion."""
+    import pytest
+
+    pytest.skip(
+        "Current classifier heuristics emit POLICY only; DEBT-emitting patterns "
+        "tracked in P2a #1163."
     )
 
 

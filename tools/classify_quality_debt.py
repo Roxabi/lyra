@@ -241,8 +241,9 @@ def _is_boundary_path(path: str) -> bool:
     if "/adapters/" in lower or "/bootstrap/" in lower:
         return True
 
-    # Tools directory
-    if "/tools/" in lower:
+    # Tools directory — anchored to src/lyra/tools/ to avoid matching repo-level
+    # tools/ (e.g., tools/classify_quality_debt.py itself) when scan scope broadens.
+    if "src/lyra/tools/" in lower or "/lyra/tools/" in lower:
         return True
 
     # Command/event dispatcher basenames

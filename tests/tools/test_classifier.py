@@ -231,6 +231,38 @@ def test_apply_writes_inline_policy_suffix(tmp_path: Path) -> None:
     )
 
 
+def test_apply_is_idempotent(tmp_path: Path) -> None:
+    """Running --apply twice does not double-suffix annotations.
+
+    _SUFFIX_ALREADY_RE guards against `# noqa: BLE001 — POLICY:boundary
+    — POLICY:boundary` corruption on re-runs. Regression guard for the
+    write-mode safety contract.
+    """
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    _debt_dir(tmp_path)
+    sp = "src/lyra/cli/cli_main.py"
+    _src(tmp_path, sp, "def h():  # noqa: BLE001\n    pass\n")
+    _write_report(rpt, [_row(sp, "BLE001")])
+
+    cp1 = _run(tmp_path, rpt, "--apply")
+    assert cp1.returncode == 0, f"first run rc={cp1.returncode}\n{cp1.stderr}"
+    after_first = (tmp_path / sp).read_text()
+
+    cp2 = _run(tmp_path, rpt, "--apply")
+    assert cp2.returncode == 0, f"second run rc={cp2.returncode}\n{cp2.stderr}"
+    after_second = (tmp_path / sp).read_text()
+
+    assert after_first == after_second, (
+        f"second --apply mutated already-tagged row\nbefore:\n{after_first}\n"
+        f"after:\n{after_second}"
+    )
+    # Belt-and-suspenders: count occurrences explicitly
+    assert after_second.count("POLICY:boundary") == 1, (
+        f"expected exactly 1 POLICY:boundary occurrence; got "
+        f"{after_second.count('POLICY:boundary')} in:\n{after_second}"
+    )
+
+
 def test_apply_creates_registry_for_debt_suggestion(tmp_path: Path) -> None:
     """--apply creates artifacts/debt/<slug>.md on DEBT:<slug> suggestion."""
     import pytest

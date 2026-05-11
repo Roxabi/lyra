@@ -162,7 +162,7 @@ def _format_tool_summary(event: ToolSummaryRenderEvent) -> str:
     return f"{header}\n{body}".strip() if body else header
 
 
-def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
+def build_streaming_callbacks(  # noqa: C901  — POLICY:wiring— one closure per platform op
     adapter: "TelegramAdapter",
     original_msg: InboundMessage,
     outbound: OutboundMessage | None,

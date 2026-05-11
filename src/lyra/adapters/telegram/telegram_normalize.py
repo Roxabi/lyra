@@ -116,7 +116,7 @@ def _build_routing(  # noqa: PLR0913 — groups related metadata fields
     return platform_meta, routing
 
 
-def normalize(  # noqa: C901
+def normalize(  # noqa: C901 — POLICY:wiring
     adapter: TelegramAdapter,
     raw: Any,
     *,

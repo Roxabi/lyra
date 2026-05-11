@@ -178,7 +178,7 @@ async def ensure_nats(
     try:
         nc = await nats_connect(nats_url, identity_name="hub")
         log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
-    except Exception as exc:  # noqa: BLE001  # NATS connect failure: process exits
+    except Exception as exc:  # noqa: BLE001   — POLICY:boundary# NATS connect failure: process exits
         if embedded:
             await embedded.stop()
         sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")

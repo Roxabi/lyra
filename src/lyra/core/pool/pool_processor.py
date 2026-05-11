@@ -33,7 +33,7 @@ class PoolProcessor:
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 
-    async def process_loop(self) -> None:  # noqa: C901 — debounce + cancel-in-flight adds inherent branches
+    async def process_loop(self) -> None:  # noqa: C901  — POLICY:wiring— debounce + cancel-in-flight adds inherent branches
         """Consume inbox with debounce aggregation and cancel-in-flight."""
         pool = self._pool
         _last_msg: InboundMessage | None = None

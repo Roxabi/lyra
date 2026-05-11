@@ -48,7 +48,7 @@ def get_pairing_manager() -> PairingManagerProtocol | None:
     The import is deferred so that ``lyra.commands`` never takes a
     compile-time dependency on ``lyra.infrastructure``.
     """
-    from lyra.infrastructure.stores.pairing import (  # noqa: PLC0415
+    from lyra.infrastructure.stores.pairing import (  # noqa: PLC0415 — DEBT:plc0415-deferred-import
         get_pairing_manager as _get,
     )
 

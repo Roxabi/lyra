@@ -162,10 +162,10 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
                     return
 
     result = agent.process(msg, pool)
-    if not isinstance(result, collections.abc.AsyncIterator):  # pyright: ignore[reportUnnecessaryIsInstance]
+    if not isinstance(result, collections.abc.AsyncIterator):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
         # Regular coroutine — await to get the actual result
         try:
-            result = await result  # type: ignore[misc]  # coroutine → Response|AsyncIterator
+            result = await result  # type: ignore[misc] — POLICY:defensive-narrow  # coroutine → Response|AsyncIterator
         except Exception as exc:
             pool._ctx.record_circuit_failure(exc)
             raise
@@ -229,14 +229,14 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
     else:
         pool._ctx.record_circuit_success()
         # Update session_id with the real Claude CLI session UUID (#316).
-        if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
             _cli_session_id = result.metadata.get("session_id")
             if _cli_session_id:
                 if pool.session_id != _cli_session_id:
                     await pool._observer.end_session_async(pool.session_id)
                 pool.session_id = _cli_session_id
         # Attach deferred turn-logging callback after adapter sends (#316).
-        if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
             _content = result.content
 
             async def _log_turn(outbound: OutboundMessage) -> None:

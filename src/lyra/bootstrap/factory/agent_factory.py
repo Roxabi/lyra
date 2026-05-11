@@ -168,7 +168,7 @@ def _create_agent(  # noqa: PLR0913  — POLICY:wiring-- factory with optional o
             session_tools: SessionTools | None = SessionTools(
                 scraper=WebIntelScraper(), vault=VaultCli()
             )
-        except Exception:  # noqa: BLE001  # top-level boundary
+        except Exception:  # noqa: BLE001   — POLICY:boundary# top-level boundary
             log.warning(
                 "agent_factory: could not build SessionTools — passing None",
                 exc_info=True,

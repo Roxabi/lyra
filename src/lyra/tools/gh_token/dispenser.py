@@ -212,5 +212,5 @@ class Dispenser:
             writer.close()
             try:
                 await writer.wait_closed()
-            except Exception:  # noqa: BLE001 — cleanup: writer.wait_closed() raises varied transport errors on peer disconnect; close must not propagate
+            except Exception:  # noqa: BLE001  — POLICY:boundary— cleanup: writer.wait_closed() raises varied transport errors on peer disconnect; close must not propagate
                 pass

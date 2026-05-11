@@ -169,7 +169,7 @@ class AudioPipeline:
         pool_id = key.to_pool_id()
         return self._hub.pools.get(pool_id)
 
-    async def synthesize_and_dispatch_audio(  # noqa: PLR0913, C901
+    async def synthesize_and_dispatch_audio(  # noqa: PLR0913, C901 — POLICY:wiring
         self,
         msg: InboundMessage,
         text: str,

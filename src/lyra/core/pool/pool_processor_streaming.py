@@ -48,9 +48,9 @@ def build_streaming_capture(
         finally:
             _aclose = getattr(result_iter, "aclose", None)
             if callable(_aclose):
-                await _aclose()  # type: ignore[misc]
+                await _aclose()  # type: ignore[misc] — POLICY:defensive-narrow
             if stream_done_event is not None:
-                stream_done_event.set()  # type: ignore[misc]
+                stream_done_event.set()  # type: ignore[misc] — POLICY:defensive-narrow
 
     return _capture()
 
@@ -108,12 +108,12 @@ async def run_streaming_turn_post(
     """Run processor post-hook after streaming is fully consumed (#372)."""
     if processor is None or stream_done_event is None:
         return
-    await stream_done_event.wait()  # type: ignore[misc]
+    await stream_done_event.wait()  # type: ignore[misc] — POLICY:defensive-narrow
     streamed = Response(content="".join(content_parts))
     try:
         # processor.post is a coroutine
         import asyncio
 
-        await asyncio.create_task(processor.post(original_msg, streamed))  # type: ignore[misc]
+        await asyncio.create_task(processor.post(original_msg, streamed))  # type: ignore[misc] — POLICY:defensive-narrow
     except Exception:  # noqa: BLE001  # top-level boundary
         log.warning("Processor post() failed (streaming)", exc_info=True)

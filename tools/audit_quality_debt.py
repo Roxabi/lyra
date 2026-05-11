@@ -26,12 +26,15 @@ ALL_SOURCES = [
     "importlinter", "file-exemptions", "folder-exemptions",
 ]
 
-_SUFFIX_RE = re.compile(r"[-—]+\s*(POLICY|DEBT):(\S+)")
+_SUFFIX_RE = re.compile(r"[-—]+\s*(POLICY|DEBT):([A-Za-z0-9][A-Za-z0-9_-]*)")
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _NOQA_RE = re.compile(r"#\s*noqa:\s*([A-Z0-9,\s]+)(.*)")
 _PYRIGHT_RE = re.compile(r"#\s*pyright:\s*ignore\[([^\]]*)\](.*)")
 _TYPE_IGNORE_RE = re.compile(r"#\s*type:\s*ignore\[([^\]]*)\](.*)")
 _IGNORE_IMPORTS_RE = re.compile(r"^ignore_imports\s*=")
 _INDENTED_RE = re.compile(r"^\s+(\S.*)")
+_SECTION_HEADER_RE = re.compile(r"^\[")
+_INI_KEY_RE = re.compile(r"^\w[\w.-]*\s*=")
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)^---\s*\n", re.DOTALL | re.MULTILINE)
 _STATUS_RE = re.compile(r"^status:\s*(\S+)", re.MULTILINE)
 
@@ -114,10 +117,14 @@ def _scan_importlinter(root: Path) -> list[Row]:
             section_bucket, section_tag, section_slug = "UNTAGGED", None, None
             continue
         if in_block:
-            m = _INDENTED_RE.match(raw)
-            if not m:
+            # Close block only on a section header or a different INI key.
+            # Blank lines and continuation comments stay inside the block.
+            if _SECTION_HEADER_RE.match(raw) or _INI_KEY_RE.match(raw):
                 in_block = False
                 continue
+            m = _INDENTED_RE.match(raw)
+            if not m:
+                continue  # blank or non-matching line — preserve state
             entry, tail = _split_comment(m.group(1))
             bucket, tag, slug = _parse_suffix(tail)
             if not entry:
@@ -150,7 +157,16 @@ def _scan_exemption(root: Path, rel_path: str, source: str) -> list[Row]:
 
 
 def _registry_status(root: Path, slug: str) -> str | None:
+    if not _SLUG_RE.fullmatch(slug):
+        return "open"  # malformed slug — treat as no-op (audit will report as stale)
     reg = root / "artifacts" / "debt" / f"{slug}.md"
+    try:
+        reg_resolved = reg.resolve()
+        debt_dir = (root / "artifacts" / "debt").resolve()
+        if not reg_resolved.is_relative_to(debt_dir):
+            return "open"
+    except (OSError, ValueError):
+        return "open"
     if not reg.exists():
         return None
     content = reg.read_text(encoding="utf-8")
@@ -252,7 +268,10 @@ def main(argv: list[str] | None = None) -> int:
     }
     out: Path = args.out
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    out.write_text(
+        json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     _print_summary(rows, stale)
 
     untagged = sum(

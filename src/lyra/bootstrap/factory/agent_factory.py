@@ -124,7 +124,7 @@ def _build_provider_registry(
     return _build_per_agent_registry(shared)
 
 
-def _create_agent(  # noqa: PLR0913  — POLICY:wiring-- factory with optional overrides for each agent dependency
+def _create_agent(  # noqa: PLR0913  — POLICY:wiring — factory with optional overrides for each agent dependency
     config: Agent,
     cli_pool: CliPool | None,
     circuit_registry: CircuitRegistry | None = None,

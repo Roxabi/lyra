@@ -23,7 +23,7 @@ from roxabi_nats.readiness import wait_for_hub
 log = logging.getLogger(__name__)
 
 
-async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
+async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — POLICY:migration-sequence
     raw_config: dict,
     platform: str,
     *,
@@ -50,7 +50,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
             "adapter_standalone: connected to NATS at %s",
             scrub_nats_url(nats_url),
         )
-    except Exception as exc:  # noqa: BLE001  # NATS connect failure: process exits
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
     from lyra.nats.nats_bus import NatsBus
@@ -105,7 +105,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                     continue
                 token, webhook_secret = tg_creds[bot_id]
 
-                inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
+                inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg] — POLICY:wiring
                     nc=nc,
                     bot_id=bot_id,
                     item_type=InboundMessage,
@@ -241,7 +241,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901
                     continue
                 token = dc_creds[bot_id]
 
-                inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg]
+                inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg] — POLICY:wiring
                     nc=nc,
                     bot_id=bot_id,
                     item_type=InboundMessage,

@@ -84,7 +84,7 @@ async def probe_voice_services(
             log.warning(
                 "%s adapter not reachable at boot — will retry per-request", name
             )
-        except Exception as exc:  # noqa: BLE001  # top-level boundary
+        except Exception as exc:  # noqa: BLE001 — POLICY:boundary
             log.warning(
                 "%s probe failed unexpectedly: %s: %s",
                 name,

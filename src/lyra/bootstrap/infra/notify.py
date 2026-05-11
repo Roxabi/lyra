@@ -32,5 +32,5 @@ async def notify_startup(active_proxies: list[str], health_port: int) -> None:
             log.warning("Startup notification failed: HTTP %d", resp.status_code)
         else:
             log.info("Startup notification sent to Telegram")
-    except Exception as exc:  # noqa: BLE001  # top-level boundary
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary
         log.warning("Startup notification failed: %s", exc)

@@ -1,0 +1,66 @@
+---
+title: Quality-debt invariant — POLICY/DEBT tag grammar + audit + ratchet gate (P0+P1)
+issue: 1162
+status: approved
+tier: F-lite
+date: 2026-05-11
+---
+
+## Problem
+
+Lyra carries **too many code-smell exceptions** — 203 `# noqa:`, 22 `# pyright/type: ignore`, 22 `.importlinter ignore_imports`, 14 file/folder exemptions, 9 global pyright suppressions. Every comment is free-form prose, so there is no way to grep-classify them, no way to enforce "every exception is either policy-approved or a tracked debt with an owner", and no way to bound future growth.
+
+The user's stated driver is **frustration with accumulated code smell**, not a specific recent incident. The end-state must be a **cleaner repo with fewer exceptions** — the audit + tag grammar + ratchet are **means**, not the goal. A slice that only "tags and tracks" without producing a ready-to-execute cleanup queue does not satisfy the intent.
+
+Rule breakdown (noqa, src/): BLE001×73, PLR0913×58, C901×36, PLR0915×14, F401×10, B008×10, others ≤4.
+Mix is ~half legitimate boundary use (top-level CLI catches, `typer.Option` defaults, decorator-registered handlers) and ~half real debt (no owner, no drain plan).
+
+Drain epics cannot ship safely without inflow control — new untagged noqa appears between drains and total count drifts upward forever. Conversely, inflow control without a visible drain payoff feels like bookkeeping. Both must be addressed.
+
+## Who
+
+- **Primary:** Mickael / dev. End-state want = visibly fewer exceptions, no future regrowth, and confidence that every remaining marker is intentional.
+- **Secondary:**
+  - `dev-core:fixer` α — runs subsequent drain passes; reads `REFACTOR-NOW` queue to know what to attack.
+  - `dev-core:code-review` α — gates new PRs on "untagged exception = blocker"; replaces subjective per-noqa judgement.
+
+**Explicitly NOT a stakeholder this slice:** future `dev-core:quality-debt` skill / other Roxabi projects. Portability is **phase 2, contingent on phase 1 success**. Build for lyra; do not generalize prematurely.
+
+## Constraints
+
+- **Driver C — clean lyra, not reusable primitive.** Build lyra-specific; no extraction surface, no portable config schema, no dev-core shape pre-design.
+- **Trigger = accumulation frustration, not incident.** Priority P2 fits. Day-1 ratchet may be **soft** (warn-only for first N days/PRs) and become hard once backfill stabilizes — to avoid breaking unrelated PRs in flight.
+- **POLICY vocabulary = extensible.** Devs add `POLICY:<tag>` as new patterns emerge. No ADR-gating, no PR review veto on new tags. Quarterly manual audit reviews vocabulary growth; obsolete or misused tags get pruned then.
+- **DEBT:#N = strict.** Tag must reference an **open** issue in `Roxabi/lyra`. Gate calls `gh issue view <N> --json state` and fails on `state != OPEN` (or non-existent). Closing an issue forces re-tagging or refactor.
+- **3-bucket classification, not 2.** Every existing site is sorted POLICY / DEBT / REFACTOR-NOW-candidate. REFACTOR-NOW sites get a queue file (`artifacts/quality-debt-drain-queue.json`) sized + ranked by effort, so the immediate next slice can pick them off without re-doing classification.
+- **Pure tooling + comment edits + DEBT issue creation in this slice.** No runtime refactors in P0/P1 (that's the next slice, P2a). The classification *output* drives P2a; this slice doesn't ship the cleanup itself.
+- **Scope = `src/` only.** `tests/` (148 noqa, 101 type:ignore) + `packages/` skipped — would balloon F-lite into F-full.
+- **Pre-push + CI both enforce** the gate. Use existing Lefthook + GitHub Actions wiring.
+- **Wave 4 #411** (pyright `reportUnknown*`) stays parallel — its sites tag as `DEBT:#411` and drain in its own epic.
+
+## Out of Scope
+
+- Runtime refactor of any noqa site (deferred to P2a — drain slice).
+- `tests/` + `packages/` tagging (P2b follow-up).
+- File-length / folder-size exemption refactors (P3 — sized refactors tied to file_exemptions issues).
+- Wave 4 #411 resolution.
+- Extraction to `dev-core:quality-debt` skill — phase 2, contingent.
+- New ruff / pyright rule selection — keep current set.
+- POLICY tag governance UI / CLI for "demote POLICY → DEBT" — manual edit + commit sufficient.
+- Hard CI failure on day 1 — soft ratchet first (warn-only window), flip to hard once backfill commits land.
+
+## Complexity
+
+**Tier: F-lite** — single domain (devops/quality tooling), ~8 new files + ~250 mechanical comment edits + ~10–15 new DEBT issues filed (one per debt category × subdomain).
+
+Signals:
+- No new architecture; extends existing `tools/check_*.sh` + `qg.conf` pattern.
+- Classification is rule-based for >80% of sites (e.g. `BLE001` in `cli_*.py` top-level → `POLICY:boundary`; `B008` at `typer.Option(` → `POLICY:typer-default`; `F401` in `__init__.py` re-export → `POLICY:re-export`; PLR0913 on wiring funcs → `POLICY:wiring`; PLR0913 elsewhere → `DEBT` or `REFACTOR-NOW`).
+- Risk: low. Pure tooling + comments + issue filing. No runtime behavior change. If ratchet too strict in week 1, soft-mode prevents collateral PR breakage.
+- Main unknown resolved: vocabulary extensibility (open), DEBT enforcement (strict gh check).
+- Remaining unknowns for spec to resolve:
+  1. REFACTOR-NOW bucket cap — if classification turns up 80+ trivial-fix sites, queue stays big but slice stays bounded (no inline refactor); if <20, maybe inline them. Need a cap rule.
+  2. Soft-ratchet duration — N days or N PRs before flipping hard?
+  3. Baseline JSON shape — per-rule counts vs. per-(rule,bucket) counts vs. per-(rule,bucket,issue)?
+
+κ ≈ 5.

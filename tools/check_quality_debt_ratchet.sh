@@ -55,9 +55,13 @@ if [[ -f "$AUDIT_REPORT" ]]; then
 else
     tmp_report="$(mktemp /tmp/quality-debt-report.XXXXXX.json)"
     trap 'rm -f "$tmp_report"' EXIT
+    # Audit exits non-zero when UNTAGGED rows or stale_references exist in src/,
+    # but it ALWAYS writes the report first. Ratchet is the gate that decides
+    # whether violations block the push (soft/hard) — so we tolerate the
+    # non-zero exit here and rely on the report content + mode logic below.
     uv run python "${REPO_ROOT}/tools/audit_quality_debt.py" \
         --root "${REPO_ROOT}" \
-        --out "$tmp_report" >/dev/null
+        --out "$tmp_report" >/dev/null || true
     report="$tmp_report"
 fi
 

@@ -29,14 +29,21 @@ NEEDS_REVIEW = "needs_review"
 
 _REGISTRY_TEMPLATE = """\
 ---
+id: {slug}
 slug: {slug}
+title: {title}
 status: open
-created: {created}
-drain_slice:
-rules: [{rules}]
+created: {today}
+drain_slice: P2a
+parent_slice: '#1162'
+rule: {rule}
+rules:
+  - {rule}
+sites: see artifacts/quality-debt-report.json
+fix_class: needs_review
 ---
 
-# {slug}
+# {title}
 
 ## Pattern
 
@@ -63,16 +70,31 @@ _INDEX_HEADER = (
 )
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)^---\s*\n", re.DOTALL | re.MULTILINE)
-_FM_FIELD_RE = re.compile(r"^(\w[\w_]*):\s*(.+)$", re.MULTILINE)
+_FM_FIELD_RE = re.compile(r"^(\w+):\s*(.+)$", re.MULTILINE)
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # ---------------------------------------------------------------------------
 # Heuristics
 # ---------------------------------------------------------------------------
 
 
+def _safe_repo_path(root: Path, path_str: str) -> Path | None:
+    """Return resolved path iff contained in root. Otherwise None (caller skips)."""
+    try:
+        candidate = (root / path_str).resolve()
+        if candidate.is_relative_to(root.resolve()):
+            return candidate
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def _read_line(root: Path, path_str: str, lineno: int) -> str:
-    """Read a specific line (1-based) from a source file; return '' on error."""
-    p = root / path_str
+    """Read a specific line (1-based) from a source file; return \'\'\' on error."""
+    p = _safe_repo_path(root, path_str)
+    if p is None:
+        print(f"skipped path outside root: {path_str}", file=sys.stderr)
+        return ""
     if not p.exists():
         return ""
     try:
@@ -86,7 +108,10 @@ def _read_line(root: Path, path_str: str, lineno: int) -> str:
 
 def _read_lines(root: Path, path_str: str) -> list[str]:
     """Read all lines from a source file."""
-    p = root / path_str
+    p = _safe_repo_path(root, path_str)
+    if p is None:
+        print(f"skipped path outside root: {path_str}", file=sys.stderr)
+        return []
     if not p.exists():
         return []
     try:
@@ -95,12 +120,13 @@ def _read_lines(root: Path, path_str: str) -> list[str]:
         return []
 
 
-def _classify_row(row: Row, root: Path) -> tuple[str, str | None, str]:
-    """Return (status, suggestion, fix_class).
+def _classify_row(row: Row, root: Path) -> tuple[str, str | None, str, str]:
+    """Return (status, suggestion, fix_class, reason).
 
-    status: 'classified' | 'needs_review'
-    suggestion: e.g. 'POLICY:boundary' or None
-    fix_class: 'easy' | 'medium' | 'needs_review'
+    status: \'classified\' | \'needs_review\'
+    suggestion: e.g. \'POLICY:boundary\' or None
+    fix_class: \'easy\' | \'medium\' | \'needs_review\'
+    reason: \'matched\' | \'f401-init\' | \'not-implemented\'
     """
     rule: str = row.get("rule", "")
     path: str = row.get("path", "")
@@ -109,31 +135,31 @@ def _classify_row(row: Row, root: Path) -> tuple[str, str | None, str]:
     # BLE001 — CLI top-level boundary
     if rule == "BLE001":
         if _is_cli_path(path):
-            return CLASSIFIED, "POLICY:boundary", "easy"
+            return CLASSIFIED, "POLICY:boundary", "easy", "matched"
 
     # B008 — typer.Option / typer.Argument as default
     if rule == "B008":
         line_text = _read_line(root, path, lineno)
         if "typer.Option(" in line_text or "typer.Argument(" in line_text:
-            return CLASSIFIED, "POLICY:typer-default", "easy"
+            return CLASSIFIED, "POLICY:typer-default", "easy", "matched"
 
     # PLR0913 — wiring / bootstrap / factory
     if rule == "PLR0913":
         if _is_wiring_path(path):
-            return CLASSIFIED, "POLICY:wiring", "easy"
+            return CLASSIFIED, "POLICY:wiring", "easy", "matched"
 
     # C901 — migration sequence functions
     if rule == "C901":
         all_lines = _read_lines(root, path)
         if _is_migration_function(all_lines, lineno):
-            return CLASSIFIED, "POLICY:migration-sequence", "medium"
+            return CLASSIFIED, "POLICY:migration-sequence", "medium", "matched"
 
     # F401 in __init__.py — defer to human review
     if rule == "F401" and path.endswith("__init__.py"):
-        return NEEDS_REVIEW, None, "needs_review"
+        return NEEDS_REVIEW, None, "needs_review", "f401-init"
 
     # Fallback
-    return NEEDS_REVIEW, None, "needs_review"
+    return NEEDS_REVIEW, None, "needs_review", "not-implemented"
 
 
 def _is_cli_path(path: str) -> bool:
@@ -194,20 +220,34 @@ def _apply_suffix(line: str, suggestion: str) -> str:
     return line
 
 
-def _write_inline(root: Path, path_str: str, lineno: int, suggestion: str) -> None:
-    """Edit the source file at lineno in-place."""
-    p = root / path_str
-    if not p.exists():
-        return
-    lines = p.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
-    idx = lineno - 1
-    if 0 <= idx < len(lines):
-        original = lines[idx].rstrip("\n").rstrip("\r")
-        updated = _apply_suffix(original, suggestion)
-        if updated != original:
-            eol = lines[idx][len(original):]
-            lines[idx] = updated + eol
-            p.write_text("".join(lines), encoding="utf-8")
+def _apply_file_edits(p: Path, edits: list[tuple[int, str]]) -> int:
+    """Apply all inline suffix edits in one pass. Returns count of lines mutated.
+
+    Duplicate line numbers: warn and keep first (deduplicate).
+    """
+    seen: set[int] = set()
+    deduped: list[tuple[int, str]] = []
+    for lineno, sug in edits:
+        if lineno in seen:
+            print(f"skipped duplicate edit at {p}:{lineno}", file=sys.stderr)
+            continue
+        seen.add(lineno)
+        deduped.append((lineno, sug))
+    deduped.sort(key=lambda x: x[0])
+    text = p.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines(keepends=True)
+    mutated = 0
+    for lineno, sug in deduped:
+        idx = lineno - 1
+        if 0 <= idx < len(lines):
+            original = lines[idx].rstrip("\n").rstrip("\r")
+            updated = _apply_suffix(original, sug)
+            if updated != original:
+                eol = lines[idx][len(original):]
+                lines[idx] = updated + eol
+                mutated += 1
+    p.write_text("".join(lines), encoding="utf-8")
+    return mutated
 
 
 # ---------------------------------------------------------------------------
@@ -229,14 +269,21 @@ def _parse_frontmatter(content: str) -> dict[str, str]:
 
 def _ensure_registry(debt_dir: Path, slug: str, rules: list[str]) -> None:
     """Create slug.md in debt_dir if it does not exist."""
+    if not _SLUG_RE.fullmatch(slug):
+        return  # silently skip - caller logged warning
     reg = debt_dir / f"{slug}.md"
     if reg.exists():
         return
     debt_dir.mkdir(parents=True, exist_ok=True)
     today = date.today().isoformat()
-    rules_str = ", ".join(sorted(set(rules)))
+    primary_rule = sorted(set(rules))[0] if rules else "unknown"
+    # Humanize slug: replace _ and - with spaces, capitalize words
+    title = slug.replace("_", " ").replace("-", " ").title()
     content = _REGISTRY_TEMPLATE.format(
-        slug=slug, created=today, rules=rules_str
+        slug=slug,
+        title=title,
+        today=today,
+        rule=primary_rule,
     )
     reg.write_text(content, encoding="utf-8")
 
@@ -251,7 +298,7 @@ def _update_index(debt_dir: Path) -> None:
     if table_start != -1:
         header_text = existing[:table_start]
     else:
-        header_text = "# Quality-Debt Registry — INDEX\n\n"
+        header_text = "# Quality-Debt Registry - INDEX\n\n"
 
     rows: list[str] = []
     for reg in sorted(debt_dir.glob("*.md")):
@@ -264,7 +311,7 @@ def _update_index(debt_dir: Path) -> None:
         rules = fm.get("rules", "")
         drain_slice = fm.get("drain_slice", "")
         created = fm.get("created", "")
-        rows.append(f"| {slug} | {status} | {rules} | — | {drain_slice} | {created} |")
+        rows.append(f"| {slug} | {status} | {rules} | - | {drain_slice} | {created} |")
 
     table = (
         "| Slug | Status | Rules | Sites | Drain slice | Created |\n"
@@ -284,14 +331,14 @@ def _update_index(debt_dir: Path) -> None:
 
 def _classify_all(
     rows: list[Row], root: Path
-) -> list[tuple[Row, str, str | None, str]]:
-    """Return list of (row, status, suggestion, fix_class) for UNTAGGED rows."""
-    results: list[tuple[Row, str, str | None, str]] = []
+) -> list[tuple[Row, str, str | None, str, str]]:
+    """Return list of (row, status, suggestion, fix_class, reason) for UNTAGGED rows."""
+    results: list[tuple[Row, str, str | None, str, str]] = []
     for row in rows:
         if row.get("bucket") != "UNTAGGED":
             continue
-        status, suggestion, fix_class = _classify_row(row, root)
-        results.append((row, status, suggestion, fix_class))
+        status, suggestion, fix_class, reason = _classify_row(row, root)
+        results.append((row, status, suggestion, fix_class, reason))
     return results
 
 
@@ -303,11 +350,11 @@ TSV_HEADER = "path\tline\trule\tsuggestion\tfix_class"
 
 
 def _print_dry_run(
-    classified: list[tuple[Row, str, str | None, str]]
+    classified: list[tuple[Row, str, str | None, str, str]],
 ) -> None:
     """Print TSV + summary to stdout."""
-    n_classified = sum(1 for _, s, _, _ in classified if s == CLASSIFIED)
-    n_needs_review = sum(1 for _, s, _, _ in classified if s == NEEDS_REVIEW)
+    n_classified = sum(1 for _, s, _, _, _ in classified if s == CLASSIFIED)
+    n_needs_review = sum(1 for _, s, _, _, _ in classified if s == NEEDS_REVIEW)
     total = len(classified)
     denom = total - n_needs_review
     ratio = (n_classified / denom) if denom > 0 else 0.0
@@ -320,7 +367,7 @@ def _print_dry_run(
     )
 
     print(TSV_HEADER)
-    for row, _status, suggestion, fix_class in classified:
+    for row, _status, suggestion, fix_class, _reason in classified:
         path = row.get("path", "")
         line = row.get("line", "")
         rule = row.get("rule", "")
@@ -329,7 +376,7 @@ def _print_dry_run(
 
 
 def _run_apply(
-    classified: list[tuple[Row, str, str | None, str]],
+    classified: list[tuple[Row, str, str | None, str, str]],
     root: Path,
     report_path: Path,
 ) -> None:
@@ -340,14 +387,23 @@ def _run_apply(
     slug_rules: dict[str, list[str]] = {}
     easy_rows: list[dict[str, Any]] = []
 
-    for row, status, suggestion, fix_class in classified:
+    # Group edits by path for batched file writes (N9)
+    path_edits: dict[str, list[tuple[int, str]]] = {}
+
+    for row, status, suggestion, fix_class, reason in classified:
         path = row.get("path", "")
         lineno = int(row.get("line", 1))
         rule = row.get("rule", "")
 
         if status == CLASSIFIED and suggestion:
-            # Inline edit
-            _write_inline(root, path, lineno, suggestion)
+            # Guard: skip paths outside repo root
+            safe_p = _safe_repo_path(root, path)
+            if safe_p is None:
+                print(f"skipped path outside root: {path}", file=sys.stderr)
+                continue
+
+            # Collect inline edits grouped by path
+            path_edits.setdefault(path, []).append((lineno, suggestion))
 
             # Collect DEBT slugs for registry
             if suggestion.startswith("DEBT:"):
@@ -360,14 +416,26 @@ def _run_apply(
                     "POLICY" if suggestion.startswith("POLICY:") else "DEBT"
                 )
                 s_slug = suggestion.split(":", 1)[1] if ":" in suggestion else ""
-                easy_rows.append({
-                    "path": path,
-                    "line": lineno,
-                    "rule": rule,
-                    "suggested_bucket": s_bucket,
-                    "suggested_slug": s_slug,
-                    "fix_class": fix_class,
-                })
+                easy_rows.append(
+                    {
+                        "path": path,
+                        "line": lineno,
+                        "rule": rule,
+                        "suggested_bucket": s_bucket,
+                        "debt_slug": s_slug,
+                        "fix_class": fix_class,
+                        "fix_loc_estimate": 1,
+                        "reason": reason,
+                    }
+                )
+
+    # Apply batched file edits (one read+write per file)
+    for path_str, edits in path_edits.items():
+        safe_p = _safe_repo_path(root, path_str)
+        if safe_p is None:
+            continue
+        if safe_p.exists():
+            _apply_file_edits(safe_p, edits)
 
     # Create DEBT registry files
     for slug, rules in slug_rules.items():
@@ -382,7 +450,7 @@ def _run_apply(
     queue_path = root / "artifacts" / "quality-debt-drain-queue.json"
     queue_path.parent.mkdir(parents=True, exist_ok=True)
     queue_path.write_text(
-        json.dumps(queue, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(queue, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
 

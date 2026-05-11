@@ -1,0 +1,353 @@
+{
+  "generated_by": "make quality-debt-rebaseline",
+  "generated_at": "2026-05-11T19:09:50.996534Z",
+  "cutover_date": "2026-05-18",
+  "counts": {
+    "A002": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "ARG002": {
+      "UNTAGGED": {
+        "__none__": 2
+      }
+    },
+    "B008": {
+      "POLICY": {
+        "typer-default": 10
+      }
+    },
+    "BLE001": {
+      "POLICY": {
+        "boundary": 13
+      },
+      "UNTAGGED": {
+        "__none__": 60
+      }
+    },
+    "C901": {
+      "POLICY": {
+        "migration-sequence": 1,
+        "wiring": 1
+      },
+      "UNTAGGED": {
+        "__none__": 35
+      }
+    },
+    "D401": {
+      "UNTAGGED": {
+        "__none__": 2
+      }
+    },
+    "E402": {
+      "UNTAGGED": {
+        "__none__": 9
+      }
+    },
+    "E501": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "F401": {
+      "UNTAGGED": {
+        "__none__": 10
+      }
+    },
+    "I001": {
+      "UNTAGGED": {
+        "__none__": 2
+      }
+    },
+    "PLC0414": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "PLC0415": {
+      "UNTAGGED": {
+        "__none__": 3
+      }
+    },
+    "PLR0912": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "PLR0913": {
+      "POLICY": {
+        "wiring": 11,
+        "wiring--": 1
+      },
+      "UNTAGGED": {
+        "__none__": 46
+      }
+    },
+    "PLR0915": {
+      "UNTAGGED": {
+        "__none__": 14
+      }
+    },
+    "PLR2004": {
+      "UNTAGGED": {
+        "__none__": 4
+      }
+    },
+    "TRY401": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "import-untyped": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.agent.agent -> lyra.infrastructure.stores.agent_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.agent.agent -> lyra.stt": {
+      "DEBT": {
+        "importlinter-shared-modules-transitive": 1
+      }
+    },
+    "lyra.core.agent.agent -> lyra.tts": {
+      "DEBT": {
+        "importlinter-shared-modules-transitive": 1
+      }
+    },
+    "lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.auth.authenticator -> lyra.infrastructure.stores.auth_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.auth.authenticator -> lyra.infrastructure.stores.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.cli.cli_pool -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub -> lyra.infrastructure.stores.message_index": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub -> lyra.infrastructure.stores.pairing": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub -> lyra.infrastructure.stores.prefs_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.message_index": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.message_index": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.memory.memory -> lyra.infrastructure.stores.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.core.processors.processor_registry -> lyra.integrations.base": {
+      "DEBT": {
+        "importlinter-shared-modules-transitive": 1
+      }
+    },
+    "lyra.core.stores.pairing_protocol -> lyra.infrastructure.stores.pairing": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "lyra.tts.engine_selector -> lyra.core.agent.agent_config": {
+      "DEBT": {
+        "importlinter-shared-modules-transitive": 1
+      }
+    },
+    "misc": {
+      "UNTAGGED": {
+        "__none__": 5
+      }
+    },
+    "no-any-return": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "reportUnnecessaryIsInstance": {
+      "UNTAGGED": {
+        "__none__": 6
+      }
+    },
+    "reportUnreachable": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "reportUnusedClass": {
+      "UNTAGGED": {
+        "__none__": 2
+      }
+    },
+    "reportUnusedImport": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "return-value": {
+      "UNTAGGED": {
+        "__none__": 2
+      }
+    },
+    "src/lyra/adapters/clipool/clipool_worker.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/adapters/shared/_shared_streaming_emitter.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/agents/simple_agent.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/bootstrap/bootstrap_stores.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/bootstrap/factory/wiring_helpers.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/bootstrap/standalone/adapter_standalone.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/core": {
+      "DEBT": {
+        "folder-exemptions": 1
+      }
+    },
+    "src/lyra/core/cli": {
+      "DEBT": {
+        "folder-exemptions": 1
+      }
+    },
+    "src/lyra/core/cli/cli_pool.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/core/cli/cli_streaming_parser.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/core/messaging": {
+      "DEBT": {
+        "folder-exemptions": 1
+      }
+    },
+    "src/lyra/core/processors/stream_processor.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "src/lyra/infrastructure/stores": {
+      "DEBT": {
+        "folder-exemptions": 1
+      }
+    },
+    "src/lyra/llm/drivers/nats_driver.py": {
+      "DEBT": {
+        "file-exemptions": 1
+      }
+    },
+    "type-arg": {
+      "UNTAGGED": {
+        "__none__": 8
+      }
+    },
+    "union-attr": {
+      "UNTAGGED": {
+        "__none__": 3
+      }
+    }
+  }
+}

@@ -13,7 +13,7 @@ layers =
     lyra.llm | lyra.nats
     lyra.core
 ignore_imports =
-    # Downward TYPE_CHECKING imports (ADR-048 transition)
+    # Downward TYPE_CHECKING imports (ADR-048 transition) — DEBT:importlinter-adr048-transition
     lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store
     lyra.core.auth.authenticator -> lyra.infrastructure.stores.auth_store
     lyra.core.auth.authenticator -> lyra.infrastructure.stores.identity_alias_store
@@ -21,16 +21,16 @@ ignore_imports =
     lyra.core.memory.memory -> lyra.infrastructure.stores.identity_alias_store
     lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store
     lyra.core.hub.hub_registration -> lyra.infrastructure.stores.identity_alias_store
-    # TYPE_CHECKING imports for migrated stores (#935)
+    # TYPE_CHECKING imports for migrated stores (#935) — DEBT:importlinter-adr048-transition
     lyra.core.hub.hub -> lyra.infrastructure.stores.message_index
     lyra.core.hub.hub -> lyra.infrastructure.stores.pairing
     lyra.core.hub.hub -> lyra.infrastructure.stores.prefs_store
     lyra.core.hub.hub_registration -> lyra.infrastructure.stores.message_index
     lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.message_index
     lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index
-    # Transitional: pairing_protocol facade (ADR-059 V3 pending)
+    # Transitional: pairing_protocol facade (ADR-059 V3 pending) — DEBT:importlinter-adr048-transition
     lyra.core.stores.pairing_protocol -> lyra.infrastructure.stores.pairing
-    # TurnStore moved to infrastructure per ADR-048 (#760 review fix f2)
+    # TurnStore moved to infrastructure per ADR-048 (#760 review fix f2) — DEBT:importlinter-adr048-transition
     lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store
     lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store
     lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store
@@ -66,7 +66,7 @@ source_modules =
 forbidden_modules =
     lyra.bootstrap
 ignore_imports =
-    # Transitional: TYPE_CHECKING import pending protocol extraction (ADR-059 V9)
+    # Transitional: TYPE_CHECKING import pending protocol extraction (ADR-059 V9) — DEBT:importlinter-adr048-transition
     lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store
 
 [importlinter:contract:shared-modules-independence]
@@ -85,6 +85,7 @@ ignore_imports =
     # Transitive paths through lyra.core — not peer coupling; importlinter's independence
     # contract traces all paths between listed modules, including through unlisted ones.
     # These are permitted imports (floating → core), detected transitively. (#977)
+    # — DEBT:importlinter-shared-modules-transitive
     lyra.tts.engine_selector -> lyra.core.agent.agent_config
     lyra.core.processors.processor_registry -> lyra.integrations.base
     lyra.core.agent.agent -> lyra.stt

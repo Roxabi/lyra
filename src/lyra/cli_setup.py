@@ -19,7 +19,7 @@ setup_app = typer.Typer(name="setup", help="One-time platform setup commands.")
 
 @setup_app.command(name="commands")
 def cmd_setup_commands(
-    config: str = typer.Option(  # noqa: B008
+    config: str = typer.Option(  # noqa: B008 — POLICY:typer-default
         "config.toml", "--config", "-c", help="Path to config.toml."
     ),
 ) -> None:
@@ -84,7 +84,7 @@ async def _register_bot(
     for plugin_name in enabled_plugins:
         try:
             command_loader.load(plugin_name)
-        except Exception:  # noqa: BLE001 — resilient: plugin load failure must not abort agent setup
+        except Exception:  # noqa: BLE001  — POLICY:boundary— resilient: plugin load failure must not abort agent setup
             log.warning(
                 "Could not load plugin %s for agent %s",
                 plugin_name,
@@ -110,7 +110,7 @@ async def _register_bot(
         typer.echo(
             f"Registered {len(public_commands)} commands for bot @{username} ({bot_id})"
         )
-    except Exception as exc:  # noqa: BLE001  # top-level boundary
+    except Exception as exc:  # noqa: BLE001   — POLICY:boundary# top-level boundary
         typer.echo(
             f"Error registering commands for bot_id={bot_id}: {exc}",
             err=True,

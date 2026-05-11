@@ -1,0 +1,45 @@
+name: quality-debt
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [staging, main]
+
+concurrency:
+  group: quality-debt-${{ github.ref }}
+  # Cancel only on feature branches; protected branches (main, staging) run to completion.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/staging' && github.ref != 'refs/heads/main' }}
+
+jobs:
+  ratchet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v7
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run quality-debt audit
+        id: audit
+        continue-on-error: true
+        run: make quality-debt-report
+
+      - name: Surface audit non-zero exit
+        if: steps.audit.outcome == 'failure'
+        run: |
+          echo "::warning::quality-debt audit step exited non-zero — see logs above. Ratchet still enforced."
+
+      - name: Run quality-debt ratchet
+        # CI never sets RATCHET_MODE — uses computed mode based on baseline cutover_date.
+        env:
+          QG_AUDIT_REPORT: artifacts/quality-debt-report.json
+        run: tools/check_quality_debt_ratchet.sh

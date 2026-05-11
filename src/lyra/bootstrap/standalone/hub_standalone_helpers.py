@@ -103,7 +103,7 @@ async def build_pairing_manager(
     return pm
 
 
-async def shutdown_hub_runtime(  # noqa: PLR0913 — unavoidable wiring surface
+async def shutdown_hub_runtime(  # noqa: PLR0913  — POLICY:wiring— unavoidable wiring surface
     hub: Hub,
     *,
     readiness_sub,

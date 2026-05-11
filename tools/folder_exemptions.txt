@@ -6,7 +6,7 @@
 # into cohesive subdirs. core/hub/ deferred to V5 (follow-up issue).
 # V5 completed under #848 — core/hub/ decomposed into middleware/, outbound/, pipeline/.
 
-src/lyra/core           # 15 files — #858 config dataclass extraction (pending cleanup); #1020 logging_setup.py added
-src/lyra/infrastructure/stores  # 15 files — #935 ADR-048 store migration (4 files moved from core/stores)
-src/lyra/core/cli           # 14 files — #957 cli_pool_entry.py extracted to break _ProcessEntry circular import
-src/lyra/core/messaging     # 13 files — #1016 WorkerError: error_extractor.py + metrics.py added; #1031 tool_recap_format.py + tool_display_config.py added
+src/lyra/core           # 15 files — DEBT:folder-exemptions — #858 config dataclass extraction (pending cleanup); #1020 logging_setup.py added
+src/lyra/infrastructure/stores  # 15 files — DEBT:folder-exemptions — #935 ADR-048 store migration (4 files moved from core/stores)
+src/lyra/core/cli           # 14 files — DEBT:folder-exemptions — #957 cli_pool_entry.py extracted to break _ProcessEntry circular import
+src/lyra/core/messaging     # 13 files — DEBT:folder-exemptions — #1016 WorkerError: error_extractor.py + metrics.py added; #1031 tool_recap_format.py + tool_display_config.py added

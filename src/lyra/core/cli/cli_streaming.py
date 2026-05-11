@@ -161,7 +161,7 @@ class StreamingIterator:
         if not self._done and self._pool_reset_fn is not None:
             try:
                 await self._pool_reset_fn()
-            except Exception:  # noqa: BLE001  # top-level boundary
+            except Exception:  # noqa: BLE001   — POLICY:boundary# top-level boundary
                 log.warning(
                     "[pool:%s] pool_reset_fn failed in streaming cleanup",
                     self._pool_id,

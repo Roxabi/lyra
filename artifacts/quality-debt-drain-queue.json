@@ -1,0 +1,242 @@
+[
+  {
+    "path": "src/lyra/bootstrap/factory/agent_factory.py",
+    "line": 127,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/factory/agent_factory.py",
+    "line": 193,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/factory/hub_builder.py",
+    "line": 77,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/factory/hub_builder.py",
+    "line": 151,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/factory/wiring_helpers.py",
+    "line": 247,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/factory/wiring_helpers.py",
+    "line": 336,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/standalone/hub_standalone_helpers.py",
+    "line": 106,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
+    "line": 37,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
+    "line": 110,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
+    "line": 230,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/wiring/nats_wiring.py",
+    "line": 28,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/bootstrap/wiring/nats_wiring.py",
+    "line": 85,
+    "rule": "PLR0913",
+    "debt_slug": "wiring",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli.py",
+    "line": 153,
+    "rule": "B008",
+    "debt_slug": "typer-default",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_agent.py",
+    "line": 74,
+    "rule": "BLE001",
+    "debt_slug": "boundary",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_ops.py",
+    "line": 167,
+    "rule": "BLE001",
+    "debt_slug": "boundary",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_ops.py",
+    "line": 207,
+    "rule": "BLE001",
+    "debt_slug": "boundary",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_ops.py",
+    "line": 214,
+    "rule": "B008",
+    "debt_slug": "typer-default",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_ops.py",
+    "line": 219,
+    "rule": "B008",
+    "debt_slug": "typer-default",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_ops.py",
+    "line": 224,
+    "rule": "B008",
+    "debt_slug": "typer-default",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_ops.py",
+    "line": 229,
+    "rule": "B008",
+    "debt_slug": "typer-default",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_setup.py",
+    "line": 22,
+    "rule": "B008",
+    "debt_slug": "typer-default",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_setup.py",
+    "line": 87,
+    "rule": "BLE001",
+    "debt_slug": "boundary",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_setup.py",
+    "line": 113,
+    "rule": "BLE001",
+    "debt_slug": "boundary",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_voice_smoke.py",
+    "line": 43,
+    "rule": "B008",
+    "debt_slug": "typer-default",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_voice_smoke.py",
+    "line": 50,
+    "rule": "B008",
+    "debt_slug": "typer-default",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_voice_smoke.py",
+    "line": 56,
+    "rule": "B008",
+    "debt_slug": "typer-default",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_voice_smoke.py",
+    "line": 65,
+    "rule": "B008",
+    "debt_slug": "typer-default",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_voice_smoke.py",
+    "line": 82,
+    "rule": "BLE001",
+    "debt_slug": "boundary",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_voice_smoke.py",
+    "line": 101,
+    "rule": "BLE001",
+    "debt_slug": "boundary",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  },
+  {
+    "path": "src/lyra/cli_voice_smoke.py",
+    "line": 202,
+    "rule": "BLE001",
+    "debt_slug": "boundary",
+    "fix_class": "easy",
+    "fix_loc_estimate": 1
+  }
+]

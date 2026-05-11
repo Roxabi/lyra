@@ -164,7 +164,7 @@ async def _probe(
     await nc.publish(subject, b"verify")
     try:
         await nc.flush(timeout=_FLUSH_TIMEOUT)
-    except Exception as exc:  # noqa: BLE001 — resilient: NATS flush raises varied errors (timeout, conn reset, server close)
+    except Exception as exc:  # noqa: BLE001  — POLICY:boundary— resilient: NATS flush raises varied errors (timeout, conn reset, server close)
         return False, f"flush error: {exc}"
     await asyncio.sleep(0)
     denied = any(_is_permission_error(e) for e in errors[before:])
@@ -204,29 +204,29 @@ async def _verify_identity(
             )
     except SystemExit:
         raise
-    except Exception as exc:  # noqa: BLE001 — resilient: NATS connection errors span auth, TLS, DNS, and timeout
+    except Exception as exc:  # noqa: BLE001  — POLICY:boundary— resilient: NATS connection errors span auth, TLS, DNS, and timeout
         result.skipped_reason = f"connect failed: {exc}"
     return result
 
 
 @ops_app.command("verify")
 def verify(
-    matrix: Path = typer.Option(  # noqa: B008
+    matrix: Path = typer.Option(  # noqa: B008 — POLICY:typer-default
         Path(_DEFAULT_MATRIX),
         "--matrix",
         help="Path to acl-matrix.json.",
     ),
-    seeds_dir: Path = typer.Option(  # noqa: B008
+    seeds_dir: Path = typer.Option(  # noqa: B008 — POLICY:typer-default
         Path(_DEFAULT_SEEDS_DIR),
         "--seeds-dir",
         help="Directory containing per-identity nkey seeds.",
     ),
-    nats_url: str = typer.Option(  # noqa: B008
+    nats_url: str = typer.Option(  # noqa: B008 — POLICY:typer-default
         None,
         "--nats-url",
         help="NATS URL (default: NATS_URL env var, then nats://localhost:4222).",
     ),
-    only: list[str] = typer.Option(  # noqa: B008
+    only: list[str] = typer.Option(  # noqa: B008 — POLICY:typer-default
         None,
         "--only",
         help="Restrict verification to specific identity names (repeatable).",

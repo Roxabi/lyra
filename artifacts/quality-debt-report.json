@@ -23,11 +23,14 @@
     "C901": {
       "DEBT": {
         "adapter-dispatch-complexity": 2,
-        "complexity-residual": 22
+        "complexity-residual": 21
       },
       "POLICY": {
         "migration-sequence": 3,
         "wiring": 10
+      },
+      "UNTAGGED": {
+        "__none__": 1
       }
     },
     "D401": {
@@ -349,7 +352,10 @@
     },
     "type-arg": {
       "POLICY": {
-        "defensive-narrow": 8
+        "defensive-narrow": 2
+      },
+      "UNTAGGED": {
+        "__none__": 6
       }
     },
     "union-attr": {
@@ -358,7 +364,7 @@
       }
     }
   },
-  "generated_at": "2026-05-11T22:04:14.757469+00:00",
+  "generated_at": "2026-05-11T22:07:04.959076+00:00",
   "rows": [
     {
       "bucket": "UNTAGGED",
@@ -2361,20 +2367,18 @@
       "tag": "wiring--"
     },
     {
-      "bucket": "DEBT",
+      "bucket": "UNTAGGED",
       "line": 150,
       "path": "tools/license_check.py",
       "rule": "C901",
-      "slug": "complexity-residual",
       "source": "noqa"
     },
     {
-      "bucket": "POLICY",
+      "bucket": "UNTAGGED",
       "line": 27,
       "path": "tools/rebaseline_quality_debt.py",
       "rule": "type-arg",
-      "source": "type-ignore",
-      "tag": "defensive-narrow"
+      "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
@@ -2384,44 +2388,39 @@
       "source": "type-ignore"
     },
     {
-      "bucket": "POLICY",
+      "bucket": "UNTAGGED",
       "line": 36,
       "path": "tools/rebaseline_quality_debt.py",
       "rule": "type-arg",
-      "source": "type-ignore",
-      "tag": "defensive-narrow"
+      "source": "type-ignore"
     },
     {
-      "bucket": "POLICY",
+      "bucket": "UNTAGGED",
       "line": 54,
       "path": "tools/rebaseline_quality_debt.py",
       "rule": "type-arg",
-      "source": "type-ignore",
-      "tag": "defensive-narrow"
+      "source": "type-ignore"
     },
     {
-      "bucket": "POLICY",
+      "bucket": "UNTAGGED",
       "line": 56,
       "path": "tools/rebaseline_quality_debt.py",
       "rule": "type-arg",
-      "source": "type-ignore",
-      "tag": "defensive-narrow"
+      "source": "type-ignore"
     },
     {
-      "bucket": "POLICY",
+      "bucket": "UNTAGGED",
       "line": 58,
       "path": "tools/rebaseline_quality_debt.py",
       "rule": "type-arg",
-      "source": "type-ignore",
-      "tag": "defensive-narrow"
+      "source": "type-ignore"
     },
     {
-      "bucket": "POLICY",
+      "bucket": "UNTAGGED",
       "line": 59,
       "path": "tools/rebaseline_quality_debt.py",
       "rule": "type-arg",
-      "source": "type-ignore",
-      "tag": "defensive-narrow"
+      "source": "type-ignore"
     },
     {
       "bucket": "DEBT",

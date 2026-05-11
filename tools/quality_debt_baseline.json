@@ -1,16 +1,16 @@
 {
   "generated_by": "make quality-debt-rebaseline",
-  "generated_at": "2026-05-11T19:09:50.996534Z",
+  "generated_at": "2026-05-11T22:07:06.227672Z",
   "cutover_date": "2026-05-18",
   "counts": {
     "A002": {
-      "UNTAGGED": {
-        "__none__": 1
+      "DEBT": {
+        "lint-residual": 1
       }
     },
     "ARG002": {
-      "UNTAGGED": {
-        "__none__": 2
+      "POLICY": {
+        "protocol-private": 2
       }
     },
     "B008": {
@@ -20,88 +20,99 @@
     },
     "BLE001": {
       "POLICY": {
-        "boundary": 13
-      },
-      "UNTAGGED": {
-        "__none__": 60
+        "boundary": 73
       }
     },
     "C901": {
+      "DEBT": {
+        "adapter-dispatch-complexity": 2,
+        "complexity-residual": 21
+      },
       "POLICY": {
-        "migration-sequence": 1,
-        "wiring": 1
+        "migration-sequence": 3,
+        "wiring": 10
       },
       "UNTAGGED": {
-        "__none__": 35
+        "__none__": 1
       }
     },
     "D401": {
-      "UNTAGGED": {
-        "__none__": 2
+      "DEBT": {
+        "d401-property-accessor": 2
       }
     },
     "E402": {
+      "POLICY": {
+        "module-level-patch": 2
+      },
       "UNTAGGED": {
-        "__none__": 9
+        "__none__": 7
       }
     },
     "E501": {
-      "UNTAGGED": {
-        "__none__": 1
+      "DEBT": {
+        "lint-residual": 1
       }
     },
     "F401": {
-      "UNTAGGED": {
-        "__none__": 10
+      "POLICY": {
+        "re-export": 10
       }
     },
     "I001": {
-      "UNTAGGED": {
-        "__none__": 2
+      "DEBT": {
+        "lint-residual": 1
+      },
+      "POLICY": {
+        "module-level-patch": 1
       }
     },
     "PLC0414": {
-      "UNTAGGED": {
-        "__none__": 1
+      "POLICY": {
+        "re-export": 1
       }
     },
     "PLC0415": {
-      "UNTAGGED": {
-        "__none__": 3
+      "DEBT": {
+        "plc0415-deferred-import": 3
       }
     },
     "PLR0912": {
-      "UNTAGGED": {
-        "__none__": 1
+      "DEBT": {
+        "complexity-residual": 1
       }
     },
     "PLR0913": {
-      "POLICY": {
-        "wiring": 11,
-        "wiring--": 1
+      "DEBT": {
+        "complexity-residual": 2
       },
-      "UNTAGGED": {
-        "__none__": 46
+      "POLICY": {
+        "wiring": 53,
+        "wiring--": 3
       }
     },
     "PLR0915": {
-      "UNTAGGED": {
-        "__none__": 14
+      "DEBT": {
+        "complexity-residual": 10
+      },
+      "POLICY": {
+        "migration-sequence": 2,
+        "wiring": 2
       }
     },
     "PLR2004": {
-      "UNTAGGED": {
-        "__none__": 4
+      "DEBT": {
+        "adapter-magic-constants": 4
       }
     },
     "TRY401": {
-      "UNTAGGED": {
-        "__none__": 1
+      "POLICY": {
+        "boundary": 1
       }
     },
     "import-untyped": {
-      "UNTAGGED": {
-        "__none__": 1
+      "POLICY": {
+        "defensive-narrow": 1
       }
     },
     "lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store": {
@@ -235,8 +246,8 @@
       }
     },
     "misc": {
-      "UNTAGGED": {
-        "__none__": 5
+      "POLICY": {
+        "defensive-narrow": 5
       }
     },
     "no-any-return": {
@@ -245,28 +256,31 @@
       }
     },
     "reportUnnecessaryIsInstance": {
-      "UNTAGGED": {
-        "__none__": 6
+      "POLICY": {
+        "defensive-narrow": 6
       }
     },
     "reportUnreachable": {
-      "UNTAGGED": {
-        "__none__": 1
+      "POLICY": {
+        "defensive-narrow": 1
       }
     },
     "reportUnusedClass": {
-      "UNTAGGED": {
-        "__none__": 2
+      "POLICY": {
+        "protocol-private": 2
       }
     },
     "reportUnusedImport": {
-      "UNTAGGED": {
-        "__none__": 1
+      "POLICY": {
+        "re-export": 1
       }
     },
     "return-value": {
+      "DEBT": {
+        "lint-residual": 1
+      },
       "UNTAGGED": {
-        "__none__": 2
+        "__none__": 1
       }
     },
     "src/lyra/adapters/clipool/clipool_worker.py": {
@@ -340,13 +354,16 @@
       }
     },
     "type-arg": {
+      "POLICY": {
+        "defensive-narrow": 2
+      },
       "UNTAGGED": {
-        "__none__": 8
+        "__none__": 6
       }
     },
     "union-attr": {
-      "UNTAGGED": {
-        "__none__": 3
+      "POLICY": {
+        "defensive-narrow": 3
       }
     }
   }

@@ -257,6 +257,60 @@ def test_baseline_missing_generated_by_fails_to_load(tmp_path: Path) -> None:
     )
 
 
+def test_ratchet_rejects_malformed_report(tmp_path: Path) -> None:
+    """jq -e pre-check: report missing counts_by_rule_bucket_slug -> exit != 0."""
+    # Arrange
+    baseline = tmp_path / "baseline.json"
+    audit = tmp_path / "report.json"
+    _write_baseline(baseline, cutover_date=_today_plus(5))
+    # Write a report with no counts_by_rule_bucket_slug key at all
+    audit.write_text(
+        json.dumps(
+            {"generated_at": "2026-05-11T00:00:00Z", "rows": [], "stale_references": []}
+        )
+    )
+
+    # Act
+    cp = _run(tmp_path, audit, baseline)
+
+    # Assert
+    assert cp.returncode != 0, (
+        f"expected non-zero exit for malformed report; "
+        f"rc={cp.returncode}\nstderr={cp.stderr}"
+    )
+    stderr_lower = cp.stderr.lower()
+    assert (
+        "counts_by_rule_bucket_slug" in stderr_lower
+        or "schema" in stderr_lower
+        or "malformed" in stderr_lower
+        or "missing" in stderr_lower
+        or "regenerate" in stderr_lower
+    ), f"expected informative stderr about missing key; stderr={cp.stderr}"
+
+
+def test_ratchet_rejects_invalid_mode(tmp_path: Path) -> None:
+    """RATCHET_MODE unlisted value -> exit != 0 + valid modes named in stderr."""
+    # Arrange
+    baseline = tmp_path / "baseline.json"
+    audit = tmp_path / "report.json"
+    _write_baseline(baseline, cutover_date=_today_plus(5))
+    _write_audit_report(audit)
+
+    # Act
+    cp = _run(tmp_path, audit, baseline, extra_env={"RATCHET_MODE": "bogus"})
+
+    # Assert
+    assert cp.returncode != 0, (
+        f"expected non-zero exit for invalid RATCHET_MODE; "
+        f"rc={cp.returncode}\nstderr={cp.stderr}"
+    )
+    stderr_lower = cp.stderr.lower()
+    # The script should name valid modes (soft / hard) in the error message
+    assert "soft" in stderr_lower or "hard" in stderr_lower, (
+        f"expected valid modes ('soft'/'hard') named in stderr; stderr={cp.stderr}"
+    )
+
+
 def test_ratchet_makes_zero_gh_api_calls(tmp_path: Path) -> None:
     """Ratchet MUST NOT call 'gh' — registry lookups are local-only.
 

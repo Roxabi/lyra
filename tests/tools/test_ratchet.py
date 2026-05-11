@@ -21,6 +21,8 @@ import subprocess
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parent.parent.parent
 SCRIPT = REPO / "tools" / "check_quality_debt_ratchet.sh"
 
@@ -255,6 +257,84 @@ def test_baseline_missing_generated_by_fails_to_load(tmp_path: Path) -> None:
     assert "regenerate" in stderr_lower or "generated_by" in stderr_lower, (
         f"expected regenerate/generated_by hint in stderr; stderr={cp.stderr}"
     )
+
+
+def test_ratchet_rejects_malformed_report(tmp_path: Path) -> None:
+    """jq -e pre-check: report missing counts_by_rule_bucket_slug -> exit != 0."""
+    # Arrange
+    baseline = tmp_path / "baseline.json"
+    audit = tmp_path / "report.json"
+    _write_baseline(baseline, cutover_date=_today_plus(5))
+    # Write a report with no counts_by_rule_bucket_slug key at all
+    audit.write_text(
+        json.dumps(
+            {"generated_at": "2026-05-11T00:00:00Z", "rows": [], "stale_references": []}
+        )
+    )
+
+    # Act
+    cp = _run(tmp_path, audit, baseline)
+
+    # Assert
+    assert cp.returncode != 0, (
+        f"expected non-zero exit for malformed report; "
+        f"rc={cp.returncode}\nstderr={cp.stderr}"
+    )
+    stderr_lower = cp.stderr.lower()
+    assert (
+        "counts_by_rule_bucket_slug" in stderr_lower
+        or "schema" in stderr_lower
+        or "malformed" in stderr_lower
+        or "missing" in stderr_lower
+        or "regenerate" in stderr_lower
+    ), f"expected informative stderr about missing key; stderr={cp.stderr}"
+
+
+@pytest.mark.parametrize(
+    "invalid_mode",
+    [
+        "bogus",
+        "SOFT",
+        "Hard",
+        "HARD",
+        pytest.param(
+            "",
+            marks=pytest.mark.xfail(
+                reason="bash case with empty RATCHET_MODE falls through to default; "
+                "script should explicitly reject empty string (known gap)",
+                strict=True,
+            ),
+        ),
+    ],
+)
+def test_ratchet_rejects_invalid_mode(tmp_path: Path, invalid_mode: str) -> None:
+    """RATCHET_MODE unlisted value -> exit != 0 + valid modes named in stderr.
+
+    Covers exact-match ("bogus"), wrong-case variants ("SOFT", "Hard", "HARD"),
+    and empty string — bash case matching is case-sensitive; none of these
+    should silently pass as a valid mode.
+    """
+    # Arrange
+    baseline = tmp_path / "baseline.json"
+    audit = tmp_path / "report.json"
+    _write_baseline(baseline, cutover_date=_today_plus(5))
+    _write_audit_report(audit)
+
+    # Act
+    cp = _run(tmp_path, audit, baseline, extra_env={"RATCHET_MODE": invalid_mode})
+
+    # Assert: any invalid mode must produce non-zero exit
+    assert cp.returncode != 0, (
+        f"expected non-zero exit for RATCHET_MODE={invalid_mode!r}; "
+        f"rc={cp.returncode}\nstderr={cp.stderr}"
+    )
+    # For non-empty invalid values: error message should name valid modes
+    if invalid_mode:
+        stderr_lower = cp.stderr.lower()
+        assert "soft" in stderr_lower or "hard" in stderr_lower, (
+            f"expected valid modes ('soft'/'hard') named in stderr for "
+            f"RATCHET_MODE={invalid_mode!r}; stderr={cp.stderr}"
+        )
 
 
 def test_ratchet_makes_zero_gh_api_calls(tmp_path: Path) -> None:

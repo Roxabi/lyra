@@ -1,10 +1,16 @@
 ---
+id: importlinter-shared-modules-transitive
 slug: importlinter-shared-modules-transitive
+title: Transitive paths through lyra.core (independence contract)
 status: open
 created: 2026-05-11
 drain_slice: "#1163"
+parent_slice: '#1162'
+rule: importlinter
 rules:
   - importlinter
+sites: see artifacts/quality-debt-report.json
+fix_class: medium
 ---
 
 # importlinter-shared-modules-transitive

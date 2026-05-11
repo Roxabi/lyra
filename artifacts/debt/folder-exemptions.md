@@ -1,10 +1,16 @@
 ---
+id: folder-exemptions
 slug: folder-exemptions
+title: Folders exceeding the 12-file gate
 status: open
 created: 2026-05-11
 drain_slice: "#1163"
+parent_slice: '#1162'
+rule: folder-size
 rules:
   - folder-size
+sites: see tools/folder_exemptions.txt
+fix_class: hard
 ---
 
 # folder-exemptions

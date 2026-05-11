@@ -1,10 +1,16 @@
 ---
+id: importlinter-adr048-transition
 slug: importlinter-adr048-transition
+title: Downward TYPE_CHECKING imports (ADR-048 transition)
 status: open
 created: 2026-05-11
 drain_slice: "#1163"
+parent_slice: '#1162'
+rule: importlinter
 rules:
   - importlinter
+sites: see artifacts/quality-debt-report.json
+fix_class: medium
 ---
 
 # importlinter-adr048-transition

@@ -1,10 +1,16 @@
 ---
+id: file-exemptions
 slug: file-exemptions
+title: Files exceeding the 300-line gate
 status: open
 created: 2026-05-11
 drain_slice: "#1163"
+parent_slice: '#1162'
+rule: file-length
 rules:
   - file-length
+sites: see tools/file_exemptions.txt
+fix_class: hard
 ---
 
 # file-exemptions

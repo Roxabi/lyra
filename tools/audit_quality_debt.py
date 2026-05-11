@@ -228,11 +228,14 @@ def _print_summary(rows: list[Row], stale: list[StaleRef]) -> None:
     print(f"\nTotal rows: {len(rows)}  Stale refs: {len(stale)}")
 
 
+_PY_SCAN_SKIP = {"__pycache__", ".venv", "tests", "packages"}
+
+
 def scan(root: Path) -> tuple[list[Row], list[StaleRef]]:
     rows: list[Row] = []
     for py_file in sorted(root.rglob("*.py")):
         parts = py_file.relative_to(root).parts
-        if any(p.startswith(".") or p in {"__pycache__", ".venv"} for p in parts):
+        if any(p.startswith(".") or p in _PY_SCAN_SKIP for p in parts):
             continue
         rows.extend(_scan_py(root, py_file))
     rows.extend(_scan_importlinter(root))

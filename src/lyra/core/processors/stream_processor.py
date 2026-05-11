@@ -168,7 +168,7 @@ class StreamProcessor:
     # Public interface
     # ------------------------------------------------------------------
 
-    async def process(  # noqa: C901, PLR0915 — event-type dispatch + terminal fallbacks
+    async def process(  # noqa: C901, PLR0915 — POLICY:wiring — event-type dispatch + terminal fallbacks
         self, events: AsyncIterator[LlmEvent]
     ) -> AsyncGenerator[RenderEvent, None]:
         """Process an async stream of ``LlmEvent`` objects.
@@ -228,7 +228,7 @@ class StreamProcessor:
                         is_error=event.is_error,
                     )
 
-                elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+                elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
                     _result_received = True
                     # Synthesize ToolCallEnd for any open tool_call_ids that
                     # never received a content_block_stop (truncated stream,

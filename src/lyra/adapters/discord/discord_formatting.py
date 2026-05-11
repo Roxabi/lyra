@@ -30,7 +30,7 @@ _TABLE_RE = re.compile(
 def _parse_md_table(match: re.Match[str]) -> str:
     """Convert a Markdown pipe table match to a tabulate ``simple`` code block."""
     lines = [ln for ln in match.group(0).splitlines() if ln.strip()]
-    if len(lines) < 3:  # noqa: PLR2004 — need header + sep + ≥1 data row
+    if len(lines) < 3:  # noqa: PLR2004 — DEBT:adapter-magic-constants
         return match.group(0)
 
     def _row(line: str) -> list[str]:

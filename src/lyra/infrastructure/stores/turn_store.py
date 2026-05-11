@@ -122,7 +122,7 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
             raise RuntimeError("TurnStore not connected — call await connect() first")
         return self._db
 
-    async def log_turn(  # noqa: PLR0913
+    async def log_turn(  # noqa: PLR0913 — POLICY:wiring
         self,
         *,
         pool_id: str,

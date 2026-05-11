@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("lyra.adapters.discord")
 
 
-async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # noqa: C901, PLR0915 — gateway dispatch: each message type branch is independent
+async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # noqa: C901, PLR0915 — POLICY:wiring
     """Handle incoming Gateway message.
 
     Filters own/bot messages, creates auto-thread before normalization,
@@ -80,7 +80,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
             ):
                 adapter._owned_threads.add(message.channel.id)
                 _in_owned_thread = True
-        except Exception:  # noqa: BLE001  # ThreadStore: non-fatal ownership check
+        except Exception:  # noqa: BLE001 — POLICY:boundary
             log.warning(
                 "ThreadStore: lazy is_owned check failed for thread_id=%s",
                 message.channel.id,
@@ -137,7 +137,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                             channel_id=message.channel.id,
                             guild_id=getattr(message.guild, "id", None),
                         )
-                    except Exception as e:  # noqa: BLE001  # thread recovery: non-fatal persistence
+                    except Exception as e:  # noqa: BLE001 — POLICY:boundary
                         log.warning(
                             "Failed to persist thread claim in recovery path: %s", e
                         )
@@ -200,7 +200,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         try:
             _dm_session_id = await adapter._turn_store.get_last_session(_pool_id)
         except Exception:
-            log.exception(  # noqa: TRY401
+            log.exception(  # noqa: TRY401 — POLICY:boundary
                 "TurnStore.get_last_session failed for DM pool_id=%s", _pool_id
             )
     if _dm_session_id is not None:

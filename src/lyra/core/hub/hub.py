@@ -16,7 +16,7 @@ from ..tts_dispatch import AudioPipeline
 from .hub_circuit_breaker import HubCircuitBreakerMixin
 from .hub_dispatch import HubDispatchMixin
 from .hub_pool_delegation import HubPoolDelegationMixin
-from .hub_protocol import (  # noqa: F401 — public re-export
+from .hub_protocol import (  # noqa: F401 — POLICY:re-export — public re-export
     Binding,
     ChannelAdapter,
     RoutingKey,
@@ -62,7 +62,7 @@ class Hub(
 
     BUS_SIZE = 100
 
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913 — POLICY:wiring
         self,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,

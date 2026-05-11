@@ -101,7 +101,7 @@ async def guarded_process_one(
         TraceContext.reset_agent_name(token_an)
 
 
-async def process_one(  # noqa: C901, PLR0915 — session-id update adds branches
+async def process_one(  # noqa: C901, PLR0915 — DEBT:complexity-residual — session-id update adds branches
     msg: InboundMessage, agent: AgentBase, pool: Pool
 ) -> None:
     """Run agent.process and dispatch result (streaming or non-streaming)."""
@@ -148,7 +148,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
             if _processor is not None:
                 try:
                     msg = await _processor.pre(msg)
-                except Exception:  # noqa: BLE001  # top-level boundary
+                except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
                     log.warning(
                         "Processor pre() failed for %s", _cmd_name, exc_info=True
                     )
@@ -162,10 +162,10 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
                     return
 
     result = agent.process(msg, pool)
-    if not isinstance(result, collections.abc.AsyncIterator):  # pyright: ignore[reportUnnecessaryIsInstance]
+    if not isinstance(result, collections.abc.AsyncIterator):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
         # Regular coroutine — await to get the actual result
         try:
-            result = await result  # type: ignore[misc]  # coroutine → Response|AsyncIterator
+            result = await result  # type: ignore[misc] — POLICY:defensive-narrow  # coroutine → Response|AsyncIterator
         except Exception as exc:
             pool._ctx.record_circuit_failure(exc)
             raise
@@ -173,7 +173,7 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
         if _processor is not None and isinstance(result, Response):
             try:
                 result = await _processor.post(_original_msg, result)
-            except Exception:  # noqa: BLE001  # top-level boundary
+            except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
                 log.warning("Processor post() failed", exc_info=True)
 
     # Capture values for the deferred turn-logging callback (#316).
@@ -229,14 +229,14 @@ async def process_one(  # noqa: C901, PLR0915 — session-id update adds branche
     else:
         pool._ctx.record_circuit_success()
         # Update session_id with the real Claude CLI session UUID (#316).
-        if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
             _cli_session_id = result.metadata.get("session_id")
             if _cli_session_id:
                 if pool.session_id != _cli_session_id:
                     await pool._observer.end_session_async(pool.session_id)
                 pool.session_id = _cli_session_id
         # Attach deferred turn-logging callback after adapter sends (#316).
-        if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
             _content = result.content
 
             async def _log_turn(outbound: OutboundMessage) -> None:

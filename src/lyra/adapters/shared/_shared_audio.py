@@ -71,7 +71,7 @@ async def buffer_audio_chunks(
                 break
             if chunk.is_final:
                 break
-    except Exception as exc:  # noqa: BLE001  # audio op: non-fatal
+    except Exception as exc:  # noqa: BLE001  — POLICY:boundary# audio op: non-fatal
         stream_error = exc
         log.warning("Audio stream interrupted: %s", exc)
 

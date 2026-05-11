@@ -1,0 +1,154 @@
+---
+title: "PR #1168 review-findings — Expert Consensus"
+issue: 1163
+pr: 1168
+status: consensus-reached
+date: 2026-05-12
+panel: architect, security-auditor, product-lead
+confidence: high
+---
+
+## Problem
+
+PR #1168 (quality-debt drain pass, #1163) received 12 findings from /code-review (4 fresh-context agents). 2 mechanical fixes (SC-7 typo, DEBT stub bodies) were auto-applied in commit `966e18a5`. The remaining 6 findings require a verdict on:
+
+- which fixes block merge,
+- which should land in-PR despite not blocking,
+- which become follow-up issues,
+- which are deferred.
+
+Constraint: hard cutover deadline 2026-05-18 (6 days). User direction: minimize merge-blocking work; favor follow-up issues for non-urgent changes.
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | meta-tool locus-of-truth, annotation-corpus integrity, long-term maintainability |
+| security-auditor | concrete threat models, blast radius, present-vs-future attacker scenarios |
+| product-lead | spec compliance, deadline pressure, in-PR vs follow-up cost/benefit |
+
+## Findings & Verdicts
+
+### #2 — Classifier path-guard restoration (BLE001/PLR0913)
+
+**Verdict: Follow-up issue** *(unanimous, high confidence)*
+
+Commit `b8a626f8` made BLE001/PLR0913 fallbacks unconditional. Future violations anywhere in `src/lyra/` auto-self-certify as `POLICY:boundary` / `POLICY:wiring` without human review.
+
+| Panel | Action | Rationale |
+|---|---|---|
+| architect | Follow-up | Behavior defensible (existing noqa = prior human gate); fix is test-naming + intent docs, not core logic. |
+| security | Follow-up | No current BLE001 in auth/token paths is UNTAGGED; risk is forward-looking only. |
+| product-lead | Follow-up | In-PR fix has 88% conf ratchet-break probability; blast radius is operator tooling, not production. |
+
+Rationale: real concern but bounded — `--apply` is operator-invoked (not CI), and the present annotation corpus contains no security-sensitive miscategorizations. Damage window = between merge and next `--apply` run.
+
+### #4 — SC-4 deviation (`tools/` mutation not in spec)
+
+**Verdict: PR description amendment** *(hybrid resolution, high confidence)*
+
+Spec SC-4 forbids `tools/` mutations except `quality_debt_baseline.json`. PR modified `classify_quality_debt.py` + `test_classifier.py`. The deviation is justified (Wave-1 fixer agents tail-degraded; durable fix was classifier mechanization) but not currently called out in PR body.
+
+| Panel | Action |
+|---|---|
+| architect | Defer ("fait accompli, strictly an improvement") |
+| security | Follow-up (audit trail traceability) |
+| product-lead | Fix-in-PR — 1-sentence PR description amendment |
+
+**Hybrid:** Adopt product-lead's path — 10-min PR description update addresses security's traceability concern at near-zero cost; architect's "no doc needed" is too thin given the explicit SC violation.
+
+### #5 — F401 unconditional `POLICY:re-export`
+
+**Verdict: Follow-up issue** *(majority 2-1, architect dissent recorded)*
+
+Classifier auto-tags every F401 as `POLICY:re-export`. `src/lyra/cli_voice_smoke.py:18` carries `# noqa: F401 — module-level for patching` (test monkeypatch), now mis-tagged.
+
+| Panel | Action |
+|---|---|
+| architect | **Fix-in-PR** (dissent) — "only known concrete annotation-corpus integrity counterexample today" |
+| security | Follow-up — "no sensitive symbol currently mistagged; risk is future drift" |
+| product-lead | Follow-up — "1-2h fix requires judgment; classifier rule needs distinguishing tag" |
+
+**Dissent recorded:** architect maintains the classifier's locus-of-truth axiom is violated — the annotation it writes is materially false for the patching case. Majority position: damage is bounded to one known site; correctness work belongs in a dedicated follow-up where the new POLICY tag (`POLICY:module-level-patch` or similar) can be designed properly.
+
+### #6 — `_is_boundary_path` anchor scope (`/tools/` substring match)
+
+**Verdict: Fix-in-PR** *(hybrid resolution, high confidence)*
+
+`_is_boundary_path` checks `"/tools/" in path.lower()` — global substring match. Currently harmless (ratchet scans only `src/lyra/`) but latent footgun if scope ever broadens.
+
+| Panel | Action |
+|---|---|
+| architect | **Fix-in-PR** — "one-line change, zero risk, removes latent misfire" |
+| security | Follow-up |
+| product-lead | Defer indefinitely |
+
+**Hybrid:** Adopt architect's path — 1-line anchor change (`"/tools/"` → `"src/lyra/tools/"`) is cheaper than the cognitive overhead of creating + tracking a follow-up issue. Defer/follow-up cost > fix cost.
+
+### #7 — Add `--apply` idempotency test
+
+**Verdict: Fix-in-PR** *(hybrid, high confidence)*
+
+`_SUFFIX_ALREADY_RE` is a write-mode safety guard with no test. Refactor risk: silent break → double-suffix corruption across codebase on next `--apply`.
+
+| Panel | Action |
+|---|---|
+| architect | **Fix-in-PR** — "zero source change, protects most destructive code path" |
+| security | Defer (test addition, no security) |
+| product-lead | Fold into #1165 *(not viable — #1165 closed)* |
+
+**Hybrid:** With #1165 closed, fold-into-existing is not available. Architect's path wins by default — pure test addition, ~15 min, high-value insurance.
+
+### #8 — FP boundary test for `hub_.+` regex
+
+**Verdict: Follow-up issue** *(near-consensus, medium confidence)*
+
+`_BOUNDARY_BASENAME_RE` matches `hub_.+` but no test asserts scope. No current false positive exists.
+
+| Panel | Action |
+|---|---|
+| architect | Follow-up |
+| security | Defer (informational) |
+| product-lead | Fold into #1165 *(not viable)* |
+
+**Resolution:** Follow-up — there's no current false positive to fix, just a documentation-via-test request. Defer the test until the regex is extended or a concrete FP appears.
+
+## Consensus Action Plan
+
+| # | Action | Where | Effort |
+|---|---|---|---|
+| #2 | Follow-up issue (P1/M) — restore BLE001/PLR0913 path-guards | new issue | 5min issue + ~2-4h work in follow-up |
+| #4 | PR description amendment — SC-4 waiver note | `gh pr edit` | 10min |
+| #5 | Follow-up issue (P3/XS) — refine F401 classifier | new issue | 5min issue + 1-2h work in follow-up |
+| #6 | In-PR — anchor `/tools/` → `src/lyra/tools/` | `tools/classify_quality_debt.py:245` | 1 line |
+| #7 | In-PR — add `test_apply_is_idempotent` | `tests/tools/test_classifier.py` | ~15min |
+| #8 | Follow-up issue (P3/XS) — FP boundary test for `hub_.+` | new issue | 5min issue |
+
+**Consolidation:** #2, #5, #8 → single follow-up issue "classifier refinement iter-3 (post-#1163)" with 3-item checklist. Reduces tracker noise.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| Block merge on #2 path-guard fix | (none — all rejected) | 88% ratchet-break probability; meta-tool, not production code |
+| Block merge on #5 mis-tag | architect (in-PR position) | bounded to 1 known site; new POLICY tag design merits its own ticket |
+| Fold all 6 findings into in-PR fixes | (none) | violates user constraint "minimize merge-blocking work" |
+| Defer all 6 to follow-ups | (none) | #6 + #7 are cheaper to fix than to track |
+
+## Dissent
+
+**Architect on #5:** F401 mis-classification is the only known concrete annotation-corpus integrity counterexample today, and the classifier's locus-of-truth axiom ("the annotation I write is true for the site I read") is materially violated. Fixing now (~1-2h) prevents the false positive from being baked into the corpus before cutover; deferring lets a known-false annotation survive in `src/lyra/cli_voice_smoke.py:18`.
+
+Majority counter-position: the noqa still suppresses the lint; the mis-tag affects audit-trail readability only, not runtime behavior; the right fix requires designing a new POLICY tag (`module-level-patch` or similar), which is a proper follow-up scope.
+
+## Implementation Notes
+
+1. Apply #6 (1-line anchor fix) and #7 (idempotency test) inline.
+2. Amend PR #1168 description with SC-4 waiver paragraph (#4).
+3. Create consolidated follow-up issue for #2 + #5 + #8.
+4. Final commit message format: `fix(quality-debt): apply review consensus — #6 anchor scope + #7 idempotency test`.
+5. Post `## Review Fixes Applied` comment to PR with the consensus action table.
+
+## Next
+
+`/fix` Phase 7 — final push + `reviewed` label.

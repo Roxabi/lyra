@@ -49,7 +49,7 @@ def init_agents(
                             typer.echo(f"  imported: {toml_file.name}")
                         else:
                             skipped += 1
-                    except Exception as e:  # noqa: BLE001  # top-level boundary
+                    except Exception as e:  # noqa: BLE001 — POLICY:boundary
                         typer.echo(f"  error: {toml_file.name}: {e}", err=True)
                         errors += 1
             typer.echo(
@@ -67,13 +67,13 @@ def init_agents(
 
 
 @agent_app.command()
-def validate(  # noqa: C901 -- validation walks multiple config sections
+def validate(  # noqa: C901 — DEBT:complexity-residual — validation walks multiple config sections
     name: str = typer.Argument(..., help="Agent name to validate."),
     agents_dir: Path | None = _AGENTS_DIR_OPT,
 ) -> None:
     """Validate an agent config from DB."""
 
-    async def _run() -> None:  # noqa: C901 -- mirrors validate() structure
+    async def _run() -> None:  # noqa: C901 — DEBT:complexity-residual — mirrors validate() structure
         store = await _connect_store()
         try:
             row = store.get(name)

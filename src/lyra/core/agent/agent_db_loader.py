@@ -31,7 +31,7 @@ from .agent_config import (
 log = logging.getLogger(__name__)
 
 
-def agent_row_to_config(  # noqa: C901, PLR0915 — each branch handles one optional field
+def agent_row_to_config(  # noqa: C901, PLR0915 — DEBT:complexity-residual — each branch handles one optional field
     row: "AgentRow",
     instance_overrides: dict | None = None,
 ) -> "Agent":

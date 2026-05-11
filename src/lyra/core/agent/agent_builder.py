@@ -176,7 +176,7 @@ def _resolve_workspaces_lenient(
 # ---------------------------------------------------------------------------
 
 
-def _assemble_agent(  # noqa: PLR0913 — one param per Agent field
+def _assemble_agent(  # noqa: PLR0913 — POLICY:wiring — one param per Agent field
     *,
     name: str,
     system_prompt: str,

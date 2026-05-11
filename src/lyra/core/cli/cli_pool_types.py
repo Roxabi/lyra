@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from .cli_pool_entry import _ProcessEntry
 
 
-class _CliPoolCore(Protocol):  # pyright: ignore[reportUnusedClass]
+class _CliPoolCore(Protocol):  # pyright: ignore[reportUnusedClass] — POLICY:protocol-private
     """Protocol declaring cross-mixin dependencies shared by CliPool mixins."""
 
     async def _idle_reaper(self) -> None: ...

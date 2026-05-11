@@ -68,7 +68,7 @@ class SttMiddleware:
     and return ``_DROP``.
     """
 
-    async def __call__(  # noqa: C901, PLR0915
+    async def __call__(  # noqa: C901, PLR0915 — DEBT:complexity-residual
         self,
         msg: InboundMessage,
         ctx: PipelineContext,
@@ -170,8 +170,8 @@ class SttMiddleware:
     @staticmethod
     async def _dispatch_error(hub: object, msg: InboundMessage, key: str) -> None:
         """Dispatch an STT error reply using the given message template key."""
-        content = hub._msg_manager.get(key)  # type: ignore[union-attr]
-        await hub.dispatch_response(  # type: ignore[union-attr]
+        content = hub._msg_manager.get(key)  # type: ignore[union-attr] — POLICY:defensive-narrow
+        await hub.dispatch_response(  # type: ignore[union-attr] — POLICY:defensive-narrow
             _build_stt_reply(msg, reply=True),
             Response(content=content),
         )

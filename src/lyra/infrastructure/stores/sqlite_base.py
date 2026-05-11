@@ -32,7 +32,7 @@ async def close_all_sqlite_stores() -> None:
         try:
             if store._db is not None:
                 await store.close()
-        except Exception:  # noqa: BLE001  # db teardown
+        except Exception:  # noqa: BLE001 — POLICY:boundary
             log.debug("Error closing SqliteStore during cleanup", exc_info=True)
 
 

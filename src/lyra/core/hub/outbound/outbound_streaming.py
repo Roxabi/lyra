@@ -44,7 +44,7 @@ class StreamingDispatch:
         self._get_tts = get_tts
         self._get_audio_pipeline = get_audio_pipeline
 
-    async def dispatch(  # noqa: C901, PLR0915
+    async def dispatch(  # noqa: C901, PLR0915 — DEBT:complexity-residual
         self,
         msg: InboundMessage,
         chunks: AsyncIterator["RenderEvent"],

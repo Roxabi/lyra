@@ -126,7 +126,7 @@ class CliPoolWorkerMixin:
                 limit=self._read_buffer_bytes,  # prevents LimitOverrunError
                 env=env,
             )
-        except Exception as exc:  # noqa: BLE001   — POLICY:boundary# top-level boundary
+        except Exception as exc:  # noqa: BLE001  — POLICY:boundary# top-level boundary
             log.error("[pool:%s] failed to spawn: %s", pool_id, exc)
             if prompt_file:
                 Path(prompt_file).unlink(missing_ok=True)
@@ -281,5 +281,5 @@ class CliPoolWorkerMixin:
                             )
             except asyncio.CancelledError:
                 break
-            except Exception as exc:  # noqa: BLE001   — POLICY:boundary# top-level boundary
+            except Exception as exc:  # noqa: BLE001  — POLICY:boundary# top-level boundary
                 log.warning("idle reaper error: %s", exc)

@@ -83,7 +83,7 @@ async def check_http_health(
             ),
             None,
         )
-    except Exception as exc:  # noqa: BLE001  # top-level boundary
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary
         return (
             CheckResult(
                 name="http_health", passed=False, detail=str(exc), timestamp=now

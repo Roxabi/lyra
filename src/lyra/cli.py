@@ -22,7 +22,9 @@ import tomllib
 
 import typer
 
-from lyra.cli_agent import agent_app  # noqa: F401 — re-exported for tests
+from lyra.cli_agent import (
+    agent_app,  # noqa: F401 — POLICY:re-export — re-exported for tests
+)
 from lyra.cli_bot import bot_app
 from lyra.cli_ops import ops_app
 from lyra.cli_setup import setup_app

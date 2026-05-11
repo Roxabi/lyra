@@ -71,7 +71,7 @@ def _list_from_dir(
             model = data.get("model", {}).get("model", "?")
             sr = data.get("agent", {}).get("smart_routing", {})
             sr_status = "enabled" if sr.get("enabled") else "disabled"
-        except Exception as e:  # noqa: BLE001   — POLICY:boundary# top-level boundary
+        except Exception as e:  # noqa: BLE001  — POLICY:boundary# top-level boundary
             typer.echo(f"  [warn] skipped {toml_file.name}: {e}", err=True)
             continue
         source = f"  {source_label}" if source_label else ""
@@ -84,5 +84,5 @@ def _list_from_dir(
 # Register commands from sub-modules (import triggers @agent_app.command())
 # ---------------------------------------------------------------------------
 
-importlib.import_module("lyra.cli_agent_create")  # noqa: E402 — intentional: registers subcommands after agent_app is defined
-importlib.import_module("lyra.agent_cmd.agents")  # noqa: E402 — intentional: registers subcommands after agent_app is defined
+importlib.import_module("lyra.cli_agent_create")  # noqa: E402 — POLICY:module-level-patch — intentional: registers subcommands after agent_app is defined
+importlib.import_module("lyra.agent_cmd.agents")  # noqa: E402 — POLICY:module-level-patch — intentional: registers subcommands after agent_app is defined

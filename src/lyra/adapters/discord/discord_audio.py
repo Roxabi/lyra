@@ -31,7 +31,7 @@ def is_valid_audio_magic(data: bytes) -> bool:
     Checks magic bytes for common audio containers. The client-supplied
     content_type is untrusted, so this provides a server-side format gate.
     """
-    if len(data) < 4:  # noqa: PLR2004 — smallest magic header is 4 bytes
+    if len(data) < 4:  # noqa: PLR2004 — DEBT:adapter-magic-constants
         return False
     # OGG / Opus / Vorbis
     if data[:4] == b"OggS":
@@ -40,7 +40,7 @@ def is_valid_audio_magic(data: bytes) -> bool:
     if data[:4] == b"\x1aE\xdf\xa3":
         return True
     # RIFF/WAV — check sub-type to reject non-audio RIFF containers (WebP, AVI)
-    if data[:4] == b"RIFF" and len(data) >= 12 and data[8:12] == b"WAVE":  # noqa: PLR2004
+    if data[:4] == b"RIFF" and len(data) >= 12 and data[8:12] == b"WAVE":  # noqa: PLR2004 — DEBT:adapter-magic-constants
         return True
     # FLAC
     if data[:4] == b"fLaC":
@@ -52,7 +52,7 @@ def is_valid_audio_magic(data: bytes) -> bool:
     if data[0] == 0xFF and data[1] in (0xFB, 0xF3, 0xF2, 0xFA):
         return True
     # M4A / MP4 — "ftyp" at offset 4
-    if len(data) >= 8 and data[4:8] == b"ftyp":  # noqa: PLR2004
+    if len(data) >= 8 and data[4:8] == b"ftyp":  # noqa: PLR2004 — DEBT:adapter-magic-constants
         return True
     return False
 
@@ -115,7 +115,7 @@ def normalize_audio(
     )
 
 
-async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with independent branches
+async def handle_audio(  # noqa: C901 — POLICY:wiring
     adapter: "DiscordAdapter",
     message: Any,
     audio_attachment: Any,
@@ -219,7 +219,7 @@ async def handle_audio(  # noqa: C901 — audio gate mirrors text gate with inde
             ):
                 adapter._owned_threads.add(message.channel.id)
                 _audio_in_owned_thread = True
-        except Exception:  # noqa: BLE001  # ThreadStore: non-fatal ownership check
+        except Exception:  # noqa: BLE001 — POLICY:boundary
             log.warning(
                 "ThreadStore: lazy is_owned (audio) failed for thread_id=%s",
                 message.channel.id,

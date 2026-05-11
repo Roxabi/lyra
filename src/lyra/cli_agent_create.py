@@ -50,7 +50,7 @@ def _prompt_sr_subconfig() -> tuple[bool, int | None, list[str], dict[str, str]]
     return False, None, [], {}
 
 
-def _build_toml(  # noqa: PLR0913
+def _build_toml(  # noqa: PLR0913 — POLICY:wiring
     name: str,
     backend: str,
     model: str,
@@ -104,7 +104,7 @@ def _build_toml(  # noqa: PLR0913
 # ---------------------------------------------------------------------------
 
 
-@agent_app.command()  # noqa: C901
+@agent_app.command()  # noqa: C901 — DEBT:complexity-residual
 def create(
     agents_dir: Optional[Path] = _AGENTS_DIR_OPT,
 ) -> None:

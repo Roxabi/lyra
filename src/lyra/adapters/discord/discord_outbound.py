@@ -40,7 +40,7 @@ _PartialMessageable = (
 )
 
 
-async def _discord_typing_worker(  # noqa: C901 — retry + error branches
+async def _discord_typing_worker(  # noqa: C901 — DEBT:adapter-dispatch-complexity
     resolve_channel: Callable[..., Any],
     channel_id: int,
 ) -> None:
@@ -102,7 +102,7 @@ async def _discord_typing_worker(  # noqa: C901 — retry + error branches
         )
 
 
-async def send(  # noqa: C901 — attachment loop adds branches
+async def send(  # noqa: C901 — DEBT:adapter-dispatch-complexity
     adapter: "DiscordAdapter",
     original_msg: InboundMessage,
     outbound: OutboundMessage,
@@ -165,7 +165,7 @@ def _build_tool_embed(event: ToolSummaryRenderEvent) -> "discord.Embed":
     return discord.Embed(title=title, description=description, color=color)
 
 
-def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
+def build_streaming_callbacks(  # noqa: C901 — POLICY:wiring — one closure per platform op
     adapter: "DiscordAdapter",
     original_msg: InboundMessage,
     outbound: OutboundMessage | None,
@@ -255,7 +255,7 @@ def build_streaming_callbacks(  # noqa: C901 — one closure per platform op
                 try:
                     sent = await messageable.send(chunk)
                     last_id = sent.id
-                except Exception:  # noqa: BLE001 — resilient: caller has no fallback for partial streams
+                except Exception:  # noqa: BLE001 — POLICY:boundary — resilient: caller has no fallback for partial streams
                     log.exception("Failed to send final chunk to Discord")
             else:
                 await send_with_retry(

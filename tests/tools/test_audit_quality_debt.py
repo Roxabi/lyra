@@ -14,6 +14,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+from tools.audit_quality_debt import _SLUG_RE, _registry_status, scan
+
 REPO = Path(__file__).resolve().parent.parent.parent
 TOOL = REPO / "tools" / "audit_quality_debt.py"
 
@@ -42,8 +45,7 @@ def _make_src_py(root: Path, rel: str, content: str) -> Path:
 def _make_importlinter(root: Path, lines: list[str]) -> Path:
     p = root / ".importlinter"
     body = (
-        "[importlinter]\nroot_packages = src\n\n"
-        "[contract:example]\nignore_imports =\n"
+        "[importlinter]\nroot_packages = src\n\n[contract:example]\nignore_imports =\n"
     )
     body += "".join(f"    {ln}\n" for ln in lines)
     p.write_text(body)
@@ -90,8 +92,10 @@ def test_parses_noqa_policy_suffix(tmp_path: Path) -> None:
     assert out.exists(), f"report not written; stderr={cp.stderr}"
     rows = _read_report(out)["rows"]
     assert any(
-        r["bucket"] == "POLICY" and r["tag"] == "boundary"
-        and r["rule"] == "BLE001" and r["source"] == "noqa"
+        r["bucket"] == "POLICY"
+        and r["tag"] == "boundary"
+        and r["rule"] == "BLE001"
+        and r["source"] == "noqa"
         for r in rows
     ), f"expected POLICY:boundary row, got rows={rows}"
 
@@ -105,8 +109,10 @@ def test_parses_noqa_debt_suffix(tmp_path: Path) -> None:
     assert out.exists(), f"report not written; stderr={cp.stderr}"
     rows = _read_report(out)["rows"]
     assert any(
-        r["bucket"] == "DEBT" and r.get("slug") == "foo"
-        and r["rule"] == "BLE001" and r["source"] == "noqa"
+        r["bucket"] == "DEBT"
+        and r.get("slug") == "foo"
+        and r["rule"] == "BLE001"
+        and r["source"] == "noqa"
         for r in rows
     ), f"expected DEBT:foo row, got rows={rows}"
 
@@ -142,8 +148,14 @@ def test_parses_all_six_sources(tmp_path: Path) -> None:
     cp = _run(tmp_path, out)
     assert out.exists(), f"report not written; stderr={cp.stderr}"
     found = {r["source"] for r in _read_report(out)["rows"]}
-    expected = {"noqa", "pyright-ignore", "type-ignore", "importlinter",
-                "file-exemptions", "folder-exemptions"}
+    expected = {
+        "noqa",
+        "pyright-ignore",
+        "type-ignore",
+        "importlinter",
+        "file-exemptions",
+        "folder-exemptions",
+    }
     missing = expected - found
     extra = found - expected
     assert expected == found, f"missing sources: {missing}; extra: {extra}"
@@ -161,13 +173,22 @@ def test_emits_report_schema(tmp_path: Path) -> None:
     cp = _run(tmp_path, out)
     assert out.exists(), f"report not written; stderr={cp.stderr}"
     report = _read_report(out)
-    for key in ("generated_at", "sources", "rows",
-                "stale_references", "counts_by_rule_bucket_slug"):
+    for key in (
+        "generated_at",
+        "sources",
+        "rows",
+        "stale_references",
+        "counts_by_rule_bucket_slug",
+    ):
         assert key in report, f"missing key '{key}' in report"
     assert isinstance(report["sources"], list)
     assert set(report["sources"]) == {
-        "noqa", "pyright-ignore", "type-ignore",
-        "importlinter", "file-exemptions", "folder-exemptions",
+        "noqa",
+        "pyright-ignore",
+        "type-ignore",
+        "importlinter",
+        "file-exemptions",
+        "folder-exemptions",
     }
     for row in report["rows"]:
         assert "source" in row, f"row missing 'source': {row}"
@@ -185,9 +206,9 @@ def test_detects_stale_reference_missing_registry(tmp_path: Path) -> None:
     cp = _run(tmp_path, out)
     assert out.exists(), f"report not written; stderr={cp.stderr}"
     stale = _read_report(out)["stale_references"]
-    assert any(
-        s["slug"] == "ghost" and s["reason"] == "missing" for s in stale
-    ), f"expected stale slug=ghost reason=missing, got stale={stale}"
+    assert any(s["slug"] == "ghost" and s["reason"] == "missing" for s in stale), (
+        f"expected stale slug=ghost reason=missing, got stale={stale}"
+    )
 
 
 def test_detects_stale_reference_drained_registry(tmp_path: Path) -> None:
@@ -198,9 +219,9 @@ def test_detects_stale_reference_drained_registry(tmp_path: Path) -> None:
     cp = _run(tmp_path, out)
     assert out.exists(), f"report not written; stderr={cp.stderr}"
     stale = _read_report(out)["stale_references"]
-    assert any(
-        s["slug"] == "paid" and s["reason"] == "drained" for s in stale
-    ), f"expected stale slug=paid reason=drained, got stale={stale}"
+    assert any(s["slug"] == "paid" and s["reason"] == "drained" for s in stale), (
+        f"expected stale slug=paid reason=drained, got stale={stale}"
+    )
 
 
 def test_exit_code_zero_when_clean(tmp_path: Path) -> None:
@@ -225,4 +246,108 @@ def test_exit_code_nonzero_when_untagged(tmp_path: Path) -> None:
     assert out.exists(), f"report not written; stderr={cp.stderr}"
     assert cp.returncode != 0, (
         f"expected non-zero for untagged noqa; returncode={cp.returncode}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# T1 — path-traversal / malformed slug guard in _registry_status
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_slug",
+    [
+        "../escape",
+        "../../etc",
+        "foo/bar",
+        "Foo",
+        "-leading",
+        "",
+    ],
+)
+def test_registry_status_rejects_malformed_or_traversal_slugs(
+    tmp_path: Path, bad_slug: str
+) -> None:
+    """_registry_status returns "open" for slugs that fail _SLUG_RE or escape debt dir.
+
+    Negative-test: if the slug-validation guard (lines 160-169 of audit_quality_debt.py)
+    were deleted, path-traversal slugs would reach resolve() and potentially
+    read arbitrary files; this test would fail for traversal cases.
+    """
+    # Arrange — populate a real debt dir so path resolution has a real tree
+    debt_dir = tmp_path / "artifacts" / "debt"
+    debt_dir.mkdir(parents=True)
+
+    # Act
+    result = _registry_status(tmp_path, bad_slug)
+
+    # Assert — guard must return "open" (safe no-op) for every bad input
+    assert result == "open", (
+        f"expected 'open' for malformed/traversal slug {bad_slug!r}, got {result!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# T2a — _SLUG_RE accept / reject (audit copy at tools/audit_quality_debt.py:30)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "slug, expected",
+    [
+        ("valid-slug-1", True),
+        ("a", True),
+        ("Foo", False),
+        ("a/b", False),
+        ("-leading", False),
+        ("", False),
+    ],
+)
+def test_audit_slug_regex(slug: str, expected: bool) -> None:
+    """_SLUG_RE must accept lower-kebab identifiers and reject everything else.
+
+    Negative-test: removing _SLUG_RE or widening its pattern would let
+    malformed slugs pass the registry guard — this parametrized suite catches
+    both directions of divergence.
+    """
+    # Act
+    matched = bool(_SLUG_RE.fullmatch(slug))
+
+    # Assert
+    assert matched is expected, (
+        f"_SLUG_RE.fullmatch({slug!r}) → {matched}, expected {expected}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# T5 — _PY_SCAN_SKIP excludes tests/ and packages/ subtrees
+# ---------------------------------------------------------------------------
+
+_POLICY_LINE = "x = 1  # noqa: E501 -- POLICY:size\n"
+
+
+def test_py_scan_skips_tests_and_packages(tmp_path: Path) -> None:
+    """scan() includes src/ .py files and excludes tests/ and packages/ subtrees.
+
+    Negative-test: if _PY_SCAN_SKIP lost "tests" or "packages", rows from
+    those directories would appear and the assertions below would fail.
+    """
+    # Arrange — one file in each subtree, all with an identical POLICY line
+    _make_src_py(tmp_path, "src/foo.py", _POLICY_LINE)
+    _make_src_py(tmp_path, "tests/test_x.py", _POLICY_LINE)
+    _make_src_py(tmp_path, "packages/y/z.py", _POLICY_LINE)
+
+    # Act
+    rows, _stale = scan(tmp_path)
+
+    # Assert — only the src/ file should appear
+    paths = {r["path"] for r in rows}
+    assert any(p.startswith("src/") for p in paths), (
+        f"expected src/foo.py in scan results, got paths={paths}"
+    )
+    assert not any(p.startswith("tests/") for p in paths), (
+        f"tests/ should be excluded by _PY_SCAN_SKIP, got paths={paths}"
+    )
+    assert not any(p.startswith("packages/") for p in paths), (
+        f"packages/ should be excluded by _PY_SCAN_SKIP, got paths={paths}"
     )

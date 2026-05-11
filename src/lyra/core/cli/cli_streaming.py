@@ -174,7 +174,7 @@ class StreamingIterator:
         await self._cleanup()
 
 
-async def send_and_read_stream(  # noqa: PLR0913 — POLICY:wiring-- protocol fn: positional args map 1:1 to wire-level concerns
+async def send_and_read_stream(  # noqa: PLR0913 — POLICY:wiring — protocol fn: positional args map 1:1 to wire-level concerns
     entry: _ProcessEntry,
     message: str,
     pool_id: str,

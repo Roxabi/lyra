@@ -23,10 +23,10 @@
     "C901": {
       "DEBT": {
         "adapter-dispatch-complexity": 2,
-        "complexity-residual": 21
+        "complexity-residual": 19
       },
       "POLICY": {
-        "migration-sequence": 3,
+        "migration-sequence": 5,
         "wiring": 10
       },
       "UNTAGGED": {
@@ -84,8 +84,7 @@
         "complexity-residual": 2
       },
       "POLICY": {
-        "wiring": 53,
-        "wiring--": 3
+        "wiring": 56
       }
     },
     "PLR0915": {
@@ -352,7 +351,7 @@
     },
     "type-arg": {
       "POLICY": {
-        "defensive-narrow": 2
+        "wiring": 2
       },
       "UNTAGGED": {
         "__none__": 6
@@ -364,7 +363,7 @@
       }
     }
   },
-  "generated_at": "2026-05-11T22:07:04.959076+00:00",
+  "generated_at": "2026-05-11T22:31:05.422845+00:00",
   "rows": [
     {
       "bucket": "UNTAGGED",
@@ -828,7 +827,7 @@
       "path": "src/lyra/bootstrap/factory/agent_factory.py",
       "rule": "PLR0913",
       "source": "noqa",
-      "tag": "wiring--"
+      "tag": "wiring"
     },
     {
       "bucket": "POLICY",
@@ -911,12 +910,12 @@
       "tag": "boundary"
     },
     {
-      "bucket": "DEBT",
+      "bucket": "POLICY",
       "line": 66,
       "path": "src/lyra/bootstrap/infra/health.py",
       "rule": "C901",
-      "slug": "complexity-residual",
-      "source": "noqa"
+      "source": "noqa",
+      "tag": "migration-sequence"
     },
     {
       "bucket": "POLICY",
@@ -927,12 +926,12 @@
       "tag": "boundary"
     },
     {
-      "bucket": "DEBT",
+      "bucket": "POLICY",
       "line": 24,
       "path": "src/lyra/bootstrap/lifecycle/bootstrap_lifecycle.py",
       "rule": "C901",
-      "slug": "complexity-residual",
-      "source": "noqa"
+      "source": "noqa",
+      "tag": "migration-sequence"
     },
     {
       "bucket": "POLICY",
@@ -964,7 +963,7 @@
       "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
       "rule": "type-arg",
       "source": "type-ignore",
-      "tag": "defensive-narrow"
+      "tag": "wiring"
     },
     {
       "bucket": "POLICY",
@@ -972,7 +971,7 @@
       "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
       "rule": "type-arg",
       "source": "type-ignore",
-      "tag": "defensive-narrow"
+      "tag": "wiring"
     },
     {
       "bucket": "POLICY",
@@ -1540,7 +1539,7 @@
       "path": "src/lyra/core/cli/cli_streaming.py",
       "rule": "PLR0913",
       "source": "noqa",
-      "tag": "wiring--"
+      "tag": "wiring"
     },
     {
       "bucket": "DEBT",
@@ -2364,7 +2363,7 @@
       "path": "src/lyra/tts/engine_selector.py",
       "rule": "PLR0913",
       "source": "noqa",
-      "tag": "wiring--"
+      "tag": "wiring"
     },
     {
       "bucket": "UNTAGGED",

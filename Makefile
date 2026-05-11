@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-rebaseline quality-debt-classify
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -317,3 +317,19 @@ format:
 # dep-graph and corpus migrated to roxabi-dashboard (2026-04-22).
 # Run via dashboard: `uv run --project ../roxabi-dashboard roxabi-corpus sync`
 # Graph API: GET http://localhost:8000/api/graph
+
+# ── Quality-debt tooling ──────────────────────────────────────────────────────
+
+quality-debt-report:  ## audit suppression annotations → artifacts/quality-debt-report.json
+	uv run python tools/audit_quality_debt.py --root . --out artifacts/quality-debt-report.json
+
+quality-debt-rebaseline:  ## re-audit + signal baseline regen (actual baseline file produced by T9/ratchet)
+	uv run python tools/audit_quality_debt.py --root . --out artifacts/quality-debt-report.json
+	# Wraps audit + emits tools/quality_debt_baseline.json with generated_by + cutover_date.
+	# Baseline writer logic lives in tools/audit_quality_debt.py (--rebaseline flag) OR a sibling script.
+	# If audit tool doesn't yet support --rebaseline, T9 (ratchet impl) will own baseline generation.
+	# For now: this target re-runs the audit; the actual baseline file is produced by T9.
+	@echo "Baseline regeneration delegated to tools/check_quality_debt_ratchet.sh --rebaseline (T9)"
+
+quality-debt-classify:  ## dry-run classification of untagged debt entries
+	uv run python tools/classify_quality_debt.py --dry-run

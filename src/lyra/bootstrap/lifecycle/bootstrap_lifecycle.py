@@ -21,7 +21,7 @@ from lyra.core.hub import Hub
 log = logging.getLogger(__name__)
 
 
-async def run_lifecycle(  # noqa: C901 — DEBT:complexity-residual — lifecycle orchestration
+async def run_lifecycle(  # noqa: C901 — POLICY:migration-sequence — lifecycle orchestration
     hub: Hub,
     wired: WiredAdapters,
     resources: LifecycleResources,

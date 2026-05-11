@@ -83,7 +83,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — POLICY:migration
             nats_url, identity_name="hub", reconnected_cb=_on_nats_reconnect
         )
         log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
-    except Exception as exc:  # noqa: BLE001  — POLICY:boundary# NATS connect failure: process exits
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
     inbound_bus, inbound_bus_cfg = build_inbound_bus(nc, raw_config)
@@ -281,7 +281,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — POLICY:migration
     try:
         await nc.close()
         log.info("NATS connection closed.")
-    except Exception as exc:  # noqa: BLE001  — POLICY:boundary# NATS teardown
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary
         log.warning("Error closing NATS connection: %s", exc)
 
     release_lockfile()

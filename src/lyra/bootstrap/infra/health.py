@@ -58,12 +58,12 @@ def _probe_nats(nc: Any | None) -> str | None:
         return "unreachable"
     try:
         return "ok" if bool(nc.is_connected) else "unreachable"
-    except Exception as exc:  # noqa: BLE001  — POLICY:boundary# top-level boundary
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary
         log.debug("_probe_nats: unexpected exception from nc.is_connected: %s", exc)
         return "unreachable"
 
 
-def create_health_app(  # noqa: C901 — DEBT:complexity-residual — optional sections (nats/reaper/circuits)
+def create_health_app(  # noqa: C901 — POLICY:migration-sequence — optional sections (nats/reaper/circuits)
     hub: Hub, nc: Any | None = None, secrets: Secrets | None = None
 ) -> FastAPI:
     """Create a root FastAPI app with /health endpoint for hub monitoring.

@@ -1,0 +1,49 @@
+---
+title: Expand test coverage for #1162 iter-2 review findings
+issue: 1165
+status: approved
+tier: F-lite
+date: 2026-05-11
+---
+
+## Problem
+
+PR #1164 (quality-debt invariant, slice 1) merged as approved-with-comments after iter-2 of `/code-review` flagged 9 non-blocking test-coverage gaps in the new tools/scripts. The production behavior is correct and already shipped (the fixes landed in #1162), but the assertions that lock that behavior in place are missing. Without these tests:
+
+- Path-traversal guards in `audit_quality_debt.py` (`_registry_status`, `_write_inline`) can regress silently.
+- Slug regex validation (`_SLUG_RE`) has no contract — a future relax could let malformed POLICY/DEBT tags through.
+- Classifier batched-edit dedup is implicit; a refactor could re-introduce N writes per file.
+- Ratchet script error-paths (`jq -e` pre-check, `RATCHET_MODE` allowlist) are exercised by humans only.
+- `rebaseline_quality_debt.py` is entirely uncovered.
+
+Acting now while the code is fresh keeps the iter-2 findings from rotting into "we'll get to it" debt.
+
+## Who
+
+- **Primary:** maintainers of `tools/audit_quality_debt.py`, `tools/classify_quality_debt.py`, `tools/check_quality_debt_ratchet.sh`, `tools/rebaseline_quality_debt.py` — they need regression coverage before further iteration.
+- **Secondary:** CI / quality-debt gate consumers — coverage on path-traversal and slug validation prevents silent quality-gate failures.
+
+## Constraints
+
+- ¬behavior changes to production code — tests only. Behavior fixes already landed in #1162.
+- Tests must run under `uv run pytest tests/tools/ -v` and pass cleanly.
+- Pre-commit + ratchet gates must stay green (no new POLICY/DEBT-tagged code).
+- Follow existing test layout under `tests/tools/`; introduce `test_rebaseline_quality_debt.py` (new file) for item #4.
+- Annotation-grammar portability rule (memory): if extending POLICY tags into a new file type, validate the consumer parser first — but this slice is test-only, so likely n/a.
+
+## Out of Scope
+
+- Behavior changes to `tools/*` production code (those landed in #1162).
+- Drain queue work — tracked in #1163.
+- Cluster A polish (Makefile, playbook, trap shadowing, registry template) — tracked separately.
+- Coverage of code paths beyond the 9 enumerated in the issue.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (test additions across 4 files in `tests/tools/`), no architectural decisions, no unknowns.
+
+Signals:
+- Explicit label `size:F-lite` on the issue.
+- 9 well-specified test cases, each pinned to a specific function/branch.
+- One domain (Python pytest in `tests/tools/`).
+- No new patterns — existing test files (`test_audit_quality_debt.py`, `test_classifier.py`, `test_ratchet.py`) provide the template; one new file (`test_rebaseline_quality_debt.py`) to scaffold.

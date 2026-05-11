@@ -126,7 +126,7 @@ def _build_provider_registry(
     return _build_per_agent_registry(shared)
 
 
-def _create_agent(  # noqa: PLR0913 — POLICY:wiring-- factory with optional overrides for each agent dependency
+def _create_agent(  # noqa: PLR0913  — POLICY:wiring — factory with optional overrides for each agent dependency
     config: Agent,
     cli_pool: CliPool | None,
     circuit_registry: CircuitRegistry | None = None,
@@ -170,7 +170,7 @@ def _create_agent(  # noqa: PLR0913 — POLICY:wiring-- factory with optional ov
             session_tools: SessionTools | None = SessionTools(
                 scraper=WebIntelScraper(), vault=VaultCli()
             )
-        except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
+        except Exception:  # noqa: BLE001 — POLICY:boundary
             log.warning(
                 "agent_factory: could not build SessionTools — passing None",
                 exc_info=True,

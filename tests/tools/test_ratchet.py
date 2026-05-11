@@ -21,6 +21,8 @@ import subprocess
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parent.parent.parent
 SCRIPT = REPO / "tools" / "check_quality_debt_ratchet.sh"
 
@@ -288,8 +290,30 @@ def test_ratchet_rejects_malformed_report(tmp_path: Path) -> None:
     ), f"expected informative stderr about missing key; stderr={cp.stderr}"
 
 
-def test_ratchet_rejects_invalid_mode(tmp_path: Path) -> None:
-    """RATCHET_MODE unlisted value -> exit != 0 + valid modes named in stderr."""
+@pytest.mark.parametrize(
+    "invalid_mode",
+    [
+        "bogus",
+        "SOFT",
+        "Hard",
+        "HARD",
+        pytest.param(
+            "",
+            marks=pytest.mark.xfail(
+                reason="bash case with empty RATCHET_MODE falls through to default; "
+                "script should explicitly reject empty string (known gap)",
+                strict=True,
+            ),
+        ),
+    ],
+)
+def test_ratchet_rejects_invalid_mode(tmp_path: Path, invalid_mode: str) -> None:
+    """RATCHET_MODE unlisted value -> exit != 0 + valid modes named in stderr.
+
+    Covers exact-match ("bogus"), wrong-case variants ("SOFT", "Hard", "HARD"),
+    and empty string — bash case matching is case-sensitive; none of these
+    should silently pass as a valid mode.
+    """
     # Arrange
     baseline = tmp_path / "baseline.json"
     audit = tmp_path / "report.json"
@@ -297,18 +321,20 @@ def test_ratchet_rejects_invalid_mode(tmp_path: Path) -> None:
     _write_audit_report(audit)
 
     # Act
-    cp = _run(tmp_path, audit, baseline, extra_env={"RATCHET_MODE": "bogus"})
+    cp = _run(tmp_path, audit, baseline, extra_env={"RATCHET_MODE": invalid_mode})
 
-    # Assert
+    # Assert: any invalid mode must produce non-zero exit
     assert cp.returncode != 0, (
-        f"expected non-zero exit for invalid RATCHET_MODE; "
+        f"expected non-zero exit for RATCHET_MODE={invalid_mode!r}; "
         f"rc={cp.returncode}\nstderr={cp.stderr}"
     )
-    stderr_lower = cp.stderr.lower()
-    # The script should name valid modes (soft / hard) in the error message
-    assert "soft" in stderr_lower or "hard" in stderr_lower, (
-        f"expected valid modes ('soft'/'hard') named in stderr; stderr={cp.stderr}"
-    )
+    # For non-empty invalid values: error message should name valid modes
+    if invalid_mode:
+        stderr_lower = cp.stderr.lower()
+        assert "soft" in stderr_lower or "hard" in stderr_lower, (
+            f"expected valid modes ('soft'/'hard') named in stderr for "
+            f"RATCHET_MODE={invalid_mode!r}; stderr={cp.stderr}"
+        )
 
 
 def test_ratchet_makes_zero_gh_api_calls(tmp_path: Path) -> None:

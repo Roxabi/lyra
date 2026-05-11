@@ -347,6 +347,45 @@ def test_apply_writes_once_for_multiple_policy_tags(tmp_path: Path) -> None:
     )
 
 
+def test_apply_dedup_guard_fires_on_duplicate_line(tmp_path: Path) -> None:
+    """--apply with two report rows pointing at the same line deduplicates writes.
+
+    The _apply_file_edits guard (tools/classify_quality_debt.py, 'if lineno in seen')
+    must:
+      - emit "skipped duplicate edit" in stderr for the second row
+      - write exactly ONE POLICY: suffix on that line (not two, not a corrupted line)
+    """
+    # Arrange
+    rpt = tmp_path / "artifacts" / "quality-debt-report.json"
+    _debt_dir(tmp_path)
+    sp = "src/lyra/cli/cli_main.py"
+    # Source file: single BLE001 noqa on line 1
+    _src(tmp_path, sp, "def h():  # noqa: BLE001\n    pass\n")
+    # Report: TWO rows both pointing at line 1 of the same file
+    _write_report(
+        rpt,
+        [_row(sp, "BLE001", line=1), _row(sp, "BLE001", line=1)],
+    )
+
+    # Act
+    cp = _run(tmp_path, rpt, "--apply")
+
+    # Assert: process succeeded
+    assert cp.returncode == 0, f"rc={cp.returncode}\n{cp.stderr}"
+
+    # Assert: dedup guard fired for the second duplicate
+    assert "skipped duplicate edit" in cp.stderr, (
+        f"expected 'skipped duplicate edit' in stderr; got:\n{cp.stderr}"
+    )
+
+    # Assert: exactly ONE POLICY: suffix on the line (not two, not corrupted)
+    edited = (tmp_path / sp).read_text()
+    first_line = edited.splitlines()[0]
+    assert first_line.count("POLICY:boundary") == 1, (
+        f"expected exactly one 'POLICY:boundary' on line 1; got: {first_line!r}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # T8 — reason field propagation through drain-queue JSON output
 # ---------------------------------------------------------------------------
@@ -454,4 +493,9 @@ def test_apply_does_not_write_outside_root(tmp_path: Path) -> None:
     # Assert: the escape file was never created
     assert not escape_file.exists(), (
         f"apply wrote outside root: {escape_file} was created"
+    )
+
+    # Assert: the legitimate row WAS processed — proves apply continued after skip
+    assert "POLICY:boundary" in (tmp_path / sp).read_text(), (
+        f"--apply did not process the legitimate row at {sp}"
     )

@@ -7,6 +7,7 @@ T4c (_warn_no_decrease warn / silent / no-existing).
 
 from __future__ import annotations
 
+import datetime
 import json
 from pathlib import Path
 
@@ -74,8 +75,14 @@ def test_build_baseline_resets_cutover_when_flag_set() -> None:
     # Act
     result = _build_baseline(SAMPLE_REPORT, existing=existing, reset_cutover=True)
 
-    # Assert
-    assert result["cutover_date"] != "2030-01-01"
+    # Assert: date is within ±1 day of today + 7d (the source contract)
+    parsed = datetime.date.fromisoformat(result["cutover_date"])
+    expected = datetime.date.today() + datetime.timedelta(days=7)
+    lo = expected - datetime.timedelta(days=1)
+    hi = expected + datetime.timedelta(days=1)
+    assert lo <= parsed <= hi, (
+        f"cutover_date {parsed} not within ±1d of expected {expected}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +156,34 @@ def test_warn_no_decrease_warns_when_count_stagnant(
     # Assert
     captured = capsys.readouterr()
     assert "WARN" in captured.err
+    assert "no decrease" in captured.err.lower()
+    assert "BLE001" in captured.err
+    assert "my-slug" in captured.err
+
+
+def test_warn_no_decrease_warns_when_count_increased(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Warns to stderr when new count > old count (count increased)."""
+    # Arrange
+    existing = {
+        "counts": {
+            "BLE001": {"DEBT": {"my-slug": 5}},
+        }
+    }
+    new = {
+        "counts": {
+            "BLE001": {"DEBT": {"my-slug": 6}},  # increased — no decrease
+        }
+    }
+
+    # Act
+    _warn_no_decrease(new, existing)
+
+    # Assert
+    captured = capsys.readouterr()
+    assert "WARN" in captured.err
+    assert "no decrease" in captured.err.lower()
     assert "BLE001" in captured.err
     assert "my-slug" in captured.err
 

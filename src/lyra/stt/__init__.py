@@ -6,7 +6,7 @@ import logging
 import os
 from dataclasses import dataclass
 from typing import (
-    runtime_checkable,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    runtime_checkable,  # noqa: F401 — POLICY:re-export  # pyright: ignore[reportUnusedImport] — POLICY:re-export
 )
 
 from pydantic import BaseModel

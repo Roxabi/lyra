@@ -90,9 +90,9 @@ class NatsRenderEventCodec:
             return "tool_call_args", payload, False
         if isinstance(event, ToolCallEndRenderEvent):
             return "tool_call_end", payload, False
-        if isinstance(event, ToolCallResultRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if isinstance(event, ToolCallResultRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
             return "tool_call_result", payload, False
-        raise TypeError(  # pyright: ignore[reportUnreachable]
+        raise TypeError(  # pyright: ignore[reportUnreachable] — POLICY:defensive-narrow
             f"Unsupported RenderEvent subtype: {type(event)!r}"
         )
 

@@ -33,7 +33,7 @@ class RetryDecorator:
         self._backoff_base = backoff_base
         self.capabilities: dict = inner.capabilities
 
-    async def complete(  # noqa: PLR0913
+    async def complete(  # noqa: PLR0913 — POLICY:wiring
         self,
         pool_id: str,
         text: str,
@@ -80,7 +80,7 @@ class RetryDecorator:
         assert result is not None  # total_attempts ≥ 1
         return result
 
-    async def stream(  # noqa: PLR0913
+    async def stream(  # noqa: PLR0913 — POLICY:wiring
         self,
         pool_id: str,
         text: str,
@@ -112,7 +112,7 @@ class CircuitBreakerDecorator:
         self._cb = cb
         self.capabilities: dict = inner.capabilities
 
-    async def complete(  # noqa: PLR0913
+    async def complete(  # noqa: PLR0913 — POLICY:wiring
         self,
         pool_id: str,
         text: str,
@@ -143,7 +143,7 @@ class CircuitBreakerDecorator:
             self._cb.record_failure()
         return result
 
-    async def stream(  # noqa: PLR0913
+    async def stream(  # noqa: PLR0913 — POLICY:wiring
         self,
         pool_id: str,
         text: str,

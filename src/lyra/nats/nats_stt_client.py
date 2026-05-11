@@ -82,7 +82,7 @@ def _is_no_responders(exc: Exception) -> bool:
 
 
 class NatsSttClient:
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913 — POLICY:wiring
         self,
         nc: NATS,
         *,

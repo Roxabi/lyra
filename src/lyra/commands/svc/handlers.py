@@ -88,5 +88,5 @@ async def cmd_svc(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
         if exc.reason == "not_available":
             return Response(content="systemctl --user not found.")
         return safe_error_response(exc, log, "svc plugin")
-    except Exception as exc:  # noqa: BLE001  # top-level boundary
+    except Exception as exc:  # noqa: BLE001 — POLICY:boundary
         return safe_error_response(exc, log, "svc plugin")

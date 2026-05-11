@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("lyra.adapters.discord")
 
 
-def normalize(  # noqa: PLR0913 — all kwargs are platform-specific routing context
+def normalize(  # noqa: PLR0913 — POLICY:wiring
     adapter: "DiscordAdapter",
     raw: Any,
     *,

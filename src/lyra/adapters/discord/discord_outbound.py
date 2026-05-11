@@ -40,7 +40,7 @@ _PartialMessageable = (
 )
 
 
-async def _discord_typing_worker(  # noqa: C901 — retry + error branches
+async def _discord_typing_worker(  # noqa: C901 — DEBT:adapter-dispatch-complexity
     resolve_channel: Callable[..., Any],
     channel_id: int,
 ) -> None:
@@ -102,7 +102,7 @@ async def _discord_typing_worker(  # noqa: C901 — retry + error branches
         )
 
 
-async def send(  # noqa: C901 — attachment loop adds branches
+async def send(  # noqa: C901 — DEBT:adapter-dispatch-complexity
     adapter: "DiscordAdapter",
     original_msg: InboundMessage,
     outbound: OutboundMessage,

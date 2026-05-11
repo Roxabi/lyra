@@ -323,13 +323,11 @@ format:
 quality-debt-report:  ## audit suppression annotations → artifacts/quality-debt-report.json
 	uv run python tools/audit_quality_debt.py --root . --out artifacts/quality-debt-report.json
 
-quality-debt-rebaseline:  ## re-audit + signal baseline regen (actual baseline file produced by T9/ratchet)
-	uv run python tools/audit_quality_debt.py --root . --out artifacts/quality-debt-report.json
-	# Wraps audit + emits tools/quality_debt_baseline.json with generated_by + cutover_date.
-	# Baseline writer logic lives in tools/audit_quality_debt.py (--rebaseline flag) OR a sibling script.
-	# If audit tool doesn't yet support --rebaseline, T9 (ratchet impl) will own baseline generation.
-	# For now: this target re-runs the audit; the actual baseline file is produced by T9.
-	@echo "Baseline regeneration delegated to tools/check_quality_debt_ratchet.sh --rebaseline (T9)"
+quality-debt-rebaseline:  ## re-audit and regenerate tools/quality_debt_baseline.json (sets cutover_date = today+7d)
+	uv run python tools/audit_quality_debt.py --root . --out artifacts/quality-debt-report.json || true
+	uv run python tools/rebaseline_quality_debt.py \
+		--report artifacts/quality-debt-report.json \
+		--baseline tools/quality_debt_baseline.json
 
 quality-debt-classify:  ## dry-run classification of untagged debt entries
 	uv run python tools/classify_quality_debt.py --dry-run

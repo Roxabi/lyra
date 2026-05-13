@@ -84,6 +84,16 @@ _REDACTED_PLACEHOLDER = "[redacted — tool output suppressed for security]"
 _TRUNCATED_SENTINEL = "…[truncated]"
 
 
+def _mint_text_block_id() -> str:
+    """Per-block message id for the v2 Text triplet (Slice 2, #1099).
+
+    Format: ``"text-<12-char-hex>"``. Mirrors the ``synthetic-<uuid4>`` shape
+    used by ``run_id`` minting; distinguishable via prefix. Module-level helper
+    matching the ``_sanitize_tool_result_content`` precedent below.
+    """
+    return f"text-{uuid4().hex[:12]}"
+
+
 def _sanitize_tool_result_content(content: str, tool_name: str | None) -> str:
     """Apply secret-leak guard + size cap to ``ToolCallResultRenderEvent.content``.
 
@@ -217,7 +227,7 @@ class StreamProcessor:
                     self._total_text += event.text
                     # ───── Slice 2 (#1099) v2 Text triplet ─────
                     if self._open_text_block_id is None:
-                        self._open_text_block_id = self._mint_message_id()
+                        self._open_text_block_id = _mint_text_block_id()
                         yield TextStartRenderEvent(message_id=self._open_text_block_id)
                     yield TextDeltaRenderEvent(
                         message_id=self._open_text_block_id,
@@ -419,11 +429,6 @@ class StreamProcessor:
                 "Create a new instance per turn."
             )
         self._consumed = True
-
-    @staticmethod
-    def _mint_message_id() -> str:
-        """Per-block message id for the v2 Text triplet (Slice 2, #1099)."""
-        return f"text-{uuid4().hex[:12]}"
 
     def _accumulate_web(
         self, event: ToolUseLlmEvent, *, show_key: str, input_key: str

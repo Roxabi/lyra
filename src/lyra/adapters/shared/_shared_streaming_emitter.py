@@ -102,13 +102,21 @@ class StreamingSession:
         | ToolCallEndRenderEvent
         | ToolCallResultRenderEvent,
     ) -> None:
-        """Per-platform override seam for Slice 3 (#1100) ToolCall* events.
+        """v2 ToolCall* dispatch sink. Slice 3 (#1100) introduced this.
 
         Default no-op — parity is preserved by the v1 ``ToolSummaryRenderEvent``
-        dual-emit path that drives the existing summary-card UX. Platform
-        subclasses (Telegram, Discord) override this to render richer once they
-        migrate off v1 ToolSummary in Slice 5 (#1102). Discord's opt-in inline
-        args streaming (``LYRA_DISCORD_TOOLCALL_STREAM_ARGS``) hooks here.
+        dual-emit path. **This seam is currently unreachable from concrete
+        adapters.** ``OutboundAdapterBase.send_streaming()`` constructs a plain
+        ``StreamingSession``; Telegram/Discord inherit from ``OutboundAdapterBase``,
+        not ``StreamingSession``, so subclass overrides have no effect. Today this
+        method's only purpose is to silence ``assert_never`` once Slice 3 widened
+        the union.
+
+        DEBT(#1102): Slice 5 either (a) moves dispatch onto ``PlatformCallbacks``
+        so adapters can inject behavior without subclassing, or (b) makes
+        ``send_streaming`` instantiate a per-adapter ``StreamingSession`` subclass.
+        Discord's opt-in inline args streaming
+        (``LYRA_DISCORD_TOOLCALL_STREAM_ARGS``) is reserved for that wiring.
         """
         return None
 
@@ -119,11 +127,16 @@ class StreamingSession:
         | TextEndRenderEvent
         | TextChunkRenderEvent,
     ) -> None:
-        """Per-platform override seam for Slice 2 (#1099) Text* events.
+        """v2 Text* dispatch sink. Slice 2 (#1099) introduced this.
 
-        Default no-op — parity preserved by v1 TextRenderEvent dual-emit path that
-        drives existing edit-in-place UX. Slice 5 (#1102) removes v1 emission;
-        adapters needing richer per-block rendering override here.
+        Default no-op — parity preserved by the v1 ``TextRenderEvent`` dual-emit
+        path that drives existing edit-in-place UX. **This seam is currently
+        unreachable from concrete adapters** (same structural gap as
+        ``_on_toolcall_v2`` — see that method's docstring for details).
+
+        DEBT(#1102): Slice 5 removes v1 emission AND wires v2 dispatch through
+        ``PlatformCallbacks`` (or per-adapter ``StreamingSession`` subclassing).
+        Until then, overriding this method in a concrete adapter has no effect.
         """
         return None
 

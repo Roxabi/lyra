@@ -148,11 +148,10 @@ class StreamingSession:
         """Drain remaining events, accumulate text, send via fallback callback."""
         parts: list[str] = []
         async for event in events:
-            # Slice 1 (#1098): only TextRenderEvent contributes to the fallback
-            # text — Run lifecycle events are silently skipped here. Slice 2
-            # (#1099) must extend this branch when TextDeltaRenderEvent lands
-            # so delta text is not lost on fallback.
-            if isinstance(event, TextRenderEvent):
+            # v2 preferred (delta), v1 fallback (text). Slice 5 (#1102) drops v1.
+            if isinstance(event, TextDeltaRenderEvent):
+                parts.append(event.delta)
+            elif isinstance(event, TextRenderEvent):
                 parts.append(event.text)
         fallback_text = "".join(parts) or self._cb.placeholder_text
         try:

@@ -341,6 +341,11 @@ class StreamProcessor:
 
                 elif isinstance(event, ThinkingLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
                     # ───── Slice 4 (#1101) reasoning block emission ─────
+                    # SC-6 (spec v2 lines 65, 260): drop the chunk entirely
+                    # when show_intermediate=False — no Reasoning* produced,
+                    # no v1 intermediate.
+                    if not self._show_intermediate:
+                        continue
                     if self._open_reasoning_block_id is None:
                         self._open_reasoning_block_id = _mint_reasoning_block_id()
                         log.debug(
@@ -354,6 +359,10 @@ class StreamProcessor:
                         message_id=self._open_reasoning_block_id,
                         delta=event.text,
                     )
+                    # SC-7 / χ-1 dual-emit: yield v1 TextRenderEvent(is_final=False)
+                    # alongside ReasoningDelta for rolling-deploy safety with
+                    # non-migrated adapters (spec line 261). Sunsets in Slice 5 (#1102).
+                    yield TextRenderEvent(text=event.text, is_final=False)
 
                 else:
                     # Cross-slice invariant 3: no silent event drop. When the

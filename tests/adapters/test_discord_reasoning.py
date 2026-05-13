@@ -1,13 +1,13 @@
 """Integration tests for Discord adapter Reasoning rendering (SC-16, T13).
 
 Covers _render_reasoning via PlatformCallbacks.edit_reasoning for:
-- Lazy placeholder creation (test 1)
-- Edit throttle bound (test 2)
-- Text truncation (test 3)
-- show_intermediate=False no-op (test 4)
+- Lazy placeholder creation (back-to-back blocks share one placeholder)
+- Edit throttle bound
+- Text truncation
 
-These tests call build_streaming_callbacks() directly to control show_intermediate.
-T12 has landed — _render_reasoning is wired into PlatformCallbacks.edit_reasoning.
+The show_intermediate=False gate lives upstream on StreamProcessor (SC-6) — no
+Reasoning* events reach this callback when disabled, so adapter-level coverage
+is not needed here (see test_stream_processor.py::TestReasoning).
 """
 
 from __future__ import annotations
@@ -68,11 +68,14 @@ class TestDiscordReasoningRendering:
 
     @pytest.mark.asyncio
     async def test_reasoning_lazy_placeholder(self) -> None:
-        """Reasoning trace placeholder is sent exactly ONCE across Start+Delta+End.
+        """Trace placeholder sent ONCE across two back-to-back reasoning blocks.
 
-        Arrange: adapter with show_intermediate=True, no pre-existing trace.
-        Act: drive ReasoningStart → ReasoningDelta → ReasoningEnd.
-        Assert: messageable.send called once (trace placeholder), not more.
+        Drives 2 distinct Reasoning{Start,Delta,End} triplets (different message_ids,
+        as a tool call would interleave between them). Asserts that the lazy-init
+        guard kicks in: the second Start does NOT trigger a second placeholder send.
+
+        Without the lazy-init guard, messageable.send would be called twice —
+        making this test the actual regression boundary.
         """
         from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
 
@@ -82,25 +85,25 @@ class TestDiscordReasoningRendering:
         adapter._resolve_channel = AsyncMock(return_value=messageable)
 
         original_msg = make_dc_inbound_msg()
-        callbacks = build_streaming_callbacks(
-            adapter, original_msg, None, show_intermediate=True
-        )
+        callbacks = build_streaming_callbacks(adapter, original_msg, None)
 
-        # Act — full Reasoning triplet (no prior tool events → _trace_obj=None)
-        await callbacks.edit_reasoning(
-            None, ReasoningStartRenderEvent(message_id=_MSG_ID)
-        )
-        await callbacks.edit_reasoning(
-            None, ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta="thinking…")
-        )
-        await callbacks.edit_reasoning(
-            None, ReasoningEndRenderEvent(message_id=_MSG_ID)
-        )
+        # Act — two back-to-back reasoning blocks with distinct message_ids
+        for block_id in (_MSG_ID, f"{_MSG_ID}-2"):
+            await callbacks.edit_reasoning(
+                None, ReasoningStartRenderEvent(message_id=block_id)
+            )
+            await callbacks.edit_reasoning(
+                None,
+                ReasoningDeltaRenderEvent(message_id=block_id, delta="thinking…"),
+            )
+            await callbacks.edit_reasoning(
+                None, ReasoningEndRenderEvent(message_id=block_id)
+            )
 
         # Assert — channel.send called exactly once for trace placeholder
-        # (_send_trace_placeholder calls messageable.send("🔧 …"))
+        # (lazy-init guard prevents second send on second block)
         assert messageable.send.await_count == 1, (
-            f"Expected 1 messageable.send call (trace placeholder), "
+            f"Expected 1 messageable.send call (lazy guard), "
             f"got {messageable.send.await_count}"
         )
 
@@ -120,9 +123,7 @@ class TestDiscordReasoningRendering:
         adapter._resolve_channel = AsyncMock(return_value=messageable)
 
         original_msg = make_dc_inbound_msg()
-        callbacks = build_streaming_callbacks(
-            adapter, original_msg, None, show_intermediate=True
-        )
+        callbacks = build_streaming_callbacks(adapter, original_msg, None)
 
         # Spread 20 deltas uniformly across a 2s window
         window = 2.0
@@ -190,9 +191,7 @@ class TestDiscordReasoningRendering:
         adapter._resolve_channel = AsyncMock(return_value=messageable)
 
         original_msg = make_dc_inbound_msg()
-        callbacks = build_streaming_callbacks(
-            adapter, original_msg, None, show_intermediate=True
-        )
+        callbacks = build_streaming_callbacks(adapter, original_msg, None)
 
         # Act
         await callbacks.edit_reasoning(
@@ -215,37 +214,8 @@ class TestDiscordReasoningRendering:
             f"Expected truncation ellipsis in edit content, got: {last_text!r}"
         )
 
-    @pytest.mark.asyncio
-    async def test_reasoning_show_intermediate_false_noop(self) -> None:
-        """show_intermediate=False: Reasoning events produce zero API calls.
-
-        Arrange: adapter with show_intermediate=False.
-        Act: drive full Reasoning triplet.
-        Assert: messageable.send NOT called, trace_obj.edit NOT called.
-        """
-        from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
-
-        # Arrange
-        adapter = _make_discord_adapter()
-        messageable, trace_obj = _make_messageable_with_trace_obj()
-        adapter._resolve_channel = AsyncMock(return_value=messageable)
-
-        original_msg = make_dc_inbound_msg()
-        callbacks = build_streaming_callbacks(
-            adapter, original_msg, None, show_intermediate=False
-        )
-
-        # Act — full Reasoning triplet
-        await callbacks.edit_reasoning(
-            None, ReasoningStartRenderEvent(message_id=_MSG_ID)
-        )
-        await callbacks.edit_reasoning(
-            None, ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta="thinking…")
-        )
-        await callbacks.edit_reasoning(
-            None, ReasoningEndRenderEvent(message_id=_MSG_ID)
-        )
-
-        # Assert — no channel sends, no trace edits
-        messageable.send.assert_not_awaited()
-        trace_obj.edit.assert_not_awaited()
+    # NOTE: show_intermediate=False adapter no-op test removed. The gate now
+    # lives upstream on StreamProcessor (SC-6) — when disabled, no Reasoning*
+    # events reach this callback. Coverage is in
+    # tests/core/test_stream_processor.py::TestReasoning::
+    # test_show_intermediate_false_emits_no_reasoning_events.

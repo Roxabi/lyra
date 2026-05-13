@@ -182,8 +182,6 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
     adapter: "TelegramAdapter",
     original_msg: InboundMessage,
     outbound: OutboundMessage | None,
-    *,
-    show_intermediate: bool = True,
 ) -> "PlatformCallbacks":
     """Build PlatformCallbacks for StreamingSession from a TelegramAdapter context.
 
@@ -322,13 +320,12 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
     ) -> None:
         """Render reasoning events as dim italic text in the trace placeholder.
 
-        Slice 4 (#1101): show_intermediate=False → no-op.
+        Slice 4 (#1101): the `show_intermediate=False` gate lives upstream on
+        `StreamProcessor` (SC-6) — when disabled, no Reasoning* events reach
+        this callback. Single source of truth, no adapter-side double-gate.
         Delta edits are throttled by STREAMING_EDIT_INTERVAL.
         Accumulated text is truncated to 120 chars with '…' suffix.
         """
-        if not show_intermediate:
-            return
-
         if isinstance(event, ReasoningStartRenderEvent):
             effective_trace = (
                 trace_obj if trace_obj is not None else _reasoning_trace_cell[0]

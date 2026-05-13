@@ -1287,7 +1287,13 @@ class TestReasoning:
     # ------------------------------------------------------------------
 
     async def test_reasoning_closes_on_text_transition(self) -> None:
-        """ReasoningEndRenderEvent is emitted before any Text* RenderEvent."""
+        """ReasoningEndRenderEvent is emitted before the TextStart of a real text block.
+
+        With χ-1 dual-emit (SC-7), v1 `TextRenderEvent(is_final=False)` also fires
+        from inside the reasoning block alongside each `ReasoningDelta`. The
+        invariant under test is: the TRANSITION to a real text block (signalled
+        by `TextStartRenderEvent` for the v2 triplet) happens AFTER `ReasoningEnd`.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -1300,16 +1306,14 @@ class TestReasoning:
         # Act
         result = await collect(processor.process(events))
 
-        # Assert — ReasoningEnd index precedes first Text* index
+        # Assert — ReasoningEnd index precedes the TextStart of the real text block
         end_idx = next(
             i for i, e in enumerate(result) if isinstance(e, ReasoningEndRenderEvent)
         )
-        first_text_idx = next(
-            i
-            for i, e in enumerate(result)
-            if isinstance(e, (TextRenderEvent, TextStartRenderEvent))
+        first_text_start_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, TextStartRenderEvent)
         )
-        assert end_idx < first_text_idx
+        assert end_idx < first_text_start_idx
 
     # ------------------------------------------------------------------
     # T11-3 — ReasoningEnd fires before ToolCall* events (SC-12)
@@ -1395,6 +1399,123 @@ class TestReasoning:
             i for i, e in enumerate(result) if isinstance(e, ToolCallArgsRenderEvent)
         )
         assert end_idx < first_args_idx
+
+    async def test_show_intermediate_false_emits_no_reasoning_events(self) -> None:
+        """SC-6 (spec line 260): show_intermediate=False → zero Reasoning* events.
+
+        Spec v2 line 65 requires that thinking chunks produce no Reasoning* output
+        when the operator config disables intermediate streaming. The gate lives
+        on the StreamProcessor (single source of truth) so any downstream consumer
+        — adapters today, NATS subscribers tomorrow — is uniformly muted.
+        """
+        # Arrange — show_intermediate=False
+        processor = StreamProcessor(cfg(), show_intermediate=False)
+        events = async_events(
+            ThinkingLlmEvent(text="a"),
+            ThinkingLlmEvent(text="b"),
+            ThinkingLlmEvent(text="c"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — zero Reasoning* events of any kind
+        assert [e for e in result if isinstance(e, _REASONING_TYPES)] == []
+        # And no v1 dual-emit either (gate drops the chunk entirely)
+        intermediate = [
+            e for e in result if isinstance(e, TextRenderEvent) and not e.is_final
+        ]
+        assert intermediate == []
+
+    async def test_dual_emit_v1_text_alongside_reasoning_delta(self) -> None:
+        """SC-7 / χ-1 (spec line 261): pair ReasoningDelta with v1 TextRenderEvent.
+
+        Coexistence safety: non-migrated adapters that haven't wired `edit_reasoning`
+        keep their current `⏳`-streaming UX via the v1 TextRenderEvent(is_final=False)
+        dual-emit. Sunsets in Slice 5 (#1102) once all adapters migrate.
+        """
+        # Arrange — show_intermediate=True (default)
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="alpha"),
+            ThinkingLlmEvent(text="beta"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — every ReasoningDelta has a paired v1 TextRenderEvent(is_final=False)
+        # with the same text content, in emission order.
+        deltas = [e.delta for e in result if isinstance(e, ReasoningDeltaRenderEvent)]
+        v1_intermediates = [
+            e.text for e in result if isinstance(e, TextRenderEvent) and not e.is_final
+        ]
+        assert deltas == ["alpha", "beta"]
+        assert v1_intermediates == ["alpha", "beta"]
+
+    async def test_reasoning_closes_on_tool_use_end_transition(self) -> None:
+        """Isolation: ReasoningEnd fires when ToolUseEnd is first non-Thinking event.
+
+        Sequence skips ToolUse/ToolUseDelta so the ToolUseEnd branch is the only
+        close-guard path exercised. Deleting `_close_reasoning_if_open` from the
+        ToolUseEnd branch would leave the reasoning block open through to the
+        truncated-stream orphan path — this test catches that regression.
+        """
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="think"),
+            ToolUseEndLlmEvent(tool_id="t1"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — ReasoningEnd precedes ToolCallEnd (close-guard fires on this branch)
+        end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ReasoningEndRenderEvent)
+        )
+        tool_end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ToolCallEndRenderEvent)
+        )
+        assert end_idx < tool_end_idx
+        # Single block opened, single block closed (no orphan-close path)
+        assert sum(1 for e in result if isinstance(e, ReasoningStartRenderEvent)) == 1
+        assert sum(1 for e in result if isinstance(e, ReasoningEndRenderEvent)) == 1
+
+    async def test_reasoning_closes_on_tool_result_transition(self) -> None:
+        """Isolation: ReasoningEnd fires when ToolResult is first non-Thinking event.
+
+        Sequence skips ToolUse/ToolUseDelta/ToolUseEnd so the ToolResult branch is
+        the only close-guard path exercised. Deleting `_close_reasoning_if_open`
+        from the ToolResult branch would leave the reasoning block open — this
+        test catches that regression.
+        """
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="think"),
+            ToolResultLlmEvent(tool_id="t1", content="ok"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — ReasoningEnd precedes ToolCallResult (close-guard fires here)
+        end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ReasoningEndRenderEvent)
+        )
+        tool_result_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ToolCallResultRenderEvent)
+        )
+        assert end_idx < tool_result_idx
+        # Single block opened, single block closed (no orphan-close path)
+        assert sum(1 for e in result if isinstance(e, ReasoningStartRenderEvent)) == 1
+        assert sum(1 for e in result if isinstance(e, ReasoningEndRenderEvent)) == 1
 
     # ------------------------------------------------------------------
     # T11-6 — Orphan ReasoningEnd + log.warning on exception mid-thinking (SC-18)

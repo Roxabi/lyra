@@ -1,0 +1,106 @@
+{
+  "_normalization": "run_id fields are replaced with '<run_id>' using the regex in tools/capture_v1_text_baseline.py::normalize_run_id(). T6 parity assertion must apply the same normalization before diffing. show_intermediate=False is used so TextRenderEvent chunks are NOT emitted per-chunk (only the final is_final=True event is emitted). ToolDisplayConfig(throttle_ms=0) disables the throttle so ToolSummaryRenderEvent is emitted deterministically on every tool call.",
+  "single_block": [
+    {
+      "run_id": "<run_id>",
+      "schema_version": 1,
+      "type": "RunStartedRenderEvent"
+    },
+    {
+      "text": "Hello world.",
+      "is_final": true,
+      "schema_version": 1,
+      "is_error": false,
+      "type": "TextRenderEvent"
+    },
+    {
+      "run_id": "<run_id>",
+      "outcome": "success",
+      "schema_version": 1,
+      "type": "RunFinishedRenderEvent"
+    }
+  ],
+  "multi_block": [
+    {
+      "run_id": "<run_id>",
+      "schema_version": 1,
+      "type": "RunStartedRenderEvent"
+    },
+    {
+      "tool_call_id": "tool-abc123",
+      "tool_name": "bash",
+      "schema_version": 1,
+      "type": "ToolCallStartRenderEvent"
+    },
+    {
+      "files": {},
+      "bash_commands": [
+        "ls"
+      ],
+      "web_fetches": [],
+      "agent_calls": [],
+      "silent_counts": {
+        "reads": 0,
+        "greps": 0,
+        "globs": 0
+      },
+      "is_complete": false,
+      "schema_version": 1,
+      "type": "ToolSummaryRenderEvent"
+    },
+    {
+      "tool_call_id": "tool-abc123",
+      "schema_version": 1,
+      "type": "ToolCallEndRenderEvent"
+    },
+    {
+      "files": {},
+      "bash_commands": [
+        "ls"
+      ],
+      "web_fetches": [],
+      "agent_calls": [],
+      "silent_counts": {
+        "reads": 0,
+        "greps": 0,
+        "globs": 0
+      },
+      "is_complete": true,
+      "schema_version": 1,
+      "type": "ToolSummaryRenderEvent"
+    },
+    {
+      "text": "Before tool After tool.",
+      "is_final": true,
+      "schema_version": 1,
+      "is_error": false,
+      "type": "TextRenderEvent"
+    },
+    {
+      "run_id": "<run_id>",
+      "outcome": "success",
+      "schema_version": 1,
+      "type": "RunFinishedRenderEvent"
+    }
+  ],
+  "error": [
+    {
+      "run_id": "<run_id>",
+      "schema_version": 1,
+      "type": "RunStartedRenderEvent"
+    },
+    {
+      "text": "Partial ",
+      "is_final": true,
+      "schema_version": 1,
+      "is_error": true,
+      "type": "TextRenderEvent"
+    },
+    {
+      "run_id": "<run_id>",
+      "outcome": "success",
+      "schema_version": 1,
+      "type": "RunFinishedRenderEvent"
+    }
+  ]
+}

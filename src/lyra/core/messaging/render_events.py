@@ -21,6 +21,10 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 SCHEMA_VERSION_TEXT_RENDER_EVENT = 1
+SCHEMA_VERSION_TEXT_START_RENDER_EVENT = 1
+SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT = 1
+SCHEMA_VERSION_TEXT_END_RENDER_EVENT = 1
+SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT = 1
 SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT = 1
 SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT = 1
 SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT = 1
@@ -87,6 +91,61 @@ class TextRenderEvent:
     is_final: bool
     schema_version: int = 1
     is_error: bool = False
+
+
+@dataclass(frozen=True)
+class TextStartRenderEvent:
+    """Marks the beginning of an assistant text block.
+
+    Slice 2 of #1096 (#1099). One emitted per block; bracketed by
+    ``TextEndRenderEvent``. ``message_id`` is per-block (not per-turn) —
+    supports interleaved text→tool→text.
+    """
+
+    message_id: str
+    role: Literal["assistant"] = "assistant"
+    schema_version: int = SCHEMA_VERSION_TEXT_START_RENDER_EVENT
+
+
+@dataclass(frozen=True)
+class TextDeltaRenderEvent:
+    """One streaming chunk inside an open text block.
+
+    Slice 2 of #1096 (#1099). ``message_id`` matches the bracketing
+    ``TextStartRenderEvent`` / ``TextEndRenderEvent``.
+    """
+
+    message_id: str
+    delta: str
+    schema_version: int = SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT
+
+
+@dataclass(frozen=True)
+class TextEndRenderEvent:
+    """Marks the end of an assistant text block.
+
+    Slice 2 of #1096 (#1099). Emitted at 4 boundaries: ToolUse start,
+    ``ResultLlmEvent``, truncation (no Result received), exception path.
+    """
+
+    message_id: str
+    schema_version: int = SCHEMA_VERSION_TEXT_END_RENDER_EVENT
+
+
+@dataclass(frozen=True)
+class TextChunkRenderEvent:
+    """EXPERIMENTAL — convenience event for adapters that don't need granularity.
+
+    Slice 2 of #1096 (#1099). Currently DEFINED BUT NOT EMITTED by
+    ``StreamProcessor``. Shape is revisable until the first emitter wires up
+    (planned post-Slice-5 once a concrete consumer — TTS tee, AG-UI bridge,
+    or rich-rendering adapter — needs it).
+    """
+
+    message_id: str
+    delta: str
+    role: Literal["assistant"] = "assistant"
+    schema_version: int = SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT
 
 
 @dataclass(frozen=True)
@@ -216,6 +275,10 @@ class ToolCallResultRenderEvent:
 # Union type exported for type annotations and ``isinstance`` checks.
 RenderEvent = (
     TextRenderEvent
+    | TextStartRenderEvent
+    | TextDeltaRenderEvent
+    | TextEndRenderEvent
+    | TextChunkRenderEvent
     | ToolSummaryRenderEvent
     | RunStartedRenderEvent
     | RunFinishedRenderEvent
@@ -235,14 +298,22 @@ __all__ = [
     "SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT",
     "SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT",
     "SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT",
+    "SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT",
+    "SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT",
+    "SCHEMA_VERSION_TEXT_END_RENDER_EVENT",
     "SCHEMA_VERSION_TEXT_RENDER_EVENT",
+    "SCHEMA_VERSION_TEXT_START_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT",
     "SilentCounts",
+    "TextChunkRenderEvent",
+    "TextDeltaRenderEvent",
+    "TextEndRenderEvent",
     "TextRenderEvent",
+    "TextStartRenderEvent",
     "ToolCallArgsRenderEvent",
     "ToolCallEndRenderEvent",
     "ToolCallResultRenderEvent",

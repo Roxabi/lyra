@@ -1,4 +1,7 @@
-from unittest.mock import AsyncMock, patch
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -8,7 +11,42 @@ from lyra.adapters.shared._shared import (
     format_tool_summary_header,
     send_with_retry,
 )
-from lyra.core.messaging.render_events import ToolSummaryRenderEvent
+from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
+from lyra.core.messaging.message import OutboundMessage
+from lyra.core.messaging.render_events import (
+    RenderEvent,
+    TextChunkRenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+    TextRenderEvent,
+    TextStartRenderEvent,
+    ToolSummaryRenderEvent,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers shared by v2 Text dispatch tests
+# ---------------------------------------------------------------------------
+
+
+def _make_callbacks() -> PlatformCallbacks:
+    return PlatformCallbacks(
+        send_placeholder=AsyncMock(return_value=(object(), 42)),
+        edit_placeholder_text=AsyncMock(),
+        send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
+        edit_trace=AsyncMock(),
+        send_message=AsyncMock(return_value=99),
+        send_fallback=AsyncMock(return_value=77),
+        chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
+        start_typing=MagicMock(),
+        cancel_typing=MagicMock(),
+        get_msg=MagicMock(side_effect=lambda key, fallback: fallback),
+        placeholder_text="…",
+    )
+
+
+async def _async_iter(*evts: RenderEvent) -> AsyncIterator[RenderEvent]:
+    for e in evts:
+        yield e
 
 
 class TestChunkText:
@@ -143,3 +181,143 @@ class TestFormatToolSummaryHeader:
         result = format_tool_summary_header(event)
         # Assert
         assert result == "🔧 Working…"
+
+
+# ---------------------------------------------------------------------------
+# T10 — v2 Text dispatch + fallback tests (#1099)
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchTextStartToOnTextV2:
+    """TextStartRenderEvent routes to _on_text_v2 and causes no v1 UX side-effects."""
+
+    async def test_dispatch_routes_text_start_to_on_text_v2(self) -> None:
+        # Arrange
+        cb = _make_callbacks()
+        outbound = OutboundMessage.from_text("hi")
+        session = StreamingSession(cb, outbound=outbound)
+
+        # Feed only a TextStartRenderEvent (no v1 TextRenderEvent follows).
+        # The stream has no final text so _deliver_final will edit the placeholder
+        # with an error message — but edit_placeholder_text must NOT have been
+        # called during event dispatch (only during delivery).
+        cb.edit_placeholder_text.reset_mock()  # type: ignore[attr-defined]
+
+        await session._run_event_loop(
+            _async_iter(TextStartRenderEvent(message_id="text-1")),
+            placeholder_obj=object(),
+        )
+
+        # Assert — edit_placeholder_text must not have been called by the dispatch
+        # loop itself (the no-op _on_text_v2 seam must absorb the event without
+        # touching the placeholder). Negative: if the guard were removed and the
+        # event fell through to assert_never, _run_event_loop would raise.
+        cb.edit_placeholder_text.assert_not_called()  # type: ignore[attr-defined]
+
+
+class TestDispatchAllFourV2TextTypes:
+    """All 4 v2 Text types are routed through _on_text_v2, once each, in order."""
+
+    async def test_dispatch_all_4_v2_text_types(self) -> None:
+        # Arrange — subclass spy captures every call to _on_text_v2
+        seen: list[type] = []
+
+        class _SpySession(StreamingSession):
+            async def _on_text_v2(
+                self,
+                event: TextStartRenderEvent
+                | TextDeltaRenderEvent
+                | TextEndRenderEvent
+                | TextChunkRenderEvent,
+            ) -> None:
+                seen.append(type(event))
+
+        cb = _make_callbacks()
+        outbound = OutboundMessage.from_text("hi")
+        session = _SpySession(cb, outbound=outbound)
+
+        events = [
+            TextStartRenderEvent(message_id="text-1"),
+            TextDeltaRenderEvent(message_id="text-1", delta="x"),
+            TextEndRenderEvent(message_id="text-1"),
+            TextChunkRenderEvent(message_id="text-2", delta="y"),
+        ]
+
+        # Act
+        await session._run_event_loop(
+            _async_iter(*events),
+            placeholder_obj=object(),
+        )
+
+        # Assert — spy called once per event type, in input order.
+        # Negative: if _on_text_v2 dispatch branch is removed, seen stays [].
+        assert seen == [
+            TextStartRenderEvent,
+            TextDeltaRenderEvent,
+            TextEndRenderEvent,
+            TextChunkRenderEvent,
+        ]
+
+
+class TestDrainFallbackHarvestsV2Delta:
+    """_drain_fallback accumulates TextDeltaRenderEvent.delta when no v1 is present."""
+
+    async def test_drain_fallback_harvests_v2_delta(self) -> None:
+        # Arrange
+        cb = _make_callbacks()
+        outbound = OutboundMessage.from_text("hi")
+        session = StreamingSession(cb, outbound=outbound)
+
+        # Act — drain a v2-only stream
+        await session._drain_fallback(
+            _async_iter(TextDeltaRenderEvent(message_id="text-x", delta="Hello"))
+        )
+
+        # Assert — send_fallback received the delta text exactly.
+        # Negative: if the isinstance(event, TextDeltaRenderEvent) branch is
+        # removed, parts stays [] and send_fallback gets placeholder_text ("…"),
+        # not "Hello".
+        cb.send_fallback.assert_awaited_once_with("Hello")  # type: ignore[attr-defined]
+
+
+class TestDrainFallbackDualEmitAccumulation:
+    """Dual-emit accumulation in _drain_fallback.
+
+    Under dual emission, v2 delta and v1 text are distinct event objects in the
+    stream; each fires its own branch. The elif guards on type — they do NOT
+    deduplicate same-content events. Slice 5 (#1102) removes the v1 branch.
+    """
+
+    async def test_drain_fallback_v2_only_yields_single_string(self) -> None:
+        # A v2-only stream produces a single accumulation. Proves the v2 branch
+        # consumes TextDeltaRenderEvent without also routing through the v1 branch.
+        cb = _make_callbacks()
+        outbound = OutboundMessage.from_text("hi")
+        session = StreamingSession(cb, outbound=outbound)
+
+        await session._drain_fallback(
+            _async_iter(
+                TextDeltaRenderEvent(message_id="text-1", delta="Hi"),
+            )
+        )
+
+        cb.send_fallback.assert_awaited_once_with("Hi")  # type: ignore[attr-defined]
+
+    async def test_drain_fallback_v1_and_v2_both_contribute_in_dual_emit(
+        self,
+    ) -> None:
+        # Real dual-emit shape: v2 delta + v1 text in the same stream. Each fires
+        # its own branch (types are disjoint). "HiHi" is the intended transient
+        # behavior during coexistence; Slice 5 drops the v1 branch.
+        cb = _make_callbacks()
+        outbound = OutboundMessage.from_text("hi")
+        session = StreamingSession(cb, outbound=outbound)
+
+        await session._drain_fallback(
+            _async_iter(
+                TextDeltaRenderEvent(message_id="text-1", delta="Hi"),
+                TextRenderEvent(text="Hi", is_final=True),
+            )
+        )
+
+        cb.send_fallback.assert_awaited_once_with("HiHi")  # type: ignore[attr-defined]

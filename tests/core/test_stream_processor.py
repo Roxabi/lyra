@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import ast
+import dataclasses
+import json
 from pathlib import Path
 from typing import AsyncIterator
+
+import pytest
 
 from lyra.core.messaging.events import (
     ResultLlmEvent,
@@ -19,7 +23,11 @@ from lyra.core.messaging.render_events import (
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
+    TextChunkRenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
     TextRenderEvent,
+    TextStartRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallResultRenderEvent,
@@ -46,21 +54,30 @@ _TOOLCALL_V2_TYPES = (
     ToolCallResultRenderEvent,
 )
 
+# Slice 2 (#1099) v2 Text triplet events. Stripped from v1-focused test results
+# so their original v1 TextRenderEvent / ToolSummaryRenderEvent assertions remain
+# stable. v2 triplet ordering is asserted in TestTextTriplet.
+_TEXT_V2_TYPES = (
+    TextStartRenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+    TextChunkRenderEvent,
+)
+
 
 def strip_run_lifecycle(events: list[RenderEvent]) -> list[RenderEvent]:
-    """Drop ``Run{Started,Finished,Error}`` + ``ToolCall*`` events.
+    """Drop Run*, ToolCall*, and Text{Start,Delta,End} events.
 
     Slice 1 added Run lifecycle bookends; Slice 3 added per-call ToolCall*
-    streaming. v1-focused tests strip both so their original (v1
-    ``TextRenderEvent`` + ``ToolSummaryRenderEvent``) assertions remain
-    stable. v2 lifecycle is asserted in dedicated test classes
-    (``TestRunLifecycle``, ``TestToolCallLifecycle``).
+    streaming; Slice 2 added v2 Text triplet events. v1-focused tests strip
+    all three so their original (v1 ``TextRenderEvent`` +
+    ``ToolSummaryRenderEvent``) assertions remain stable. v2 behaviour is
+    asserted in dedicated test classes (``TestRunLifecycle``,
+    ``TestToolCallLifecycle``, ``TestTextTriplet``).
     """
-    return [
-        e
-        for e in events
-        if not isinstance(e, (*_RUN_LIFECYCLE_TYPES, *_TOOLCALL_V2_TYPES))
-    ]
+    _strip = (*_RUN_LIFECYCLE_TYPES, *_TOOLCALL_V2_TYPES, *_TEXT_V2_TYPES)
+    return [e for e in events if not isinstance(e, _strip)]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -728,9 +745,7 @@ class TestStreamProcessor:
         processor = StreamProcessor(cfg())
 
         # Act
-        result = strip_run_lifecycle(
-            await collect(processor.process(async_events()))
-        )
+        result = strip_run_lifecycle(await collect(processor.process(async_events())))
 
         # Assert — backend produced nothing: emit an error so the "…"
         # placeholder is replaced instead of staying stuck.
@@ -1084,9 +1099,7 @@ class TestToolCallLifecycle:
         cfg_ = ToolDisplayConfig(throttle_window=0.0)
         processor = StreamProcessor(cfg_)
         events = async_events(
-            ToolUseLlmEvent(
-                tool_name="Edit", tool_id="t1", input={"path": "src/x.py"}
-            ),
+            ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={"path": "src/x.py"}),
             ResultLlmEvent(is_error=False, duration_ms=10),
         )
 
@@ -1104,14 +1117,14 @@ class TestToolCallLifecycle:
         processor = StreamProcessor(cfg_)
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
-            ToolUseDeltaLlmEvent(tool_id="t1", partial_json="{\"a\":"),
+            ToolUseDeltaLlmEvent(tool_id="t1", partial_json='{"a":'),
             ToolUseDeltaLlmEvent(tool_id="t1", partial_json="1}"),
             ResultLlmEvent(is_error=False, duration_ms=10),
         )
 
         result = await collect(processor.process(events))
         args = [e for e in result if isinstance(e, ToolCallArgsRenderEvent)]
-        assert [e.delta for e in args] == ["{\"a\":", "1}"]
+        assert [e.delta for e in args] == ['{"a":', "1}"]
 
     async def test_tool_call_result_carries_is_error(self) -> None:
         cfg_ = ToolDisplayConfig(throttle_window=0.0)
@@ -1214,3 +1227,254 @@ class TestToolCallLifecycle:
         # If the bare-else regressed, the delta would crash on event.is_error
         # access. Successful dispatch surfaces a ToolCallArgsRenderEvent.
         assert any(isinstance(e, ToolCallArgsRenderEvent) for e in result)
+
+
+# ---------------------------------------------------------------------------
+# Slice 2 of #1096 — v2 Text triplet (#1099) — T6
+# ---------------------------------------------------------------------------
+
+# Normalization helpers re-imported from the capture script (T1) so parity
+# assertions apply identical transforms before diffing against the fixture.
+from tools.capture_v1_text_baseline import normalize_event_dict  # noqa: E402
+
+
+def _v1_filter(events: list[RenderEvent]) -> list[RenderEvent]:
+    """Drop Text{Start,Delta,End} triplet events from a live run output.
+
+    Mirrors the T6 parity filter: the baseline fixture was captured on this
+    branch (which already includes ToolCall* events from Slice 3), so only the
+    Slice 2 additive v2 Text triplet events are filtered out before diffing.
+    """
+    return [e for e in events if not isinstance(e, _TEXT_V2_TYPES)]
+
+
+class TestTextTriplet:
+    """Slice 2 (#1099) v2 Text triplet emission contract — T6 tests."""
+
+    # ------------------------------------------------------------------
+    # T6-1 — Single block ordering
+    # ------------------------------------------------------------------
+
+    async def test_text_triplet_single_block_ordering(self) -> None:
+        """TextStart → TextDelta → TextEnd all share the same message_id."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            TextLlmEvent(text="Hello world"),
+            ResultLlmEvent(is_error=False, duration_ms=50),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — extract v2 triplet events only
+        triplet = [e for e in result if isinstance(e, _TEXT_V2_TYPES)]
+        assert len(triplet) == 3
+        start, delta, end = triplet
+        assert isinstance(start, TextStartRenderEvent)
+        assert isinstance(delta, TextDeltaRenderEvent)
+        assert isinstance(end, TextEndRenderEvent)
+        # All three share the same message_id
+        assert start.message_id == delta.message_id == end.message_id
+        # TextStart must precede TextDelta which must precede TextEnd
+        start_idx = result.index(start)
+        delta_idx = result.index(delta)
+        end_idx = result.index(end)
+        assert start_idx < delta_idx < end_idx
+
+    # ------------------------------------------------------------------
+    # T6-2 — Multi-block distinct message_ids
+    # ------------------------------------------------------------------
+
+    async def test_text_triplet_multi_block_distinct_ids(self) -> None:
+        """Two text blocks separated by a tool call produce 2 distinct message_ids."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            TextLlmEvent(text="Before"),
+            ToolUseLlmEvent(tool_name="Glob", tool_id="g1", input={}),
+            TextLlmEvent(text="After"),
+            ResultLlmEvent(is_error=False, duration_ms=50),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — two separate Start/Delta/End brackets
+        starts = [e for e in result if isinstance(e, TextStartRenderEvent)]
+        ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
+        deltas = [e for e in result if isinstance(e, TextDeltaRenderEvent)]
+        assert len(starts) == 2
+        assert len(ends) == 2
+        assert len(deltas) == 2
+        # Each bracket carries a distinct message_id
+        id1, id2 = starts[0].message_id, starts[1].message_id
+        assert id1 != id2
+        # Each delta belongs to the correct bracket
+        assert deltas[0].message_id == id1
+        assert deltas[1].message_id == id2
+        # Each end closes the correct bracket
+        assert ends[0].message_id == id1
+        assert ends[1].message_id == id2
+
+    # ------------------------------------------------------------------
+    # T6-3 — TextEnd emitted BEFORE RunErrorRenderEvent on exception
+    # ------------------------------------------------------------------
+
+    async def test_text_end_before_run_error_on_exception(self) -> None:
+        """Exception mid-stream: TextEnd emitted before RunErrorRenderEvent."""
+
+        class _Boom(RuntimeError):
+            pass
+
+        async def _raising_events():
+            yield TextLlmEvent(text="partial chunk")
+            raise _Boom("boom")
+
+        # Arrange
+        processor = StreamProcessor(cfg())
+        seen: list[RenderEvent] = []
+
+        # Act
+        with pytest.raises(_Boom):
+            async for ev in processor.process(_raising_events()):
+                seen.append(ev)
+
+        # Assert — TextEnd appears before RunError
+        end_idx = next(
+            (i for i, e in enumerate(seen) if isinstance(e, TextEndRenderEvent)), None
+        )
+        error_idx = next(
+            (i for i, e in enumerate(seen) if isinstance(e, RunErrorRenderEvent)), None
+        )
+        assert end_idx is not None, "TextEndRenderEvent not found in stream"
+        assert error_idx is not None, "RunErrorRenderEvent not found in stream"
+        assert end_idx < error_idx
+
+    # ------------------------------------------------------------------
+    # T6-4 — TextEnd emitted BEFORE v1 fallback on truncation
+    # ------------------------------------------------------------------
+
+    async def test_text_end_before_v1_fallback_on_truncation(self) -> None:
+        """Truncation path: TextEnd emits before the v1 fallback TextRenderEvent.
+
+        show_intermediate=False so no per-chunk TextRenderEvent is emitted;
+        the only TextRenderEvent is the fallback from the truncation branch.
+        Invariant: TextEnd closes the block before that fallback fires.
+        """
+        # Arrange — show_intermediate=False so no per-chunk TextRenderEvent is emitted
+        processor = StreamProcessor(cfg(), show_intermediate=False)
+        events = async_events(TextLlmEvent(text="partial response"))
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — TextEnd precedes the v1 fallback TextRenderEvent
+        end_idx = next(
+            (i for i, e in enumerate(result) if isinstance(e, TextEndRenderEvent)), None
+        )
+        v1_text_indices = [
+            i for i, e in enumerate(result) if isinstance(e, TextRenderEvent)
+        ]
+        assert end_idx is not None, "TextEndRenderEvent not found"
+        assert v1_text_indices, "No TextRenderEvent found"
+        # The v1 fallback text event(s) all come after the TextEnd close
+        assert all(end_idx < v1_idx for v1_idx in v1_text_indices)
+
+    # ------------------------------------------------------------------
+    # T6-5 — No TextEnd when no text block is open
+    # ------------------------------------------------------------------
+
+    async def test_no_text_end_when_no_block_open(self) -> None:
+        """ToolUseLlmEvent with no preceding text: NO TextEndRenderEvent emitted."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Glob", tool_id="g1", input={}),
+            ResultLlmEvent(is_error=False, duration_ms=50),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — guard clause prevents spurious TextEnd
+        text_ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
+        assert len(text_ends) == 0
+
+    # ------------------------------------------------------------------
+    # T6-6 — v1 parity against baseline fixture
+    # ------------------------------------------------------------------
+
+    async def test_v1_parity_against_baseline_fixture(self) -> None:
+        """Live run filtered to v1-only events must be byte-equal to captured baseline.
+
+        Filter rule: drop TextStart/Delta/End and ToolCall* from live output,
+        then compare serialized dicts to the fixture captured by T1 (pre-T5).
+        Normalization: run_id values replaced with '<run_id>' via the same regex
+        used by tools/capture_v1_text_baseline.py::normalize_event_dict().
+        """
+        # Arrange — load fixture
+        fixture_path = (
+            Path(__file__).parent / "fixtures" / "v1_text_stream_baseline.json"
+        )
+        baseline = json.loads(fixture_path.read_text())
+
+        config = ToolDisplayConfig(throttle_ms=0)
+
+        async def _run(events_in) -> list[dict]:
+            """Run StreamProcessor and return normalized v1-only event dicts."""
+            sp = StreamProcessor(config, show_intermediate=False)
+            raw: list[RenderEvent] = []
+            async for ev in sp.process(events_in):
+                raw.append(ev)
+            v1_only = _v1_filter(raw)
+            return [
+                normalize_event_dict(
+                    {**dataclasses.asdict(e), "type": type(e).__name__}
+                )
+                for e in v1_only
+            ]
+
+        # --- Scenario: single_block ---
+        single_result = await _run(
+            async_events(
+                TextLlmEvent(text="Hello "),
+                TextLlmEvent(text="world."),
+                ResultLlmEvent(is_error=False, duration_ms=100),
+            )
+        )
+        assert single_result == baseline["single_block"], (
+            f"single_block mismatch:\n  got:      {single_result}\n"
+            f"  expected: {baseline['single_block']}"
+        )
+
+        # --- Scenario: multi_block ---
+        multi_result = await _run(
+            async_events(
+                TextLlmEvent(text="Before tool "),
+                ToolUseLlmEvent(
+                    tool_name="bash", tool_id="tool-abc123", input={"command": "ls"}
+                ),
+                ToolUseEndLlmEvent(tool_id="tool-abc123"),
+                TextLlmEvent(text="After tool."),
+                ResultLlmEvent(is_error=False, duration_ms=200),
+            )
+        )
+        assert multi_result == baseline["multi_block"], (
+            f"multi_block mismatch:\n  got:      {multi_result}\n"
+            f"  expected: {baseline['multi_block']}"
+        )
+
+        # --- Scenario: error ---
+        error_result = await _run(
+            async_events(
+                TextLlmEvent(text="Partial "),
+                ResultLlmEvent(
+                    is_error=True, duration_ms=50, error_text="Something went wrong"
+                ),
+            )
+        )
+        assert error_result == baseline["error"], (
+            f"error mismatch:\n  got:      {error_result}\n"
+            f"  expected: {baseline['error']}"
+        )

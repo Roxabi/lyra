@@ -1,0 +1,83 @@
+---
+title: "PR #1173 review findings — Expert Consensus"
+issue: 1099
+pr: 1173
+status: consensus-reached
+date: 2026-05-13
+panel: architect, backend-dev, product-lead
+confidence: high
+---
+
+## Problem
+
+`/code-review` on PR #1173 (Slice 2 of #1096, RenderEvent v2 Text triplet) returned 13 findings across 5 reviewers. 3 (W1 + W2 + N1) were auto-applied via the `/code-review` → `/fix` auto-apply pass (commit `84a1fe08`). The remaining 10 needed disposition decisions: apply now, defer to Slice 5 (#1102), or skip.
+
+Slice 2 of 5 in an active epic; Slice 3 (#1100) already shipped without addressing deeper architectural issues (e.g., `_on_toolcall_v2` reachability — same as S1 here). Shipping velocity vs hygiene tradeoff is real.
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | structural soundness, slice-staging discipline, dead-code risk |
+| backend-dev | Python idioms, test design, fragility, SSoT integrity |
+| product-lead | SC compliance, tracker hygiene, slice-staging cadence |
+
+## Consensus ρ
+
+**APPLY now (this PR):**
+- **S1** — Fix the misleading docstring on `_on_text_v2` AND `_on_toolcall_v2` (Slice 3 inherited the same gap). Replace "Platform subclasses override here" with an honest note that the seam is unreachable from concrete adapters today; add `# DEBT(#1102)` tag pointing to Slice 5 for the structural fix.
+- **N7** — Move `_mint_message_id` from `@staticmethod` on `StreamProcessor` to module-level helper, matching the `_sanitize_tool_result_content` precedent in the same file.
+
+**DEFER to Slice 5 (#1102) tracker:**
+- **S2** — `strip_run_lifecycle` widening to filter v2: rewrite to direct v2-aware assertions ONCE v1 is removed (~60 LOC, currently obsolete-on-arrival).
+- **S3** — SC-12 per-adapter snapshot exemption: add a gate requiring adapter-level snapshots BEFORE v1 removal.
+- **N6** — `test_all_exports_complete` hardcoded registry: pattern survives Slice 5 cleanup naturally.
+
+**SKIP (reject finding):**
+- **N2** — Blacklist → whitelist filter refactor: addressed by W2 (TextChunk added); remaining proposal is style-only.
+- **N3** — Merge `TestDispatchTextStartToOnTextV2` into `TestDispatchAllFourV2TextTypes`: backend-dev correctly noted the two test classes assert DIFFERENT contracts (negative absence-of-side-effect vs positive routing-spy). Merging weakens coverage.
+- **N4** — Fixture key `"error"` → `"soft_error"`: rename touches the fixture file (diff noise); the spec's "exception path" is separately covered by `test_text_end_before_run_error_on_exception`.
+- **N5** — Move `normalize_event_dict` from `tools/capture_v1_text_baseline.py` to `tests/core/fixtures/normalization.py`: backend-dev correctly identified that the capture script is the canonical SSoT — splitting diverges the two consumers and breaks the "identical transform" guarantee documented in the T6 parity test.
+
+### Rationale
+
+Two principles converged:
+
+1. **Slice-staging discipline.** Anything that would be rewritten in Slice 5 anyway (S2, S3, N6) belongs on the Slice 5 tracker, not in Slice 2's diff. Coexistence-window tests written specifically to be deleted in 2 PRs is negative ROI.
+2. **Honest documentation over false promises.** S1's misleading docstring is the strongest pre-merge concern — it actively misleads future implementors. Fix the docstring now; defer the architectural relocation to Slice 5 where it lands naturally with v1 removal.
+
+N7 (apply) and the SKIPs (N2-N5) reflect substantive review of reviewer claims: some findings were stylistic-only (N2, N4) or rejected on second look (N3, N5).
+
+### Trade-offs
+
+- Deferring S2/S3 leaves snapshot coverage that filters v2 rather than asserts it — a real coverage gap that only closes at Slice 5. The DEBT tag makes it visible but relies on human discipline.
+- Fixing S1 docstring without wiring the seam keeps dead-code intent in the emitter for 3 more slices. A future reader who misses the DEBT comment may still trust the seam exists.
+- Skipping N4 lets a misleading fixture key (`"error"` for soft-error) accumulate callers; harmless now, costs more to rename post-Slice-5.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|---|---|
+| Rewrite S2 tests now (~60 LOC v2-aware assertions) | product-lead Solution 2 | Net negative ROI: tests written specifically to be deleted by Slice 5 |
+| Add S3 adapter snapshot tests now (~30 LOC) | product-lead Solution 2 | Premature; gate belongs in Slice 5 plan with Slice 5 data |
+| Move S1 seams to `OutboundAdapterBase` now | architect Solution 1 | Scope creep; restructures `PlatformCallbacks`; risks destabilizing Slice 3's already-merged ToolCall seam |
+| Apply N2 + N4 alongside N7 | product-lead | Both are style; W2 already addressed the correctness slice of N2; N4 fixture rename is diff noise |
+
+## Dissent
+
+- **N7**: architect leaned defer; backend-dev + product-lead apply. Resolved via majority; the change is 5 LOC and matches an existing in-file precedent.
+- **N2 / N4**: product-lead leaned apply; architect + backend-dev skip. Resolved via majority; both reduce to style after W2 landed.
+
+## Implementation Notes
+
+1. **S1 docstring fix:** target `src/lyra/adapters/shared/_shared_streaming_emitter.py` — both `_on_text_v2` (~L115) and `_on_toolcall_v2` (~L94) docstrings.
+2. **N7 module-level move:** target `src/lyra/core/processors/stream_processor.py` — move `_mint_message_id` out of `StreamProcessor` class scope; update single call site `self._mint_message_id()` → `_mint_message_id()`.
+3. **Slice 5 tracker:** open one tracking issue (child of #1102) listing S2 + S3 + N6 with this consensus link.
+4. **Skips:** post the SKIP rationale in the Phase 8 PR comment so the rejecting agents see their findings were considered and not lost.
+
+## Next
+
+- `/fix` Phase 6 execution (apply S1 + N7).
+- Open Slice 5 tracking issue.
+- Post Phase 8 PR comment to #1173 with applied / deferred / skipped breakdown.
+- Continue dev pipeline: rebase + label `reviewed` + watch CI / merge.

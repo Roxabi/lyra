@@ -6,9 +6,11 @@ src/lyra/bootstrap/bootstrap_stores.py  # 307 lines — DEBT:file-exemptions —
 src/lyra/core/cli/cli_pool.py  # 327 lines — DEBT:file-exemptions — #1008 resume_direct() method added for hub-side session resolution
 src/lyra/agents/simple_agent.py  # 309 lines — DEBT:file-exemptions — #1008 cli_nats_driver wiring for NATS-mode resume + link_lyra_session
 src/lyra/bootstrap/standalone/adapter_standalone.py  # 301 lines — DEBT:file-exemptions — #1016 WorkerError startup version log
-src/lyra/core/processors/stream_processor.py  # 468 lines — DEBT:file-exemptions — #1016 WorkerError extractor + #1098 Run lifecycle emission (Slice 2 of #1096 will refactor _handle_text_event)
-src/lyra/adapters/shared/_shared_streaming_emitter.py  # 362 lines — DEBT:file-exemptions — #1098 Run lifecycle skip branch (Slice 2 of #1096 lands the full v1+v2 isinstance ladder)
+src/lyra/core/processors/stream_processor.py  # 621 lines — DEBT:file-exemptions — #1016 WorkerError extractor + #1098 Run lifecycle + #1101 Reasoning emission (cleanup in Slice 5 / #1102)
+src/lyra/adapters/shared/_shared_streaming_emitter.py  # 409 lines — DEBT:file-exemptions — #1098 Run lifecycle + #1101 PlatformCallbacks.edit_reasoning + dispatch (cleanup in Slice 5 / #1102)
 src/lyra/llm/drivers/nats_driver.py  # 434 lines — DEBT:file-exemptions — #1016 WorkerError population on transport.* failures (P3 will refactor with NatsDriverBase)
 src/lyra/adapters/clipool/clipool_worker.py  # 371 lines — DEBT:file-exemptions — #1016 WorkerError population + exception classifier
-src/lyra/core/cli/cli_streaming_parser.py  # 310 lines — DEBT:file-exemptions — #1100 ToolCall streamed events (input_json_delta + content_block_stop + user-message tool_result; cleanup in Slice 5 / #1102)
-src/lyra/core/messaging/render_events.py  # 322 lines — DEBT:file-exemptions — #1099 Text v2 triplet + Chunk dataclasses (Slice 2 of #1096; refactor deferred to Slice 5 / #1102)
+src/lyra/core/cli/cli_streaming_parser.py  # 336 lines — DEBT:file-exemptions — #1100 ToolCall streamed events + #1101 thinking-block recognition (cleanup in Slice 5 / #1102)
+src/lyra/core/messaging/render_events.py  # 359 lines — DEBT:file-exemptions — #1099 Text v2 triplet + #1101 Reasoning v2 triplet (refactor deferred to Slice 5 / #1102)
+src/lyra/adapters/telegram/telegram_outbound.py  # 392 lines — DEBT:file-exemptions — #1101 _render_reasoning closure + show_intermediate gate (cleanup in Slice 5 / #1102: extract shared reasoning helper)
+src/lyra/adapters/discord/discord_outbound.py  # 381 lines — DEBT:file-exemptions — #1101 _render_reasoning closure + show_intermediate gate (cleanup in Slice 5 / #1102: extract shared reasoning helper)

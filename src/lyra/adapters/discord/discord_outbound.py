@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
@@ -18,11 +19,17 @@ from lyra.adapters.shared._shared import (
     DISCORD_MAX_LENGTH,
     format_tool_summary_header,
 )
+from lyra.adapters.shared._shared_streaming_state import STREAMING_EDIT_INTERVAL
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
 )
-from lyra.core.messaging.render_events import ToolSummaryRenderEvent
+from lyra.core.messaging.render_events import (
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+    ReasoningStartRenderEvent,
+    ToolSummaryRenderEvent,
+)
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -165,10 +172,21 @@ def _build_tool_embed(event: ToolSummaryRenderEvent) -> "discord.Embed":
     return discord.Embed(title=title, description=description, color=color)
 
 
-def build_streaming_callbacks(  # noqa: C901 — DEBT:wiring-bootstrap-deps — one closure per platform op
+def _dim_italic(text: str) -> str:
+    """Wrap *text* in Markdown italic for Discord.
+
+    Discord renders ``*text*`` as italic. Discord has no native "dim" colour,
+    so italic alone provides visual distinction from the final response text.
+    """
+    return f"*{text}*"
+
+
+def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-deps — one closure per platform op
     adapter: "DiscordAdapter",
     original_msg: InboundMessage,
     outbound: OutboundMessage | None,
+    *,
+    show_intermediate: bool = True,
 ) -> "PlatformCallbacks":
     """Build PlatformCallbacks for StreamingSession from a DiscordAdapter context.
 
@@ -273,6 +291,80 @@ def build_streaming_callbacks(  # noqa: C901 — DEBT:wiring-bootstrap-deps — 
         await send(adapter, original_msg, fallback_outbound)
         return fallback_outbound.metadata.get("reply_message_id")
 
+    # Mutable cells for _render_reasoning closure state (one per streaming turn).
+    _reasoning_trace_cell: list[Any] = [None]
+    _reasoning_accum_cell: list[str] = [""]
+    _last_reasoning_edit_cell: list[float | None] = [None]
+
+    async def _edit_trace_with_text(trace_obj: Any, text: str) -> None:
+        """Edit the trace placeholder with plain/formatted text (for reasoning)."""
+        await send_with_retry(
+            lambda t=text: trace_obj.edit(content=t, embed=None),
+            label="Reasoning trace edit",
+        )
+
+    async def _render_reasoning(  # noqa: C901 — DEBT:wiring-bootstrap-deps — three-branch state machine
+        trace_obj: Any,
+        event: ReasoningStartRenderEvent
+        | ReasoningDeltaRenderEvent
+        | ReasoningEndRenderEvent,
+    ) -> None:
+        """Render reasoning events as italic text in the trace placeholder.
+
+        Slice 4 (#1101): show_intermediate=False → no-op.
+        Delta edits are throttled by STREAMING_EDIT_INTERVAL.
+        Accumulated text is truncated to 120 chars with '…' suffix.
+        """
+        if not show_intermediate:
+            return
+
+        if isinstance(event, ReasoningStartRenderEvent):
+            effective_trace = (
+                trace_obj if trace_obj is not None else _reasoning_trace_cell[0]
+            )
+            if effective_trace is None:
+                try:
+                    effective_trace, _ = await _send_trace_placeholder()
+                    _reasoning_trace_cell[0] = effective_trace
+                except Exception:
+                    log.exception(
+                        "Failed to send trace placeholder — reasoning will not render"
+                    )
+                    return
+            _reasoning_accum_cell[0] = ""
+            _last_reasoning_edit_cell[0] = None
+
+        elif isinstance(event, ReasoningDeltaRenderEvent):
+            effective_trace = (
+                trace_obj if trace_obj is not None else _reasoning_trace_cell[0]
+            )
+            if effective_trace is None:
+                return
+            _reasoning_accum_cell[0] += event.delta
+            truncated = _reasoning_accum_cell[0]
+            if len(truncated) > 120:
+                truncated = truncated[:117] + "…"
+            now = time.monotonic()
+            if (
+                _last_reasoning_edit_cell[0] is None
+                or (now - _last_reasoning_edit_cell[0]) >= STREAMING_EDIT_INTERVAL
+            ):
+                await _edit_trace_with_text(effective_trace, _dim_italic(truncated))
+                _last_reasoning_edit_cell[0] = now
+
+        else:  # ReasoningEndRenderEvent
+            effective_trace = (
+                trace_obj if trace_obj is not None else _reasoning_trace_cell[0]
+            )
+            if effective_trace is None:
+                return
+            # Final flush: guarantee last edit even if throttled
+            if _reasoning_accum_cell[0]:
+                truncated = _reasoning_accum_cell[0]
+                if len(truncated) > 120:
+                    truncated = truncated[:117] + "…"
+                await _edit_trace_with_text(effective_trace, _dim_italic(truncated))
+
     return PlatformCallbacks(
         send_placeholder=_send_placeholder,
         edit_placeholder_text=_edit_placeholder_text,
@@ -285,4 +377,5 @@ def build_streaming_callbacks(  # noqa: C901 — DEBT:wiring-bootstrap-deps — 
         cancel_typing=lambda: adapter._cancel_typing(send_to_id),
         get_msg=adapter._msg,
         placeholder_text=_placeholder_text,
+        edit_reasoning=_render_reasoning,
     )

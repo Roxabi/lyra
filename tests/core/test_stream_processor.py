@@ -76,6 +76,7 @@ def strip_run_lifecycle(events: list[RenderEvent]) -> list[RenderEvent]:
     _strip = (*_RUN_LIFECYCLE_TYPES, *_TOOLCALL_V2_TYPES, *_TEXT_V2_TYPES)
     return [e for e in events if not isinstance(e, _strip)]
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -742,9 +743,7 @@ class TestStreamProcessor:
         processor = StreamProcessor(cfg())
 
         # Act
-        result = strip_run_lifecycle(
-            await collect(processor.process(async_events()))
-        )
+        result = strip_run_lifecycle(await collect(processor.process(async_events())))
 
         # Assert — backend produced nothing: emit an error so the "…"
         # placeholder is replaced instead of staying stuck.
@@ -1098,9 +1097,7 @@ class TestToolCallLifecycle:
         cfg_ = ToolDisplayConfig(throttle_window=0.0)
         processor = StreamProcessor(cfg_)
         events = async_events(
-            ToolUseLlmEvent(
-                tool_name="Edit", tool_id="t1", input={"path": "src/x.py"}
-            ),
+            ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={"path": "src/x.py"}),
             ResultLlmEvent(is_error=False, duration_ms=10),
         )
 
@@ -1118,14 +1115,14 @@ class TestToolCallLifecycle:
         processor = StreamProcessor(cfg_)
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
-            ToolUseDeltaLlmEvent(tool_id="t1", partial_json="{\"a\":"),
+            ToolUseDeltaLlmEvent(tool_id="t1", partial_json='{"a":'),
             ToolUseDeltaLlmEvent(tool_id="t1", partial_json="1}"),
             ResultLlmEvent(is_error=False, duration_ms=10),
         )
 
         result = await collect(processor.process(events))
         args = [e for e in result if isinstance(e, ToolCallArgsRenderEvent)]
-        assert [e.delta for e in args] == ["{\"a\":", "1}"]
+        assert [e.delta for e in args] == ['{"a":', "1}"]
 
     async def test_tool_call_result_carries_is_error(self) -> None:
         cfg_ = ToolDisplayConfig(throttle_window=0.0)

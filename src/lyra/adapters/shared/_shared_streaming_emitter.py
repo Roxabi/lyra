@@ -297,8 +297,7 @@ class StreamingSession:
 
         # No deliverable content — surface a descriptive error rather than "…".
         log.warning(
-            "streaming turn ended with no display text"
-            " (final_text=%r stream_error=%r)",
+            "streaming turn ended with no display text (final_text=%r stream_error=%r)",
             self._st.final_text,
             self._st.stream_error,
         )

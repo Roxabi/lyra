@@ -11,3 +11,4 @@ src/lyra/adapters/shared/_shared_streaming_emitter.py  # 362 lines — DEBT:file
 src/lyra/llm/drivers/nats_driver.py  # 434 lines — DEBT:file-exemptions — #1016 WorkerError population on transport.* failures (P3 will refactor with NatsDriverBase)
 src/lyra/adapters/clipool/clipool_worker.py  # 371 lines — DEBT:file-exemptions — #1016 WorkerError population + exception classifier
 src/lyra/core/cli/cli_streaming_parser.py  # 310 lines — DEBT:file-exemptions — #1100 ToolCall streamed events (input_json_delta + content_block_stop + user-message tool_result; cleanup in Slice 5 / #1102)
+src/lyra/core/messaging/render_events.py  # 322 lines — DEBT:file-exemptions — #1099 Text v2 triplet + Chunk dataclasses (Slice 2 of #1096; refactor deferred to Slice 5 / #1102)

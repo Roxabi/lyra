@@ -23,7 +23,11 @@ from lyra.core.messaging import (
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
+    TextChunkRenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
     TextRenderEvent,
+    TextStartRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallResultRenderEvent,
@@ -98,13 +102,41 @@ class StreamingSession:
         | ToolCallEndRenderEvent
         | ToolCallResultRenderEvent,
     ) -> None:
-        """Per-platform override seam for Slice 3 (#1100) ToolCall* events.
+        """v2 ToolCall* dispatch sink. Slice 3 (#1100) introduced this.
 
         Default no-op — parity is preserved by the v1 ``ToolSummaryRenderEvent``
-        dual-emit path that drives the existing summary-card UX. Platform
-        subclasses (Telegram, Discord) override this to render richer once they
-        migrate off v1 ToolSummary in Slice 5 (#1102). Discord's opt-in inline
-        args streaming (``LYRA_DISCORD_TOOLCALL_STREAM_ARGS``) hooks here.
+        dual-emit path. **This seam is currently unreachable from concrete
+        adapters.** ``OutboundAdapterBase.send_streaming()`` constructs a plain
+        ``StreamingSession``; Telegram/Discord inherit from ``OutboundAdapterBase``,
+        not ``StreamingSession``, so subclass overrides have no effect. Today this
+        method's only purpose is to silence ``assert_never`` once Slice 3 widened
+        the union.
+
+        DEBT(#1102): Slice 5 either (a) moves dispatch onto ``PlatformCallbacks``
+        so adapters can inject behavior without subclassing, or (b) makes
+        ``send_streaming`` instantiate a per-adapter ``StreamingSession`` subclass.
+        Discord's opt-in inline args streaming
+        (``LYRA_DISCORD_TOOLCALL_STREAM_ARGS``) is reserved for that wiring.
+        """
+        return None
+
+    async def _on_text_v2(
+        self,
+        event: TextStartRenderEvent
+        | TextDeltaRenderEvent
+        | TextEndRenderEvent
+        | TextChunkRenderEvent,
+    ) -> None:
+        """v2 Text* dispatch sink. Slice 2 (#1099) introduced this.
+
+        Default no-op — parity preserved by the v1 ``TextRenderEvent`` dual-emit
+        path that drives existing edit-in-place UX. **This seam is currently
+        unreachable from concrete adapters** (same structural gap as
+        ``_on_toolcall_v2`` — see that method's docstring for details).
+
+        DEBT(#1102): Slice 5 removes v1 emission AND wires v2 dispatch through
+        ``PlatformCallbacks`` (or per-adapter ``StreamingSession`` subclassing).
+        Until then, overriding this method in a concrete adapter has no effect.
         """
         return None
 
@@ -129,11 +161,10 @@ class StreamingSession:
         """Drain remaining events, accumulate text, send via fallback callback."""
         parts: list[str] = []
         async for event in events:
-            # Slice 1 (#1098): only TextRenderEvent contributes to the fallback
-            # text — Run lifecycle events are silently skipped here. Slice 2
-            # (#1099) must extend this branch when TextDeltaRenderEvent lands
-            # so delta text is not lost on fallback.
-            if isinstance(event, TextRenderEvent):
+            # v2 preferred (delta), v1 fallback (text). Slice 5 (#1102) drops v1.
+            if isinstance(event, TextDeltaRenderEvent):
+                parts.append(event.delta)
+            elif isinstance(event, TextRenderEvent):
                 parts.append(event.text)
         fallback_text = "".join(parts) or self._cb.placeholder_text
         try:
@@ -144,7 +175,7 @@ class StreamingSession:
         if self._outbound is not None and fallback_message_id is not None:
             self._outbound.metadata["reply_message_id"] = fallback_message_id
 
-    async def _run_event_loop(  # noqa: C901 — POLICY:wiring — full v1+v2 dispatch ladder lands in Slice 2 (#1099)
+    async def _run_event_loop(  # noqa: C901 — POLICY:wiring — v1+v2 dispatch ladder
         self,
         events: AsyncIterator[RenderEvent],
         placeholder_obj: Any,
@@ -178,6 +209,16 @@ class StreamingSession:
                     # off v1 ToolSummary in Slice 5 (#1102). Default is
                     # no-op (parity).
                     await self._on_toolcall_v2(event)
+                    continue
+
+                if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
+                    event,
+                    TextStartRenderEvent
+                    | TextDeltaRenderEvent
+                    | TextEndRenderEvent
+                    | TextChunkRenderEvent,
+                ):
+                    await self._on_text_v2(event)
                     continue
 
                 if isinstance(event, ToolSummaryRenderEvent):
@@ -226,9 +267,6 @@ class StreamingSession:
                                 )
                             self._st.last_intermediate_edit = now
                 else:
-                    # Cross-slice invariant 3: no silent event drop. When Slice 2
-                    # (#1099) extends RenderEvent with TextStart/Delta/End, pyright
-                    # will fail this assert_never until the dispatch is updated.
                     assert_never(event)
 
         except Exception as exc:
@@ -272,8 +310,7 @@ class StreamingSession:
 
         # No deliverable content — surface a descriptive error rather than "…".
         log.warning(
-            "streaming turn ended with no display text"
-            " (final_text=%r stream_error=%r)",
+            "streaming turn ended with no display text (final_text=%r stream_error=%r)",
             self._st.final_text,
             self._st.stream_error,
         )

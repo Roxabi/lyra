@@ -112,6 +112,21 @@ class StreamingSession:
         """
         return None
 
+    async def _on_text_v2(
+        self,
+        event: TextStartRenderEvent
+        | TextDeltaRenderEvent
+        | TextEndRenderEvent
+        | TextChunkRenderEvent,
+    ) -> None:
+        """Per-platform override seam for Slice 2 (#1099) Text* events.
+
+        Default no-op — parity preserved by v1 TextRenderEvent dual-emit path that
+        drives existing edit-in-place UX. Slice 5 (#1102) removes v1 emission;
+        adapters needing richer per-block rendering override here.
+        """
+        return None
+
     async def _send_placeholder(self) -> tuple[Any, int | None] | None:
         """Send the placeholder and record reply_message_id on outbound.
 

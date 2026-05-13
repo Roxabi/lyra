@@ -16,6 +16,7 @@ from ..messaging.events import (
     LlmEvent,
     ResultLlmEvent,
     TextLlmEvent,
+    ThinkingLlmEvent,
     ToolResultLlmEvent,
     ToolUseDeltaLlmEvent,
     ToolUseEndLlmEvent,
@@ -28,6 +29,9 @@ from ..messaging.metrics import emit_populated_total
 _DELTA_INPUT_JSON = "input_json_delta"
 _BLOCK_TYPE_TOOL_USE = "tool_use"
 _BLOCK_TYPE_TOOL_RESULT = "tool_result"
+_BLOCK_TYPE_THINKING = "thinking"
+_DELTA_THINKING = "thinking_delta"
+_DELTA_SIGNATURE = "signature_delta"
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +94,10 @@ class CliStreamingParser:
         # emission is silently dropped so downstream consumers see exactly one
         # ToolUseLlmEvent per tool_id.
         self._emitted_tool_use_ids: set[str] = set()
+        # Slice 4 (#1101): index of the currently open thinking block, or None.
+        # Set on content_block_start when block type == "thinking"; cleared on
+        # content_block_stop. Only one thinking block open at a time per turn.
+        self._open_thinking_index: int | None = None
 
     def parse_line(self, line: str) -> deque[LlmEvent]:  # noqa: C901, PLR0912, PLR0915 — DEBT:complexity-residual — protocol event dispatch
         """Parse a JSON line, update state, and return events to yield.
@@ -177,7 +185,12 @@ class CliStreamingParser:
             event_type = event_data.get("type", "")
             if event_type == "content_block_start":
                 cb = event_data.get("content_block", {})
-                if cb.get("type") == _BLOCK_TYPE_TOOL_USE:
+                if cb.get("type") == _BLOCK_TYPE_THINKING:
+                    idx = event_data.get("index")
+                    if isinstance(idx, int):
+                        self._open_thinking_index = idx
+                    # No event emitted on start — emission happens on first delta.
+                elif cb.get("type") == _BLOCK_TYPE_TOOL_USE:
                     tool_id = cb.get("id", "")
                     idx = event_data.get("index")
                     if isinstance(idx, int) and tool_id:
@@ -194,7 +207,18 @@ class CliStreamingParser:
             elif event_type == "content_block_delta":
                 delta = event_data.get("delta", {})
                 delta_type = delta.get("type", "")
-                if delta_type == "text_delta":
+                if delta_type == _DELTA_THINKING:
+                    idx = event_data.get("index")
+                    thinking = delta.get("thinking", "")
+                    if (
+                        isinstance(idx, int)
+                        and idx == self._open_thinking_index
+                        and thinking
+                    ):
+                        self._pending.append(ThinkingLlmEvent(text=thinking))
+                elif delta_type == _DELTA_SIGNATURE:
+                    pass  # API-replay metadata; no user-facing render
+                elif delta_type == "text_delta":
                     text = delta.get("text", "")
                     if text:
                         self._had_text_delta = True
@@ -219,6 +243,8 @@ class CliStreamingParser:
                     self._pending.append(
                         ToolUseEndLlmEvent(tool_id=self._open_tool_blocks.pop(idx))
                     )
+                if isinstance(idx, int) and idx == self._open_thinking_index:
+                    self._open_thinking_index = None
 
         elif msg_type == "user":
             blocks = data.get("message", {}).get("content", [])

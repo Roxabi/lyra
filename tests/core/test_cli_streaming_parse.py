@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
-from lyra.core.cli.cli_protocol import StreamingIterator
+from lyra.core.cli.cli_protocol import CliStreamingParser, StreamingIterator
 from lyra.core.messaging.events import (
     ResultLlmEvent,
     TextLlmEvent,
+    ThinkingLlmEvent,
     ToolResultLlmEvent,
     ToolUseDeltaLlmEvent,
     ToolUseEndLlmEvent,
@@ -742,3 +746,244 @@ class TestStreamingIteratorToolDeltas:
         assert len(starts) == 1
         assert starts[0].tool_id == "toolu_AB"
         assert starts[0].tool_name == "Read"
+
+
+# ---------------------------------------------------------------------------
+# TestThinking — Slice 4 of #1101: thinking-block lifecycle
+# SC-4, SC-5, SC-6
+# ---------------------------------------------------------------------------
+
+_FIXTURE_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "data"
+    / "cli_traces"
+    / "thinking_high_effort.ndjson"
+)
+
+
+def _collect_all(parser: CliStreamingParser, line: str) -> list:
+    """Feed one line into the parser and drain all pending events."""
+    pending = parser.parse_line(line)
+    events: list = []
+    while pending:
+        events.append(pending.popleft())
+    return events
+
+
+class TestThinking:
+    """CliStreamingParser thinking-block lifecycle (Slice 4, #1101)."""
+
+    def test_thinking_delta_emits_thinking_llm_event(self) -> None:
+        # Arrange — load real captured fixture; count synthetic expectations from file
+        fixture_lines = _FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
+        parser = CliStreamingParser(pool_id="pool-thinking")
+
+        # Act — feed fixture line-by-line, skip comment + blank lines
+        all_events: list = []
+        expected_thinking_texts: list[str] = []
+        for raw in fixture_lines:
+            if raw.startswith("#") or not raw.strip():
+                continue
+            # Pre-scan to count expected thinking_delta texts for assertion
+            try:
+                data = json.loads(raw)
+                ev = data.get("event", {})
+                delta = ev.get("delta", {})
+                if (
+                    ev.get("type") == "content_block_delta"
+                    and delta.get("type") == "thinking_delta"
+                ):
+                    expected_thinking_texts.append(delta["thinking"])
+            except (json.JSONDecodeError, KeyError):
+                pass
+            all_events.extend(_collect_all(parser, raw))
+
+        # Assert — fixture has exactly 3 thinking_delta lines
+        thinking_events = [e for e in all_events if isinstance(e, ThinkingLlmEvent)]
+        assert len(expected_thinking_texts) == 3, (
+            "fixture sanity: expected 3 thinking_delta lines"
+        )
+        n = len(thinking_events)
+        assert n == 3, f"expected 3 ThinkingLlmEvent, got {n}: {thinking_events!r}"
+        # Concatenated thinking text must match fixture deltas
+        assert "".join(e.text for e in thinking_events) == "".join(
+            expected_thinking_texts
+        )
+
+    def test_signature_delta_ignored(self) -> None:
+        # Arrange — single synthetic line with signature_delta
+        parser = CliStreamingParser(pool_id="pool-thinking")
+        line = json.dumps(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "signature_delta", "signature": "sig_xxx"},
+                },
+            }
+        )
+
+        # Act
+        pending = parser.parse_line(line)
+
+        # Assert — no events produced; pending queue empty
+        assert len(pending) == 0, f"expected no events, got: {list(pending)!r}"
+
+    def test_content_block_stop_closes_thinking_state(self) -> None:
+        # Arrange — open thinking block, emit one delta, then stop
+        parser = CliStreamingParser(pool_id="pool-thinking")
+        cb_start = json.dumps(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {
+                        "type": "thinking",
+                        "thinking": "",
+                        "signature": "",
+                    },
+                },
+            }
+        )
+        thinking_delta = json.dumps(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "thinking_delta", "thinking": "some thought"},
+                },
+            }
+        )
+        cb_stop = json.dumps(
+            {
+                "type": "stream_event",
+                "event": {"type": "content_block_stop", "index": 0},
+            }
+        )
+
+        # Act
+        parser.parse_line(cb_start)
+        # Sanity: index is set after start
+        assert parser._open_thinking_index == 0
+        parser.parse_line(thinking_delta)
+        parser.parse_line(cb_stop)
+
+        # Assert — thinking index cleared after stop
+        assert parser._open_thinking_index is None
+
+    def test_thinking_interleaved_with_tool_use(self) -> None:
+        # Arrange — thinking idx=0, tool_use idx=1; indices must not cross-contaminate
+        parser = CliStreamingParser(pool_id="pool-thinking")
+        lines = [
+            # Open thinking block
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {
+                            "type": "thinking",
+                            "thinking": "",
+                            "signature": "",
+                        },
+                    },
+                }
+            ),
+            # Two thinking deltas
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {
+                            "type": "thinking_delta",
+                            "thinking": "first thought",
+                        },
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {
+                            "type": "thinking_delta",
+                            "thinking": " second thought",
+                        },
+                    },
+                }
+            ),
+            # Close thinking block
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {"type": "content_block_stop", "index": 0},
+                }
+            ),
+            # Open tool_use block
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_start",
+                        "index": 1,
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": "tool_xyz",
+                            "name": "some_tool",
+                            "input": {},
+                        },
+                    },
+                }
+            ),
+            # One input_json_delta for tool
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {
+                        "type": "content_block_delta",
+                        "index": 1,
+                        "delta": {"type": "input_json_delta", "partial_json": "{}"},
+                    },
+                }
+            ),
+            # Close tool block
+            json.dumps(
+                {
+                    "type": "stream_event",
+                    "event": {"type": "content_block_stop", "index": 1},
+                }
+            ),
+        ]
+
+        # Act
+        all_events: list = []
+        for line in lines:
+            all_events.extend(_collect_all(parser, line))
+
+        # Assert — 2×Thinking, 1×ToolUseStart, 1×ToolUseDelta, 1×ToolUseEnd
+        assert len(all_events) == 5, (
+            f"expected 5 events, got {len(all_events)}: {all_events!r}"
+        )
+        assert isinstance(all_events[0], ThinkingLlmEvent)
+        assert all_events[0].text == "first thought"
+        assert isinstance(all_events[1], ThinkingLlmEvent)
+        assert all_events[1].text == " second thought"
+        assert isinstance(all_events[2], ToolUseLlmEvent)
+        assert all_events[2].tool_id == "tool_xyz"
+        assert all_events[2].tool_name == "some_tool"
+        assert isinstance(all_events[3], ToolUseDeltaLlmEvent)
+        assert all_events[3].tool_id == "tool_xyz"
+        assert all_events[3].partial_json == "{}"
+        assert isinstance(all_events[4], ToolUseEndLlmEvent)
+        assert all_events[4].tool_id == "tool_xyz"
+        # Thinking state fully cleared; tool index not contaminated
+        assert parser._open_thinking_index is None
+        assert 0 not in parser._open_tool_blocks

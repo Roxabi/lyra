@@ -33,6 +33,9 @@ SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT = 1
 SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT = 1
 SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT = 1
 SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT = 1
+SCHEMA_VERSION_REASONING_START_RENDER_EVENT = 1
+SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT = 1
+SCHEMA_VERSION_REASONING_END_RENDER_EVENT = 1
 
 
 @dataclass(frozen=True)
@@ -272,6 +275,31 @@ class ToolCallResultRenderEvent:
     schema_version: int = SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT
 
 
+@dataclass(frozen=True)
+class ReasoningStartRenderEvent:
+    """First Reasoning event in a thinking block (Slice 4 of #1096)."""
+
+    message_id: str
+    schema_version: int = SCHEMA_VERSION_REASONING_START_RENDER_EVENT
+
+
+@dataclass(frozen=True)
+class ReasoningDeltaRenderEvent:
+    """One chunk of reasoning text (Slice 4 of #1096)."""
+
+    message_id: str
+    delta: str
+    schema_version: int = SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT
+
+
+@dataclass(frozen=True)
+class ReasoningEndRenderEvent:
+    """Final Reasoning event closing a thinking block (Slice 4 of #1096)."""
+
+    message_id: str
+    schema_version: int = SCHEMA_VERSION_REASONING_END_RENDER_EVENT
+
+
 # Union type exported for type annotations and ``isinstance`` checks.
 RenderEvent = (
     TextRenderEvent
@@ -287,14 +315,23 @@ RenderEvent = (
     | ToolCallArgsRenderEvent
     | ToolCallEndRenderEvent
     | ToolCallResultRenderEvent
+    | ReasoningStartRenderEvent
+    | ReasoningDeltaRenderEvent
+    | ReasoningEndRenderEvent
 )
 
 __all__ = [
     "FileEditSummary",
+    "ReasoningDeltaRenderEvent",
+    "ReasoningEndRenderEvent",
+    "ReasoningStartRenderEvent",
     "RenderEvent",
     "RunErrorRenderEvent",
     "RunFinishedRenderEvent",
     "RunStartedRenderEvent",
+    "SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT",
+    "SCHEMA_VERSION_REASONING_END_RENDER_EVENT",
+    "SCHEMA_VERSION_REASONING_START_RENDER_EVENT",
     "SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT",
     "SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT",
     "SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT",

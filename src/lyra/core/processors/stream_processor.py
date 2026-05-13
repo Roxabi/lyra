@@ -26,6 +26,7 @@ import logging
 import time
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator
 from typing import assert_never
+from uuid import uuid4
 
 from lyra.core.messaging.error_extractor import _extract_worker_error
 from lyra.core.messaging.events import (
@@ -160,6 +161,11 @@ class StreamProcessor:
         # ``_sanitize_tool_result_content`` boundary scrubber can decide whether
         # to redact based on tool name (Read/Bash/Edit/Write are sensitive).
         self._tool_id_to_name: dict[str, str] = {}
+
+        # --- Slice 2 (#1099) v2 Text triplet state ---
+        # Tracks the message_id of the currently open text block (TextStart).
+        # None when no text block is open. Set on TextStart, cleared on TextEnd.
+        self._open_text_block_id: str | None = None
 
         # --- reuse guard ---
         self._consumed: bool = False
@@ -379,6 +385,11 @@ class StreamProcessor:
                 "Create a new instance per turn."
             )
         self._consumed = True
+
+    @staticmethod
+    def _mint_message_id() -> str:
+        """Per-block message id for the v2 Text triplet (Slice 2, #1099)."""
+        return f"text-{uuid4().hex[:12]}"
 
     def _accumulate_web(
         self, event: ToolUseLlmEvent, *, show_key: str, input_key: str

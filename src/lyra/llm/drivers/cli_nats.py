@@ -231,7 +231,7 @@ class CliNatsDriver(NatsDriverBase):
             )
             return
         task = loop.create_task(
-            self._turn_store.set_cli_session(lyra_sid, cli_sid),  # type: ignore[union-attr] — POLICY:defensive-narrow
+            self._turn_store.set_cli_session(lyra_sid, cli_sid),  # type: ignore[union-attr] — DEBT:defensive-narrow-payloads
             name=f"set_cli_session:{lyra_sid[:8]}",
         )
         task.add_done_callback(_log_task_exc)

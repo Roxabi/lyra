@@ -30,7 +30,7 @@ __all__ = ["mint_capped", "refresh_loop"]
 log = logging.getLogger(__name__)
 
 
-async def mint_capped(  # noqa: PLR0913 — POLICY:wiring
+async def mint_capped(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     app_id: str,
     install_id: str,
     *,
@@ -65,7 +65,7 @@ async def mint_capped(  # noqa: PLR0913 — POLICY:wiring
         return it
 
 
-async def refresh_loop(  # noqa: PLR0913 — POLICY:wiring
+async def refresh_loop(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     *,
     app_id: str,
     install_id: str,
@@ -90,9 +90,7 @@ async def refresh_loop(  # noqa: PLR0913 — POLICY:wiring
         now = datetime.now(tz=timezone.utc)
         cached = cache.read()
         if cached is None or cached.is_near_expiry(now, near_expiry_leeway_s):
-            log.debug(
-                "refresh_loop: token near expiry or absent — minting proactively"
-            )
+            log.debug("refresh_loop: token near expiry or absent — minting proactively")
             try:
                 await mint_capped(
                     app_id,
@@ -104,5 +102,5 @@ async def refresh_loop(  # noqa: PLR0913 — POLICY:wiring
                     rate_limiter=rate_limiter,
                     leeway_s=near_expiry_leeway_s,
                 )
-            except Exception as exc:  # noqa: BLE001 — POLICY:boundary — resilient loop: mint_capped raises MintError (which already wraps network errors, non-201 responses, and parse failures); loop must survive and retry on next interval
+            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient loop: mint_capped raises MintError (which already wraps network errors, non-201 responses, and parse failures); loop must survive and retry on next interval
                 log.warning("refresh_loop: mint failed: %s", exc)

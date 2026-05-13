@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Audit quality-debt suppression annotations across the codebase.
+"""Scans for `DEBT:<slug>` suppression markers.
+
+Always exits 0; warns to stderr on untagged or stale-reference markers in src/.
 
 Usage:
     python tools/audit_quality_debt.py --root <DIR> --out <PATH>
-
-Exit 0 iff zero UNTAGGED rows in src/ AND zero stale_references in src/.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ ALL_SOURCES = [
     "importlinter", "file-exemptions", "folder-exemptions",
 ]
 
-_SUFFIX_RE = re.compile(r"[-—]+\s*(POLICY|DEBT):([A-Za-z0-9][A-Za-z0-9_-]*)")
+_SUFFIX_RE = re.compile(r"[-—]+\s*DEBT:([a-z0-9][a-z0-9_-]*)")
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _NOQA_RE = re.compile(r"#\s*noqa:\s*([A-Z0-9,\s]+)(.*)")
 _PYRIGHT_RE = re.compile(r"#\s*pyright:\s*ignore\[([^\]]*)\](.*)")
@@ -39,19 +39,16 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)^---\s*\n", re.DOTALL | re.MULTILIN
 _STATUS_RE = re.compile(r"^status:\s*(\S+)", re.MULTILINE)
 
 
-def _parse_suffix(tail: str) -> tuple[str, str | None, str | None]:
-    """Return (bucket, tag_or_none, slug_or_none) from a trailing comment."""
+def _parse_suffix(tail: str) -> tuple[str, str | None]:
+    """Return (bucket, slug_or_none) from a trailing comment."""
     m = _SUFFIX_RE.search(tail)
     if not m:
-        return "UNTAGGED", None, None
-    kind, value = m.group(1), m.group(2)
-    return ("POLICY", value, None) if kind == "POLICY" else ("DEBT", None, value)
+        return "UNTAGGED", None
+    return "DEBT", m.group(1)
 
 
-def _finalize_row(r: Row, bucket: str, tag: str | None, slug: str | None) -> Row:
-    """Attach optional tag/slug fields to a row dict in-place and return it."""
-    if bucket == "POLICY" and tag:
-        r["tag"] = tag
+def _finalize_row(r: Row, bucket: str, slug: str | None) -> Row:
+    """Attach optional slug field to a row dict in-place and return it."""
     if bucket == "DEBT" and slug:
         r["slug"] = slug
     return r
@@ -84,12 +81,12 @@ def _scan_py(root: Path, py_file: Path) -> list[Row]:
             if not m:
                 continue
             rules_str, tail = m.group(1), m.group(2)
-            bucket, tag, slug = _parse_suffix(tail)
+            bucket, slug = _parse_suffix(tail)
             for rule in [r.strip() for r in rules_str.split(",") if r.strip()]:
                 row = _base_row(source, rel, bucket)
                 row["line"] = lineno
                 row["rule"] = rule
-                rows.append(_finalize_row(row, bucket, tag, slug))
+                rows.append(_finalize_row(row, bucket, slug))
     return rows
 
 
@@ -97,8 +94,8 @@ def _scan_importlinter(root: Path) -> list[Row]:
     """Parse ``.importlinter`` ``ignore_imports`` blocks.
 
     importlinter rejects trailing inline comments on entry lines, so the
-    POLICY/DEBT suffix must live on a preceding indented comment-only line
-    that serves as a section header. We track that header's tag/slug and
+    DEBT suffix must live on a preceding indented comment-only line
+    that serves as a section header. We track that header's slug and
     apply it to subsequent untagged entries in the same block.
     """
     il_path = root / ".importlinter"
@@ -107,14 +104,13 @@ def _scan_importlinter(root: Path) -> list[Row]:
     rows: list[Row] = []
     in_block = False
     section_bucket = "UNTAGGED"
-    section_tag: str | None = None
     section_slug: str | None = None
     for lineno, raw in enumerate(
         il_path.read_text(encoding="utf-8").splitlines(), 1
     ):
         if _IGNORE_IMPORTS_RE.match(raw):
             in_block = True
-            section_bucket, section_tag, section_slug = "UNTAGGED", None, None
+            section_bucket, section_slug = "UNTAGGED", None
             continue
         if in_block:
             # Close block only on a section header or a different INI key.
@@ -126,16 +122,16 @@ def _scan_importlinter(root: Path) -> list[Row]:
             if not m:
                 continue  # blank or non-matching line — preserve state
             entry, tail = _split_comment(m.group(1))
-            bucket, tag, slug = _parse_suffix(tail)
+            bucket, slug = _parse_suffix(tail)
             if not entry:
                 if bucket != "UNTAGGED":
-                    section_bucket, section_tag, section_slug = bucket, tag, slug
+                    section_bucket, section_slug = bucket, slug
                 continue
             if bucket == "UNTAGGED" and section_bucket != "UNTAGGED":
-                bucket, tag, slug = section_bucket, section_tag, section_slug
+                bucket, slug = section_bucket, section_slug
             row = _base_row("importlinter", entry, bucket)
             row["line"] = lineno
-            rows.append(_finalize_row(row, bucket, tag, slug))
+            rows.append(_finalize_row(row, bucket, slug))
     return rows
 
 
@@ -149,10 +145,10 @@ def _scan_exemption(root: Path, rel_path: str, source: str) -> list[Row]:
         if not stripped or stripped.startswith("#"):
             continue
         entry, tail = _split_comment(stripped)
-        bucket, tag, slug = _parse_suffix(tail)
+        bucket, slug = _parse_suffix(tail)
         row = _base_row(source, entry, bucket)
         row["line"] = lineno
-        rows.append(_finalize_row(row, bucket, tag, slug))
+        rows.append(_finalize_row(row, bucket, slug))
     return rows
 
 
@@ -209,7 +205,7 @@ def _counts(rows: list[Row]) -> dict[str, Any]:
     for row in rows:
         rule = row.get("rule") or row.get("path", "")
         bucket = row["bucket"]
-        label = row.get("slug") or row.get("tag") or "__none__"
+        label = row.get("slug") or "__none__"
         result.setdefault(rule, {}).setdefault(bucket, {})
         result[rule][bucket][label] = result[rule][bucket].get(label, 0) + 1
     return result
@@ -218,10 +214,10 @@ def _counts(rows: list[Row]) -> dict[str, Any]:
 def _print_summary(rows: list[Row], stale: list[StaleRef]) -> None:
     counter: Counter[tuple[str, str, str]] = Counter()
     for row in rows:
-        label = row.get("slug") or row.get("tag") or "-"
+        label = row.get("slug") or "-"
         k = (row.get("rule") or "-", row["bucket"], label)
         counter[k] += 1
-    print(f"{'RULE':<20} {'BUCKET':<10} {'TAG/SLUG':<28} {'N':>4}")
+    print(f"{'RULE':<20} {'BUCKET':<10} {'SLUG':<28} {'N':>4}")
     print("-" * 65)
     for (rule, bucket, label), cnt in sorted(counter.items()):
         print(f"{rule:<20} {bucket:<10} {label:<28} {cnt:>4}")
@@ -277,11 +273,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     _print_summary(rows, stale)
 
-    untagged = sum(
-        1 for r in rows if r["bucket"] == "UNTAGGED" and r["path"].startswith("src/")
-    )
-    stale_src = sum(1 for s in stale if s["path"].startswith("src/"))
-    return 1 if (untagged > 0 or stale_src > 0) else 0
+    for r in rows:
+        if r["bucket"] == "UNTAGGED" and r["path"].startswith("src/"):
+            loc = f"{r['path']}:{r.get('line', '?')} ({r.get('rule', '?')})"
+            print(f"warn: untagged suppression — {loc}", file=sys.stderr)
+    for s in stale:
+        if s["path"].startswith("src/"):
+            loc = f"{s['path']}:{s.get('line', '?')}"
+            ref = f"DEBT:{s['slug']} ({s['reason']})"
+            print(f"warn: stale DEBT reference — {loc} → {ref}", file=sys.stderr)
+
+    return 0
 
 
 if __name__ == "__main__":

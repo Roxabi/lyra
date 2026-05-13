@@ -27,9 +27,9 @@ from ..messaging.messages import MessageManager
 from ..pool import Pool
 from ..session_lifecycle import MODEL_CONTEXT_TOKENS, SessionManager
 from .agent_commands import CommandReloadManager
-from .agent_config import Agent  # noqa: F401 — POLICY:re-export
+from .agent_config import Agent  # noqa: F401 — DEBT:re-export-init
 from .agent_db_loader import (
-    agent_row_to_config as agent_row_to_config,  # noqa: F401 — POLICY:re-export
+    agent_row_to_config as agent_row_to_config,  # noqa: F401 — DEBT:re-export-init
 )
 
 log = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class AgentBase(ABC, SessionManager):
     on next message.
     """
 
-    def __init__(  # noqa: PLR0913 — POLICY:wiring
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         config: Agent,
         agents_dir: Path | None = None,
@@ -121,7 +121,7 @@ class AgentBase(ABC, SessionManager):
             return
         try:
             row = self._agent_store.get(self.config.name)
-        except Exception:  # noqa: BLE001 — POLICY:boundary
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
             log.debug("agent store unavailable — keeping cached config", exc_info=True)
             return  # DB unavailable — keep cached config
         if row is None or row.updated_at == self._last_db_updated_at:
@@ -142,7 +142,7 @@ class AgentBase(ABC, SessionManager):
                 self.config = new_config
                 self._rebuild_command_router()
             self._last_db_updated_at = row.updated_at
-        except Exception as exc:  # noqa: BLE001 — POLICY:boundary
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
             log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 
     def _maybe_reload_plugins(self) -> None:

@@ -143,7 +143,7 @@ class SessionManager:
                         continue
                     if concept.get("confidence", 0) >= 0.7:
                         await self._memory.upsert_concept(snap, concept)
-        except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
+        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
             log.warning(
                 "concept extraction failed for session %s",
                 snap.session_id,
@@ -179,7 +179,7 @@ class SessionManager:
                         )
                         continue
                     await self._memory.upsert_preference(snap, pref)
-        except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
+        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
             log.warning(
                 "preference extraction failed for session %s",
                 snap.session_id,

@@ -48,14 +48,14 @@ def build_streaming_capture(
         finally:
             _aclose = getattr(result_iter, "aclose", None)
             if callable(_aclose):
-                await _aclose()  # type: ignore[misc] — POLICY:defensive-narrow
+                await _aclose()  # type: ignore[misc] — DEBT:defensive-narrow-payloads
             if stream_done_event is not None:
-                stream_done_event.set()  # type: ignore[misc] — POLICY:defensive-narrow
+                stream_done_event.set()  # type: ignore[misc] — DEBT:defensive-narrow-payloads
 
     return _capture()
 
 
-def build_streaming_turn_logger(  # noqa: PLR0913 — POLICY:wiring — internal helper, params bundled for streaming context
+def build_streaming_turn_logger(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — internal helper, params bundled for streaming context
     pool: Pool,
     result_iter_for_sid: collections.abc.AsyncIterator[RenderEvent],
     original_msg: InboundMessage,
@@ -108,12 +108,12 @@ async def run_streaming_turn_post(
     """Run processor post-hook after streaming is fully consumed (#372)."""
     if processor is None or stream_done_event is None:
         return
-    await stream_done_event.wait()  # type: ignore[misc] — POLICY:defensive-narrow
+    await stream_done_event.wait()  # type: ignore[misc] — DEBT:defensive-narrow-payloads
     streamed = Response(content="".join(content_parts))
     try:
         # processor.post is a coroutine
         import asyncio
 
-        await asyncio.create_task(processor.post(original_msg, streamed))  # type: ignore[misc] — POLICY:defensive-narrow
-    except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
+        await asyncio.create_task(processor.post(original_msg, streamed))  # type: ignore[misc] — DEBT:defensive-narrow-payloads
+    except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
         log.warning("Processor post() failed (streaming)", exc_info=True)

@@ -23,7 +23,7 @@ import tomllib
 import typer
 
 from lyra.cli_agent import (
-    agent_app,  # noqa: F401 — POLICY:re-export — re-exported for tests
+    agent_app,  # noqa: F401 — DEBT:re-export-init — re-exported for tests
 )
 from lyra.cli_bot import bot_app
 from lyra.cli_ops import ops_app
@@ -152,7 +152,7 @@ def _version_callback(value: bool) -> None:
 @lyra_app.callback(invoke_without_command=True)
 def _root_callback(
     ctx: typer.Context,
-    version: bool = typer.Option(  # noqa: B008 — POLICY:typer-default
+    version: bool = typer.Option(  # noqa: B008 — DEBT:typer-default-option
         False,
         "--version",
         "-V",

@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-rebaseline quality-debt-classify
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -323,14 +323,6 @@ format:
 quality-debt-report:  ## audit suppression annotations → artifacts/quality-debt-report.json
 	uv run python tools/audit_quality_debt.py --root . --out artifacts/quality-debt-report.json
 
-quality-debt-rebaseline:  ## re-audit and regenerate tools/quality_debt_baseline.json (sets cutover_date = today+7d)
-	# || true is intentional: audit exits non-zero when UNTAGGED rows or stale_references exist in src/,
-	# but always writes the report first. The rebaseline script reads the report, not the exit code.
-	# Same pattern as tools/check_quality_debt_ratchet.sh (inline audit path, lines 58-64).
-	uv run python tools/audit_quality_debt.py --root . --out artifacts/quality-debt-report.json || true
-	uv run python tools/rebaseline_quality_debt.py \
-		--report artifacts/quality-debt-report.json \
-		--baseline tools/quality_debt_baseline.json
 
 quality-debt-classify:  ## dry-run classification of untagged debt entries
 	uv run python tools/classify_quality_debt.py --dry-run

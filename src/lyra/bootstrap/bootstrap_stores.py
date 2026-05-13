@@ -63,7 +63,7 @@ def _has_sentinel(db_path: Path) -> bool:
 _IDENT_RE = __import__("re").compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
-def _atomic_table_copy(  # noqa: C901 — POLICY:migration-sequence — sequential migration steps
+def _atomic_table_copy(  # noqa: C901 — DEBT:migration-sequence-bootstrap — sequential migration steps
     src_path: Path,
     dst_path: Path,
     tables: tuple[str, ...],

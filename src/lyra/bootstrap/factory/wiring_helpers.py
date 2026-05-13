@@ -244,7 +244,7 @@ async def _init_voice_services(
     )
 
 
-def _build_hub(  # noqa: PLR0913 — POLICY:wiring
+def _build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     raw_config: dict,
     bundle: BotAuthBundle,
     voice: VoiceBundle,
@@ -333,7 +333,7 @@ async def _init_clipool(
     )
 
 
-def _register_agents(  # noqa: PLR0913 — POLICY:wiring
+def _register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     hub: Hub,
     bundle: BotAuthBundle,
     voice: VoiceBundle,

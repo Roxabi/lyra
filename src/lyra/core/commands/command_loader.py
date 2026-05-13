@@ -111,7 +111,7 @@ class CommandLoader:
             try:
                 with resolved_toml.open("rb") as f:
                     data = tomllib.load(f)
-            except Exception:  # noqa: BLE001 — POLICY:boundary — resilient: skip unreadable plugin.toml
+            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: skip unreadable plugin.toml
                 log.debug("Skipping malformed plugin.toml in %s", subdir)
                 continue
             try:

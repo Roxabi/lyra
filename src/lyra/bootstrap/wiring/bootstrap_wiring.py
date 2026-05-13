@@ -34,7 +34,7 @@ _DEFAULT_VAULT_DIR = os.path.expanduser("~/.lyra")
 log = logging.getLogger(__name__)
 
 
-async def wire_telegram_adapters(  # noqa: PLR0913 — POLICY:wiring — wiring requires all deps
+async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — wiring requires all deps
     hub: Hub,
     tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]],
     bot_agent_map: dict[tuple[str, str], str],
@@ -107,7 +107,7 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — POLICY:wiring — wiring 
     return adapters, dispatchers
 
 
-async def wire_discord_adapters(  # noqa: PLR0913, C901 — POLICY:wiring — wiring requires all deps
+async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstrap-deps — wiring requires all deps
     hub: Hub,
     dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]],
     bot_agent_map: dict[tuple[str, str], str],
@@ -227,7 +227,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — POLICY:wiring — wi
     return adapters, dispatchers, thread_store
 
 
-def _build_bot_auths(  # noqa: PLR0913 — POLICY:wiring
+def _build_bot_auths(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     raw_config: dict,
     tg_multi_cfg: TelegramMultiConfig,
     dc_multi_cfg: DiscordMultiConfig,

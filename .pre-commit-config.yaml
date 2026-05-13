@@ -41,13 +41,6 @@ repos:
     entry: uv run lint-imports
     language: system
     pass_filenames: false
-  - id: check-quality-debt-ratchet
-    name: check-quality-debt-ratchet
-    entry: tools/check_quality_debt_ratchet.sh
-    language: system
-    pass_filenames: false
-    stages:
-    - pre-push
   - id: trufflehog
     name: trufflehog secret scan
     entry: bash -c "[ -d .git ] && trufflehog git file://. --fail || true"

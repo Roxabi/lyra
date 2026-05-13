@@ -46,7 +46,10 @@ from lyra.core.messaging.render_events import (
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
     SilentCounts,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
     TextRenderEvent,
+    TextStartRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallResultRenderEvent,
@@ -189,10 +192,16 @@ class StreamProcessor:
         Yields
         ------
         RenderEvent
-            ``TextRenderEvent(is_final=False)`` is emitted for EVERY text chunk
-            as it arrives, enabling real-time streaming to adapters (1 s debounce).
-            When ``show_intermediate=True``, the per-segment buffer is cleared on
-            each tool call so the tool snapshot does not overwrite streamed text.
+            **v2 Text triplet (Slice 2, #1099):** for each contiguous text block,
+            emits ``TextStartRenderEvent`` (once, on first chunk), then one
+            ``TextDeltaRenderEvent`` per chunk, then ``TextEndRenderEvent`` at the
+            block boundary (ToolUse, ResultLlmEvent, truncation, or exception).
+            Interleaved text→tool→text sequences produce multiple bracketed blocks
+            each with an independent ``message_id``.
+
+            **v1 (parity, unchanged):** ``TextRenderEvent(is_final=False)`` is
+            emitted for EVERY text chunk as it arrives when ``show_intermediate``
+            is ``True``, enabling real-time streaming to adapters (1 s debounce).
             ``ToolSummaryRenderEvent`` mid-turn (throttled) and at turn end
             (unconditional), followed by ``TextRenderEvent(is_final=True)`` at
             turn end (using the full ``_total_text`` accumulator).
@@ -206,6 +215,15 @@ class StreamProcessor:
                 if isinstance(event, TextLlmEvent):
                     self._pending_text += event.text
                     self._total_text += event.text
+                    # ───── Slice 2 (#1099) v2 Text triplet ─────
+                    if self._open_text_block_id is None:
+                        self._open_text_block_id = self._mint_message_id()
+                        yield TextStartRenderEvent(message_id=self._open_text_block_id)
+                    yield TextDeltaRenderEvent(
+                        message_id=self._open_text_block_id,
+                        delta=event.text,
+                    )
+                    # ───── existing v1 emission (unchanged) ─────
                     # Stream each chunk progressively so adapters can
                     # edit the placeholder in real time (1 s debounce).
                     # Gated by show_intermediate so show_intermediate=False
@@ -214,6 +232,10 @@ class StreamProcessor:
                         yield TextRenderEvent(text=event.text, is_final=False)
 
                 elif isinstance(event, ToolUseLlmEvent):
+                    # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
+                    if self._open_text_block_id is not None:
+                        yield TextEndRenderEvent(message_id=self._open_text_block_id)
+                        self._open_text_block_id = None
                     async for render_event in self._handle_tool_event(event):
                         yield render_event
 
@@ -236,6 +258,10 @@ class StreamProcessor:
 
                 elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
                     _result_received = True
+                    # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
+                    if self._open_text_block_id is not None:
+                        yield TextEndRenderEvent(message_id=self._open_text_block_id)
+                        self._open_text_block_id = None
                     # Synthesize ToolCallEnd for any open tool_call_ids that
                     # never received a content_block_stop (truncated stream,
                     # partial tool call). Loud WARN log per orphan.
@@ -274,6 +300,10 @@ class StreamProcessor:
 
             # Stream ended without ResultLlmEvent (truncation or upstream error)
             if not _result_received:
+                # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
+                if self._open_text_block_id is not None:
+                    yield TextEndRenderEvent(message_id=self._open_text_block_id)
+                    self._open_text_block_id = None
                 if self._has_any_tool_events():
                     yield self._emit_snapshot(is_complete=True)
                 if self._total_text:
@@ -299,6 +329,10 @@ class StreamProcessor:
             # carry file paths, internal hostnames, auth-token fragments from
             # httpx/aiohttp errors, DB connection strings, etc. RunErrorRenderEvent
             # is published on the NATS bus where any subscriber can read it.
+            # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
+            if self._open_text_block_id is not None:
+                yield TextEndRenderEvent(message_id=self._open_text_block_id)
+                self._open_text_block_id = None
             yield RunErrorRenderEvent(
                 run_id=run_id, message=type(exc).__name__, code=None
             )

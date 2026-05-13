@@ -97,7 +97,7 @@ async def _run_smoke(
 ) -> None:
     """Execute the round-trip and exit with 0 (pass) or 1 (fail)."""
     try:
-        nc = await nats_connect(nats_url)
+        nc = await nats_connect(nats_url, identity_name="hub")
     except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: NATS connect errors span auth, TLS, DNS, and OS-level failures
         typer.echo(f"FAIL: cannot connect to NATS at {nats_url!r} — {exc}", err=True)
         raise typer.Exit(1)

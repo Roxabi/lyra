@@ -1,0 +1,52 @@
+---
+title: quality-debt — dismantle ratchet & baseline, drop POLICY grammar
+issue: 1175
+status: approved
+tier: F-lite
+date: 2026-05-13
+---
+
+## Problem
+
+PR #1164 (issue #1162) shipped a POLICY/DEBT tag grammar plus a ratchet gate intended to control the inflow of `noqa` / `pyright: ignore` / `type: ignore` markers and the imports waived in `.importlinter`. After a few days in production we observed that the system has the opposite effect from its design goal.
+
+The grammar formalised exception annotation as a first-class citizen. Adding `# noqa: PLR0913 — POLICY:wiring` is now a 10-second action with a documented vocabulary; refactoring the underlying smell is hours of work. The POLICY table reads as a menu of pre-approved excuses — a developer matches their case to an existing tag and ships. The ratchet only prevents growth of the stock, accepting today's 196 POLICY + 87 DEBT sites as a permanent floor. The cutover hard-mode plus pre-push and CI gates add coercion that fights the developer without producing actual code-quality improvement.
+
+The deeper diagnosis: ~80% of the current POLICY sites (74 `boundary` BLE001 broad-catches, 70 `wiring` PLR0913 bootstrap factories, 7 `migration-sequence`, 3 `module-level-patch`) are real code smells dressed up as legitimate patterns. The "POLICY vs DEBT" binary lies about the codebase state — POLICY entries are debt with a friendlier label.
+
+Decision: strip the coercive layer and keep the system as a pure observability layer feeding a future async debt-drain pipeline. Honest inventory, zero blocking. The drain pressure will come asynchronously from a separate system, not from in-tree gates.
+
+## Who
+
+- **Primary:** Lyra developers — currently fighting a ratchet that doesn't produce quality improvement, with a vocabulary that encourages exception-adding
+- **Secondary:** the future async drain pipeline (separate epic) — consumes `artifacts/debt/` as its work queue; this issue prepares that input format
+- **Secondary:** code reviewers — currently rubber-stamping `POLICY:*` tags as "legitimate", will instead see honest `DEBT:*` markers signalling real refactor surface
+
+## Constraints
+
+- No behavioural change to runtime code — purely tooling, annotation, and doc edits
+- Pre-push and CI must no longer fail on debt-related checks (the ratchet shell script, baseline JSON, and Lefthook/CI references all go)
+- `artifacts/debt/<slug>.md` files must keep the same schema (frontmatter + Pattern/Sites/Drain plan/Notes sections) so the future async pipeline can consume them without migration
+- All 196 ex-POLICY markers in `src/` must be rewritten to `DEBT:<slug>` form; each cluster gets one new `artifacts/debt/<slug>.md` entry with `status: open`
+- `tools/audit_quality_debt.py` must still produce `artifacts/quality-debt-report.json` for inspection and pipeline consumption — but it warns, never fails
+- Issue #1163 ("P2a drain pass") is superseded by the future async pipeline and must be closed as won't-fix referencing this issue
+
+## Out of Scope
+
+- Async debt-drain pipeline itself (separate future epic; this issue only delivers its input format)
+- Ruff `per-file-ignores` for genuine framework false positives (Typer `B008`, `__init__.py` `F401`, pyright Protocol narrowing) — tracked as a separate optional cleanup, not part of the debt system
+- Refactoring any actual debt sites — that is the future pipeline's job
+- Tagging in `tests/` or `packages/` — already out of scope from #1162 and remains so
+- Wave 4 #411 pyright unknown* drain — independent track
+- Generalisation to a `dev-core:quality-debt` skill — re-evaluate after this refactor stabilises
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single quality-tooling domain, no architectural unknowns. Most work is mechanical: delete files, simplify one Python audit script, rewrite ~196 inline annotations via a one-shot classifier, generate ~8 new registry stubs, rename and slim one doc.
+
+Signals observed:
+- ~10 files touched (tool deletions, audit script, Makefile, Lefthook config, CI workflow, docs rename, ~196 inline edits across `src/`, ~8 new `artifacts/debt/*.md`)
+- Single domain (quality tooling)
+- No new patterns or unknowns — pure subtraction plus reclassification
+- Issue size label: M (F-lite)
+- Complexity score: 4

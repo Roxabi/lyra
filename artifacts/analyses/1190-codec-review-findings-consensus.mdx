@@ -1,0 +1,101 @@
+---
+title: "PR #1190 codec review — long-term solutions for 4 remaining findings"
+issue: null
+pr: 1190
+status: consensus-reached
+date: 2026-05-14
+panel: architect, backend-dev, security-auditor
+confidence: high
+---
+
+## Problem
+
+PR #1190 (`fix(nats): codec assert_never + Text v2 triplet branches`) shipped a hotfix for a Slice 2 codec gap that crashed prod streaming, plus an `assert_never` exhaustiveness guard and a PR-template DoD section. Code review surfaced 8 findings; 4 high-confidence blockers/suggestions were auto-applied and pushed. 4 remain — all in `nitpick`/`suggestion(non-blocking)` territory, but each carries a long-term-direction question (apply now vs defer to the planned #1102 registry refactor vs skip permanently).
+
+## Panel
+
+| Agent | Focus |
+|---|---|
+| architect | architectural soundness, alignment with the #1102 codec-registry refactor, scope discipline |
+| backend-dev | Python implementation complexity, idiomatic patterns, maintenance burden |
+| security-auditor | wire-boundary resilience, defense-in-depth, partial-deploy attack surface |
+
+## Consensus ρ
+
+| # | Finding | Verdict | Vote |
+|---|---|---|---|
+| #4 | `decode()` error propagation — `TypeError` from `deserialize()` aborts whole stream | **defer-to-#1102** | 3-0 |
+| #6 | `encode()` `is_done` docstring doesn't mention Text v2 events | **apply-now** | 2-1* |
+| #7 | No runtime test for `assert_never` on non-`RenderEvent` | **apply-now** | 3-0 |
+| #8 | AAA-comment structure consistency in test file | **skip-permanently** | 3-0 |
+
+*Security-auditor abstained on #6 ("no security surface") rather than opposing — recorded as accepted dissent on relevance, not on direction.
+
+### Rationale per finding
+
+**#4 — defer-to-#1102 (unanimous).** The 16 decode branches each call `deserialize()`; wrapping each in `try/except (TypeError, ValueError, KeyError)` now would add ~50 lines of near-identical boilerplate that #1102's registry pattern will collapse into one centralised guard. The realistic threat is partial-deploy within-version type drift (not adversarial — internal authenticated NATS); the schema-version gate already handles cross-version drift. Stream-abort on a bad chunk is recoverable, logged at exception level, not silent data corruption. Backend-dev explicitly flagged that applying now would create code-review noise, git-blame churn, and incident-postmortem clutter for a refactor about to delete those exact lines.
+
+**#6 — apply-now (2-1, with abstention).** One-sentence doc addition. Zero risk, zero cost, permanently improves clarity. The docstring currently lists `is_done=True` cases (final `TextRenderEvent`, complete `ToolSummaryRenderEvent`, terminal Run lifecycle) but is silent on the 4 Text v2 events. A new reader has no signal that `TextStart/Delta/End/Chunk` always return `False`. Architect and backend-dev unanimous; security-auditor noted no security surface but did not dissent on the action.
+
+**#7 — apply-now (unanimous).** A single `pytest.raises` test on a non-`RenderEvent` input. The original Slice 2 incident was exactly this class of bug — encoder exhaustiveness gap reaching runtime. `assert_never` is a static typing guarantee; pyright config drift, stub regeneration, or accidental union widening can all silently suppress the check while leaving a live crash path. Static analysis is *not* part of the test harness and can lapse without notice. ~3 lines of permanent insurance. Orthogonal to #1102's planned registry-completeness test (registry completeness ≠ type exhaustiveness at the call site — both invariants warrant their own guard).
+
+**#8 — skip-permanently (unanimous).** Test file has 4 classes: 1 uses explicit `# Arrange / # Act / # Assert` comments (28 tests of code, 6 of comments per AAA class), 3 use terse style (the actual majority by test count). Refactoring 13 new tests to add AAA comments would produce a noisy diff with zero semantic change. The correct long-term direction is to *strip* the AAA ceremony from the outlier class during #1102's test pass, not propagate it forward. Terse is the established majority pattern.
+
+### Cross-finding architectural observations
+
+1. **#1102 scope discipline (architect).** Issue #1102 (Slice 5 cleanup) currently bundles: (a) v1 backward-compat removal, (b) `SCHEMA_VERSION_RENDER` floor bump, (c) `ToolSummaryRenderEvent` deletion, (d) codec registry pattern, (e) registry-completeness test, (f) hub→NATS→adapter integration test, (g) [now] decode error propagation guard from #4, (h) [now] strip AAA comments from `TestRenderEventCodecVersionCheck`. That is a god-slice. Recommend split:
+   - **#1102a** — codec registry structural refactor: registry pattern + completeness test + per-class try/except for #4 + nats_stream_decoder.py default-routing fix (see #3 below). Pure infra change, independently shippable.
+   - **#1102b** — hub→NATS→adapter outbound render-event integration test. Independently shippable, no blocking dependency on #1102a.
+   - **#1102** retains: v1 removal, schema floor bump, `ToolSummaryRenderEvent` deletion, coordinated deploy note. The original Slice 5 acceptance.
+
+2. **Don't proxy-fix #4 (backend-dev).** Wrapping `decode()` in a broad `pytest.raises` or `except Exception` shim as a stopgap for #4 would be *bidouillage* — masks stream-abort behaviour without fixing error propagation. Hold the line: surgical fix inside #1102a's registry refactor.
+
+3. **Pre-existing bug, low severity (security-auditor).** `src/lyra/adapters/nats/nats_stream_decoder.py:122` uses `chunk.get("event_type", "text")` — a missing `event_type` field silently routes to the text decoder. Not introduced by this PR. Inside an authenticated NATS boundary so low severity, but #1102a should make this an explicit `None → log.warning + break` path.
+
+## Trade-offs
+
+- **Defer #4:** accepts continued stream-abort risk on within-version type drift until #1102a ships. Mitigant: schema_version gate covers the common partial-deploy case; internal NATS authenticated boundary; failures are loud (logged at exception level), not silent.
+- **Apply #6, #7 now:** 4 lines of code total. Cost = trivial commit + re-review iteration on PR #1190.
+- **Skip #8:** accepts ongoing two-style coexistence in `test_render_event_codec.py` until #1102a's test refactor normalises toward terse.
+
+## Alternatives considered
+
+| ω | Proposed by | Rejected because |
+|---|---|---|
+| Apply #4 per-branch try/except now | hypothetical | 50 lines of repetition gets deleted in #1102a; creates 2-touch git-blame on every branch |
+| Skip #4 permanently | hypothetical | Stream-abort on bad chunk is a real operational hazard if it ever fires; the schema gate doesn't cover within-version type drift |
+| Apply #8 — add AAA comments to all 13 new tests | hypothetical | Annotation noise > body in tests <10 lines; majority of file is already terse; propagates ceremony in the wrong direction |
+| Apply #6 as part of #1102 docs pass | architect (rejected) | Docstring drift compounds; no benefit to waiting; the registry refactor won't auto-fix prose docs |
+| Defer #7 to #1102's registry-completeness test | hypothetical | Two orthogonal invariants — registry completeness ≠ type exhaustiveness at the call site; needs both |
+
+## Dissent
+
+Security-auditor noted "no security surface" on #6 and #8 — recorded as **abstention** on direct relevance, not opposition to the chosen action. Action items align with architect + backend-dev.
+
+## Implementation Notes
+
+For PR #1190 follow-up commit (still in `/fix` 1b1 walkthrough):
+1. **#6** — append one sentence to `encode()` docstring at `src/lyra/nats/render_event_codec.py:88-94`:
+   > "Text v2 lifecycle events (`TextStartRenderEvent`, `TextDeltaRenderEvent`, `TextEndRenderEvent`, `TextChunkRenderEvent`) always yield `is_done=False`."
+2. **#7** — add one test to `TestRenderEventCodecTextTriplet` (or a new tiny class) at `tests/nats/test_render_event_codec.py`:
+   ```python
+   def test_encode_rejects_non_render_event(self) -> None:
+       codec = NatsRenderEventCodec()
+       with pytest.raises(Exception):
+           codec.encode(object())  # pyright: ignore[reportArgumentType]
+   ```
+3. **#4 + #8** — no code change on this PR; trust the #1102 split.
+
+For #1102 follow-up (post-merge):
+- Split #1102 into #1102a (registry refactor + #4 guard + nats_stream_decoder default fix + AAA strip) and #1102b (integration test) per architect's blocking ξ.
+- Surface the `chunk.get("event_type", "text")` default-routing observation as an explicit acceptance item on #1102a.
+
+## Next
+
+Return to `/fix` Phase 5 walkthrough with these decisions:
+- #4: Defer (record issue created note in PR comment — already noted in #1102 body)
+- #6: Solution 1 (apply)
+- #7: Solution 1 (apply)
+- #8: Skip
+
+Then `/fix` Phase 6 → 7 → 8 (post Review Fixes Applied comment + apply `reviewed` label).

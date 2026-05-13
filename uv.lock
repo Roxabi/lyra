@@ -672,6 +672,8 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
+    { name = "roxabi-contracts", extra = ["testing"] },
+    { name = "roxabi-nats", extra = ["testing"] },
     { name = "ruff" },
 ]
 
@@ -707,6 +709,8 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "roxabi-contracts", extras = ["testing"], editable = "packages/roxabi-contracts" },
+    { name = "roxabi-nats", extras = ["testing"], editable = "packages/roxabi-nats" },
     { name = "ruff", specifier = ">=0.15.12" },
 ]
 

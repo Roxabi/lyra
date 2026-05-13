@@ -629,6 +629,6 @@ The gate script greps for these exact strings. Any change to the format requires
 
 ### Error code namespace
 
-All valid error codes and their `domain`, `retryable`, and `description` fields are documented in `packages/roxabi-contracts/docs/error-codes.md`, kept in sync with `KNOWN_CODES` in `packages/roxabi-contracts/src/roxabi_contracts/errors.py` via `packages/roxabi-contracts/scripts/check_codes_sync.py` (run in CI).
+All valid error codes and their `domain`, `retryable`, and `description` fields are documented in `packages/roxabi-contracts/docs/error-codes.md`. The Markdown is **auto-generated** from `KNOWN_CODES` in `packages/roxabi-contracts/src/roxabi_contracts/errors.py` via the `codes-sync` pre-commit hook (`scripts/check_codes_sync.py --write`). Edits to `errors.py` regenerate the doc table automatically on commit; CI verifies the two stay in lockstep.
 
 See also: ADR-066 (`docs/architecture/adr/066-unified-worker-error-envelope-nats-reply-contracts.mdx`), spec C7.

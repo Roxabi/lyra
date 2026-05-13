@@ -1,6 +1,8 @@
 # WorkerError code registry
 
-> Kept in sync with `roxabi_contracts.errors.KNOWN_CODES` via `scripts/check_codes_sync.py` (CI gate).
+> Auto-generated from `roxabi_contracts.errors.KNOWN_CODES`.
+> Do not edit by hand — run `uv run python packages/roxabi-contracts/scripts/check_codes_sync.py --write` to regenerate.
+> The pre-commit `codes-sync` hook regenerates this file automatically when `errors.py` changes.
 
 ## transport.*
 

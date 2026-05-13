@@ -1,18 +1,26 @@
-"""check_codes_sync.py — Verify KNOWN_CODES in errors.py matches error-codes.md.
+"""check_codes_sync.py — Sync KNOWN_CODES (Python) ↔ error-codes.md (docs).
+
+`KNOWN_CODES` in ``roxabi_contracts.errors`` is the single source of truth.
+``docs/error-codes.md`` is a generated, human-readable view of the same data.
 
 Usage (from repo root):
+    # Verify the MD matches KNOWN_CODES (default mode, CI gate):
     uv run python packages/roxabi-contracts/scripts/check_codes_sync.py
 
+    # Regenerate the MD from KNOWN_CODES (called by pre-commit hook):
+    uv run python packages/roxabi-contracts/scripts/check_codes_sync.py --write
+
 Exit codes:
-    0  — all codes in sync
-    1  — drift detected (set diff or field mismatch)
-    2  — prerequisite missing (errors.py or error-codes.md not yet authored)
+    0  — all codes in sync (check mode) OR file written (write mode)
+    1  — drift detected (set diff or field mismatch) (check mode only)
+    2  — prerequisite missing (errors.py not yet authored)
 
 Referenced by: packages/roxabi-contracts/docs/error-codes.md
 """
 
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -161,7 +169,7 @@ def _compare(  # noqa: C901
             )
 
         # retryable
-        py_retryable: bool = getattr(meta, "default_retryable", None)
+        py_retryable: bool | None = getattr(meta, "default_retryable", None)
         md_retryable_str: str = row["retryable"]
         md_retryable: bool = md_retryable_str == "true"
         if py_retryable is not None and py_retryable != md_retryable:
@@ -184,33 +192,60 @@ def _compare(  # noqa: C901
 
 
 # ---------------------------------------------------------------------------
+# Step 4 — render MD from Python (generator)
+# ---------------------------------------------------------------------------
+
+# ruff: noqa: E501 — preamble is rendered verbatim into Markdown; line length is irrelevant for users
+_PREAMBLE = """\
+# WorkerError code registry
+
+> Auto-generated from `roxabi_contracts.errors.KNOWN_CODES`.
+> Do not edit by hand — run `uv run python packages/roxabi-contracts/scripts/check_codes_sync.py --write` to regenerate.
+> The pre-commit `codes-sync` hook regenerates this file automatically when `errors.py` changes.
+"""
+
+_POSTAMBLE = "See ADR-066 for design rationale.\n"
+
+
+def _render_md(py_codes: dict[str, object]) -> str:
+    """Render error-codes.md content from KNOWN_CODES.
+
+    Domain order = first-seen in KNOWN_CODES iteration (preserves Python
+    insertion order). Codes within a domain follow insertion order too.
+    """
+    domains: dict[str, list[tuple[str, object]]] = {}
+    for code, meta in py_codes.items():
+        domain: str = getattr(meta, "domain", "")
+        domains.setdefault(domain, []).append((code, meta))
+
+    out: list[str] = [_PREAMBLE]
+    for domain, entries in domains.items():
+        out.append(f"## {domain}.*\n")
+        out.append("| code | retryable | description |")
+        out.append("|------|-----------|-------------|")
+        for code, meta in entries:
+            retryable_str = (
+                "true" if getattr(meta, "default_retryable", False) else "false"
+            )
+            description: str = getattr(meta, "description", "").strip()
+            out.append(f"| {code} | {retryable_str} | {description} |")
+        out.append("")  # trailing blank between domain sections
+    out.append(_POSTAMBLE)
+    return "\n".join(out).rstrip() + "\n"
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 
-def main() -> int:
-    py_codes = _load_python_codes()
+def _check_mode(py_codes: dict[str, object]) -> int:
     md_rows = _parse_md(_MD_PATH)
-
-    py_missing = py_codes is None
-    md_missing = md_rows is None
-
-    if py_missing or md_missing:
-        missing_sides = []
-        if py_missing:
-            missing_sides.append("roxabi_contracts.errors (T4 not yet landed)")
-        if md_missing:
-            missing_sides.append(f"{_MD_PATH} (T5 not yet landed)")
-        print("SKIP: prerequisite(s) not yet available:")
-        for side in missing_sides:
-            print(f"  - {side}")
+    if md_rows is None:
+        print(f"SKIP: prerequisite not yet available: {_MD_PATH}")
         return 2
 
-    assert py_codes is not None  # noqa: S101
-    assert md_rows is not None  # noqa: S101
-
     issues = _compare(py_codes, md_rows)
-
     if not issues:
         n = len(py_codes)
         print(f"OK: {n} code{'s' if n != 1 else ''} in sync")
@@ -219,7 +254,41 @@ def main() -> int:
     print("DRIFT: codes are out of sync:")
     for line in issues:
         print(line)
+    print(
+        "\nFix: run `uv run python packages/roxabi-contracts/scripts/"
+        "check_codes_sync.py --write` to regenerate the MD."
+    )
     return 1
+
+
+def _write_mode(py_codes: dict[str, object]) -> int:
+    rendered = _render_md(py_codes)
+    existing = _MD_PATH.read_text(encoding="utf-8") if _MD_PATH.exists() else ""
+    if existing == rendered:
+        print(f"OK: {_MD_PATH.name} already up-to-date ({len(py_codes)} codes)")
+        return 0
+    _MD_PATH.write_text(rendered, encoding="utf-8")
+    print(f"WROTE: {_MD_PATH} ({len(py_codes)} codes)")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Regenerate error-codes.md from KNOWN_CODES (no-op if already in sync).",
+    )
+    args = parser.parse_args()
+
+    py_codes = _load_python_codes()
+    if py_codes is None:
+        print("SKIP: prerequisite not yet available: roxabi_contracts.errors")
+        return 2
+
+    if args.write:
+        return _write_mode(py_codes)
+    return _check_mode(py_codes)
 
 
 if __name__ == "__main__":

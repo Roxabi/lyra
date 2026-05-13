@@ -41,6 +41,12 @@ repos:
     entry: uv run lint-imports
     language: system
     pass_filenames: false
+  - id: codes-sync
+    name: codes-sync (regenerate error-codes.md)
+    entry: uv run python packages/roxabi-contracts/scripts/check_codes_sync.py --write
+    language: system
+    pass_filenames: false
+    files: ^packages/roxabi-contracts/(src/roxabi_contracts/errors\.py|docs/error-codes\.md|scripts/check_codes_sync\.py)$
   - id: trufflehog
     name: trufflehog secret scan
     entry: bash -c "[ -d .git ] && trufflehog git file://. --fail || true"

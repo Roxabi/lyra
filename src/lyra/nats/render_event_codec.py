@@ -92,6 +92,12 @@ class NatsRenderEventCodec:
         a complete ``ToolSummaryRenderEvent`` (``is_complete``), or any of the
         terminal Run lifecycle events (``RunFinishedRenderEvent``,
         ``RunErrorRenderEvent``). ``RunStartedRenderEvent`` is not terminal.
+
+        Text v2 lifecycle events (``TextStartRenderEvent``,
+        ``TextDeltaRenderEvent``, ``TextEndRenderEvent``,
+        ``TextChunkRenderEvent``) always yield ``is_done=False`` — the
+        stream terminator remains the Run lifecycle event, not the
+        text-block boundary.
         """
         payload: dict = json.loads(serialize(event).decode("utf-8"))
         if isinstance(event, TextRenderEvent):

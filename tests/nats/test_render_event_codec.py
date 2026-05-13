@@ -497,3 +497,32 @@ class TestRenderEventCodecTextTriplet:
         )
         assert result is None
         assert counter == {"TextChunkRenderEvent:schema": 1}
+
+
+class TestRenderEventCodecExhaustivenessGuard:
+    """Runtime tripwire for the assert_never guard in encode().
+
+    Pyright catches union-exhaustiveness at static-check time, but pyright
+    config drift, stub regeneration, or accidental union widening can all
+    silently disable the static check while leaving a live crash path.
+    The original Slice 2 (#1099) incident was exactly this class of bug:
+    a new RenderEvent subclass reached encode() at runtime with no branch
+    to handle it. This test fires if assert_never is ever removed or
+    bypassed — uses a serializable dataclass that survives the upstream
+    serialize() call and reaches the isinstance dispatch chain.
+    """
+
+    def test_encode_assert_never_fires_on_unknown_render_event(self) -> None:
+        # Fake RenderEvent-shaped dataclass NOT in the union. serialize()
+        # accepts it (it's a dataclass); the isinstance ladder falls through
+        # every branch; assert_never raises AssertionError.
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True)
+        class _FakeRenderEvent:
+            payload: str = "x"
+            schema_version: int = 1
+
+        codec = NatsRenderEventCodec()
+        with pytest.raises(AssertionError):
+            codec.encode(_FakeRenderEvent())  # pyright: ignore[reportArgumentType]

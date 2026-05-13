@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -11,7 +12,7 @@ import click
 import tomli_w
 import typer
 
-from lyra.cli_agent import _AGENTS_DIR_OPT, _parse_tools, agent_app
+from lyra.cli_agent import _AGENTS_DIR_OPT, _connect_store, _parse_tools, agent_app
 
 
 def _user_agents_dir() -> Path:
@@ -103,13 +104,96 @@ def _build_toml(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
 # Command
 # ---------------------------------------------------------------------------
 
+_VALID_EFFORT_VALUES = frozenset({"low", "medium", "high", "xhigh", "max", "none"})
+
 
 @agent_app.command()  # noqa: C901 — DEBT:complexity-residual
 def create(
+    name: Optional[str] = typer.Argument(
+        None,
+        help="Agent name (non-interactive mode when provided with --backend/--model).",
+    ),
+    backend: Optional[str] = typer.Option(
+        None,
+        "--backend",
+        help="Backend: claude-cli (non-interactive mode).",
+    ),
+    model: Optional[str] = typer.Option(
+        None,
+        "--model",
+        help="Model identifier (non-interactive mode).",
+    ),
+    effort: str = typer.Option(
+        "medium",
+        "--effort",
+        help="Extended-thinking effort: low|medium|high|xhigh|max|none.",
+    ),
     agents_dir: Optional[Path] = _AGENTS_DIR_OPT,
 ) -> None:
-    """Interactively create a new agent TOML configuration."""
-    name = typer.prompt("Agent name")
+    """Create a new agent (TOML wizard, or non-interactive with --backend/--model)."""
+    # Non-interactive path: name + --backend + --model all provided.
+    if name is not None and backend is not None and model is not None:
+        _create_noninteractive(name=name, backend=backend, model=model, effort=effort)
+        return
+
+    # Interactive TOML wizard (existing behavior).
+    _create_interactive(
+        name_arg=name,
+        effort_arg=effort,
+        agents_dir=agents_dir,
+    )
+
+
+def _create_noninteractive(name: str, backend: str, model: str, effort: str) -> None:
+    """Create an agent directly in DB (non-interactive, no TOML file)."""
+    from lyra.core.agent.agent_models import AgentRow
+
+    if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+        typer.echo(f"Error: invalid agent name {name!r} — only [a-zA-Z0-9_-] allowed")
+        raise typer.Exit(1)
+    effort_lower = effort.lower()
+    if effort_lower not in _VALID_EFFORT_VALUES:
+        typer.echo(
+            f"Error: --effort must be one of {sorted(_VALID_EFFORT_VALUES)},"
+            f" got {effort!r}"
+        )
+        raise typer.Exit(1)
+    stored_effort: str | None = None if effort_lower == "none" else effort_lower
+
+    async def _run() -> None:
+        store = await _connect_store()
+        try:
+            if store.get(name) is not None:
+                typer.echo(f"Error: agent {name!r} already exists in DB", err=True)
+                raise typer.Exit(1)
+            row = AgentRow(
+                name=name,
+                backend=backend,
+                model=model,
+                effort=stored_effort,
+                source="db",
+            )
+            await store.upsert(row)
+            typer.echo(
+                f"Created agent {name!r} (backend={backend}, model={model}, "
+                f"effort={stored_effort!r})"
+            )
+        finally:
+            await store.close()
+
+    asyncio.run(_run())
+
+
+def _create_interactive(  # noqa: C901 — DEBT:complexity-residual
+    name_arg: Optional[str],
+    effort_arg: str,
+    agents_dir: Optional[Path],
+) -> None:
+    """Interactive TOML wizard (legacy path)."""
+    if name_arg is not None:
+        name = name_arg
+    else:
+        name = typer.prompt("Agent name")
     if not re.match(r"^[a-zA-Z0-9_-]+$", name):
         typer.echo(f"Error: invalid agent name {name!r} — only [a-zA-Z0-9_-] allowed")
         raise typer.Exit(1)

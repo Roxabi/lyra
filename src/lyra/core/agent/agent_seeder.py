@@ -125,6 +125,10 @@ def _parse_toml(path: Path) -> AgentRow | None:  # noqa: PLR0915 — DEBT:comple
         json.dumps(passthroughs_section) if passthroughs_section is not None else None
     )
 
+    # #1101 — per-agent extended-thinking config; optional key under [model] or [agent]
+    effort_raw = _m("effort", None)
+    effort: str | None = str(effort_raw) if effort_raw else None
+
     return AgentRow(
         name=name,
         backend=backend,
@@ -146,5 +150,6 @@ def _parse_toml(path: Path) -> AgentRow | None:  # noqa: PLR0915 — DEBT:comple
         commands_json=commands_json,
         patterns_json=patterns_json,
         passthroughs_json=passthroughs_json,
+        effort=effort,
         source="toml-seed",
     )

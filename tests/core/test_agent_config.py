@@ -164,3 +164,54 @@ class TestModelConfig:
         cfg = ModelConfig(api_key="sk-secret")
         restored = ModelConfig.model_validate(cfg.model_dump())
         assert restored.api_key is None
+
+    # ------------------------------------------------------------------
+    # effort field — included in __eq__ and __hash__ (CliPool guard)
+    # ------------------------------------------------------------------
+
+    def test_effort_defaults_to_none(self) -> None:
+        cfg = ModelConfig()
+        assert cfg.effort is None
+
+    def test_effort_accepts_valid_literal(self) -> None:
+        for val in ("low", "medium", "high", "xhigh", "max"):
+            cfg = ModelConfig(effort=val)  # type: ignore[arg-type]
+            assert cfg.effort == val
+
+    def test_eq_detects_effort_difference(self) -> None:
+        """Configs differing only in effort must be unequal (CliPool guard regression)."""  # noqa: E501
+        a = ModelConfig(effort="high")  # type: ignore[arg-type]
+        b = ModelConfig(effort="low")  # type: ignore[arg-type]
+        assert a != b
+
+    def test_eq_effort_none_vs_set(self) -> None:
+        a = ModelConfig(effort=None)
+        b = ModelConfig(effort="medium")  # type: ignore[arg-type]
+        assert a != b
+
+    def test_hash_detects_effort_difference(self) -> None:
+        """Configs differing only in effort must have different hashes (CliPool guard)."""  # noqa: E501
+        a = ModelConfig(effort="high")  # type: ignore[arg-type]
+        b = ModelConfig(effort="low")  # type: ignore[arg-type]
+        assert hash(a) != hash(b)
+
+    def test_hash_effort_none_vs_set(self) -> None:
+        a = ModelConfig(effort=None)
+        b = ModelConfig(effort="max")  # type: ignore[arg-type]
+        assert hash(a) != hash(b)
+
+    def test_eq_same_effort_equal(self) -> None:
+        a = ModelConfig(effort="medium")  # type: ignore[arg-type]
+        b = ModelConfig(effort="medium")  # type: ignore[arg-type]
+        assert a == b
+
+    def test_hash_same_effort_same_hash(self) -> None:
+        a = ModelConfig(effort="high")  # type: ignore[arg-type]
+        b = ModelConfig(effort="high")  # type: ignore[arg-type]
+        assert hash(a) == hash(b)
+
+    def test_eq_returns_not_implemented_for_non_modelconfig(self) -> None:
+        """__eq__ must return NotImplemented for non-ModelConfig types."""
+        cfg = ModelConfig()
+        result = cfg.__eq__("not a ModelConfig")
+        assert result is NotImplemented

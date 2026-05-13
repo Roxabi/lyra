@@ -174,6 +174,7 @@ class AgentStore(SqliteStore):
                 row.patterns_json,
                 row.passthroughs_json,
                 1 if row.show_tool_recap else 0,
+                row.effort,
                 # ON CONFLICT updated_at value
                 now,
             ),
@@ -204,6 +205,7 @@ class AgentStore(SqliteStore):
             source=row.source,
             created_at=row.created_at,
             updated_at=now,
+            effort=row.effort,
         )
 
     async def delete(self, name: str) -> None:

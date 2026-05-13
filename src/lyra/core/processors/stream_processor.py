@@ -187,7 +187,7 @@ class StreamProcessor:
     # Public interface
     # ------------------------------------------------------------------
 
-    async def process(  # noqa: C901, PLR0915 — POLICY:wiring — event-type dispatch + terminal fallbacks
+    async def process(  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps — event-type dispatch + terminal fallbacks
         self, events: AsyncIterator[LlmEvent]
     ) -> AsyncGenerator[RenderEvent, None]:
         """Process an async stream of ``LlmEvent`` objects.
@@ -266,7 +266,7 @@ class StreamProcessor:
                         is_error=event.is_error,
                     )
 
-                elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
+                elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
                     _result_received = True
                     # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
                     if self._open_text_block_id is not None:

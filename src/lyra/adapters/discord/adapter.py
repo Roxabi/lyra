@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from lyra.core.stores.thread_store_protocol import ThreadStoreProtocol
     from lyra.infrastructure.stores.turn_store import TurnStore
 
-from lyra.adapters.discord import discord_audio  # noqa: I001 — POLICY:module-level-patch
+from lyra.adapters.discord import discord_audio  # noqa: I001 — DEBT:module-level-patch-fixtures
 from lyra.adapters.discord import discord_audio_outbound
 from lyra.adapters.shared._shared import TypingTaskManager, resolve_msg
 from lyra.adapters.discord.discord_inbound import handle_message
@@ -64,7 +64,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
     - Bot's own messages are silently discarded.
     """
 
-    def __init__(  # noqa: PLR0913 — POLICY:wiring
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         bot_id: str = "main",
         *,

@@ -134,7 +134,7 @@ class NatsLlmDriver:
         del pool_id  # LlmProvider protocol slot; driver is stateless per-pool
         return self._nc.is_connected and self._any_worker_alive()
 
-    async def complete(  # noqa: PLR0913 — POLICY:wiring
+    async def complete(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         pool_id: str,
         text: str,
@@ -271,7 +271,7 @@ class NatsLlmDriver:
             retryable=True,
         )
 
-    async def stream(  # noqa: PLR0913 — POLICY:wiring
+    async def stream(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         pool_id: str,
         text: str,

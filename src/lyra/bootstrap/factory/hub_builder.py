@@ -74,7 +74,7 @@ def build_inbound_bus(
     return inbound_bus, inbound_bus_cfg
 
 
-def build_hub(  # noqa: PLR0913 — POLICY:wiring — construction requires all deps
+def build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — construction requires all deps
     raw_config: dict,
     *,
     circuit_registry: CircuitRegistry,
@@ -148,7 +148,7 @@ async def build_cli_pool(
     return None
 
 
-def register_agents(  # noqa: PLR0913 — POLICY:wiring — registration requires all deps
+def register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — registration requires all deps
     hub: Hub,
     agent_configs: dict[str, Agent],
     cli_pool: CliPool | None,

@@ -169,7 +169,7 @@ class AudioPipeline:
         pool_id = key.to_pool_id()
         return self._hub.pools.get(pool_id)
 
-    async def synthesize_and_dispatch_audio(  # noqa: PLR0913, C901 — POLICY:wiring
+    async def synthesize_and_dispatch_audio(  # noqa: PLR0913, C901 — DEBT:wiring-bootstrap-deps
         self,
         msg: InboundMessage,
         text: str,
@@ -198,7 +198,7 @@ class AudioPipeline:
             if self._hub._prefs_store is not None:
                 try:
                     prefs = await self._hub._prefs_store.get_prefs(msg.user_id)
-                except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
+                except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
                     log.warning(
                         "PrefsStore.get_prefs() failed for user %s — "
                         "falling back to detected language",

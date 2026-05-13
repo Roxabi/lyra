@@ -89,7 +89,7 @@ class PoolObserver:
                 exc_info=True,
             )
 
-    async def log_turn_async(  # noqa: PLR0913 — POLICY:wiring
+    async def log_turn_async(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         *,
         role: str,

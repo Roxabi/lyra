@@ -43,7 +43,7 @@ BuiltinHandler = Callable[
 class CommandRouter:
     """Routes slash commands to plugin handlers or built-in handlers."""
 
-    def __init__(  # noqa: PLR0913 — POLICY:wiring
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         command_loader: CommandLoader,
         enabled_plugins: list[str],
@@ -116,7 +116,7 @@ class CommandRouter:
             for cmd, desc in _proc_registry.descriptions().items():
                 if cmd in self._passthroughs:
                     result.append((cmd, desc, False))
-        except Exception as exc:  # noqa: BLE001  — POLICY:boundary# top-level boundary
+        except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
             log.debug("Could not load processor commands: %s", exc)
         return sorted(result)
 

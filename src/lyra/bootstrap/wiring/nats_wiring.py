@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def wire_nats_telegram_proxies(  # noqa: PLR0913 — POLICY:wiring — wiring requires all deps
+def wire_nats_telegram_proxies(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — wiring requires all deps
     hub: Hub,
     nc: NATS,
     tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]],
@@ -82,7 +82,7 @@ def wire_nats_telegram_proxies(  # noqa: PLR0913 — POLICY:wiring — wiring re
     return proxies, dispatchers
 
 
-def wire_nats_discord_proxies(  # noqa: PLR0913 — POLICY:wiring — wiring requires all deps
+def wire_nats_discord_proxies(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — wiring requires all deps
     hub: Hub,
     nc: NATS,
     dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]],

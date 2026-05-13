@@ -62,7 +62,7 @@ class SimpleAgent(AgentBase):
         hub.register_agent(agent)
     """
 
-    def __init__(  # noqa: PLR0913 — POLICY:wiring
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         config: Agent,
         provider: LlmProvider,
@@ -135,7 +135,7 @@ class SimpleAgent(AgentBase):
                 self._session_tools = SessionTools(
                     scraper=WebIntelScraper(), vault=VaultCli()
                 )
-            except Exception:  # noqa: BLE001 — POLICY:boundary
+            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
                 log.warning(
                     "SimpleAgent: could not build session tools"
                     " — processor pipeline disabled",

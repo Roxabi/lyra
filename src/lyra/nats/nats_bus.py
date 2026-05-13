@@ -59,7 +59,7 @@ class NatsBus(Generic[T]):
         publish_only: If True, ``start()`` is no-op and ``get()`` raises.
     """
 
-    def __init__(  # noqa: PLR0913 — POLICY:wiring
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         nc: NATS,
         bot_id: str,

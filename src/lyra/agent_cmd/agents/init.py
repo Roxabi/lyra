@@ -49,7 +49,7 @@ def init_agents(
                             typer.echo(f"  imported: {toml_file.name}")
                         else:
                             skipped += 1
-                    except Exception as e:  # noqa: BLE001 — POLICY:boundary
+                    except Exception as e:  # noqa: BLE001 — DEBT:boundary-broad-catch
                         typer.echo(f"  error: {toml_file.name}: {e}", err=True)
                         errors += 1
             typer.echo(

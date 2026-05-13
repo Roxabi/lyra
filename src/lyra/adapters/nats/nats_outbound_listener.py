@@ -37,7 +37,7 @@ _MAX_QUEUE_SIZE = 256
 class NatsOutboundListener:
     """NATS outbound subscriber → adapter dispatch (send/attachment/stream)."""
 
-    def __init__(  # noqa: PLR0913 — POLICY:wiring
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         nc: NATS,
         platform: Platform,
@@ -121,7 +121,7 @@ class NatsOutboundListener:
                     original_msg = _deserialize_dict(
                         raw, InboundMessage, resolver=self._resolver
                     )
-                except Exception:  # noqa: BLE001  — POLICY:boundary# deserialization: exception type varies by payload
+                except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# deserialization: exception type varies by payload
                     log.warning(
                         "NatsOutboundListener: bad embedded original_msg"
                         " for stream_id=%r",

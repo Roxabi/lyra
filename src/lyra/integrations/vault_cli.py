@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 class VaultCli:
     """VaultProvider backed by the vault CLI."""
 
-    async def add(  # noqa: PLR0913 — POLICY:wiring
+    async def add(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         title: str,
         tags: list[str],

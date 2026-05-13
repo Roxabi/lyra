@@ -39,7 +39,7 @@ def require_admin(msg: InboundMessage) -> "Response | None":
     return None
 
 
-def help_command(  # noqa: PLR0913 — POLICY:wiring
+def help_command(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     builtins: Mapping[str, object],
     session_handlers: "Mapping[str, object] | None",
     command_loader: "CommandLoader",
@@ -70,7 +70,7 @@ def help_command(  # noqa: PLR0913 — POLICY:wiring
             for cmd_name, desc in sorted(proc_descs.items()):
                 if passthroughs is None or cmd_name in passthroughs:
                     lines.append(f"  {cmd_name} — {desc or '(no description)'}")
-    except Exception as exc:  # noqa: BLE001  — POLICY:boundary# top-level boundary
+    except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
         log.debug("Could not load processor descriptions: %s", exc)
     plugin_handlers = command_loader.get_commands(enabled_plugins)
     plugin_cmds = [cmd for cmd in sorted(plugin_handlers) if cmd not in builtins]
@@ -104,7 +104,7 @@ def circuit_status(
     return Response(content="\n".join(lines))
 
 
-def config_command(  # noqa: PLR0913 — POLICY:wiring — mirrors original DI surface
+def config_command(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — mirrors original DI surface
     msg: InboundMessage,
     args: list[str],
     runtime_config_holder: "RuntimeConfigHolder | None",

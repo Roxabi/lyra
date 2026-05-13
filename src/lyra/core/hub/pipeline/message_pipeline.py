@@ -6,7 +6,7 @@ that reference ``lyra.core.hub.message_pipeline`` continue to work
 without modification.
 """
 
-from .pipeline_types import (  # noqa: F401 — POLICY:re-export
+from .pipeline_types import (  # noqa: F401 — DEBT:re-export-init
     DROP,
     SESSION_FALLTHROUGH_MSG,
     Action,

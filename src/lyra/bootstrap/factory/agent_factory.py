@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 # Re-exported for backward compatibility (tests import these from agent_factory)
 from lyra.bootstrap.factory.bot_agent_map import (
-    resolve_bot_agent_map,  # noqa: F401 — POLICY:re-export
+    resolve_bot_agent_map,  # noqa: F401 — DEBT:re-export-init
 )
 from lyra.bootstrap.factory.config import LlmConfig
 from lyra.core.agent import Agent, AgentBase
@@ -21,7 +21,9 @@ from lyra.stt import STTProtocol
 from lyra.tts import TtsProtocol
 
 if TYPE_CHECKING:
-    from lyra.llm.drivers.cli_nats import CliNatsDriver  # noqa: F401 — POLICY:re-export
+    from lyra.llm.drivers.cli_nats import (
+        CliNatsDriver,  # noqa: F401 — DEBT:re-export-init
+    )
     from lyra.llm.drivers.nats_driver import NatsLlmDriver
 
 log = logging.getLogger(__name__)
@@ -126,7 +128,7 @@ def _build_provider_registry(
     return _build_per_agent_registry(shared)
 
 
-def _create_agent(  # noqa: PLR0913  — POLICY:wiring — factory with optional overrides for each agent dependency
+def _create_agent(  # noqa: PLR0913  — DEBT:wiring-bootstrap-deps — factory with optional overrides for each agent dependency
     config: Agent,
     cli_pool: CliPool | None,
     circuit_registry: CircuitRegistry | None = None,
@@ -170,7 +172,7 @@ def _create_agent(  # noqa: PLR0913  — POLICY:wiring — factory with optional
             session_tools: SessionTools | None = SessionTools(
                 scraper=WebIntelScraper(), vault=VaultCli()
             )
-        except Exception:  # noqa: BLE001 — POLICY:boundary
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
             log.warning(
                 "agent_factory: could not build SessionTools — passing None",
                 exc_info=True,
@@ -192,7 +194,7 @@ def _create_agent(  # noqa: PLR0913  — POLICY:wiring — factory with optional
     raise ValueError(f"Unknown backend: {backend}")
 
 
-def _resolve_agents(  # noqa: PLR0913 — POLICY:wiring
+def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     agent_configs: dict[str, Agent],
     cli_pool: CliPool | None,
     circuit_registry: CircuitRegistry,

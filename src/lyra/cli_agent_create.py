@@ -50,7 +50,7 @@ def _prompt_sr_subconfig() -> tuple[bool, int | None, list[str], dict[str, str]]
     return False, None, [], {}
 
 
-def _build_toml(  # noqa: PLR0913 — POLICY:wiring
+def _build_toml(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     name: str,
     backend: str,
     model: str,

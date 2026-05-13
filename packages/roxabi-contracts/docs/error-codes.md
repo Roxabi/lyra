@@ -20,6 +20,7 @@
 | worker.crash | true | Worker process raised an unhandled exception. |
 | worker.validation | false | Request payload failed domain-level validation inside the worker. |
 | worker.internal | true | Worker encountered an internal error not covered by a more specific code. |
+| worker.capacity | true | Worker rejected the request because its capacity limit (queue or pool) is exhausted; caller should retry after back-off. |
 | worker.busy | true | Worker rejected the request because its concurrency limit is reached. |
 
 ## cli.*

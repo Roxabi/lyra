@@ -11,6 +11,9 @@ import json
 import logging
 
 from lyra.core.messaging.render_events import (
+    SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
+    SCHEMA_VERSION_REASONING_END_RENDER_EVENT,
+    SCHEMA_VERSION_REASONING_START_RENDER_EVENT,
     SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT,
     SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT,
     SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT,
@@ -21,6 +24,9 @@ from lyra.core.messaging.render_events import (
     SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
     FileEditSummary,
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+    ReasoningStartRenderEvent,
     RenderEvent,
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
@@ -65,7 +71,7 @@ class NatsRenderEventCodec:
         self._resolver = resolver
 
     @staticmethod
-    def encode(event: RenderEvent) -> tuple[str, dict, bool]:
+    def encode(event: RenderEvent) -> tuple[str, dict, bool]:  # noqa: C901 — DEBT:complexity-residual — explicit if-chain; refactored when Slice 5 sunsets v1
         """Return ``(event_type, payload_dict, is_done)`` for *event*.
 
         ``is_done`` is ``True`` for a final ``TextRenderEvent`` (``is_final``),
@@ -90,8 +96,14 @@ class NatsRenderEventCodec:
             return "tool_call_args", payload, False
         if isinstance(event, ToolCallEndRenderEvent):
             return "tool_call_end", payload, False
-        if isinstance(event, ToolCallResultRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
+        if isinstance(event, ToolCallResultRenderEvent):
             return "tool_call_result", payload, False
+        if isinstance(event, ReasoningStartRenderEvent):
+            return "reasoning_start", payload, False
+        if isinstance(event, ReasoningDeltaRenderEvent):
+            return "reasoning_delta", payload, False
+        if isinstance(event, ReasoningEndRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
+            return "reasoning_end", payload, False
         raise TypeError(  # pyright: ignore[reportUnreachable] — DEBT:defensive-narrow-payloads
             f"Unsupported RenderEvent subtype: {type(event)!r}"
         )
@@ -240,6 +252,45 @@ class NatsRenderEventCodec:
             return deserialize(
                 json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                 ToolCallResultRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "reasoning_start":
+            if not check_schema_version(
+                payload,
+                envelope_name="ReasoningStartRenderEvent",
+                expected=SCHEMA_VERSION_REASONING_START_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                ReasoningStartRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "reasoning_delta":
+            if not check_schema_version(
+                payload,
+                envelope_name="ReasoningDeltaRenderEvent",
+                expected=SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                ReasoningDeltaRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "reasoning_end":
+            if not check_schema_version(
+                payload,
+                envelope_name="ReasoningEndRenderEvent",
+                expected=SCHEMA_VERSION_REASONING_END_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                ReasoningEndRenderEvent,
                 resolver=self._resolver,
             )
         if event_type == "stream_end":

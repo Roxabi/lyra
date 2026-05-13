@@ -24,7 +24,7 @@ def _utc_now_iso() -> str:
 
 @dataclass
 class AgentRow:
-    """One row from the agents table (24 columns after #346 cleanup)."""
+    """One row from the agents table (25 columns after #1101 effort column)."""
 
     name: str
     backend: str
@@ -51,10 +51,12 @@ class AgentRow:
     source: str = "db"
     created_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)
+    # #1101 — per-agent extended-thinking config (effort token budget)
+    effort: str | None = None  # None = no extended thinking (flag omitted)
 
     @classmethod
     def from_db_row(cls, row: tuple[Any, ...]) -> "AgentRow":
-        """Construct an AgentRow from a raw aiosqlite SELECT tuple (24 columns)."""
+        """Construct an AgentRow from a raw aiosqlite SELECT tuple (25 columns)."""
         (
             name,
             backend,
@@ -80,6 +82,7 @@ class AgentRow:
             patterns_json,
             passthroughs_json,
             show_tool_recap,
+            effort,
         ) = row
         return cls(
             name=name,
@@ -108,6 +111,7 @@ class AgentRow:
             source=source,
             created_at=created_at,
             updated_at=updated_at,
+            effort=effort or None,
         )
 
 

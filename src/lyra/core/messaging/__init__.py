@@ -11,6 +11,9 @@ from .message import (
     TelegramMeta,
 )
 from .render_events import (
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+    ReasoningStartRenderEvent,
     RenderEvent,
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
@@ -36,6 +39,9 @@ __all__ = [
     "LocalBus",
     "OutboundMessage",
     "PlatformMeta",
+    "ReasoningDeltaRenderEvent",
+    "ReasoningEndRenderEvent",
+    "ReasoningStartRenderEvent",
     "RenderEvent",
     "RunErrorRenderEvent",
     "RunFinishedRenderEvent",

@@ -33,6 +33,7 @@ from lyra.core.messaging.events import (
     LlmEvent,
     ResultLlmEvent,
     TextLlmEvent,
+    ThinkingLlmEvent,
     ToolResultLlmEvent,
     ToolUseDeltaLlmEvent,
     ToolUseEndLlmEvent,
@@ -41,6 +42,9 @@ from lyra.core.messaging.events import (
 from lyra.core.messaging.metrics import emit_received_total
 from lyra.core.messaging.render_events import (
     FileEditSummary,
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+    ReasoningStartRenderEvent,
     RenderEvent,
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
@@ -92,6 +96,15 @@ def _mint_text_block_id() -> str:
     matching the ``_sanitize_tool_result_content`` precedent below.
     """
     return f"text-{uuid4().hex[:12]}"
+
+
+def _mint_reasoning_block_id() -> str:
+    """Per-block message id for a reasoning block (Slice 4, #1101).
+
+    Format: ``"reasoning-<12-char-hex>"``. Mirrors ``_mint_text_block_id``
+    — same uuid4 approach, distinguishable via prefix.
+    """
+    return f"reasoning-{uuid4().hex[:12]}"
 
 
 def _sanitize_tool_result_content(content: str, tool_name: str | None) -> str:
@@ -180,6 +193,14 @@ class StreamProcessor:
         # None when no text block is open. Set on TextStart, cleared on TextEnd.
         self._open_text_block_id: str | None = None
 
+        # --- Slice 4 (#1101) Reasoning block state ---
+        # Tracks the message_id of the currently open reasoning block.
+        # None when no reasoning block is open. Set on first ThinkingLlmEvent
+        # chunk, cleared when any non-Thinking event arrives (or on
+        # truncation / exception). Defensive-close guards on every
+        # non-Thinking branch ensure the block is always properly terminated.
+        self._open_reasoning_block_id: str | None = None
+
         # --- reuse guard ---
         self._consumed: bool = False
 
@@ -223,6 +244,9 @@ class StreamProcessor:
         try:
             async for event in events:
                 if isinstance(event, TextLlmEvent):
+                    # ───── Slice 4 (#1101) reasoning-close guard ─────
+                    for _re in self._close_reasoning_if_open():
+                        yield _re
                     self._pending_text += event.text
                     self._total_text += event.text
                     # ───── Slice 2 (#1099) v2 Text triplet ─────
@@ -242,6 +266,9 @@ class StreamProcessor:
                         yield TextRenderEvent(text=event.text, is_final=False)
 
                 elif isinstance(event, ToolUseLlmEvent):
+                    # ───── Slice 4 (#1101) reasoning-close guard ─────
+                    for _re in self._close_reasoning_if_open():
+                        yield _re
                     # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
                     if self._open_text_block_id is not None:
                         yield TextEndRenderEvent(message_id=self._open_text_block_id)
@@ -250,15 +277,24 @@ class StreamProcessor:
                         yield render_event
 
                 elif isinstance(event, ToolUseDeltaLlmEvent):
+                    # ───── Slice 4 (#1101) reasoning-close guard ─────
+                    for _re in self._close_reasoning_if_open():
+                        yield _re
                     yield ToolCallArgsRenderEvent(
                         tool_call_id=event.tool_id, delta=event.partial_json
                     )
 
                 elif isinstance(event, ToolUseEndLlmEvent):
+                    # ───── Slice 4 (#1101) reasoning-close guard ─────
+                    for _re in self._close_reasoning_if_open():
+                        yield _re
                     self._open_tool_call_ids.discard(event.tool_id)
                     yield ToolCallEndRenderEvent(tool_call_id=event.tool_id)
 
                 elif isinstance(event, ToolResultLlmEvent):
+                    # ───── Slice 4 (#1101) reasoning-close guard ─────
+                    for _re in self._close_reasoning_if_open():
+                        yield _re
                     tool_name = self._tool_id_to_name.get(event.tool_id)
                     yield ToolCallResultRenderEvent(
                         tool_call_id=event.tool_id,
@@ -268,6 +304,9 @@ class StreamProcessor:
 
                 elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
                     _result_received = True
+                    # ───── Slice 4 (#1101) reasoning-close guard ─────
+                    for _re in self._close_reasoning_if_open():
+                        yield _re
                     # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
                     if self._open_text_block_id is not None:
                         yield TextEndRenderEvent(message_id=self._open_text_block_id)
@@ -300,6 +339,31 @@ class StreamProcessor:
                         is_error=event.is_error,  # #392: propagate error state
                     )
 
+                elif isinstance(event, ThinkingLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+                    # ───── Slice 4 (#1101) reasoning block emission ─────
+                    # SC-6 (spec v2 lines 65, 260): drop the chunk entirely
+                    # when show_intermediate=False — no Reasoning* produced,
+                    # no v1 intermediate.
+                    if not self._show_intermediate:
+                        continue
+                    if self._open_reasoning_block_id is None:
+                        self._open_reasoning_block_id = _mint_reasoning_block_id()
+                        log.debug(
+                            "reasoning block opened message_id=%s",
+                            self._open_reasoning_block_id,
+                        )
+                        yield ReasoningStartRenderEvent(
+                            message_id=self._open_reasoning_block_id
+                        )
+                    yield ReasoningDeltaRenderEvent(
+                        message_id=self._open_reasoning_block_id,
+                        delta=event.text,
+                    )
+                    # SC-7 / χ-1 dual-emit: yield v1 TextRenderEvent(is_final=False)
+                    # alongside ReasoningDelta for rolling-deploy safety with
+                    # non-migrated adapters (spec line 261). Sunsets in Slice 5 (#1102).
+                    yield TextRenderEvent(text=event.text, is_final=False)
+
                 else:
                     # Cross-slice invariant 3: no silent event drop. When the
                     # ``LlmEvent`` union widens (e.g. Slice 4 reasoning events)
@@ -310,6 +374,17 @@ class StreamProcessor:
 
             # Stream ended without ResultLlmEvent (truncation or upstream error)
             if not _result_received:
+                # ───── Slice 4 (#1101) orphan reasoning-close (truncated stream) ─────
+                if self._open_reasoning_block_id is not None:
+                    log.warning(
+                        "StreamProcessor: orphan ReasoningEnd synthesis "
+                        "(truncated stream) message_id=…%s",
+                        self._open_reasoning_block_id[-6:],
+                    )
+                    yield ReasoningEndRenderEvent(
+                        message_id=self._open_reasoning_block_id
+                    )
+                    self._open_reasoning_block_id = None
                 # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
                 if self._open_text_block_id is not None:
                     yield TextEndRenderEvent(message_id=self._open_text_block_id)
@@ -339,6 +414,15 @@ class StreamProcessor:
             # carry file paths, internal hostnames, auth-token fragments from
             # httpx/aiohttp errors, DB connection strings, etc. RunErrorRenderEvent
             # is published on the NATS bus where any subscriber can read it.
+            # ───── Slice 4 (#1101) orphan reasoning-close (exception) ─────
+            if self._open_reasoning_block_id is not None:
+                log.warning(
+                    "StreamProcessor: orphan ReasoningEnd synthesis (exception) "
+                    "message_id=…%s",
+                    self._open_reasoning_block_id[-6:],
+                )
+                yield ReasoningEndRenderEvent(message_id=self._open_reasoning_block_id)
+                self._open_reasoning_block_id = None
             # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
             if self._open_text_block_id is not None:
                 yield TextEndRenderEvent(message_id=self._open_text_block_id)
@@ -396,6 +480,22 @@ class StreamProcessor:
             and self._has_any_tool_events()
         ):
             yield self._emit_snapshot()
+
+    def _close_reasoning_if_open(self) -> Iterator[ReasoningEndRenderEvent]:
+        """Yield ``ReasoningEndRenderEvent`` and clear state if a block is open.
+
+        Defensive guard called at the top of every non-Thinking LlmEvent branch
+        (T10 / Slice 4, #1101). In normal model output the LLM closes all
+        thinking blocks before emitting text or tool calls; this guard handles
+        any interleaving that slips through (architect review B).
+        """
+        if self._open_reasoning_block_id is not None:
+            log.debug(
+                "reasoning block closed message_id=%s",
+                self._open_reasoning_block_id,
+            )
+            yield ReasoningEndRenderEvent(message_id=self._open_reasoning_block_id)
+            self._open_reasoning_block_id = None
 
     def _synth_orphan_tool_ends(
         self,

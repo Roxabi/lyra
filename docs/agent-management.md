@@ -6,7 +6,7 @@ Agents are stored in **`~/.lyra/config.db`** (SQLite). TOML files are seed sourc
 
 | Table | Purpose |
 |-------|---------|
-| `agents` | Agent configurations (24 columns) |
+| `agents` | Agent configurations (25 columns — see `effort` below) |
 | `bot_agent_map` | Maps `(platform, bot_id)` → `agent_name` |
 | `agent_runtime_state` | Runtime status (idle/active/error, pool_count) |
 
@@ -34,9 +34,13 @@ lyra agent show <name>              # full config dump from DB
 # Editing (DB-only, no TOML sync)
 lyra agent edit <name>              # interactive field editor
 lyra agent patch <name> --json '{"model": "claude-opus-4-6"}'
+lyra agent patch <name> --effort high   # set extended-thinking effort
+lyra agent patch <name> --effort none   # disable extended thinking (store NULL)
 
 # Creation & deletion
 lyra agent create                   # interactive wizard → TOML file
+lyra agent create <name> --backend claude-cli --model <model> [--effort medium]
+                                    # non-interactive: creates directly in DB
 lyra agent delete <name>            # remove from DB (refuses if bots assigned)
 lyra agent delete <name> --yes      # skip confirmation
 
@@ -56,6 +60,7 @@ lyra agent refine <name>            # LLM-guided profile refinement
 - **Model**: non-empty string
 - **JSON fields**: `tools_json`, `plugins_json`, `permissions_json` must be valid JSON arrays; `workspaces_json`, `commands_json` must be valid objects
 - **Smart routing**: `enabled=true` is deprecated (no backend supports it)
+- **Effort**: `low` | `medium` | `high` | `xhigh` | `max` | `none` (NULL). Controls Anthropic extended-thinking token budget. `none` (or absent) = thinking disabled. New agents default to `medium` via `lyra agent create`; existing agents keep `NULL` after migration. Changing `effort` on a live agent requires pool restart to take effect.
 
 ## Workflows
 

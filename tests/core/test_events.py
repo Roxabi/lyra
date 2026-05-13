@@ -5,12 +5,15 @@ Source: src/lyra/core/events.py
 
 from __future__ import annotations
 
+import typing
+
 import pytest
 
 from lyra.core.messaging.events import (
     LlmEvent,
     ResultLlmEvent,
     TextLlmEvent,
+    ThinkingLlmEvent,
     ToolUseLlmEvent,
 )
 
@@ -150,8 +153,13 @@ class TestLlmEventUnion:
             "LlmEvent",
             "ResultLlmEvent",
             "TextLlmEvent",
+            "ThinkingLlmEvent",
             "ToolResultLlmEvent",
             "ToolUseDeltaLlmEvent",
             "ToolUseEndLlmEvent",
             "ToolUseLlmEvent",
         }
+
+    def test_thinking_llm_event_in_union(self) -> None:
+        """ThinkingLlmEvent is a member of the LlmEvent Union (T2, #1101)."""
+        assert ThinkingLlmEvent in typing.get_args(LlmEvent)

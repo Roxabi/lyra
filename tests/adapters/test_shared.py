@@ -60,11 +60,11 @@ class TestIntermediateTextState:
         state.append("hello")
         assert state.text == "⏳ hello"
 
-    def test_append_second_segment_adds_newline_and_prefix(self) -> None:
+    def test_append_second_segment_concats_raw(self) -> None:
         state = IntermediateTextState()
         state.append("hello")
-        state.append("world")
-        assert state.text == "⏳ hello\n⏳ world"
+        state.append(" world")
+        assert state.text == "⏳ hello world"
 
     def test_append_empty_string_is_noop(self) -> None:
         state = IntermediateTextState()
@@ -72,12 +72,12 @@ class TestIntermediateTextState:
         assert state.text == ""
         assert state.display() == ""
 
-    def test_append_multiple_segments_chains_correctly(self) -> None:
+    def test_append_multiple_segments_concat_raw(self) -> None:
         state = IntermediateTextState()
         state.append("a")
         state.append("b")
         state.append("c")
-        assert state.text == "⏳ a\n⏳ b\n⏳ c"
+        assert state.text == "⏳ abc"
 
     def test_display_returns_empty_string_when_no_text(self) -> None:
         state = IntermediateTextState()

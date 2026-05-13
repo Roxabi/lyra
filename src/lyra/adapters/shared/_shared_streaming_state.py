@@ -32,9 +32,10 @@ class IntermediateTextState:
     """Tracks accumulated intermediate text for streaming display.
 
     Extracted from TelegramAdapter and DiscordAdapter to eliminate identical
-    intermediate-text accumulation and formatting logic. Each new segment gets
-    a ⏳ prefix and is separated by a newline so multiple thoughts stack
-    vertically.
+    intermediate-text accumulation and formatting logic. Token deltas are
+    concatenated raw — Anthropic's text deltas already carry their own
+    whitespace, so adjacent chunks reconstruct the message naturally. A
+    single leading ⏳ marks the message as still streaming.
 
     Usage::
 
@@ -52,7 +53,7 @@ class IntermediateTextState:
         return self._text
 
     def append(self, new_text: str) -> None:
-        """Append a new intermediate segment with ⏳ prefix on a new line.
+        """Append a token delta, prefixing the buffer with ⏳ on first write.
 
         Silently drops segments once the accumulated text reaches
         ``_MAX_INTERMEDIATE_CHARS`` — the placeholder is for live feedback,
@@ -63,7 +64,7 @@ class IntermediateTextState:
         if len(self._text) >= _MAX_INTERMEDIATE_CHARS:
             return
         if self._text:
-            self._text += "\n⏳ " + new_text
+            self._text += new_text
         else:
             self._text = "⏳ " + new_text
 

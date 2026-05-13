@@ -61,7 +61,7 @@ class Dispenser:
     to ≤1 per 45 s (well inside GitHub's 1/min limit).
     """
 
-    def __init__(  # noqa: PLR0913 — POLICY:wiring
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         cache: TokenCache,
         signer: JWTSigner,
@@ -212,5 +212,5 @@ class Dispenser:
             writer.close()
             try:
                 await writer.wait_closed()
-            except Exception:  # noqa: BLE001 — POLICY:boundary — cleanup: writer.wait_closed() raises varied transport errors on peer disconnect; close must not propagate
+            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — cleanup: writer.wait_closed() raises varied transport errors on peer disconnect; close must not propagate
                 pass

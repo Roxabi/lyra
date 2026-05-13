@@ -115,7 +115,7 @@ def normalize_audio(
     )
 
 
-async def handle_audio(  # noqa: C901 — POLICY:wiring
+async def handle_audio(  # noqa: C901 — DEBT:wiring-bootstrap-deps
     adapter: "DiscordAdapter",
     message: Any,
     audio_attachment: Any,
@@ -219,7 +219,7 @@ async def handle_audio(  # noqa: C901 — POLICY:wiring
             ):
                 adapter._owned_threads.add(message.channel.id)
                 _audio_in_owned_thread = True
-        except Exception:  # noqa: BLE001 — POLICY:boundary
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
             log.warning(
                 "ThreadStore: lazy is_owned (audio) failed for thread_id=%s",
                 message.channel.id,

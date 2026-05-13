@@ -94,7 +94,7 @@ class VaultAddProcessor(ScrapingProcessor):
                 vault_note = "\n\n⚠️ Vault CLI not available — summary not saved."
             else:
                 vault_note = "\n\n⚠️ Vault write failed — summary not saved."
-        except Exception as exc:  # noqa: BLE001  — POLICY:boundary# top-level boundary
+        except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
             log.warning(
                 "VaultAddProcessor: unexpected vault error: %s", exc, exc_info=True
             )

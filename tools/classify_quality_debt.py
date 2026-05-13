@@ -3,6 +3,7 @@
 
 Usage:
     python tools/classify_quality_debt.py [--report PATH] [--dry-run|--apply] [--json]
+    python tools/classify_quality_debt.py --migrate-policy [--root PATH]
 
 Default report: artifacts/quality-debt-report.json (resolved from cwd).
 Default mode: --dry-run.
@@ -13,6 +14,8 @@ Output modes:
                        [{path, line, rule, suggestion, fix_class, reason}, ...]
                        Summary line is suppressed; parse the array length directly.
     --apply            Apply inline suffixes, create registry files, write drain queue.
+    --migrate-policy   One-shot mode: rewrite DEBT:<old-tag> markers in src/lyra/ to
+                       DEBT:<slug> using the built-in mapping table.
 """
 
 from __future__ import annotations
@@ -76,20 +79,33 @@ _INDEX_HEADER = (
     "<!-- rows inserted here -->\n"
 )
 
+# Mapping from old POLICY:<tag> to new DEBT:<slug> — used by both the classifier
+# suggestion strings and the --migrate-policy rewrite pass.
+POLICY_TO_DEBT_SLUG: dict[str, str] = {
+    "boundary": "boundary-broad-catch",
+    "wiring": "wiring-bootstrap-deps",
+    "defensive-narrow": "defensive-narrow-payloads",
+    "re-export": "re-export-init",
+    "typer-default": "typer-default-option",
+    "migration-sequence": "migration-sequence-bootstrap",
+    "protocol-private": "protocol-private-ducktyping",
+    "module-level-patch": "module-level-patch-fixtures",
+}
+
 # Rule 8 + Rule 9: fixed suggestion per rule (no path inspection required).
 # rule -> suggestion string; fix_class is always "easy" for these.
 _RULE_SUGGESTION_MAP: dict[str, str] = {
     # Rule 6: E402 — imports after side effects (no path filter needed)
-    "E402": "POLICY:module-level-patch",
+    "E402": "DEBT:module-level-patch-fixtures",
     # Rule 8: pyright/mypy type annotation rules
-    "reportUnnecessaryIsInstance": "POLICY:defensive-narrow",
-    "reportUnusedClass": "POLICY:protocol-private",
-    "union-attr": "POLICY:defensive-narrow",
-    "misc": "POLICY:defensive-narrow",
-    "type-arg": "POLICY:defensive-narrow",
-    "import-untyped": "POLICY:defensive-narrow",
-    "PLC0414": "POLICY:re-export",
-    "ARG002": "POLICY:protocol-private",
+    "reportUnnecessaryIsInstance": "DEBT:defensive-narrow-payloads",
+    "reportUnusedClass": "DEBT:protocol-private-ducktyping",
+    "union-attr": "DEBT:defensive-narrow-payloads",
+    "misc": "DEBT:defensive-narrow-payloads",
+    "type-arg": "DEBT:defensive-narrow-payloads",
+    "import-untyped": "DEBT:defensive-narrow-payloads",
+    "PLC0414": "DEBT:re-export-init",
+    "ARG002": "DEBT:protocol-private-ducktyping",
     # Rule 9: PLC0415 — lazy/deferred import
     "PLC0415": "DEBT:plc0415-deferred-import",
     # Rule 11: residual lint singletons -> DEBT slugs (T6 may consolidate)
@@ -159,11 +175,11 @@ def _classify_complexity_rule(
     """
     all_lines = _read_lines(root, path)
     if _is_migration_function(all_lines, lineno):
-        return CLASSIFIED, "POLICY:migration-sequence", "medium", "matched"
+        return CLASSIFIED, "DEBT:migration-sequence-bootstrap", "medium", "matched"
     if _is_bootstrap_entry_function(path, all_lines, lineno):
-        return CLASSIFIED, "POLICY:migration-sequence", "medium", "matched"
+        return CLASSIFIED, "DEBT:migration-sequence-bootstrap", "medium", "matched"
     if _is_dispatcher_path(path):
-        return CLASSIFIED, "POLICY:wiring", "easy", "matched"
+        return CLASSIFIED, "DEBT:wiring-bootstrap-deps", "easy", "matched"
     # Fallback: residual complexity that wasn't classifiable by structure ->
     # DEBT slug. T6 may split into per-rule slugs later.
     return CLASSIFIED, "DEBT:complexity-residual", "medium", "fallback"
@@ -173,7 +189,7 @@ def _classify_row(row: Row, root: Path) -> tuple[str, str | None, str, str]:
     """Return (status, suggestion, fix_class, reason).
 
     status: 'classified' | 'needs_review'
-    suggestion: e.g. 'POLICY:boundary' or None
+    suggestion: e.g. 'DEBT:boundary-broad-catch' or None
     fix_class: 'easy' | 'medium' | 'needs_review'
     reason: 'matched' | 'f401-init' | 'not-implemented'
     """
@@ -193,25 +209,25 @@ def _classify_row(row: Row, root: Path) -> tuple[str, str | None, str, str]:
     # Rule 5: F401 — re-export (init.py preferred; non-init also treated as
     # re-export since intentional unused imports are the dominant pattern).
     if rule == "F401":
-        return CLASSIFIED, "POLICY:re-export", "easy", "matched"
+        return CLASSIFIED, "DEBT:re-export-init", "easy", "matched"
 
     # Rule 1: BLE001 — boundary. Path-specific match preferred; otherwise
     # fallback to boundary (every BLE001 with an existing noqa is by definition
     # an acknowledged top-level exception handler).
     if rule == "BLE001":
-        return CLASSIFIED, "POLICY:boundary", "easy", "matched"
+        return CLASSIFIED, "DEBT:boundary-broad-catch", "easy", "matched"
 
     # B008 — typer default argument.
     if rule == "B008":
         line_text = _read_line(root, path, lineno)
         if "typer.Option(" in line_text or "typer.Argument(" in line_text:
-            return CLASSIFIED, "POLICY:typer-default", "easy", "matched"
+            return CLASSIFIED, "DEBT:typer-default-option", "easy", "matched"
 
     # Rule 2: PLR0913 — wiring. Path-specific match preferred; otherwise
     # fallback to wiring (every PLR0913 is a high-arg-count constructor by
-    # definition, which is the structural shape POLICY:wiring covers).
+    # definition, which is the structural shape DEBT:wiring-bootstrap-deps covers).
     if rule == "PLR0913":
-        return CLASSIFIED, "POLICY:wiring", "easy", "matched"
+        return CLASSIFIED, "DEBT:wiring-bootstrap-deps", "easy", "matched"
 
     # Fallback: truly unknown rules -> needs_review.
     return NEEDS_REVIEW, None, "needs_review", "not-implemented"
@@ -338,7 +354,7 @@ _SUFFIX_ALREADY_RE = re.compile(r"[-—]+\s*(POLICY|DEBT):")
 
 
 def _apply_suffix(line: str, suggestion: str) -> str:
-    """Append POLICY/DEBT suffix to the first noqa/pyright/type-ignore on the line."""
+    """Append DEBT suffix to the first noqa/pyright/type-ignore on the line."""
     for pattern in (_NOQA_RE, _PYRIGHT_RE, _TYPE_IGNORE_RE):
         m = pattern.search(line)
         if m:
@@ -379,6 +395,63 @@ def _apply_file_edits(p: Path, edits: list[tuple[int, str]]) -> int:
                 mutated += 1
     p.write_text("".join(lines), encoding="utf-8")
     return mutated
+
+
+# ---------------------------------------------------------------------------
+# Policy-to-DEBT migration
+# ---------------------------------------------------------------------------
+
+# Matches an existing POLICY:<tag> suffix on a suppression marker line.
+# Captures the leading dash(es)/em-dash and optional whitespace as <prefix>.
+_POLICY_SUFFIX_RE = re.compile(
+    r"(?P<prefix>[-—]+\s*)POLICY:(?P<tag>[a-z][a-z-]*)"
+)
+
+
+def _migrate_policy_markers(root: Path) -> tuple[int, int]:
+    """Rewrite POLICY:<tag> suffixes in src/lyra/**/*.py to DEBT:<slug>.
+
+    Returns (rewritten, unmapped) counts.
+    Logs unmapped tags to stderr; leaves those lines unchanged.
+    Idempotent: DEBT: markers are unchanged.
+    """
+    src_root = root / "src" / "lyra"
+    rewritten = 0
+    unmapped = 0
+
+    for py_file in sorted(src_root.rglob("*.py")):
+        try:
+            original_text = py_file.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            print(f"skipped unreadable file {py_file}: {exc}", file=sys.stderr)
+            continue
+
+        lines = original_text.splitlines(keepends=True)
+        changed = False
+
+        for idx, line in enumerate(lines):
+            lineno = idx + 1
+            m = _POLICY_SUFFIX_RE.search(line)
+            if m is None:
+                continue
+            tag = m.group("tag")
+            slug = POLICY_TO_DEBT_SLUG.get(tag)
+            if slug is None:
+                print(
+                    f"unmapped POLICY tag: {tag} at {py_file}:{lineno}",
+                    file=sys.stderr,
+                )
+                unmapped += 1
+                continue
+            replacement = m.group("prefix") + f"DEBT:{slug}"
+            lines[idx] = line[: m.start()] + replacement + line[m.end() :]
+            rewritten += 1
+            changed = True
+
+        if changed:
+            py_file.write_text("".join(lines), encoding="utf-8")
+
+    return rewritten, unmapped
 
 
 # ---------------------------------------------------------------------------
@@ -565,9 +638,7 @@ def _run_apply(
 
             # Drain queue candidates (easy only)
             if fix_class == "easy":
-                s_bucket = (
-                    "POLICY" if suggestion.startswith("POLICY:") else "DEBT"
-                )
+                s_bucket = "DEBT"
                 s_slug = suggestion.split(":", 1)[1] if ":" in suggestion else ""
                 easy_rows.append(
                     {
@@ -629,6 +700,15 @@ def main(argv: list[str] | None = None) -> int:
             "(default: artifacts/quality-debt-report.json)"
         ),
     )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help=(
+            "Repository root directory "
+            "(default: cwd). Used by --migrate-policy."
+        ),
+    )
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
         "--dry-run",
@@ -643,6 +723,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_false",
         help="Apply inline suffixes, create registry files, write drain queue.",
     )
+    mode_group.add_argument(
+        "--migrate-policy",
+        dest="migrate_policy",
+        action="store_true",
+        default=False,
+        help=(
+            "One-shot mode: scan src/lyra/**/*.py and rewrite POLICY:<tag> suffixes "
+            "to DEBT:<slug> using the built-in mapping table. "
+            "Prints summary to stdout; logs unmapped tags to stderr. "
+            "Returns non-zero if any unmapped tags are found."
+        ),
+    )
     parser.add_argument(
         "--json",
         action="store_true",
@@ -654,6 +746,19 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+
+    # Resolve root (used by --migrate-policy and classify pipeline)
+    root = (args.root or Path.cwd()).resolve()
+
+    # --migrate-policy takes precedence: runs its own pipeline and returns.
+    if getattr(args, "migrate_policy", False):
+        rewritten, unmapped_count = _migrate_policy_markers(root)
+        scanned = sum(1 for _ in (root / "src" / "lyra").rglob("*.py"))
+        print(
+            f"migrate-policy: scanned={scanned} files, "
+            f"rewritten={rewritten} lines, unmapped={unmapped_count}"
+        )
+        return 1 if unmapped_count > 0 else 0
 
     report_path: Path = (args.report or _default_report()).resolve()
     if not report_path.exists():
@@ -667,9 +772,6 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     rows: list[Row] = report.get("rows", [])
-
-    # Resolve root: use cwd (tests set cwd=tmp_path)
-    root = Path.cwd().resolve()
 
     classified = _classify_all(rows, root)
 

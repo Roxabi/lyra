@@ -17,7 +17,7 @@ from ..agent.agent_config import ModelConfig
 
 
 @dataclass
-class _ProcessEntry:  # pyright: ignore[reportUnusedClass] — POLICY:protocol-private  # private by convention (pool internal); name inherited from cli_pool_worker
+class _ProcessEntry:  # pyright: ignore[reportUnusedClass] — DEBT:protocol-private-ducktyping  # private by convention (pool internal); name inherited from cli_pool_worker
     """A persistent CLI process for one pool."""
 
     proc: asyncio.subprocess.Process
@@ -48,5 +48,5 @@ class _ProcessEntry:  # pyright: ignore[reportUnusedClass] — POLICY:protocol-p
             if self._on_session_update is not None:
                 try:
                     self._on_session_update(self.pool_id, sid)
-                except Exception:  # noqa: BLE001  — POLICY:boundary# top-level boundary
+                except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
                     log.debug("[pool:%s] session update callback failed", self.pool_id)

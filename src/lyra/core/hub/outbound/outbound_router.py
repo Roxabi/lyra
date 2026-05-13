@@ -52,7 +52,7 @@ class OutboundRouter:
     Owns TTS integration for voice responses.
     """
 
-    def __init__(  # noqa: PLR0913 — POLICY:wiring
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         adapters: dict[tuple[Platform, str], "ChannelAdapter"],
         dispatchers: dict[tuple[Platform, str], "OutboundDispatcher"],

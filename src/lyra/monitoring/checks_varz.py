@@ -62,7 +62,7 @@ async def check_nats_varz(url: str, state_file: str, timeout: int = 5) -> CheckR
         data = resp.json()
         current_auth = int(data.get("auth_errors", 0))
         current_slow = int(data.get("slow_consumers", 0))
-    except Exception as exc:  # noqa: BLE001 — POLICY:boundary
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
         return CheckResult(
             name="nats:varz",
             passed=False,

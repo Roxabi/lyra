@@ -65,7 +65,7 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
         await pool.stop()
     """
 
-    def __init__(  # noqa: PLR0913 — POLICY:wiring
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         idle_ttl: int = 1200,
         default_timeout: int = 1200,  # 20 min × 3 retries = 60 min max idle

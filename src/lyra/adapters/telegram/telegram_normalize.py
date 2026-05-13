@@ -90,7 +90,7 @@ def _make_scope_id(
     return f"chat:{chat_id}"
 
 
-def _build_routing(  # noqa: PLR0913 — POLICY:wiring — groups related metadata fields
+def _build_routing(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — groups related metadata fields
     adapter: TelegramAdapter,
     chat_id: int,
     topic_id: int | None,
@@ -116,7 +116,7 @@ def _build_routing(  # noqa: PLR0913 — POLICY:wiring — groups related metada
     return platform_meta, routing
 
 
-def normalize(  # noqa: C901 — POLICY:wiring
+def normalize(  # noqa: C901 — DEBT:wiring-bootstrap-deps
     adapter: TelegramAdapter,
     raw: Any,
     *,

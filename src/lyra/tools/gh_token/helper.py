@@ -118,6 +118,7 @@ class JWTSigner:
 
 # ── Section D: TokenCache ─────────────────────────────────────────────────────
 
+
 def _parse_expires_at(raw: str) -> datetime:
     """Parse ISO-8601 datetime with mandatory timezone component."""
     # Python 3.11+ fromisoformat handles Z; 3.12 enforces it too.
@@ -154,7 +155,7 @@ class TokenCache:
                 log.debug("TokenCache: cached token expired at %s", expires_at)
                 return None
             return InstallationToken(token=token, expires_at=expires_at)
-        except Exception as exc:  # noqa: BLE001 — POLICY:boundary — cold-cache fallback: file may be missing, unreadable (PermissionError on misconfigured tmpfs), contain corrupt JSON, or have unexpected schema; all read errors are non-fatal — caller mints a fresh token
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — cold-cache fallback: file may be missing, unreadable (PermissionError on misconfigured tmpfs), contain corrupt JSON, or have unexpected schema; all read errors are non-fatal — caller mints a fresh token
             log.debug("TokenCache read error (cold cache): %s", exc)
             return None
 
@@ -203,9 +204,7 @@ async def mint(
         MintError:   Any non-201 HTTP response or network failure.
     """
     if not _INSTALL_ID_RE.match(install_id):
-        raise ValueError(
-            f"install_id must be purely numeric, got: {install_id!r}"
-        )
+        raise ValueError(f"install_id must be purely numeric, got: {install_id!r}")
 
     now = datetime.now(tz=timezone.utc)
     jwt = signer.sign(app_id, now=now)
@@ -246,7 +245,7 @@ async def mint(
         expires_at = _parse_expires_at(body["expires_at"])
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
-    except Exception as exc:  # noqa: BLE001 — POLICY:boundary — response parse: resp.json() raises JSONDecodeError, body["token"]/["expires_at"] raise KeyError (or TypeError if body is not a dict), _parse_expires_at raises ValueError; all wrapped into MintError
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — response parse: resp.json() raises JSONDecodeError, body["token"]/["expires_at"] raise KeyError (or TypeError if body is not a dict), _parse_expires_at raises ValueError; all wrapped into MintError
         raise MintError(
             reason=f"failed to parse GitHub API response: {exc}",
             http_status=resp.status_code,

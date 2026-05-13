@@ -175,7 +175,7 @@ class StreamingSession:
         if self._outbound is not None and fallback_message_id is not None:
             self._outbound.metadata["reply_message_id"] = fallback_message_id
 
-    async def _run_event_loop(  # noqa: C901 — POLICY:wiring — v1+v2 dispatch ladder
+    async def _run_event_loop(  # noqa: C901 — DEBT:wiring-bootstrap-deps — v1+v2 dispatch ladder
         self,
         events: AsyncIterator[RenderEvent],
         placeholder_obj: Any,
@@ -211,7 +211,7 @@ class StreamingSession:
                     await self._on_toolcall_v2(event)
                     continue
 
-                if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
+                if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
                     event,
                     TextStartRenderEvent
                     | TextDeltaRenderEvent
@@ -242,11 +242,11 @@ class StreamingSession:
                         ):
                             try:
                                 await self._cb.edit_trace(self._trace_obj, event)
-                            except Exception as exc:  # noqa: BLE001 — POLICY:boundary
+                            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
                                 log.debug("Trace edit skipped: %s", exc)
                             self._st.last_tool_edit = now
 
-                elif isinstance(event, TextRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
+                elif isinstance(event, TextRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
                     if event.is_final:
                         self._st.on_final_text(event)
                     else:
@@ -261,7 +261,7 @@ class StreamingSession:
                                 await self._cb.edit_placeholder_text(
                                     placeholder_obj, self._st.istate.display()
                                 )
-                            except Exception as edit_exc:  # noqa: BLE001  — POLICY:boundary# streaming edit: any send failure is non-fatal
+                            except Exception as edit_exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# streaming edit: any send failure is non-fatal
                                 log.debug(
                                     "Intermediate text edit skipped: %s", edit_exc
                                 )
@@ -325,7 +325,7 @@ class StreamingSession:
         )
         try:
             await self._cb.edit_placeholder_text(placeholder_obj, error_text)
-        except Exception as edit_exc:  # noqa: BLE001  — POLICY:boundary# streaming edit: any send failure is non-fatal
+        except Exception as edit_exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# streaming edit: any send failure is non-fatal
             log.debug("Error edit skipped: %s", edit_exc)
 
     def _handle_typing_tail(self) -> None:
@@ -349,7 +349,7 @@ class StreamingSession:
             first_event = await events.__anext__()
         except StopAsyncIteration:
             pass
-        except Exception as exc:  # noqa: BLE001  — POLICY:boundary# streaming edit: any send failure is non-fatal
+        except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# streaming edit: any send failure is non-fatal
             peek_error = exc
         if first_event is None and peek_error is None:
             await self._drain_fallback(events)

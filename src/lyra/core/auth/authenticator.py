@@ -37,7 +37,7 @@ class Authenticator:
     → role_map → default.
     """
 
-    def __init__(  # noqa: PLR0913 — POLICY:wiring
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         store: AuthStore | None,
         role_map: dict[str, TrustLevel],
@@ -241,7 +241,7 @@ class Authenticator:
         )
 
     @classmethod
-    def from_bot_config(  # noqa: PLR0913 — POLICY:wiring
+    def from_bot_config(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         cls,
         raw: dict,
         section: str,

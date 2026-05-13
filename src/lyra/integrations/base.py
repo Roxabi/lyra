@@ -28,7 +28,7 @@ class ScrapeProvider(Protocol):
 class VaultProvider(Protocol):
     """Async vault access: write and search the knowledge base."""
 
-    async def add(  # noqa: PLR0913 — POLICY:wiring
+    async def add(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         title: str,
         tags: list[str],

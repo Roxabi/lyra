@@ -8,7 +8,7 @@ from __future__ import annotations
 
 # Re-export for backward compatibility — callers that imported from here.
 from .agent_db_loader import (
-    agent_row_to_config as agent_row_to_config,  # noqa: PLC0414 — POLICY:re-export
+    agent_row_to_config as agent_row_to_config,  # noqa: PLC0414 — DEBT:re-export-init
 )
 
 __all__ = ["agent_row_to_config"]

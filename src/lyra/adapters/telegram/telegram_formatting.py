@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     _convert_markdown: _ConvertFn
 
 try:
-    from telegramify_markdown import (  # type: ignore[import-untyped] — POLICY:defensive-narrow
+    from telegramify_markdown import (  # type: ignore[import-untyped] — DEBT:defensive-narrow-payloads
         markdownify as _md,
     )
 

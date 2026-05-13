@@ -162,7 +162,7 @@ class StreamingSession:
         if self._outbound is not None and fallback_message_id is not None:
             self._outbound.metadata["reply_message_id"] = fallback_message_id
 
-    async def _run_event_loop(  # noqa: C901 — POLICY:wiring — full v1+v2 dispatch ladder lands in Slice 2 (#1099)
+    async def _run_event_loop(  # noqa: C901 — POLICY:wiring — v1+v2 dispatch ladder
         self,
         events: AsyncIterator[RenderEvent],
         placeholder_obj: Any,
@@ -196,6 +196,16 @@ class StreamingSession:
                     # off v1 ToolSummary in Slice 5 (#1102). Default is
                     # no-op (parity).
                     await self._on_toolcall_v2(event)
+                    continue
+
+                if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
+                    event,
+                    TextStartRenderEvent
+                    | TextDeltaRenderEvent
+                    | TextEndRenderEvent
+                    | TextChunkRenderEvent,
+                ):
+                    await self._on_text_v2(event)
                     continue
 
                 if isinstance(event, ToolSummaryRenderEvent):
@@ -243,18 +253,6 @@ class StreamingSession:
                                     "Intermediate text edit skipped: %s", edit_exc
                                 )
                             self._st.last_intermediate_edit = now
-                elif isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — POLICY:defensive-narrow
-                    event,
-                    TextStartRenderEvent
-                    | TextDeltaRenderEvent
-                    | TextEndRenderEvent
-                    | TextChunkRenderEvent,
-                ):
-                    # Slice 2 (#1099): Text v2 triplet + Chunk events defined.
-                    # Full adapter dispatch (streaming edits, placeholder updates)
-                    # lands in Slice 5 (#1102). Until then: no-op to satisfy
-                    # exhaustive coverage — v1 TextRenderEvent drives UX above.
-                    pass
                 else:
                     assert_never(event)
 

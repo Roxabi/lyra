@@ -84,7 +84,7 @@ jobs:
         run: bash scripts/check-acl-authconf-drift.sh
 
       - name: Check inbox_prefix uses identity_name API
-        run: bash scripts/check-inbox-prefix.sh
+        run: uv run python scripts/check_inbox_prefix.py
 
       - name: Check docs drift — removed symbols must not reappear
         run: |

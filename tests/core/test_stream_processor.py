@@ -23,6 +23,7 @@ from lyra.core.messaging.render_events import (
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
+    TextChunkRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
     TextRenderEvent,
@@ -60,6 +61,7 @@ _TEXT_V2_TYPES = (
     TextStartRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
+    TextChunkRenderEvent,
 )
 
 

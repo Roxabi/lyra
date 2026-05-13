@@ -280,58 +280,39 @@ class TestDrainFallbackHarvestsV2Delta:
         cb.send_fallback.assert_awaited_once_with("Hello")  # type: ignore[attr-defined]
 
 
-class TestDrainFallbackNoDoubleCountUnderDualEmit:
-    """Dual-emit ordering: v2 delta wins; v1 text is skipped (elif guard)."""
+class TestDrainFallbackDualEmitAccumulation:
+    """Dual-emit accumulation in _drain_fallback.
 
-    async def test_drain_fallback_no_double_count_under_dual_emit(self) -> None:
-        # Arrange — dual-emit: v2 delta followed by matching v1 text (same content).
-        # The elif ordering in _drain_fallback means only the first branch fires
-        # for a given event; since each event is a distinct object the "elif"
-        # guards are orthogonal. What matters: an event that IS a TextDeltaRenderEvent
-        # does NOT also satisfy TextRenderEvent (they are different types), so the
-        # text is accumulated once per event, and we must not double-count.
+    Under dual emission, v2 delta and v1 text are distinct event objects in the
+    stream; each fires its own branch. The elif guards on type — they do NOT
+    deduplicate same-content events. Slice 5 (#1102) removes the v1 branch.
+    """
+
+    async def test_drain_fallback_v2_only_yields_single_string(self) -> None:
+        # A v2-only stream produces a single accumulation. Proves the v2 branch
+        # consumes TextDeltaRenderEvent without also routing through the v1 branch.
         cb = _make_callbacks()
         outbound = OutboundMessage.from_text("hi")
         session = StreamingSession(cb, outbound=outbound)
 
-        # Act — both events carry "Hi"; fallback text should be "Hi", not "HiHi".
-        # The elif ensures that when BOTH are in the stream, v2 delta is consumed
-        # first (it comes first), and the v1 TextRenderEvent is consumed by the
-        # elif branch — one append each, but they carry the same string "Hi",
-        # so the result is "HiHi". To validate "v2 preferred, v1 fallback" we
-        # must assert only ONE of them contributes, which requires that the stream
-        # carries only one that matches. This test validates the actual dual-emit
-        # scenario: one v2 delta ("Hi") + one v1 final TextRenderEvent("Hi") →
-        # fallback is "HiHi" only if BOTH branches fire. The correct contract is:
-        # each branch fires for its own event type — they are different isinstance
-        # checks. The "no double count" means a single v2 delta event does NOT
-        # also get picked up by the v1 branch (which would require the same object
-        # to be both TextDeltaRenderEvent and TextRenderEvent — impossible).
-        # The real guard being tested: the elif means a v1 TextRenderEvent that
-        # arrives IN ADDITION TO a v2 delta still adds its text (dual-emit design).
-        # The fallback concatenates both → "HiHi". If only v2 is present → "Hi".
         await session._drain_fallback(
             _async_iter(
                 TextDeltaRenderEvent(message_id="text-1", delta="Hi"),
             )
         )
 
-        # Assert — only v2 delta present; fallback text is "Hi" (single), not "HiHi".
-        # Negative: if TextDeltaRenderEvent branch is removed, send_fallback gets "…".
         cb.send_fallback.assert_awaited_once_with("Hi")  # type: ignore[attr-defined]
 
     async def test_drain_fallback_v1_and_v2_both_contribute_in_dual_emit(
         self,
     ) -> None:
-        # Arrange — when both v2 delta AND v1 text are in the stream (dual-emit),
-        # each fires its own branch and both strings are concatenated.
-        # This validates the elif ordering: v2 fires for TextDeltaRenderEvent,
-        # v1 fires for TextRenderEvent — they do NOT overlap.
+        # Real dual-emit shape: v2 delta + v1 text in the same stream. Each fires
+        # its own branch (types are disjoint). "HiHi" is the intended transient
+        # behavior during coexistence; Slice 5 drops the v1 branch.
         cb = _make_callbacks()
         outbound = OutboundMessage.from_text("hi")
         session = StreamingSession(cb, outbound=outbound)
 
-        # Act
         await session._drain_fallback(
             _async_iter(
                 TextDeltaRenderEvent(message_id="text-1", delta="Hi"),
@@ -339,9 +320,4 @@ class TestDrainFallbackNoDoubleCountUnderDualEmit:
             )
         )
 
-        # Assert — both branches fired; result is "HiHi" (expected dual-emit sum).
-        # Negative: if the elif were an if (both branches fire for the SAME event),
-        # a single TextDeltaRenderEvent would contribute twice — but types differ so
-        # this cannot happen. This test instead verifies the elif does NOT suppress
-        # a legitimate v1 TextRenderEvent that arrives separately.
         cb.send_fallback.assert_awaited_once_with("HiHi")  # type: ignore[attr-defined]

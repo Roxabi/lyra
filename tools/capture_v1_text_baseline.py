@@ -66,10 +66,25 @@ from lyra.core.messaging.events import (  # noqa: E402
     ToolUseEndLlmEvent,
     ToolUseLlmEvent,
 )
+from lyra.core.messaging.render_events import (  # noqa: E402
+    TextChunkRenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+    TextStartRenderEvent,
+)
 from lyra.core.messaging.tool_display_config import (  # noqa: E402
     ToolDisplayConfig,
 )
 from lyra.core.processors.stream_processor import StreamProcessor  # noqa: E402
+
+# v1 baseline = explicitly drop the Slice 2 (#1099) v2 Text family so the
+# script is idempotent on any branch from Slice 2 onward.
+_V2_TEXT_TYPES = (
+    TextStartRenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+    TextChunkRenderEvent,
+)
 
 # ---------------------------------------------------------------------------
 # Async helpers
@@ -83,9 +98,17 @@ async def _aiter(*events):
 
 
 async def _collect(gen) -> list[dict[str, Any]]:
-    """Drain an async generator of RenderEvents into serializable dicts."""
+    """Drain an async generator of RenderEvents into v1-only serializable dicts.
+
+    Slice 2 (#1099) added v2 Text events that emit alongside v1. The fixture
+    captures the v1 baseline only — re-running this script post-Slice-2 must
+    yield identical output to the staging capture, so v2 types are filtered
+    out before serialization.
+    """
     results: list[dict[str, Any]] = []
     async for event in gen:
+        if isinstance(event, _V2_TEXT_TYPES):
+            continue
         d = dataclasses.asdict(event)
         d["type"] = type(event).__name__
         d = normalize_event_dict(d)

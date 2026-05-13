@@ -7,8 +7,11 @@ prefix.  Raw constructions like ``inbox_prefix=f"_INBOX.{name}"`` or
 
 Tests are excluded because they may intentionally exercise the raw parameter.
 
-Exit 0: scan ran successfully (violations reported on stdout, not as exit code).
-Exit 1: scanner itself failed (I/O error, bad --src path, etc.).
+Exit 0: scan ran successfully, no violations found.
+Exit 1: violations found OR scanner failed (I/O error, bad --src path, etc.).
+        Matches the sibling-scanner convention in this repo
+        (check_acl_matrix_retired.py, check_request_reply_flows.py).
+        CI step exit code IS the gate signal.
 
 Violation output format (stdout):
   FAIL: <file> uses raw f-string inbox_prefix construction (use identity_name= instead):
@@ -177,6 +180,7 @@ def main() -> None:
         print("OK: no raw _INBOX inbox_prefix constructions found in source files")
     else:
         print(f"FAIL: {violation_count} violation(s) found")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -78,13 +78,48 @@ class TestHappyPath:
         assert result.returncode == 0
         assert "OK:" in result.stdout
 
-    def test_prod_source_exits_0(self) -> None:
-        """Production src/ and packages/ directories must be clean."""
-        result = _run()
-        assert result.returncode == 0, (
-            f"Production source has inbox_prefix violations!\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    def test_fixture_pair_clean_then_bad(self, tmp_path: Path) -> None:
+        """Falsification guard: scanner exits 0 on clean, 1 on known-bad fixture.
+
+        Pair-based: if either ``_check_fstring`` or ``_check_literal`` is
+        silently removed, the bad-fixture half of this test will exit 0 and
+        fail. Replaces the prior repo-state-dependent
+        ``test_prod_source_exits_0`` which only proved that prod source
+        happens to be clean today.
+        """
+        clean = tmp_path / "clean"
+        bad = tmp_path / "bad"
+        clean.mkdir()
+        bad.mkdir()
+        _write_py(
+            clean,
+            "ok.py",
+            """\
+            def connect():
+                return nats_connect(identity_name="hub")
+            """,
         )
+        _write_py(
+            bad,
+            "violation.py",
+            """\
+            def connect(name):
+                return nats_connect(inbox_prefix=f"_INBOX.{name}")
+            """,
+        )
+
+        clean_result = _run([clean])
+        assert clean_result.returncode == 0, (
+            f"Clean fixture must exit 0.\nstdout: {clean_result.stdout}"
+        )
+        assert "OK:" in clean_result.stdout
+
+        bad_result = _run([bad])
+        assert bad_result.returncode == 1, (
+            f"Known-bad fixture must exit 1 — detection logic broken.\n"
+            f"stdout: {bad_result.stdout}"
+        )
+        assert "FAIL" in bad_result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -93,8 +128,8 @@ class TestHappyPath:
 
 
 class TestFstringViolation:
-    def test_fstring_violation_exits_0(self, tmp_path: Path) -> None:
-        """A file with f-string inbox_prefix must still exit 0 (violation ≠ crash)."""
+    def test_fstring_violation_exits_1(self, tmp_path: Path) -> None:
+        """A file with f-string inbox_prefix must exit 1 (CI gate signal)."""
         _write_py(
             tmp_path,
             "bad.py",
@@ -104,7 +139,7 @@ class TestFstringViolation:
             """,
         )
         result = _run([tmp_path])
-        assert result.returncode == 0
+        assert result.returncode == 1
 
     def test_fstring_violation_prints_fail(self, tmp_path: Path) -> None:
         """FAIL line must appear on stdout for f-string inbox_prefix construction."""
@@ -152,8 +187,8 @@ class TestFstringViolation:
 
 
 class TestLiteralViolation:
-    def test_literal_violation_exits_0(self, tmp_path: Path) -> None:
-        """A file with literal inbox_prefix must still exit 0 (violation ≠ crash)."""
+    def test_literal_violation_exits_1(self, tmp_path: Path) -> None:
+        """A file with literal inbox_prefix must exit 1 (CI gate signal)."""
         _write_py(
             tmp_path,
             "literal.py",
@@ -163,7 +198,7 @@ class TestLiteralViolation:
             """,
         )
         result = _run([tmp_path])
-        assert result.returncode == 0
+        assert result.returncode == 1
 
     def test_literal_violation_prints_fail(self, tmp_path: Path) -> None:
         """FAIL line must appear on stdout for literal inbox_prefix construction."""
@@ -179,7 +214,7 @@ class TestLiteralViolation:
         assert "FAIL" in result.stdout
 
     def test_literal_violation_names_file_and_line(self, tmp_path: Path) -> None:
-        """FAIL output must include file path and line number."""
+        """FAIL output must include file path AND line number in <path>:<line>: form."""
         src = _write_py(
             tmp_path,
             "lit_named.py",
@@ -190,13 +225,11 @@ class TestLiteralViolation:
         )
         result = _run([tmp_path])
         combined = result.stdout + result.stderr
-        assert str(src) in combined or "lit_named.py" in combined
-        # Line number must appear somewhere in the FAIL output
-        assert (
-            ":2:" in combined
-            or ":2 " in combined
-            or "lineno=2" in combined
-            or "2:" in combined
+        # Exact format emitted by _check_literal: f"{path}:{lineno}: inbox_prefix=..."
+        # The violation is on line 2 (line 1 is "def connect():").
+        assert f"{src}:2:" in combined, (
+            f"Expected exact '<path>:2:' substring in output.\n"
+            f"src: {src}\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
     def test_literal_in_comment_not_flagged(self, tmp_path: Path) -> None:

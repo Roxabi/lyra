@@ -181,6 +181,11 @@ KNOWN_CODES: dict[str, CodeMeta] = {
         default_retryable=True,
         description="Worker encountered an internal error not covered by a more specific code.",  # noqa: E501
     ),
+    "worker.capacity": CodeMeta(
+        domain="worker",
+        default_retryable=True,
+        description="Worker rejected the request because its capacity limit (queue or pool) is exhausted; caller should retry after back-off.",  # noqa: E501
+    ),
     "worker.busy": CodeMeta(
         domain="worker",
         default_retryable=True,

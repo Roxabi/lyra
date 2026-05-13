@@ -225,6 +225,7 @@ def test_code_meta_has_required_fields() -> None:
         "worker.crash",
         "worker.validation",
         "worker.internal",
+        "worker.capacity",
         "worker.busy",
         "cli.auth",
         "cli.session_lost",

@@ -59,3 +59,21 @@ class TestBuildCmdSkipPermissionsAudit:
             "SECURITY: --dangerously-skip-permissions enabled for CLI subprocess"
             in messages
         )
+
+
+class TestBuildCmdEffortFlag:
+    """T1 (#1101 Wave 1): build_cmd() --effort flag wiring."""
+
+    def test_build_cmd_omits_effort_when_none(self) -> None:
+        """--effort is NOT appended when model_config.effort is None."""
+        model_config = ModelConfig(effort=None)
+        cmd, _ = build_cmd(model_config)
+        assert "--effort" not in cmd
+
+    def test_build_cmd_appends_effort_when_set(self) -> None:
+        """--effort <value> is appended when model_config.effort is set."""
+        model_config = ModelConfig(effort="high")
+        cmd, _ = build_cmd(model_config)
+        assert "--effort" in cmd
+        idx = cmd.index("--effort")
+        assert cmd[idx + 1] == "high"

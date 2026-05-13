@@ -33,6 +33,7 @@ from lyra.core.messaging.events import (
     LlmEvent,
     ResultLlmEvent,
     TextLlmEvent,
+    ThinkingLlmEvent,
     ToolResultLlmEvent,
     ToolUseDeltaLlmEvent,
     ToolUseEndLlmEvent,
@@ -299,6 +300,9 @@ class StreamProcessor:
                         is_final=True,
                         is_error=event.is_error,  # #392: propagate error state
                     )
+
+                elif isinstance(event, ThinkingLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+                    pass  # TODO(T10): emit ReasoningStart/Delta/End
 
                 else:
                     # Cross-slice invariant 3: no silent event drop. When the

@@ -167,8 +167,26 @@ class TestVoiceSmokeHappyPath:
                 lyra_app, ["voice-smoke", "--nats-url", "nats://myserver:4222"]
             )
 
-        mock_connect.assert_called_once_with("nats://myserver:4222")
+        mock_connect.assert_called_once_with(
+            "nats://myserver:4222", identity_name="hub"
+        )
         assert result.exit_code == 0
+
+    def test_connect_uses_hub_identity_name(self) -> None:
+        """nats_connect is called with identity_name='hub' (ADR-051 / #1148).
+
+        The hub nkey ACL grants _inbox.hub.> only. Without identity_name='hub',
+        nats-py defaults to uppercase _INBOX.<random>.> which is denied.
+        """
+        nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("one"))
+
+        with patch(
+            "lyra.cli_voice_smoke.nats_connect", new=AsyncMock(return_value=nc)
+        ) as mock_connect:
+            runner.invoke(lyra_app, ["voice-smoke"])
+
+        mock_connect.assert_called_once()
+        assert mock_connect.call_args.kwargs.get("identity_name") == "hub"
 
 
 # ---------------------------------------------------------------------------

@@ -194,10 +194,9 @@ def unassign(
 @agent_app.command(name="patch")
 def patch_agent(
     name: str = typer.Argument(..., help="Agent name to patch."),
-    json_patch: str = typer.Option(
-        ...,
-        "--json",
-        help="JSON object with field updates.",
+    json_patch: str = typer.Option("{}", "--json", help="JSON field updates."),
+    effort: str = typer.Option(
+        "", "--effort", help="Set effort: low|medium|high|xhigh|max|none."
     ),
 ) -> None:
     """Apply a partial JSON patch to an agent in DB."""
@@ -208,6 +207,15 @@ def patch_agent(
         raise typer.Exit(1)
     if not isinstance(fields, dict):
         typer.echo("Error: --json must be a JSON object (dict)", err=True)
+        raise typer.Exit(1)
+    if effort:
+        e_lower = effort.lower()
+        if e_lower not in {"low", "medium", "high", "xhigh", "max", "none"}:
+            typer.echo(f"Error: invalid --effort {effort!r}", err=True)
+            raise typer.Exit(1)
+        fields["effort"] = None if e_lower == "none" else e_lower
+    if not fields:
+        typer.echo("Error: provide --json or --effort", err=True)
         raise typer.Exit(1)
 
     async def _run() -> None:

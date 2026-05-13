@@ -35,6 +35,18 @@ class TextLlmEvent:
 
 
 @dataclass(frozen=True)
+class ThinkingLlmEvent:
+    """A chunk of extended-thinking text from the LLM (Slice 4 of #1096).
+
+    Emitted by cli_streaming_parser on Anthropic CLI thinking_delta
+    events (content_block.type == "thinking" + delta.type ==
+    "thinking_delta" under --effort low|medium|high|xhigh|max).
+    """
+
+    text: str
+
+
+@dataclass(frozen=True)
 class ToolUseLlmEvent:
     """Emitted when the LLM calls a tool.
 
@@ -112,6 +124,7 @@ class ResultLlmEvent:
 # Union type exported for type annotations and ``isinstance`` checks.
 LlmEvent = (
     TextLlmEvent
+    | ThinkingLlmEvent
     | ToolUseLlmEvent
     | ToolUseDeltaLlmEvent
     | ToolUseEndLlmEvent
@@ -123,6 +136,7 @@ __all__ = [
     "LlmEvent",
     "ResultLlmEvent",
     "TextLlmEvent",
+    "ThinkingLlmEvent",
     "ToolResultLlmEvent",
     "ToolUseDeltaLlmEvent",
     "ToolUseEndLlmEvent",

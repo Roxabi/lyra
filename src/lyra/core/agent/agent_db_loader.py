@@ -58,6 +58,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — DEBT:complexity-residual —
         cwd=cwd,
         skip_permissions=row.skip_permissions,
         streaming=row.streaming,
+        effort=row.effort,  # type: ignore[arg-type]  # validated at write time
     )
 
     # Persona: always from persona_json (inline JSON)

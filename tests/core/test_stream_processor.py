@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import json
+import logging
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -13,12 +14,16 @@ import pytest
 from lyra.core.messaging.events import (
     ResultLlmEvent,
     TextLlmEvent,
+    ThinkingLlmEvent,
     ToolResultLlmEvent,
     ToolUseDeltaLlmEvent,
     ToolUseEndLlmEvent,
     ToolUseLlmEvent,
 )
 from lyra.core.messaging.render_events import (
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+    ReasoningStartRenderEvent,
     RenderEvent,
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
@@ -1227,6 +1232,418 @@ class TestToolCallLifecycle:
         # If the bare-else regressed, the delta would crash on event.is_error
         # access. Successful dispatch surfaces a ToolCallArgsRenderEvent.
         assert any(isinstance(e, ToolCallArgsRenderEvent) for e in result)
+
+
+# ---------------------------------------------------------------------------
+# Slice 4 of #1096 — Reasoning events (#1101) — T11
+# ---------------------------------------------------------------------------
+
+_REASONING_TYPES = (
+    ReasoningStartRenderEvent,
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+)
+
+
+class TestReasoning:
+    """Reasoning block (Slice 4 / #1101) emission contract — SC-10..SC-13, SC-18."""
+
+    # ------------------------------------------------------------------
+    # T11-1 — Full reasoning triplet + consistent message_id (SC-10, SC-11)
+    # ------------------------------------------------------------------
+
+    async def test_thinking_emits_reasoning_triplet_with_consistent_message_id(
+        self,
+    ) -> None:
+        """ThinkingLlmEvents produce Start, Delta×N, End all sharing one message_id."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="a"),
+            ThinkingLlmEvent(text="b"),
+            TextLlmEvent(text="c"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — exactly 4 Reasoning events in order
+        reasoning = [e for e in result if isinstance(e, _REASONING_TYPES)]
+        assert len(reasoning) == 4
+        start, delta_a, delta_b, end = reasoning
+        assert isinstance(start, ReasoningStartRenderEvent)
+        assert isinstance(delta_a, ReasoningDeltaRenderEvent)
+        assert delta_a.delta == "a"
+        assert isinstance(delta_b, ReasoningDeltaRenderEvent)
+        assert delta_b.delta == "b"
+        assert isinstance(end, ReasoningEndRenderEvent)
+        # All 4 share the same message_id
+        mid = start.message_id
+        assert mid == delta_a.message_id == delta_b.message_id == end.message_id
+
+    # ------------------------------------------------------------------
+    # T11-2 — ReasoningEnd fires before any Text* event (SC-12)
+    # ------------------------------------------------------------------
+
+    async def test_reasoning_closes_on_text_transition(self) -> None:
+        """ReasoningEndRenderEvent is emitted before the TextStart of a real text block.
+
+        With χ-1 dual-emit (SC-7), v1 `TextRenderEvent(is_final=False)` also fires
+        from inside the reasoning block alongside each `ReasoningDelta`. The
+        invariant under test is: the TRANSITION to a real text block (signalled
+        by `TextStartRenderEvent` for the v2 triplet) happens AFTER `ReasoningEnd`.
+        """
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="a"),
+            ThinkingLlmEvent(text="b"),
+            TextLlmEvent(text="c"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — ReasoningEnd index precedes the TextStart of the real text block
+        end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ReasoningEndRenderEvent)
+        )
+        first_text_start_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, TextStartRenderEvent)
+        )
+        assert end_idx < first_text_start_idx
+
+    # ------------------------------------------------------------------
+    # T11-3 — ReasoningEnd fires before ToolCall* events (SC-12)
+    # ------------------------------------------------------------------
+
+    async def test_reasoning_closes_on_tool_transition(self) -> None:
+        """ReasoningEndRenderEvent is emitted before the first ToolCall* RenderEvent."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="think"),
+            ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
+            ToolResultLlmEvent(tool_id="t1", content="result"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — ReasoningEnd precedes first ToolCallStart
+        end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ReasoningEndRenderEvent)
+        )
+        first_toolcall_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ToolCallStartRenderEvent)
+        )
+        assert end_idx < first_toolcall_idx
+
+    # ------------------------------------------------------------------
+    # T11-4 — ReasoningEnd fires before final-text / run-end on Result (SC-12)
+    # ------------------------------------------------------------------
+
+    async def test_reasoning_closes_on_result_transition(self) -> None:
+        """Thinking-only turn: ReasoningEnd fires before TextRenderEvent(is_final)."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="think"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — ReasoningEnd precedes the final TextRenderEvent
+        end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ReasoningEndRenderEvent)
+        )
+        final_text_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, RunFinishedRenderEvent)
+        )
+        assert end_idx < final_text_idx
+
+    # ------------------------------------------------------------------
+    # T11-5 — ReasoningEnd fires before ToolCallArgs on Delta transition (SC-13)
+    # ------------------------------------------------------------------
+
+    async def test_reasoning_closes_on_tool_delta_transition(self) -> None:
+        """Defensive: ReasoningEnd fires before ToolCallArgs even on Delta-first path.
+
+        In practice the Anthropic wire format always emits ToolUseLlmEvent before
+        ToolUseDeltaLlmEvent. This test verifies the close guard exists on the
+        ToolUseDelta branch so any future re-ordering does not leave an open block.
+        """
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="think"),
+            ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
+            ToolUseDeltaLlmEvent(tool_id="t1", partial_json='{"file_path": "/x"}'),
+            ToolUseEndLlmEvent(tool_id="t1"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — ReasoningEnd precedes the first ToolCallArgsRenderEvent
+        end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ReasoningEndRenderEvent)
+        )
+        first_args_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ToolCallArgsRenderEvent)
+        )
+        assert end_idx < first_args_idx
+
+    async def test_show_intermediate_false_emits_no_reasoning_events(self) -> None:
+        """SC-6 (spec line 260): show_intermediate=False → zero Reasoning* events.
+
+        Spec v2 line 65 requires that thinking chunks produce no Reasoning* output
+        when the operator config disables intermediate streaming. The gate lives
+        on the StreamProcessor (single source of truth) so any downstream consumer
+        — adapters today, NATS subscribers tomorrow — is uniformly muted.
+        """
+        # Arrange — show_intermediate=False
+        processor = StreamProcessor(cfg(), show_intermediate=False)
+        events = async_events(
+            ThinkingLlmEvent(text="a"),
+            ThinkingLlmEvent(text="b"),
+            ThinkingLlmEvent(text="c"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — zero Reasoning* events of any kind
+        assert [e for e in result if isinstance(e, _REASONING_TYPES)] == []
+        # And no v1 dual-emit either (gate drops the chunk entirely)
+        intermediate = [
+            e for e in result if isinstance(e, TextRenderEvent) and not e.is_final
+        ]
+        assert intermediate == []
+
+    async def test_dual_emit_v1_text_alongside_reasoning_delta(self) -> None:
+        """SC-7 / χ-1 (spec line 261): pair ReasoningDelta with v1 TextRenderEvent.
+
+        Coexistence safety: non-migrated adapters that haven't wired `edit_reasoning`
+        keep their current `⏳`-streaming UX via the v1 TextRenderEvent(is_final=False)
+        dual-emit. Sunsets in Slice 5 (#1102) once all adapters migrate.
+        """
+        # Arrange — show_intermediate=True (default)
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="alpha"),
+            ThinkingLlmEvent(text="beta"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — every ReasoningDelta has a paired v1 TextRenderEvent(is_final=False)
+        # with the same text content, in emission order.
+        deltas = [e.delta for e in result if isinstance(e, ReasoningDeltaRenderEvent)]
+        v1_intermediates = [
+            e.text for e in result if isinstance(e, TextRenderEvent) and not e.is_final
+        ]
+        assert deltas == ["alpha", "beta"]
+        assert v1_intermediates == ["alpha", "beta"]
+
+    async def test_reasoning_closes_on_tool_use_end_transition(self) -> None:
+        """Isolation: ReasoningEnd fires when ToolUseEnd is first non-Thinking event.
+
+        Sequence skips ToolUse/ToolUseDelta so the ToolUseEnd branch is the only
+        close-guard path exercised. Deleting `_close_reasoning_if_open` from the
+        ToolUseEnd branch would leave the reasoning block open through to the
+        truncated-stream orphan path — this test catches that regression.
+        """
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="think"),
+            ToolUseEndLlmEvent(tool_id="t1"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — ReasoningEnd precedes ToolCallEnd (close-guard fires on this branch)
+        end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ReasoningEndRenderEvent)
+        )
+        tool_end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ToolCallEndRenderEvent)
+        )
+        assert end_idx < tool_end_idx
+        # Single block opened, single block closed (no orphan-close path)
+        assert sum(1 for e in result if isinstance(e, ReasoningStartRenderEvent)) == 1
+        assert sum(1 for e in result if isinstance(e, ReasoningEndRenderEvent)) == 1
+
+    async def test_reasoning_closes_on_tool_result_transition(self) -> None:
+        """Isolation: ReasoningEnd fires when ToolResult is first non-Thinking event.
+
+        Sequence skips ToolUse/ToolUseDelta/ToolUseEnd so the ToolResult branch is
+        the only close-guard path exercised. Deleting `_close_reasoning_if_open`
+        from the ToolResult branch would leave the reasoning block open — this
+        test catches that regression.
+        """
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="think"),
+            ToolResultLlmEvent(tool_id="t1", content="ok"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert — ReasoningEnd precedes ToolCallResult (close-guard fires here)
+        end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ReasoningEndRenderEvent)
+        )
+        tool_result_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ToolCallResultRenderEvent)
+        )
+        assert end_idx < tool_result_idx
+        # Single block opened, single block closed (no orphan-close path)
+        assert sum(1 for e in result if isinstance(e, ReasoningStartRenderEvent)) == 1
+        assert sum(1 for e in result if isinstance(e, ReasoningEndRenderEvent)) == 1
+
+    # ------------------------------------------------------------------
+    # T11-6 — Orphan ReasoningEnd + log.warning on exception mid-thinking (SC-18)
+    # ------------------------------------------------------------------
+
+    async def test_reasoning_orphan_close_on_exception(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Exception after ThinkingLlmEvent: orphan ReasoningEnd + warning logged."""
+
+        class _Boom(RuntimeError):
+            pass
+
+        async def _raising_events():
+            yield ThinkingLlmEvent(text="partial think")
+            raise _Boom("stream died")
+
+        # Arrange
+        processor = StreamProcessor(cfg())
+        seen: list[RenderEvent] = []
+
+        # Act
+        with pytest.raises(_Boom):
+            with caplog.at_level(logging.WARNING):
+                async for ev in processor.process(_raising_events()):
+                    seen.append(ev)
+
+        # Assert — orphan ReasoningEnd emitted before RunErrorRenderEvent
+        reasoning_end_idx = next(
+            (i for i, e in enumerate(seen) if isinstance(e, ReasoningEndRenderEvent)),
+            None,
+        )
+        run_error_idx = next(
+            (i for i, e in enumerate(seen) if isinstance(e, RunErrorRenderEvent)), None
+        )
+        assert reasoning_end_idx is not None, "ReasoningEndRenderEvent not found"
+        assert run_error_idx is not None, "RunErrorRenderEvent not found"
+        assert reasoning_end_idx < run_error_idx
+        # Warning must mention orphan close
+        warning_msgs = [
+            r.message for r in caplog.records if r.levelno >= logging.WARNING
+        ]
+        assert any(
+            "orphan" in m.lower() and "reasoning" in m.lower() for m in warning_msgs
+        ), f"Expected orphan ReasoningEnd warning, got: {warning_msgs}"
+
+    # ------------------------------------------------------------------
+    # T11-7 — Orphan ReasoningEnd + log.warning on truncated stream (SC-18)
+    # ------------------------------------------------------------------
+
+    async def test_reasoning_orphan_close_on_truncated_stream(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Truncated stream mid-thinking: orphan ReasoningEnd + warning logged."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        # Stream ends without ResultLlmEvent
+        events = async_events(
+            ThinkingLlmEvent(text="partial think"),
+        )
+
+        # Act
+        with caplog.at_level(logging.WARNING):
+            result = await collect(processor.process(events))
+
+        # Assert — orphan ReasoningEnd is present in emitted events
+        reasoning_ends = [e for e in result if isinstance(e, ReasoningEndRenderEvent)]
+        assert len(reasoning_ends) == 1
+        # Warning must mention orphan close
+        warning_msgs = [
+            r.message for r in caplog.records if r.levelno >= logging.WARNING
+        ]
+        assert any(
+            "orphan" in m.lower() and "reasoning" in m.lower() for m in warning_msgs
+        ), f"Expected orphan ReasoningEnd warning, got: {warning_msgs}"
+
+    # ------------------------------------------------------------------
+    # T11-8 — DEBUG log observability (SC-18)
+    # ------------------------------------------------------------------
+
+    async def test_reasoning_log_debug_observability(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Normal thinking flow: exactly one 'reasoning block opened' and one
+        'reasoning block closed' debug log, both carrying message_id context."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ThinkingLlmEvent(text="think"),
+            TextLlmEvent(text="ok"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        with caplog.at_level(logging.DEBUG):
+            result = await collect(processor.process(events))
+
+        # Assert — exactly one 'reasoning block opened' and one 'reasoning block closed'
+        # Use getMessage() to interpolate %-format args (message_id is a format arg).
+        debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
+
+        def _msg(r) -> str:  # type: ignore[no-untyped-def]
+            return r.getMessage().lower()
+
+        opened_records = [
+            r for r in debug_records if "reasoning block opened" in _msg(r)
+        ]
+        closed_records = [
+            r for r in debug_records if "reasoning block closed" in _msg(r)
+        ]
+        assert len(opened_records) == 1, (
+            f"Expected 1 opened log, got: {[r.getMessage() for r in opened_records]}"
+        )
+        assert len(closed_records) == 1, (
+            f"Expected 1 closed log, got: {[r.getMessage() for r in closed_records]}"
+        )
+        # Collect the message_id from emitted ReasoningStart event
+        start_event = next(
+            e for e in result if isinstance(e, ReasoningStartRenderEvent)
+        )
+        mid = start_event.message_id
+        # Both log messages must reference the message_id
+        assert mid in opened_records[0].getMessage(), (
+            f"message_id '{mid}' not in opened log: {opened_records[0].getMessage()!r}"
+        )
+        assert mid in closed_records[0].getMessage(), (
+            f"message_id '{mid}' not in closed log: {closed_records[0].getMessage()!r}"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,221 @@
+"""Integration tests for Discord adapter Reasoning rendering (SC-16, T13).
+
+Covers _render_reasoning via PlatformCallbacks.edit_reasoning for:
+- Lazy placeholder creation (back-to-back blocks share one placeholder)
+- Edit throttle bound
+- Text truncation
+
+The show_intermediate=False gate lives upstream on StreamProcessor (SC-6) — no
+Reasoning* events reach this callback when disabled, so adapter-level coverage
+is not needed here (see test_stream_processor.py::TestReasoning).
+"""
+
+from __future__ import annotations
+
+import math
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import discord
+import pytest
+
+from lyra.adapters.discord import DiscordAdapter
+from lyra.adapters.shared._shared_streaming_state import STREAMING_EDIT_INTERVAL
+from lyra.core.messaging.render_events import (
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+    ReasoningStartRenderEvent,
+)
+from tests.adapters.conftest import make_dc_inbound_msg
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_MSG_ID = "r-dc-test-1"
+
+
+def _make_discord_adapter() -> DiscordAdapter:
+    """Build a DiscordAdapter with a MagicMock hub."""
+    return DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+    )
+
+
+def _make_messageable_with_trace_obj() -> tuple[AsyncMock, AsyncMock]:
+    """Return (mock_messageable, mock_trace_obj).
+
+    mock_messageable.send("🔧 …") returns mock_trace_obj.
+    mock_trace_obj.edit is an AsyncMock to track reasoning edit calls.
+    """
+    trace_obj = AsyncMock()
+    trace_obj.id = 601
+    trace_obj.edit = AsyncMock()
+
+    messageable = AsyncMock()
+    messageable.send = AsyncMock(return_value=trace_obj)
+    return messageable, trace_obj
+
+
+# ---------------------------------------------------------------------------
+# T13 — Discord reasoning rendering (4 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestDiscordReasoningRendering:
+    """T13 — Discord adapter Reasoning event rendering (SC-16)."""
+
+    @pytest.mark.asyncio
+    async def test_reasoning_lazy_placeholder(self) -> None:
+        """Trace placeholder sent ONCE across two back-to-back reasoning blocks.
+
+        Drives 2 distinct Reasoning{Start,Delta,End} triplets (different message_ids,
+        as a tool call would interleave between them). Asserts that the lazy-init
+        guard kicks in: the second Start does NOT trigger a second placeholder send.
+
+        Without the lazy-init guard, messageable.send would be called twice —
+        making this test the actual regression boundary.
+        """
+        from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
+
+        # Arrange
+        adapter = _make_discord_adapter()
+        messageable, _trace_obj = _make_messageable_with_trace_obj()
+        adapter._resolve_channel = AsyncMock(return_value=messageable)
+
+        original_msg = make_dc_inbound_msg()
+        callbacks = build_streaming_callbacks(adapter, original_msg, None)
+
+        # Act — two back-to-back reasoning blocks with distinct message_ids
+        for block_id in (_MSG_ID, f"{_MSG_ID}-2"):
+            await callbacks.edit_reasoning(
+                None, ReasoningStartRenderEvent(message_id=block_id)
+            )
+            await callbacks.edit_reasoning(
+                None,
+                ReasoningDeltaRenderEvent(message_id=block_id, delta="thinking…"),
+            )
+            await callbacks.edit_reasoning(
+                None, ReasoningEndRenderEvent(message_id=block_id)
+            )
+
+        # Assert — channel.send called exactly once for trace placeholder
+        # (lazy-init guard prevents second send on second block)
+        assert messageable.send.await_count == 1, (
+            f"Expected 1 messageable.send call (lazy guard), "
+            f"got {messageable.send.await_count}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_reasoning_throttle_bound(self) -> None:
+        """Delta edits are throttled: at most ceil(window/interval)+1 API calls.
+
+        Arrange: adapter with show_intermediate=True; time.monotonic controlled.
+        Act: drive Start + 20 Delta events spread across a 2s window + End.
+        Assert: trace_obj.edit count <= ceil(2.0 / STREAMING_EDIT_INTERVAL) + 1.
+        """
+        from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
+
+        # Arrange
+        adapter = _make_discord_adapter()
+        messageable, trace_obj = _make_messageable_with_trace_obj()
+        adapter._resolve_channel = AsyncMock(return_value=messageable)
+
+        original_msg = make_dc_inbound_msg()
+        callbacks = build_streaming_callbacks(adapter, original_msg, None)
+
+        # Spread 20 deltas uniformly across a 2s window
+        window = 2.0
+        n_deltas = 20
+        tick = window / n_deltas  # 0.1s per delta
+
+        times: list[float] = [i * tick for i in range(n_deltas)]
+        time_iter = iter(times)
+
+        def fake_monotonic() -> float:
+            try:
+                return next(time_iter)
+            except StopIteration:
+                return window
+
+        with patch(
+            "lyra.adapters.discord.discord_outbound.time.monotonic",
+            side_effect=fake_monotonic,
+        ):
+            # Act
+            await callbacks.edit_reasoning(
+                None, ReasoningStartRenderEvent(message_id=_MSG_ID)
+            )
+            for i in range(n_deltas):
+                await callbacks.edit_reasoning(
+                    None,
+                    ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta=f"chunk{i}"),
+                )
+            await callbacks.edit_reasoning(
+                None, ReasoningEndRenderEvent(message_id=_MSG_ID)
+            )
+
+        # Assert — throttle bound (the "+1" accounts for the final flush at End)
+        max_allowed = math.ceil(window / STREAMING_EDIT_INTERVAL) + 1
+        actual_edits = trace_obj.edit.await_count
+        assert actual_edits <= max_allowed, (
+            f"Too many API edits: {actual_edits} > {max_allowed} "
+            f"(window={window}s, interval={STREAMING_EDIT_INTERVAL}s)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_reasoning_truncation(self) -> None:
+        """Delta text > 120 chars is truncated to 117 chars + ellipsis (118 total).
+
+        Arrange: adapter with show_intermediate=True.
+        Act: Start → Delta(200 'x' chars) → End.
+        Assert: the edit call receives text ending with '…'.
+        """
+        from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
+
+        # Arrange
+        adapter = _make_discord_adapter()
+        messageable = AsyncMock()
+        edit_calls: list[str] = []
+
+        trace_obj = AsyncMock()
+        trace_obj.id = 602
+
+        async def capture_edit(*, content: object, embed: object) -> None:
+            assert isinstance(content, str)
+            edit_calls.append(content)
+
+        trace_obj.edit = capture_edit
+        messageable.send = AsyncMock(return_value=trace_obj)
+        adapter._resolve_channel = AsyncMock(return_value=messageable)
+
+        original_msg = make_dc_inbound_msg()
+        callbacks = build_streaming_callbacks(adapter, original_msg, None)
+
+        # Act
+        await callbacks.edit_reasoning(
+            None, ReasoningStartRenderEvent(message_id=_MSG_ID)
+        )
+        await callbacks.edit_reasoning(
+            None,
+            ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta="x" * 200),
+        )
+        await callbacks.edit_reasoning(
+            None, ReasoningEndRenderEvent(message_id=_MSG_ID)
+        )
+
+        # Assert — at least one edit call was made
+        assert len(edit_calls) >= 1, "Expected at least one trace_obj.edit call"
+        last_text = edit_calls[-1]
+        # The text passed to trace_obj.edit is _dim_italic(truncated) = "*...*".
+        # Evidence of truncation: text contains the ellipsis character.
+        assert "…" in last_text, (
+            f"Expected truncation ellipsis in edit content, got: {last_text!r}"
+        )
+
+    # NOTE: show_intermediate=False adapter no-op test removed. The gate now
+    # lives upstream on StreamProcessor (SC-6) — when disabled, no Reasoning*
+    # events reach this callback. Coverage is in
+    # tests/core/test_stream_processor.py::TestReasoning::
+    # test_show_intermediate_false_emits_no_reasoning_events.

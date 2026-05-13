@@ -5,6 +5,8 @@ Source: src/lyra/core/messaging/render_events.py
 
 from __future__ import annotations
 
+import dataclasses
+import typing
 from dataclasses import FrozenInstanceError
 from typing import Any
 
@@ -227,10 +229,16 @@ class TestRenderEventUnion:
 
         assert set(_mod.__all__) == {
             "FileEditSummary",
+            "ReasoningDeltaRenderEvent",
+            "ReasoningEndRenderEvent",
+            "ReasoningStartRenderEvent",
             "RenderEvent",
             "RunErrorRenderEvent",
             "RunFinishedRenderEvent",
             "RunStartedRenderEvent",
+            "SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT",
+            "SCHEMA_VERSION_REASONING_END_RENDER_EVENT",
+            "SCHEMA_VERSION_REASONING_START_RENDER_EVENT",
             "SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT",
             "SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT",
             "SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT",
@@ -331,6 +339,73 @@ class TestToolCallEvents:
             ToolCallResultRenderEvent(tool_call_id="x", content="ok"),
         ]
         assert len(events) == 4
+
+
+# ---------------------------------------------------------------------------
+# Reasoning* lifecycle events (Slice 4 of #1096 — issue #1101)
+# ---------------------------------------------------------------------------
+
+
+class TestReasoningEvents:
+    def test_reasoning_events_frozen(self) -> None:
+        from lyra.core.messaging.render_events import (
+            SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
+            SCHEMA_VERSION_REASONING_END_RENDER_EVENT,
+            SCHEMA_VERSION_REASONING_START_RENDER_EVENT,
+            ReasoningDeltaRenderEvent,
+            ReasoningEndRenderEvent,
+            ReasoningStartRenderEvent,
+        )
+
+        # ReasoningStartRenderEvent
+        assert dataclasses.is_dataclass(ReasoningStartRenderEvent)
+        e_start = ReasoningStartRenderEvent(message_id="m1")
+        assert e_start.message_id == "m1"
+        assert (
+            e_start.schema_version == SCHEMA_VERSION_REASONING_START_RENDER_EVENT == 1
+        )
+        with pytest.raises(FrozenInstanceError):
+            e_start.message_id = "x"  # type: ignore[misc]
+
+        # ReasoningDeltaRenderEvent
+        assert dataclasses.is_dataclass(ReasoningDeltaRenderEvent)
+        e_delta = ReasoningDeltaRenderEvent(message_id="m1", delta="x")
+        assert e_delta.delta == "x"
+        assert (
+            e_delta.schema_version == SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT == 1
+        )
+        with pytest.raises(FrozenInstanceError):
+            e_delta.delta = "y"  # type: ignore[misc]
+
+        # ReasoningEndRenderEvent
+        assert dataclasses.is_dataclass(ReasoningEndRenderEvent)
+        e_end = ReasoningEndRenderEvent(message_id="m1")
+        assert e_end.message_id == "m1"
+        assert e_end.schema_version == SCHEMA_VERSION_REASONING_END_RENDER_EVENT == 1
+        with pytest.raises(FrozenInstanceError):
+            e_end.message_id = "x"  # type: ignore[misc]
+
+    def test_reasoning_events_in_union(self) -> None:
+        from lyra.core.messaging.render_events import (
+            ReasoningDeltaRenderEvent,
+            ReasoningEndRenderEvent,
+            ReasoningStartRenderEvent,
+        )
+
+        union_args = typing.get_args(RenderEvent)
+        assert ReasoningStartRenderEvent in union_args
+        assert ReasoningDeltaRenderEvent in union_args
+        assert ReasoningEndRenderEvent in union_args
+
+    def test_reasoning_constants_exported(self) -> None:
+        import lyra.core.messaging.render_events as _mod
+
+        assert "SCHEMA_VERSION_REASONING_START_RENDER_EVENT" in _mod.__all__
+        assert "SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT" in _mod.__all__
+        assert "SCHEMA_VERSION_REASONING_END_RENDER_EVENT" in _mod.__all__
+        assert _mod.SCHEMA_VERSION_REASONING_START_RENDER_EVENT == 1
+        assert _mod.SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT == 1
+        assert _mod.SCHEMA_VERSION_REASONING_END_RENDER_EVENT == 1
 
 
 # ---------------------------------------------------------------------------

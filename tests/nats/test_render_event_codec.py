@@ -16,6 +16,9 @@ import logging
 import pytest
 
 from lyra.core.messaging.render_events import (
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+    ReasoningStartRenderEvent,
     TextRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
@@ -302,3 +305,68 @@ class TestToolCallCodecRoundTrip:
         )
         assert result is None
         assert counter == {"ToolCallArgsRenderEvent:schema": 1}
+
+
+# ---------------------------------------------------------------------------
+# Reasoning* round-trip + schema floor (Slice 4 of #1096)
+# ---------------------------------------------------------------------------
+
+
+class TestReasoningCodecRoundTrip:
+    """Encode then decode each Reasoning* event and assert field fidelity."""
+
+    def test_reasoning_start_roundtrip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = ReasoningStartRenderEvent(message_id="msg_001")
+
+        event_type, payload, is_done = codec.encode(original)
+
+        assert event_type == "reasoning_start"
+        assert is_done is False
+        assert payload["message_id"] == "msg_001"
+        assert payload["schema_version"] == 1
+
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_reasoning_delta_roundtrip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = ReasoningDeltaRenderEvent(message_id="msg_001", delta="thinking...")
+
+        event_type, payload, is_done = codec.encode(original)
+
+        assert event_type == "reasoning_delta"
+        assert is_done is False
+        assert payload["message_id"] == "msg_001"
+        assert payload["delta"] == "thinking..."
+        assert payload["schema_version"] == 1
+
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_reasoning_end_roundtrip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = ReasoningEndRenderEvent(message_id="msg_001")
+
+        event_type, payload, is_done = codec.encode(original)
+
+        assert event_type == "reasoning_end"
+        assert is_done is False
+        assert payload["message_id"] == "msg_001"
+        assert payload["schema_version"] == 1
+
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_reasoning_floor_rejects_future_schema(self) -> None:
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+
+        result = codec.decode(
+            "reasoning_start",
+            {"schema_version": 99, "message_id": "msg_001"},
+            counter=counter,
+        )
+
+        assert result is None
+        assert counter == {"ReasoningStartRenderEvent:schema": 1}

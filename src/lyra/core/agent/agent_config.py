@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -71,6 +71,8 @@ class ModelConfig(BaseModel):
     streaming: bool = False
     base_url: str | None = None
     api_key: str | None = Field(default=None, exclude=True, repr=False)
+    # #1101 — per-agent extended-thinking config (effort token budget)
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
 
     @field_validator("base_url")
     @classmethod
@@ -95,6 +97,7 @@ class ModelConfig(BaseModel):
             and self.skip_permissions == other.skip_permissions
             and self.streaming == other.streaming
             and self.base_url == other.base_url
+            and self.effort == other.effort
             # cwd excluded — spawn-routing config, not model identity
             # api_key excluded — credential, not model identity
         )
@@ -109,6 +112,7 @@ class ModelConfig(BaseModel):
                 self.skip_permissions,
                 self.streaming,
                 self.base_url,
+                self.effort,
                 # cwd intentionally excluded
                 # api_key intentionally excluded — credential, not model identity
             )

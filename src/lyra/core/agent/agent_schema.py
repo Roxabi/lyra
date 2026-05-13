@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS agents (
     fallback_language TEXT NOT NULL DEFAULT 'en',
     patterns_json TEXT,
     passthroughs_json TEXT,
-    show_tool_recap INTEGER NOT NULL DEFAULT 1
+    show_tool_recap INTEGER NOT NULL DEFAULT 1,
+    effort TEXT
 )
 """
 
@@ -57,6 +58,8 @@ _MIGRATE_AGENTS = [
     # passthroughs: agent-level list of commands forwarded straight to the LLM
     "ALTER TABLE agents ADD COLUMN passthroughs_json TEXT",
     "ALTER TABLE agents ADD COLUMN show_tool_recap INTEGER NOT NULL DEFAULT 1",
+    # #1101 — per-agent extended-thinking config (effort token budget)
+    "ALTER TABLE agents ADD COLUMN effort TEXT",
 ]
 
 _CREATE_BOT_AGENT_MAP = """
@@ -81,14 +84,14 @@ CREATE TABLE IF NOT EXISTS agent_runtime_state (
 """
 
 # Column list shared by SELECT and INSERT to keep them in sync.
-# 24 columns after #346 cleanup (dropped: tts_json, stt_json, i18n_language).
+# 25 columns after #1101 effort column addition.
 _AGENT_COLUMNS = (
     "name, backend, model, max_turns, tools_json, "
     "show_intermediate, smart_routing_json, plugins_json, "
     "memory_namespace, cwd, source, created_at, updated_at, "
     "skip_permissions, permissions_json, workspaces_json, commands_json, streaming, "
     "persona_json, voice_json, fallback_language, patterns_json, passthroughs_json, "
-    "show_tool_recap"
+    "show_tool_recap, effort"
 )
 
 _SELECT_AGENTS = f"SELECT {_AGENT_COLUMNS} FROM agents"
@@ -119,6 +122,7 @@ _UPSERT_AGENT = (
     "patterns_json=COALESCE(excluded.patterns_json, agents.patterns_json), "
     "passthroughs_json=COALESCE(excluded.passthroughs_json, agents.passthroughs_json), "
     "show_tool_recap=excluded.show_tool_recap, "
+    "effort=excluded.effort, "
     "source=excluded.source, "
     "updated_at=?"
 )

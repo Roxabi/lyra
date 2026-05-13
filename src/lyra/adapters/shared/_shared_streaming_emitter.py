@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, assert_never
 
 from lyra.adapters.shared._shared_streaming_state import (
@@ -19,6 +19,9 @@ from lyra.adapters.shared._shared_streaming_state import (
     classify_stream_error,
 )
 from lyra.core.messaging import (
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+    ReasoningStartRenderEvent,
     RenderEvent,
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
@@ -37,6 +40,15 @@ from lyra.core.messaging import (
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
 
 log = logging.getLogger(__name__)
+
+
+async def _default_no_op_edit_reasoning(
+    trace_obj: Any,
+    event: ReasoningStartRenderEvent
+    | ReasoningDeltaRenderEvent
+    | ReasoningEndRenderEvent,
+) -> None:
+    """Default no-op — adapters that haven't opted in render nothing."""
 
 
 @dataclass
@@ -59,6 +71,15 @@ class PlatformCallbacks:
     cancel_typing: Callable[[], None]
     get_msg: Callable[[str, str], str]
     placeholder_text: str
+    edit_reasoning: Callable[
+        [
+            Any,
+            ReasoningStartRenderEvent
+            | ReasoningDeltaRenderEvent
+            | ReasoningEndRenderEvent,
+        ],
+        Awaitable[None],
+    ] = field(default=_default_no_op_edit_reasoning)
 
 
 async def _prepend(
@@ -266,6 +287,17 @@ class StreamingSession:
                                     "Intermediate text edit skipped: %s", edit_exc
                                 )
                             self._st.last_intermediate_edit = now
+                elif isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
+                    event,
+                    ReasoningStartRenderEvent
+                    | ReasoningDeltaRenderEvent
+                    | ReasoningEndRenderEvent,
+                ):
+                    # Slice 4 (#1101): typed reasoning events. Routed through
+                    # PlatformCallbacks.edit_reasoning (see T9.5). Default callback
+                    # is no-op; adapters override via OutboundAdapterBase.
+                    await self._cb.edit_reasoning(self._trace_obj, event)
+                    continue
                 else:
                     assert_never(event)
 

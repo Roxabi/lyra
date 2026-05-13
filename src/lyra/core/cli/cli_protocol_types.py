@@ -87,6 +87,8 @@ def build_cmd(
             os.close(fd)
         os.chmod(prompt_file, 0o600)
         cmd.extend(["--system-prompt-file", prompt_file])
+    if model_config.effort is not None:
+        cmd.extend(["--effort", model_config.effort])
     if session_id:
         cmd.extend(["--resume", session_id])
     return cmd, prompt_file

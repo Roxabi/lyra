@@ -401,15 +401,19 @@ class TestRenderEventCodecTextTriplet:
         )
         assert event_type == "text_delta"
         assert is_done is False
+        assert payload["message_id"] == "msg_001"
         assert payload["delta"] == "hello"
+        assert payload["schema_version"] == 1
 
     def test_text_end_encodes(self) -> None:
         codec = NatsRenderEventCodec()
-        event_type, _payload, is_done = codec.encode(
+        event_type, payload, is_done = codec.encode(
             TextEndRenderEvent(message_id="msg_001")
         )
         assert event_type == "text_end"
         assert is_done is False
+        assert payload["message_id"] == "msg_001"
+        assert payload["schema_version"] == 1
 
     def test_text_chunk_encodes(self) -> None:
         codec = NatsRenderEventCodec()
@@ -418,7 +422,9 @@ class TestRenderEventCodecTextTriplet:
         )
         assert event_type == "text_chunk"
         assert is_done is False
+        assert payload["message_id"] == "msg_001"
         assert payload["delta"] == "hi"
+        assert payload["schema_version"] == 1
 
     def test_text_start_round_trip(self) -> None:
         codec = NatsRenderEventCodec()
@@ -458,3 +464,36 @@ class TestRenderEventCodecTextTriplet:
         )
         assert result is None
         assert counter == {"TextStartRenderEvent:schema": 1}
+
+    def test_text_delta_floor_rejects_future_schema(self) -> None:
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+        result = codec.decode(
+            "text_delta",
+            {"schema_version": 99, "message_id": "msg_001", "delta": "x"},
+            counter=counter,
+        )
+        assert result is None
+        assert counter == {"TextDeltaRenderEvent:schema": 1}
+
+    def test_text_end_floor_rejects_future_schema(self) -> None:
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+        result = codec.decode(
+            "text_end",
+            {"schema_version": 99, "message_id": "msg_001"},
+            counter=counter,
+        )
+        assert result is None
+        assert counter == {"TextEndRenderEvent:schema": 1}
+
+    def test_text_chunk_floor_rejects_future_schema(self) -> None:
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+        result = codec.decode(
+            "text_chunk",
+            {"schema_version": 99, "message_id": "msg_001", "delta": "x"},
+            counter=counter,
+        )
+        assert result is None
+        assert counter == {"TextChunkRenderEvent:schema": 1}

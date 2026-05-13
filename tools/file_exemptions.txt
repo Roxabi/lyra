@@ -14,4 +14,4 @@ src/lyra/core/cli/cli_streaming_parser.py  # 336 lines — DEBT:file-exemptions 
 src/lyra/core/messaging/render_events.py  # 359 lines — DEBT:file-exemptions — #1099 Text v2 triplet + #1101 Reasoning v2 triplet (refactor deferred to Slice 5 / #1102)
 src/lyra/adapters/telegram/telegram_outbound.py  # 392 lines — DEBT:file-exemptions — #1101 _render_reasoning closure + show_intermediate gate (cleanup in Slice 5 / #1102: extract shared reasoning helper)
 src/lyra/adapters/discord/discord_outbound.py  # 381 lines — DEBT:file-exemptions — #1101 _render_reasoning closure + show_intermediate gate (cleanup in Slice 5 / #1102: extract shared reasoning helper)
-src/lyra/nats/render_event_codec.py  # 403 lines — DEBT:file-exemptions — #1099 Text v2 triplet encode/decode branches × 4 + assert_never exhaustiveness (cleanup in Slice 5 / #1102: collapse to registry-driven dispatch)
+src/lyra/nats/render_event_codec.py  # 406 lines — DEBT:file-exemptions — #1099 Text v2 triplet encode/decode branches × 4 + assert_never exhaustiveness + stream_error decode branch (cleanup in Slice 5 / #1102: collapse to registry-driven dispatch)

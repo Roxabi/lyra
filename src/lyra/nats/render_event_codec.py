@@ -70,13 +70,14 @@ class NatsRenderEventCodec:
                           | "tool_call_start" | "tool_call_args"
                           | "tool_call_end" | "tool_call_result"
                           | "reasoning_start" | "reasoning_delta"
-                          | "reasoning_end" | "stream_end",
+                          | "reasoning_end" | "stream_end" | "stream_error",
             "payload":    dict,   # serialized event fields
             "done":       bool,
         }
 
-    ``"stream_end"`` is a synthetic terminal sentinel emitted by
-    ``NatsChannelProxy``; ``decode()`` returns ``None`` for it. The
+    ``"stream_end"`` and ``"stream_error"`` are synthetic terminal sentinels
+    (the latter emitted by the transport on mid-stream hub crash, #538);
+    ``decode()`` returns ``None`` for both. The
     ``run_*`` types were added by Slice 1 of #1096 (#1098).
     """
 
@@ -365,6 +366,8 @@ class NatsRenderEventCodec:
                 resolver=self._resolver,
             )
         if event_type == "stream_end":
+            return None
+        if event_type == "stream_error":
             return None
         # Unknown event_type — surface via log + counter so partial-deploy
         # mismatches are visible. Synthetic transport sentinels (stream_end /

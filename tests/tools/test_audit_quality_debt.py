@@ -39,30 +39,6 @@ def _make_debt_registry(root: Path, slug: str, status: str) -> Path:
     return p
 
 
-def _make_importlinter(root: Path, lines: list[str]) -> Path:
-    p = root / ".importlinter"
-    body = (
-        "[importlinter]\nroot_packages = src\n\n[contract:example]\nignore_imports =\n"
-    )
-    body += "".join(f"    {ln}\n" for ln in lines)
-    p.write_text(body)
-    return p
-
-
-def _make_file_exemptions(root: Path, entries: list[str]) -> Path:
-    p = root / "tools" / "file_exemptions.txt"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("\n".join(entries) + "\n")
-    return p
-
-
-def _make_folder_exemptions(root: Path, entries: list[str]) -> Path:
-    p = root / "tools" / "folder_exemptions.txt"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("\n".join(entries) + "\n")
-    return p
-
-
 def _read_report(out: Path) -> dict:  # type: ignore[type-arg]
     return json.loads(out.read_text())
 
@@ -461,7 +437,7 @@ def test_py_scan_skips_tests_and_packages(tmp_path: Path) -> None:
     _make_src_py(tmp_path, "packages/y/z.py", "x = 1  # noqa: E501\n")
 
     # Act
-    rows, _stale = scan(tmp_path)
+    rows, _ = scan(tmp_path)
 
     # Assert
     paths = {r["path"] for r in rows}

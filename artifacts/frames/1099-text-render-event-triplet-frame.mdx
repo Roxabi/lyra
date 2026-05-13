@@ -1,0 +1,65 @@
+---
+title: "RenderEvent v2 — Slice 2: TextRenderEvent → Text{Start,Delta,End,Chunk} triplet"
+issue: 1099
+epic: 1096
+status: approved
+tier: F-lite
+date: 2026-05-13
+---
+
+## Problem
+
+Lyra's text streaming uses a single v1 `TextRenderEvent(text, is_final, is_error)` event. Recent bridge fixes on staging (1cde9d51, 40b3ea87, 4249f7bd) made the event progressively flushable (`is_final=False` per chunk when `show_intermediate=true`), but the underlying surface is still information-poor:
+
+- ¬`message_id` correlation — adapters cannot bracket "a single assistant text block"; interleaved `text → tool → text` patterns are flattened into one running edit.
+- ¬explicit Start — adapters cannot pre-allocate a UI container or attach role/metadata once at block boundary; placeholders today are synthesized adapter-side via a `⏳` marker hack.
+- ¬explicit End — "stream finished for this block" is conflated with `is_final=True` (turn-final), so multi-block turns conflate per-block end with turn end.
+- ¬role declaration — `role="assistant"` is implicit; future `tool` / `system` text blocks would need a parallel event type.
+
+This is Slice 2 of epic #1096 (RenderEvent v2 — back-port AG-UI modeling). It introduces the v2 Text triplet (`TextStart` → `TextDelta*` → `TextEnd`) plus a `TextChunk` convenience event for adapters that don't need granularity. Per the umbrella spec (#1096), v1 `TextRenderEvent` continues to be emitted in parallel during the coexistence period (Slices 2-4); Slice 5 (#1102) deletes v1.
+
+Slice-1 (`Run{Started,Finished,Error}`, #1098) and Slice-3 (`ToolCall{Start,Args,End,Result}`, #1100) are already merged. The dispatch ladder in `_shared_streaming_emitter.py` carries explicit `# (#1099)` anchors (L134, L230) marking where the v2 Text branch must wire in.
+
+## Who
+
+- **Primary:** Lyra hub developers maintaining `core/messaging/render_events.py`, `core/processors/stream_processor.py`, `adapters/shared/_shared_streaming_emitter.py`, `adapters/shared/_base_outbound.py`, and the Telegram + Discord outbound modules.
+- **Secondary:** End users on Telegram + Discord — must observe **zero** user-visible behavior change (parity contract from epic spec).
+- **Tertiary:** Future Slice 4 (#1101 Reasoning typed) author — Reasoning routing reuses the same per-block `message_id` mechanic; getting it right here unblocks Slice 4. Future AG-UI HTTP/SSE adapter author — edge translation of v2 Text becomes near-1:1 to AG-UI's `TextMessage{Start,Content,End}` triplet.
+
+## Constraints
+
+- **Inherits epic invariants (#1096 spec, §"Cross-slice invariants"):**
+  - Hexagonal boundary preserved — events live in `core/messaging/render_events.py`; no platform imports leak.
+  - All event classes are `frozen=True`.
+  - No silent event drop — dispatch fails loudly (`TypeError` or `assert_never`) on unknown event types.
+  - Per-event `SCHEMA_VERSION_*` constant; event's `schema_version` field defaults to that constant.
+- **Dual emission (resolved decision #6 in epic spec).** Within this slice, StreamProcessor emits BOTH v1 `TextRenderEvent` AND v2 `TextStart/Delta/End` for the same source `TextLlmEvent` stream. v1 stays authoritative for user-visible output; v2 is parity-validated against it. Removed in Slice 5.
+- **`message_id` per text block, not per turn (resolved decision #8 in epic spec).** A new `message_id` is minted on each `TextStart`. Supports interleaved text/tool patterns. If the underlying stream produces a single block per turn, behavior collapses harmlessly to per-turn. Format: short UUID (`f"text-{uuid4().hex[:12]}"` or similar) — exact format pinned in spec.
+- **User-visible parity preserved.** Telegram + Discord render identical output before/after the slice. Verified via test (snapshot or golden-file comparison) against a captured v1 baseline.
+- **Schema bump cadence: additive only.** This slice adds new constants (`SCHEMA_VERSION_TEXT_{START,DELTA,END,CHUNK}_RENDER_EVENT = 1`) and leaves `SCHEMA_VERSION_TEXT_RENDER_EVENT = 1` untouched. Coordinated deploy (`lyra_hub` + `lyra_telegram` + `lyra_discord`) required because new receiver code must understand new types — see #1096 spec, "Slice 1 deploy ordering" note for the deploy-hub-first rule.
+- **Dependencies:** #1098 (Run lifecycle) and #1100 (ToolCall split) merged — both prerequisites for the dispatch-ladder pattern this slice extends.
+- **No `TextChunk` use beyond definition.** `TextChunk` is added for adapter symmetry with AG-UI and as a future-facing convenience, but StreamProcessor in this slice emits triplet only. Whether any adapter consumes `TextChunk` is a future opt-in.
+
+## Out of Scope
+
+- **Removing v1 `TextRenderEvent`.** Deferred to Slice 5 (#1102) by epic decree. Removing v1 here would skip the coexistence parity window.
+- **Adapter migration to use v2 events as the authoritative path.** Adapters wire v2 into the dispatch ladder for routing safety (no silent drops), but the existing v1-driven edit-in-place algorithm stays the user-visible truth this slice. Per-adapter rich rendering (e.g., Discord embedding per-block markers) is a future opt-in once Slice 5 closes coexistence.
+- **`TextChunk` emission paths.** This slice adds the dataclass + constant only; no StreamProcessor path emits `TextChunk`. Wiring TTS tee or any other consumer onto `TextChunk` is a follow-up.
+- **Schema-floor raise.** The epic raises the floor in Slice 5. This slice is purely additive.
+- **CLI streaming parser changes.** Slice 3 (#1100, already merged) handled CLI parser changes for tool args. This slice does not touch `cli_streaming_parser.py`.
+- **Reasoning routing.** Pre-tool / inter-tool / post-tool text discrimination is Slice 4 (#1101). This slice routes ALL text through the triplet regardless of position.
+- **TTS tee changes.** The TTS tee consumes `TextDelta.delta`, but the existing v1 flush already feeds it; rewiring onto v2 deltas is deferred until Slice 5 forces it.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single primary domain (`core/messaging` + `core/processors`), one secondary domain (`adapters/shared` + 2 outbound modules), no architectural unknowns. The patterns are pre-validated by Slice 1 (Run lifecycle) and Slice 3 (ToolCall split), both already merged.
+
+Signals observed:
+
+- **Files touched:** ~6–8 — `render_events.py`, `stream_processor.py`, `_shared_streaming_emitter.py`, `_base_outbound.py`, `telegram_outbound.py`, `discord_outbound.py`, plus tests under `tests/core/` and `tests/adapters/`.
+- **Technical risk: low.** No new patterns; just instantiating the Slice-1/3 templates for the text event family. Dual-emission keeps user-visible output bounded to v1 path that already works on staging.
+- **Architectural impact: minor.** Additive surface to `RenderEvent` union; one new branch in the dispatch ladder; one new fork in StreamProcessor's text-handling path that mirrors what it already does for v1 progressive flush.
+- **Unknowns: 0** — all open questions from epic analysis (`message_id` semantics, dual-emission contract, dispatch-shim shape) are resolved in spec #1096. Slice-level spec confirms format details (UUID length, end-event placement on `is_final=True`, parity-test strategy).
+- **Domain breadth: 2** — core messaging/processing + outbound adapters.
+- **Issue label:** `size:F-lite` (confirms classification).
+- **Slice precedent:** #1098 (Slice 1, label S) and #1100 (Slice 3, label F-lite) both shipped without scope creep — same template applies here.

@@ -1,0 +1,47 @@
+---
+title: refactor(quality-debt) — classifier refinement iter-3 (post-#1163)
+issue: 1171
+status: approved
+tier: F-lite
+date: 2026-05-13
+---
+
+## Problem
+
+Three classifier-correctness items were deferred from PR #1168 (parent #1163) on 2026-05-12 to keep the merge non-blocking before the 2026-05-18 hard-cutover. They are now follow-up debt against `tools/classify_quality_debt.py`:
+
+1. **Path-guards dropped on BLE001/PLR0913 fallbacks** (commit `b8a626f8`). Any future BLE001 anywhere under `src/lyra/` auto-self-certifies as `POLICY:boundary` with no human review. A new BLE001 in `src/lyra/core/auth/`, `src/lyra/tools/gh_token/`, or any credential path would be silently tagged on next `--apply`, masking a real exception-swallow. Two existing tests (`test_ble001_unrelated_path_falls_back_to_boundary`, `test_plr0913_unrelated_basename_falls_back_to_wiring`) are tautological — they assert the buggy behavior is intentional.
+2. **F401 over-classification.** Every F401 unconditionally tags as `POLICY:re-export`. `src/lyra/cli_voice_smoke.py:18` carries `# noqa: F401 — module-level for patching` (monkeypatch fixture), now mis-tagged. The classifier conflates two distinct policies.
+3. **`hub_.+` regex un-validated.** `_BOUNDARY_BASENAME_RE` matches any `hub_*.py`; no test asserts intended scope. A hypothetical `hub_calculation.py` outside adapter/bootstrap dirs would auto-boundary, expanding the boundary policy beyond its intended hub-listener semantics.
+
+Together these defeat the read→write scope tightening that motivated the parent classifier work — the scanner silently mis-classifies on `--apply`, breaking the audit/ratchet trust chain documented in `feedback_scan_tool_read_vs_write_scope.md`.
+
+## Who
+
+- **Primary:** anyone running `tools/classify_quality_debt.py --apply` (manual maintenance + CI ratchet path). Mis-classification corrupts annotations on first apply.
+- **Secondary:** future reviewers of BLE001/F401/PLR0913 violations in security-sensitive paths who would assume the policy tag reflects human review.
+
+## Constraints
+
+- **Hard cutover 2026-05-18** for the parent quality-debt drain — these fixes must land before.
+- **Ratchet must not break.** Before flipping the BLE001/PLR0913 guard back on, run `UV_FROZEN=1 uv run python3 tools/audit_quality_debt.py` to count currently-tagged rows; any row that reverts to UNTAGGED must be refactored or manually re-tagged before push.
+- **Vocab compatibility.** New `POLICY:module-level-patch` tag (or reuse of existing E402 vocab if semantically aligned) must be reflected in `docs/quality-policy.md`.
+- **No regression on test_classifier.py** — `_BOUNDARY_BASENAME_RE` test must document the intended `hub_*` scope explicitly (or the regex must narrow).
+
+## Out of Scope
+
+- Re-architecting the classifier engine or rule plug-in model.
+- Migrating to a different annotation grammar (per `feedback_annotation_grammar_portability.md`, file-type compatibility unchanged).
+- Expanding the policy vocabulary beyond the one new `module-level-patch` row.
+- Touching `audit_quality_debt.py` scope or exit-code semantics (locked by `feedback_audit_exit_codes_in_gates.md`).
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (`tools/classify_quality_debt.py` + tests + `docs/quality-policy.md`), no new architecture, no unknowns. Three discrete items with explicit fix recipes already in the issue body.
+
+Signals observed:
+- Issue label `size:F-lite`
+- Single domain: classifier tool + its tests
+- All three items have prescriptive fix designs
+- Pre-merge verification step is mechanical (audit count diff)
+- No new arch, no cross-cutting concerns

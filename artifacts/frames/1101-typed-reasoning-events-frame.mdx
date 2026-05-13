@@ -1,0 +1,57 @@
+---
+title: "Typed Reasoning{Start,Delta,End} render-event stream"
+issue: 1101
+status: approved
+tier: F-lite
+date: 2026-05-13
+epic: 1096
+---
+
+## Problem
+
+After Slice 1 (#1098 Run lifecycle) and Slice 3 (#1100 ToolCall split) landed, the render-event taxonomy still treats **every text emission** as a single undifferentiated `TextRenderEvent`. StreamProcessor currently accumulates text in `_pending_text` and flushes it as a `TextRenderEvent(is_final=False)` before each tool call (when `show_intermediate=true`), then emits another `TextRenderEvent(is_final=True)` at the end. Adapters cannot tell whether a given text block is **reasoning** (the model thinking out loud before/between tool calls) or **final assistant output**. They render both the same way — and the only "differentiator" available to the Telegram adapter today is the `⏳` prefix injected upstream.
+
+Three downstream consequences:
+
+- **Per-adapter rendering policy is impossible.** Telegram wants reasoning rendered as a dim/italic single line; Discord could expand reasoning inline; a future AG-UI/web frontend wants typed `Reasoning*` events natively. None of this is achievable while reasoning and final text are the same event type.
+- **Suppression by type is impossible.** Turning off reasoning today requires sniffing the `⏳` prefix string. With a typed event family, adapters drop reasoning events by `isinstance` check.
+- **Epic-level taxonomy coherence.** Slices 1 and 3 typed Run lifecycle and ToolCall streaming. Slice 2 (#1099) will type the Text triplet. Without Slice 4, the AG-UI-aligned taxonomy is missing exactly the one event family AG-UI calls out as distinct: **Reasoning** (Start/Delta/End).
+
+Slice 4 closes that gap by introducing `ReasoningStartRenderEvent` / `ReasoningDeltaRenderEvent` / `ReasoningEndRenderEvent` and a new `_route_text_block()` method on StreamProcessor that decides — by **positional heuristic** — whether a given text block is reasoning or final output. The epic spec (#1096) fixes the heuristic: text emitted **before the first tool call** OR **between tool calls** is reasoning; text emitted **after the last tool result** is final assistant output.
+
+## Who
+
+- **Primary:** the render-event bus contract (`core/messaging/render_events.py`) and `StreamProcessor` (`core/processors/stream_processor.py`), which gain the new event family + routing method. The coexistence dispatch ladder in `adapters/shared/_shared_streaming_emitter.py` (introduced by S1, extended by S3) gains a new `_on_reasoning` branch.
+- **Secondary:** Telegram + Discord outbound adapters, which must render the new typed reasoning events. Back-compat preserved: while v1 `TextRenderEvent` still ships for non-reasoning text in this slice, the previously-`⏳`-prefixed pre-tool text now travels as `Reasoning*` events. Telegram outbound renders it as a dim/italic single-line summary (visually similar to the legacy `⏳` line). Discord outbound mirrors that policy in this slice.
+- **Tertiary:** Slice 2 (#1099 Text triplet) author — positional routing must be additive enough that S2 can land in either order without conflict. Slice 5 (#1102) author — typed Reasoning is a prerequisite for v1 `TextRenderEvent` deletion.
+
+## Constraints
+
+- **Depends on Slice 1 (#1098 Run lifecycle).** Run boundaries provide the positional anchors. Slice 1 is **merged on staging** (`847dbdd4` + review fixes `7c8f7386`) so the prerequisite is satisfied.
+- **Independent of Slice 2 (#1099) and Slice 3 (#1100).** Per epic spec invariant: "S2/S3/S4 are independent — touch disjoint subsystems." S4 owns `_route_text_block` + the Reasoning event family; it does not touch the text triplet (S2's surface) or the tool-call streaming (S3's already-merged surface).
+- **Additive only — no v1 deletions.** v1 `TextRenderEvent` continues to ship for post-tool / final text in this slice. Deleting it is Slice 5's job (#1102) once all v2 families are in place.
+- **Schema bump:** add `SCHEMA_VERSION_REASONING_{START,DELTA,END}_RENDER_EVENT = 1` constants. Coordinated deploy rule (per epic spec): hub + adapters deployed together.
+- **`show_intermediate=true` gating preserved.** Today this config gates whether `_pending_text` gets flushed before a tool call. With Slice 4, the gate now determines whether the pre-tool text block is routed through `Reasoning*` at all (off ⇒ suppressed entirely, not just dim-rendered).
+- **No CLI streaming parser changes** (slice 3's surface).
+- **No `CliPool._read_until_result` rewrite.** The issue body originally framed this as a CliPool callback rewrite; the epic-approved mechanism is StreamProcessor positional routing. Same user-visible outcome (reasoning is distinguishable), different (and architecturally correct) plumbing point.
+
+## Out of Scope
+
+- AG-UI wire-format adoption (epic-level, deferred to a future epic).
+- Inter-tool reasoning surfacing as a separate UX (Discord collapsible blocks, expand-on-click). The slice only requires parity with the current `⏳` line.
+- Migrating final / post-tool text to typed `Text*` events — that is Slice 2 (#1099).
+- Deleting v1 `TextRenderEvent` — that is Slice 5 (#1102).
+- Reasoning persistence in transcripts / replay tooling.
+- Reasoning content moderation / redaction policy.
+- Heuristic upgrades beyond pre-first-tool / post-last-tool (e.g., classifier-based, model-self-reported reasoning markers). Future work.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single primary domain (`core/messaging` + `core/processors`), one secondary domain (`adapters/shared` + 2 outbound modules), no new architectural patterns. The dispatch-ladder template is pre-validated by Slice 1 (Run lifecycle, merged) and Slice 3 (ToolCall split, merged). Slice 4 is mechanically the simplest of the three event-family slices.
+
+Signals observed:
+
+- Issue labeled `size:F-lite`.
+- **Files touched (~6–8):** `render_events.py` (3 new dataclasses + 3 constants), `stream_processor.py` (new `_route_text_block` method + wire it into the text-flush paths), `_shared_streaming_emitter.py` (add `_on_reasoning` branch to the isinstance ladder), `_base_outbound.py` + `telegram_outbound.py` + `discord_outbound.py` (render handlers), plus tests under `tests/core/` and `tests/adapters/`.
+- **Technical risk: low.** No new patterns; instantiates the Slice 1 / Slice 3 templates for a new event family. Positional heuristic is mechanical (pre-first-tool vs post-last-tool, tracked via the same tool-call counters StreamProcessor already maintains).
+- **No data migration, no external API change, no wire-format change beyond schema-version constants.**

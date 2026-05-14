@@ -25,15 +25,6 @@ class TestModelConfig:
         assert cfg.base_url is None
         assert cfg.api_key is None
 
-    def test_backend_litellm_accepted(self) -> None:
-        cfg = ModelConfig(backend="litellm")
-        assert cfg.backend == "litellm"
-
-    def test_valid_backends_contains_litellm(self) -> None:
-        from lyra.core.agent.agent_config import _VALID_BACKENDS
-
-        assert "litellm" in _VALID_BACKENDS
-
     def test_base_url_invalid_scheme_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelConfig(base_url="file:///etc/passwd")

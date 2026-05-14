@@ -85,7 +85,7 @@ Configure in agent TOML under `[agent.smart_routing]`. Keep `enabled = false` (t
 ## ProviderRegistry (`registry.py`)
 
 A simple dict-based registry: `register(backend, driver)` and `get(backend)`.
-Backends are registered by name: `"claude-cli"`, `"litellm"` (future).
+Backends are registered by name: `"claude-cli"`, `"nats"`.
 `get()` raises `KeyError` for unknown backends — callers must handle this.
 
 ## Conventions

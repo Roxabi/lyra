@@ -121,13 +121,27 @@ class TestProtocolShape:
         # Arrange / Act / Assert
         assert NatsLlmClient.capabilities == {"streaming": True, "auth": "nats"}  # type: ignore[attr-defined]
 
-    def test_isinstance_llm_provider(self) -> None:
-        # Arrange
-        nc = _make_nc()
-        # Act
-        client = NatsLlmClient(nc)
-        # Assert — LlmProvider is @runtime_checkable
-        assert isinstance(client, LlmProvider) is True
+    @pytest.mark.asyncio
+    async def test_isinstance_llm_provider(self) -> None:
+        """Verify the client implements LlmProvider behaviorally, not just structurally.
+
+        runtime_checkable isinstance checks attribute names only — these assertions
+        exercise the actual contract: signature parity + return-type fidelity.
+        """
+        mock_nc = _make_nc()
+        client = NatsLlmClient(nc=mock_nc)
+        # Behavioral checks — runtime_checkable isinstance is name-only.
+        # These exercise the actual contract: signature parity + return-type fidelity.
+        assert isinstance(client, LlmProvider)
+        assert client.capabilities == {"streaming": True, "auth": "nats"}
+        # is_alive must accept str and return bool; default unconnected nc → False
+        mock_nc.is_connected = False
+        assert client.is_alive("any-pool") is False
+        # complete() must be an awaitable coroutine, not a sync attribute
+        import inspect as _inspect
+        assert _inspect.iscoroutinefunction(client.complete)
+        # stream() must be an async function returning AsyncIterator
+        assert _inspect.iscoroutinefunction(client.stream)
 
     def test_has_complete_method_correct_signature(self) -> None:
         # Arrange
@@ -164,6 +178,30 @@ class TestProtocolShape:
         assert sig.parameters["messages"].kind == inspect.Parameter.KEYWORD_ONLY
 
     @pytest.mark.asyncio
+    async def test_is_alive_returns_false_when_nc_disconnected(self) -> None:
+        """is_alive returns False when nc.is_connected is False.
+
+        The registry may have a live worker — nc disconnect takes priority.
+        """
+        mock_nc = _make_nc()
+        mock_nc.is_connected = False
+        client = NatsLlmClient(nc=mock_nc)
+        _seed_registry(client, worker_id="w-1")  # registry has live worker
+        assert client.is_alive("p-1") is False
+
+    @pytest.mark.asyncio
+    async def test_is_alive_returns_false_when_no_live_workers(self) -> None:
+        """is_alive returns False when the registry has no live workers.
+
+        nc.is_connected is True — the empty registry is the deciding factor.
+        """
+        mock_nc = _make_nc()
+        mock_nc.is_connected = True
+        client = NatsLlmClient(nc=mock_nc)
+        # registry is empty by default — no _seed_registry call
+        assert client.is_alive("p-1") is False
+
+    @pytest.mark.asyncio
     async def test_complete_happy_path(self) -> None:
         # Arrange
         nc = _make_nc()
@@ -189,6 +227,38 @@ class TestProtocolShape:
         raw_payload = call_args[0][1] if call_args[0] else call_args[1]["payload"]
         outbound = LlmRequest.model_validate_json(raw_payload)
         assert result.session_id == outbound.trace_id
+
+    @pytest.mark.asyncio
+    async def test_complete_text_folding_passthrough_last_matches(  # noqa: E501
+        self,
+    ) -> None:
+        """Text-folding branch 2: last.content == text → pass messages unchanged.
+
+        No duplication: the user message is NOT appended a second time.
+        """
+        nc = _make_nc()
+        fake_reply = _fake_reply(_ok_response_bytes(text="ok"))
+        nc.request = AsyncMock(return_value=fake_reply)
+        client = NatsLlmClient(nc)
+        _seed_registry(client)
+        mc = _make_model_cfg()
+        messages = [
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "reply"},
+            {"role": "user", "content": "hello"},  # last.content == text
+        ]
+
+        result = await client.complete(  # type: ignore[attr-defined]
+            "pool", "hello", mc, "sys", messages=messages
+        )
+
+        assert result.ok
+        # Inspect outbound payload — messages should be passed verbatim (no append)
+        call_args = nc.request.call_args
+        raw_payload = call_args[0][1] if call_args[0] else call_args[1]["payload"]
+        outbound = LlmRequest.model_validate_json(raw_payload)
+        assert outbound.messages == messages  # exact pass-through, no duplication
+        assert len(outbound.messages) == 3
 
     @pytest.mark.asyncio
     async def test_stream_yields_text_then_result(self) -> None:
@@ -289,6 +359,10 @@ _ERROR_PARAMS = [
     ),
     # contract_mismatch — T8 must implement the contract-version check;
     # today NatsLlmClient doesn't inspect contract_version on the reply.
+    # When removing this xfail after T8 implements CONTRACT_VERSION checking,
+    # also add a positive-direction test asserting that a response with matching
+    # contract_version is accepted (the "guard exists" direction). Without it,
+    # a subsequent deletion of the version check would silently pass.
     pytest.param(
         "contract_mismatch",
         {
@@ -327,6 +401,13 @@ _ERROR_PARAMS = [
         "transport.error",
         False,
         id="transport_error_oversize",
+    ),
+    pytest.param(
+        "generic_nats_error",
+        {"side_effect": nats.errors.Error("connection reset by peer")},
+        "transport.error",
+        True,  # retryable=True for generic nats errors (not oversize)
+        id="transport_error_generic",
     ),
     pytest.param(
         "worker_propagated",
@@ -457,6 +538,10 @@ _STREAM_ERROR_PARAMS = [
         id="transport_parse",
     ),
     # contract_mismatch on stream: chunk carries wrong contract_version
+    # When removing this xfail after T8 implements CONTRACT_VERSION checking,
+    # also add a positive-direction test asserting that a response with matching
+    # contract_version is accepted (the "guard exists" direction). Without it,
+    # a subsequent deletion of the version check would silently pass.
     pytest.param(
         "contract_mismatch",
         "malformed_chunk",
@@ -494,6 +579,14 @@ _STREAM_ERROR_PARAMS = [
         "transport.error",
         False,
         id="transport_error_oversize",
+    ),
+    pytest.param(
+        "generic_nats_error",
+        "publish_generic_nats_error",
+        None,
+        "transport.error",
+        True,  # retryable=True for generic nats errors (not oversize)
+        id="transport_error_generic",
     ),
     pytest.param(
         "worker_propagated",
@@ -578,6 +671,17 @@ class TestErrorMappingStream:
             nc.subscribe = AsyncMock(return_value=mock_sub)
             nc.publish = AsyncMock(
                 side_effect=nats.errors.Error("max_payload exceeded (1048576 bytes)")
+            )
+            stream = client.stream("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+            async for evt in await stream:
+                events.append(evt)
+
+        elif trigger_type == "publish_generic_nats_error":
+            _seed_registry(client)
+            mock_sub = AsyncMock()
+            nc.subscribe = AsyncMock(return_value=mock_sub)
+            nc.publish = AsyncMock(
+                side_effect=nats.errors.Error("connection reset by peer")
             )
             stream = client.stream("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
             async for evt in await stream:

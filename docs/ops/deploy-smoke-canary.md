@@ -78,6 +78,44 @@ Pass criteria:
 
 ---
 
+## LLM E2E smoke
+
+Verifies the NATS LLM request/reply path end-to-end: publishes a minimal `LlmRequest` to `lyra.llm.generate.request` and asserts the worker returns `LlmResponse(ok=true)`.
+
+**Required deps:** `nats` CLI, `jq`
+
+**Required env vars:**
+
+| Var | Default | Purpose |
+|---|---|---|
+| `NATS_URL` | `nats://roxabituwer:4222` | Points at the canonical hub NATS broker |
+
+**Invocation:**
+
+```bash
+NATS_URL=nats://roxabituwer:4222 tools/smoke_llm_e2e.sh
+```
+
+Optional: `--timeout SECONDS` (default 30).
+
+**Expected output on success:**
+
+```
+[smoke_llm_e2e] ok — LlmResponse received with ok=true
+```
+
+**Expected output on failure:**
+
+```
+[smoke_llm_e2e] FAIL — LlmResponse ok=false (or no reply / timeout)
+```
+
+**Troubleshooting:** If you see `Permissions Violation` in the broker log: check that the inbox subject (`_INBOX.>`) and the request subject (`lyra.llm.generate.request`) are both in the canonical ACL allow-list. See `docs/architecture/messaging.md` § ACL.
+
+Script: [tools/smoke_llm_e2e.sh](../../tools/smoke_llm_e2e.sh)
+
+---
+
 ## Rollback
 
 If the smoke test fails after canary deploy:

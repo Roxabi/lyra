@@ -1,0 +1,45 @@
+---
+title: quality-debt: tooling polish + test coverage follow-ups from #1178 review
+issue: 1179
+status: approved
+tier: S
+date: 2026-05-14
+---
+
+## Problem
+
+Code review of PR #1178 (#1175 dismantle) surfaced 12 follow-up findings on the two surviving quality-debt tools (`tools/audit_quality_debt.py`, `tools/classify_quality_debt.py`). Only **one** is an active correctness bug (`_parse_frontmatter` truncates multi-value YAML lists → `INDEX.md` rendering corruption for any slug with a multi-rule `rules:` list, e.g. `wiring-bootstrap-deps`, `migration-sequence-bootstrap`, `module-level-patch-fixtures`).
+
+The remaining 11 findings (advisory hardening + test coverage on the one-shot `--migrate-policy` mode + cosmetic spec/frame banners) all assume the surviving tools have a future consumer (the "async drain pipeline" referenced in `docs/debt-tracking.md`). That consumer does not exist — no issue, no spec, no owner. Polishing the tooling without resolving that strategic question would be a third lap of the bookkeeping-without-purpose pattern (cf. #1162 → #1175).
+
+## Who
+
+- **Primary:** anyone running `make quality-debt-report` and reading `artifacts/debt/INDEX.md` — currently a corrupted rendering for multi-rule slugs.
+- **Secondary:** future scoping of the drain-pipeline question (filed as a separate issue).
+
+## Constraints
+
+- Post-#1175 contract: audit tool is **warn-never-fail**, no enforcement, no gate.
+- `classify_quality_debt.py --migrate-policy` is a one-shot tool that already ran and won't run again — no test investment justified.
+- Strategic decision (drain pipeline yes/no) blocks deeper investment in either tool.
+
+## Out of Scope
+
+- The 10 advisory items from #1179 (security hardening, `_SUFFIX_ALREADY_RE` POLICY-match, T4/T9 tautology, `_scan_importlinter` / `_scan_exemption` tests, spec-1175 `counts_by_rule_bucket_slug` touchup, frame/spec 1165 superseded banners, `--migrate-policy` test coverage).
+- The `--migrate-policy` exit-1-on-unmapped contract drift — accepted as-is since the mode is dead code post-migration.
+- Drain-pipeline architecture — separate issue.
+
+## Premise Validity
+
+**Success in 6 months:** `artifacts/debt/INDEX.md` renders all 18 slugs correctly (multi-rule slugs show full rule list). The drain-pipeline decision is resolved on its own issue, and #1179 was not the venue for that decision.
+
+**Failure in 6 months:** we polish more of `audit_quality_debt.py` / `classify_quality_debt.py` (e.g. tackle the deferred advisory items) without the drain pipeline existing — a third lap of investing in vapor. Falsifiable: count PRs touching either tool between today and 2026-11-14; a third polish PR without a drain-pipeline shipping is failure.
+
+**Simplest alternative:** do nothing. Live with INDEX corruption (cosmetic; only affects 3 slugs).
+**Why not simplest:** `INDEX.md` is the user-facing rollup of `artifacts/debt/`. Showing only the first rule in a multi-rule list is actively misleading documentation — easy to fix, real readability cost to leave.
+
+## Complexity
+
+**Tier: S** — single tool file (`tools/classify_quality_debt.py`), single concept (regex → list-aware YAML parsing), no architectural decisions. Fix is ~20 LOC change + 1 regression test.
+
+Signals observed: ≤3 files, single domain (`tools/`), no unknowns, no new patterns. Original F-lite call was based on the full 12-item scope; Option C narrowing inverts that to S.

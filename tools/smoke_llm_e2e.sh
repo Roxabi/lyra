@@ -36,6 +36,8 @@ while [[ $# -gt 0 ]]; do
     --timeout)
       TIMEOUT="$2"
       shift 2
+      # F5: validate --timeout is a positive integer
+      [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || { echo "[smoke_llm_e2e] FAIL — --timeout must be a positive integer, got: $TIMEOUT" >&2; exit 1; }
       ;;
     --help|-h)
       # Print header comment block (lines 2 to the first non-comment line)
@@ -100,17 +102,19 @@ PAYLOAD="$(
 # Execute
 # ---------------------------------------------------------------------------
 
-echo "[smoke_llm_e2e] NATS_URL=${NATS_URL}" >&2
+# F2: scrub userinfo credentials before echoing NATS_URL to stderr
+SCRUBBED_URL="$(echo "$NATS_URL" | sed 's|://[^:]*:[^@]*@|://***:***@|')"
+echo "[smoke_llm_e2e] NATS_URL=$SCRUBBED_URL" >&2
 echo "[smoke_llm_e2e] request_id=${REQUEST_ID} timeout=${TIMEOUT}s" >&2
 
-REPLY="$(
-  nats req \
-    --server "${NATS_URL}" \
-    --timeout "${TIMEOUT}s" \
-    "lyra.llm.generate.request" \
-    "$PAYLOAD" \
-    2>&1
-)"
+# F3: capture stderr separately so nats exit codes surface and creds are scrubbed
+REPLY_ERR=$(mktemp)
+trap 'rm -f "$REPLY_ERR"' EXIT
+if ! REPLY="$(nats req lyra.llm.generate.request "$PAYLOAD" --timeout="${TIMEOUT}s" --server "$NATS_URL" 2>"$REPLY_ERR")"; then
+    echo "[smoke_llm_e2e] FAIL — nats req exited non-zero" >&2
+    sed 's|nats://[^:]*:[^@]*@|nats://***:***@|g' "$REPLY_ERR" >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Parse reply
@@ -118,11 +122,17 @@ REPLY="$(
 
 # Extract the JSON body (nats req prefixes a header line like:
 # "Received on "_INBOX.xxx"" — strip everything before the first '{')
+# F18: --raw not supported on the installed nats CLI version; sed ,$p is the
+#      only portable extraction method. set +o pipefail guards the pipeline
+#      because sed -n returns 0 even on empty input but head may SIGPIPE.
+set +o pipefail
 JSON_BODY="$(echo "$REPLY" | sed -n '/^{/,$p' | head -c 65536)"
+set -o pipefail
 
 if [[ -z "$JSON_BODY" ]]; then
   echo "[smoke_llm_e2e] FAIL — no JSON body in reply. Full output:" >&2
-  echo "$REPLY" >&2
+  # F8: scrub any embedded nats credentials before echoing REPLY to stderr
+  echo "$REPLY" | sed 's|nats://[^:]*:[^@]*@|nats://***:***@|g' >&2
   exit 1
 fi
 
@@ -133,6 +143,7 @@ if [[ "$OK_VAL" == "true" ]]; then
   exit 0
 else
   echo "[smoke_llm_e2e] FAIL — LlmResponse ok=${OK_VAL} (expected true). Full reply:" >&2
-  echo "$JSON_BODY" >&2
+  # F8: scrub any embedded nats credentials before echoing failure output
+  echo "$JSON_BODY" | sed 's|nats://[^:]*:[^@]*@|nats://***:***@|g' >&2
   exit 1
 fi

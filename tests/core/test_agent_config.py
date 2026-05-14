@@ -25,6 +25,23 @@ class TestModelConfig:
         assert cfg.base_url is None
         assert cfg.api_key is None
 
+    def test_backend_litellm_rejected(self) -> None:
+        from lyra.core.agent.agent_builder import _validate_backend_model
+
+        with pytest.raises(ValueError, match="Invalid backend"):
+            _validate_backend_model("litellm", "claude-opus-4-6", "test-agent")
+
+    def test_backend_ollama_rejected(self) -> None:
+        from lyra.core.agent.agent_builder import _validate_backend_model
+
+        with pytest.raises(ValueError, match="Invalid backend"):
+            _validate_backend_model("ollama", "claude-opus-4-6", "test-agent")
+
+    def test_backend_nats_accepted(self) -> None:
+        from lyra.core.agent.agent_builder import _validate_backend_model
+
+        _validate_backend_model("nats", "claude-sonnet-4-6", "test-agent")
+
     def test_base_url_invalid_scheme_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelConfig(base_url="file:///etc/passwd")

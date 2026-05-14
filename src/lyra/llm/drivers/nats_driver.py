@@ -5,6 +5,9 @@ Canonical wire subjects (updated in #1104):
   heartbeat → lyra.llm.heartbeat  (literal; worker identity via payload worker_id)
 """
 
+# DEBT:parallel-path — NatsLlmDriver retained for 2-week M₁ soak (#1119); delete
+# after soak gate passes. See tools/smoke_llm_e2e.sh + artifacts/specs/1119-*.mdx.
+
 from __future__ import annotations
 
 import asyncio

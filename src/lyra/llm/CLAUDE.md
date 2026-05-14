@@ -34,6 +34,8 @@ Three concrete drivers in `drivers/`:
 | `NatsLlmDriver` | Remote LLM worker over NATS request-reply | `True` — ephemeral inbox streaming | `"nats"` |
 | `CliNatsDriver` | Hub-side LlmProvider dispatching claude-cli over NATS | `True` — ephemeral inbox streaming | `"nats"` |
 
+> **NatsLlmClient migration (#1119):** `NatsLlmClient` (`src/lyra/nats/nats_llm_client.py`) is the active replacement for `NatsLlmDriver`. `NatsLlmDriver` is retained for a 2-week M₁ soak and will be deleted in a follow-up PR. Prefer `NatsLlmClient` for new wiring.
+
 **Driver selection:**
 - `ClaudeCliDriver` — single-process mode (hub owns CliPool directly)
 - `CliNatsDriver` — multi-process mode (hub sends requests to clipool worker over NATS)
@@ -85,7 +87,7 @@ Configure in agent TOML under `[agent.smart_routing]`. Keep `enabled = false` (t
 ## ProviderRegistry (`registry.py`)
 
 A simple dict-based registry: `register(backend, driver)` and `get(backend)`.
-Backends are registered by name: `"claude-cli"`, `"litellm"` (future).
+Backends are registered by name: `"claude-cli"`, `"nats"`.
 `get()` raises `KeyError` for unknown backends — callers must handle this.
 
 ## Conventions

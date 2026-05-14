@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from ..commands.command_router import CommandConfig
 
-_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "ollama", "litellm"})
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "nats"})
 _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
 
 _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
@@ -34,8 +34,8 @@ _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
 class ModelConfig(BaseModel):
     """Per-agent model configuration.
 
-    backend: execution backend — "claude-cli" (Claude Code subscription),
-             "ollama" (local, future), or "litellm" (unified LLM proxy).
+    backend: execution backend — "claude-cli" (Claude Code subscription)
+             or "nats" (multi-provider via NATS → llmCLI worker).
     model:   model identifier passed to the backend CLI.
     max_turns: max agentic turns per conversation turn.
              None (or 0 in DB) means unlimited — the backend imposes no cap.
@@ -46,11 +46,11 @@ class ModelConfig(BaseModel):
              None → defaults to the Lyra project root.
              Useful to point a dedicated agent at another project so it reads
              that project's CLAUDE.md and has access to its files.
-    base_url: override the backend API base URL.
-             e.g. "http://localhost:11434/v1" for Ollama local, None for cloud
-             defaults. Used by litellm (future).
-    api_key: backend API key override. Used by litellm (future);
-             None = use env var (FIREWORKS_API_KEY, ANTHROPIC_API_KEY, etc.).
+    base_url: per-agent override for the backend API base URL.
+             Currently unused — reserved for future per-agent driver overrides
+             (e.g. pointing a future direct Ollama driver at "http://localhost:11434/v1").
+    api_key: per-agent backend API key override.
+             Currently unused — reserved for future per-agent driver overrides.
              Intentionally excluded from __eq__, __hash__, model_dump, and
              repr — it is a credential, not part of model identity.
 

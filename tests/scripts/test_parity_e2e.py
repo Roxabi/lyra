@@ -6,13 +6,25 @@ Verifies identity authorization end-to-end.
 from __future__ import annotations
 
 import shutil
+import socket
 import subprocess
 import time
 import urllib.request
 from pathlib import Path
-from typing import Generator
+from typing import Generator, NamedTuple
 
 import pytest
+
+
+class NatsServerEndpoints(NamedTuple):
+    client_url: str
+    monitor_url: str
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -35,10 +47,10 @@ pytestmark = [
         not (NATS_AVAILABLE and NK_AVAILABLE),
         reason="nats-server and nk must be on PATH — CI installs both",
     ),
-    # Pin all tests in this file to a single pytest-xdist worker. The module-
-    # scope `nats_server` fixture binds fixed ports (4223 client, 8222 monitor);
-    # without grouping, each xdist worker tries to bind them and races — one
-    # winner, the rest hit NoServersError.
+    # Keep all tests in this file on a single pytest-xdist worker. Each test
+    # would otherwise spawn its own module-scope fixture instance, multiplying
+    # nats-server processes — and back-to-back runs hit TCP TIME_WAIT on the
+    # ephemeral ports if many workers cycle them concurrently.
     pytest.mark.xdist_group(name="nats_server"),
 ]
 
@@ -79,26 +91,36 @@ def rendered_auth_conf(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture(scope="module")
-def nats_server(rendered_auth_conf: Path) -> Generator[None, None, None]:
-    """Start nats-server with rendered auth.conf; shut down after tests."""
+def nats_server(
+    rendered_auth_conf: Path,
+) -> Generator[NatsServerEndpoints, None, None]:
+    """Start nats-server with rendered auth.conf; shut down after tests.
+
+    Uses OS-assigned ephemeral ports so back-to-back test runs don't collide
+    on a TIME_WAIT socket — a previous hardcoded 4223/8222 binding could fail
+    with ``address already in use`` for several seconds after teardown.
+    """
+    client_port = _free_port()
+    monitor_port = _free_port()
     proc = subprocess.Popen(
         [
             "nats-server",
             "-c",
             str(rendered_auth_conf / "auth.conf"),
             "-m",
-            "8222",
+            str(monitor_port),
             "-p",
-            "4223",
+            str(client_port),
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
+    monitor_url = f"http://127.0.0.1:{monitor_port}"
     # Poll healthz with 3s timeout
     deadline = time.monotonic() + 3.0
     while time.monotonic() < deadline:
         try:
-            urllib.request.urlopen("http://localhost:8222/healthz", timeout=0.5)
+            urllib.request.urlopen(f"{monitor_url}/healthz", timeout=0.5)
             break
         except OSError:
             time.sleep(0.05)
@@ -108,7 +130,10 @@ def nats_server(rendered_auth_conf: Path) -> Generator[None, None, None]:
         stderr_log = raw.decode(errors="replace")
         pytest.fail(f"nats-server did not start within 3s\nstderr:\n{stderr_log}")
 
-    yield
+    yield NatsServerEndpoints(
+        client_url=f"nats://127.0.0.1:{client_port}",
+        monitor_url=monitor_url,
+    )
 
     proc.terminate()
     proc.wait(timeout=5)
@@ -192,9 +217,9 @@ def test_inbox_grant_derived_from_flows(rendered_auth_conf: Path) -> None:
 # ── Tests: live server ────────────────────────────────────────────────────────
 
 
-def test_nats_server_starts_with_auth_conf(nats_server: None) -> None:
+def test_nats_server_starts_with_auth_conf(nats_server: NatsServerEndpoints) -> None:
     """nats-server booted and healthz returns HTTP 200."""
-    resp = urllib.request.urlopen("http://localhost:8222/healthz", timeout=2)
+    resp = urllib.request.urlopen(f"{nats_server.monitor_url}/healthz", timeout=2)
     assert resp.status == 200, f"healthz returned {resp.status}"
 
 
@@ -202,7 +227,9 @@ def test_nats_server_starts_with_auth_conf(nats_server: None) -> None:
     not NATS_PY_AVAILABLE,
     reason="nats-py not installed — skipping live connection test",
 )
-def test_hub_can_connect(nats_server: None, rendered_auth_conf: Path) -> None:
+def test_hub_can_connect(
+    nats_server: NatsServerEndpoints, rendered_auth_conf: Path
+) -> None:
     """hub identity connects to nats-server using the seed that was registered."""
     import asyncio
 
@@ -214,7 +241,7 @@ def test_hub_can_connect(nats_server: None, rendered_auth_conf: Path) -> None:
 
     async def _connect() -> None:
         nc = await nats.connect(
-            "nats://localhost:4223",
+            nats_server.client_url,
             nkeys_seed_str=seed_str,
         )
         await nc.drain()
@@ -226,7 +253,9 @@ def test_hub_can_connect(nats_server: None, rendered_auth_conf: Path) -> None:
     not NATS_PY_AVAILABLE,
     reason="nats-py not installed — skipping live connection test",
 )
-def test_voice_tts_can_connect(nats_server: None, rendered_auth_conf: Path) -> None:
+def test_voice_tts_can_connect(
+    nats_server: NatsServerEndpoints, rendered_auth_conf: Path
+) -> None:
     """voice-tts identity connects to nats-server using its registered seed."""
     import asyncio
 
@@ -236,7 +265,7 @@ def test_voice_tts_can_connect(nats_server: None, rendered_auth_conf: Path) -> N
 
     async def _connect() -> None:
         nc = await nats.connect(
-            "nats://localhost:4223",
+            nats_server.client_url,
             nkeys_seed_str=seed_str,
         )
         await nc.drain()
@@ -249,7 +278,7 @@ def test_voice_tts_can_connect(nats_server: None, rendered_auth_conf: Path) -> N
     reason="nats-py not installed — skipping live connection test",
 )
 def test_clipool_worker_can_connect(
-    nats_server: None, rendered_auth_conf: Path
+    nats_server: NatsServerEndpoints, rendered_auth_conf: Path
 ) -> None:
     """clipool-worker identity connects to nats-server using its registered seed."""
     import asyncio
@@ -260,7 +289,7 @@ def test_clipool_worker_can_connect(
 
     async def _connect() -> None:
         nc = await nats.connect(
-            "nats://localhost:4223",
+            nats_server.client_url,
             nkeys_seed_str=seed_str,
         )
         await nc.drain()
@@ -272,7 +301,9 @@ def test_clipool_worker_can_connect(
     not NATS_PY_AVAILABLE,
     reason="nats-py not installed — skipping live ACL test",
 )
-def test_hub_publish_acl_enforced(nats_server: None, rendered_auth_conf: Path) -> None:
+def test_hub_publish_acl_enforced(
+    nats_server: NatsServerEndpoints, rendered_auth_conf: Path
+) -> None:
     """hub: allowed publish succeeds; denied publish triggers Permissions Violation."""
     import asyncio
 
@@ -286,7 +317,7 @@ def test_hub_publish_acl_enforced(nats_server: None, rendered_auth_conf: Path) -
             acl_errors.append(exc)
 
         nc = await nats.connect(
-            "nats://localhost:4223",
+            nats_server.client_url,
             nkeys_seed_str=seed_str,
             error_cb=error_cb,
         )
@@ -309,7 +340,7 @@ def test_hub_publish_acl_enforced(nats_server: None, rendered_auth_conf: Path) -
     reason="nats-py not installed — skipping live ACL test",
 )
 def test_voice_tts_publish_acl_enforced(
-    nats_server: None, rendered_auth_conf: Path
+    nats_server: NatsServerEndpoints, rendered_auth_conf: Path
 ) -> None:
     """voice-tts: allowed publish succeeds; denied publish is rejected."""
     import asyncio
@@ -324,7 +355,7 @@ def test_voice_tts_publish_acl_enforced(
             acl_errors.append(exc)
 
         nc = await nats.connect(
-            "nats://localhost:4223",
+            nats_server.client_url,
             nkeys_seed_str=seed_str,
             error_cb=error_cb,
         )
@@ -347,7 +378,7 @@ def test_voice_tts_publish_acl_enforced(
     reason="nats-py not installed — skipping live ACL test",
 )
 def test_clipool_worker_subscribe_acl_enforced(
-    nats_server: None, rendered_auth_conf: Path
+    nats_server: NatsServerEndpoints, rendered_auth_conf: Path
 ) -> None:
     """clipool-worker: allowed subscribe succeeds; denied subscribe is rejected."""
     import asyncio
@@ -362,7 +393,7 @@ def test_clipool_worker_subscribe_acl_enforced(
             acl_errors.append(exc)
 
         nc = await nats.connect(
-            "nats://localhost:4223",
+            nats_server.client_url,
             nkeys_seed_str=seed_str,
             error_cb=error_cb,
         )
@@ -414,15 +445,27 @@ def test_retired_identity_connect_rejected(
     for name, seed in seeds.items():
         (tmp / f"{name}.seed").write_bytes(seed + b"\n")
 
+    client_port = _free_port()
+    monitor_port = _free_port()
     proc = subprocess.Popen(
-        ["nats-server", "-c", str(tmp / "auth.conf"), "-m", "8223", "-p", "4224"],
+        [
+            "nats-server",
+            "-c",
+            str(tmp / "auth.conf"),
+            "-m",
+            str(monitor_port),
+            "-p",
+            str(client_port),
+        ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
     deadline = time.monotonic() + 3.0
     while time.monotonic() < deadline:
         try:
-            urllib.request.urlopen("http://localhost:8223/healthz", timeout=0.5)
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{monitor_port}/healthz", timeout=0.5
+            )
             break
         except OSError:
             time.sleep(0.05)
@@ -437,7 +480,7 @@ def test_retired_identity_connect_rejected(
 
         async def _connect_retired() -> None:
             await nats.connect(
-                "nats://localhost:4224",
+                f"nats://127.0.0.1:{client_port}",
                 nkeys_seed_str=seed_str,
                 connect_timeout=2,
             )

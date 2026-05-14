@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from lyra.bootstrap.factory.llm_overlay import init_nats_llm
-from lyra.llm.drivers.nats_driver import NatsLlmDriver
+from lyra.nats.nats_llm_client import NatsLlmClient
 
 
 class TestInitNatsLlm:
@@ -41,6 +41,6 @@ class TestInitNatsLlm:
         driver = await init_nats_llm(nc)
 
         # Assert — driver returned and start() was called (hb_sub set)
-        assert isinstance(driver, NatsLlmDriver)
+        assert isinstance(driver, NatsLlmClient)
         assert driver._hb_sub is not None
         nc.subscribe.assert_awaited_once()

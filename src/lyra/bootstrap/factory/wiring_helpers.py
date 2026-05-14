@@ -47,7 +47,7 @@ from lyra.nats.queue_groups import HUB_INBOUND
 if TYPE_CHECKING:
     import nats
     from lyra.llm.drivers.cli_nats import CliNatsDriver
-    from lyra.llm.drivers.nats_driver import NatsLlmDriver
+    from lyra.nats.nats_llm_client import NatsLlmClient
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ log = logging.getLogger(__name__)
 class VoiceBundle:
     stt_service: object
     tts_service: object
-    nats_llm_driver: "NatsLlmDriver | None"
+    nats_llm_driver: "NatsLlmClient | None"
 
 
 @dataclass

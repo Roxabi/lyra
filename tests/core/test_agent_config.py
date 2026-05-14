@@ -40,6 +40,7 @@ class TestModelConfig:
     def test_backend_nats_accepted(self) -> None:
         from lyra.core.agent.agent_builder import _validate_backend_model
 
+        # must not raise
         _validate_backend_model("nats", "claude-sonnet-4-6", "test-agent")
 
     def test_base_url_invalid_scheme_rejected(self) -> None:

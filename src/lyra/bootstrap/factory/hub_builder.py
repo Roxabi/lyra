@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.llm.drivers.cli_nats import CliNatsDriver
-    from lyra.llm.drivers.nats_driver import NatsLlmDriver
+    from lyra.nats.nats_llm_client import NatsLlmClient
 
 log = logging.getLogger(__name__)
 
@@ -158,7 +158,7 @@ def register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — registr
     tts_service: TtsProtocol | None,
     agent_store: AgentStore | None,
     raw_config: dict,
-    nats_llm_driver: "NatsLlmDriver | None",
+    nats_llm_driver: "NatsLlmClient | None",
     *,
     cli_nats_driver: "CliNatsDriver | None" = None,
 ) -> None:

@@ -119,7 +119,14 @@ async def decode_stream_events(
                 seq,
             )
         expected_seq += 1
-        event_type = chunk.get("event_type", "text")
+        event_type = chunk.get("event_type")
+        if event_type is None:
+            log.warning(
+                "NatsOutboundListener: chunk missing event_type field,"
+                " stream_id=%r; aborting stream",
+                stream_id,
+            )
+            break
         # stream_error is a transport-layer sentinel, not a render event —
         # terminate the stream without passing it through the codec.
         if event_type == "stream_error":

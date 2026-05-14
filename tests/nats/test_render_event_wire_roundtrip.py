@@ -62,9 +62,10 @@ pytestmark = [requires_nats_server]
 # ---------------------------------------------------------------------------
 # Sample table — one realistic instance per RenderEvent subclass.
 # ---------------------------------------------------------------------------
-# Adding a new member to ``RenderEvent`` requires adding a sample here. The
-# ``test_sample_table_matches_render_event_union`` guard fails closed when
-# this table drifts from the union.
+# Adding a new member to ``RenderEvent`` requires adding a sample here.
+# ``test_sample_table_matches_render_event_union`` is the single source of
+# fail-closed enforcement — it runs at collection time and prevents the
+# parametrized round-trip below from being reached for an unsampled member.
 
 _SAMPLE_BY_TYPE: dict[type, RenderEvent] = {
     TextRenderEvent: TextRenderEvent(text="hello world", is_final=True, is_error=False),
@@ -179,21 +180,30 @@ async def test_render_event_wire_round_trip(event_type: type, nc: NATS) -> None:
     raw JSON chunks, then :class:`NatsRenderEventCodec.decode` reconstructs
     the event. The decoded value must equal the original — anything less
     (missing branch, dropped field, schema-version mismatch) fails here.
+
+    Completeness is enforced at collection time by
+    ``test_sample_table_matches_render_event_union`` — a parametrized member
+    without a sample never reaches this body.
     """
-    if event_type not in _SAMPLE_BY_TYPE:
-        pytest.fail(
-            f"No sample registered for {event_type.__name__}. "
-            f"Add an instance to _SAMPLE_BY_TYPE in {__file__}."
-        )
     original = _SAMPLE_BY_TYPE[event_type]
     inbound = _make_inbound(f"stream-{event_type.__name__}")
     subject = f"lyra.outbound.{Platform.TELEGRAM.value}.main"
 
     received: list[dict] = []
+    parse_errors: list[bytes] = []
     done = asyncio.Event()
 
     async def _handler(msg) -> None:
-        chunk = json.loads(msg.data.decode("utf-8"))
+        # Surface decode errors via ``parse_errors`` so the post-loop assertion
+        # fails with the offending bytes rather than letting the exception
+        # propagate into the NATS dispatch loop (where it would silently drop
+        # subsequent messages and the test would only fail via the 5 s timeout).
+        try:
+            chunk = json.loads(msg.data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            parse_errors.append(msg.data)
+            done.set()
+            return
         received.append(chunk)
         if chunk.get("event_type") == "stream_end":
             done.set()
@@ -214,6 +224,10 @@ async def test_render_event_wire_round_trip(event_type: type, nc: NATS) -> None:
     finally:
         await sub.unsubscribe()
 
+    assert not parse_errors, (
+        f"malformed NATS frame(s) received for {event_type.__name__}: "
+        f"{parse_errors!r}"
+    )
     # send_streaming always appends a synthetic stream_end terminator, so we
     # expect exactly two chunks: the event + the sentinel.
     assert len(received) == 2, (

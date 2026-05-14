@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import assert_never
 
 from lyra.core.messaging.render_events import (
     SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
@@ -17,7 +18,11 @@ from lyra.core.messaging.render_events import (
     SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT,
     SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT,
     SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_END_RENDER_EVENT,
     SCHEMA_VERSION_TEXT_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_START_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
@@ -32,7 +37,11 @@ from lyra.core.messaging.render_events import (
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
     SilentCounts,
+    TextChunkRenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
     TextRenderEvent,
+    TextStartRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallResultRenderEvent,
@@ -55,15 +64,20 @@ class NatsRenderEventCodec:
         {
             "stream_id": str,
             "seq":        int,
-            "event_type": "text" | "tool_summary"
+            "event_type": "text" | "text_start" | "text_delta"
+                          | "text_end" | "text_chunk" | "tool_summary"
                           | "run_started" | "run_finished" | "run_error"
-                          | "stream_end",
+                          | "tool_call_start" | "tool_call_args"
+                          | "tool_call_end" | "tool_call_result"
+                          | "reasoning_start" | "reasoning_delta"
+                          | "reasoning_end" | "stream_end" | "stream_error",
             "payload":    dict,   # serialized event fields
             "done":       bool,
         }
 
-    ``"stream_end"`` is a synthetic terminal sentinel emitted by
-    ``NatsChannelProxy``; ``decode()`` returns ``None`` for it. The
+    ``"stream_end"`` and ``"stream_error"`` are synthetic terminal sentinels
+    (the latter emitted by the transport on mid-stream hub crash, #538);
+    ``decode()`` returns ``None`` for both. The
     ``run_*`` types were added by Slice 1 of #1096 (#1098).
     """
 
@@ -78,10 +92,24 @@ class NatsRenderEventCodec:
         a complete ``ToolSummaryRenderEvent`` (``is_complete``), or any of the
         terminal Run lifecycle events (``RunFinishedRenderEvent``,
         ``RunErrorRenderEvent``). ``RunStartedRenderEvent`` is not terminal.
+
+        Text v2 lifecycle events (``TextStartRenderEvent``,
+        ``TextDeltaRenderEvent``, ``TextEndRenderEvent``,
+        ``TextChunkRenderEvent``) always yield ``is_done=False`` — the
+        stream terminator remains the Run lifecycle event, not the
+        text-block boundary.
         """
         payload: dict = json.loads(serialize(event).decode("utf-8"))
         if isinstance(event, TextRenderEvent):
             return "text", payload, event.is_final
+        if isinstance(event, TextStartRenderEvent):
+            return "text_start", payload, False
+        if isinstance(event, TextDeltaRenderEvent):
+            return "text_delta", payload, False
+        if isinstance(event, TextEndRenderEvent):
+            return "text_end", payload, False
+        if isinstance(event, TextChunkRenderEvent):
+            return "text_chunk", payload, False
         if isinstance(event, ToolSummaryRenderEvent):
             return "tool_summary", payload, event.is_complete
         if isinstance(event, RunStartedRenderEvent):
@@ -102,11 +130,9 @@ class NatsRenderEventCodec:
             return "reasoning_start", payload, False
         if isinstance(event, ReasoningDeltaRenderEvent):
             return "reasoning_delta", payload, False
-        if isinstance(event, ReasoningEndRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
+        if isinstance(event, ReasoningEndRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — last branch is provably exhaustive; isinstance kept for runtime symmetry with the others before assert_never
             return "reasoning_end", payload, False
-        raise TypeError(  # pyright: ignore[reportUnreachable] — DEBT:defensive-narrow-payloads
-            f"Unsupported RenderEvent subtype: {type(event)!r}"
-        )
+        assert_never(event)
 
     def decode(  # noqa: C901 — DEBT:complexity-residual — per-event-type version-check + decode; refactored when Slice 5 sunsets v1
         self,
@@ -139,6 +165,58 @@ class NatsRenderEventCodec:
             return deserialize(
                 json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                 TextRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "text_start":
+            if not check_schema_version(
+                payload,
+                envelope_name="TextStartRenderEvent",
+                expected=SCHEMA_VERSION_TEXT_START_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                TextStartRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "text_delta":
+            if not check_schema_version(
+                payload,
+                envelope_name="TextDeltaRenderEvent",
+                expected=SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                TextDeltaRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "text_end":
+            if not check_schema_version(
+                payload,
+                envelope_name="TextEndRenderEvent",
+                expected=SCHEMA_VERSION_TEXT_END_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                TextEndRenderEvent,
+                resolver=self._resolver,
+            )
+        if event_type == "text_chunk":
+            if not check_schema_version(
+                payload,
+                envelope_name="TextChunkRenderEvent",
+                expected=SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT,
+                counter=counter,
+            ):
+                return None
+            return deserialize(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                TextChunkRenderEvent,
                 resolver=self._resolver,
             )
         if event_type == "tool_summary":
@@ -294,6 +372,8 @@ class NatsRenderEventCodec:
                 resolver=self._resolver,
             )
         if event_type == "stream_end":
+            return None
+        if event_type == "stream_error":
             return None
         # Unknown event_type — surface via log + counter so partial-deploy
         # mismatches are visible. Synthetic transport sentinels (stream_end /

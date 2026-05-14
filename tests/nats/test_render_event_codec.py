@@ -19,7 +19,11 @@ from lyra.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
+    TextChunkRenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
     TextRenderEvent,
+    TextStartRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallResultRenderEvent,
@@ -370,3 +374,155 @@ class TestReasoningCodecRoundTrip:
 
         assert result is None
         assert counter == {"ReasoningStartRenderEvent:schema": 1}
+
+
+class TestRenderEventCodecTextTriplet:
+    """Slice 2 (#1099) v2 Text triplet — encode + round-trip coverage.
+
+    Guards against the Slice 2 codec gap where TextStart/Delta/End/Chunk
+    were emitted by StreamProcessor but unhandled by NatsRenderEventCodec,
+    crashing the hub→adapter stream with TypeError.
+    """
+
+    def test_text_start_encodes(self) -> None:
+        codec = NatsRenderEventCodec()
+        event_type, payload, is_done = codec.encode(
+            TextStartRenderEvent(message_id="msg_001")
+        )
+        assert event_type == "text_start"
+        assert is_done is False
+        assert payload["message_id"] == "msg_001"
+        assert payload["schema_version"] == 1
+
+    def test_text_delta_encodes(self) -> None:
+        codec = NatsRenderEventCodec()
+        event_type, payload, is_done = codec.encode(
+            TextDeltaRenderEvent(message_id="msg_001", delta="hello")
+        )
+        assert event_type == "text_delta"
+        assert is_done is False
+        assert payload["message_id"] == "msg_001"
+        assert payload["delta"] == "hello"
+        assert payload["schema_version"] == 1
+
+    def test_text_end_encodes(self) -> None:
+        codec = NatsRenderEventCodec()
+        event_type, payload, is_done = codec.encode(
+            TextEndRenderEvent(message_id="msg_001")
+        )
+        assert event_type == "text_end"
+        assert is_done is False
+        assert payload["message_id"] == "msg_001"
+        assert payload["schema_version"] == 1
+
+    def test_text_chunk_encodes(self) -> None:
+        codec = NatsRenderEventCodec()
+        event_type, payload, is_done = codec.encode(
+            TextChunkRenderEvent(message_id="msg_001", delta="hi")
+        )
+        assert event_type == "text_chunk"
+        assert is_done is False
+        assert payload["message_id"] == "msg_001"
+        assert payload["delta"] == "hi"
+        assert payload["schema_version"] == 1
+
+    def test_text_start_round_trip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = TextStartRenderEvent(message_id="msg_001")
+        event_type, payload, _ = codec.encode(original)
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_text_delta_round_trip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = TextDeltaRenderEvent(message_id="msg_001", delta="hello world")
+        event_type, payload, _ = codec.encode(original)
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_text_end_round_trip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = TextEndRenderEvent(message_id="msg_001")
+        event_type, payload, _ = codec.encode(original)
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_text_chunk_round_trip(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = TextChunkRenderEvent(message_id="msg_001", delta="hi")
+        event_type, payload, _ = codec.encode(original)
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_text_start_floor_rejects_future_schema(self) -> None:
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+        result = codec.decode(
+            "text_start",
+            {"schema_version": 99, "message_id": "msg_001"},
+            counter=counter,
+        )
+        assert result is None
+        assert counter == {"TextStartRenderEvent:schema": 1}
+
+    def test_text_delta_floor_rejects_future_schema(self) -> None:
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+        result = codec.decode(
+            "text_delta",
+            {"schema_version": 99, "message_id": "msg_001", "delta": "x"},
+            counter=counter,
+        )
+        assert result is None
+        assert counter == {"TextDeltaRenderEvent:schema": 1}
+
+    def test_text_end_floor_rejects_future_schema(self) -> None:
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+        result = codec.decode(
+            "text_end",
+            {"schema_version": 99, "message_id": "msg_001"},
+            counter=counter,
+        )
+        assert result is None
+        assert counter == {"TextEndRenderEvent:schema": 1}
+
+    def test_text_chunk_floor_rejects_future_schema(self) -> None:
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+        result = codec.decode(
+            "text_chunk",
+            {"schema_version": 99, "message_id": "msg_001", "delta": "x"},
+            counter=counter,
+        )
+        assert result is None
+        assert counter == {"TextChunkRenderEvent:schema": 1}
+
+
+class TestRenderEventCodecExhaustivenessGuard:
+    """Runtime tripwire for the assert_never guard in encode().
+
+    Pyright catches union-exhaustiveness at static-check time, but pyright
+    config drift, stub regeneration, or accidental union widening can all
+    silently disable the static check while leaving a live crash path.
+    The original Slice 2 (#1099) incident was exactly this class of bug:
+    a new RenderEvent subclass reached encode() at runtime with no branch
+    to handle it. This test fires if assert_never is ever removed or
+    bypassed — uses a serializable dataclass that survives the upstream
+    serialize() call and reaches the isinstance dispatch chain.
+    """
+
+    def test_encode_assert_never_fires_on_unknown_render_event(self) -> None:
+        # Fake RenderEvent-shaped dataclass NOT in the union. serialize()
+        # accepts it (it's a dataclass); the isinstance ladder falls through
+        # every branch; assert_never raises AssertionError.
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True)
+        class _FakeRenderEvent:
+            payload: str = "x"
+            schema_version: int = 1
+
+        codec = NatsRenderEventCodec()
+        with pytest.raises(AssertionError):
+            codec.encode(_FakeRenderEvent())  # pyright: ignore[reportArgumentType]

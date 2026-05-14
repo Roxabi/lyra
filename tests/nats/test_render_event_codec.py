@@ -17,6 +17,22 @@ import typing
 import pytest
 
 from lyra.core.messaging.render_events import (
+    SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
+    SCHEMA_VERSION_REASONING_END_RENDER_EVENT,
+    SCHEMA_VERSION_REASONING_START_RENDER_EVENT,
+    SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT,
+    SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT,
+    SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_END_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_START_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
@@ -607,41 +623,102 @@ class TestDecodeErrorAbort:
             f"Expected exception-level log for {event_type!r} bad payload decode"
         )
 
+    # Each bad payload uses its branch's current SCHEMA_VERSION_* constant so the
+    # schema-floor check passes and the decode_fn actually runs — otherwise the
+    # test would prove schema rejection (not per-branch error isolation) once any
+    # branch bumps past v1.
     @pytest.mark.parametrize(
         "event_type,bad_payload",
         [
             # text — missing required field 'text'
-            ("text", {"schema_version": 1, "is_final": True}),
+            (
+                "text",
+                {"schema_version": SCHEMA_VERSION_TEXT_RENDER_EVENT, "is_final": True},
+            ),
             # text_start — missing required field 'message_id'
-            ("text_start", {"schema_version": 1}),
+            ("text_start", {"schema_version": SCHEMA_VERSION_TEXT_START_RENDER_EVENT}),
             # text_delta — missing required field 'delta'
-            ("text_delta", {"schema_version": 1, "message_id": "m1"}),
+            (
+                "text_delta",
+                {
+                    "schema_version": SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT,
+                    "message_id": "m1",
+                },
+            ),
             # text_end — missing required field 'message_id'
-            ("text_end", {"schema_version": 1}),
+            ("text_end", {"schema_version": SCHEMA_VERSION_TEXT_END_RENDER_EVENT}),
             # text_chunk — missing required field 'delta'
-            ("text_chunk", {"schema_version": 1, "message_id": "m1"}),
+            (
+                "text_chunk",
+                {
+                    "schema_version": SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT,
+                    "message_id": "m1",
+                },
+            ),
             # tool_summary — files is a string → AttributeError on .items()
-            ("tool_summary", {"schema_version": 1, "files": "not-a-dict"}),
+            (
+                "tool_summary",
+                {
+                    "schema_version": SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
+                    "files": "not-a-dict",
+                },
+            ),
             # run_started — missing required field 'run_id'
-            ("run_started", {"schema_version": 1}),
+            (
+                "run_started",
+                {"schema_version": SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT},
+            ),
             # run_finished — missing required field 'run_id'
-            ("run_finished", {"schema_version": 1}),
+            (
+                "run_finished",
+                {"schema_version": SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT},
+            ),
             # run_error — missing required fields 'run_id' and 'message'
-            ("run_error", {"schema_version": 1}),
+            ("run_error", {"schema_version": SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT}),
             # tool_call_start — missing required fields 'tool_call_id' + 'tool_name'
-            ("tool_call_start", {"schema_version": 1}),
+            (
+                "tool_call_start",
+                {"schema_version": SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT},
+            ),
             # tool_call_args — missing required field 'delta'
-            ("tool_call_args", {"schema_version": 1, "tool_call_id": "tc1"}),
+            (
+                "tool_call_args",
+                {
+                    "schema_version": SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
+                    "tool_call_id": "tc1",
+                },
+            ),
             # tool_call_end — missing required field 'tool_call_id'
-            ("tool_call_end", {"schema_version": 1}),
+            (
+                "tool_call_end",
+                {"schema_version": SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT},
+            ),
             # tool_call_result — missing required field 'content'
-            ("tool_call_result", {"schema_version": 1, "tool_call_id": "tc1"}),
+            (
+                "tool_call_result",
+                {
+                    "schema_version": SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
+                    "tool_call_id": "tc1",
+                },
+            ),
             # reasoning_start — missing required field 'message_id'
-            ("reasoning_start", {"schema_version": 1}),
+            (
+                "reasoning_start",
+                {"schema_version": SCHEMA_VERSION_REASONING_START_RENDER_EVENT},
+            ),
             # reasoning_delta — missing required field 'delta'
-            ("reasoning_delta", {"schema_version": 1, "message_id": "m1"}),
+            (
+                "reasoning_delta",
+                {
+                    "schema_version": SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
+                    "message_id": "m1",
+                },
+            ),
             # reasoning_end — missing required field 'message_id'
-            ("reasoning_end", {"schema_version": 1}),
+            (
+                "reasoning_end",
+                {"schema_version": SCHEMA_VERSION_REASONING_END_RENDER_EVENT},
+            ),
         ],
     )
     def test_decode_aborts_on_bad_payload(

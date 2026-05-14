@@ -129,15 +129,22 @@ def _make_std_decode(
 
 def _encode_text_v1(event: RenderEvent) -> tuple[str, dict, bool]:
     """Encode TextRenderEvent — is_done comes from event.is_final."""
+    if not isinstance(event, TextRenderEvent):
+        raise TypeError(
+            f"_encode_text_v1 expected TextRenderEvent, got {type(event).__name__}"
+        )
     payload: dict = json.loads(serialize(event).decode("utf-8"))
-    assert isinstance(event, TextRenderEvent)
     return "text", payload, event.is_final
 
 
 def _encode_tool_summary(event: RenderEvent) -> tuple[str, dict, bool]:
     """Encode ToolSummaryRenderEvent — is_done comes from event.is_complete."""
+    if not isinstance(event, ToolSummaryRenderEvent):
+        raise TypeError(
+            "_encode_tool_summary expected ToolSummaryRenderEvent, "
+            f"got {type(event).__name__}"
+        )
     payload: dict = json.loads(serialize(event).decode("utf-8"))
-    assert isinstance(event, ToolSummaryRenderEvent)
     return "tool_summary", payload, event.is_complete
 
 

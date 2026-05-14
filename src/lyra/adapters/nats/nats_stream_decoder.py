@@ -129,7 +129,7 @@ async def decode_stream_events(
         event_type = chunk.get("event_type")
         if event_type is None:
             log.warning(
-                "NatsOutboundListener: chunk missing event_type field,"
+                "decode_stream_events: chunk missing event_type field,"
                 " stream_id=%r; aborting stream",
                 stream_id,
             )

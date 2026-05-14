@@ -9,7 +9,7 @@ supersedes: "ADR-032 (Slice 3 of #1192 will add the matching superseded banner t
 related: "ADR-070 (parent epic — RenderEvent v2 AG-UI modeling)"
 ---
 
-> **Current truth** → [`docs/architecture/llm-streaming.md`](../llm-streaming.md){#current-truth}
+> **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
 
 
@@ -36,9 +36,10 @@ create merge-conflict risk on a hot file and double git-blame churn (per panel f
 in `artifacts/analyses/1190-codec-review-findings-consensus.mdx`).
 
 This ADR documents the structural decision. The `ToolSummaryRenderEvent` v1 entry and the
-`TextRenderEvent` v1 entry remain in Slice 2 (this decision) and are deleted in Slice 3.
-The `nats_stream_decoder.py:122` default-routing fix is an acceptance item on the Slice 3
-commit.
+`TextRenderEvent` v1 entry remain in Slice 2 (this decision) and are deleted in Slice 3
+(continued in #1205). The `nats_stream_decoder.py` default-routing fix (`None`-first
+ordering with explicit `log.warning + break` on missing `event_type`) was applied in
+Slice 2 (this PR), not deferred.
 
 ## Decision
 
@@ -52,11 +53,16 @@ Replace the if-elif chain with a `dict[type, CodecBranch]` registry built once i
 @dataclass(frozen=True)
 class CodecBranch:
     event_type: str
+    cls_name: str
     encode_fn: Callable[[RenderEvent], tuple[str, dict, bool]]
     decode_fn: Callable[[dict], RenderEvent]
     schema_version: int
     is_done_default: bool
 ```
+
+`cls_name` is the canonical class name string (e.g. `"TextStartRenderEvent"`), stored on
+the branch so the codec has a single source of truth for it instead of a separate
+`_EVENT_TYPE_TO_CLASS_NAME` map (eliminated during the 6-finding fixup).
 
 `is_done_default` is `True` only for terminal events (`RunFinishedRenderEvent`,
 `RunErrorRenderEvent`). For v1 types (`TextRenderEvent`, `ToolSummaryRenderEvent`)

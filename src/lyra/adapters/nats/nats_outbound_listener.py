@@ -163,7 +163,7 @@ class NatsOutboundListener:
                 ),
                 outbound,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — send_streaming: exception type varies by adapter
             log.exception(
                 "NatsOutboundListener: send_streaming failed for stream_id=%r",
                 stream_id,

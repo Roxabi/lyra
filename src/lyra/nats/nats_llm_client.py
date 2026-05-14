@@ -15,12 +15,13 @@ Implements the ``LlmProvider`` protocol — future replacement candidate for
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import nats.errors
@@ -28,10 +29,16 @@ from nats.aio.client import Client as NATS
 from nats.errors import NoRespondersError
 from pydantic import ValidationError
 
-import nats
-from lyra.core.ports.llm import LlmUnavailableError
+from lyra.core.messaging.events import (
+    LlmEvent,
+    ResultLlmEvent,
+    TextLlmEvent,
+)
+from lyra.core.messaging.metrics import emit_populated_total
+from lyra.core.ports.llm import LlmResult
 from lyra.nats.worker_registry import WorkerRegistry
 from roxabi_contracts.envelope import CONTRACT_VERSION
+from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.llm import (
     SUBJECTS,
     LlmChunkEvent,
@@ -40,6 +47,9 @@ from roxabi_contracts.llm import (
     validate_worker_id,
 )
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
+
+if TYPE_CHECKING:
+    from lyra.core.agent.agent_config import ModelConfig
 
 log = logging.getLogger(__name__)
 
@@ -82,15 +92,17 @@ class NatsLlmClient:
         client = NatsLlmClient(nc)
         await client.start()
 
-        # streaming
-        async for delta in client.stream(messages=[...]):
-            print(delta, end="", flush=True)
+        # streaming — LlmProvider protocol
+        async for event in client.stream("pool-1", "hello", mc, "sys"):
+            ...
 
-        # non-streaming
-        result = await client.generate(messages=[...])
+        # non-streaming — LlmProvider protocol
+        result = await client.complete("pool-1", "hello", mc, "sys")
 
         await client.stop()
     """
+
+    capabilities: dict[str, Any] = {"streaming": True, "auth": "nats"}
 
     def __init__(self, nc: NATS, *, timeout: float | None = None) -> None:
         self._nc = nc
@@ -110,14 +122,16 @@ class NatsLlmClient:
             await self._hb_sub.unsubscribe()
             self._hb_sub = None
 
-    def is_available(self) -> bool:
-        return self._registry.any_alive()
+    def is_alive(self, pool_id: str) -> bool:
+        """Return True when NATS is connected and at least one worker is fresh."""
+        del pool_id  # LlmProvider protocol slot; client is stateless per-pool
+        return self._nc.is_connected and self._registry.any_alive()
 
     # ------------------------------------------------------------------
     # Heartbeat
     # ------------------------------------------------------------------
 
-    async def _on_heartbeat(self, msg) -> None:
+    async def _on_heartbeat(self, msg: Any) -> None:
         try:
             data = json.loads(msg.data)
         except json.JSONDecodeError:
@@ -137,152 +151,454 @@ class NatsLlmClient:
         self._registry.record_heartbeat(data)
 
     # ------------------------------------------------------------------
-    # Public API
+    # Internal helpers
     # ------------------------------------------------------------------
 
-    async def generate(
+    def _build_request(
         self,
-        messages: list[dict[str, Any]],
+        text: str,
+        model_cfg: "ModelConfig",
+        system_prompt: str,
+        messages: list[dict] | None,
         *,
-        model: str | None = None,
-        system_prompt: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-    ) -> str:
-        """Non-streaming generation. Returns full text string."""
-        if self._cb.is_open():
-            raise LlmUnavailableError(
-                "LLM circuit open — adapter temporarily unavailable"
-            )
+        stream: bool,
+    ) -> tuple[bytes, str]:
+        """Build a canonical LlmRequest payload and return (bytes, trace_id).
 
+        Text-folding rule (spec §"Expected Behavior" §3):
+          - messages None or empty → publish [{"role": "user", "content": text}]
+          - last message content == text → pass messages through unchanged
+          - else → append {"role": "user", "content": text} to a copy of messages
+        """
+        if not messages:
+            wire_messages: list[dict] = [{"role": "user", "content": text}]
+        elif messages[-1].get("content") == text:
+            wire_messages = list(messages)
+        else:
+            wire_messages = list(messages) + [{"role": "user", "content": text}]
+
+        trace_id = str(uuid4())
         request = LlmRequest(
             contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
+            trace_id=trace_id,
             issued_at=datetime.now(timezone.utc),
             request_id=str(uuid4()).replace("-", "")[:32],
-            messages=messages,
-            model=model,
+            messages=wire_messages,
+            model=model_cfg.model,
             system_prompt=system_prompt,
-            stream=False,
-            max_tokens=max_tokens,
-            temperature=temperature,
+            stream=stream,
+            max_tokens=getattr(model_cfg, "max_tokens", None),
+            temperature=getattr(model_cfg, "temperature", None),
         )
         payload = request.model_dump_json(exclude_none=True).encode()
-        resp = await self._walk_registry_request(payload)
-        assert resp.text is not None
-        self._cb.record_success()
-        return resp.text
+        return payload, trace_id
 
-    async def stream(
+    # ------------------------------------------------------------------
+    # Public API — LlmProvider protocol
+    # ------------------------------------------------------------------
+
+    async def complete(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
-        messages: list[dict[str, Any]],
+        pool_id: str,
+        text: str,
+        model_cfg: "ModelConfig",
+        system_prompt: str,
         *,
-        model: str | None = None,
-        system_prompt: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-    ) -> AsyncIterator[str]:
-        """Streaming generation. Yields text deltas."""
+        messages: list[dict] | None = None,
+    ) -> LlmResult:
+        """Non-streaming completion. Returns LlmResult with canonical WorkerError."""
+        del pool_id  # canonical wire is queue-group dispatched, no per-worker routing
+
         if self._cb.is_open():
-            raise LlmUnavailableError(
-                "LLM circuit open — adapter temporarily unavailable"
+            emit_populated_total(domain="llm")
+            return LlmResult(
+                error="LLM circuit open — adapter temporarily unavailable",
+                retryable=True,
+                worker_error=WorkerError(
+                    code="worker.capacity",
+                    message="LLM circuit open — adapter temporarily unavailable",
+                    retryable=True,
+                ),
             )
 
-        request = LlmRequest(
-            contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
-            issued_at=datetime.now(timezone.utc),
-            request_id=str(uuid4()).replace("-", "")[:32],
-            messages=messages,
-            model=model,
-            system_prompt=system_prompt,
-            stream=True,
-            max_tokens=max_tokens,
-            temperature=temperature,
+        payload, trace_id = self._build_request(
+            text, model_cfg, system_prompt, messages, stream=False
         )
-        payload = request.model_dump_json(exclude_none=True).encode()
-        return self._stream_from_worker(payload)
+        return await self._complete_request(payload, trace_id)
+
+    async def stream(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
+        self,
+        pool_id: str,
+        text: str,
+        model_cfg: "ModelConfig",
+        system_prompt: str,
+        *,
+        messages: list[dict] | None = None,
+    ) -> AsyncIterator[LlmEvent]:
+        """Return an async generator of LlmEvents for a streaming request."""
+        del pool_id  # canonical wire is queue-group dispatched, no per-worker routing
+        return self._stream_gen(text, model_cfg, system_prompt, messages=messages)
 
     # ------------------------------------------------------------------
-    # Internal
+    # Internal — complete() transport
     # ------------------------------------------------------------------
 
-    async def _stream_from_worker(self, payload: bytes) -> AsyncIterator[str]:
+    async def _complete_request(  # noqa: C901 — DEBT:complexity-residual
+        self, payload: bytes, trace_id: str
+    ) -> LlmResult:
+        """Execute a single non-streaming NATS request-reply, returning LlmResult.
+
+        All error paths return a populated LlmResult(worker_error=...) — never raise.
+        contract_mismatch (CONTRACT_VERSION check) is intentionally deferred:
+        the current LlmResponse schema accepts any contract_version at the Pydantic
+        layer; a strict version check requires an API version negotiation protocol
+        that is out of scope for #1119 Wave 3. Tests covering this case are xfail.
+        """
         candidates = self._registry.ordered_by_score()
         if not candidates:
-            raise LlmUnavailableError("LLM: no live worker (heartbeat stale >15s)")
+            # No live workers — synthesise a transport.no_responders result.
+            # This mirrors the nats.errors.NoRespondersError path: the broker
+            # would return no-responders if we published, so we short-circuit.
+            error_msg = "LLM: no live worker (heartbeat stale >15s)"
+            emit_populated_total(domain="llm")
+            return LlmResult(
+                error=error_msg,
+                retryable=True,
+                worker_error=WorkerError(
+                    code="transport.no_responders",
+                    message=error_msg,
+                    retryable=True,
+                ),
+            )
+
+        last_result: LlmResult | None = None
+        for worker in candidates:
+            target = SUBJECTS.generate_request
+            try:
+                reply = await self._nc.request(
+                    target, payload, timeout=self._timeout
+                )
+            except TimeoutError as exc:
+                self._registry.mark_stale(worker.worker_id)
+                error_msg = f"LLM worker timeout after {self._timeout:.0f}s"
+                emit_populated_total(domain="llm")
+                last_result = LlmResult(
+                    error=error_msg,
+                    retryable=True,
+                    worker_error=WorkerError(
+                        code="transport.timeout",
+                        message=str(exc) or error_msg,
+                        retryable=True,
+                    ),
+                )
+                continue
+            except NoRespondersError as exc:
+                self._registry.mark_stale(worker.worker_id)
+                error_msg = f"NATS no responders: {exc}"
+                emit_populated_total(domain="llm")
+                last_result = LlmResult(
+                    error=error_msg,
+                    retryable=True,
+                    worker_error=WorkerError(
+                        code="transport.no_responders",
+                        message=str(exc) or error_msg,
+                        retryable=True,
+                    ),
+                )
+                continue
+            except nats.errors.Error as exc:
+                # max_payload is a non-retryable hard limit; everything else retries.
+                if "max_payload" in str(exc).lower():
+                    log.error(
+                        "LLM payload too large (%.0f KB)", len(payload) / 1024
+                    )
+                    self._cb.record_failure()
+                    error_msg = f"LLM request payload too large: {exc}"
+                    emit_populated_total(domain="llm")
+                    return LlmResult(
+                        error=error_msg,
+                        retryable=False,
+                        worker_error=WorkerError(
+                            code="transport.error",
+                            message=str(exc) or error_msg,
+                            retryable=False,
+                        ),
+                    )
+                log.warning(
+                    "LLM adapter unreachable: %s: %s", type(exc).__name__, exc
+                )
+                self._cb.record_failure()
+                error_msg = f"NATS transport error: {exc}"
+                emit_populated_total(domain="llm")
+                return LlmResult(
+                    error=error_msg,
+                    retryable=True,
+                    worker_error=WorkerError(
+                        code="transport.error",
+                        message=str(exc) or error_msg,
+                        retryable=True,
+                    ),
+                )
+
+            # Parse reply
+            try:
+                resp = LlmResponse.model_validate_json(reply.data)
+            except (ValidationError, ValueError) as exc:
+                self._cb.record_failure()
+                error_msg = f"Invalid response from worker: {exc}"
+                emit_populated_total(domain="llm")
+                return LlmResult(
+                    error=error_msg,
+                    retryable=False,
+                    worker_error=WorkerError(
+                        code="transport.parse",
+                        message=str(exc) or error_msg,
+                        retryable=False,
+                    ),
+                )
+
+            # Worker-reported errors
+            if not resp.ok:
+                self._cb.record_failure()
+                error_msg = resp.error or "LLM generation failed"
+                if resp.worker_error is not None:
+                    # Propagate structured envelope verbatim (trust the worker).
+                    return LlmResult(
+                        error=error_msg,
+                        retryable=resp.worker_error.retryable,
+                        worker_error=resp.worker_error,
+                    )
+                # Legacy worker: synthesise worker.internal fallback.
+                emit_populated_total(domain="llm")
+                return LlmResult(
+                    error=error_msg,
+                    retryable=True,
+                    worker_error=WorkerError(
+                        code="worker.internal",
+                        message=error_msg,
+                        retryable=True,
+                    ),
+                )
+
+            # Success
+            self._cb.record_success()
+            return LlmResult(
+                result=resp.text or "",
+                session_id=trace_id,
+                error="",
+                retryable=True,
+            )
+
+        # All candidates exhausted — return the last transport error collected.
+        self._cb.record_failure()
+        if last_result is not None:
+            return last_result
+        error_msg = "LLM: all workers unresponsive"
+        emit_populated_total(domain="llm")
+        return LlmResult(
+            error=error_msg,
+            retryable=True,
+            worker_error=WorkerError(
+                code="transport.no_responders",
+                message=error_msg,
+                retryable=True,
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Internal — stream() transport
+    # ------------------------------------------------------------------
+
+    async def _stream_gen(  # noqa: C901, PLR0915 — DEBT:complexity-residual
+        self,
+        text: str,
+        model_cfg: "ModelConfig",
+        system_prompt: str,
+        *,
+        messages: list[dict] | None = None,
+    ) -> AsyncIterator[LlmEvent]:
+        """Async generator: yield LlmEvents from an ephemeral inbox subscription.
+
+        All error paths yield a terminal ResultLlmEvent(is_error=True, worker_error=...)
+        then return — never raise to the caller.
+        """
+        if self._cb.is_open():
+            emit_populated_total(domain="llm")
+            yield ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                cost_usd=None,
+                error_text="LLM circuit open — adapter temporarily unavailable",
+                worker_error=WorkerError(
+                    code="worker.capacity",
+                    message="LLM circuit open — adapter temporarily unavailable",
+                    retryable=True,
+                ),
+            )
+            return
+
+        candidates = self._registry.ordered_by_score()
+        if not candidates:
+            error_msg = "LLM: no live worker (heartbeat stale >15s)"
+            emit_populated_total(domain="llm")
+            yield ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                cost_usd=None,
+                error_text=error_msg,
+                worker_error=WorkerError(
+                    code="transport.no_responders",
+                    message=error_msg,
+                    retryable=True,
+                ),
+            )
+            return
+
+        payload, _trace_id = self._build_request(
+            text, model_cfg, system_prompt, messages, stream=True
+        )
 
         inbox = self._nc.new_inbox()
         sub = await self._nc.subscribe(inbox)
         try:
-            target = SUBJECTS.generate_request
-            await self._nc.publish(target, payload, reply=inbox)
+            # Publish — transport errors here terminate the stream immediately.
+            try:
+                await self._nc.publish(
+                    SUBJECTS.generate_request, payload, reply=inbox
+                )
+            except NoRespondersError as exc:
+                self._cb.record_failure()
+                error_msg = f"NATS no responders: {exc}"
+                emit_populated_total(domain="llm")
+                yield ResultLlmEvent(
+                    is_error=True,
+                    duration_ms=0,
+                    cost_usd=None,
+                    error_text=error_msg,
+                    worker_error=WorkerError(
+                        code="transport.no_responders",
+                        message=str(exc) or error_msg,
+                        retryable=True,
+                    ),
+                )
+                return
+            except nats.errors.Error as exc:
+                self._cb.record_failure()
+                if "max_payload" in str(exc).lower():
+                    log.error(
+                        "LLM stream payload too large (%.0f KB)",
+                        len(payload) / 1024,
+                    )
+                    error_msg = f"LLM request payload too large: {exc}"
+                    emit_populated_total(domain="llm")
+                    yield ResultLlmEvent(
+                        is_error=True,
+                        duration_ms=0,
+                        cost_usd=None,
+                        error_text=error_msg,
+                        worker_error=WorkerError(
+                            code="transport.error",
+                            message=str(exc) or error_msg,
+                            retryable=False,
+                        ),
+                    )
+                    return
+                error_msg = f"NATS transport error: {exc}"
+                emit_populated_total(domain="llm")
+                yield ResultLlmEvent(
+                    is_error=True,
+                    duration_ms=0,
+                    cost_usd=None,
+                    error_text=error_msg,
+                    worker_error=WorkerError(
+                        code="transport.error",
+                        message=str(exc) or error_msg,
+                        retryable=True,
+                    ),
+                )
+                return
+
+            # Consume chunks from the inbox.
             while True:
                 try:
                     msg = await sub.next_msg(timeout=self._timeout)
-                except Exception as exc:
-                    self._registry.mark_stale(candidates[0].worker_id)
+                except (TimeoutError, asyncio.TimeoutError) as exc:
+                    if candidates:
+                        self._registry.mark_stale(candidates[0].worker_id)
                     self._cb.record_failure()
-                    raise LlmUnavailableError("LLM stream timed out") from exc
+                    error_msg = f"LLM stream timed out: {exc}"
+                    emit_populated_total(domain="llm")
+                    yield ResultLlmEvent(
+                        is_error=True,
+                        duration_ms=0,
+                        cost_usd=None,
+                        error_text=error_msg,
+                        worker_error=WorkerError(
+                            code="transport.timeout",
+                            message=str(exc) or error_msg,
+                            retryable=True,
+                        ),
+                    )
+                    return
+
                 try:
                     chunk = LlmChunkEvent.model_validate_json(msg.data)
                 except (ValidationError, ValueError) as exc:
                     self._cb.record_failure()
-                    raise LlmUnavailableError("LLM stream: malformed chunk") from exc
+                    error_msg = f"LLM stream: malformed chunk: {exc}"
+                    emit_populated_total(domain="llm")
+                    yield ResultLlmEvent(
+                        is_error=True,
+                        duration_ms=0,
+                        cost_usd=None,
+                        error_text=error_msg,
+                        worker_error=WorkerError(
+                            code="transport.parse",
+                            message=str(exc) or error_msg,
+                            retryable=False,
+                        ),
+                    )
+                    return
+
                 if chunk.is_error:
                     self._cb.record_failure()
-                    raise LlmUnavailableError(chunk.error or "LLM stream error")
+                    if chunk.worker_error is not None:
+                        # Propagate structured envelope verbatim.
+                        yield ResultLlmEvent(
+                            is_error=True,
+                            duration_ms=chunk.duration_ms or 0,
+                            cost_usd=None,
+                            error_text=chunk.error or "LLM stream error",
+                            worker_error=chunk.worker_error,
+                        )
+                    else:
+                        # Legacy worker: synthesise worker.internal fallback.
+                        error_msg = chunk.error or "LLM stream error"
+                        emit_populated_total(domain="llm")
+                        yield ResultLlmEvent(
+                            is_error=True,
+                            duration_ms=chunk.duration_ms or 0,
+                            cost_usd=None,
+                            error_text=error_msg,
+                            worker_error=WorkerError(
+                                code="worker.internal",
+                                message=error_msg,
+                                retryable=True,
+                            ),
+                        )
+                    return
+
                 if chunk.delta:
-                    yield chunk.delta
+                    yield TextLlmEvent(text=chunk.delta)
+
                 if chunk.done:
                     self._cb.record_success()
+                    yield ResultLlmEvent(
+                        is_error=False,
+                        duration_ms=chunk.duration_ms or 0,
+                        cost_usd=None,
+                    )
                     return
+
         finally:
             await sub.unsubscribe()
-
-    async def _walk_registry_request(self, payload: bytes) -> LlmResponse:
-        candidates = self._registry.ordered_by_score()
-        if not candidates:
-            raise LlmUnavailableError("LLM: no live worker (heartbeat stale >15s)")
-
-        last_exc: Exception | None = None
-        for worker in candidates:
-            target = SUBJECTS.generate_request
-            try:
-                reply = await self._nc.request(target, payload, timeout=self._timeout)
-                resp = LlmResponse.model_validate_json(reply.data)
-                if not resp.ok:
-                    self._cb.record_failure()
-                    raise LlmUnavailableError(resp.error or "LLM generation failed")
-                return resp
-            except TimeoutError as exc:
-                self._registry.mark_stale(worker.worker_id)
-                last_exc = exc
-                continue
-            except (nats.errors.Error, TimeoutError) as exc:
-                if isinstance(exc, NoRespondersError):
-                    self._registry.mark_stale(worker.worker_id)
-                    last_exc = exc
-                    continue
-                self._raise_nats_failure(exc, len(payload) / 1024)
-
-        self._cb.record_failure()
-        raise LlmUnavailableError("LLM: all workers unresponsive") from last_exc
-
-    def _parse_reply(self, data: bytes) -> LlmResponse:
-        try:
-            return LlmResponse.model_validate_json(data)
-        except (ValidationError, ValueError) as exc:
-            self._cb.record_failure()
-            raise LlmUnavailableError("LLM reply failed schema validation") from exc
-
-    def _raise_nats_failure(self, exc: Exception, payload_kb: float) -> NoReturn:
-        if isinstance(exc, LlmUnavailableError):
-            raise exc
-        if "max_payload" in str(exc).lower():
-            log.error("LLM payload too large (%.0f KB)", payload_kb)
-            self._cb.record_failure()
-            raise LlmUnavailableError("LLM request payload too large") from exc
-        log.warning("LLM adapter unreachable: %s: %s", type(exc).__name__, exc)
-        self._cb.record_failure()
-        raise LlmUnavailableError("LLM adapter unreachable") from exc

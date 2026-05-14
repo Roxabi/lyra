@@ -101,7 +101,7 @@ class TestRegisterAgents:
                 tts_service=None,
                 agent_store=None,
                 raw_config=raw_config,
-                nats_llm_driver=None,
+                nats_llm_client=None,
             )
 
             # Assert — register_agent called once per agent

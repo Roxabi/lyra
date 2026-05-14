@@ -158,7 +158,7 @@ def register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — registr
     tts_service: TtsProtocol | None,
     agent_store: AgentStore | None,
     raw_config: dict,
-    nats_llm_driver: "NatsLlmClient | None",
+    nats_llm_client: "NatsLlmClient | None",
     *,
     cli_nats_driver: "CliNatsDriver | None" = None,
 ) -> None:
@@ -173,7 +173,7 @@ def register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — registr
         tts_service,
         agent_store=agent_store,
         llm_cfg=llm_cfg,
-        nats_llm_driver=nats_llm_driver,
+        nats_llm_client=nats_llm_client,
         cli_nats_driver=cli_nats_driver,
     )
     for ag in all_agents.values():

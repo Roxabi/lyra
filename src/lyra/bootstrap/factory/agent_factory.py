@@ -48,13 +48,13 @@ def _build_shared_base_providers(
     cli_pool: CliPool | None,
     llm_cfg: LlmConfig,
     *,
-    nats_llm_driver: "NatsLlmClient | None" = None,
+    nats_llm_client: "NatsLlmClient | None" = None,
     cli_nats_driver: "CliNatsDriver | None" = None,
 ) -> dict[str, LlmProvider]:
     """Build ``{backend: base LlmProvider}`` reusable across all agents.
 
     ``claude-cli`` (ClaudeCliDriver or CliNatsDriver), ``nats`` (Retry ->
-    NatsLlmClient, only when ``nats_llm_driver`` is provided). Callers layer
+    NatsLlmClient, only when ``nats_llm_client`` is provided). Callers layer
     decorators per agent via ``_build_per_agent_registry``.
 
     ``cli_nats_driver`` takes precedence over ``cli_pool`` for the
@@ -83,9 +83,9 @@ def _build_shared_base_providers(
             providers["claude-cli"] = cli_driver
         log.info("Shared base: built claude-cli driver (in-process, decorated)")
 
-    if nats_llm_driver is not None:
+    if nats_llm_client is not None:
         providers["nats"] = RetryDecorator(
-            nats_llm_driver,
+            nats_llm_client,
             max_retries=llm_cfg.max_retries,
             backoff_base=llm_cfg.backoff_base,
         )
@@ -203,7 +203,7 @@ def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     tts_service: TtsProtocol | None = None,
     agent_store: AgentStore | None = None,
     llm_cfg: LlmConfig | None = None,
-    nats_llm_driver: "NatsLlmClient | None" = None,
+    nats_llm_client: "NatsLlmClient | None" = None,
     cli_nats_driver: "CliNatsDriver | None" = None,
 ) -> dict[str, AgentBase]:
     """Create all uniquely named agents referenced by bot configs.
@@ -216,7 +216,7 @@ def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     Accepts pre-loaded agent configs to avoid duplicate I/O.
     Returns a dict mapping agent_name to AgentBase instance.
 
-    ``nats_llm_driver`` -- if provided (NATS_URL set), registers the shared
+    ``nats_llm_client`` -- if provided (NATS_URL set), registers the shared
     ``NatsLlmClient`` as the ``"nats"`` backend. Must be started first.
 
     ``cli_nats_driver`` -- if provided, used as the ``claude-cli`` backend
@@ -226,7 +226,7 @@ def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         circuit_registry,
         cli_pool,
         llm_cfg or LlmConfig(),
-        nats_llm_driver=nats_llm_driver,
+        nats_llm_client=nats_llm_client,
         cli_nats_driver=cli_nats_driver,
     )
 

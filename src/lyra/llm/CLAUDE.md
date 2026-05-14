@@ -26,20 +26,18 @@ the Protocol base until all drivers implement it.
 
 ## Drivers
 
-Three concrete drivers in `drivers/`:
+Two concrete drivers in `drivers/` + one canonical NATS LLM client in `lyra.nats`:
 
-| Driver | Backend | `capabilities["streaming"]` | `capabilities["auth"]` |
-|--------|---------|---------------------------|----------------------|
-| `ClaudeCliDriver` | Claude Code subprocess (`CliPool`) | `True` — native NDJSON stream | `"oauth_only"` |
-| `NatsLlmDriver` | Remote LLM worker over NATS request-reply | `True` — ephemeral inbox streaming | `"nats"` |
-| `CliNatsDriver` | Hub-side LlmProvider dispatching claude-cli over NATS | `True` — ephemeral inbox streaming | `"nats"` |
-
-> **NatsLlmClient migration (#1119):** `NatsLlmClient` (`src/lyra/nats/nats_llm_client.py`) is the active replacement for `NatsLlmDriver`. `NatsLlmDriver` is retained for a 2-week M₁ soak and will be deleted in a follow-up PR. Prefer `NatsLlmClient` for new wiring.
+| Provider | Location | Backend | `capabilities["streaming"]` | `capabilities["auth"]` |
+|----------|----------|---------|---------------------------|----------------------|
+| `ClaudeCliDriver` | `lyra.llm.drivers.cli` | Claude Code subprocess (`CliPool`) | `True` — native NDJSON stream | `"oauth_only"` |
+| `CliNatsDriver` | `lyra.llm.drivers.cli_nats` | Hub-side LlmProvider dispatching claude-cli over NATS | `True` — ephemeral inbox streaming | `"nats"` |
+| `NatsLlmClient` | `lyra.nats.nats_llm_client` | Generic remote LLM worker over canonical ADR-049 NATS request-reply | `True` — ephemeral inbox streaming | `"nats"` |
 
 **Driver selection:**
 - `ClaudeCliDriver` — single-process mode (hub owns CliPool directly)
 - `CliNatsDriver` — multi-process mode (hub sends requests to clipool worker over NATS)
-- `NatsLlmDriver` — generic remote LLM worker (not claude-cli specific)
+- `NatsLlmClient` — generic remote LLM worker (not claude-cli specific); replaces the now-deleted `NatsLlmDriver` (#1119)
 
 ## Decorator stack
 
@@ -49,6 +47,10 @@ CircuitBreakerDecorator → SmartRoutingDecorator → RetryDecorator → Driver
 
 Each decorator wraps an `LlmProvider` and implements the same protocol.
 The stack is assembled in `bootstrap/` during startup — not in `llm/`.
+
+`NatsLlmClient` carries its own internal `NatsCircuitBreaker` and is wrapped only by
+`RetryDecorator` at the wiring sites (`agent_factory.py`); the external
+`CircuitBreakerDecorator` is reserved for `ClaudeCliDriver`.
 
 `SmartRoutingDecorator` (`smart_routing.py`) selects a cheaper model for trivial
 messages and upgrades to a more capable model for complex ones.

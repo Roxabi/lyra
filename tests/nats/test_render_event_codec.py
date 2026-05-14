@@ -277,13 +277,14 @@ class TestToolCallCodecRoundTrip:
 
     def test_tool_call_is_terminal_false(self) -> None:
         # ToolCall* are mid-stream — never terminal sentinels.
+        codec = NatsRenderEventCodec()
         for et in (
             "tool_call_start",
             "tool_call_args",
             "tool_call_end",
             "tool_call_result",
         ):
-            assert NatsRenderEventCodec.is_terminal(et) is False
+            assert codec.is_terminal(et) is False
 
     def test_tool_call_start_schema_floor_drops(
         self, caplog: pytest.LogCaptureFixture
@@ -552,6 +553,28 @@ class TestRegistryCompleteness:
             f"  In registry but not union: {registry_keys - union_members}"
         )
 
+    def test_registry_branches_well_formed(self) -> None:
+        codec = NatsRenderEventCodec()
+        branches = list(codec._registry.values())
+
+        # Each event_type string must be non-empty
+        for branch in branches:
+            assert branch.event_type, f"{branch.cls_name} has empty event_type"
+
+        # event_type strings must be unique across _by_type_str
+        type_strings = [b.event_type for b in branches]
+        assert len(type_strings) == len(set(type_strings)), (
+            f"Duplicate event_type strings: "
+            f"{[t for t in type_strings if type_strings.count(t) > 1]}"
+        )
+
+        # cls_name must match the registry key class __name__
+        for cls, branch in codec._registry.items():
+            assert branch.cls_name == cls.__name__, (
+                f"Branch cls_name {branch.cls_name!r} != class"
+                f" __name__ {cls.__name__!r}"
+            )
+
 
 # ---------------------------------------------------------------------------
 # T-2: Per-branch decode error isolation (Slice 2 — #1192)
@@ -559,12 +582,7 @@ class TestRegistryCompleteness:
 
 
 class TestDecodeErrorAbort:
-    """Per-branch decode errors return None, log at exception level, never propagate.
-
-    Each sub-test passes a payload that will cause the branch decode_fn to raise
-    (wrong types for required fields), and asserts the codec returns None without
-    re-raising and that an EXCEPTION-level log record is emitted.
-    """
+    """Per-branch: malformed payload → decode returns None + log.exception."""
 
     def _assert_decode_returns_none_with_exception_log(
         self,
@@ -576,7 +594,8 @@ class TestDecodeErrorAbort:
         with caplog.at_level(logging.ERROR, logger="lyra.nats.render_event_codec"):
             result = codec.decode(event_type, bad_payload)
         assert result is None, f"Expected None for {event_type!r} with bad payload"
-        # Exception-level log must have been emitted (exc_info=True → levelno >= ERROR)
+        # Substring matches `log.exception(...)` at render_event_codec.py decode() —
+        # update both if the codec's message string changes.
         exception_records = [
             r
             for r in caplog.records
@@ -588,55 +607,52 @@ class TestDecodeErrorAbort:
             f"Expected exception-level log for {event_type!r} bad payload decode"
         )
 
-    def test_text_start_bad_payload_returns_none(
-        self, caplog: pytest.LogCaptureFixture
+    @pytest.mark.parametrize(
+        "event_type,bad_payload",
+        [
+            # text — missing required field 'text'
+            ("text", {"schema_version": 1, "is_final": True}),
+            # text_start — missing required field 'message_id'
+            ("text_start", {"schema_version": 1}),
+            # text_delta — missing required field 'delta'
+            ("text_delta", {"schema_version": 1, "message_id": "m1"}),
+            # text_end — missing required field 'message_id'
+            ("text_end", {"schema_version": 1}),
+            # text_chunk — missing required field 'delta'
+            ("text_chunk", {"schema_version": 1, "message_id": "m1"}),
+            # tool_summary — files is a string → AttributeError on .items()
+            ("tool_summary", {"schema_version": 1, "files": "not-a-dict"}),
+            # run_started — missing required field 'run_id'
+            ("run_started", {"schema_version": 1}),
+            # run_finished — missing required field 'run_id'
+            ("run_finished", {"schema_version": 1}),
+            # run_error — missing required fields 'run_id' and 'message'
+            ("run_error", {"schema_version": 1}),
+            # tool_call_start — missing required fields 'tool_call_id' + 'tool_name'
+            ("tool_call_start", {"schema_version": 1}),
+            # tool_call_args — missing required field 'delta'
+            ("tool_call_args", {"schema_version": 1, "tool_call_id": "tc1"}),
+            # tool_call_end — missing required field 'tool_call_id'
+            ("tool_call_end", {"schema_version": 1}),
+            # tool_call_result — missing required field 'content'
+            ("tool_call_result", {"schema_version": 1, "tool_call_id": "tc1"}),
+            # reasoning_start — missing required field 'message_id'
+            ("reasoning_start", {"schema_version": 1}),
+            # reasoning_delta — missing required field 'delta'
+            ("reasoning_delta", {"schema_version": 1, "message_id": "m1"}),
+            # reasoning_end — missing required field 'message_id'
+            ("reasoning_end", {"schema_version": 1}),
+        ],
+    )
+    def test_decode_aborts_on_bad_payload(
+        self,
+        event_type: str,
+        bad_payload: dict,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         codec = NatsRenderEventCodec()
-        # missing required field message_id → deserialize raises TypeError
         self._assert_decode_returns_none_with_exception_log(
-            codec,
-            "text_start",
-            {"schema_version": 1},  # message_id required but absent
-            caplog,
-        )
-
-    def test_run_started_bad_payload_returns_none(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        codec = NatsRenderEventCodec()
-        # missing required field run_id → deserialize raises TypeError
-        self._assert_decode_returns_none_with_exception_log(
-            codec,
-            "run_started",
-            {"schema_version": 1},  # run_id required but absent
-            caplog,
-        )
-
-    def test_tool_call_start_bad_payload_returns_none(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        codec = NatsRenderEventCodec()
-        # missing required fields tool_call_id + tool_name → TypeError
-        self._assert_decode_returns_none_with_exception_log(
-            codec,
-            "tool_call_start",
-            {"schema_version": 1},  # tool_call_id + tool_name required but absent
-            caplog,
-        )
-
-    def test_tool_summary_bad_files_returns_none(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        codec = NatsRenderEventCodec()
-        # files value is a string — FileEditSummary(**str) → TypeError
-        self._assert_decode_returns_none_with_exception_log(
-            codec,
-            "tool_summary",
-            {
-                "schema_version": 1,
-                "files": {"path/to/file.py": "not-a-dict"},
-            },
-            caplog,
+            codec, event_type, bad_payload, caplog
         )
 
 
@@ -697,8 +713,9 @@ async def test_decode_missing_event_type_breaks_first(
 
 def test_is_terminal_synthetic_sentinels() -> None:
     """is_terminal returns True for both synthetic terminal sentinels."""
-    assert NatsRenderEventCodec.is_terminal("stream_end") is True
-    assert NatsRenderEventCodec.is_terminal("stream_error") is True
+    codec = NatsRenderEventCodec()
+    assert codec.is_terminal("stream_end") is True
+    assert codec.is_terminal("stream_error") is True
 
 
 # ---------------------------------------------------------------------------

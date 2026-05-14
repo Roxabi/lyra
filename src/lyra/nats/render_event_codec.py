@@ -75,12 +75,6 @@ log = logging.getLogger(__name__)
 # surface the "unknown event_type" warning on clean stream close.
 _SYNTHETIC_TERMINALS: frozenset[str] = frozenset({"stream_end", "stream_error"})
 
-# Registry-derived event types whose CodecBranch.is_done_default == True.
-# Duplicated here as a module-level constant so NatsRenderEventCodec.is_terminal()
-# can be a @staticmethod (callable as NatsRenderEventCodec.is_terminal(et) without
-# an instance, which is the existing call-site contract).
-_TERMINAL_REGISTRY_TYPES: frozenset[str] = frozenset({"run_finished", "run_error"})
-
 
 @dataclass(frozen=True)
 class CodecBranch:
@@ -99,6 +93,7 @@ class CodecBranch:
     """
 
     event_type: str
+    cls_name: str
     encode_fn: Callable[[RenderEvent], tuple[str, dict, bool]]
     decode_fn: Callable[[dict], RenderEvent]
     schema_version: int
@@ -208,6 +203,7 @@ class NatsRenderEventCodec:
             # v1 types — deleted in Slice 3
             TextRenderEvent: CodecBranch(
                 event_type="text",
+                cls_name="TextRenderEvent",
                 encode_fn=_encode_text_v1,
                 decode_fn=_make_std_decode(TextRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_TEXT_RENDER_EVENT,
@@ -215,6 +211,7 @@ class NatsRenderEventCodec:
             ),
             ToolSummaryRenderEvent: CodecBranch(
                 event_type="tool_summary",
+                cls_name="ToolSummaryRenderEvent",
                 encode_fn=_encode_tool_summary,
                 decode_fn=_make_tool_summary_decode(),
                 schema_version=SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
@@ -223,6 +220,7 @@ class NatsRenderEventCodec:
             # v2 text triplet
             TextStartRenderEvent: CodecBranch(
                 event_type="text_start",
+                cls_name="TextStartRenderEvent",
                 encode_fn=_make_std_encode("text_start", False),
                 decode_fn=_make_std_decode(TextStartRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_TEXT_START_RENDER_EVENT,
@@ -230,6 +228,7 @@ class NatsRenderEventCodec:
             ),
             TextDeltaRenderEvent: CodecBranch(
                 event_type="text_delta",
+                cls_name="TextDeltaRenderEvent",
                 encode_fn=_make_std_encode("text_delta", False),
                 decode_fn=_make_std_decode(TextDeltaRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT,
@@ -237,6 +236,7 @@ class NatsRenderEventCodec:
             ),
             TextEndRenderEvent: CodecBranch(
                 event_type="text_end",
+                cls_name="TextEndRenderEvent",
                 encode_fn=_make_std_encode("text_end", False),
                 decode_fn=_make_std_decode(TextEndRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_TEXT_END_RENDER_EVENT,
@@ -244,6 +244,7 @@ class NatsRenderEventCodec:
             ),
             TextChunkRenderEvent: CodecBranch(
                 event_type="text_chunk",
+                cls_name="TextChunkRenderEvent",
                 encode_fn=_make_std_encode("text_chunk", False),
                 decode_fn=_make_std_decode(TextChunkRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT,
@@ -252,6 +253,7 @@ class NatsRenderEventCodec:
             # Run lifecycle
             RunStartedRenderEvent: CodecBranch(
                 event_type="run_started",
+                cls_name="RunStartedRenderEvent",
                 encode_fn=_make_std_encode("run_started", False),
                 decode_fn=_make_std_decode(RunStartedRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT,
@@ -259,6 +261,7 @@ class NatsRenderEventCodec:
             ),
             RunFinishedRenderEvent: CodecBranch(
                 event_type="run_finished",
+                cls_name="RunFinishedRenderEvent",
                 encode_fn=_make_std_encode("run_finished", True),
                 decode_fn=_make_std_decode(RunFinishedRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT,
@@ -266,6 +269,7 @@ class NatsRenderEventCodec:
             ),
             RunErrorRenderEvent: CodecBranch(
                 event_type="run_error",
+                cls_name="RunErrorRenderEvent",
                 encode_fn=_make_std_encode("run_error", True),
                 decode_fn=_make_std_decode(RunErrorRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT,
@@ -274,6 +278,7 @@ class NatsRenderEventCodec:
             # Tool-call lifecycle
             ToolCallStartRenderEvent: CodecBranch(
                 event_type="tool_call_start",
+                cls_name="ToolCallStartRenderEvent",
                 encode_fn=_make_std_encode("tool_call_start", False),
                 decode_fn=_make_std_decode(ToolCallStartRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT,
@@ -281,6 +286,7 @@ class NatsRenderEventCodec:
             ),
             ToolCallArgsRenderEvent: CodecBranch(
                 event_type="tool_call_args",
+                cls_name="ToolCallArgsRenderEvent",
                 encode_fn=_make_std_encode("tool_call_args", False),
                 decode_fn=_make_std_decode(ToolCallArgsRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
@@ -288,6 +294,7 @@ class NatsRenderEventCodec:
             ),
             ToolCallEndRenderEvent: CodecBranch(
                 event_type="tool_call_end",
+                cls_name="ToolCallEndRenderEvent",
                 encode_fn=_make_std_encode("tool_call_end", False),
                 decode_fn=_make_std_decode(ToolCallEndRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT,
@@ -295,6 +302,7 @@ class NatsRenderEventCodec:
             ),
             ToolCallResultRenderEvent: CodecBranch(
                 event_type="tool_call_result",
+                cls_name="ToolCallResultRenderEvent",
                 encode_fn=_make_std_encode("tool_call_result", False),
                 decode_fn=_make_std_decode(ToolCallResultRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
@@ -303,6 +311,7 @@ class NatsRenderEventCodec:
             # Reasoning lifecycle
             ReasoningStartRenderEvent: CodecBranch(
                 event_type="reasoning_start",
+                cls_name="ReasoningStartRenderEvent",
                 encode_fn=_make_std_encode("reasoning_start", False),
                 decode_fn=_make_std_decode(ReasoningStartRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_REASONING_START_RENDER_EVENT,
@@ -310,6 +319,7 @@ class NatsRenderEventCodec:
             ),
             ReasoningDeltaRenderEvent: CodecBranch(
                 event_type="reasoning_delta",
+                cls_name="ReasoningDeltaRenderEvent",
                 encode_fn=_make_std_encode("reasoning_delta", False),
                 decode_fn=_make_std_decode(ReasoningDeltaRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
@@ -317,6 +327,7 @@ class NatsRenderEventCodec:
             ),
             ReasoningEndRenderEvent: CodecBranch(
                 event_type="reasoning_end",
+                cls_name="ReasoningEndRenderEvent",
                 encode_fn=_make_std_encode("reasoning_end", False),
                 decode_fn=_make_std_decode(ReasoningEndRenderEvent, resolver),
                 schema_version=SCHEMA_VERSION_REASONING_END_RENDER_EVENT,
@@ -330,6 +341,15 @@ class NatsRenderEventCodec:
         self._by_type_str: dict[str, CodecBranch] = {
             branch.event_type: branch for branch in self._registry.values()
         }
+
+        # Terminal event types derived from the registry.  Used by is_terminal()
+        # so the set stays in sync with _registry — a new branch with
+        # is_done_default=True is automatically recognized as terminal.
+        self._terminal_types: frozenset[str] = frozenset(
+            branch.event_type
+            for branch in self._registry.values()
+            if branch.is_done_default
+        )
 
     def encode(self, event: RenderEvent) -> tuple[str, dict, bool]:
         """Return ``(event_type, payload_dict, is_done)`` for *event*.
@@ -391,12 +411,11 @@ class NatsRenderEventCodec:
             return None
 
         # Schema version gate — per-branch expected version.
-        # Map event_type string → class name for counter keys that match the
-        # existing convention (e.g. "TextRenderEvent:schema").
-        cls_name = _EVENT_TYPE_TO_CLASS_NAME.get(event_type, event_type)
+        # branch.cls_name carries the class name (e.g. "TextRenderEvent") so
+        # counter keys match the existing convention ("TextRenderEvent:schema").
         if not check_schema_version(
             payload,
-            envelope_name=cls_name,
+            envelope_name=branch.cls_name,
             expected=branch.schema_version,
             counter=counter,
         ):
@@ -411,47 +430,18 @@ class NatsRenderEventCodec:
             )
             return None
 
-    @staticmethod
-    def is_terminal(event_type: str) -> bool:
+    def is_terminal(self, event_type: str) -> bool:
         """Return ``True`` when this chunk signals end-of-stream.
 
         Rules:
 
         * ``"stream_end"`` / ``"stream_error"`` — always terminal (explicit
           sentinels from hub / transport; in ``_SYNTHETIC_TERMINALS``).
-        * ``"run_finished"`` / ``"run_error"`` — always terminal
-          (``is_done_default=True`` in their ``CodecBranch``; also encoded
-          in the module-level ``_TERMINAL_REGISTRY_TYPES`` set so this
-          method stays a ``@staticmethod`` and callable as
-          ``NatsRenderEventCodec.is_terminal(et)`` without an instance).
+        * Any registered event type whose ``CodecBranch.is_done_default`` is
+          ``True`` — currently ``"run_finished"`` and ``"run_error"``. The set
+          is derived from ``_registry`` at construction time, so adding a new
+          terminal type to the registry automatically extends ``is_terminal``.
         * All other registered event types — not terminal.
         * Unknown event types — not terminal.
         """
-        return (
-            event_type in _SYNTHETIC_TERMINALS or event_type in _TERMINAL_REGISTRY_TYPES
-        )
-
-
-# ---------------------------------------------------------------------------
-# Stable mapping from wire event_type string to class name.
-# Used by decode() to produce the correct envelope_name for check_schema_version
-# so counter keys match the existing convention (e.g. "TextRenderEvent:schema").
-# ---------------------------------------------------------------------------
-_EVENT_TYPE_TO_CLASS_NAME: dict[str, str] = {
-    "text": "TextRenderEvent",
-    "text_start": "TextStartRenderEvent",
-    "text_delta": "TextDeltaRenderEvent",
-    "text_end": "TextEndRenderEvent",
-    "text_chunk": "TextChunkRenderEvent",
-    "tool_summary": "ToolSummaryRenderEvent",
-    "run_started": "RunStartedRenderEvent",
-    "run_finished": "RunFinishedRenderEvent",
-    "run_error": "RunErrorRenderEvent",
-    "tool_call_start": "ToolCallStartRenderEvent",
-    "tool_call_args": "ToolCallArgsRenderEvent",
-    "tool_call_end": "ToolCallEndRenderEvent",
-    "tool_call_result": "ToolCallResultRenderEvent",
-    "reasoning_start": "ReasoningStartRenderEvent",
-    "reasoning_delta": "ReasoningDeltaRenderEvent",
-    "reasoning_end": "ReasoningEndRenderEvent",
-}
+        return event_type in _SYNTHETIC_TERMINALS or event_type in self._terminal_types

@@ -23,6 +23,7 @@ from lyra.core.exceptions import HubUnavailableError, StreamChunkTimeout
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import RenderEvent
+    from lyra.nats.render_event_codec import NatsRenderEventCodec
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ async def decode_stream_events(
     *,
     counter: dict[str, int] | None = None,
     health_check_fn: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
+    codec: "NatsRenderEventCodec | None" = None,
 ) -> AsyncGenerator["RenderEvent", None]:
     """Drain chunks from *q* and yield decoded :class:`RenderEvent` objects.
 
@@ -98,6 +100,11 @@ async def decode_stream_events(
                          :exc:`HubUnavailableError` is raised immediately instead of
                          waiting for the full 120 s backstop.  Defaults to ``None``
                          (liveness check skipped; existing behaviour preserved).
+        codec:           Optional cached codec instance.  ``None`` constructs a
+                         fresh one per call — fine for tests, but the production
+                         caller (``NatsOutboundListener``) passes its cached
+                         ``self._codec`` to avoid rebuilding the 15-entry registry
+                         on every inbound stream.
 
     Yields:
         Decoded render events until a terminal chunk arrives or the timeout
@@ -105,7 +112,7 @@ async def decode_stream_events(
     """
     from lyra.nats.render_event_codec import NatsRenderEventCodec
 
-    _codec = NatsRenderEventCodec()
+    _codec = codec if codec is not None else NatsRenderEventCodec()
     expected_seq = 0
     while True:
         chunk = await _wait_for_chunk(stream_id, q, health_check_fn)
@@ -135,7 +142,7 @@ async def decode_stream_events(
         event = _codec.decode(event_type, payload, counter=counter)
         if event is not None:
             yield event
-        if NatsRenderEventCodec.is_terminal(event_type):
+        if _codec.is_terminal(event_type):
             break
 
 

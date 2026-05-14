@@ -20,6 +20,7 @@ from lyra.adapters.nats.nats_stream_decoder import (
 )
 from lyra.adapters.shared._inbound_cache import InboundCache
 from lyra.core.messaging.message import InboundMessage, OutboundMessage, Platform
+from lyra.nats.render_event_codec import NatsRenderEventCodec
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict as _deserialize_dict
@@ -56,6 +57,7 @@ class NatsOutboundListener:
         self._resolver = resolver
         self._subject = f"lyra.outbound.{platform.value}.{bot_id}"
         self._cache = InboundCache(resolver=resolver)
+        self._codec = NatsRenderEventCodec(resolver=resolver)
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
         self._stream_tasks: dict[str, asyncio.Task[None]] = {}
         self._stream_outbound: dict[str, OutboundMessage] = {}
@@ -154,11 +156,14 @@ class NatsOutboundListener:
             await self._adapter.send_streaming(
                 original_msg,
                 decode_stream_events(
-                    stream_id, q, counter=self._version_mismatch_drops
+                    stream_id,
+                    q,
+                    counter=self._version_mismatch_drops,
+                    codec=self._codec,
                 ),
                 outbound,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — send_streaming: exception type varies by adapter
             log.exception(
                 "NatsOutboundListener: send_streaming failed for stream_id=%r",
                 stream_id,

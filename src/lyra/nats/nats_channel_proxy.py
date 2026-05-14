@@ -67,6 +67,7 @@ class NatsChannelProxy:
         self._platform = platform
         self._bot_id = bot_id
         self._resolver = resolver
+        self._codec = NatsRenderEventCodec(resolver=resolver)
         self._active_streams: set[str] = set()
 
     # ------------------------------------------------------------------
@@ -142,7 +143,7 @@ class NatsChannelProxy:
         try:
             try:
                 async for event in events:
-                    event_type, payload, is_done = NatsRenderEventCodec.encode(event)
+                    event_type, payload, is_done = self._codec.encode(event)
                     chunk = {
                         "stream_id": original_msg.id,
                         "seq": seq,

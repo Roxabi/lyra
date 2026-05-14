@@ -1,0 +1,159 @@
+---
+id: ADR-072
+title: "Codec registry pattern for NATS RenderEvent dispatch"
+description: Replace the if-elif decode chain in NatsRenderEventCodec with a dict[type, CodecBranch] registry and inverse index, eliminating the silent default-routing bug and making codec completeness machine-checkable.
+status: accepted
+date: 2026-05-14
+issue: "#1192"
+supersedes: "ADR-032 (Slice 3 of #1192 will add the matching superseded banner to ADR-032)"
+related: "ADR-070 (parent epic — RenderEvent v2 AG-UI modeling)"
+---
+
+> **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+
+## Status
+
+Accepted
+
+## Context
+
+`NatsRenderEventCodec` accumulated event branches via sequential if-elif dispatch. PR #1190
+code review surfaced a pre-existing silent-default-routing bug:
+`src/lyra/adapters/nats/nats_stream_decoder.py:122` uses
+`chunk.get("event_type", "text")` — a missing `event_type` field silently routes to the
+text decoder rather than logging a warning and dropping the chunk.
+
+The 3-panel review (architect, backend-dev, security-auditor) reached unanimous (3-0) consensus
+on finding #4: wrapping the 16 decode branches in per-branch `try/except` now would add ~50
+lines of near-identical boilerplate that a registry refactor would collapse into one
+centralised guard. The panel explicitly deferred that fix to the registry pass.
+
+The v2 cutover (issue #1192) is the natural moment to rebuild dispatch: the codec is being
+rewritten once to land v2 branches; rewriting it a second time in a follow-up PR would
+create merge-conflict risk on a hot file and double git-blame churn (per panel finding
+in `artifacts/analyses/1190-codec-review-findings-consensus.mdx`).
+
+This ADR documents the structural decision. The `ToolSummaryRenderEvent` v1 entry and the
+`TextRenderEvent` v1 entry remain in Slice 2 (this decision) and are deleted in Slice 3
+(continued in #1205). The `nats_stream_decoder.py` default-routing fix (`None`-first
+ordering with explicit `log.warning + break` on missing `event_type`) was applied in
+Slice 2 (this PR), not deferred.
+
+## Decision
+
+Replace the if-elif chain with a `dict[type, CodecBranch]` registry built once in
+`NatsRenderEventCodec.__init__()`, plus a `dict[str, CodecBranch]` inverse index
+(`_by_type_str`) for O(1) decode lookup.
+
+### `CodecBranch` descriptor
+
+```python
+@dataclass(frozen=True)
+class CodecBranch:
+    event_type: str
+    cls_name: str
+    encode_fn: Callable[[RenderEvent], tuple[str, dict, bool]]
+    decode_fn: Callable[[dict], RenderEvent]
+    schema_version: int
+    is_done_default: bool
+```
+
+`cls_name` is the canonical class name string (e.g. `"TextStartRenderEvent"`), stored on
+the branch so the codec has a single source of truth for it instead of a separate
+`_EVENT_TYPE_TO_CLASS_NAME` map (eliminated during the 6-finding fixup).
+
+`is_done_default` is `True` only for terminal events (`RunFinishedRenderEvent`,
+`RunErrorRenderEvent`). For v1 types (`TextRenderEvent`, `ToolSummaryRenderEvent`)
+`is_done` is computed from a field on the event itself (`is_final` / `is_complete`) —
+`is_done_default` is unused at encode time for those branches.
+
+### Synthetic terminals
+
+`_SYNTHETIC_TERMINALS = frozenset({"stream_end", "stream_error"})` is checked **before**
+the registry lookup in `decode()`. These sentinels are not `RenderEvent` union members and
+therefore absent from `_registry`. The pre-check prevents the "unknown event_type" warning
+from firing on a clean stream close.
+
+### Per-branch error isolation
+
+`decode()` wraps each `branch.decode_fn(payload)` in:
+
+```python
+try:
+    return branch.decode_fn(payload)
+except (TypeError, ValueError, KeyError, AttributeError):
+    log.exception("…decode failed…event_type=%r; dropping chunk", event_type)
+    return None
+```
+
+The four exception types map to specific failure surfaces:
+
+| Exception | Source |
+|---|---|
+| `TypeError` | `roxabi_nats._serialize.deserialize` on malformed input |
+| `ValueError` | Raised explicitly at `_serialize.py:259` on bad field values |
+| `KeyError` | `**dict` unpacking inside dataclass constructors |
+| `AttributeError` | `ToolSummaryRenderEvent` hand-rolled branch: `SilentCounts(**dict)` when `silent_raw` is not a dict |
+
+### `ToolSummaryRenderEvent` exception
+
+Its decode is hand-rolled via `payload.get()` calls constructing `FileEditSummary` and
+`SilentCounts`. It cannot use `roxabi_nats.deserialize` due to nested type handling.
+The branch is present in Slice 2 and deleted entirely in Slice 3.
+
+### Registry-completeness test
+
+`TestRegistryCompleteness` asserts:
+
+```python
+assert set(typing.get_args(RenderEvent)) == set(_registry.keys())
+```
+
+This fails loud at CI if any union member is missing from the registry.
+
+## Consequences
+
+**Positive**
+
+- `# pyright: ignore[reportUnreachable]` suppression is no longer needed — the registry
+  is the exhaustion proof; pyright can see all branches.
+- `# noqa: C901` complexity suppression is no longer needed on `decode()`.
+- Adding a new `RenderEvent` subtype = one registry insertion + one `SCHEMA_VERSION_*`
+  constant import. The completeness test fails loud if the insertion is omitted.
+- Silent default-routing risk eliminated — unknown `event_type` values emit a warning and
+  return `None`; no fallback to a wrong decoder.
+
+**Neutral / trade-offs**
+
+- Registry construction is O(N) per `NatsRenderEventCodec()` init. Negligible — N is ~16
+  (14 v2 + 2 v1) and the codec is instantiated once per process.
+- File remains > 300 LOC in Slice 2 (v1 entries present). Slice 3 deletion of v1 branches
+  is expected to bring the file below 300 lines, triggering file-exemption removal in
+  Slice 4.
+
+## Rejected Alternatives
+
+**Defer to a follow-up PR.** Rejected: the v2 cutover IS the natural rewrite moment.
+Applying the registry in a separate follow-up PR means a second rewrite of the same hot
+file, double git-blame churn, and merge-conflict exposure (panel finding, #1190 consensus).
+
+**Per-branch try/except applied outside the registry as a decorator on `decode()`.**
+Rejected: `ToolSummaryRenderEvent`'s hand-rolled branch has a different failure surface
+(`AttributeError` on `SilentCounts(**dict)`) that requires its own wrapper inside the
+branch, not a single outer decorator. A uniform outer wrapper would either over-catch or
+under-catch depending on the branch.
+
+**Pydantic-based dispatch.** Rejected: out of scope for this slice; Lyra has no Pydantic
+dependency in the `nats` layer and none is warranted for a 16-branch dispatch table.
+
+## Implementation Notes
+
+- Codec file (post-Slice 2): `src/lyra/nats/render_event_codec.py`
+- Tests: `tests/nats/test_render_event_codec.py` —
+  `TestRegistryCompleteness`, `TestDecodeErrorAbort`,
+  `test_is_terminal_synthetic_sentinels`, `test_decode_synthetic_sentinel_no_warning`,
+  `test_decode_missing_event_type_breaks_first`
+- Panel consensus: `artifacts/analyses/1190-codec-review-findings-consensus.mdx`
+- Spec: `artifacts/specs/1192-codec-registry-v2-cutover-spec.mdx`

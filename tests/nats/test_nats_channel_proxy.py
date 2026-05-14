@@ -484,7 +484,8 @@ def test_is_terminal_stream_error():
     """stream_error event type is always terminal regardless of done flag."""
     from lyra.nats.render_event_codec import NatsRenderEventCodec
 
-    assert NatsRenderEventCodec.is_terminal("stream_error") is True
+    codec = NatsRenderEventCodec()
+    assert codec.is_terminal("stream_error") is True
 
 
 # ---------------------------------------------------------------------------

@@ -12,13 +12,31 @@ MT-13 covers:
 from __future__ import annotations
 
 import logging
+import typing
 
 import pytest
 
 from lyra.core.messaging.render_events import (
+    SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
+    SCHEMA_VERSION_REASONING_END_RENDER_EVENT,
+    SCHEMA_VERSION_REASONING_START_RENDER_EVENT,
+    SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT,
+    SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT,
+    SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_END_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_RENDER_EVENT,
+    SCHEMA_VERSION_TEXT_START_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT,
+    SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
+    RenderEvent,
     TextChunkRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
@@ -269,19 +287,20 @@ class TestToolCallCodecRoundTrip:
             tool_call_id="toolu_AB", content="boom", is_error=True
         )
 
-        event_type, payload, _is_done = codec.encode(original)
+        event_type, payload, _ = codec.encode(original)
         decoded = codec.decode(event_type, payload)
         assert decoded == original
 
     def test_tool_call_is_terminal_false(self) -> None:
         # ToolCall* are mid-stream — never terminal sentinels.
+        codec = NatsRenderEventCodec()
         for et in (
             "tool_call_start",
             "tool_call_args",
             "tool_call_end",
             "tool_call_result",
         ):
-            assert NatsRenderEventCodec.is_terminal(et) is False
+            assert codec.is_terminal(et) is False
 
     def test_tool_call_start_schema_floor_drops(
         self, caplog: pytest.LogCaptureFixture
@@ -500,22 +519,20 @@ class TestRenderEventCodecTextTriplet:
 
 
 class TestRenderEventCodecExhaustivenessGuard:
-    """Runtime tripwire for the assert_never guard in encode().
+    """Runtime tripwire for the registry completeness guard in encode().
 
     Pyright catches union-exhaustiveness at static-check time, but pyright
     config drift, stub regeneration, or accidental union widening can all
     silently disable the static check while leaving a live crash path.
     The original Slice 2 (#1099) incident was exactly this class of bug:
     a new RenderEvent subclass reached encode() at runtime with no branch
-    to handle it. This test fires if assert_never is ever removed or
-    bypassed — uses a serializable dataclass that survives the upstream
-    serialize() call and reaches the isinstance dispatch chain.
+    to handle it. With the registry design, encode() raises TypeError when
+    the event type is not registered — the test asserts that exact exception.
     """
 
-    def test_encode_assert_never_fires_on_unknown_render_event(self) -> None:
-        # Fake RenderEvent-shaped dataclass NOT in the union. serialize()
-        # accepts it (it's a dataclass); the isinstance ladder falls through
-        # every branch; assert_never raises AssertionError.
+    def test_encode_raises_for_unknown_render_event(self) -> None:
+        # Fake RenderEvent-shaped dataclass NOT in the union — registry
+        # lookup returns None, encode() raises TypeError.
         from dataclasses import dataclass
 
         @dataclass(frozen=True)
@@ -524,5 +541,288 @@ class TestRenderEventCodecExhaustivenessGuard:
             schema_version: int = 1
 
         codec = NatsRenderEventCodec()
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError, match="unregistered RenderEvent type"):
             codec.encode(_FakeRenderEvent())  # pyright: ignore[reportArgumentType]
+
+
+# ---------------------------------------------------------------------------
+# T-1: Registry completeness (Slice 2 — #1192)
+# ---------------------------------------------------------------------------
+
+
+class TestRegistryCompleteness:
+    """Registry must contain exactly the RenderEvent union members — no more, no less.
+
+    TestRegistryCompleteness.test_registry_covers_full_union will fail loud at CI
+    whenever a new union member is added to RenderEvent without a matching
+    registry entry.  This is the machine-enforced exhaustiveness proof that
+    replaces the assert_never / isinstance chain.
+    """
+
+    def test_registry_covers_full_union(self) -> None:
+        codec = NatsRenderEventCodec()
+        union_members = set(typing.get_args(RenderEvent))
+        registry_keys = set(codec._registry.keys())
+        assert registry_keys == union_members, (
+            f"Registry mismatch.\n"
+            f"  In union but not registry: {union_members - registry_keys}\n"
+            f"  In registry but not union: {registry_keys - union_members}"
+        )
+
+    def test_registry_branches_well_formed(self) -> None:
+        codec = NatsRenderEventCodec()
+        branches = list(codec._registry.values())
+
+        # Each event_type string must be non-empty
+        for branch in branches:
+            assert branch.event_type, f"{branch.cls_name} has empty event_type"
+
+        # event_type strings must be unique across _by_type_str
+        type_strings = [b.event_type for b in branches]
+        assert len(type_strings) == len(set(type_strings)), (
+            f"Duplicate event_type strings: "
+            f"{[t for t in type_strings if type_strings.count(t) > 1]}"
+        )
+
+        # cls_name must match the registry key class __name__
+        for cls, branch in codec._registry.items():
+            assert branch.cls_name == cls.__name__, (
+                f"Branch cls_name {branch.cls_name!r} != class"
+                f" __name__ {cls.__name__!r}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# T-2: Per-branch decode error isolation (Slice 2 — #1192)
+# ---------------------------------------------------------------------------
+
+
+class TestDecodeErrorAbort:
+    """Per-branch: malformed payload → decode returns None + log.exception."""
+
+    def _assert_decode_returns_none_with_exception_log(
+        self,
+        codec: NatsRenderEventCodec,
+        event_type: str,
+        bad_payload: dict,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        with caplog.at_level(logging.ERROR, logger="lyra.nats.render_event_codec"):
+            result = codec.decode(event_type, bad_payload)
+        assert result is None, f"Expected None for {event_type!r} with bad payload"
+        # Substring matches `log.exception(...)` at render_event_codec.py decode() —
+        # update both if the codec's message string changes.
+        exception_records = [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.ERROR
+            and r.name == "lyra.nats.render_event_codec"
+            and "decode failed" in r.getMessage()
+        ]
+        assert exception_records, (
+            f"Expected exception-level log for {event_type!r} bad payload decode"
+        )
+
+    # Each bad payload uses its branch's current SCHEMA_VERSION_* constant so the
+    # schema-floor check passes and the decode_fn actually runs — otherwise the
+    # test would prove schema rejection (not per-branch error isolation) once any
+    # branch bumps past v1.
+    @pytest.mark.parametrize(
+        "event_type,bad_payload",
+        [
+            # text — missing required field 'text'
+            (
+                "text",
+                {"schema_version": SCHEMA_VERSION_TEXT_RENDER_EVENT, "is_final": True},
+            ),
+            # text_start — missing required field 'message_id'
+            ("text_start", {"schema_version": SCHEMA_VERSION_TEXT_START_RENDER_EVENT}),
+            # text_delta — missing required field 'delta'
+            (
+                "text_delta",
+                {
+                    "schema_version": SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT,
+                    "message_id": "m1",
+                },
+            ),
+            # text_end — missing required field 'message_id'
+            ("text_end", {"schema_version": SCHEMA_VERSION_TEXT_END_RENDER_EVENT}),
+            # text_chunk — missing required field 'delta'
+            (
+                "text_chunk",
+                {
+                    "schema_version": SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT,
+                    "message_id": "m1",
+                },
+            ),
+            # tool_summary — files is a string → AttributeError on .items()
+            (
+                "tool_summary",
+                {
+                    "schema_version": SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
+                    "files": "not-a-dict",
+                },
+            ),
+            # run_started — missing required field 'run_id'
+            (
+                "run_started",
+                {"schema_version": SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT},
+            ),
+            # run_finished — missing required field 'run_id'
+            (
+                "run_finished",
+                {"schema_version": SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT},
+            ),
+            # run_error — missing required fields 'run_id' and 'message'
+            ("run_error", {"schema_version": SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT}),
+            # tool_call_start — missing required fields 'tool_call_id' + 'tool_name'
+            (
+                "tool_call_start",
+                {"schema_version": SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT},
+            ),
+            # tool_call_args — missing required field 'delta'
+            (
+                "tool_call_args",
+                {
+                    "schema_version": SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
+                    "tool_call_id": "tc1",
+                },
+            ),
+            # tool_call_end — missing required field 'tool_call_id'
+            (
+                "tool_call_end",
+                {"schema_version": SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT},
+            ),
+            # tool_call_result — missing required field 'content'
+            (
+                "tool_call_result",
+                {
+                    "schema_version": SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
+                    "tool_call_id": "tc1",
+                },
+            ),
+            # reasoning_start — missing required field 'message_id'
+            (
+                "reasoning_start",
+                {"schema_version": SCHEMA_VERSION_REASONING_START_RENDER_EVENT},
+            ),
+            # reasoning_delta — missing required field 'delta'
+            (
+                "reasoning_delta",
+                {
+                    "schema_version": SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
+                    "message_id": "m1",
+                },
+            ),
+            # reasoning_end — missing required field 'message_id'
+            (
+                "reasoning_end",
+                {"schema_version": SCHEMA_VERSION_REASONING_END_RENDER_EVENT},
+            ),
+        ],
+    )
+    def test_decode_aborts_on_bad_payload(
+        self,
+        event_type: str,
+        bad_payload: dict,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        codec = NatsRenderEventCodec()
+        self._assert_decode_returns_none_with_exception_log(
+            codec, event_type, bad_payload, caplog
+        )
+
+
+# ---------------------------------------------------------------------------
+# T-3: Decoder None-first ordering (Slice 2 — #1192)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_decode_missing_event_type_breaks_first(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """decode_stream_events breaks on None event_type BEFORE the stream_error check.
+
+    Injects a chunk with no ``event_type`` field into the decoder queue and
+    asserts that:
+    1. The decoder emits a warning log about the missing field.
+    2. The stream terminates (the async generator completes without yielding
+       any event).
+    3. No subsequent chunk is processed — the break happens before stream_error
+       would be evaluated.
+
+    This directly verifies the strict 3-branch ordering in
+    ``decode_stream_events``: ``event_type is None`` → ``log.warning + break``
+    fires before the ``event_type == "stream_error"`` branch.
+    """
+    import asyncio
+
+    from lyra.adapters.nats.nats_stream_decoder import decode_stream_events
+
+    q: asyncio.Queue[dict] = asyncio.Queue()
+    # Chunk with no event_type — the None-check branch must fire first.
+    await q.put({})
+
+    events = []
+    with caplog.at_level(
+        logging.WARNING, logger="lyra.adapters.nats.nats_stream_decoder"
+    ):
+        async for event in decode_stream_events("test-stream", q):
+            events.append(event)
+
+    # No events yielded — stream aborted on None event_type
+    assert events == []
+
+    # Warning about missing event_type must have been emitted
+    missing_warnings = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "missing event_type" in r.getMessage()
+    ]
+    assert missing_warnings, "Expected warning about missing event_type field"
+
+
+# ---------------------------------------------------------------------------
+# T-8: is_terminal covers synthetic sentinels (Slice 2 — #1192)
+# ---------------------------------------------------------------------------
+
+
+def test_is_terminal_synthetic_sentinels() -> None:
+    """is_terminal returns True for both synthetic terminal sentinels."""
+    codec = NatsRenderEventCodec()
+    assert codec.is_terminal("stream_end") is True
+    assert codec.is_terminal("stream_error") is True
+
+
+# ---------------------------------------------------------------------------
+# T-9: decode synthetic sentinels — no warning log (Slice 2 — #1192)
+# ---------------------------------------------------------------------------
+
+
+def test_decode_synthetic_sentinel_no_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """decode("stream_end", {}) returns None without log.warning("unknown event_type").
+
+    Asserts that _SYNTHETIC_TERMINALS short-circuits the registry lookup so the
+    codec never reaches the "unknown event_type" warning path for these sentinels.
+    """
+    codec = NatsRenderEventCodec()
+    with caplog.at_level(logging.WARNING, logger="lyra.nats.render_event_codec"):
+        result_end = codec.decode("stream_end", {})
+        result_error = codec.decode("stream_error", {})
+
+    assert result_end is None
+    assert result_error is None
+
+    # No warning about "unknown event_type" must have been emitted
+    unknown_warnings = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "unknown event_type" in r.getMessage()
+    ]
+    assert not unknown_warnings, (
+        f"Unexpected 'unknown event_type' warning(s) for synthetic sentinels: "
+        f"{[r.getMessage() for r in unknown_warnings]}"
+    )

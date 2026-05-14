@@ -224,46 +224,34 @@ class TestRenderEventUnion:
         assert _RenderEvent is RenderEvent
 
     def test_all_exports_complete(self) -> None:
-        """Ensure __all__ matches the exact expected public API."""
+        """Ensure __all__ matches the public API derived from the RenderEvent union.
+
+        Dynamic: sourced from typing.get_args(RenderEvent) so this test adapts
+        automatically when union members are added or removed (N6 / #1177).
+        The test will stay green through Slice 3's v1 removal without manual
+        maintenance.
+        """
+        import re
+
         import lyra.core.messaging.render_events as _mod
 
-        assert set(_mod.__all__) == {
-            "FileEditSummary",
-            "ReasoningDeltaRenderEvent",
-            "ReasoningEndRenderEvent",
-            "ReasoningStartRenderEvent",
-            "RenderEvent",
-            "RunErrorRenderEvent",
-            "RunFinishedRenderEvent",
-            "RunStartedRenderEvent",
-            "SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT",
-            "SCHEMA_VERSION_REASONING_END_RENDER_EVENT",
-            "SCHEMA_VERSION_REASONING_START_RENDER_EVENT",
-            "SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT",
-            "SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT",
-            "SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT",
-            "SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT",
-            "SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT",
-            "SCHEMA_VERSION_TEXT_END_RENDER_EVENT",
-            "SCHEMA_VERSION_TEXT_RENDER_EVENT",
-            "SCHEMA_VERSION_TEXT_START_RENDER_EVENT",
-            "SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT",
-            "SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT",
-            "SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT",
-            "SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT",
-            "SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT",
-            "SilentCounts",
-            "TextChunkRenderEvent",
-            "TextDeltaRenderEvent",
-            "TextEndRenderEvent",
-            "TextRenderEvent",
-            "TextStartRenderEvent",
-            "ToolCallArgsRenderEvent",
-            "ToolCallEndRenderEvent",
-            "ToolCallResultRenderEvent",
-            "ToolCallStartRenderEvent",
-            "ToolSummaryRenderEvent",
+        def _class_to_schema_const(name: str) -> str:
+            """Convert CamelCase class name to SCHEMA_VERSION_UPPER_SNAKE_CASE."""
+            return "SCHEMA_VERSION_" + re.sub(r"(?<!^)(?=[A-Z])", "_", name).upper()
+
+        union_members = typing.get_args(_mod.RenderEvent)
+        # Each union member type name must be exported
+        expected_type_names = {cls.__name__ for cls in union_members}
+        # Each union member has a matching SCHEMA_VERSION_* constant
+        expected_schema_consts = {
+            _class_to_schema_const(n) for n in expected_type_names
         }
+        # Static non-union exports (support types + the union alias itself)
+        static_exports = {"FileEditSummary", "SilentCounts", "RenderEvent"}
+
+        expected = expected_type_names | expected_schema_consts | static_exports
+
+        assert set(_mod.__all__) == expected
 
 
 # ---------------------------------------------------------------------------

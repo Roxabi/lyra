@@ -52,7 +52,7 @@ persona = "lyra_default"       # persona file name (without .md)
 show_intermediate = true       # show ⏳ intermediate tool-use turns
 
 [model]
-backend = "claude-cli"         # "claude-cli" | "ollama" (future)
+backend = "claude-cli"         # "claude-cli" | "nats"
 model = "claude-sonnet-4-6"    # model identifier passed to the backend
 tools = ["Read", "Grep", ...]  # allowed tools (empty = backend defaults)
 skip_permissions = true        # skip Claude Code permission prompts (claude-cli only)

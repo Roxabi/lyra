@@ -1,0 +1,135 @@
+---
+title: refactor(render-events) — codec registry + v2 cutover (Slice 5a of #1096)
+issue: 1192
+status: approved
+tier: F-full
+date: 2026-05-14
+---
+
+## Problem
+
+Slice 5a of epic #1096 has two pieces of work that have to land together because
+both rewrite `render_event_codec.py`:
+
+1. **v2-only cutover.** `TextRenderEvent` (v1) and `ToolSummaryRenderEvent` are
+   still present and dual-emitted alongside the v2 triplet
+   (`TextStart/Delta/End/Chunk`). Six consumer paths still read v1 events. Until
+   v1 is removed, the codec carries duplicate branches, the schema floor cannot
+   advance, and `tool_recap_format.py` (the v1 summary formatter, 27 file
+   references) remains live dead-weight.
+
+2. **Codec hardening.** PR #1190 (merged 2026-05-13) had a prod incident where
+   `nats_stream_decoder.py:122` defaulted unknown event types to `"text"`, so a
+   malformed chunk silently surfaced as text. The 3-0 high-confidence consensus
+   (architect/backend-dev/security-auditor, panel doc:
+   `artifacts/analyses/1190-codec-review-findings-consensus.mdx`) said the
+   structural fix — a `dict[Type[RenderEvent], CodecBranch]` registry with a
+   completeness test — should ship in this slice rather than be deferred.
+
+Both pieces touch the same hot file, so splitting them would mean rewriting
+`render_event_codec.py` twice with a near-certain merge conflict between the two
+PRs. Doing them together also lets us drop the `# pyright: ignore[reportUnreachable]`
+override (currently masking the `assert_never` branch) and bring the file under
+the 300-LOC budget (currently exempted at 403).
+
+A separately-trackable integration test for this codec exists as sibling #1191
+(truly orthogonal — no shared file edits), so this frame does NOT cover it.
+
+## Who
+
+- **Primary:** hub + telegram + discord runtime — they encode/decode every
+  streaming chunk via this codec, and they must deploy in lockstep once the
+  schema floor is bumped.
+- **Secondary:**
+  - Future contributors adding a new `RenderEvent` subtype — the registry
+    completeness test will fail loud at CI time if they forget a branch.
+  - Ops (coordinated deploy of all three services on a single rollout).
+  - Sub-issue #1177 (3 deferred test items from PR #1173 review) — must close
+    as part of this slice.
+
+## Constraints
+
+- **Atomic deploy.** Hub + telegram + discord must roll out together. Bumping
+  `SCHEMA_VERSION_RENDER` causes receivers on older versions to loud-fail by
+  design.
+- **Commit-order discipline** (per #1177 S3 + memory `check_deleted_target_before_fixing`):
+  adapter snapshot tests must land **before** the v1 removal commit, so the
+  pre-removal snapshots capture v1 output and the post-removal diff is reviewable.
+- **Drop the file-size exemption.** `render_event_codec.py` must drop below 300
+  lines and be removed from `tools/file_exemptions.txt`. Per memory
+  `audit_exit_codes_in_gates`: don't suppress the gate, fix the underlying
+  bloat.
+- **No quiet defaults in decode paths.** `chunk.get("event_type", "text")`
+  pattern is banned — replace with explicit `None → log.warning + break` (or
+  per-class try/except per consensus finding #4 of the codec panel).
+- **Pyright assertion.** Once registry construction makes `assert_never`
+  unreachable by construction, the `# pyright: ignore[reportUnreachable]`
+  override must go.
+- **ADR-032** receives a `superseded` banner pointing at the epic ADR (or a
+  new slice ADR if we author one).
+- **No `--force` / `--hard` / `--amend`** (project rule).
+
+## Out of Scope
+
+- Integration test for the codec — owned by sibling **#1191**.
+- AGUI render-event modeling — owned by parent epic **#1096**.
+- Promotion staging→main — `/promote` is standalone; this slice merges to
+  staging only.
+- New event types beyond the existing `RenderEvent` union — only refactoring
+  the dispatch, not extending the schema.
+- Cross-project codec changes (this stays inside `lyra`; the
+  `packages/roxabi-contracts/` schemas only get the `SCHEMA_VERSION_RENDER`
+  bump if applicable, no new fields).
+
+## Premise Validity
+
+**Success in 6 months:**
+- `render_event_codec.py` uses a `Type[RenderEvent] → CodecBranch` registry,
+  < 300 LOC, file-exemption removed.
+- v1 `TextRenderEvent` and `ToolSummaryRenderEvent` fully removed from `src/`
+  and `tests/`; only the v2 triplet imports remain.
+- Registry-completeness test is green and asserts each member of
+  `typing.get_args(RenderEvent)` has exactly one registry entry.
+- No recurrence of a PR #1190-style decode-default incident (no quiet
+  fallbacks remain in `nats_stream_decoder.py`).
+- #1177 closed (all 3 deferred items addressed: S2 v2 snapshot rewrites,
+  S3 adapter snapshots before v1 removal, N6 dynamic
+  `test_all_exports_complete`).
+
+**Failure in 6 months (falsifiable):**
+- A new `RenderEvent` subtype reaches `staging` without a registry entry —
+  meaning the completeness test was removed, mocked, or marked xfail at some
+  point in the next six months. Measurable via `git log -p` on the test file
+  + grep for `xfail`/`skip` markers.
+- OR another decode-default prod incident is logged in the next six months
+  (count: ≥ 1).
+- OR `grep -r "TextRenderEvent" src/ tests/` returns a non-zero count outside
+  the import re-exports for the v2 triplet — i.e. the v1 dual-emit shim was
+  reintroduced.
+
+**Simplest alternative:** Delete `ToolSummaryRenderEvent` + drop the dual-emit
+shim, but keep the existing if-elif chain in `NatsRenderEventCodec`. Defer the
+registry + completeness test to a later slice.
+
+**Why not simplest:** PR #1190 already demonstrated that the if-elif chain is
+fragile — its `"text"` default branch silently masked a malformed chunk in
+prod. Splitting cutover from hardening means rewriting `render_event_codec.py`
+twice with a near-certain merge conflict on a hot file, and the v2 cutover is
+the natural moment to rebuild the dispatch around typed registry entries (the
+deletions and the registry construction touch the same lines). The codec panel
+ruled 3-0 high-confidence on landing the registry here, not in a follow-up.
+
+## Complexity
+
+**Tier: F-full** — multi-domain (codec + hub + 3 adapter consumer paths +
+tests + ADR + CHANGELOG), commit-order discipline is load-bearing (#1177 S3:
+adapter snapshots **before** v1 removal), and the deploy is atomic across
+three services.
+
+Signals observed:
+- `size:F-full` label set by issue triage.
+- 6 named v1 consumers to migrate + 27 references to `tool_recap_format.py`.
+- Schema-floor bump → coordinated deploy across hub + telegram + discord.
+- Registry refactor is structural, not a string-rename — it changes how the
+  codec dispatches on type and how the completeness invariant is enforced.
+- ADR-032 status change + CHANGELOG entry → docs + release coordination.

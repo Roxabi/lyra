@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tools.classify_quality_debt import _SLUG_RE, _safe_repo_path
+from tools.classify_quality_debt import _SLUG_RE, _parse_frontmatter, _safe_repo_path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 TOOL = REPO / "tools" / "classify_quality_debt.py"
@@ -41,16 +41,28 @@ _INDEX_HEADER = (
 
 
 def _row(path: str, rule: str, line: int = 1) -> dict[str, Any]:
-    return {"source": "noqa", "path": path, "bucket": "UNTAGGED",
-            "rule": rule, "line": line}
+    return {
+        "source": "noqa",
+        "path": path,
+        "bucket": "UNTAGGED",
+        "rule": rule,
+        "line": line,
+    }
 
 
 def _write_report(p: Path, rows: list[dict[str, Any]]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({
-        "generated_at": "2026-05-11T16:00:00Z", "sources": ["noqa"],
-        "rows": rows, "stale_references": [], "counts_by_rule_bucket_slug": {},
-    }))
+    p.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-05-11T16:00:00Z",
+                "sources": ["noqa"],
+                "rows": rows,
+                "stale_references": [],
+                "counts_by_rule_bucket_slug": {},
+            }
+        )
+    )
 
 
 def _src(root: Path, rel: str, content: str) -> None:
@@ -64,7 +76,10 @@ def _run(
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(TOOL), mode, "--report", str(report)],
-        capture_output=True, text=True, check=False, cwd=str(root),
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=str(root),
     )
 
 
@@ -80,8 +95,15 @@ def _tsv(stdout: str, skip_header: bool = True) -> list[dict[str, str]]:
         if len(parts) == 5:
             if skip_header and parts[0] == "path":
                 continue
-            out.append({"path": parts[0], "line": parts[1], "rule": parts[2],
-                        "suggestion": parts[3], "fix_class": parts[4]})
+            out.append(
+                {
+                    "path": parts[0],
+                    "line": parts[1],
+                    "rule": parts[2],
+                    "suggestion": parts[3],
+                    "fix_class": parts[4],
+                }
+            )
     return out
 
 
@@ -111,8 +133,7 @@ def test_ble001_cli_toplevel_suggests_boundary_broad_catch(
     rows = _tsv(cp.stdout)
     assert rows, f"no TSV rows; stdout:\n{cp.stdout}"
     assert any(
-        r["rule"] == "BLE001"
-        and r["suggestion"] == "DEBT:boundary-broad-catch"
+        r["rule"] == "BLE001" and r["suggestion"] == "DEBT:boundary-broad-catch"
         for r in rows
     ), f"got rows={rows}"
 
@@ -121,9 +142,11 @@ def test_b008_typer_option_suggests_typer_default_option(tmp_path: Path) -> None
     """B008 on line with typer.Option( -> DEBT:typer-default-option, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/cli/args.py"
-    _src(tmp_path, sp,
-         "import typer\n\n"
-         "def cmd(x: int = typer.Option(0)):  # noqa: B008\n    pass\n")
+    _src(
+        tmp_path,
+        sp,
+        "import typer\n\ndef cmd(x: int = typer.Option(0)):  # noqa: B008\n    pass\n",
+    )
     _write_report(rpt, [_row(sp, "B008", line=3)])
 
     cp = _run(tmp_path, rpt)
@@ -144,8 +167,7 @@ def test_plr0913_wiring_path_suggests_wiring_bootstrap_deps(
     """PLR0913 in bootstrap/* -> DEBT:wiring-bootstrap-deps, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/bootstrap/wire.py"
-    _src(tmp_path, sp,
-         "def build(a, b, c, d, e, f, g):  # noqa: PLR0913\n    pass\n")
+    _src(tmp_path, sp, "def build(a, b, c, d, e, f, g):  # noqa: PLR0913\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0913")])
 
     cp = _run(tmp_path, rpt)
@@ -166,8 +188,11 @@ def test_c901_migration_function_suggests_migration_sequence(
     """C901 on def _atomic_*(...): -> DEBT:migration-sequence-bootstrap, medium."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/db/migrations.py"
-    _src(tmp_path, sp,
-         "def _atomic_table_copy(src, dst, conn):  # noqa: C901\n    pass\n")
+    _src(
+        tmp_path,
+        sp,
+        "def _atomic_table_copy(src, dst, conn):  # noqa: C901\n    pass\n",
+    )
     _write_report(rpt, [_row(sp, "C901")])
 
     cp = _run(tmp_path, rpt)
@@ -358,8 +383,7 @@ def test_ble001_bootstrap_path_is_boundary_broad_catch(tmp_path: Path) -> None:
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "BLE001"
-        and r["suggestion"] == "DEBT:boundary-broad-catch"
+        r["rule"] == "BLE001" and r["suggestion"] == "DEBT:boundary-broad-catch"
         for r in rows
     ), f"got rows={rows}"
 
@@ -378,8 +402,7 @@ def test_ble001_hub_listener_basename_is_boundary_broad_catch(
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "BLE001"
-        and r["suggestion"] == "DEBT:boundary-broad-catch"
+        r["rule"] == "BLE001" and r["suggestion"] == "DEBT:boundary-broad-catch"
         for r in rows
     ), f"got rows={rows}"
 
@@ -396,8 +419,7 @@ def test_ble001_nats_listener_is_boundary_broad_catch(tmp_path: Path) -> None:
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "BLE001"
-        and r["suggestion"] == "DEBT:boundary-broad-catch"
+        r["rule"] == "BLE001" and r["suggestion"] == "DEBT:boundary-broad-catch"
         for r in rows
     ), f"got rows={rows}"
 
@@ -414,8 +436,7 @@ def test_ble001_fallback_is_boundary_broad_catch(tmp_path: Path) -> None:
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "BLE001"
-        and r["suggestion"] == "DEBT:boundary-broad-catch"
+        r["rule"] == "BLE001" and r["suggestion"] == "DEBT:boundary-broad-catch"
         for r in rows
     ), f"expected boundary-broad-catch; got rows={rows}"
 
@@ -460,8 +481,7 @@ def test_plr0913_builder_basename_is_wiring_bootstrap_deps(
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "PLR0913"
-        and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
+        r["rule"] == "PLR0913" and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
         for r in rows
     ), f"got rows={rows}"
 
@@ -480,8 +500,7 @@ def test_plr0913_authenticator_basename_is_wiring_bootstrap_deps(
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "PLR0913"
-        and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
+        r["rule"] == "PLR0913" and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
         for r in rows
     ), f"got rows={rows}"
 
@@ -498,8 +517,7 @@ def test_plr0913_fallback_is_wiring_bootstrap_deps(tmp_path: Path) -> None:
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "PLR0913"
-        and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
+        r["rule"] == "PLR0913" and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
         for r in rows
     ), f"expected wiring-bootstrap-deps; got rows={rows}"
 
@@ -523,8 +541,7 @@ def test_c901_bootstrap_main_is_migration_sequence_bootstrap(
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "C901"
-        and r["suggestion"] == "DEBT:migration-sequence-bootstrap"
+        r["rule"] == "C901" and r["suggestion"] == "DEBT:migration-sequence-bootstrap"
         for r in rows
     ), f"got rows={rows}"
 
@@ -543,8 +560,7 @@ def test_c901_bootstrap_standalone_is_migration_sequence_bootstrap(
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "C901"
-        and r["suggestion"] == "DEBT:migration-sequence-bootstrap"
+        r["rule"] == "C901" and r["suggestion"] == "DEBT:migration-sequence-bootstrap"
         for r in rows
     ), f"got rows={rows}"
 
@@ -561,8 +577,7 @@ def test_c901_dispatcher_basename_is_wiring_bootstrap_deps(tmp_path: Path) -> No
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "C901"
-        and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
+        r["rule"] == "C901" and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
         for r in rows
     ), f"got rows={rows}"
 
@@ -579,8 +594,7 @@ def test_c901_unrelated_path_falls_back_to_complexity_residual(tmp_path: Path) -
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "C901"
-        and r["suggestion"] == "DEBT:complexity-residual"
+        r["rule"] == "C901" and r["suggestion"] == "DEBT:complexity-residual"
         for r in rows
     ), f"expected complexity-residual; got rows={rows}"
 
@@ -622,8 +636,7 @@ def test_plr0915_dispatcher_path_is_wiring_bootstrap_deps(tmp_path: Path) -> Non
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "PLR0915"
-        and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
+        r["rule"] == "PLR0915" and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
         for r in rows
     ), f"got rows={rows}"
 
@@ -642,8 +655,7 @@ def test_plr0915_fallback_is_complexity_residual(
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "PLR0915"
-        and r["suggestion"] == "DEBT:complexity-residual"
+        r["rule"] == "PLR0915" and r["suggestion"] == "DEBT:complexity-residual"
         for r in rows
     ), f"expected complexity-residual; got rows={rows}"
 
@@ -684,9 +696,7 @@ def test_f401_not_in_init_is_reexport_init(tmp_path: Path) -> None:
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "F401"
-        and r["suggestion"] == "DEBT:re-export-init"
-        for r in rows
+        r["rule"] == "F401" and r["suggestion"] == "DEBT:re-export-init" for r in rows
     ), f"expected re-export-init; got rows={rows}"
 
 
@@ -726,8 +736,7 @@ def test_e402_no_path_filter(tmp_path: Path) -> None:
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "E402"
-        and r["suggestion"] == "DEBT:module-level-patch-fixtures"
+        r["rule"] == "E402" and r["suggestion"] == "DEBT:module-level-patch-fixtures"
         for r in rows
     ), f"got rows={rows}"
 
@@ -769,8 +778,7 @@ def test_plr0912_dispatcher_is_wiring_bootstrap_deps(tmp_path: Path) -> None:
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
     assert any(
-        r["rule"] == "PLR0912"
-        and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
+        r["rule"] == "PLR0912" and r["suggestion"] == "DEBT:wiring-bootstrap-deps"
         for r in rows
     ), f"got rows={rows}"
 
@@ -786,10 +794,13 @@ def test_report_unnecessary_isinstance_is_defensive_narrow(
     """reportUnnecessaryIsInstance -> DEBT:defensive-narrow-payloads, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/core/types.py"
-    _src(tmp_path, sp,
-         "if isinstance(x, str):  "
-         "# pyright: ignore[reportUnnecessaryIsInstance]\n"
-         "    pass\n")
+    _src(
+        tmp_path,
+        sp,
+        "if isinstance(x, str):  "
+        "# pyright: ignore[reportUnnecessaryIsInstance]\n"
+        "    pass\n",
+    )
     _write_report(rpt, [_row(sp, "reportUnnecessaryIsInstance")])
 
     cp = _run(tmp_path, rpt)
@@ -810,8 +821,11 @@ def test_report_unused_class_is_protocol_private_ducktyping(
     """reportUnusedClass -> DEBT:protocol-private-ducktyping, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/core/protocols.py"
-    _src(tmp_path, sp,
-         "class _Internal:  # pyright: ignore[reportUnusedClass]\n    pass\n")
+    _src(
+        tmp_path,
+        sp,
+        "class _Internal:  # pyright: ignore[reportUnusedClass]\n    pass\n",
+    )
     _write_report(rpt, [_row(sp, "reportUnusedClass")])
 
     cp = _run(tmp_path, rpt)
@@ -873,17 +887,23 @@ def test_plc0415_is_deferred_import_debt(tmp_path: Path) -> None:
     """PLC0415 -> DEBT:plc0415-deferred-import, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     sp = "src/lyra/core/lazy.py"
-    _src(tmp_path, sp,
-         "def get_thing():\n    import heavy  # noqa: PLC0415\n    return heavy\n")
+    _src(
+        tmp_path,
+        sp,
+        "def get_thing():\n    import heavy  # noqa: PLC0415\n    return heavy\n",
+    )
     _write_report(rpt, [_row(sp, "PLC0415", line=2)])
 
     cp = _run(tmp_path, rpt)
 
     assert cp.returncode == 0, cp.stderr
     rows = _tsv(cp.stdout)
-    assert any(r["rule"] == "PLC0415"
-               and r["suggestion"] == "DEBT:plc0415-deferred-import"
-               and r["fix_class"] == "easy" for r in rows), f"got rows={rows}"
+    assert any(
+        r["rule"] == "PLC0415"
+        and r["suggestion"] == "DEBT:plc0415-deferred-import"
+        and r["fix_class"] == "easy"
+        for r in rows
+    ), f"got rows={rows}"
 
 
 def test_plc0415_apply_creates_debt_registry(tmp_path: Path) -> None:
@@ -891,8 +911,11 @@ def test_plc0415_apply_creates_debt_registry(tmp_path: Path) -> None:
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     _debt_dir(tmp_path)
     sp = "src/lyra/core/lazy.py"
-    _src(tmp_path, sp,
-         "def get_thing():\n    import heavy  # noqa: PLC0415\n    return heavy\n")
+    _src(
+        tmp_path,
+        sp,
+        "def get_thing():\n    import heavy  # noqa: PLC0415\n    return heavy\n",
+    )
     _write_report(rpt, [_row(sp, "PLC0415", line=2)])
 
     cp = _run(tmp_path, rpt, "--apply")
@@ -910,7 +933,10 @@ def test_plc0415_apply_creates_debt_registry(tmp_path: Path) -> None:
 def _run_json(root: Path, report: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(TOOL), "--dry-run", "--json", "--report", str(report)],
-        capture_output=True, text=True, check=False, cwd=str(root),
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=str(root),
     )
 
 
@@ -964,6 +990,8 @@ def test_json_mode_needs_review_rows_included(tmp_path: Path) -> None:
     rec = data[0]
     assert rec["rule"] == "UNKNOWN999"
     assert rec["fix_class"] == "needs_review"
+
+
 # T2b — _SLUG_RE accept/reject (classifier copy at line 74)
 # ---------------------------------------------------------------------------
 
@@ -1145,9 +1173,7 @@ def test_safe_repo_path_blocks_traversal(tmp_path: Path) -> None:
 
     # Act + Assert: valid relative path inside root returns a Path
     result = _safe_repo_path(tmp_path, "valid/sub.py")
-    assert result is not None, (
-        "_safe_repo_path should return a Path for 'valid/sub.py'"
-    )
+    assert result is not None, "_safe_repo_path should return a Path for 'valid/sub.py'"
     assert result.is_relative_to(tmp_path), (
         f"returned path {result} is not inside root {tmp_path}"
     )
@@ -1198,3 +1224,65 @@ def test_apply_does_not_write_outside_root(tmp_path: Path) -> None:
     assert "DEBT:boundary-broad-catch" in (tmp_path / sp).read_text(), (
         f"--apply did not process the legitimate row at {sp}"
     )
+
+
+# ---------------------------------------------------------------------------
+# _parse_frontmatter — list-valued fields must round-trip (regression: #1179)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_frontmatter_multi_value_rules_list() -> None:
+    content = (
+        "---\n"
+        "slug: wiring-bootstrap-deps\n"
+        "status: open\n"
+        "rules:\n"
+        "  - PLR0913\n"
+        "  - C901\n"
+        "drain_slice: async-pipeline\n"
+        "---\n"
+        "\nbody\n"
+    )
+    fm = _parse_frontmatter(content)
+    assert fm["rules"] == ["PLR0913", "C901"]
+    assert fm["slug"] == "wiring-bootstrap-deps"
+    assert fm["drain_slice"] == "async-pipeline"
+
+
+def test_parse_frontmatter_scalar_rules_preserved() -> None:
+    content = "---\nslug: x\nrules: C901\n---\nbody\n"
+    fm = _parse_frontmatter(content)
+    assert fm["rules"] == "C901"
+
+
+def test_parse_frontmatter_no_frontmatter_returns_empty() -> None:
+    assert _parse_frontmatter("no frontmatter here") == {}
+
+
+def test_update_index_renders_full_rules_list_for_multi_rule_slug(
+    tmp_path: Path,
+) -> None:
+    """_update_index must render every entry of a multi-rule `rules:` list,
+    not just the first (the bug fixed in #1179)."""
+    debt_dir = tmp_path / "artifacts" / "debt"
+    debt_dir.mkdir(parents=True)
+    (debt_dir / "multi-rule-stub.md").write_text(
+        "---\n"
+        "slug: multi-rule-stub\n"
+        "status: open\n"
+        "rules:\n"
+        "  - PLR0913\n"
+        "  - C901\n"
+        "drain_slice: async-pipeline\n"
+        "created: 2026-05-14\n"
+        "---\n",
+        encoding="utf-8",
+    )
+
+    from tools.classify_quality_debt import _update_index
+
+    _update_index(debt_dir)
+
+    index_md = (debt_dir / "INDEX.md").read_text(encoding="utf-8")
+    assert "PLR0913, C901" in index_md, index_md
+    assert "multi-rule-stub" in index_md

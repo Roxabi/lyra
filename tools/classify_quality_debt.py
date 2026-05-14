@@ -28,6 +28,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
@@ -116,7 +118,6 @@ _RULE_SUGGESTION_MAP: dict[str, str] = {
 }
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)^---\s*\n", re.DOTALL | re.MULTILINE)
-_FM_FIELD_RE = re.compile(r"^(\w+):\s*(.+)$", re.MULTILINE)
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # ---------------------------------------------------------------------------
@@ -390,7 +391,7 @@ def _apply_file_edits(p: Path, edits: list[tuple[int, str]]) -> int:
             original = lines[idx].rstrip("\n").rstrip("\r")
             updated = _apply_suffix(original, sug)
             if updated != original:
-                eol = lines[idx][len(original):]
+                eol = lines[idx][len(original) :]
                 lines[idx] = updated + eol
                 mutated += 1
     p.write_text("".join(lines), encoding="utf-8")
@@ -403,9 +404,7 @@ def _apply_file_edits(p: Path, edits: list[tuple[int, str]]) -> int:
 
 # Matches an existing POLICY:<tag> suffix on a suppression marker line.
 # Captures the leading dash(es)/em-dash and optional whitespace as <prefix>.
-_POLICY_SUFFIX_RE = re.compile(
-    r"(?P<prefix>[-—]+\s*)POLICY:(?P<tag>[a-z][a-z-]*)"
-)
+_POLICY_SUFFIX_RE = re.compile(r"(?P<prefix>[-—]+\s*)POLICY:(?P<tag>[a-z][a-z-]*)")
 
 
 def _migrate_policy_markers(root: Path) -> tuple[int, int]:
@@ -459,16 +458,16 @@ def _migrate_policy_markers(root: Path) -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 
 
-def _parse_frontmatter(content: str) -> dict[str, str]:
-    """Extract simple key: value pairs from YAML frontmatter."""
+def _parse_frontmatter(content: str) -> dict[str, Any]:
+    """Parse YAML frontmatter. List values (e.g. multi-rule `rules:`) are preserved."""
     m = _FRONTMATTER_RE.search(content)
     if not m:
         return {}
-    fm_text = m.group(1)
-    result: dict[str, str] = {}
-    for fm_m in _FM_FIELD_RE.finditer(fm_text):
-        result[fm_m.group(1)] = fm_m.group(2).strip()
-    return result
+    try:
+        data = yaml.safe_load(m.group(1))
+    except yaml.YAMLError:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _ensure_registry(debt_dir: Path, slug: str, rules: list[str]) -> None:
@@ -512,7 +511,12 @@ def _update_index(debt_dir: Path) -> None:
         fm = _parse_frontmatter(content)
         slug = fm.get("slug", reg.stem)
         status = fm.get("status", "open")
-        rules = fm.get("rules", "")
+        rules_val = fm.get("rules", "")
+        rules = (
+            ", ".join(str(r) for r in rules_val)
+            if isinstance(rules_val, list)
+            else str(rules_val)
+        )
         drain_slice = fm.get("drain_slice", "")
         created = fm.get("created", "")
         rows.append(f"| {slug} | {status} | {rules} | - | {drain_slice} | {created} |")
@@ -704,10 +708,7 @@ def main(argv: list[str] | None = None) -> int:
         "--root",
         type=Path,
         default=None,
-        help=(
-            "Repository root directory "
-            "(default: cwd). Used by --migrate-policy."
-        ),
+        help=("Repository root directory (default: cwd). Used by --migrate-policy."),
     )
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(

@@ -1,0 +1,55 @@
+---
+title: feat(nats) — finish NatsLlmClient → LlmProvider conformance + migrate hub bootstrap
+issue: 1119
+status: approved
+tier: F-lite
+date: 2026-05-14
+---
+
+## Problem
+
+`NatsLlmClient` (`src/lyra/nats/nats_llm_client.py`) docstring claims "drop-in replacement for `NatsLlmDriver`", but pyright disagrees: `capabilities`, `complete(...)`, and `is_alive(pool_id)` are missing; `stream(...)` yields `AsyncIterator[str]` instead of `AsyncIterator[LlmEvent]`. Parent issue #1104 originally proposed swapping the driver for the client in hub bootstrap; implementation surfaced this protocol gap and pivoted to a subject-literal-only migration (shipped via PR #1121). The hub still wires the legacy `NatsLlmDriver` today.
+
+This issue finishes the originally-intended swap so the codebase has a single canonical NATS-LLM RPC path, ADR-049 envelope canonicalization is complete, and the misleading docstring is no longer a contributor trap.
+
+## Who
+
+- **Primary:** hub bootstrap path (`bootstrap/factory/llm_overlay.py:init_nats_llm` + 4 wiring sites) — currently instantiates `NatsLlmDriver`, must switch to `NatsLlmClient` once the latter satisfies `LlmProvider`.
+- **Secondary:** any future contributor reading `NatsLlmClient` and trusting the "drop-in" docstring; the M₁ production hub at runtime (`HarnessCLI → hub → llmCLI worker → LiteLLM → llama-server`).
+
+## Constraints
+
+- `NatsLlmClient` must satisfy the `LlmProvider` protocol such that pyright is clean at `agent_factory.py:_build_shared_base_providers`.
+- `stream(...)` must yield the **full** `LlmEvent` union (`TextLlmEvent`, `ToolUseLlmEvent`, `ResultLlmEvent`) — not only text + result. Current `NatsLlmDriver` handles `ToolUseLlmEvent` (see `src/lyra/llm/drivers/nats_driver.py:24-25`); a true drop-in must too. *(Issue body §1 omits this — constraint added during frame.)*
+- `complete(...)` / `stream(...)` error-code mapping (`LlmResult.error`, `LlmResult.retryable`, `ResultLlmEvent(is_error=True, …)`) must reuse the canonical single-source error-code registry from `roxabi_contracts` introduced by PR #1107, not invent ad-hoc strings.
+- Hub bootstrap must start cleanly under all 3 modes: unified (`lyra start`), hub-standalone (`lyra hub`), adapter-standalone (`lyra adapter <platform>`).
+- M₁ end-to-end smoke test must pass after the swap. Lowercase `inbox_prefix` default (PR #1148/#1186) and llm-worker self-inbox subscription (PR #1144) must remain compatible.
+- Parameter name `nats_llm_driver` stays in scope #2 (positional callers); rename to `nats_llm_client` is deferred to scope #3 after ≥2-week prod soak on M₁.
+- `NatsLlmDriver` deletion (scope #3) only after the 2-week soak window with no rollback.
+
+## Out of Scope
+
+- Any further changes to wire subjects (already canonical via #1104 / #1121).
+- Per-worker score-routed publishing (deferred — separate issue).
+- ADR-045 `roxabi-nats` SDK extraction.
+- Render-events triplet work (#1180 Reasoning, #1173 Text v2) — that's the render layer, not the `LlmEvent` driver layer.
+
+## Premise Validity
+
+**Success in 6 months:** `NatsLlmClient` instantiated as the canonical `LlmProvider` in hub bootstrap across all 3 modes (unified, hub-standalone, adapter-standalone); `NatsLlmDriver` deleted after a ≥2-week prod soak on M₁; pyright clean against `LlmProvider` at `_build_shared_base_providers`.
+
+**Failure in 6 months (falsifiable):** After the swap, pyright reports protocol-conformance errors on `NatsLlmClient` at `_build_shared_base_providers`; OR the M₁ smoke test (`HarnessCLI → hub → llmCLI → LiteLLM → llama-server`) fails end-to-end after deploy; OR a rollback to `NatsLlmDriver` is required within the 2-week soak window.
+
+**Simplest alternative:** Stop at PR #1121's state — `NatsLlmDriver` stays wired, `NatsLlmClient` keeps its misleading docstring as a lower-level helper.
+**Why not simplest:** Leaves two parallel NATS-LLM RPC implementations + a class falsely claiming drop-in compatibility; ADR-049 contract canonicalization is half-finished; future contributors hit the same trap PR #1121 hit.
+
+## Complexity
+
+**Tier: F-lite** — single domain (NATS LLM driver), clear scope, no new architecture, no unknowns.
+
+Signals observed:
+- Single domain: NATS LLM transport.
+- 2 files for protocol conformance (`nats_llm_client.py`, type imports) + 4 wiring sites for bootstrap migration.
+- No new patterns — protocol already exists (`LlmProvider`); reference impl already exists (`NatsLlmDriver`).
+- Existing label: `size:F-lite` (P3-low).
+- 2-week prod soak before scope #3 deletion is a sequencing constraint, not architectural complexity.

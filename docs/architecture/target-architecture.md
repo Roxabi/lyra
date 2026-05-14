@@ -63,7 +63,7 @@ Everything specific (Telegram, Discord, Claude, Anthropic SDK) is an **Adapter**
                            │ implement
 ┌──────────────────────────▼──────────────────────────────────────┐
 │                       LLM ADAPTERS                              │
-│           ClaudeCliDriver │ NatsLlmDriver │ LiteLlmDriver        │
+│           ClaudeCliDriver │ NatsLlmDriver │ CliNatsDriver        │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ LlmEvent stream
 ┌──────────────────────────▼──────────────────────────────────────┐

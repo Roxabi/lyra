@@ -56,7 +56,7 @@ lyra agent refine <name>            # LLM-guided profile refinement
 ## Validation Rules
 
 - **Name**: `[a-zA-Z0-9_-]+`
-- **Backend**: `claude-cli` | `ollama` | `litellm`
+- **Backend**: `claude-cli` | `nats`
 - **Model**: non-empty string
 - **JSON fields**: `tools_json`, `plugins_json`, `permissions_json` must be valid JSON arrays; `workspaces_json`, `commands_json` must be valid objects
 - **Smart routing**: `enabled=true` is deprecated (no backend supports it)

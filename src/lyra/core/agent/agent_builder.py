@@ -33,7 +33,9 @@ def _validate_backend_model(backend: str, model: str, agent_name: str) -> None:
     if backend not in _VALID_BACKENDS:
         raise ValueError(
             f"Invalid backend {backend!r} for agent {agent_name!r}: "
-            f"must be one of {sorted(_VALID_BACKENDS)}"
+            f"must be one of {sorted(_VALID_BACKENDS)}. "
+            f"(Was 'litellm' or 'ollama'? Use 'claude-cli' for direct Claude "
+            f"or 'nats' for multi-provider routing via the llmCLI worker.)"
         )
     if not re.match(r"^[a-zA-Z0-9_.:-]+$", model):
         raise ValueError(

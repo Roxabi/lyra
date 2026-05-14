@@ -1,0 +1,190 @@
+---
+title: "#665 LiteLLM cleanup — code-review findings consensus"
+issue: 665
+status: consensus-reached
+date: 2026-05-14
+panel: architect, security-auditor, backend-dev
+confidence: high
+---
+
+## Problem
+
+PR #1196 (`chore(llm): drop dangling "litellm" backend value`) ships a tight cleanup of the
+abandoned in-process `LiteLLMDriver` plan. `/code-review` surfaced 8 findings on the result.
+The user clarified mid-review that **Ollama is not a planned in-process Lyra backend either** —
+it has been removed and hidden behind the `llmCLI` worker over NATS, alongside LiteLLM and any
+other multi-provider integration. The canonical path for everything non-Claude is:
+
+```
+lyra hub → backend = "nats" → NATS → llmCLI worker → LiteLLM lib → [Ollama, llama.cpp, …]
+```
+
+That reshapes findings #2 (add `"nats"` to `_VALID_BACKENDS`) and #3 (`"ollama"` is dangling
+just like `"litellm"` was) from out-of-scope nitpicks into the coherent completion of what
+this PR started. The panel was asked to settle the scope of THIS PR — concrete patches,
+ordered for `/fix`.
+
+## Panel
+
+| α | Focus |
+|---|---|
+| architect | enum semantics, validator/factory coherence, long-term backend contract |
+| security-auditor | NATS auth surface, `api_key` clarity, migration guidance safety |
+| backend-dev | impl complexity, DB migration risk, validation pattern placement |
+
+## Consensus ρ
+
+The PR must reach `_VALID_BACKENDS = {"claude-cli", "nats"}` — drop `"ollama"`, add `"nats"` —
+and the `agent_factory._create_agent` dispatch branch at line 144 drops `"ollama"` in the same
+commit. Add a negative `test_backend_litellm_rejected` (and a symmetric `test_backend_ollama_rejected`
++ positive `test_backend_nats_accepted`) against `_validate_backend_model`. Restore the
+`(future / unused)` annotation on the `base_url` / `api_key` docstrings — the fields are dead
+weight in code but kept for forward-compat, and the unqualified docstring misleads. Append a
+one-clause NATS auth caveat to `docs/QUICKSTART.md:161`. Append a dual-hint to the
+`_validate_backend_model` error message so ex-`"litellm"` users get guidance toward both
+`"claude-cli"` (subscription, zero setup) and `"nats"` (multi-provider, needs NATS auth).
+Update `docs/agent-management.md:59` Validation Rules to match the new set. Update the
+`ModelConfig` docstring (lines 37-38) to reflect `{"claude-cli", "nats"}`. Defer
+`ModelConfig.backend` `@field_validator` (#4), the `llm/CLAUDE.md:35` table redesign (#5),
+and the eventual removal of the dead `base_url`/`api_key` fields — all separate concerns.
+
+### Rationale
+
+`_VALID_BACKENDS` is a **closed dispatch contract**, not a "future plans" enum. The PR was
+filed to fix exactly the failure mode that occurs when the set diverges from real dispatch:
+a value passes validation, then either crashes (`"litellm"` → `KeyError`) or silently routes
+wrong (`"ollama"` → quietly serves claude-cli). Removing one dangling value while leaving an
+identical one is half-coherent — the next person reading `_VALID_BACKENDS` after merge would
+have to repeat the same investigation we just did. The architect made this the blocking
+concern: `{"claude-cli", "ollama"}` is unshippable; `{"claude-cli", "nats"}` is the truthful
+set.
+
+The security panelist's blocking concern (NATS auth caveat in QUICKSTART) is a 5-word fix and
+materially changes user behavior: today's QUICKSTART text actively recommends `backend = "nats"`
+without mentioning that an unauthenticated NATS server bypasses Lyra's `GuardChain` at the
+worker boundary. Cheap to fix, expensive to skip.
+
+DB audit (per backend-dev): zero rows with `backend = "ollama"` in production. No migration
+shim needed — removing `"ollama"` from `_VALID_BACKENDS` breaks nothing in the field.
+
+### Trade-offs
+
+- **Scope expansion vs. coherence.** Original PR was 4 files / 7+ lines. Consensus expands to
+  ~6 files / ~30 lines. Still tight, still single-purpose ("close the dangling-backend drift,
+  completely"). Shipping the half-coherent first commit + a `#1197` follow-up to finish
+  trades 5 minutes of work for cognitive load on every future reader.
+- **`_VALID_BACKENDS` ↔ `agent_factory._create_agent:144` must stay in sync.** Two SSoT layers
+  for the same closed set is a maintenance hazard, but consolidating (factory derives from
+  the constant) is a bigger refactor than this PR is for. Leaving the duplication is the
+  pragmatic call; the negative test catches regressions.
+- **Closed enum vs. forward compatibility.** `"ollama"` being out of the set means a future
+  in-process `OllamaDriver` (if it ever lands) will need an explicit `_VALID_BACKENDS` update
+  in its own PR. That is the desired property — additions should be deliberate, not vestigial.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|---|---|
+| Keep `"ollama"` as forward reservation in `_VALID_BACKENDS` | (anti-option) | Reservation slots without dispatch paths *are* the bug this PR is closing — `"litellm"` was exactly that. |
+| Make `_VALID_BACKENDS` an open guard rail (warn but accept) | (anti-option) | Defeats the purpose of `lyra agent validate` as a pre-runtime correctness gate. |
+| Auto-translate `backend = "ollama" → "nats"` at load time with deprecation warning | backend-dev considered, rejected | DB audit shows 0 production rows with `"ollama"`. Migration shim is dead weight + a confusing code path. |
+| Add `@field_validator("backend")` on `ModelConfig` (#4) | backend-dev recommended | Single-panelist support; negative test is naturally writable against `_validate_backend_model` directly; adds a second validation layer for a single closed-set check. Defer to a follow-up if a broader validation consolidation lands. |
+| Remove `base_url` + `api_key` fields entirely (true dead code) | security-auditor considered | DB schema migration risk (rows may persist values); breaks the established `exclude={"api_key"}` pattern at `cli_nats.py:257`; out of scope for a backend-enum cleanup. Track as separate cleanup. |
+| Suggest `"claude-cli"` only in migration error | security-auditor | Misses the multi-provider intent of ex-`litellm` users; backend-dev pushed back. Compromise: list both. |
+| Suggest `"nats"` only in migration error | backend-dev | Pushes users toward a backend that requires auth infrastructure they may not have. Compromise: list both, `"claude-cli"` first. |
+| Defer NATS auth caveat to a docs follow-up | architect | Security panelist's blocking concern; one clause is sufficient; trivial to include now. |
+
+## Dissent
+
+None on direction. Two 2-1 splits resolved by compromise:
+
+1. **Migration error wording** — security wanted `"claude-cli"` as the primary suggestion
+   (no-setup default); backend wanted `"nats"` (multi-provider replacement). Resolved by
+   listing both, with `"claude-cli"` first (no infrastructure prerequisite).
+2. **QUICKSTART NATS auth caveat** — security raised as blocking, architect classified
+   as cosmetic / out of scope. Resolved in security's favor: the clause is one sentence and
+   the change is in a user-facing recommendation that materially shifts security posture.
+
+## Implementation Notes
+
+### Patch list (ordered for /fix, with confidence band)
+
+**High confidence — auto-apply candidates:**
+
+1. **`src/lyra/core/agent/agent_config.py:11`** — change
+   `_VALID_BACKENDS = frozenset({"claude-cli", "ollama"})` →
+   `_VALID_BACKENDS = frozenset({"claude-cli", "nats"})`. [C: 95%]
+
+2. **`src/lyra/core/agent/agent_config.py:37-38`** — update `ModelConfig.backend` docstring:
+   replace `"ollama" (local, future)` with the new set. Suggested wording:
+   `backend: execution backend — "claude-cli" (Claude Code subscription) or "nats" (multi-provider via NATS → llmCLI worker).` [C: 95%]
+
+3. **`src/lyra/core/agent/agent_config.py:49-55`** — restore the unused-field annotation on
+   `base_url` and `api_key` docstrings. Suggested:
+   `base_url: per-agent override for the backend API base URL. Currently unused — reserved for future per-agent driver overrides.` and analogous for `api_key`. [C: 90%]
+
+4. **`src/lyra/bootstrap/factory/agent_factory.py:144`** — drop `"ollama"` from the dispatch
+   branch: `if backend in ("claude-cli", "ollama", "nats"):` → `if backend in ("claude-cli", "nats"):`.
+   Remove the now-dead `"ollama"` fallthrough path inside the branch (lines below `:144` that
+   route ollama to claude-cli). [C: 92%]
+
+5. **`tests/core/test_agent_config.py`** — add three tests after `test_defaults` (where the
+   removed litellm tests used to live):
+   ```python
+   def test_backend_litellm_rejected(self) -> None:
+       from lyra.core.agent.agent_builder import _validate_backend_model
+       with pytest.raises(ValueError, match="Invalid backend"):
+           _validate_backend_model("litellm", "claude-opus-4-6", "test-agent")
+
+   def test_backend_ollama_rejected(self) -> None:
+       from lyra.core.agent.agent_builder import _validate_backend_model
+       with pytest.raises(ValueError, match="Invalid backend"):
+           _validate_backend_model("ollama", "claude-opus-4-6", "test-agent")
+
+   def test_backend_nats_accepted(self) -> None:
+       from lyra.core.agent.agent_builder import _validate_backend_model
+       _validate_backend_model("nats", "claude-sonnet-4-6", "test-agent")  # no raise
+   ```
+   [C: 95%]
+
+**Medium confidence — 1b1 review before apply:**
+
+6. **`src/lyra/core/agent/agent_builder.py:34-37`** — append migration hint to error message:
+   ```python
+   raise ValueError(
+       f"Invalid backend {backend!r} for agent {agent_name!r}: "
+       f"must be one of {sorted(_VALID_BACKENDS)}. "
+       f"(Was 'litellm' or 'ollama'? Use 'claude-cli' for direct Claude or "
+       f"'nats' for multi-provider routing via the llmCLI worker.)"
+   )
+   ```
+   [C: 80%]
+
+7. **`docs/QUICKSTART.md:161`** — append NATS auth caveat to the line added by PR's docs commit:
+   current: `...for multi-provider access today, route through the `nats` backend → llmCLI worker.`
+   → append: `Requires a configured, authenticated NATS server — see GETTING-STARTED.md for setup.`
+   [C: 85%]
+
+8. **`docs/agent-management.md:59`** — `Backend: claude-cli | ollama` → `Backend: claude-cli | nats`.
+   [C: 92%]
+
+9. **`docs/QUICKSTART.md:84`** — TOML example comment: `# "claude-cli" | "ollama" (future)` →
+   `# "claude-cli" | "nats"`. [C: 92%]
+
+10. **`src/lyra/agents/CLAUDE.md:55`** — TOML example comment: `# "claude-cli" | "ollama" (future)` →
+    `# "claude-cli" | "nats"`. [C: 92%]
+
+### Deferred to follow-up issues
+
+- **Finding #4** — Add `@field_validator("backend")` on `ModelConfig`. Separate validation
+  consolidation work; can be paired with the eventual move to centralize validation rules.
+- **Finding #5** — `src/lyra/llm/CLAUDE.md:34-35` driver table mislabels `CliNatsDriver`
+  backend key. Pre-existing; the right fix is a table redesign separating Backend (registry
+  key), Transport, and Wiring mode columns. Worth its own issue.
+- **Finding #7 (extension)** — Eventual removal of `base_url` / `api_key` fields if confirmed
+  dead. DB migration check + audit of any inbound NATS payload consumers needed first.
+
+## Next
+
+`/fix` — apply patches 1-5 auto, 6-10 1b1, then re-run `/code-review` on the updated PR before
+merging. If review comes back clean (or with only nitpicks), `/dev` Phase 8 → Merge as-is.

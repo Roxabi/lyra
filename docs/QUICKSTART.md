@@ -81,7 +81,7 @@ memory_namespace = "lyra"
 permissions = []
 
 [model]
-backend = "claude-cli"          # "claude-cli" | "ollama" (future) | "litellm" (future)
+backend = "claude-cli"          # "claude-cli" | "nats"
 model = "claude-sonnet-4-6"
 max_turns = 10
 tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
@@ -158,7 +158,7 @@ The `.env` file was not found or the variable is empty. Make sure `.env` is in t
 Check that **Message Content Intent** is enabled in the Discord Developer Portal under Bot settings. Without it, the bot receives events but cannot read message content.
 
 **Claude CLI errors**
-The default agent uses `claude-cli` backend, which shells out to the `claude` CLI. Make sure you're logged in: run `claude` once to authenticate. Lyra requires a Claude subscription for the `claude-cli` backend. Alternative backends (`ollama`, `litellm`) are planned for a future phase and not yet available.
+The default agent uses `claude-cli` backend, which shells out to the `claude` CLI. Make sure you're logged in: run `claude` once to authenticate. Lyra requires a Claude subscription for the `claude-cli` backend. For multi-provider access (Ollama, llama.cpp, Fireworks, OpenAI, …), use the `nats` backend → llmCLI worker. Requires a configured, authenticated NATS server — see GETTING-STARTED.md for setup.
 
 **Queue full warning**
 If the hub logs `Processing your request…`, the bounded queue (100) is full. This is expected under burst load — messages are queued and processed in order.

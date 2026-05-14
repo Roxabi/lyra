@@ -141,7 +141,7 @@ def _create_agent(  # noqa: PLR0913  — DEBT:wiring-bootstrap-deps — factory 
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.llm_config.backend
-    if backend in ("claude-cli", "ollama", "nats"):
+    if backend in ("claude-cli", "nats"):
         if backend == "nats":
             if provider_registry is None:
                 raise ValueError(

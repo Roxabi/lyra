@@ -113,7 +113,9 @@ async def nc(nats_server_url: str) -> AsyncGenerator[NATS, None]:
 
 
 @pytest.fixture(scope="session")
-def nats_server_jetstream_url() -> Generator[str, None, None]:
+def nats_server_jetstream_url(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[str, None, None]:
     """Spawn a JetStream-enabled nats-server subprocess for the test session.
 
     Skipped automatically when nats-server is not in PATH.
@@ -122,8 +124,12 @@ def nats_server_jetstream_url() -> Generator[str, None, None]:
         pytest.skip("nats-server not found in PATH")
     port = _free_port()
     url = f"nats://127.0.0.1:{port}"
+    # Isolated store dir per session — without -sd, nats-server defaults to
+    # /tmp/nats/jetstream and the KV_lyra-state stream persists across runs,
+    # causing kv.get() to return KeyNotFoundError from stale purge tombstones.
+    store_dir = tmp_path_factory.mktemp("nats_js")
     proc = subprocess.Popen(
-        ["nats-server", "-p", str(port), "--jetstream"],
+        ["nats-server", "-p", str(port), "--jetstream", "-sd", str(store_dir)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

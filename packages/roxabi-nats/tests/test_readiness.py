@@ -348,12 +348,14 @@ class TestWaitForHubKV:
         self, nc_js: NATS, nats_server_jetstream_url: str
     ) -> None:
         """wait_for_hub returns True via KV watch when key appears mid-probe."""
-        # Arrange — purge so a prior hub.ready write doesn't bypass the watch path
-        try:
-            kv_setup = await nc_js.jetstream().key_value("lyra-state")
-            await kv_setup.purge("hub.ready")
-        except Exception:  # noqa: BLE001  # test teardown: kv bucket may not exist
-            pass
+        # Arrange — pre-create bucket so the probe finds it on first key_value()
+        # call and reaches the watch path. Without this, when the bucket does
+        # not yet exist, _open_kv_with_retry's 0.5s sleep would let the
+        # announce_hub_ready below land before the probe ever reaches kv.get,
+        # silently forcing the immediate path instead of the watch path.
+        await announce_hub_ready(nc_js)
+        kv_setup = await nc_js.jetstream().key_value("lyra-state")
+        await kv_setup.purge("hub.ready")
         # Arrange — adapter connects before hub writes the key
         adapter_nc = await nats.connect(nats_server_jetstream_url)
         try:
@@ -447,12 +449,11 @@ class TestWaitForHubKV:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """wait_for_hub logs 'Hub ready (KV watch)' when key appears mid-probe."""
-        # Arrange — purge so a prior hub.ready write doesn't bypass the watch path
-        try:
-            kv_setup = await nc_js.jetstream().key_value("lyra-state")
-            await kv_setup.purge("hub.ready")
-        except Exception:  # noqa: BLE001  # test teardown: kv bucket may not exist
-            pass
+        # Arrange — pre-create bucket so the probe reaches the watch path
+        # (see test_kv_watch_returns_true_after_key_written for details).
+        await announce_hub_ready(nc_js)
+        kv_setup = await nc_js.jetstream().key_value("lyra-state")
+        await kv_setup.purge("hub.ready")
         # Arrange — race path: key written after probe begins
         adapter_nc = await nats.connect(nats_server_jetstream_url)
         try:

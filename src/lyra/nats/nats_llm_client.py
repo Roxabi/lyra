@@ -34,6 +34,7 @@ from lyra.core.messaging.events import (
     ResultLlmEvent,
     TextLlmEvent,
 )
+from lyra.core.messaging.metrics import emit_populated_total
 from lyra.core.ports.llm import LlmResult
 from lyra.nats.worker_registry import WorkerRegistry
 from roxabi_contracts.envelope import CONTRACT_VERSION
@@ -92,7 +93,7 @@ class NatsLlmClient:
         await client.start()
 
         # streaming — LlmProvider protocol
-        async for event in await client.stream("pool-1", "hello", mc, "sys"):
+        async for event in client.stream("pool-1", "hello", mc, "sys"):
             ...
 
         # non-streaming — LlmProvider protocol
@@ -184,7 +185,7 @@ class NatsLlmClient:
             request_id=str(uuid4()).replace("-", "")[:32],
             messages=wire_messages,
             model=model_cfg.model,
-            system_prompt=system_prompt or None,
+            system_prompt=system_prompt,
             stream=stream,
             max_tokens=getattr(model_cfg, "max_tokens", None),
             temperature=getattr(model_cfg, "temperature", None),
@@ -209,6 +210,7 @@ class NatsLlmClient:
         del pool_id  # canonical wire is queue-group dispatched, no per-worker routing
 
         if self._cb.is_open():
+            emit_populated_total(domain="llm")
             return LlmResult(
                 error="LLM circuit open — adapter temporarily unavailable",
                 retryable=True,
@@ -258,6 +260,7 @@ class NatsLlmClient:
             # This mirrors the nats.errors.NoRespondersError path: the broker
             # would return no-responders if we published, so we short-circuit.
             error_msg = "LLM: no live worker (heartbeat stale >15s)"
+            emit_populated_total(domain="llm")
             return LlmResult(
                 error=error_msg,
                 retryable=True,
@@ -278,6 +281,7 @@ class NatsLlmClient:
             except TimeoutError as exc:
                 self._registry.mark_stale(worker.worker_id)
                 error_msg = f"LLM worker timeout after {self._timeout:.0f}s"
+                emit_populated_total(domain="llm")
                 last_result = LlmResult(
                     error=error_msg,
                     retryable=True,
@@ -291,6 +295,7 @@ class NatsLlmClient:
             except NoRespondersError as exc:
                 self._registry.mark_stale(worker.worker_id)
                 error_msg = f"NATS no responders: {exc}"
+                emit_populated_total(domain="llm")
                 last_result = LlmResult(
                     error=error_msg,
                     retryable=True,
@@ -309,6 +314,7 @@ class NatsLlmClient:
                     )
                     self._cb.record_failure()
                     error_msg = f"LLM request payload too large: {exc}"
+                    emit_populated_total(domain="llm")
                     return LlmResult(
                         error=error_msg,
                         retryable=False,
@@ -323,6 +329,7 @@ class NatsLlmClient:
                 )
                 self._cb.record_failure()
                 error_msg = f"NATS transport error: {exc}"
+                emit_populated_total(domain="llm")
                 return LlmResult(
                     error=error_msg,
                     retryable=True,
@@ -339,6 +346,7 @@ class NatsLlmClient:
             except (ValidationError, ValueError) as exc:
                 self._cb.record_failure()
                 error_msg = f"Invalid response from worker: {exc}"
+                emit_populated_total(domain="llm")
                 return LlmResult(
                     error=error_msg,
                     retryable=False,
@@ -361,6 +369,7 @@ class NatsLlmClient:
                         worker_error=resp.worker_error,
                     )
                 # Legacy worker: synthesise worker.internal fallback.
+                emit_populated_total(domain="llm")
                 return LlmResult(
                     error=error_msg,
                     retryable=True,
@@ -385,6 +394,7 @@ class NatsLlmClient:
         if last_result is not None:
             return last_result
         error_msg = "LLM: all workers unresponsive"
+        emit_populated_total(domain="llm")
         return LlmResult(
             error=error_msg,
             retryable=True,
@@ -413,6 +423,7 @@ class NatsLlmClient:
         then return — never raise to the caller.
         """
         if self._cb.is_open():
+            emit_populated_total(domain="llm")
             yield ResultLlmEvent(
                 is_error=True,
                 duration_ms=0,
@@ -429,6 +440,7 @@ class NatsLlmClient:
         candidates = self._registry.ordered_by_score()
         if not candidates:
             error_msg = "LLM: no live worker (heartbeat stale >15s)"
+            emit_populated_total(domain="llm")
             yield ResultLlmEvent(
                 is_error=True,
                 duration_ms=0,
@@ -457,6 +469,7 @@ class NatsLlmClient:
             except NoRespondersError as exc:
                 self._cb.record_failure()
                 error_msg = f"NATS no responders: {exc}"
+                emit_populated_total(domain="llm")
                 yield ResultLlmEvent(
                     is_error=True,
                     duration_ms=0,
@@ -477,6 +490,7 @@ class NatsLlmClient:
                         len(payload) / 1024,
                     )
                     error_msg = f"LLM request payload too large: {exc}"
+                    emit_populated_total(domain="llm")
                     yield ResultLlmEvent(
                         is_error=True,
                         duration_ms=0,
@@ -490,6 +504,7 @@ class NatsLlmClient:
                     )
                     return
                 error_msg = f"NATS transport error: {exc}"
+                emit_populated_total(domain="llm")
                 yield ResultLlmEvent(
                     is_error=True,
                     duration_ms=0,
@@ -512,6 +527,7 @@ class NatsLlmClient:
                         self._registry.mark_stale(candidates[0].worker_id)
                     self._cb.record_failure()
                     error_msg = f"LLM stream timed out: {exc}"
+                    emit_populated_total(domain="llm")
                     yield ResultLlmEvent(
                         is_error=True,
                         duration_ms=0,
@@ -530,6 +546,7 @@ class NatsLlmClient:
                 except (ValidationError, ValueError) as exc:
                     self._cb.record_failure()
                     error_msg = f"LLM stream: malformed chunk: {exc}"
+                    emit_populated_total(domain="llm")
                     yield ResultLlmEvent(
                         is_error=True,
                         duration_ms=0,
@@ -557,6 +574,7 @@ class NatsLlmClient:
                     else:
                         # Legacy worker: synthesise worker.internal fallback.
                         error_msg = chunk.error or "LLM stream error"
+                        emit_populated_total(domain="llm")
                         yield ResultLlmEvent(
                             is_error=True,
                             duration_ms=chunk.duration_ms or 0,
@@ -570,6 +588,9 @@ class NatsLlmClient:
                         )
                     return
 
+                if chunk.delta:
+                    yield TextLlmEvent(text=chunk.delta)
+
                 if chunk.done:
                     self._cb.record_success()
                     yield ResultLlmEvent(
@@ -578,9 +599,6 @@ class NatsLlmClient:
                         cost_usd=None,
                     )
                     return
-
-                if chunk.delta:
-                    yield TextLlmEvent(text=chunk.delta)
 
         finally:
             await sub.unsubscribe()

@@ -5,7 +5,7 @@ Provides:
 - Ephemeral-inbox streaming (_stream_gen)
 - Simple request-reply (_request)
 
-Subclass this to build hub-side drivers (e.g. CliNatsDriver, NatsLlmDriver).
+Subclass this to build hub-side drivers (e.g. CliNatsDriver).
 """
 
 from __future__ import annotations

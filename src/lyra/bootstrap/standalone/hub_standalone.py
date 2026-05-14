@@ -147,7 +147,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         await stt_service.start()
         tts_service = init_nats_tts(nc)
         await tts_service.start()
-        nats_llm_driver = await init_nats_llm(nc)
+        nats_llm_client = await init_nats_llm(nc)
 
         hub = build_hub(
             raw_config,
@@ -173,7 +173,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         # Register drivers that hold _worker_freshness so the reconnect callback
         # clears stale timestamps after a NATS reconnect (see _on_nats_reconnect).
         _freshness_drivers.extend(
-            d for d in [cli_nats_driver, nats_llm_driver] if d is not None
+            d for d in [cli_nats_driver, nats_llm_client] if d is not None
         )
 
         register_agents(
@@ -186,7 +186,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             tts_service,
             stores.agent,
             raw_config,
-            nats_llm_driver,
+            nats_llm_client,
             cli_nats_driver=cli_nats_driver,
         )
 
@@ -274,7 +274,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             proxies=proxies,
             pm=pm,
             cli_nats_driver=cli_nats_driver,
-            nats_llm_driver=nats_llm_driver,
+            nats_llm_client=nats_llm_client,
         )
 
     # Close NATS connection after stores context exits

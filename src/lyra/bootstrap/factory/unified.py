@@ -74,8 +74,8 @@ async def _bootstrap_unified(
             await asyncio.gather(clipool_worker_task, return_exceptions=True)
 
     finally:
-        if voice is not None and voice.nats_llm_driver is not None:
-            await voice.nats_llm_driver.stop()
+        if voice is not None and voice.nats_llm_client is not None:
+            await voice.nats_llm_client.stop()
         if clipool is not None and clipool.cli_nats_driver is not None:
             await clipool.cli_nats_driver.stop()
         # Flush in-flight audit emit tasks before closing NATS (audit uses JetStream).

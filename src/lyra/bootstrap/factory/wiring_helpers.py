@@ -61,7 +61,7 @@ log = logging.getLogger(__name__)
 class VoiceBundle:
     stt_service: object
     tts_service: object
-    nats_llm_driver: "NatsLlmClient | None"
+    nats_llm_client: "NatsLlmClient | None"
 
 
 @dataclass
@@ -236,11 +236,11 @@ async def _init_voice_services(
     await stt_service.start()
     tts_service = init_nats_tts(nc)
     await tts_service.start()
-    nats_llm_driver = await init_nats_llm(nc)
+    nats_llm_client = await init_nats_llm(nc)
     return VoiceBundle(
         stt_service=stt_service,
         tts_service=tts_service,
-        nats_llm_driver=nats_llm_driver,
+        nats_llm_client=nats_llm_client,
     )
 
 
@@ -352,7 +352,7 @@ def _register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         voice.tts_service,
         agent_store=stores.agent,
         llm_cfg=llm_cfg,
-        nats_llm_driver=voice.nats_llm_driver,
+        nats_llm_client=voice.nats_llm_client,
         cli_nats_driver=clipool.cli_nats_driver,
     )
     for ag in all_agents.values():

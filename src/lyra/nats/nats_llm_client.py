@@ -241,7 +241,7 @@ class NatsLlmClient:
     # Internal — complete() transport
     # ------------------------------------------------------------------
 
-    async def _complete_request(  # noqa: C901 — DEBT:complexity-residual
+    async def _complete_request(  # noqa: C901, PLR0915 — DEBT:complexity-residual + #1212 sanitization adds log.warning lines
         self, payload: bytes, trace_id: str
     ) -> LlmResult:
         """Execute a single non-streaming NATS request-reply, returning LlmResult.
@@ -276,6 +276,8 @@ class NatsLlmClient:
                 reply = await self._nc.request(target, payload, timeout=self._timeout)
             except TimeoutError as exc:
                 self._registry.mark_stale(worker.worker_id)
+                # Sanitize bus-bound message (#1212). Full %r in log only.
+                log.warning("LLM worker timeout: %r", exc)
                 error_msg = f"LLM worker timeout after {self._timeout:.0f}s"
                 emit_populated_total(domain="llm")
                 last_result = LlmResult(
@@ -283,21 +285,22 @@ class NatsLlmClient:
                     retryable=True,
                     worker_error=WorkerError(
                         code="transport.timeout",
-                        message=str(exc) or error_msg,
+                        message=error_msg,
                         retryable=True,
                     ),
                 )
                 continue
             except NoRespondersError as exc:
                 self._registry.mark_stale(worker.worker_id)
-                error_msg = f"NATS no responders: {exc}"
+                log.warning("NATS no responders: %r", exc)
+                error_msg = f"NATS no responders: {type(exc).__name__}"
                 emit_populated_total(domain="llm")
                 last_result = LlmResult(
                     error=error_msg,
                     retryable=True,
                     worker_error=WorkerError(
                         code="transport.no_responders",
-                        message=str(exc) or error_msg,
+                        message=error_msg,
                         retryable=True,
                     ),
                 )
@@ -305,29 +308,35 @@ class NatsLlmClient:
             except nats.errors.Error as exc:
                 # max_payload is a non-retryable hard limit; everything else retries.
                 if "max_payload" in str(exc).lower():
-                    log.error("LLM payload too large (%.0f KB)", len(payload) / 1024)
+                    log.error(
+                        "LLM payload too large (%.0f KB): %r",
+                        len(payload) / 1024,
+                        exc,
+                    )
                     self._cb.record_failure()
-                    error_msg = f"LLM request payload too large: {exc}"
+                    error_msg = (
+                        f"LLM request payload too large: {type(exc).__name__}"
+                    )
                     emit_populated_total(domain="llm")
                     return LlmResult(
                         error=error_msg,
                         retryable=False,
                         worker_error=WorkerError(
                             code="transport.error",
-                            message=str(exc) or error_msg,
+                            message=error_msg,
                             retryable=False,
                         ),
                     )
-                log.warning("LLM adapter unreachable: %s: %s", type(exc).__name__, exc)
+                log.warning("LLM adapter unreachable: %r", exc)
                 self._cb.record_failure()
-                error_msg = f"NATS transport error: {exc}"
+                error_msg = f"NATS transport error: {type(exc).__name__}"
                 emit_populated_total(domain="llm")
                 return LlmResult(
                     error=error_msg,
                     retryable=True,
                     worker_error=WorkerError(
                         code="transport.error",
-                        message=str(exc) or error_msg,
+                        message=error_msg,
                         retryable=True,
                     ),
                 )
@@ -337,14 +346,17 @@ class NatsLlmClient:
                 resp = LlmResponse.model_validate_json(reply.data)
             except (ValidationError, ValueError) as exc:
                 self._cb.record_failure()
-                error_msg = f"Invalid response from worker: {exc}"
+                # Sanitize bus-bound message (#1212). Pydantic ValidationError
+                # messages can include payload field values.
+                log.warning("Invalid response from worker: %r", exc)
+                error_msg = f"Invalid response from worker: {type(exc).__name__}"
                 emit_populated_total(domain="llm")
                 return LlmResult(
                     error=error_msg,
                     retryable=False,
                     worker_error=WorkerError(
                         code="transport.parse",
-                        message=str(exc) or error_msg,
+                        message=error_msg,
                         retryable=False,
                     ),
                 )
@@ -458,7 +470,14 @@ class NatsLlmClient:
                 await self._nc.publish(SUBJECTS.generate_request, payload, reply=inbox)
             except NoRespondersError as exc:
                 self._cb.record_failure()
-                error_msg = f"NATS no responders: {exc}"
+                # ``error_msg`` flows to user-facing ``error_text`` AND
+                # ``WorkerError.message`` which are forwarded into
+                # ``RunErrorRenderEvent.message`` on the NATS bus. NATS
+                # exceptions routinely embed server addresses and subject
+                # names in ``str(exc)`` — use class name only at the bus
+                # boundary, full repr in logs only. (#1212)
+                log.warning("NATS no responders: %r", exc)
+                error_msg = f"NATS no responders: {type(exc).__name__}"
                 emit_populated_total(domain="llm")
                 yield ResultLlmEvent(
                     is_error=True,
@@ -467,19 +486,25 @@ class NatsLlmClient:
                     error_text=error_msg,
                     worker_error=WorkerError(
                         code="transport.no_responders",
-                        message=str(exc) or error_msg,
+                        message=error_msg,
                         retryable=True,
                     ),
                 )
                 return
             except nats.errors.Error as exc:
                 self._cb.record_failure()
+                # Sanitize: class name only at the bus boundary (#1212).
+                # ``str(exc)`` for NATS errors embeds server addresses and
+                # connection metadata.
                 if "max_payload" in str(exc).lower():
                     log.error(
-                        "LLM stream payload too large (%.0f KB)",
+                        "LLM stream payload too large (%.0f KB): %r",
                         len(payload) / 1024,
+                        exc,
                     )
-                    error_msg = f"LLM request payload too large: {exc}"
+                    error_msg = (
+                        f"LLM request payload too large: {type(exc).__name__}"
+                    )
                     emit_populated_total(domain="llm")
                     yield ResultLlmEvent(
                         is_error=True,
@@ -488,12 +513,13 @@ class NatsLlmClient:
                         error_text=error_msg,
                         worker_error=WorkerError(
                             code="transport.error",
-                            message=str(exc) or error_msg,
+                            message=error_msg,
                             retryable=False,
                         ),
                     )
                     return
-                error_msg = f"NATS transport error: {exc}"
+                log.warning("NATS transport error: %r", exc)
+                error_msg = f"NATS transport error: {type(exc).__name__}"
                 emit_populated_total(domain="llm")
                 yield ResultLlmEvent(
                     is_error=True,
@@ -502,7 +528,7 @@ class NatsLlmClient:
                     error_text=error_msg,
                     worker_error=WorkerError(
                         code="transport.error",
-                        message=str(exc) or error_msg,
+                        message=error_msg,
                         retryable=True,
                     ),
                 )
@@ -516,7 +542,9 @@ class NatsLlmClient:
                     if candidates:
                         self._registry.mark_stale(candidates[0].worker_id)
                     self._cb.record_failure()
-                    error_msg = f"LLM stream timed out: {exc}"
+                    # Sanitize: class name only at the bus boundary (#1212).
+                    log.warning("LLM stream timed out: %r", exc)
+                    error_msg = f"LLM stream timed out: {type(exc).__name__}"
                     emit_populated_total(domain="llm")
                     yield ResultLlmEvent(
                         is_error=True,
@@ -525,7 +553,7 @@ class NatsLlmClient:
                         error_text=error_msg,
                         worker_error=WorkerError(
                             code="transport.timeout",
-                            message=str(exc) or error_msg,
+                            message=error_msg,
                             retryable=True,
                         ),
                     )
@@ -535,7 +563,13 @@ class NatsLlmClient:
                     chunk = LlmChunkEvent.model_validate_json(msg.data)
                 except (ValidationError, ValueError) as exc:
                     self._cb.record_failure()
-                    error_msg = f"LLM stream: malformed chunk: {exc}"
+                    # Sanitize: class name only at the bus boundary (#1212).
+                    # Pydantic ValidationError messages can include payload
+                    # field values; JSONDecodeError includes source content.
+                    log.warning("LLM stream: malformed chunk: %r", exc)
+                    error_msg = (
+                        f"LLM stream: malformed chunk: {type(exc).__name__}"
+                    )
                     emit_populated_total(domain="llm")
                     yield ResultLlmEvent(
                         is_error=True,
@@ -544,7 +578,7 @@ class NatsLlmClient:
                         error_text=error_msg,
                         worker_error=WorkerError(
                             code="transport.parse",
-                            message=str(exc) or error_msg,
+                            message=error_msg,
                             retryable=False,
                         ),
                     )

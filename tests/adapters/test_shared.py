@@ -8,7 +8,6 @@ import pytest
 from lyra.adapters.shared._shared import (
     IntermediateTextState,
     chunk_text,
-    format_tool_summary_header,
     send_with_retry,
 )
 from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
@@ -18,9 +17,7 @@ from lyra.core.messaging.render_events import (
     TextChunkRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
-    TextRenderEvent,
     TextStartRenderEvent,
-    ToolSummaryRenderEvent,
 )
 
 # ---------------------------------------------------------------------------
@@ -165,24 +162,6 @@ class TestSendWithRetry:
         assert coro_fn.await_count == 2
 
 
-class TestFormatToolSummaryHeader:
-    def test_format_tool_summary_header_complete(self) -> None:
-        # Arrange
-        event = ToolSummaryRenderEvent(is_complete=True)
-        # Act
-        result = format_tool_summary_header(event)
-        # Assert
-        assert result == "🔧 Done ✅"
-
-    def test_format_tool_summary_header_in_progress(self) -> None:
-        # Arrange
-        event = ToolSummaryRenderEvent(is_complete=False)
-        # Act
-        result = format_tool_summary_header(event)
-        # Assert
-        assert result == "🔧 Working…"
-
-
 # ---------------------------------------------------------------------------
 # T10 — v2 Text dispatch + fallback tests (#1099)
 # ---------------------------------------------------------------------------
@@ -197,7 +176,7 @@ class TestDispatchTextStartToOnTextV2:
         outbound = OutboundMessage.from_text("hi")
         session = StreamingSession(cb, outbound=outbound)
 
-        # Feed only a TextStartRenderEvent (no v1 TextRenderEvent follows).
+        # Feed only a TextStartRenderEvent (no text delta follows).
         # The stream has no final text so _deliver_final will edit the placeholder
         # with an error message — but edit_placeholder_text must NOT have been
         # called during event dispatch (only during delivery).
@@ -229,6 +208,7 @@ class TestDispatchAllFourV2TextTypes:
                 | TextDeltaRenderEvent
                 | TextEndRenderEvent
                 | TextChunkRenderEvent,
+                placeholder_obj: object = None,
             ) -> None:
                 seen.append(type(event))
 
@@ -280,17 +260,12 @@ class TestDrainFallbackHarvestsV2Delta:
         cb.send_fallback.assert_awaited_once_with("Hello")  # type: ignore[attr-defined]
 
 
-class TestDrainFallbackDualEmitAccumulation:
-    """Dual-emit accumulation in _drain_fallback.
-
-    Under dual emission, v2 delta and v1 text are distinct event objects in the
-    stream; each fires its own branch. The elif guards on type — they do NOT
-    deduplicate same-content events. Slice 5 (#1102) removes the v1 branch.
-    """
+class TestDrainFallbackV2Accumulation:
+    """v2-only accumulation in _drain_fallback (post-Slice-3, no v1 dual-emit)."""
 
     async def test_drain_fallback_v2_only_yields_single_string(self) -> None:
         # A v2-only stream produces a single accumulation. Proves the v2 branch
-        # consumes TextDeltaRenderEvent without also routing through the v1 branch.
+        # consumes TextDeltaRenderEvent.
         cb = _make_callbacks()
         outbound = OutboundMessage.from_text("hi")
         session = StreamingSession(cb, outbound=outbound)
@@ -302,22 +277,3 @@ class TestDrainFallbackDualEmitAccumulation:
         )
 
         cb.send_fallback.assert_awaited_once_with("Hi")  # type: ignore[attr-defined]
-
-    async def test_drain_fallback_v1_and_v2_both_contribute_in_dual_emit(
-        self,
-    ) -> None:
-        # Real dual-emit shape: v2 delta + v1 text in the same stream. Each fires
-        # its own branch (types are disjoint). "HiHi" is the intended transient
-        # behavior during coexistence; Slice 5 drops the v1 branch.
-        cb = _make_callbacks()
-        outbound = OutboundMessage.from_text("hi")
-        session = StreamingSession(cb, outbound=outbound)
-
-        await session._drain_fallback(
-            _async_iter(
-                TextDeltaRenderEvent(message_id="text-1", delta="Hi"),
-                TextRenderEvent(text="Hi", is_final=True),
-            )
-        )
-
-        cb.send_fallback.assert_awaited_once_with("HiHi")  # type: ignore[attr-defined]

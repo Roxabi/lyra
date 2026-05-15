@@ -50,9 +50,9 @@ class ChannelAdapter(Protocol):
         """Stream response to the channel with edit-in-place.
 
         *events* yields ``RenderEvent`` objects from the ``StreamProcessor``
-        pipeline: ``ToolSummaryRenderEvent`` mid-turn (throttled tool summary
-        cards) followed by a single ``TextRenderEvent(is_final=True)`` at the
-        end of the turn.
+        pipeline: ``ToolCallStartRenderEvent`` / ``ToolCallArgsRenderEvent`` /
+        ``ToolCallEndRenderEvent`` mid-turn followed by ``TextStartRenderEvent``
+        / ``TextDeltaRenderEvent`` / ``TextEndRenderEvent`` (v2 triplet).
 
         When *outbound* is provided, adapters write the platform message ID
         to ``outbound.metadata["reply_message_id"]`` after sending the

@@ -4,15 +4,15 @@ Consumes an async stream of ``LlmEvent`` objects (from any LLM driver) and
 produces ``RenderEvent`` objects consumed by outbound adapters (Telegram,
 Discord, TTS tee, turn logger).
 
-Pipeline contract
------------------
-- ``TextLlmEvent``    → stream each chunk as ``TextRenderEvent(is_final=False)``
-                         immediately; also accumulate in ``_total_text`` for the
-                         final ``TextRenderEvent(is_final=True)``
-- ``ToolUseLlmEvent`` → accumulate into per-tool buckets; emit throttled
-                         ``ToolSummaryRenderEvent`` mid-turn
-- ``ResultLlmEvent``  → unconditionally emit final ``ToolSummaryRenderEvent``
-                         (if any tool events occurred), then emit ``TextRenderEvent``
+Pipeline contract (v2)
+-----------------------
+- ``TextLlmEvent``    → emit ``TextStartRenderEvent`` on first chunk, then one
+                         ``TextDeltaRenderEvent`` per chunk, then
+                         ``TextEndRenderEvent`` at block boundary.
+- ``ToolUseLlmEvent`` → emit ``ToolCallStartRenderEvent`` / ``ToolCallArgsRenderEvent``
+                         / ``ToolCallEndRenderEvent`` lifecycle events.
+- ``ResultLlmEvent``  → close open text block (``TextEndRenderEvent``), synthesize
+                         orphan ``ToolCallEnd`` events, emit ``RunFinishedRenderEvent``.
 
 Hexagonal boundary
 ------------------
@@ -23,12 +23,10 @@ Only stdlib and lyra-internal modules may be used.
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator
 from typing import assert_never
 from uuid import uuid4
 
-from lyra.core.messaging.error_extractor import _extract_worker_error
 from lyra.core.messaging.events import (
     LlmEvent,
     ResultLlmEvent,
@@ -39,7 +37,6 @@ from lyra.core.messaging.events import (
     ToolUseEndLlmEvent,
     ToolUseLlmEvent,
 )
-from lyra.core.messaging.metrics import emit_received_total
 from lyra.core.messaging.render_events import (
     FileEditSummary,
     ReasoningDeltaRenderEvent,
@@ -49,20 +46,16 @@ from lyra.core.messaging.render_events import (
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
-    SilentCounts,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
-    TextRenderEvent,
     TextStartRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
-    ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.trace import TraceContext
-from roxabi_contracts.errors import KNOWN_CODES
 
 log = logging.getLogger(__name__)
 
@@ -142,11 +135,11 @@ class StreamProcessor:
         Controls display thresholds, bash truncation, throttle window, and
         which tool names surface in the summary card.
     show_intermediate:
-        When ``True`` (default), text that the model emits *before* a tool
-        call is flushed as ``TextRenderEvent(is_final=False)`` so adapters
-        can display it progressively.  When ``False``, that pre-tool text is
-        still accumulated and emitted as part of the final
-        ``TextRenderEvent(is_final=True)``, matching the legacy behaviour.
+        When ``True`` (default), ``TextDeltaRenderEvent`` chunks are emitted
+        as they arrive so adapters can display text progressively.
+        When ``False``, text is silently accumulated and closed via
+        ``TextEndRenderEvent`` at the end of the block with no intermediate
+        deltas.
     """
 
     def __init__(
@@ -167,9 +160,6 @@ class StreamProcessor:
         self._silent_reads: int = 0
         self._silent_greps: int = 0
         self._silent_globs: int = 0
-
-        # --- throttle state ---
-        self._last_tool_emit: float | None = None
 
         # --- pending text ---
         self._pending_text: str = ""
@@ -230,12 +220,10 @@ class StreamProcessor:
             Interleaved text→tool→text sequences produce multiple bracketed blocks
             each with an independent ``message_id``.
 
-            **v1 (parity, unchanged):** ``TextRenderEvent(is_final=False)`` is
-            emitted for EVERY text chunk as it arrives when ``show_intermediate``
-            is ``True``, enabling real-time streaming to adapters (1 s debounce).
-            ``ToolSummaryRenderEvent`` mid-turn (throttled) and at turn end
-            (unconditional), followed by ``TextRenderEvent(is_final=True)`` at
-            turn end (using the full ``_total_text`` accumulator).
+            ``ToolCallStartRenderEvent`` / ``ToolCallArgsRenderEvent`` /
+            ``ToolCallEndRenderEvent`` are emitted for tool-call lifecycle.
+            ``RunStartedRenderEvent`` opens the turn; ``RunFinishedRenderEvent``
+            closes it.
         """
         self._mark_consumed()
         run_id = TraceContext.get_trace_id() or f"synthetic-{TraceContext.generate()}"
@@ -257,13 +245,6 @@ class StreamProcessor:
                         message_id=self._open_text_block_id,
                         delta=event.text,
                     )
-                    # ───── existing v1 emission (unchanged) ─────
-                    # Stream each chunk progressively so adapters can
-                    # edit the placeholder in real time (1 s debounce).
-                    # Gated by show_intermediate so show_intermediate=False
-                    # preserves the legacy hold-until-result behaviour.
-                    if self._show_intermediate:
-                        yield TextRenderEvent(text=event.text, is_final=False)
 
                 elif isinstance(event, ToolUseLlmEvent):
                     # ───── Slice 4 (#1101) reasoning-close guard ─────
@@ -316,28 +297,6 @@ class StreamProcessor:
                     # partial tool call). Loud WARN log per orphan.
                     for orphan_event in self._synth_orphan_tool_ends():
                         yield orphan_event
-                    if self._has_any_tool_events():
-                        yield self._emit_snapshot(is_complete=True)
-                    # On error with no streamed text, surface the structured WorkerError
-                    # message (P1 path) or the legacy error_text shim (P2 transitional).
-                    if event.is_error and not self._total_text:
-                        we = _extract_worker_error(event)
-                        if we is not None:
-                            meta = KNOWN_CODES.get(we.code)
-                            domain = meta.domain if meta else we.code.split(".")[0]
-                            emit_received_total(code=we.code, domain=domain)
-                            error_text = we.message
-                        else:
-                            # P2 transitional: fall back to legacy error_text shim.
-                            error_text = event.error_text or ""
-                        final_text = error_text
-                    else:
-                        final_text = self._total_text
-                    yield TextRenderEvent(
-                        text=final_text,
-                        is_final=True,
-                        is_error=event.is_error,  # #392: propagate error state
-                    )
 
                 elif isinstance(event, ThinkingLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
                     # ───── Slice 4 (#1101) reasoning block emission ─────
@@ -359,10 +318,6 @@ class StreamProcessor:
                         message_id=self._open_reasoning_block_id,
                         delta=event.text,
                     )
-                    # SC-7 / χ-1 dual-emit: yield v1 TextRenderEvent(is_final=False)
-                    # alongside ReasoningDelta for rolling-deploy safety with
-                    # non-migrated adapters (spec line 261). Sunsets in Slice 5 (#1102).
-                    yield TextRenderEvent(text=event.text, is_final=False)
 
                 else:
                     # Cross-slice invariant 3: no silent event drop. When the
@@ -389,21 +344,6 @@ class StreamProcessor:
                 if self._open_text_block_id is not None:
                     yield TextEndRenderEvent(message_id=self._open_text_block_id)
                     self._open_text_block_id = None
-                if self._has_any_tool_events():
-                    yield self._emit_snapshot(is_complete=True)
-                if self._total_text:
-                    yield TextRenderEvent(text=self._total_text, is_final=False)
-                elif not self._has_any_tool_events():
-                    # No text, no tools, no result — backend died before producing
-                    # anything (e.g. auth failure, crash).  Emit an error event so
-                    # the adapter replaces the "…" placeholder instead of leaving
-                    # it stuck forever.
-                    _upstream_error = getattr(events, "error", None)
-                    yield TextRenderEvent(
-                        text=str(_upstream_error) if _upstream_error else "",
-                        is_final=True,
-                        is_error=True,
-                    )
         except Exception as exc:
             # Slice 1 (#1098): infrastructure-level exception during stream
             # processing. Surface a RunErrorRenderEvent then re-raise so the
@@ -450,9 +390,8 @@ class StreamProcessor:
         emission of ``ToolUseLlmEvent`` (streaming + post-hoc paths), so this
         handler sees each ``tool_id`` exactly once.
 
-        Flushes pending text as an intermediate event when ``show_intermediate``
-        is enabled, then accumulates the tool call (v1 ``ToolSummaryRenderEvent``
-        dual-emit, kept until Slice 5).
+        Flushes pending text state when ``show_intermediate`` is enabled,
+        then accumulates the tool call into internal accumulators.
         """
         self._open_tool_call_ids.add(event.tool_id)
         self._tool_id_to_name[event.tool_id] = event.tool_name
@@ -460,26 +399,10 @@ class StreamProcessor:
             tool_call_id=event.tool_id, tool_name=event.tool_name
         )
 
-        # Flush any text accumulated before this tool call so adapters
-        # can show inter-tool text progressively (show_intermediate gate).
-        flushed_intermediate = False
-        if self._show_intermediate and self._pending_text:
-            # Text was already streamed chunk-by-chunk in process(); just
-            # clear the per-segment buffer and mark as flushed so the
-            # immediate tool snapshot is suppressed (avoids overwriting
-            # the streamed text with the tool card before the user sees it).
+        # Clear per-segment pending text buffer on each tool event.
+        if self._show_intermediate:
             self._pending_text = ""
-            flushed_intermediate = True
         self._accumulate(event)
-        # Skip the immediate tool snapshot when we just flushed intermediate text —
-        # emitting both back-to-back causes adapters to overwrite the text with the
-        # tool card before the user can see it.
-        if (
-            not flushed_intermediate
-            and self._should_emit()
-            and self._has_any_tool_events()
-        ):
-            yield self._emit_snapshot()
 
     def _close_reasoning_if_open(self) -> Iterator[ReasoningEndRenderEvent]:
         """Yield ``ReasoningEndRenderEvent`` and clear state if a block is open.
@@ -585,34 +508,6 @@ class StreamProcessor:
                 self._agent_calls.append(event.input.get("description", "agent"))
 
         # anything else with show.get(key, False) == False → ignored
-
-    def _should_emit(self) -> bool:
-        """Return True when the throttle window has elapsed (or never fired)."""
-        if self._last_tool_emit is None:
-            return True
-        elapsed = time.monotonic() - self._last_tool_emit
-        return elapsed >= self._config.throttle_ms / 1000
-
-    def _emit_snapshot(self, *, is_complete: bool = False) -> ToolSummaryRenderEvent:
-        """Emit a ``ToolSummaryRenderEvent`` from a safe copy of all accumulators.
-
-        Side-effect: updates ``_last_tool_emit`` to ``time.monotonic()``.
-        """
-        files_copy = {path: entry.snapshot() for path, entry in self._files.items()}
-        event = ToolSummaryRenderEvent(
-            files=files_copy,
-            bash_commands=list(self._bash),
-            web_fetches=list(self._web_fetches),
-            agent_calls=list(self._agent_calls),
-            silent_counts=SilentCounts(
-                reads=self._silent_reads,
-                greps=self._silent_greps,
-                globs=self._silent_globs,
-            ),
-            is_complete=is_complete,
-        )
-        self._last_tool_emit = time.monotonic()
-        return event
 
     def _has_any_tool_events(self) -> bool:
         """Return True when at least one tool accumulator is non-empty."""

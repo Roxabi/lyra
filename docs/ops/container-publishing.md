@@ -211,6 +211,40 @@ pruned, so the restart is immediate with no pull required. Confirm with
 
 ---
 
+## Schema-floor releases
+
+When `SCHEMA_VERSION_RENDER` (or any contract schema floor constant) is bumped, hub and adapter
+container images must be released and deployed **together**. They speak the same wire protocol; a
+rolling deploy where the hub is upgraded before the adapters (or vice versa) produces loud ERROR
+logs on still-old receivers and may drop events silently.
+
+**Affected units for a render-event schema bump:**
+
+| Unit | Image |
+|---|---|
+| `lyra-hub` | `ghcr.io/roxabi/lyra:<tag>` |
+| `lyra-telegram` | `ghcr.io/roxabi/lyra:<tag>` |
+| `lyra-discord` | `ghcr.io/roxabi/lyra:<tag>` |
+| `lyra-clipool` | `ghcr.io/roxabi/lyra:<tag>` |
+
+All four share the same image; a single CI push to `staging` produces one `:staging` digest that
+all units pull. For semver releases, cut the `lyra/<component>/vX.Y.Z` tag once and coordinate
+the Quadlet `Image=` pin update across all four `.container` files before `daemon-reload`.
+
+**Release procedure for a schema-floor bump:**
+
+1. Merge the schema-bump PR to `staging` — CI publishes `ghcr.io/roxabi/lyra:staging`.
+2. On M₁, verify `podman auto-update --dry-run` shows all four lyra units pending.
+3. Run `podman auto-update` (or wait for the 5-minute timer) — all four units restart
+   atomically from the same new digest.
+4. Confirm with `systemctl --user is-active lyra-hub lyra-telegram lyra-discord lyra-clipool`
+   and `curl -fsS localhost:8443/health`.
+
+For production semver releases, pin all four units to the same `X.Y.Z` tag simultaneously.
+Never leave hub and adapters pinned to different semver tags across a schema-floor boundary.
+
+---
+
 ## Cross-repo adoption checklist
 
 Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt this pattern:

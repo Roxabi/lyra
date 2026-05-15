@@ -1,15 +1,24 @@
 ---
 title: "ADR-032: LlmEvent → StreamProcessor → RenderEvent — Hexagonal Streaming Pipeline"
 description: Replace AsyncIterator[str] end-to-end with a typed event hierarchy (LlmEvent → RenderEvent) and a domain-layer StreamProcessor, closing the six architectural gaps that block real-time tool-call visibility.
-superseded_by: "ADR-070 (partial — SDK streaming content; hexagonal pipeline contract remains in force)"
-status: amended
+superseded_by: "ADR-070 (partial — SDK streaming content; hexagonal pipeline contract remains in force), ADR-072 (v1 RenderEvent wire shape)"
+status: superseded
 ---
 
 > **Current truth** → [`docs/architecture/llm-streaming.md`](../llm-streaming.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
 
 
-> **Superseded by #666.** `AnthropicSdkDriver` and the `anthropic-sdk` backend have been removed; Lyra is CLI-only. Historical content below is preserved for context.
+> **Superseded by ADR-072 (codec-registry-pattern) for the v1 RenderEvent wire shape.**
+> `TextRenderEvent` and `ToolSummaryRenderEvent` (v1) have been removed. The NATS codec
+> registry (`src/lyra/nats/render_event_codec.py`) now holds only v2 events: the text triplet
+> (`TextStartRenderEvent` / `TextDeltaRenderEvent` / `TextEndRenderEvent`) plus
+> `TextChunkRenderEvent` and ToolCall lifecycle events. See
+> [`ADR-072`](072-codec-registry-pattern.mdx) for the registry pattern that replaces the
+> v1 if-elif decode chain. The hexagonal pipeline contract (`LlmEvent → StreamProcessor →
+> RenderEvent`) introduced here remains normative.
+>
+> **Also superseded by #666.** `AnthropicSdkDriver` and the `anthropic-sdk` backend have been removed; Lyra is CLI-only. Historical content below is preserved for context.
 
 ## Status
 

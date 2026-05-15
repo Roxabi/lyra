@@ -26,7 +26,6 @@ from lyra.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
-    ToolSummaryRenderEvent,
 )
 
 if TYPE_CHECKING:
@@ -160,15 +159,6 @@ async def send(
         adapter._cancel_typing(chat_id)
 
 
-def _format_tool_summary(event: ToolSummaryRenderEvent) -> str:
-    """Format a ToolSummaryRenderEvent as human-readable Telegram text."""
-    from lyra.core.messaging.tool_recap_format import format_tool_lines
-
-    header = "🔧 Done ✅" if event.is_complete else "🔧 Working…"
-    body = "\n".join(format_tool_lines(event))
-    return f"{header}\n{body}".strip() if body else header
-
-
 def _dim_italic(text: str) -> str:
     """Wrap *text* in Markdown italic for Telegram (via _render_text → MarkdownV2).
 
@@ -250,24 +240,10 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         )
         return msg, msg.message_id
 
-    async def _edit_trace(trace_obj: Any, event: ToolSummaryRenderEvent) -> None:
-        from lyra.adapters.shared._shared import format_tool_summary_header
-        from lyra.core.messaging.tool_recap_format import format_tool_lines
-
-        header = format_tool_summary_header(event)
-        body = "\n".join(format_tool_lines(event))
-        text = f"{header}\n{body}".strip() if body else header
-        rendered = _render_text(text)
-        if rendered:
-            try:
-                await adapter.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=trace_obj.message_id,
-                    text=rendered[0],
-                    parse_mode="MarkdownV2",
-                )
-            except TelegramAPIError as exc:
-                log.debug("Trace edit skipped: %s", exc)
+    async def _edit_trace(trace_obj: Any, event: Any) -> None:
+        # v1 ToolSummaryRenderEvent removed in Slice 5 (#1192).
+        # edit_trace is a no-op; trace placeholder used only for reasoning.
+        pass
 
     async def _send_message(text: str) -> int | None:
         rendered = _render_text(text)

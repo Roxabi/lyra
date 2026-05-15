@@ -29,13 +29,11 @@ from lyra.core.messaging import (
     TextChunkRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
-    TextRenderEvent,
     TextStartRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
-    ToolSummaryRenderEvent,
 )
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
 
@@ -63,7 +61,7 @@ class PlatformCallbacks:
     send_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
     edit_placeholder_text: Callable[[Any, str], Awaitable[None]]
     send_trace_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
-    edit_trace: Callable[[Any, ToolSummaryRenderEvent], Awaitable[None]]
+    edit_trace: Callable[[Any, Any], Awaitable[None]]
     send_message: Callable[[str], Awaitable[int | None]]
     send_fallback: Callable[[str], Awaitable[int | None]]
     chunk_text: Callable[[str], list[str]]
@@ -125,19 +123,8 @@ class StreamingSession:
     ) -> None:
         """v2 ToolCall* dispatch sink. Slice 3 (#1100) introduced this.
 
-        Default no-op — parity is preserved by the v1 ``ToolSummaryRenderEvent``
-        dual-emit path. **This seam is currently unreachable from concrete
-        adapters.** ``OutboundAdapterBase.send_streaming()`` constructs a plain
-        ``StreamingSession``; Telegram/Discord inherit from ``OutboundAdapterBase``,
-        not ``StreamingSession``, so subclass overrides have no effect. Today this
-        method's only purpose is to silence ``assert_never`` once Slice 3 widened
-        the union.
-
-        DEBT(#1102): Slice 5 either (a) moves dispatch onto ``PlatformCallbacks``
-        so adapters can inject behavior without subclassing, or (b) makes
-        ``send_streaming`` instantiate a per-adapter ``StreamingSession`` subclass.
-        Discord's opt-in inline args streaming
-        (``LYRA_DISCORD_TOOLCALL_STREAM_ARGS``) is reserved for that wiring.
+        Default no-op — ToolCall* events are absorbed; no UX action taken.
+        Platform subclasses may override to render richer tool activity.
         """
         return None
 
@@ -147,19 +134,38 @@ class StreamingSession:
         | TextDeltaRenderEvent
         | TextEndRenderEvent
         | TextChunkRenderEvent,
+        placeholder_obj: Any = None,
     ) -> None:
-        """v2 Text* dispatch sink. Slice 2 (#1099) introduced this.
+        """v2 Text* dispatch — drives streaming edit-in-place (post-Slice-5 / #1192).
 
-        Default no-op — parity preserved by the v1 ``TextRenderEvent`` dual-emit
-        path that drives existing edit-in-place UX. **This seam is currently
-        unreachable from concrete adapters** (same structural gap as
-        ``_on_toolcall_v2`` — see that method's docstring for details).
-
-        DEBT(#1102): Slice 5 removes v1 emission AND wires v2 dispatch through
-        ``PlatformCallbacks`` (or per-adapter ``StreamingSession`` subclassing).
-        Until then, overriding this method in a concrete adapter has no effect.
+        ``TextDeltaRenderEvent`` deltas accumulate in ``_st.istate`` and trigger
+        debounced placeholder edits. ``TextEndRenderEvent`` captures the
+        accumulated text as the final text (no separate TextRenderEvent in v2).
+        ``TextStartRenderEvent`` and ``TextChunkRenderEvent`` are no-ops here.
         """
-        return None
+        if isinstance(event, TextDeltaRenderEvent):
+            self._st.istate.append(event.delta)
+            if placeholder_obj is not None:
+                now = time.monotonic()
+                if (
+                    self._st.last_intermediate_edit is None
+                    or (now - self._st.last_intermediate_edit)
+                    >= STREAMING_EDIT_INTERVAL
+                ):
+                    try:
+                        await self._cb.edit_placeholder_text(
+                            placeholder_obj, self._st.istate.display()
+                        )
+                    except Exception as edit_exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+                        log.debug("Intermediate text edit skipped: %s", edit_exc)
+                    self._st.last_intermediate_edit = now
+        elif isinstance(event, TextEndRenderEvent):
+            # TextEnd closes the text block; accumulated istate text is the final text.
+            if self._st.istate.text:
+                final = self._st.istate.text
+                if final.startswith("⏳ "):
+                    final = final[2:]
+                self._st.set_final_text(final)
 
     async def _send_placeholder(self) -> tuple[Any, int | None] | None:
         """Send the placeholder and record reply_message_id on outbound.
@@ -182,11 +188,8 @@ class StreamingSession:
         """Drain remaining events, accumulate text, send via fallback callback."""
         parts: list[str] = []
         async for event in events:
-            # v2 preferred (delta), v1 fallback (text). Slice 5 (#1102) drops v1.
             if isinstance(event, TextDeltaRenderEvent):
                 parts.append(event.delta)
-            elif isinstance(event, TextRenderEvent):
-                parts.append(event.text)
         fallback_text = "".join(parts) or self._cb.placeholder_text
         try:
             fallback_message_id = await self._cb.send_fallback(fallback_text)
@@ -222,13 +225,9 @@ class StreamingSession:
                     | ToolCallEndRenderEvent
                     | ToolCallResultRenderEvent,
                 ):
-                    # Slice 3 (#1100): ToolCall* lifecycle events. v1
-                    # ``ToolSummaryRenderEvent`` is dual-emitted alongside, so
-                    # the existing summary-card UX still drives the placeholder
-                    # edits below. Per-platform overrides hook
-                    # ``_on_toolcall_v2`` to render richer once they migrate
-                    # off v1 ToolSummary in Slice 5 (#1102). Default is
-                    # no-op (parity).
+                    # Slice 3 (#1100) / Slice 5 (#1192): ToolCall* lifecycle
+                    # events. v1 ToolSummaryRenderEvent removed; platform
+                    # subclasses override _on_toolcall_v2 for richer rendering.
                     await self._on_toolcall_v2(event)
                     continue
 
@@ -239,63 +238,18 @@ class StreamingSession:
                     | TextEndRenderEvent
                     | TextChunkRenderEvent,
                 ):
-                    await self._on_text_v2(event)
+                    await self._on_text_v2(event, placeholder_obj)
                     continue
 
-                if isinstance(event, ToolSummaryRenderEvent):
-                    self._st.had_tool_events = True
-                    # Lazily send trace placeholder on first tool event
-                    if self._trace_obj is None:
-                        try:
-                            self._trace_obj, _ = await self._cb.send_trace_placeholder()
-                        except Exception:
-                            log.exception(
-                                "Failed to send trace placeholder"
-                                " — tool activity will not be shown"
-                            )
-                    if self._trace_obj is not None:
-                        now = time.monotonic()
-                        if (
-                            event.is_complete
-                            or self._st.last_tool_edit is None
-                            or (now - self._st.last_tool_edit)
-                            >= STREAMING_EDIT_INTERVAL
-                        ):
-                            try:
-                                await self._cb.edit_trace(self._trace_obj, event)
-                            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
-                                log.debug("Trace edit skipped: %s", exc)
-                            self._st.last_tool_edit = now
-
-                elif isinstance(event, TextRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
-                    if event.is_final:
-                        self._st.on_final_text(event)
-                    else:
-                        self._st.istate.append(event.text)
-                        now = time.monotonic()
-                        if (
-                            self._st.last_intermediate_edit is None
-                            or (now - self._st.last_intermediate_edit)
-                            >= STREAMING_EDIT_INTERVAL
-                        ):
-                            try:
-                                await self._cb.edit_placeholder_text(
-                                    placeholder_obj, self._st.istate.display()
-                                )
-                            except Exception as edit_exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# streaming edit: any send failure is non-fatal
-                                log.debug(
-                                    "Intermediate text edit skipped: %s", edit_exc
-                                )
-                            self._st.last_intermediate_edit = now
-                elif isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
+                if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
                     event,
                     ReasoningStartRenderEvent
                     | ReasoningDeltaRenderEvent
                     | ReasoningEndRenderEvent,
                 ):
                     # Slice 4 (#1101): typed reasoning events. Routed through
-                    # PlatformCallbacks.edit_reasoning (see T9.5). Default callback
-                    # is no-op; adapters override via OutboundAdapterBase.
+                    # PlatformCallbacks.edit_reasoning (see T9.5). Default
+                    # callback is no-op; adapters override via OutboundAdapterBase.
                     await self._cb.edit_reasoning(self._trace_obj, event)
                     continue
                 else:

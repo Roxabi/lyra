@@ -39,9 +39,7 @@ if TYPE_CHECKING:
 
 # ── pre-flight: check socat / BSD nc -U ───────────────────────────────────────
 
-_SOCAT = subprocess.run(
-    ["which", "socat"], capture_output=True
-).returncode == 0
+_SOCAT = subprocess.run(["which", "socat"], capture_output=True).returncode == 0
 
 _BSD_NC = (
     subprocess.run(["which", "nc"], capture_output=True).returncode == 0
@@ -57,16 +55,14 @@ _SKIP_NO_TRANSPORT = pytest.mark.skipif(
 
 # ── paths to the shell scripts ────────────────────────────────────────────────
 
-_TOOLS_DIR = (
-    Path(__file__).parent.parent.parent
-    / "src" / "lyra" / "tools" / "gh_token"
-)
+_TOOLS_DIR = Path(__file__).parent.parent.parent / "src" / "lyra" / "tools" / "gh_token"
 
 _GIT_CREDENTIAL_SCRIPT = _TOOLS_DIR / "git-credential-lyra-gh"
 _LYRA_GH_SCRIPT = _TOOLS_DIR / "lyra-gh"
 
 
 # ── mock dispenser fixture ─────────────────────────────────────────────────────
+
 
 @pytest.fixture()
 async def mock_dispenser(tmp_path: Path) -> "AsyncIterator[Path]":
@@ -84,9 +80,7 @@ async def mock_dispenser(tmp_path: Path) -> "AsyncIterator[Path]":
     ) -> None:
         try:
             await reader.readline()  # consume the request line (get / peek)
-            writer.write(
-                b"username=x-access-token\npassword=ghs_test_token\n\n"
-            )
+            writer.write(b"username=x-access-token\npassword=ghs_test_token\n\n")
             try:
                 await writer.drain()
             except (ConnectionResetError, BrokenPipeError):
@@ -115,6 +109,7 @@ async def mock_dispenser(tmp_path: Path) -> "AsyncIterator[Path]":
 
 # ── gh stub binary fixture ────────────────────────────────────────────────────
 
+
 @pytest.fixture()
 def gh_stub_bin(tmp_path: Path) -> Path:
     """Write a minimal POSIX-sh stub that echoes argv and GH_TOKEN, then exits 0."""
@@ -131,6 +126,7 @@ def gh_stub_bin(tmp_path: Path) -> Path:
 
 
 # ── helper: build a clean env dict ────────────────────────────────────────────
+
 
 def _base_env(**overrides: str) -> dict[str, str]:
     """Return os.environ copy with given keys overridden/added."""
@@ -167,6 +163,7 @@ async def _run_subprocess_in_thread(
 # A — git-credential-lyra-gh get emits credential lines
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @_SKIP_NO_TRANSPORT
 @pytest.mark.asyncio
 async def test_git_credential_lyra_gh_get_emits_credential_lines(
@@ -178,7 +175,8 @@ async def test_git_credential_lyra_gh_get_emits_credential_lines(
 
     # Act — offload to thread so the event loop remains free to serve the socket
     result = await _run_subprocess_in_thread(
-        str(_GIT_CREDENTIAL_SCRIPT), "get",
+        str(_GIT_CREDENTIAL_SCRIPT),
+        "get",
         input=b"protocol=https\nhost=github.com\n\n",
         env=env,
     )
@@ -195,6 +193,7 @@ async def test_git_credential_lyra_gh_get_emits_credential_lines(
 # ═══════════════════════════════════════════════════════════════════════════════
 # B — store is a no-op
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @_SKIP_NO_TRANSPORT
 def test_git_credential_lyra_gh_store_is_noop() -> None:
@@ -219,6 +218,7 @@ def test_git_credential_lyra_gh_store_is_noop() -> None:
 # C — erase is a no-op
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @_SKIP_NO_TRANSPORT
 def test_git_credential_lyra_gh_erase_is_noop() -> None:
     """erase action: exits 0 with no output (tokens are minted on demand)."""
@@ -241,6 +241,7 @@ def test_git_credential_lyra_gh_erase_is_noop() -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 # D — unknown action errors
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @_SKIP_NO_TRANSPORT
 def test_git_credential_lyra_gh_unknown_action_errors() -> None:
@@ -265,6 +266,7 @@ def test_git_credential_lyra_gh_unknown_action_errors() -> None:
 # E — lyra-gh passes token to child via GH_TOKEN env
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @_SKIP_NO_TRANSPORT
 @pytest.mark.asyncio
 async def test_lyra_gh_shim_exec_passes_token_to_child(
@@ -280,14 +282,13 @@ async def test_lyra_gh_shim_exec_passes_token_to_child(
 
     # Act — offload to thread so the event loop remains free to serve the socket
     result = await _run_subprocess_in_thread(
-        str(_LYRA_GH_SCRIPT), "--version",
+        str(_LYRA_GH_SCRIPT),
+        "--version",
         env=env,
     )
 
     # Assert
-    assert result.returncode == 0, (
-        f"expected exit 0; stderr={result.stderr!r}"
-    )
+    assert result.returncode == 0, f"expected exit 0; stderr={result.stderr!r}"
     stdout = result.stdout.decode()
     stderr = result.stderr.decode()
     assert "stub-gh: argv=--version" in stdout, (
@@ -301,6 +302,7 @@ async def test_lyra_gh_shim_exec_passes_token_to_child(
 # ═══════════════════════════════════════════════════════════════════════════════
 # F — lyra-gh does not leak token to parent process
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @_SKIP_NO_TRANSPORT
 @pytest.mark.asyncio
@@ -318,7 +320,8 @@ async def test_lyra_gh_shim_does_not_leak_token_to_parent(
 
     # Act — offload to thread so the event loop remains free to serve the socket
     await _run_subprocess_in_thread(
-        str(_LYRA_GH_SCRIPT), "--version",
+        str(_LYRA_GH_SCRIPT),
+        "--version",
         env=env,
     )
 
@@ -332,6 +335,7 @@ async def test_lyra_gh_shim_does_not_leak_token_to_parent(
 # ═══════════════════════════════════════════════════════════════════════════════
 # G — lyra-gh fails when dispenser is unreachable
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @_SKIP_NO_TRANSPORT
 def test_lyra_gh_shim_fails_when_dispenser_unreachable(
@@ -365,6 +369,7 @@ def test_lyra_gh_shim_fails_when_dispenser_unreachable(
 # H (optional) — lyra-gh fails when gh binary is missing
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @_SKIP_NO_TRANSPORT
 @pytest.mark.asyncio
 async def test_lyra_gh_shim_fails_when_gh_bin_missing(
@@ -379,7 +384,8 @@ async def test_lyra_gh_shim_fails_when_gh_bin_missing(
 
     # Act — offload to thread so the event loop remains free to serve the socket
     result = await _run_subprocess_in_thread(
-        str(_LYRA_GH_SCRIPT), "--version",
+        str(_LYRA_GH_SCRIPT),
+        "--version",
         env=env,
     )
 

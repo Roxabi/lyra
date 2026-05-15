@@ -83,9 +83,7 @@ def test_audit_exits_zero_with_stale_debt_reference(tmp_path: Path) -> None:
     RED: current audit returns 1 whenever stale_src > 0.
     """
     # Arrange
-    _make_src_py(
-        tmp_path, "src/a.py", "x = 1  # noqa: BLE001 -- DEBT:does-not-exist\n"
-    )
+    _make_src_py(tmp_path, "src/a.py", "x = 1  # noqa: BLE001 -- DEBT:does-not-exist\n")
     out = tmp_path / "report.json"
 
     # Act
@@ -146,9 +144,7 @@ def test_audit_never_emits_policy_bucket(tmp_path: Path) -> None:
     After GREEN: POLICY branch is gone; the line becomes UNTAGGED.
     """
     # Arrange — old-style POLICY annotation
-    _make_src_py(
-        tmp_path, "src/a.py", "x = 1  # noqa: BLE001 -- POLICY:boundary\n"
-    )
+    _make_src_py(tmp_path, "src/a.py", "x = 1  # noqa: BLE001 -- POLICY:boundary\n")
     out = tmp_path / "report.json"
 
     # Act
@@ -204,9 +200,7 @@ def test_audit_emits_warnings_on_stderr_for_stale_refs(
     After GREEN: audit prints to stderr containing the slug or "stale"/"missing".
     """
     # Arrange
-    _make_src_py(
-        tmp_path, "src/a.py", "x = 1  # noqa: C901 -- DEBT:ghost-slug\n"
-    )
+    _make_src_py(tmp_path, "src/a.py", "x = 1  # noqa: C901 -- DEBT:ghost-slug\n")
     out = tmp_path / "report.json"
 
     # Act

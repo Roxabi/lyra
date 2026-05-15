@@ -17,7 +17,6 @@ from lyra.adapters.discord.discord_formatting import (
 )
 from lyra.adapters.shared._shared import (
     DISCORD_MAX_LENGTH,
-    format_tool_summary_header,
 )
 from lyra.adapters.shared._shared_streaming_state import STREAMING_EDIT_INTERVAL
 from lyra.core.messaging.message import (
@@ -28,7 +27,6 @@ from lyra.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
-    ToolSummaryRenderEvent,
 )
 
 if TYPE_CHECKING:
@@ -162,16 +160,6 @@ async def send(  # noqa: C901 — DEBT:adapter-dispatch-complexity
     )
 
 
-def _build_tool_embed(event: ToolSummaryRenderEvent) -> "discord.Embed":
-    """Build a Discord embed from a ToolSummaryRenderEvent."""
-    from lyra.core.messaging.tool_recap_format import format_tool_lines
-
-    title = format_tool_summary_header(event)
-    color = discord.Color.green() if event.is_complete else discord.Color.blue()
-    description = "\n".join(format_tool_lines(event)) or "\u200b"
-    return discord.Embed(title=title, description=description, color=color)
-
-
 def _dim_italic(text: str) -> str:
     """Wrap *text* in Markdown italic for Discord.
 
@@ -254,12 +242,10 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         msg = await messageable.send("🔧 …")
         return msg, msg.id
 
-    async def _edit_trace(trace_obj: Any, event: ToolSummaryRenderEvent) -> None:
-        embed = _build_tool_embed(event)
-        await send_with_retry(
-            lambda e=embed: trace_obj.edit(content=None, embed=e),
-            label="Trace embed edit",
-        )
+    async def _edit_trace(trace_obj: Any, event: Any) -> None:
+        # v1 ToolSummaryRenderEvent removed in Slice 5 (#1192).
+        # edit_trace is a no-op; trace placeholder used only for reasoning.
+        pass
 
     async def _send_message(text: str) -> int | None:
         messageable = await adapter._resolve_channel(send_to_id)

@@ -21,7 +21,6 @@ from lyra.core.messaging.message import (  # noqa: F401
     OutboundMessage,
     TelegramMeta,
 )
-from lyra.core.messaging.render_events import ToolSummaryRenderEvent
 from tests.adapters.conftest import _make_telegram_adapter, _make_telegram_message
 
 # ---------------------------------------------------------------------------
@@ -435,29 +434,6 @@ async def test_streaming_edit_placeholder_text_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_streaming_edit_trace() -> None:
-    """edit_trace closure formats tool summary + calls edit_message_text."""
-    from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
-
-    adapter = _make_telegram_adapter()
-    adapter.bot = AsyncMock()
-    adapter.bot.edit_message_text = AsyncMock()
-
-    original_msg = _make_telegram_message()
-    outbound = OutboundMessage.from_text("")
-
-    callbacks = build_streaming_callbacks(adapter, original_msg, outbound)
-    trace_obj = SimpleNamespace(message_id=7)
-    event = ToolSummaryRenderEvent(bash_commands=["ls"], is_complete=True)
-
-    # Act
-    await callbacks.edit_trace(trace_obj, event)
-
-    # Assert
-    adapter.bot.edit_message_text.assert_awaited_once()
-
-
-@pytest.mark.asyncio
 async def test_streaming_send_message() -> None:
     """send_message closure renders chunks and sends each, returning last message_id.
     Covers L235-244.
@@ -537,34 +513,6 @@ async def test_streaming_send_fallback_empty_text() -> None:
 # ---------------------------------------------------------------------------
 # Slice 2 — Tool summary + send edges (T4)
 # ---------------------------------------------------------------------------
-
-
-def test_format_tool_summary_complete() -> None:
-    """_format_tool_summary with is_complete=True returns 'Done' and checkmark.
-    Covers L154-158.
-    """
-    from lyra.adapters.telegram.telegram_outbound import _format_tool_summary
-
-    event = ToolSummaryRenderEvent(is_complete=True)
-
-    result = _format_tool_summary(event)
-
-    assert "Done" in result
-    assert "✅" in result  # ✅
-
-
-def test_format_tool_summary_incomplete() -> None:
-    """_format_tool_summary with is_complete=False returns header with 'Working'.
-
-    Covers L154-158.
-    """
-    from lyra.adapters.telegram.telegram_outbound import _format_tool_summary
-
-    event = ToolSummaryRenderEvent(is_complete=False)
-
-    result = _format_tool_summary(event)
-
-    assert "Working" in result
 
 
 @pytest.mark.asyncio

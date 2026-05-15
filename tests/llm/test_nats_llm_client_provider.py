@@ -139,6 +139,7 @@ class TestProtocolShape:
         assert client.is_alive("any-pool") is False
         # complete() must be an awaitable coroutine, not a sync attribute
         import inspect as _inspect
+
         assert _inspect.iscoroutinefunction(client.complete)
         # stream() must be an async function returning AsyncIterator
         assert _inspect.iscoroutinefunction(client.stream)

@@ -8,7 +8,6 @@ from __future__ import annotations
 import dataclasses
 import typing
 from dataclasses import FrozenInstanceError
-from typing import Any
 
 import pytest
 
@@ -16,8 +15,6 @@ from lyra.core.messaging.render_events import (
     FileEditSummary,
     RenderEvent,
     SilentCounts,
-    TextRenderEvent,
-    ToolSummaryRenderEvent,
 )
 
 # ---------------------------------------------------------------------------
@@ -109,113 +106,11 @@ class TestFileEditSummary:
 
 
 # ---------------------------------------------------------------------------
-# TextRenderEvent
-# ---------------------------------------------------------------------------
-
-
-class TestTextRenderEvent:
-    def test_construction(self) -> None:
-        e = TextRenderEvent(text="hello", is_final=True)
-        assert e.text == "hello"
-        assert e.is_final is True
-
-    def test_is_final_is_required(self) -> None:
-        """is_final has no default — callers must be explicit about finality."""
-        kwargs: dict[str, Any] = {"text": "partial"}
-        with pytest.raises(TypeError):
-            TextRenderEvent(**kwargs)  # missing is_final
-
-    def test_frozen(self) -> None:
-        e = TextRenderEvent(text="x", is_final=True)
-        with pytest.raises((AttributeError, TypeError)):
-            setattr(e, "text", "y")
-
-    def test_equality(self) -> None:
-        a = TextRenderEvent(text="hi", is_final=True)
-        b = TextRenderEvent(text="hi", is_final=True)
-        assert a == b
-        assert a != TextRenderEvent(text="hi", is_final=False)
-
-    def test_is_render_event(self) -> None:
-        """TextRenderEvent is a member of the RenderEvent union discriminator."""
-        e = TextRenderEvent(text="hi", is_final=True)
-        assert isinstance(e, (TextRenderEvent, ToolSummaryRenderEvent))
-
-
-# ---------------------------------------------------------------------------
-# ToolSummaryRenderEvent
-# ---------------------------------------------------------------------------
-
-
-class TestToolSummaryRenderEvent:
-    def test_defaults(self) -> None:
-        e = ToolSummaryRenderEvent()
-        assert e.files == {}
-        assert e.bash_commands == []
-        assert e.web_fetches == []
-        assert e.agent_calls == []
-        assert e.silent_counts == SilentCounts()
-        assert e.is_complete is False
-
-    def test_construction_full(self) -> None:
-        sc = SilentCounts(reads=2)
-        summary = FileEditSummary(path="a.py", edits=["fn"], count=1)
-        e = ToolSummaryRenderEvent(
-            files={"a.py": summary},
-            bash_commands=["uv run pytest"],
-            web_fetches=["example.com"],
-            agent_calls=["sub-agent"],
-            silent_counts=sc,
-            is_complete=True,
-        )
-        assert e.files == {"a.py": summary}
-        assert e.bash_commands == ["uv run pytest"]
-        assert e.web_fetches == ["example.com"]
-        assert e.agent_calls == ["sub-agent"]
-        assert e.silent_counts == sc
-        assert e.is_complete is True
-
-    def test_independent_defaults(self) -> None:
-        a = ToolSummaryRenderEvent()
-        b = ToolSummaryRenderEvent()
-        assert a.files is not b.files
-        assert a.bash_commands is not b.bash_commands
-        assert a.web_fetches is not b.web_fetches
-        assert a.agent_calls is not b.agent_calls
-        assert a.silent_counts is not b.silent_counts
-
-    def test_frozen(self) -> None:
-        e = ToolSummaryRenderEvent()
-        with pytest.raises((AttributeError, TypeError)):
-            setattr(e, "is_complete", True)
-
-    def test_equality(self) -> None:
-        a = ToolSummaryRenderEvent(bash_commands=["ls"])
-        b = ToolSummaryRenderEvent(bash_commands=["ls"])
-        assert a == b
-        assert a != ToolSummaryRenderEvent(bash_commands=["pwd"])
-
-    def test_is_not_hashable(self) -> None:
-        """ToolSummaryRenderEvent is NOT hashable — contains mutable containers."""
-        e = ToolSummaryRenderEvent()
-        with pytest.raises(TypeError):
-            hash(e)
-
-
-# ---------------------------------------------------------------------------
 # RenderEvent union
 # ---------------------------------------------------------------------------
 
 
 class TestRenderEventUnion:
-    def test_text_is_union_member(self) -> None:
-        e: RenderEvent = TextRenderEvent(text="hi", is_final=True)
-        assert isinstance(e, TextRenderEvent)
-
-    def test_tool_summary_is_union_member(self) -> None:
-        e: RenderEvent = ToolSummaryRenderEvent()
-        assert isinstance(e, ToolSummaryRenderEvent)
-
     def test_union_exported_from_module(self) -> None:
         from lyra.core.messaging.render_events import (
             RenderEvent as _RenderEvent,  # noqa: F401

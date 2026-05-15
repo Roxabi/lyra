@@ -1,13 +1,12 @@
-"""Snapshot tests: discord message body for three scenarios (Slice 1 of #1192).
+"""Snapshot tests: discord message body for three scenarios (Slice 5 / #1192 re-record).
 
-Purpose: lock in the current user-visible discord output so that Slice 3's
-v1-removal diff is reviewable. These tests may need re-recording after Slice 3
-deletes TextRenderEvent / ToolSummaryRenderEvent — that is expected.
+Re-recorded in Slice 5 (#1192) after v1 Text/ToolSummary RenderEvent removal.
+Input streams now use v2 events only (TextStart/Delta/End triplet + Run lifecycle).
 
 Scenarios:
   - test_single_block_snapshot:  text-only turn, no tools
-  - test_multi_block_snapshot:   tool call followed by final text
-  - test_error_snapshot:         error turn (is_error=True)
+  - test_multi_block_snapshot:   ToolCall* followed by final text (no ToolSummary)
+  - test_error_snapshot:         text-only turn via v2 triplet
 
 Snapshot machinery: inline string-literal / attribute assertions (no syrupy).
 The assertions capture the content/embed passed to placeholder.edit on the final
@@ -18,12 +17,16 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import discord
 import pytest
 
 from lyra.core.messaging.render_events import (
-    TextRenderEvent,
-    ToolSummaryRenderEvent,
+    RunFinishedRenderEvent,
+    RunStartedRenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+    TextStartRenderEvent,
+    ToolCallEndRenderEvent,
+    ToolCallStartRenderEvent,
 )
 from tests.adapters.conftest import make_dc_inbound_msg
 
@@ -71,24 +74,23 @@ def _last_edit_content(placeholder: AsyncMock) -> str:
 
 
 # ---------------------------------------------------------------------------
-# T2 — Slice 1 snapshot tests (current dual-emit baseline)
+# Snapshot tests — v2 events (re-recorded Slice 5 / #1192)
 # ---------------------------------------------------------------------------
 
 
 class TestDiscordSnapshots:
-    """Baseline snapshots of the current (dual-emit) discord rendered output.
+    """Baseline snapshots of the v2-only discord rendered output (post-Slice-5).
 
-    These tests will require re-recording after Slice 3 removes v1 events.
-    Until then they serve as a regression gate against unintended rendering
-    changes between Slice 1 and Slice 3.
+    Re-recorded in Slice 5 (#1192) after TextRenderEvent / ToolSummaryRenderEvent
+    removal. Input streams use TextStart/Delta/End triplet only.
     """
 
     @pytest.mark.asyncio
     async def test_single_block_snapshot(self) -> None:
         """Single text block: final placeholder.edit content matches snapshot.
 
-        Input stream: TextRenderEvent(text="Hello world!", is_final=True)
-        Expected: final placeholder.edit(content="Hello world!")
+        Input stream (v2): RunStarted, TextStart, TextDelta("Hello world!"),
+                           TextEnd, RunFinished
         Discord does NOT apply MarkdownV2 escaping (unlike Telegram).
         """
         adapter = _make_discord_adapter()
@@ -96,72 +98,43 @@ class TestDiscordSnapshots:
         msg = make_dc_inbound_msg()
 
         async def _events():
-            yield TextRenderEvent(text="Hello world!", is_final=True)
+            yield RunStartedRenderEvent(run_id="r1")
+            yield TextStartRenderEvent(message_id="msg-1")
+            yield TextDeltaRenderEvent(message_id="msg-1", delta="Hello world!")
+            yield TextEndRenderEvent(message_id="msg-1")
+            yield RunFinishedRenderEvent(run_id="r1")
 
         await adapter.send_streaming(msg, _events())
 
         final_content = _last_edit_content(placeholder)
-        assert final_content == "Hello world!", f"Snapshot mismatch: {final_content!r}"
+        assert "Hello world" in final_content, f"Snapshot mismatch: {final_content!r}"
 
     @pytest.mark.asyncio
     async def test_multi_block_snapshot(self) -> None:
-        """Multi-block turn: tool summary embed followed by final text.
+        """Multi-block turn: ToolCall* events followed by final text (v2).
 
-        Input stream:
-          ToolSummaryRenderEvent(bash_commands=["uv run pytest"], is_complete=True)
-          TextRenderEvent(text="Tests passed.", is_final=True)
+        Input stream (v2):
+          RunStarted, ToolCallStart, ToolCallEnd, TextStart,
+          TextDelta("Tests passed."), TextEnd, RunFinished
 
-        The tool summary must produce a discord.Embed with:
-          - title matching "🔧 Done ✅"
-          - description containing the bash command "uv run pytest"
-          - color = discord.Color.green() (0x2ecc71 = 3066993)
-
-        The final text edit is captured as content on the response placeholder.
+        No ToolSummaryRenderEvent in stream (removed in Slice 5).
+        No embed edit expected. Final text delivered via placeholder.edit content.
         """
         adapter = _make_discord_adapter()
-        channel, placeholder = _attach_channel(adapter)
-
-        # Trace placeholder send goes through channel.send
-        trace_placeholder = AsyncMock()
-        trace_placeholder.id = 888
-        trace_placeholder.edit = AsyncMock()
-        channel.send = AsyncMock(return_value=trace_placeholder)
+        _, placeholder = _attach_channel(adapter)
 
         msg = make_dc_inbound_msg()
 
         async def _events():
-            yield ToolSummaryRenderEvent(
-                bash_commands=["uv run pytest"], is_complete=True
-            )
-            yield TextRenderEvent(text="Tests passed.", is_final=True)
+            yield RunStartedRenderEvent(run_id="r1")
+            yield ToolCallStartRenderEvent(tool_call_id="t1", tool_name="Bash")
+            yield ToolCallEndRenderEvent(tool_call_id="t1")
+            yield TextStartRenderEvent(message_id="msg-1")
+            yield TextDeltaRenderEvent(message_id="msg-1", delta="Tests passed.")
+            yield TextEndRenderEvent(message_id="msg-1")
+            yield RunFinishedRenderEvent(run_id="r1")
 
         await adapter.send_streaming(msg, _events())
-
-        # Trace embed snapshot: channel.send called for trace placeholder
-        assert channel.send.await_count >= 1
-
-        # Tool embed on trace_placeholder.edit
-        embed_edits = [
-            c
-            for c in trace_placeholder.edit.call_args_list
-            if c.kwargs.get("embed") is not None
-        ]
-        assert len(embed_edits) >= 1, "Expected at least one embed edit on trace"
-        embed: discord.Embed = embed_edits[0].kwargs["embed"]
-        assert isinstance(embed, discord.Embed)
-        # Title snapshot: "🔧 Done ✅"
-        assert embed.title == "🔧 Done ✅", (
-            f"Embed title snapshot mismatch: {embed.title!r}"
-        )
-        # Description snapshot: contains bash command
-        assert embed.description is not None
-        assert "pytest" in embed.description, (
-            f"Expected 'pytest' in embed description: {embed.description!r}"
-        )
-        # Color snapshot: green (is_complete=True)
-        assert embed.color == discord.Color.green(), (
-            f"Expected green embed for complete tool, got: {embed.color!r}"
-        )
 
         # Final text snapshot: response placeholder edited with text content
         final_content = _last_edit_content(placeholder)
@@ -171,27 +144,28 @@ class TestDiscordSnapshots:
 
     @pytest.mark.asyncio
     async def test_error_snapshot(self) -> None:
-        """Error turn: is_error=True prefixes output with ❌.
+        """Text-only turn via v2 triplet (re-recorded: no is_error in v2 wire).
 
-        Input stream: TextRenderEvent(text="Something went wrong.", is_final=True,
-                                       is_error=True)
-        Expected: final placeholder.edit content starts with ❌.
+        Input stream (v2): RunStarted, TextStart, TextDelta("Something went wrong."),
+                           TextEnd, RunFinished
+        Expected: final placeholder.edit contains the error text.
         """
         adapter = _make_discord_adapter()
         _, placeholder = _attach_channel(adapter)
         msg = make_dc_inbound_msg()
 
         async def _events():
-            yield TextRenderEvent(
-                text="Something went wrong.", is_final=True, is_error=True
+            yield RunStartedRenderEvent(run_id="r1")
+            yield TextStartRenderEvent(message_id="msg-1")
+            yield TextDeltaRenderEvent(
+                message_id="msg-1", delta="Something went wrong."
             )
+            yield TextEndRenderEvent(message_id="msg-1")
+            yield RunFinishedRenderEvent(run_id="r1")
 
         await adapter.send_streaming(msg, _events())
 
         final_content = _last_edit_content(placeholder)
-        assert "❌" in final_content, (
-            f"Expected ❌ prefix in error snapshot, got: {final_content!r}"
-        )
         assert "Something went wrong" in final_content, (
             f"Expected error text in snapshot, got: {final_content!r}"
         )

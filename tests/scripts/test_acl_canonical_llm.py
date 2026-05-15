@@ -4,6 +4,7 @@ Guards #1104. Two layers of assertions:
 - structured: acl-matrix.json identity allow-lists (per-identity)
 - rendered:   auth.conf has no legacy subjects
 """
+
 from __future__ import annotations
 
 import json

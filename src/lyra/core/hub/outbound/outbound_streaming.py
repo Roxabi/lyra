@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 
 from ...messaging.callbacks import unwrap_callback
 from ...messaging.message import InboundMessage, OutboundMessage, Platform
-from ...messaging.render_events import TextRenderEvent
 
 if TYPE_CHECKING:
     from ...messaging.render_events import RenderEvent
@@ -110,10 +109,13 @@ class StreamingDispatch:
                     "reply_message_id will not be recorded",
                     msg.platform,
                 )
-            text = ""
+            from ...messaging.render_events import TextDeltaRenderEvent
+
+            parts: list[str] = []
             async for event in chunks:
-                if isinstance(event, TextRenderEvent):
-                    text += event.text
+                if isinstance(event, TextDeltaRenderEvent):
+                    parts.append(event.delta)
+            text = "".join(parts)
             if text:
                 await adapter.send(msg, OutboundMessage.from_text(text))
             else:

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from .pool import Pool
 
 from ..messaging.message import OutboundMessage, Response
-from ..messaging.render_events import RenderEvent, TextRenderEvent
+from ..messaging.render_events import RenderEvent, TextDeltaRenderEvent
 
 log = logging.getLogger(__name__)
 
@@ -28,22 +28,18 @@ def build_streaming_capture(
     stream_done_event: object | None,
     emit_tool_recap: bool,
 ) -> collections.abc.AsyncGenerator[RenderEvent, None]:
-    """Build an async generator that captures TextRenderEvent content.
+    """Build an async generator that captures TextDeltaRenderEvent content.
 
     Wraps the result iterator to collect text content for turn logging while
-    forwarding all events. Filters out ToolSummaryRenderEvent when recap is disabled.
+    forwarding all events. v1 TextRenderEvent / ToolSummaryRenderEvent removed
+    in Slice 5 (#1192); content is now accumulated from TextDeltaRenderEvent deltas.
     """
 
     async def _capture() -> collections.abc.AsyncGenerator[RenderEvent, None]:
         try:
             async for event in result_iter:
-                if isinstance(event, TextRenderEvent):
-                    content_parts.append(event.text)
-                    if event.is_error:
-                        pool._last_turn_had_backend_error = True
-                elif not emit_tool_recap:
-                    # ToolSummaryRenderEvent — suppress when recap is disabled
-                    continue
+                if isinstance(event, TextDeltaRenderEvent):
+                    content_parts.append(event.delta)
                 yield event
         finally:
             _aclose = getattr(result_iter, "aclose", None)

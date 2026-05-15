@@ -14,7 +14,7 @@ import pytest
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.adapters.shared._shared_streaming import PlatformCallbacks
 from lyra.core.messaging.message import InboundMessage, OutboundMessage
-from lyra.core.messaging.render_events import RenderEvent, TextRenderEvent
+from lyra.core.messaging.render_events import RenderEvent, TextEndRenderEvent
 from tests.adapters.conftest import make_tg_msg
 
 # ---------------------------------------------------------------------------
@@ -84,7 +84,7 @@ class TestableAdapter(OutboundAdapterBase):
 
 
 async def _events() -> AsyncIterator[RenderEvent]:
-    yield TextRenderEvent(text="hello", is_final=True)
+    yield TextEndRenderEvent(message_id="msg-test-001")
 
 
 # ---------------------------------------------------------------------------

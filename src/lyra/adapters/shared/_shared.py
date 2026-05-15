@@ -45,7 +45,6 @@ if TYPE_CHECKING:
     from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.messaging.bus import Bus
     from lyra.core.messaging.messages import MessageManager
-    from lyra.core.messaging.render_events import ToolSummaryRenderEvent
 
 __all__ = [
     "AUDIO_MIME_TYPES",
@@ -65,7 +64,6 @@ __all__ = [
     "TypingTaskManager",
     "IntermediateTextState",
     "StreamState",
-    "format_tool_summary_header",
     "parse_reply_to_id",
     "send_with_retry",
 ]
@@ -249,11 +247,3 @@ async def send_with_retry(
                 delay,
             )
             await asyncio.sleep(delay)
-
-
-def format_tool_summary_header(event: ToolSummaryRenderEvent) -> str:
-    """Return the tool summary header string for a ToolSummaryRenderEvent.
-
-    Header only — does NOT include tool body lines.
-    """
-    return "🔧 Done ✅" if event.is_complete else "🔧 Working…"

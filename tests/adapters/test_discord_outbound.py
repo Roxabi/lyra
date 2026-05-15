@@ -414,9 +414,13 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
     outbound = OutboundMessage.from_text("")
 
     async def _events():
-        from lyra.core.messaging.render_events import TextRenderEvent
+        from lyra.core.messaging.render_events import (
+            TextDeltaRenderEvent,
+            TextEndRenderEvent,
+        )
 
-        yield TextRenderEvent(text="hello", is_final=True)
+        yield TextDeltaRenderEvent(message_id="msg1", delta="hello")
+        yield TextEndRenderEvent(message_id="msg1")
 
     await adapter.send_streaming(original_msg, _events(), outbound=outbound)
     assert outbound.metadata.get("reply_message_id") == 88
@@ -488,32 +492,6 @@ async def test_streaming_edit_placeholder_text() -> None:
 
 
 @pytest.mark.asyncio
-async def test_streaming_edit_trace() -> None:
-    """edit_trace calls trace_obj.edit with the tool summary header and embed."""
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
-    from lyra.core.messaging.render_events import ToolSummaryRenderEvent
-
-    adapter = DiscordAdapter(
-        bot_id="main",
-        inbound_bus=MagicMock(),
-        intents=discord.Intents.none(),
-    )
-
-    trace_obj = AsyncMock()
-    trace_obj.edit = AsyncMock()
-    event = ToolSummaryRenderEvent(is_complete=True)
-
-    outbound = OutboundMessage.from_text("")
-    callbacks = build_streaming_callbacks(adapter, make_dc_inbound_msg(), outbound)
-
-    await callbacks.edit_trace(trace_obj, event)
-    trace_obj.edit.assert_awaited_once()
-    call_kwargs = trace_obj.edit.call_args.kwargs
-    assert isinstance(call_kwargs["embed"], discord.Embed)
-
-
-@pytest.mark.asyncio
 async def test_streaming_send_message_multi_chunk() -> None:
     """send_message closure splits text > 2000 chars into chunks.
 
@@ -569,30 +547,6 @@ async def test_streaming_send_message_failure() -> None:
 # ---------------------------------------------------------------------------
 # #932 — Tool embed + send edges (Slice 2)
 # ---------------------------------------------------------------------------
-
-
-def test_build_tool_embed_complete() -> None:
-    """_build_tool_embed with is_complete=True produces a green Embed."""
-    from lyra.adapters.discord.discord_outbound import _build_tool_embed
-    from lyra.core.messaging.render_events import ToolSummaryRenderEvent
-
-    event = ToolSummaryRenderEvent(is_complete=True)
-    embed = _build_tool_embed(event)
-
-    assert isinstance(embed, discord.Embed)
-    assert embed.color == discord.Color.green()
-
-
-def test_build_tool_embed_incomplete() -> None:
-    """_build_tool_embed with is_complete=False produces a blue Embed."""
-    from lyra.adapters.discord.discord_outbound import _build_tool_embed
-    from lyra.core.messaging.render_events import ToolSummaryRenderEvent
-
-    event = ToolSummaryRenderEvent(is_complete=False)
-    embed = _build_tool_embed(event)
-
-    assert isinstance(embed, discord.Embed)
-    assert embed.color == discord.Color.blue()
 
 
 @pytest.mark.asyncio

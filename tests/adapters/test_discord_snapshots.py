@@ -106,8 +106,12 @@ class TestDiscordSnapshots:
 
         await adapter.send_streaming(msg, _events())
 
+        # Exact-match (B5 fix #1205): pinned snapshot. Discord does NOT apply
+        # MarkdownV2 escaping; `!` passes through unchanged.
         final_content = _last_edit_content(placeholder)
-        assert "Hello world" in final_content, f"Snapshot mismatch: {final_content!r}"
+        assert final_content == "Hello world!", (
+            f"Snapshot mismatch: {final_content!r}"
+        )
 
     @pytest.mark.asyncio
     async def test_multi_block_snapshot(self) -> None:
@@ -144,12 +148,18 @@ class TestDiscordSnapshots:
 
     @pytest.mark.asyncio
     async def test_error_snapshot(self) -> None:
-        """Text-only turn via v2 triplet (re-recorded: no is_error in v2 wire).
+        """Soft error (B6 fix #1205): RunErrorRenderEvent threads is_error to ❌.
 
         Input stream (v2): RunStarted, TextStart, TextDelta("Something went wrong."),
-                           TextEnd, RunFinished
-        Expected: final placeholder.edit contains the error text.
+                           RunError, TextEnd
+        Mirrors stream_processor's order: RunError fires after the loop closes the
+        text block via TextEnd; in this synthetic stream we put RunError BEFORE
+        TextEnd so is_error_pending is captured when the close drives set_final_text.
+
+        Expected: final placeholder.edit starts with ❌ prefix.
         """
+        from lyra.core.messaging.render_events import RunErrorRenderEvent
+
         adapter = _make_discord_adapter()
         _, placeholder = _attach_channel(adapter)
         msg = make_dc_inbound_msg()
@@ -160,12 +170,15 @@ class TestDiscordSnapshots:
             yield TextDeltaRenderEvent(
                 message_id="msg-1", delta="Something went wrong."
             )
+            yield RunErrorRenderEvent(
+                run_id="r1", message="model_error", code=None
+            )
             yield TextEndRenderEvent(message_id="msg-1")
-            yield RunFinishedRenderEvent(run_id="r1")
 
         await adapter.send_streaming(msg, _events())
 
+        # Exact-match: ❌ prefix prepended; Discord does NOT escape `.`.
         final_content = _last_edit_content(placeholder)
-        assert "Something went wrong" in final_content, (
-            f"Expected error text in snapshot, got: {final_content!r}"
+        assert final_content == "❌ Something went wrong.", (
+            f"Expected ❌-prefixed error text, got: {final_content!r}"
         )

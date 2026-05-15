@@ -86,8 +86,10 @@ class TestTelegramSnapshots:
 
         await adapter.send_streaming(msg, _events())
 
+        # Exact-match (B5 fix #1205): pinned to catch MarkdownV2 escape
+        # regressions. `!` must be escaped → `\!` in Telegram MarkdownV2.
         final_text = _last_edit_text(bot)
-        assert "Hello world" in final_text, f"Snapshot mismatch: {final_text!r}"
+        assert final_text == "Hello world\\!", f"Snapshot mismatch: {final_text!r}"
 
     @pytest.mark.asyncio
     async def test_multi_block_snapshot(self) -> None:
@@ -122,12 +124,20 @@ class TestTelegramSnapshots:
 
     @pytest.mark.asyncio
     async def test_error_snapshot(self) -> None:
-        """Text-only turn via v2 triplet (re-recorded: no is_error in v2 wire).
+        """Soft error (B6 fix #1205): RunErrorRenderEvent threads is_error to ❌.
 
         Input stream (v2): RunStarted, TextStart, TextDelta("Something went wrong."),
-                           TextEnd, RunFinished
-        Expected: final edit_message_text contains the error text.
+                           TextEnd, RunError
+        The RunErrorRenderEvent sets is_error_pending on the StreamState; the
+        TextEndRenderEvent that precedes it has already captured the final text
+        with is_error=False, but the order in this test mirrors the production
+        flow where RunErrorRenderEvent arrives BEFORE the close — emitted by
+        stream_processor's post-finally branch.
+
+        Expected: final edit_message_text starts with ❌ (error prefix).
         """
+        from lyra.core.messaging.render_events import RunErrorRenderEvent
+
         adapter, bot = _make_adapter_with_bot()
         msg = _make_telegram_message()
 
@@ -137,12 +147,19 @@ class TestTelegramSnapshots:
             yield TextDeltaRenderEvent(
                 message_id="msg-1", delta="Something went wrong."
             )
+            # RunError BEFORE TextEnd so is_error_pending is set when TextEnd
+            # closes the block — mirrors stream_processor's
+            # _close_text_block_on_result → RunError emission order.
+            yield RunErrorRenderEvent(
+                run_id="r1", message="model_error", code=None
+            )
             yield TextEndRenderEvent(message_id="msg-1")
-            yield RunFinishedRenderEvent(run_id="r1")
 
         await adapter.send_streaming(msg, _events())
 
         final_text = _last_edit_text(bot)
-        assert "Something went wrong" in final_text, (
-            f"Expected error text in snapshot, got: {final_text!r}"
+        # Exact-match: ❌ prefix prepended, then MarkdownV2-escaped content.
+        # Telegram escapes `.` as `\.`.
+        assert final_text == "❌ Something went wrong\\.", (
+            f"Expected ❌-prefixed error text, got: {final_text!r}"
         )

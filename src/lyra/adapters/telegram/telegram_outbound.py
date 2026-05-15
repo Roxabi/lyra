@@ -274,6 +274,29 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
     _reasoning_accum_cell: list[str] = [""]
     _last_reasoning_edit_cell: list[float | None] = [None]
 
+    async def _edit_tool_recap(
+        trace_obj: Any,
+        lines: list[str],
+        done: bool,
+    ) -> None:
+        """Render the tool recap card lines into the trace placeholder."""
+        del done  # header is already part of lines (per format_recap_lines)
+        if not lines:
+            return
+        text = "\n".join(lines)
+        rendered = _render_text(text)
+        if not rendered:
+            return
+        try:
+            await adapter.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=trace_obj.message_id,
+                text=rendered[0],
+                parse_mode="MarkdownV2",
+            )
+        except TelegramAPIError as exc:
+            log.debug("Tool recap edit skipped: %s", exc)
+
     async def _edit_trace_with_text(trace_obj: Any, text: str) -> None:
         """Edit the trace placeholder with plain/formatted text (for reasoning)."""
         rendered = _render_text(text)
@@ -362,4 +385,5 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         get_msg=adapter._msg,
         placeholder_text=_placeholder_text,
         edit_reasoning=_render_reasoning,
+        edit_tool_recap=_edit_tool_recap,
     )

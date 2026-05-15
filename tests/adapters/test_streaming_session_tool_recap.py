@@ -47,7 +47,7 @@ def _make_callbacks(**overrides) -> PlatformCallbacks:
         chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
         start_typing=MagicMock(),
         cancel_typing=MagicMock(),
-        get_msg=MagicMock(side_effect=lambda key, fallback: fallback),
+        get_msg=MagicMock(side_effect=lambda _key, fallback: fallback),
         placeholder_text="…",
         edit_tool_recap=AsyncMock(),
     )
@@ -214,7 +214,7 @@ async def test_edit_tool_recap_field_has_default_noop() -> None:
         chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
         start_typing=MagicMock(),
         cancel_typing=MagicMock(),
-        get_msg=MagicMock(side_effect=lambda key, fallback: fallback),
+        get_msg=MagicMock(side_effect=lambda _key, fallback: fallback),
         placeholder_text="…",
         # edit_tool_recap intentionally omitted
     )

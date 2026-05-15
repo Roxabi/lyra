@@ -582,3 +582,74 @@ def test_constructor_custom_timeout() -> None:
 
     # Assert
     assert worker.timeout == 60.0
+
+
+# ---------------------------------------------------------------------------
+# Error-message sanitization (#1215, sibling of #1212)
+#
+# WorkerError.message is published back to the NATS bus via _make_chunk(...,
+# worker_error=...) and surfaces on user-facing channels. Exception __str__
+# representations from httpx / pydantic / asyncio embed file paths, byte
+# sequences, and incoming field values — these must NOT leak into bus-bound
+# messages. Sanitization keeps only ``type(exc).__name__`` for diagnostics.
+# ---------------------------------------------------------------------------
+
+
+_SENSITIVE_TOKEN = "secret-internal-host:4222/path"
+
+
+async def test_classify_exception_worker_crash_does_not_leak_exception_str() -> None:
+    """_classify_exception(RuntimeError(sensitive)) → worker.crash with no leak."""
+    from lyra.adapters.clipool.clipool_worker import _classify_exception
+
+    # Arrange — generic exception caught by the worker.crash branch
+    leaky_exc = RuntimeError(f"unexpected failure talking to {_SENSITIVE_TOKEN}")
+
+    # Act
+    we = _classify_exception(leaky_exc)
+
+    # Assert — code + retryable flag preserved
+    assert we.code == "worker.crash"
+    assert we.retryable is True
+
+    # Assert — bus-bound message does not embed the sensitive str()
+    assert _SENSITIVE_TOKEN not in we.message, (
+        f"sensitive token leaked into WorkerError.message: {we.message!r}"
+    )
+    # Positive: class name still surfaces for diagnostic value
+    assert "RuntimeError" in we.message
+
+
+async def test_handle_cmd_validation_error_does_not_leak_payload_fields() -> None:
+    """_handle_cmd: ValidationError.message must not embed incoming payload values."""
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    # Arrange — malformed payload with a sensitive value in a non-required slot
+    bad_payload = {
+        "contract_version": "1",
+        "trace_id": "trace-leak",
+        "issued_at": datetime.now(timezone.utc).isoformat(),
+        "pool_id": f"pool-{_SENSITIVE_TOKEN}",  # sensitive value in pool_id
+        # text/model_cfg/system_prompt deliberately omitted → ValidationError
+    }
+
+    pool = _make_pool()
+    worker = CliPoolNatsWorker(pool)
+    nc = AsyncMock()
+    worker._nc = nc
+
+    msg = _make_nats_msg(reply="_INBOX.reply.leak")
+
+    # Act
+    await worker._handle_cmd(msg, bad_payload)
+
+    # Assert — single error chunk published
+    nc.publish.assert_awaited_once()
+    data = json.loads(nc.publish.call_args.args[1].decode())
+    assert data["worker_error"]["code"] == "worker.validation"
+
+    # Assert — sensitive payload value did not leak into bus-bound message
+    message = data["worker_error"]["message"]
+    assert _SENSITIVE_TOKEN not in message, (
+        f"sensitive payload field leaked into worker_error.message: {message!r}"
+    )

@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import nats.errors
@@ -24,13 +23,12 @@ from lyra.core.messaging.message import (
     OutboundMessage,
     Platform,
 )
+from lyra.core.messaging.render_events import (
+    RunFinishedRenderEvent,
+    TextDeltaRenderEvent,
+    ToolCallStartRenderEvent,
+)
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
-
-# DEBT:v1-stubs — for skipped tests; rewrite for v2 (#1192 S3 follow-up)
-# Typed as Any so pyright doesn't flag v1-shape access in skipped tests.
-TextRenderEvent: Any = type("TextRenderEvent", (), {})
-ToolSummaryRenderEvent: Any = type("ToolSummaryRenderEvent", (), {})
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -162,17 +160,17 @@ async def test_send_subject_uses_platform_value() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
 async def test_send_streaming_publishes_chunks_with_incrementing_seq() -> None:
-    """send_streaming() assigns seq numbers starting from 0."""
+    """send_streaming() assigns seq numbers starting at 0, monotonic +1 per chunk."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-stream")
 
-    tool_event = ToolSummaryRenderEvent(bash_commands=["make test"], is_complete=False)
-    text_event = TextRenderEvent(text="Done", is_final=True)
+    # Two v2 events: a tool-call start followed by a run-finished terminal
+    event0 = ToolCallStartRenderEvent(tool_call_id="tc-1", tool_name="bash")
+    event1 = RunFinishedRenderEvent(run_id="run-1")
 
-    await proxy.send_streaming(inbound, _async_iter(tool_event, text_event))
+    await proxy.send_streaming(inbound, _async_iter(event0, event1))
 
     # 2 event chunks + 1 terminal sentinel = 3 publishes
     assert nc.publish.await_count == 3
@@ -180,143 +178,175 @@ async def test_send_streaming_publishes_chunks_with_incrementing_seq() -> None:
 
     chunk0 = json.loads(calls[0].args[1].decode("utf-8"))
     chunk1 = json.loads(calls[1].args[1].decode("utf-8"))
+    sentinel = json.loads(calls[2].args[1].decode("utf-8"))
 
     assert chunk0["seq"] == 0
     assert chunk1["seq"] == 1
+    # sentinel is seq-numbered in the same monotone series as event chunks
+    assert sentinel["seq"] == 2
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
 async def test_send_streaming_subject_is_single_outbound_subject() -> None:
-    """send_streaming() publishes to single outbound subject, not stream.* subject."""
+    """Every nc.publish call uses subject lyra.outbound.<platform>.<bot_id>."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-42")
 
     await proxy.send_streaming(
-        inbound, _async_iter(TextRenderEvent(text="Hi", is_final=True))
+        inbound,
+        _async_iter(
+            TextDeltaRenderEvent(message_id="msg-42", delta="Hi"),
+            RunFinishedRenderEvent(run_id="run-42"),
+        ),
     )
 
-    subject, _ = nc.publish.call_args.args
-    assert subject == "lyra.outbound.telegram.main"
-    assert "stream" not in subject
+    expected = "lyra.outbound.telegram.main"
+    for call in nc.publish.call_args_list:
+        subject, _ = call.args
+        assert subject == expected
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-async def test_send_streaming_done_true_on_final_text_event() -> None:
-    """send_streaming() sets done=True when TextRenderEvent.is_final=True."""
+async def test_send_streaming_sentinel_done_true() -> None:
+    """Terminal sentinel (stream_end) has done=True; RunFinished chunk also done=True.
+
+    Two assertions:
+    1. The encoded RunFinishedRenderEvent chunk (first publish) carries done=True
+       because the codec marks RunFinished with is_done=True.
+    2. The synthetic stream_end sentinel (last publish) also carries done=True.
+    """
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound()
 
     await proxy.send_streaming(
-        inbound, _async_iter(TextRenderEvent(text="Done", is_final=True))
+        inbound, _async_iter(RunFinishedRenderEvent(run_id="run-done"))
     )
 
-    _, payload = nc.publish.call_args.args
-    chunk = json.loads(payload.decode("utf-8"))
+    # First publish: the RunFinishedRenderEvent chunk — codec marks it done=True
+    _, chunk_payload = nc.publish.call_args_list[0].args
+    chunk = json.loads(chunk_payload.decode("utf-8"))
     assert chunk["done"] is True
 
+    # Second publish: the stream_end sentinel (explicit index, not -1 shorthand).
+    assert nc.publish.await_count == 2
+    _, payload = nc.publish.call_args_list[1].args
+    sentinel = json.loads(payload.decode("utf-8"))
+    assert sentinel["event_type"] == "stream_end"
+    assert sentinel["done"] is True
+
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
 async def test_send_streaming_done_false_on_non_final_event() -> None:
-    """send_streaming() sets done=False when is_final/is_complete are False."""
-    nc = _make_nc()
-    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
-    inbound = _make_inbound()
-
-    await proxy.send_streaming(
-        inbound, _async_iter(TextRenderEvent(text="Partial", is_final=False))
-    )
-
-    # call_args_list[0] is the event chunk; last call is the terminal sentinel
-    _, payload = nc.publish.call_args_list[0].args
-    chunk = json.loads(payload.decode("utf-8"))
-    assert chunk["done"] is False
-
-
-@pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-async def test_send_streaming_event_type_text() -> None:
-    """send_streaming() sets event_type='text' for TextRenderEvent."""
-    nc = _make_nc()
-    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
-    inbound = _make_inbound()
-
-    await proxy.send_streaming(
-        inbound, _async_iter(TextRenderEvent(text="Hello", is_final=True))
-    )
-
-    _, payload = nc.publish.call_args_list[0].args
-    chunk = json.loads(payload.decode("utf-8"))
-    assert chunk["event_type"] == "text"
-
-
-@pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-async def test_send_streaming_event_type_tool_summary() -> None:
-    """send_streaming() sets event_type='tool_summary' for ToolSummaryRenderEvent."""
+    """Mid-stream chunk envelopes (TextDelta) have done=False."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound()
 
     await proxy.send_streaming(
         inbound,
-        _async_iter(ToolSummaryRenderEvent(bash_commands=["ls"], is_complete=True)),
+        _async_iter(TextDeltaRenderEvent(message_id="m1", delta="Partial")),
+    )
+
+    # call_args_list[0] is the event chunk; last call is the terminal sentinel
+    _, payload = nc.publish.call_args_list[0].args
+    chunk = json.loads(payload.decode("utf-8"))
+    assert chunk["event_type"] == "text_delta"
+    assert chunk["done"] is False
+
+
+@pytest.mark.asyncio
+async def test_send_streaming_event_type_text() -> None:
+    """send_streaming() sets event_type='text_delta' for TextDeltaRenderEvent."""
+    nc = _make_nc()
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound()
+
+    await proxy.send_streaming(
+        inbound,
+        _async_iter(TextDeltaRenderEvent(message_id="m1", delta="Hello")),
     )
 
     _, payload = nc.publish.call_args_list[0].args
     chunk = json.loads(payload.decode("utf-8"))
-    assert chunk["event_type"] == "tool_summary"
-    assert chunk["done"] is True
+    assert chunk["event_type"] == "text_delta"
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
+async def test_send_streaming_event_type_tool_call_start() -> None:
+    """send_streaming(): ToolCallStart yields v2 event_type='tool_call_start'."""
+    nc = _make_nc()
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound()
+
+    await proxy.send_streaming(
+        inbound,
+        _async_iter(ToolCallStartRenderEvent(tool_call_id="tc-1", tool_name="bash")),
+    )
+
+    _, payload = nc.publish.call_args_list[0].args
+    chunk = json.loads(payload.decode("utf-8"))
+    assert chunk["event_type"] == "tool_call_start"
+    assert chunk["done"] is False
+
+
+@pytest.mark.asyncio
 async def test_send_streaming_chunk_has_stream_id_no_type() -> None:
-    """Each chunk envelope has stream_id (not msg_id) and no 'type' key."""
+    """Each chunk envelope has stream_id + event_type and NO legacy 'type' key."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-check")
 
     await proxy.send_streaming(
-        inbound, _async_iter(TextRenderEvent(text="x", is_final=True))
+        inbound,
+        _async_iter(TextDeltaRenderEvent(message_id="msg-check", delta="x")),
     )
 
-    _, payload = nc.publish.call_args.args
-    chunk = json.loads(payload.decode("utf-8"))
-    assert "type" not in chunk
-    assert chunk["stream_id"] == "msg-check"
-    assert "msg_id" not in chunk
-    assert "payload" in chunk
+    # Inspect every published envelope (event chunk + terminal sentinel)
+    for call in nc.publish.call_args_list:
+        _, raw = call.args
+        envelope = json.loads(raw.decode("utf-8"))
+        # All envelopes carry stream_id and event_type
+        assert envelope["stream_id"] == "msg-check"
+        assert "event_type" in envelope
+        assert "msg_id" not in envelope
+        assert "payload" in envelope
+        # Regular event chunks and the stream_end sentinel must NOT have 'type'
+        # (only the stream_error recovery envelope uses 'type')
+        assert "type" not in envelope
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
 async def test_send_streaming_drains_iterator_on_publish_failure() -> None:
-    """On NATS publish failure, remaining events are drained (no hang)."""
+    """On NATS publish failure on first chunk, all remaining events are drained."""
+    call_count = 0
+
+    async def _publish_with_failure(_subject, _payload):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise nats.errors.Error("NATS connection lost")
+
     nc = _make_nc()
-    nc.publish = AsyncMock(side_effect=nats.errors.Error("NATS connection lost"))
+    nc.publish = AsyncMock(side_effect=_publish_with_failure)
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound()
 
-    drained = []
+    yielded = []
 
     async def _events():
-        yield TextRenderEvent(text="first", is_final=False)
-        yield TextRenderEvent(text="second", is_final=False)
-        drained.append("second")
-        yield TextRenderEvent(text="third", is_final=True)
-        drained.append("third")
+        for delta in ("first", "second", "third"):
+            yielded.append(delta)
+            yield TextDeltaRenderEvent(message_id="m1", delta=delta)
 
-    # Should not raise; should drain remaining events
+    # Should not raise; source iterator must be fully exhausted
     await proxy.send_streaming(inbound, _events())
 
-    # The second and third events must have been drained without publishing
-    assert "second" in drained
-    assert "third" in drained
+    assert yielded == ["first", "second", "third"]
+    # call 1: first chunk publish (raises); call 2: stream_error envelope
+    # drain loop must NOT re-publish items 2+3 after the first chunk's publish failed
+    assert nc.publish.await_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -468,26 +498,7 @@ async def test_send_includes_stream_id() -> None:
     assert "msg_id" not in envelope
 
 
-@pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-async def test_send_streaming_uses_single_subject() -> None:
-    """send_streaming() publishes to single outbound subject, not stream.* subject."""
-    nc = _make_nc()
-    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
-    inbound = _make_inbound("msg-single-subject")
-
-    await proxy.send_streaming(
-        inbound, _async_iter(TextRenderEvent(text="hi", is_final=True))
-    )
-
-    assert nc.publish.await_count >= 1
-    subject = nc.publish.call_args_list[0].args[0]
-    assert "stream" not in subject
-    assert subject == f"lyra.outbound.{proxy._platform.value}.{proxy._bot_id}"
-    envelope = json.loads(nc.publish.call_args_list[0].args[1])
-    assert "stream_id" in envelope
-    assert "seq" in envelope
-    assert "type" not in envelope  # chunks don't have type key
+# B7-8 (T7): deleted — duplicate of test_send_streaming_subject_is_single_outbound_subject  # noqa: E501
 
 
 # ---------------------------------------------------------------------------
@@ -509,18 +520,26 @@ def test_is_terminal_stream_error():
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
 async def test_active_streams_tracked_during_streaming() -> None:
-    """send_streaming() adds stream_id to _active_streams then removes on completion."""
+    """_active_streams contains stream_id mid-flight; empty after send_streaming()."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-track")
 
-    await proxy.send_streaming(
-        inbound, _async_iter(TextRenderEvent(text="hi", is_final=True))
-    )
+    mid_flight_snapshot: set[str] = set()
 
-    # After completion the set must be empty — stream_id was added then removed
+    async def _events():
+        yield TextDeltaRenderEvent(message_id="msg-track", delta="first")
+        # Snapshot AFTER the first yield is consumed — by this point send_streaming()
+        # has definitely called _active_streams.add(stream_id) and processed event 1.
+        mid_flight_snapshot.update(proxy._active_streams)
+        yield TextDeltaRenderEvent(message_id="msg-track", delta="second")
+
+    await proxy.send_streaming(inbound, _events())
+
+    # During emission the stream_id must have been present
+    assert "msg-track" in mid_flight_snapshot
+    # After completion the tracking set must be empty
     assert proxy._active_streams == set()
 
 
@@ -584,7 +603,6 @@ async def test_publish_stream_errors_noop_when_no_active_streams() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
 async def test_send_streaming_exception_publishes_stream_error() -> None:
     """On NATS publish failure mid-stream, a stream_error envelope is published."""
     nc = _make_nc()
@@ -593,11 +611,11 @@ async def test_send_streaming_exception_publishes_stream_error() -> None:
 
     call_count = 0
 
-    async def _publish_with_failure(subject, payload):
+    async def _publish_with_failure(_subject, _payload):
         nonlocal call_count
         call_count += 1
-        # Fail on the second chunk publish (third call overall: stream_start is absent
-        # since outbound=None; first call is chunk seq=0, second is chunk seq=1)
+        # Fail on the second chunk publish (outbound=None so no stream_start;
+        # call 1 = chunk seq=0 succeeds, call 2 = chunk seq=1 raises)
         if call_count == 2:
             raise Exception("NATS down")
 
@@ -606,8 +624,8 @@ async def test_send_streaming_exception_publishes_stream_error() -> None:
     await proxy.send_streaming(
         inbound,
         _async_iter(
-            TextRenderEvent(text="a", is_final=False),
-            TextRenderEvent(text="b", is_final=True),
+            TextDeltaRenderEvent(message_id="msg-err-publish", delta="a"),
+            TextDeltaRenderEvent(message_id="msg-err-publish", delta="b"),
         ),
     )
 
@@ -626,6 +644,53 @@ async def test_send_streaming_exception_publishes_stream_error() -> None:
     err = stream_error_envelopes[0]
     assert err["stream_id"] == inbound.id
     assert err["reason"] == "streaming_exception"
+    assert proxy._active_streams == set()
+
+
+@pytest.mark.asyncio
+async def test_send_streaming_stream_error_publish_failure_clears_active_streams() -> None:  # noqa: E501
+    """When stream_error publish itself fails, _active_streams is still cleared.
+
+    Adapters depending on stream_end/stream_error WILL hang in this scenario —
+    this test makes the missing alarm explicit and pins the finally-block invariant.
+    """
+    nc = _make_nc()
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound("msg-double-fail")
+
+    # Capture _active_streams between call-1 (success) and call-2 (failure) so
+    # the test proves the add→discard lifecycle ran (not just that the set is
+    # empty at the end — which would also be true if add() never fired).
+    mid_flight_snapshot: set[str] = set()
+    call_count = 0
+
+    async def _publish_with_double_failure(_subject, _payload):
+        nonlocal call_count
+        call_count += 1
+        # call 1: chunk seq=0 succeeds; call 2: chunk seq=1 raises (outer except);
+        # call 3: stream_error publish itself raises nats.errors.Error (inner except).
+        if call_count == 1:
+            mid_flight_snapshot.update(proxy._active_streams)
+        if call_count == 2:
+            raise Exception("NATS down")
+        if call_count == 3:
+            raise nats.errors.Error("NATS still down")
+
+    nc.publish = AsyncMock(side_effect=_publish_with_double_failure)
+
+    await proxy.send_streaming(
+        inbound,
+        _async_iter(
+            TextDeltaRenderEvent(message_id="msg-double-fail", delta="a"),
+            TextDeltaRenderEvent(message_id="msg-double-fail", delta="b"),
+        ),
+    )
+
+    # Lifecycle invariant: stream_id was tracked mid-flight, then cleared by finally.
+    assert "msg-double-fail" in mid_flight_snapshot
+    assert proxy._active_streams == set()
+    # Confirm inner stream_error publish ran (chunk-1 + chunk-2 + stream_error = 3).
+    assert nc.publish.await_count == 3
 
 
 @pytest.mark.asyncio

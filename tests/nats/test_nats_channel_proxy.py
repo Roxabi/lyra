@@ -593,7 +593,7 @@ async def test_send_streaming_exception_publishes_stream_error() -> None:
 
     call_count = 0
 
-    async def _publish_with_failure(subject, payload):
+    async def _publish_with_failure(_subject, _payload):
         nonlocal call_count
         call_count += 1
         # Fail on the second chunk publish (outbound=None so no stream_start;

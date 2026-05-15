@@ -1,7 +1,8 @@
 """Per-turn tool activity accumulator + formatter for the recap card.
 
-Rebuild of v1 `tool_recap_format.py` on top of v2 ToolCall{Start,Args,End}RenderEvent.
-Pure module — no framework imports, no I/O. Adapter-agnostic.
+Rebuild of the v1 recap formatter (deleted in #1192 slice 3) on top of v2
+ToolCall{Start,Args,End}RenderEvent. Pure module — no framework imports,
+no I/O. Adapter-agnostic.
 """
 
 from __future__ import annotations

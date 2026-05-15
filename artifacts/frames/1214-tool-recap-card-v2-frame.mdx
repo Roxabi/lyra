@@ -1,0 +1,86 @@
+---
+title: Rebuild tool recap card on v2 ToolCall* events
+issue: 1214
+status: approved
+tier: F-lite
+date: 2026-05-15
+---
+
+## Problem
+
+The tool activity recap card (`🔧 Working… / Done ✅` block in Telegram/Discord
+agent turns) is currently **blank in staging**. The v1 emitter that produced it
+(`ToolSummaryRenderEvent` + `tool_recap_format.py`) was removed in #1192 slice 3
+as part of the codec-registry v2 cutover. The replacement v2 hook
+`_on_toolcall_v2()` exists in the adapter streaming emitter as an unimplemented
+stub, so `edit_trace`/recap rendering is a no-op end-to-end.
+
+PR #1209 — which would have added unknown-tool rendering (`todowrite`, `ls`,
+etc. as `🔧 N toolname`) — was closed when its underlying v1 plumbing
+disappeared, leaving both the regression and the originally-intended polish
+unshipped.
+
+DEBT #1102 (planned slice 5 of the v2 cutover) explicitly tracks "wire
+`_on_toolcall_v2()` to `PlatformCallbacks`" as the missing leg. Until it's
+done, neither platform can inject tool-activity rendering at all.
+
+## Who
+
+- **Primary:** Lyra Telegram + Discord users who relied on the recap card to
+  see what an agent did per turn (file edits, shell runs, web fetches, agent
+  spawns, search counts).
+- **Secondary:** Developers debugging multi-tool turns who use the recap card
+  as a fast read of agent activity without scrolling raw event traces.
+
+## Constraints
+
+- Must consume v2 events only: `ToolCallStartRenderEvent`,
+  `ToolCallArgsRenderEvent`, `ToolCallEndRenderEvent`,
+  `ToolCallResultRenderEvent`. ¬reintroduce `ToolSummaryRenderEvent` or any v1
+  shim.
+- Visual format must match the previous card (icon + count grouping per tool
+  family, dedicated `🔧 N toolname` line for unknown tools).
+- Wiring path: emitter → `PlatformCallbacks` → adapter renderer. Both
+  Telegram and Discord adapters must consume the same callback contract; ¬
+  duplicate per-platform aggregation logic.
+- Unblocks DEBT #1102 — closing #1214 should let #1102 close as well.
+- F-lite gates apply (frame → spec → plan → impl), per `/dev` pipeline.
+
+## Out of Scope
+
+- Reintroducing `ToolSummaryRenderEvent` or any v1 codec.
+- Argument-level rendering inside the recap (e.g. showing the actual edit
+  diff or shell command). Card stays at the count + label level it had pre-cutover.
+- New tool icons or visual redesign — same emoji/format vocabulary as before.
+- CLI adapter rendering (terminal already shows tool calls inline).
+- NATS contract changes — events are already defined upstream.
+
+## Premise Validity
+
+**Success in 6 months:** Tool recap card renders on every multi-tool turn in
+both Telegram and Discord, including unknown tools shown as `🔧 N toolname`;
+DEBT #1102 callback wiring is closed.
+
+**Failure in 6 months:** After 6 months, ≥1 of: card still blank in staging
+on multi-tool turns, OR `_on_toolcall_v2` still a stub, OR Telegram and
+Discord rendering paths diverged again, OR #1102 still open.
+
+**Simplest alternative:** Render only `🔧 Done ✅` with no per-tool breakdown.
+**Why not simplest:** Loses the per-tool counts and unknown-tool surfacing
+that motivated #1209; users can't see *what* the agent did per turn, only
+*that* it did something — which is the regression we already have.
+
+## Complexity
+
+**Tier: F-lite** — clear scope (rebuild a known feature on already-defined v2
+events), reference logic available in the closed #1209 PR, but spans 4+ files
+across emitter / `PlatformCallbacks` / Telegram adapter / Discord adapter +
+tests, so frame+spec+plan gates pay off.
+
+Signals observed:
+- Multi-file (4+), single domain (adapter rendering pipeline) → F-lite.
+- No architectural unknowns: v2 event shapes are defined, callback contract
+  pattern is established.
+- Reference impl reusable from #1209 (rendering logic) and pre-cutover
+  `tool_recap_format.py` (visual format) — derisks implementation.
+- DEBT #1102 listed as unblocked-by — coordinated close.

@@ -229,8 +229,9 @@ async def test_send_streaming_sentinel_done_true() -> None:
     chunk = json.loads(chunk_payload.decode("utf-8"))
     assert chunk["done"] is True
 
-    # Last publish: the synthetic stream_end sentinel
-    _, payload = nc.publish.call_args.args
+    # Second publish: the stream_end sentinel (explicit index, not -1 shorthand).
+    assert nc.publish.await_count == 2
+    _, payload = nc.publish.call_args_list[1].args
     sentinel = json.loads(payload.decode("utf-8"))
     assert sentinel["event_type"] == "stream_end"
     assert sentinel["done"] is True
@@ -657,6 +658,10 @@ async def test_send_streaming_stream_error_publish_failure_clears_active_streams
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-double-fail")
 
+    # Capture _active_streams between call-1 (success) and call-2 (failure) so
+    # the test proves the add→discard lifecycle ran (not just that the set is
+    # empty at the end — which would also be true if add() never fired).
+    mid_flight_snapshot: set[str] = set()
     call_count = 0
 
     async def _publish_with_double_failure(_subject, _payload):
@@ -664,6 +669,8 @@ async def test_send_streaming_stream_error_publish_failure_clears_active_streams
         call_count += 1
         # call 1: chunk seq=0 succeeds; call 2: chunk seq=1 raises (outer except);
         # call 3: stream_error publish itself raises nats.errors.Error (inner except).
+        if call_count == 1:
+            mid_flight_snapshot.update(proxy._active_streams)
         if call_count == 2:
             raise Exception("NATS down")
         if call_count == 3:
@@ -679,10 +686,11 @@ async def test_send_streaming_stream_error_publish_failure_clears_active_streams
         ),
     )
 
-    # finally block must clear _active_streams even when stream_error publish fails
+    # Lifecycle invariant: stream_id was tracked mid-flight, then cleared by finally.
+    assert "msg-double-fail" in mid_flight_snapshot
     assert proxy._active_streams == set()
-    # Confirm the inner stream_error publish was attempted (call 3)
-    assert call_count == 3
+    # Confirm inner stream_error publish ran (chunk-1 + chunk-2 + stream_error = 3).
+    assert nc.publish.await_count == 3
 
 
 @pytest.mark.asyncio

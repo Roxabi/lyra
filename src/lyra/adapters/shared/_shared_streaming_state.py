@@ -104,10 +104,14 @@ def classify_stream_error(
     if stream_error is not None:
         if isinstance(stream_error, StreamChunkTimeout):
             return msg_fn("error_timeout", _ERR_TIMEOUT_FALLBACK)
+        # Use exception class name only, never str(exc): exception strings can
+        # carry hostnames, file paths, auth-token fragments, connection strings
+        # (httpx/aiohttp/NATS errors). Mirrors the discipline at
+        # stream_processor.py RunErrorRenderEvent emission site.
         return msg_fn(
             "error_stream",
-            f"\u26a0\ufe0f Streaming error:"
-            f" {type(stream_error).__name__}: {stream_error}. Please try again.",
+            f"\u26a0\ufe0f Streaming error: {type(stream_error).__name__}."
+            f" Please try again.",
         )
     if final_text is None and had_tool_events:
         return msg_fn("error_no_final", _ERR_NO_FINAL_FALLBACK)
@@ -143,6 +147,12 @@ class StreamState:
     last_intermediate_edit: float | None = None
     final_text: str | None = None
     is_error_turn: bool = False
+    # Pending error flag set when the dispatch ladder sees RunErrorRenderEvent
+    # before TextEndRenderEvent closes the open text block. Consumed by the
+    # TextEnd branch in _on_text_v2 to thread is_error=True through to
+    # set_final_text() — preserves the v1 ``❌`` prefix behavior on soft
+    # errors (ResultLlmEvent.is_error=True) and infrastructure exceptions.
+    is_error_pending: bool = False
     stream_error: Exception | None = None
 
     def set_final_text(self, text: str, *, is_error: bool = False) -> None:

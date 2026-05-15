@@ -152,12 +152,22 @@ class RunFinishedRenderEvent:
 
 @dataclass(frozen=True)
 class RunErrorRenderEvent:
-    """Run lifecycle: stream terminated by an exception in StreamProcessor.
+    """Run lifecycle: error terminal — infrastructure exception OR soft error.
 
-    Soft errors (``ResultLlmEvent.is_error=True`` without an exception) emit
-    ``RunFinishedRenderEvent(outcome="success")`` instead — the LLM run still
-    completed, the model just returned an error response. This event is for
-    infrastructure-level failures.
+    Two paths emit this event:
+
+    - **Infrastructure exception** (``StreamProcessor`` ``try``/``except``):
+      ``message=type(exc).__name__`` — never ``str(exc)`` (exception strings
+      can carry hostnames, file paths, auth tokens from httpx/aiohttp/NATS
+      errors; this event is published on the NATS bus where any subscriber
+      can read it).
+    - **Soft error** (``ResultLlmEvent.is_error=True``): the LLM backend
+      returned an error response. ``message`` carries ``ResultLlmEvent.
+      error_text`` — driver-curated user-facing text (e.g. "Not logged in ·
+      Please run /login"), safe to forward on the bus.
+
+    In both cases, the adapter dispatch ladder flags the turn as error so the
+    final rendered message gets an ``❌`` prefix.
 
     ``code`` is reserved for a future taxonomy (carry-over from #1097 review);
     Slice 1 always passes ``None``.

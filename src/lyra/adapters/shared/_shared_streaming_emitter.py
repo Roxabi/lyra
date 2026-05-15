@@ -123,9 +123,12 @@ class StreamingSession:
     ) -> None:
         """v2 ToolCall* dispatch sink. Slice 3 (#1100) introduced this.
 
-        Default no-op — ToolCall* events are absorbed; no UX action taken.
-        Platform subclasses may override to render richer tool activity.
+        Records that a tool event was observed (drives the tool-only fallback
+        message in ``classify_stream_error``). Platform subclasses may override
+        to render richer tool activity; they should call ``super()`` to preserve
+        the flag.
         """
+        self._st.had_tool_events = True
         return None
 
     async def _on_text_v2(
@@ -161,11 +164,14 @@ class StreamingSession:
                     self._st.last_intermediate_edit = now
         elif isinstance(event, TextEndRenderEvent):
             # TextEnd closes the text block; accumulated istate text is the final text.
+            # is_error_pending is set upstream when RunErrorRenderEvent fires
+            # (soft error OR infra exception) — thread it through so the
+            # adapter's build_display_text() prepends the ``❌`` prefix.
             if self._st.istate.text:
                 final = self._st.istate.text
                 if final.startswith("⏳ "):
                     final = final[2:]
-                self._st.set_final_text(final)
+                self._st.set_final_text(final, is_error=self._st.is_error_pending)
 
     async def _send_placeholder(self) -> tuple[Any, int | None] | None:
         """Send the placeholder and record reply_message_id on outbound.
@@ -216,6 +222,11 @@ class StreamingSession:
                     # Slice 1 (#1098): Run lifecycle events are pure additive
                     # surface — adapters initially ignore (no UX). Future slices
                     # may render banners or expose run_id in observability.
+                    # RunErrorRenderEvent flags the turn as error so the
+                    # subsequent TextEnd (if any) sets is_error_turn=True,
+                    # producing the ``❌`` prefix on the final rendered text.
+                    if isinstance(event, RunErrorRenderEvent):
+                        self._st.is_error_pending = True
                     continue
 
                 if isinstance(

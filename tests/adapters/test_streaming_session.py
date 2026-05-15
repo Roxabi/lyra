@@ -105,11 +105,14 @@ async def test_stream_error_no_text():
     with pytest.raises(RuntimeError, match="boom"):
         await session.run(_error_events())
 
-    # Error text should be a descriptive streaming error (not the bare generic reply)
+    # Error text shows exception class name only; the original exception's str()
+    # is NOT included (PR #1210 review B3 — prevents leaking hostnames, paths,
+    # auth tokens that httpx/aiohttp/NATS exceptions may carry).
     args = cb.edit_placeholder_text.call_args[0]
     assert args[0] is placeholder_obj
     assert "RuntimeError" in args[1]
-    assert "boom" in args[1]
+    assert "boom" not in args[1]
+    assert "Please try again" in args[1]
 
 
 async def test_stream_error_outbound_not_mutated():
@@ -158,11 +161,14 @@ async def test_partial_text_then_stream_error():
     with pytest.raises(RuntimeError, match="mid-stream"):
         await session.run(_partial_then_error())
 
-    # No TextEnd arrived — descriptive error (RuntimeError name + message) shown
+    # No TextEnd arrived — descriptive error with exception class name only.
+    # The original exception's str() is NOT included (PR #1210 review B3 —
+    # prevents leaking hostnames, paths, auth tokens via str(exc)).
     args = cb.edit_placeholder_text.call_args[0]
     assert args[0] is placeholder_obj
     assert "RuntimeError" in args[1]
-    assert "mid-stream" in args[1]
+    assert "mid-stream" not in args[1]
+    assert "Please try again" in args[1]
 
 
 # ---------------------------------------------------------------------------

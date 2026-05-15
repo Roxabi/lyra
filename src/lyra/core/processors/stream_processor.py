@@ -229,6 +229,14 @@ class StreamProcessor:
         run_id = TraceContext.get_trace_id() or f"synthetic-{TraceContext.generate()}"
         yield RunStartedRenderEvent(run_id=run_id)
         _result_received = False
+        # Soft-error capture: ResultLlmEvent.is_error=True signals the LLM
+        # backend returned an error response. Carried out of the try block so
+        # the post-finally emission can choose RunErrorRenderEvent vs
+        # RunFinishedRenderEvent. error_text is driver-curated user-facing
+        # text (e.g. "Not logged in · Please run /login"), not an exception
+        # str() — safe to forward on the NATS bus.
+        _result_is_error = False
+        _result_error_text: str | None = None
         try:
             async for event in events:
                 if isinstance(event, TextLlmEvent):
@@ -285,6 +293,8 @@ class StreamProcessor:
 
                 elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
                     _result_received = True
+                    _result_is_error = event.is_error
+                    _result_error_text = event.error_text
                     # ───── Slice 4 (#1101) reasoning-close guard ─────
                     for _re in self._close_reasoning_if_open():
                         yield _re
@@ -378,7 +388,21 @@ class StreamProcessor:
             _aclose = getattr(events, "aclose", None)
             if _aclose is not None:
                 await _aclose()
-        yield RunFinishedRenderEvent(run_id=run_id, outcome="success")
+        if _result_is_error:
+            # Soft error: LLM backend returned an error response. The run
+            # completed cleanly (no infrastructure exception), but the user
+            # should still see an ❌ prefix on the rendered message. Emit
+            # RunErrorRenderEvent instead of RunFinishedRenderEvent so the
+            # adapter's dispatch ladder can flag the turn as error.
+            # message is driver-curated user-facing text (ResultLlmEvent.
+            # error_text), not str(exception) — safe for NATS broadcast.
+            yield RunErrorRenderEvent(
+                run_id=run_id,
+                message=str(_result_error_text or "model_error"),
+                code=None,
+            )
+        else:
+            yield RunFinishedRenderEvent(run_id=run_id, outcome="success")
 
     async def _handle_tool_event(
         self, event: ToolUseLlmEvent

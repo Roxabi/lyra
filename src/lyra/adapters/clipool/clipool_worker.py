@@ -51,21 +51,26 @@ def _classify_exception(exc: BaseException) -> WorkerError:
     """
     import asyncio
 
+    # Sanitize bus-bound messages (#1215, sibling of #1212). Exception __str__
+    # can embed file paths, byte sequences, or arbitrary text from system
+    # errors — the bus-bound message keeps only the type name. Full traceback
+    # logging is owned by the callers (_handle_cmd_streaming/_handle_cmd_blocking
+    # both call log.exception before invoking this classifier).
     if isinstance(exc, asyncio.TimeoutError):
         return WorkerError(
             code="cli.session_lost",
-            message=str(exc) or "CLI session timed out",
+            message=f"CLI session timed out: {type(exc).__name__}",
             retryable=True,
         )
     if isinstance(exc, (UnicodeDecodeError, ValueError)):
         return WorkerError(
             code="cli.parse",
-            message=str(exc) or "CLI parse/decode error",
+            message=f"CLI parse/decode error: {type(exc).__name__}",
             retryable=False,
         )
     return WorkerError(
         code="worker.crash",
-        message=str(exc) or "Unhandled worker exception",
+        message=f"Unhandled worker exception: {type(exc).__name__}",
         retryable=True,
     )
 
@@ -157,7 +162,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
     async def _handle_cmd(self, msg: Any, payload: dict) -> None:
         try:
             cmd = CliCmdPayload.model_validate(payload)
-        except ValidationError as exc:
+        except ValidationError:
             log.exception("clipool_worker: failed to parse CliCmdPayload")
             # The JSON decoded successfully (NatsAdapterBase did that before
             # dispatching to handle()) but the payload failed schema validation
@@ -165,9 +170,12 @@ class CliPoolNatsWorker(NatsAdapterBase):
             # fields are wrong, e.g. caller on an old contract version).
             # `transport.parse` would mean "couldn't decode bytes/JSON", which
             # is a different failure mode handled one layer up.
+            # Sanitize bus-bound message (#1215). ValidationError __str__
+            # embeds incoming field values from CliCmdPayload — full %r in
+            # log.exception above only.
             worker_error = WorkerError(
                 code="worker.validation",
-                message=str(exc) or "CliCmdPayload validation failed",
+                message="CliCmdPayload validation failed",
                 retryable=False,
             )
             emit_populated_total(domain="cli")

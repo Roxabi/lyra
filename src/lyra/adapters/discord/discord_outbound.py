@@ -275,8 +275,7 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         await send(adapter, original_msg, fallback_outbound)
         return fallback_outbound.metadata.get("reply_message_id")
 
-    # Mutable cells for _render_reasoning closure state (one per streaming turn).
-    _reasoning_trace_cell: list[Any] = [None]
+    # Per-callback state (NOT placeholder identity — that lives on session._trace_obj).
     _reasoning_accum_cell: list[str] = [""]
     _last_reasoning_edit_cell: list[float | None] = [None]
 
@@ -319,25 +318,14 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         Accumulated text is truncated to 120 chars with '…' suffix.
         """
         if isinstance(event, ReasoningStartRenderEvent):
-            effective_trace = (
-                trace_obj if trace_obj is not None else _reasoning_trace_cell[0]
-            )
+            effective_trace = trace_obj
             if effective_trace is None:
-                try:
-                    effective_trace, _ = await _send_trace_placeholder()
-                    _reasoning_trace_cell[0] = effective_trace
-                except Exception:
-                    log.exception(
-                        "Failed to send trace placeholder — reasoning will not render"
-                    )
-                    return
+                return
             _reasoning_accum_cell[0] = ""
             _last_reasoning_edit_cell[0] = None
 
         elif isinstance(event, ReasoningDeltaRenderEvent):
-            effective_trace = (
-                trace_obj if trace_obj is not None else _reasoning_trace_cell[0]
-            )
+            effective_trace = trace_obj
             if effective_trace is None:
                 return
             _reasoning_accum_cell[0] += event.delta
@@ -353,9 +341,7 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
                 _last_reasoning_edit_cell[0] = now
 
         else:  # ReasoningEndRenderEvent
-            effective_trace = (
-                trace_obj if trace_obj is not None else _reasoning_trace_cell[0]
-            )
+            effective_trace = trace_obj
             if effective_trace is None:
                 return
             # Final flush: guarantee last edit even if throttled

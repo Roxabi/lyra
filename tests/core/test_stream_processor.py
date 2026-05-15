@@ -701,9 +701,13 @@ class TestStreamProcessor:
     # B3 — is_error propagation from ResultLlmEvent → TextRenderEvent (#392)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_is_error_propagated_to_text_render_event(self) -> None:
-        """ResultLlmEvent(is_error=True) → TextRenderEvent(is_error=True) (#392)."""
+        """ResultLlmEvent(is_error=True) → RunErrorRenderEvent (v2, #1211 S3).
+
+        v2 contract: is_error on the Result closes the open text block via
+        TextEndRenderEvent, then emits RunErrorRenderEvent (not RunFinishedRenderEvent).
+        The error flag is carried on the run-level event, not on TextEnd.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -712,18 +716,23 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
-        # One intermediate (is_final=False) + one final (is_final=True).
-        # is_error is only set on the final event.
-        final_text = [
-            e for e in result if isinstance(e, TextRenderEvent) and e.is_final
-        ]
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        assert len(final_text) == 1
-        assert final_text[0].text == "error response"
-        assert final_text[0].is_error is True
-        assert final_text[0].is_final is True
+        # Assert — run envelope uses RunError (not RunFinished) for is_error=True
+        assert isinstance(all_events[0], RunStartedRenderEvent)
+        assert isinstance(all_events[-1], RunErrorRenderEvent)
+        assert not any(isinstance(e, RunFinishedRenderEvent) for e in all_events)
+
+        # Assert — text block is properly closed before the run terminates
+        text_starts = [e for e in all_events if isinstance(e, TextStartRenderEvent)]
+        text_deltas = [e for e in all_events if isinstance(e, TextDeltaRenderEvent)]
+        text_ends = [e for e in all_events if isinstance(e, TextEndRenderEvent)]
+        assert len(text_starts) == 1
+        assert len(text_deltas) == 1
+        assert text_deltas[0].delta == "error response"
+        assert text_deltas[0].message_id == text_starts[0].message_id
+        assert len(text_ends) == 1
+        assert text_ends[0].message_id == text_starts[0].message_id
 
     @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_is_error_false_propagated_to_text_render_event(self) -> None:
@@ -795,21 +804,28 @@ class TestStreamProcessor:
         assert len(final_text) == 1
         assert final_text[0].text == "recovered output"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_empty_stream(self) -> None:
-        """Empty event stream emits a terminal error event (backend died)."""
+        """Empty event stream emits the v2 minimum envelope (v2, #1211 S3).
+
+        v2 contract: no LlmEvents → no TextBlock, no RunError. The processor
+        receives nothing (ResultLlmEvent never arrives), so _result_is_error
+        stays False and the run closes cleanly with RunFinishedRenderEvent.
+        Minimum envelope: RunStarted → RunFinished only.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
 
         # Act
-        result = strip_run_lifecycle(await collect(processor.process(async_events())))
+        result = await collect(processor.process(async_events()))
 
-        # Assert — backend produced nothing: emit an error so the "…"
-        # placeholder is replaced instead of staying stuck.
-        assert len(result) == 1
-        assert isinstance(result[0], TextRenderEvent)
-        assert result[0].is_error is True
-        assert result[0].is_final is True
+        # Assert — exactly two lifecycle bookends, no text or error events
+        assert len(result) == 2, f"Expected 2 events, got {len(result)}: {result!r}"
+        assert isinstance(result[0], RunStartedRenderEvent)
+        assert isinstance(result[1], RunFinishedRenderEvent)
+        assert result[1].outcome == "success"
+        assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
+        _text_types = (TextStartRenderEvent, TextDeltaRenderEvent, TextEndRenderEvent)
+        assert not any(isinstance(e, _text_types) for e in result)
 
     @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_no_result_event(self) -> None:
@@ -1151,28 +1167,8 @@ class TestToolCallLifecycle:
         assert len(ends) == 1
         assert ends[0].tool_call_id == "t1"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-    async def test_dual_emit_v1_and_v2_both_present(self) -> None:
-        """T4 (#1100 review): assert BOTH v1 ToolSummary AND v2 ToolCall* are emitted.
-
-        The dual-emit contract is umbrella-spec invariant 5 (coexistence).
-        Asserting only v1 count would let a silent drop of ToolCallStart pass.
-        """
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
-        processor = StreamProcessor(cfg_)
-        events = async_events(
-            ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={"path": "src/x.py"}),
-            ResultLlmEvent(is_error=False, duration_ms=10),
-        )
-
-        result = await collect(processor.process(events))
-        v1_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        v2_starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
-        # Both halves of the dual-emit must fire for the same source event.
-        assert len(v1_summaries) == 1
-        assert len(v2_starts) == 1
+    # B8-14: v1 removed in #1192 S3; "dual-emit" premise invalid post-cutover.
+    # Removed per spec #1211.
 
     async def test_tool_call_args_passes_partial_json_verbatim(self) -> None:
         cfg_ = ToolDisplayConfig(throttle_window=0.0)

@@ -159,21 +159,15 @@ class TestStreamProcessor:
     # T10 — Single Edit tool call (SC-1, SC-2) — v2 triplet (Slice 3 / #1192)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_single_edit(self) -> None:
-        """Single Edit, show_intermediate=True (default): v2 text triplet + ToolCall*.
+        """Single Edit: v2 text triplet + ToolCall{Start,End} (B8-1, #1211 S4).
 
-        After Slice 3, ToolSummaryRenderEvent is gone; tool activity is conveyed
-        via ToolCall{Start,End}RenderEvent only. Text is conveyed via the v2 triplet.
-        The stream (minus Run lifecycle) is:
-          TextStartRenderEvent, TextDeltaRenderEvent,
-          TextEndRenderEvent (closed by ToolUse),
-          ToolCallStartRenderEvent, ToolCallEndRenderEvent,
-          ToolSummaryRenderEvent (complete),  ← emitted by ResultLlmEvent
-          TextEndRenderEvent (final, closing any open block).
-        Wait — after v1 removal the text block closes at ToolUseLlmEvent arrival,
-        then ToolCall* events flow, then ResultLlmEvent emits the ToolSummary snapshot.
-        No TextRenderEvent in the stream.
+        v2 contract (post-v1 removal): ToolSummaryRenderEvent is gone.
+        Text before the ToolUse opens a text block (TextStart → TextDelta);
+        ToolUseLlmEvent closes the block (TextEnd) then emits ToolCallStart.
+        ResultLlmEvent synthesises a ToolCallEnd for the open call.
+        Stream (minus Run lifecycle): TextStart → TextDelta → TextEnd →
+          ToolCallStart → ToolCallEnd.
         """
         # Arrange
         processor = StreamProcessor(cfg())
@@ -189,15 +183,7 @@ class TestStreamProcessor:
         all_events = await collect(processor.process(events))
         result = [e for e in all_events if not isinstance(e, _RUN_LIFECYCLE_TYPES)]
 
-        # Assert — no TextRenderEvent / ToolSummaryRenderEvent in stream
-        assert not any(isinstance(e, TextRenderEvent) for e in result), (
-            f"Unexpected v1 TextRenderEvent in stream: {result!r}"
-        )
-        assert not any(isinstance(e, ToolSummaryRenderEvent) for e in result), (
-            f"Unexpected v1 ToolSummaryRenderEvent in stream: {result!r}"
-        )
-
-        # v2 text triplet must be present and correlated
+        # Assert — v2 text triplet present and correlated
         starts = [e for e in result if isinstance(e, TextStartRenderEvent)]
         deltas = [e for e in result if isinstance(e, TextDeltaRenderEvent)]
         ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
@@ -208,9 +194,19 @@ class TestStreamProcessor:
         assert ends[0].message_id == starts[0].message_id
         assert deltas[0].delta == "Refactoring..."
 
-        # ToolCall lifecycle must be present
-        assert any(isinstance(e, ToolCallStartRenderEvent) for e in result)
-        assert any(isinstance(e, ToolCallEndRenderEvent) for e in result)
+        # Assert — ToolCall lifecycle present
+        tool_starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
+        tool_ends = [e for e in result if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(tool_starts) == 1, (
+            f"Expected 1 ToolCallStart, got {len(tool_starts)}"
+        )
+        assert len(tool_ends) == 1, f"Expected 1 ToolCallEnd, got {len(tool_ends)}"
+        assert tool_starts[0].tool_call_id == "t1"
+        assert tool_starts[0].tool_name == "Edit"
+        assert tool_ends[0].tool_call_id == "t1"
+
+        # Assert — file accumulator updated
+        assert "src/foo.py" in processor._files
 
     @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_single_edit_no_intermediate(self) -> None:
@@ -246,9 +242,13 @@ class TestStreamProcessor:
         assert any(isinstance(e, ToolCallStartRenderEvent) for e in result)
         assert any(isinstance(e, ToolCallEndRenderEvent) for e in result)
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_write_tool_tracked(self) -> None:
-        """Write tool calls are accumulated into the files dict."""
+        """Write tool calls emit ToolCallStart/End and update _files (B8-2, #1211 S4).
+
+        v2 contract: Write tool emits the same ToolCall lifecycle as Edit.
+        The file accumulator records the path. No ToolSummaryRenderEvent exists
+        post-v1 removal; internal state (_files) is the authoritative record.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -259,22 +259,35 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert "src/new.py" in final_summaries[0].files
+        # Assert — ToolCall lifecycle emitted for Write
+        tool_starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        tool_ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(tool_starts) == 1
+        assert tool_starts[0].tool_call_id == "w1"
+        assert tool_starts[0].tool_name == "Write"
+        assert len(tool_ends) == 1
+        assert tool_ends[0].tool_call_id == "w1"
+
+        # Assert — file accumulator updated with Write path
+        assert "src/new.py" in processor._files
+        entry = processor._files["src/new.py"]
+        assert entry.count == 1
+        assert "Write" in entry.edits
 
     # ------------------------------------------------------------------
     # T11 — Five edits at threshold (SC-4: names mode)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_five_edits_at_threshold(self) -> None:
-        """Exactly names_threshold edits keeps names mode (edits list populated)."""
+        """Exactly names_threshold edits: names mode preserved (B8-3, #1211 S4).
+
+        v2 contract: 5 Edit calls at names_threshold=5 keeps names mode —
+        the edits list has 5 entries (not cleared to count-only). Each Edit
+        emits one ToolCallStart; orphan synthesis at ResultLlmEvent emits 5
+        ToolCallEnd events. Internal _files accumulator carries the edits list.
+        """
         # Arrange
         processor = StreamProcessor(cfg(names_threshold=5))
         edit_events = [
@@ -288,26 +301,32 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert — find the final ToolSummaryRenderEvent
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        final = final_summaries[0]
-        assert "src/foo.py" in final.files
-        entry = final.files["src/foo.py"]
+        # Assert — 5 ToolCallStart + 5 ToolCallEnd emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 5, f"Expected 5 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 5, f"Expected 5 ToolCallEnd, got {len(ends)}"
+        assert [e.tool_call_id for e in starts] == [f"t{i}" for i in range(5)]
+
+        # Assert — file accumulator in names mode (count=5, edits list populated)
+        assert "src/foo.py" in processor._files
+        entry = processor._files["src/foo.py"]
         assert entry.count == 5
-        assert len(entry.edits) == 5  # names mode — still at threshold
+        assert len(entry.edits) == 5  # names mode — at threshold, not cleared
 
     # ------------------------------------------------------------------
     # T12 — Six edits: count mode (SC-4: threshold+1)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_six_edits_count_mode(self) -> None:
-        """names_threshold+1 edits switches to count mode (edits cleared)."""
+        """names_threshold+1 edits switches to count mode (B8-4, #1211 S4).
+
+        v2 contract: 6 Edit calls at names_threshold=5 triggers count mode —
+        the edits list is cleared to [] and only count is tracked. Each Edit
+        still emits ToolCallStart; orphan synthesis emits 6 ToolCallEnd events.
+        """
         # Arrange
         processor = StreamProcessor(cfg(names_threshold=5))
         edit_events = [
@@ -321,18 +340,19 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert — final summary switches to count mode
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        final = final_summaries[0]
-        assert "src/foo.py" in final.files
-        entry = final.files["src/foo.py"]
+        # Assert — 6 ToolCallStart + 6 ToolCallEnd emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 6, f"Expected 6 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 6, f"Expected 6 ToolCallEnd, got {len(ends)}"
+
+        # Assert — file accumulator in count mode (edits cleared)
+        assert "src/foo.py" in processor._files
+        entry = processor._files["src/foo.py"]
         assert entry.count == 6
-        assert entry.edits == []  # count mode
+        assert entry.edits == []  # count mode: cleared when count > names_threshold
 
     # ------------------------------------------------------------------
     # T13 — Two files, no group (SC-5)
@@ -430,9 +450,13 @@ class TestStreamProcessor:
     # T16 — Bash truncation (SC-6)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_bash_truncation(self) -> None:
-        """Bash commands longer than bash_max_len are truncated."""
+        """Bash commands > bash_max_len truncated in _bash accumulator (B8-5, #1211 S4).
+
+        v2 contract: Bash tool emits ToolCallStart/End like any other tool.
+        The command is stored in _bash accumulator truncated to bash_max_len.
+        No ToolSummaryRenderEvent post-v1 removal; accumulator is authoritative.
+        """
         # Arrange
         processor = StreamProcessor(cfg(bash_max_len=60))
         long_command = "x" * 80
@@ -444,23 +468,31 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert len(final_summaries[0].bash_commands) == 1
-        assert len(final_summaries[0].bash_commands[0]) == 60
+        # Assert — ToolCall lifecycle emitted for Bash
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 1
+        assert starts[0].tool_name == "Bash"
+        assert len(ends) == 1
+
+        # Assert — bash accumulator has truncated command
+        assert len(processor._bash) == 1
+        assert len(processor._bash[0]) == 60  # truncated to bash_max_len
 
     # ------------------------------------------------------------------
     # T17 — Silent Read/Grep/Glob (SC-7)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_silent_read_grep_glob(self) -> None:
-        """Read, Grep, Glob are silent: increment counters, not visible summary."""
+        """Read/Grep/Glob: ToolCall lifecycle + silent counters (B8-6, #1211 S4).
+
+        v2 contract: ToolCallStart is emitted for every tool (including silent ones)
+        since _handle_tool_event always yields it. Silent Read/Grep/Glob update
+        the _silent_reads/_silent_greps/_silent_globs counters but do NOT add to
+        _files, _bash, _web_fetches, or _agent_calls.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -471,29 +503,37 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        final = final_summaries[0]
-        assert final.silent_counts.reads == 1
-        assert final.silent_counts.greps == 1
-        assert final.silent_counts.globs == 1
-        assert final.files == {}
-        assert final.bash_commands == []
-        assert final.web_fetches == []
-        assert final.agent_calls == []
+        # Assert — 3 ToolCallStart + 3 ToolCallEnd (orphan synthesis) emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 3, f"Expected 3 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 3, f"Expected 3 ToolCallEnd, got {len(ends)}"
+        assert {e.tool_name for e in starts} == {"Read", "Grep", "Glob"}
+
+        # Assert — silent counters incremented
+        assert processor._silent_reads == 1
+        assert processor._silent_greps == 1
+        assert processor._silent_globs == 1
+
+        # Assert — no file/bash/web accumulator entries
+        assert processor._files == {}
+        assert processor._bash == []
+        assert processor._web_fetches == []
+        assert processor._agent_calls == []
 
     # ------------------------------------------------------------------
     # T18 — WebFetch visible (SC-9)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_web_fetch_visible(self) -> None:
-        """WebFetch calls are recorded in the web_fetches list."""
+        """WebFetch: ToolCallStart/End + URL in _web_fetches (B8-7, #1211 S4).
+
+        v2 contract: WebFetch (show["web_fetch"]=True by default) emits the
+        ToolCall lifecycle and appends the URL to _web_fetches. No
+        ToolSummaryRenderEvent post-v1 removal.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -506,14 +546,19 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert len(final_summaries[0].web_fetches) == 1
+        # Assert — ToolCall lifecycle emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 1
+        assert starts[0].tool_name == "WebFetch"
+        assert starts[0].tool_call_id == "wf1"
+        assert len(ends) == 1
+
+        # Assert — URL accumulated (show["web_fetch"]=True by default)
+        assert len(processor._web_fetches) == 1
+        assert processor._web_fetches[0] == "https://example.com"
 
     @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_web_search_visible(self) -> None:
@@ -591,9 +636,15 @@ class TestStreamProcessor:
     # T20 — ResultLlmEvent bypasses throttle (SC-8)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_result_bypasses_throttle(self) -> None:
-        """ResultLlmEvent bypasses throttle; final ToolSummaryRenderEvent emitted."""
+        """ToolCallEnd is always emitted at ResultLlmEvent time (B8-8, #1211 S4).
+
+        v2 contract: throttle_ms is stored in ToolDisplayConfig but not used for
+        suppression in StreamProcessor (v1 ToolSummaryRenderEvent throttle is gone).
+        Every tool call gets a ToolCallStart immediately, and a ToolCallEnd either
+        via ToolUseEndLlmEvent or orphan synthesis at ResultLlmEvent. Setting a
+        large throttle_ms has no effect on v2 ToolCall* emission.
+        """
         # Arrange
         processor = StreamProcessor(cfg(throttle_ms=9_999_999))
         events = async_events(
@@ -604,29 +655,31 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert — a complete summary IS emitted despite huge throttle
-        complete_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(complete_summaries) == 1
+        # Assert — ToolCallStart and ToolCallEnd both emitted (throttle has no effect)
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 1, f"Expected 1 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 1, f"Expected 1 ToolCallEnd, got {len(ends)}"
+        assert starts[0].tool_call_id == "t1"
+        assert ends[0].tool_call_id == "t1"
 
-        # Also verify throttle does not suppress the first mid-turn event
-        mid_summaries = [
-            e
-            for e in result
-            if isinstance(e, ToolSummaryRenderEvent) and not e.is_complete
-        ]
-        assert len(mid_summaries) == 1
+        # Assert — run lifecycle closes cleanly
+        assert any(isinstance(e, RunFinishedRenderEvent) for e in all_events)
 
     # ------------------------------------------------------------------
     # T21 — Throttle suppresses duplicate mid-turn events (SC-8)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_throttle_suppression(self) -> None:
-        """Second tool within throttle window is suppressed (1 mid-turn summary)."""
+        """Multiple tools each get their own ToolCallStart/End (B8-9, #1211 S4).
+
+        v2 contract: there is no mid-turn ToolSummaryRenderEvent throttle
+        post-v1 removal. Two Edit tool calls produce 2 ToolCallStart + 2
+        ToolCallEnd events regardless of throttle_ms setting. Both file paths
+        appear in the _files accumulator.
+        """
         # Arrange
         processor = StreamProcessor(cfg(throttle_ms=9_999_999))
         events = async_events(
@@ -636,15 +689,18 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert — exactly 1 mid-turn (is_complete=False) summary
-        mid_summaries = [
-            e
-            for e in result
-            if isinstance(e, ToolSummaryRenderEvent) and not e.is_complete
-        ]
-        assert len(mid_summaries) == 1
+        # Assert — 2 ToolCallStart + 2 ToolCallEnd (no v2 throttle suppression)
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 2, f"Expected 2 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 2, f"Expected 2 ToolCallEnd, got {len(ends)}"
+        assert {e.tool_call_id for e in starts} == {"t1", "t2"}
+
+        # Assert — both file paths in accumulator
+        assert "a.py" in processor._files
+        assert "b.py" in processor._files
 
     # ------------------------------------------------------------------
     # T22 — Throttle=0 passes all mid-turn events through (SC-8)
@@ -887,9 +943,12 @@ class TestStreamProcessor:
 class TestRunLifecycle:
     """RunStarted/RunFinished/RunError emission contract (#1098)."""
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_emission_order_text_only(self) -> None:
-        """Text-only turn emits RunStarted first and RunFinished last."""
+        """Text-only turn: exact v2 ordered event sequence (B8-12, #1211 S4).
+
+        v2 contract: RunStarted → TextStart → TextDelta → TextEnd → RunFinished.
+        No v1 TextRenderEvent in the stream post-v1 removal.
+        """
         processor = StreamProcessor(cfg())
         events = async_events(
             TextLlmEvent(text="hello"),
@@ -898,16 +957,27 @@ class TestRunLifecycle:
 
         result = await collect(processor.process(events))
 
-        assert isinstance(result[0], RunStartedRenderEvent)
-        assert isinstance(result[-1], RunFinishedRenderEvent)
-        assert result[-1].outcome == "success"
-        # The text event is sandwiched between the lifecycle bookends.
-        assert any(isinstance(e, TextRenderEvent) for e in result[1:-1])
+        # Assert exact ordered class names
+        names = [type(e).__name__ for e in result]
+        assert names == [
+            "RunStartedRenderEvent",
+            "TextStartRenderEvent",
+            "TextDeltaRenderEvent",
+            "TextEndRenderEvent",
+            "RunFinishedRenderEvent",
+        ], f"Unexpected emission order: {names}"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
+        assert result[0].run_id == result[-1].run_id  # run_id consistent
+        assert result[-1].outcome == "success"
+
     async def test_emission_order_with_tool(self) -> None:
-        """Tool-using turn keeps lifecycle bookends around tool/text events."""
-        processor = StreamProcessor(cfg(), show_intermediate=False)
+        """Tool-only turn: exact v2 ordered event sequence (B8-13, #1211 S4).
+
+        v2 contract: RunStarted → ToolCallStart → ToolCallEnd → RunFinished.
+        No v1 ToolSummaryRenderEvent post-v1 removal. ToolCallEnd is synthesised
+        by the orphan-end path at ResultLlmEvent time (no ToolUseEndLlmEvent sent).
+        """
+        processor = StreamProcessor(cfg())
         events = async_events(
             ToolUseLlmEvent(
                 tool_name="Edit", tool_id="t1", input={"path": "src/foo.py"}
@@ -917,12 +987,17 @@ class TestRunLifecycle:
 
         result = await collect(processor.process(events))
 
-        assert isinstance(result[0], RunStartedRenderEvent)
-        assert isinstance(result[-1], RunFinishedRenderEvent)
-        # Mid-turn payload: at least one ToolSummaryRenderEvent and one TextRenderEvent.
-        middle = result[1:-1]
-        assert any(isinstance(e, ToolSummaryRenderEvent) for e in middle)
-        assert any(isinstance(e, TextRenderEvent) for e in middle)
+        # Assert exact ordered class names
+        names = [type(e).__name__ for e in result]
+        assert names == [
+            "RunStartedRenderEvent",
+            "ToolCallStartRenderEvent",
+            "ToolCallEndRenderEvent",
+            "RunFinishedRenderEvent",
+        ], f"Unexpected emission order: {names}"
+
+        assert result[0].run_id == result[-1].run_id  # run_id consistent
+        assert result[-1].outcome == "success"
 
     async def test_run_id_matches_trace_id(self) -> None:
         """RunStarted/RunFinished both carry run_id == TraceContext.trace_id."""

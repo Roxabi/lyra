@@ -27,8 +27,10 @@ Entries are generated automatically by `/promote` and committed to staging befor
 - v1 registry entries (`text`, `tool_summary`) removed from `NatsRenderEventCodec`.
 
 > **Coordinated deploy required.** This slice bumps the render-event schema floor. The
-> `lyra-hub`, `lyra-telegram`, `lyra-discord`, and `lyra-clipool` container images must be
-> released and deployed together. See `docs/ops/container-publishing.md` — Schema-floor releases.
+> `lyra-hub`, `lyra-telegram`, and `lyra-discord` container images must be released and
+> deployed together. `lyra-clipool` is intentionally **excluded** — it is on the LLM-driver
+> path and is not a `RenderEvent` receiver, so it does not participate in the schema
+> handshake. See `docs/ops/container-publishing.md` — Schema-floor releases.
 > Closes #1192, #1177. Tracks #1205.
 
 ## [0.2.0](https://github.com/Roxabi/lyra/compare/lyra-v0.1.0...lyra-v0.2.0) (2026-04-17)

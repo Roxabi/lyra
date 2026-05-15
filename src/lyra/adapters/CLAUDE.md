@@ -141,12 +141,16 @@ Inherit this base whenever you add a new platform adapter.
 |-------|------|------|
 | `send_placeholder` | `async () -> (obj, id\|None)` | Send initial placeholder message |
 | `edit_placeholder_text` | `async (obj, text) -> None` | Edit placeholder with intermediate text |
-| `edit_placeholder_tool` | `async (obj, event, header) -> None` | Edit placeholder with tool summary |
 | `send_message` | `async (text) -> id\|None` | Send new message (tool-using turns) |
 | `send_fallback` | `async (text) -> id\|None` | Fallback send when placeholder fails |
 | `chunk_text` | `(text) -> list[str]` | Split text into platform-sized chunks |
 | `start_typing` | `() -> None` | Start typing indicator (sync) |
 | `cancel_typing` | `() -> None` | Cancel typing indicator (sync) |
+| `send_trace_placeholder` | `async () -> (obj, id\|None)` | Send reasoning-trace placeholder |
+| `edit_trace` | `async (obj, event) -> None` | Edit reasoning-trace placeholder |
+| `edit_reasoning` | `async (obj, event) -> None` | Render reasoning Start/Delta/End |
+| `get_msg` | `(key, fallback) -> str` | i18n message lookup |
+| `placeholder_text` | `str` | Initial placeholder text |
 
 ### MRO pattern for discord.Client
 
@@ -172,12 +176,16 @@ class MyAdapter(OutboundAdapterBase):
         return PlatformCallbacks(
             send_placeholder=...,
             edit_placeholder_text=...,
-            edit_placeholder_tool=...,
             send_message=...,
             send_fallback=...,
             chunk_text=...,
             start_typing=...,
             cancel_typing=...,
+            send_trace_placeholder=...,
+            edit_trace=...,
+            edit_reasoning=...,
+            get_msg=...,
+            placeholder_text=...,
         )
 
     def _start_typing(self, scope_id): ...

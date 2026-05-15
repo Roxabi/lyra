@@ -168,6 +168,7 @@ class ToolSummaryRenderEvent:
     web_fetches: list[str] = field(default_factory=list)
     agent_calls: list[str] = field(default_factory=list)
     silent_counts: SilentCounts = field(default_factory=SilentCounts)
+    unknown_calls: dict[str, int] = field(default_factory=dict)
     is_complete: bool = False
     schema_version: int = 1
 

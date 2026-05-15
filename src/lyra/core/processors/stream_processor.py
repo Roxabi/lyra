@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator
 from typing import assert_never
 from uuid import uuid4
@@ -167,6 +168,9 @@ class StreamProcessor:
         self._silent_reads: int = 0
         self._silent_greps: int = 0
         self._silent_globs: int = 0
+
+        # --- unknown tool counter ---
+        self._unknown: Counter[str] = Counter()
 
         # --- throttle state ---
         self._last_tool_emit: float | None = None
@@ -584,7 +588,9 @@ class StreamProcessor:
             if self._config.show.get("agent", False):
                 self._agent_calls.append(event.input.get("description", "agent"))
 
-        # anything else with show.get(key, False) == False → ignored
+        else:
+            # Unknown tool — show name + count, no content
+            self._unknown[tool_key] += 1
 
     def _should_emit(self) -> bool:
         """Return True when the throttle window has elapsed (or never fired)."""
@@ -609,6 +615,7 @@ class StreamProcessor:
                 greps=self._silent_greps,
                 globs=self._silent_globs,
             ),
+            unknown_calls=dict(self._unknown),
             is_complete=is_complete,
         )
         self._last_tool_emit = time.monotonic()
@@ -624,6 +631,7 @@ class StreamProcessor:
             or self._silent_reads > 0
             or self._silent_greps > 0
             or self._silent_globs > 0
+            or self._unknown
         )
 
 

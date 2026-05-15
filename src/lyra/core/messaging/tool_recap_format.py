@@ -92,6 +92,15 @@ def _format_silent(event: ToolSummaryRenderEvent) -> list[str]:
     return [f"\U0001f50d {' \u00b7 '.join(parts)}"]
 
 
+def _format_unknown(event: ToolSummaryRenderEvent) -> list[str]:
+    """Build lines for unknown tools: one line per distinct tool name with count."""
+    return [
+        f"\U0001f527 {count} {name}"
+        for name, count in sorted(event.unknown_calls.items())
+        if count > 0
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -107,6 +116,7 @@ def format_tool_lines(event: ToolSummaryRenderEvent) -> list[str]:
     for desc in event.agent_calls:
         desc = desc.strip() or "agent"
         lines.append(f"\U0001f916 {_truncate(desc, _AGENT_DISPLAY_MAX)}")
+    lines.extend(_format_unknown(event))
     lines.extend(_format_silent(event))
     return lines
 

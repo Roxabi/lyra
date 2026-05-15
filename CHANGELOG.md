@@ -33,6 +33,19 @@ Entries are generated automatically by `/promote` and committed to staging befor
 > handshake. See `docs/ops/container-publishing.md` — Schema-floor releases.
 > Closes #1192, #1177. Tracks #1205.
 
+### Fixed
+
+- Tool activity recap card (`🔧 Working… / Done ✅`) restored on Telegram and Discord
+  multi-tool turns. Card had been blank since the v1 cutover (#1192 slice 3) which removed
+  the v1 emitter while leaving `_on_toolcall_v2` as a stub. Rebuild sources card state
+  exclusively from v2 `ToolCall{Start,Args,End,Result}RenderEvent` and routes to a new
+  `PlatformCallbacks.edit_tool_recap` callback (defaulted no-op so non-rendering adapters
+  are unaffected). Discord retains pre-cutover `discord.Embed` parity (title / description
+  / green-or-blue color). Reasoning + recap now share `StreamingSession._trace_obj` via a
+  new `_ensure_trace_obj` helper, so the trace placeholder is sent at most once per turn
+  regardless of which path fires first. Unknown tools (`todowrite`, `ls`, …) render as
+  `🔧 N toolname` (lost feature from PR #1209). Adjacent v2-cutover context: #1102. (#1214)
+
 ## [0.2.0](https://github.com/Roxabi/lyra/compare/lyra-v0.1.0...lyra-v0.2.0) (2026-04-17)
 
 

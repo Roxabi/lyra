@@ -163,6 +163,19 @@ def test_tool_summary_render_event_with_data_roundtrip() -> None:
         assert recovered_file.count == 1
 
 
+def test_tool_summary_render_event_unknown_calls_roundtrip() -> None:
+    """unknown_calls survives serialize → deserialize."""
+    original = ToolSummaryRenderEvent(
+        unknown_calls={"todowrite": 3, "ls": 1},
+        is_complete=True,
+    )
+    data = serialize(original)
+    recovered = deserialize(data, ToolSummaryRenderEvent)
+
+    assert recovered.unknown_calls == {"todowrite": 3, "ls": 1}
+    assert recovered.is_complete is True
+
+
 # ---------------------------------------------------------------------------
 # OutboundAttachment round-trip
 # ---------------------------------------------------------------------------

@@ -183,6 +183,46 @@ class TestFormatToolSummaryHeader:
         assert result == "🔧 Working…"
 
 
+class TestFormatUnknownTools:
+    def test_single_unknown_tool_single_call(self) -> None:
+        """One unknown tool called once renders as '🔧 1 todowrite'."""
+        from lyra.core.messaging.tool_recap_format import format_tool_lines
+
+        event = ToolSummaryRenderEvent(unknown_calls={"todowrite": 1})
+        lines = format_tool_lines(event)
+        assert lines == ["🔧 1 todowrite"]
+
+    def test_multiple_unknown_tools_sorted(self) -> None:
+        """Multiple unknown tools are sorted alphabetically, one line each."""
+        from lyra.core.messaging.tool_recap_format import format_tool_lines
+
+        event = ToolSummaryRenderEvent(unknown_calls={"todowrite": 3, "ls": 1})
+        lines = format_tool_lines(event)
+        assert lines == ["🔧 1 ls", "🔧 3 todowrite"]
+
+    def test_unknown_tools_appear_before_silent_line(self) -> None:
+        """Unknown tool lines come before the 🔍 silent counts line."""
+        from lyra.core.messaging.render_events import SilentCounts
+        from lyra.core.messaging.tool_recap_format import format_tool_lines
+
+        event = ToolSummaryRenderEvent(
+            unknown_calls={"todowrite": 2},
+            silent_counts=SilentCounts(reads=5),
+        )
+        lines = format_tool_lines(event)
+        unknown_idx = next(i for i, l in enumerate(lines) if "todowrite" in l)
+        silent_idx = next(i for i, l in enumerate(lines) if "read" in l)
+        assert unknown_idx < silent_idx
+
+    def test_empty_unknown_calls_emits_no_lines(self) -> None:
+        """No unknown tools → no extra lines in the recap."""
+        from lyra.core.messaging.tool_recap_format import format_tool_lines
+
+        event = ToolSummaryRenderEvent()
+        lines = format_tool_lines(event)
+        assert not any("🔧" in l for l in lines)
+
+
 # ---------------------------------------------------------------------------
 # T10 — v2 Text dispatch + fallback tests (#1099)
 # ---------------------------------------------------------------------------

@@ -152,6 +152,57 @@ class TestRenderEventCodecVersionCheck:
         assert isinstance(result, ToolSummaryRenderEvent)
         assert counter == {}
 
+    def test_tool_summary_unknown_calls_decoded(self) -> None:
+        """unknown_calls in payload is decoded into ToolSummaryRenderEvent."""
+        # Arrange
+        codec = NatsRenderEventCodec()
+        counter: dict[str, int] = {}
+
+        # Act
+        result = codec.decode(
+            "tool_summary",
+            {
+                "schema_version": 1,
+                "files": {},
+                "bash_commands": [],
+                "web_fetches": [],
+                "agent_calls": [],
+                "silent_counts": {},
+                "unknown_calls": {"todowrite": 3, "ls": 1},
+                "is_complete": True,
+            },
+            counter=counter,
+        )
+
+        # Assert
+        assert isinstance(result, ToolSummaryRenderEvent)
+        assert result.unknown_calls == {"todowrite": 3, "ls": 1}
+        assert result.is_complete is True
+
+    def test_tool_summary_missing_unknown_calls_defaults_to_empty(self) -> None:
+        """Payload without unknown_calls (old wire format) decodes with empty dict."""
+        # Arrange
+        codec = NatsRenderEventCodec()
+
+        # Act
+        result = codec.decode(
+            "tool_summary",
+            {
+                "schema_version": 1,
+                "files": {},
+                "bash_commands": [],
+                "web_fetches": [],
+                "agent_calls": [],
+                "silent_counts": {},
+                "is_complete": False,
+            },
+            counter={},
+        )
+
+        # Assert — backward compat: old payloads without unknown_calls decode fine
+        assert isinstance(result, ToolSummaryRenderEvent)
+        assert result.unknown_calls == {}
+
     # -----------------------------------------------------------------------
     # tool_summary branch — landmine mismatch
     # -----------------------------------------------------------------------

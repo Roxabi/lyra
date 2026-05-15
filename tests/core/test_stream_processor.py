@@ -545,7 +545,35 @@ class TestStreamProcessor:
         assert final_summaries[0].agent_calls == ["sub-task"]
 
     # ------------------------------------------------------------------
-    # T20 — ResultLlmEvent bypasses throttle (SC-8)
+    # T20 — Unknown tool accumulation (SC-11)
+    # ------------------------------------------------------------------
+
+    async def test_unknown_tool_accumulation(self) -> None:
+        """Unknown tool calls are counted by name in unknown_calls."""
+        # Arrange
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ToolUseLlmEvent(tool_name="TodoWrite", tool_id="u1", input={}),
+            ToolUseLlmEvent(tool_name="TodoWrite", tool_id="u2", input={}),
+            ToolUseLlmEvent(tool_name="Ls", tool_id="u3", input={}),
+            ResultLlmEvent(is_error=False, duration_ms=50),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert
+        final_summaries = [
+            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
+        ]
+        assert len(final_summaries) == 1
+        final = final_summaries[0]
+        assert final.unknown_calls == {"todowrite": 2, "ls": 1}
+        assert final.files == {}
+        assert final.bash_commands == []
+
+    # ------------------------------------------------------------------
+    # T21 — ResultLlmEvent bypasses throttle (SC-8)
     # ------------------------------------------------------------------
 
     async def test_result_bypasses_throttle(self) -> None:

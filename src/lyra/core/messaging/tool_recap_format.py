@@ -97,7 +97,6 @@ def _format_unknown(event: ToolSummaryRenderEvent) -> list[str]:
     return [
         f"\U0001f527 {count} {name}"
         for name, count in sorted(event.unknown_calls.items())
-        if count > 0
     ]
 
 

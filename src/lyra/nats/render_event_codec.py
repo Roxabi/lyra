@@ -171,6 +171,7 @@ def _make_tool_summary_decode() -> Callable[[dict], RenderEvent]:
                 if isinstance(silent_raw, dict)
                 else silent_raw
             ),
+            unknown_calls=payload.get("unknown_calls", {}),
             is_complete=payload.get("is_complete", False),
         )
 

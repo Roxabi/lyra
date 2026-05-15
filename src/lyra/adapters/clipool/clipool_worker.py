@@ -53,22 +53,21 @@ def _classify_exception(exc: BaseException) -> WorkerError:
 
     # Sanitize bus-bound messages (#1215, sibling of #1212). Exception __str__
     # can embed file paths, byte sequences, or arbitrary text from system
-    # errors — full %r representation goes to logs only.
+    # errors — the bus-bound message keeps only the type name. Full traceback
+    # logging is owned by the callers (_handle_cmd_streaming/_handle_cmd_blocking
+    # both call log.exception before invoking this classifier).
     if isinstance(exc, asyncio.TimeoutError):
-        log.warning("CLI session timed out: %r", exc)
         return WorkerError(
             code="cli.session_lost",
-            message="CLI session timed out",
+            message=f"CLI session timed out: {type(exc).__name__}",
             retryable=True,
         )
     if isinstance(exc, (UnicodeDecodeError, ValueError)):
-        log.warning("CLI parse/decode error: %r", exc)
         return WorkerError(
             code="cli.parse",
             message=f"CLI parse/decode error: {type(exc).__name__}",
             retryable=False,
         )
-    log.warning("Unhandled worker exception: %r", exc)
     return WorkerError(
         code="worker.crash",
         message=f"Unhandled worker exception: {type(exc).__name__}",

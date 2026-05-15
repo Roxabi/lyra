@@ -595,7 +595,7 @@ def test_constructor_custom_timeout() -> None:
 # ---------------------------------------------------------------------------
 
 
-_SENSITIVE_TOKEN = "secret-internal-host:4222/path"
+_SENSITIVE_TOKEN = "leak42-host:4222"
 
 
 async def test_classify_exception_worker_crash_does_not_leak_exception_str() -> None:
@@ -620,17 +620,80 @@ async def test_classify_exception_worker_crash_does_not_leak_exception_str() -> 
     assert "RuntimeError" in we.message
 
 
+async def test_classify_exception_session_lost_does_not_leak_exception_str() -> None:
+    """asyncio.TimeoutError(sensitive) → cli.session_lost: no leak in message."""
+    import asyncio
+
+    from lyra.adapters.clipool.clipool_worker import _classify_exception
+
+    # Arrange — asyncio.TimeoutError can carry message content when constructed
+    # with one (rare in practice, but possible from wrapping code).
+    leaky_exc = asyncio.TimeoutError(f"connecting to {_SENSITIVE_TOKEN}")
+
+    # Act
+    we = _classify_exception(leaky_exc)
+
+    # Assert — code + retryable flag preserved
+    assert we.code == "cli.session_lost"
+    assert we.retryable is True
+
+    # Assert — sensitive content not on the bus, type name surfaces
+    assert _SENSITIVE_TOKEN not in we.message, (
+        f"sensitive token leaked into WorkerError.message: {we.message!r}"
+    )
+    assert "TimeoutError" in we.message
+
+
+async def test_classify_exception_parse_does_not_leak_byte_sequence() -> None:
+    """_classify_exception(UnicodeDecodeError) → cli.parse, no byte sequence leak.
+
+    UnicodeDecodeError.__str__ embeds the offending byte sequence and a
+    reason string — exactly the class of data this PR aims to keep off the
+    bus.
+    """
+    from lyra.adapters.clipool.clipool_worker import _classify_exception
+
+    # Arrange — sensitive content as the reason argument (echoed by __str__)
+    leaky_exc = UnicodeDecodeError(
+        "utf-8", b"\xff\xfe" + _SENSITIVE_TOKEN.encode(), 0, 1, _SENSITIVE_TOKEN
+    )
+
+    # Act
+    we = _classify_exception(leaky_exc)
+
+    # Assert — code + retryable flag preserved
+    assert we.code == "cli.parse"
+    assert we.retryable is False
+
+    # Assert — sensitive content not on the bus, type name surfaces
+    assert _SENSITIVE_TOKEN not in we.message, (
+        f"sensitive token leaked into WorkerError.message: {we.message!r}"
+    )
+    assert "UnicodeDecodeError" in we.message
+
+
 async def test_handle_cmd_validation_error_does_not_leak_payload_fields() -> None:
-    """_handle_cmd: ValidationError.message must not embed incoming payload values."""
+    """_handle_cmd: ValidationError.message must not embed incoming payload values.
+
+    Activates the leak channel by sending a sensitive value through a typed
+    field (``stream`` requires bool) — Pydantic echoes the bad input verbatim
+    in the validation error. The token is short enough to fit inside
+    Pydantic's ~50-char ``input_value`` truncation window, so the negative
+    assertion is meaningful (i.e. the test fails if sanitization is reverted).
+    """
     from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
-    # Arrange — malformed payload with a sensitive value in a non-required slot
+    # Arrange — sensitive value in a typed field that Pydantic echoes
     bad_payload = {
         "contract_version": "1",
         "trace_id": "trace-leak",
         "issued_at": datetime.now(timezone.utc).isoformat(),
-        "pool_id": f"pool-{_SENSITIVE_TOKEN}",  # sensitive value in pool_id
-        # text/model_cfg/system_prompt deliberately omitted → ValidationError
+        "pool_id": "pool-1",
+        "lyra_session_id": "sess-1",
+        "text": "hello",
+        "model_cfg": {},
+        "system_prompt": "",
+        "stream": f"not-a-bool-{_SENSITIVE_TOKEN}",  # bool_parsing → echoes value
     }
 
     pool = _make_pool()
@@ -644,7 +707,7 @@ async def test_handle_cmd_validation_error_does_not_leak_payload_fields() -> Non
     await worker._handle_cmd(msg, bad_payload)
 
     # Assert — single error chunk published
-    nc.publish.assert_awaited_once()
+    nc.publish.assert_called_once()
     data = json.loads(nc.publish.call_args.args[1].decode())
     assert data["worker_error"]["code"] == "worker.validation"
 
@@ -653,3 +716,6 @@ async def test_handle_cmd_validation_error_does_not_leak_payload_fields() -> Non
     assert _SENSITIVE_TOKEN not in message, (
         f"sensitive payload field leaked into worker_error.message: {message!r}"
     )
+    # Positive: literal fallback preserved (guards against regressions to
+    # empty/None messages that would still pass the negative assertion).
+    assert message == "CliCmdPayload validation failed"

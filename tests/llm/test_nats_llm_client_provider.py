@@ -753,3 +753,226 @@ class TestErrorMappingStream:
         assert last.worker_error.code in KNOWN_CODES, (
             f"Code {last.worker_error.code!r} not registered in KNOWN_CODES"
         )
+
+
+# ---------------------------------------------------------------------------
+# PART D — Bus-boundary info-leak guards (#1212)
+# ---------------------------------------------------------------------------
+# Verifies that sensitive substrings from exception ``__str__`` (hostnames,
+# subject names, connection strings, file paths) do NOT leak into the
+# bus-visible fields: ``ResultLlmEvent.error_text`` and
+# ``WorkerError.message``. Sanitization uses ``type(exc).__name__`` only.
+# ---------------------------------------------------------------------------
+
+
+_SENSITIVE_HOST = "secret.internal.example:4222"
+
+
+class TestErrorTextSanitization:
+    """Bus-bound error fields must not embed exception __str__ values."""
+
+    @pytest.mark.asyncio
+    async def test_stream_no_responders_does_not_leak_exception_str(self) -> None:
+        """publish → NoRespondersError with sensitive str() → no leak in error_text."""
+        nc = _make_nc()
+        client = NatsLlmClient(nc)
+        mc = _make_model_cfg()
+        _seed_registry(client)
+
+        leaky_exc = nats.errors.NoRespondersError(
+            f"no responders on subject lyra.{_SENSITIVE_HOST}"
+        )
+        nc.subscribe = AsyncMock(return_value=AsyncMock())
+        nc.publish = AsyncMock(side_effect=leaky_exc)
+
+        events: list[object] = []
+        stream = client.stream("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+        async for evt in await stream:
+            events.append(evt)
+
+        last = events[-1]
+        assert isinstance(last, ResultLlmEvent)
+        assert last.error_text is not None
+        assert _SENSITIVE_HOST not in last.error_text, (
+            f"sensitive host leaked into error_text: {last.error_text!r}"
+        )
+        assert last.worker_error is not None
+        assert _SENSITIVE_HOST not in last.worker_error.message, (
+            f"sensitive host leaked into worker_error.message: "
+            f"{last.worker_error.message!r}"
+        )
+        # Positive: class name still surfaces for diagnostic value.
+        assert "NoRespondersError" in last.error_text
+
+    @pytest.mark.asyncio
+    async def test_stream_timeout_does_not_leak_exception_str(self) -> None:
+        """next_msg → TimeoutError with sensitive str() → no leak in error_text."""
+        nc = _make_nc()
+        client = NatsLlmClient(nc)
+        mc = _make_model_cfg()
+        _seed_registry(client)
+
+        leaky_exc = TimeoutError(
+            f"deadline exceeded waiting for {_SENSITIVE_HOST}"
+        )
+        mock_sub = AsyncMock()
+        mock_sub.next_msg = AsyncMock(side_effect=leaky_exc)
+        nc.subscribe = AsyncMock(return_value=mock_sub)
+        nc.publish = AsyncMock()
+
+        events: list[object] = []
+        stream = client.stream("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+        async for evt in await stream:
+            events.append(evt)
+
+        last = events[-1]
+        assert isinstance(last, ResultLlmEvent)
+        assert last.error_text is not None
+        assert _SENSITIVE_HOST not in last.error_text
+        assert last.worker_error is not None
+        assert _SENSITIVE_HOST not in last.worker_error.message
+        assert "TimeoutError" in last.error_text
+
+    @pytest.mark.asyncio
+    async def test_stream_transport_error_does_not_leak_exception_str(
+        self,
+    ) -> None:
+        """publish → generic NATS error with sensitive str() → no leak."""
+        nc = _make_nc()
+        client = NatsLlmClient(nc)
+        mc = _make_model_cfg()
+        _seed_registry(client)
+
+        leaky_exc = nats.errors.Error(
+            f"connection reset by peer host={_SENSITIVE_HOST}"
+        )
+        nc.subscribe = AsyncMock(return_value=AsyncMock())
+        nc.publish = AsyncMock(side_effect=leaky_exc)
+
+        events: list[object] = []
+        stream = client.stream("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+        async for evt in await stream:
+            events.append(evt)
+
+        last = events[-1]
+        assert isinstance(last, ResultLlmEvent)
+        assert last.error_text is not None
+        assert _SENSITIVE_HOST not in last.error_text
+        assert last.worker_error is not None
+        assert _SENSITIVE_HOST not in last.worker_error.message
+
+    @pytest.mark.asyncio
+    async def test_stream_malformed_chunk_does_not_leak_exception_str(
+        self,
+    ) -> None:
+        """model_validate_json → ValidationError with sensitive str() → no leak."""
+        nc = _make_nc()
+        client = NatsLlmClient(nc)
+        mc = _make_model_cfg()
+        _seed_registry(client)
+
+        # Pydantic ValidationError messages embed field values from the
+        # malformed payload; this fixture injects a sensitive value.
+        bad_payload = json.dumps(
+            {"contract_version": "1", "request_id": _SENSITIVE_HOST}
+        ).encode()
+        bad_msg = _fake_reply(bad_payload)
+        mock_sub = AsyncMock()
+        mock_sub.next_msg = AsyncMock(side_effect=[bad_msg])
+        nc.subscribe = AsyncMock(return_value=mock_sub)
+        nc.publish = AsyncMock()
+
+        events: list[object] = []
+        stream = client.stream("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+        async for evt in await stream:
+            events.append(evt)
+
+        last = events[-1]
+        assert isinstance(last, ResultLlmEvent)
+        assert last.error_text is not None
+        assert _SENSITIVE_HOST not in last.error_text
+        assert last.worker_error is not None
+        assert _SENSITIVE_HOST not in last.worker_error.message
+
+    @pytest.mark.asyncio
+    async def test_complete_no_responders_does_not_leak_exception_str(self) -> None:
+        """Non-streaming complete() path also sanitizes (#1212 scope expansion)."""
+        nc = _make_nc()
+        client = NatsLlmClient(nc)
+        mc = _make_model_cfg()
+        _seed_registry(client)
+
+        leaky_exc = nats.errors.NoRespondersError(
+            f"no responders host={_SENSITIVE_HOST}"
+        )
+        nc.request = AsyncMock(side_effect=leaky_exc)
+
+        result = await client.complete("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+        assert result.error is not None
+        assert _SENSITIVE_HOST not in result.error
+        assert "NoRespondersError" in result.error
+        assert result.worker_error is not None
+        assert _SENSITIVE_HOST not in result.worker_error.message
+
+    @pytest.mark.asyncio
+    async def test_complete_timeout_does_not_leak_exception_str(self) -> None:
+        """complete() TimeoutError path sanitizes (coverage symmetry w/ stream)."""
+        nc = _make_nc()
+        client = NatsLlmClient(nc)
+        mc = _make_model_cfg()
+        _seed_registry(client)
+
+        leaky_exc = TimeoutError(f"deadline exceeded for {_SENSITIVE_HOST}")
+        nc.request = AsyncMock(side_effect=leaky_exc)
+
+        result = await client.complete("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+        assert result.error is not None
+        assert _SENSITIVE_HOST not in result.error
+        assert result.worker_error is not None
+        assert _SENSITIVE_HOST not in result.worker_error.message
+
+    @pytest.mark.asyncio
+    async def test_complete_transport_error_does_not_leak_exception_str(
+        self,
+    ) -> None:
+        """complete() generic nats.errors.Error path sanitizes."""
+        nc = _make_nc()
+        client = NatsLlmClient(nc)
+        mc = _make_model_cfg()
+        _seed_registry(client)
+
+        leaky_exc = nats.errors.Error(
+            f"connection reset by peer host={_SENSITIVE_HOST}"
+        )
+        nc.request = AsyncMock(side_effect=leaky_exc)
+
+        result = await client.complete("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+        assert result.error is not None
+        assert _SENSITIVE_HOST not in result.error
+        assert "Error" in result.error
+        assert result.worker_error is not None
+        assert _SENSITIVE_HOST not in result.worker_error.message
+
+    @pytest.mark.asyncio
+    async def test_complete_invalid_response_does_not_leak_exception_str(
+        self,
+    ) -> None:
+        """complete() ValidationError on reply parse sanitizes."""
+        nc = _make_nc()
+        client = NatsLlmClient(nc)
+        mc = _make_model_cfg()
+        _seed_registry(client)
+
+        # Inject sensitive value as a payload field that Pydantic
+        # ValidationError will embed in its str() representation.
+        bad_payload = json.dumps(
+            {"contract_version": "1", "request_id": _SENSITIVE_HOST}
+        ).encode()
+        bad_reply = _fake_reply(bad_payload)
+        nc.request = AsyncMock(return_value=bad_reply)
+
+        result = await client.complete("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+        assert result.error is not None
+        assert _SENSITIVE_HOST not in result.error
+        assert result.worker_error is not None
+        assert _SENSITIVE_HOST not in result.worker_error.message

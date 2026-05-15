@@ -15,7 +15,11 @@ from lyra.core.messaging.message import (
     Platform,
     Response,
 )
-from lyra.core.messaging.render_events import RenderEvent, TextRenderEvent
+from lyra.core.messaging.render_events import (
+    RenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+)
 from lyra.tts import TtsProtocol
 from tests.conftest import TIMEOUT_FAST, TIMEOUT_SLOW
 from tests.core.conftest import MockAdapter, make_inbound_message, push_to_hub
@@ -46,15 +50,16 @@ class TestDispatchStreaming:
                 outbound: OutboundMessage | None = None,
             ) -> None:
                 async for event in events:
-                    if isinstance(event, TextRenderEvent):
-                        received.append(event.text)
+                    if isinstance(event, TextDeltaRenderEvent):
+                        received.append(event.delta)
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())
         msg = make_inbound_message(platform="telegram", bot_id="main")
 
-        async def gen() -> AsyncIterator[TextRenderEvent]:
-            yield TextRenderEvent(text="Hello", is_final=False)
-            yield TextRenderEvent(text=" world", is_final=True)
+        async def gen() -> AsyncIterator[RenderEvent]:
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Hello")
+            yield TextDeltaRenderEvent(message_id="msg1", delta=" world")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await hub.dispatch_streaming(msg, gen())
         assert received == ["Hello", " world"]
@@ -77,8 +82,9 @@ class TestDispatchStreaming:
         assert hub._last_processed_at is None
         msg = make_inbound_message(platform="telegram", bot_id="main")
 
-        async def gen() -> AsyncIterator[TextRenderEvent]:
-            yield TextRenderEvent(text="hi", is_final=True)
+        async def gen() -> AsyncIterator[RenderEvent]:
+            yield TextDeltaRenderEvent(message_id="msg1", delta="hi")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await hub.dispatch_streaming(msg, gen())
         assert hub._last_processed_at is not None
@@ -101,9 +107,10 @@ class TestDispatchStreaming:
         )
         msg = make_inbound_message(platform="telegram", bot_id="main")
 
-        async def gen() -> AsyncIterator[TextRenderEvent]:
-            yield TextRenderEvent(text="Hello", is_final=False)
-            yield TextRenderEvent(text=" world", is_final=True)
+        async def gen() -> AsyncIterator[RenderEvent]:
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Hello")
+            yield TextDeltaRenderEvent(message_id="msg1", delta=" world")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await hub.dispatch_streaming(msg, gen())
         assert len(sent) == 1
@@ -135,16 +142,20 @@ class TestDispatchStreaming:
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
-        async def gen() -> AsyncIterator[TextRenderEvent]:
-            yield TextRenderEvent(text="Hello", is_final=False)
-            yield TextRenderEvent(text=" world", is_final=True)
+        async def gen() -> AsyncIterator[RenderEvent]:
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Hello")
+            yield TextDeltaRenderEvent(message_id="msg1", delta=" world")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await hub.dispatch_streaming(msg, gen())
 
-        assert all(isinstance(e, TextRenderEvent) for e in streamed)
+        assert all(
+            isinstance(e, TextDeltaRenderEvent | TextEndRenderEvent) for e in streamed
+        )
         assert streamed == [
-            TextRenderEvent(text="Hello", is_final=False),
-            TextRenderEvent(text=" world", is_final=True),
+            TextDeltaRenderEvent(message_id="msg1", delta="Hello"),
+            TextDeltaRenderEvent(message_id="msg1", delta=" world"),
+            TextEndRenderEvent(message_id="msg1"),
         ]
 
         if hub._memory_tasks:
@@ -176,9 +187,10 @@ class TestDispatchStreaming:
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
-        async def gen() -> AsyncIterator[TextRenderEvent]:
-            yield TextRenderEvent(text="  ", is_final=False)
-            yield TextRenderEvent(text=" ", is_final=True)
+        async def gen() -> AsyncIterator[RenderEvent]:
+            yield TextDeltaRenderEvent(message_id="msg1", delta="  ")
+            yield TextDeltaRenderEvent(message_id="msg1", delta=" ")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await hub.dispatch_streaming(msg, gen())
         _mock_synth.assert_not_awaited()
@@ -198,14 +210,15 @@ class TestDispatchStreaming:
                 outbound: OutboundMessage | None = None,
             ) -> None:
                 async for chunk in events:
-                    if isinstance(chunk, TextRenderEvent):
-                        streamed.append(chunk.text)
+                    if isinstance(chunk, TextDeltaRenderEvent):
+                        streamed.append(chunk.delta)
 
         hub.register_adapter(Platform.TELEGRAM, "main", StreamAdapter())
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
-        async def gen() -> AsyncIterator[TextRenderEvent]:
-            yield TextRenderEvent(text="Hello", is_final=True)
+        async def gen() -> AsyncIterator[RenderEvent]:
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Hello")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await hub.dispatch_streaming(msg, gen())
         assert streamed == ["Hello"]
@@ -235,9 +248,10 @@ class TestDispatchStreaming:
         )
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
-        async def gen() -> AsyncIterator[TextRenderEvent]:
-            yield TextRenderEvent(text="Hello", is_final=False)
-            yield TextRenderEvent(text=" world", is_final=True)
+        async def gen() -> AsyncIterator[RenderEvent]:
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Hello")
+            yield TextDeltaRenderEvent(message_id="msg1", delta=" world")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await hub.dispatch_streaming(msg, gen())
 
@@ -271,8 +285,8 @@ class TestDispatchStreaming:
                 outbound: OutboundMessage | None = None,
             ) -> None:
                 async for chunk in events:
-                    if isinstance(chunk, TextRenderEvent):
-                        streamed.append(chunk.text)
+                    if isinstance(chunk, TextDeltaRenderEvent):
+                        streamed.append(chunk.delta)
 
         adapter = StreamAdapter()
         hub.register_adapter(Platform.TELEGRAM, "main", adapter)
@@ -282,9 +296,10 @@ class TestDispatchStreaming:
 
         msg = make_inbound_message(platform="telegram", bot_id="main", modality="voice")
 
-        async def gen() -> AsyncIterator[TextRenderEvent]:
-            yield TextRenderEvent(text="Hello", is_final=False)
-            yield TextRenderEvent(text=" world", is_final=True)
+        async def gen() -> AsyncIterator[RenderEvent]:
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Hello")
+            yield TextDeltaRenderEvent(message_id="msg1", delta=" world")
+            yield TextEndRenderEvent(message_id="msg1")
 
         try:
             # dispatch_streaming returns immediately (non-blocking for voice
@@ -326,8 +341,9 @@ class TestHubRunStreaming:
                 on_intermediate: Callable[[str], Awaitable[None]] | None = None,
             ) -> Response | AsyncIterator[RenderEvent]:
                 async def _stream() -> AsyncIterator[RenderEvent]:
-                    yield TextRenderEvent(text="chunk1", is_final=False)
-                    yield TextRenderEvent(text="chunk2", is_final=True)
+                    yield TextDeltaRenderEvent(message_id="msg1", delta="chunk1")
+                    yield TextDeltaRenderEvent(message_id="msg1", delta="chunk2")
+                    yield TextEndRenderEvent(message_id="msg1")
 
                 return _stream()
 
@@ -339,8 +355,8 @@ class TestHubRunStreaming:
                 outbound: OutboundMessage | None = None,
             ) -> None:
                 async for chunk in events:
-                    if isinstance(chunk, TextRenderEvent):
-                        received_chunks.append(chunk.text)
+                    if isinstance(chunk, TextDeltaRenderEvent):
+                        received_chunks.append(chunk.delta)
 
         config = Agent(name="streamer", system_prompt="", memory_namespace="lyra")
         hub.register_agent(StreamingAgent(config))

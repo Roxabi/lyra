@@ -20,12 +20,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-SCHEMA_VERSION_TEXT_RENDER_EVENT = 1
 SCHEMA_VERSION_TEXT_START_RENDER_EVENT = 1
 SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT = 1
 SCHEMA_VERSION_TEXT_END_RENDER_EVENT = 1
 SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT = 1
-SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT = 1
 SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT = 1
 SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT = 1
 SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT = 1
@@ -68,32 +66,8 @@ class FileEditSummary:
     count: int = 0
 
     def snapshot(self) -> "FileEditSummary":
-        """Return a shallow copy safe to embed in an emitted ``RenderEvent``.
-
-        ``StreamProcessor`` must call this before passing an accumulator into
-        ``ToolSummaryRenderEvent`` to prevent shared-reference mutation of
-        already-emitted events.
-        """
+        """Return a shallow copy safe to embed in an emitted ``RenderEvent``."""
         return FileEditSummary(path=self.path, edits=list(self.edits), count=self.count)
-
-
-@dataclass(frozen=True)
-class TextRenderEvent:
-    """Accumulated LLM text, emitted once at the end of a turn.
-
-    In V1 text is NOT streamed incrementally — the full response accumulates
-    in ``StreamProcessor`` and emits as a single event with ``is_final=True``
-    after ``ResultLlmEvent`` arrives.
-
-    ``is_error`` is ``True`` when the originating ``ResultLlmEvent.is_error``
-    was ``True`` — i.e. the LLM turn ended in an error state. Adapters should
-    render error turns visibly differently (e.g. with a ``❌`` prefix).
-    """
-
-    text: str
-    is_final: bool
-    schema_version: int = 1
-    is_error: bool = False
 
 
 @dataclass(frozen=True)
@@ -152,27 +126,6 @@ class TextChunkRenderEvent:
 
 
 @dataclass(frozen=True)
-class ToolSummaryRenderEvent:
-    """Snapshot of tool activity, emitted after each tool call (throttled).
-
-    Outbound adapters render this as a tool-activity card (Telegram edit,
-    Discord embed update). The final snapshot has ``is_complete=True`` and is
-    emitted unconditionally on ``ResultLlmEvent``, bypassing the throttle.
-
-    Text-only turns (no tool calls) never emit this event — ``StreamProcessor``
-    skips it when all accumulators are empty.
-    """
-
-    files: dict[str, FileEditSummary] = field(default_factory=dict)
-    bash_commands: list[str] = field(default_factory=list)
-    web_fetches: list[str] = field(default_factory=list)
-    agent_calls: list[str] = field(default_factory=list)
-    silent_counts: SilentCounts = field(default_factory=SilentCounts)
-    is_complete: bool = False
-    schema_version: int = 1
-
-
-@dataclass(frozen=True)
 class RunStartedRenderEvent:
     """Run lifecycle: stream begin. ``run_id`` mirrors the per-turn ``trace_id``.
 
@@ -199,12 +152,22 @@ class RunFinishedRenderEvent:
 
 @dataclass(frozen=True)
 class RunErrorRenderEvent:
-    """Run lifecycle: stream terminated by an exception in StreamProcessor.
+    """Run lifecycle: error terminal — infrastructure exception OR soft error.
 
-    Soft errors (``ResultLlmEvent.is_error=True`` without an exception) emit
-    ``RunFinishedRenderEvent(outcome="success")`` instead — the LLM run still
-    completed, the model just returned an error response. This event is for
-    infrastructure-level failures.
+    Two paths emit this event:
+
+    - **Infrastructure exception** (``StreamProcessor`` ``try``/``except``):
+      ``message=type(exc).__name__`` — never ``str(exc)`` (exception strings
+      can carry hostnames, file paths, auth tokens from httpx/aiohttp/NATS
+      errors; this event is published on the NATS bus where any subscriber
+      can read it).
+    - **Soft error** (``ResultLlmEvent.is_error=True``): the LLM backend
+      returned an error response. ``message`` carries ``ResultLlmEvent.
+      error_text`` — driver-curated user-facing text (e.g. "Not logged in ·
+      Please run /login"), safe to forward on the bus.
+
+    In both cases, the adapter dispatch ladder flags the turn as error so the
+    final rendered message gets an ``❌`` prefix.
 
     ``code`` is reserved for a future taxonomy (carry-over from #1097 review);
     Slice 1 always passes ``None``.
@@ -221,7 +184,7 @@ class ToolCallStartRenderEvent:
     """Tool-call lifecycle: a single tool invocation begins.
 
     Slice 3 of #1096. Streamed alternative to the post-hoc
-    ``ToolSummaryRenderEvent`` accumulator. ``tool_call_id`` is the cross-event
+    Per-tool correlator. ``tool_call_id`` is the cross-event
     correlator — a verbatim pass-through of the CLI's ``content_block.id`` for
     the corresponding ``tool_use`` block.
     """
@@ -302,12 +265,10 @@ class ReasoningEndRenderEvent:
 
 # Union type exported for type annotations and ``isinstance`` checks.
 RenderEvent = (
-    TextRenderEvent
-    | TextStartRenderEvent
+    TextStartRenderEvent
     | TextDeltaRenderEvent
     | TextEndRenderEvent
     | TextChunkRenderEvent
-    | ToolSummaryRenderEvent
     | RunStartedRenderEvent
     | RunFinishedRenderEvent
     | RunErrorRenderEvent
@@ -338,22 +299,18 @@ __all__ = [
     "SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT",
     "SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT",
     "SCHEMA_VERSION_TEXT_END_RENDER_EVENT",
-    "SCHEMA_VERSION_TEXT_RENDER_EVENT",
     "SCHEMA_VERSION_TEXT_START_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT",
     "SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT",
-    "SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT",
     "SilentCounts",
     "TextChunkRenderEvent",
     "TextDeltaRenderEvent",
     "TextEndRenderEvent",
-    "TextRenderEvent",
     "TextStartRenderEvent",
     "ToolCallArgsRenderEvent",
     "ToolCallEndRenderEvent",
     "ToolCallResultRenderEvent",
     "ToolCallStartRenderEvent",
-    "ToolSummaryRenderEvent",
 ]

@@ -273,9 +273,7 @@ class NatsLlmClient:
         for worker in candidates:
             target = SUBJECTS.generate_request
             try:
-                reply = await self._nc.request(
-                    target, payload, timeout=self._timeout
-                )
+                reply = await self._nc.request(target, payload, timeout=self._timeout)
             except TimeoutError as exc:
                 self._registry.mark_stale(worker.worker_id)
                 error_msg = f"LLM worker timeout after {self._timeout:.0f}s"
@@ -307,9 +305,7 @@ class NatsLlmClient:
             except nats.errors.Error as exc:
                 # max_payload is a non-retryable hard limit; everything else retries.
                 if "max_payload" in str(exc).lower():
-                    log.error(
-                        "LLM payload too large (%.0f KB)", len(payload) / 1024
-                    )
+                    log.error("LLM payload too large (%.0f KB)", len(payload) / 1024)
                     self._cb.record_failure()
                     error_msg = f"LLM request payload too large: {exc}"
                     emit_populated_total(domain="llm")
@@ -322,9 +318,7 @@ class NatsLlmClient:
                             retryable=False,
                         ),
                     )
-                log.warning(
-                    "LLM adapter unreachable: %s: %s", type(exc).__name__, exc
-                )
+                log.warning("LLM adapter unreachable: %s: %s", type(exc).__name__, exc)
                 self._cb.record_failure()
                 error_msg = f"NATS transport error: {exc}"
                 emit_populated_total(domain="llm")
@@ -461,9 +455,7 @@ class NatsLlmClient:
         try:
             # Publish — transport errors here terminate the stream immediately.
             try:
-                await self._nc.publish(
-                    SUBJECTS.generate_request, payload, reply=inbox
-                )
+                await self._nc.publish(SUBJECTS.generate_request, payload, reply=inbox)
             except NoRespondersError as exc:
                 self._cb.record_failure()
                 error_msg = f"NATS no responders: {exc}"

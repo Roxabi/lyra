@@ -1,13 +1,8 @@
-"""Slice 3 of #1096: shared streaming emitter must ignore ToolCall* v2 events.
+"""Slice 3 of #1096: shared streaming emitter must handle ToolCall* v2 events.
 
-Adapter parity story: Slice 3 emits ToolCall{Start,Args,End,Result} v2 events
-alongside the v1 ``ToolSummaryRenderEvent`` (dual-emit, per umbrella resolved
-decision 6). The existing v1-driven UX (Telegram edit-in-place, Discord embed)
-must continue to drive what the user sees — adapters skip the v2 events for
-parity until Slice 5 sunsets v1.
-
-Discord opt-in inline args streaming is deferred to a follow-up issue
-(``LYRA_DISCORD_TOOLCALL_STREAM_ARGS`` flag — not implemented this slice).
+After Slice 5 / #1192 v1 cutover: TextRenderEvent and ToolSummaryRenderEvent are
+gone. ToolCall* events are absorbed by the dispatch ladder (no edit_trace call).
+Text is conveyed via the v2 TextStart/Delta/End triplet only.
 """
 
 from __future__ import annotations
@@ -21,12 +16,13 @@ from lyra.core.messaging.render_events import (
     RenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
-    TextRenderEvent,
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+    TextStartRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
-    ToolSummaryRenderEvent,
 )
 
 
@@ -58,7 +54,7 @@ class TestSharedEmitterIgnoresToolCallV2:
         cb = _make_callbacks()
         outbound = OutboundMessage.from_text("hi")
         session = StreamingSession(cb, outbound=outbound)
-        # Must not raise — assert_never branch in dispatch must cover ToolCall*
+        # Must not raise — dispatch ladder covers ToolCall*; v2 text triplet used
         await session.run(
             _events(
                 RunStartedRenderEvent(run_id="r1"),
@@ -66,15 +62,15 @@ class TestSharedEmitterIgnoresToolCallV2:
                 ToolCallArgsRenderEvent(tool_call_id="t1", delta='{"k":'),
                 ToolCallEndRenderEvent(tool_call_id="t1"),
                 ToolCallResultRenderEvent(tool_call_id="t1", content="ok"),
-                TextRenderEvent("bye", is_final=True),
+                TextStartRenderEvent(message_id="msg-1"),
+                TextDeltaRenderEvent(message_id="msg-1", delta="bye"),
+                TextEndRenderEvent(message_id="msg-1"),
                 RunFinishedRenderEvent(run_id="r1"),
             )
         )
 
     async def test_toolcall_v2_does_not_call_edit_trace_directly(self) -> None:
-        # Parity contract: v1 ``ToolSummaryRenderEvent`` drives the trace edit;
-        # v2 ToolCall* events are silently absorbed (no extra
-        # ``edit_trace`` invocation against the v2 events directly).
+        # Post-v1-cutover: ToolCall* events are silently absorbed (no edit_trace).
         cb = _make_callbacks()
         outbound = OutboundMessage.from_text("hi")
         session = StreamingSession(cb, outbound=outbound)
@@ -83,27 +79,13 @@ class TestSharedEmitterIgnoresToolCallV2:
                 RunStartedRenderEvent(run_id="r1"),
                 ToolCallStartRenderEvent(tool_call_id="t1", tool_name="Read"),
                 ToolCallEndRenderEvent(tool_call_id="t1"),
-                TextRenderEvent("bye", is_final=True),
+                TextStartRenderEvent(message_id="msg-1"),
+                TextDeltaRenderEvent(message_id="msg-1", delta="bye"),
+                TextEndRenderEvent(message_id="msg-1"),
                 RunFinishedRenderEvent(run_id="r1"),
             )
         )
         cb.edit_trace.assert_not_called()  # type: ignore[attr-defined]
-
-    async def test_v1_tool_summary_still_drives_tool_card(self) -> None:
-        cb = _make_callbacks()
-        outbound = OutboundMessage.from_text("hi")
-        session = StreamingSession(cb, outbound=outbound)
-        await session.run(
-            _events(
-                RunStartedRenderEvent(run_id="r1"),
-                ToolCallStartRenderEvent(tool_call_id="t1", tool_name="Edit"),
-                ToolSummaryRenderEvent(is_complete=True),
-                ToolCallEndRenderEvent(tool_call_id="t1"),
-                TextRenderEvent("done", is_final=True),
-                RunFinishedRenderEvent(run_id="r1"),
-            )
-        )
-        cb.edit_trace.assert_called()  # type: ignore[attr-defined]
 
     async def test_subclass_override_receives_toolcall_v2(self) -> None:
         """PL1 (#1100 review): _on_toolcall_v2 override seam is invoked.
@@ -133,7 +115,9 @@ class TestSharedEmitterIgnoresToolCallV2:
                 ToolCallArgsRenderEvent(tool_call_id="t1", delta='{"k":'),
                 ToolCallEndRenderEvent(tool_call_id="t1"),
                 ToolCallResultRenderEvent(tool_call_id="t1", content="ok"),
-                TextRenderEvent("bye", is_final=True),
+                TextStartRenderEvent(message_id="msg-1"),
+                TextDeltaRenderEvent(message_id="msg-1", delta="bye"),
+                TextEndRenderEvent(message_id="msg-1"),
                 RunFinishedRenderEvent(run_id="r1"),
             )
         )

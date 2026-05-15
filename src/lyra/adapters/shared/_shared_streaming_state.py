@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 
 from lyra.core.exceptions import StreamChunkTimeout
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY
-from lyra.core.messaging.render_events import TextRenderEvent
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ class IntermediateTextState:
     Usage::
 
         state = IntermediateTextState()
-        state.append(event.text)           # on TextRenderEvent(is_final=False)
+        state.append(event.delta)          # on TextDeltaRenderEvent
         display = state.display()          # accumulated intermediate text
     """
 
@@ -105,10 +104,14 @@ def classify_stream_error(
     if stream_error is not None:
         if isinstance(stream_error, StreamChunkTimeout):
             return msg_fn("error_timeout", _ERR_TIMEOUT_FALLBACK)
+        # Use exception class name only, never str(exc): exception strings can
+        # carry hostnames, file paths, auth-token fragments, connection strings
+        # (httpx/aiohttp/NATS errors). Mirrors the discipline at
+        # stream_processor.py RunErrorRenderEvent emission site.
         return msg_fn(
             "error_stream",
-            f"\u26a0\ufe0f Streaming error:"
-            f" {type(stream_error).__name__}: {stream_error}. Please try again.",
+            f"\u26a0\ufe0f Streaming error: {type(stream_error).__name__}."
+            f" Please try again.",
         )
     if final_text is None and had_tool_events:
         return msg_fn("error_no_final", _ERR_NO_FINAL_FALLBACK)
@@ -127,15 +130,14 @@ class StreamState:
 
         _st = StreamState()
         async for event in events:
-            if isinstance(event, ToolSummaryRenderEvent):
+            if isinstance(event, ToolCallStartRenderEvent | ToolCallEndRenderEvent):
                 _st.had_tool_events = True
                 # ... platform-specific tool render ...
-            else:
-                if event.is_final:
-                    _st.on_final_text(event)
-                else:
-                    _st.istate.append(event.text)
-                    # ... platform-specific intermediate edit ...
+            elif isinstance(event, TextDeltaRenderEvent):
+                _st.istate.append(event.delta)
+                # ... platform-specific intermediate edit ...
+            elif isinstance(event, TextEndRenderEvent):
+                _st.set_final_text(_st.istate.text)
         display_text = _st.build_display_text(adapter._msg)
     """
 
@@ -145,12 +147,19 @@ class StreamState:
     last_intermediate_edit: float | None = None
     final_text: str | None = None
     is_error_turn: bool = False
+    # Error flag set when the dispatch ladder sees ``RunErrorRenderEvent``.
+    # Read at delivery time by ``build_display_text`` (not at ``TextEnd`` time)
+    # because RunError arrives AFTER TextEnd in stream_processor's production
+    # order: ResultLlmEvent → TextEnd (close open block, inside try) → finally
+    # → RunErrorRenderEvent (post-finally, for soft errors). Reading at
+    # delivery time means the order of TextEnd vs RunError does not matter.
+    is_error_pending: bool = False
     stream_error: Exception | None = None
 
-    def on_final_text(self, event: TextRenderEvent) -> None:
-        """Capture final text and error flag from a terminal TextRenderEvent."""
-        self.final_text = event.text
-        self.is_error_turn = event.is_error
+    def set_final_text(self, text: str, *, is_error: bool = False) -> None:
+        """Capture final text and error flag for the streaming turn."""
+        self.final_text = text
+        self.is_error_turn = is_error
 
     def build_display_text(self, msg_fn: Callable[[str, str], str]) -> str | None:
         """Assemble display text with error prefix and interrupt notice.
@@ -167,7 +176,12 @@ class StreamState:
                 final_text=None,
                 msg_fn=msg_fn,
             )
-        display = ("❌ " + self.final_text) if self.is_error_turn else self.final_text
+        # Error-turn detection: is_error_turn (legacy path set at set_final_text
+        # time) OR is_error_pending (RunErrorRenderEvent observed in the
+        # dispatch ladder, may have arrived BEFORE or AFTER the TextEnd that
+        # captured final_text — both orderings are correct).
+        is_error = self.is_error_turn or self.is_error_pending
+        display = ("❌ " + self.final_text) if is_error else self.final_text
         if self.stream_error is not None:
             if display:
                 display += msg_fn("stream_interrupted", " [response interrupted]")

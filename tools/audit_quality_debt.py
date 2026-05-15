@@ -22,8 +22,12 @@ Row = dict[str, Any]
 StaleRef = dict[str, Any]
 
 ALL_SOURCES = [
-    "noqa", "pyright-ignore", "type-ignore",
-    "importlinter", "file-exemptions", "folder-exemptions",
+    "noqa",
+    "pyright-ignore",
+    "type-ignore",
+    "importlinter",
+    "file-exemptions",
+    "folder-exemptions",
 ]
 
 _SUFFIX_RE = re.compile(r"[-—]+\s*DEBT:([a-z0-9][a-z0-9_-]*)")
@@ -73,9 +77,7 @@ def _scan_py(root: Path, py_file: Path) -> list[Row]:
         (_PYRIGHT_RE, "pyright-ignore"),
         (_TYPE_IGNORE_RE, "type-ignore"),
     ]
-    for lineno, raw in enumerate(
-        py_file.read_text(encoding="utf-8").splitlines(), 1
-    ):
+    for lineno, raw in enumerate(py_file.read_text(encoding="utf-8").splitlines(), 1):
         for pattern, source in patterns:
             m = pattern.search(raw)
             if not m:
@@ -105,9 +107,7 @@ def _scan_importlinter(root: Path) -> list[Row]:
     in_block = False
     section_bucket = "UNTAGGED"
     section_slug: str | None = None
-    for lineno, raw in enumerate(
-        il_path.read_text(encoding="utf-8").splitlines(), 1
-    ):
+    for lineno, raw in enumerate(il_path.read_text(encoding="utf-8").splitlines(), 1):
         if _IGNORE_IMPORTS_RE.match(raw):
             in_block = True
             section_bucket, section_slug = "UNTAGGED", None

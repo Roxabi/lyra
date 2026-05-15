@@ -41,10 +41,9 @@ class ToolDisplayConfig(BaseModel):
         Maximum characters to display per bash command before truncating.
         Default: 60.
     throttle_ms:
-        Minimum milliseconds between consecutive ``ToolSummaryRenderEvent``
-        emissions during a single turn.  The final ``is_complete=True`` emission
-        always bypasses this throttle.  Default: 2000.  Use 0 to disable
-        throttling entirely.
+        Minimum milliseconds between consecutive intermediate tool-card
+        emissions during a single turn.  Terminal events bypass this throttle.
+        Default: 2000.  Use 0 to disable throttling entirely.
     show:
         Read-only mapping of tool name → whether to surface the call in the
         summary card.  Keys not present in this map are treated as ``False``

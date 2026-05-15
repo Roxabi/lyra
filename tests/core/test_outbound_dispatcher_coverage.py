@@ -21,7 +21,7 @@ from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 from lyra.core.hub.outbound.outbound_errors import _SCOPE_REAP_THRESHOLD
 from lyra.core.messaging.callbacks import TrustedCallback
 from lyra.core.messaging.message import InboundMessage, OutboundMessage, RoutingContext
-from lyra.core.messaging.render_events import TextRenderEvent
+from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRenderEvent
 from tests.conftest import TIMEOUT_IO
 
 from .conftest import make_dispatcher_msg
@@ -75,9 +75,12 @@ class TestRoutingBotIdMismatch:
             msg = _make_msg_with_routing(routing)
             drained = False
 
-            async def chunks() -> AsyncIterator[TextRenderEvent]:
+            async def chunks() -> AsyncIterator[
+                TextDeltaRenderEvent | TextEndRenderEvent
+            ]:
                 nonlocal drained
-                yield TextRenderEvent(text="chunk1", is_final=True)
+                yield TextDeltaRenderEvent(message_id="msg1", delta="chunk1")
+                yield TextEndRenderEvent(message_id="msg1")
                 drained = True
 
             dispatcher.enqueue_streaming(msg, chunks())

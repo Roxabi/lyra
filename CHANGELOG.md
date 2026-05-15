@@ -3,6 +3,36 @@
 All notable changes to this project will be documented in this file.
 Entries are generated automatically by `/promote` and committed to staging before the promotion PR.
 
+## [Unreleased]
+
+### Changed
+
+- Migrated 7 consumer paths and 5 dual-emit sites from v1 to v2 RenderEvents: text triplet
+  (`TextStartRenderEvent` / `TextDeltaRenderEvent` / `TextEndRenderEvent`), `TextChunkRenderEvent`,
+  and ToolCall lifecycle events (`ToolCallStartRenderEvent`, `ToolCallArgsRenderEvent`,
+  `ToolCallEndRenderEvent`, `ToolCallResultRenderEvent`). (#1192, #1205)
+- NATS codec registry (`NatsRenderEventCodec`) rebuilt as a `dict[type, CodecBranch]` registry
+  with inverse `_by_type_str` index; replaces the v1 if-elif decode chain. Codec completeness is
+  now CI-enforced via `TestRegistryCompleteness`. (ADR-072, #1192)
+- `SCHEMA_VERSION_RENDER` floor bumped — hub and adapters must be released together. Rolling
+  deploys across this version boundary produce loud ERROR logs on still-old receivers.
+
+### Removed
+
+- `TextRenderEvent` (`event_type="text"`) removed from `src/lyra/core/messaging/render_events.py`.
+- `ToolSummaryRenderEvent` (`event_type="tool_summary"`) removed from
+  `src/lyra/core/messaging/render_events.py`.
+- `src/lyra/core/messaging/tool_recap_format.py` removed (v1 tool summary formatting helper,
+  no longer referenced after v1 cutover).
+- v1 registry entries (`text`, `tool_summary`) removed from `NatsRenderEventCodec`.
+
+> **Coordinated deploy required.** This slice bumps the render-event schema floor. The
+> `lyra-hub`, `lyra-telegram`, and `lyra-discord` container images must be released and
+> deployed together. `lyra-clipool` is intentionally **excluded** — it is on the LLM-driver
+> path and is not a `RenderEvent` receiver, so it does not participate in the schema
+> handshake. See `docs/ops/container-publishing.md` — Schema-floor releases.
+> Closes #1192, #1177. Tracks #1205.
+
 ## [0.2.0](https://github.com/Roxabi/lyra/compare/lyra-v0.1.0...lyra-v0.2.0) (2026-04-17)
 
 

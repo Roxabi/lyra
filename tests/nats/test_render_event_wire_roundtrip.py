@@ -29,7 +29,6 @@ from nats.aio.client import Client as NATS
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.core.messaging.render_events import (
-    FileEditSummary,
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
@@ -37,17 +36,14 @@ from lyra.core.messaging.render_events import (
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
-    SilentCounts,
     TextChunkRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
-    TextRenderEvent,
     TextStartRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
-    ToolSummaryRenderEvent,
 )
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 from lyra.nats.render_event_codec import NatsRenderEventCodec
@@ -68,21 +64,10 @@ pytestmark = [requires_nats_server]
 # parametrized round-trip below from being reached for an unsampled member.
 
 _SAMPLE_BY_TYPE: dict[type, RenderEvent] = {
-    TextRenderEvent: TextRenderEvent(text="hello world", is_final=True, is_error=False),
     TextStartRenderEvent: TextStartRenderEvent(message_id="msg-1"),
     TextDeltaRenderEvent: TextDeltaRenderEvent(message_id="msg-1", delta="he"),
     TextEndRenderEvent: TextEndRenderEvent(message_id="msg-1"),
     TextChunkRenderEvent: TextChunkRenderEvent(message_id="msg-1", delta="hi"),
-    ToolSummaryRenderEvent: ToolSummaryRenderEvent(
-        files={
-            "/tmp/x.py": FileEditSummary(path="/tmp/x.py", edits=["+1"], count=1),
-        },
-        bash_commands=["ls"],
-        web_fetches=["https://example.com"],
-        agent_calls=["sub-agent"],
-        silent_counts=SilentCounts(reads=2, greps=1, globs=0),
-        is_complete=True,
-    ),
     RunStartedRenderEvent: RunStartedRenderEvent(run_id="run-1"),
     RunFinishedRenderEvent: RunFinishedRenderEvent(run_id="run-1", outcome="success"),
     RunErrorRenderEvent: RunErrorRenderEvent(run_id="run-1", message="boom", code=None),
@@ -225,8 +210,7 @@ async def test_render_event_wire_round_trip(event_type: type, nc: NATS) -> None:
         await sub.unsubscribe()
 
     assert not parse_errors, (
-        f"malformed NATS frame(s) received for {event_type.__name__}: "
-        f"{parse_errors!r}"
+        f"malformed NATS frame(s) received for {event_type.__name__}: {parse_errors!r}"
     )
     # send_streaming always appends a synthetic stream_end terminator, so we
     # expect exactly two chunks: the event + the sentinel.

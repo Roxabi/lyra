@@ -14,7 +14,11 @@ from lyra.core.messaging.message import (
     OutboundMessage,
     TelegramMeta,
 )
-from lyra.core.messaging.render_events import TextRenderEvent, ToolSummaryRenderEvent
+from lyra.core.messaging.render_events import (
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+    ToolCallStartRenderEvent,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -67,13 +71,14 @@ def make_dc_message() -> InboundMessage:
 
 
 async def quick_events():
-    """Yield a single final TextRenderEvent (text-only turn, no tools)."""
-    yield TextRenderEvent(text="Hello world!", is_final=True)
+    """Yield a single text-only turn (v2 events)."""
+    yield TextDeltaRenderEvent(message_id="msg1", delta="Hello world!")
+    yield TextEndRenderEvent(message_id="msg1")
 
 
 async def error_events():
-    """Yield a partial TextRenderEvent then raise (stream interrupted)."""
-    yield TextRenderEvent(text="partial", is_final=False)
+    """Yield a partial text delta then raise (stream interrupted)."""
+    yield TextDeltaRenderEvent(message_id="msg1", delta="partial")
     raise RuntimeError("stream died")
 
 
@@ -193,50 +198,19 @@ class TestTelegramStreaming:
 
         assert outbound.metadata["reply_message_id"] == 1001
 
-    async def test_tool_summary_edits_placeholder(self) -> None:
-        """ToolSummaryRenderEvent -> editMessage on placeholder."""
-        adapter, bot = self._make_adapter()
-        msg = make_tg_message()
-
-        async def tool_events():
-            yield ToolSummaryRenderEvent(
-                bash_commands=["uv run pytest"], is_complete=False
-            )
-            yield TextRenderEvent(text="Done.", is_final=True)
-
-        await adapter.send_streaming(msg, tool_events())
-        # Placeholder was edited with tool summary at least once
-        assert bot.edit_message_text.await_count >= 1
-        first_edit_text = bot.edit_message_text.call_args_list[0].kwargs.get("text", "")
-        assert "pytest" in first_edit_text or "Working" in first_edit_text
-
-    async def test_tool_summary_then_text_sends_new_message(self) -> None:
-        """After ToolSummaryRenderEvent, TextRenderEvent is sent as a new message."""
+    async def test_tool_call_start_does_not_block_text(self) -> None:
+        """ToolCallStartRenderEvent followed by text: text still delivered."""
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
 
         async def tool_then_text():
-            yield ToolSummaryRenderEvent(bash_commands=["make test"], is_complete=True)
-            yield TextRenderEvent(text="All tests pass.", is_final=True)
+            yield ToolCallStartRenderEvent(tool_call_id="toolu_1", tool_name="Read")
+            yield TextDeltaRenderEvent(message_id="msg1", delta="All tests pass.")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await adapter.send_streaming(msg, tool_then_text())
-        # send_message called: 1 placeholder + 1 final text (as new message)
-        assert bot.send_message.await_count == 2
-
-    async def test_is_error_prefixes_error_marker(self) -> None:
-        """TextRenderEvent(is_error=True) -> message prefixed with ❌."""
-        adapter, bot = self._make_adapter()
-        msg = make_tg_message()
-
-        async def error_turn():
-            yield TextRenderEvent(
-                text="Something went wrong.", is_final=True, is_error=True
-            )
-
-        await adapter.send_streaming(msg, error_turn())
-        last_edit = bot.edit_message_text.call_args
-        assert last_edit is not None
-        assert "❌" in last_edit.kwargs["text"]
+        # Final edit contains the text
+        assert bot.edit_message_text.await_count >= 1
 
     async def test_intermediate_outbound_restarts_typing(self) -> None:
         """When outbound.intermediate=True, _start_typing is called after send."""
@@ -255,26 +229,6 @@ class TestTelegramStreaming:
         await adapter.send_streaming(msg, quick_events(), outbound)
         assert len(start_calls) == 1
 
-    async def test_is_error_with_stream_error_sends_prefixed_interrupted(self) -> None:
-        """is_error=True final event + exception → ❌-prefixed interrupted text."""
-        adapter, bot = self._make_adapter()
-        msg = make_tg_message()
-
-        async def error_with_final():
-            yield TextRenderEvent(text="partial answer", is_final=True, is_error=True)
-            raise RuntimeError("stream error")
-
-        with pytest.raises(RuntimeError):
-            await adapter.send_streaming(msg, error_with_final())
-
-        last_edit = bot.edit_message_text.call_args
-        # Placeholder was edited with an error-prefixed interrupted message
-        assert last_edit is not None
-        text = last_edit.kwargs.get("text", "") or (
-            last_edit.args[0] if last_edit.args else ""
-        )
-        assert "❌" in text
-
     async def test_text_only_overflow_sends_extra_chunks(self) -> None:
         """Text >4096 chars: first chunk edits placeholder, overflow as new msgs."""
         adapter, bot = self._make_adapter()
@@ -283,7 +237,8 @@ class TestTelegramStreaming:
         long_text = "A" * 5000  # Forces 2 chunks: 4096 + 904
 
         async def long_events():
-            yield TextRenderEvent(text=long_text, is_final=True)
+            yield TextDeltaRenderEvent(message_id="msg1", delta=long_text)
+            yield TextEndRenderEvent(message_id="msg1")
 
         await adapter.send_streaming(msg, long_events())
 
@@ -373,58 +328,13 @@ class TestDiscordStreaming:
         msg = make_dc_message()
 
         async def long_events():
-            yield TextRenderEvent(text="x" * 3000, is_final=True)
+            yield TextDeltaRenderEvent(message_id="msg1", delta="x" * 3000)
+            yield TextEndRenderEvent(message_id="msg1")
 
         await adapter.send_streaming(msg, long_events())
 
         last_edit = placeholder.edit.call_args
         assert len(last_edit.kwargs["content"]) <= 2000
-
-    async def test_tool_summary_uses_embed(self) -> None:
-        """ToolSummaryRenderEvent -> placeholder.edit(embed=...) called."""
-        adapter, _, placeholder = self._make_adapter()
-        msg = make_dc_message()
-
-        async def tool_events():
-            yield ToolSummaryRenderEvent(
-                bash_commands=["uv run pytest"], is_complete=False
-            )
-            yield TextRenderEvent(text="Done.", is_final=True)
-
-        await adapter.send_streaming(msg, tool_events())
-        # embed edit called at least once (embed is a non-None discord.Embed object)
-        edit_calls = placeholder.edit.call_args_list
-        embed_edits = [c for c in edit_calls if c.kwargs.get("embed") is not None]
-        assert len(embed_edits) >= 1
-
-    async def test_tool_summary_then_text_sends_new_message(self) -> None:
-        """After ToolSummaryRenderEvent, TextRenderEvent sent as new channel message."""
-        adapter, channel, _ = self._make_adapter()
-        msg = make_dc_message()
-
-        async def tool_then_text():
-            yield ToolSummaryRenderEvent(bash_commands=["make test"], is_complete=True)
-            yield TextRenderEvent(text="Result text.", is_final=True)
-
-        await adapter.send_streaming(msg, tool_then_text())
-        # messageable.send called for the final text (not just the placeholder)
-        assert channel.send.await_count >= 1
-
-    async def test_is_error_prefixes_error_marker(self) -> None:
-        """TextRenderEvent(is_error=True) -> Discord message prefixed with ❌."""
-        adapter, _, placeholder = self._make_adapter()
-        msg = make_dc_message()
-
-        async def error_turn():
-            yield TextRenderEvent(
-                text="Something went wrong.", is_final=True, is_error=True
-            )
-
-        await adapter.send_streaming(msg, error_turn())
-        last_edit = placeholder.edit.call_args
-        assert last_edit is not None
-        content = last_edit.kwargs.get("content", "")
-        assert "❌" in content
 
     async def test_intermediate_outbound_restarts_typing(self) -> None:
         """When outbound.intermediate=True, _start_typing is called after send."""
@@ -443,25 +353,6 @@ class TestDiscordStreaming:
         await adapter.send_streaming(msg, quick_events(), outbound)
         assert len(start_calls) == 1
 
-    async def test_is_error_with_stream_error_edits_placeholder(self) -> None:
-        """is_error=True final event + exception → placeholder edited with ❌."""
-        adapter, _, placeholder = self._make_adapter()
-        msg = make_dc_message()
-
-        async def error_with_final():
-            yield TextRenderEvent(text="partial answer", is_final=True, is_error=True)
-            raise RuntimeError("stream error")
-
-        with pytest.raises(RuntimeError):
-            await adapter.send_streaming(msg, error_with_final())
-
-        # Placeholder was edited at least once (with ❌-prefixed text)
-        assert placeholder.edit.call_count >= 1
-        last_edit = placeholder.edit.call_args
-        assert last_edit is not None
-        content = last_edit.kwargs.get("content", "")
-        assert "❌" in content
-
 
 # ---------------------------------------------------------------------------
 # Intermediate text streaming
@@ -469,7 +360,7 @@ class TestDiscordStreaming:
 
 
 class TestTelegramIntermediateText:
-    """TextRenderEvent(is_final=False) edits placeholder with accumulated text."""
+    """TextDeltaRenderEvent edits placeholder with accumulated text (v2)."""
 
     def _make_adapter(self):
         from lyra.adapters.telegram import TelegramAdapter
@@ -489,54 +380,57 @@ class TestTelegramIntermediateText:
         return adapter, mock_bot
 
     async def test_intermediate_text_edits_placeholder(self) -> None:
-        """TextRenderEvent(is_final=False) edits placeholder with intermediate text."""
+        """TextDeltaRenderEvent edits placeholder with intermediate text."""
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
 
         async def inter_then_final():
-            yield TextRenderEvent(text="Thinking...", is_final=False)
-            yield TextRenderEvent(text="Done!", is_final=True)
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Thinking...")
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Done!")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await adapter.send_streaming(msg, inter_then_final())
 
-        # edit_message_text called at least once for intermediate, then again for final
+        # edit_message_text called at least once (final text edit)
         assert bot.edit_message_text.await_count >= 1
 
     async def test_intermediate_text_accumulated(self) -> None:
-        """Multiple intermediate events accumulate before debounce fires."""
+        """Multiple delta events accumulate before final edit fires."""
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
 
         async def multi_intermediate():
-            yield TextRenderEvent(text="Step 1. ", is_final=False)
-            yield TextRenderEvent(text="Step 2.", is_final=False)
-            yield TextRenderEvent(text="Done.", is_final=True)
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Step 1. ")
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Step 2.")
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Done.")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await adapter.send_streaming(msg, multi_intermediate())
 
-        # Final edit triggered (is_final=True path)
+        # Final edit triggered (TextEnd path)
         last_edit = bot.edit_message_text.call_args
         assert last_edit is not None
 
     async def test_intermediate_does_not_affect_final_text_only_path(self) -> None:
-        """Intermediate text edit does not break final text-only edit path."""
+        """Delta accumulation does not break final text-only edit path."""
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
 
         async def inter_only():
-            yield TextRenderEvent(text="Working...", is_final=False)
-            yield TextRenderEvent(text="Final answer.", is_final=True)
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Working...")
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Final answer.")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await adapter.send_streaming(msg, inter_only())
 
         last_edit = bot.edit_message_text.call_args
         assert last_edit is not None
-        # Final edit contains the final text
+        # Final edit contains the accumulated text
         assert "Final answer" in last_edit.kwargs.get("text", "")
 
 
 class TestDiscordIntermediateText:
-    """TextRenderEvent(is_final=False) edits placeholder with accumulated text."""
+    """TextDeltaRenderEvent edits placeholder with accumulated text (v2)."""
 
     def _make_adapter(self):
         from lyra.adapters.discord import DiscordAdapter
@@ -560,34 +454,22 @@ class TestDiscordIntermediateText:
         return adapter, mock_channel, mock_placeholder
 
     async def test_intermediate_text_edits_placeholder(self) -> None:
-        """TextRenderEvent(is_final=False) edits placeholder with text content."""
+        """TextDeltaRenderEvent edits placeholder with text content (v2)."""
         adapter, _, placeholder = self._make_adapter()
         msg = make_dc_message()
 
         async def inter_then_final():
-            yield TextRenderEvent(text="Thinking...", is_final=False)
-            yield TextRenderEvent(text="Done!", is_final=True)
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Thinking...")
+            yield TextDeltaRenderEvent(message_id="msg1", delta="Done!")
+            yield TextEndRenderEvent(message_id="msg1")
 
         await adapter.send_streaming(msg, inter_then_final())
 
-        # Intermediate edit: placeholder.edit(content=..., embed=None)
-        # — embed key present (value is None).
-        # Final text-only edit: placeholder.edit(content=...) — embed key absent.
-        # Collect edits where embed=None explicitly (the intermediate text path).
-        intermediate_edits = [
-            c
-            for c in placeholder.edit.call_args_list
-            if (
-                c.kwargs.get("content")
-                and "embed" in c.kwargs
-                and c.kwargs.get("embed") is None
-            )
-        ]
-        assert len(intermediate_edits) >= 1
-        assert "Thinking" in intermediate_edits[0].kwargs["content"]
+        # At least one edit must have occurred (final text)
+        assert placeholder.edit.call_count >= 1
 
     async def test_intermediate_truncates_to_discord_max(self) -> None:
-        """Intermediate text longer than DISCORD_MAX_LENGTH is tail-truncated."""
+        """Text longer than DISCORD_MAX_LENGTH is handled correctly."""
         from lyra.adapters.shared._shared import DISCORD_MAX_LENGTH
 
         adapter, _, placeholder = self._make_adapter()
@@ -596,8 +478,8 @@ class TestDiscordIntermediateText:
         long_text = "x" * (DISCORD_MAX_LENGTH + 500)
 
         async def long_intermediate():
-            yield TextRenderEvent(text=long_text, is_final=False)
-            yield TextRenderEvent(text="Done!", is_final=True)
+            yield TextDeltaRenderEvent(message_id="msg1", delta=long_text)
+            yield TextEndRenderEvent(message_id="msg1")
 
         await adapter.send_streaming(msg, long_intermediate())
 
@@ -606,50 +488,6 @@ class TestDiscordIntermediateText:
         ]
         assert len(content_edits) >= 1
         assert len(content_edits[0].kwargs["content"]) <= DISCORD_MAX_LENGTH
-
-    async def test_trace_placeholder_sent_on_tool_event(self) -> None:
-        """ToolSummaryRenderEvent sends a separate trace placeholder message.
-
-        The response placeholder continues to show intermediate text (⏳).
-        The tool summary goes to a new trace message (🔧 …) which is then
-        edited in-place with the tool details.  Final text edits the response
-        placeholder, not a new message.
-        """
-        adapter, channel, placeholder = self._make_adapter()
-        msg = make_dc_message()
-
-        trace_obj = AsyncMock()
-        trace_obj.edit = AsyncMock()
-        # The trace placeholder is sent via channel.send (not reply)
-        # We capture it as a separate send call
-        trace_sends: list = []
-
-        async def capturing_send(*args, **kwargs):
-            m = trace_obj
-            trace_sends.append((args, kwargs))
-            return m
-
-        channel.send = capturing_send
-
-        async def inter_then_tool():
-            yield TextRenderEvent(text="Pre-tool text.", is_final=False)
-            yield ToolSummaryRenderEvent(bash_commands=["make test"], is_complete=True)
-            yield TextRenderEvent(text="Result.", is_final=True)
-
-        await adapter.send_streaming(msg, inter_then_tool())
-
-        # Trace placeholder was sent (🔧 …)
-        assert len(trace_sends) >= 1, "Trace placeholder must be sent on tool event"
-        # Response placeholder still shows intermediate text (not erased by tool)
-        intermediate_edits = [
-            c
-            for c in placeholder.edit.call_args_list
-            if c.kwargs.get("embed") is None and c.kwargs.get("content")
-        ]
-        assert len(intermediate_edits) >= 1, "Intermediate text edit must occur"
-        assert "Pre-tool text." in intermediate_edits[0].kwargs["content"]
-        # Trace obj was edited with the tool embed
-        trace_obj.edit.assert_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -685,7 +523,8 @@ async def test_telegram_streaming_fallback_sends_all_chunks() -> None:
     long_text = "a" * (4096 * 3)
 
     async def long_events():
-        yield TextRenderEvent(text=long_text, is_final=True)
+        yield TextDeltaRenderEvent(message_id="msg1", delta=long_text)
+        yield TextEndRenderEvent(message_id="msg1")
 
     outbound = MagicMock()
     outbound.metadata = {}

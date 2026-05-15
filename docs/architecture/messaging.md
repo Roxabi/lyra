@@ -135,9 +135,45 @@ is treated as `STREAM_ABORTED`.
 
 → ADR-036
 
+### NATS render-event codec
+
+The `NatsRenderEventCodec` (source: `src/lyra/nats/render_event_codec.py`) encodes and decodes
+`RenderEvent` instances to/from the wire chunk format. Both `NatsChannelProxy` (hub, encodes) and
+`NatsOutboundListener` (adapter, decodes) import from this single class.
+
+**Registry shape:**
+
+```python
+_registry: dict[type, CodecBranch]     # keyed by RenderEvent subtype class
+_by_type_str: dict[str, CodecBranch]   # inverse index for O(1) decode lookup
+_SYNTHETIC_TERMINALS: frozenset[str] = frozenset({"stream_end", "stream_error"})
+```
+
+Both maps are built once in `__init__` and are immutable thereafter. `decode()` checks
+`_SYNTHETIC_TERMINALS` before the registry lookup so clean stream close never emits an
+"unknown event_type" warning.
+
+**Registered event families (v2 only):**
+
+| Family | Event types |
+|---|---|
+| Text triplet | `text_start`, `text_delta`, `text_end` |
+| Text chunk (compat) | `text_chunk` |
+| Run lifecycle | `run_started`, `run_finished` (terminal), `run_error` (terminal) |
+| ToolCall lifecycle | `tool_call_start`, `tool_call_args`, `tool_call_end`, `tool_call_result` |
+| Reasoning lifecycle | `reasoning_start`, `reasoning_delta`, `reasoning_end` |
+
+The v1 events `TextRenderEvent` (`event_type="text"`) and `ToolSummaryRenderEvent`
+(`event_type="tool_summary"`) have been removed from `src/lyra/core/messaging/render_events.py`
+and from the registry (issue #1192, Slice 3). All consumer paths and dual-emit sites have been
+migrated to v2. Adding a new `RenderEvent` subtype requires a single registry insertion;
+`TestRegistryCompleteness` fails loudly at CI if the registry is missing a union member.
+
+→ ADR-072
+
 ### Schema versioning
 
-Every hub↔adapter envelope (`InboundMessage`, `InboundAudio`, `OutboundMessage`, `TextRenderEvent`, `ToolSummaryRenderEvent`) carries a `schema_version: int` field guarded by a `SCHEMA_VERSION_*` module-level constant in `src/lyra/core/message.py` and `src/lyra/core/render_events.py`. The outer `NatsChunkEnvelope` (`{stream_id, seq, event_type, payload, done}`) is intentionally unversioned — only the inner payload is guarded.
+Every hub↔adapter envelope (`InboundMessage`, `InboundAudio`, `OutboundMessage`) carries a `schema_version: int` field guarded by a `SCHEMA_VERSION_*` module-level constant in `src/lyra/core/message.py` and `src/lyra/core/render_events.py`. The outer `NatsChunkEnvelope` (`{stream_id, seq, event_type, payload, done}`) is intentionally unversioned — only the inner payload is guarded.
 
 **Schema version bump procedure (4 steps):**
 
@@ -199,4 +235,5 @@ part of the adapter startup path.
 | 035 | NATS subject naming | Accepted |
 | 036 | RenderEvent chunk protocol | Accepted |
 | 065 | KV readiness probe | Accepted |
+| 072 | Codec registry pattern (v2 RenderEvent) | Accepted — supersedes ADR-032 v1 wire shape |
 | 037, 040, 047, 062 | (various transport ADRs) | Absorbed by ADR-045 (roxabi-nats SDK) |

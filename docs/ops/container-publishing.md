@@ -211,6 +211,58 @@ pruned, so the restart is immediate with no pull required. Confirm with
 
 ---
 
+## Schema-floor releases
+
+When `SCHEMA_VERSION_RENDER` (or any contract schema floor constant) is bumped, hub and adapter
+container images must be released and deployed **together**. They speak the same wire protocol; a
+rolling deploy where the hub is upgraded before the adapters (or vice versa) produces loud ERROR
+logs on still-old receivers and may drop events silently.
+
+**Affected units for a render-event schema bump:**
+
+| Unit | Image |
+|---|---|
+| `lyra-hub` | `ghcr.io/roxabi/lyra:<tag>` |
+| `lyra-telegram` | `ghcr.io/roxabi/lyra:<tag>` |
+| `lyra-discord` | `ghcr.io/roxabi/lyra:<tag>` |
+
+`lyra-clipool` is intentionally **excluded** from the schema-floor restart sequence — it is on
+the LLM-driver path (`lyra.clipool.cmd`), not a `RenderEvent` receiver, and does not participate
+in the schema handshake. This omission is deliberate; do not add it back when reading the generic
+"M₁ manual pull + restart" pattern above.
+
+All three units share the same image; a single CI push to `staging` produces one `:staging` digest
+that all units pull. For semver releases, cut the `lyra/<component>/vX.Y.Z` tag once and coordinate
+the Quadlet `Image=` pin update across all three `.container` files before `daemon-reload`.
+
+**Release procedure for a schema-floor bump:**
+
+The auto-update timer must NOT fire mid-restart — a 5-minute window between hub and adapter
+restarts produces partial-version skew. The procedure is therefore manual: stop the timer,
+restart the three units atomically, then re-enable the timer.
+
+1. Merge the schema-bump PR to `staging` — CI publishes `ghcr.io/roxabi/lyra:staging`.
+2. On M₁, stop the auto-update timer to prevent mid-restart skew:
+   ```bash
+   systemctl --user stop podman-auto-update.timer
+   ```
+3. Pull the new image and restart hub + telegram + discord atomically:
+   ```bash
+   podman pull ghcr.io/roxabi/lyra:staging
+   systemctl --user restart lyra-hub lyra-telegram lyra-discord
+   ```
+4. Re-enable the auto-update timer:
+   ```bash
+   systemctl --user start podman-auto-update.timer
+   ```
+5. Confirm with `systemctl --user is-active lyra-hub lyra-telegram lyra-discord` and
+   `curl -fsS localhost:8443/health`.
+
+For production semver releases, pin all three units to the same `X.Y.Z` tag simultaneously.
+Never leave hub and adapters pinned to different semver tags across a schema-floor boundary.
+
+---
+
 ## Cross-repo adoption checklist
 
 Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt this pattern:

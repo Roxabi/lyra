@@ -26,6 +26,7 @@ def _free_port() -> int:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
 
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 

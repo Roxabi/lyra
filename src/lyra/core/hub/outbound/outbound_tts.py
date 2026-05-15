@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
 from ...messaging.message import InboundMessage, OutboundMessage, Response
-from ...messaging.render_events import RenderEvent, TextRenderEvent
+from ...messaging.render_events import RenderEvent, TextDeltaRenderEvent
 
 if TYPE_CHECKING:
     from ...tts_dispatch import AudioPipeline
@@ -104,9 +104,8 @@ class TtsDispatch:
         async def _tee() -> AsyncIterator["RenderEvent"]:
             try:
                 async for event in chunks:
-                    if isinstance(event, TextRenderEvent):
-                        voice_parts.append(event.text)
-                    # ToolSummaryRenderEvent: skip — voice only needs text
+                    if isinstance(event, TextDeltaRenderEvent):
+                        voice_parts.append(event.delta)
                     yield event
             finally:
                 voice_done.set()

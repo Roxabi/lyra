@@ -229,9 +229,7 @@ def test_token_cache_read_handles_expired_token(tmp_path: Path) -> None:
 
 # ── Section E: mint ───────────────────────────────────────────────────────────
 
-_SUCCESS_BODY = json.dumps(
-    {"token": "ghs_test", "expires_at": "2030-01-01T00:00:00Z"}
-)
+_SUCCESS_BODY = json.dumps({"token": "ghs_test", "expires_at": "2030-01-01T00:00:00Z"})
 
 
 def _mock_transport(status: int, body: str | None = None) -> httpx.MockTransport:
@@ -634,9 +632,7 @@ async def test_mint_capped_locks_concurrent_callers(
 
 
 @pytest.mark.asyncio
-async def test_mint_capped_rate_caps_at_45s(
-    rsa_pem_path: Path, tmp_path: Path
-) -> None:
+async def test_mint_capped_rate_caps_at_45s(rsa_pem_path: Path, tmp_path: Path) -> None:
     """Rate limiter blocks second mint within 45s; 2 total http hits after advance."""
     http_hit_count = 0
 
@@ -657,6 +653,7 @@ async def test_mint_capped_rate_caps_at_45s(
 
     # Write near-expiry token to force mint path (expires in 4 min → leeway=300s).
     from datetime import timedelta
+
     near = InstallationToken(
         token="ghs_near",
         expires_at=datetime.now(tz=timezone.utc) + timedelta(minutes=4),
@@ -703,6 +700,7 @@ async def test_refresh_and_caps(rsa_pem_path: Path, tmp_path: Path) -> None:
     # Advance clock past the cap and write near-expiry token.
     clock.advance(46.0)
     from datetime import timedelta
+
     near = InstallationToken(
         token="ghs_near",
         expires_at=datetime.now(tz=timezone.utc) + timedelta(minutes=4),
@@ -739,6 +737,7 @@ async def test_refresh_loop_warms_near_expiry_cache(
 
     # Near-expiry: expires in 4 minutes from now, leeway=600s → is_near_expiry True.
     from datetime import timedelta
+
     near = InstallationToken(
         token="ghs_near",
         expires_at=datetime.now(tz=timezone.utc) + timedelta(minutes=4),

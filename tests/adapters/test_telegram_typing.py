@@ -13,7 +13,7 @@ import pytest
 from aiogram.exceptions import TelegramAPIError
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.render_events import TextRenderEvent
+from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRenderEvent
 
 # ---------------------------------------------------------------------------
 # T1.4 — Unit tests for _typing_loop
@@ -233,8 +233,9 @@ async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
     mock_task.done.return_value = False
     adapter._typing_tasks[456] = mock_task
 
-    async def _chunks() -> AsyncIterator[TextRenderEvent]:
-        yield TextRenderEvent(text="hello", is_final=True)
+    async def _chunks() -> AsyncIterator[TextDeltaRenderEvent | TextEndRenderEvent]:
+        yield TextDeltaRenderEvent(message_id="msg1", delta="hello")
+        yield TextEndRenderEvent(message_id="msg1")
 
     # Act
     await adapter.send_streaming(original_msg, _chunks())

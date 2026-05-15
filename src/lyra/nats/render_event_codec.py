@@ -36,14 +36,11 @@ from lyra.core.messaging.render_events import (
     SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT,
     SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT,
     SCHEMA_VERSION_TEXT_END_RENDER_EVENT,
-    SCHEMA_VERSION_TEXT_RENDER_EVENT,
     SCHEMA_VERSION_TEXT_START_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
     SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT,
-    SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
-    FileEditSummary,
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
@@ -51,17 +48,14 @@ from lyra.core.messaging.render_events import (
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
-    SilentCounts,
     TextChunkRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
-    TextRenderEvent,
     TextStartRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
-    ToolSummaryRenderEvent,
 )
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver
@@ -81,10 +75,8 @@ class CodecBranch:
     """Per-event-type encode/decode descriptor stored in the registry.
 
     ``encode_fn`` maps a RenderEvent instance to ``(event_type, payload, is_done)``.
-    For v1 types (TextRenderEvent, ToolSummaryRenderEvent) ``is_done`` depends on
-    a field of the event itself (``is_final`` / ``is_complete``).  ``is_done_default``
-    is used for all other branches — it is ``True`` for terminal events
-    (RunFinished, RunError) and ``False`` for all others.
+    ``is_done_default`` is ``True`` for terminal events (RunFinished, RunError)
+    and ``False`` for all others.
 
     ``decode_fn`` maps a raw payload dict to a RenderEvent instance.  It is called
     inside a per-branch ``try/except`` in ``NatsRenderEventCodec.decode()``; it
@@ -127,56 +119,6 @@ def _make_std_decode(
     return _decode
 
 
-def _encode_text_v1(event: RenderEvent) -> tuple[str, dict, bool]:
-    """Encode TextRenderEvent — is_done comes from event.is_final."""
-    if not isinstance(event, TextRenderEvent):
-        raise TypeError(
-            f"_encode_text_v1 expected TextRenderEvent, got {type(event).__name__}"
-        )
-    payload: dict = json.loads(serialize(event).decode("utf-8"))
-    return "text", payload, event.is_final
-
-
-def _encode_tool_summary(event: RenderEvent) -> tuple[str, dict, bool]:
-    """Encode ToolSummaryRenderEvent — is_done comes from event.is_complete."""
-    if not isinstance(event, ToolSummaryRenderEvent):
-        raise TypeError(
-            "_encode_tool_summary expected ToolSummaryRenderEvent, "
-            f"got {type(event).__name__}"
-        )
-    payload: dict = json.loads(serialize(event).decode("utf-8"))
-    return "tool_summary", payload, event.is_complete
-
-
-def _make_tool_summary_decode() -> Callable[[dict], RenderEvent]:
-    """Return the hand-rolled ToolSummaryRenderEvent decode_fn.
-
-    ToolSummaryRenderEvent is NOT decoded via roxabi_nats.deserialize — its
-    nested FileEditSummary / SilentCounts types are constructed from raw
-    payload.get() lookups.  The branch deletes entirely in Slice 3; the
-    inline try/except wrapping it in decode() covers TypeError / ValueError /
-    KeyError / AttributeError as the spec mandates.
-    """
-
-    def _decode(payload: dict) -> RenderEvent:
-        files_raw = payload.get("files", {})
-        silent_raw = payload.get("silent_counts", {})
-        return ToolSummaryRenderEvent(
-            files={p: FileEditSummary(**d) for p, d in files_raw.items()},
-            bash_commands=payload.get("bash_commands", []),
-            web_fetches=payload.get("web_fetches", []),
-            agent_calls=payload.get("agent_calls", []),
-            silent_counts=(
-                SilentCounts(**silent_raw)
-                if isinstance(silent_raw, dict)
-                else silent_raw
-            ),
-            is_complete=payload.get("is_complete", False),
-        )
-
-    return _decode
-
-
 class NatsRenderEventCodec:
     """Encode/decode pair for RenderEvent ↔ NATS chunk payload.
 
@@ -185,8 +127,7 @@ class NatsRenderEventCodec:
         {
             "stream_id": str,
             "seq":        int,
-            "event_type": "text" | "text_start" | "text_delta"
-                          | "text_end" | "text_chunk" | "tool_summary"
+            "event_type": "text_start" | "text_delta" | "text_end" | "text_chunk"
                           | "run_started" | "run_finished" | "run_error"
                           | "tool_call_start" | "tool_call_args"
                           | "tool_call_end" | "tool_call_result"
@@ -198,8 +139,9 @@ class NatsRenderEventCodec:
 
     ``"stream_end"`` and ``"stream_error"`` are synthetic terminal sentinels
     (the latter emitted by the transport on mid-stream hub crash, #538);
-    ``decode()`` returns ``None`` for both. The
-    ``run_*`` types were added by Slice 1 of #1096 (#1098).
+    ``decode()`` returns ``None`` for both.
+    ``is_done=True`` for ``RunFinishedRenderEvent`` and ``RunErrorRenderEvent``
+    only; all other types yield ``is_done=False``.
     """
 
     def __init__(self, *, resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER) -> None:
@@ -207,23 +149,6 @@ class NatsRenderEventCodec:
 
         # fmt: off
         self._registry: dict[type, CodecBranch] = {
-            # v1 types — deleted in Slice 3
-            TextRenderEvent: CodecBranch(
-                event_type="text",
-                cls_name="TextRenderEvent",
-                encode_fn=_encode_text_v1,
-                decode_fn=_make_std_decode(TextRenderEvent, resolver),
-                schema_version=SCHEMA_VERSION_TEXT_RENDER_EVENT,
-                is_done_default=False,  # is_done computed from event.is_final in encode
-            ),
-            ToolSummaryRenderEvent: CodecBranch(
-                event_type="tool_summary",
-                cls_name="ToolSummaryRenderEvent",
-                encode_fn=_encode_tool_summary,
-                decode_fn=_make_tool_summary_decode(),
-                schema_version=SCHEMA_VERSION_TOOL_SUMMARY_RENDER_EVENT,
-                is_done_default=False,  # is_done from event.is_complete in encode
-            ),
             # v2 text triplet
             TextStartRenderEvent: CodecBranch(
                 event_type="text_start",
@@ -361,16 +286,11 @@ class NatsRenderEventCodec:
     def encode(self, event: RenderEvent) -> tuple[str, dict, bool]:
         """Return ``(event_type, payload_dict, is_done)`` for *event*.
 
-        ``is_done`` is ``True`` for a final ``TextRenderEvent`` (``is_final``),
-        a complete ``ToolSummaryRenderEvent`` (``is_complete``), or any of the
-        terminal Run lifecycle events (``RunFinishedRenderEvent``,
-        ``RunErrorRenderEvent``). ``RunStartedRenderEvent`` is not terminal.
-
-        Text v2 lifecycle events (``TextStartRenderEvent``,
-        ``TextDeltaRenderEvent``, ``TextEndRenderEvent``,
-        ``TextChunkRenderEvent``) always yield ``is_done=False`` — the
-        stream terminator remains the Run lifecycle event, not the
-        text-block boundary.
+        ``is_done`` is ``True`` only for terminal Run lifecycle events
+        (``RunFinishedRenderEvent``, ``RunErrorRenderEvent``).
+        All other registered types yield ``is_done=False`` — the
+        stream terminator is the Run lifecycle event, not any text-block
+        or tool-call boundary.
         """
         branch = self._registry.get(type(event))
         if branch is None:

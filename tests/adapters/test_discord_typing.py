@@ -11,7 +11,7 @@ import discord
 import pytest
 
 from lyra.core.messaging.message import OutboundMessage
-from lyra.core.messaging.render_events import TextRenderEvent
+from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRenderEvent
 from tests.conftest import yield_once
 
 from .conftest import make_dc_inbound_msg
@@ -170,9 +170,10 @@ async def test_send_streaming_cancels_typing_task_at_start() -> None:
 
     object.__setattr__(adapter, "_cancel_typing", spy_cancel)
 
-    async def _chunks() -> AsyncIterator[TextRenderEvent]:
-        yield TextRenderEvent(text="hello", is_final=False)
-        yield TextRenderEvent(text=" world", is_final=True)
+    async def _chunks() -> AsyncIterator[TextDeltaRenderEvent | TextEndRenderEvent]:
+        yield TextDeltaRenderEvent(message_id="msg1", delta="hello")
+        yield TextDeltaRenderEvent(message_id="msg1", delta=" world")
+        yield TextEndRenderEvent(message_id="msg1")
 
     await adapter.send_streaming(make_dc_inbound_msg(msg_id="msg-2"), _chunks())
 

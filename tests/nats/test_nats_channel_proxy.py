@@ -24,6 +24,7 @@ from lyra.core.messaging.message import (
     OutboundMessage,
     Platform,
 )
+from lyra.core.messaging.render_events import TextDeltaRenderEvent
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 # DEBT:v1-stubs — for skipped tests; rewrite for v2 (#1192 S3 follow-up)
@@ -584,7 +585,6 @@ async def test_publish_stream_errors_noop_when_no_active_streams() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
 async def test_send_streaming_exception_publishes_stream_error() -> None:
     """On NATS publish failure mid-stream, a stream_error envelope is published."""
     nc = _make_nc()
@@ -596,8 +596,8 @@ async def test_send_streaming_exception_publishes_stream_error() -> None:
     async def _publish_with_failure(subject, payload):
         nonlocal call_count
         call_count += 1
-        # Fail on the second chunk publish (third call overall: stream_start is absent
-        # since outbound=None; first call is chunk seq=0, second is chunk seq=1)
+        # Fail on the second chunk publish (outbound=None so no stream_start;
+        # call 1 = chunk seq=0 succeeds, call 2 = chunk seq=1 raises)
         if call_count == 2:
             raise Exception("NATS down")
 
@@ -606,8 +606,8 @@ async def test_send_streaming_exception_publishes_stream_error() -> None:
     await proxy.send_streaming(
         inbound,
         _async_iter(
-            TextRenderEvent(text="a", is_final=False),
-            TextRenderEvent(text="b", is_final=True),
+            TextDeltaRenderEvent(message_id="msg-err-publish", delta="a"),
+            TextDeltaRenderEvent(message_id="msg-err-publish", delta="b"),
         ),
     )
 
@@ -626,6 +626,7 @@ async def test_send_streaming_exception_publishes_stream_error() -> None:
     err = stream_error_envelopes[0]
     assert err["stream_id"] == inbound.id
     assert err["reason"] == "streaming_exception"
+    assert proxy._active_streams == set()
 
 
 @pytest.mark.asyncio

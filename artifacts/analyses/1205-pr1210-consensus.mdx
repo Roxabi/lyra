@@ -1,0 +1,85 @@
+---
+title: "PR #1210 review findings — Expert Consensus"
+issue: 1205
+status: consensus-reached
+date: 2026-05-15
+panel: architect, security-auditor, backend-dev
+confidence: high
+---
+
+## Problem
+
+PR #1210 (Slice 3 of #1192 — atomic v1 `TextRenderEvent` + `ToolSummaryRenderEvent` removal) received findings from a 5-agent code review: 8 blockers, 13 warnings, 7 suggestions. Need consensus on which to fix in this PR vs follow-up.
+
+## Panel
+
+| Agent | Focus |
+|---|---|
+| architect | Arch soundness, maintainability, cross-cutting consistency, scope discipline |
+| security-auditor | Threat model, info-disclosure, input validation, error-handling correctness |
+| backend-dev | Python correctness, asyncio, fix-effort estimation |
+
+## Consensus
+
+### Fix-now (unanimous 3-0)
+
+| ID | Description | Severity | C |
+|---|---|---|---|
+| B1 | `ResultLlmEvent.is_error` no longer propagates → ❌ prefix unreachable in v2 | Blocker | 88-92% |
+| B2 | `had_tool_events` permanently `False` (`_on_toolcall_v2` is no-op stub) | Blocker | 85-95% |
+| B3 | `classify_stream_error` leaks `str(stream_error)` to users (NATS/httpx info leak) | Blocker | 88% |
+| B4 | PR/issue/exemption comment claim S4 done — S4 deferred | Warning (downgraded by majority) | 75-85% |
+| B5 | Snapshot assertions weakened exact→substring; masks MarkdownV2 regressions | Blocker | 85-88% |
+| B6 | Zero v2 error-path test coverage (compounds B1) | Blocker | 82-85% |
+| W6 | CHANGELOG names `lyra-clipool` — contradicts spec §7 (clipool excluded) | Warning | 88-97% |
+| W7 | Schema-floor runbook uses `podman auto-update` not spec's explicit stop-timer sequence | Warning | 78-90% |
+| S2 | `src/lyra/adapters/CLAUDE.md` documents removed `edit_placeholder_tool` field | Suggestion | 90-97% |
+
+### Fix-followup (majority)
+
+B7, B8 (NATS proxy + StreamProcessor test rewrites, >2h effort, predate Slice 3 scope — tracked under #1177 S2)
+W1, W2, W3 (dead code: `emit_tool_recap` param, `_total_text`/`_pending_text`, `_has_any_tool_events()`)
+W5 (`show_intermediate=False` flag broken — no current caller passes False)
+W8, W9 (NATS counter hardening, hot-loop inline import)
+W10, W11, W12 (test tautologies — bundle with B7/B8 rewrite batch)
+S1, S3, S4, S5, S7 (low-confidence or test-debt items)
+
+### Rejected (majority)
+
+| ID | Reason |
+|---|---|
+| W4 | Architect evidence: `send_trace_placeholder`/`edit_trace` ARE live for Discord reasoning path (`discord_outbound.py:310,335,349`); finding misidentified vestigial naming as vestigial function |
+| W13 | Stale docstring in skipped test — zero runtime impact |
+| S6 | Stripped docstring in passing test — cosmetic |
+
+## Rationale
+
+**B1+B2 are the same migration-completeness pattern**: v1/v2 dispatch paths were cut but behavioral side-effects (error signal, tool-seen flag) carried by the v1 path were not ported to v2 stubs. This is the highest-risk class of cutover debt and 3-0 consensus.
+
+**B3 is a clear info-leak**: `str(exception)` on NATS/httpx exceptions embeds hostnames, auth tokens, connection strings. Fix is a one-liner discipline application matching the existing pattern at `stream_processor.py:352-356` (`type(exc).__name__` for NATS broadcast).
+
+**B5+B6 form a silent-regression triad with B1**: error display broken AND undetectable in CI. The two test fixes must land with the code fixes.
+
+**B4+W6+W7+S2 are doc/meta drift**: PR claims S4 done (it's deferred), CHANGELOG names wrong unit (clipool), runbook uses wrong restart procedure (timer-dependent), CLAUDE.md docs removed field. Low-effort, high-clarity for ops + future contributors.
+
+**Effort estimate**: 12 items <5min each + 2 items <30min = ~90 min total batch.
+
+## Dissent recorded
+
+- **B7, B8 — security-auditor dissents** (vote `fix-now blocker`): "NATS path zero coverage = critical; exception→stream_error is adapter-hang recovery path." Majority (architect + backend-dev) overrules: >2h effort, predates Slice 3, tracked under #1177 S2 follow-up. Mitigation: ensure #1177 S2 issue is open and references these specific tests.
+- **W1-W3 — backend-dev dissents** (vote `fix-now warning`, <5min): mechanical dead-code removals. Majority (architect + security) overrules: keep this PR's diff focused on correctness regressions; dead code has no runtime impact.
+- **W4 — architect rejects with evidence** (security + backend voted `fix-followup`): Discord reasoning trace path uses `send_trace_placeholder`/`edit_trace` actively; the finding was reviewer error. **Decisive evidence rule** — architect's specific line-cite (310, 335, 349) overrides the 2-1 majority for `fix-followup`.
+
+## Implementation Notes
+
+Group fixes into 3 commits to keep blast-radius readable:
+
+1. **Cluster M (meta/docs)** — B4 + W6 + W7 + S2: PR body / exemption comment / issue title / CHANGELOG / runbook / CLAUDE.md. 4 items, no code logic.
+2. **Cluster R (correctness regressions)** — B1 + B2 + B3: emit `RunErrorRenderEvent` flow + `had_tool_events` setter + secret-leak fix. 3 items, single concern (v1→v2 completion).
+3. **Cluster T (test strengthening)** — B5 + B6: restore exact-match snapshot assertions + add `RunErrorRenderEvent` snapshot test. Depends on Cluster R.
+
+Ordering: M → R → T. M can run in parallel with R if using isolated worktrees, but sequential is faster for 1-engineer.
+
+## Next
+
+→ `/fix` Cluster M, R, T sequentially → `/validate` → `/code-review` (iter 2, cap at 2 per skill rule)

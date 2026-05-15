@@ -1,0 +1,57 @@
+---
+title: Rewrite v2 tests for skipped paths (B7+B8 from #1210 review)
+issue: 1211
+status: approved
+tier: F-lite
+date: 2026-05-15
+---
+
+## Problem
+
+PR #1210 (Slice 3 of #1192) cut v1 RenderEvent over to v2 and, to ship on time, left 25 tests marked `@pytest.mark.skip(reason="v1 removed in #1192 S3")` instead of rewriting them. Iter-1 review flagged this as **B7** (11 streaming tests in `tests/nats/test_nats_channel_proxy.py`) and **B8** (14 tool-path tests in `tests/core/test_stream_processor.py`).
+
+The consensus panel (architect + backend-dev majority) accepted the deferral; **security-auditor dissented**, voting fix-now-blocker. The dissent centers on one test:
+
+`test_send_streaming_exception_publishes_stream_error` — verifies that when `NatsChannelProxy.send_streaming()` raises, it publishes a `stream_error` on the wire. This is the only adapter-hang recovery mechanism in the v2 NATS path, and it currently has zero active coverage for the v2 wire format. A regression here means adapters hang silently and users see "typing…" forever.
+
+Concretely: `StreamProcessor`'s tool path has only one active v2 test (`test_text_only`), and `NatsChannelProxy.send_streaming()` has zero. Skipped-test count rose from a baseline of 31 to 56 after #1210.
+
+## Who
+
+- **Primary:** Lyra adapters team — needs confidence that v2 wire format does not silently regress on the exception → recovery path
+- **Secondary:** End-users on Telegram/Discord who would experience hang symptoms before the regression is caught elsewhere
+
+## Constraints
+
+- **Scope-locked:** B7 + B8 only — predates Slice 3, blocked >2h effort threshold for inclusion in #1210
+- Tests must exercise the v2 wire format (RenderEvent v2, no v1 fallbacks)
+- No production-code changes (`send_streaming()`, `StreamProcessor` logic) — test rewrite only
+- Each test must be either rewritten OR explicitly deleted with a written rationale in the file
+- Must remove the `# pyright: reportAttributeAccessIssue=false` suppressions added during cutover
+
+## Out of Scope
+
+- Re-architecting test fixtures or shared test helpers beyond what the rewrite requires
+- Skipped tests outside the B7/B8 inventory listed in the issue body
+- Modifying production code in `NatsChannelProxy` or `StreamProcessor`
+- Adding new test coverage beyond what existed pre-#1210 (no scope creep)
+
+## Premise Validity
+
+**Success in 6 months:** Skipped-test count is back at the pre-#1210 baseline of 31 (down from 56); the exception → stream_error path has an active regression test; no `# pyright: reportAttributeAccessIssue=false` suppression remains in `test_nats_channel_proxy.py` or `test_stream_processor.py`.
+
+**Failure in 6 months:** A v2 wire regression (e.g. adapter hangs on send exception, seq numbering drift) reaches main because the missing tests never caught it — measurable as a reopened bug referencing B7/B8 paths within 6 months of merge.
+
+**Simplest alternative:** Delete the 25 skipped tests outright with rationale and rely on integration tests.
+**Why not simplest:** Consensus panel + security-auditor both flagged the recovery path as production-critical; integration tests don't isolate the exception path on the NATS wire. Acceptance criteria explicitly require rewrite OR explicit-delete-with-rationale per test — blanket deletion would violate that.
+
+## Complexity
+
+**Tier: F-lite** — clear scope (two test files, inventory enumerated), single domain (tests), no production-code changes, no new architecture.
+
+Signals observed:
+- Issue labeled `size:F-lite` at triage
+- Test-only changes — `test_nats_channel_proxy.py` + `test_stream_processor.py`
+- All target paths and behaviors already exist in production code; tests must catch up
+- Inventory of 25 tests enumerated upfront — no discovery phase needed
+- Cross-refs (#1210 consensus, #1192 S3) provide complete context

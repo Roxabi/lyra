@@ -786,6 +786,23 @@ class TestStreamProcessor:
         assert len(text_ends) == 1
         assert text_ends[0].message_id == text_starts[0].message_id
 
+    async def test_is_error_run_error_carries_error_text(self) -> None:
+        """ResultLlmEvent(is_error=True, error_text=...) → RunErrorRenderEvent.message.
+
+        Confirms the v2 contract: soft-error text is carried on the run-level
+        terminal event (RunErrorRenderEvent.message), not buried in a text event.
+        """
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            ResultLlmEvent(is_error=True, duration_ms=0, error_text="boom"),
+        )
+
+        all_events = await collect(processor.process(events))
+
+        run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
+        assert len(run_errors) == 1
+        assert run_errors[0].message == "boom"
+
     @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_is_error_false_propagated_to_text_render_event(self) -> None:
         """ResultLlmEvent(is_error=False) → TextRenderEvent(is_error=False)."""
@@ -1117,6 +1134,11 @@ class TestRunLifecycle:
     @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_soft_error_emits_finished_not_error(self) -> None:
         """ResultLlmEvent.is_error=True (soft error) → RunFinished, not RunError."""
+        # B2 from PR #1218 review (#1211 follow-up):
+        # This test asserts RunFinished(success) for is_error=True; B8-10 asserts
+        # RunErrorRenderEvent for the same input. The contracts are mutually exclusive.
+        # When #1216 unskips this test, the StreamProcessor's actual is_error contract
+        # must be reconciled — either delete this test (B8-10 wins) or revise B8-10.
         processor = StreamProcessor(cfg())
         events = async_events(
             ResultLlmEvent(is_error=True, duration_ms=10, error_text="model error"),

@@ -182,6 +182,7 @@ async def test_send_streaming_publishes_chunks_with_incrementing_seq() -> None:
 
     assert chunk0["seq"] == 0
     assert chunk1["seq"] == 1
+    # sentinel is seq-numbered in the same monotone series as event chunks
     assert sentinel["seq"] == 2
 
 
@@ -207,8 +208,14 @@ async def test_send_streaming_subject_is_single_outbound_subject() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_streaming_done_true_on_final_text_event() -> None:
-    """Terminal sentinel envelope (stream_end) always has done=True."""
+async def test_send_streaming_sentinel_done_true() -> None:
+    """Terminal sentinel (stream_end) has done=True; RunFinished chunk also done=True.
+
+    Two assertions:
+    1. The encoded RunFinishedRenderEvent chunk (first publish) carries done=True
+       because the codec marks RunFinished with is_done=True.
+    2. The synthetic stream_end sentinel (last publish) also carries done=True.
+    """
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound()
@@ -217,7 +224,12 @@ async def test_send_streaming_done_true_on_final_text_event() -> None:
         inbound, _async_iter(RunFinishedRenderEvent(run_id="run-done"))
     )
 
-    # Last publish is the terminal sentinel
+    # First publish: the RunFinishedRenderEvent chunk — codec marks it done=True
+    _, chunk_payload = nc.publish.call_args_list[0].args
+    chunk = json.loads(chunk_payload.decode("utf-8"))
+    assert chunk["done"] is True
+
+    # Last publish: the synthetic stream_end sentinel
     _, payload = nc.publish.call_args.args
     sentinel = json.loads(payload.decode("utf-8"))
     assert sentinel["event_type"] == "stream_end"
@@ -261,8 +273,8 @@ async def test_send_streaming_event_type_text() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_streaming_event_type_tool_summary() -> None:
-    """send_streaming(): ToolCallStart yields event_type='tool_call_start'."""
+async def test_send_streaming_event_type_tool_call_start() -> None:
+    """send_streaming(): ToolCallStart yields v2 event_type='tool_call_start'."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound()
@@ -331,6 +343,9 @@ async def test_send_streaming_drains_iterator_on_publish_failure() -> None:
     await proxy.send_streaming(inbound, _events())
 
     assert yielded == ["first", "second", "third"]
+    # call 1: first chunk publish (raises); call 2: stream_error envelope
+    # drain loop must NOT re-publish items 2+3 after the first chunk's publish failed
+    assert nc.publish.await_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -513,9 +528,11 @@ async def test_active_streams_tracked_during_streaming() -> None:
     mid_flight_snapshot: set[str] = set()
 
     async def _events():
-        # Capture the active set while the generator is live (mid-flight)
+        yield TextDeltaRenderEvent(message_id="msg-track", delta="first")
+        # Snapshot AFTER the first yield is consumed — by this point send_streaming()
+        # has definitely called _active_streams.add(stream_id) and processed event 1.
         mid_flight_snapshot.update(proxy._active_streams)
-        yield TextDeltaRenderEvent(message_id="msg-track", delta="hi")
+        yield TextDeltaRenderEvent(message_id="msg-track", delta="second")
 
     await proxy.send_streaming(inbound, _events())
 
@@ -627,6 +644,45 @@ async def test_send_streaming_exception_publishes_stream_error() -> None:
     assert err["stream_id"] == inbound.id
     assert err["reason"] == "streaming_exception"
     assert proxy._active_streams == set()
+
+
+@pytest.mark.asyncio
+async def test_send_streaming_stream_error_publish_failure_clears_active_streams() -> None:  # noqa: E501
+    """When stream_error publish itself fails, _active_streams is still cleared.
+
+    Adapters depending on stream_end/stream_error WILL hang in this scenario —
+    this test makes the missing alarm explicit and pins the finally-block invariant.
+    """
+    nc = _make_nc()
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound("msg-double-fail")
+
+    call_count = 0
+
+    async def _publish_with_double_failure(_subject, _payload):
+        nonlocal call_count
+        call_count += 1
+        # call 1: chunk seq=0 succeeds; call 2: chunk seq=1 raises (outer except);
+        # call 3: stream_error publish itself raises nats.errors.Error (inner except).
+        if call_count == 2:
+            raise Exception("NATS down")
+        if call_count == 3:
+            raise nats.errors.Error("NATS still down")
+
+    nc.publish = AsyncMock(side_effect=_publish_with_double_failure)
+
+    await proxy.send_streaming(
+        inbound,
+        _async_iter(
+            TextDeltaRenderEvent(message_id="msg-double-fail", delta="a"),
+            TextDeltaRenderEvent(message_id="msg-double-fail", delta="b"),
+        ),
+    )
+
+    # finally block must clear _active_streams even when stream_error publish fails
+    assert proxy._active_streams == set()
+    # Confirm the inner stream_error publish was attempted (call 3)
+    assert call_count == 3
 
 
 @pytest.mark.asyncio

@@ -15,7 +15,6 @@ from lyra.core.messaging.render_events import (
     SilentCounts,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
-    ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
 
@@ -75,10 +74,10 @@ class ToolRecapAccumulator:
     web_searches: list[str] = field(default_factory=list)
     agent_calls: list[str] = field(default_factory=list)
     unknown_calls: dict[str, int] = field(default_factory=dict)
-    _silent_reads: int = 0
-    _silent_greps: int = 0
-    _silent_globs: int = 0
-    _in_flight: dict[str, _PartialCall] = field(default_factory=dict)
+    _silent_reads: int = field(default=0, init=False)
+    _silent_greps: int = field(default=0, init=False)
+    _silent_globs: int = field(default=0, init=False)
+    _in_flight: dict[str, _PartialCall] = field(default_factory=dict, init=False)
 
     def observe_start(self, ev: ToolCallStartRenderEvent) -> None:
         """Register a new in-flight tool call."""
@@ -122,10 +121,6 @@ class ToolRecapAccumulator:
             args = {}
         self._route(ev.tool_call_id, partial.tool_name.lower(), partial.tool_name, args)
         del self._in_flight[ev.tool_call_id]
-
-    def observe_result(self, ev: ToolCallResultRenderEvent) -> None:
-        """No-op — result events are not tracked in the recap card."""
-        del ev
 
     def snapshot_silent(self) -> SilentCounts:
         """Return a frozen view of current silent counters."""
@@ -176,9 +171,13 @@ def _format_bash(accum: ToolRecapAccumulator) -> list[str]:
 
 
 def _format_unknown(accum: ToolRecapAccumulator) -> list[str]:
-    """Build lines for unknown tools, sorted alphabetically."""
+    """Build lines for unknown tools, sorted alphabetically.
+
+    Tool names come from upstream events and may contain Markdown
+    metacharacters; backtick-wrap to neutralise them in MarkdownV2 / Discord.
+    """
     return [
-        f"\U0001f527 {count} {name}"
+        f"\U0001f527 {count} `{_sanitize(name)}`"
         for name, count in sorted(accum.unknown_calls.items())
         if count > 0
     ]
@@ -206,13 +205,17 @@ def format_recap_lines(accum: ToolRecapAccumulator, *, done: bool) -> list[str]:
     lines: list[str] = [header]
     lines.extend(_format_files(accum))
     lines.extend(_format_bash(accum))
+    # url / query / agent description come from upstream tool args (LLM-driven)
+    # and may contain Markdown metacharacters or link syntax. Backtick-wrap
+    # to neutralise them — prevents prompt-injection-driven phishing links
+    # from rendering as clickable hyperlinks in Telegram MarkdownV2.
     for url in accum.web_fetches:
-        lines.append(f"\U0001f310 {url}")
+        lines.append(f"\U0001f310 `{_sanitize(url)}`")
     for query in accum.web_searches:
-        lines.append(f"\U0001f310 {query}")
+        lines.append(f"\U0001f310 `{_sanitize(query)}`")
     for desc in accum.agent_calls:
         desc = desc.strip() or "agent"
-        lines.append(f"\U0001f916 {_truncate(desc, _AGENT_DISPLAY_MAX)}")
+        lines.append(f"\U0001f916 `{_sanitize(_truncate(desc, _AGENT_DISPLAY_MAX))}`")
     lines.extend(_format_unknown(accum))
     lines.extend(_format_silent(accum))
     return lines

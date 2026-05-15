@@ -147,8 +147,9 @@ Inherit this base whenever you add a new platform adapter.
 | `start_typing` | `() -> None` | Start typing indicator (sync) |
 | `cancel_typing` | `() -> None` | Cancel typing indicator (sync) |
 | `send_trace_placeholder` | `async () -> (obj, id\|None)` | Send reasoning-trace placeholder |
-| `edit_trace` | `async (obj, event) -> None` | Edit reasoning-trace placeholder |
+| `edit_trace` | `async (obj, event) -> None` | Edit reasoning-trace placeholder (DEBT: vestigial — see #1214 / #1102) |
 | `edit_reasoning` | `async (obj, event) -> None` | Render reasoning Start/Delta/End |
+| `edit_tool_recap` | `async (obj, list[str], bool) -> None` | Render tool recap card lines (debounced + final) |
 | `get_msg` | `(key, fallback) -> str` | i18n message lookup |
 | `placeholder_text` | `str` | Initial placeholder text |
 
@@ -184,6 +185,7 @@ class MyAdapter(OutboundAdapterBase):
             send_trace_placeholder=...,
             edit_trace=...,
             edit_reasoning=...,
+            edit_tool_recap=...,
             get_msg=...,
             placeholder_text=...,
         )

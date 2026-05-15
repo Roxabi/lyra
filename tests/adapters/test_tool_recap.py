@@ -15,7 +15,6 @@ from lyra.adapters.shared._tool_recap import (  # type: ignore[import-untyped]
 from lyra.core.messaging.render_events import (
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
-    ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
 
@@ -101,7 +100,9 @@ def test_format_lines_unknown_tool_sorted_alpha() -> None:
         ],
     )
     lines = format_recap_lines(accum, done=True)
-    assert lines == ["🔧 Done ✅", "🔧 1 ls", "🔧 3 todowrite"]
+    # Tool names are backtick-wrapped to neutralise Markdown metacharacters
+    # in upstream args (Markdown injection guard — see #1220 review).
+    assert lines == ["🔧 Done ✅", "🔧 1 `ls`", "🔧 3 `todowrite`"]
 
 
 def test_format_lines_empty_accum_returns_empty_list() -> None:
@@ -112,19 +113,22 @@ def test_format_lines_empty_accum_returns_empty_list() -> None:
 
 def test_format_lines_is_error_result_counted_identically() -> None:
     """ToolCallResultRenderEvent(is_error=True) is ignored — output identical
-    to success case for same one-bash-call turn."""
+    to success case for the same one-bash-call turn.
+
+    The accumulator has no public surface for Result events (#1220 review):
+    dispatch lives in StreamingSession._on_toolcall_v2, which early-returns
+    on Result. We assert the output equality contract here at the format
+    layer; the dispatch-level behaviour is covered in the session tests.
+    """
     accum_ok = ToolRecapAccumulator()
     _drive(accum_ok, [("Bash", {"command": "echo hi"})])
 
     accum_err = ToolRecapAccumulator()
     _drive(accum_err, [("Bash", {"command": "echo hi"})])
-    # Send a result event with is_error=True; accumulator must ignore it
-    if hasattr(accum_err, "observe_result"):
-        accum_err.observe_result(
-            ToolCallResultRenderEvent(
-                tool_call_id="tc-0", content="boom", is_error=True
-            )
-        )
+    # Note: a real Result event with is_error=True does NOT reach the
+    # accumulator (StreamingSession filters it). The two accumulators
+    # therefore receive identical inputs — this asserts the deterministic
+    # formatter output.
 
     assert format_recap_lines(accum_ok, done=True) == format_recap_lines(
         accum_err, done=True
@@ -191,9 +195,9 @@ def test_web_fetch_and_web_search_in_separate_sections() -> None:
         ],
     )
     lines = format_recap_lines(accum, done=True)
-    # Strip header
+    # Strip header. Values are backtick-wrapped (Markdown injection guard).
     content_lines = lines[1:]
-    assert content_lines == ["🌐 https://a.com", "🌐 hello"]
+    assert content_lines == ["🌐 `https://a.com`", "🌐 `hello`"]
 
 
 def test_done_true_emits_done_header_else_working() -> None:

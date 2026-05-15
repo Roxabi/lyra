@@ -254,3 +254,41 @@ async def test_orphan_tool_call_id_does_not_crash() -> None:
 
     # Session must complete without raising
     cb.cancel_typing.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# Test 6 — placeholder send failure: edit_tool_recap MUST NOT fire (#1220 review)
+# ---------------------------------------------------------------------------
+
+
+async def test_placeholder_send_failure_does_not_invoke_edit_tool_recap() -> None:
+    """When send_trace_placeholder raises, _ensure_trace_obj returns False,
+    _on_toolcall_v2 bails out, and _deliver_final's recap edit is skipped
+    because self._trace_obj remains None.
+
+    Regression guard for the failure path of _ensure_trace_obj — without
+    this test, removing either the early-return in _on_toolcall_v2 or the
+    None-guard in _deliver_final would not be caught by any assertion.
+    """
+    cb = _make_callbacks(
+        send_trace_placeholder=AsyncMock(side_effect=RuntimeError("boom")),
+    )
+    session = StreamingSession(cb, outbound=None)
+
+    await session.run(
+        _gen(
+            RunStartedRenderEvent(run_id="run-fail"),
+            ToolCallStartRenderEvent(tool_call_id="t1", tool_name="bash"),
+            ToolCallArgsRenderEvent(tool_call_id="t1", delta='{"command":"ls"}'),
+            ToolCallEndRenderEvent(tool_call_id="t1"),
+            TextStartRenderEvent(message_id="msg-1"),
+            TextDeltaRenderEvent(message_id="msg-1", delta="ok"),
+            TextEndRenderEvent(message_id="msg-1"),
+            RunFinishedRenderEvent(run_id="run-fail", outcome="success"),
+        )
+    )
+
+    # Placeholder send was attempted exactly once.
+    assert cb.send_trace_placeholder.await_count == 1
+    # No recap edit ever fired — neither streaming nor done=True.
+    cb.edit_tool_recap.assert_not_called()

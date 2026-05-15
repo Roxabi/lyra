@@ -74,6 +74,8 @@ class PlatformCallbacks:
     send_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
     edit_placeholder_text: Callable[[Any, str], Awaitable[None]]
     send_trace_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
+    # DEBT: vestigial — no live consumer post-#1214. Reasoning uses
+    # edit_reasoning, recap uses edit_tool_recap. See #1214 / #1102.
     edit_trace: Callable[[Any, Any], Awaitable[None]]
     send_message: Callable[[str], Awaitable[int | None]]
     send_fallback: Callable[[str], Awaitable[int | None]]
@@ -175,9 +177,9 @@ class StreamingSession:
             self._recap_accum.observe_args(event)
         elif isinstance(event, ToolCallEndRenderEvent):
             self._recap_accum.observe_end(event)
-        elif isinstance(event, ToolCallResultRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
-            self._recap_accum.observe_result(event)
-            return  # result events do not trigger a recap edit
+        else:
+            # ToolCallResultRenderEvent — recap is input-only; nothing to do.
+            return
 
         await self._maybe_emit_intermediate_recap()
 

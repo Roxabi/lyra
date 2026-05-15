@@ -1,9 +1,5 @@
 """Tests for lyra.core.processors.stream_processor — StreamProcessor (S3)."""
 
-# pyright: reportAttributeAccessIssue=false, reportInvalidTypeForm=false
-# v1 stub classes are typed as Any (see DEBT:v1-stubs below) — skipped tests
-# still reference v1-shape attrs; rewrite for v2 deferred (#1192 S3 follow-up).
-
 from __future__ import annotations
 
 import ast
@@ -1784,8 +1780,9 @@ class TestReasoning:
 # assertions apply identical transforms before diffing against the fixture.
 from tools.capture_v1_text_baseline import normalize_event_dict  # noqa: E402
 
-# DEBT:v1-stubs — for skipped tests; rewrite for v2 (#1192 S3 follow-up)
-# Typed as Any so pyright doesn't flag v1-shape access in skipped tests.
+# DEBT:v1-stubs — kept for the v1-skipped tests deferred to #1216.
+# Stubs are typed Any so pyright accepts v1-shape attribute access in those
+# test bodies; identifiers must exist because pytest imports the module.
 TextRenderEvent: Any = type("TextRenderEvent", (), {})
 ToolSummaryRenderEvent: Any = type("ToolSummaryRenderEvent", (), {})
 

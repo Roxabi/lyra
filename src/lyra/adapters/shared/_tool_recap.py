@@ -122,8 +122,9 @@ class ToolRecapAccumulator:
         self._route(ev.tool_call_id, partial.tool_name.lower(), partial.tool_name, args)
         del self._in_flight[ev.tool_call_id]
 
-    def observe_result(self, ev: ToolCallResultRenderEvent) -> None:  # noqa: ARG002
+    def observe_result(self, ev: ToolCallResultRenderEvent) -> None:
         """No-op — result events are not tracked in the recap card."""
+        del ev
 
     def snapshot_silent(self) -> SilentCounts:
         """Return a frozen view of current silent counters."""

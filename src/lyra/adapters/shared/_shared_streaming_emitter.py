@@ -134,6 +134,21 @@ class StreamingSession:
         self._last_recap_edit: float | None = None
         self._recap_done_emitted: bool = False
 
+    async def _ensure_trace_obj(self) -> bool:
+        """Lazily send the trace placeholder, caching it on self._trace_obj.
+
+        Returns True if self._trace_obj is non-None after the call (success
+        or already-set). False on send failure — caller should bail out.
+        """
+        if self._trace_obj is not None:
+            return True
+        try:
+            self._trace_obj, _ = await self._cb.send_trace_placeholder()
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+            log.exception("trace placeholder failed")
+            return False
+        return self._trace_obj is not None
+
     async def _on_toolcall_v2(
         self,
         event: ToolCallStartRenderEvent
@@ -154,12 +169,8 @@ class StreamingSession:
 
         if isinstance(event, ToolCallStartRenderEvent):
             self._recap_accum.observe_start(event)
-            if self._trace_obj is None:
-                try:
-                    self._trace_obj, _ = await self._cb.send_trace_placeholder()
-                except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
-                    log.exception("trace placeholder failed; recap will not render")
-                    return
+            if not await self._ensure_trace_obj():
+                return
         elif isinstance(event, ToolCallArgsRenderEvent):
             self._recap_accum.observe_args(event)
         elif isinstance(event, ToolCallEndRenderEvent):
@@ -319,6 +330,10 @@ class StreamingSession:
                     # Slice 4 (#1101): typed reasoning events. Routed through
                     # PlatformCallbacks.edit_reasoning (see T9.5). Default
                     # callback is no-op; adapters override via OutboundAdapterBase.
+                    # On Start, ensure the shared trace placeholder exists so
+                    # reasoning and recap share a single placeholder object.
+                    if isinstance(event, ReasoningStartRenderEvent):
+                        await self._ensure_trace_obj()
                     await self._cb.edit_reasoning(self._trace_obj, event)
                     continue
                 else:

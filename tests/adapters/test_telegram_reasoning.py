@@ -48,15 +48,14 @@ class TestTelegramReasoningRendering:
     """T13 — Telegram adapter Reasoning event rendering (SC-15)."""
 
     @pytest.mark.asyncio
-    async def test_reasoning_lazy_placeholder(self) -> None:
-        """Trace placeholder sent ONCE across two back-to-back reasoning blocks.
+    async def test_reasoning_shared_trace_obj(self) -> None:
+        """Callback renders into a pre-supplied trace_obj without calling send_message.
 
-        Drives 2 distinct Reasoning{Start,Delta,End} triplets (different message_ids,
-        as a tool call would interleave between them). Asserts that the lazy-init
-        guard kicks in: the second Start does NOT trigger a second placeholder send.
-
-        Without the `if effective_trace is None` guard, send_message would be
-        called twice — making this test the actual regression boundary.
+        The placeholder is now created by the session layer (_ensure_trace_obj) before
+        _render_reasoning is invoked. This test verifies:
+        - With a valid trace_obj, two back-to-back reasoning blocks both render (edit
+          calls are made).
+        - The callback itself never calls send_message (no lazy placeholder creation).
         """
         from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
 
@@ -72,32 +71,39 @@ class TestTelegramReasoningRendering:
         original_msg = _make_telegram_message()
         callbacks = build_streaming_callbacks(adapter, original_msg, None)
 
-        # Act — two back-to-back reasoning blocks with distinct message_ids
+        # Act — two back-to-back reasoning blocks; session pre-supplies trace_obj
         for block_id in (_MSG_ID, f"{_MSG_ID}-2"):
             await callbacks.edit_reasoning(
-                None, ReasoningStartRenderEvent(message_id=block_id)
+                trace_mock, ReasoningStartRenderEvent(message_id=block_id)
             )
             await callbacks.edit_reasoning(
-                None,
+                trace_mock,
                 ReasoningDeltaRenderEvent(message_id=block_id, delta="thinking…"),
             )
             await callbacks.edit_reasoning(
-                None, ReasoningEndRenderEvent(message_id=block_id)
+                trace_mock, ReasoningEndRenderEvent(message_id=block_id)
             )
 
-        # Assert — trace placeholder created exactly once, NOT twice
-        assert send_message_mock.await_count == 1, (
-            f"Expected 1 send_message call (lazy guard), "
-            f"got {send_message_mock.await_count}"
+        # Assert — callback never calls send_message (session owns placeholder creation)
+        assert send_message_mock.await_count == 0, (
+            f"Callback must not create its own placeholder; "
+            f"got {send_message_mock.await_count} send_message calls"
+        )
+        # At least 2 edit calls (one End flush per block)
+        assert edit_message_mock.await_count >= 2, (
+            f"Expected edits for both reasoning blocks, "
+            f"got {edit_message_mock.await_count}"
         )
 
     @pytest.mark.asyncio
     async def test_reasoning_throttle_bound(self) -> None:
         """Delta edits are throttled: at most ceil(window/interval)+1 API calls.
 
-        Arrange: adapter with show_intermediate=True; time.monotonic controlled.
+        Arrange: adapter with show_intermediate=True; time.monotonic controlled;
+        session pre-supplies trace_obj (non-None) as per new contract.
         Act: drive Start + 20 Delta events spread across a 2s window + End.
-        Assert: edit_message_text count <= ceil(2.0 / STREAMING_EDIT_INTERVAL) + 1.
+        Assert: edit_message_text count <= ceil(2.0 / STREAMING_EDIT_INTERVAL) + 1
+        and >= 1 (at least the final End flush).
         """
         from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
 
@@ -130,22 +136,23 @@ class TestTelegramReasoningRendering:
             "lyra.adapters.telegram.telegram_outbound.time.monotonic",
             side_effect=fake_monotonic,
         ):
-            # Act
+            # Act — session pre-supplies trace_obj (non-None) as per new contract
             await callbacks.edit_reasoning(
-                None, ReasoningStartRenderEvent(message_id=_MSG_ID)
+                trace_mock, ReasoningStartRenderEvent(message_id=_MSG_ID)
             )
             for i in range(n_deltas):
                 await callbacks.edit_reasoning(
-                    None,
+                    trace_mock,
                     ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta=f"chunk{i}"),
                 )
             await callbacks.edit_reasoning(
-                None, ReasoningEndRenderEvent(message_id=_MSG_ID)
+                trace_mock, ReasoningEndRenderEvent(message_id=_MSG_ID)
             )
 
         # Assert — throttle bound (the "+1" accounts for the final flush at End)
         max_allowed = math.ceil(window / STREAMING_EDIT_INTERVAL) + 1
         actual_edits = adapter.bot.edit_message_text.await_count
+        assert actual_edits >= 1, "Expected at least one edit (End flush)"
         assert actual_edits <= max_allowed, (
             f"Too many API edits: {actual_edits} > {max_allowed} "
             f"(window={window}s, interval={STREAMING_EDIT_INTERVAL}s)"
@@ -155,7 +162,7 @@ class TestTelegramReasoningRendering:
     async def test_reasoning_truncation(self) -> None:
         """Delta text > 120 chars is truncated to 117 chars + ellipsis (118 total).
 
-        Arrange: adapter with show_intermediate=True.
+        Arrange: adapter with show_intermediate=True; session pre-supplies trace_obj.
         Act: Start → Delta(200 'x' chars) → End.
         Assert: the edit call receives text of length 118 ending with '…'.
         """
@@ -178,16 +185,16 @@ class TestTelegramReasoningRendering:
         original_msg = _make_telegram_message()
         callbacks = build_streaming_callbacks(adapter, original_msg, None)
 
-        # Act
+        # Act — session pre-supplies trace_obj (non-None) as per new contract
         await callbacks.edit_reasoning(
-            None, ReasoningStartRenderEvent(message_id=_MSG_ID)
+            trace_mock, ReasoningStartRenderEvent(message_id=_MSG_ID)
         )
         await callbacks.edit_reasoning(
-            None,
+            trace_mock,
             ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta="x" * 200),
         )
         await callbacks.edit_reasoning(
-            None, ReasoningEndRenderEvent(message_id=_MSG_ID)
+            trace_mock, ReasoningEndRenderEvent(message_id=_MSG_ID)
         )
 
         # Assert — at least one edit call was made

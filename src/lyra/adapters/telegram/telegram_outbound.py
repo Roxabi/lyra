@@ -269,8 +269,7 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
             )
         return last.message_id if last else None
 
-    # Mutable cells for _render_reasoning closure state (one per streaming turn).
-    _reasoning_trace_cell: list[Any] = [None]
+    # Per-callback state (NOT placeholder identity — that lives on session._trace_obj).
     _reasoning_accum_cell: list[str] = [""]
     _last_reasoning_edit_cell: list[float | None] = [None]
 
@@ -311,7 +310,7 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
             except TelegramAPIError as exc:
                 log.debug("Reasoning trace edit skipped: %s", exc)
 
-    async def _render_reasoning(  # noqa: C901 — DEBT:wiring-bootstrap-deps — three-branch state machine
+    async def _render_reasoning(
         trace_obj: Any,
         event: ReasoningStartRenderEvent
         | ReasoningDeltaRenderEvent
@@ -324,28 +323,19 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         this callback. Single source of truth, no adapter-side double-gate.
         Delta edits are throttled by STREAMING_EDIT_INTERVAL.
         Accumulated text is truncated to 120 chars with '…' suffix.
+
+        The trace placeholder is guaranteed to exist before this callback is
+        invoked (session._ensure_trace_obj() fires on ReasoningStart in
+        _run_event_loop). trace_obj=None means placeholder send failed — bail.
         """
         if isinstance(event, ReasoningStartRenderEvent):
-            effective_trace = (
-                trace_obj if trace_obj is not None else _reasoning_trace_cell[0]
-            )
-            if effective_trace is None:
-                try:
-                    effective_trace, _ = await _send_trace_placeholder()
-                    _reasoning_trace_cell[0] = effective_trace
-                except Exception:
-                    log.exception(
-                        "Failed to send trace placeholder — reasoning will not render"
-                    )
-                    return
+            if trace_obj is None:
+                return
             _reasoning_accum_cell[0] = ""
             _last_reasoning_edit_cell[0] = None
 
         elif isinstance(event, ReasoningDeltaRenderEvent):
-            effective_trace = (
-                trace_obj if trace_obj is not None else _reasoning_trace_cell[0]
-            )
-            if effective_trace is None:
+            if trace_obj is None:
                 return
             _reasoning_accum_cell[0] += event.delta
             truncated = _reasoning_accum_cell[0]
@@ -356,21 +346,18 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
                 _last_reasoning_edit_cell[0] is None
                 or (now - _last_reasoning_edit_cell[0]) >= STREAMING_EDIT_INTERVAL
             ):
-                await _edit_trace_with_text(effective_trace, _dim_italic(truncated))
+                await _edit_trace_with_text(trace_obj, _dim_italic(truncated))
                 _last_reasoning_edit_cell[0] = now
 
         else:  # ReasoningEndRenderEvent
-            effective_trace = (
-                trace_obj if trace_obj is not None else _reasoning_trace_cell[0]
-            )
-            if effective_trace is None:
+            if trace_obj is None:
                 return
             # Final flush: guarantee last edit even if throttled
             if _reasoning_accum_cell[0]:
                 truncated = _reasoning_accum_cell[0]
                 if len(truncated) > 120:
                     truncated = truncated[:117] + "…"
-                await _edit_trace_with_text(effective_trace, _dim_italic(truncated))
+                await _edit_trace_with_text(trace_obj, _dim_italic(truncated))
 
     return PlatformCallbacks(
         send_placeholder=_send_placeholder,

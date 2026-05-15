@@ -147,11 +147,12 @@ class StreamState:
     last_intermediate_edit: float | None = None
     final_text: str | None = None
     is_error_turn: bool = False
-    # Pending error flag set when the dispatch ladder sees RunErrorRenderEvent
-    # before TextEndRenderEvent closes the open text block. Consumed by the
-    # TextEnd branch in _on_text_v2 to thread is_error=True through to
-    # set_final_text() — preserves the v1 ``❌`` prefix behavior on soft
-    # errors (ResultLlmEvent.is_error=True) and infrastructure exceptions.
+    # Error flag set when the dispatch ladder sees ``RunErrorRenderEvent``.
+    # Read at delivery time by ``build_display_text`` (not at ``TextEnd`` time)
+    # because RunError arrives AFTER TextEnd in stream_processor's production
+    # order: ResultLlmEvent → TextEnd (close open block, inside try) → finally
+    # → RunErrorRenderEvent (post-finally, for soft errors). Reading at
+    # delivery time means the order of TextEnd vs RunError does not matter.
     is_error_pending: bool = False
     stream_error: Exception | None = None
 
@@ -175,7 +176,12 @@ class StreamState:
                 final_text=None,
                 msg_fn=msg_fn,
             )
-        display = ("❌ " + self.final_text) if self.is_error_turn else self.final_text
+        # Error-turn detection: is_error_turn (legacy path set at set_final_text
+        # time) OR is_error_pending (RunErrorRenderEvent observed in the
+        # dispatch ladder, may have arrived BEFORE or AFTER the TextEnd that
+        # captured final_text — both orderings are correct).
+        is_error = self.is_error_turn or self.is_error_pending
+        display = ("❌ " + self.final_text) if is_error else self.final_text
         if self.stream_error is not None:
             if display:
                 display += msg_fn("stream_interrupted", " [response interrupted]")

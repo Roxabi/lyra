@@ -124,15 +124,17 @@ class TestTelegramSnapshots:
 
     @pytest.mark.asyncio
     async def test_error_snapshot(self) -> None:
-        """Soft error (B6 fix #1205): RunErrorRenderEvent threads is_error to ❌.
+        """Soft error (B6 fix #1205): RunErrorRenderEvent triggers ❌ prefix.
 
-        Input stream (v2): RunStarted, TextStart, TextDelta("Something went wrong."),
-                           TextEnd, RunError
-        The RunErrorRenderEvent sets is_error_pending on the StreamState; the
-        TextEndRenderEvent that precedes it has already captured the final text
-        with is_error=False, but the order in this test mirrors the production
-        flow where RunErrorRenderEvent arrives BEFORE the close — emitted by
-        stream_processor's post-finally branch.
+        Input stream (v2) — matches stream_processor's actual emission order
+        for the soft-error path (ResultLlmEvent.is_error=True):
+          RunStarted → TextStart → TextDelta → TextEnd → RunError
+
+        stream_processor closes the open text block via TextEnd inside the
+        ResultLlmEvent branch, then emits RunErrorRenderEvent post-finally.
+        The adapter's build_display_text() reads is_error_pending at delivery
+        time (NOT at TextEnd capture time) so the ❌ prefix is applied even
+        though TextEnd was processed before RunError fired.
 
         Expected: final edit_message_text starts with ❌ (error prefix).
         """
@@ -147,13 +149,13 @@ class TestTelegramSnapshots:
             yield TextDeltaRenderEvent(
                 message_id="msg-1", delta="Something went wrong."
             )
-            # RunError BEFORE TextEnd so is_error_pending is set when TextEnd
-            # closes the block — mirrors stream_processor's
-            # _close_text_block_on_result → RunError emission order.
+            # Production order: TextEnd first (inside ResultLlmEvent branch),
+            # then RunError post-finally. build_display_text consults
+            # is_error_pending at delivery, so order does not matter.
+            yield TextEndRenderEvent(message_id="msg-1")
             yield RunErrorRenderEvent(
                 run_id="r1", message="model_error", code=None
             )
-            yield TextEndRenderEvent(message_id="msg-1")
 
         await adapter.send_streaming(msg, _events())
 

@@ -164,14 +164,16 @@ class StreamingSession:
                     self._st.last_intermediate_edit = now
         elif isinstance(event, TextEndRenderEvent):
             # TextEnd closes the text block; accumulated istate text is the final text.
-            # is_error_pending is set upstream when RunErrorRenderEvent fires
-            # (soft error OR infra exception) — thread it through so the
-            # adapter's build_display_text() prepends the ``❌`` prefix.
+            # The error-turn flag is applied at delivery time in
+            # build_display_text() — NOT here — because RunErrorRenderEvent
+            # arrives AFTER TextEnd in stream_processor's production order
+            # (post-finally emission). Capturing is_error here would race the
+            # RunError signal and silently drop the ``❌`` prefix.
             if self._st.istate.text:
                 final = self._st.istate.text
                 if final.startswith("⏳ "):
                     final = final[2:]
-                self._st.set_final_text(final, is_error=self._st.is_error_pending)
+                self._st.set_final_text(final)
 
     async def _send_placeholder(self) -> tuple[Any, int | None] | None:
         """Send the placeholder and record reply_message_id on outbound.

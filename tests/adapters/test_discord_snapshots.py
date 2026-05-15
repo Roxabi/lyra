@@ -148,13 +148,17 @@ class TestDiscordSnapshots:
 
     @pytest.mark.asyncio
     async def test_error_snapshot(self) -> None:
-        """Soft error (B6 fix #1205): RunErrorRenderEvent threads is_error to ❌.
+        """Soft error (B6 fix #1205): RunErrorRenderEvent triggers ❌ prefix.
 
-        Input stream (v2): RunStarted, TextStart, TextDelta("Something went wrong."),
-                           RunError, TextEnd
-        Mirrors stream_processor's order: RunError fires after the loop closes the
-        text block via TextEnd; in this synthetic stream we put RunError BEFORE
-        TextEnd so is_error_pending is captured when the close drives set_final_text.
+        Input stream (v2) — matches stream_processor's actual emission order
+        for the soft-error path (ResultLlmEvent.is_error=True):
+          RunStarted → TextStart → TextDelta → TextEnd → RunError
+
+        stream_processor closes the open text block via TextEnd inside the
+        ResultLlmEvent branch, then emits RunErrorRenderEvent post-finally.
+        The adapter's build_display_text() reads is_error_pending at delivery
+        time (NOT at TextEnd capture time) so the ❌ prefix is applied even
+        though TextEnd was processed before RunError fired.
 
         Expected: final placeholder.edit starts with ❌ prefix.
         """
@@ -170,10 +174,13 @@ class TestDiscordSnapshots:
             yield TextDeltaRenderEvent(
                 message_id="msg-1", delta="Something went wrong."
             )
+            # Production order: TextEnd first (inside ResultLlmEvent branch),
+            # then RunError post-finally. build_display_text consults
+            # is_error_pending at delivery, so order does not matter.
+            yield TextEndRenderEvent(message_id="msg-1")
             yield RunErrorRenderEvent(
                 run_id="r1", message="model_error", code=None
             )
-            yield TextEndRenderEvent(message_id="msg-1")
 
         await adapter.send_streaming(msg, _events())
 

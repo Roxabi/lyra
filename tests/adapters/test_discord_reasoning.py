@@ -1,7 +1,8 @@
 """Integration tests for Discord adapter Reasoning rendering (SC-16, T13).
 
 Covers _render_reasoning via PlatformCallbacks.edit_reasoning for:
-- Lazy placeholder creation (back-to-back blocks share one placeholder)
+- Reasoning callback edits the session-supplied trace_obj
+  (lazy placeholder creation moved upstream to StreamingSession in #1214)
 - Edit throttle bound
 - Text truncation
 
@@ -67,44 +68,47 @@ class TestDiscordReasoningRendering:
     """T13 — Discord adapter Reasoning event rendering (SC-16)."""
 
     @pytest.mark.asyncio
-    async def test_reasoning_lazy_placeholder(self) -> None:
-        """Trace placeholder sent ONCE across two back-to-back reasoning blocks.
+    async def test_reasoning_uses_session_supplied_trace_obj(self) -> None:
+        """Reasoning callback edits the session-supplied trace_obj.
 
-        Drives 2 distinct Reasoning{Start,Delta,End} triplets (different message_ids,
-        as a tool call would interleave between them). Asserts that the lazy-init
-        guard kicks in: the second Start does NOT trigger a second placeholder send.
-
-        Without the lazy-init guard, messageable.send would be called twice —
-        making this test the actual regression boundary.
+        Post-#1214: lazy placeholder creation moved upstream to
+        ``StreamingSession._ensure_trace_obj``. The callback no longer
+        calls ``messageable.send`` itself — it must edit whatever
+        ``trace_obj`` the session passes in. Two back-to-back reasoning
+        blocks must therefore both edit the same session-supplied
+        trace_obj without producing any extra ``messageable.send`` calls.
         """
         from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
 
         # Arrange
         adapter = _make_discord_adapter()
-        messageable, _trace_obj = _make_messageable_with_trace_obj()
+        messageable, trace_obj = _make_messageable_with_trace_obj()
         adapter._resolve_channel = AsyncMock(return_value=messageable)
 
         original_msg = make_dc_inbound_msg()
         callbacks = build_streaming_callbacks(adapter, original_msg, None)
 
-        # Act — two back-to-back reasoning blocks with distinct message_ids
+        # Act — two back-to-back reasoning blocks; session passes trace_obj.
         for block_id in (_MSG_ID, f"{_MSG_ID}-2"):
             await callbacks.edit_reasoning(
-                None, ReasoningStartRenderEvent(message_id=block_id)
+                trace_obj, ReasoningStartRenderEvent(message_id=block_id)
             )
             await callbacks.edit_reasoning(
-                None,
+                trace_obj,
                 ReasoningDeltaRenderEvent(message_id=block_id, delta="thinking…"),
             )
             await callbacks.edit_reasoning(
-                None, ReasoningEndRenderEvent(message_id=block_id)
+                trace_obj, ReasoningEndRenderEvent(message_id=block_id)
             )
 
-        # Assert — channel.send called exactly once for trace placeholder
-        # (lazy-init guard prevents second send on second block)
-        assert messageable.send.await_count == 1, (
-            f"Expected 1 messageable.send call (lazy guard), "
-            f"got {messageable.send.await_count}"
+        # Callback never sends its own placeholder anymore.
+        assert messageable.send.await_count == 0, (
+            "edit_reasoning must not send its own placeholder "
+            "(session._ensure_trace_obj owns lazy-create)"
+        )
+        # And it edited the session-supplied trace_obj at least once.
+        assert trace_obj.edit.await_count >= 1, (
+            "Expected ≥1 trace_obj.edit call across the two reasoning blocks"
         )
 
     @pytest.mark.asyncio
@@ -143,17 +147,17 @@ class TestDiscordReasoningRendering:
             "lyra.adapters.discord.discord_outbound.time.monotonic",
             side_effect=fake_monotonic,
         ):
-            # Act
+            # Act — session supplies trace_obj (post-#1214 contract).
             await callbacks.edit_reasoning(
-                None, ReasoningStartRenderEvent(message_id=_MSG_ID)
+                trace_obj, ReasoningStartRenderEvent(message_id=_MSG_ID)
             )
             for i in range(n_deltas):
                 await callbacks.edit_reasoning(
-                    None,
+                    trace_obj,
                     ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta=f"chunk{i}"),
                 )
             await callbacks.edit_reasoning(
-                None, ReasoningEndRenderEvent(message_id=_MSG_ID)
+                trace_obj, ReasoningEndRenderEvent(message_id=_MSG_ID)
             )
 
         # Assert — throttle bound (the "+1" accounts for the final flush at End)
@@ -183,6 +187,7 @@ class TestDiscordReasoningRendering:
         trace_obj.id = 602
 
         async def capture_edit(*, content: object, embed: object) -> None:
+            del embed
             assert isinstance(content, str)
             edit_calls.append(content)
 
@@ -193,16 +198,16 @@ class TestDiscordReasoningRendering:
         original_msg = make_dc_inbound_msg()
         callbacks = build_streaming_callbacks(adapter, original_msg, None)
 
-        # Act
+        # Act — session supplies trace_obj (post-#1214 contract).
         await callbacks.edit_reasoning(
-            None, ReasoningStartRenderEvent(message_id=_MSG_ID)
+            trace_obj, ReasoningStartRenderEvent(message_id=_MSG_ID)
         )
         await callbacks.edit_reasoning(
-            None,
+            trace_obj,
             ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta="x" * 200),
         )
         await callbacks.edit_reasoning(
-            None, ReasoningEndRenderEvent(message_id=_MSG_ID)
+            trace_obj, ReasoningEndRenderEvent(message_id=_MSG_ID)
         )
 
         # Assert — at least one edit call was made

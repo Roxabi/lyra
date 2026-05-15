@@ -287,6 +287,23 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
             label="Reasoning trace edit",
         )
 
+    async def _edit_tool_recap(
+        trace_obj: Any,
+        lines: list[str],
+        done: bool,
+    ) -> None:
+        """Render the tool recap card lines into the trace placeholder embed."""
+        if not lines:
+            return
+        title = lines[0]
+        description = "\n".join(lines[1:]) or "​"  # zero-width space placeholder
+        color = discord.Color.green() if done else discord.Color.blue()
+        embed = discord.Embed(title=title, description=description, color=color)
+        try:
+            await trace_obj.edit(embed=embed)
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+            log.debug("Tool recap edit skipped: %s", exc)
+
     async def _render_reasoning(  # noqa: C901 — DEBT:wiring-bootstrap-deps — three-branch state machine
         trace_obj: Any,
         event: ReasoningStartRenderEvent
@@ -361,4 +378,5 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         get_msg=adapter._msg,
         placeholder_text=_placeholder_text,
         edit_reasoning=_render_reasoning,
+        edit_tool_recap=_edit_tool_recap,
     )

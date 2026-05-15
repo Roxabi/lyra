@@ -12,7 +12,6 @@ from lyra.adapters.shared._tool_recap import (  # type: ignore[import-untyped]
     ToolRecapAccumulator,
     format_recap_lines,
 )
-
 from lyra.core.messaging.render_events import (
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,

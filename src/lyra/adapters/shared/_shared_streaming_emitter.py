@@ -18,6 +18,10 @@ from lyra.adapters.shared._shared_streaming_state import (
     StreamState,
     classify_stream_error,
 )
+from lyra.adapters.shared._tool_recap import (
+    ToolRecapAccumulator,
+    format_recap_lines,
+)
 from lyra.core.messaging import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
@@ -38,6 +42,15 @@ from lyra.core.messaging import (
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
 
 log = logging.getLogger(__name__)
+
+
+async def _default_no_op_edit_tool_recap(
+    trace_obj: Any,
+    lines: list[str],
+    done: bool,
+) -> None:
+    """Default no-op — adapters that haven't opted in render nothing."""
+    del trace_obj, lines, done
 
 
 async def _default_no_op_edit_reasoning(
@@ -78,6 +91,10 @@ class PlatformCallbacks:
         ],
         Awaitable[None],
     ] = field(default=_default_no_op_edit_reasoning)
+    edit_tool_recap: Callable[
+        [Any, list[str], bool],
+        Awaitable[None],
+    ] = field(default=_default_no_op_edit_tool_recap)
 
 
 async def _prepend(
@@ -113,6 +130,9 @@ class StreamingSession:
         self._outbound = outbound
         self._st = StreamState()
         self._trace_obj: Any | None = None
+        self._recap_accum = ToolRecapAccumulator()
+        self._last_recap_edit: float | None = None
+        self._recap_done_emitted: bool = False
 
     async def _on_toolcall_v2(
         self,
@@ -121,15 +141,51 @@ class StreamingSession:
         | ToolCallEndRenderEvent
         | ToolCallResultRenderEvent,
     ) -> None:
-        """v2 ToolCall* dispatch sink. Slice 3 (#1100) introduced this.
+        """v2 ToolCall* dispatch — drives the recap card.
 
-        Records that a tool event was observed (drives the tool-only fallback
-        message in ``classify_stream_error``). Platform subclasses may override
-        to render richer tool activity; they should call ``super()`` to preserve
-        the flag.
+        Lazily sends the trace placeholder on the first Start (shared with
+        reasoning rendering via ``self._trace_obj``). Accumulates per-event
+        state and fires the platform's ``edit_tool_recap`` callback
+        debounced at ``STREAMING_EDIT_INTERVAL``. The final ``done=True``
+        edit fires from ``_deliver_final`` so it survives ungraceful stream
+        ends.
         """
         self._st.had_tool_events = True
-        return None
+
+        if isinstance(event, ToolCallStartRenderEvent):
+            self._recap_accum.observe_start(event)
+            if self._trace_obj is None:
+                try:
+                    self._trace_obj, _ = await self._cb.send_trace_placeholder()
+                except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+                    log.exception("trace placeholder failed; recap will not render")
+                    return
+        elif isinstance(event, ToolCallArgsRenderEvent):
+            self._recap_accum.observe_args(event)
+        elif isinstance(event, ToolCallEndRenderEvent):
+            self._recap_accum.observe_end(event)
+        elif isinstance(event, ToolCallResultRenderEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+            self._recap_accum.observe_result(event)
+            return  # result events do not trigger a recap edit
+
+        await self._maybe_emit_intermediate_recap()
+
+    async def _maybe_emit_intermediate_recap(self) -> None:
+        """Fire a debounced intermediate recap edit if conditions are met."""
+        if self._trace_obj is None:
+            return
+        now = time.monotonic()
+        if (
+            self._last_recap_edit is None
+            or (now - self._last_recap_edit) >= STREAMING_EDIT_INTERVAL
+        ):
+            lines = format_recap_lines(self._recap_accum, done=False)
+            if lines:
+                try:
+                    await self._cb.edit_tool_recap(self._trace_obj, lines, False)
+                except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+                    log.debug("recap edit skipped: %s", exc)
+                self._last_recap_edit = now
 
     async def _on_text_v2(
         self,
@@ -301,6 +357,22 @@ class StreamingSession:
         "…".  If no text was produced and no stream error was raised, edit
         it to a generic error so the user always sees a final state.
         """
+        # Best-effort final recap edit. Fires for graceful AND ungraceful ends
+        # (no RunFinished, no RunError) — guarantees the placeholder never
+        # sticks at "🔧 Working…".
+        if (
+            self._st.had_tool_events
+            and self._trace_obj is not None
+            and not self._recap_done_emitted
+        ):
+            self._recap_done_emitted = True
+            lines = format_recap_lines(self._recap_accum, done=True)
+            if lines:
+                try:
+                    await self._cb.edit_tool_recap(self._trace_obj, lines, True)
+                except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+                    log.debug("recap final edit skipped: %s", exc)
+
         display_text = self._st.build_display_text(self._cb.get_msg)
         chunks = self._cb.chunk_text(display_text) if display_text else []
         if chunks:

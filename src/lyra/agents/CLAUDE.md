@@ -1,105 +1,58 @@
-# src/lyra/agents/ — Agent Implementations and Default TOML Configs
+# src/lyra/agents/ — Agent Implementations
 
-## Purpose
+## Contract
 
-`agents/` contains **concrete agent implementations** — classes that implement `AgentBase` and
-wire up an `LlmProvider` to handle incoming messages.
+`AgentBase.process(msg, pool)` is the single entry point for all agents. `SimpleAgent` is the
+standard implementation for `backend = "claude-cli"`.
 
-Note: TOML seed files are not versioned here. They live in `~/.lyra/agents/` (machine-specific,
-gitignored) and are the source of truth for agent config at runtime.
+Store/lifecycle machinery (`AgentStore`, `AgentSeeder`, `AgentRow`) lives in `core/`, not here.
 
-Note: `AgentStore`, `AgentSeeder`, `AgentRow`, and all store/lifecycle machinery
-live in `core/`, not here.
+## Backend wiring
 
-## Agent implementations
+Two backend paths exist; exactly one is active per agent instance:
 
-| Class | File | Backend |
-|-------|------|---------|
-| `SimpleAgent` | `simple_agent.py` | Any `LlmProvider` (default: `ClaudeCliDriver`) |
+| Path | When | Key object |
+|------|------|------------|
+| Direct CLI | `backend = "claude-cli"`, single-process | `CliPool` |
+| NATS-relayed CLI | distributed / hub-spoke | `CliNatsDriver` |
 
-`SimpleAgent` extends `AgentBase` (defined in `core/agent.py`). `AgentBase` provides:
-- `CommandRouter` and `CommandLoader` setup
-- `SessionManager` mixin (context compaction, session resume)
-- Hot-reload support: TOML + persona file changes are picked up on next message
+`configure_pool(pool)` wires `reset_fn / resume_fn / workspace_fn` callbacks before the first
+`process()` call. Both `cli_pool` and `cli_nats_driver` register the same callbacks; whichever is
+non-`None` at construction time is active.
 
-**SimpleAgent** is the standard agent for `backend = "claude-cli"`. It supports
-streaming via `ClaudeCliDriver` and handles STT transcription and TTS synthesis.
+## Hot-reload
 
-## TOML → DB seeding flow
+TOML and persona file changes are picked up on the **next** `process()` call — no daemon restart
+needed for content edits. Schema changes (new fields, backend swap) still require
+`lyra agent init --force` + restart.
 
-TOML files are **seed sources only**. The runtime reads agent config from SQLite
-(`~/.lyra/config.db`), not from TOML directly.
+## TOML → DB seeding rule
+
+TOML files are **seed-only**. The runtime reads from SQLite (`~/.lyra/config.db`), never from TOML
+directly.
 
 ```
-~/.lyra/agents/<name>.toml   ←  user overrides (gitignored, machine-specific)
+~/.lyra/agents/<name>.toml   ← edit here
          ↓  lyra agent init [--force]
-~/.lyra/config.db            ←  runtime source of truth
+~/.lyra/config.db            ← runtime SSoT
 ```
 
-After editing any TOML file, run `lyra agent init --force` and restart the daemon.
-The DB is NOT updated automatically on file change.
+After any TOML edit: `lyra agent init --force` + daemon restart (no file watcher).
 
-## TOML config fields
+`cwd` is machine-specific — set in `config.toml [defaults]`, NOT in agent TOML.
 
-Key sections in an agent TOML:
+→ Full TOML schema and CLI reference: `docs/agent-management.md`
 
-```toml
-[agent]
-name = "lyra_default"          # unique identifier, used in CLI and DB
-memory_namespace = "lyra"      # memory isolation key
-permissions = []               # future: permission flags
-persona = "lyra_default"       # persona file name (without .md)
-show_intermediate = true       # show ⏳ intermediate tool-use turns
+## Known gotcha
 
-[model]
-backend = "claude-cli"         # "claude-cli" | "nats"
-model = "claude-sonnet-4-6"    # model identifier passed to the backend
-tools = ["Read", "Grep", ...]  # allowed tools (empty = backend defaults)
-skip_permissions = true        # skip Claude Code permission prompts (claude-cli only)
-# max_turns = 10               # cap agentic turns (None/omit = unlimited)
-
-[agent.smart_routing]
-enabled = false                # smart_routing is deprecated and no longer wired
-
-[plugins]
-enabled = ["echo", "search"]   # plugin names to enable for this agent
-
-[tts]
-voice = "Sohee"
-personality = "..."
-
-[workspaces]
-lyra = "~/projects/lyra"      # /workspace lyra → switches cwd to ~/projects/lyra
-```
-
-`cwd` (working directory for the Claude subprocess) is machine-specific and lives
-in `config.toml [defaults]`, NOT in agent TOML.
-
-## Agent lifecycle
-
-1. Startup: `AgentStore.connect()` → `lyra agent init` seeds TOML → DB
-2. Hub: `hub.register_agent(agent)` makes the agent available for routing
-3. Message arrives: `PoolManager.get_or_create_pool()` → `pool.submit(msg)` →
-   `agent.handle(msg, pool)` → `LlmProvider.complete()` or `.stream()`
-4. Hot-reload: TOML/persona edits are detected on next `handle()` call
-
-## Conventions
-
-- One TOML file per agent. File name = agent name (e.g. `lyra_default.toml`).
-- TOML edits require `lyra agent init --force` + daemon restart — there is no
-  file watcher.
-- `workspaces` keys must not conflict with built-in command names (see
-  `_WORKSPACE_BUILTIN_CONFLICTS` in `core/agent_config.py`).
-- Agent names must match `^[a-zA-Z0-9_-]+$` (validated by `agent_seeder.py`).
-- The `[prompt]` section (`system = "..."`) is an optional raw override. When set,
-  it replaces persona file composition entirely.
+`_WORKSPACE_BUILTIN_CONFLICTS` (in `core/agent_config.py`) — workspace keys that shadow built-in
+command names are rejected at init time. Check this list before adding new workspace shortcuts.
 
 ## What NOT to do
 
-- Do NOT add store or DB logic to agent implementation files — that belongs in `core/`.
-- Do NOT read TOML files at runtime from within agent classes — use `AgentStore`.
-- Do NOT hardcode model names or backend selection in agent classes — read from
-  `Agent.llm_config` (populated from DB/TOML).
-- Do NOT set `cwd` in agent TOML — it is machine-specific and belongs in `config.toml`.
-- Do NOT add platform-specific code to agent implementations — adapters handle that.
-- Do NOT enable smart routing — `smart_routing` is deprecated and rejected by the validator on all backends.
+- ¬ store/DB logic in agent files — belongs in `core/`
+- ¬ read TOML at runtime from agent classes — use `AgentStore`
+- ¬ hardcode model names or backend — read from `Agent.llm_config`
+- ¬ set `cwd` in agent TOML
+- ¬ platform-specific code in agents — adapters handle that
+- ¬ enable `smart_routing` — deprecated; stored for legacy compat only

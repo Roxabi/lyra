@@ -1,242 +1,105 @@
-# src/lyra/adapters/ — Channel Adapters (Telegram + Discord)
+# src/lyra/adapters/ — Channel Adapters
 
 ## Purpose
 
-Each file in `adapters/` implements the `ChannelAdapter` protocol for one platform.
-Adapters translate platform-native events into `InboundMessage` / `InboundAudio`
-and translate `OutboundMessage` / `OutboundAudio` into platform API calls.
-No business logic or LLM interaction lives here.
+Translate platform-native events → `InboundMessage` / `InboundAudio` and
+`OutboundMessage` / `OutboundAudio` → platform API calls.
+No business logic, LLM calls, or agent logic lives here.
 
-## Subdir layout (V4 decomposition — #773)
+## Layer invariants
 
-```
-adapters/
-  clipool/          # Clipool worker adapter (1 file + __init__)
-    clipool_worker.py           # CliPoolNatsWorker — claude-cli subprocess over NATS
-  discord/          # Discord adapter (11 files + __init__)
-    adapter.py      # DiscordAdapter facade
-    lifecycle.py    # on_ready, on_guild_join, on_voice_state_update
-    discord_audio.py
-    discord_audio_outbound.py
-    discord_config.py
-    discord_formatting.py
-    discord_inbound.py
-    discord_normalize.py
-    discord_outbound.py
-    discord_threads.py
-    voice/          # Discord voice channel sub-package (2 files + __init__)
-      discord_voice.py          # VoiceSession, VoiceSessionManager
-      discord_voice_commands.py # !join/!leave/slash commands, VOICE_COMMANDS
-  telegram/         # Telegram adapter (6 files + __init__)
-    telegram.py     # TelegramAdapter facade
-    telegram_audio.py
-    telegram_formatting.py
-    telegram_inbound.py
-    telegram_normalize.py
-    telegram_outbound.py
-  nats/             # NATS transport (3 files + __init__)
-    nats_envelope_handlers.py
-    nats_outbound_listener.py   # NatsOutboundListener
-    nats_stream_decoder.py
-  shared/           # Cross-platform helpers (10 files + __init__)
-    _base_outbound.py           # OutboundAdapterBase
-    _inbound_cache.py           # InboundCache (NATS correlation)
-    _shared.py                  # push_to_hub_guarded, TypingTaskManager, …
-    _shared_audio.py
-    _shared_streaming.py        # re-export shim
-    _shared_streaming_emitter.py # PlatformCallbacks, StreamingSession
-    _shared_streaming_state.py
-    _shared_text.py             # chunk_text, sanitize_filename, truncate_caption
-    cli.py                      # CLIAdapter
-    outbound_listener.py        # OutboundListener protocol
-```
+- Always push inbound via `push_to_hub_guarded()` — never `hub.push()` directly.
+- Verify sender identity at the platform boundary before constructing `InboundMessage`.
+  - Telegram: HMAC on `X-Telegram-Bot-Api-Secret-Token`.
+  - Discord: discord.py authenticates; `message.author` is trusted.
+- Never derive `user_id` / `scope_id` from unverified payload fields.
+- All I/O is async — never block the event loop.
+- Formatting logic belongs in `{platform}_formatting.py`; never inline it in inbound or outbound.
+- Do NOT use `async with channel.typing():` on Discord — it auto-refreshes and triggers 429s.
+  Call `await channel.typing()` manually every 9 s (`_discord_typing_worker`).
 
-## ChannelAdapter protocol (defined in `core/hub/hub_protocol.py`)
-
-Every adapter must implement:
+## ChannelAdapter protocol (`core/hub/hub_protocol.py`)
 
 | Method | Role |
 |--------|------|
-| `normalize(raw)` | Parse a raw platform payload into `InboundMessage` |
-| `normalize_audio(raw, bytes, mime, trust_level)` | Parse audio payload into `InboundAudio` |
-| `send(original_msg, outbound)` | Send a complete reply |
+| `normalize(raw)` | Raw payload → `InboundMessage` |
+| `normalize_audio(raw, bytes, mime, trust_level)` | Raw audio → `InboundAudio` |
+| `send(original_msg, outbound)` | Send complete reply |
 | `send_streaming(original_msg, chunks, outbound)` | Stream reply with edit-in-place |
-| `render_audio(msg, inbound)` | Send a voice note |
+| `render_audio(msg, inbound)` | Send voice note |
 | `render_audio_stream(chunks, inbound)` | Stream TTS audio chunks |
-| `render_attachment(msg, inbound)` | Send an attachment (image/file) |
+| `render_attachment(msg, inbound)` | Send attachment |
 
-`render_voice_stream()` is implemented as a no-op stub on Telegram (drains the
-iterator and logs a warning); functional voice-channel playback is Discord-only.
+`render_voice_stream()` is an intentional no-op stub on Telegram — voice-channel
+playback is Discord-only. Do NOT make it functional.
 
-## Non-obvious structure notes
+## OutboundAdapterBase (`shared/_base_outbound.py`)
 
-Each platform is split into focused submodules: `{platform}.py` is the facade; concerns are `_inbound`, `_outbound`, `_normalize`, `_formatting`, `_audio`. Shared cross-platform code lives in `shared/_shared.py`, `shared/_shared_audio.py`, `shared/_shared_streaming.py` (re-export shim), `shared/_shared_streaming_state.py` (state types), `shared/_shared_streaming_emitter.py` (session + callbacks).
+Inherit for every new platform adapter. Abstract methods to implement:
 
-`outbound_listener.py` defines a structural protocol — adapters reference it without inheriting. `NatsOutboundListener` satisfies it for the three-process NATS deployment mode.
+| Method | Role |
+|--------|------|
+| `send(original_msg, outbound)` | Send complete reply |
+| `_make_streaming_callbacks(original_msg, outbound) -> PlatformCallbacks` | Build platform callbacks |
+| `_start_typing(scope_id)` | Start typing indicator |
+| `_cancel_typing(scope_id)` | Cancel typing indicator |
 
-## Clipool adapter
+`send_streaming()` is **concrete** on the base — delegates to `StreamingSession`.
+Do NOT override it. Platform differences belong in `_make_streaming_callbacks()`.
 
-`clipool/` is not a platform adapter — it's the **NATS worker** that hosts `CliPool` in a separate process. The hub sends LLM requests via `CliNatsDriver` to `clipool_worker.py`, which runs the actual Claude CLI subprocess.
+`OutboundAdapterBase` has no `__init__` intentionally. Do NOT add one — it breaks
+cooperative MRO with `discord.Client`.
 
-This separation enables:
-- CPU-bound CLI work to run isolated from the hub
-- Horizontal scaling of CLI workers
-- Independent lifecycle management (worker can restart without hub restart)
+## MRO constraint (Discord only)
 
-The clipool worker listens on NATS subjects:
-- `lyra.clipool.cmd` — LLM requests from hub
-- `lyra.clipool.control` — control commands (reset, heartbeat)
-- `lyra.clipool.heartbeat` — periodic health announcements
-
-## Telegram vs Discord differences
-
-| Aspect | Telegram | Discord |
-|--------|----------|---------|
-| Transport | HTTP webhooks (FastAPI) | Gateway WebSocket (discord.py) |
-| Streaming edit interval | 1 s | 1 s |
-| Typing indicator | `send_chat_action` every 3 s | `trigger_typing()` every 9 s |
-| Thread model | Replies use `reply_to_message_id` | Uses Discord threads; restored on reconnect |
-| Voice | Audio notes only | Full voice channel with VoiceSessionManager |
-| Auth | Webhook secret via HMAC | Bot token via env; no webhook |
-| Max message length | ~4096 chars (Telegram limit) | `DISCORD_MAX_LENGTH` (~2000) |
-
-## Outbound patterns
-
-All outbound code shares this pattern:
-
-1. `send()` — for complete replies: cancel typing indicator, render text/buttons,
-   call platform API once.
-2. `send_streaming()` — for streaming replies: cancel typing on first chunk, edit
-   message in place at `STREAMING_EDIT_INTERVAL` (1 s) debounce, finalize.
-
-Streaming edit-in-place: the adapter sends a placeholder message on the first chunk
-and edits it with accumulated text as more chunks arrive. The final edit contains
-the complete response.
-
-When `outbound` is passed to `send_streaming()`, the adapter writes the platform
-message ID to `outbound.metadata["reply_message_id"]` after sending.
-
-## OutboundAdapterBase
-
-`_base_outbound.py` defines the shared outbound contract for all platform adapters.
-Inherit this base whenever you add a new platform adapter.
-
-### Abstract methods (must implement)
-
-| Method | Signature | Role |
-|--------|-----------|------|
-| `send` | `async (original_msg, outbound) -> None` | Send a complete reply |
-| `_make_streaming_callbacks` | `(original_msg, outbound) -> PlatformCallbacks` | Build platform callbacks |
-| `_start_typing` | `(scope_id: int) -> None` | Start typing indicator |
-| `_cancel_typing` | `(scope_id: int) -> None` | Cancel typing indicator |
-
-### Concrete method (do NOT override)
-
-`send_streaming(original_msg, events, outbound=None)` — provided by the base; creates a
-`StreamingSession` with your `PlatformCallbacks` and runs the shared algorithm.
-
-### PlatformCallbacks fields (`_shared_streaming_emitter.py`)
-
-| Field | Type | Role |
-|-------|------|------|
-| `send_placeholder` | `async () -> (obj, id\|None)` | Send initial placeholder message |
-| `edit_placeholder_text` | `async (obj, text) -> None` | Edit placeholder with intermediate text |
-| `send_message` | `async (text) -> id\|None` | Send new message (tool-using turns) |
-| `send_fallback` | `async (text) -> id\|None` | Fallback send when placeholder fails |
-| `chunk_text` | `(text) -> list[str]` | Split text into platform-sized chunks |
-| `start_typing` | `() -> None` | Start typing indicator (sync) |
-| `cancel_typing` | `() -> None` | Cancel typing indicator (sync) |
-| `send_trace_placeholder` | `async () -> (obj, id\|None)` | Send reasoning-trace placeholder |
-| `edit_trace` | `async (obj, event) -> None` | Edit reasoning-trace placeholder (DEBT: vestigial — see #1214 / #1102) |
-| `edit_reasoning` | `async (obj, event) -> None` | Render reasoning Start/Delta/End |
-| `edit_tool_recap` | `async (obj, list[str], bool) -> None` | Render tool recap card lines (debounced + final) |
-| `get_msg` | `(key, fallback) -> str` | i18n message lookup |
-| `placeholder_text` | `str` | Initial placeholder text |
-
-### MRO pattern for discord.Client
-
-Discord requires `discord.Client` first in the MRO:
+`discord.Client` must be first:
 
 ```python
 class DiscordAdapter(discord.Client, OutboundAdapterBase):
     def __init__(self, ...):
         super().__init__(intents=intents)  # flows to discord.Client
-        # OutboundAdapterBase has no __init__ — no call needed
 ```
 
-**`__init__` constraint:** `OutboundAdapterBase` intentionally has no `__init__`.
-Do NOT add one — it breaks the cooperative `discord.Client` chain.
+## PlatformCallbacks contract (`shared/_shared_streaming_emitter.py`)
 
-### Adding a new platform adapter
+| Field | Role |
+|-------|------|
+| `send_placeholder` | Send initial placeholder message |
+| `edit_placeholder_text` | Edit placeholder with intermediate text |
+| `send_message` | Send new message (tool-using turns) |
+| `send_fallback` | Fallback send when placeholder fails |
+| `chunk_text` | Split text into platform-sized chunks |
+| `start_typing` / `cancel_typing` | Typing indicator lifecycle |
+| `send_trace_placeholder` | Send reasoning-trace placeholder |
+| `edit_trace` | Edit reasoning-trace placeholder (vestigial — see #1214/#1102) |
+| `edit_reasoning` | Render reasoning Start/Delta/End |
+| `edit_tool_recap` | Render tool recap card lines (debounced + final) |
+| `get_msg` | i18n message lookup |
+| `placeholder_text` | Initial placeholder text |
 
-```python
-class MyAdapter(OutboundAdapterBase):
-    async def send(self, original_msg, outbound): ...
+`_tool_recap.py` — `ToolRecapAccumulator` / `format_recap_lines()` backing
+`edit_tool_recap` above.
 
-    def _make_streaming_callbacks(self, original_msg, outbound) -> PlatformCallbacks:
-        return PlatformCallbacks(
-            send_placeholder=...,
-            edit_placeholder_text=...,
-            send_message=...,
-            send_fallback=...,
-            chunk_text=...,
-            start_typing=...,
-            cancel_typing=...,
-            send_trace_placeholder=...,
-            edit_trace=...,
-            edit_reasoning=...,
-            edit_tool_recap=...,
-            get_msg=...,
-            placeholder_text=...,
-        )
+## Clipool adapter (`clipool/`)
 
-    def _start_typing(self, scope_id): ...
-    def _cancel_typing(self, scope_id): ...
-```
+Not a platform adapter — the **NATS worker** that hosts `CliPool` in a separate
+process. Hub sends LLM requests via `CliNatsDriver`; worker runs the Claude CLI
+subprocess. Enables independent lifecycle and horizontal scaling.
 
-## Security contract
+NATS subjects:
+- `lyra.clipool.cmd` — LLM requests from hub
+- `lyra.clipool.control` — control commands (reset, heartbeat)
+- `lyra.clipool.heartbeat` — periodic health announcements
 
-Adapters must verify sender identity at the platform level before constructing an
-`InboundMessage`. The hub trusts `user_id` and `scope_id` from the message object.
+## Telegram vs Discord — non-obvious differences
 
-- Telegram: validate `X-Telegram-Bot-Api-Secret-Token` header via HMAC.
-- Discord: discord.py validates the connection; `message.author` is authenticated.
+| Aspect | Telegram | Discord |
+|--------|----------|---------|
+| Transport | HTTP webhooks (FastAPI) | Gateway WebSocket (discord.py) |
+| Thread model | `reply_to_message_id` | Discord threads; restored on reconnect |
+| Voice | Audio notes only | Full voice channel (`VoiceSessionManager`) |
 
-Never derive `user_id` or `scope_id` from unverified fields in the raw payload.
+## NATS contracts
 
-## Shared helpers (`_shared.py`)
-
-`push_to_hub_guarded()` is the single entry point for all inbound push operations.
-It handles:
-- Circuit breaker open → drop with backpressure response
-- Hub queue full (backpressure) → warn user
-
-Always use `push_to_hub_guarded()` instead of calling `hub.push()` directly.
-
-`TypingTaskManager` manages the lifecycle of the typing indicator task. Start it
-when a message is received; cancel it when the reply is sent.
-
-## Conventions
-
-- The facade (`telegram.py`, `discord.py`) only imports from submodules — no logic.
-- Submodules are named `{platform}_{concern}.py` — keep this naming consistent.
-- Audio size limit: `_MAX_OUTBOUND_AUDIO_BYTES` from `_shared_audio.py`. Never
-  attempt to send audio above this limit without chunking or rejecting.
-- Formatting logic belongs in `{platform}_formatting.py` — not in outbound or inbound.
-- `chunk_text()` splits long text for platforms with message length limits.
-
-## What NOT to do
-
-- Do NOT add LLM calls, agent logic, or memory reads to adapters.
-- Do NOT call `hub.push()` directly — use `push_to_hub_guarded()`.
-- Do NOT make `render_voice_stream()` functional in the Telegram adapter — it is
-  intentionally a no-op stub; voice-channel playback is Discord-only.
-- Do NOT add platform-specific constants to `_shared.py` — put them in the
-  platform-specific submodule.
-- Do NOT block the event loop in any adapter method — all I/O must be async.
-- Do NOT use `async with channel.typing():` on Discord — the context manager auto-refreshes
-  every 5 s and triggers 429s under load. Instead call `await channel.typing()` manually
-  every 9 s (see `_discord_typing_worker`).
-- Do NOT override `send_streaming()` in a concrete adapter — it is a concrete method on
-  `OutboundAdapterBase` that delegates to `StreamingSession`. Platform differences belong
-  in `_make_streaming_callbacks()`, not in a `send_streaming` override.
+→ ADR-045 (NATS transport), ADR-049 (contract schemas),
+`packages/roxabi-nats/`, `packages/roxabi-contracts/`

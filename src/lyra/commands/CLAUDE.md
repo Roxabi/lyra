@@ -2,50 +2,28 @@
 
 ## Purpose
 
-`commands/` contains Lyra's built-in plugin packages. Each subdirectory is a
-self-contained plugin with a `plugin.toml` manifest and a `handlers.py` module.
+Plugin-style commands discovered and loaded dynamically. Core routing/loading infrastructure lives in `core/`, not here.
 
-Core command infrastructure (routing, loading, built-in builtins) lives in `core/`,
-not here. This directory is specifically for **plugin-style commands** that are
-discovered and loaded dynamically.
+## Command routing order
 
-## Plugin structure
+`CommandRouter` dispatches in strict priority:
+1. **Built-in commands** — always win; see `core/commands/command_config.py` for the full registry
+2. **Session commands** — registered by agents via `register_session_command()` (deprecated → prefer processor commands, ADR-031)
+3. **Plugin commands** — discovered from `commands/` subdirectories via `CommandLoader`
 
-Each plugin is a subdirectory with a `plugin.toml` manifest and a `handlers.py` module.
-Current plugins: `add_vault`, `echo`, `identity`, `pairing`, `search`, `svc`.
+Plugin commands cannot override built-ins.
 
-## plugin.toml manifest format
-
-```toml
-name = "echo"
-description = "Echo a message back"
-version = "0.1.0"
-priority = 100        # lower = higher priority (affects load order)
-enabled = true
-timeout = 30.0        # per-handler timeout in seconds
-
-[[commands]]
-name = "echo"         # slash command name (without /)
-description = "Echo the given text"
-handler = "cmd_echo"  # function name in handlers.py
-```
-
-If a plugin registers no `[[commands]]` entries but still needs to be loaded
-(e.g. to register a session command via `register_session_command`), leave
-`commands = []` or omit the `[[commands]]` sections. See `search/plugin.toml`.
+**Processor commands** (`processor_registry.py`) are pre/post hooks injected into the pool flow — invoked by the pool processor, not `CommandRouter.dispatch()`. They appear in `/help` output but follow a different contract.
 
 ## Handler signatures
 
-Two types of handlers exist depending on how they are registered:
-
-### Plugin command handler (via plugin.toml `[[commands]]`)
+### Plugin command handler (registered via `plugin.toml [[commands]]`)
 ```python
 async def cmd_example(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     ...
 ```
-Receives the current `Pool` for history access or pool manipulation.
 
-### Session command handler (via `agent.register_session_command()`)
+### Session command handler (registered via `agent.register_session_command()`)
 ```python
 async def cmd_example(
     msg: InboundMessage,
@@ -56,72 +34,45 @@ async def cmd_example(
 ) -> Response:
     ...
 ```
-Receives `LlmProvider` and `SessionTools` (vault access, etc.) via DI.
-Session commands are used when a command needs injected service dependencies.
 
-## Command routing order
+## plugin.toml
 
-`CommandRouter` dispatches in this priority order:
-1. **Built-in commands** (`/help`, `/stop`, `/circuit`, `/config`,
-   `/clear`, `/new`, `/folder`, `/workspace`) — always available, admin-gated where noted
-2. **Session commands** — registered by agents via `register_session_command()`
-3. **Plugin commands** — discovered from `commands/` subdirectories via `CommandLoader`
-
-Built-in commands always win. Plugin commands cannot override built-ins.
-
-Note: **Processor commands** (`processor_registry.py`) are pre/post hooks injected
-into the pool processing flow — they are not dispatched via `CommandRouter.dispatch()`.
-They appear in `/help` output (via `command_metadata()`) but are invoked by the pool
-processor, not the command router. Session commands are deprecated in favour of
-processor commands (see ADR-031).
-
-## Slash command format
-
-Users send `/commandname arg1 arg2`. The router strips the leading `/` and
-splits on whitespace to produce `args: list[str]`.
-
-Command names must be lowercase alphanumeric + hyphens. No spaces in names.
-
-## Plugin enablement
-
-Plugins are enabled per-agent in the agent TOML:
 ```toml
-[plugins]
-enabled = ["echo", "search"]
+name = "echo"
+description = "Echo a message back"
+version = "0.1.0"
+priority = 100    # lower = higher priority
+enabled = true
+timeout = 30.0
+
+[[commands]]
+name = "echo"
+description = "Echo the given text"
+handler = "cmd_echo"
 ```
 
-A plugin not listed in `enabled` is discovered but not registered for that agent.
+Leave `[[commands]]` empty (or omit) when a plugin only registers session commands — see `search/plugin.toml`.
 
 ## Guards / admin restriction
 
-Built-in commands use `require_admin(msg)` from `core/builtin_commands.py`:
+Built-in commands use `require_admin(msg)` from `core/commands/builtin_commands.py`:
 ```python
 if (denied := require_admin(msg)):
     return denied
 ```
-
-Plugin commands do not have a built-in admin guard — implement it yourself if
-the command requires admin access. Read `msg.is_admin` (set by `Authenticator`).
+Plugin commands have no built-in guard — check `msg.is_admin` yourself.
 
 ## Conventions
 
-- One subdirectory per plugin. Subdirectory name = plugin name (must match `name`
-  in `plugin.toml`).
-- Handler functions must be `async`. Synchronous handlers are not supported.
-- Always return `Response(content=...)` — never return `None` or raise from a handler.
-- Keep handlers stateless. Any persistent state belongs in a store (in `core/`).
-- `timeout` in `plugin.toml` is enforced by the router — design handlers to
-  complete well within the configured timeout.
+- Subdirectory name = plugin name (must match `name` in `plugin.toml`)
+- Handlers must be `async`; always return `Response(content=...)` — never `None`, never raise
+- Keep handlers stateless — persistent state belongs in a store (`core/`)
+- Plugin enablement per-agent: `[plugins] enabled = ["echo", "search"]` in agent TOML
 
 ## What NOT to do
 
-- Do NOT add LLM calls to plugin handlers — that is the agent's responsibility.
-- Do NOT import from `adapters/` inside a command handler — commands are
-  platform-agnostic.
-- Do NOT create plugin names that conflict with built-in command names (`help`,
-  `stop`, `circuit`, `config`, `clear`, `new`, `workspace`, `folder`).
-- Do NOT block the event loop in a handler — all I/O must be `await`-ed.
-- Do NOT register the same command name in both `plugin.toml` and via
-  `register_session_command()` — the router will use the built-in/session version.
-- Do NOT hardcode platform-specific formatting (Markdown, HTML) in handlers —
-  use `Response(content=plain_text)` and let the adapter format it.
+- Do NOT add LLM calls to plugin handlers — that is the agent's responsibility
+- Do NOT import from `adapters/` — commands are platform-agnostic
+- Do NOT conflict with built-in command names — see `core/commands/command_config.py`
+- Do NOT block the event loop — all I/O must be `await`-ed
+- Do NOT hardcode platform-specific formatting — use `Response(content=plain_text)`, let the adapter format it

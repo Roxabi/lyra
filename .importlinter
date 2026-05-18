@@ -74,8 +74,6 @@ name = Shared floating modules must not import each other (peer isolation)
 type = independence
 modules =
     lyra.obs
-    lyra.stt
-    lyra.tts
     lyra.errors
     lyra.config
     lyra.integrations
@@ -105,8 +103,6 @@ name = Shared floating modules must not import bootstrap, adapters, or infrastru
 type = forbidden
 source_modules =
     lyra.obs
-    lyra.stt
-    lyra.tts
     lyra.errors
     lyra.config
     lyra.integrations

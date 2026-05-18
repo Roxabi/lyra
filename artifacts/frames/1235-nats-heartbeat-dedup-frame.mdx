@@ -1,0 +1,55 @@
+---
+title: Deduplicate heartbeat lifecycle across 4 NATS clients
+issue: 1235
+status: approved
+tier: F-lite
+date: 2026-05-18
+---
+
+## Problem
+
+Les 4 clients NATS hub-side (`nats_llm_client`, `nats_tts_client`, `nats_stt_client`, `nats_image_client`) dupliquent presque verbatim le lifecycle heartbeat (~30 LOC × 4): subscribe au sujet `*_heartbeat`, parse JSON, sanitize via `validate_worker_id()`, enregistre dans un `WorkerRegistry` per-instance. La divergence intentionnelle se limite à la constante `SUBJECTS.*_heartbeat`, au préfixe de log, et à un détail cosmétique (sanitization combinée vs séparée) qui produit un comportement identique.
+
+Une base partagée existe déjà côté SDK (`packages/roxabi-nats/src/roxabi_nats/driver_base.py` → `NatsDriverBase`), utilisée par `CliNatsDriver`, mais aucun des 4 clients ne l'utilise — chacun réimplémente. Lacunes constatées entre base et clients: pas de hook `validate_worker_id`, registre stocké en `dict[str, float]` (timestamp seul) au lieu de `WorkerRegistry` (full payload), pas de circuit-breaker, pas de capabilities.
+
+Impact observable: tout changement du protocole heartbeat doit être propagé 4 fois; un 5ᵉ worker (embeddings/vision pressenti) recréerait le même pattern; la divergence silencieuse (sanitization split vs combined) bloque la lecture du code.
+
+## Who
+
+- **Primary:** développeurs Lyra modifiant le hub-side messaging — chaque évolution du protocole heartbeat se fait actuellement en 4 endroits avec risque de drift.
+- **Secondary:** futurs workers (5ᵉ classe) qui hériteront du pattern; mainteneurs de `roxabi-nats` qui doivent garder cohérence avec `CliNatsDriver`.
+
+## Constraints
+
+- Préserver la sanitization `validate_worker_id()` — security boundary non négociable (bloque les wildcards heartbeat-stale).
+- Préserver la sémantique `WorkerRegistry` full-payload — auditer les consumers avant de migrer (grep `record_heartbeat`, `WorkerRegistry`).
+- Préserver `NatsCircuitBreaker` (pas de régression côté résilience).
+- Préserver `is_alive(pool_id)` pool-agnostique de `nats_llm_client` (stateless per-pool).
+- Refactor sous l'ombrelle ADR-045 (NATS transport SDK) + ADR-049 (NATS contracts) — pas de nouvel ADR requis.
+- Tests existants (`tests/nats/test_nats_*_client.py`) doivent passer; `lint-imports` / `ruff` / `pyright` clean.
+- File-length + folder-size gates passants (étudier si shrink autorise retrait d'entrées de `file_exemptions.txt` / `folder_exemptions.txt`).
+
+## Out of Scope
+
+- Extraire `validate_worker_id`, `WorkerRegistry`, `NatsCircuitBreaker` de `src/lyra/nats/` vers `roxabi-nats` (audit cluster 5, séparé).
+- `nats_llm_client._build_request()` et la règle text-folding (audit contradiction 1, séparé).
+- Consolider les helpers `_parse_*_timeout()` (audit finding A2#10, trivial in-tree, séparé).
+
+## Premise Validity
+
+**Success in 6 months:** Les 4 clients hub-side partagent une seule implémentation du heartbeat lifecycle (subscribe / parse / sanitize / register) — toute évolution du protocole heartbeat se fait à un seul endroit, pas 4.
+
+**Failure in 6 months:** (falsifiable) Après merge, `grep -c "_on_heartbeat" src/lyra/nats/nats_*_client.py` ≥ 2, OU une 5ᵉ classe de worker créée duplique encore le pattern au lieu d'hériter de la base partagée.
+
+**Simplest alternative:** Laisser tel quel — chaque client garde ses ~30 LOC dupliquées et la prochaine évolution du protocole se fait en 4 endroits.
+**Why not simplest:** Le 5ᵉ worker (embeddings/vision pressenti) recréerait la dette à chaque ajout; la divergence silencieuse entre clients (sanitization split vs combined) bloque déjà la lecture; et le hub est le point de couplage le plus chaud du système — toute drift y coûte cher.
+
+## Complexity
+
+**Tier: F-lite** — single domain (NATS hub-side clients), scope clair (4 fichiers à dédupliquer + base partagée à étendre OU créer), 3 approches déjà cadrées dans l'issue (A étendre `NatsDriverBase`, B créer `NatsWorkerClientBase`, C base locale Lyra), un seul inconnu localisé (énumérer consumers de `WorkerRegistry`) qui sera levé au `/spec`.
+
+Signaux observés:
+- 4–10 fichiers touchés (4 clients + base partagée + tests).
+- Pas de nouveau domaine, pas de cross-cutting.
+- Issue déjà richement framée (matrice de divergence, gaps base/clients, risques listés).
+- Choix architectural à trancher au spec, pas au frame.

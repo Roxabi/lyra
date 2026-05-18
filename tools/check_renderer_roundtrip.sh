@@ -203,19 +203,26 @@ cmd_nats_conf() {
   # ── nats.conf ─────────────────────────────────────────────────────────────
   # Copy to tmpdir so the include path "nkeys/auth.conf" resolves relative to
   # $tmpdir (i.e. $tmpdir/nkeys/auth.conf — which we just created above).
-  # Strip the TLS stanza cert_file/key_file/ca_file references since we don't
-  # have real certs here; nats-server -t only syntax-checks, doesn't connect.
-  # Actually nats-server -t -c DOES validate that referenced files exist for
-  # TLS — so we need to either provide dummy certs or strip the tls block.
-  # Strategy: copy the conf, replace cert paths with /dev/null (always exists).
+  # Strip the entire `tls { … }` block: `nats-server -t -c` validates that
+  # referenced cert/key/ca files exist and are valid PEM. We don't have real
+  # certs here (the gen-certs subcommand covers TLS roundtrip separately).
+  # awk depth-counter handles nested braces correctly.
   local nats_conf_src="${REPO_ROOT}/deploy/nats/nats.conf"
   local nats_conf_dst="${tmpdir}/nats.conf"
 
-  sed \
-    -e 's|cert_file:.*|cert_file: "/dev/null"|' \
-    -e 's|key_file:.*|key_file:  "/dev/null"|' \
-    -e 's|ca_file:.*|ca_file:   "/dev/null"|' \
-    "${nats_conf_src}" > "${nats_conf_dst}"
+  awk '
+    /^[[:space:]]*tls[[:space:]]*\{/ { depth=1; next }
+    depth > 0 {
+      for (i=1; i<=length($0); i++) {
+        c = substr($0, i, 1)
+        if (c == "{") depth++
+        else if (c == "}") depth--
+      }
+      if (depth == 0) next
+      next
+    }
+    { print }
+  ' "${nats_conf_src}" > "${nats_conf_dst}"
 
   # Fix the include path: the original uses `include "nkeys/auth.conf"` which
   # resolves relative to the config file dir. Since our copy is in $tmpdir and
@@ -250,20 +257,9 @@ cmd_gen_certs() {
   local gen_certs_sh="${REPO_ROOT}/deploy/nats/gen-certs.sh"
 
   echo "==> gen-certs: generating certs into ${tmpdir}" >&2
-  # gen-certs.sh checks (id -u) == 0 when CERT_DIR=/etc/nats/certs (default).
-  # With CERT_DIR overridden to a user-writable tmpdir, the chown commands
-  # (root:nats) will still fail for non-root. Use sudo if available in CI;
-  # otherwise rely on the runner having root (containers, etc.).
-  if [[ "$(id -u)" -eq 0 ]]; then
-    CERT_DIR="${tmpdir}" bash "${gen_certs_sh}"
-  elif command -v sudo &>/dev/null; then
-    sudo env CERT_DIR="${tmpdir}" bash "${gen_certs_sh}"
-    # Fix ownership so subsequent steps (openssl, nats-server) can read files.
-    sudo chown -R "$(id -u):$(id -g)" "${tmpdir}"
-  else
-    echo "error: gen-certs.sh requires root or sudo" >&2
-    exit 1
-  fi
+  # gen-certs.sh skips the root check + chown calls when CERT_DIR is not the
+  # default /etc/nats/certs (i.e. it's a CI/dev tmpdir). No sudo needed.
+  CERT_DIR="${tmpdir}" bash "${gen_certs_sh}"
 
   local ca_crt="${tmpdir}/ca.crt"
   local server_crt="${tmpdir}/server.crt"

@@ -27,24 +27,33 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ "$(id -u)" -eq 0 ] || error "Must be run as root (sudo ./deploy/nats/gen-certs.sh)"
+# Prod deployment: CERT_DIR=/etc/nats/certs requires root for chown root:nats.
+# Non-default CERT_DIR (CI roundtrip, dev) runs unprivileged and skips chown.
+if [ "${CERT_DIR}" = "/etc/nats/certs" ]; then
+  [ "$(id -u)" -eq 0 ] || error "Must be run as root (sudo ./deploy/nats/gen-certs.sh)"
+  PROD=1
+else
+  PROD=0
+fi
 
 if [ -f "${CERT_DIR}/server.crt" ] && [ -f "${CERT_DIR}/server.key" ]; then
   warn "Certs already exist at ${CERT_DIR}/ — skipping. Delete to regenerate."
   exit 0
 fi
 
-# Ensure nats group exists for cert file ownership
-getent group nats >/dev/null 2>&1 || groupadd --system nats
+# Ensure nats group exists for cert file ownership (prod only).
+if [ "${PROD}" = "1" ]; then
+  getent group nats >/dev/null 2>&1 || groupadd --system nats
+fi
 
 mkdir -p "${CERT_DIR}"
 chmod 755 "${CERT_DIR}"
-chown root:root "${CERT_DIR}"
+[ "${PROD}" = "1" ] && chown root:root "${CERT_DIR}"
 
 info "Generating CA private key (ECDSA P-384)..."
 openssl ecparam -name secp384r1 -genkey -noout -out "${CERT_DIR}/ca.key"
 chmod 600 "${CERT_DIR}/ca.key"
-chown root:root "${CERT_DIR}/ca.key"
+[ "${PROD}" = "1" ] && chown root:root "${CERT_DIR}/ca.key"
 
 info "Creating self-signed CA certificate..."
 openssl req -new -x509 \
@@ -57,7 +66,7 @@ chmod 644 "${CERT_DIR}/ca.crt"
 info "Generating server private key (ECDSA P-384)..."
 openssl ecparam -name secp384r1 -genkey -noout -out "${CERT_DIR}/server.key"
 chmod 640 "${CERT_DIR}/server.key"
-chown root:nats "${CERT_DIR}/server.key"  # nats user reads this via group
+[ "${PROD}" = "1" ] && chown root:nats "${CERT_DIR}/server.key"  # nats user reads this via group
 
 info "Creating server certificate (SAN: ${SAN})..."
 EXT_FILE=$(mktemp)

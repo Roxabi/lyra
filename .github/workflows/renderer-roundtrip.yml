@@ -7,7 +7,8 @@ on:
   pull_request:
     branches: [main, staging]
     paths:
-      - "lyra-acl/**"
+      - "scripts/**"
+      - "tests/scripts/**"
       - "deploy/nats/**"
       - "tools/check_renderer_roundtrip.sh"
       - ".github/workflows/renderer-roundtrip.yml"

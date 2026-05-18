@@ -29,21 +29,9 @@ jobs:
       # actions/cache is not used elsewhere in this repo, and pinning a wrong
       # SHA is worse than a 5-second re-download of a ~15 MB tarball.
       - name: Install nats-server
-        env:
-          NATS_VERSION: "2.10.22"
-        run: |
-          set -euo pipefail
-          ARCH=$(dpkg --print-architecture)
-          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
-          TMPDIR=$(mktemp -d)
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
-            -o "${TMPDIR}/${TARBALL}"
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
-            -o "${TMPDIR}/SHA256SUMS"
-          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
-          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
-          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
-          nats-server --version
+        uses: ./.github/actions/install-nats-server
+        with:
+          nats-version: "2.10.22"
 
       - name: Install nk
         env:
@@ -83,21 +71,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Install nats-server
-        env:
-          NATS_VERSION: "2.10.22"
-        run: |
-          set -euo pipefail
-          ARCH=$(dpkg --print-architecture)
-          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
-          TMPDIR=$(mktemp -d)
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
-            -o "${TMPDIR}/${TARBALL}"
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
-            -o "${TMPDIR}/SHA256SUMS"
-          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
-          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
-          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
-          nats-server --version
+        uses: ./.github/actions/install-nats-server
+        with:
+          nats-version: "2.10.22"
 
       - name: Run nats-conf roundtrip
         run: |
@@ -112,21 +88,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Install nats-server
-        env:
-          NATS_VERSION: "2.10.22"
-        run: |
-          set -euo pipefail
-          ARCH=$(dpkg --print-architecture)
-          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
-          TMPDIR=$(mktemp -d)
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
-            -o "${TMPDIR}/${TARBALL}"
-          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
-            -o "${TMPDIR}/SHA256SUMS"
-          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
-          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
-          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
-          nats-server --version
+        uses: ./.github/actions/install-nats-server
+        with:
+          nats-version: "2.10.22"
 
       - name: Run gen-certs roundtrip
         run: |

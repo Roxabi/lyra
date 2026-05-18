@@ -1,0 +1,29 @@
+name: Install nats-server
+description: Download, verify (SHA256), and install nats-server to /usr/local/bin
+
+inputs:
+  nats-version:
+    description: nats-server version to install (without leading v)
+    required: false
+    default: "2.10.22"
+
+runs:
+  using: composite
+  steps:
+    - name: Install nats-server
+      shell: bash
+      env:
+        NATS_VERSION: ${{ inputs.nats-version }}
+      run: |
+        set -euo pipefail
+        ARCH=$(dpkg --print-architecture)
+        TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
+        TMPDIR=$(mktemp -d)
+        curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
+          -o "${TMPDIR}/${TARBALL}"
+        curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
+          -o "${TMPDIR}/SHA256SUMS"
+        cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
+        tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+        sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
+        nats-server --version

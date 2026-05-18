@@ -26,8 +26,8 @@ from lyra.core.ports.stt import (
     STTNoiseError,
     STTUnavailableError,
     TranscriptionResult,
-    is_whisper_noise,
 )
+from lyra.nats.stt_helpers import is_whisper_noise
 from lyra.nats.worker_registry import WorkerRegistry
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import (

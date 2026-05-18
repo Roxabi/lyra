@@ -79,7 +79,7 @@ async def _build_audio_text(
     Raises:
         STTError: If transcription fails
     """
-    from lyra.core.ports.stt import is_whisper_noise, mime_from_suffix
+    from lyra.nats.stt_helpers import is_whisper_noise, mime_from_suffix
 
     try:
         audio_bytes = await asyncio.to_thread(tmp_path.read_bytes)

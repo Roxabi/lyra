@@ -20,13 +20,28 @@ Four responsibilities:
 `core/` must NOT import: `lyra.adapters`, `lyra.infrastructure`, `lyra.llm` (drivers), `lyra.commands` (plugin cmds).
 Adapters and infrastructure may import `core/`; never the reverse.
 
-## Domain ports (`ports/`)
+## Ports & Protocols taxonomy
 
-`ports/llm.py`, `ports/stt.py`, `ports/tts.py` — pure Protocol definitions, no infrastructure imports.
-These are the hexagonal boundary: core declares what it needs; implementations live in `llm/drivers/` and `adapters/`.
-`ports/stt.py` and `ports/tts.py` follow the same pattern as `ports/llm.py`: protocol + value objects + errors only.
-The former `lyra.stt` and `lyra.tts` packages were deleted in #1221; `ports/` is the single owner of domain types.
-Adapter-adjacent helpers (`is_whisper_noise`, `mime_from_suffix`) live in `lyra/nats/stt_helpers.py`, not in `ports/`.
+Two flavours of `Protocol` live in `core/`:
+
+| Kind | Where | Role | Examples |
+|---|---|---|---|
+| **Driven port** (Cockburn, secondary) | `core/ports/` | Domain consumes an external capability | `LlmProvider`, `TtsProtocol`, `STTProtocol`, `AuditSink` |
+| **Role interface** (Fowler) | Co-located with sub-domain | Internal collaboration between two pieces of `lyra.core` | `ChannelAdapter` (hub), `PipelineMiddleware` (hub/middleware), `PoolContext` (pool), narrow `AgentSeederTarget` (agent) |
+
+Rule of thumb: if the Protocol abstracts something *outside* lyra (LLM, TTS, audit log, future Langfuse, …) → **driven port** → `core/ports/`. If it abstracts an *internal* collaboration (a role another file inside `lyra.core` fills) → **role interface**, co-located with its sub-domain. Driven ports are pure Protocol with no infrastructure import (TYPE_CHECKING-only allowed). Role interfaces follow the same constraint.
+
+`ports/llm.py`, `ports/stt.py`, `ports/tts.py` follow the same shape: protocol + value objects + errors only. The former `lyra.stt` and `lyra.tts` packages were deleted in #1221; `ports/` is the single owner of domain types. Adapter-adjacent helpers (`is_whisper_noise`, `mime_from_suffix`) live in `lyra/nats/stt_helpers.py`, not in `ports/`.
+
+### Future "orthodoxie pure" (NOT yet done)
+
+`ChannelAdapter` is currently a header interface (Fowler antonym) that fuses one **driver port** (inbound: `normalize`, `normalize_audio` — channels drive the hub) with one **driven port** (outbound: `send`, `send_streaming` — hub drives channels). The orthodox hexagonal split would be:
+
+- `core/ports/inbound/MessageReceiver` — driver/primary port (replaces `normalize*`)
+- `core/ports/outbound/MessageSender` — driven/secondary port (replaces `send*`)
+- All channel adapters implement both.
+
+Tracked as future work — not blocking. Trigger to act: when ISP cost shows up in practice (a channel that only emits or only receives, or testability friction isolating one direction). Until then `ChannelAdapter` stays as a documented dette in its file docstring.
 
 ## Store pattern (ADR-048)
 

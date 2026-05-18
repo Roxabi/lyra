@@ -1,20 +1,26 @@
-"""Capability ports — Protocols the domain uses to consume an external capability.
+"""Driven ports — Protocols the domain uses to consume external capabilities.
 
-Taxonomy rule
--------------
-core/ports/ = **capability ports**: interfaces for external capabilities that the
-domain consumes (LLM inference, TTS, STT, audit, …). Every port here is pure
-Protocol with no infrastructure import (TYPE_CHECKING-only is permitted for types).
+Taxonomy
+--------
+``core/ports/`` houses **driven (secondary) ports** in the canonical Cockburn
+sense: the domain *drives* these to talk to the outside world (LLM inference,
+TTS, STT, audit sink, …). Every port here is a pure Protocol — no
+infrastructure import (TYPE_CHECKING-only is permitted for types).
 
-**Orchestration ports** — Protocols that define a role local to a sub-domain
-(e.g. ChannelAdapter in core/hub/, PipelineMiddleware in core/hub/middleware/) —
-are intentionally co-located with their sub-domain and must NOT migrate here.
+Protocols that describe an **internal collaboration** — e.g. ``ChannelAdapter``
+in ``core/hub/``, ``PipelineMiddleware`` in ``core/hub/middleware/``,
+``PoolContext`` in ``core/pool/`` — are **role interfaces** (Fowler) co-located
+with their sub-domain. They are *not* driven ports and must NOT migrate here.
+
+See ``src/lyra/core/CLAUDE.md`` for the full glossary and the future
+"orthodoxie pure" note (split ``ChannelAdapter`` into a driver inbound port
+and a driven outbound port).
 
 Constraints
 -----------
 - Pure Protocol definitions only — no concrete classes, no infrastructure imports.
-- New capability interfaces belong here; new orchestration interfaces belong
-  alongside the sub-domain they serve.
+- New driven ports belong here; new role interfaces belong alongside the
+  sub-domain they serve.
 """
 
 from lyra.core.ports.llm import LlmProvider, LlmResult

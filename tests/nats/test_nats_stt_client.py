@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 import nats.errors
 import pytest
 
+from lyra.core.ports.stt import STTNoiseError, STTUnavailableError
 from lyra.nats.nats_stt_client import NatsSttClient
 from lyra.nats.worker_registry import WorkerStats
-from lyra.stt import STTNoiseError, STTUnavailableError
 
 # Minimal WAV bytes fixture — just enough to be non-empty audio data
 WAV_BYTES = b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x00\x00"

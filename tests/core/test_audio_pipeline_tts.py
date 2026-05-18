@@ -24,7 +24,7 @@ from lyra.core.pool import Pool
 from tests.core.conftest import FakeSTT, MockAdapter
 
 if TYPE_CHECKING:
-    from lyra.stt import STTProtocol
+    from lyra.core.ports.stt import STTProtocol
 
 
 # DEBT:v1-stubs — for skipped tests; rewrite for v2 (#1192 S3 follow-up)
@@ -44,7 +44,7 @@ class TestSynthesizeDispatchAgentTTS:
     @pytest.mark.asyncio()
     async def test_agent_tts_forwarded_to_synthesize(self):
         """When agent_tts is passed, it reaches TtsProtocol.synthesize()."""
-        from lyra.tts import SynthesisResult
+        from lyra.core.ports.tts import SynthesisResult
 
         agent_tts = AgentTTSConfig(engine="agent_eng", voice="agent_vox")
 
@@ -86,7 +86,7 @@ class TestSynthesizeDispatchAgentTTS:
     @pytest.mark.asyncio()
     async def test_agent_tts_none_no_regression(self):
         """Without agent_tts, synthesize() is called without it."""
-        from lyra.tts import SynthesisResult
+        from lyra.core.ports.tts import SynthesisResult
 
         mock_tts = MagicMock()
         mock_tts.synthesize = AsyncMock(
@@ -232,7 +232,7 @@ class TestDispatchResponseAgentTTSE2E:
         from lyra.core.agent import AgentBase
         from lyra.core.agent.agent_config import AgentTTSConfig, AgentVoiceConfig
         from lyra.core.hub.hub_protocol import ChannelAdapter
-        from lyra.tts import SynthesisResult
+        from lyra.core.ports.tts import SynthesisResult
 
         # Arrange — concrete agent with custom TTS
         class FakeAgent(AgentBase):
@@ -336,7 +336,7 @@ class TestTtsUnavailableFallback:
         """
         import logging
 
-        from lyra.tts import TtsUnavailableError
+        from lyra.core.ports.tts import TtsUnavailableError
 
         # Arrange
         mock_tts = MagicMock()
@@ -456,7 +456,7 @@ class TestDispatchStreamingTTSFallback:
         """Voice dispatch_streaming: TTS failure → dispatch_response NOT called."""
         from datetime import datetime, timezone
 
-        from lyra.tts import TtsUnavailableError
+        from lyra.core.ports.tts import TtsUnavailableError
 
         # Arrange
         mock_tts = MagicMock()

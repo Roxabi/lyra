@@ -8,9 +8,9 @@ from typing import Any
 
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
+from lyra.core.ports.stt import TranscriptionResult
+from lyra.core.ports.tts import SynthesisResult
 from lyra.llm.base import LlmResult
-from lyra.stt import TranscriptionResult
-from lyra.tts import SynthesisResult
 
 
 @dataclass

@@ -9,8 +9,8 @@ from tests.fixtures.fake_drivers import (
 
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
-from lyra.stt import TranscriptionResult
-from lyra.tts import SynthesisResult
+from lyra.core.ports.stt import TranscriptionResult
+from lyra.core.ports.tts import SynthesisResult
 
 
 class TestFakeTts:

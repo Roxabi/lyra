@@ -11,9 +11,9 @@ import nats.errors
 import pytest
 
 from lyra.core.agent.agent_config import AgentTTSConfig
+from lyra.core.ports.tts import TtsUnavailableError
 from lyra.nats.nats_tts_client import NatsTtsClient
 from lyra.nats.worker_registry import WorkerStats
-from lyra.tts import TtsUnavailableError
 from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
 
 

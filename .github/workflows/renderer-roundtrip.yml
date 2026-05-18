@@ -1,0 +1,117 @@
+name: Renderer Roundtrip
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - "lyra-acl/**"
+      - "deploy/nats/**"
+      - "tools/check_renderer_roundtrip.sh"
+      - ".github/workflows/renderer-roundtrip.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: renderer-roundtrip-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lyra-acl-parse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # No actions/cache for nats-server: this workflow is the only consumer,
+      # actions/cache is not used elsewhere in this repo, and pinning a wrong
+      # SHA is worse than a 5-second re-download of a ~15 MB tarball.
+      - name: Install nats-server
+        env:
+          NATS_VERSION: "2.10.22"
+        run: |
+          set -euo pipefail
+          ARCH=$(dpkg --print-architecture)
+          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
+            -o "${TMPDIR}/${TARBALL}"
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
+            -o "${TMPDIR}/SHA256SUMS"
+          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
+          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
+          nats-server --version
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v7
+
+      - name: Install project dependencies
+        run: |
+          set -euo pipefail
+          uv sync --frozen
+
+      - name: Run lyra-acl roundtrip
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lyra-acl"
+          bash tools/check_renderer_roundtrip.sh lyra-acl "$RUNNER_TEMP/lyra-acl"
+
+  nats-conf-parse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install nats-server
+        env:
+          NATS_VERSION: "2.10.22"
+        run: |
+          set -euo pipefail
+          ARCH=$(dpkg --print-architecture)
+          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
+            -o "${TMPDIR}/${TARBALL}"
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
+            -o "${TMPDIR}/SHA256SUMS"
+          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
+          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
+          nats-server --version
+
+      - name: Run nats-conf roundtrip
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/nats-conf"
+          bash tools/check_renderer_roundtrip.sh nats-conf "$RUNNER_TEMP/nats-conf"
+
+  gen-certs-roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install nats-server
+        env:
+          NATS_VERSION: "2.10.22"
+        run: |
+          set -euo pipefail
+          ARCH=$(dpkg --print-architecture)
+          TARBALL="nats-server-v${NATS_VERSION}-linux-${ARCH}.tar.gz"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/${TARBALL}" \
+            -o "${TMPDIR}/${TARBALL}"
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/SHA256SUMS" \
+            -o "${TMPDIR}/SHA256SUMS"
+          cd "${TMPDIR}" && grep -F "${TARBALL}" SHA256SUMS | sha256sum --check
+          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nats-server-v${NATS_VERSION}-linux-${ARCH}/nats-server" /usr/local/bin/nats-server
+          nats-server --version
+
+      - name: Run gen-certs roundtrip
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/certs"
+          bash tools/check_renderer_roundtrip.sh gen-certs "$RUNNER_TEMP/certs"

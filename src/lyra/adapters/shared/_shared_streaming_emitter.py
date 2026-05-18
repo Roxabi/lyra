@@ -74,9 +74,6 @@ class PlatformCallbacks:
     send_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
     edit_placeholder_text: Callable[[Any, str], Awaitable[None]]
     send_trace_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
-    # DEBT: vestigial — no live consumer post-#1214. Reasoning uses
-    # edit_reasoning, recap uses edit_tool_recap. See #1214 / #1102.
-    edit_trace: Callable[[Any, Any], Awaitable[None]]
     send_message: Callable[[str], Awaitable[int | None]]
     send_fallback: Callable[[str], Awaitable[int | None]]
     chunk_text: Callable[[str], list[str]]

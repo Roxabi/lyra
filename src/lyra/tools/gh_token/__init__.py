@@ -9,7 +9,6 @@ from lyra.tools.gh_token.helper import (
     mint,
 )
 from lyra.tools.gh_token.rate_limit import RateLimiter
-from lyra.tools.gh_token.refresh import mint_capped, refresh_loop
 
 __all__ = [
     "Dispenser",
@@ -19,6 +18,4 @@ __all__ = [
     "RateLimiter",
     "TokenCache",
     "mint",
-    "mint_capped",
-    "refresh_loop",
 ]

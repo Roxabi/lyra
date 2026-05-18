@@ -34,21 +34,15 @@ from lyra.tools.gh_token.helper import (
     mint,
 )
 from lyra.tools.gh_token.rate_limit import RateLimiter
-from lyra.tools.gh_token.refresh import mint_capped
 
 log = logging.getLogger(__name__)
 
 _MAX_LINE_BYTES = 32
 
-# Safety belt: if the cached token expires within this many seconds, force a
-# fresh mint even if the rate limiter has not cleared.  This protects long-
-# running git operations (e.g. a slow `git push`) that could start with a
-# token that has < 5 min left and fail mid-operation at the 1-hour boundary.
-# Deliberately bypasses the 45 s rate-limiter floor — a near-expired token is
-# an emergency; we would rather hit GitHub once more than hand git an expired
-# credential.  If the forced mint itself fails the caller falls back to the
-# cached (possibly near-expired) token and logs a warning.
-MIN_TOKEN_TTL_SECONDS = 300
+# Tokens with less than this many seconds remaining are considered near-expiry
+# and will trigger a fresh mint. 15 min provides a safe buffer for long-running
+# git operations well within the 1-hour token lifetime.
+MIN_TOKEN_TTL_SECONDS = 900
 
 
 class Dispenser:
@@ -104,61 +98,34 @@ class Dispenser:
     # ── internal ──────────────────────────────────────────────────────────────
 
     async def _resolve_token(self) -> InstallationToken:
-        """Return a valid token from cache, minting a fresh one if needed.
+        """Return a token with ≥ MIN_TOKEN_TTL_SECONDS remaining.
 
-        Fast path: if the cached token has < MIN_TOKEN_TTL_SECONDS remaining
-        (safety belt for long-running git operations near the 1-hour boundary),
-        attempt a forced mint that bypasses the rate limiter.  If that mint
-        fails, fall back to the cached token and log a warning — a maybe-
-        expired token is preferable to returning an error to git.
-
-        Normal path: delegates to ``mint_capped`` which enforces the
-        single-flight lock and the 1/45 s rate cap.
+        Fast path (no lock): cached token with TTL ≥ 15 min → return directly.
+        Slow path (under self._lock): cache miss or TTL < 15 min → re-check
+        inside lock (thundering-herd guard) → abuse-floor wait → mint → cache → return.
         """
         now = datetime.now(tz=timezone.utc)
         cached = self._cache.read()
-        if cached is not None and cached.is_near_expiry(now, MIN_TOKEN_TTL_SECONDS):
-            log.warning(
-                "Dispenser: cached token expires in <%.0fs — forcing mint "
-                "(bypassing rate limiter)",
-                (cached.expires_at - now).total_seconds(),
-            )
-            try:
-                async with self._lock:
-                    # Re-read inside the lock: another waiter may have already
-                    # minted a fresh token while we were waiting.
-                    now = datetime.now(tz=timezone.utc)
-                    refreshed = self._cache.read()
-                    if refreshed is not None and not refreshed.is_near_expiry(
-                        now, MIN_TOKEN_TTL_SECONDS
-                    ):
-                        return refreshed
-                    it = await mint(
-                        self._app_id,
-                        self._install_id,
-                        signer=self._signer,
-                        http=self._http,
-                    )
-                    self._cache.write(it)
-                    self._rate_limiter.mark()
-                    return it
-            except MintError as exc:
-                log.warning(
-                    "Dispenser: forced mint failed (%s) — returning near-expired "
-                    "cached token as last resort",
-                    exc,
-                )
-                return cached
+        if cached is not None and not cached.is_near_expiry(now, MIN_TOKEN_TTL_SECONDS):
+            return cached
 
-        return await mint_capped(
-            self._app_id,
-            self._install_id,
-            signer=self._signer,
-            http=self._http,
-            cache=self._cache,
-            lock=self._lock,
-            rate_limiter=self._rate_limiter,
-        )
+        async with self._lock:
+            now = datetime.now(tz=timezone.utc)
+            refreshed = self._cache.read()
+            if refreshed is not None and not refreshed.is_near_expiry(
+                now, MIN_TOKEN_TTL_SECONDS
+            ):
+                return refreshed
+            await self._rate_limiter.wait()
+            it = await mint(
+                self._app_id,
+                self._install_id,
+                signer=self._signer,
+                http=self._http,
+            )
+            self._cache.write(it)
+            self._rate_limiter.mark()
+            return it
 
     async def _handle(
         self,

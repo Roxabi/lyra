@@ -52,8 +52,6 @@ def daemon_env(monkeypatch, tmp_path: Path) -> dict[str, Path]:
     monkeypatch.setenv("LYRA_GH_PEM_PATH", str(pem))
     monkeypatch.setenv("LYRA_GH_DISPENSER_SOCK", str(sock))
     monkeypatch.setenv("LYRA_GH_CACHE_PATH", str(cache))
-    monkeypatch.setenv("LYRA_GH_DISABLE_REFRESH", "1")  # default off in tests
-
     return {"pem": pem, "sock": sock, "cache": cache}
 
 
@@ -65,7 +63,6 @@ def test_load_config_happy_path(daemon_env: dict[str, Path]) -> None:
     assert cfg.app_id == "12345"
     assert cfg.install_id == "67890"
     assert cfg.pem_path == daemon_env["pem"]
-    assert cfg.disable_refresh is True
 
 
 def test_load_config_missing_app_id(monkeypatch, tmp_path: Path) -> None:

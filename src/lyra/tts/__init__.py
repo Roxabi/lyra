@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 
-# TtsProtocol now lives in core/ports/; re-exported here for backward compat.
-from lyra.core.ports.tts import TtsProtocol
+# All canonical types now live in core/ports/tts; re-exported here for backward compat.
+from lyra.core.ports.tts import SynthesisResult, TtsProtocol, TtsUnavailableError
 from lyra.tts.engine_selector import (
     LANG_ISO_TO_QWEN,
     TTSConfig,
@@ -17,18 +16,6 @@ from lyra.tts.engine_selector import (
 from lyra.tts.text_normalization import normalize_text_for_tts
 
 log = logging.getLogger(__name__)
-
-
-class TtsUnavailableError(Exception):
-    """Raised when the TTS NATS adapter is unreachable (timeout or connection error)."""
-
-
-@dataclass
-class SynthesisResult:
-    audio_bytes: bytes
-    mime_type: str
-    duration_ms: int | None  # None if WAV header unreadable
-    waveform_b64: str | None = None  # 256-byte amplitude array, base64
 
 
 __all__ = [

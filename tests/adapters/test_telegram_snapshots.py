@@ -100,7 +100,7 @@ class TestTelegramSnapshots:
           TextDelta("Tests passed."), TextEnd, RunFinished
 
         No ToolSummaryRenderEvent in stream (removed in Slice 5).
-        edit_trace must NOT be called. Final text delivered via placeholder edit.
+        Final text delivered via placeholder edit.
         """
         adapter, bot = _make_adapter_with_bot()
         msg = _make_telegram_message()

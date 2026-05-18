@@ -1,7 +1,7 @@
 """Pairing plugin handlers (issue #103).
 
 Provides /invite, /join, /unpair commands for the unified pairing system.
-PairingManager is accessed via the module-level getter in lyra.core.pairing.
+PairingManager is accessed via pool.pairing_manager (injected at bootstrap).
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import logging
 
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from lyra.core.stores.pairing_protocol import PairingError, get_pairing_manager
+from lyra.core.stores.pairing_protocol import PairingError
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ _ADMIN_ONLY = "This command is admin-only."
 
 async def cmd_invite(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     """Generate a pairing code. Admin-only."""
-    pm = get_pairing_manager()
+    pm = pool.pairing_manager
     if pm is None or not pm.config.enabled:
         return Response(content=_NOT_ENABLED)
 
@@ -41,7 +41,7 @@ async def cmd_invite(msg: InboundMessage, pool: Pool, args: list[str]) -> Respon
 
 async def cmd_join(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     """Redeem a pairing code. Rate-limited."""
-    pm = get_pairing_manager()
+    pm = pool.pairing_manager
     if pm is None or not pm.config.enabled:
         return Response(content=_NOT_ENABLED)
 
@@ -64,7 +64,7 @@ async def cmd_join(msg: InboundMessage, pool: Pool, args: list[str]) -> Response
 
 async def cmd_unpair(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
     """Revoke a user's paired session. Admin-only."""
-    pm = get_pairing_manager()
+    pm = pool.pairing_manager
     if pm is None or not pm.config.enabled:
         return Response(content=_NOT_ENABLED)
 

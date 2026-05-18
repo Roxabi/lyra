@@ -28,8 +28,6 @@ ignore_imports =
     lyra.core.hub.hub_registration -> lyra.infrastructure.stores.message_index
     lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.message_index
     lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index
-    # Transitional: pairing_protocol facade (ADR-059 V3 pending) — DEBT:importlinter-adr048-transition
-    lyra.core.stores.pairing_protocol -> lyra.infrastructure.stores.pairing
     # TurnStore moved to infrastructure per ADR-048 (#760 review fix f2) — DEBT:importlinter-adr048-transition
     lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store
     lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store

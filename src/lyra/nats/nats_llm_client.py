@@ -314,9 +314,7 @@ class NatsLlmClient:
                         exc,
                     )
                     self._cb.record_failure()
-                    error_msg = (
-                        f"LLM request payload too large: {type(exc).__name__}"
-                    )
+                    error_msg = f"LLM request payload too large: {type(exc).__name__}"
                     emit_populated_total(domain="llm")
                     return LlmResult(
                         error=error_msg,
@@ -502,9 +500,7 @@ class NatsLlmClient:
                         len(payload) / 1024,
                         exc,
                     )
-                    error_msg = (
-                        f"LLM request payload too large: {type(exc).__name__}"
-                    )
+                    error_msg = f"LLM request payload too large: {type(exc).__name__}"
                     emit_populated_total(domain="llm")
                     yield ResultLlmEvent(
                         is_error=True,
@@ -567,9 +563,7 @@ class NatsLlmClient:
                     # Pydantic ValidationError messages can include payload
                     # field values; JSONDecodeError includes source content.
                     log.warning("LLM stream: malformed chunk: %r", exc)
-                    error_msg = (
-                        f"LLM stream: malformed chunk: {type(exc).__name__}"
-                    )
+                    error_msg = f"LLM stream: malformed chunk: {type(exc).__name__}"
                     emit_populated_total(domain="llm")
                     yield ResultLlmEvent(
                         is_error=True,

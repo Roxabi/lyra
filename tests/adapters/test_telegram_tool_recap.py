@@ -279,9 +279,7 @@ async def test_recap_text_is_markdownv2_escaped() -> None:
 
     all_calls = bot.edit_message_text.call_args_list
     recap_calls = [
-        c
-        for c in all_calls
-        if (c.kwargs.get("message_id") == _TRACE_MSG_ID)
+        c for c in all_calls if (c.kwargs.get("message_id") == _TRACE_MSG_ID)
     ]
     assert len(recap_calls) >= 1, (
         f"No edit_message_text call targeted trace message_id={_TRACE_MSG_ID}"

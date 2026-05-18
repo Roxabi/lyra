@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 from ..config import PoolConfig
 from ..debouncer import MessageDebouncer
 from ..messaging.message import InboundMessage, OutboundMessage
+from ..stores.pairing_protocol import PairingManagerProtocol
 from .pool_context import PoolContext as PoolContext
 from .pool_observer import PoolObserver
 from .pool_processor import PoolProcessor
@@ -119,6 +120,10 @@ class Pool:
             session_id_fn=lambda: self.session_id,
         )
         self._processor = PoolProcessor(self)
+        # Wired by PoolManager at construction (composition root).
+        # Command handlers read pool.pairing_manager instead of calling
+        # the deferred get_pairing_manager() facade (ADR-059 V4).
+        self.pairing_manager: PairingManagerProtocol | None = None
 
     @property
     def turn_store(self) -> "TurnStore | None":

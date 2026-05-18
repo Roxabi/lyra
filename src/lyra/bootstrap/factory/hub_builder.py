@@ -35,8 +35,8 @@ from lyra.nats.nats_bus import NatsBus
 from lyra.nats.queue_groups import HUB_INBOUND
 
 if TYPE_CHECKING:
-    from lyra.core.cli.audit_sink import AuditSink
     from lyra.core.messaging.messages import MessageManager
+    from lyra.core.ports.audit_sink import AuditSink
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.llm.drivers.cli_nats import CliNatsDriver

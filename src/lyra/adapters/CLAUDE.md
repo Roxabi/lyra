@@ -71,7 +71,6 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
 | `chunk_text` | Split text into platform-sized chunks |
 | `start_typing` / `cancel_typing` | Typing indicator lifecycle |
 | `send_trace_placeholder` | Send reasoning-trace placeholder |
-| `edit_trace` | Edit reasoning-trace placeholder (vestigial — see #1214/#1102) |
 | `edit_reasoning` | Render reasoning Start/Delta/End |
 | `edit_tool_recap` | Render tool recap card lines (debounced + final) |
 | `get_msg` | i18n message lookup |

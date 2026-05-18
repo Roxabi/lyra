@@ -40,7 +40,7 @@ TOML_PATH = (
     Path(__file__).resolve().parent.parent.parent
     / "src"
     / "lyra"
-    / "config"
+    / "data"
     / "messages.toml"
 )
 

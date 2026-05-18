@@ -3,7 +3,7 @@
 # Format: <path>  # <lines> lines — <issue> <description>
 src/lyra/bootstrap/factory/wiring_helpers.py  # 410 lines — DEBT:file-exemptions — ADR-059/V10 bootstrap helper aggregator (imports + 10 focused functions)
 src/lyra/bootstrap/bootstrap_stores.py  # 307 lines — DEBT:file-exemptions — #957 idx_sql DDL validation adds allowlist guard before sqlite_master replay
-src/lyra/core/cli/cli_pool.py  # 327 lines — DEBT:file-exemptions — #1008 resume_direct() method added for hub-side session resolution
+src/lyra/core/cli/cli_pool.py  # 328 lines — DEBT:file-exemptions — #1008 resume_direct() method added for hub-side session resolution; AuditSink import path updated to core/ports (2.4)
 src/lyra/agents/simple_agent.py  # 316 lines — DEBT:file-exemptions — #1008 cli_nats_driver wiring for NATS-mode resume + link_lyra_session
 src/lyra/bootstrap/standalone/adapter_standalone.py  # 301 lines — DEBT:file-exemptions — #1016 WorkerError startup version log
 src/lyra/core/processors/stream_processor.py  # 630 lines — DEBT:file-exemptions — #1016 WorkerError extractor + #1098 Run lifecycle + #1101 Reasoning emission (cleanup in Slice 5 / #1102)

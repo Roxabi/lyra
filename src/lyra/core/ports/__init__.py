@@ -23,13 +23,11 @@ Constraints
   sub-domain they serve.
 """
 
-from lyra.core.ports.audit_sink import AuditSink
 from lyra.core.ports.llm import LlmProvider, LlmResult
 from lyra.core.ports.stt import STTProtocol
 from lyra.core.ports.tts import TtsProtocol
 
 __all__ = [
-    "AuditSink",
     "LlmProvider",
     "LlmResult",
     "STTProtocol",

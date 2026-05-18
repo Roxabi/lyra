@@ -77,6 +77,10 @@ Next = Callable[[InboundMessage, PipelineContext], Awaitable[PipelineResult]]
 class PipelineMiddleware(Protocol):
     """One stage of the inbound message pipeline.
 
+    This is an **orchestration port** intentionally co-located with the pipeline
+    it describes. It defines a role internal to the hub sub-domain and must NOT
+    migrate to core/ports/ (see taxonomy rule in core/ports/__init__.py).
+
     Return a ``PipelineResult`` to short-circuit (DROP / COMMAND_HANDLED),
     or call ``await next(msg, ctx)`` to pass to the next middleware.
     """

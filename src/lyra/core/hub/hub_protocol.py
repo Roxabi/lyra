@@ -1,4 +1,14 @@
-"""Protocol types for the hub: ChannelAdapter, RoutingKey, Binding."""
+"""Protocol types for the hub: ChannelAdapter, RoutingKey, Binding.
+
+ChannelAdapter is an **orchestration port** intentionally co-located here.
+It defines the contract a channel (Telegram/Discord/CLI/NATS) must fulfil to
+plug into the hub. RoutingKey and Binding form the same hub sub-domain
+vocabulary — splitting them across packages would obscure that cohesion.
+
+This file does NOT belong in core/ports/ (capability ports). See the taxonomy
+rule in core/ports/__init__.py: capability ports consume external services;
+orchestration ports define roles local to a sub-domain.
+"""
 
 from __future__ import annotations
 

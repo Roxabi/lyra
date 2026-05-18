@@ -50,8 +50,10 @@ File/rename → update P immediately
 | `src/lyra/commands/CLAUDE.md` | plugin commands |
 | `src/lyra/infrastructure/CLAUDE.md` | store implementations (ADR-048) |
 | `src/lyra/integrations/CLAUDE.md` | external boundary layer (supervisor, systemctl, vault-cli, web-intel) |
+| `src/lyra/agent_cmd/CLAUDE.md` | agent CLI commands (init, edit, list, show, …) — applicative layer above core |
 | `src/lyra/llm/CLAUDE.md` | LLM drivers |
 | `src/lyra/monitoring/CLAUDE.md` | standalone health-check subsystem (`python -m lyra.monitoring`) |
+| `src/lyra/obs/CLAUDE.md` | observability scaffolding (OTel/Langfuse) — ¬wired, see #1235 |
 | `src/lyra/nats/CLAUDE.md` | in-tree NATS integration (subjects, codec, NatsLlmClient) |
 | `src/lyra/tools/CLAUDE.md` | GitHub token dispenser (gh_token submodule) |
 | `packages/roxabi-nats/CLAUDE.md` | NATS transport SDK (ADR-045) |

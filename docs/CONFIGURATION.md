@@ -21,7 +21,7 @@ Lyra uses two types of configuration files with distinct responsibilities:
 | `~/.lyra/agents/<name>.toml` | Seed source | No | Agent seed: imported into DB by `lyra agent init` |
 | `src/lyra/agents/<name>.toml` | Seed source | Yes | Agent seed: system defaults, imported into DB |
 | `src/lyra/commands/<name>/plugin.toml` | System data | Yes | Plugin manifest: commands, handlers |
-| `src/lyra/config/messages.toml` | System data | Yes | i18n strings |
+| `src/lyra/data/messages.toml` | System data | Yes | i18n strings |
 | `pyproject.toml` | System data | Yes | Package metadata, dependencies, tool config |
 
 **Rule:** if a value is machine-specific, personal, or secret → `config.toml`. Everything else → versioned.
@@ -64,7 +64,7 @@ Resolution order:
 ```
 1. $LYRA_MESSAGES_CONFIG  (if set, must end in .toml and be under $HOME)
 2. ./messages.toml        (cwd)
-3. src/lyra/config/messages.toml  (bundled)
+3. src/lyra/data/messages.toml  (bundled)
 ```
 
 ### Store directory (`~/.lyra/`)

@@ -44,43 +44,53 @@ require_nats_server() {
   fi
 }
 
+# ── GUARD: require nk on PATH ─────────────────────────────────────────────────
+require_nk() {
+  if ! command -v nk &>/dev/null; then
+    echo "error: nk not found on PATH" >&2
+    echo "  In CI: installed by the 'Install nk' step in renderer-roundtrip.yml (lyra-acl-parse job)." >&2
+    echo "  Locally: install nkeys v0.4.15 from https://github.com/nats-io/nkeys/releases" >&2
+    exit 1
+  fi
+}
+
 # ── SUBCOMMAND: lyra-acl ──────────────────────────────────────────────────────
 # Exercises the bug from #1089: lyra-acl genkeys renders auth.conf, then
 # nats-server -t -c parse-gates it. Three semantic invariants are enforced:
 #   (a) every nkey value is exactly 56 characters
-#   (b) nk seed→pubkey round-trip matches stored nkey (if nk is available)
+#   (b) nk seed→pubkey round-trip matches stored nkey
 #   (c) no literal newline inside any quoted string (embedded-newline guard)
 cmd_lyra_acl() {
   local tmpdir="$1"
   require_nats_server
+  require_nk
 
   local seeds_dir="${tmpdir}/nkeys"
   mkdir -p "${seeds_dir}"
+
+  local acl_matrix="${REPO_ROOT}/deploy/nats/acl-matrix.json"
+  if [[ ! -f "${acl_matrix}" ]]; then
+    echo "error: acl-matrix.json not found at ${acl_matrix}" >&2
+    exit 1
+  fi
+
+  echo "==> lyra-acl: generating seeds from acl-matrix.json into ${seeds_dir}" >&2
+
+  # Read identity names from the acl-matrix.json map and generate a real seed
+  # for each one using nk. The seed (private key) is written to <identity>.seed.
+  local identities
+  identities=$(jq -r '.identities | keys[]' "${acl_matrix}")
+  while IFS= read -r identity; do
+    nk -gen user > "${seeds_dir}/${identity}.seed"
+  done <<< "${identities}"
 
   echo "==> lyra-acl: rendering auth.conf into ${seeds_dir}" >&2
 
   # Run lyra-acl genkeys --regen-authconf.
   # SEEDS_DIR redirects the read path (seeds) and the write path (auth.conf).
-  # AUTH_DIR bypass is not needed here — we only use --regen-authconf which
-  # reads seeds from SEEDS_DIR and writes auth.conf there (no root required).
-  #
-  # NOTE: seeds must already exist in seeds_dir for --regen-authconf to work.
-  # In CI, the workflow pre-populates seeds via a prior step. For local runs,
-  # point SEEDS_DIR at ~/.lyra/nkeys/ (which has real seeds) or seed the dir
-  # manually. This helper does not generate seeds — only validates the render.
-  if [[ -z "$(ls -A "${seeds_dir}" 2>/dev/null | grep '\.seed$' || true)" ]]; then
-    echo "warning: no *.seed files in ${seeds_dir}" >&2
-    echo "  For CI: the workflow pre-populates seeds before calling this subcommand." >&2
-    echo "  For local: copy ~/.lyra/nkeys/*.seed into ${seeds_dir}/" >&2
-    echo "  Falling back to --template-only (fake nkeys) for parse-gate only." >&2
-    # --template-only emits fake 56-char nkeys (UDET+uppercase-name pattern);
-    # the length and syntax checks will still fire but seed→pubkey round-trip is skipped.
-    SEEDS_DIR="${seeds_dir}" uv run --directory "${REPO_ROOT}" \
-      lyra-acl genkeys --template-only > "${seeds_dir}/auth.conf"
-  else
-    SEEDS_DIR="${seeds_dir}" uv run --directory "${REPO_ROOT}" \
-      lyra-acl genkeys --regen-authconf
-  fi
+  # Seeds now always exist — no fallback to --template-only.
+  SEEDS_DIR="${seeds_dir}" uv run --directory "${REPO_ROOT}" \
+    lyra-acl genkeys --regen-authconf
 
   local auth_conf="${seeds_dir}/auth.conf"
   if [[ ! -f "${auth_conf}" ]]; then
@@ -114,43 +124,42 @@ cmd_lyra_acl() {
   [[ "${fail}" -eq 0 ]] || exit 1
   echo "    nkey lengths OK" >&2
 
-  # ── Invariant (b): seed→pubkey round-trip (requires nk binary) ─────────────
-  # For each user that has both an nkey line and a matching .seed file in
-  # seeds_dir, recompute the public key from the seed and compare.
-  if command -v nk &>/dev/null; then
-    echo "==> lyra-acl: verifying seed→pubkey round-trip with nk" >&2
-    local rt_fail=0
-    while IFS= read -r line; do
-      # Match comment lines that identify the user: # <name>
-      if [[ "${line}" =~ ^[[:space:]]*#[[:space:]]+([a-z0-9_-]+)[[:space:]]*$ ]]; then
-        local identity="${BASH_REMATCH[1]}"
-        local seed_file="${seeds_dir}/${identity}.seed"
-        # Peek at the next nkey line — we parse the full file sequentially,
-        # so track the last seen identity comment per nkey line.
-        last_identity="${identity}"
-      fi
-      if [[ "${line}" =~ nkey:[[:space:]]*\"([^\"]+)\" ]]; then
-        local stored_nkey="${BASH_REMATCH[1]}"
-        local seed_file="${seeds_dir}/${last_identity:-}.seed"
-        if [[ -n "${last_identity:-}" && -f "${seed_file}" ]]; then
-          local computed_nkey
-          computed_nkey="$(nk -inkey "${seed_file}" -pubout 2>/dev/null | tr -d '[:space:]')"
-          if [[ "${computed_nkey}" != "${stored_nkey}" ]]; then
-            echo "error: seed→pubkey mismatch for '${last_identity}'" >&2
-            echo "  stored nkey:   ${stored_nkey}" >&2
-            echo "  computed nkey: ${computed_nkey}" >&2
-            rt_fail=1
-          fi
+  # ── Invariant (b): seed→pubkey round-trip ──────────────────────────────────
+  # auth.conf structure (per-user block):
+  #   nkey: "U..."        ← nkey comes FIRST
+  #   # identity-name    ← identity comment comes AFTER the nkey line
+  # Strategy: save the pending nkey when we see the nkey line; resolve it
+  # against the seed when we see the identity comment on the next line.
+  # nk is guaranteed on PATH (require_nk was called at the top of cmd_lyra_acl).
+  echo "==> lyra-acl: verifying seed→pubkey round-trip with nk" >&2
+  local rt_fail=0
+  local pending_nkey=""
+  while IFS= read -r line; do
+    if [[ "${line}" =~ nkey:[[:space:]]*\"([^\"]+)\" ]]; then
+      # Save this nkey; the identity comment on the next line will resolve it.
+      pending_nkey="${BASH_REMATCH[1]}"
+    elif [[ -n "${pending_nkey}" && "${line}" =~ ^[[:space:]]*#[[:space:]]+([a-z0-9_-]+)[[:space:]]*$ ]]; then
+      # Identity comment immediately following a nkey line.
+      local identity="${BASH_REMATCH[1]}"
+      local seed_file="${seeds_dir}/${identity}.seed"
+      if [[ -f "${seed_file}" ]]; then
+        local computed_nkey
+        computed_nkey="$(nk -inkey "${seed_file}" -pubout 2>/dev/null | tr -d '[:space:]')"
+        if [[ "${computed_nkey}" != "${pending_nkey}" ]]; then
+          echo "error: seed→pubkey mismatch for '${identity}'" >&2
+          echo "  stored nkey:   ${pending_nkey}" >&2
+          echo "  computed nkey: ${computed_nkey}" >&2
+          rt_fail=1
         fi
-        last_identity=""
       fi
-    done <<< "${content}"
-    [[ "${rt_fail}" -eq 0 ]] || exit 1
-    echo "    seed→pubkey round-trip OK" >&2
-  else
-    echo "warning: nk not on PATH — skipping seed→pubkey round-trip check" >&2
-    echo "  In CI, nk is installed by the workflow's NK install step." >&2
-  fi
+      pending_nkey=""
+    else
+      # Any other line resets the pending nkey (guards against stray matches).
+      pending_nkey=""
+    fi
+  done <<< "${content}"
+  [[ "${rt_fail}" -eq 0 ]] || exit 1
+  echo "    seed→pubkey round-trip OK" >&2
 
   # ── Invariant (c): no embedded newlines inside quoted strings ──────────────
   # Defends against the secondary failure mode from #1089: if a quoted value

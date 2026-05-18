@@ -1,0 +1,130 @@
+name: Renderer Roundtrip
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - "scripts/**"
+      - "tests/scripts/**"
+      - "deploy/nats/**"
+      - "tools/check_renderer_roundtrip.sh"
+      - ".github/workflows/renderer-roundtrip.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: renderer-roundtrip-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lyra-acl-parse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # No actions/cache for nats-server: this workflow is the only consumer,
+      # actions/cache is not used elsewhere in this repo, and pinning a wrong
+      # SHA is worse than a 5-second re-download of a ~15 MB tarball.
+      - name: Install nats-server
+        uses: ./.github/actions/install-nats-server
+        with:
+          nats-version: "2.10.22"
+
+      - name: Install nk
+        env:
+          NK_VERSION: "0.4.15"
+        run: |
+          set -euo pipefail
+          ARCH=$(dpkg --print-architecture)
+          ZIPFILE="nkeys-v${NK_VERSION}-linux-${ARCH}.zip"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/${ZIPFILE}" \
+            -o "${TMPDIR}/${ZIPFILE}"
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/nkeys-v${NK_VERSION}-checksums.txt" \
+            -o "${TMPDIR}/checksums.txt"
+          cd "${TMPDIR}" && grep -F "${ZIPFILE}" checksums.txt | sha256sum --check
+          unzip -q "${TMPDIR}/${ZIPFILE}" -d "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nkeys-v${NK_VERSION}-linux-${ARCH}/nk" /usr/local/bin/nk
+          nk -v
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v7
+
+      - name: Install project dependencies
+        run: |
+          set -euo pipefail
+          uv sync --frozen
+
+      - name: Run lyra-acl roundtrip
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lyra-acl"
+          bash tools/check_renderer_roundtrip.sh lyra-acl "$RUNNER_TEMP/lyra-acl"
+
+  nats-conf-parse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install nats-server
+        uses: ./.github/actions/install-nats-server
+        with:
+          nats-version: "2.10.22"
+
+      - name: Run nats-conf roundtrip
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/nats-conf"
+          bash tools/check_renderer_roundtrip.sh nats-conf "$RUNNER_TEMP/nats-conf"
+
+  gen-certs-roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install nats-server
+        uses: ./.github/actions/install-nats-server
+        with:
+          nats-version: "2.10.22"
+
+      - name: Run gen-certs roundtrip
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/certs"
+          bash tools/check_renderer_roundtrip.sh gen-certs "$RUNNER_TEMP/certs"
+
+  helper-self-test:
+    # Self-test calls invariant helper functions directly — no nats-server needed.
+    # Only nk is required (for case-c: generating a mismatched seed pair).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install nk
+        env:
+          NK_VERSION: "0.4.15"
+        run: |
+          set -euo pipefail
+          ARCH=$(dpkg --print-architecture)
+          ZIPFILE="nkeys-v${NK_VERSION}-linux-${ARCH}.zip"
+          TMPDIR=$(mktemp -d)
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/${ZIPFILE}" \
+            -o "${TMPDIR}/${ZIPFILE}"
+          curl -fsSL "https://github.com/nats-io/nkeys/releases/download/v${NK_VERSION}/nkeys-v${NK_VERSION}-checksums.txt" \
+            -o "${TMPDIR}/checksums.txt"
+          cd "${TMPDIR}" && grep -F "${ZIPFILE}" checksums.txt | sha256sum --check
+          unzip -q "${TMPDIR}/${ZIPFILE}" -d "${TMPDIR}"
+          sudo install -m 755 "${TMPDIR}/nkeys-v${NK_VERSION}-linux-${ARCH}/nk" /usr/local/bin/nk
+          nk -v
+
+      - name: Run helper self-test
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/self-test"
+          bash tools/check_renderer_roundtrip.sh self-test "$RUNNER_TEMP/self-test"

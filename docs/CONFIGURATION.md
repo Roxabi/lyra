@@ -577,58 +577,8 @@ Hub probes STT/TTS adapters at startup via NATS heartbeats. Workers are discover
 
 ---
 
-## WorkerError soak gate
-
-The `WorkerError` envelope (ADR-066, spec `artifacts/specs/1016-worker-error-envelope-spec.mdx` §C7) ships a structured error type that replaces opaque free-text fallbacks across all NATS reply contracts. Before the temporary shim fields (`error_text`, `is_error` legacy paths) can be deleted in the follow-up issue, a **soak gate** must pass: it confirms that both the CLI worker and the LLM driver have populated `worker_error` in production traffic, and that no message is falling back to the legacy text path.
-
-### Gate condition
-
-```
-populated{domain=cli} > 0
-∧ populated{domain=llm} > 0
-∧ legacy_error_text == 0
-```
-
-over a 48-hour window of journald output.
-
-### Invoking the gate
-
-**Default — reads live journald (last 48 hours):**
-
-```bash
-tools/check_worker_error_soak_gate.sh
-```
-
-**Fixture mode — reads from a log file (CI / offline testing):**
-
-```bash
-tools/check_worker_error_soak_gate.sh --fixture tests/fixtures/soak_gate_pass.log
-```
-
-**Help:**
-
-```bash
-tools/check_worker_error_soak_gate.sh --help
-```
-
-### Output
-
-- `PASS` on stdout, exit 0 — gate condition met; shim deletion is unblocked.
-- `FAIL` on stdout, exit 1 — condition not met; breakdown written to stderr showing per-domain counts and legacy hit count.
-
-### METRIC log format
-
-Workers and the hub emit structured log lines matching spec C3:
-
-```
-METRIC worker_error_populated_total domain=<domain> count=1
-METRIC worker_error_received_total code=<code> domain=<domain> count=1
-```
-
-The gate script greps for these exact strings. Any change to the format requires updating both `src/lyra/core/messaging/metrics.py` and the script.
-
-### Error code namespace
+## WorkerError error codes
 
 All valid error codes and their `domain`, `retryable`, and `description` fields are documented in `packages/roxabi-contracts/docs/error-codes.md`. The Markdown is **auto-generated** from `KNOWN_CODES` in `packages/roxabi-contracts/src/roxabi_contracts/errors.py` via the `codes-sync` pre-commit hook (`scripts/check_codes_sync.py --write`). Edits to `errors.py` regenerate the doc table automatically on commit; CI verifies the two stay in lockstep.
 
-See also: ADR-066 (`docs/architecture/adr/066-unified-worker-error-envelope-nats-reply-contracts.mdx`), spec C7.
+See also: ADR-066 (`docs/architecture/adr/066-unified-worker-error-envelope-nats-reply-contracts.mdx`).

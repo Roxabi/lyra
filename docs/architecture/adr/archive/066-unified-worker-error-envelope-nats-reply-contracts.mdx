@@ -8,6 +8,8 @@ superseded_by: ADR-049
 
 Superseded by ADR-049 — WorkerError envelope absorbed as v2 additive extension of roxabi-contracts
 
+**P3 shim deletion (issue #1029) abandoned 2026-05-18.** The `error_text` field was originally framed as a transitional shim to be removed after a 48h prod soak. In practice it graduated to a permanent presentation channel alongside `worker_error` (structure): `error_text` carries the backend-reported user-facing string consumed by `_shared_streaming_emitter` and adapter UIs; `worker_error` carries the structured taxonomy (`domain`, `code`, `message`, `retryable`) consumed for routing, retries and telemetry. Sanitization fixes #1212 and #1215 hardened `error_text` rather than removing it — the codebase voted for dual-channel. The soak gate (`tools/check_worker_error_soak_gate.sh`) and its tests were removed as part of #1029 closure since they guarded a removal that no longer makes sense.
+
 Extends ADR-006 (hub run-loop error/response gap) from the hub→adapter direction to the worker→hub NATS reply boundary. Complementary to ADR-058 (typed error boundary inside adapters); orthogonal — different boundary.
 
 ## Context

@@ -103,6 +103,7 @@ Every new event carries a `SCHEMA_VERSION_*` constant (ADR-049 discipline). `run
 - `--include-partial-messages` is a spawn-time flag; `ModelConfig` change (including toggling
   `streaming`) triggers an automatic process respawn via the existing mismatch check.
 - Every `RenderEvent` subtype carries its own `SCHEMA_VERSION_*` constant. → See `messaging.md` (Schema versioning) and `ARCHITECTURE.md` (Schema versioning section) for the bump procedure and receiver policy.
+- **Error envelope on `ResultLlmEvent`** — `error_text` and `worker_error` are populated together by drivers/parsers on terminal failure events: `worker_error` carries the structured taxonomy (`domain`, `code`, `message`, `retryable`); `error_text` is an in-process presentation cache of `worker_error.message` consumed directly by adapter renderers. `error_text` is **not a wire-contract field** — only `worker_error` exists on NATS contracts. Neither field is a shim for the other (ADR-066 archive Status, issue #1029).
 - `lyra-clipool` is excluded from the RenderEvent co-deploy gate (it is an `LlmEvent`
   producer only, no `render_events` import). Slices that change `LlmEvent` shape include it.
 - Slices that introduce new `RenderEvent` types require co-deploying `lyra-hub` +

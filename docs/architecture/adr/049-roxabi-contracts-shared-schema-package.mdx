@@ -440,6 +440,6 @@ Registry shipped in `errors.py` (`KNOWN_CODES: dict[str, CodeMeta]`) and `packag
 
 **`is_error`/`ok` retention rationale:** Existing boolean predicates retained alongside `worker_error`. Not deprecated. `LlmResponse`, `TtsResponse`, `SttResponse`, `ImageResponse` use `ok` as predicate for `@model_validator` invariants. Removing `ok` requires rewriting those validators — semantic break for consumers pattern-matching `if not response.ok`.
 
-**Metric-gated soak gate (P2):** P2 shim deletion gated on `worker_error_populated_total{domain="cli"}` > 0 AND `worker_error_populated_total{domain="llm"}` > 0 AND legacy `error_text` counter == 0 for 48 consecutive hours in production. Executable one-liner prints `PASS` or `FAIL`.
+**P3 shim deletion outcome:** P3 shim deletion (issue #1029) was abandoned 2026-05-18 — `error_text` on the in-process `ResultLlmEvent` graduated to a permanent presentation cache of `worker_error.message` (sanitization fixes #1212/#1215 hardened it rather than removing it). The soak gate tooling was retired. See ADR-066 archive Status for full rationale.
 
 **Rollout:** P1 (model + additive field on 5 envelopes + registry + CI sync check) is complete. Additive-only per ADR-049 `extra="ignore"` — no `CONTRACT_VERSION` bump required.

@@ -9,9 +9,10 @@ from unittest.mock import AsyncMock, MagicMock
 import nats.errors
 import pytest
 
-from lyra.core.ports.stt import STTNoiseError, STTUnavailableError
-from lyra.nats.nats_stt_client import NatsSttClient
+from lyra.core.ports.stt import STTNoiseError, STTUnavailableError, TranscriptionResult
+from lyra.nats.nats_stt_client import NatsSttClient, _stt_result_from_wire
 from lyra.nats.worker_registry import WorkerStats
+from roxabi_contracts.voice import SttResponse
 
 # Minimal WAV bytes fixture — just enough to be non-empty audio data
 WAV_BYTES = b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x00\x00"
@@ -914,3 +915,55 @@ class TestSttClientStop:
         mock_nc = AsyncMock()
         client = NatsSttClient(nc=mock_nc)
         await client.stop()  # must not raise
+
+
+_STT_ENVELOPE = {
+    "contract_version": "1",
+    "trace_id": "tst-trace",
+    "issued_at": "2026-04-19T00:00:00+00:00",
+    "request_id": "r-mapper",
+}
+
+
+class TestSttResultFromWire:
+    """Direct unit tests for _stt_result_from_wire field mapping.
+
+    Covers every output field plus Optional-field null propagation.
+    Transitive coverage via transcribe() cannot detect field-name typos
+    (e.g. mapping resp.text to result.language) when the happy-path
+    response shape is unchanged.
+    """
+
+    def _make_resp(self, **overrides) -> SttResponse:
+        data = {
+            **_STT_ENVELOPE,
+            "ok": True,
+            "text": "transcribed sentence",
+            "language": "fr",
+            "duration_seconds": 1.5,
+        }
+        data.update(overrides)
+        return SttResponse.model_validate(data)
+
+    def test_text_field_maps_correctly(self) -> None:
+        resp = self._make_resp(text="transcribed sentence")
+        result = _stt_result_from_wire(resp)
+        assert isinstance(result, TranscriptionResult)
+        assert result.text == "transcribed sentence"
+
+    def test_language_field_maps_correctly(self) -> None:
+        resp = self._make_resp(language="fr")
+        result = _stt_result_from_wire(resp)
+        assert result.language == "fr"
+
+    def test_duration_seconds_field_maps_correctly(self) -> None:
+        resp = self._make_resp(duration_seconds=1.5)
+        result = _stt_result_from_wire(resp)
+        assert result.duration_seconds == 1.5
+
+    def test_text_is_not_swapped_with_language(self) -> None:
+        """Guard against field-name transposition bugs."""
+        resp = self._make_resp(text="hello world", language="de")
+        result = _stt_result_from_wire(resp)
+        assert result.text == "hello world"
+        assert result.language == "de"

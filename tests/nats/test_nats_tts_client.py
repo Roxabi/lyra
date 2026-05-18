@@ -11,9 +11,10 @@ import nats.errors
 import pytest
 
 from lyra.core.agent.agent_config import AgentTTSConfig
-from lyra.core.ports.tts import TtsUnavailableError
-from lyra.nats.nats_tts_client import NatsTtsClient
+from lyra.core.ports.tts import SynthesisResult, TtsUnavailableError
+from lyra.nats.nats_tts_client import NatsTtsClient, _tts_result_from_wire
 from lyra.nats.worker_registry import WorkerStats
+from roxabi_contracts.voice import TtsResponse
 from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
 
 
@@ -771,3 +772,68 @@ class TestTtsClientStop:
         mock_nc = AsyncMock()
         client = NatsTtsClient(nc=mock_nc)
         await client.stop()  # must not raise
+
+
+_TTS_ENVELOPE = {
+    "contract_version": "1",
+    "trace_id": "tst-trace",
+    "issued_at": "2026-04-19T00:00:00+00:00",
+    "request_id": "r-mapper",
+}
+
+
+class TestTtsResultFromWire:
+    """Direct unit tests for _tts_result_from_wire field mapping.
+
+    Covers every output field plus Optional-field null propagation.
+    Transitive coverage via synthesize() cannot detect field-name typos
+    (e.g. mapping resp.mime_type to result.duration_ms) when the happy-path
+    response shape is unchanged.
+    """
+
+    def _make_resp(self, **overrides) -> TtsResponse:
+        data = {
+            **_TTS_ENVELOPE,
+            "ok": True,
+            "audio_b64": base64.b64encode(b"\x00\x01").decode(),
+            "mime_type": "audio/wav",
+            "duration_ms": 1500,
+        }
+        data.update(overrides)
+        return TtsResponse.model_validate(data)
+
+    def test_audio_bytes_field_maps_correctly(self) -> None:
+        sentinel = b"\x00\x01"
+        resp = self._make_resp(audio_b64=base64.b64encode(sentinel).decode())
+        result = _tts_result_from_wire(resp, sentinel)
+        assert isinstance(result, SynthesisResult)
+        assert result.audio_bytes == sentinel
+
+    def test_mime_type_field_maps_correctly(self) -> None:
+        resp = self._make_resp(mime_type="audio/wav")
+        result = _tts_result_from_wire(resp, b"\x00")
+        assert result.mime_type == "audio/wav"
+
+    def test_duration_ms_field_maps_correctly(self) -> None:
+        resp = self._make_resp(duration_ms=1500)
+        result = _tts_result_from_wire(resp, b"\x00")
+        assert result.duration_ms == 1500
+
+    def test_waveform_b64_present_maps_correctly(self) -> None:
+        sentinel_wf = base64.b64encode(b"waveform-data").decode()
+        resp = self._make_resp(waveform_b64=sentinel_wf)
+        result = _tts_result_from_wire(resp, b"\x00")
+        assert result.waveform_b64 == sentinel_wf
+
+    def test_waveform_b64_absent_propagates_as_none(self) -> None:
+        resp = self._make_resp()
+        # waveform_b64 not set → defaults to None in TtsResponse
+        result = _tts_result_from_wire(resp, b"\x00")
+        assert result.waveform_b64 is None
+
+    def test_mime_type_is_not_swapped_with_duration_ms(self) -> None:
+        """Guard against field-name transposition bugs."""
+        resp = self._make_resp(mime_type="audio/ogg", duration_ms=999)
+        result = _tts_result_from_wire(resp, b"\x00")
+        assert result.mime_type == "audio/ogg"
+        assert result.duration_ms == 999

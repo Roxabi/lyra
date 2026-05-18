@@ -59,6 +59,8 @@ RUN chmod 0755 /opt/lyra-gh/*.py 2>/dev/null || true \
  && { [ -f /opt/lyra-gh/git-credential-lyra-gh ] && chmod 0755 /opt/lyra-gh/git-credential-lyra-gh || true; } \
  && { [ -f /opt/lyra-gh/lyra-gh ] && chmod 0755 /opt/lyra-gh/lyra-gh && ln -sf /opt/lyra-gh/lyra-gh /usr/local/bin/lyra-gh && ln -sf /opt/lyra-gh/lyra-gh /usr/local/bin/gh || true; }
 COPY --chown=root:root deploy/lyra-gh/git.config.tmpl /etc/lyra/git.config.tmpl
+COPY --chown=root:root deploy/lyra-gh/hooks/ /opt/lyra-gh/hooks/
+RUN chmod 0755 /opt/lyra-gh/hooks/prepare-commit-msg
 
 # Take `gh` off PATH (AC#5 from #1078): the base image ships /usr/bin/gh which
 # would let any process — including the Claude subprocess — invoke gh directly

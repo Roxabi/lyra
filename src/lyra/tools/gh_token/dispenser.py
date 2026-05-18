@@ -50,9 +50,9 @@ class Dispenser:
 
     Constructed with injected cache/signer/http so tests can stub all I/O.
 
-    A single ``asyncio.Lock`` and ``RateLimiter`` are held per instance,
-    serialising concurrent mint operations and hard-capping GitHub API calls
-    to ≤1 per 45 s (well inside GitHub's 1/min limit).
+    Concurrent mints are serialised by a single ``asyncio.Lock``. A
+    ``RateLimiter`` acts as an abuse floor (default 10 s): hitting it indicates
+    pathological mint churn — normal 15-min TTL usage never reaches the floor.
     """
 
     def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps

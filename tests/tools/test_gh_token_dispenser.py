@@ -14,8 +14,10 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from lyra.tools.gh_token.dispenser import MIN_TOKEN_TTL_SECONDS, Dispenser
-from lyra.tools.gh_token.helper import InstallationToken, TokenCache
+from lyra.tools.gh_token.helper import InstallationToken, MintError, TokenCache
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -69,9 +71,6 @@ def test_min_token_ttl_seconds_is_900() -> None:
 async def test_resolve_token_cold_cache_mints(tmp_path) -> None:
     """Empty cache → exactly one mint() call; returned token has TTL >= 15 min."""
     # Arrange — cache has no token
-    assert MIN_TOKEN_TTL_SECONDS == 900, (
-        f"Expected MIN_TOKEN_TTL_SECONDS=900, got {MIN_TOKEN_TTL_SECONDS}"
-    )
     cache = TokenCache(tmp_path / "token.json")
     dispenser = _make_dispenser(cache)
 
@@ -101,9 +100,6 @@ async def test_resolve_token_near_expiry_remints(tmp_path) -> None:
     without calling mint() at all.
     """
     # Arrange — cache holds a token with 14 min remaining
-    assert MIN_TOKEN_TTL_SECONDS == 900, (
-        f"Expected MIN_TOKEN_TTL_SECONDS=900, got {MIN_TOKEN_TTL_SECONDS}"
-    )
     cache = TokenCache(tmp_path / "token.json")
     near_expiry = _make_token(14)
     cache.write(near_expiry)
@@ -137,9 +133,6 @@ async def test_resolve_token_fresh_returns_cached_no_mint(tmp_path) -> None:
     threshold and the fast path applies — no lock, no mint.
     """
     # Arrange — cache holds a fresh token with 30 min remaining
-    assert MIN_TOKEN_TTL_SECONDS == 900, (
-        f"Expected MIN_TOKEN_TTL_SECONDS=900, got {MIN_TOKEN_TTL_SECONDS}"
-    )
     cache = TokenCache(tmp_path / "token.json")
     fresh = _make_token(30)
     cache.write(fresh)
@@ -179,9 +172,6 @@ async def test_resolve_token_fresh_returns_cached_no_mint(tmp_path) -> None:
 async def test_concurrent_near_expiry_mints_once(tmp_path) -> None:
     """N=10 concurrent _resolve_token() calls with TTL=14min → mint() called once."""
     # Arrange — cache holds a token with 14 min remaining
-    assert MIN_TOKEN_TTL_SECONDS == 900, (
-        f"Expected MIN_TOKEN_TTL_SECONDS=900, got {MIN_TOKEN_TTL_SECONDS}"
-    )
     cache = TokenCache(tmp_path / "token.json")
     near_expiry = _make_token(14)
     cache.write(near_expiry)
@@ -213,3 +203,20 @@ async def test_concurrent_near_expiry_mints_once(tmp_path) -> None:
     assert all(r.token == "ghs_fresh" for r in results), (
         "All callers must receive the freshly minted token"
     )
+
+
+async def test_resolve_token_propagates_mint_error(tmp_path) -> None:
+    """Cold cache + MintError from mint() → MintError propagates (no fallback).
+
+    Pins the spec's "no fallback to near-expired token on mint failure" decision:
+    if mint() raises MintError the exception must propagate out of _resolve_token()
+    so a future regression that swallows it would be caught here.
+    """
+    # Arrange — empty cache (cold)
+    cache = TokenCache(tmp_path / "token.json")
+    dispenser = _make_dispenser(cache)
+
+    # Act + Assert
+    with patch(_MINT_PATH, AsyncMock(side_effect=MintError("boom"))):
+        with pytest.raises(MintError):
+            await dispenser._resolve_token()  # noqa: SLF001

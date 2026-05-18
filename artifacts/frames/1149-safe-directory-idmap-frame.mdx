@@ -1,0 +1,65 @@
+---
+title: Replace safe.directory wildcard with proper uid mapping
+issue: 1149
+parent: 1158
+status: approved
+tier: F-lite
+date: 2026-05-18
+---
+
+## Problem
+
+`deploy/lyra-gh/git.config.tmpl` bakes a path-based wildcard into the container image:
+
+```
+[safe]
+  directory = /home/lyra/projects/*
+```
+
+The wildcard exists to suppress git's ownership check, which would otherwise fail because of uid drift: the host runs as uid 1000, but the lyra container runs as uid 1500. Files in `~/projects` (bind-mounted into the container, Syncthing-synced between M₁ and M₂) appear to git inside the container as foreign-owned, so it refuses to operate on them until trust is granted.
+
+The wildcard trusts **any** repo under `/home/lyra/projects/` regardless of ownership or provenance — a CWE-426/427 untrusted-search-path pattern (CVE-2022-24765 lineage). A malicious repo with an `include.path` directive in its `.git/config` could load attacker-controlled config when git operates on it. The wildcard ranks below `GIT_CONFIG_GLOBAL` in precedence, but the surface still exists. As CLIpool's threat model has shifted (Claude now ingests untrusted input — cloned repos, prompt-routed URLs), "trust by path" is no longer an acceptable trust grant for this surface.
+
+The proper fix is to remove the uid drift at its source so git's native ownership check passes naturally. Podman/Quadlet's `Volume=...:idmap` option remaps host uid 1000 ↔ container uid 1500 at the kernel level, so the container sees its own files as natively owned. With idmap in place, the `safe.directory` block becomes redundant and is deleted — git's ownership check returns to being a meaningful boundary.
+
+## Who
+
+- **Primary:** the Lyra clipool subsystem (containerized Claude Code agent runner) and any operator running `lyra adapter clipool`.
+- **Secondary:** future Roxabi Quadlet adopters (forge, intel, etc.) that bind-mount host trees — they inherit the idmap pattern this PR establishes; lyra is the reference impl.
+- **Tertiary:** Syncthing M₁↔M₂ — must continue to see uid 1000 only on the host fs (kernel-side idmap should not surface to Syncthing).
+
+## Constraints
+
+- **Podman 5.x required** for `Volume=...:idmap` — satisfied on both M₁ (roxabituwer, Ubuntu 26.04 LTS) and M₂ (roxabitower, Pop!_OS).
+- **Migration of existing trees** — files in `~/projects` may have been written through the container before idmap was enabled, so they may be owned by uid 1500 on the host. A pre-flight `chown` sweep (`find ~/projects -uid 1500 -exec chown 1000:1000 {} +`) must run before `systemctl --user daemon-reload`.
+- **Rollout order:** M₂ first → verify git operations clean → then M₁ (prod). Mirrors the subtask checklist on the issue.
+- **No supervisord touch** — Quadlet is the strategic target ecosystem-wide; supervisord is out of scope.
+- **GitHub App push identity unchanged** — this PR only touches local git ownership/safe-directory surface, not auth.
+- **PR goes through `/code-review`** — may require `/fix` iteration before merge.
+
+## Out of Scope
+
+- Per-agent commit identity propagation (#1150) — sibling child of epic #1158, separate PR.
+- Token horizon refresh (#1151) — already shipped.
+- Path-based confinement layered on top of ownership trust (e.g., "agent X can only touch repos under /projects/A") — different architectural concern.
+- Other Roxabi Quadlet adopters' migrations (forge, intel, etc.) — they inherit the pattern but their cutovers are not in scope here.
+- Replacing the bind-mount architecture entirely (e.g., switching to git push/pull for agent code access) — considered and rejected upstream; bind mount is the chosen UX.
+
+## Premise Validity
+
+**Success in 6 months:** `[safe] directory` block is absent from `deploy/lyra-gh/git.config.tmpl`, `lyra-clipool.container` ships `Volume=...:idmap`, and `lyra adapter clipool` performs `git status` / `git fetch` / `git commit` on bind-mounted repos with **zero** "dubious ownership" errors observed on M₁ in production logs over a rolling 30-day window.
+
+**Failure in 6 months:** any of — (a) the `safe.directory` block reappears in the template (a regression escape hatch was needed), (b) we observe ≥1 "dubious ownership" git error in clipool logs after the migration ships, or (c) Syncthing reports uid-drift conflicts on host files after idmap goes live on both machines. Any of these = the idmap approach didn't deliver the trust-boundary realignment and we'd reopen.
+
+**Simplest alternative:** keep the wildcard, narrow it to a per-repo allowlist baked at image build time.
+**Why not simplest:** still "trust by path," still an image-baked grant Claude can route around by influencing what gets cloned (the threat model migration is the whole point). And it doesn't fix the underlying uid drift, so every adjacent surface (file ownership in volumes, Syncthing writeback, future shared-mount features) keeps inheriting the same misalignment. The kernel-level fix is the only one that removes the class of problem.
+
+## Complexity
+
+**Tier: F-lite** — clear scope (2 files changed, 1 new doc), single domain (deploy/infra), no unknowns. Migration step is mechanical (chown sweep + daemon-reload). Verification has a real prod component (M₁ smoke test) but is bounded.
+
+Signals:
+- Files touched: `deploy/quadlet/lyra-clipool.container`, `deploy/lyra-gh/git.config.tmpl`, new `docs/ops/quadlet-idmap-migration.md`.
+- Single domain: container deploy / git ownership surface.
+- No new patterns to invent — idmap is a documented Podman 5.x feature.
+- Issue label: `size:F-lite` (confirms).

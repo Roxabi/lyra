@@ -1,0 +1,383 @@
+---
+issue: 1221
+slug: stt-tts-normalization
+title: "STT/TTS Hexagonal Normalization"
+tier: F-lite
+status: approved
+type: refactor
+---
+
+# Spec: STT/TTS Hexagonal Normalization
+
+> Status: complete and fixer-executable. No remaining decisions.
+
+## 1. Goal
+
+Eliminate `lyra.stt` and `lyra.tts` as top-level packages. Both are structural anomalies: they own no drivers, no subsystem, and no NATS plumbing — they became parking lots for errors, value objects, and pure helpers that belong either in `core/ports/` (protocol-adjacent types) or co-located with their sole consumer (`lyra.nats`). The LLM module is the reference: `core/ports/llm.py` owns the protocol + value object + error; `lyra.llm/` exists only because it owns `drivers/` + `ProviderRegistry` + decorators. After this change, `STTProtocol` / `TtsProtocol` signatures reference types defined in the same `core/ports/` file, no TYPE_CHECKING cross-package trick needed. All imports in every consumer file are rewritten to the canonical location. The NATS clients get explicit `from_wire` mapping functions.
+
+## 2. Non-goals
+
+- No back-compat shims, deprecation banners, or `__init__.py` re-exports. Hard delete.
+- `voiceCLI`, `packages/roxabi-contracts/`, and `packages/roxabi-nats/` are not touched.
+- No new ADR required: the hexagonal pattern is already established (ADR-059). This is remediation, not a new pattern.
+- `AgentTTSConfig` / `AgentSTTConfig` in `core/agent/agent_config.py` are not moved — they are agent domain config, not voice domain types. They stay where they are.
+
+---
+
+## 3. Target Layout
+
+### Final state of `src/lyra/core/ports/`
+
+```
+src/lyra/core/ports/
+    llm.py          — unchanged
+    stt.py          — expanded: STTProtocol + TranscriptionResult + STTUnavailableError
+                      + STTNoiseError + _WHISPER_NOISE_TOKENS + is_whisper_noise
+                      + mime_from_suffix
+    tts.py          — expanded: TtsProtocol + SynthesisResult + TtsUnavailableError
+```
+
+No `core/voice/` subdirectory is created. A `core/voice/` subdir would be justified if there were ≥3 files or helpers from different consumers needed coexistence without coupling. Neither applies: all STT symbols fit in one ~75-line file; all TTS domain symbols fit in one ~55-line file.
+
+### New files in `src/lyra/nats/`
+
+```
+src/lyra/nats/
+    tts_engine_selector.py    — LANG_ISO_TO_QWEN, normalize_language, build_generate_kwargs
+    tts_text_normalization.py — normalize_text_for_tts
+```
+
+`engine_selector.py` content is voiceCLI-specific kwarg construction referencing `AgentTTSConfig`. It is infrastructure-adapter logic, not a domain type. `core/` must not be polluted with voiceCLI-specific mapping. `lyra.nats → lyra.core` is permitted per `.importlinter`.
+
+`normalize_text_for_tts` is a pure stdlib function; its only consumer is `nats_tts_client.py` (indirectly via the now-deleted re-export chain). It moves to `lyra.nats` alongside its consumer.
+
+`TTSConfig` / `load_tts_config` and `STTConfig` / `load_stt_config` are confirmed dead (zero callers in `src/` outside `__all__`; production reads env vars directly in `voice_overlay.py`). They are deleted, not moved.
+
+### Fate of `lyra.stt` and `lyra.tts` packages
+
+Both directories are deleted entirely:
+
+```
+DELETE  src/lyra/stt/__init__.py
+DELETE  src/lyra/stt/CLAUDE.md
+DELETE  src/lyra/tts/__init__.py
+DELETE  src/lyra/tts/engine_selector.py
+DELETE  src/lyra/tts/text_normalization.py
+```
+
+### Fate of `tests/tts/`
+
+The directory is also deleted. It is the test-side mirror of the same anomaly:
+
+```
+DELETE  tests/tts/test_tts_config.py   — tests dead code (TTSConfig/load_tts_config); deleted with them
+MOVE    tests/tts/test_voice_command.py → tests/agents/test_voice_command.py
+DELETE  tests/tts/conftest.py
+DELETE  tests/tts/__init__.py
+DELETE  tests/tts/             (directory)
+```
+
+`test_voice_command.py` tests `SimpleAgent` + `TtsProtocol` integration — it is an agent test, not a `lyra.tts` unit test. Its import of `from lyra.tts import TtsProtocol` is rewritten (see §6).
+
+---
+
+## 4. File-by-File Move Table
+
+### STT symbols (`lyra.stt`)
+
+| Symbol | Current location | Target location | Notes |
+|--------|-----------------|-----------------|-------|
+| `STTProtocol` | `core/ports/stt.py` (canonical), re-exported from `lyra/stt/__init__.py` | `core/ports/stt.py` — stays; re-export deleted | Remove TYPE_CHECKING cross-reference; `TranscriptionResult` now in same file |
+| `TranscriptionResult` | `lyra/stt/__init__.py` | `core/ports/stt.py` | Move inline; remove TYPE_CHECKING shim from `core/ports/stt.py` |
+| `STTUnavailableError` | `lyra/stt/__init__.py` | `core/ports/stt.py` | Plain exception class |
+| `STTNoiseError` | `lyra/stt/__init__.py` | `core/ports/stt.py` | Plain exception class |
+| `WHISPER_NOISE_TOKENS` | `lyra/stt/__init__.py` (public) | `core/ports/stt.py` as `_WHISPER_NOISE_TOKENS` (private) | Zero consumers outside `is_whisper_noise()`; privatizing avoids freezing the token-set interface |
+| `is_whisper_noise` | `lyra/stt/__init__.py` | `core/ports/stt.py` | Pure function; update body to reference `_WHISPER_NOISE_TOKENS` |
+| `mime_from_suffix` | `lyra/stt/__init__.py` | `core/ports/stt.py` | Pure dict lookup; no imports |
+| `STTConfig` | `lyra/stt/__init__.py` | **deleted** | Zero callers in `src/`; dead code confirmed |
+| `load_stt_config` | `lyra/stt/__init__.py` | **deleted** | Zero callers in `src/`; dead code confirmed |
+
+### TTS symbols (`lyra.tts`)
+
+| Symbol | Current location | Target location | Notes |
+|--------|-----------------|-----------------|-------|
+| `TtsProtocol` | `core/ports/tts.py` (canonical), re-exported from `lyra/tts/__init__.py` | `core/ports/tts.py` — stays; re-export deleted | Remove TYPE_CHECKING cross-reference; `SynthesisResult` now in same file |
+| `SynthesisResult` | `lyra/tts/__init__.py` | `core/ports/tts.py` | Dataclass; move inline |
+| `TtsUnavailableError` | `lyra/tts/__init__.py` | `core/ports/tts.py` | Plain exception class |
+| `TTSConfig` | `lyra/tts/engine_selector.py` | **deleted** | Zero callers in `src/`; dead code confirmed |
+| `load_tts_config` | `lyra/tts/engine_selector.py` | **deleted** | Zero callers in `src/`; dead code confirmed |
+| `LANG_ISO_TO_QWEN` | `lyra/tts/engine_selector.py` | `lyra/nats/tts_engine_selector.py` | Dict constant |
+| `normalize_language` | `lyra/tts/engine_selector.py` | `lyra/nats/tts_engine_selector.py` | Pure function |
+| `build_generate_kwargs` | `lyra/tts/engine_selector.py` | `lyra/nats/tts_engine_selector.py` | Uses `AgentTTSConfig` via TYPE_CHECKING |
+| `normalize_text_for_tts` | `lyra/tts/text_normalization.py` | `lyra/nats/tts_text_normalization.py` | Pure stdlib function |
+
+---
+
+## 5. Wire↔Domain Mapper Design
+
+### Current state (inline, with asserts)
+
+`nats_stt_client.py:transcribe()` constructs `TranscriptionResult` inline with three `assert ... is not None` guards. `nats_tts_client.py:synthesize()` constructs `SynthesisResult` inline with two assert guards.
+
+### Decision: named mappers, no asserts
+
+Replace inline construction with named module-level functions. Drop the `assert` guards — they strip under `python -O`, giving silent `None` propagation. Trust `_enforce_success_invariant` on `SttResponse`/`TtsResponse` instead: if that invariant is violated, the bug is there, not at the mapper. If pyright narrows `str | None` and complains, use `cast(str, resp.text)` with an inline comment referencing `_enforce_success_invariant`.
+
+The `LlmResult.worker_error` leakage precedent (wire type in a domain type, ADR-066 P2 shim) does not apply: `SttResponse.worker_error` and `TtsResponse.worker_error` are not consumed by lyra callers. STT/TTS domain types stay pure.
+
+### Mapper in `lyra/nats/nats_stt_client.py`
+
+Add after imports, before `NatsSttClient`:
+
+```python
+def _stt_result_from_wire(resp: SttResponse) -> TranscriptionResult:
+    """Map a validated SttResponse (ok=True, _enforce_success_invariant passed) to TranscriptionResult."""
+    return TranscriptionResult(
+        text=resp.text,  # type: ignore[arg-type]  # narrowed by _enforce_success_invariant
+        language=resp.language,  # type: ignore[arg-type]
+        duration_seconds=resp.duration_seconds,  # type: ignore[arg-type]
+    )
+```
+
+Replace inline construction in `transcribe()`:
+- Remove the three `assert resp.* is not None` lines.
+- Replace the `result = TranscriptionResult(...)` block with `result = _stt_result_from_wire(resp)`.
+
+### Mapper in `lyra/nats/nats_tts_client.py`
+
+Add after imports, before `NatsTtsClient`:
+
+```python
+def _tts_result_from_wire(resp: TtsResponse, audio_bytes: bytes) -> SynthesisResult:
+    """Map a validated TtsResponse (ok=True, _enforce_success_invariant passed) + decoded audio to SynthesisResult."""
+    return SynthesisResult(
+        audio_bytes=audio_bytes,
+        mime_type=resp.mime_type,  # type: ignore[arg-type]  # narrowed by _enforce_success_invariant
+        duration_ms=resp.duration_ms,  # type: ignore[arg-type]
+        waveform_b64=resp.waveform_b64,
+    )
+```
+
+Replace inline construction in `synthesize()`:
+- Remove the three `assert resp.* is not None` lines.
+- Replace the `audio_bytes = base64.b64decode(resp.audio_b64)` + `return SynthesisResult(...)` block with:
+  ```python
+  audio_bytes = base64.b64decode(resp.audio_b64)  # type: ignore[arg-type]
+  self._cb.record_success()
+  return _tts_result_from_wire(resp, audio_bytes)
+  ```
+
+**Rationale for keeping mappers in NATS client files (not `core/ports/`):** The mappers reference `SttResponse`/`TtsResponse` (wire types from `roxabi_contracts`). Placing them in `core/` would import wire types into the domain port layer. Mappers belong in `lyra.nats`, which owns the boundary.
+
+---
+
+## 6. Import Rewrite Plan
+
+### Source files
+
+| File | Current import | New import |
+|------|---------------|------------|
+| `src/lyra/core/ports/stt.py` | `from lyra.stt import TranscriptionResult` (TYPE_CHECKING) | Deleted — `TranscriptionResult` defined inline |
+| `src/lyra/core/ports/tts.py` | `from lyra.tts import SynthesisResult` (TYPE_CHECKING) | Deleted — `SynthesisResult` defined inline |
+| `src/lyra/core/agent/agent.py` | `from lyra.stt import STTProtocol` (TYPE_CHECKING) | `from lyra.core.ports.stt import STTProtocol` |
+| `src/lyra/core/agent/agent.py` | `from lyra.tts import TtsProtocol` (TYPE_CHECKING) | `from lyra.core.ports.tts import TtsProtocol` |
+| `src/lyra/core/hub/middleware/middleware_stt.py` | `from lyra.stt import STTNoiseError, STTUnavailableError` (lazy, inside `except`) | `from lyra.core.ports.stt import STTNoiseError, STTUnavailableError` — hoisted to module-level (cycle workaround no longer needed; `core/hub/middleware → core/ports` is canonical) |
+| `src/lyra/agents/simple_agent.py` | `from lyra.stt import STTProtocol` (TYPE_CHECKING) | `from lyra.core.ports.stt import STTProtocol` |
+| `src/lyra/agents/simple_agent.py` | `from lyra.tts import TtsProtocol` (TYPE_CHECKING) | `from lyra.core.ports.tts import TtsProtocol` |
+| `src/lyra/agents/simple_agent_prompts.py` | `from lyra.stt import STTProtocol, TranscriptionResult` (TYPE_CHECKING) | `from lyra.core.ports.stt import STTProtocol, TranscriptionResult` |
+| `src/lyra/agents/simple_agent_prompts.py` | `from lyra.stt import is_whisper_noise, mime_from_suffix` (lazy inside fn) | `from lyra.core.ports.stt import is_whisper_noise, mime_from_suffix` |
+| `src/lyra/bootstrap/factory/agent_factory.py` | `from lyra.stt import STTProtocol` | `from lyra.core.ports.stt import STTProtocol` |
+| `src/lyra/bootstrap/factory/agent_factory.py` | `from lyra.tts import TtsProtocol` | `from lyra.core.ports.tts import TtsProtocol` |
+| `src/lyra/bootstrap/factory/hub_builder.py` | `from lyra.stt import STTProtocol` | `from lyra.core.ports.stt import STTProtocol` |
+| `src/lyra/bootstrap/factory/hub_builder.py` | `from lyra.tts import TtsProtocol` | `from lyra.core.ports.tts import TtsProtocol` |
+| `src/lyra/nats/nats_stt_client.py` | `from lyra.stt import STTNoiseError, STTUnavailableError, TranscriptionResult, is_whisper_noise` | `from lyra.core.ports.stt import STTNoiseError, STTUnavailableError, TranscriptionResult, is_whisper_noise` |
+| `src/lyra/nats/nats_tts_client.py` | `from lyra.tts import SynthesisResult, TtsUnavailableError` | `from lyra.core.ports.tts import SynthesisResult, TtsUnavailableError` |
+
+### Test files
+
+| File | Current import | New import |
+|------|---------------|------------|
+| `tests/fixtures/fake_drivers.py` | `from lyra.stt import TranscriptionResult` | `from lyra.core.ports.stt import TranscriptionResult` |
+| `tests/fixtures/fake_drivers.py` | `from lyra.tts import SynthesisResult` | `from lyra.core.ports.tts import SynthesisResult` |
+| `tests/fixtures/test_fake_drivers.py` | `from lyra.stt import TranscriptionResult` | `from lyra.core.ports.stt import TranscriptionResult` |
+| `tests/fixtures/test_fake_drivers.py` | `from lyra.tts import SynthesisResult` | `from lyra.core.ports.tts import SynthesisResult` |
+| `tests/core/test_audio_pipeline_tts.py` | `from lyra.stt import STTProtocol` (TYPE_CHECKING) | `from lyra.core.ports.stt import STTProtocol` |
+| `tests/core/test_audio_pipeline_tts.py` | `from lyra.tts import SynthesisResult` (lazy, 3 sites) | `from lyra.core.ports.tts import SynthesisResult` |
+| `tests/core/test_audio_pipeline_tts.py` | `from lyra.tts import TtsUnavailableError` (lazy, 2 sites) | `from lyra.core.ports.tts import TtsUnavailableError` |
+| `tests/core/hub/test_message_pipeline_stt.py` | `from lyra.stt import STTNoiseError` (lazy) | `from lyra.core.ports.stt import STTNoiseError` |
+| `tests/core/hub/test_message_pipeline_stt.py` | `from lyra.stt import STTUnavailableError` (lazy) | `from lyra.core.ports.stt import STTUnavailableError` |
+| `tests/core/test_hub_streaming.py` | `from lyra.tts import TtsProtocol` | `from lyra.core.ports.tts import TtsProtocol` |
+| `tests/agents/conftest.py` | `from lyra.stt import STTProtocol, TranscriptionResult` | `from lyra.core.ports.stt import STTProtocol, TranscriptionResult` |
+| `tests/agents/test_simple_agent_stt_cleanup.py` | `from lyra.stt import TranscriptionResult` | `from lyra.core.ports.stt import TranscriptionResult` |
+| `tests/agents/test_simple_agent_stt_responses.py` | `from lyra.stt import TranscriptionResult` | `from lyra.core.ports.stt import TranscriptionResult` |
+| `tests/agents/test_simple_agent_stt_text.py` | `from lyra.stt import TranscriptionResult` | `from lyra.core.ports.stt import TranscriptionResult` |
+| `tests/agents/test_voice_command.py` (moved from `tests/tts/`) | `from lyra.tts import TtsProtocol` | `from lyra.core.ports.tts import TtsProtocol` |
+| `tests/nats/test_nats_stt_client.py` | `from lyra.stt import STTNoiseError, STTUnavailableError` | `from lyra.core.ports.stt import STTNoiseError, STTUnavailableError` |
+| `tests/nats/test_nats_tts_client.py` | `from lyra.tts import TtsUnavailableError` | `from lyra.core.ports.tts import TtsUnavailableError` |
+| `tests/tts/test_tts_config.py` | `from lyra.tts import TTSConfig, load_tts_config` | **deleted with file** |
+
+### Cyclic-import risk
+
+`core/ports/stt.py` after the move: stdlib + pydantic only. No inbound lyra imports. Zero cycle risk.
+
+`core/ports/tts.py` after the move: stdlib + pydantic + `lyra.core.agent.agent_config.AgentTTSConfig` (TYPE_CHECKING, already present). No new cycle.
+
+`middleware_stt.py`: hoisting the import from lazy to module-level is safe — `core/hub/middleware → core/ports` is the canonical inward direction. The lazy form was a workaround for the old `lyra.stt → core/ports/stt` re-export cycle, which no longer exists.
+
+`lyra.nats.tts_engine_selector`: imports `lyra.core.agent.agent_config.AgentTTSConfig` via TYPE_CHECKING. `lyra.nats → lyra.core` is permitted.
+
+---
+
+## 7. CLAUDE.md Updates
+
+### Delete
+
+- `src/lyra/stt/CLAUDE.md` — deleted with the package.
+
+### Root `CLAUDE.md` — hygiene table
+
+Remove the row:
+```
+| `src/lyra/stt/CLAUDE.md` | STT module (noise detection, MIME helper, errors) |
+```
+
+(No `src/lyra/tts/CLAUDE.md` row exists in the root table.)
+
+### `src/lyra/core/CLAUDE.md`
+
+Update the domain ports description. Replace any text describing `ports/stt.py` and `ports/tts.py` as "pure Protocol definitions" with:
+
+> `ports/stt.py` — `STTProtocol` + `TranscriptionResult` + `STTUnavailableError` + `STTNoiseError` + `is_whisper_noise` + `mime_from_suffix`. Pure: stdlib + pydantic only.
+> `ports/tts.py` — `TtsProtocol` + `SynthesisResult` + `TtsUnavailableError`. Pure: stdlib + pydantic + `AgentTTSConfig` (TYPE_CHECKING).
+
+### `src/lyra/nats/CLAUDE.md`
+
+Add a section or extend the invariants block:
+
+> **TTS adapter helpers** (`tts_engine_selector.py`, `tts_text_normalization.py`) — voiceCLI-specific kwarg building and text normalization. Adapter concerns for the TTS wire protocol; sole consumers are `nats_tts_client.py` and the NATS test suite. `build_generate_kwargs` is the primary export; `normalize_text_for_tts` is a pure text preprocessor. `TTSConfig`/`load_tts_config` were deleted (dead code).
+
+---
+
+## 8. Validation Gates
+
+### `.importlinter` changes required
+
+**`[importlinter:contract:shared-modules-independence]`** — remove `lyra.stt` and `lyra.tts` from `modules`; remove these three `ignore_imports` entries:
+
+```
+lyra.tts.engine_selector -> lyra.core.agent.agent_config
+lyra.core.agent.agent -> lyra.stt
+lyra.core.agent.agent -> lyra.tts
+```
+
+Leave the unrelated `lyra.core.processors.processor_registry -> lyra.integrations.base` entry.
+
+**`[importlinter:contract:shared-modules-upper-boundary]`** — remove `lyra.stt` and `lyra.tts` from `source_modules`.
+
+**`[importlinter:contract:clean-architecture-layers]`** — no change. Neither `lyra.stt` nor `lyra.tts` appears in the `layers` list.
+
+### `file_length` gate (300-line max)
+
+Projected line counts:
+
+- `core/ports/stt.py`: ~23 lines current + ~50 lines added (TranscriptionResult, 2 errors, constant, 2 functions, mime dict) = ~73 lines. Safe.
+- `core/ports/tts.py`: ~33 lines current + ~20 lines added (SynthesisResult, TtsUnavailableError) = ~53 lines. Safe.
+- `nats/nats_stt_client.py`: 270 lines + ~8 lines (mapper fn) − ~8 lines (3 asserts + old inline block) ≈ 270 lines. Safe.
+- `nats/nats_tts_client.py`: 266 lines + ~8 lines (mapper fn) − ~8 lines (asserts + old inline block) ≈ 266 lines. Safe.
+- `nats/tts_engine_selector.py`: ~107 lines (current `engine_selector.py` minus `TTSConfig` + `load_tts_config`). Safe.
+- `nats/tts_text_normalization.py`: ~49 lines. Safe.
+
+No exemption changes needed.
+
+### `folder_size` gate (12-file max)
+
+Verify `src/lyra/nats/` file count before submitting PR:
+
+```sh
+ls src/lyra/nats/*.py | wc -l
+```
+
+**Current count: 11 `.py` files.** Adding `tts_engine_selector.py` + `tts_text_normalization.py` → 13, exceeding the 12-file limit. The fixer must add an entry to `tools/folder_exemptions.txt`:
+
+```
+src/lyra/nats  # issue #1221 — NATS subsystem owns transport + per-protocol client + per-protocol helper modules; pattern intentional, see ADR-049
+```
+
+Reference issue #1221 per the existing convention in `folder_exemptions.txt`.
+
+`src/lyra/core/ports/` gains no new files. `src/lyra/` loses two subdirectories; no folder-size effect.
+
+### `duplicate_test_basenames` gate
+
+`test_voice_command.py` moves from `tests/tts/` to `tests/agents/`. Verify no existing `tests/agents/test_voice_command.py` before moving. If a collision exists, rename the moved file to `test_voice_tts_command.py`.
+
+---
+
+## 9. Phasing / Commit Plan
+
+Single PR. No shims allowed; all consumers must be updated atomically. All work in an isolated worktree.
+
+**Precondition (before any edits):** Run and confirm both commands return empty output. The patterns are anchored to import / assignment / call syntax to avoid false positives on docstrings and substring matches (e.g. `AgentSTTConfig` contains `STTConfig`; `agent_config.py:191` has a docstring mentioning `STTConfig`):
+
+```sh
+# Live callers of TTSConfig / load_tts_config (assignment, import, or call syntax)
+grep -rnP "(?:^\s*(?:from|import)\s.*\b(TTSConfig|load_tts_config)\b)|(?:\b(TTSConfig|load_tts_config)\s*\()" src/ plugins/ \
+  | grep -v "engine_selector\.py\|tts/__init__\.py\|AgentTTSConfig"
+
+# Live callers of STTConfig / load_stt_config (assignment, import, or call syntax)
+grep -rnP "(?:^\s*(?:from|import)\s.*\b(STTConfig|load_stt_config)\b)|(?:\b(STTConfig|load_stt_config)\s*\()" src/ plugins/ \
+  | grep -v "stt/__init__\.py\|AgentSTTConfig"
+```
+
+`plugins/` is included so a plugin importing the dead config would also halt. If either command returns hits, halt: one of the "confirmed dead" symbols has a live caller and this spec needs amendment before proceeding.
+
+**Commit sequence:**
+
+1. Expand `core/ports/stt.py`: add `TranscriptionResult`, `STTUnavailableError`, `STTNoiseError`, `_WHISPER_NOISE_TOKENS`, `is_whisper_noise`, `mime_from_suffix`; remove TYPE_CHECKING cross-reference to `lyra.stt`. Do not add `STTConfig` or `load_stt_config`.
+
+2. Expand `core/ports/tts.py`: add `SynthesisResult`, `TtsUnavailableError`; remove TYPE_CHECKING cross-reference to `lyra.tts`. Do not add `TTSConfig` or `load_tts_config`.
+
+3. Create `nats/tts_engine_selector.py`: copy `LANG_ISO_TO_QWEN`, `normalize_language`, `build_generate_kwargs` from `engine_selector.py`. Omit `TTSConfig` and `load_tts_config`.
+
+4. Create `nats/tts_text_normalization.py`: copy `normalize_text_for_tts` verbatim from `text_normalization.py`.
+
+5. Rewrite `nats/nats_stt_client.py`: change `from lyra.stt import ...` to `from lyra.core.ports.stt import ...`; add `_stt_result_from_wire`; replace **only the `result = TranscriptionResult(...)` block (current lines 235-239) + the preceding asserts** with `result = _stt_result_from_wire(resp)`. Leave `self._cb.record_success()` (current line 240) and everything after it in place — `record_success()` is the start of the post-mapping success path, NOT part of the mapping itself.
+
+6. Rewrite `nats/nats_tts_client.py`: change `from lyra.tts import ...` to `from lyra.core.ports.tts import ...`; add `_tts_result_from_wire`; replace inline construction + asserts with `return _tts_result_from_wire(resp, audio_bytes)`.
+
+7. Rewrite all other source consumers: `core/hub/middleware/middleware_stt.py` (hoist lazy import to module-level), `core/agent/agent.py`, `agents/simple_agent.py`, `agents/simple_agent_prompts.py` (both the TYPE_CHECKING block and the lazy import inside `_build_llm_text_from_audio`), `bootstrap/factory/agent_factory.py`, `bootstrap/factory/hub_builder.py`.
+
+8. Rewrite all test files per the table in §6. Move `tests/tts/test_voice_command.py` to `tests/agents/test_voice_command.py` (verify no basename collision first).
+
+9. Delete `src/lyra/stt/`, `src/lyra/tts/`, `tests/tts/` (including `test_tts_config.py`, `conftest.py`, `__init__.py`).
+
+10. Update `.importlinter`: remove `lyra.stt`/`lyra.tts` entries from `shared-modules-independence` and `shared-modules-upper-boundary` per §8.
+
+11. Update `src/lyra/nats/CLAUDE.md`, `src/lyra/core/CLAUDE.md`, root `CLAUDE.md` hygiene table per §7.
+
+12. Run `uv run ruff check --fix . && uv run pyright && uv run pytest`. Fix any type-narrowing complaints in the mappers with `cast(str, resp.field)` + comment. All tests must pass before committing.
+
+---
+
+## 10. Success Criteria
+
+- [ ] `src/lyra/stt/` directory does not exist
+- [ ] `src/lyra/tts/` directory does not exist
+- [ ] `tests/tts/` directory does not exist
+- [ ] `src/lyra/core/ports/stt.py` exports `STTProtocol`, `TranscriptionResult`, `STTUnavailableError`, `STTNoiseError`, `is_whisper_noise`, `mime_from_suffix`
+- [ ] `src/lyra/core/ports/tts.py` exports `TtsProtocol`, `SynthesisResult`, `TtsUnavailableError`
+- [ ] `src/lyra/nats/tts_engine_selector.py` exists and exports `LANG_ISO_TO_QWEN`, `normalize_language`, `build_generate_kwargs` (no `TTSConfig`, no `load_tts_config`)
+- [ ] `src/lyra/nats/tts_text_normalization.py` exists and exports `normalize_text_for_tts`
+- [ ] `src/lyra/nats/nats_stt_client.py` defines `_stt_result_from_wire` and uses it for response construction
+- [ ] `src/lyra/nats/nats_tts_client.py` defines `_tts_result_from_wire` and uses it for response construction
+- [ ] Zero imports of `lyra.stt` or `lyra.tts` remain in `src/`, `tests/`, or `plugins/` (verified by `grep -rn "from lyra\.\(stt\|tts\)\|import lyra\.\(stt\|tts\)" src/ tests/ plugins/`)
+- [ ] `.importlinter` no longer references `lyra.stt` or `lyra.tts` in any contract
+- [ ] `uv run lint-imports` passes
+- [ ] `uv run pyright` passes with zero errors
+- [ ] `uv run pytest` passes (all tests green)
+- [ ] `uv run ruff check .` passes
+- [ ] File-length gate (300-line max) passes for every modified/new file
+- [ ] Folder-size gate (12-file max) passes for `src/lyra/nats/` and `src/lyra/core/ports/`
+- [ ] Root `CLAUDE.md`, `src/lyra/core/CLAUDE.md`, `src/lyra/nats/CLAUDE.md` updated per §7; `src/lyra/stt/CLAUDE.md` deleted
+- [ ] `tests/agents/test_voice_command.py` exists (moved from `tests/tts/`) with imports rewritten
+- [ ] Single atomic PR delivered against `staging`: no `__init__.py` re-exports, no deprecation shims, no back-compat aliases anywhere in `src/lyra/` after merge (verified by `find src/lyra -name __init__.py | xargs grep -l "lyra\.\(stt\|tts\)"` → empty)

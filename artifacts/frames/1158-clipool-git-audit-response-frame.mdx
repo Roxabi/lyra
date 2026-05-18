@@ -48,7 +48,7 @@ Per-child realignment:
 |---|---|---|
 | #1149 | "Trust by path" (`/projects/*` wildcard) → "Trust by ownership" | Quadlet `Volume=...:idmap` aligns container uid 1500 ↔ host uid 1000 at kernel level; wildcard becomes redundant and is deleted; git's native ownership check is restored as a meaningful boundary |
 | #1150 | "All commits = single bot identity" → "Per-agent / per-session identity" | Inject `GIT_COMMITTER_*` per subprocess from agent profile (`~/.lyra/auth.db`); append `Lyra-Session-Id` / `Lyra-Agent` trailers; GitHub App push identity unchanged — this is human-readable provenance, not auth |
-| #1151 | "Reactive token mint, hope for the best" → "Time-horizon guarantee" | Refresh loop targets a horizon (mint when <15min TTL); every dispenser read returns ≥15min TTL by invariant, not by hope; rate limiter semantics change from "brake on demand" to "minimum mint cadence floor" |
+| #1151 | "Reactive token mint, hope for the best" → "Time-horizon guarantee" | Lazy refresh at the dispenser: every read checks cached TTL and mints synchronously under a lock when TTL <15min; background refresh loop deleted; rate limiter repurposed as an abuse floor (min spacing between mints), not a demand brake |
 
 ## Children — what each realigns
 
@@ -72,9 +72,9 @@ The wildcard suppresses git's ownership check for everything under `/projects`. 
 
 **Trust grant:** "reactive token mint, tolerate expiry mid-operation" → "≥15min TTL by invariant at every dispenser read."
 
-`src/lyra/tools/gh_token/refresh.py` gains a horizon-based refresh loop: it mints proactively when remaining TTL drops below 15min, not on failure. `src/lyra/tools/gh_token/dispenser.py` enforces the invariant — a token returned to callers always has ≥15min remaining. `src/lyra/tools/gh_token/rate_limit.py` semantics change from "brake on excess demand" to "minimum mint cadence floor," preventing churn on the refresh loop itself.
+`src/lyra/tools/gh_token/dispenser.py` enforces the invariant on the read path: every `get()` checks cached TTL and, if <15min, mints a fresh token synchronously before returning. A single in-process lock around the mint serializes concurrent callers (thundering-herd guard) so a near-expiry window only triggers one GitHub API call. `src/lyra/tools/gh_token/rate_limit.py` is repurposed as an abuse floor (~10s minimum spacing between mints) to catch pathological churn — it is no longer a demand brake. `src/lyra/tools/gh_token/refresh.py` (background refresh loop) is **deleted**; the dispenser owns the invariant entirely. Tradeoff: the first op after long idle pays a synchronous mint (~1–2s) instead of a hidden background one — acceptable next to typical clipool op durations.
 
-**Deliverable:** updated `dispenser.py`, `refresh.py`, `rate_limit.py`.
+**Deliverable:** updated `dispenser.py` (TTL check + lock + invariant), repurposed `rate_limit.py` (abuse floor), deleted `refresh.py`, clipool bootstrap wiring removes refresh-loop startup.
 
 ## Approach (shared)
 
@@ -91,7 +91,7 @@ LAYER                  │ TODAY                          │ TARGET
 6. Syncthing M₁↔M₂     │ sees uid drift on writes       │ sees uid 1000 only (clean)
 7. Trust surface       │ "trust by path"                │ "trust by ownership"
 8. Commit identity     │ single bot, all sessions       │ per-agent, per-session attribution
-9. Token TTL guarantee │ best-effort, may expire mid-op │ ≥15min horizon by invariant
+9. Token TTL guarantee │ best-effort, may expire mid-op │ ≥15min by invariant (lazy at dispenser)
 ```
 
 Rows 1–7: #1149. Row 8: #1150. Row 9: #1151.

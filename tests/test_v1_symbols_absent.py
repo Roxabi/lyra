@@ -24,9 +24,7 @@ SEARCH_ROOTS = ("src", "tests", "packages")
 SELF_PATH = Path(__file__).relative_to(REPO_ROOT).as_posix()
 
 # (label, regex) pairs. Each regex must match a *live* usage, not a history reference.
-_RECAP_IMPORT = (
-    r"^\s*(from\s+\S*tool_recap_format|import\s+\S*tool_recap_format)"
-)
+_RECAP_IMPORT = r"^\s*(from\s+\S*tool_recap_format|import\s+\S*tool_recap_format)"
 _TOOL_SUMMARY_IMPORT = (
     r"^\s*from\s+\S+\s+import\s+(?:[^,#\n]*,\s*)*ToolSummaryRenderEvent\b"
 )

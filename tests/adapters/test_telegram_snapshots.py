@@ -100,7 +100,7 @@ class TestTelegramSnapshots:
           TextDelta("Tests passed."), TextEnd, RunFinished
 
         No ToolSummaryRenderEvent in stream (removed in Slice 5).
-        edit_trace must NOT be called. Final text delivered via placeholder edit.
+        Final text delivered via placeholder edit.
         """
         adapter, bot = _make_adapter_with_bot()
         msg = _make_telegram_message()
@@ -153,9 +153,7 @@ class TestTelegramSnapshots:
             # then RunError post-finally. build_display_text consults
             # is_error_pending at delivery, so order does not matter.
             yield TextEndRenderEvent(message_id="msg-1")
-            yield RunErrorRenderEvent(
-                run_id="r1", message="model_error", code=None
-            )
+            yield RunErrorRenderEvent(run_id="r1", message="model_error", code=None)
 
         await adapter.send_streaming(msg, _events())
 

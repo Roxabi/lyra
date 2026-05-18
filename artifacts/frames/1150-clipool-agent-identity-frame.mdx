@@ -1,0 +1,54 @@
+---
+title: Propagate agent identity to git committer
+issue: 1150
+parent: 1158
+status: approved
+tier: F-lite
+date: 2026-05-18
+---
+
+## Problem
+
+Every commit produced inside the clipool container today attributes to a single image-baked identity (`lyra[bot] <lyra-bot@users.noreply.github.com>`), regardless of which agent profile (`agent: research-assistant`, `agent: backend-dev`, …) or which Lyra session triggered the work. The identity is hardcoded in `deploy/lyra-gh/git.config.tmpl` and applied uniformly by `src/lyra/adapters/clipool/clipool_worker.py` when spawning Claude subprocesses.
+
+Concrete consequence: a regression introduced by one session/agent cannot be traced back from `git log` alone. Audit trail collapses to a single "who" — the bot — and the actual provenance (session id, agent name) lives only in NATS/runtime logs that aren't joined to commits.
+
+This is one of three children of #1158 (CLIpool git audit, Gap 2/6). The audit reframed the trust model: the trust boundary has migrated from "trust Claude" to "trust what Claude can prove provenance of" — and provenance must be visible at the commit layer, not buried in runtime logs.
+
+## Who
+
+- **Primary:** Reviewers and maintainers debugging a regression from `git log` / GitHub PR history — they need session attribution without cross-referencing NATS topics or container logs.
+- **Secondary:** Future audit tooling (compliance review, incident postmortem) that ingests commit metadata as the canonical attribution source.
+
+## Constraints
+
+- GitHub App **push** identity is unchanged — this is human-readable provenance via `committer` + trailers, ¬an auth-layer change.
+- Agent profile lives in `~/.lyra/auth.db` (see `docs/agent-management.md`); loader already exists.
+- NATS `lyra.clipool.cmd` envelope may or may not already carry session metadata — contract may need extension (open question).
+- F-lite scope: clipool adapter only; ¬cross-process refactor; ¬new packages.
+
+## Out of Scope
+
+- Push auth identity change (GitHub App stays).
+- Supervisord-era deploy paths (Quadlet is strategic target — see #1158 parent).
+- Sibling audit gaps #1149 (safe.directory / idmap) and #1151 (token TTL floor) — independent children of #1158.
+- Any UI/cockpit surface for browsing per-session commits.
+
+## Premise Validity
+
+**Success in 6 months:** Every commit produced by a Lyra clipool session carries (a) a `committer` identity distinct per agent profile and (b) trailers `Lyra-Session-Id: <uuid>` and `Lyra-Agent: <name>` in the commit message. Picking any recent regression PR, a reviewer can identify the originating session in one `git log --format='%cn %ce %(trailers)'` query.
+
+**Failure in 6 months:** ≥1 production-affecting regression lands on `main` for which the originating session/agent cannot be identified from commit metadata alone after 2 sprint cycles of the change being deployed. Falsifiable: count of such incidents > 0.
+
+**Simplest alternative:** Pin a static committer identity per **worker** (bot-1, bot-2, …) at container deploy time — no env injection, no profile loader integration.
+**Why not simplest:** Workers in the clipool are pooled and reused across agents and sessions within their lifecycle; pinning identity at the container/worker layer attributes commits to "which slot ran the job," not to "which agent profile authored it" — which is the only signal a reviewer can act on.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (clipool adapter + git config template), no new arch. ≈3–5 files touched with possible NATS contract bump.
+
+Signals observed:
+- Single domain (clipool adapter / deploy template).
+- Body lists 3–4 concrete files; loader already exists.
+- One genuine open question (NATS envelope vs explicit env injection) — resolved in `/spec`.
+- Issue label `size:F-lite` confirms.

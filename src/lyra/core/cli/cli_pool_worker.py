@@ -26,7 +26,7 @@ from .cli_pool_entry import _ProcessEntry
 from .cli_protocol_types import _read_stderr_snippet, build_cmd
 
 if TYPE_CHECKING:
-    from .audit_sink import AuditSink
+    from lyra.core.ports.audit_sink import AuditSink
 
 # Re-export so existing `from .cli_pool_worker import _ProcessEntry` keeps working.
 __all__ = ["_ProcessEntry", "CliPoolWorkerMixin", "_LYRA_ROOT"]

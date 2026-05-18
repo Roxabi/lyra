@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .command_parser import CommandContext
 
 BUNDLED_PATTERNS_CONFIG = (
-    Path(__file__).resolve().parent.parent.parent / "config" / "patterns.toml"
+    Path(__file__).resolve().parent.parent.parent / "data" / "patterns.toml"
 )
 
 BARE_URL_RE: re.Pattern[str] = re.compile(r"^https?://\S+$")

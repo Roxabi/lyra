@@ -1,3 +1,0 @@
-2026-05-02 12:00:00 lyra.llm.driver: METRIC worker_error_populated_total domain=llm count=1
-2026-05-02 12:00:01 lyra.llm.driver: METRIC worker_error_populated_total domain=llm count=1
-2026-05-02 12:00:02 lyra.core.processors: METRIC worker_error_received_total code=transport.timeout domain=llm count=1

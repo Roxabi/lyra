@@ -1,3 +1,0 @@
-2026-05-02 12:00:00 lyra.adapter.clipool: METRIC worker_error_populated_total domain=cli count=1
-2026-05-02 12:00:01 lyra.adapter.clipool: METRIC worker_error_populated_total domain=cli count=1
-2026-05-02 12:00:02 lyra.core.processors: METRIC worker_error_received_total code=cli.session_lost domain=cli count=1

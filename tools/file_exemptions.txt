@@ -9,7 +9,7 @@ src/lyra/agents/simple_agent.py  # 316 lines — DEBT:file-exemptions — #1008 
 src/lyra/bootstrap/standalone/adapter_standalone.py  # 301 lines — DEBT:file-exemptions — #1016 WorkerError startup version log
 src/lyra/core/processors/stream_processor.py  # 630 lines — DEBT:file-exemptions — #1016 WorkerError extractor + #1098 Run lifecycle + #1101 Reasoning emission (cleanup in Slice 5 / #1102)
 src/lyra/adapters/shared/_shared_streaming_emitter.py  # 465 lines — DEBT:file-exemptions — #1098 Run lifecycle + #1101 PlatformCallbacks.edit_reasoning + dispatch + #1214 T5b _ensure_trace_obj helper (cleanup deferred)
-src/lyra/adapters/clipool/clipool_worker.py  # 382 lines — DEBT:file-exemptions — #1016 WorkerError population + exception classifier; #1215 +9 lines (sanitization log.warning + comments at 4 sites)
+src/lyra/adapters/clipool/clipool_worker.py  # 387 lines — DEBT:file-exemptions — #1016 WorkerError population + exception classifier; #1215 +9 lines (sanitization log.warning + comments at 4 sites); #1150 +5 lines (agent identity kwargs forwarded to pool.send)
 src/lyra/core/cli/cli_streaming_parser.py  # 336 lines — DEBT:file-exemptions — #1100 ToolCall streamed events + #1101 thinking-block recognition (cleanup in Slice 5 / #1102)
 src/lyra/core/messaging/render_events.py  # 359 lines — DEBT:file-exemptions — #1099 Text v2 triplet + #1101 Reasoning v2 triplet (refactor deferred to Slice 5 / #1102)
 src/lyra/adapters/telegram/telegram_outbound.py  # 376 lines — DEBT:file-exemptions — #1101 _render_reasoning closure + show_intermediate gate (cleanup in Slice 5 / #1102: extract shared reasoning helper)

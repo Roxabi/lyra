@@ -250,16 +250,12 @@ class CliNatsDriver(NatsDriverBase):
     ) -> dict:
         # Resolve agent identity from TraceContext (set by pool_processor_exec
         # before agent.process() is called, so it is always present here).
-        # agent_email is not yet modelled on AgentRow — stamp name only and warn
-        # so the git committer falls back to the image-baked template identity
-        # (pair-gate in CliPool._spawn requires both name+email).
+        # agent_email is not yet modelled on AgentRow; when absent the spawn-time
+        # merge in CliPool._spawn injects only the Lyra-Agent / Lyra-Session-Id
+        # trailers and leaves the committer identity as the image-baked template
+        # — a supported "trailers-only" attribution mode (#1150).
         _agent_name: str | None = TraceContext.get_agent_name() or None
         _agent_email: str | None = None
-        if _agent_name and not _agent_email:
-            log.warning(
-                "agent %r has no email — git committer falls back to template identity",
-                _agent_name,
-            )
         return CliCmdPayload(
             contract_version="1",
             trace_id=str(uuid4()),

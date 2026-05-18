@@ -52,8 +52,6 @@ def daemon_env(monkeypatch, tmp_path: Path) -> dict[str, Path]:
     monkeypatch.setenv("LYRA_GH_PEM_PATH", str(pem))
     monkeypatch.setenv("LYRA_GH_DISPENSER_SOCK", str(sock))
     monkeypatch.setenv("LYRA_GH_CACHE_PATH", str(cache))
-    monkeypatch.setenv("LYRA_GH_DISABLE_REFRESH", "1")  # default off in tests
-
     return {"pem": pem, "sock": sock, "cache": cache}
 
 
@@ -65,7 +63,6 @@ def test_load_config_happy_path(daemon_env: dict[str, Path]) -> None:
     assert cfg.app_id == "12345"
     assert cfg.install_id == "67890"
     assert cfg.pem_path == daemon_env["pem"]
-    assert cfg.disable_refresh is True
 
 
 def test_load_config_missing_app_id(monkeypatch, tmp_path: Path) -> None:
@@ -152,6 +149,57 @@ async def test_daemon_binds_socket_and_serves(
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task
+
+
+@pytest.mark.asyncio
+async def test_daemon_creates_exactly_one_task(
+    daemon_env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SC-7 invariant: run_daemon creates exactly one asyncio task (serve_forever).
+
+    No background refresh task must be created — token refresh is lazy/on-demand.
+    This test pins that invariant so adding a stray create_task() in run_daemon
+    would be caught immediately.
+    """
+    cfg = _load_config()
+
+    real_async_client = httpx.AsyncClient
+
+    def _client_factory(*args: object, **kwargs: object) -> httpx.AsyncClient:
+        kwargs["transport"] = _stub_transport()
+        return real_async_client(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("lyra.tools.gh_token.daemon.httpx.AsyncClient", _client_factory)
+
+    created_coro_names: list[str] = []
+    real_create_task = asyncio.create_task
+
+    def _tracking_create_task(coro, **_kwargs):  # type: ignore[no-untyped-def]
+        created_coro_names.append(coro.__name__)
+
+        # Wrap the coroutine in a task that cancels itself after one step so
+        # run_daemon's gather() returns promptly without hanging.
+        async def _short_circuit():  # type: ignore[return]
+            coro.close()
+            raise asyncio.CancelledError
+
+        return real_create_task(_short_circuit())
+
+    monkeypatch.setattr(
+        "lyra.tools.gh_token.daemon.asyncio.create_task", _tracking_create_task
+    )
+
+    # run_daemon will exit via CancelledError propagation from the gather.
+    with contextlib.suppress(asyncio.CancelledError):
+        await run_daemon(cfg)
+
+    assert len(created_coro_names) == 1, (
+        f"Expected exactly 1 asyncio.create_task() call in run_daemon, "
+        f"got {len(created_coro_names)}: {created_coro_names}"
+    )
+    assert created_coro_names[0] == "serve_forever", (
+        f"Expected the single task to be serve_forever, got {created_coro_names[0]!r}"
+    )
 
 
 @pytest.mark.asyncio

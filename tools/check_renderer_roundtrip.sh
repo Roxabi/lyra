@@ -28,9 +28,11 @@ Subcommands:
   lyra-acl   Render auth.conf via lyra-acl genkeys and parse with nats-server
   nats-conf  Parse deploy/nats/nats.conf + nats-container.conf with nats-server
   gen-certs  Run gen-certs.sh, verify cert chain with openssl, parse TLS stanza
+  self-test  Falsifiable self-test: constructs known-bad inputs and asserts each
+             invariant fires. nk must be on PATH. No nats-server required.
 
 Each subcommand writes scratch files to <tmpdir>; caller manages cleanup.
-nats-server must be on PATH.
+nats-server must be on PATH (not required for self-test).
 EOF
   exit 1
 }
@@ -52,6 +54,103 @@ require_nk() {
     echo "  Locally: install nkeys v0.4.15 from https://github.com/nats-io/nkeys/releases" >&2
     exit 1
   fi
+}
+
+# ── INVARIANT HELPERS ────────────────────────────────────────────────────────
+# Extracted from cmd_lyra_acl so cmd_self_test can call them directly with
+# crafted inputs. Each function reads auth.conf content from a variable and
+# seeds from a directory; exits non-zero if the invariant is violated.
+
+# check_nkey_lengths <content> — Invariant (a): all nkey values exactly 56 chars
+check_nkey_lengths() {
+  local content="$1"
+  local fail=0
+  local nkey_count=0
+  while IFS= read -r line; do
+    if [[ "${line}" =~ nkey:[[:space:]]*\"([^\"]+)\" ]]; then
+      nkey_count=$((nkey_count + 1))
+      local nkey="${BASH_REMATCH[1]}"
+      local nkey_len="${#nkey}"
+      if [[ "${nkey_len}" -ne 56 ]]; then
+        echo "error: nkey expected length 56, got ${nkey_len} at: ${line}" >&2
+        fail=1
+      fi
+    fi
+  done <<< "${content}"
+  if [[ "${nkey_count}" -eq 0 ]]; then
+    echo "error: no nkey lines found in auth.conf — format may have drifted (expected at least 1)" >&2
+    return 1
+  fi
+  [[ "${fail}" -eq 0 ]] || return 1
+  echo "    nkey lengths OK" >&2
+}
+
+# check_roundtrip <content> <seeds_dir> — Invariant (b): seed→pubkey round-trip
+# auth.conf structure (per-user block):
+#   nkey: "U..."        ← nkey comes FIRST
+#   # identity-name    ← identity comment comes AFTER the nkey line
+# Strategy: save the pending nkey when we see the nkey line; resolve it
+# against the seed when we see the identity comment on the next line.
+check_roundtrip() {
+  local content="$1"
+  local seeds_dir="$2"
+  local rt_fail=0
+  local rt_checked=0
+  local pending_nkey=""
+  while IFS= read -r line; do
+    if [[ "${line}" =~ nkey:[[:space:]]*\"([^\"]+)\" ]]; then
+      rt_checked=$((rt_checked + 1))
+      pending_nkey="${BASH_REMATCH[1]}"
+    elif [[ -n "${pending_nkey}" && "${line}" =~ ^[[:space:]]*#[[:space:]]+([a-z0-9_-]+)[[:space:]]*$ ]]; then
+      local identity="${BASH_REMATCH[1]}"
+      local seed_file="${seeds_dir}/${identity}.seed"
+      if [[ -f "${seed_file}" ]]; then
+        local computed_nkey
+        computed_nkey="$(nk -inkey "${seed_file}" -pubout | tr -d '[:space:]')"
+        if [[ "${computed_nkey}" != "${pending_nkey}" ]]; then
+          echo "error: seed→pubkey mismatch for '${identity}'" >&2
+          echo "  stored nkey:   ${pending_nkey}" >&2
+          echo "  computed nkey: ${computed_nkey}" >&2
+          rt_fail=1
+        fi
+      fi
+      pending_nkey=""
+    else
+      pending_nkey=""
+    fi
+  done <<< "${content}"
+  if [[ "${rt_checked}" -eq 0 ]]; then
+    echo "error: no nkey lines found in auth.conf — format may have drifted (expected at least 1)" >&2
+    return 1
+  fi
+  [[ "${rt_fail}" -eq 0 ]] || return 1
+  echo "    seed→pubkey round-trip OK" >&2
+}
+
+# check_no_embedded_newlines <content> — Invariant (c): no embedded newlines
+# Defends against the secondary failure mode from #1089: if a quoted value
+# spans multiple lines (e.g. nkey: "ABC\nDEF"), nats-server rejects the
+# config because the value contains a literal newline.
+check_no_embedded_newlines() {
+  local content="$1"
+  local nl_fail=0
+  local nl_checked=0
+  while IFS= read -r line; do
+    local stripped="${line#"${line%%[![:space:]]*}"}"  # ltrim
+    if [[ "${stripped}" == nkey:* ]]; then
+      nl_checked=$((nl_checked + 1))
+      if ! [[ "${stripped}" =~ ^nkey:[[:space:]]*\"[^\"]+\"[[:space:]]*$ ]]; then
+        echo "error: nkey line does not open and close quote on same line: ${line}" >&2
+        nl_fail=1
+      fi
+    fi
+  done <<< "${content}"
+  if [[ "${nl_checked}" -eq 0 ]]; then
+    echo "error: no nkey lines found in auth.conf — format may have drifted (expected at least 1)" >&2
+    return 1
+  fi
+  [[ "${nl_fail}" -eq 0 ]] || return 1
+  echo "    no embedded newlines in quoted strings OK" >&2
 }
 
 # ── SUBCOMMAND: lyra-acl ──────────────────────────────────────────────────────
@@ -105,100 +204,14 @@ cmd_lyra_acl() {
   local content
   content="$(cat "${auth_conf}")"
 
-  # ── Invariant (a): every nkey value must be exactly 56 characters ──────────
-  # nats-server rejects nkeys that are not valid Ed25519 public keys encoded
-  # in base32 (56 chars for a user key starting with 'U').
   echo "==> lyra-acl: checking nkey lengths (expected 56)" >&2
-  local fail=0
-  local nkey_count=0
-  while IFS= read -r line; do
-    # Extract value from: nkey: "UXXXXXXXXX..."
-    if [[ "${line}" =~ nkey:[[:space:]]*\"([^\"]+)\" ]]; then
-      nkey_count=$((nkey_count + 1))
-      local nkey="${BASH_REMATCH[1]}"
-      local nkey_len="${#nkey}"
-      if [[ "${nkey_len}" -ne 56 ]]; then
-        echo "error: nkey expected length 56, got ${nkey_len} at: ${line}" >&2
-        fail=1
-      fi
-    fi
-  done <<< "${content}"
-  if [[ "${nkey_count}" -eq 0 ]]; then
-    echo "error: no nkey lines found in auth.conf — format may have drifted (expected at least 1)" >&2
-    exit 1
-  fi
-  [[ "${fail}" -eq 0 ]] || exit 1
-  echo "    nkey lengths OK" >&2
+  check_nkey_lengths "${content}" || exit 1
 
-  # ── Invariant (b): seed→pubkey round-trip ──────────────────────────────────
-  # auth.conf structure (per-user block):
-  #   nkey: "U..."        ← nkey comes FIRST
-  #   # identity-name    ← identity comment comes AFTER the nkey line
-  # Strategy: save the pending nkey when we see the nkey line; resolve it
-  # against the seed when we see the identity comment on the next line.
-  # nk is guaranteed on PATH (require_nk was called at the top of cmd_lyra_acl).
   echo "==> lyra-acl: verifying seed→pubkey round-trip with nk" >&2
-  local rt_fail=0
-  local rt_checked=0
-  local pending_nkey=""
-  while IFS= read -r line; do
-    if [[ "${line}" =~ nkey:[[:space:]]*\"([^\"]+)\" ]]; then
-      # Save this nkey; the identity comment on the next line will resolve it.
-      rt_checked=$((rt_checked + 1))
-      pending_nkey="${BASH_REMATCH[1]}"
-    elif [[ -n "${pending_nkey}" && "${line}" =~ ^[[:space:]]*#[[:space:]]+([a-z0-9_-]+)[[:space:]]*$ ]]; then
-      # Identity comment immediately following a nkey line.
-      local identity="${BASH_REMATCH[1]}"
-      local seed_file="${seeds_dir}/${identity}.seed"
-      if [[ -f "${seed_file}" ]]; then
-        local computed_nkey
-        computed_nkey="$(nk -inkey "${seed_file}" -pubout | tr -d '[:space:]')"
-        if [[ "${computed_nkey}" != "${pending_nkey}" ]]; then
-          echo "error: seed→pubkey mismatch for '${identity}'" >&2
-          echo "  stored nkey:   ${pending_nkey}" >&2
-          echo "  computed nkey: ${computed_nkey}" >&2
-          rt_fail=1
-        fi
-      fi
-      pending_nkey=""
-    else
-      # Any other line resets the pending nkey (guards against stray matches).
-      pending_nkey=""
-    fi
-  done <<< "${content}"
-  if [[ "${rt_checked}" -eq 0 ]]; then
-    echo "error: no nkey lines found in auth.conf — format may have drifted (expected at least 1)" >&2
-    exit 1
-  fi
-  [[ "${rt_fail}" -eq 0 ]] || exit 1
-  echo "    seed→pubkey round-trip OK" >&2
+  check_roundtrip "${content}" "${seeds_dir}" || exit 1
 
-  # ── Invariant (c): no embedded newlines inside quoted strings ──────────────
-  # Defends against the secondary failure mode from #1089: if a quoted value
-  # spans multiple lines (e.g. nkey: "ABC\nDEF"), nats-server rejects the
-  # config because the value contains a literal newline. We check that every
-  # line starting with `nkey:` opens and closes its double-quote on the same
-  # line (i.e. the full value is inline, not multi-line).
   echo "==> lyra-acl: checking for embedded newlines in quoted strings" >&2
-  local nl_fail=0
-  local nl_checked=0
-  while IFS= read -r line; do
-    local stripped="${line#"${line%%[![:space:]]*}"}"  # ltrim
-    if [[ "${stripped}" == nkey:* ]]; then
-      nl_checked=$((nl_checked + 1))
-      # A well-formed nkey line starts with nkey: " and ends with "
-      if ! [[ "${stripped}" =~ ^nkey:[[:space:]]*\"[^\"]+\"[[:space:]]*$ ]]; then
-        echo "error: nkey line does not open and close quote on same line: ${line}" >&2
-        nl_fail=1
-      fi
-    fi
-  done <<< "${content}"
-  if [[ "${nl_checked}" -eq 0 ]]; then
-    echo "error: no nkey lines found in auth.conf — format may have drifted (expected at least 1)" >&2
-    exit 1
-  fi
-  [[ "${nl_fail}" -eq 0 ]] || exit 1
-  echo "    no embedded newlines in quoted strings OK" >&2
+  check_no_embedded_newlines "${content}" || exit 1
 
   echo "==> lyra-acl: all checks passed" >&2
 }
@@ -334,6 +347,102 @@ EOF
   echo "==> gen-certs: all checks passed" >&2
 }
 
+# ── SUBCOMMAND: self-test ─────────────────────────────────────────────────────
+# Falsifiable self-test: synthetically constructs known-bad inputs and calls
+# the invariant helper functions directly to assert each one fires as expected.
+#
+# Cases:
+#   (a) 62-char nkey → check_nkey_lengths fires
+#   (b) nkey with unclosed quote (embedded newline) → check_no_embedded_newlines fires
+#   (c) swapped nkey (different valid seed) → check_roundtrip fires
+#   (d) no nkey: lines at all → zero-match guard fires in all 3 checks
+#
+# Requires: nk on PATH (for case c to generate a second seed).
+# Does NOT require nats-server.
+cmd_self_test() {
+  local tmpdir="$1"
+  require_nk
+
+  local overall_fail=0
+
+  # _assert_check_fails: assert that calling a check_* function with given args
+  # exits non-zero AND writes expected_pattern to stderr.
+  _assert_check_fails() {
+    local case_name="$1"
+    local expected_pattern="$2"
+    shift 2
+    local stderr_file
+    stderr_file="$(mktemp)"
+    local rc=0
+    "$@" 2>"${stderr_file}" || rc=$?
+    if [[ "${rc}" -eq 0 ]]; then
+      echo "FAIL ${case_name}: expected non-zero exit, got 0" >&2
+      overall_fail=1
+    elif grep -qF "${expected_pattern}" "${stderr_file}"; then
+      echo "PASS ${case_name}" >&2
+    else
+      echo "FAIL ${case_name}: exit=${rc} but stderr did not contain '${expected_pattern}'" >&2
+      echo "  actual stderr:" >&2
+      sed 's/^/    /' "${stderr_file}" >&2
+      overall_fail=1
+    fi
+    rm -f "${stderr_file}"
+  }
+
+  # ── Prepare two seeds for case (c) ───────────────────────────────────────
+  # seed1 is the "correct" identity seed; seed2 is the "wrong" seed whose
+  # pubkey will be stored in auth.conf to trigger the round-trip mismatch.
+  local seed1_dir="${tmpdir}/seed1"
+  local seed2_dir="${tmpdir}/seed2"
+  mkdir -p "${seed1_dir}" "${seed2_dir}"
+  nk -gen user > "${seed1_dir}/testidentity.seed"
+  nk -gen user > "${seed2_dir}/testidentity.seed"
+  local pubkey2
+  pubkey2="$(nk -inkey "${seed2_dir}/testidentity.seed" -pubout | tr -d '[:space:]')"
+
+  # ── Case (a): 62-char nkey → check_nkey_lengths fires ───────────────────
+  local bad_62char="UAAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNN12"
+  local content_a
+  content_a="$(printf '      nkey: "%s"\n      # testidentity\n' "${bad_62char}")"
+  _assert_check_fails "case-a (62-char nkey)" "expected length 56" \
+    check_nkey_lengths "${content_a}"
+
+  # ── Case (b): unclosed quote → check_no_embedded_newlines fires ──────────
+  # printf writes a literal newline inside the nkey: value so the line does
+  # not close its double-quote — the invariant must detect this.
+  local content_b
+  content_b="$(printf '      nkey: "UAAA\n"\n      # testidentity\n')"
+  _assert_check_fails "case-b (embedded newline)" "does not open and close quote on same line" \
+    check_no_embedded_newlines "${content_b}"
+
+  # ── Case (c): swapped pubkey → check_roundtrip fires ─────────────────────
+  # auth.conf stores pubkey2, but seeds_dir has seed1's seed for testidentity.
+  local content_c
+  content_c="$(printf '      nkey: "%s"\n      # testidentity\n' "${pubkey2}")"
+  _assert_check_fails "case-c (swapped pubkey)" "seed→pubkey mismatch" \
+    check_roundtrip "${content_c}" "${seed1_dir}"
+
+  # ── Case (d): no nkey: lines → zero-match guard fires in all 3 checks ────
+  local content_d
+  content_d="$(printf 'authorization {\n  users [\n    { username: "testidentity" }\n  ]\n}\n')"
+  local dummy_seeds="${tmpdir}/dummy-seeds"
+  mkdir -p "${dummy_seeds}"
+  _assert_check_fails "case-d-length (no nkey lines)" "no nkey lines found" \
+    check_nkey_lengths "${content_d}"
+  _assert_check_fails "case-d-roundtrip (no nkey lines)" "no nkey lines found" \
+    check_roundtrip "${content_d}" "${dummy_seeds}"
+  _assert_check_fails "case-d-newlines (no nkey lines)" "no nkey lines found" \
+    check_no_embedded_newlines "${content_d}"
+
+  # ── Summary ──────────────────────────────────────────────────────────────
+  if [[ "${overall_fail}" -eq 0 ]]; then
+    echo "==> self-test: all cases passed" >&2
+  else
+    echo "==> self-test: FAILED — one or more cases did not behave as expected" >&2
+    exit 1
+  fi
+}
+
 # ── DISPATCH ──────────────────────────────────────────────────────────────────
 if [[ $# -lt 1 ]]; then
   usage
@@ -354,6 +463,10 @@ case "${SUBCOMMAND}" in
   gen-certs)
     [[ $# -ge 1 ]] || { echo "error: gen-certs requires <tmpdir>" >&2; usage; }
     cmd_gen_certs "$1"
+    ;;
+  self-test)
+    [[ $# -ge 1 ]] || { echo "error: self-test requires <tmpdir>" >&2; usage; }
+    cmd_self_test "$1"
     ;;
   --help|-h)
     usage

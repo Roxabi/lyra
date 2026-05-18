@@ -1,0 +1,59 @@
+---
+title: Renderer→consumer roundtrip tests + standards
+issue: 1091
+status: approved
+tier: F-lite
+date: 2026-05-18
+---
+
+## Problem
+
+Two prod incidents in 2026-Q2 share one pattern: a renderer (tool that writes a config file) produces output accepted at write-time but rejected by the downstream consumer when the service next restarts — sometimes hours or days later.
+
+| # | Renderer | Bug | Consumer | Bite latency |
+|---|---|---|---|---|
+| #1083 | Quadlet generator | inline `#` in `Volume=` value | `podman` | ~47 h |
+| #1089 | `lyra-acl genkeys --regen-authconf` | nkeys rendered at 62 chars (valid = 56) | `nats-server` | minutes (M₁ down 2026-05-06) |
+
+Audit shows the renderer→consumer roundtrip pattern already exists in 3 isolated silos (`test_parity_e2e.py`, `test_genkeys_modes.py::TestRenderedNkeyLength`, `.github/workflows/quadlet-lint.yml`) but is not generalized, not documented, and not applied to all known renderers in the repo. Three renderers currently have no roundtrip gate at all: `deploy/nats/nats.conf`, `deploy/nats/gen-certs.sh`, `deploy/lyra-monitor.{service,timer}`.
+
+The bite latency makes this a high-leverage gap: every incident costs hours of prod downtime that a CI parse-gate would have prevented in seconds.
+
+## Who
+
+- **Primary:** Lyra ops/on-call (Mickael) — bears the cost of reboot-time failures on M₁ (prod hub).
+- **Secondary:** Future contributors adding new config renderers — need a documented pattern so they don't reinvent it (or skip it).
+
+## Constraints
+
+- CI runner must have `nats-server`, `systemd-analyze`, `openssl`, `podman` available (apt-installable, pin versions, cacheable).
+- Pattern must be lightweight enough that contributors actually apply it — heavy fixtures defeat the purpose.
+- Standards doc must live under `docs/standards/` and cross-link from `docs/standards/testing.md` (existing testing conventions home).
+- No mocking the consumer — the whole point is to use the real downstream binary.
+- Pattern applies to both **generated** files (lyra-acl) and **static** files consumed by an external binary (nats.conf, lyra-monitor.service).
+
+## Out of Scope
+
+- Refactoring `test_parity_e2e.py` to use the new helper (it works as-is).
+- Roundtrip tests for renderers outside the NATS / podman / systemd surface (no other consumers identified yet; covered by the standards doc going forward).
+- Runtime layer probes (e.g. lyra-monitor service health checks — that's #1085).
+- Migrating the audit findings into individual follow-up issues — bundled here for F-lite scope.
+
+## Premise Validity
+
+**Success in 6 months:** Zero prod incidents caused by a renderer whose output is rejected by its downstream consumer. Every new config-generating tool merged after #1091 ships with its roundtrip test, enforced by the standards doc and reflected in PR reviews.
+
+**Failure in 6 months:** ≥1 new incident matching the #1083/#1089 pattern (renderer ships output accepted at write-time, rejected at reboot/restart by the consumer) after #1091 merges. OR: ≥2 new renderers added to the repo without a roundtrip test, with no reviewer flagging the omission.
+
+**Simplest alternative:** Continue writing ad-hoc regression tests reactively each time a renderer bug fires — same approach used for #1089's `TestRenderedNkeyLength`.
+**Why not simplest:** (a) keeps the cost of one prod incident per renderer baked in; (b) the pattern stays implicit, so the next contributor adding a renderer won't think of the test; (c) no shape consistency — each test reinvents the structure. A documented standard + generic CI workflow internalizes the lesson once.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (CI + tests + docs), no architectural unknowns, 4 renderers + 1 standards doc + 1 workflow file = ~6–10 files.
+
+Signals:
+- Single domain (CI/quality gates)
+- No new architecture — extends existing patterns (`quadlet-lint.yml` model)
+- Known consumers, known invariants
+- Existing `size:F-lite` label on issue

@@ -263,6 +263,6 @@ class NatsTtsClient:
         request = TtsRequest.model_validate(req_kwargs)
         payload = request.model_dump_json(exclude_none=True).encode("utf-8")
         resp = await self._walk_registry(payload)
-        audio_bytes = base64.b64decode(resp.audio_b64)  # type: ignore[arg-type]
+        audio_bytes = base64.b64decode(resp.audio_b64)  # type: ignore[arg-type]  # narrowed by _enforce_success_invariant
         self._cb.record_success()
         return _tts_result_from_wire(resp, audio_bytes)

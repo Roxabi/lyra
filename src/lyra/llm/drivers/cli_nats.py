@@ -18,6 +18,7 @@ from lyra.core.messaging.events import (
     TextLlmEvent,
     ToolUseLlmEvent,
 )
+from lyra.core.trace import TraceContext
 from lyra.llm.base import LlmResult
 from roxabi_contracts.cli.models import CliCmdPayload, CliControlCmd
 from roxabi_nats.driver_base import NatsDriverBase
@@ -247,6 +248,18 @@ class CliNatsDriver(NatsDriverBase):
         *,
         stream: bool,
     ) -> dict:
+        # Resolve agent identity from TraceContext (set by pool_processor_exec
+        # before agent.process() is called, so it is always present here).
+        # agent_email is not yet modelled on AgentRow — stamp name only and warn
+        # so the git committer falls back to the image-baked template identity
+        # (pair-gate in CliPool._spawn requires both name+email).
+        _agent_name: str | None = TraceContext.get_agent_name() or None
+        _agent_email: str | None = None
+        if _agent_name and not _agent_email:
+            log.warning(
+                "agent %r has no email — git committer falls back to template identity",
+                _agent_name,
+            )
         return CliCmdPayload(
             contract_version="1",
             trace_id=str(uuid4()),
@@ -257,6 +270,8 @@ class CliNatsDriver(NatsDriverBase):
             model_cfg=model_cfg.model_dump(exclude={"api_key"}),
             system_prompt=system_prompt,
             stream=stream,
+            agent_name=_agent_name,
+            agent_email=_agent_email,
         ).model_dump(mode="json")
 
     def _build_control_payload(

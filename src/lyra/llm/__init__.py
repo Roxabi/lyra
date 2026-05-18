@@ -1,5 +1,6 @@
+from lyra.core.ports.llm import LlmUnavailableError
+
 from .base import LlmProvider, LlmResult
-from .errors import LlmUnavailableError
 from .registry import ProviderRegistry
 
 __all__ = [

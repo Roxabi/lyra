@@ -275,9 +275,8 @@ cmd_gen_certs() {
   local gen_certs_sh="${REPO_ROOT}/deploy/nats/gen-certs.sh"
 
   echo "==> gen-certs: generating certs into ${tmpdir}" >&2
-  # gen-certs.sh skips the root check + chown calls when CERT_DIR is not the
-  # default /etc/nats/certs (i.e. it's a CI/dev tmpdir). No sudo needed.
-  CERT_DIR="${tmpdir}" bash "${gen_certs_sh}"
+  # Pass --unprivileged so gen-certs.sh skips root check + chown calls.
+  CERT_DIR="${tmpdir}" bash "${gen_certs_sh}" --unprivileged
 
   local ca_crt="${tmpdir}/ca.crt"
   local server_crt="${tmpdir}/server.crt"

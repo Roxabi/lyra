@@ -122,6 +122,17 @@ class CliPoolWorkerMixin:
         log.debug("[pool:%s] cmd: %s", pool_id, " ".join(cmd))
         env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
         env["HOME"] = str(Path.home())
+        # Per-session git committer identity (#1150). Pair-gate: both name+email
+        # must be present, else fall back to the image-baked template identity.
+        # These keys are NOT in _SAFE_ENV_KEYS — they're synthesised at spawn time,
+        # not inherited. The allowlist's design intent (see comment above) is
+        # parent-env filtering.
+        if agent_name and agent_email:
+            env["GIT_COMMITTER_NAME"] = agent_name
+            env["GIT_COMMITTER_EMAIL"] = agent_email
+            env["LYRA_AGENT"] = agent_name
+            if lyra_session_id:
+                env["LYRA_SESSION_ID"] = lyra_session_id
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,

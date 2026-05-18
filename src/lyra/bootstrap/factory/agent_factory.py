@@ -14,11 +14,11 @@ from lyra.core.agent import Agent, AgentBase
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.messaging.messages import MessageManager
+from lyra.core.ports.stt import STTProtocol
+from lyra.core.ports.tts import TtsProtocol
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
-from lyra.stt import STTProtocol
-from lyra.tts import TtsProtocol
 
 if TYPE_CHECKING:
     from lyra.llm.drivers.cli_nats import (

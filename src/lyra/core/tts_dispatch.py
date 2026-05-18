@@ -14,13 +14,13 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from ..tts import TtsUnavailableError
 from .messaging.message import (
     InboundMessage,
     OutboundAudio,
     OutboundMessage,
     Platform,
 )
+from .ports.tts import TtsUnavailableError
 
 if TYPE_CHECKING:
     from lyra.core.agent.agent_config import AgentTTSConfig

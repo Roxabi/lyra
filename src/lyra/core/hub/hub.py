@@ -38,13 +38,13 @@ if TYPE_CHECKING:
     from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.infrastructure.stores.turn_store import TurnStore
 
-    from ...stt import STTProtocol
-    from ...tts import TtsProtocol
     from ..agent import AgentBase
     from ..circuit_breaker import CircuitRegistry
     from ..cli.cli_pool import CliPool
     from ..memory import MemoryManager
     from ..messaging.messages import MessageManager
+    from ..ports.stt import STTProtocol
+    from ..ports.tts import TtsProtocol
     from .event_bus import PipelineEventBus
     from .outbound import OutboundDispatcher
 

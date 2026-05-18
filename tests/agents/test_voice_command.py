@@ -28,8 +28,8 @@ from lyra.core.messaging.message import (
     TelegramMeta,
 )
 from lyra.core.pool import Pool
+from lyra.core.ports.tts import TtsProtocol
 from lyra.core.runtime_config import RuntimeConfig
-from lyra.tts import TtsProtocol
 
 # ---------------------------------------------------------------------------
 # Shared helpers

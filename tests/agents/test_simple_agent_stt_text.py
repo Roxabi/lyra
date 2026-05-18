@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 
 from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.messaging.message import InboundMessage, Response
-from lyra.stt import TranscriptionResult
+from lyra.core.ports.stt import TranscriptionResult
 
 from .conftest import (
     make_audio_message,

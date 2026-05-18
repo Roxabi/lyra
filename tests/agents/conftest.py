@@ -17,8 +17,8 @@ from lyra.core.messaging.message import (
     TelegramMeta,
 )
 from lyra.core.pool import Pool
+from lyra.core.ports.stt import STTProtocol, TranscriptionResult
 from lyra.llm.base import LlmResult
-from lyra.stt import STTProtocol, TranscriptionResult
 
 # ---------------------------------------------------------------------------
 # Message factories

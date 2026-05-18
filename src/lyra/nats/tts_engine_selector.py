@@ -1,33 +1,18 @@
-"""TTS engine selection logic — config loading and parameter merging."""
+"""TTS engine selection logic — parameter merging for voiceCLI generate calls.
+
+Adapter concern: voiceCLI-specific kwarg construction. Lives in lyra.nats (not core/)
+because it references AgentTTSConfig (via TYPE_CHECKING) and is consumed exclusively
+by nats_tts_client.py. Dead code TTSConfig/load_tts_config not included (issue #1221).
+"""
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
-
-from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from lyra.core.agent.agent_config import AgentTTSConfig
-
-
-class TTSConfig(BaseModel):
-    """Global TTS configuration from environment variables."""
-
-    engine: str | None = None  # LYRA_TTS_ENGINE env var
-    voice: str | None = None  # LYRA_TTS_VOICE env var
-    language: str | None = None  # LYRA_TTS_LANGUAGE env var
-
-
-def load_tts_config() -> TTSConfig:
-    """Load TTS configuration from environment variables."""
-    return TTSConfig(
-        engine=os.environ.get("LYRA_TTS_ENGINE"),
-        voice=os.environ.get("LYRA_TTS_VOICE"),
-        language=os.environ.get("LYRA_TTS_LANGUAGE"),
-    )
 
 
 # qwen_tts expects full language names, not ISO 639-1 codes

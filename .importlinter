@@ -74,8 +74,6 @@ name = Shared floating modules must not import each other (peer isolation)
 type = independence
 modules =
     lyra.obs
-    lyra.stt
-    lyra.tts
     lyra.errors
     lyra.config
     lyra.integrations
@@ -86,10 +84,7 @@ ignore_imports =
     # contract traces all paths between listed modules, including through unlisted ones.
     # These are permitted imports (floating → core), detected transitively. (#977)
     # — DEBT:importlinter-shared-modules-transitive
-    lyra.tts.engine_selector -> lyra.core.agent.agent_config
     lyra.core.processors.processor_registry -> lyra.integrations.base
-    lyra.core.agent.agent -> lyra.stt
-    lyra.core.agent.agent -> lyra.tts
 
 [importlinter:contract:bootstrap-types-no-subpackages]
 name = bootstrap/types.py must not import from bootstrap subpackages (neutral shared module invariant)
@@ -108,8 +103,6 @@ name = Shared floating modules must not import bootstrap, adapters, or infrastru
 type = forbidden
 source_modules =
     lyra.obs
-    lyra.stt
-    lyra.tts
     lyra.errors
     lyra.config
     lyra.integrations

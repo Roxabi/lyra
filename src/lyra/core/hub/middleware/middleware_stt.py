@@ -17,6 +17,8 @@ import dataclasses
 import logging
 from typing import TYPE_CHECKING
 
+from lyra.core.ports.stt import STTNoiseError, STTUnavailableError
+
 from ...messaging.message import InboundMessage, Response, TelegramMeta
 from ...messaging.messages import _FALLBACKS
 from ..pipeline.pipeline_types import _DROP, PipelineResult
@@ -120,8 +122,6 @@ class SttMiddleware:
             _STT_STAGE_OUTCOMES["failed"] += 1
             return _DROP
         except Exception as exc:
-            from lyra.stt import STTNoiseError, STTUnavailableError
-
             if isinstance(exc, STTNoiseError):
                 log.info("STT noise for msg id=%s: %s", msg.id, exc)
                 await self._dispatch_error(hub, msg, "stt_noise")

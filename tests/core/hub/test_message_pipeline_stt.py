@@ -68,7 +68,7 @@ class NoisySTT:
     timeout_ms: int = 30000
 
     async def transcribe(self, audio: Any, mime: Any) -> FakeTranscription:
-        from lyra.stt import STTNoiseError
+        from lyra.core.ports.stt import STTNoiseError
 
         raise STTNoiseError("Noise transcript: ''")
 
@@ -79,7 +79,7 @@ class UnavailableSTT:
     timeout_ms: int = 30000
 
     async def transcribe(self, audio: Any, mime: Any) -> FakeTranscription:
-        from lyra.stt import STTUnavailableError
+        from lyra.core.ports.stt import STTUnavailableError
 
         raise STTUnavailableError("model not loaded")
 

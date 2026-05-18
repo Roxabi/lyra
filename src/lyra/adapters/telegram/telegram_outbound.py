@@ -196,7 +196,6 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
             send_placeholder=_noop_placeholder,
             edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
             send_trace_placeholder=_noop_trace,
-            edit_trace=lambda ph, ev: asyncio.sleep(0),
             send_message=_noop_fallback,
             send_fallback=_noop_fallback,
             chunk_text=lambda text: [text],
@@ -239,11 +238,6 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
             **({"reply_to_message_id": reply_to} if reply_to is not None else {}),
         )
         return msg, msg.message_id
-
-    async def _edit_trace(trace_obj: Any, event: Any) -> None:
-        # v1 ToolSummaryRenderEvent removed in Slice 5 (#1192).
-        # edit_trace is a no-op; trace placeholder used only for reasoning.
-        pass
 
     async def _send_message(text: str) -> int | None:
         rendered = _render_text(text)
@@ -363,7 +357,6 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         send_placeholder=_send_placeholder,
         edit_placeholder_text=_edit_placeholder_text,
         send_trace_placeholder=_send_trace_placeholder,
-        edit_trace=_edit_trace,
         send_message=_send_message,
         send_fallback=_send_fallback,
         chunk_text=lambda text: _render_text(text) or [text],

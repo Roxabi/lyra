@@ -16,8 +16,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.turn_store import TurnStore
 
+from lyra.core.ports.audit_sink import AuditSink
+
 from ..agent.agent_config import ModelConfig
-from .audit_sink import AuditSink
 from .cli_pool_lifecycle import CliPoolLifecycleMixin
 from .cli_pool_session import CliPoolSessionMixin
 from .cli_pool_streaming import CliPoolStreamingMixin

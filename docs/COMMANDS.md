@@ -193,7 +193,7 @@ Incoming message
 | `/explain <url>` | Scrape URL → plain-language explanation | `web-intel:scrape` |
 | `/summarize <url>` | Scrape URL → bullet-point summary | `web-intel:scrape` |
 | `/search <query>` | Full-text search over vault | `vault` (plugin) |
-| `<url>` (bare) | Auto-rewritten to `/vault-add <url>` (configured in `src/lyra/config/patterns.toml`) | — |
+| `<url>` (bare) | Auto-rewritten to `/vault-add <url>` (configured in `src/lyra/data/patterns.toml`) | — |
 | `/workspace <name> [question]` | Switch working directory to named workspace | — (builtin) |
 | `/workspace ls` | List configured workspaces | — (builtin) |
 
@@ -237,7 +237,7 @@ Sending a bare URL (no slash command prefix) is automatically rewritten to `/vau
 https://example.com/article   →   /vault-add https://example.com/article
 ```
 
-The detection uses `CommandRouter._BARE_URL_RE` (`^https?://\S+$`). The target command is read from `src/lyra/config/patterns.toml` `[bare_url].command` — change it there to reroute bare URLs to a different command without touching Python.
+The detection uses `CommandRouter._BARE_URL_RE` (`^https?://\S+$`). The target command is read from `src/lyra/data/patterns.toml` `[bare_url].command` — change it there to reroute bare URLs to a different command without touching Python.
 
 ### `/search <query>` — Vault full-text search
 

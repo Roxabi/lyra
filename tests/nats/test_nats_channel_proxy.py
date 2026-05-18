@@ -648,7 +648,9 @@ async def test_send_streaming_exception_publishes_stream_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_streaming_stream_error_publish_failure_clears_active_streams() -> None:  # noqa: E501
+async def test_send_streaming_stream_error_publish_failure_clears_active_streams() -> (
+    None
+):  # noqa: E501
     """When stream_error publish itself fails, _active_streams is still cleared.
 
     Adapters depending on stream_end/stream_error WILL hang in this scenario —

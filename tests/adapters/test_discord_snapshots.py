@@ -109,9 +109,7 @@ class TestDiscordSnapshots:
         # Exact-match (B5 fix #1205): pinned snapshot. Discord does NOT apply
         # MarkdownV2 escaping; `!` passes through unchanged.
         final_content = _last_edit_content(placeholder)
-        assert final_content == "Hello world!", (
-            f"Snapshot mismatch: {final_content!r}"
-        )
+        assert final_content == "Hello world!", f"Snapshot mismatch: {final_content!r}"
 
     @pytest.mark.asyncio
     async def test_multi_block_snapshot(self) -> None:
@@ -178,9 +176,7 @@ class TestDiscordSnapshots:
             # then RunError post-finally. build_display_text consults
             # is_error_pending at delivery, so order does not matter.
             yield TextEndRenderEvent(message_id="msg-1")
-            yield RunErrorRenderEvent(
-                run_id="r1", message="model_error", code=None
-            )
+            yield RunErrorRenderEvent(run_id="r1", message="model_error", code=None)
 
         await adapter.send_streaming(msg, _events())
 

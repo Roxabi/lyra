@@ -812,9 +812,7 @@ class TestErrorTextSanitization:
         mc = _make_model_cfg()
         _seed_registry(client)
 
-        leaky_exc = TimeoutError(
-            f"deadline exceeded waiting for {_SENSITIVE_HOST}"
-        )
+        leaky_exc = TimeoutError(f"deadline exceeded waiting for {_SENSITIVE_HOST}")
         mock_sub = AsyncMock()
         mock_sub.next_msg = AsyncMock(side_effect=leaky_exc)
         nc.subscribe = AsyncMock(return_value=mock_sub)

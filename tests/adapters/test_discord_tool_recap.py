@@ -178,9 +178,7 @@ async def test_multi_tool_turn_renders_recap_card_via_embed() -> None:
         if edit_icon in (getattr(c.kwargs["embed"], "description", "") or "")
         and bash_icon in (getattr(c.kwargs["embed"], "description", "") or "")
     ]
-    descriptions = [
-        getattr(c.kwargs["embed"], "description", None) for c in done_calls
-    ]
+    descriptions = [getattr(c.kwargs["embed"], "description", None) for c in done_calls]
     assert len(matching) >= 1, (
         f"Done embed description must contain both '✏️' and '💻'. "
         f"Descriptions: {descriptions}"

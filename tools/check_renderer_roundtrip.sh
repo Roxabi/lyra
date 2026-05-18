@@ -110,9 +110,11 @@ cmd_lyra_acl() {
   # in base32 (56 chars for a user key starting with 'U').
   echo "==> lyra-acl: checking nkey lengths (expected 56)" >&2
   local fail=0
+  local nkey_count=0
   while IFS= read -r line; do
     # Extract value from: nkey: "UXXXXXXXXX..."
     if [[ "${line}" =~ nkey:[[:space:]]*\"([^\"]+)\" ]]; then
+      nkey_count=$((nkey_count + 1))
       local nkey="${BASH_REMATCH[1]}"
       local nkey_len="${#nkey}"
       if [[ "${nkey_len}" -ne 56 ]]; then
@@ -121,6 +123,10 @@ cmd_lyra_acl() {
       fi
     fi
   done <<< "${content}"
+  if [[ "${nkey_count}" -eq 0 ]]; then
+    echo "error: no nkey lines found in auth.conf — format may have drifted (expected at least 1)" >&2
+    exit 1
+  fi
   [[ "${fail}" -eq 0 ]] || exit 1
   echo "    nkey lengths OK" >&2
 
@@ -133,10 +139,12 @@ cmd_lyra_acl() {
   # nk is guaranteed on PATH (require_nk was called at the top of cmd_lyra_acl).
   echo "==> lyra-acl: verifying seed→pubkey round-trip with nk" >&2
   local rt_fail=0
+  local rt_checked=0
   local pending_nkey=""
   while IFS= read -r line; do
     if [[ "${line}" =~ nkey:[[:space:]]*\"([^\"]+)\" ]]; then
       # Save this nkey; the identity comment on the next line will resolve it.
+      rt_checked=$((rt_checked + 1))
       pending_nkey="${BASH_REMATCH[1]}"
     elif [[ -n "${pending_nkey}" && "${line}" =~ ^[[:space:]]*#[[:space:]]+([a-z0-9_-]+)[[:space:]]*$ ]]; then
       # Identity comment immediately following a nkey line.
@@ -144,7 +152,7 @@ cmd_lyra_acl() {
       local seed_file="${seeds_dir}/${identity}.seed"
       if [[ -f "${seed_file}" ]]; then
         local computed_nkey
-        computed_nkey="$(nk -inkey "${seed_file}" -pubout 2>/dev/null | tr -d '[:space:]')"
+        computed_nkey="$(nk -inkey "${seed_file}" -pubout | tr -d '[:space:]')"
         if [[ "${computed_nkey}" != "${pending_nkey}" ]]; then
           echo "error: seed→pubkey mismatch for '${identity}'" >&2
           echo "  stored nkey:   ${pending_nkey}" >&2
@@ -158,6 +166,10 @@ cmd_lyra_acl() {
       pending_nkey=""
     fi
   done <<< "${content}"
+  if [[ "${rt_checked}" -eq 0 ]]; then
+    echo "error: no nkey lines found in auth.conf — format may have drifted (expected at least 1)" >&2
+    exit 1
+  fi
   [[ "${rt_fail}" -eq 0 ]] || exit 1
   echo "    seed→pubkey round-trip OK" >&2
 
@@ -169,9 +181,11 @@ cmd_lyra_acl() {
   # line (i.e. the full value is inline, not multi-line).
   echo "==> lyra-acl: checking for embedded newlines in quoted strings" >&2
   local nl_fail=0
+  local nl_checked=0
   while IFS= read -r line; do
     local stripped="${line#"${line%%[![:space:]]*}"}"  # ltrim
     if [[ "${stripped}" == nkey:* ]]; then
+      nl_checked=$((nl_checked + 1))
       # A well-formed nkey line starts with nkey: " and ends with "
       if ! [[ "${stripped}" =~ ^nkey:[[:space:]]*\"[^\"]+\"[[:space:]]*$ ]]; then
         echo "error: nkey line does not open and close quote on same line: ${line}" >&2
@@ -179,6 +193,10 @@ cmd_lyra_acl() {
       fi
     fi
   done <<< "${content}"
+  if [[ "${nl_checked}" -eq 0 ]]; then
+    echo "error: no nkey lines found in auth.conf — format may have drifted (expected at least 1)" >&2
+    exit 1
+  fi
   [[ "${nl_fail}" -eq 0 ]] || exit 1
   echo "    no embedded newlines in quoted strings OK" >&2
 

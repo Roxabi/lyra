@@ -22,13 +22,13 @@ from nats.errors import NoRespondersError
 from pydantic import ValidationError
 
 import nats
-from lyra.nats.worker_registry import WorkerRegistry
-from lyra.stt import (
+from lyra.core.ports.stt import (
     STTNoiseError,
     STTUnavailableError,
     TranscriptionResult,
-    is_whisper_noise,
 )
+from lyra.nats.stt_helpers import is_whisper_noise
+from lyra.nats.worker_registry import WorkerRegistry
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import (
     SUBJECTS,
@@ -40,6 +40,19 @@ from roxabi_contracts.voice import (
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 log = logging.getLogger(__name__)
+
+
+def _stt_result_from_wire(resp: SttResponse) -> TranscriptionResult:
+    """Map a validated SttResponse to TranscriptionResult.
+
+    Precondition: resp.ok=True and _enforce_success_invariant passed.
+    """
+    return TranscriptionResult(
+        text=resp.text,  # type: ignore[arg-type]  # narrowed by _enforce_success_invariant
+        language=resp.language,  # type: ignore[arg-type]
+        duration_seconds=resp.duration_seconds,  # type: ignore[arg-type]
+    )
+
 
 _STT_TIMEOUT_DEFAULT = 15.0
 _STT_TIMEOUT_MIN = 1.0
@@ -226,17 +239,7 @@ class NatsSttClient:
         if not resp.ok:
             self._cb.record_failure()
             raise STTUnavailableError(resp.error or "STT transcription failed")
-        # SttResponse._enforce_success_invariant guarantees text, language, and
-        # duration_seconds are non-null whenever ok=True. Asserting narrows the
-        # types and fails loudly if that invariant ever drifts.
-        assert resp.text is not None
-        assert resp.language is not None
-        assert resp.duration_seconds is not None
-        result = TranscriptionResult(
-            text=resp.text,
-            language=resp.language,
-            duration_seconds=resp.duration_seconds,
-        )
+        result = _stt_result_from_wire(resp)
         self._cb.record_success()
         if is_whisper_noise(result.text):
             log.info(

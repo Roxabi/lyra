@@ -60,6 +60,16 @@ in #1104 to match the canonical ACL allow list; do NOT reintroduce them.
   `str(exc)`) to prevent NATS connection metadata or payload values leaking to users
   (#1212 sanitization rule).
 
+## STT/TTS NATS clients
+
+`nats_stt_client.py` and `nats_tts_client.py` implement `STTProtocol` and `TtsProtocol` over NATS.
+Both use `_stt_result_from_wire` / `_tts_result_from_wire` private mappers to convert wire
+responses into domain value objects; keep mapping logic in these functions (¬inline in call sites).
+`tts_engine_selector.py` and `tts_text_normalization.py` are helpers extracted from the deleted
+`lyra.tts` package and relocated here to stay co-located with their consumer (`nats_tts_client.py`).
+`stt_helpers.py` provides Whisper noise tokens (`WHISPER_NOISE_TOKENS`), `is_whisper_noise`, and
+`mime_from_suffix` — adapter-specific concerns relocated here from `core/ports/stt.py` (#1224 review).
+
 ## NatsLlmClient lives here, not in llm/
 
 `NatsLlmClient` (`nats_llm_client.py`) implements the `LlmProvider` protocol and is

@@ -1,19 +1,16 @@
 """TtsProtocol — Domain port for text-to-speech synthesis.
 
-Moved here from lyra.tts (V8b of hexagonal remediation, ADR-059).
-lyra.tts re-exports for backward compatibility.
-
-SynthesisResult and AgentTTSConfig are referenced as string annotations only
-to keep this module free of infrastructure and adapter imports.
+Self-contained: protocol + value object + error.
+Pure: stdlib + pydantic + AgentTTSConfig (TYPE_CHECKING only).
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from lyra.core.agent.agent_config import AgentTTSConfig
-    from lyra.tts import SynthesisResult
 
 
 @runtime_checkable
@@ -29,4 +26,20 @@ class TtsProtocol(Protocol):
     ) -> "SynthesisResult": ...
 
 
-__all__ = ["TtsProtocol"]
+@dataclass
+class SynthesisResult:
+    audio_bytes: bytes
+    mime_type: str
+    duration_ms: int | None  # None if WAV header unreadable
+    waveform_b64: str | None = field(default=None)  # 256-byte amplitude array, base64
+
+
+class TtsUnavailableError(Exception):
+    """Raised when the TTS NATS adapter is unreachable (timeout or connection error)."""
+
+
+__all__ = [
+    "TtsProtocol",
+    "SynthesisResult",
+    "TtsUnavailableError",
+]

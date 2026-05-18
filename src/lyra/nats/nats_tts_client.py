@@ -21,8 +21,8 @@ from nats.errors import NoRespondersError
 from pydantic import ValidationError
 
 import nats
+from lyra.core.ports.tts import SynthesisResult, TtsUnavailableError
 from lyra.nats.worker_registry import WorkerRegistry
-from lyra.tts import SynthesisResult, TtsUnavailableError
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import (
     SUBJECTS,
@@ -38,6 +38,20 @@ if TYPE_CHECKING:
     from lyra.core.agent.agent_config import AgentTTSConfig
 
 log = logging.getLogger(__name__)
+
+
+def _tts_result_from_wire(resp: TtsResponse, audio_bytes: bytes) -> SynthesisResult:
+    """Map a validated TtsResponse + decoded audio to SynthesisResult.
+
+    Precondition: resp.ok=True and _enforce_success_invariant passed.
+    """
+    return SynthesisResult(
+        audio_bytes=audio_bytes,
+        mime_type=resp.mime_type,  # type: ignore[arg-type]  # narrowed by _enforce_success_invariant
+        duration_ms=resp.duration_ms,  # type: ignore[arg-type]
+        waveform_b64=resp.waveform_b64,
+    )
+
 
 _TTS_TIMEOUT_DEFAULT = 30.0
 _TTS_TIMEOUT_MIN = 1.0
@@ -249,17 +263,6 @@ class NatsTtsClient:
         request = TtsRequest.model_validate(req_kwargs)
         payload = request.model_dump_json(exclude_none=True).encode("utf-8")
         resp = await self._walk_registry(payload)
-        # TtsResponse._enforce_success_invariant guarantees audio_b64, mime_type,
-        # and duration_ms are non-null whenever ok=True. Asserting narrows the
-        # types for the type checker and fails loudly if that invariant ever drifts.
-        assert resp.audio_b64 is not None
-        assert resp.mime_type is not None
-        assert resp.duration_ms is not None
-        audio_bytes = base64.b64decode(resp.audio_b64)
+        audio_bytes = base64.b64decode(resp.audio_b64)  # type: ignore[arg-type]  # narrowed by _enforce_success_invariant
         self._cb.record_success()
-        return SynthesisResult(
-            audio_bytes=audio_bytes,
-            mime_type=resp.mime_type,
-            duration_ms=resp.duration_ms,
-            waveform_b64=resp.waveform_b64,
-        )
+        return _tts_result_from_wire(resp, audio_bytes)

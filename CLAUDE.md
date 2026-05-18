@@ -53,7 +53,6 @@ File/rename → update P immediately
 | `src/lyra/llm/CLAUDE.md` | LLM drivers |
 | `src/lyra/monitoring/CLAUDE.md` | standalone health-check subsystem (`python -m lyra.monitoring`) |
 | `src/lyra/nats/CLAUDE.md` | in-tree NATS integration (subjects, codec, NatsLlmClient) |
-| `src/lyra/stt/CLAUDE.md` | STT module (noise detection, MIME helper, errors) |
 | `src/lyra/tools/CLAUDE.md` | GitHub token dispenser (gh_token submodule) |
 | `packages/roxabi-nats/CLAUDE.md` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/CLAUDE.md` | NATS contract schemas (ADR-049) |

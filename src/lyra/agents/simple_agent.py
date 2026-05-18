@@ -37,10 +37,10 @@ if TYPE_CHECKING:
 
     from lyra.core.cli.cli_pool import CliPool
     from lyra.core.messaging.render_events import RenderEvent
+    from lyra.core.ports.stt import STTProtocol
+    from lyra.core.ports.tts import TtsProtocol
     from lyra.infrastructure.stores.agent_store import AgentStore
     from lyra.llm.drivers.cli_nats import CliNatsDriver
-    from lyra.stt import STTProtocol
-    from lyra.tts import TtsProtocol
 
 log = logging.getLogger(__name__)
 

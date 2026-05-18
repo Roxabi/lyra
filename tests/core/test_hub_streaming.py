@@ -20,7 +20,7 @@ from lyra.core.messaging.render_events import (
     TextDeltaRenderEvent,
     TextEndRenderEvent,
 )
-from lyra.tts import TtsProtocol
+from lyra.core.ports.tts import TtsProtocol
 from tests.conftest import TIMEOUT_FAST, TIMEOUT_SLOW
 from tests.core.conftest import MockAdapter, make_inbound_message, push_to_hub
 

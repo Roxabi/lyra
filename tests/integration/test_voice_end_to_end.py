@@ -183,7 +183,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
 
             return _DROP
 
-        with patch("lyra.stt.is_whisper_noise", return_value=False):
+        with patch("lyra.nats.nats_stt_client.is_whisper_noise", return_value=False):
             await SttMiddleware()(injected_msg, ctx, _capture_next)
 
         # ------------------------------------------------------------------
@@ -233,7 +233,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
             return _DROP
 
         # Must not raise even though stt is None
-        with patch("lyra.stt.is_whisper_noise", return_value=False):
+        with patch("lyra.nats.nats_stt_client.is_whisper_noise", return_value=False):
             await SttMiddleware()(voice_msg, ctx, _capture_next)
 
         # Pipeline was dropped — next was not called with a populated message
@@ -267,7 +267,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
             return _DROP
 
         # Must not raise on timeout
-        with patch("lyra.stt.is_whisper_noise", return_value=False):
+        with patch("lyra.nats.nats_stt_client.is_whisper_noise", return_value=False):
             await SttMiddleware()(voice_msg, ctx, _capture_next)
 
         # Pipeline was dropped — no text populated, no crash

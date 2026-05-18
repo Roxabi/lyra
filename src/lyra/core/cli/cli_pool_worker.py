@@ -95,8 +95,14 @@ class CliPoolWorkerMixin:
     ) -> tuple[list[str], str | None]:
         return build_cmd(model_config, session_id, system_prompt)
 
-    async def _spawn(
-        self, pool_id: str, model_config: ModelConfig, system_prompt: str = ""
+    async def _spawn(  # noqa: PLR0913
+        self,
+        pool_id: str,
+        model_config: ModelConfig,
+        system_prompt: str = "",
+        agent_name: str | None = None,
+        agent_email: str | None = None,
+        lyra_session_id: str | None = None,
     ) -> _ProcessEntry | None:
         spawn_cwd = self._cwd_overrides.get(pool_id) or model_config.cwd or _LYRA_ROOT
         resume_session_id = self._resume_session_ids.pop(pool_id, None)

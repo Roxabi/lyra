@@ -108,12 +108,15 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
         # before completion. Done-callback removes each task on completion.
         self._audit_tasks: set[asyncio.Task[None]] = set()
 
-    async def send(  # noqa: C901 — DEBT:complexity-residual
+    async def send(  # noqa: C901,PLR0913 — DEBT:complexity-residual
         self,
         pool_id: str,
         message: str,
         model_config: ModelConfig,
         system_prompt: str = "",
+        agent_name: str | None = None,
+        agent_email: str | None = None,
+        lyra_session_id: str | None = None,
     ) -> CliResult:
         """Send a message to the persistent process for this pool.
 
@@ -131,7 +134,12 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
             entry = self._entries.get(pool_id)
 
             if entry is None or not entry.is_alive():
-                entry = await self._spawn(pool_id, model_config, system_prompt)
+                entry = await self._spawn(
+                    pool_id, model_config, system_prompt,
+                    agent_name=agent_name,
+                    agent_email=agent_email,
+                    lyra_session_id=lyra_session_id,
+                )
                 if entry is None:
                     return CliResult(error="Failed to spawn Claude CLI process")
             elif entry.system_prompt != system_prompt:
@@ -140,7 +148,12 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
                     pool_id,
                 )
                 await self._kill(pool_id, preserve_session=False)
-                entry = await self._spawn(pool_id, model_config, system_prompt)
+                entry = await self._spawn(
+                    pool_id, model_config, system_prompt,
+                    agent_name=agent_name,
+                    agent_email=agent_email,
+                    lyra_session_id=lyra_session_id,
+                )
                 if entry is None:
                     return CliResult(error="Failed to respawn Claude CLI process")
             elif entry.model_config != model_config:

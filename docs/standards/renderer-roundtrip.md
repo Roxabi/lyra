@@ -80,10 +80,10 @@ Consumer exit code 0 is necessary but not sufficient. Add explicit assertions fo
 The roundtrip test covers this renderer:
 
 ```bash
-bash tools/check_renderer_roundtrip.sh lyra-acl "$TMPDIR"
+bash tools/check_renderer_roundtrip.sh lyra-acl "$(mktemp -d)"
 ```
 
-The helper generates a fresh keyset into `$TMPDIR`, renders an auth.conf, runs `nats-server -t -c` on it, then asserts three invariants:
+The helper generates a fresh keyset into the supplied tmpdir, renders an auth.conf, runs `nats-server -t -c` on it, then asserts three invariants:
 
 1. **Length** — every nkey in the rendered file is exactly 56 characters.
 2. **Round-trip** — `pubkey(seed)` recomputed from the seed file equals the nkey stored in auth.conf.

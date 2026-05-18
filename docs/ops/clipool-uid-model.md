@@ -23,7 +23,7 @@ this path regardless of owner". That is trust-by-path, a pattern in the CWE-426/
 lineage (untrusted search path). The userns remap already guarantees that only the
 intended uid can place files on the bind-mount host side; the path wildcard adds no
 security and widens the attack surface. Removed in issue #1149; the `[safe]` block is
-absent from `deploy/lyra-gh/git.config.tmpl` after task T2 of that issue lands.
+absent from `deploy/lyra-gh/git.config.tmpl`.
 
 ---
 
@@ -34,8 +34,17 @@ absent from `deploy/lyra-gh/git.config.tmpl` after task T2 of that issue lands.
 `/home/lyra/projects/lyra`; overridable via `LYRA_OWNERSHIP_PROBE_PATH`). If the userns
 mapping ever breaks — for example because someone removes `keep-id` from `lyra-gh.pod`
 — git sees a uid mismatch and returns a non-zero exit code. The probe propagates that
-exit, `_bootstrap_clipool_standalone` fails, and systemd marks `lyra-clipool.service`
-failed. The regression is loud; it cannot be silently absorbed by a stale config entry.
+exit, `_bootstrap_clipool_standalone` fails, and systemd retries per `Restart=on-failure`
+up to `StartLimitBurst=5` within 60 s, then marks `lyra-clipool.service` failed. The
+failure is visible in `journalctl --user -u lyra-clipool.service`; it does not cascade to
+the pod, which keeps running. "Loud" here means logged loudly — operator monitoring or a
+`systemctl --user status lyra-clipool.service` check is what surfaces it.
+
+**Precondition:** the host must have `~/projects/lyra` checked out (or Syncthing-synced)
+before `lyra-clipool.service` is started. The bind-mount path `/home/lyra/projects/lyra`
+inside the container is the probe target; if it does not exist on the host, the probe
+fails fast with "target directory does not exist" — correct behavior, but confusing on
+first provision. Add this to the operator's provision checklist.
 
 ---
 
@@ -57,5 +66,6 @@ Upstream tracking: https://github.com/containers/podman/issues/24918
 - `src/lyra/bootstrap/infra/git_ownership_probe.py` — startup ownership probe
 - `artifacts/specs/1149-safe-directory-idmap-spec.mdx` — full rationale, Podman #24918
   empirical validation, and threat model
-- ADR-055 (`docs/architecture/adr/055-quadlet-ecosystem-conventions.mdx`) — D2 decision:
-  `UserNS=keep-id:uid=1500,gid=1500` as the standard UID model for all Roxabi containers
+- ADR-055 (`docs/architecture/adr/055-quadlet-ecosystem-conventions.mdx`) — absorbed ADR-054
+  Decision 2: `UserNS=keep-id:uid=1500,gid=1500` as the standard UID model for all
+  Roxabi containers

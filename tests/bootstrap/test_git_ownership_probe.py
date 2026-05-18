@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -35,34 +36,60 @@ class TestRunGitOwnershipProbeFailures:
     """Tests for failure paths that call sys.exit(1)."""
 
     def test_dubious_ownership_stderr_exits(self, tmp_path: Path) -> None:
-        """SystemExit when returncode=0 but stderr contains 'dubious ownership'."""
+        """SystemExit(1) when returncode=0 but stderr contains 'dubious ownership'."""
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stderr = "fatal: detected dubious ownership in repository at '/r'"
 
         with patch(_PATCH_TARGET, return_value=mock_result):
-            with pytest.raises(SystemExit):
+            with pytest.raises(SystemExit) as exc_info:
                 run_git_ownership_probe(repo_path=str(tmp_path))
+        assert exc_info.value.code == 1
 
     def test_non_zero_exit_exits(self, tmp_path: Path) -> None:
-        """SystemExit when subprocess returns non-zero exit code."""
+        """SystemExit(1) when subprocess returns non-zero exit code."""
         mock_result = MagicMock()
         mock_result.returncode = 128
         mock_result.stderr = "fatal: not a git repository"
 
         with patch(_PATCH_TARGET, return_value=mock_result):
-            with pytest.raises(SystemExit):
+            with pytest.raises(SystemExit) as exc_info:
                 run_git_ownership_probe(repo_path=str(tmp_path))
+        assert exc_info.value.code == 1
 
     def test_missing_target_path_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """SystemExit when target directory does not exist; subprocess never called."""
+        """SystemExit(1) when target dir does not exist; subprocess never called."""
         monkeypatch.delenv(PROBE_ENV_VAR, raising=False)
 
         with patch(_PATCH_TARGET) as mock_run:
-            with pytest.raises(SystemExit):
+            with pytest.raises(SystemExit) as exc_info:
                 run_git_ownership_probe(repo_path="/nonexistent/lyra-probe-test")
-
+        assert exc_info.value.code == 1
         mock_run.assert_not_called()
+
+    def test_subprocess_timeout_exits(self, tmp_path: Path) -> None:
+        """SystemExit(1) when subprocess.run raises TimeoutExpired."""
+        with patch(
+            _PATCH_TARGET,
+            side_effect=subprocess.TimeoutExpired(
+                cmd=["git", "rev-parse", "HEAD"], timeout=5
+            ),
+        ) as mock_run:
+            with pytest.raises(SystemExit) as exc_info:
+                run_git_ownership_probe(repo_path=str(tmp_path))
+        assert exc_info.value.code == 1
+        mock_run.assert_called_once()
+
+    def test_git_binary_not_found_exits(self, tmp_path: Path) -> None:
+        """SystemExit(1) when subprocess.run raises FileNotFoundError (git absent)."""
+        with patch(
+            _PATCH_TARGET,
+            side_effect=FileNotFoundError("git not found"),
+        ) as mock_run:
+            with pytest.raises(SystemExit) as exc_info:
+                run_git_ownership_probe(repo_path=str(tmp_path))
+        assert exc_info.value.code == 1
+        mock_run.assert_called_once()
 
 
 class TestRunGitOwnershipProbePathResolution:

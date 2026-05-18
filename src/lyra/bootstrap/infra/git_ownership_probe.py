@@ -34,13 +34,25 @@ def run_git_ownership_probe(repo_path: str | None = None) -> None:
         )
         sys.exit(1)
 
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=target,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=target,
+            timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        log.error(
+            "git ownership probe timed out after %ds (target=%s)",
+            5,
+            target,
+        )
+        sys.exit(1)
+    except FileNotFoundError:
+        log.error("git ownership probe: git binary not found on PATH")
+        sys.exit(1)
 
     if result.returncode != 0 or "dubious ownership" in result.stderr:
         log.error(

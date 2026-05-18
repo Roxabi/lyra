@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
-    from lyra.stt import STTProtocol, TranscriptionResult
+    from lyra.core.ports.stt import STTProtocol, TranscriptionResult
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ async def _build_audio_text(
     Raises:
         STTError: If transcription fails
     """
-    from lyra.stt import is_whisper_noise, mime_from_suffix
+    from lyra.core.ports.stt import is_whisper_noise, mime_from_suffix
 
     try:
         audio_bytes = await asyncio.to_thread(tmp_path.read_bytes)

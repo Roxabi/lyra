@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from lyra.core.ports.stt import STTProtocol
+    from lyra.core.ports.tts import TtsProtocol
     from lyra.infrastructure.stores.agent_store import AgentStore
-    from lyra.stt import STTProtocol
-    from lyra.tts import TtsProtocol
 
     from ..memory.memory import MemoryManager
     from ..messaging.render_events import RenderEvent

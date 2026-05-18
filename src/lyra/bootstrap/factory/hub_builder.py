@@ -28,11 +28,11 @@ from lyra.core.config import HubConfig
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.messaging.message import InboundMessage
+from lyra.core.ports.stt import STTProtocol
+from lyra.core.ports.tts import TtsProtocol
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.queue_groups import HUB_INBOUND
-from lyra.stt import STTProtocol
-from lyra.tts import TtsProtocol
 
 if TYPE_CHECKING:
     from lyra.core.cli.audit_sink import AuditSink

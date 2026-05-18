@@ -117,7 +117,9 @@ Conversely, if `nats-server` emits a stderr warning about a deprecated directive
 
 ## Reviewer checklist
 
-> **Does this PR add or modify a config renderer? If yes, verify a roundtrip test in `renderer-roundtrip.yml` covers it.**
+> **Does this PR add or modify a config renderer? If yes:**
+> - (a) check that `.github/workflows/renderer-roundtrip.yml` has a job invoking `tools/check_renderer_roundtrip.sh <subcommand>` for the renderer
+> - (b) verify `tools/check_renderer_roundtrip.sh` has a `case` branch implementing the subcommand
 
 - Is the consumer the actual downstream binary (nats-server, systemd, openssl, podman), not a mock or re-implementation?
 - Does the test include a negative case — a known-bad input that causes the test to fail? A test that cannot fail on bad input is not a roundtrip test.

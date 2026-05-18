@@ -180,6 +180,14 @@ cmd_lyra_acl() {
   local identities
   identities=$(jq -r '.identities | keys[]' "${acl_matrix}")
   while IFS= read -r identity; do
+    # Validate identity name against the canonical charset before using it as a
+    # filename component — defends against a malicious acl-matrix.json with
+    # `../` traversal or shell-meta keys. Same charset as the auth.conf
+    # comment parser (check_roundtrip line 104).
+    if ! [[ "${identity}" =~ ^[a-z0-9_-]+$ ]]; then
+      echo "error: invalid identity name '${identity}' in acl-matrix.json — must match ^[a-z0-9_-]+\$" >&2
+      exit 1
+    fi
     nk -gen user > "${seeds_dir}/${identity}.seed"
   done <<< "${identities}"
 

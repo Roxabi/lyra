@@ -182,6 +182,12 @@ lyra agent assign my_agent --platform telegram --bot my_bot
 
 For a custom agent class (beyond `SimpleAgent`), subclass `AgentBase` from `src/lyra/core/agent.py` and implement `process()`.
 
+## Adding a config renderer
+
+A *renderer* is any tool or static file that produces output consumed by an external binary (`nats-server`, `podman`/Quadlet, `systemd`, `openssl`). Any new renderer in `deploy/` or any new CLI that writes a config file must come with a roundtrip test in `tools/check_renderer_roundtrip.sh` + a CI job in `.github/workflows/renderer-roundtrip.yml`.
+
+See **[docs/standards/renderer-roundtrip.md](docs/standards/renderer-roundtrip.md)** for the pattern, the required shape (render → consumer parse → invariant assertions), the worked example (`lyra-acl`), and the reviewer checklist. Skipping this leads to bugs accepted at write-time and rejected at reboot — see #1083 and #1089.
+
 ## Code review expectations
 
 Reviews focus on correctness, clarity, and architectural consistency — not style (ruff handles that).

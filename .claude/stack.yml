@@ -35,6 +35,7 @@ commands:
   format: uv run ruff format .
   typecheck: uv run pyright
   install: uv sync
+  worktree_setup: tools/worktree-setup.sh
 
 artifacts:
   analyses: artifacts/analyses

@@ -925,6 +925,99 @@ class TestFireSetCliSessionCallback:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# _build_cmd_payload — agent identity stamping from TraceContext (#1150)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCmdPayloadIdentity:
+    """_build_cmd_payload() stamps agent identity from TraceContext (#1150).
+
+    Today (trailers-only mode): agent_email is always None because AgentRow
+    does not yet carry an email field.  agent_name is sourced from
+    TraceContext.get_agent_name() when set.
+    """
+
+    def test_agent_name_from_trace_context_stamped_on_payload(self) -> None:
+        """With TraceContext.set_agent_name active, payload carries agent_name.
+
+        Parsing the resulting dict back through CliCmdPayload confirms
+        agent_name == the trace-context value and agent_email is None
+        (trailers-only mode).
+        """
+        from lyra.core.trace import TraceContext
+        from roxabi_contracts.cli.models import CliCmdPayload
+
+        # Arrange
+        driver = _make_driver()
+        driver.link_lyra_session("pool-1", "sess-abc")
+        token = TraceContext.set_agent_name("agent-X")
+        try:
+            # Act
+            payload_dict = driver._build_cmd_payload(
+                "pool-1", "hello", _make_model_cfg(), "sys", stream=True
+            )
+        finally:
+            TraceContext.reset_agent_name(token)
+
+        # Assert — parse through the model to confirm schema validity
+        envelope = CliCmdPayload.model_validate(payload_dict)
+        assert envelope.agent_name == "agent-X"
+        assert envelope.agent_email is None
+
+    def test_no_trace_context_agent_name_yields_none(self) -> None:
+        """Without a TraceContext agent_name set, payload has agent_name=None.
+
+        Covers the fallback path where hub dispatches without an agent in
+        the trace context (e.g. older code paths or unbound bots).
+        """
+        from lyra.core.trace import TraceContext
+        from roxabi_contracts.cli.models import CliCmdPayload
+
+        # Arrange — ensure no agent_name is in context
+        driver = _make_driver()
+        driver.link_lyra_session("pool-1", "sess-xyz")
+        # Reset any stale context var value
+        token = TraceContext.set_agent_name("")
+        TraceContext.reset_agent_name(token)
+
+        # Act — no set_agent_name call
+        payload_dict = driver._build_cmd_payload(
+            "pool-1", "hello", _make_model_cfg(), "sys", stream=False
+        )
+
+        # Assert
+        envelope = CliCmdPayload.model_validate(payload_dict)
+        assert envelope.agent_name is None
+        assert envelope.agent_email is None
+
+    def test_lyra_session_id_still_present_on_payload(self) -> None:
+        """Regression guard: lyra_session_id is carried on the envelope (#1008).
+
+        Adding identity fields must not accidentally drop the session-id field.
+        """
+        from roxabi_contracts.cli.models import CliCmdPayload
+
+        # Arrange
+        driver = _make_driver()
+        lyra_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        driver.link_lyra_session("pool-1", lyra_uuid)
+
+        # Act
+        payload_dict = driver._build_cmd_payload(
+            "pool-1", "hello", _make_model_cfg(), "sys", stream=True
+        )
+
+        # Assert
+        envelope = CliCmdPayload.model_validate(payload_dict)
+        assert envelope.lyra_session_id == lyra_uuid
+
+
+# ---------------------------------------------------------------------------
+# TestLogTaskExc unit tests — regression guard for the callback itself
+# ---------------------------------------------------------------------------
+
+
 class TestLogTaskExc:
     """Unit tests for _log_task_exc done-callback."""
 

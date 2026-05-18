@@ -55,9 +55,8 @@ Read tools tolerate false positives; write tools must not mutate test/fixture fi
 | `check_file_length.sh` | `adr_consolidate.py` |
 | `check_folder_size.sh` | `audit_quality_debt.py` |
 | `check_duplicate_test_basenames.sh` | `classify_quality_debt.py` |
-| `check_worker_error_soak_gate.sh` | `capture_v1_text_baseline.py` |
-| `check-nats-acls.sh` | `license_check.py` |
-| `smoke_llm_e2e.sh` | |
+| `check-nats-acls.sh` | `capture_v1_text_baseline.py` |
+| `smoke_llm_e2e.sh` | `license_check.py` |
 
 `adr_consolidate.py` — migration tool (flat ADR archive → domain pages); see `artifacts/analyses/adr-consolidation-matrix.md`.
 

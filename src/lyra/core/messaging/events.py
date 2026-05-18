@@ -107,10 +107,15 @@ class ResultLlmEvent:
     ``cost_usd`` is always ``None`` for ``ClaudeCliDriver`` (not present in
     NDJSON result envelope).
 
-    ``error_text`` carries the backend-reported error message when
-    ``is_error=True`` (e.g. ``"Not logged in · Please run /login"`` from the
-    CLI's ``result`` field). Consumers surface it to the user when no other
-    text was streamed; ``None`` or empty on success.
+    ``error_text`` is the driver-curated **presentation cache** of
+    ``worker_error.message`` — an in-process convenience field surfaced
+    directly to user-facing renderers (e.g. ``_shared_streaming_emitter``)
+    so adapters don't have to reach into the structured ``worker_error``
+    envelope for the display string. Populated by drivers/parsers (see
+    ``cli_streaming_parser.py``); always co-populated with ``worker_error``
+    on terminal failure events. ``None`` or empty on success. Not present on
+    NATS wire contracts — only ``worker_error`` crosses the wire. See
+    ADR-066 archive Status for the dual-field rationale.
     """
 
     is_error: bool

@@ -273,7 +273,7 @@ def _load_messages(language: str = "en") -> MessageManager:
 
     Resolution: $LYRA_MESSAGES_CONFIG → cwd/messages.toml → bundled config.
     """
-    bundled = Path(__file__).resolve().parent.parent / "config" / "messages.toml"
+    bundled = Path(__file__).resolve().parent.parent / "data" / "messages.toml"
     env_messages = os.environ.get("LYRA_MESSAGES_CONFIG")
     path_str = env_messages or (
         "messages.toml" if Path("messages.toml").exists() else str(bundled)

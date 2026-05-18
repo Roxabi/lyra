@@ -1,8 +1,9 @@
 """AgentStoreProtocol — structural interface for agent stores.
 
-The narrow ``AgentStoreProtocol`` in ``agent_seeder.py`` covers only ``get``
-and ``upsert`` — just enough for TOML seeding.  This module provides a fuller
-protocol covering every method callers depend on.
+The narrow ``AgentSeederTarget`` in ``core/agent/agent_seeder.py`` covers only
+``get`` and ``upsert`` — just enough for TOML seeding (role interface, Fowler).
+This module provides the fuller protocol covering every method callers depend
+on (header interface).
 
 Factory: use ``lyra.bootstrap.factory.agent_store_factory.make_agent_store``
 to obtain a store instance at runtime.

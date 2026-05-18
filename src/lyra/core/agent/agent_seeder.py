@@ -18,15 +18,21 @@ __all__ = ["seed_from_toml"]
 _VALID_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
-class AgentStoreProtocol(Protocol):
-    """Structural interface for the subset of AgentStore used by the seeder."""
+class AgentSeederTarget(Protocol):
+    """Role interface (Fowler): the narrow store contract the TOML seeder writes into.
+
+    Named for the collaboration, not the supplier — distinguishes it from the
+    full ``AgentStoreProtocol`` in ``core/stores/agent_store_protocol.py``,
+    which lists every method the SQLite/JSON stores expose. The seeder needs
+    only ``get`` + ``upsert``; following ISP we depend on the narrow subset.
+    """
 
     def get(self, name: str) -> AgentRow | None: ...
     async def upsert(self, row: AgentRow) -> None: ...
 
 
 async def seed_from_toml(
-    store: AgentStoreProtocol,
+    store: AgentSeederTarget,
     path: Path,
     *,
     force: bool = False,

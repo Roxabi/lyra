@@ -24,6 +24,8 @@ Adapters and infrastructure may import `core/`; never the reverse.
 
 `ports/llm.py`, `ports/stt.py`, `ports/tts.py` — pure Protocol definitions, no infrastructure imports.
 These are the hexagonal boundary: core declares what it needs; implementations live in `llm/drivers/` and `adapters/`.
+`ports/stt.py` and `ports/tts.py` follow the same pattern as `ports/llm.py`: protocol + value objects + errors + helpers, all co-located.
+The former `lyra.stt` and `lyra.tts` packages were deleted in #1221; `ports/` is the single owner.
 
 ## Store pattern (ADR-048)
 

@@ -293,6 +293,27 @@ cmd_gen_certs() {
   openssl verify -CAfile "${ca_crt}" "${server_crt}"
   echo "    openssl verify OK" >&2
 
+  # ── Full nats.conf TLS stanza parse-gate ──────────────────────────────────
+  # Parse the real nats.conf UNSTRIPPED (with TLS block intact) so that TLS
+  # directive typos (e.g. misspelled cipher_suites) are caught in CI.
+  # We substitute the prod cert paths with the tmpdir certs and create a minimal
+  # stub nkeys/auth.conf so the include resolves.
+  local nats_conf_src="${REPO_ROOT}/deploy/nats/nats.conf"
+  local nats_full_dst="${tmpdir}/nats-full.conf"
+  local nkeys_dir="${tmpdir}/nkeys"
+  mkdir -p "${nkeys_dir}"
+  printf 'authorization {\n  users = []\n}\n' > "${nkeys_dir}/auth.conf"
+
+  sed \
+    -e "s|/etc/nats/certs/server.crt|${server_crt}|g" \
+    -e "s|/etc/nats/certs/server.key|${server_key}|g" \
+    -e "s|/etc/nats/certs/ca.crt|${ca_crt}|g" \
+    "${nats_conf_src}" > "${nats_full_dst}"
+
+  echo "==> gen-certs: parse-gating full nats.conf (TLS stanza unstripped) with nats-server -t -c" >&2
+  nats-server -t -c "${nats_full_dst}"
+  echo "    nats.conf full TLS parse-gate OK" >&2
+
   # Emit a minimal TLS-only nats config that references the generated certs.
   # nats-server -t -c verifies that the referenced files exist and are parseable.
   local tls_conf="${tmpdir}/tls.conf"

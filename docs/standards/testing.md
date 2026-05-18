@@ -66,6 +66,8 @@ This rule is enforced at code review by `dev-core:tester` and is a **merge block
 
 Prefer integration tests over unit tests with heavy mocks. Import and call real source functions — never mock the module under test.
 
+When a tool or static file in `deploy/` is consumed by an external binary (nats-server, podman, systemd, openssl), add a renderer→consumer roundtrip test instead of a plain integration test. This pattern exercises the actual downstream binary in parse/check mode on the rendered output and adds structural-invariant assertions beyond exit-code 0. See [renderer-roundtrip.md](./renderer-roundtrip.md) for the full pattern, required shape, and reviewer checklist.
+
 ---
 
 ## Coverage Rules

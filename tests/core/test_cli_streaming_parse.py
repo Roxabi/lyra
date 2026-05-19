@@ -406,6 +406,80 @@ class TestStreamingIteratorNonJson:
             f"sentinel leaked into error_text: {result.error_text!r}"
         )
 
+    def test_result_is_error_path_a_scrubs_and_routes_via_worker_error(self) -> None:
+        """#1252 (sibling of #1212/#1215/#1219): path (a) result-event.
+
+        ``self.error`` is sourced verbatim from upstream wire fields
+        (``result.errors[0]`` / ``result.result``) and propagated to
+        ``WorkerError.message`` and ``ResultLlmEvent.error_text``. Two defenses
+        are exercised here:
+
+        1. ``WorkerError.message`` is bounded and control-chars are scrubbed.
+        2. ``error_text`` mirrors ``WorkerError.message`` — restoring
+           ``error_text=self.error`` would surface the un-scrubbed upstream
+           text and fail this test.
+
+        Falsification: reverting either the scrubber in
+        ``_classify_cli_error`` or the ``error_text`` source on the
+        ``ResultLlmEvent`` makes the assertions below fail. The leaky payload
+        embeds NUL, ESC, and a length-overflow tail that survive raw
+        ``self.error`` but are normalised by the scrubber.
+        """
+        # Arrange — upstream wire content carrying control chars + overflow.
+        # The scrubber must replace control bytes with spaces and truncate
+        # past _BUS_BOUND_MESSAGE_MAX_LEN (200 chars).
+        sentinel_ctrl = "\x00BLEED\x1bEDGE"
+        sentinel_padding = "X" * 300
+        leaky = f"upstream-{sentinel_ctrl}-{sentinel_padding}"
+        line = json.dumps(
+            {
+                "type": "result",
+                "session_id": "sess-1252",
+                "is_error": True,
+                "subtype": "execute_error",
+                "errors": [leaky],
+                "duration_ms": 50,
+            }
+        )
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+
+        # Act
+        events = _collect_all(parser, line)
+
+        # Assert — terminal ResultLlmEvent with cli.parse envelope
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.is_error is True
+        assert result.worker_error is not None
+        assert result.worker_error.code == "cli.parse"
+
+        # Assert — WorkerError.message is bounded + control-chars scrubbed.
+        msg = result.worker_error.message
+        assert "\x00" not in msg, f"NUL leaked into worker_error.message: {msg!r}"
+        assert "\x1b" not in msg, f"ESC leaked into worker_error.message: {msg!r}"
+        assert len(msg) <= 200, (
+            f"worker_error.message exceeds bound: len={len(msg)}, msg={msg!r}"
+        )
+
+        # Assert — error_text mirrors WorkerError.message. Strong falsifier:
+        # reverting `error_text=worker_error.message` to `error_text=self.error`
+        # produces the raw leaky payload (control bytes + > 300 chars) and
+        # fails this equality.
+        assert result.error_text == msg
+        assert result.error_text != leaky, (
+            "error_text equals raw upstream content — bus-bound sanitization "
+            "regression detected"
+        )
+        assert "\x00" not in (result.error_text or "")
+        assert "\x1b" not in (result.error_text or "")
+        assert len(result.error_text or "") <= 200
+
+        # Parser keeps the raw form on ``self.error`` (used for non-bus-bound
+        # introspection via ``StreamingIterator.error``). Only the bus-bound
+        # surfaces are scrubbed.
+        assert parser.error == leaky
+
 
 # ---------------------------------------------------------------------------
 # TestStreamingIteratorAssistant

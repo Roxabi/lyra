@@ -55,12 +55,35 @@ class NatsWorkerClientBase(NatsDriverBase):
 
     # Inherited from NatsDriverBase: HB_SUBJECT: str = ""
     LOG_PREFIX: str = ""
+    # Override parent's HB_TTL (30s) to align with WorkerRegistry.DEFAULT_HB_TTL (15s).
+    # Keeps the inherited _any_worker_alive() backstop in sync with any_alive() —
+    # otherwise a stopped worker would be evicted from any_alive() at 15s but remain
+    # "alive" in _worker_freshness for another 15s, delaying detection by future
+    # subclasses that use the parent's _stream_gen primitive.
+    HB_TTL: float = 15.0
     # Callable that raises ValueError for unsafe worker_id values. Subclasses
     # assign their domain-specific re-export of validate_worker_id. The
     # staticmethod wrapper lets subclasses set it as a plain class attr
     # (``VALIDATE_WORKER_ID = validate_worker_id``) without Python treating the
     # function as an unbound method.
     VALIDATE_WORKER_ID: Callable[[str], None] = staticmethod(_noop_validate_worker_id)
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if cls.VALIDATE_WORKER_ID is _noop_validate_worker_id:
+            raise TypeError(
+                f"{cls.__name__} must set VALIDATE_WORKER_ID "
+                "(staticmethod-wrapped Callable[[str], None]) to a real validator. "
+                "The no-op default is a security footgun — see ADR-045."
+            )
+        if "VALIDATE_WORKER_ID" in cls.__dict__ and not isinstance(
+            cls.__dict__["VALIDATE_WORKER_ID"], staticmethod
+        ):
+            raise TypeError(
+                f"{cls.__name__}.VALIDATE_WORKER_ID must be wrapped in "
+                "staticmethod(...) to prevent Python from binding it as an "
+                "instance method."
+            )
 
     def __init__(
         self,
@@ -107,9 +130,20 @@ class NatsWorkerClientBase(NatsDriverBase):
             )
             return
 
-        # Co-populate both sinks:
-        # 1. Rich-payload registry (score-based routing, any_alive()).
+        # Co-populate both sinks atomically: only write freshness if the registry
+        # accepted the entry. record_heartbeat() silently drops payloads that fail
+        # its secondary validate_nats_token guard (e.g. wildcards that slip past
+        # VALIDATE_WORKER_ID). Writing freshness unconditionally would leave the
+        # parent's _any_worker_alive() backstop tracking a worker the registry
+        # has rejected.
         self._registry.record_heartbeat(data)
+        if worker_id not in self._registry._workers:
+            log.warning(
+                "%s heartbeat worker_id=%r rejected by registry, skipping freshness",
+                self.LOG_PREFIX,
+                worker_id,
+            )
+            return
         # 2. Parent's freshness dict (_any_worker_alive() streaming backstop).
         self._worker_freshness[worker_id] = time.monotonic()
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -199,3 +199,57 @@ class TestNatsWorkerClientBase:
         # Seed registry directly (bypass _on_heartbeat)
         client._registry.record_heartbeat(_VALID_HB)
         assert client.any_alive() is True
+
+    @pytest.mark.asyncio
+    async def test_defense_in_depth_registry_rejects_wildcard_id(self) -> None:
+        """WorkerRegistry's secondary guard rejects wildcards even with permissive hook.
+
+        Uses a FakePermissiveClient whose VALIDATE_WORKER_ID accepts everything
+        (not the literal _noop_validate_worker_id, so __init_subclass__ passes),
+        proving the WorkerRegistry layer fires independently.
+        """
+
+        class FakePermissiveClient(NatsWorkerClientBase):
+            HB_SUBJECT = "test.heartbeat.permissive"
+            LOG_PREFIX = "permissive:"
+            # Accepts any string — not the literal _noop_validate_worker_id sentinel
+            VALIDATE_WORKER_ID = staticmethod(lambda _: None)
+
+        nc = MagicMock()
+        nc.is_connected = True
+        client = FakePermissiveClient(nc)
+
+        payload = {**_VALID_HB, "worker_id": "worker.*"}
+        msg = _make_msg(payload)
+
+        await client._on_heartbeat(msg)
+
+        # WorkerRegistry secondary guard (validate_nats_token) must reject the wildcard
+        assert client._registry.any_alive() is False
+        assert client._worker_freshness == {}
+
+    @pytest.mark.asyncio
+    async def test_atomicity_freshness_not_written_on_registry_raise(self) -> None:
+        """_worker_freshness stays empty when record_heartbeat raises unexpectedly.
+
+        record_heartbeat() does NOT raise in production — it returns silently on
+        validation failure. This test covers the defensive case: if record_heartbeat
+        were to raise (simulated via monkeypatch), _worker_freshness must remain
+        clean because the freshness write sits after record_heartbeat in the call
+        order and is therefore skipped by the propagating exception.
+        """
+        nc = MagicMock()
+        nc.is_connected = True
+        raising_client = FakeWorkerClient(nc)
+
+        with patch.object(
+            raising_client._registry,
+            "record_heartbeat",
+            side_effect=RuntimeError("simulated registry failure"),
+        ):
+            # Current impl: RuntimeError propagates (no try/except around the block)
+            with pytest.raises(RuntimeError, match="simulated registry failure"):
+                await raising_client._on_heartbeat(_make_msg(_VALID_HB))
+
+        # Freshness must stay clean — write was skipped by the propagating exception
+        assert raising_client._worker_freshness == {}

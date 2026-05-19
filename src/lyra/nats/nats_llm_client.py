@@ -35,7 +35,7 @@ from lyra.core.messaging.metrics import emit_populated_total
 from lyra.core.ports.llm import LlmResult
 from lyra.nats._worker_client_base import NatsWorkerClientBase
 from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_contracts.errors import WorkerError
+from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 from roxabi_contracts.llm import (
     SUBJECTS,
     LlmChunkEvent,
@@ -52,6 +52,13 @@ log = logging.getLogger(__name__)
 _TIMEOUT_DEFAULT = 120.0
 _TIMEOUT_MIN = 5.0
 _TIMEOUT_MAX = 600.0
+
+
+def _make_worker_error(
+    code: str, message: str, retryable: bool, detail: str | None = None
+) -> WorkerError:
+    assert code in KNOWN_CODES, f"unknown WorkerError code: {code}"
+    return WorkerError(code=code, message=message, retryable=retryable, detail=detail)
 
 
 def _parse_llm_timeout(timeout: float | None) -> float:
@@ -176,7 +183,7 @@ class NatsLlmClient(NatsWorkerClientBase):
             return LlmResult(
                 error="LLM circuit open — adapter temporarily unavailable",
                 retryable=True,
-                worker_error=WorkerError(
+                worker_error=_make_worker_error(
                     code="worker.capacity",
                     message="LLM circuit open — adapter temporarily unavailable",
                     retryable=True,
@@ -226,7 +233,7 @@ class NatsLlmClient(NatsWorkerClientBase):
             return LlmResult(
                 error=error_msg,
                 retryable=True,
-                worker_error=WorkerError(
+                worker_error=_make_worker_error(
                     code="transport.no_responders",
                     message=error_msg,
                     retryable=True,
@@ -247,7 +254,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                 last_result = LlmResult(
                     error=error_msg,
                     retryable=True,
-                    worker_error=WorkerError(
+                    worker_error=_make_worker_error(
                         code="transport.timeout",
                         message=error_msg,
                         retryable=True,
@@ -262,7 +269,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                 last_result = LlmResult(
                     error=error_msg,
                     retryable=True,
-                    worker_error=WorkerError(
+                    worker_error=_make_worker_error(
                         code="transport.no_responders",
                         message=error_msg,
                         retryable=True,
@@ -283,7 +290,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                     return LlmResult(
                         error=error_msg,
                         retryable=False,
-                        worker_error=WorkerError(
+                        worker_error=_make_worker_error(
                             code="transport.error",
                             message=error_msg,
                             retryable=False,
@@ -296,7 +303,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                 return LlmResult(
                     error=error_msg,
                     retryable=True,
-                    worker_error=WorkerError(
+                    worker_error=_make_worker_error(
                         code="transport.error",
                         message=error_msg,
                         retryable=True,
@@ -316,7 +323,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                 return LlmResult(
                     error=error_msg,
                     retryable=False,
-                    worker_error=WorkerError(
+                    worker_error=_make_worker_error(
                         code="transport.parse",
                         message=error_msg,
                         retryable=False,
@@ -339,7 +346,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                 return LlmResult(
                     error=error_msg,
                     retryable=True,
-                    worker_error=WorkerError(
+                    worker_error=_make_worker_error(
                         code="worker.internal",
                         message=error_msg,
                         retryable=True,
@@ -364,7 +371,7 @@ class NatsLlmClient(NatsWorkerClientBase):
         return LlmResult(
             error=error_msg,
             retryable=True,
-            worker_error=WorkerError(
+            worker_error=_make_worker_error(
                 code="transport.no_responders",
                 message=error_msg,
                 retryable=True,
@@ -395,7 +402,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                 duration_ms=0,
                 cost_usd=None,
                 error_text="LLM circuit open — adapter temporarily unavailable",
-                worker_error=WorkerError(
+                worker_error=_make_worker_error(
                     code="worker.capacity",
                     message="LLM circuit open — adapter temporarily unavailable",
                     retryable=True,
@@ -412,7 +419,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                 duration_ms=0,
                 cost_usd=None,
                 error_text=error_msg,
-                worker_error=WorkerError(
+                worker_error=_make_worker_error(
                     code="transport.no_responders",
                     message=error_msg,
                     retryable=True,
@@ -446,7 +453,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                     duration_ms=0,
                     cost_usd=None,
                     error_text=error_msg,
-                    worker_error=WorkerError(
+                    worker_error=_make_worker_error(
                         code="transport.no_responders",
                         message=error_msg,
                         retryable=True,
@@ -471,7 +478,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                         duration_ms=0,
                         cost_usd=None,
                         error_text=error_msg,
-                        worker_error=WorkerError(
+                        worker_error=_make_worker_error(
                             code="transport.error",
                             message=error_msg,
                             retryable=False,
@@ -486,7 +493,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                     duration_ms=0,
                     cost_usd=None,
                     error_text=error_msg,
-                    worker_error=WorkerError(
+                    worker_error=_make_worker_error(
                         code="transport.error",
                         message=error_msg,
                         retryable=True,
@@ -511,7 +518,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                         duration_ms=0,
                         cost_usd=None,
                         error_text=error_msg,
-                        worker_error=WorkerError(
+                        worker_error=_make_worker_error(
                             code="transport.timeout",
                             message=error_msg,
                             retryable=True,
@@ -534,7 +541,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                         duration_ms=0,
                         cost_usd=None,
                         error_text=error_msg,
-                        worker_error=WorkerError(
+                        worker_error=_make_worker_error(
                             code="transport.parse",
                             message=error_msg,
                             retryable=False,
@@ -562,7 +569,7 @@ class NatsLlmClient(NatsWorkerClientBase):
                             duration_ms=chunk.duration_ms or 0,
                             cost_usd=None,
                             error_text=error_msg,
-                            worker_error=WorkerError(
+                            worker_error=_make_worker_error(
                                 code="worker.internal",
                                 message=error_msg,
                                 retryable=True,

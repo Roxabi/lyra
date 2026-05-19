@@ -21,6 +21,7 @@ from lyra.core.messaging.events import (
 from lyra.core.trace import TraceContext
 from lyra.llm.base import LlmResult
 from roxabi_contracts.cli.models import CliCmdPayload, CliControlCmd
+from roxabi_contracts.errors import WorkerError
 from roxabi_nats.driver_base import NatsDriverBase
 
 if TYPE_CHECKING:
@@ -99,42 +100,67 @@ class CliNatsDriver(NatsDriverBase):
         payload = self._build_cmd_payload(
             pool_id, text, model_cfg, system_prompt, stream=True
         )
-        async for chunk in self._dict_stream_gen(self.SUBJECT_CMD, payload):
-            event_type = chunk.get("event_type", "text")
-            if event_type == "text":
-                t = chunk.get("text") or ""
-                if t:
-                    yield TextLlmEvent(text=t)
-            elif event_type == "tool_use":
-                tool_name = chunk.get("tool_name") or ""
-                tool_id = chunk.get("tool_id") or ""
-                if tool_name and tool_id:
-                    yield ToolUseLlmEvent(
-                        tool_name=tool_name,
-                        tool_id=tool_id,
-                        input=chunk.get("tool_input") or {},
+        try:
+            async for chunk in self._dict_stream_gen(self.SUBJECT_CMD, payload):
+                event_type = chunk.get("event_type", "text")
+                if event_type == "text":
+                    t = chunk.get("text") or ""
+                    if t:
+                        yield TextLlmEvent(text=t)
+                elif event_type == "tool_use":
+                    tool_name = chunk.get("tool_name") or ""
+                    tool_id = chunk.get("tool_id") or ""
+                    if tool_name and tool_id:
+                        yield ToolUseLlmEvent(
+                            tool_name=tool_name,
+                            tool_id=tool_id,
+                            input=chunk.get("tool_input") or {},
+                        )
+                elif event_type == "result":
+                    _cli_sid = chunk.get("session_id")
+                    if _cli_sid and self._turn_store and pool_id in self._lyra_sessions:
+                        self._fire_set_cli_session(
+                            self._lyra_sessions[pool_id], _cli_sid
+                        )
+                    _is_error = bool(chunk.get("is_error", False))
+                    yield ResultLlmEvent(
+                        is_error=_is_error,
+                        duration_ms=int(chunk.get("duration_ms", 0)),
+                        session_id=_cli_sid or None,
+                        error_text=chunk.get("error_text") or None
+                        if _is_error
+                        else None,
                     )
-            elif event_type == "result":
-                _cli_sid = chunk.get("session_id")
-                if _cli_sid and self._turn_store and pool_id in self._lyra_sessions:
-                    self._fire_set_cli_session(self._lyra_sessions[pool_id], _cli_sid)
-                _is_error = bool(chunk.get("is_error", False))
-                yield ResultLlmEvent(
-                    is_error=_is_error,
-                    duration_ms=int(chunk.get("duration_ms", 0)),
-                    session_id=_cli_sid or None,
-                    error_text=chunk.get("error_text") or None if _is_error else None,
-                )
-                return
-            if chunk.get("done", False):
-                # Defensive: worker set done=True on a non-result chunk.
-                log.warning(
-                    "cli_nats: worker sent done=True on event_type=%r [pool:%s]",
-                    event_type,
-                    pool_id,
-                )
-                yield ResultLlmEvent(is_error=False, duration_ms=0)
-                return
+                    return
+                if chunk.get("done", False):
+                    # Defensive: worker set done=True on a non-result chunk.
+                    log.warning(
+                        "cli_nats: worker sent done=True on event_type=%r [pool:%s]",
+                        event_type,
+                        pool_id,
+                    )
+                    yield ResultLlmEvent(is_error=False, duration_ms=0)
+                    return
+        except nats.errors.Error as exc:
+            # str(exc) for NATS errors can embed server addresses / connection
+            # metadata — sanitize to class name at the bus boundary (#1212/#1256).
+            log.warning(
+                "cli_nats: _stream_gen_llm() transport error [pool:%s]: %r",
+                pool_id,
+                exc,
+            )
+            error_msg = f"NATS transport error: {type(exc).__name__}"
+            yield ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                error_text=error_msg,
+                worker_error=WorkerError(
+                    code="transport.error",
+                    message=error_msg,
+                    retryable=True,
+                ),
+            )
+            return
 
     async def complete(
         self,

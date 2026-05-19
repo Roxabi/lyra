@@ -124,10 +124,16 @@ class CliStreamingParser:
             # line; debug lines use prefixes like `[DEBUG]`, `INFO:`, blank, etc.
             stripped = line.lstrip()
             if stripped.startswith("{"):
+                # Sanitize bus-bound message (#1219, sibling of #1212/#1215).
+                # JSONDecodeError.__str__ on current CPython is well-behaved,
+                # but defense-in-depth keeps `.doc` content (the raw malformed
+                # line) off the bus across Python versions and custom decoder
+                # subclasses. Full diagnostic preserved in log.warning below.
+                log.warning("CLI JSON parse error: %r", exc)
                 meta = KNOWN_CODES["cli.parse"]
                 worker_error = WorkerError(
                     code="cli.parse",
-                    message=f"CLI emitted malformed JSON: {exc}",
+                    message=f"CLI emitted malformed JSON: {type(exc).__name__}",
                     retryable=meta.default_retryable,
                 )
                 emit_populated_total(domain="cli")
@@ -137,9 +143,6 @@ class CliStreamingParser:
                         is_error=True,
                         duration_ms=0,
                         cost_usd=None,
-                        # Reuse the WorkerError.message — already credential-
-                        # scrubbed and bounded. Avoids a parallel `str(exc)`
-                        # path that would bypass sanitisation.
                         error_text=worker_error.message,
                         session_id=self.session_id,
                         worker_error=worker_error,

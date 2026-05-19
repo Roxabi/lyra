@@ -356,6 +356,56 @@ class TestStreamingIteratorNonJson:
         # error_text reuses the (scrubbed) WorkerError.message — never raw str(exc)
         assert result.error_text == result.worker_error.message
 
+    def test_malformed_json_does_not_leak_payload_into_worker_error(self) -> None:
+        """#1219 (sibling of #1212/#1215): bus-bound message keeps only the
+        exception type name; the raw malformed line (`JSONDecodeError.doc`)
+        must NOT surface in `WorkerError.message` or `error_text`.
+
+        Falsification: this test must fail if line 134 reverts to
+        ``f"...: {exc}"``. On CPython 3.12, ``str(JSONDecodeError)`` returns
+        a position string like ``"Unterminated string starting at: line 1
+        column 34 (char 33)"`` — it does NOT embed ``.doc``. A weak negative
+        assertion like ``sentinel not in msg`` passes both before and after
+        the fix (tautology). We therefore assert the exact sanitized form,
+        which differs from the reverted form character-for-character.
+        """
+        # Arrange — sensitive sentinel embedded in the malformed JSON payload.
+        # Picked to fail json.loads (unterminated string) while still looking
+        # like protocol content (`{`-shaped → triggers the cli.parse branch).
+        sentinel = "SENTINEL-LEAK-42"
+        malformed = f'{{"type": "result", "session_id": "{sentinel}'
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+
+        # Act
+        events = _collect_all(parser, malformed)
+
+        # Assert — exactly one terminal ResultLlmEvent with cli.parse envelope
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.worker_error is not None
+        assert result.worker_error.code == "cli.parse"
+
+        # Assert — exact sanitized form. Strong falsifier: reverting line 134
+        # to ``f"...: {exc}"`` produces ``"CLI emitted malformed JSON:
+        # Unterminated string starting at: ..."`` which fails this equality.
+        msg = result.worker_error.message
+        assert msg == "CLI emitted malformed JSON: JSONDecodeError", (
+            f"unexpected worker_error.message: {msg!r}"
+        )
+
+        # Assert — error_text mirrors worker_error.message verbatim. Guards
+        # against a future regression where error_text is sourced from a
+        # parallel path (e.g. raw ``str(exc)``) instead of the sanitized
+        # message. The raw malformed line (``exc.doc``) must never appear.
+        assert result.error_text == msg
+        assert malformed not in (result.error_text or ""), (
+            f"raw malformed line leaked into error_text: {result.error_text!r}"
+        )
+        assert sentinel not in (result.error_text or ""), (
+            f"sentinel leaked into error_text: {result.error_text!r}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # TestStreamingIteratorAssistant

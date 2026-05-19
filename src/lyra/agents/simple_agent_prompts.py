@@ -13,6 +13,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from lyra.core.ports.stt import STTNoiseError
+
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
     from lyra.core.ports.stt import STTProtocol, TranscriptionResult
@@ -95,14 +97,6 @@ async def _build_audio_text(
 
     escaped = html.escape(stt_result.text)
     return f"<voice_transcript>{escaped}</voice_transcript>", stt_result.text
-
-
-class STTNoiseError(Exception):
-    """Raised when STT detects only noise/silence."""
-
-    def __init__(self, text: str) -> None:
-        self.text = text
-        super().__init__(f"STT detected noise: {text[:50]}...")
 
 
 class STTError(Exception):

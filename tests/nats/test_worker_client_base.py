@@ -185,8 +185,10 @@ class TestNatsWorkerClientBase:
     ) -> None:
         """_any_worker_alive() and any_alive() both report False for expired workers.
 
-        WorkerRegistry uses DEFAULT_HB_TTL=15s; NatsDriverBase uses HB_TTL=30s.
-        We manipulate both timestamps directly so the test is deterministic and fast.
+        WorkerRegistry uses DEFAULT_HB_TTL=15s; NatsWorkerClientBase overrides
+        HB_TTL=15.0 to align with the registry (the parent NatsDriverBase
+        default is 30s). We manipulate both timestamps directly so the test
+        is deterministic and fast.
         """
         msg = _make_msg(_VALID_HB)
         await client._on_heartbeat(msg)

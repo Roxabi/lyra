@@ -96,8 +96,10 @@ class NatsImageClient(NatsWorkerClientBase):
         super().__init__(nc, timeout=timeout)
 
     async def stop(self) -> None:
-        await super().stop()
-        log.debug("NatsImageClient stopped")
+        try:
+            await super().stop()
+        finally:
+            log.debug("NatsImageClient stopped")
 
     def _parse_reply(self, raw: bytes) -> ImageResponse:
         """Validate a NATS reply against ImageResponse; translate a ValidationError

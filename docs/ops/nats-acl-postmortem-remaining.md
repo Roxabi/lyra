@@ -24,7 +24,7 @@ Source: [nats-acl-inbox-case-postmortem.md](nats-acl-inbox-case-postmortem.md)
 | Drop `allow_responses: true` from all identities | `5b3b6c4a` — hub/adapters explicit `false`; others omit field (NATS default = false) |
 | Kill hardcoded identity list in gen-nkeys.sh — IDENTITIES[] driven from JSON SSoT | `load_matrix()` populates from acl-matrix.json |
 | Alert on `permissions violation` in NATS logs | `src/lyra/monitoring/checks_log.py` — `check_nats_log_errors` |
-| Alert on sustained `_stream_gen timeout` in hub logs | `src/lyra/monitoring/checks_log.py:57` — `check_hub_stream_gen_timeout` |
+| Alert on sustained `_dict_stream_gen timeout` in hub logs | `src/lyra/monitoring/checks_log.py:57` — `check_hub_dict_stream_gen_timeout` |
 | NATS HTTP monitoring on 127.0.0.1 | `bcab1197` |
 | Retire `tts-adapter`/`sst-adapter` from acl-matrix.json | `5b3b6c4a` |
 | Fix gen-nkeys.sh missing `clipool-worker` in key-gen block | `5b3b6c4a` |

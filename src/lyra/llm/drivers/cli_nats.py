@@ -99,7 +99,7 @@ class CliNatsDriver(NatsDriverBase):
         payload = self._build_cmd_payload(
             pool_id, text, model_cfg, system_prompt, stream=True
         )
-        async for chunk in self._stream_gen(self.SUBJECT_CMD, payload):
+        async for chunk in self._dict_stream_gen(self.SUBJECT_CMD, payload):
             event_type = chunk.get("event_type", "text")
             if event_type == "text":
                 t = chunk.get("text") or ""

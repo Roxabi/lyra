@@ -247,7 +247,7 @@ async def test_handle_cmd_streaming_forwards_tool_use_as_keepalive() -> None:
     """ToolUseLlmEvent is forwarded as event_type='tool_use' chunk (done=False).
 
     Tool execution can take minutes without producing TextLlmEvents; without
-    this forward, the hub-side `_stream_gen` per-chunk timer would kill the
+    this forward, the hub-side `_dict_stream_gen` per-chunk timer would kill the
     healthy session. The chunk acts as a keepalive — the hub ignores its
     payload but the arrival resets the timer.
     """

@@ -70,16 +70,16 @@ def _make_reply(data: dict) -> MagicMock:
 
 
 async def _collect_stream(driver: CliNatsDriver, mock_chunks: list[dict]) -> list:
-    """Drive driver.stream() by patching the lower-level _stream_gen."""
+    """Drive driver.stream() by patching the lower-level _dict_stream_gen."""
 
-    async def _mock_stream_gen(
+    async def _mock_dict_stream_gen(
         subject: str, payload_dict: dict, *, timeout: float | None = None
     ) -> AsyncIterator[dict]:
         for chunk in mock_chunks:
             yield chunk
 
     events = []
-    with patch.object(driver, "_stream_gen", new=_mock_stream_gen):
+    with patch.object(driver, "_dict_stream_gen", new=_mock_dict_stream_gen):
         async for event in await driver.stream(
             "pool-1", "hello", _make_model_cfg(), "You are helpful."
         ):
@@ -112,7 +112,7 @@ class TestConstants:
 
 
 class TestStream:
-    """stream() parses dict chunks from _stream_gen into LlmEvents."""
+    """stream() parses dict chunks from _dict_stream_gen into LlmEvents."""
 
     @pytest.mark.asyncio
     async def test_stream_yields_text_events(self) -> None:
@@ -196,14 +196,14 @@ class TestStream:
         chunks = [{"event_type": "text", "text": "hello", "done": True}]
         events = []
 
-        async def _mock_stream_gen(
+        async def _mock_dict_stream_gen(
             subject: str, payload_dict: dict, *, timeout: float | None = None
         ) -> AsyncIterator[dict]:
             for c in chunks:
                 yield c
 
         # Act
-        with patch.object(driver, "_stream_gen", new=_mock_stream_gen):
+        with patch.object(driver, "_dict_stream_gen", new=_mock_dict_stream_gen):
             async for ev in await driver.stream(
                 "pool-1", "hi", _make_model_cfg(), "sys"
             ):
@@ -216,20 +216,20 @@ class TestStream:
         assert events[1].is_error is False
 
     @pytest.mark.asyncio
-    async def test_stream_calls_stream_gen_with_subject_cmd(self) -> None:
-        """stream() delegates to _stream_gen using SUBJECT_CMD."""
+    async def test_stream_calls_dict_stream_gen_with_subject_cmd(self) -> None:
+        """stream() delegates to _dict_stream_gen using SUBJECT_CMD."""
         # Arrange
         driver = _make_driver()
         called_subjects: list[str] = []
 
-        async def _spy_stream_gen(
+        async def _spy_dict_stream_gen(
             subject: str, payload_dict: dict, *, timeout: float | None = None
         ) -> AsyncIterator[dict]:
             called_subjects.append(subject)
             yield {"event_type": "result", "is_error": False, "done": True}
 
         # Act
-        with patch.object(driver, "_stream_gen", new=_spy_stream_gen):
+        with patch.object(driver, "_dict_stream_gen", new=_spy_dict_stream_gen):
             async for _ in await driver.stream("p1", "hi", _make_model_cfg(), "sys"):
                 pass
 
@@ -776,14 +776,14 @@ class TestStreamGenSessionPersistence:
 
         events = []
 
-        async def _mock_stream_gen(
+        async def _mock_dict_stream_gen(
             subject: str, payload_dict: dict, *, timeout: float | None = None
         ) -> AsyncIterator[dict]:
             for c in chunks:
                 yield c
 
         # Act
-        with patch.object(driver, "_stream_gen", new=_mock_stream_gen):
+        with patch.object(driver, "_dict_stream_gen", new=_mock_dict_stream_gen):
             async for ev in await driver.stream(
                 "pool-1", "hello", _make_model_cfg(), "sys"
             ):
@@ -816,14 +816,14 @@ class TestStreamGenSessionPersistence:
             }
         ]
 
-        async def _mock_stream_gen(
+        async def _mock_dict_stream_gen(
             subject: str, payload_dict: dict, *, timeout: float | None = None
         ) -> AsyncIterator[dict]:
             for c in chunks:
                 yield c
 
         # Act / Assert — no AttributeError
-        with patch.object(driver, "_stream_gen", new=_mock_stream_gen):
+        with patch.object(driver, "_dict_stream_gen", new=_mock_dict_stream_gen):
             async for _ in await driver.stream(
                 "pool-1", "hi", _make_model_cfg(), "sys"
             ):
@@ -853,7 +853,7 @@ class TestStreamGenSessionPersistence:
             },
         ]
 
-        async def _mock_stream_gen(
+        async def _mock_dict_stream_gen(
             subject: str, payload_dict: dict, *, timeout: float | None = None
         ) -> AsyncIterator[dict]:
             for c in chunks:
@@ -861,7 +861,7 @@ class TestStreamGenSessionPersistence:
 
         # Act
         events = []
-        with patch.object(driver, "_stream_gen", new=_mock_stream_gen):
+        with patch.object(driver, "_dict_stream_gen", new=_mock_dict_stream_gen):
             async for ev in await driver.stream("pool-1", "hi", _make_model_cfg(), ""):
                 events.append(ev)
         await asyncio.sleep(0)  # let the fire-and-forget task run

@@ -54,13 +54,13 @@ def check_nats_log_errors(container_name: str, max_age_minutes: int) -> CheckRes
         )
 
 
-def check_hub_stream_gen_timeout(
+def check_hub_dict_stream_gen_timeout(
     container_name: str, max_age_minutes: int, threshold: int
 ) -> CheckResult:
-    """Check hub container logs for _stream_gen timeout occurrences.
+    """Check hub container logs for _dict_stream_gen timeout occurrences.
 
     Runs `podman logs --since {max_age_minutes}m {container_name}` and counts
-    lines containing "_stream_gen timeout" (case-insensitive). Fails when
+    lines containing "_dict_stream_gen timeout" (case-insensitive). Fails when
     count >= threshold.
     """
     now = datetime.now(timezone.utc)
@@ -73,20 +73,22 @@ def check_hub_stream_gen_timeout(
         )
         combined = result.stdout + result.stderr
         count = sum(
-            1 for line in combined.splitlines() if "_stream_gen timeout" in line.lower()
+            1
+            for line in combined.splitlines()
+            if "_dict_stream_gen timeout" in line.lower()
         )
         if count >= threshold:
             return CheckResult(
-                name="hub:stream_gen_timeout",
+                name="hub:dict_stream_gen_timeout",
                 passed=False,
                 detail=(
-                    f"_stream_gen timeout: {count} in last {max_age_minutes}m"
+                    f"_dict_stream_gen timeout: {count} in last {max_age_minutes}m"
                     f" (threshold={threshold})"
                 ),
                 timestamp=now,
             )
         return CheckResult(
-            name="hub:stream_gen_timeout",
+            name="hub:dict_stream_gen_timeout",
             passed=True,
             detail=(
                 f"{count} timeouts in last {max_age_minutes}m (threshold={threshold})"
@@ -95,7 +97,7 @@ def check_hub_stream_gen_timeout(
         )
     except _LOG_EXCEPTIONS as exc:
         return CheckResult(
-            name="hub:stream_gen_timeout",
+            name="hub:dict_stream_gen_timeout",
             passed=False,
             detail=str(exc),
             timestamp=now,

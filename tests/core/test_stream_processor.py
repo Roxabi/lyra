@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import ast
-import dataclasses
-import json
 import logging
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 
 import pytest
 
@@ -204,16 +202,16 @@ class TestStreamProcessor:
         # Assert — file accumulator updated
         assert "src/foo.py" in processor._files
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_single_edit_no_intermediate(self) -> None:
-        """Single Edit, show_intermediate=False: no text triplet until ResultLlmEvent.
+        """Single Edit: no intermediate ToolSummaryRenderEvent in v2 (L01).
 
-        After Slice 3, show_intermediate=False suppresses streaming Text events
-        entirely. ResultLlmEvent closes the text block and emits TextEnd.
-        No TextRenderEvent / ToolSummaryRenderEvent in the stream.
+        v2 contract (post-v1 removal): there is no mid-turn ToolSummaryRenderEvent
+        at all. StreamProcessor emits the v2 Text triplet (TextStart → TextDelta →
+        TextEnd) and ToolCallStart/End lifecycle events. The text block closes when
+        the ToolUseLlmEvent arrives, and ToolCallEnd is synthesised at ResultLlmEvent.
         """
         # Arrange
-        processor = StreamProcessor(cfg(), show_intermediate=False)
+        processor = StreamProcessor(cfg())
         events = async_events(
             TextLlmEvent(text="Refactoring..."),
             ToolUseLlmEvent(
@@ -226,17 +224,33 @@ class TestStreamProcessor:
         all_events = await collect(processor.process(events))
         result = [e for e in all_events if not isinstance(e, _RUN_LIFECYCLE_TYPES)]
 
-        # Assert — no v1 types
-        assert not any(isinstance(e, TextRenderEvent) for e in result), (
-            f"Unexpected v1 TextRenderEvent: {result!r}"
-        )
-        assert not any(isinstance(e, ToolSummaryRenderEvent) for e in result), (
-            f"Unexpected v1 ToolSummaryRenderEvent: {result!r}"
-        )
+        # Assert — v2 Text triplet present and correlated
+        starts = [e for e in result if isinstance(e, TextStartRenderEvent)]
+        deltas = [e for e in result if isinstance(e, TextDeltaRenderEvent)]
+        ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
+        assert len(starts) == 1
+        assert len(deltas) == 1
+        assert len(ends) == 1
+        assert deltas[0].delta == "Refactoring..."
+        assert starts[0].message_id == deltas[0].message_id == ends[0].message_id
 
-        # ToolCall lifecycle present
-        assert any(isinstance(e, ToolCallStartRenderEvent) for e in result)
-        assert any(isinstance(e, ToolCallEndRenderEvent) for e in result)
+        # Assert — ToolCall lifecycle present (no mid-turn intermediate summary)
+        tool_starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
+        tool_ends = [e for e in result if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(tool_starts) == 1
+        assert tool_starts[0].tool_call_id == "t1"
+        assert tool_starts[0].tool_name == "Edit"
+        assert len(tool_ends) == 1
+        assert tool_ends[0].tool_call_id == "t1"
+
+        # Assert — text block closes BEFORE ToolCallStart (TextEnd then ToolStart order)
+        text_end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, TextEndRenderEvent)
+        )
+        tool_start_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ToolCallStartRenderEvent)
+        )
+        assert text_end_idx < tool_start_idx
 
     async def test_write_tool_tracked(self) -> None:
         """Write tool calls emit ToolCallStart/End and update _files (B8-2, #1211 S4).
@@ -354,9 +368,14 @@ class TestStreamProcessor:
     # T13 — Two files, no group (SC-5)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_two_files_no_group(self) -> None:
-        """Two distinct files remain in per-file display (below group_threshold)."""
+        """Two distinct files below group_threshold: each tracked in _files (L02).
+
+        v2 contract: 2 Edit calls at group_threshold=3 stays per-file — both
+        paths are tracked in the _files accumulator. Each Edit emits one
+        ToolCallStart; orphan synthesis at ResultLlmEvent emits 2 ToolCallEnd.
+        No v1 ToolSummaryRenderEvent; _files is the authoritative record.
+        """
         # Arrange
         processor = StreamProcessor(cfg(group_threshold=3))
         events = async_events(
@@ -366,24 +385,34 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert len(final_summaries[0].files) == 2
-        assert "a.py" in final_summaries[0].files
-        assert "b.py" in final_summaries[0].files
+        # Assert — 2 ToolCallStart + 2 ToolCallEnd emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 2, f"Expected 2 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 2, f"Expected 2 ToolCallEnd, got {len(ends)}"
+        assert {e.tool_call_id for e in starts} == {"t1", "t2"}
+
+        # Assert — both file paths tracked per-file in _files accumulator
+        assert "a.py" in processor._files
+        assert "b.py" in processor._files
+        assert processor._files["a.py"].count == 1
+        assert processor._files["b.py"].count == 1
 
     # ------------------------------------------------------------------
     # T14 — Three files at group_threshold (SC-5)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_three_files_group(self) -> None:
-        """Three distinct files at group_threshold — all files still tracked."""
+        """Three distinct files at group_threshold: all tracked in _files (L03).
+
+        v2 contract: 3 Edit calls at group_threshold=3 — all three are tracked
+        in the _files accumulator. Each Edit emits one ToolCallStart; orphan
+        synthesis at ResultLlmEvent emits 3 ToolCallEnd events. No v1
+        ToolSummaryRenderEvent; _files is the authoritative record. Group-display
+        decisions live at the adapter layer, not StreamProcessor.
+        """
         # Arrange
         processor = StreamProcessor(cfg(group_threshold=3))
         events = async_events(
@@ -394,25 +423,35 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert len(final_summaries[0].files) == 3
-        assert "a.py" in final_summaries[0].files
-        assert "b.py" in final_summaries[0].files
-        assert "c.py" in final_summaries[0].files
+        # Assert — 3 ToolCallStart + 3 ToolCallEnd emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 3, f"Expected 3 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 3, f"Expected 3 ToolCallEnd, got {len(ends)}"
+        assert {e.tool_call_id for e in starts} == {"t1", "t2", "t3"}
+
+        # Assert — all three file paths tracked in _files accumulator
+        assert "a.py" in processor._files
+        assert "b.py" in processor._files
+        assert "c.py" in processor._files
+        assert processor._files["a.py"].count == 1
+        assert processor._files["b.py"].count == 1
+        assert processor._files["c.py"].count == 1
 
     # ------------------------------------------------------------------
     # T15 — 80 edits over 5 files (SC-4, SC-5)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_eighty_tools_multi_file(self) -> None:
-        """80 edits cycling 5 files: each file gets count==16 in count mode."""
+        """80 edits cycling 5 files: each file gets count==16 in count mode (L04).
+
+        v2 contract: 80 Edit calls cycling 5 files at names_threshold=3 puts all
+        files into count mode (16 > 3). Each Edit emits ToolCallStart; orphan
+        synthesis at ResultLlmEvent emits 80 ToolCallEnd events. _files accumulator
+        holds 5 entries each with count==16 and edits==[].
+        """
         # Arrange
         processor = StreamProcessor(cfg(names_threshold=3))
         file_names = [f"src/file{i}.py" for i in range(5)]
@@ -427,20 +466,25 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        final = final_summaries[0]
-        assert len(final.files) == 5
+        # Assert — 80 ToolCallStart + 80 ToolCallEnd emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 80, f"Expected 80 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 80, f"Expected 80 ToolCallEnd, got {len(ends)}"
+
+        # Assert — _files accumulator has 5 entries all in count mode
+        assert len(processor._files) == 5
         for file_name in file_names:
-            assert file_name in final.files
-            entry = final.files[file_name]
-            assert entry.count == 16
-            assert entry.edits == []  # count mode (16 > names_threshold=3)
+            assert file_name in processor._files
+            entry = processor._files[file_name]
+            assert entry.count == 16, (
+                f"{file_name}: expected count=16, got {entry.count}"
+            )
+            assert entry.edits == [], (
+                f"{file_name}: expected count mode (edits=[]), got {entry.edits}"
+            )
 
     # ------------------------------------------------------------------
     # T16 — Bash truncation (SC-6)
@@ -556,9 +600,13 @@ class TestStreamProcessor:
         assert len(processor._web_fetches) == 1
         assert processor._web_fetches[0] == "https://example.com"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_web_search_visible(self) -> None:
-        """WebSearch calls are recorded in the web_fetches list."""
+        """WebSearch: ToolCallStart/End emitted + query in _web_fetches (L05).
+
+        v2 contract: WebSearch (show["web_search"]=True by default) emits the
+        ToolCall lifecycle and appends the query to _web_fetches accumulator.
+        Parity with the active test_web_fetch_visible (line 526).
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -571,18 +619,29 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert len(final_summaries[0].web_fetches) == 1
+        # Assert — ToolCall lifecycle emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 1
+        assert starts[0].tool_name == "WebSearch"
+        assert starts[0].tool_call_id == "ws1"
+        assert len(ends) == 1
+        assert ends[0].tool_call_id == "ws1"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
+        # Assert — query accumulated in _web_fetches (show["web_search"]=True)
+        assert len(processor._web_fetches) == 1
+        assert processor._web_fetches[0] == "python asyncio"
+
     async def test_web_fetch_hidden_when_show_false(self) -> None:
-        """WebFetch is silently dropped when show['web_fetch']=False."""
+        """WebFetch show=False: lifecycle emitted, URL not accumulated (L06).
+
+        v2 contract: show["web_fetch"]=False suppresses URL accumulation in
+        _web_fetches but does NOT suppress ToolCallStart/End lifecycle events
+        (those are always emitted by _handle_tool_event). The show flag only
+        controls the _accumulate_web call.
+        """
         # Arrange
         config = ToolDisplayConfig.model_validate({"show": {"web_fetch": False}})
         processor = StreamProcessor(config)
@@ -596,37 +655,84 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert — event dropped: no ToolSummaryRenderEvent emitted
-        tool_summaries = [e for e in result if isinstance(e, ToolSummaryRenderEvent)]
-        assert len(tool_summaries) == 0
+        # Assert — ToolCallStart/End still emitted (lifecycle always fires)
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 1
+        assert starts[0].tool_name == "WebFetch"
+        assert len(ends) == 1
+
+        # Assert — URL NOT accumulated (show["web_fetch"]=False)
+        assert processor._web_fetches == [], (
+            f"Expected empty _web_fetches when show=False, got {processor._web_fetches}"
+        )
 
     # ------------------------------------------------------------------
     # T19 — Agent calls accumulation (SC-10)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_agent_calls_accumulation(self) -> None:
-        """Agent tool calls are accumulated in agent_calls list."""
-        # Arrange
+        """Agent calls: ToolCallStart/End + description in _agent_calls (L07).
+
+        v2 contract: the live _agent_calls path in StreamProcessor._accumulate
+        appends event.input["description"] when show["agent"]=True (default).
+        ToolCall lifecycle is always emitted. _agent_calls is authoritative.
+        Targets stream_processor.py:157,532,542.
+
+        Two calls used to verify list accumulation (single item would not
+        distinguish append from replace).
+        """
+        # Arrange — default cfg() has show["agent"]=True
         processor = StreamProcessor(cfg())
         events = async_events(
             ToolUseLlmEvent(
                 tool_name="Agent", tool_id="a1", input={"description": "sub-task"}
             ),
+            ToolUseLlmEvent(
+                tool_name="Agent", tool_id="a2", input={"description": "another-task"}
+            ),
             ResultLlmEvent(is_error=False, duration_ms=50),
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert final_summaries[0].agent_calls == ["sub-task"]
+        # Assert — ToolCall lifecycle emitted for both agent calls
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 2
+        assert {e.tool_call_id for e in starts} == {"a1", "a2"}
+        assert len(ends) == 2
+
+        # Assert — agent call descriptions accumulated in _agent_calls (live path)
+        assert processor._agent_calls == ["sub-task", "another-task"]
+
+        # Assert — _has_any_tool_events() returns True when _agent_calls is non-empty
+        assert processor._has_any_tool_events()
+
+    async def test_agent_calls_skipped_when_show_agent_false(self) -> None:
+        """L07 negative: show={"agent": False} → `_agent_calls` stays empty."""
+        # Arrange
+        config = ToolDisplayConfig.model_validate({
+            "show": {"agent": False},
+            "throttle_ms": 0,
+        })
+        processor = StreamProcessor(config)
+        events = async_events(
+            ToolUseLlmEvent(
+                tool_name="Agent", tool_id="a1", input={"description": "sub-task-1"}
+            ),
+            ToolUseEndLlmEvent(tool_id="a1"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        await collect(processor.process(events))
+
+        # Assert — show=False means _agent_calls stays empty (no accumulation)
+        assert processor._agent_calls == []
 
     # ------------------------------------------------------------------
     # T20 — ResultLlmEvent bypasses throttle (SC-8)
@@ -699,38 +805,18 @@ class TestStreamProcessor:
         assert "b.py" in processor._files
 
     # ------------------------------------------------------------------
-    # T22 — Throttle=0 passes all mid-turn events through (SC-8)
-    # ------------------------------------------------------------------
-
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-    async def test_throttle_pass_through(self) -> None:
-        """throttle_ms=0 disables throttling — all mid-turn summaries emitted."""
-        # Arrange
-        processor = StreamProcessor(cfg(throttle_ms=0))
-        events = async_events(
-            ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={"path": "a.py"}),
-            ToolUseLlmEvent(tool_name="Edit", tool_id="t2", input={"path": "b.py"}),
-            ResultLlmEvent(is_error=False, duration_ms=50),
-        )
-
-        # Act
-        result = await collect(processor.process(events))
-
-        # Assert — exactly 2 mid-turn (is_complete=False) summaries
-        mid_summaries = [
-            e
-            for e in result
-            if isinstance(e, ToolSummaryRenderEvent) and not e.is_complete
-        ]
-        assert len(mid_summaries) == 2
-
-    # ------------------------------------------------------------------
     # T23 — Text accumulation across multiple chunks (SC-2)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_text_accumulation(self) -> None:
-        """Chunks streamed individually; final TextRenderEvent has full concat text."""
+        """TextDelta.delta values concatenated reproduce the input text (L09).
+
+        v2 contract: each TextLlmEvent chunk becomes one TextDeltaRenderEvent.
+        Concatenating all TextDeltaRenderEvent.delta values in order must
+        reproduce the original input text. Distinct from test_text_triplet_*
+        (which assert ordering and message_id correlation) — this test asserts
+        the delta-concatenation property within a single text block.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -743,11 +829,18 @@ class TestStreamProcessor:
         # Act
         result = await collect(processor.process(events))
 
-        # Assert — 3 intermediate chunks + 1 final with full concatenated text.
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
-        assert len(text_events) == 4
-        assert text_events[-1].text == "Hello world"
-        assert text_events[-1].is_final is True
+        # Assert — exactly 3 TextDelta events (one per TextLlmEvent)
+        deltas = [e for e in result if isinstance(e, TextDeltaRenderEvent)]
+        assert len(deltas) == 3, f"Expected 3 TextDelta, got {len(deltas)}"
+        assert [d.delta for d in deltas] == ["Hello", " ", "world"]
+
+        # Assert — concatenating all deltas reproduces the original input
+        reconstructed = "".join(d.delta for d in deltas)
+        assert reconstructed == "Hello world"
+
+        # Assert — all deltas share the same message_id (single block)
+        mid = deltas[0].message_id
+        assert all(d.message_id == mid for d in deltas)
 
     # ------------------------------------------------------------------
     # B3 — is_error propagation from ResultLlmEvent → TextRenderEvent (#392)
@@ -803,9 +896,14 @@ class TestStreamProcessor:
         assert len(run_errors) == 1
         assert run_errors[0].message == "boom"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_is_error_false_propagated_to_text_render_event(self) -> None:
-        """ResultLlmEvent(is_error=False) → TextRenderEvent(is_error=False)."""
+        """ResultLlmEvent(is_error=False) → RunFinishedRenderEvent, not RunError (L10).
+
+        v2 contract: is_error=False closes the text block cleanly via
+        TextEndRenderEvent, then emits RunFinishedRenderEvent (outcome=success).
+        No RunErrorRenderEvent is emitted. Parity-False case for the active
+        test_is_error_propagated_to_text_render_event (is_error=True).
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -814,19 +912,29 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
-        final_text = [
-            e for e in result if isinstance(e, TextRenderEvent) and e.is_final
-        ]
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        assert len(final_text) == 1
-        assert final_text[0].is_error is False
+        # Assert — terminal is RunFinished (not RunError) for is_error=False
+        assert isinstance(all_events[-1], RunFinishedRenderEvent)
+        assert all_events[-1].outcome == "success"
+        assert not any(isinstance(e, RunErrorRenderEvent) for e in all_events)
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
+        # Assert — text block properly closed
+        text_ends = [e for e in all_events if isinstance(e, TextEndRenderEvent)]
+        text_deltas = [e for e in all_events if isinstance(e, TextDeltaRenderEvent)]
+        assert len(text_ends) == 1
+        assert len(text_deltas) == 1
+        assert text_deltas[0].delta == "normal response"
+        text_starts = [e for e in all_events if isinstance(e, TextStartRenderEvent)]
+        assert len(text_starts) == 1
+        assert text_ends[0].message_id == text_starts[0].message_id
+
     async def test_error_text_surfaces_when_no_streamed_text(self) -> None:
-        """ResultLlmEvent(is_error=True, error_text=...) with no streamed text
-        → TextRenderEvent carries error_text so adapter can surface it.
+        """L11: error_text surfaces via RunError.message when no streamed text exists.
+
+        Extends `test_is_error_run_error_carries_error_text` with the additional
+        guarantee that no text block is opened (no TextStart/Delta) when
+        `error_text` is the only text-bearing field.
         """
         # Arrange
         processor = StreamProcessor(cfg())
@@ -839,18 +947,29 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        assert len(text_events) == 1
-        assert text_events[0].text == "Not logged in · Please run /login"
-        assert text_events[0].is_error is True
-        assert text_events[0].is_final is True
+        # Assert — terminal RunError with error_text as message
+        run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
+        assert len(run_errors) == 1
+        assert run_errors[0].message == "Not logged in · Please run /login"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
+        # Assert — no text block opened (no streamed text)
+        assert not any(
+            isinstance(e, TextStartRenderEvent) for e in all_events
+        )
+        assert not any(
+            isinstance(e, TextDeltaRenderEvent) for e in all_events
+        )
+
     async def test_streamed_text_preferred_over_error_text(self) -> None:
-        """When text was streamed, prefer it over error_text (recovered tool)."""
+        """Streamed text + error_text: text in TextDelta, error_text in RunError (L12).
+
+        v2 contract: when both streamed text and error_text are present,
+        the streamed text appears in TextDeltaRenderEvent.delta (as it arrived),
+        and error_text is forwarded as RunErrorRenderEvent.message. The error
+        does not suppress or replace the streamed text.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -858,20 +977,22 @@ class TestStreamProcessor:
             ResultLlmEvent(
                 is_error=True,
                 duration_ms=100,
-                error_text="should be ignored",
+                error_text="should be in RunError",
             ),
         )
 
         # Act
-        result = await collect(processor.process(events))
-        # Final event carries the full accumulated text, not the error_text shim.
-        final_text = [
-            e for e in result if isinstance(e, TextRenderEvent) and e.is_final
-        ]
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        assert len(final_text) == 1
-        assert final_text[0].text == "recovered output"
+        # Assert — streamed text appears in TextDelta (unchanged)
+        text_deltas = [e for e in all_events if isinstance(e, TextDeltaRenderEvent)]
+        assert len(text_deltas) == 1
+        assert text_deltas[0].delta == "recovered output"
+
+        # Assert — error_text forwarded as RunError.message
+        run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
+        assert len(run_errors) == 1
+        assert run_errors[0].message == "should be in RunError"
 
     async def test_empty_stream(self) -> None:
         """Empty event stream emits the v2 minimum envelope (v2, #1211 S3).
@@ -896,9 +1017,15 @@ class TestStreamProcessor:
         _text_types = (TextStartRenderEvent, TextDeltaRenderEvent, TextEndRenderEvent)
         assert not any(isinstance(e, _text_types) for e in result)
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_no_result_event(self) -> None:
-        """Stream truncated without ResultLlmEvent flushes pending state."""
+        """Truncated stream without ResultLlmEvent: TextEnd emitted, RunFinished (L13).
+
+        v2 contract: when the stream ends without a ResultLlmEvent, the
+        truncation path (stream_processor.py:341–356) closes any open text
+        block via TextEndRenderEvent, then the post-finally path emits
+        RunFinishedRenderEvent (outcome=success) because _result_is_error stays
+        False. No v1 TextRenderEvent(is_final=False) fallback.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(TextLlmEvent(text="partial response"))
@@ -906,12 +1033,19 @@ class TestStreamProcessor:
         # Act
         result = await collect(processor.process(events))
 
-        # Assert — chunk streamed immediately as is_final=False, then truncation
-        # path emits _total_text again as is_final=False to signal truncation.
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
-        assert len(text_events) == 2
-        assert all(e.text == "partial response" for e in text_events)
-        assert all(e.is_final is False for e in text_events)
+        # Assert — text block opened and properly closed (truncation guard fires)
+        text_starts = [e for e in result if isinstance(e, TextStartRenderEvent)]
+        text_deltas = [e for e in result if isinstance(e, TextDeltaRenderEvent)]
+        text_ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
+        assert len(text_starts) == 1
+        assert len(text_deltas) == 1
+        assert text_deltas[0].delta == "partial response"
+        assert len(text_ends) == 1
+        assert text_ends[0].message_id == text_starts[0].message_id
+
+        # Assert — terminal is RunFinished (no exception, no error result)
+        assert isinstance(result[-1], RunFinishedRenderEvent)
+        assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
 
     # ------------------------------------------------------------------
     # T24 — Hexagonal boundary (no framework imports in stream_processor)
@@ -1130,28 +1264,6 @@ class TestRunLifecycle:
         assert isinstance(result[0], RunStartedRenderEvent)
         assert isinstance(result[-1], RunFinishedRenderEvent)
         assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
-
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-    async def test_soft_error_emits_finished_not_error(self) -> None:
-        """ResultLlmEvent.is_error=True (soft error) → RunFinished, not RunError."""
-        # B2 from PR #1218 review (#1211 follow-up):
-        # This test asserts RunFinished(success) for is_error=True; B8-10 asserts
-        # RunErrorRenderEvent for the same input. The contracts are mutually exclusive.
-        # When #1216 unskips this test, the StreamProcessor's actual is_error contract
-        # must be reconciled — either delete this test (B8-10 wins) or revise B8-10.
-        processor = StreamProcessor(cfg())
-        events = async_events(
-            ResultLlmEvent(is_error=True, duration_ms=10, error_text="model error"),
-        )
-
-        result = await collect(processor.process(events))
-
-        assert isinstance(result[-1], RunFinishedRenderEvent)
-        assert result[-1].outcome == "success"
-        assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
-        # The soft error still surfaces via TextRenderEvent.is_error=True.
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
-        assert any(e.is_error for e in text_events)
 
     def test_schema_versions(self) -> None:
         """Each new event type carries its own SCHEMA_VERSION_* constant."""
@@ -1546,16 +1658,17 @@ class TestReasoning:
         )
         assert end_idx < first_args_idx
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_show_intermediate_false_emits_no_reasoning_events(self) -> None:
-        """SC-6 (spec line 260): show_intermediate=False → zero Reasoning* events.
+        """show_intermediate=False → zero Reasoning* events emitted (L15).
 
-        Spec v2 line 65 requires that thinking chunks produce no Reasoning* output
-        when the operator config disables intermediate streaming. The gate lives
-        on the StreamProcessor (single source of truth) so any downstream consumer
-        — adapters today, NATS subscribers tomorrow — is uniformly muted.
+        v2 contract (stream_processor.py:316): when show_intermediate=False,
+        ThinkingLlmEvent chunks are dropped entirely via `continue` — no
+        ReasoningStart, ReasoningDelta, or ReasoningEnd is emitted. The run
+        still closes cleanly with RunFinishedRenderEvent. Parity with the
+        active test_thinking_emits_reasoning_triplet_with_consistent_message_id
+        (show_intermediate=True, default).
         """
-        # Arrange — show_intermediate=False
+        # Arrange — show_intermediate=False passed to StreamProcessor
         processor = StreamProcessor(cfg(), show_intermediate=False)
         events = async_events(
             ThinkingLlmEvent(text="a"),
@@ -1567,41 +1680,16 @@ class TestReasoning:
         # Act
         result = await collect(processor.process(events))
 
-        # Assert — zero Reasoning* events of any kind
-        assert [e for e in result if isinstance(e, _REASONING_TYPES)] == []
-        # And no v1 dual-emit either (gate drops the chunk entirely)
-        intermediate = [
-            e for e in result if isinstance(e, TextRenderEvent) and not e.is_final
-        ]
-        assert intermediate == []
-
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-    async def test_dual_emit_v1_text_alongside_reasoning_delta(self) -> None:
-        """SC-7 / χ-1 (spec line 261): pair ReasoningDelta with v1 TextRenderEvent.
-
-        Coexistence safety: non-migrated adapters that haven't wired `edit_reasoning`
-        keep their current `⏳`-streaming UX via the v1 TextRenderEvent(is_final=False)
-        dual-emit. Sunsets in Slice 5 (#1102) once all adapters migrate.
-        """
-        # Arrange — show_intermediate=True (default)
-        processor = StreamProcessor(cfg())
-        events = async_events(
-            ThinkingLlmEvent(text="alpha"),
-            ThinkingLlmEvent(text="beta"),
-            ResultLlmEvent(is_error=False, duration_ms=10),
+        # Assert — zero Reasoning* events of any kind (gate drops chunks entirely)
+        reasoning_events = [e for e in result if isinstance(e, _REASONING_TYPES)]
+        assert reasoning_events == [], (
+            f"Expected no Reasoning* events with show_intermediate=False, "
+            f"got: {reasoning_events!r}"
         )
 
-        # Act
-        result = await collect(processor.process(events))
-
-        # Assert — every ReasoningDelta has a paired v1 TextRenderEvent(is_final=False)
-        # with the same text content, in emission order.
-        deltas = [e.delta for e in result if isinstance(e, ReasoningDeltaRenderEvent)]
-        v1_intermediates = [
-            e.text for e in result if isinstance(e, TextRenderEvent) and not e.is_final
-        ]
-        assert deltas == ["alpha", "beta"]
-        assert v1_intermediates == ["alpha", "beta"]
+        # Assert — run still closes cleanly (thinking chunks don't cause an error)
+        assert isinstance(result[-1], RunFinishedRenderEvent)
+        assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
 
     async def test_reasoning_closes_on_tool_use_end_transition(self) -> None:
         """Isolation: ReasoningEnd fires when ToolUseEnd is first non-Thinking event.
@@ -1798,26 +1886,6 @@ class TestReasoning:
 # Slice 2 of #1096 — v2 Text triplet (#1099) — T6
 # ---------------------------------------------------------------------------
 
-# Normalization helpers re-imported from the capture script (T1) so parity
-# assertions apply identical transforms before diffing against the fixture.
-from tools.capture_v1_text_baseline import normalize_event_dict  # noqa: E402
-
-# DEBT:v1-stubs — kept for the v1-skipped tests deferred to #1216.
-# Stubs are typed Any so pyright accepts v1-shape attribute access in those
-# test bodies; identifiers must exist because pytest imports the module.
-TextRenderEvent: Any = type("TextRenderEvent", (), {})
-ToolSummaryRenderEvent: Any = type("ToolSummaryRenderEvent", (), {})
-
-
-def _v1_filter(events: list[RenderEvent]) -> list[RenderEvent]:
-    """Drop Text{Start,Delta,End} triplet events from a live run output.
-
-    Mirrors the T6 parity filter: the baseline fixture was captured on this
-    branch (which already includes ToolCall* events from Slice 3), so only the
-    Slice 2 additive v2 Text triplet events are filtered out before diffing.
-    """
-    return [e for e in events if not isinstance(e, _TEXT_V2_TYPES)]
-
 
 class TestTextTriplet:
     """Slice 2 (#1099) v2 Text triplet emission contract — T6 tests."""
@@ -1923,37 +1991,6 @@ class TestTextTriplet:
         assert end_idx < error_idx
 
     # ------------------------------------------------------------------
-    # T6-4 — TextEnd emitted BEFORE v1 fallback on truncation
-    # ------------------------------------------------------------------
-
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-    async def test_text_end_before_v1_fallback_on_truncation(self) -> None:
-        """Truncation path: TextEnd emits before the v1 fallback TextRenderEvent.
-
-        show_intermediate=False so no per-chunk TextRenderEvent is emitted;
-        the only TextRenderEvent is the fallback from the truncation branch.
-        Invariant: TextEnd closes the block before that fallback fires.
-        """
-        # Arrange — show_intermediate=False so no per-chunk TextRenderEvent is emitted
-        processor = StreamProcessor(cfg(), show_intermediate=False)
-        events = async_events(TextLlmEvent(text="partial response"))
-
-        # Act
-        result = await collect(processor.process(events))
-
-        # Assert — TextEnd precedes the v1 fallback TextRenderEvent
-        end_idx = next(
-            (i for i, e in enumerate(result) if isinstance(e, TextEndRenderEvent)), None
-        )
-        v1_text_indices = [
-            i for i, e in enumerate(result) if isinstance(e, TextRenderEvent)
-        ]
-        assert end_idx is not None, "TextEndRenderEvent not found"
-        assert v1_text_indices, "No TextRenderEvent found"
-        # The v1 fallback text event(s) all come after the TextEnd close
-        assert all(end_idx < v1_idx for v1_idx in v1_text_indices)
-
-    # ------------------------------------------------------------------
     # T6-5 — No TextEnd when no text block is open
     # ------------------------------------------------------------------
 
@@ -1972,82 +2009,3 @@ class TestTextTriplet:
         # Assert — guard clause prevents spurious TextEnd
         text_ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
         assert len(text_ends) == 0
-
-    # ------------------------------------------------------------------
-    # T6-6 — v1 parity against baseline fixture
-    # ------------------------------------------------------------------
-
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-    async def test_v1_parity_against_baseline_fixture(self) -> None:
-        """Live run filtered to v1-only events must be byte-equal to captured baseline.
-
-        Filter rule: drop TextStart/Delta/End and ToolCall* from live output,
-        then compare serialized dicts to the fixture captured by T1 (pre-T5).
-        Normalization: run_id values replaced with '<run_id>' via the same regex
-        used by tools/capture_v1_text_baseline.py::normalize_event_dict().
-        """
-        # Arrange — load fixture
-        fixture_path = (
-            Path(__file__).parent / "fixtures" / "v1_text_stream_baseline.json"
-        )
-        baseline = json.loads(fixture_path.read_text())
-
-        config = ToolDisplayConfig(throttle_ms=0)
-
-        async def _run(events_in) -> list[dict]:
-            """Run StreamProcessor and return normalized v1-only event dicts."""
-            sp = StreamProcessor(config, show_intermediate=False)
-            raw: list[RenderEvent] = []
-            async for ev in sp.process(events_in):
-                raw.append(ev)
-            v1_only = _v1_filter(raw)
-            return [
-                normalize_event_dict(
-                    {**dataclasses.asdict(e), "type": type(e).__name__}
-                )
-                for e in v1_only
-            ]
-
-        # --- Scenario: single_block ---
-        single_result = await _run(
-            async_events(
-                TextLlmEvent(text="Hello "),
-                TextLlmEvent(text="world."),
-                ResultLlmEvent(is_error=False, duration_ms=100),
-            )
-        )
-        assert single_result == baseline["single_block"], (
-            f"single_block mismatch:\n  got:      {single_result}\n"
-            f"  expected: {baseline['single_block']}"
-        )
-
-        # --- Scenario: multi_block ---
-        multi_result = await _run(
-            async_events(
-                TextLlmEvent(text="Before tool "),
-                ToolUseLlmEvent(
-                    tool_name="bash", tool_id="tool-abc123", input={"command": "ls"}
-                ),
-                ToolUseEndLlmEvent(tool_id="tool-abc123"),
-                TextLlmEvent(text="After tool."),
-                ResultLlmEvent(is_error=False, duration_ms=200),
-            )
-        )
-        assert multi_result == baseline["multi_block"], (
-            f"multi_block mismatch:\n  got:      {multi_result}\n"
-            f"  expected: {baseline['multi_block']}"
-        )
-
-        # --- Scenario: error ---
-        error_result = await _run(
-            async_events(
-                TextLlmEvent(text="Partial "),
-                ResultLlmEvent(
-                    is_error=True, duration_ms=50, error_text="Something went wrong"
-                ),
-            )
-        )
-        assert error_result == baseline["error"], (
-            f"error mismatch:\n  got:      {error_result}\n"
-            f"  expected: {baseline['error']}"
-        )

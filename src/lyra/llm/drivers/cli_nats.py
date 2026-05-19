@@ -291,7 +291,7 @@ class CliNatsDriver(NatsDriverBase):
             pool_id=pool_id,
             lyra_session_id=self._lyra_sessions.get(pool_id, pool_id),
             text=text,
-            model_cfg=model_cfg.model_dump(exclude={"api_key"}),
+            model_cfg=model_cfg.model_dump(),
             system_prompt=system_prompt,
             stream=stream,
             agent_name=_agent_name,

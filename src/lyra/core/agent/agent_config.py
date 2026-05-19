@@ -4,7 +4,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
 from ..commands.command_router import CommandConfig
 
@@ -46,14 +46,6 @@ class ModelConfig(BaseModel):
              None → defaults to the Lyra project root.
              Useful to point a dedicated agent at another project so it reads
              that project's CLAUDE.md and has access to its files.
-    base_url: per-agent override for the backend API base URL.
-             Currently unused — reserved for future per-agent driver overrides
-             (e.g. pointing a future direct Ollama driver at "http://localhost:11434/v1").
-    api_key: per-agent backend API key override.
-             Currently unused — reserved for future per-agent driver overrides.
-             Intentionally excluded from __eq__, __hash__, model_dump, and
-             repr — it is a credential, not part of model identity.
-
     This will evolve into an intelligent model selection system.
     """
 
@@ -69,22 +61,8 @@ class ModelConfig(BaseModel):
     cwd: Path | None = None
     skip_permissions: bool = False
     streaming: bool = False
-    base_url: str | None = None
-    api_key: str | None = Field(default=None, exclude=True, repr=False)
     # #1101 — per-agent extended-thinking config (effort token budget)
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
-
-    @field_validator("base_url")
-    @classmethod
-    def _validate_base_url_scheme(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        from urllib.parse import urlparse
-
-        scheme = urlparse(v).scheme.lower()
-        if scheme not in {"http", "https"}:
-            raise ValueError(f"base_url must use http or https scheme, got {scheme!r}")
-        return v
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ModelConfig):
@@ -96,10 +74,8 @@ class ModelConfig(BaseModel):
             and self.tools == other.tools
             and self.skip_permissions == other.skip_permissions
             and self.streaming == other.streaming
-            and self.base_url == other.base_url
             and self.effort == other.effort
             # cwd excluded — spawn-routing config, not model identity
-            # api_key excluded — credential, not model identity
         )
 
     def __hash__(self) -> int:
@@ -111,10 +87,8 @@ class ModelConfig(BaseModel):
                 self.tools,
                 self.skip_permissions,
                 self.streaming,
-                self.base_url,
                 self.effort,
                 # cwd intentionally excluded
-                # api_key intentionally excluded — credential, not model identity
             )
         )
 

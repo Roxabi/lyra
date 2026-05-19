@@ -237,6 +237,157 @@ class TestStream:
         assert len(called_subjects) == 1
         assert called_subjects[0] == CliNatsDriver.SUBJECT_CMD
 
+    @pytest.mark.asyncio
+    async def test_stream_transport_error_sanitizes_exc_message(self) -> None:
+        """#1256 — str(exc) sentinel must NOT surface in ResultLlmEvent.error_text.
+
+        Mirrors the sibling sanitization rule enforced for ``complete()`` (#1253)
+        and the streaming path in ``nats_llm_client`` (#1212). NATS errors can
+        embed server addresses / connection metadata via ``str(exc)``; the bus
+        boundary must only carry the class name.
+
+        Uses ``nats.errors.Error`` (the base class) specifically because its
+        ``__str__`` passes the constructor argument through unchanged — so the
+        sentinel-not-in-error_text assertion actually falsifies a revert to
+        ``str(exc)``. ``NoRespondersError`` and ``TimeoutError`` override
+        ``__str__`` with hardcoded messages that ignore constructor args, which
+        would make the sentinel assertion vacuous for those subclasses (their
+        class-name dispatch is covered separately below).
+        """
+        # Arrange
+        sentinel = "goose-logarithm.ts.net:4222-LEAK-SENTINEL"
+        driver = _make_driver()
+
+        async def _raising_dict_stream_gen(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> AsyncIterator[dict]:
+            raise nats.errors.Error(sentinel)
+            yield  # pragma: no cover — make this an async generator
+
+        events: list = []
+
+        # Act
+        with (
+            patch("lyra.llm.drivers.cli_nats.log") as mock_log,
+            patch.object(driver, "_dict_stream_gen", new=_raising_dict_stream_gen),
+        ):
+            async for ev in await driver.stream(
+                "pool-1", "hi", _make_model_cfg(), "sys"
+            ):
+                events.append(ev)
+
+        # Assert — exactly one terminal error event
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.is_error is True
+        # Sanitization: error_text must NOT contain str(exc) sentinel ...
+        assert result.error_text is not None
+        assert sentinel not in result.error_text
+        # ... and MUST match the sanitized class-name form (falsifies regressions
+        # to ``f"NATS transport error: {exc}"`` or ``str(exc)``).
+        assert result.error_text == "NATS transport error: Error"
+        # WorkerError envelope is co-populated per ResultLlmEvent contract.
+        assert result.worker_error is not None
+        assert result.worker_error.code == "transport.error"
+        assert result.worker_error.message == result.error_text
+        assert result.worker_error.retryable is True
+        # Log side: %r format keeps the sentinel out of the format-string
+        # itself (the args carry repr(exc), never str(exc) — guards against a
+        # silent %r → %s revert that would re-introduce the leak in log sinks).
+        mock_log.warning.assert_called_once()
+        log_format = mock_log.warning.call_args.args[0]
+        assert "%r" in log_format
+        assert sentinel not in log_format
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("exc_class", "expected_name"),
+        [
+            (nats.errors.NoRespondersError, "NoRespondersError"),
+            (nats.errors.TimeoutError, "TimeoutError"),
+        ],
+    )
+    async def test_stream_transport_error_encodes_subclass_name(
+        self, exc_class: type[nats.errors.Error], expected_name: str
+    ) -> None:
+        """#1256 — class-name dispatch survives nats.errors subclass propagation.
+
+        Separate from the sentinel-leak test because ``NoRespondersError`` and
+        ``TimeoutError`` both override ``__str__`` with hardcoded class messages
+        that ignore constructor args — making a sentinel-not-in-error_text
+        assertion vacuous for them. Here we verify only what is real for those
+        subclasses: the production code uses ``type(exc).__name__``, so the
+        terminal ``error_text`` carries the precise subclass name.
+        """
+        # Arrange
+        driver = _make_driver()
+
+        async def _raising_dict_stream_gen(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> AsyncIterator[dict]:
+            raise exc_class()
+            yield  # pragma: no cover — make this an async generator
+
+        events: list = []
+
+        # Act
+        with patch.object(driver, "_dict_stream_gen", new=_raising_dict_stream_gen):
+            async for ev in await driver.stream(
+                "pool-1", "hi", _make_model_cfg(), "sys"
+            ):
+                events.append(ev)
+
+        # Assert
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.error_text == f"NATS transport error: {expected_name}"
+
+    @pytest.mark.asyncio
+    async def test_stream_transport_error_after_partial_yield(self) -> None:
+        """#1256 — mid-stream NATS error still yields a terminal sanitized event.
+
+        Confirms the ``try/except`` wraps the entire ``async for`` body: a text
+        chunk delivered before the failure surfaces to the consumer, followed
+        by a single terminal ``ResultLlmEvent(is_error=True)``.
+        """
+        # Arrange
+        sentinel = "goose-logarithm.ts.net:4222-MID-STREAM"
+        driver = _make_driver()
+
+        async def _partial_then_raise(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> AsyncIterator[dict]:
+            yield {"event_type": "text", "text": "partial", "done": False}
+            raise nats.errors.Error(sentinel)
+
+        events: list = []
+
+        # Act
+        with patch.object(driver, "_dict_stream_gen", new=_partial_then_raise):
+            async for ev in await driver.stream(
+                "pool-1", "hi", _make_model_cfg(), "sys"
+            ):
+                events.append(ev)
+
+        # Assert — partial text delivered, then a sanitized terminal event
+        assert len(events) == 2
+        assert isinstance(events[0], TextLlmEvent)
+        assert events[0].text == "partial"
+        terminal = events[1]
+        assert isinstance(terminal, ResultLlmEvent)
+        assert terminal.is_error is True
+        assert terminal.error_text == "NATS transport error: Error"
+        assert sentinel not in (terminal.error_text or "")
+        # WorkerError envelope mirrors the partial-yield-absent path —
+        # asymmetric coverage on the mid-stream path would let a future
+        # refactor silently drop the envelope.
+        assert terminal.worker_error is not None
+        assert terminal.worker_error.code == "transport.error"
+        assert terminal.worker_error.message == terminal.error_text
+        assert terminal.worker_error.retryable is True
+
 
 # ---------------------------------------------------------------------------
 # complete()
@@ -347,9 +498,7 @@ class TestComplete:
         async def _mock_request(
             subject: str, payload_dict: dict, *, timeout: float | None = None
         ) -> dict:
-            raise nats.errors.Error(
-                f"connection refused: {_SENSITIVE_TOKEN}"
-            )
+            raise nats.errors.Error(f"connection refused: {_SENSITIVE_TOKEN}")
 
         # Act
         with patch.object(driver, "_request", new=_mock_request):

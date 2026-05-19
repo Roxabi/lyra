@@ -17,7 +17,7 @@ Triés par pertinence par rapport à notre architecture.
 
 ## Bonus
 
-- **TsinghuaC3I/Awesome-Memory-for-Agents** — https://github.com/TsinghuaC3I/Awesome-Memory-for-Agents  
+- **TsinghuaC3I/Awesome-Memory-for-Agents** — https://github.com/TsinghuaC3I/Awesome-Memory-for-Agents
   Liste de papiers académiques (short-term vs long-term, success/failure based, etc.)
 
 ## 3 à explorer en priorité

@@ -1,7 +1,7 @@
 # 01 - Raw Layer (Couche Immuable)
 
 ## À quoi ça sert ?
-Couche de stockage **immuable** qui conserve **l'intégralité** des données brutes générées par le système (messages utilisateur, réponses agents, artefacts, documents d'architecture, code, logs, etc.).  
+Couche de stockage **immuable** qui conserve **l'intégralité** des données brutes générées par le système (messages utilisateur, réponses agents, artefacts, documents d'architecture, code, logs, etc.).
 
 Elle garantit la **reconstructibilité totale** de n'importe quel état passé du système, même après plusieurs années.
 

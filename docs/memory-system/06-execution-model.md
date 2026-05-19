@@ -2,10 +2,10 @@
 
 ## Vue Globale du Système
 
-**Input principal du système**  
+**Input principal du système**
 → Message utilisateur (texte) ou artefact (document, code, analyse, etc.)
 
-**Output principal du système**  
+**Output principal du système**
 → Réponse finale de l'orchestrateur (texte + éventuels artefacts) + mise à jour silencieuse et asynchrone de la mémoire
 
 Le système est conçu pour que **l'utilisateur ne voie jamais** la complexité du pipeline mémoire. L'expérience reste fluide et instantanée tandis que tout le travail de consolidation, decay et régénération se déroule en arrière-plan.
@@ -31,32 +31,32 @@ Le système est conçu pour que **l'utilisateur ne voie jamais** la complexité 
 
 ### Explications des modes d'exécution
 
-- **Synchrone** :  
-  Se passe **pendant** la conversation utilisateur. L'utilisateur attend la réponse.  
+- **Synchrone** :
+  Se passe **pendant** la conversation utilisateur. L'utilisateur attend la réponse.
   Exemples : Main Orchestrator, Recherche Multi-Stratégie, génération de la réponse finale.
 
-- **Asynchrone / Background** :  
-  Se passe **en parallèle** sans bloquer l'utilisateur.  
+- **Asynchrone / Background** :
+  Se passe **en parallèle** sans bloquer l'utilisateur.
   Exemples : Retain Job, Entity Resolution, Graph Update, Compiled Truth Regeneration.
 
-- **Event-triggered** :  
-  Déclenché automatiquement dès qu'un événement se produit (ici : écriture dans le Raw Layer).  
+- **Event-triggered** :
+  Déclenché automatiquement dès qu'un événement se produit (ici : écriture dans le Raw Layer).
   C'est le cas du **Retain Job**.
 
-- **CRON** :  
-  Déclenché à heure fixe.  
+- **CRON** :
+  Déclenché à heure fixe.
   C'est le **Nightly Consolidation Job** qui applique le decay massif et les consolidations lourdes (voir 07).
 
 ---
 
 ### Flux typique d'une conversation (chronologique)
 
-1. **Synchrone** : Utilisateur envoie message → Main Orchestrator  
-2. **Synchrone** : Orchestrateur fait recherche multi-stratégie → injection Compiled Truth + faits (decay appliqué)  
-3. **Synchrone** : Orchestrateur génère la réponse  
-4. **Asynchrone** : Message écrit dans Raw Layer  
-5. **Asynchrone (event-triggered)** : Retain Job se lance automatiquement  
-6. **Asynchrone** : Entity Resolution → Graph Update + Decay  
+1. **Synchrone** : Utilisateur envoie message → Main Orchestrator
+2. **Synchrone** : Orchestrateur fait recherche multi-stratégie → injection Compiled Truth + faits (decay appliqué)
+3. **Synchrone** : Orchestrateur génère la réponse
+4. **Asynchrone** : Message écrit dans Raw Layer
+5. **Asynchrone (event-triggered)** : Retain Job se lance automatiquement
+6. **Asynchrone** : Entity Resolution → Graph Update + Decay
 7. **CRON (nuit)** : Nightly Job fait le nettoyage, decay global et régénérations
 
 ---

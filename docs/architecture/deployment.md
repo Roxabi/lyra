@@ -125,7 +125,7 @@ Next session: build_system_prompt() recalls L3:
 
 ### reply-to session routing (`message_index.db`)
 
-Maps `(pool_id, platform_msg_id) → session_id`.  
+Maps `(pool_id, platform_msg_id) → session_id`.
 When a user replies to an old message, Hub resolves the original session and
 resumes it rather than starting fresh.
 

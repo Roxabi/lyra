@@ -1,7 +1,7 @@
 # 08 - Prompts d'Implémentation LLM
 
 ## À quoi ça sert ?
-Centraliser, versionner et documenter **tous** les prompts LLM utilisés dans le pipeline de mémoire.  
+Centraliser, versionner et documenter **tous** les prompts LLM utilisés dans le pipeline de mémoire.
 
 Cela garantit :
 - Cohérence absolue des extractions, décisions et régénérations

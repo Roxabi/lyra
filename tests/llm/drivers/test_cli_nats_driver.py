@@ -938,11 +938,11 @@ class TestCompleteSessionPersistence:
         assert result.ok is True
 
 
-class TestStreamGenSessionPersistence:
+class TestStreamGenLlmSessionPersistence:
     """_stream_gen_llm() persists cli_session_id when result chunk has session_id."""
 
     @pytest.mark.asyncio
-    async def test_stream_gen_calls_set_cli_session_on_result_chunk(self) -> None:
+    async def test_stream_gen_llm_calls_set_cli_session_on_result_chunk(self) -> None:
         """_stream_gen_llm yields ResultLlmEvent and fires set_cli_session task."""
         # Arrange
         driver = _make_driver()
@@ -989,7 +989,7 @@ class TestStreamGenSessionPersistence:
         store.set_cli_session.assert_awaited_once_with(lyra_uuid, cli_sid)
 
     @pytest.mark.asyncio
-    async def test_stream_gen_no_set_cli_session_when_turn_store_none(self) -> None:
+    async def test_stream_gen_llm_no_set_cli_session_when_turn_store_none(self) -> None:
         """_stream_gen_llm does not error when _turn_store is None."""
         # Arrange
         driver = _make_driver()
@@ -1019,7 +1019,7 @@ class TestStreamGenSessionPersistence:
                 pass
 
     @pytest.mark.asyncio
-    async def test_stream_gen_set_cli_session_exception_does_not_propagate(
+    async def test_stream_gen_llm_set_cli_session_exception_does_not_propagate(
         self,
     ) -> None:
         """set_cli_session failure must not propagate to the streaming caller."""

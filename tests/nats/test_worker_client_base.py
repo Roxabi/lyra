@@ -134,11 +134,23 @@ class TestNatsWorkerClientBase:
         assert client._worker_freshness == {}
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            pytest.param(b"not-json{", id="ascii-garbage-JSONDecodeError"),
+            pytest.param(b"\xff\xfe\x00\x01", id="invalid-utf8-ValueError"),
+        ],
+    )
     async def test_malformed_json_silently_dropped(
-        self, client: FakeWorkerClient
+        self, client: FakeWorkerClient, payload: bytes
     ) -> None:
-        """Malformed JSON bytes produce no exception, registry/freshness stay empty."""
-        msg = _make_msg(b"not-json{")
+        """Malformed payloads produce no exception, registry/freshness stay empty.
+
+        Covers both branches of ``(json.JSONDecodeError, ValueError)``: ASCII
+        garbage (JSONDecodeError) and invalid UTF-8 sequences (ValueError from
+        the codec layer before json.loads sees it).
+        """
+        msg = _make_msg(payload)
 
         # Act — must not raise
         await client._on_heartbeat(msg)
@@ -179,11 +191,11 @@ class TestNatsWorkerClientBase:
         msg = _make_msg(_VALID_HB)
         await client._on_heartbeat(msg)
 
-        # Simulate expiry: push timestamps far into the past
+        # Simulate expiry: push parent freshness timestamp far into the past
+        # and use the registry's public mark_stale API (sets last_heartbeat=0.0).
         stale_ts = time.monotonic() - 1000.0
         client._worker_freshness["worker-1"] = stale_ts
-        if "worker-1" in client._registry._workers:
-            client._registry._workers["worker-1"].last_heartbeat = stale_ts
+        client._registry.mark_stale("worker-1")
 
         assert client._any_worker_alive() is False
         assert client.any_alive() is False
@@ -193,12 +205,21 @@ class TestNatsWorkerClientBase:
     async def test_any_alive_delegates_to_registry(
         self, client: FakeWorkerClient
     ) -> None:
-        """any_alive() is a pure delegation to WorkerRegistry.any_alive()."""
+        """any_alive() is a pure delegation to WorkerRegistry.any_alive().
+
+        A constant ``return True`` would still pass the True branch, so after
+        seeding we mark the worker stale via the registry's public API and
+        assert any_alive() flips back to False — proving the delegation is
+        live, not a tautology.
+        """
         # Initially both False
         assert client.any_alive() is False
         # Seed registry directly (bypass _on_heartbeat)
         client._registry.record_heartbeat(_VALID_HB)
         assert client.any_alive() is True
+        # Anti-tautology: flip registry state and verify delegation tracks it
+        client._registry.mark_stale("worker-1")
+        assert client.any_alive() is False
 
     @pytest.mark.asyncio
     async def test_defense_in_depth_registry_rejects_wildcard_id(self) -> None:

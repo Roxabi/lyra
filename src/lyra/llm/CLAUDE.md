@@ -18,18 +18,15 @@ not add it to the Protocol until all drivers implement it.
 
 ## Drivers
 
-| Provider | Location | Backend |
-|----------|----------|---------|
-| `ClaudeCliDriver` | `lyra.llm.drivers.cli` | Claude Code subprocess (`CliPool`) |
-| `CliNatsDriver` | `lyra.llm.drivers.cli_nats` | Hub-side dispatch over NATS |
-| `NatsLlmClient` | `lyra.nats.nats_llm_client` | Generic remote LLM worker (ADR-049) |
+| Driver | Registry key | Transport | Wiring mode |
+|--------|-------------|-----------|-------------|
+| `ClaudeCliDriver` | `"claude-cli"` | in-process (`CliPool` subprocess) | single-process |
+| `CliNatsDriver` | `"claude-cli"` | NATS request-reply → clipool worker | multi-process (hub side) |
+| `NatsLlmClient` | `"nats"` | NATS request-reply → llmCLI worker | multi-process (hub side) |
 
-`NatsLlmClient` lives in `lyra.nats`, **not** in `llm/` — cross-package gotcha.
+`ClaudeCliDriver` and `CliNatsDriver` share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap, not by registry key.
 
-**When to use which:**
-- `ClaudeCliDriver` — single-process mode (hub owns CliPool directly)
-- `CliNatsDriver` — multi-process mode (hub sends requests to clipool worker over NATS)
-- `NatsLlmClient` — generic remote LLM worker; replaces deleted `NatsLlmDriver` (#1119)
+`NatsLlmClient` lives in `lyra.nats`, **not** in `llm/` — cross-package gotcha. Replaces deleted `NatsLlmDriver` (#1119).
 
 ## Decorator stack
 

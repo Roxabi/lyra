@@ -907,9 +907,14 @@ class TestStreamProcessor:
         assert len(run_errors) == 1
         assert run_errors[0].message == "boom"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_is_error_false_propagated_to_text_render_event(self) -> None:
-        """ResultLlmEvent(is_error=False) → TextRenderEvent(is_error=False)."""
+        """ResultLlmEvent(is_error=False) → RunFinishedRenderEvent, not RunError (L10).
+
+        v2 contract: is_error=False closes the text block cleanly via
+        TextEndRenderEvent, then emits RunFinishedRenderEvent (outcome=success).
+        No RunErrorRenderEvent is emitted. Parity-False case for the active
+        test_is_error_propagated_to_text_render_event (is_error=True).
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -918,19 +923,28 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
-        final_text = [
-            e for e in result if isinstance(e, TextRenderEvent) and e.is_final
-        ]
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        assert len(final_text) == 1
-        assert final_text[0].is_error is False
+        # Assert — terminal is RunFinished (not RunError) for is_error=False
+        assert isinstance(all_events[-1], RunFinishedRenderEvent)
+        assert all_events[-1].outcome == "success"
+        assert not any(isinstance(e, RunErrorRenderEvent) for e in all_events)
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
+        # Assert — text block properly closed
+        text_ends = [e for e in all_events if isinstance(e, TextEndRenderEvent)]
+        text_deltas = [e for e in all_events if isinstance(e, TextDeltaRenderEvent)]
+        assert len(text_ends) == 1
+        assert len(text_deltas) == 1
+        assert text_deltas[0].delta == "normal response"
+
     async def test_error_text_surfaces_when_no_streamed_text(self) -> None:
-        """ResultLlmEvent(is_error=True, error_text=...) with no streamed text
-        → TextRenderEvent carries error_text so adapter can surface it.
+        """is_error=True + error_text, no streamed text → RunError.message (L11).
+
+        v2 contract: when no text was streamed before ResultLlmEvent, the
+        error_text is forwarded as RunErrorRenderEvent.message. No TextBlock
+        is opened (no TextStart/Delta/End). Parity with the active
+        test_is_error_run_error_carries_error_text (same scenario, verifies
+        message payload).
         """
         # Arrange
         processor = StreamProcessor(cfg())
@@ -943,18 +957,29 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        assert len(text_events) == 1
-        assert text_events[0].text == "Not logged in · Please run /login"
-        assert text_events[0].is_error is True
-        assert text_events[0].is_final is True
+        # Assert — terminal RunError with error_text as message
+        run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
+        assert len(run_errors) == 1
+        assert run_errors[0].message == "Not logged in · Please run /login"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
+        # Assert — no text block opened (no streamed text)
+        assert not any(
+            isinstance(e, TextStartRenderEvent) for e in all_events
+        )
+        assert not any(
+            isinstance(e, TextDeltaRenderEvent) for e in all_events
+        )
+
     async def test_streamed_text_preferred_over_error_text(self) -> None:
-        """When text was streamed, prefer it over error_text (recovered tool)."""
+        """Streamed text + error_text: text in TextDelta, error_text in RunError (L12).
+
+        v2 contract: when both streamed text and error_text are present,
+        the streamed text appears in TextDeltaRenderEvent.delta (as it arrived),
+        and error_text is forwarded as RunErrorRenderEvent.message. The error
+        does not suppress or replace the streamed text.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -962,20 +987,22 @@ class TestStreamProcessor:
             ResultLlmEvent(
                 is_error=True,
                 duration_ms=100,
-                error_text="should be ignored",
+                error_text="should be in RunError",
             ),
         )
 
         # Act
-        result = await collect(processor.process(events))
-        # Final event carries the full accumulated text, not the error_text shim.
-        final_text = [
-            e for e in result if isinstance(e, TextRenderEvent) and e.is_final
-        ]
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        assert len(final_text) == 1
-        assert final_text[0].text == "recovered output"
+        # Assert — streamed text appears in TextDelta (unchanged)
+        text_deltas = [e for e in all_events if isinstance(e, TextDeltaRenderEvent)]
+        assert len(text_deltas) == 1
+        assert text_deltas[0].delta == "recovered output"
+
+        # Assert — error_text forwarded as RunError.message
+        run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
+        assert len(run_errors) == 1
+        assert run_errors[0].message == "should be in RunError"
 
     async def test_empty_stream(self) -> None:
         """Empty event stream emits the v2 minimum envelope (v2, #1211 S3).
@@ -1000,9 +1027,15 @@ class TestStreamProcessor:
         _text_types = (TextStartRenderEvent, TextDeltaRenderEvent, TextEndRenderEvent)
         assert not any(isinstance(e, _text_types) for e in result)
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_no_result_event(self) -> None:
-        """Stream truncated without ResultLlmEvent flushes pending state."""
+        """Truncated stream without ResultLlmEvent: TextEnd emitted, RunFinished (L13).
+
+        v2 contract: when the stream ends without a ResultLlmEvent, the
+        truncation path (stream_processor.py:341–356) closes any open text
+        block via TextEndRenderEvent, then the post-finally path emits
+        RunFinishedRenderEvent (outcome=success) because _result_is_error stays
+        False. No v1 TextRenderEvent(is_final=False) fallback.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(TextLlmEvent(text="partial response"))
@@ -1010,12 +1043,19 @@ class TestStreamProcessor:
         # Act
         result = await collect(processor.process(events))
 
-        # Assert — chunk streamed immediately as is_final=False, then truncation
-        # path emits _total_text again as is_final=False to signal truncation.
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
-        assert len(text_events) == 2
-        assert all(e.text == "partial response" for e in text_events)
-        assert all(e.is_final is False for e in text_events)
+        # Assert — text block opened and properly closed (truncation guard fires)
+        text_starts = [e for e in result if isinstance(e, TextStartRenderEvent)]
+        text_deltas = [e for e in result if isinstance(e, TextDeltaRenderEvent)]
+        text_ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
+        assert len(text_starts) == 1
+        assert len(text_deltas) == 1
+        assert text_deltas[0].delta == "partial response"
+        assert len(text_ends) == 1
+        assert text_ends[0].message_id == text_starts[0].message_id
+
+        # Assert — terminal is RunFinished (no exception, no error result)
+        assert isinstance(result[-1], RunFinishedRenderEvent)
+        assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
 
     # ------------------------------------------------------------------
     # T24 — Hexagonal boundary (no framework imports in stream_processor)

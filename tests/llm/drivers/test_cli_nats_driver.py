@@ -359,8 +359,9 @@ class TestComplete:
         assert _SENSITIVE_TOKEN not in result.error, (
             f"sensitive token leaked into LlmResult.error: {result.error!r}"
         )
-        # Assert — exact bus-bound form: only the exception class name
-        assert result.error == f"NATS transport error: {nats.errors.Error.__name__}"
+        # Assert — exact bus-bound form: only the exception class name, never str(exc).
+        # Mock raises base nats.errors.Error directly, so type(exc).__name__ == "Error".
+        assert result.error == "NATS transport error: Error"
         # Baseline guards
         assert result.ok is False
         assert result.retryable is True

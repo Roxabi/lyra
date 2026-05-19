@@ -203,7 +203,7 @@ committer field contains.
 
 ### Forward path
 
-When `AgentRow` gains an `email` field in a follow-up issue, the hub will publish
+When `AgentRow` gains an `email` field (tracked as #1244), the hub will publish
 `agent_email` and production will flip to full mode automatically — no code change is
 required in this slice.
 

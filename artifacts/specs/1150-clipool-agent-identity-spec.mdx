@@ -143,7 +143,7 @@ Ordering:
 ## Success Criteria
 
 - [ ] `CliCmdPayload.agent_name: str | None` and `agent_email: str | None` exist; envelope validates with and without them; `packages/roxabi-contracts/CHANGELOG.md` has an entry describing the additive minor bump.
-- [ ] When hub publishes a `CliCmdPayload` for a bot bound to agent `X` (with email `e`), the payload carries `agent_name="X"` and `agent_email="e"`.
+- [ ] When hub publishes a `CliCmdPayload` for a bot bound to agent `X`, the payload carries `agent_name="X"`. **Production steady state today**: `agent_email` is always `None` because `AgentRow` has no email field — the trailers-only mode (next criterion) is the satisfying observable. When the `AgentRow.email` follow-up (#1244) lands, this criterion's "full mode" half ("payload carries `agent_email="e"`") becomes testable without further code change in this slice.
 - [ ] When the worker dispatches a `CliCmdPayload` with both `agent_name` and `agent_email` present (and the always-present `lyra_session_id`), the resulting subprocess environment contains `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL`, `LYRA_SESSION_ID`, `LYRA_AGENT` with matching values (full mode).
 - [ ] When `agent_name` is present but `agent_email` is `None`, the subprocess environment contains `LYRA_AGENT` and `LYRA_SESSION_ID` (when present) but neither `GIT_COMMITTER_NAME` nor `GIT_COMMITTER_EMAIL` — trailers-only mode.
 - [ ] When `agent_name` is `None`, no `GIT_COMMITTER_*` or `LYRA_*` vars are injected and the subprocess spawns successfully.
@@ -161,4 +161,6 @@ Ordering:
 - `GIT_AUTHOR_*` injection — author identity stays bot-baked; only committer + trailers carry agent provenance.
 - GitHub App push-auth identity change.
 - Sibling audit children #1149 (idmap / safe.directory) and #1151 (token TTL floor).
-- Adding an `email` field to `AgentRow` / the agent profile schema. Tracked separately as a follow-up; until then production runs in trailers-only mode.
+- Adding an `email` field to `AgentRow` / the agent profile schema. Tracked as #1244; until then production runs in trailers-only mode.
+- Hardening `core.hooksPath` against per-repo override (workspace volume is mounted RW; a malicious subprocess could set per-repo `core.hooksPath` and bypass the image-baked hook). Tracked as #1245; within the single-tenant container threat model this is accepted residual risk for this PR.
+- Pinning the base image (`FROM ghcr.io/roxabi/base:latest`). This PR introduces the first behavioral dependency on a specific git capability from the base image; pinning is a repo-wide policy concern tracked as #1246.

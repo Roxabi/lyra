@@ -507,6 +507,41 @@ class TestErrorMappingComplete:
             f"Code {result.worker_error.code!r} not registered in KNOWN_CODES"
         )
 
+    @pytest.mark.asyncio
+    async def test_worker_error_message_truncated_on_propagation(self) -> None:
+        """10KB worker_error.message from a hostile publisher → truncated ≤512 chars.
+
+        Defense-in-depth assertion that LlmResponse.model_validate_json
+        (via roxabi_contracts.errors.WorkerError._sanitize_message) caps
+        message length at the receive boundary — a future refactor swapping
+        to a non-validating deserializer would regress this guarantee.
+        """
+        hostile_message = "A" * 10_000
+        payload = {
+            "contract_version": _CONTRACT_VERSION,
+            "trace_id": "t",
+            "issued_at": "2026-01-01T00:00:00+00:00",
+            "ok": False,
+            "request_id": "req0001",
+            "error": "quota exceeded",
+            "worker_error": {
+                "code": "llm.rate_limit",
+                "message": hostile_message,
+                "retryable": True,
+            },
+        }
+        nc = _make_nc()
+        client = NatsLlmClient(nc)
+        mc = _make_model_cfg()
+        _seed_registry(client)
+        nc.request = AsyncMock(return_value=_fake_reply(json.dumps(payload).encode()))
+
+        result = await client.complete("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+
+        assert result.worker_error is not None
+        assert len(result.worker_error.message) <= 512
+        assert result.worker_error.message.endswith("…")
+
 
 # ---------------------------------------------------------------------------
 # Stream-path error mapping — mirrors TestErrorMappingComplete for streaming
@@ -753,6 +788,47 @@ class TestErrorMappingStream:
         assert last.worker_error.code in KNOWN_CODES, (
             f"Code {last.worker_error.code!r} not registered in KNOWN_CODES"
         )
+
+    @pytest.mark.asyncio
+    async def test_worker_error_message_truncated_on_propagation(self) -> None:
+        """A 10KB worker_error.message on an error chunk is truncated to ≤512 chars.
+
+        Mirrors TestErrorMappingComplete coverage on the stream path:
+        LlmChunkEvent.model_validate_json (via WorkerError._sanitize_message)
+        caps message length at the receive boundary.
+        """
+        hostile_message = "A" * 10_000
+        chunk_data = _chunk_bytes(
+            request_id="req0001",
+            is_error=True,
+            error="quota exceeded",
+            done=True,
+            worker_error={
+                "code": "llm.rate_limit",
+                "message": hostile_message,
+                "retryable": True,
+            },
+        )
+        nc = _make_nc()
+        client = NatsLlmClient(nc)
+        mc = _make_model_cfg()
+        _seed_registry(client)
+
+        mock_sub = AsyncMock()
+        mock_sub.next_msg = AsyncMock(side_effect=[_fake_reply(chunk_data)])
+        nc.subscribe = AsyncMock(return_value=mock_sub)
+        nc.publish = AsyncMock()
+
+        events: list[object] = []
+        stream = client.stream("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
+        async for evt in await stream:
+            events.append(evt)
+
+        last = events[-1]
+        assert isinstance(last, ResultLlmEvent)
+        assert last.worker_error is not None
+        assert len(last.worker_error.message) <= 512
+        assert last.worker_error.message.endswith("…")
 
 
 # ---------------------------------------------------------------------------

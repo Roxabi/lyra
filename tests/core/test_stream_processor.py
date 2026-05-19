@@ -1690,16 +1690,17 @@ class TestReasoning:
         )
         assert end_idx < first_args_idx
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_show_intermediate_false_emits_no_reasoning_events(self) -> None:
-        """SC-6 (spec line 260): show_intermediate=False → zero Reasoning* events.
+        """show_intermediate=False → zero Reasoning* events emitted (L15).
 
-        Spec v2 line 65 requires that thinking chunks produce no Reasoning* output
-        when the operator config disables intermediate streaming. The gate lives
-        on the StreamProcessor (single source of truth) so any downstream consumer
-        — adapters today, NATS subscribers tomorrow — is uniformly muted.
+        v2 contract (stream_processor.py:316): when show_intermediate=False,
+        ThinkingLlmEvent chunks are dropped entirely via `continue` — no
+        ReasoningStart, ReasoningDelta, or ReasoningEnd is emitted. The run
+        still closes cleanly with RunFinishedRenderEvent. Parity with the
+        active test_thinking_emits_reasoning_triplet_with_consistent_message_id
+        (show_intermediate=True, default).
         """
-        # Arrange — show_intermediate=False
+        # Arrange — show_intermediate=False passed to StreamProcessor
         processor = StreamProcessor(cfg(), show_intermediate=False)
         events = async_events(
             ThinkingLlmEvent(text="a"),
@@ -1711,13 +1712,16 @@ class TestReasoning:
         # Act
         result = await collect(processor.process(events))
 
-        # Assert — zero Reasoning* events of any kind
-        assert [e for e in result if isinstance(e, _REASONING_TYPES)] == []
-        # And no v1 dual-emit either (gate drops the chunk entirely)
-        intermediate = [
-            e for e in result if isinstance(e, TextRenderEvent) and not e.is_final
-        ]
-        assert intermediate == []
+        # Assert — zero Reasoning* events of any kind (gate drops chunks entirely)
+        reasoning_events = [e for e in result if isinstance(e, _REASONING_TYPES)]
+        assert reasoning_events == [], (
+            f"Expected no Reasoning* events with show_intermediate=False, "
+            f"got: {reasoning_events!r}"
+        )
+
+        # Assert — run still closes cleanly (thinking chunks don't cause an error)
+        assert isinstance(result[-1], RunFinishedRenderEvent)
+        assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
 
     @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_dual_emit_v1_text_alongside_reasoning_delta(self) -> None:

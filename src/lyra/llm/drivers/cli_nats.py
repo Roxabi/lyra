@@ -153,12 +153,14 @@ class CliNatsDriver(NatsDriverBase):
             reply = await self._request(self.SUBJECT_CMD, payload)
         except nats.errors.Error as exc:
             log.warning(
-                "cli_nats: complete() transport error [pool:%s]: %s: %s",
+                "cli_nats: complete() transport error [pool:%s]: %r",
                 pool_id,
-                type(exc).__name__,
                 exc,
             )
-            return LlmResult(error=f"NATS transport error: {exc}", retryable=True)
+            return LlmResult(
+                error=f"NATS transport error: {type(exc).__name__}",
+                retryable=True,
+            )
 
         error = reply.get("error", "")
         if error:

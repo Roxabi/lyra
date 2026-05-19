@@ -326,6 +326,46 @@ class TestComplete:
         assert result.ok is False
         assert result.error != ""
 
+    @pytest.mark.asyncio
+    async def test_complete_transport_error_does_not_leak_exc_str_to_bus(
+        self,
+    ) -> None:
+        """nats.errors.Error.__str__ must NOT appear in LlmResult.error (#1253).
+
+        nats.errors.Error.__str__ can embed server addresses / connection
+        metadata. LlmResult.error is bus-bound and may reach user-visible
+        renders. Only type(exc).__name__ is permitted on the bus.
+
+        Falsification: if the fix is reverted to f"NATS transport error: {exc}"
+        the sentinel host token present in str(exc) leaks into result.error and
+        this test fails.
+        """
+        # Arrange — sentinel embeds a host token that must NOT surface on bus
+        _SENSITIVE_TOKEN = "goose-logarithm.ts.net:4222"
+        driver = _make_driver()
+
+        async def _mock_request(
+            subject: str, payload_dict: dict, *, timeout: float | None = None
+        ) -> dict:
+            raise nats.errors.Error(
+                f"connection refused: {_SENSITIVE_TOKEN}"
+            )
+
+        # Act
+        with patch.object(driver, "_request", new=_mock_request):
+            result = await driver.complete("pool-1", "hello", _make_model_cfg(), "sys")
+
+        # Assert — sentinel did not leak onto the bus
+        assert _SENSITIVE_TOKEN not in result.error, (
+            f"sensitive token leaked into LlmResult.error: {result.error!r}"
+        )
+        # Assert — exact bus-bound form: only the exception class name, never str(exc).
+        # Mock raises base nats.errors.Error directly, so type(exc).__name__ == "Error".
+        assert result.error == "NATS transport error: Error"
+        # Baseline guards
+        assert result.ok is False
+        assert result.retryable is True
+
 
 # ---------------------------------------------------------------------------
 # reset()

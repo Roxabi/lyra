@@ -41,15 +41,34 @@ class TestModelConfig:
         # must not raise
         _validate_backend_model("nats", "claude-sonnet-4-6", "test-agent")
 
+    def test_backend_claude_cli_accepted(self) -> None:
+        from lyra.core.agent.agent_builder import _validate_backend_model
+
+        # must not raise
+        _validate_backend_model("claude-cli", "claude-opus-4-6", "test-agent")
+
+    @pytest.mark.parametrize("bad", ["litellm", "ollama", "unknown-xyz"])
+    def test_backend_invalid_at_construction(self, bad: str) -> None:
+        # Pydantic field_validator must reject the whole class of unknowns at
+        # construction time — direct ModelConfig() calls cannot bypass
+        # _VALID_BACKENDS. Parametrized to prove the guard fires for any
+        # non-member, not just a single coincident value.
+        with pytest.raises(ValidationError, match="Invalid backend"):
+            ModelConfig(backend=bad)
+
     def test_tools_field_is_tuple(self) -> None:
         cfg = ModelConfig(tools=("Read", "Grep"))
         assert isinstance(cfg.tools, tuple)
         assert cfg.tools == ("Read", "Grep")
 
     def test_frozen(self) -> None:
+        # frozen=True rejects any mutation. Using "nats" (≠ default "claude-cli")
+        # so the test is isolated from _validate_backend semantics — if a future
+        # Pydantic version no-op'd same-value set on frozen models, this would
+        # still catch the regression.
         cfg = ModelConfig()
         with pytest.raises(ValidationError):
-            setattr(cfg, "backend", "ollama")
+            setattr(cfg, "backend", "nats")
 
     def test_cwd_defaults_to_none(self) -> None:
         cfg = ModelConfig()

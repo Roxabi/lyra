@@ -34,11 +34,16 @@ class TestAgentFactory:
         assert isinstance(agent, SimpleAgent)
 
     def test_unknown_backend_raises(self) -> None:
+        # model_construct bypasses Pydantic validators — TEST-ONLY pattern.
+        # Must NOT appear in production deserialization paths (NATS, DB rows),
+        # which is exactly what ModelConfig._validate_backend was added to guard.
+        # Here we use it to reach the factory's defense-in-depth check.
+        llm_cfg = ModelConfig.model_construct(backend="unknown")
         config = Agent(
             name="test",
             system_prompt="",
             memory_namespace="test",
-            llm_config=ModelConfig(backend="unknown"),
+            llm_config=llm_cfg,
         )
         with pytest.raises(ValueError, match="Unknown backend"):
             agent_factory_mod._create_agent(config, None)

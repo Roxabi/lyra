@@ -23,12 +23,13 @@ from lyra.core.messaging.message import (
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.pool import Pool
+from lyra.core.ports.stt import STTNoiseError
 from lyra.core.processors.stream_processor import StreamProcessor
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 from lyra.integrations.base import SessionTools
 from lyra.llm.base import LlmProvider
 
-from .simple_agent_prompts import STTError, STTNoiseError, build_llm_text
+from .simple_agent_prompts import STTError, build_llm_text
 
 _AGENTS_DIR = Path(__file__).resolve().parent
 

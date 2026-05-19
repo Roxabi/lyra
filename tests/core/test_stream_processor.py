@@ -204,16 +204,16 @@ class TestStreamProcessor:
         # Assert — file accumulator updated
         assert "src/foo.py" in processor._files
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_single_edit_no_intermediate(self) -> None:
-        """Single Edit, show_intermediate=False: no text triplet until ResultLlmEvent.
+        """Single Edit: no intermediate ToolSummaryRenderEvent in v2 (L01).
 
-        After Slice 3, show_intermediate=False suppresses streaming Text events
-        entirely. ResultLlmEvent closes the text block and emits TextEnd.
-        No TextRenderEvent / ToolSummaryRenderEvent in the stream.
+        v2 contract (post-v1 removal): there is no mid-turn ToolSummaryRenderEvent
+        at all. StreamProcessor emits the v2 Text triplet (TextStart → TextDelta →
+        TextEnd) and ToolCallStart/End lifecycle events. The text block closes when
+        the ToolUseLlmEvent arrives, and ToolCallEnd is synthesised at ResultLlmEvent.
         """
         # Arrange
-        processor = StreamProcessor(cfg(), show_intermediate=False)
+        processor = StreamProcessor(cfg())
         events = async_events(
             TextLlmEvent(text="Refactoring..."),
             ToolUseLlmEvent(
@@ -226,17 +226,33 @@ class TestStreamProcessor:
         all_events = await collect(processor.process(events))
         result = [e for e in all_events if not isinstance(e, _RUN_LIFECYCLE_TYPES)]
 
-        # Assert — no v1 types
-        assert not any(isinstance(e, TextRenderEvent) for e in result), (
-            f"Unexpected v1 TextRenderEvent: {result!r}"
-        )
-        assert not any(isinstance(e, ToolSummaryRenderEvent) for e in result), (
-            f"Unexpected v1 ToolSummaryRenderEvent: {result!r}"
-        )
+        # Assert — v2 Text triplet present and correlated
+        starts = [e for e in result if isinstance(e, TextStartRenderEvent)]
+        deltas = [e for e in result if isinstance(e, TextDeltaRenderEvent)]
+        ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
+        assert len(starts) == 1
+        assert len(deltas) == 1
+        assert len(ends) == 1
+        assert deltas[0].delta == "Refactoring..."
+        assert starts[0].message_id == deltas[0].message_id == ends[0].message_id
 
-        # ToolCall lifecycle present
-        assert any(isinstance(e, ToolCallStartRenderEvent) for e in result)
-        assert any(isinstance(e, ToolCallEndRenderEvent) for e in result)
+        # Assert — ToolCall lifecycle present (no mid-turn intermediate summary)
+        tool_starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
+        tool_ends = [e for e in result if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(tool_starts) == 1
+        assert tool_starts[0].tool_call_id == "t1"
+        assert tool_starts[0].tool_name == "Edit"
+        assert len(tool_ends) == 1
+        assert tool_ends[0].tool_call_id == "t1"
+
+        # Assert — text block closes BEFORE ToolCallStart (TextEnd then ToolStart order)
+        text_end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, TextEndRenderEvent)
+        )
+        tool_start_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, ToolCallStartRenderEvent)
+        )
+        assert text_end_idx < tool_start_idx
 
     async def test_write_tool_tracked(self) -> None:
         """Write tool calls emit ToolCallStart/End and update _files (B8-2, #1211 S4).
@@ -354,9 +370,14 @@ class TestStreamProcessor:
     # T13 — Two files, no group (SC-5)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_two_files_no_group(self) -> None:
-        """Two distinct files remain in per-file display (below group_threshold)."""
+        """Two distinct files below group_threshold: each tracked in _files (L02).
+
+        v2 contract: 2 Edit calls at group_threshold=3 stays per-file — both
+        paths are tracked in the _files accumulator. Each Edit emits one
+        ToolCallStart; orphan synthesis at ResultLlmEvent emits 2 ToolCallEnd.
+        No v1 ToolSummaryRenderEvent; _files is the authoritative record.
+        """
         # Arrange
         processor = StreamProcessor(cfg(group_threshold=3))
         events = async_events(
@@ -366,24 +387,34 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert len(final_summaries[0].files) == 2
-        assert "a.py" in final_summaries[0].files
-        assert "b.py" in final_summaries[0].files
+        # Assert — 2 ToolCallStart + 2 ToolCallEnd emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 2, f"Expected 2 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 2, f"Expected 2 ToolCallEnd, got {len(ends)}"
+        assert {e.tool_call_id for e in starts} == {"t1", "t2"}
+
+        # Assert — both file paths tracked per-file in _files accumulator
+        assert "a.py" in processor._files
+        assert "b.py" in processor._files
+        assert processor._files["a.py"].count == 1
+        assert processor._files["b.py"].count == 1
 
     # ------------------------------------------------------------------
     # T14 — Three files at group_threshold (SC-5)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_three_files_group(self) -> None:
-        """Three distinct files at group_threshold — all files still tracked."""
+        """Three distinct files at group_threshold: all tracked in _files (L03).
+
+        v2 contract: 3 Edit calls at group_threshold=3 — all three are tracked
+        in the _files accumulator. Each Edit emits one ToolCallStart; orphan
+        synthesis at ResultLlmEvent emits 3 ToolCallEnd events. No v1
+        ToolSummaryRenderEvent; _files is the authoritative record. Group-display
+        decisions live at the adapter layer, not StreamProcessor.
+        """
         # Arrange
         processor = StreamProcessor(cfg(group_threshold=3))
         events = async_events(
@@ -394,25 +425,35 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert len(final_summaries[0].files) == 3
-        assert "a.py" in final_summaries[0].files
-        assert "b.py" in final_summaries[0].files
-        assert "c.py" in final_summaries[0].files
+        # Assert — 3 ToolCallStart + 3 ToolCallEnd emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 3, f"Expected 3 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 3, f"Expected 3 ToolCallEnd, got {len(ends)}"
+        assert {e.tool_call_id for e in starts} == {"t1", "t2", "t3"}
+
+        # Assert — all three file paths tracked in _files accumulator
+        assert "a.py" in processor._files
+        assert "b.py" in processor._files
+        assert "c.py" in processor._files
+        assert processor._files["a.py"].count == 1
+        assert processor._files["b.py"].count == 1
+        assert processor._files["c.py"].count == 1
 
     # ------------------------------------------------------------------
     # T15 — 80 edits over 5 files (SC-4, SC-5)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_eighty_tools_multi_file(self) -> None:
-        """80 edits cycling 5 files: each file gets count==16 in count mode."""
+        """80 edits cycling 5 files: each file gets count==16 in count mode (L04).
+
+        v2 contract: 80 Edit calls cycling 5 files at names_threshold=3 puts all
+        files into count mode (16 > 3). Each Edit emits ToolCallStart; orphan
+        synthesis at ResultLlmEvent emits 80 ToolCallEnd events. _files accumulator
+        holds 5 entries each with count==16 and edits==[].
+        """
         # Arrange
         processor = StreamProcessor(cfg(names_threshold=3))
         file_names = [f"src/file{i}.py" for i in range(5)]
@@ -427,20 +468,25 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        final = final_summaries[0]
-        assert len(final.files) == 5
+        # Assert — 80 ToolCallStart + 80 ToolCallEnd emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 80, f"Expected 80 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 80, f"Expected 80 ToolCallEnd, got {len(ends)}"
+
+        # Assert — _files accumulator has 5 entries all in count mode
+        assert len(processor._files) == 5
         for file_name in file_names:
-            assert file_name in final.files
-            entry = final.files[file_name]
-            assert entry.count == 16
-            assert entry.edits == []  # count mode (16 > names_threshold=3)
+            assert file_name in processor._files
+            entry = processor._files[file_name]
+            assert entry.count == 16, (
+                f"{file_name}: expected count=16, got {entry.count}"
+            )
+            assert entry.edits == [], (
+                f"{file_name}: expected count mode (edits=[]), got {entry.edits}"
+            )
 
     # ------------------------------------------------------------------
     # T16 — Bash truncation (SC-6)
@@ -556,9 +602,13 @@ class TestStreamProcessor:
         assert len(processor._web_fetches) == 1
         assert processor._web_fetches[0] == "https://example.com"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_web_search_visible(self) -> None:
-        """WebSearch calls are recorded in the web_fetches list."""
+        """WebSearch: ToolCallStart/End emitted + query in _web_fetches (L05).
+
+        v2 contract: WebSearch (show["web_search"]=True by default) emits the
+        ToolCall lifecycle and appends the query to _web_fetches accumulator.
+        Parity with the active test_web_fetch_visible (line 526).
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -571,18 +621,29 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert len(final_summaries[0].web_fetches) == 1
+        # Assert — ToolCall lifecycle emitted
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 1
+        assert starts[0].tool_name == "WebSearch"
+        assert starts[0].tool_call_id == "ws1"
+        assert len(ends) == 1
+        assert ends[0].tool_call_id == "ws1"
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
+        # Assert — query accumulated in _web_fetches (show["web_search"]=True)
+        assert len(processor._web_fetches) == 1
+        assert processor._web_fetches[0] == "python asyncio"
+
     async def test_web_fetch_hidden_when_show_false(self) -> None:
-        """WebFetch is silently dropped when show['web_fetch']=False."""
+        """WebFetch show=False: lifecycle emitted, URL not accumulated (L06).
+
+        v2 contract: show["web_fetch"]=False suppresses URL accumulation in
+        _web_fetches but does NOT suppress ToolCallStart/End lifecycle events
+        (those are always emitted by _handle_tool_event). The show flag only
+        controls the _accumulate_web call.
+        """
         # Arrange
         config = ToolDisplayConfig.model_validate({"show": {"web_fetch": False}})
         processor = StreamProcessor(config)
@@ -596,37 +657,59 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert — event dropped: no ToolSummaryRenderEvent emitted
-        tool_summaries = [e for e in result if isinstance(e, ToolSummaryRenderEvent)]
-        assert len(tool_summaries) == 0
+        # Assert — ToolCallStart/End still emitted (lifecycle always fires)
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 1
+        assert starts[0].tool_name == "WebFetch"
+        assert len(ends) == 1
+
+        # Assert — URL NOT accumulated (show["web_fetch"]=False)
+        assert processor._web_fetches == [], (
+            f"Expected empty _web_fetches when show=False, got {processor._web_fetches}"
+        )
 
     # ------------------------------------------------------------------
     # T19 — Agent calls accumulation (SC-10)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_agent_calls_accumulation(self) -> None:
-        """Agent tool calls are accumulated in agent_calls list."""
-        # Arrange
+        """Agent calls: ToolCallStart/End + description in _agent_calls (L07).
+
+        v2 contract: the live _agent_calls path in StreamProcessor._accumulate
+        appends event.input["description"] when show["agent"]=True (default).
+        ToolCall lifecycle is always emitted. _agent_calls is authoritative.
+        Targets stream_processor.py:157,532,542.
+        """
+        # Arrange — default cfg() has show["agent"]=True
         processor = StreamProcessor(cfg())
         events = async_events(
             ToolUseLlmEvent(
                 tool_name="Agent", tool_id="a1", input={"description": "sub-task"}
             ),
+            ToolUseLlmEvent(
+                tool_name="Agent", tool_id="a2", input={"description": "another-task"}
+            ),
             ResultLlmEvent(is_error=False, duration_ms=50),
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert
-        final_summaries = [
-            e for e in result if isinstance(e, ToolSummaryRenderEvent) and e.is_complete
-        ]
-        assert len(final_summaries) == 1
-        assert final_summaries[0].agent_calls == ["sub-task"]
+        # Assert — ToolCall lifecycle emitted for both agent calls
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 2
+        assert {e.tool_call_id for e in starts} == {"a1", "a2"}
+        assert len(ends) == 2
+
+        # Assert — agent call descriptions accumulated in _agent_calls (live path)
+        assert processor._agent_calls == ["sub-task", "another-task"]
+
+        # Assert — _has_any_tool_events() returns True when _agent_calls is non-empty
+        assert processor._has_any_tool_events()
 
     # ------------------------------------------------------------------
     # T20 — ResultLlmEvent bypasses throttle (SC-8)
@@ -702,9 +785,15 @@ class TestStreamProcessor:
     # T22 — Throttle=0 passes all mid-turn events through (SC-8)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_throttle_pass_through(self) -> None:
-        """throttle_ms=0 disables throttling — all mid-turn summaries emitted."""
+        """throttle_ms=0: all ToolCall* events emitted 1:1 per tool call (L08).
+
+        v2 contract: throttle_ms=0 disables mid-turn throttle. In v2 there is no
+        mid-turn ToolSummaryRenderEvent at all — each ToolUseLlmEvent produces one
+        ToolCallStart immediately and one ToolCallEnd either via ToolUseEndLlmEvent
+        or orphan synthesis. throttle_ms=0 has no observable effect vs throttle_ms>0.
+        Parity with test_throttle_suppression (active, line 671).
+        """
         # Arrange
         processor = StreamProcessor(cfg(throttle_ms=0))
         events = async_events(
@@ -714,15 +803,17 @@ class TestStreamProcessor:
         )
 
         # Act
-        result = await collect(processor.process(events))
+        all_events = await collect(processor.process(events))
 
-        # Assert — exactly 2 mid-turn (is_complete=False) summaries
-        mid_summaries = [
-            e
-            for e in result
-            if isinstance(e, ToolSummaryRenderEvent) and not e.is_complete
-        ]
-        assert len(mid_summaries) == 2
+        # Assert — 2 ToolCallStart + 2 ToolCallEnd (1:1 pass-through, no suppression)
+        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
+        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(starts) == 2, f"Expected 2 ToolCallStart, got {len(starts)}"
+        assert len(ends) == 2, f"Expected 2 ToolCallEnd, got {len(ends)}"
+        assert {e.tool_call_id for e in starts} == {"t1", "t2"}
+
+        # Assert — run closes cleanly
+        assert any(isinstance(e, RunFinishedRenderEvent) for e in all_events)
 
     # ------------------------------------------------------------------
     # T23 — Text accumulation across multiple chunks (SC-2)

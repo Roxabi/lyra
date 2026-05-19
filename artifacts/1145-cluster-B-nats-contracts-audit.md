@@ -1,7 +1,7 @@
 # Cluster B — NATS Transport, Contracts, Voice Routing: Code-as-Truth Audit
 
-**Issue:** #1145 — ADR Consolidation  
-**Date:** 2026-05-08  
+**Issue:** #1145 — ADR Consolidation
+**Date:** 2026-05-08
 **Scope:** ADRs 035, 036, 037, 040, 044, 045, 046, 047, 049, 050, 051, 052, 062, 063, 064, 065, 066
 
 ---
@@ -484,7 +484,7 @@ JetStream data also consistent with deploy/ structure.
 
 **Normative claims verified:**
 - `WorkerError` model in `packages/roxabi-contracts/src/roxabi_contracts/errors.py:90`: confirmed.
-  Fields: `code`, `message`, `retryable`, `detail`. Also has `_scrub_url` (not in ADR spec — 
+  Fields: `code`, `message`, `retryable`, `detail`. Also has `_scrub_url` (not in ADR spec —
   security enhancement for credential scrubbing in error messages, post-ADR addition).
 - `worker_error: WorkerError | None = None` on 5 reply envelopes:
   - `CliChunkEvent`: `cli/models.py:40` ✓

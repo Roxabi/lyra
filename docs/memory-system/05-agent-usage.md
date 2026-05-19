@@ -1,7 +1,7 @@
 # 05 - Utilisation par les Agents
 
 ## À quoi ça sert ?
-Définir précisément **comment** l'orchestrateur principal et les sub-agents interagissent avec la mémoire du système.  
+Définir précisément **comment** l'orchestrateur principal et les sub-agents interagissent avec la mémoire du système.
 L'objectif est de garder un contexte propre, performant et sans pollution tout en respectant les principes d'isolation et de decay.
 
 ## Qui l'utilise ?

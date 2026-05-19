@@ -88,10 +88,17 @@ class TestRunChecks:
 
         assert report.all_passed is True
         assert report.failed_count == 0
-        # process:lyra-hub + http_health + queue_depth + circuits + reaper
-        # + nats:permissions_violation + hub:dict_stream_gen_timeout + disk + nats:varz
-        assert len(report.checks) == 9
-        assert any(c.name == "hub:dict_stream_gen_timeout" for c in report.checks)
+        assert {c.name for c in report.checks} == {
+            "process:lyra-hub",
+            "http_health",
+            "queue_depth",
+            "circuits",
+            "reaper",
+            "nats:permissions_violation",
+            "hub:dict_stream_gen_timeout",
+            "disk",
+            "nats:varz",
+        }
 
     async def test_failure_detected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC-11: run_checks returns all_passed=False when a check fails."""

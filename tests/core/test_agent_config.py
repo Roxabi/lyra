@@ -49,11 +49,14 @@ class TestModelConfig:
         # must not raise
         _validate_backend_model("claude-cli", "claude-opus-4-6", "test-agent")
 
-    def test_backend_invalid_at_construction(self) -> None:
-        # Pydantic field_validator must reject invalid backends at construction
-        # time — direct ModelConfig() calls cannot bypass _VALID_BACKENDS.
+    @pytest.mark.parametrize("bad", ["litellm", "ollama", "unknown-xyz"])
+    def test_backend_invalid_at_construction(self, bad: str) -> None:
+        # Pydantic field_validator must reject the whole class of unknowns at
+        # construction time — direct ModelConfig() calls cannot bypass
+        # _VALID_BACKENDS. Parametrized to prove the guard fires for any
+        # non-member, not just a single coincident value.
         with pytest.raises(ValidationError, match="Invalid backend"):
-            ModelConfig(backend="litellm")
+            ModelConfig(backend=bad)
 
     def test_base_url_invalid_scheme_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -71,10 +74,13 @@ class TestModelConfig:
         assert cfg.tools == ("Read", "Grep")
 
     def test_frozen(self) -> None:
-        # frozen=True rejects any mutation — the assigned value is irrelevant.
+        # frozen=True rejects any mutation. Using "nats" (≠ default "claude-cli")
+        # so the test is isolated from _validate_backend semantics — if a future
+        # Pydantic version no-op'd same-value set on frozen models, this would
+        # still catch the regression.
         cfg = ModelConfig()
         with pytest.raises(ValidationError):
-            setattr(cfg, "backend", "claude-cli")
+            setattr(cfg, "backend", "nats")
 
     def test_cwd_defaults_to_none(self) -> None:
         cfg = ModelConfig()

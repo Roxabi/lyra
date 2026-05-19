@@ -680,6 +680,9 @@ class TestStreamProcessor:
         appends event.input["description"] when show["agent"]=True (default).
         ToolCall lifecycle is always emitted. _agent_calls is authoritative.
         Targets stream_processor.py:157,532,542.
+
+        Two calls used to verify list accumulation (single item would not
+        distinguish append from replace).
         """
         # Arrange — default cfg() has show["agent"]=True
         processor = StreamProcessor(cfg())
@@ -708,6 +711,28 @@ class TestStreamProcessor:
 
         # Assert — _has_any_tool_events() returns True when _agent_calls is non-empty
         assert processor._has_any_tool_events()
+
+    async def test_agent_calls_skipped_when_show_agent_false(self) -> None:
+        """L07 negative: show={"agent": False} → `_agent_calls` stays empty."""
+        # Arrange
+        config = ToolDisplayConfig.model_validate({
+            "show": {"agent": False},
+            "throttle_ms": 0,
+        })
+        processor = StreamProcessor(config)
+        events = async_events(
+            ToolUseLlmEvent(
+                tool_name="Agent", tool_id="a1", input={"description": "sub-task-1"}
+            ),
+            ToolUseEndLlmEvent(tool_id="a1"),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        # Act
+        await collect(processor.process(events))
+
+        # Assert — show=False means _agent_calls stays empty (no accumulation)
+        assert processor._agent_calls == []
 
     # ------------------------------------------------------------------
     # T20 — ResultLlmEvent bypasses throttle (SC-8)
@@ -778,40 +803,6 @@ class TestStreamProcessor:
         # Assert — both file paths in accumulator
         assert "a.py" in processor._files
         assert "b.py" in processor._files
-
-    # ------------------------------------------------------------------
-    # T22 — Throttle=0 passes all mid-turn events through (SC-8)
-    # ------------------------------------------------------------------
-
-    async def test_throttle_pass_through(self) -> None:
-        """throttle_ms=0: all ToolCall* events emitted 1:1 per tool call (L08).
-
-        v2 contract: throttle_ms=0 disables mid-turn throttle. In v2 there is no
-        mid-turn ToolSummaryRenderEvent at all — each ToolUseLlmEvent produces one
-        ToolCallStart immediately and one ToolCallEnd either via ToolUseEndLlmEvent
-        or orphan synthesis. throttle_ms=0 has no observable effect vs throttle_ms>0.
-        Parity with test_throttle_suppression (active, line 671).
-        """
-        # Arrange
-        processor = StreamProcessor(cfg(throttle_ms=0))
-        events = async_events(
-            ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={"path": "a.py"}),
-            ToolUseLlmEvent(tool_name="Edit", tool_id="t2", input={"path": "b.py"}),
-            ResultLlmEvent(is_error=False, duration_ms=50),
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — 2 ToolCallStart + 2 ToolCallEnd (1:1 pass-through, no suppression)
-        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
-        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 2, f"Expected 2 ToolCallStart, got {len(starts)}"
-        assert len(ends) == 2, f"Expected 2 ToolCallEnd, got {len(ends)}"
-        assert {e.tool_call_id for e in starts} == {"t1", "t2"}
-
-        # Assert — run closes cleanly
-        assert any(isinstance(e, RunFinishedRenderEvent) for e in all_events)
 
     # ------------------------------------------------------------------
     # T23 — Text accumulation across multiple chunks (SC-2)
@@ -934,15 +925,16 @@ class TestStreamProcessor:
         assert len(text_ends) == 1
         assert len(text_deltas) == 1
         assert text_deltas[0].delta == "normal response"
+        text_starts = [e for e in all_events if isinstance(e, TextStartRenderEvent)]
+        assert len(text_starts) == 1
+        assert text_ends[0].message_id == text_starts[0].message_id
 
     async def test_error_text_surfaces_when_no_streamed_text(self) -> None:
-        """is_error=True + error_text, no streamed text → RunError.message (L11).
+        """L11: error_text surfaces via RunError.message when no streamed text exists.
 
-        v2 contract: when no text was streamed before ResultLlmEvent, the
-        error_text is forwarded as RunErrorRenderEvent.message. No TextBlock
-        is opened (no TextStart/Delta/End). Parity with the active
-        test_is_error_run_error_carries_error_text (same scenario, verifies
-        message payload).
+        Extends `test_is_error_run_error_carries_error_text` with the additional
+        guarantee that no text block is opened (no TextStart/Delta) when
+        `error_text` is the only text-bearing field.
         """
         # Arrange
         processor = StreamProcessor(cfg())

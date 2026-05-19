@@ -16,11 +16,14 @@ class _CliPoolCore(Protocol):  # pyright: ignore[reportUnusedClass] — DEBT:pro
 
     async def _kill(self, pool_id: str, *, preserve_session: bool = True) -> None: ...
 
-    async def _spawn(
+    async def _spawn(  # noqa: PLR0913
         self,
         pool_id: str,
         model_config: "ModelConfig",
         system_prompt: str = "",
+        agent_name: str | None = None,
+        agent_email: str | None = None,
+        lyra_session_id: str | None = None,
     ) -> "_ProcessEntry | None": ...
 
     async def reset(self, pool_id: str) -> None: ...

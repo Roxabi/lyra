@@ -364,3 +364,109 @@ def test_cli_heartbeat_pool_count_zero() -> None:
 
     # Assert
     assert inst.pool_count == 0
+
+
+# ---------------------------------------------------------------------------
+# CliCmdPayload — identity fields (#1150)
+# ---------------------------------------------------------------------------
+
+
+def test_cli_cmd_payload_identity_fields_default_none() -> None:
+    """agent_name and agent_email default to None when absent (#1150)."""
+    # Arrange
+    payload = {
+        **_ENVELOPE,
+        "pool_id": "pool-id",
+        "lyra_session_id": "sess-1",
+        "text": "hello",
+        "model_cfg": {},
+        "system_prompt": "sys",
+    }
+
+    # Act
+    inst = CliCmdPayload.model_validate(payload)
+
+    # Assert
+    assert inst.agent_name is None
+    assert inst.agent_email is None
+
+
+def test_cli_cmd_payload_agent_name_only_roundtrip() -> None:
+    """agent_name='X', agent_email=None validates and round-trips through JSON.
+
+    Trailers-only mode: #1150.
+    """
+    # Arrange
+    payload = {
+        **_ENVELOPE,
+        "pool_id": "pool-id",
+        "lyra_session_id": "sess-2",
+        "text": "work",
+        "model_cfg": {},
+        "system_prompt": "sys",
+        "agent_name": "research-agent",
+        "agent_email": None,
+    }
+
+    # Act
+    inst = CliCmdPayload.model_validate(payload)
+    parsed = CliCmdPayload.model_validate_json(inst.model_dump_json())
+
+    # Assert
+    assert parsed.agent_name == "research-agent"
+    assert parsed.agent_email is None
+    assert parsed == inst
+
+
+def test_cli_cmd_payload_full_identity_roundtrip() -> None:
+    """agent_name='X', agent_email='x@y' validates and round-trips through JSON.
+
+    Full committer-identity mode: #1150.
+    """
+    # Arrange
+    payload = {
+        **_ENVELOPE,
+        "pool_id": "pool-id",
+        "lyra_session_id": "sess-3",
+        "text": "code review",
+        "model_cfg": {},
+        "system_prompt": "sys",
+        "agent_name": "coder-agent",
+        "agent_email": "coder@example.com",
+    }
+
+    # Act
+    inst = CliCmdPayload.model_validate(payload)
+    parsed = CliCmdPayload.model_validate_json(inst.model_dump_json())
+
+    # Assert
+    assert parsed.agent_name == "coder-agent"
+    assert parsed.agent_email == "coder@example.com"
+    assert parsed == inst
+
+
+def test_cli_cmd_payload_forward_compat_older_envelope_without_identity() -> None:
+    """Older envelope (no identity fields) validates — forward-compat (#1150).
+
+    ContractEnvelope uses extra='ignore', so absent optional fields must not
+    cause a ValidationError.  Workers on the new image must handle payloads
+    from older hubs that do not yet stamp identity.
+    """
+    # Arrange — deliberately omit both new fields (mimic pre-#1150 envelope)
+    old_shape_payload = {
+        **_ENVELOPE,
+        "pool_id": "pool-old",
+        "lyra_session_id": "sess-legacy",
+        "text": "legacy turn",
+        "model_cfg": {"model": "claude-opus-4-5"},
+        "system_prompt": "You are a helpful assistant.",
+        # agent_name and agent_email intentionally absent
+    }
+
+    # Act — must not raise
+    inst = CliCmdPayload.model_validate(old_shape_payload)
+
+    # Assert — fields absent in payload default to None (forward-compat fallback)
+    assert inst.agent_name is None
+    assert inst.agent_email is None
+    assert inst.pool_id == "pool-old"

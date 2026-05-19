@@ -18,6 +18,7 @@ from lyra.core.messaging.events import (
     TextLlmEvent,
     ToolUseLlmEvent,
 )
+from lyra.core.trace import TraceContext
 from lyra.llm.base import LlmResult
 from roxabi_contracts.cli.models import CliCmdPayload, CliControlCmd
 from roxabi_nats.driver_base import NatsDriverBase
@@ -247,6 +248,14 @@ class CliNatsDriver(NatsDriverBase):
         *,
         stream: bool,
     ) -> dict:
+        # Resolve agent identity from TraceContext (set by pool_processor_exec
+        # before agent.process() is called, so it is always present here).
+        # agent_email is not yet modelled on AgentRow; when absent the spawn-time
+        # merge in CliPool._spawn injects only the Lyra-Agent / Lyra-Session-Id
+        # trailers and leaves the committer identity as the image-baked template
+        # — a supported "trailers-only" attribution mode (#1150).
+        _agent_name: str | None = TraceContext.get_agent_name() or None
+        _agent_email: str | None = None
         return CliCmdPayload(
             contract_version="1",
             trace_id=str(uuid4()),
@@ -257,6 +266,8 @@ class CliNatsDriver(NatsDriverBase):
             model_cfg=model_cfg.model_dump(exclude={"api_key"}),
             system_prompt=system_prompt,
             stream=stream,
+            agent_name=_agent_name,
+            agent_email=_agent_email,
         ).model_dump(mode="json")
 
     def _build_control_payload(

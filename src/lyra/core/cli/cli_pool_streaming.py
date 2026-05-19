@@ -35,12 +35,15 @@ class CliPoolStreamingMixin:
     # the asyncio child watcher plenty of time to set proc.returncode.
     _STALE_RESUME_CHECK_DELAY = 0.05
 
-    async def send_streaming(  # noqa: C901 — DEBT:complexity-residual
+    async def send_streaming(  # noqa: C901,PLR0913 — DEBT:complexity-residual
         self,
         pool_id: str,
         message: str,
         model_config: ModelConfig,
         system_prompt: str = "",
+        agent_name: str | None = None,
+        agent_email: str | None = None,
+        lyra_session_id: str | None = None,
     ) -> StreamingIterator:
         """Send a message and return a streaming iterator for text_delta chunks.
 
@@ -53,7 +56,12 @@ class CliPoolStreamingMixin:
 
             _core = cast(_CliPoolCore, self)
             if entry is None or not entry.is_alive():
-                entry = await _core._spawn(pool_id, model_config, system_prompt)
+                entry = await _core._spawn(
+                    pool_id, model_config, system_prompt,
+                    agent_name=agent_name,
+                    agent_email=agent_email,
+                    lyra_session_id=lyra_session_id,
+                )
                 if entry is None:
                     raise RuntimeError("Failed to spawn Claude CLI process")
             elif entry.system_prompt != system_prompt:
@@ -62,7 +70,12 @@ class CliPoolStreamingMixin:
                     pool_id,
                 )
                 await _core._kill(pool_id, preserve_session=False)
-                entry = await _core._spawn(pool_id, model_config, system_prompt)
+                entry = await _core._spawn(
+                    pool_id, model_config, system_prompt,
+                    agent_name=agent_name,
+                    agent_email=agent_email,
+                    lyra_session_id=lyra_session_id,
+                )
                 if entry is None:
                     raise RuntimeError("Failed to respawn Claude CLI process")
             elif entry.model_config != model_config:
@@ -71,7 +84,12 @@ class CliPoolStreamingMixin:
                     pool_id,
                 )
                 await _core._kill(pool_id, preserve_session=False)
-                entry = await _core._spawn(pool_id, model_config, system_prompt)
+                entry = await _core._spawn(
+                    pool_id, model_config, system_prompt,
+                    agent_name=agent_name,
+                    agent_email=agent_email,
+                    lyra_session_id=lyra_session_id,
+                )
                 if entry is None:
                     raise RuntimeError("Failed to respawn Claude CLI process")
 

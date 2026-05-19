@@ -84,6 +84,18 @@ on rotation events.
 Secrets via `type=mount` (tmpfs) — ¬env vars, ¬volume wrappers for credentials.
 ¬inline `#` comments after `Volume=` values — Quadlet passes them to Podman as mount options.
 
+### Known residual risk — clipool `core.hooksPath` override (tracked #1245)
+
+The clipool unit sets `core.hooksPath = /opt/lyra-gh/hooks` via `GIT_CONFIG_GLOBAL`
+so the image-baked `prepare-commit-msg` hook fires on every commit. The workspace
+volume is mounted RW; a malicious subprocess (uid 1500) could write a per-repo
+`.git/config` containing its own `[core] hooksPath = …` that **overrides** the
+global setting at the per-repo layer. Within the single-tenant container threat
+model — the subprocess is already trusted to execute arbitrary code under
+`DropCapability=all` + `ReadOnly=true` — this is **accepted residual risk**.
+The follow-up (#1245) tracks switching to `GIT_CONFIG_SYSTEM` (or `GIT_CONFIG_COUNT`)
+so the hooksPath becomes process-immutable.
+
 ---
 
 ## Cross-references

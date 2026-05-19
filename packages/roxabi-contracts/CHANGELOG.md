@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/Roxabi/lyra/compare/roxabi-contracts/v0.3.0...roxabi-contracts/v0.4.0) (2026-05-19)
+
+
+### Features
+
+* **contracts:** add optional `agent_name` and `agent_email` fields to `CliCmdPayload` for per-session git committer attribution ([#1150](https://github.com/Roxabi/lyra/issues/1150)). Additive, non-security-bearing — older consumers ignore the fields per the package's forward-compat policy (`extra='ignore'`).
+
+
+## [0.3.0] (unreleased note backfill)
+
+`pyproject.toml` was bumped to `0.3.0` between `0.2.0` and this PR without a corresponding CHANGELOG entry. This placeholder preserves the version chain for the `[0.4.0]` compare URL. Backfill from `git log packages/roxabi-contracts/ pyproject.toml` if/when the gap matters.
+
+
 ## [0.2.0](https://github.com/Roxabi/lyra/compare/roxabi-contracts/v0.1.0...roxabi-contracts/v0.2.0) (2026-04-17)
 
 

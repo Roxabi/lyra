@@ -977,11 +977,15 @@ class TestBuildCmdPayloadIdentity:
         # Arrange — ensure no agent_name is in context
         driver = _make_driver()
         driver.link_lyra_session("pool-1", "sess-xyz")
-        # Reset any stale context var value
-        token = TraceContext.set_agent_name("")
-        TraceContext.reset_agent_name(token)
+        # Force the context var to empty-string (which production code maps to
+        # None via `or None`). ContextVar.reset(token) restores the pre-set
+        # value, which could be a stale "agent-X" from a prior test rather
+        # than "unset" — so we set without resetting, and verify the
+        # invariant before the Act step instead of trusting test isolation.
+        TraceContext.set_agent_name("")
+        assert TraceContext.get_agent_name() in ("", None)
 
-        # Act — no set_agent_name call
+        # Act — no set_agent_name call to a non-empty value
         payload_dict = driver._build_cmd_payload(
             "pool-1", "hello", _make_model_cfg(), "sys", stream=False
         )

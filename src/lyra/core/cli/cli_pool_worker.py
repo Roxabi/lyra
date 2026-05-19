@@ -95,6 +95,44 @@ class CliPoolWorkerMixin:
     ) -> tuple[list[str], str | None]:
         return build_cmd(model_config, session_id, system_prompt)
 
+    @staticmethod
+    def _identity_env(
+        agent_name: str | None,
+        agent_email: str | None,
+        lyra_session_id: str | None,
+    ) -> dict[str, str]:
+        """Build the per-session attribution env vars (#1150) for the subprocess.
+
+        Layered gate: agent_name alone → trailers-only mode (Lyra-Agent +
+        Lyra-Session-Id, appended by the prepare-commit-msg hook). agent_name
+        + agent_email → trailers AND committer identity. Without agent_name
+        the subprocess falls back entirely to the image-baked template.
+
+        These keys are NOT in `_SAFE_ENV_KEYS` — they're synthesised here, not
+        inherited from the parent process; the allowlist filters inherited env.
+
+        Sanitisation: CR/LF stripped from every value before injection. An
+        embedded LF in LYRA_SESSION_ID / LYRA_AGENT lands verbatim in
+        `git interpret-trailers --trailer "Lyra-Foo: $val"` and git's parser
+        (and GitHub's) treats the LF as a trailer-line separator, smuggling
+        arbitrary trailers (e.g. fake Co-Authored-By). An LF in
+        GIT_COMMITTER_NAME / GIT_COMMITTER_EMAIL corrupts the commit-object
+        header. The guard lives here, not in the bash hook. `is not None and
+        != ""` (rather than truthiness) keeps empty-string as a distinct
+        invalid state surfaced by callers instead of silently dropped.
+        """
+        if agent_name is None or agent_name == "":
+            return {}
+        strip = lambda v: v.replace("\r", "").replace("\n", "")  # noqa: E731
+        safe_name = strip(agent_name)
+        ident: dict[str, str] = {"LYRA_AGENT": safe_name}
+        if lyra_session_id:
+            ident["LYRA_SESSION_ID"] = strip(lyra_session_id)
+        if agent_email:
+            ident["GIT_COMMITTER_NAME"] = safe_name
+            ident["GIT_COMMITTER_EMAIL"] = strip(agent_email)
+        return ident
+
     async def _spawn(  # noqa: PLR0913
         self,
         pool_id: str,
@@ -122,20 +160,7 @@ class CliPoolWorkerMixin:
         log.debug("[pool:%s] cmd: %s", pool_id, " ".join(cmd))
         env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
         env["HOME"] = str(Path.home())
-        # Per-session attribution (#1150). agent_name alone → trailers only
-        # (Lyra-Agent + Lyra-Session-Id appended by the prepare-commit-msg hook);
-        # agent_name + agent_email → trailers AND committer identity. Without
-        # agent_name we fall back entirely to the image-baked template identity.
-        # These keys are NOT in _SAFE_ENV_KEYS — they're synthesised at spawn
-        # time, not inherited. The allowlist's design intent (see comment above)
-        # is parent-env filtering.
-        if agent_name:
-            env["LYRA_AGENT"] = agent_name
-            if lyra_session_id:
-                env["LYRA_SESSION_ID"] = lyra_session_id
-            if agent_email:
-                env["GIT_COMMITTER_NAME"] = agent_name
-                env["GIT_COMMITTER_EMAIL"] = agent_email
+        env.update(self._identity_env(agent_name, agent_email, lyra_session_id))
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,

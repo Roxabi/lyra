@@ -4,7 +4,7 @@
 src/lyra/bootstrap/factory/wiring_helpers.py  # 410 lines — DEBT:file-exemptions — ADR-059/V10 bootstrap helper aggregator (imports + 10 focused functions)
 src/lyra/bootstrap/bootstrap_stores.py  # 307 lines — DEBT:file-exemptions — #957 idx_sql DDL validation adds allowlist guard before sqlite_master replay
 src/lyra/core/cli/cli_pool.py  # 341 lines — DEBT:file-exemptions — #1150 agent identity kwargs added to send() signature
-src/lyra/core/cli/cli_pool_worker.py  # 305 lines — DEBT:file-exemptions — #1150 agent identity env-inject block (layered gate: name-only vs name+email) added to _spawn()
+src/lyra/core/cli/cli_pool_worker.py  # 330 lines — DEBT:file-exemptions — #1150 _identity_env helper (layered gate + newline sanitisation per /code-review #1243) extracted from _spawn()
 src/lyra/agents/simple_agent.py  # 316 lines — DEBT:file-exemptions — #1008 cli_nats_driver wiring for NATS-mode resume + link_lyra_session
 src/lyra/bootstrap/standalone/adapter_standalone.py  # 301 lines — DEBT:file-exemptions — #1016 WorkerError startup version log
 src/lyra/core/processors/stream_processor.py  # 630 lines — DEBT:file-exemptions — #1016 WorkerError extractor + #1098 Run lifecycle + #1101 Reasoning emission (cleanup in Slice 5 / #1102)

@@ -74,6 +74,19 @@ class ModelConfig(BaseModel):
     # #1101 — per-agent extended-thinking config (effort token budget)
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
 
+    @field_validator("backend")
+    @classmethod
+    def _validate_backend(cls, v: str) -> str:
+        # Pydantic-level guard so direct construction (tests, NATS payload
+        # deserialization, ad-hoc code) cannot bypass _VALID_BACKENDS.
+        # _validate_backend_model (agent_builder) keeps the agent-name context
+        # in its error message and remains the canonical load-time check.
+        if v not in _VALID_BACKENDS:
+            raise ValueError(
+                f"Invalid backend {v!r}: must be one of {sorted(_VALID_BACKENDS)}"
+            )
+        return v
+
     @field_validator("base_url")
     @classmethod
     def _validate_base_url_scheme(cls, v: str | None) -> str | None:

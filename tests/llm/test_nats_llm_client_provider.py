@@ -52,7 +52,7 @@ def _seed_registry(client: NatsLlmClient, worker_id: str = "w-1") -> None:
 
 def _make_model_cfg() -> ModelConfig:
     """Return a minimal ModelConfig for test use."""
-    return ModelConfig(model="gpt-4o", backend="litellm")
+    return ModelConfig(model="gpt-4o", backend="nats")
 
 
 def _ok_response_bytes(request_id: str = "req0001", text: str = "hi") -> bytes:

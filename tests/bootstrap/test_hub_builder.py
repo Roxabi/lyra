@@ -30,7 +30,7 @@ class TestBuildCliPool:
                 name="agent_b",
                 system_prompt="prompt",
                 memory_namespace="test",
-                llm_config=ModelConfig(backend="ollama"),
+                llm_config=ModelConfig(backend="nats"),
             ),
         }
         raw_config: dict = {}

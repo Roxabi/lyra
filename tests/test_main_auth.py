@@ -34,11 +34,14 @@ class TestAgentFactory:
         assert isinstance(agent, SimpleAgent)
 
     def test_unknown_backend_raises(self) -> None:
+        # Bypass the ModelConfig field validator (which rejects "unknown" at
+        # construction) to exercise the factory's defense-in-depth check.
+        llm_cfg = ModelConfig.model_construct(backend="unknown")
         config = Agent(
             name="test",
             system_prompt="",
             memory_namespace="test",
-            llm_config=ModelConfig(backend="unknown"),
+            llm_config=llm_cfg,
         )
         with pytest.raises(ValueError, match="Unknown backend"):
             agent_factory_mod._create_agent(config, None)

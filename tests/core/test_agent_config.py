@@ -43,6 +43,18 @@ class TestModelConfig:
         # must not raise
         _validate_backend_model("nats", "claude-sonnet-4-6", "test-agent")
 
+    def test_backend_claude_cli_accepted(self) -> None:
+        from lyra.core.agent.agent_builder import _validate_backend_model
+
+        # must not raise
+        _validate_backend_model("claude-cli", "claude-opus-4-6", "test-agent")
+
+    def test_backend_invalid_at_construction(self) -> None:
+        # Pydantic field_validator must reject invalid backends at construction
+        # time — direct ModelConfig() calls cannot bypass _VALID_BACKENDS.
+        with pytest.raises(ValidationError, match="Invalid backend"):
+            ModelConfig(backend="litellm")
+
     def test_base_url_invalid_scheme_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelConfig(base_url="file:///etc/passwd")
@@ -59,9 +71,10 @@ class TestModelConfig:
         assert cfg.tools == ("Read", "Grep")
 
     def test_frozen(self) -> None:
+        # frozen=True rejects any mutation — the assigned value is irrelevant.
         cfg = ModelConfig()
         with pytest.raises(ValidationError):
-            setattr(cfg, "backend", "ollama")
+            setattr(cfg, "backend", "claude-cli")
 
     def test_cwd_defaults_to_none(self) -> None:
         cfg = ModelConfig()

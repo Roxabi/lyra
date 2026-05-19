@@ -60,7 +60,7 @@ def _make_driver(nc: MagicMock | None = None, timeout: float = 5.0) -> CliNatsDr
 
 
 def _make_model_cfg() -> ModelConfig:
-    return ModelConfig(backend="cli-nats", model="claude-cli")
+    return ModelConfig(backend="claude-cli", model="claude-cli")
 
 
 def _make_reply(data: dict) -> MagicMock:

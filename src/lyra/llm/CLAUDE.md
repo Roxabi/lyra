@@ -24,7 +24,7 @@ not add it to the Protocol until all drivers implement it.
 | `CliNatsDriver` | `"claude-cli"` | NATS request-reply → clipool worker | multi-process (hub side) |
 | `NatsLlmClient` | `"nats"` | NATS request-reply → llmCLI worker | multi-process (hub side) |
 
-`ClaudeCliDriver` and `CliNatsDriver` share the same `"claude-cli"` registry key — the two are interchangeable by wiring mode, not by registry key.
+`ClaudeCliDriver` and `CliNatsDriver` share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap, not by registry key.
 
 `NatsLlmClient` lives in `lyra.nats`, **not** in `llm/` — cross-package gotcha. Replaces deleted `NatsLlmDriver` (#1119).
 

@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import ast
-import dataclasses
-import json
 import logging
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 
 import pytest
 
@@ -1275,28 +1273,6 @@ class TestRunLifecycle:
         assert isinstance(result[-1], RunFinishedRenderEvent)
         assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-    async def test_soft_error_emits_finished_not_error(self) -> None:
-        """ResultLlmEvent.is_error=True (soft error) → RunFinished, not RunError."""
-        # B2 from PR #1218 review (#1211 follow-up):
-        # This test asserts RunFinished(success) for is_error=True; B8-10 asserts
-        # RunErrorRenderEvent for the same input. The contracts are mutually exclusive.
-        # When #1216 unskips this test, the StreamProcessor's actual is_error contract
-        # must be reconciled — either delete this test (B8-10 wins) or revise B8-10.
-        processor = StreamProcessor(cfg())
-        events = async_events(
-            ResultLlmEvent(is_error=True, duration_ms=10, error_text="model error"),
-        )
-
-        result = await collect(processor.process(events))
-
-        assert isinstance(result[-1], RunFinishedRenderEvent)
-        assert result[-1].outcome == "success"
-        assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
-        # The soft error still surfaces via TextRenderEvent.is_error=True.
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
-        assert any(e.is_error for e in text_events)
-
     def test_schema_versions(self) -> None:
         """Each new event type carries its own SCHEMA_VERSION_* constant."""
         from lyra.core.messaging.render_events import (
@@ -1723,34 +1699,6 @@ class TestReasoning:
         assert isinstance(result[-1], RunFinishedRenderEvent)
         assert not any(isinstance(e, RunErrorRenderEvent) for e in result)
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-    async def test_dual_emit_v1_text_alongside_reasoning_delta(self) -> None:
-        """SC-7 / χ-1 (spec line 261): pair ReasoningDelta with v1 TextRenderEvent.
-
-        Coexistence safety: non-migrated adapters that haven't wired `edit_reasoning`
-        keep their current `⏳`-streaming UX via the v1 TextRenderEvent(is_final=False)
-        dual-emit. Sunsets in Slice 5 (#1102) once all adapters migrate.
-        """
-        # Arrange — show_intermediate=True (default)
-        processor = StreamProcessor(cfg())
-        events = async_events(
-            ThinkingLlmEvent(text="alpha"),
-            ThinkingLlmEvent(text="beta"),
-            ResultLlmEvent(is_error=False, duration_ms=10),
-        )
-
-        # Act
-        result = await collect(processor.process(events))
-
-        # Assert — every ReasoningDelta has a paired v1 TextRenderEvent(is_final=False)
-        # with the same text content, in emission order.
-        deltas = [e.delta for e in result if isinstance(e, ReasoningDeltaRenderEvent)]
-        v1_intermediates = [
-            e.text for e in result if isinstance(e, TextRenderEvent) and not e.is_final
-        ]
-        assert deltas == ["alpha", "beta"]
-        assert v1_intermediates == ["alpha", "beta"]
-
     async def test_reasoning_closes_on_tool_use_end_transition(self) -> None:
         """Isolation: ReasoningEnd fires when ToolUseEnd is first non-Thinking event.
 
@@ -1946,26 +1894,6 @@ class TestReasoning:
 # Slice 2 of #1096 — v2 Text triplet (#1099) — T6
 # ---------------------------------------------------------------------------
 
-# Normalization helpers re-imported from the capture script (T1) so parity
-# assertions apply identical transforms before diffing against the fixture.
-from tools.capture_v1_text_baseline import normalize_event_dict  # noqa: E402
-
-# DEBT:v1-stubs — kept for the v1-skipped tests deferred to #1216.
-# Stubs are typed Any so pyright accepts v1-shape attribute access in those
-# test bodies; identifiers must exist because pytest imports the module.
-TextRenderEvent: Any = type("TextRenderEvent", (), {})
-ToolSummaryRenderEvent: Any = type("ToolSummaryRenderEvent", (), {})
-
-
-def _v1_filter(events: list[RenderEvent]) -> list[RenderEvent]:
-    """Drop Text{Start,Delta,End} triplet events from a live run output.
-
-    Mirrors the T6 parity filter: the baseline fixture was captured on this
-    branch (which already includes ToolCall* events from Slice 3), so only the
-    Slice 2 additive v2 Text triplet events are filtered out before diffing.
-    """
-    return [e for e in events if not isinstance(e, _TEXT_V2_TYPES)]
-
 
 class TestTextTriplet:
     """Slice 2 (#1099) v2 Text triplet emission contract — T6 tests."""
@@ -2071,37 +1999,6 @@ class TestTextTriplet:
         assert end_idx < error_idx
 
     # ------------------------------------------------------------------
-    # T6-4 — TextEnd emitted BEFORE v1 fallback on truncation
-    # ------------------------------------------------------------------
-
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-    async def test_text_end_before_v1_fallback_on_truncation(self) -> None:
-        """Truncation path: TextEnd emits before the v1 fallback TextRenderEvent.
-
-        show_intermediate=False so no per-chunk TextRenderEvent is emitted;
-        the only TextRenderEvent is the fallback from the truncation branch.
-        Invariant: TextEnd closes the block before that fallback fires.
-        """
-        # Arrange — show_intermediate=False so no per-chunk TextRenderEvent is emitted
-        processor = StreamProcessor(cfg(), show_intermediate=False)
-        events = async_events(TextLlmEvent(text="partial response"))
-
-        # Act
-        result = await collect(processor.process(events))
-
-        # Assert — TextEnd precedes the v1 fallback TextRenderEvent
-        end_idx = next(
-            (i for i, e in enumerate(result) if isinstance(e, TextEndRenderEvent)), None
-        )
-        v1_text_indices = [
-            i for i, e in enumerate(result) if isinstance(e, TextRenderEvent)
-        ]
-        assert end_idx is not None, "TextEndRenderEvent not found"
-        assert v1_text_indices, "No TextRenderEvent found"
-        # The v1 fallback text event(s) all come after the TextEnd close
-        assert all(end_idx < v1_idx for v1_idx in v1_text_indices)
-
-    # ------------------------------------------------------------------
     # T6-5 — No TextEnd when no text block is open
     # ------------------------------------------------------------------
 
@@ -2120,82 +2017,3 @@ class TestTextTriplet:
         # Assert — guard clause prevents spurious TextEnd
         text_ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
         assert len(text_ends) == 0
-
-    # ------------------------------------------------------------------
-    # T6-6 — v1 parity against baseline fixture
-    # ------------------------------------------------------------------
-
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
-    async def test_v1_parity_against_baseline_fixture(self) -> None:
-        """Live run filtered to v1-only events must be byte-equal to captured baseline.
-
-        Filter rule: drop TextStart/Delta/End and ToolCall* from live output,
-        then compare serialized dicts to the fixture captured by T1 (pre-T5).
-        Normalization: run_id values replaced with '<run_id>' via the same regex
-        used by tools/capture_v1_text_baseline.py::normalize_event_dict().
-        """
-        # Arrange — load fixture
-        fixture_path = (
-            Path(__file__).parent / "fixtures" / "v1_text_stream_baseline.json"
-        )
-        baseline = json.loads(fixture_path.read_text())
-
-        config = ToolDisplayConfig(throttle_ms=0)
-
-        async def _run(events_in) -> list[dict]:
-            """Run StreamProcessor and return normalized v1-only event dicts."""
-            sp = StreamProcessor(config, show_intermediate=False)
-            raw: list[RenderEvent] = []
-            async for ev in sp.process(events_in):
-                raw.append(ev)
-            v1_only = _v1_filter(raw)
-            return [
-                normalize_event_dict(
-                    {**dataclasses.asdict(e), "type": type(e).__name__}
-                )
-                for e in v1_only
-            ]
-
-        # --- Scenario: single_block ---
-        single_result = await _run(
-            async_events(
-                TextLlmEvent(text="Hello "),
-                TextLlmEvent(text="world."),
-                ResultLlmEvent(is_error=False, duration_ms=100),
-            )
-        )
-        assert single_result == baseline["single_block"], (
-            f"single_block mismatch:\n  got:      {single_result}\n"
-            f"  expected: {baseline['single_block']}"
-        )
-
-        # --- Scenario: multi_block ---
-        multi_result = await _run(
-            async_events(
-                TextLlmEvent(text="Before tool "),
-                ToolUseLlmEvent(
-                    tool_name="bash", tool_id="tool-abc123", input={"command": "ls"}
-                ),
-                ToolUseEndLlmEvent(tool_id="tool-abc123"),
-                TextLlmEvent(text="After tool."),
-                ResultLlmEvent(is_error=False, duration_ms=200),
-            )
-        )
-        assert multi_result == baseline["multi_block"], (
-            f"multi_block mismatch:\n  got:      {multi_result}\n"
-            f"  expected: {baseline['multi_block']}"
-        )
-
-        # --- Scenario: error ---
-        error_result = await _run(
-            async_events(
-                TextLlmEvent(text="Partial "),
-                ResultLlmEvent(
-                    is_error=True, duration_ms=50, error_text="Something went wrong"
-                ),
-            )
-        )
-        assert error_result == baseline["error"], (
-            f"error mismatch:\n  got:      {error_result}\n"
-            f"  expected: {baseline['error']}"
-        )

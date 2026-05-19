@@ -356,6 +356,40 @@ class TestStreamingIteratorNonJson:
         # error_text reuses the (scrubbed) WorkerError.message — never raw str(exc)
         assert result.error_text == result.worker_error.message
 
+    def test_malformed_json_does_not_leak_payload_into_worker_error(self) -> None:
+        """#1219 (sibling of #1212/#1215): bus-bound message keeps only the
+        exception type name; the raw malformed line (`JSONDecodeError.doc`)
+        must NOT surface in `WorkerError.message` or `error_text`.
+        """
+        # Arrange — sensitive sentinel embedded in the malformed JSON payload.
+        # Picked to fail json.loads (unterminated string) while still looking
+        # like protocol content (`{`-shaped → triggers the cli.parse branch).
+        sentinel = "SENTINEL-LEAK-42"
+        malformed = f'{{"type": "result", "session_id": "{sentinel}'
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+
+        # Act
+        events = _collect_all(parser, malformed)
+
+        # Assert — exactly one terminal ResultLlmEvent with cli.parse envelope
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.worker_error is not None
+        assert result.worker_error.code == "cli.parse"
+
+        # Assert — sentinel does NOT appear on the bus-bound surfaces
+        msg = result.worker_error.message
+        assert sentinel not in msg, (
+            f"sentinel leaked into worker_error.message: {msg!r}"
+        )
+        assert result.error_text is not None
+        assert sentinel not in result.error_text, (
+            f"sentinel leaked into error_text: {result.error_text!r}"
+        )
+        # Positive: type name still surfaces for diagnostic value
+        assert "JSONDecodeError" in result.worker_error.message
+
 
 # ---------------------------------------------------------------------------
 # TestStreamingIteratorAssistant

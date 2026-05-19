@@ -539,8 +539,11 @@ class TestErrorMappingComplete:
         result = await client.complete("pool-1", "hi", mc, "sys")  # type: ignore[call-arg]
 
         assert result.worker_error is not None
-        assert len(result.worker_error.message) <= 512
-        assert result.worker_error.message.endswith("…")
+        # `not in` + exact-length anchor the boundary: a non-validating
+        # deserializer would propagate the raw 10KB string verbatim and fail
+        # both checks. Avoid coupling to the truncation marker literal.
+        assert hostile_message not in result.worker_error.message
+        assert len(result.worker_error.message) == 512
 
 
 # ---------------------------------------------------------------------------
@@ -827,8 +830,8 @@ class TestErrorMappingStream:
         last = events[-1]
         assert isinstance(last, ResultLlmEvent)
         assert last.worker_error is not None
-        assert len(last.worker_error.message) <= 512
-        assert last.worker_error.message.endswith("…")
+        assert hostile_message not in last.worker_error.message
+        assert len(last.worker_error.message) == 512
 
 
 # ---------------------------------------------------------------------------

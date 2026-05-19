@@ -1,0 +1,120 @@
+---
+title: "PR #1267 review findings — Expert Consensus"
+issue: 1198
+pr: 1267
+status: consensus-reached
+date: 2026-05-19
+panel: architect, backend-dev, tester
+confidence: high
+---
+
+## Problem
+
+PR #1267 (`chore(agent-config): #1198 backend-enum cleanup tail`) added a Pydantic `@field_validator("backend")` to `ModelConfig` plus test polish. CI green. The `/code-review` pass produced 7 findings (2 `issue:`, 2 `suggestion:`, 3 `nitpick:`). Need to decide which apply before merge — with particular attention to finding #3 (replace `frozenset` + `field_validator` with `Literal["claude-cli", "nats"]` field type).
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | Validation layering, type-vs-runtime constraint, scalability for growing backend set |
+| backend-dev | Pydantic idioms, NATS serialization compat, error message quality |
+| tester | Coverage gap reality, falsification rule, test-tautology risk |
+
+## Consensus ρ
+
+Per-finding application:
+
+| # | Label | C | Decision | Vote |
+|---|-------|---|---------|------|
+| 1 | issue | 85% | **APPLY-NOW** | 3-0 (tester: blocking) |
+| 2 | issue | 88% | **APPLY-NOW** | 2-1 (tester defers as out-of-test-scope; does not object to fix) |
+| 3 | suggestion | 82% | **REJECT** | 3-0 |
+| 4 | suggestion | 72% | **APPLY-NOW** | 3-0 |
+| 5 | nitpick | 78% | **NOT-NOW** (defer/reject) | 0-0-3 (none APPLY) |
+| 6 | nitpick | 75% | **APPLY-NOW** | 3-0 |
+| 7 | nitpick | 70% | **DEFER** | 3-0 |
+
+### Rationale
+
+**APPLY-NOW (1, 2, 4, 6):** Cheap, low-risk improvements that directly strengthen the validation pattern the PR introduces. Together ~10 LOC across 2 source-adjacent files + 1 test file.
+
+- **#1** — parametrize `test_backend_invalid_at_construction` over `["litellm", "ollama", "unknown-xyz"]`. Tester escalated this to *blocking* per the negative-test rule: a guard introduced in this PR must have a falsification test covering the *class* of unknowns, not a single coincident value.
+- **#2** — 1-line comment at `agent_db_loader.py:51` documenting that L1 (field_validator) also fires on the `ModelConfig()` call below; L2 (`_validate_backend_model`) is kept here for richer `agent_name` error context. Without the comment, future cleanup would silently strip the defense-in-depth the PR was built to preserve.
+- **#4** — `test_frozen` value `"claude-cli"` is the field default; switch to `"nats"` so the freeze check is isolated from validator semantics. 1 LOC.
+- **#6** — Add a `# test-only: bypasses field_validator` comment near the `model_construct(backend="unknown")` call site in `tests/test_main_auth.py`. The PR comment cites NATS deserialization paths as the *motivation* for the new validator; documenting the bypass pattern at the call site closes the gap between PR prose and code.
+
+**REJECT (#3):** `backend: Literal["claude-cli", "nats"]` would trade growth-readiness for static typing. Three converging reasons:
+
+1. **Backends will grow** — `agent_config.py:49–56` explicitly reserves `base_url`/`api_key` for a "future Ollama driver"; the field validator + frozenset pattern is the correct shape for an open-but-controlled set. `Literal` requires touching every pyright consumer when a backend is added.
+2. **NATS serialization brittleness** — `cli_nats.py:294` publishes `model_dump(...)` payloads. The receiver does `model_validate`. A Literal field hard-fails on the receiver side for any legacy row or pre-deploy backend value, breaking forward/backward compat without a coordinated migration plan.
+3. **Test-tautology risk** — Pydantic raises `literal_error` (not `value_error`) for Literal mismatches. The existing `pytest.raises(ValidationError, match="Invalid backend")` regex would silently start passing for the wrong reason if the field type were switched. The suggestion *introduces* the very failure mode finding #1 exists to prevent.
+
+If a future ticket weighs the full migration cost (payload schema versioning, receiver-side tolerance, type-system surface), it can re-open the question. Out of scope for #1198.
+
+**DEFER (#5, #7):**
+
+- **#5** — `test_unknown_backend_raises` rename is editorial. Test names should describe behavior, not internal architecture layers. The 0-0-3 vote (no one wants to apply now) signals it's not worth the diff churn in this PR.
+- **#7** — `_VALID_BACKENDS_STR` extraction is a real parallel-path drift risk, but only materializes if a third validation site is added. Pick up atomically when (and if) that happens. Premature module-interface widening now.
+
+### Trade-offs
+
+1. **Growth-readiness over static narrowing.** Rejecting #3 keeps `backend: str` wider than the actual domain. pyright cannot catch `backend="ollama"` at compile time; relies on runtime validator. Acceptable price for forward-compat with NATS payloads and future backends.
+2. **Defense-in-depth requires documentation.** The 3-layer validation pattern (#1198 acceptance: "Keep both; document this as the canonical pattern") only works if every reader knows the layers exist. Applying #2 + #6 turns latent design intent into explicit code commentary.
+3. **Test signal isolation.** Applying #1 + #4 + rejecting #3 keeps the existing assertion regexes meaningful and broadens negative-test coverage to the whole class of unknowns.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| Apply #3 (Literal field type) | architect finding (review) | Couples type to growing set; breaks NATS payload compat; introduces test-tautology risk |
+| Apply all 7 | (implicit "all-or-nothing") | #3 actively wrong, #5/#7 churn without payoff |
+| Merge as-is, open follow-up issue for all 7 | (DP option 3) | #1 raised to blocking by tester (negative-test rule); doc/test fixes (#2, #4, #6) are too small to justify a follow-up issue |
+| Apply #1+#2+#3+#4 | (DP option 2) | #3 rejected on architectural + serialization + test-tautology grounds |
+
+## Dissent
+
+- **Tester defers #2** while architect+backend-dev say APPLY-NOW. No objection to the change itself — only its scope (source vs. test PR). Recorded but overruled: the comment is a 1-line non-functional change that protects the explicit design intent of the PR; bundling avoids a separate trivial PR.
+- **Tester escalated #1 to *blocking*** per the negative-test rule. Architect + backend-dev had it as APPLY-NOW (not blocking). Recorded: panel honors the strongest signal — treat as required pre-merge.
+
+## Implementation Notes
+
+Single follow-up commit on the same PR branch (`worktree-1198-backend-enum-cleanup-tail`):
+
+1. `tests/core/test_agent_config.py` — parametrize `test_backend_invalid_at_construction`:
+   ```python
+   @pytest.mark.parametrize("bad", ["litellm", "ollama", "unknown-xyz"])
+   def test_backend_invalid_at_construction(self, bad: str) -> None:
+       with pytest.raises(ValidationError, match="Invalid backend"):
+           ModelConfig(backend=bad)
+   ```
+
+2. `src/lyra/core/agent/agent_db_loader.py:51` — add comment:
+   ```python
+   # ModelConfig() below also fires _validate_backend (Pydantic field validator).
+   # We keep _validate_backend_model here for the richer agent_name context in
+   # the error message. The double-check is intentional defense-in-depth.
+   ```
+
+3. `tests/core/test_agent_config.py::test_frozen` — change assigned value to `"nats"`:
+   ```python
+   def test_frozen(self) -> None:
+       # frozen=True rejects any mutation. Using "nats" (≠ default "claude-cli")
+       # so the test is isolated from _validate_backend semantics.
+       cfg = ModelConfig()
+       with pytest.raises(ValidationError):
+           setattr(cfg, "backend", "nats")
+   ```
+
+4. `tests/test_main_auth.py` — augment the existing comment near `model_construct`:
+   ```python
+   # model_construct bypasses Pydantic validators — TEST-ONLY pattern.
+   # Must NOT appear in production deserialization paths (NATS, DB rows, etc.),
+   # which is exactly what _validate_backend (L1) was added to defend against.
+   llm_cfg = ModelConfig.model_construct(backend="unknown")
+   ```
+
+Run quality gates (`uv run ruff format . && uv run ruff check . && uv run pytest tests/core/test_agent_config.py tests/test_main_auth.py`). Push, no new PR — same branch.
+
+## Next
+
+→ `/fix` to apply consensus items #1, #2, #4, #6 to PR #1267.

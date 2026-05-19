@@ -14,7 +14,6 @@ Replaced the legacy ``NatsLlmDriver`` in lyra#1119 (deleted in scope #3, lyra#12
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -34,7 +33,7 @@ from lyra.core.messaging.events import (
 )
 from lyra.core.messaging.metrics import emit_populated_total
 from lyra.core.ports.llm import LlmResult
-from lyra.nats.worker_registry import WorkerRegistry
+from lyra.nats._worker_client_base import NatsWorkerClientBase
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.llm import (
@@ -44,7 +43,6 @@ from roxabi_contracts.llm import (
     LlmResponse,
     validate_worker_id,
 )
-from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 if TYPE_CHECKING:
     from lyra.core.agent.agent_config import ModelConfig
@@ -82,7 +80,7 @@ def _parse_llm_timeout(timeout: float | None) -> float:
     return value
 
 
-class NatsLlmClient:
+class NatsLlmClient(NatsWorkerClientBase):
     """Hub-side NATS client for LLM generation.
 
     Usage::
@@ -100,53 +98,19 @@ class NatsLlmClient:
         await client.stop()
     """
 
+    HB_SUBJECT = SUBJECTS.heartbeat
+    LOG_PREFIX = "llm_client:"
+    VALIDATE_WORKER_ID = staticmethod(validate_worker_id)
+
     capabilities: dict[str, Any] = {"streaming": True, "auth": "nats"}
 
     def __init__(self, nc: NATS, *, timeout: float | None = None) -> None:
-        self._nc = nc
-        self._timeout = _parse_llm_timeout(timeout)
-        self._cb = NatsCircuitBreaker()
-        self._registry = WorkerRegistry()
-        self._hb_sub = None
-
-    async def start(self) -> None:
-        if self._hb_sub is None:
-            self._hb_sub = await self._nc.subscribe(
-                SUBJECTS.heartbeat, cb=self._on_heartbeat
-            )
-
-    async def stop(self) -> None:
-        if self._hb_sub is not None:
-            await self._hb_sub.unsubscribe()
-            self._hb_sub = None
+        super().__init__(nc, timeout=_parse_llm_timeout(timeout))
 
     def is_alive(self, pool_id: str) -> bool:
         """Return True when NATS is connected and at least one worker is fresh."""
         del pool_id  # LlmProvider protocol slot; client is stateless per-pool
         return self._nc.is_connected and self._registry.any_alive()
-
-    # ------------------------------------------------------------------
-    # Heartbeat
-    # ------------------------------------------------------------------
-
-    async def _on_heartbeat(self, msg: Any) -> None:
-        try:
-            data = json.loads(msg.data)
-        except json.JSONDecodeError:
-            log.debug("llm_client: heartbeat parse error", exc_info=True)
-            return
-        worker_id = data.get("worker_id")
-        if not worker_id or not isinstance(worker_id, str):
-            log.warning("llm_client: heartbeat missing/invalid worker_id, ignoring")
-            return
-        try:
-            validate_worker_id(worker_id)
-        except ValueError:
-            log.warning(
-                "llm_client: heartbeat unsafe worker_id=%r, ignoring", worker_id
-            )
-            return
-        self._registry.record_heartbeat(data)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -235,7 +199,7 @@ class NatsLlmClient:
     ) -> AsyncIterator[LlmEvent]:
         """Return an async generator of LlmEvents for a streaming request."""
         del pool_id  # canonical wire is queue-group dispatched, no per-worker routing
-        return self._stream_gen(text, model_cfg, system_prompt, messages=messages)
+        return self._llm_stream_gen(text, model_cfg, system_prompt, messages=messages)
 
     # ------------------------------------------------------------------
     # Internal — complete() transport
@@ -411,7 +375,7 @@ class NatsLlmClient:
     # Internal — stream() transport
     # ------------------------------------------------------------------
 
-    async def _stream_gen(  # noqa: C901, PLR0915 — DEBT:complexity-residual
+    async def _llm_stream_gen(  # noqa: C901, PLR0915 — DEBT:complexity-residual
         self,
         text: str,
         model_cfg: "ModelConfig",

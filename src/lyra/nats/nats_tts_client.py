@@ -9,7 +9,6 @@ NoResponders, marking stale workers and continuing to the next candidate.
 from __future__ import annotations
 
 import base64
-import json
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, NoReturn
@@ -22,7 +21,7 @@ from pydantic import ValidationError
 
 import nats
 from lyra.core.ports.tts import SynthesisResult, TtsUnavailableError
-from lyra.nats.worker_registry import WorkerRegistry
+from lyra.nats._worker_client_base import NatsWorkerClientBase
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import (
     SUBJECTS,
@@ -32,7 +31,6 @@ from roxabi_contracts.voice import (
     validate_worker_id,
 )
 from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
-from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 if TYPE_CHECKING:
     from lyra.core.agent.agent_config import AgentTTSConfig
@@ -95,61 +93,17 @@ def _is_no_responders(exc: Exception) -> bool:
     return isinstance(exc, NoRespondersError)
 
 
-class NatsTtsClient:
+class NatsTtsClient(NatsWorkerClientBase):
+    HB_SUBJECT = SUBJECTS.tts_heartbeat
+    LOG_PREFIX = "tts_client:"
+    VALIDATE_WORKER_ID = staticmethod(validate_worker_id)
+
     def __init__(self, nc: NATS, *, timeout: float | None = None) -> None:
-        self._nc = nc
-        self._timeout = _parse_tts_timeout(timeout)
-        self._cb = NatsCircuitBreaker()
-        self._registry = WorkerRegistry()
-        self._hb_sub = None  # set by start
-
-    async def start(self) -> None:
-        """Subscribe to heartbeat subject. Called once after nc is connected."""
-        if self._hb_sub is None:
-            self._hb_sub = await self._nc.subscribe(
-                SUBJECTS.tts_heartbeat, cb=self._on_heartbeat
-            )
-
-    async def stop(self) -> None:
-        """Unsubscribe from heartbeat subject. Idempotent."""
-        if self._hb_sub is not None:
-            await self._hb_sub.unsubscribe()
-            self._hb_sub = None
-            log.debug("NatsTtsClient stopped")
+        super().__init__(nc, timeout=_parse_tts_timeout(timeout))
 
     def is_available(self) -> bool:
         """Check if any TTS workers are registered via heartbeats."""
         return self._registry.any_alive()
-
-    async def _on_heartbeat(self, msg) -> None:
-        try:
-            data = json.loads(msg.data)
-        except json.JSONDecodeError:
-            log.debug("tts_client: heartbeat parse error", exc_info=True)
-            return
-        worker_id = data.get("worker_id")
-        if not worker_id:
-            log.warning("tts_client: heartbeat missing worker_id, ignoring")
-            return
-        if not isinstance(worker_id, str):
-            log.warning(
-                "tts_client: heartbeat non-string worker_id=%r, ignoring", worker_id
-            )
-            return
-        # Receive-side match for the PUBLISH-path safe-chars enforcement in
-        # per_worker_tts. Without this, a rogue worker publishing a heartbeat
-        # with a wildcard-bearing id (e.g. "evil.worker.*") would pollute the
-        # registry until first routing attempt; the publish helper would then
-        # raise at call time, long after the trust boundary was crossed.
-        try:
-            validate_worker_id(worker_id)
-        except ValueError:
-            log.warning(
-                "tts_client: heartbeat with unsafe worker_id=%r, ignoring",
-                worker_id,
-            )
-            return
-        self._registry.record_heartbeat(data)
 
     def _parse_reply(self, raw: bytes) -> TtsResponse:
         """Validate a NATS reply against TtsResponse; translate a ValidationError

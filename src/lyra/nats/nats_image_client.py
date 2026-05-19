@@ -8,7 +8,6 @@ the registry is stale, the circuit breaker is open, or the adapter times out.
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -20,7 +19,7 @@ from nats.aio.client import Client as NATS
 from pydantic import ValidationError
 
 import nats
-from lyra.nats.worker_registry import WorkerRegistry
+from lyra.nats._worker_client_base import NatsWorkerClientBase
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.image import (
     SUBJECTS,
@@ -29,7 +28,6 @@ from roxabi_contracts.image import (
     ImageResponse,
     validate_worker_id,
 )
-from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 log = logging.getLogger(__name__)
 
@@ -89,57 +87,13 @@ class ImageGenParams:
 # ---------------------------------------------------------------------------
 
 
-class NatsImageClient:
+class NatsImageClient(NatsWorkerClientBase):
+    HB_SUBJECT = SUBJECTS.image_heartbeat
+    LOG_PREFIX = "image_client:"
+    VALIDATE_WORKER_ID = staticmethod(validate_worker_id)
+
     def __init__(self, nc: NATS, *, timeout: float = 120.0) -> None:
-        self._nc = nc
-        self._timeout = timeout
-        self._cb = NatsCircuitBreaker()
-        self._registry = WorkerRegistry()
-        self._hb_sub = None  # set by start
-
-    async def start(self) -> None:
-        """Subscribe to heartbeat subject. Called once after nc is connected."""
-        if self._hb_sub is None:
-            self._hb_sub = await self._nc.subscribe(
-                SUBJECTS.image_heartbeat, cb=self._on_heartbeat
-            )
-
-    async def stop(self) -> None:
-        """Unsubscribe from heartbeat subject. Idempotent."""
-        if self._hb_sub is not None:
-            await self._hb_sub.unsubscribe()
-            self._hb_sub = None
-            log.debug("NatsImageClient stopped")
-
-    async def _on_heartbeat(self, msg) -> None:
-        try:
-            data = json.loads(msg.data)
-        except json.JSONDecodeError:
-            log.debug("image_client: heartbeat parse error", exc_info=True)
-            return
-        worker_id = data.get("worker_id")
-        if not worker_id:
-            log.warning("image_client: heartbeat missing worker_id, ignoring")
-            return
-        if not isinstance(worker_id, str):
-            log.warning(
-                "image_client: heartbeat non-string worker_id=%r, ignoring",
-                worker_id,
-            )
-            return
-        # Receive-side match for the PUBLISH-path safe-chars enforcement; blocks
-        # wildcard-bearing ids (e.g. "evil.worker.*") from polluting the registry
-        # for up to the 15 s heartbeat-stale window. Mirrors the heartbeat guard
-        # in nats_tts_client.py:70-82.
-        try:
-            validate_worker_id(worker_id)
-        except ValueError:
-            log.warning(
-                "image_client: heartbeat with unsafe worker_id=%r, ignoring",
-                worker_id,
-            )
-            return
-        self._registry.record_heartbeat(data)
+        super().__init__(nc, timeout=timeout)
 
     def _parse_reply(self, raw: bytes) -> ImageResponse:
         """Validate a NATS reply against ImageResponse; translate a ValidationError

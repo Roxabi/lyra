@@ -32,6 +32,9 @@ class STTNoiseError(Exception):
 
     The STT adapter is the owner of noise detection — middleware and agents catch
     this to dispatch the stt_noise template without re-implementing the logic.
+
+    Any positional arg is treated as an opaque human-readable message for logs
+    only; callers must not parse it or rely on a `.text` attribute.
     """
 
 

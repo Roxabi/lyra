@@ -5,7 +5,7 @@ src/lyra/bootstrap/factory/wiring_helpers.py  # 410 lines — DEBT:file-exemptio
 src/lyra/bootstrap/bootstrap_stores.py  # 307 lines — DEBT:file-exemptions — #957 idx_sql DDL validation adds allowlist guard before sqlite_master replay
 src/lyra/core/cli/cli_pool.py  # 341 lines — DEBT:file-exemptions — #1150 agent identity kwargs added to send() signature
 src/lyra/core/cli/cli_pool_worker.py  # 330 lines — DEBT:file-exemptions — #1150 _identity_env helper (layered gate + newline sanitisation per /code-review #1243) extracted from _spawn()
-src/lyra/agents/simple_agent.py  # 316 lines — DEBT:file-exemptions — #1008 cli_nats_driver wiring for NATS-mode resume + link_lyra_session
+src/lyra/agents/simple_agent.py  # 317 lines — DEBT:file-exemptions — #1008 cli_nats_driver wiring for NATS-mode resume + link_lyra_session; #1225 +1 line (STTNoiseError imported directly from canonical port)
 src/lyra/bootstrap/standalone/adapter_standalone.py  # 301 lines — DEBT:file-exemptions — #1016 WorkerError startup version log
 src/lyra/core/processors/stream_processor.py  # 630 lines — DEBT:file-exemptions — #1016 WorkerError extractor + #1098 Run lifecycle + #1101 Reasoning emission (cleanup in Slice 5 / #1102)
 src/lyra/adapters/shared/_shared_streaming_emitter.py  # 465 lines — DEBT:file-exemptions — #1098 Run lifecycle + #1101 PlatformCallbacks.edit_reasoning + dispatch + #1214 T5b _ensure_trace_obj helper (cleanup deferred)

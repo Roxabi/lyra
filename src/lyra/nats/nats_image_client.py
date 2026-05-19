@@ -95,6 +95,12 @@ class NatsImageClient(NatsWorkerClientBase):
     def __init__(self, nc: NATS, *, timeout: float = 120.0) -> None:
         super().__init__(nc, timeout=timeout)
 
+    async def stop(self) -> None:
+        try:
+            await super().stop()
+        finally:
+            log.debug("NatsImageClient stopped")
+
     def _parse_reply(self, raw: bytes) -> ImageResponse:
         """Validate a NATS reply against ImageResponse; translate a ValidationError
         into ImageUnavailableError + record a circuit-breaker failure."""

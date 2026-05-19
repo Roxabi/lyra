@@ -921,12 +921,14 @@ class TestStreamProcessor:
         """stream_processor.py must not import aiogram, discord, or anthropic."""
         # Arrange
         _root = Path(__file__).resolve().parent.parent.parent
-        source_path = _root / "src" / "lyra" / "core" / "stream_processor.py"
+        source_path = (
+            _root / "src" / "lyra" / "core" / "processors" / "stream_processor.py"
+        )
 
         if not source_path.exists():
             import pytest
 
-            pytest.skip("stream_processor.py not yet implemented")
+            pytest.fail("source not found: stream_processor.py moved or deleted")
 
         forbidden = {"aiogram", "discord", "anthropic"}
 
@@ -1182,7 +1184,7 @@ class TestToolCallLifecycle:
 
     async def test_emission_order_single_call(self) -> None:
         """Start → Args (×N) → End → Result, all sharing tool_call_id."""
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
@@ -1228,7 +1230,7 @@ class TestToolCallLifecycle:
         reaches `process()` corresponds to a unique tool_call. Parser-level
         dedupe is verified separately in test_cli_streaming_parse.py.
         """
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         events = async_events(
             ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
@@ -1247,7 +1249,7 @@ class TestToolCallLifecycle:
 
     async def test_orphan_end_synthesis_at_result(self) -> None:
         """Start without End triggers synthesized End at ResultLlmEvent time."""
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
@@ -1264,7 +1266,7 @@ class TestToolCallLifecycle:
     # Removed per spec #1211.
 
     async def test_tool_call_args_passes_partial_json_verbatim(self) -> None:
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
@@ -1278,7 +1280,7 @@ class TestToolCallLifecycle:
         assert [e.delta for e in args] == ['{"a":', "1}"]
 
     async def test_tool_call_result_carries_is_error(self) -> None:
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         # Use a non-sensitive tool name so the S1 boundary scrubber does not
         # redact the content (Read/Bash/Edit/Write are sanitized by default).
@@ -1297,7 +1299,7 @@ class TestToolCallLifecycle:
 
     async def test_sensitive_tool_result_content_is_redacted(self) -> None:
         """S1 (#1100 review): tool result for sensitive tools is redacted on the bus."""
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
@@ -1318,7 +1320,7 @@ class TestToolCallLifecycle:
 
     async def test_orphan_tool_result_redacted_fail_closed(self) -> None:
         """ToolResult without prior ToolUseLlmEvent (unknown tool_name) is redacted."""
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         # No ToolUseLlmEvent → tool_name unknown → fail-closed redaction.
         events = async_events(
@@ -1333,7 +1335,7 @@ class TestToolCallLifecycle:
 
     async def test_large_tool_result_content_truncated(self) -> None:
         """S3 (#1100 review): content larger than MAX_CONTENT_BYTES is truncated."""
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         large = "x" * 100_000
         events = async_events(
@@ -1351,7 +1353,7 @@ class TestToolCallLifecycle:
 
     async def test_multi_orphan_end_synthesis_preserves_ids(self) -> None:
         """T2 (#1100 review): two open tools both get their own synthesized End."""
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         events = async_events(
             ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
@@ -1366,7 +1368,7 @@ class TestToolCallLifecycle:
 
     async def test_no_explicit_dispatch_silent_drop(self) -> None:
         """ToolUseDeltaLlmEvent reaches process() and is mapped, not absorbed."""
-        cfg_ = ToolDisplayConfig(throttle_window=0.0)
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),

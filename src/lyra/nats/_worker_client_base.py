@@ -59,7 +59,7 @@ class NatsWorkerClientBase(NatsDriverBase):
     # Keeps the inherited _any_worker_alive() backstop in sync with any_alive() —
     # otherwise a stopped worker would be evicted from any_alive() at 15s but remain
     # "alive" in _worker_freshness for another 15s, delaying detection by future
-    # subclasses that use the parent's _stream_gen primitive.
+    # subclasses that use the parent's _dict_stream_gen primitive.
     HB_TTL: float = 15.0
     # Callable that raises ValueError for unsafe worker_id values. Subclasses
     # assign their domain-specific re-export of validate_worker_id. The

@@ -91,6 +91,7 @@ class TestRunChecks:
         # process:lyra-hub + http_health + queue_depth + circuits + reaper
         # + nats:permissions_violation + hub:dict_stream_gen_timeout + disk + nats:varz
         assert len(report.checks) == 9
+        assert any(c.name == "hub:dict_stream_gen_timeout" for c in report.checks)
 
     async def test_failure_detected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC-11: run_checks returns all_passed=False when a check fails."""

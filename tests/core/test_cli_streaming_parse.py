@@ -360,6 +360,14 @@ class TestStreamingIteratorNonJson:
         """#1219 (sibling of #1212/#1215): bus-bound message keeps only the
         exception type name; the raw malformed line (`JSONDecodeError.doc`)
         must NOT surface in `WorkerError.message` or `error_text`.
+
+        Falsification: this test must fail if line 134 reverts to
+        ``f"...: {exc}"``. On CPython 3.12, ``str(JSONDecodeError)`` returns
+        a position string like ``"Unterminated string starting at: line 1
+        column 34 (char 33)"`` — it does NOT embed ``.doc``. A weak negative
+        assertion like ``sentinel not in msg`` passes both before and after
+        the fix (tautology). We therefore assert the exact sanitized form,
+        which differs from the reverted form character-for-character.
         """
         # Arrange — sensitive sentinel embedded in the malformed JSON payload.
         # Picked to fail json.loads (unterminated string) while still looking
@@ -378,17 +386,25 @@ class TestStreamingIteratorNonJson:
         assert result.worker_error is not None
         assert result.worker_error.code == "cli.parse"
 
-        # Assert — sentinel does NOT appear on the bus-bound surfaces
+        # Assert — exact sanitized form. Strong falsifier: reverting line 134
+        # to ``f"...: {exc}"`` produces ``"CLI emitted malformed JSON:
+        # Unterminated string starting at: ..."`` which fails this equality.
         msg = result.worker_error.message
-        assert sentinel not in msg, (
-            f"sentinel leaked into worker_error.message: {msg!r}"
+        assert msg == "CLI emitted malformed JSON: JSONDecodeError", (
+            f"unexpected worker_error.message: {msg!r}"
         )
-        assert result.error_text is not None
-        assert sentinel not in result.error_text, (
+
+        # Assert — error_text mirrors worker_error.message verbatim. Guards
+        # against a future regression where error_text is sourced from a
+        # parallel path (e.g. raw ``str(exc)``) instead of the sanitized
+        # message. The raw malformed line (``exc.doc``) must never appear.
+        assert result.error_text == msg
+        assert malformed not in (result.error_text or ""), (
+            f"raw malformed line leaked into error_text: {result.error_text!r}"
+        )
+        assert sentinel not in (result.error_text or ""), (
             f"sentinel leaked into error_text: {result.error_text!r}"
         )
-        # Positive: type name still surfaces for diagnostic value
-        assert "JSONDecodeError" in result.worker_error.message
 
 
 # ---------------------------------------------------------------------------

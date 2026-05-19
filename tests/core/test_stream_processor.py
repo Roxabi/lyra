@@ -819,9 +819,15 @@ class TestStreamProcessor:
     # T23 — Text accumulation across multiple chunks (SC-2)
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(reason="v1 removed in #1192 S3 — rewrite for v2 deferred")
     async def test_text_accumulation(self) -> None:
-        """Chunks streamed individually; final TextRenderEvent has full concat text."""
+        """TextDelta.delta values concatenated reproduce the input text (L09).
+
+        v2 contract: each TextLlmEvent chunk becomes one TextDeltaRenderEvent.
+        Concatenating all TextDeltaRenderEvent.delta values in order must
+        reproduce the original input text. Distinct from test_text_triplet_*
+        (which assert ordering and message_id correlation) — this test asserts
+        the delta-concatenation property within a single text block.
+        """
         # Arrange
         processor = StreamProcessor(cfg())
         events = async_events(
@@ -834,11 +840,18 @@ class TestStreamProcessor:
         # Act
         result = await collect(processor.process(events))
 
-        # Assert — 3 intermediate chunks + 1 final with full concatenated text.
-        text_events = [e for e in result if isinstance(e, TextRenderEvent)]
-        assert len(text_events) == 4
-        assert text_events[-1].text == "Hello world"
-        assert text_events[-1].is_final is True
+        # Assert — exactly 3 TextDelta events (one per TextLlmEvent)
+        deltas = [e for e in result if isinstance(e, TextDeltaRenderEvent)]
+        assert len(deltas) == 3, f"Expected 3 TextDelta, got {len(deltas)}"
+        assert [d.delta for d in deltas] == ["Hello", " ", "world"]
+
+        # Assert — concatenating all deltas reproduces the original input
+        reconstructed = "".join(d.delta for d in deltas)
+        assert reconstructed == "Hello world"
+
+        # Assert — all deltas share the same message_id (single block)
+        mid = deltas[0].message_id
+        assert all(d.message_id == mid for d in deltas)
 
     # ------------------------------------------------------------------
     # B3 — is_error propagation from ResultLlmEvent → TextRenderEvent (#392)

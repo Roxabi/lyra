@@ -27,6 +27,7 @@ Let:
 | `docs/ops/container-publishing.md` | CI → GHCR → Quadlet pattern |
 | `packages/roxabi-nats/` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/` | NATS contract schemas (ADR-049) |
+| `src/lyra/transport/` | NATS transport + WorkerPoolClient (3-layer composition, #1278) |
 
 ## Agent management
 
@@ -55,7 +56,8 @@ File/rename → update P immediately
 | `src/lyra/llm/CLAUDE.md` | LLM drivers |
 | `src/lyra/monitoring/CLAUDE.md` | standalone health-check subsystem (`python -m lyra.monitoring`) |
 | `src/lyra/obs/CLAUDE.md` | observability scaffolding (OTel/Langfuse) — ¬wired, see #1235 |
-| `src/lyra/nats/CLAUDE.md` | in-tree NATS integration (subjects, codec, NatsLlmClient) |
+| `src/lyra/transport/CLAUDE.md` | NATS transport + WorkerPoolClient (3-layer primitives, #1278) |
+| `src/lyra/nats/CLAUDE.md` | in-tree NATS integration (subjects, codec, domain clients) |
 | `src/lyra/tools/CLAUDE.md` | GitHub token dispenser (gh_token submodule) |
 | `packages/roxabi-nats/CLAUDE.md` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/CLAUDE.md` | NATS contract schemas (ADR-049) |

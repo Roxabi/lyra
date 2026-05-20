@@ -6,13 +6,15 @@ Consensus: artifacts/analyses/1278-nats-transport-workerpool-consensus.mdx (B1 h
 """
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import TYPE_CHECKING
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, AsyncIterator
 
 import nats.errors
 from nats.errors import NoRespondersError
 
-from lyra.transport._result import Err, Ok, Result, SanitizedError
+from lyra.transport._result import Err, InboxStream, Ok, Result, SanitizedError
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -54,3 +56,27 @@ class NatsTransport:
         }
         code = code_map.get(name, "transport.error")
         return SanitizedError(code=code, message=name, retryable=True)
+
+    @asynccontextmanager
+    async def open_inbox(self) -> AsyncIterator[InboxStream]:
+        inbox = self._nc.new_inbox()
+        sub = await self._nc.subscribe(inbox)
+        log.info("transport.inbox_open inbox=%s", inbox)
+
+        async def _messages() -> AsyncIterator[Result[bytes, SanitizedError]]:
+            try:
+                while True:
+                    try:
+                        msg = await sub.next_msg(timeout=self._default_timeout)
+                        yield Ok(msg.data)
+                    except (TimeoutError, asyncio.TimeoutError) as exc:
+                        yield Err(self._sanitize(exc, context="inbox.timeout"))
+                        return
+            except Exception as exc:  # noqa: BLE001 — sanitization barrier: any stream failure becomes Err
+                yield Err(self._sanitize(exc, context="inbox.error"))
+
+        try:
+            yield InboxStream(inbox_subject=inbox, messages=_messages())
+        finally:
+            await sub.unsubscribe()
+            log.info("transport.inbox_close inbox=%s", inbox)

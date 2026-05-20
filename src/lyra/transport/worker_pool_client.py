@@ -28,13 +28,17 @@ class _TransportLike(Protocol):
     """Structural type for the transport layer dependency.
 
     NatsTransport (transport/nats_request_response.py) satisfies this.
-    P4 HttpTransport (#1281) will satisfy `call` only; `open_inbox`
-    raises NotImplementedError there.
+    P4 HttpTransport (#1281) will satisfy `call` only; `open_inbox` and
+    `publish` raise NotImplementedError there.
     """
 
     async def call(
         self, subject: str, payload: bytes, *, timeout: float | None = None
     ) -> Result[bytes, SanitizedError]: ...
+
+    async def publish(
+        self, subject: str, payload: bytes, *, reply_subject: str
+    ) -> None: ...
 
     def open_inbox(self) -> AbstractAsyncContextManager[InboxStream]: ...
 
@@ -160,9 +164,20 @@ class WorkerPoolClient:
         )
 
     async def stream_request(
-        self, payload: bytes, *, timeout: float | None = None
+        self,
+        subject: str,
+        payload: bytes,
+        *,
+        timeout: float | None = None,
     ) -> AsyncIterator[Result[bytes, SanitizedError]]:
-        """Compose transport.open_inbox. Yields Result[bytes, SanitizedError] chunks."""
+        """Open inbox, publish to `subject` with reply=inbox, iterate chunks.
+
+        `subject` is a fixed NATS subject (queue-group routing handled by the
+        broker for LLM-style streaming). The CB short-circuits without
+        publishing; otherwise the publish + iterate sequence is bounded by
+        the inbox CM (cleanup on early break / exception).
+        """
+        del timeout  # inbox CM uses NatsTransport.default_timeout per-chunk
         if self._cb.is_open():
             yield Err(
                 SanitizedError(
@@ -171,7 +186,8 @@ class WorkerPoolClient:
             )
             return
         async with self._transport.open_inbox() as stream:
-            # Domain layer publishes the request with the inbox subject as reply field;
-            # workers stream responses into the inbox.
+            await self._transport.publish(
+                subject, payload, reply_subject=stream.inbox_subject
+            )
             async for msg in stream.messages:
                 yield msg

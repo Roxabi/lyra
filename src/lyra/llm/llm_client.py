@@ -76,10 +76,9 @@ class LlmClient:
         payload, _ = self._codec.encode(
             text, model_cfg, system_prompt, messages, stream=True
         )
-        return self._stream_gen(payload)
-
-    async def _stream_gen(self, payload: bytes) -> AsyncIterator[LlmEvent]:
-        async for result in self._pool.stream_request(payload, timeout=self._timeout):
+        async for result in self._pool.stream_request(
+            SUBJECTS.generate_request, payload, timeout=self._timeout
+        ):
             event = self._codec.decode_chunk(result)
             if event is None:
                 continue

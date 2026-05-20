@@ -161,16 +161,18 @@ class TestRequestWithRoutingStructuredLog:
 class TestStreamRequestCircuitOpen:
     @pytest.mark.asyncio
     async def test_stream_request_circuit_open_yields_err_without_open_inbox(self):
-        """CB open → single Err yielded; open_inbox never called."""
+        """CB open → single Err yielded; open_inbox / publish never called."""
         pool, mock_transport = _make_pool_with_workers("w-1")
         mock_transport.open_inbox = MagicMock()
+        mock_transport.publish = AsyncMock()
 
         for _ in range(pool._cb.failure_threshold):
             pool._cb.record_failure()
 
-        results = [r async for r in pool.stream_request(b"payload")]
+        results = [r async for r in pool.stream_request("llm.generate", b"payload")]
 
         mock_transport.open_inbox.assert_not_called()
+        mock_transport.publish.assert_not_called()
         assert len(results) == 1
         assert isinstance(results[0], Err)
         assert results[0].error.code == "pool.circuit_open"
@@ -178,8 +180,8 @@ class TestStreamRequestCircuitOpen:
 
 class TestStreamRequestComposesOpenInbox:
     @pytest.mark.asyncio
-    async def test_stream_request_composes_open_inbox(self):
-        """stream_request delegates to transport.open_inbox and yields its messages."""
+    async def test_stream_request_publishes_then_iterates_inbox(self):
+        """stream_request publishes to subject with reply=inbox, then yields chunks."""
         pool, mock_transport = _make_pool_with_workers("w-1")
 
         chunks = [Ok(b"chunk"), Ok(b"done")]
@@ -192,8 +194,12 @@ class TestStreamRequestComposesOpenInbox:
         async_cm.__aenter__ = AsyncMock(return_value=inbox_stream)
         async_cm.__aexit__ = AsyncMock(return_value=False)
         mock_transport.open_inbox = MagicMock(return_value=async_cm)
+        mock_transport.publish = AsyncMock()
 
-        results = [r async for r in pool.stream_request(b"payload")]
+        results = [r async for r in pool.stream_request("llm.generate", b"payload")]
 
         mock_transport.open_inbox.assert_called_once()
+        mock_transport.publish.assert_awaited_once_with(
+            "llm.generate", b"payload", reply_subject="_INBOX.x"
+        )
         assert results == [Ok(b"chunk"), Ok(b"done")]

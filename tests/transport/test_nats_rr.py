@@ -49,13 +49,16 @@ async def test_call_no_responders_returns_err():
 
 @pytest.mark.asyncio
 async def test_call_payload_too_large_returns_err():
+    """MaxPayloadError → transport.payload_too_large via isinstance, ¬str(exc)."""
     nc = AsyncMock()
-    nc.request = AsyncMock(side_effect=nats.errors.Error("max_payload exceeded"))
+    nc.request = AsyncMock(side_effect=nats.errors.MaxPayloadError())
     t = NatsTransport(nc)
     result = await t.call("subj", b"x" * 1024)
     assert isinstance(result, Err)
     assert result.error.code == "transport.payload_too_large"
     assert result.error.retryable is False
+    # message must be class name only, never str(exc) leak
+    assert result.error.message == "MaxPayloadError"
 
 
 @pytest.mark.asyncio

@@ -90,9 +90,10 @@ class RetryDecorator:
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
         """Delegate streaming to inner provider (no retry — stream is live data)."""
-        return await self._inner.stream(
+        async for event in self._inner.stream(
             pool_id, text, model_cfg, system_prompt, messages=messages
-        )
+        ):
+            yield event
 
     def is_alive(self, pool_id: str) -> bool:
         return self._inner.is_alive(pool_id)
@@ -153,9 +154,10 @@ class CircuitBreakerDecorator:
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
         """Delegate to inner provider (circuit check applies to complete() only)."""
-        return await self._inner.stream(
+        async for event in self._inner.stream(
             pool_id, text, model_cfg, system_prompt, messages=messages
-        )
+        ):
+            yield event
 
     def is_alive(self, pool_id: str) -> bool:
         return self._inner.is_alive(pool_id)

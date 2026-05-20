@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, AsyncIterator
 
 import nats.errors
-from nats.errors import NoRespondersError
+from nats.errors import MaxPayloadError, NoRespondersError
 
 from lyra.transport._result import Err, InboxStream, Ok, Result, SanitizedError
 
@@ -27,6 +27,16 @@ class NatsTransport:
     def __init__(self, nc: "NATS", *, default_timeout: float = 120.0) -> None:
         self._nc = nc
         self._default_timeout = default_timeout
+
+    async def publish(
+        self, subject: str, payload: bytes, *, reply_subject: str
+    ) -> None:
+        """Fire-and-forget publish with explicit reply subject.
+
+        Used by streaming paths: callers open an inbox via `open_inbox()` and
+        pass its subject here so workers stream chunks back to the inbox.
+        """
+        await self._nc.publish(subject, payload, reply=reply_subject)
 
     async def call(
         self, subject: str, payload: bytes, *, timeout: float | None = None
@@ -47,7 +57,7 @@ class NatsTransport:
         self, exc: Exception, *, context: str = "", payload_kb: float = 0.0
     ) -> SanitizedError:
         name = type(exc).__name__
-        if "max_payload" in str(exc).lower():
+        if isinstance(exc, MaxPayloadError):
             return SanitizedError(
                 code="transport.payload_too_large", message=name, retryable=False
             )

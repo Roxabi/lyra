@@ -15,6 +15,7 @@ from ._serialize import _TypeHintResolver as TypeHintResolver
 from .adapter_base import NatsAdapterBase
 from .connect import nats_connect
 from .driver_base import NatsDriverBase, WorkerUnavailableError
+from .errors import sanitize_for_wire
 
 __all__ = [
     "CONTRACT_VERSION",
@@ -23,4 +24,5 @@ __all__ = [
     "TypeHintResolver",
     "WorkerUnavailableError",
     "nats_connect",
+    "sanitize_for_wire",
 ]

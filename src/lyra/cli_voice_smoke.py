@@ -15,15 +15,12 @@ import nats.errors
 import typer
 from nats.aio.client import Client as NATS
 
+from roxabi_contracts.voice import SUBJECTS
 from roxabi_nats.connect import nats_connect  # noqa: F401 — DEBT:re-export-init
 
 _SMOKE_TEXT = "Voice cutover smoke test one two three"
 _SMOKE_KEYWORDS = {"voice", "cutover", "smoke", "one", "two", "three"}
 
-_TTS_SUBJECT = "lyra.voice.tts.request"
-_STT_SUBJECT = "lyra.voice.stt.request"
-_TTS_HEARTBEAT = "lyra.voice.tts.heartbeat"
-_STT_HEARTBEAT = "lyra.voice.stt.heartbeat"
 _VOICECLI_WORKER_PREFIX = "voicecli-"
 _CONTRACT_VERSION = "1"
 
@@ -138,8 +135,8 @@ async def _require_voicecli_heartbeats(nc: NATS, wait_seconds: float) -> None:
         if worker_id and worker_id.startswith(_VOICECLI_WORKER_PREFIX):
             seen["stt"] = worker_id
 
-    sub_tts = await nc.subscribe(_TTS_HEARTBEAT, cb=on_tts)
-    sub_stt = await nc.subscribe(_STT_HEARTBEAT, cb=on_stt)
+    sub_tts = await nc.subscribe(SUBJECTS.tts_heartbeat, cb=on_tts)
+    sub_stt = await nc.subscribe(SUBJECTS.stt_heartbeat, cb=on_stt)
     try:
         deadline = asyncio.get_event_loop().time() + wait_seconds
         while asyncio.get_event_loop().time() < deadline:
@@ -191,7 +188,7 @@ async def _step_tts(nc: NATS, timeout: float) -> tuple[bytes, str]:
     ).encode("utf-8")
 
     try:
-        reply = await nc.request(_TTS_SUBJECT, payload, timeout=timeout)
+        reply = await nc.request(SUBJECTS.tts_request, payload, timeout=timeout)
     except (nats.errors.TimeoutError, TimeoutError):
         typer.echo("")
         typer.echo(
@@ -238,7 +235,7 @@ async def _step_stt(
     ).encode("utf-8")
 
     try:
-        reply = await nc.request(_STT_SUBJECT, payload, timeout=timeout)
+        reply = await nc.request(SUBJECTS.stt_request, payload, timeout=timeout)
     except (nats.errors.TimeoutError, TimeoutError):
         typer.echo("")
         typer.echo(

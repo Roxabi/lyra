@@ -100,9 +100,11 @@ async def probe_voice_services(
     """Ping STT/TTS adapters at startup; log a warning if unreachable."""
     from nats.errors import NoRespondersError
 
+    from roxabi_contracts.voice import SUBJECTS
+
     checks = [
-        ("STT", "lyra.voice.stt.request", stt),
-        ("TTS", "lyra.voice.tts.request", tts),
+        ("STT", SUBJECTS.stt_request, stt),
+        ("TTS", SUBJECTS.tts_request, tts),
     ]
     for name, subject, client in checks:
         if client is None:

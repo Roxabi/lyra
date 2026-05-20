@@ -1,0 +1,94 @@
+---
+title: "Phase 3 — Inbound adapters stage extraction (parser + session + router + dispatcher)"
+issue: 1280
+status: approved
+tier: F-lite
+date: 2026-05-20
+---
+
+## Problem
+
+Lyra's inbound adapter layer (`adapters/telegram/telegram_inbound.py` 241 LOC, `adapters/discord/discord_inbound.py` 290 LOC) is decomposed by **integration target** (one file per platform), not by **stage of message flow**. Each file independently re-implements the same five stages — wire-parse, session-build, route (DM / mention / thread / watch-channel), dispatch — producing duplicated logic, divergent routing rules, and a Discord `handle_message` that has accreted to 230 lines / 7 branches with `# noqa: C901, PLR0915` exemptions to pass lint.
+
+Empirically, this duplication is what the strategy doc (`artifacts/analyses/1277-stage-axis-refactor-strategy.mdx` §4) identifies as the root cause of the small-fix cascade observed 2026-05-19: bug-class in one stage → N adapter files to patch → drift between platforms → next discovery → repeat. Inbound is targeted by five DEBT slugs per Epic #1277 / strategy doc §8: `adapter-dispatch-complexity` (2 sites, drained by P3), `adapter-magic-constants` (4 sites, drained by P3), `complexity-residual` (25 sites total, partial P3 drain incl. Discord `handle_message`), `wiring-bootstrap-deps` (84 sites total, partial P3 contribution on adapter wiring), `defensive-narrow-payloads` (26 sites total, partial P3 contribution shared with P2+P5).
+
+Phase 3 of Epic #1277 pivots the inbound layer to a **stage axis**: `src/lyra/inbound/{wire_parser,session_builder,router,dispatcher}.py` — a per-stage module each, with the platform-specific wire parser injected as a `Protocol` implementation. Adding a third platform becomes "implement the wire parser interface," not "copy 290 lines and adapt."
+
+## Who
+
+- **Primary:** future Lyra contributors who add or modify inbound handling — they currently must understand two parallel implementations and keep them in lock-step.
+- **Primary:** ops/maintainers who chase inbound bugs — every bug class today implies a 2-file investigation; post-refactor it's 1 module per stage.
+- **Secondary:** Phase 5 (#1282 stream processors) and Phase 6 (#1283 bootstrap DI), which compose against the inbound stages once they exist.
+- **Secondary:** four paused issues that benefit from the new structure (#475 channel rule engine, #1060 Discord watch_channels — both blocked-by #1284 / become cleaner post-Phase-3).
+
+## Constraints
+
+- **Tier:** F-lite — clear scope, single domain (inbound), 1 PR per estimate.
+- **Effort estimate:** 1–1.5 weeks (per issue body, strategy doc §6).
+- **Independent of Phase 1 (#1278) and Phase 2 (#1279)** — runs in parallel; can land before or after either.
+- **No external API change:** inbound message → hub envelope contract is preserved; only the internals of the inbound pipeline change.
+- **Smoke parity required:** Telegram + Discord DM / mention / thread / watch-channel routing must behave identically before/after.
+- **Absorbs sub-issues:** #1065 (Telegram eager-ingest BlobStore), #1066 (Discord eager-ingest BlobStore) — addressed inside the dispatcher/router stage rather than as standalone issues.
+- **No new dependencies:** stays within current `uv` deps; `Protocol` from `typing`.
+- **File hygiene:** new stage files must respect the project's 300-LOC ceiling and 12-files-per-folder limit (per `.claude/stack.yml` quality_gates); folder `src/lyra/inbound/` exemption may be needed if >12 files.
+- **CLAUDE.md hygiene:** new subdir with non-obvious invariants → add `src/lyra/inbound/CLAUDE.md` and register in root `CLAUDE.md`.
+
+## Out of Scope
+
+- **Outbound** — covered by Phase 2 (#1279). Phase 3 only touches the inbound half.
+- **NATS transport / SanitizedError / WorkerPoolClient** — Phase 1 (#1278) territory; Phase 3 does not depend on these for its primary work (per strategy doc §6 "P3 and P5 are scheduled independent of P1").
+- **LLM driver thinning** — Phase 4 (#1281).
+- **Stream processors** — Phase 5 (#1282).
+- **Bootstrap / wiring DI flattening** — Phase 6 (#1283); Phase 3 may surface candidates but does not consolidate them.
+- **CLI adapter** (`adapters/cli`) — out of scope per issue body; only Telegram + Discord targeted.
+- **Voice/audio inbound paths** — Discord voice channels (`adapter.py`, `voice/`, `discord_audio.py`) untouched; this phase covers text inbound only.
+- **ADR write-up** — Phase 7 (#1284) handles the final stage-axis ADR.
+- **Channel rule engine** (#475) — paused, blocked-by #1284, benefits from Phase 3 but is not Phase 3.
+- **Discord watch_channels feature work** (#1060) — paused; refactor preserves current behavior only.
+- **Reactions / button callbacks / interaction events** — Discord-specific input paths outside `handle_message` (e.g. `on_reaction_add`) — keep current shape; only refactor `handle_message` text-message dispatch.
+
+## Premise Validity
+
+**Success in 6 months (post-Phase-3 merge):**
+
+- 0 functions >80 LOC in `src/lyra/inbound/`
+- `adapter-dispatch-complexity` slug drained (2 → 0 sites)
+- `adapter-magic-constants` slug drained (4 → 0 sites)
+- `complexity-residual` reduced — Discord `handle_message` no longer 230 LOC / 7 branches
+- `wiring-bootstrap-deps` reduced in adapter wiring (P3 contribution; full drain depends on P1+P6)
+- `defensive-narrow-payloads` reduced (P3 contribution; full drain depends on P2+P5)
+- 0 `# noqa: C901, PLR0915` in inbound code
+- Closures duplicated between Telegram and Discord unified at stage layer
+- Smoke parity: inbound DM / mention / thread / watch-channel routing still works on both platforms
+
+**Failure in 6 months (falsifiable):**
+
+- A new inbound bug requires fixing in **>1 file** in `src/lyra/inbound/` per concern (cohesion failed) — abort/revisit pattern
+- `adapter-dispatch-complexity` still has any occurrences in inbound code after merge — drain failed
+- `handle_message` (or its successor) has not dropped below 80 LOC — extraction is cosmetic, structurally invalid
+- Phase 3 takes >2 weeks (1.5× estimate) — F-lite tier was wrong, scope needs reframing
+
+**Simplest alternative:** extract helpers **within** the existing `telegram_inbound.py` / `discord_inbound.py` — keep per-target axis, just shrink functions and lift duplicated closures into a shared module.
+
+**Why not simplest:** the per-target axis *is* the structural root cause per strategy doc §4. In-file refactoring would shrink `handle_message` LOC but leave the Telegram↔Discord duplication intact, leave `wiring-bootstrap-deps` undisturbed, and not establish the stage layer needed by Phase 5 (stream processors) and Phase 6 (bootstrap DI). It treats the symptom (complexity) without addressing the cause (axis). Strategy doc §3 explicitly chose the Architecture altitude over Patch — the simpler path is the Patch altitude already rejected at the epic level.
+
+## Complexity
+
+**Tier: F-lite** — clear scope (parser/session/router/dispatcher stages), single domain (inbound), 1 PR per issue estimate, 1–1.5 weeks effort.
+
+Signals observed:
+- Label `size:F-lite` on the issue
+- Scope contained to `src/lyra/inbound/` (new) + `src/lyra/adapters/{telegram,discord}/*_inbound.py` (shrunk)
+- No new architectural primitives — uses existing `Protocol` from typing
+- No cross-domain coupling for the primary work (independent of P1, P2, P4, P5)
+- Pattern already exercised by strategy doc §5 (3-layer composition); Phase 3 applies the same template, no novel invention
+
+## References
+
+- Epic: #1277 — stage-axis decomposition strategy
+- Strategy doc (SSoT): `artifacts/analyses/1277-stage-axis-refactor-strategy.mdx`
+- Sibling phases: #1278 (P1 transport), #1279 (P2 outbound), #1281 (P4 drivers), #1282 (P5 streaming), #1283 (P6 bootstrap), #1284 (P7 docs)
+- Absorbed: #1065 (Telegram ingest), #1066 (Discord ingest)
+- Unblocks after P7: #475 (channel rule engine), #1060 (Discord watch_channels)
+- Current files: `src/lyra/adapters/telegram/telegram_inbound.py` (241 LOC), `src/lyra/adapters/discord/discord_inbound.py` (290 LOC, `handle_message` 230 LOC / 7 branches)
+- DEBT slugs targeted (per Epic #1277 + strategy doc §8): `adapter-dispatch-complexity` (drained), `adapter-magic-constants` (drained), `complexity-residual` (partial), `wiring-bootstrap-deps` (partial), `defensive-narrow-payloads` (partial)

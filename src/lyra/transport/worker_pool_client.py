@@ -20,6 +20,7 @@ from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
+    from nats.aio.subscription import Subscription
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class WorkerPoolClient:
         self._validate_worker_id = validate_worker_id
         self._hb_ttl = hb_ttl
         self._name = name
-        self._sub: Any = None
+        self._sub: "Subscription | None" = None
         self._task: asyncio.Task[None] | None = None
 
     async def start(self, nc: "NATS") -> None:
@@ -72,6 +73,10 @@ class WorkerPoolClient:
     async def stop(self) -> None:
         if self._task:
             self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
         if self._sub:
             await self._sub.unsubscribe()
 

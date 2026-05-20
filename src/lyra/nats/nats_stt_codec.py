@@ -17,7 +17,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from lyra.core.ports.stt import TranscriptionResult
-from lyra.transport._result import Err, Ok, Result, SanitizedError
+from lyra.transport._result import Err, Result, SanitizedError
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import SttRequest, SttResponse
 
@@ -71,7 +71,6 @@ class SttCodec:
                 duration_seconds=0.0,
                 error=err.code,
             )
-        assert isinstance(result, Ok)
         try:
             resp = SttResponse.model_validate_json(result.value)
         except (ValidationError, ValueError) as exc:

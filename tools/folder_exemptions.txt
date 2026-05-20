@@ -10,4 +10,4 @@ src/lyra/core           # 15 files — DEBT:folder-exemptions — #858 config da
 src/lyra/infrastructure/stores  # 15 files — DEBT:folder-exemptions — #935 ADR-048 store migration (4 files moved from core/stores)
 src/lyra/core/cli           # 14 files — DEBT:folder-exemptions — #957 cli_pool_entry.py extracted to break _ProcessEntry circular import
 src/lyra/core/messaging     # 13 files — DEBT:folder-exemptions — #1016 WorkerError: error_extractor.py + metrics.py added; #1031 tool_recap_format.py + tool_display_config.py added
-src/lyra/nats  # 18 files — DEBT:folder-exemptions — #1278 — T11/T12 add codec files; codec split from clients per S5 spec; _worker_client_base.py deleted in S6 (net -1)
+src/lyra/nats  # 16 files — DEBT:folder-exemptions — #1278 codec split from clients (T11/T12 added nats_{tts,stt,image}_codec.py); _worker_client_base.py + nats_llm_client.py deleted (net +1 vs 15 pre-#1278 baseline: -2 deletions + 3 codec files)

@@ -11,19 +11,36 @@ of scope for P1.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import ValidationError
 
-from lyra.nats.nats_image_client import ImageGenParams
-from lyra.transport._result import Err, Ok, Result, SanitizedError
+from lyra.transport._result import Err, Result, SanitizedError
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.image import ImageRequest, ImageResponse
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class ImageGenParams:
+    """Optional parameters for NatsImageClient.generate."""
+
+    negative_prompt: str | None = None
+    width: int | None = None
+    height: int | None = None
+    steps: int | None = None
+    guidance: float | None = None
+    seed: int | None = None
+    format: Literal["png", "jpeg", "webp"] = field(default="png")
+    output_mode: Literal["b64", "file"] = field(default="b64")
+    lora_path: str | None = None
+    lora_scale: float | None = None
+    trigger: str | None = None
+    embedding_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -82,7 +99,6 @@ class ImageCodec:
         if isinstance(result, Err):
             err = result.error
             return ImageResult(response=None, error=err.code)
-        assert isinstance(result, Ok)
         try:
             resp = ImageResponse.model_validate_json(result.value)
         except (ValidationError, ValueError) as exc:

@@ -18,7 +18,7 @@ from pydantic import ValidationError
 
 from lyra.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
 from lyra.core.ports.llm import LlmResult
-from lyra.transport._result import Err, Ok, Result, SanitizedError
+from lyra.transport._result import Err, Result, SanitizedError
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 from roxabi_contracts.llm import LlmChunkEvent, LlmRequest, LlmResponse
@@ -92,7 +92,6 @@ class LlmCodec:
                     err.code, err.message, err.retryable, err.detail
                 ),
             )
-        assert isinstance(result, Ok)
         try:
             resp = LlmResponse.model_validate_json(result.value)
         except (ValidationError, ValueError) as exc:
@@ -136,7 +135,6 @@ class LlmCodec:
                     err.code, err.message, err.retryable, err.detail
                 ),
             )
-        assert isinstance(result, Ok)
         try:
             chunk = LlmChunkEvent.model_validate_json(result.value)
         except (ValidationError, ValueError) as exc:

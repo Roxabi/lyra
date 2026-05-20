@@ -17,7 +17,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from lyra.core.ports.tts import SynthesisResult
-from lyra.transport._result import Err, Ok, Result, SanitizedError
+from lyra.transport._result import Err, Result, SanitizedError
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import TtsRequest, TtsResponse
 from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
@@ -82,7 +82,6 @@ class TtsCodec:
                 duration_ms=None,
                 error=err.code,
             )
-        assert isinstance(result, Ok)
         try:
             resp = TtsResponse.model_validate_json(result.value)
         except (ValidationError, ValueError) as exc:

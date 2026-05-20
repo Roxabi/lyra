@@ -3,16 +3,16 @@
 Composition (3-layer): NatsImageClient → WorkerPoolClient → NatsTransport.
 Per-worker routing via roxabi_contracts.image.per_worker_image.
 
-ImageGenParams and ImageUnavailableError kept for backward compat
-(nats_image_codec.py imports ImageGenParams from here).
+ImageGenParams owned by nats_image_codec.py (codec purity, #1278 review S3).
+Re-exported here for backward compat — prefer importing from the codec in new code.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
+from lyra.nats.nats_image_codec import ImageGenParams
 from roxabi_contracts.image import (
     SUBJECTS,
     ImageHeartbeat,
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 __all__ = [
-    "ImageGenParams",
+    "ImageGenParams",  # re-exported from nats_image_codec for backward compat
     "ImageHeartbeat",
     "ImageRequest",
     "ImageResponse",
@@ -41,24 +41,6 @@ __all__ = [
 
 class ImageUnavailableError(Exception):
     """Raised when the image domain cannot satisfy the request."""
-
-
-@dataclass
-class ImageGenParams:
-    """Optional parameters for NatsImageClient.generate."""
-
-    negative_prompt: str | None = None
-    width: int | None = None
-    height: int | None = None
-    steps: int | None = None
-    guidance: float | None = None
-    seed: int | None = None
-    format: Literal["png", "jpeg", "webp"] = field(default="png")
-    output_mode: Literal["b64", "file"] = field(default="b64")
-    lora_path: str | None = None
-    lora_scale: float | None = None
-    trigger: str | None = None
-    embedding_path: str | None = None
 
 
 class NatsImageClient:

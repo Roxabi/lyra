@@ -116,6 +116,15 @@ All subjects follow `lyra.{domain}.{qualifier...}` (domain-first, NATS conventio
 | `lyra.voice.stt.heartbeat` | voice-stt → hub | STT worker liveness signal for hub availability checks |
 | `lyra.llm.heartbeat` | llm-worker → hub | LLM worker liveness signal for hub availability checks |
 | `lyra.image.heartbeat` | image-worker → hub | Image worker liveness signal for hub availability checks |
+| `lyra.system.ready` | adapters + workers → hub | Startup ready announcement; hub tracks liveness on subscribe |
+
+System-plane subjects (JetStream API + KV bucket) are governed by per-identity grants in
+`deploy/nats/acl-matrix.json` rather than restated here; see ADR-045 / ADR-046 + #1293.
+
+| Subject | Direction | Purpose |
+|---|---|---|
+| `$JS.API.>` | hub + adapters + workers → server | JetStream API surface for KV reads and consumer create (currently wildcard; tighter scoping in #1293) |
+| `$KV.lyra-state.>` | hub → server (write); adapters + workers ← server (read) | Direct KV bucket access — hub publishes `hub.ready`, others watch via `wait_for_hub` |
 
 `{platform}` is lowercase ASCII (`telegram`, `discord`). `{bot_id}` is a numeric string
 matching `^[1-9][0-9]*$` — a leading-zero or non-numeric value produces a shadow subject

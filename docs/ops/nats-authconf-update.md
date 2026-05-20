@@ -29,7 +29,7 @@ git pull
 make nats-regen-authconf
 ```
 
-This runs `scripts/gen_nkeys.py` (entry point `lyra-acl`) to re-derive `auth.conf` from all existing seeds, back up the previous `auth.conf`, recreate the Podman secret, then sends `nats-server --signal reload`.
+This runs `scripts/gen_nkeys.py` (entry point `lyra-acl genkeys --regen-authconf`) to re-derive `auth.conf` from all existing seeds, back up the previous `auth.conf`, recreate the Podman secret, then sends `podman kill -s HUP lyra-nats` to trigger a live reload (the in-container NATS server reloads its config on SIGHUP — the host `nats-server` CLI is not used in the Quadlet deployment).
 
 **3. Verify — no permission violations**
 
@@ -48,7 +48,7 @@ journalctl --user -u lyra-discord  --since "2 min ago" | grep -i "nats\|connecte
 journalctl --user -u lyra-clipool  --since "2 min ago" | grep -i "nats\|connected\|error"
 ```
 
-Services reconnect automatically after a NATS reload — no service restart required unless the ACL change added a new identity whose seed is newly generated (in which case restart that service only).
+Services reconnect automatically after a NATS reload — no service restart required unless the ACL change added a new identity whose seed is newly generated (in which case restart that service only). Reconnect typically completes in under 1 second on the Podman bridge network; if a service has not reconnected within 10 s, treat it as a failure and proceed to Rollback.
 
 **5. Smoke test**
 
@@ -61,10 +61,10 @@ Send a message to the bot on any channel and confirm a reply arrives. This valid
 `lyra-acl genkeys --regen-authconf` (`scripts/gen_nkeys.py`) backs up `auth.conf` to `~/.lyra/nkeys/auth.conf.bak.<timestamp>` before overwriting. To revert:
 
 ```bash
-# Replace TIMESTAMP with the value printed by gen-nkeys.sh in step 2
+# Replace TIMESTAMP with the backup suffix printed by `make nats-regen-authconf` in step 2
 cp ~/.lyra/nkeys/auth.conf.bak.TIMESTAMP ~/.lyra/nkeys/auth.conf
 make quadlet-secrets-install
-nats-server --signal reload
+podman kill -s HUP lyra-nats
 ```
 
 Then revert the `acl-matrix.json` change in git and investigate before re-applying.

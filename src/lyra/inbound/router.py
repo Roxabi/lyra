@@ -79,10 +79,7 @@ class Router:
                 return RouteDecision.PROCESS
 
             # Watch channel: designated channel where all messages are processed.
-            if (
-                ctx.watch_channels is not None
-                and meta.channel_id in ctx.watch_channels
-            ):
+            if ctx.watch_channels is not None and meta.channel_id in ctx.watch_channels:
                 return RouteDecision.PROCESS
 
             return RouteDecision.DROP

@@ -199,9 +199,7 @@ class SessionBuilder:
                 from lyra.core.stores.thread_store_protocol import ThreadSession
 
                 _cache.pop(_tid_str, None)
-                _cache[_tid_str] = ThreadSession(
-                    session_id=session_id, pool_id=pool_id
-                )
+                _cache[_tid_str] = ThreadSession(session_id=session_id, pool_id=pool_id)
             except Exception:
                 log.exception(
                     "SessionBuilder: ThreadStore.update_session failed thread_id=%s",

@@ -7,7 +7,7 @@ Adapter-adjacent helpers (noise detection, MIME mapping) live in lyra.nats.stt_h
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 
@@ -21,6 +21,7 @@ class TranscriptionResult:
     text: str
     language: str
     duration_seconds: float
+    error: str = field(default="")  # non-empty on codec decode failure
 
 
 class STTUnavailableError(Exception):

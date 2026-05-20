@@ -59,10 +59,12 @@ class LlmProvider(Protocol):
     def is_alive(self, pool_id: str) -> bool: ...
 
     # stream() is an optional duck-typed method — providers that support
-    # streaming implement it and yield AsyncIterator[LlmEvent]; SimpleAgent
-    # checks via hasattr() rather than isinstance() so that existing providers
-    # are not broken by missing this method.
-    async def stream(
+    # streaming implement it as an async-generator function (`async def` with
+    # `yield`) returning AsyncIterator[LlmEvent]. Callers iterate directly:
+    # `async for event in provider.stream(...)` — no `await` needed.
+    # SimpleAgent checks via hasattr() rather than isinstance() so that
+    # existing providers are not broken by missing this method.
+    def stream(
         self,
         pool_id: str,
         text: str,

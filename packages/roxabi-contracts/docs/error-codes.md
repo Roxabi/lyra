@@ -14,6 +14,14 @@
 | transport.contract_mismatch | false | CONTRACT_VERSION or schema shape does not match what this consumer expects. |
 | transport.slow_consumer | true | NATS slow-consumer detected; message dropped by the broker. |
 | transport.error | true | Generic NATS / network transport failure not covered by a more specific code (e.g. connection reset, protocol error). |
+| transport.payload_too_large | false | Request payload exceeded the NATS server's max_payload limit. |
+
+## pool.*
+
+| code | retryable | description |
+|------|-----------|-------------|
+| pool.circuit_open | true | WorkerPoolClient circuit breaker is open; call short-circuited without dispatching to a worker. |
+| pool.no_live_workers | true | WorkerPoolClient exhausted its registry without reaching a healthy worker. |
 
 ## worker.*
 

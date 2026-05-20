@@ -97,9 +97,7 @@ async def _try_auto_create_thread(  # noqa: PLR0913 — DEBT:wiring-bootstrap-de
 
     try:
         thread = await raw_message.create_thread(
-            name=make_thread_name(
-                raw_message.content, raw_message.author.display_name
-            )
+            name=make_thread_name(raw_message.content, raw_message.author.display_name)
         )
         ctx.router.owned_threads.add(thread.id)
         if adapter._thread_store is not None:
@@ -181,8 +179,12 @@ async def _discord_pre_session_hook(
     is_thread = isinstance(raw_message.channel, discord.Thread)
 
     resolved_thread_id = await _try_auto_create_thread(
-        raw_message, ctx, adapter,
-        is_mention=is_mention, is_dm=is_dm, is_thread=is_thread,
+        raw_message,
+        ctx,
+        adapter,
+        is_mention=is_mention,
+        is_dm=is_dm,
+        is_thread=is_thread,
     )
     await _claim_existing_thread(raw_message, ctx, adapter, is_mention=is_mention)
 

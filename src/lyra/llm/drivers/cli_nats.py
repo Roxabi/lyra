@@ -86,8 +86,12 @@ class CliNatsDriver(NatsDriverBase):
         *,
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
-        """Return an async generator of LlmEvents for a streaming clipool request."""
-        return self._stream_gen_llm(pool_id, text, model_cfg, system_prompt)
+        """Yield LlmEvents from the clipool worker via NATS inbox."""
+        del messages
+        async for event in self._stream_gen_llm(
+            pool_id, text, model_cfg, system_prompt
+        ):
+            yield event
 
     async def _stream_gen_llm(
         self,

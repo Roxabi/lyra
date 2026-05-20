@@ -57,7 +57,9 @@ class CliPoolStreamingMixin:
             _core = cast(_CliPoolCore, self)
             if entry is None or not entry.is_alive():
                 entry = await _core._spawn(
-                    pool_id, model_config, system_prompt,
+                    pool_id,
+                    model_config,
+                    system_prompt,
                     agent_name=agent_name,
                     agent_email=agent_email,
                     lyra_session_id=lyra_session_id,
@@ -71,7 +73,9 @@ class CliPoolStreamingMixin:
                 )
                 await _core._kill(pool_id, preserve_session=False)
                 entry = await _core._spawn(
-                    pool_id, model_config, system_prompt,
+                    pool_id,
+                    model_config,
+                    system_prompt,
                     agent_name=agent_name,
                     agent_email=agent_email,
                     lyra_session_id=lyra_session_id,
@@ -85,7 +89,9 @@ class CliPoolStreamingMixin:
                 )
                 await _core._kill(pool_id, preserve_session=False)
                 entry = await _core._spawn(
-                    pool_id, model_config, system_prompt,
+                    pool_id,
+                    model_config,
+                    system_prompt,
                     agent_name=agent_name,
                     agent_email=agent_email,
                     lyra_session_id=lyra_session_id,

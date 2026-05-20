@@ -715,10 +715,12 @@ class TestStreamProcessor:
     async def test_agent_calls_skipped_when_show_agent_false(self) -> None:
         """L07 negative: show={"agent": False} → `_agent_calls` stays empty."""
         # Arrange
-        config = ToolDisplayConfig.model_validate({
-            "show": {"agent": False},
-            "throttle_ms": 0,
-        })
+        config = ToolDisplayConfig.model_validate(
+            {
+                "show": {"agent": False},
+                "throttle_ms": 0,
+            }
+        )
         processor = StreamProcessor(config)
         events = async_events(
             ToolUseLlmEvent(
@@ -955,12 +957,8 @@ class TestStreamProcessor:
         assert run_errors[0].message == "Not logged in · Please run /login"
 
         # Assert — no text block opened (no streamed text)
-        assert not any(
-            isinstance(e, TextStartRenderEvent) for e in all_events
-        )
-        assert not any(
-            isinstance(e, TextDeltaRenderEvent) for e in all_events
-        )
+        assert not any(isinstance(e, TextStartRenderEvent) for e in all_events)
+        assert not any(isinstance(e, TextDeltaRenderEvent) for e in all_events)
 
     async def test_streamed_text_preferred_over_error_text(self) -> None:
         """Streamed text + error_text: text in TextDelta, error_text in RunError (L12).

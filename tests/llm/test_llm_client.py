@@ -153,7 +153,8 @@ class TestLlmClientStream:
 
         pool.stream_request = MagicMock(return_value=_gen())
         client = _make_client(pool)
-        events = [e async for e in client.stream("p1", "hello", _MODEL, "sys")]
+        stream = await client.stream("p1", "hello", _MODEL, "sys")
+        events = [e async for e in stream]
         assert len(events) == 2
         assert isinstance(events[0], TextLlmEvent)
         assert events[0].text == "hi"
@@ -171,7 +172,8 @@ class TestLlmClientStream:
 
         pool.stream_request = MagicMock(return_value=_gen())
         client = _make_client(pool)
-        events = [e async for e in client.stream("p1", "x", _MODEL, "sys")]
+        stream = await client.stream("p1", "x", _MODEL, "sys")
+        events = [e async for e in stream]
         # no TextLlmEvent with text="never" after the terminal
         text_events = [
             e for e in events if isinstance(e, TextLlmEvent) and e.text == "never"
@@ -190,7 +192,8 @@ class TestLlmClientStream:
 
         pool.stream_request = MagicMock(return_value=_gen())
         client = _make_client(pool)
-        events = [e async for e in client.stream("p1", "x", _MODEL, "sys")]
+        stream = await client.stream("p1", "x", _MODEL, "sys")
+        events = [e async for e in stream]
         assert len(events) == 1
         assert isinstance(events[0], ResultLlmEvent)
         assert events[0].is_error is True
@@ -214,7 +217,8 @@ class TestLlmClientStream:
 
         pool.stream_request = MagicMock(return_value=_gen())
         client = _make_client(pool)
-        events = [e async for e in client.stream("p1", "x", _MODEL, "sys")]
+        stream = await client.stream("p1", "x", _MODEL, "sys")
+        events = [e async for e in stream]
         assert len(events) == 1
         assert isinstance(events[0], ResultLlmEvent)
 

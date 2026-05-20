@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from lyra.llm.drivers.cli_nats import (
         CliNatsDriver,  # noqa: F401 — DEBT:re-export-init
     )
-    from lyra.nats.nats_llm_client import NatsLlmClient
+    from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def _build_shared_base_providers(
     cli_pool: CliPool | None,
     llm_cfg: LlmConfig,
     *,
-    nats_llm_client: "NatsLlmClient | None" = None,
+    nats_llm_client: "LlmClient | None" = None,
     cli_nats_driver: "CliNatsDriver | None" = None,
 ) -> dict[str, LlmProvider]:
     """Build ``{backend: base LlmProvider}`` reusable across all agents.
@@ -203,7 +203,7 @@ def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     tts_service: TtsProtocol | None = None,
     agent_store: AgentStore | None = None,
     llm_cfg: LlmConfig | None = None,
-    nats_llm_client: "NatsLlmClient | None" = None,
+    nats_llm_client: "LlmClient | None" = None,
     cli_nats_driver: "CliNatsDriver | None" = None,
 ) -> dict[str, AgentBase]:
     """Create all uniquely named agents referenced by bot configs.

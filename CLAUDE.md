@@ -45,6 +45,7 @@ File/rename → update P immediately
 | `CLAUDE.md` | project root |
 | `src/lyra/core/CLAUDE.md` | hub, stores, pool |
 | `src/lyra/adapters/CLAUDE.md` | Telegram, Discord, CLI, NATS |
+| `src/lyra/inbound/CLAUDE.md` | stage-axis inbound pipeline (parser, router, session, dispatcher) |
 | `src/lyra/agents/CLAUDE.md` | agent impls |
 | `src/lyra/bootstrap/CLAUDE.md` | process bootstrap (standalone, wiring, lifecycle, factory, infra) |
 | `src/lyra/commands/CLAUDE.md` | plugin commands |

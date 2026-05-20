@@ -1,8 +1,23 @@
 """NatsAdapterBase — ABC lifecycle host for NATS request-reply adapters.
 
 Subclass this and implement ``handle(msg)`` to build a NATS queue-subscriber
-adapter with built-in envelope validation, hub readiness waiting, graceful
-drain/close shutdown, and a ``health()`` introspection method.
+adapter with built-in envelope validation, graceful drain/close shutdown, and
+a ``health()`` introspection method.
+
+Adapter vs. worker distinction
+-------------------------------
+Two usage patterns exist for this base class:
+
+**Adapters** (e.g. telegram-adapter, discord-adapter) proactively dispatch
+inbound platform events to the hub.  They need hub state to be available
+before forwarding messages, so they gate startup on hub readiness
+(``wait_ready=True``, the default).
+
+**Workers** (e.g. llm-worker, voice-tts, voice-stt, image-worker, clipool)
+respond to RPC requests that arrive on a NATS subject.  If the hub is down no
+requests arrive — there is nothing to gate on.  Workers should pass
+``wait_ready=False`` to skip the JetStream KV probe and avoid ACL violations
+from ``$JS.API.>`` subjects they do not hold grants for.
 """
 
 from __future__ import annotations
@@ -79,6 +94,7 @@ class NatsAdapterBase(ABC):
         type_registry: Sequence[tuple[str, str]] | None = None,
         inbox_prefix: str | None = None,
         identity_name: str | None = None,
+        wait_ready: bool = True,
     ):
         if inbox_prefix is not None and identity_name is not None:
             raise ValueError(
@@ -108,6 +124,7 @@ class NatsAdapterBase(ABC):
         # subject token regardless of host.
         raw_id = f"{queue_group}-{socket.gethostname()}-{os.getpid()}"
         self._worker_id = re.sub(r"[^A-Za-z0-9_-]", "_", raw_id)
+        self._wait_ready_flag = wait_ready
         self._heartbeat_task: asyncio.Task | None = None
         self._resolver: _TypeHintResolver = (
             _TypeHintResolver(type_registry)
@@ -122,7 +139,8 @@ class NatsAdapterBase(ABC):
             inbox_prefix=self._inbox_prefix,
         )
         self._nc = nc
-        await self._wait_ready()
+        if self._wait_ready_flag:
+            await self._wait_ready()
         await nc.subscribe(self.subject, queue=self.queue_group, cb=self._dispatch)
         for extra in self._extra_subjects():
             await nc.subscribe(extra, cb=self._dispatch)
@@ -143,6 +161,10 @@ class NatsAdapterBase(ABC):
         Unlike ``run()``, this method does not create a new NATS connection and
         does not call ``_shutdown()`` (which would drain/close the shared connection).
         The caller is responsible for managing the NATS connection lifecycle.
+
+        Hub readiness is not probed here regardless of the ``wait_ready`` flag;
+        the caller (typically the unified/hub-co-located process) owns the connection
+        and is expected to have verified hub state already.
         """
         self._nc = nc
         self._started_at = time.monotonic()

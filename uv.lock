@@ -1331,7 +1331,7 @@ test = [
 
 [[package]]
 name = "roxabi-nats"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "packages/roxabi-nats" }
 dependencies = [
     { name = "nats-py" },

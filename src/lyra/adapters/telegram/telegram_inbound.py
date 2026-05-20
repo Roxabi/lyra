@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -13,10 +12,11 @@ from lyra.adapters.telegram.telegram_audio import _download_audio
 from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
-from lyra.inbound.context import DispatchCtx, RouterCtx
+from lyra.core.messaging.message import Platform, TelegramMeta
+from lyra.inbound.context import DispatchCtx, RouterCtx, SessionCtx
 from lyra.inbound.dispatcher import Dispatcher
 from lyra.inbound.router import RouteDecision, Router
+from lyra.inbound.session_builder import SessionBuilder
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -25,6 +25,7 @@ log = logging.getLogger("lyra.adapters.telegram")
 
 _dispatcher = Dispatcher()
 _router = Router()
+_session_builder = SessionBuilder()
 
 
 async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps
@@ -44,40 +45,11 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:  # noqa: C
     if _router.decide(hub_msg, _router_ctx) is RouteDecision.DROP:
         return
 
-    # Session wiring: inject prior session_id + persist callback.
-    _new_thread_session_id: str | None = None
-    _session_update_fn = None
-    if adapter._turn_store is not None:
-        from lyra.core.hub.hub_protocol import RoutingKey
-
-        _pool_id = RoutingKey(
-            Platform.TELEGRAM, adapter._bot_id, hub_msg.scope_id
-        ).to_pool_id()
-        try:
-            _new_thread_session_id = await adapter._turn_store.get_last_session(
-                _pool_id
-            )
-        except Exception:
-            log.exception("TurnStore.get_last_session failed for pool_id=%s", _pool_id)
-        _ts = adapter._turn_store
-
-        async def _tg_session_update_fn(
-            msg: InboundMessage, session_id: str, pool_id: str
-        ) -> None:
-            await _ts.start_session(session_id, pool_id)
-
-        _session_update_fn = _tg_session_update_fn
-
-    _replacements: dict[str, Any] = {}
-    _is_tg_meta = isinstance(hub_msg.platform_meta, TelegramMeta)
-    if _new_thread_session_id is not None and _is_tg_meta:
-        _replacements["platform_meta"] = dataclasses.replace(
-            hub_msg.platform_meta, thread_session_id=_new_thread_session_id
-        )
-    if _session_update_fn is not None:
-        _replacements["session_update_fn"] = _session_update_fn
-    if _replacements:
-        hub_msg = dataclasses.replace(hub_msg, **_replacements)
+    session_ctx = SessionCtx(
+        turn_store=adapter._turn_store,
+        thread_store=None,  # Telegram has no thread model
+    )
+    hub_msg = await _session_builder.build(hub_msg, session_ctx)
 
     log.info(
         "message_received",

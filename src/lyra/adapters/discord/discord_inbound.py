@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -10,17 +9,14 @@ import discord
 
 from lyra.adapters.discord.discord_audio import handle_audio as _handle_audio
 from lyra.adapters.discord.discord_formatting import make_thread_name
-from lyra.adapters.discord.discord_threads import (
-    persist_thread_claim,
-    persist_thread_session,
-    retrieve_thread_session,
-)
+from lyra.adapters.discord.discord_threads import persist_thread_claim
 from lyra.adapters.shared._shared import AUDIO_MIME_TYPES
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import DiscordMeta, InboundMessage
-from lyra.inbound.context import DispatchCtx, RouterCtx
+from lyra.inbound.context import DispatchCtx, RouterCtx, SessionCtx
 from lyra.inbound.dispatcher import Dispatcher
 from lyra.inbound.router import RouteDecision, Router
+from lyra.inbound.session_builder import SessionBuilder
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -29,6 +25,7 @@ log = logging.getLogger("lyra.adapters.discord")
 
 _dispatcher = Dispatcher()
 _router = Router()
+_session_builder = SessionBuilder()
 
 
 async def _discord_pre_route_hook(
@@ -102,8 +99,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         owned_threads=adapter._owned_threads,  # mutable — shared by reference
         watch_channels=adapter._watch_channels if adapter._watch_channels else None,
     )
-    # Derived routing flags (still needed for auto-thread decision below).
-    _in_owned_thread = _is_thread and message.channel.id in adapter._owned_threads
+    # Derived routing flag (still needed for auto-thread decision below).
     _is_watch_channel = (
         not _is_dm and not _is_thread and message.channel.id in adapter._watch_channels
     )
@@ -167,25 +163,6 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
                 guild_id=getattr(message.guild, "id", None),
             )
 
-    # Retrieve stored session for existing owned threads (read-side fix).
-    # New auto-threads have no prior session; skip get_session() for those.
-    _stored_session_id: str | None = None
-    if _in_owned_thread and adapter._thread_store is not None:
-        try:
-            _ts_result = await retrieve_thread_session(
-                adapter._thread_store,
-                thread_id=str(message.channel.id),
-                bot_id=adapter._bot_id,
-                cache=adapter._thread_sessions,
-            )
-            # pool_id not consumed here; session routing uses session_id only
-            _stored_session_id = _ts_result.session_id
-        except Exception:
-            log.exception(
-                "ThreadStore: failed to retrieve session for thread_id=%s",
-                message.channel.id,
-            )
-
     try:
         hub_msg = adapter.normalize(
             message,
@@ -205,60 +182,12 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     if _router.decide(hub_msg, _router_ctx) is RouteDecision.DROP:
         return
 
-    # Inject stored thread_session_id into typed DiscordMeta.
-    _stored_session: str | None = _stored_session_id
-
-    # DM session wiring: inject prior session_id + persist callback for DMs.
-    _dm_session_id: str | None = None
-    if _is_dm and adapter._turn_store is not None:
-        from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.messaging.message import Platform
-
-        _pool_id = RoutingKey(
-            Platform.DISCORD, adapter._bot_id, f"channel:{message.channel.id}"
-        ).to_pool_id()
-        try:
-            _dm_session_id = await adapter._turn_store.get_last_session(_pool_id)
-        except Exception:
-            log.exception(  # noqa: TRY401 — DEBT:boundary-broad-catch
-                "TurnStore.get_last_session failed for DM pool_id=%s", _pool_id
-            )
-    if _dm_session_id is not None:
-        _stored_session = _dm_session_id
-    if _stored_session is not None and isinstance(hub_msg.platform_meta, DiscordMeta):
-        hub_msg = dataclasses.replace(
-            hub_msg,
-            platform_meta=dataclasses.replace(
-                hub_msg.platform_meta, thread_session_id=_stored_session
-            ),
-        )
-    _has_thread_id = (
-        isinstance(hub_msg.platform_meta, DiscordMeta)
-        and hub_msg.platform_meta.thread_id is not None
+    session_ctx = SessionCtx(
+        turn_store=adapter._turn_store,
+        thread_store=adapter._thread_store,
+        thread_sessions_cache=adapter._thread_sessions,  # MUTABLE — shared by reference
     )
-    _dc_session_update_fn = None
-    if _is_dm and adapter._turn_store is not None:
-        # DM path takes priority over thread-session persistence
-        _dm_ts = adapter._turn_store
-
-        async def _dm_session_update_fn(
-            _msg: InboundMessage, session_id: str, pool_id: str
-        ) -> None:
-            await _dm_ts.start_session(session_id, pool_id)
-
-        _dc_session_update_fn = _dm_session_update_fn
-    elif _has_thread_id and adapter._thread_store is not None:
-        _ts = adapter._thread_store
-        _bid, _cache = adapter._bot_id, adapter._thread_sessions
-
-        async def _dc_thread_session_update_fn(
-            msg: InboundMessage, session_id: str, pool_id: str
-        ) -> None:
-            await persist_thread_session(_ts, msg, session_id, pool_id, _bid, _cache)
-
-        _dc_session_update_fn = _dc_thread_session_update_fn
-    if _dc_session_update_fn is not None:
-        hub_msg = dataclasses.replace(hub_msg, session_update_fn=_dc_session_update_fn)
+    hub_msg = await _session_builder.build(hub_msg, session_ctx)
 
     log.info(
         "message_received",

@@ -10,6 +10,7 @@ Routine updates to `acl-matrix.json`: adding/removing identities, changing publi
 
 - After any change to `deploy/nats/acl-matrix.json` merged to `staging`
 - After adding or removing a NATS identity
+- After upgrading the roxabi-nats SDK to a version that adds or changes NATS subjects (e.g. new readiness probe subjects, new metrics subjects). Cross-check against `acl-matrix.json` and run regen if new subjects are not covered.
 
 ---
 
@@ -28,7 +29,7 @@ git pull
 make nats-regen-authconf
 ```
 
-This runs `gen-nkeys.sh --regen-authconf` (re-derives `auth.conf` from all existing seeds, backs up previous `auth.conf`, recreates the Podman secret) then sends `nats-server --signal reload`.
+This runs `scripts/gen_nkeys.py` (entry point `lyra-acl`) to re-derive `auth.conf` from all existing seeds, back up the previous `auth.conf`, recreate the Podman secret, then sends `nats-server --signal reload`.
 
 **3. Verify — no permission violations**
 
@@ -57,7 +58,7 @@ Send a message to the bot on any channel and confirm a reply arrives. This valid
 
 ## Rollback
 
-`gen-nkeys.sh --regen-authconf` backs up `auth.conf` to `~/.lyra/nkeys/auth.conf.bak.<timestamp>` before overwriting. To revert:
+`lyra-acl genkeys --regen-authconf` (`scripts/gen_nkeys.py`) backs up `auth.conf` to `~/.lyra/nkeys/auth.conf.bak.<timestamp>` before overwriting. To revert:
 
 ```bash
 # Replace TIMESTAMP with the value printed by gen-nkeys.sh in step 2
@@ -73,6 +74,6 @@ Then revert the `acl-matrix.json` change in git and investigate before re-applyi
 ## Cross-references
 
 - `deploy/nats/acl-matrix.json` — ACL SSoT
-- `deploy/nats/gen-nkeys.sh` — renders `auth.conf` from the matrix
+- `scripts/gen_nkeys.py` (entry point `lyra-acl`) — renders `auth.conf` from the matrix
 - [nkey-rotation.md](nkey-rotation.md) — compromise rotation (seed replacement)
 - [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — provisioning invariants

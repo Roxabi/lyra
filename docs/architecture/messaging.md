@@ -112,6 +112,10 @@ All subjects follow `lyra.{domain}.{qualifier...}` (domain-first, NATS conventio
 | `lyra.clipool.cmd` | hub → CliPool | Submit turn + resume UUID |
 | `lyra.clipool.heartbeat` | CliPool → hub | CliPool subprocess runner health announcements |
 | `lyra.clipool.control` | hub → CliPool | Control commands (reset, drain) |
+| `lyra.voice.tts.heartbeat` | voice-tts → hub | TTS worker liveness signal for hub availability checks |
+| `lyra.voice.stt.heartbeat` | voice-stt → hub | STT worker liveness signal for hub availability checks |
+| `lyra.llm.heartbeat` | llm-worker → hub | LLM worker liveness signal for hub availability checks |
+| `lyra.image.heartbeat` | image-worker → hub | Image worker liveness signal for hub availability checks |
 
 `{platform}` is lowercase ASCII (`telegram`, `discord`). `{bot_id}` is a numeric string
 matching `^[1-9][0-9]*$` — a leading-zero or non-numeric value produces a shadow subject

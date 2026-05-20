@@ -161,6 +161,10 @@ class NatsAdapterBase(ABC):
         Unlike ``run()``, this method does not create a new NATS connection and
         does not call ``_shutdown()`` (which would drain/close the shared connection).
         The caller is responsible for managing the NATS connection lifecycle.
+
+        Hub readiness is not probed here regardless of the ``wait_ready`` flag;
+        the caller (typically the unified/hub-co-located process) owns the connection
+        and is expected to have verified hub state already.
         """
         self._nc = nc
         self._started_at = time.monotonic()

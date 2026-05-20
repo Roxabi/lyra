@@ -508,8 +508,8 @@ class TestRun:
         )
 
     @pytest.mark.asyncio
-    async def test_wait_ready_always_called(self) -> None:
-        """_wait_ready() is called on every run() invocation."""
+    async def test_wait_ready_called_when_flag_is_true(self) -> None:
+        """wait_for_hub is called when wait_ready is True (default)."""
         # Arrange
         adapter = self._make_adapter()
         stop = asyncio.Event()
@@ -1258,3 +1258,6 @@ class TestWaitReadyOptOut:
 
         # Assert — hub readiness probe must NOT have been called
         mock_wait.assert_not_awaited()
+        # Adapter must still have reached operational state (subscription + timestamp)
+        mock_nc.subscribe.assert_awaited_once()
+        assert adapter._started_at is not None

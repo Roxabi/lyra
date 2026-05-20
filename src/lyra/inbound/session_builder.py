@@ -8,7 +8,7 @@ import sqlite3
 from typing import TYPE_CHECKING
 
 from lyra.core.hub.hub_protocol import RoutingKey
-from lyra.core.messaging.message import DiscordMeta, Platform
+from lyra.core.messaging.message import DiscordMeta, Platform, TelegramMeta
 from lyra.core.stores.thread_store_protocol import ThreadSession
 
 if TYPE_CHECKING:
@@ -108,7 +108,9 @@ class SessionBuilder:
             await _ts.start_session(session_id, pool_id)
 
         _replacements: dict = {"session_update_fn": _turnstore_update_fn}
-        if _prior_session_id is not None and hasattr(meta, "thread_session_id"):
+        if _prior_session_id is not None and isinstance(
+            meta, (TelegramMeta, DiscordMeta)
+        ):
             _replacements["platform_meta"] = dataclasses.replace(
                 meta, thread_session_id=_prior_session_id
             )

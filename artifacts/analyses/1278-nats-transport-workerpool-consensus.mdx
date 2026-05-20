@@ -1,0 +1,164 @@
+---
+title: "Phase 1 NATS Transport — B1 streaming + B2 routing — Expert Consensus"
+issue: 1278
+status: consensus-reached
+date: 2026-05-20
+panel: architect, devops, product-lead
+confidence: high
+---
+
+## Problem
+
+Two coupled architectural decisions blocking implementation of #1278 (Phase 1 of stage-axis refactor, epic #1277). Both decisions shape the public contracts of `NatsTransport` (slice S2) and `WorkerPoolClient` (slice S3), so they must be locked before the atomic PR's implementation slices begin.
+
+- **B1 — Streaming path ownership.** Today `nats_llm_client.py::_llm_stream_gen` opens `nc.new_inbox()`, subscribes, publishes, and iterates messages directly — bypassing both the new transport and pool. Three candidate homes were debated: (a) transport-level `stream(...)`, (b) pool-level `stream_request(...)`, (c) hybrid where transport exposes an inbox primitive that the pool composes into `stream_request`.
+- **B2 — TTS per-worker subject routing.** TTS/STT/Image route to specific workers via per-worker subjects (`lyra.voice.tts.request.{worker_id}`) while LLM uses a queue-group subject. Today `NatsTtsClient._walk_registry` walks `pool._registry` directly. Three candidates: (a) `pool.request_with_routing(subject_fn, payload, ...)`, (b) `pool.scored_workers()` iterator, (c) constructor flag.
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | Layer integrity, maintainability, public-contract minimalism |
+| devops | Lifecycle correctness, observability, ops debuggability |
+| product-lead | Scope discipline, downstream P4 coupling, blast radius |
+
+## Consensus ρ
+
+### B1 — Hybrid (c)
+
+`NatsTransport` exposes a single async context manager `open_inbox()` that owns the inbox lifecycle (create + subscribe + sanitize + cleanup). `WorkerPoolClient.stream_request(payload, *, timeout)` composes the CM with CB + registry semantics. Domain clients call only `pool.stream_request(payload)` — they never see transport primitives.
+
+```python
+class NatsTransport:
+    @asynccontextmanager
+    async def open_inbox(self) -> AsyncIterator[InboxStream]:
+        """Yields (inbox_subject, async_iter[Result[bytes, SanitizedError]]).
+        Owns create/subscribe/unsubscribe/sanitization."""
+        ...
+
+class WorkerPoolClient:
+    async def stream_request(
+        self, payload: bytes, *, timeout: float | None = None
+    ) -> AsyncIterator[Result[bytes, SanitizedError]]:
+        async with self._transport.open_inbox() as (inbox, msgs):
+            # publish via transport.call() with reply=inbox, then iterate msgs
+            # CB + registry interactions happen here
+            ...
+```
+
+P4's `HttpTransport` (#1281) implements `call(...)` and raises `NotImplementedError` on `open_inbox()` with a clear message. Streaming over HTTP is a codec-level concern (SSE) handled inside the HTTP driver, not at transport level.
+
+### B2 — `request_with_routing(subject_fn, payload, ...)` with mandatory pool-level logging
+
+```python
+class WorkerPoolClient:
+    async def request_with_routing(
+        self,
+        subject_fn: Callable[[str], str],  # worker_id -> subject
+        payload: bytes,
+        *,
+        timeout: float | None = None,
+        max_attempts: int | None = None,  # None = exhaust scored workers
+    ) -> Result[bytes, SanitizedError]:
+        for worker in self._registry.scored():
+            subject = subject_fn(worker.id)
+            self._log.info(
+                "pool.routing",
+                worker_id=worker.id, subject=subject,
+                attempt=attempt, pool=self._name,
+            )
+            result = await self._transport.call(subject, payload, timeout=timeout)
+            if isinstance(result, Ok):
+                return result
+            self._registry.mark_stale(worker.id)
+            self._cb.record_failure()
+        return Err(SanitizedError(code="pool.no_live_workers", ...))
+```
+
+LLM passes `lambda _: SUBJECTS.generate_request` (constant subject ignoring worker_id) and `max_attempts=1`. TTS/STT/Image pass `per_worker_tts`, `per_worker_stt`, `per_worker_image` and `max_attempts=None`. Pool stays domain-agnostic; `_registry` stays private; observability is preserved via mandatory structured log on every attempt.
+
+### Rationale
+
+**B1 (c) over (a) and (b):**
+- (a) forces transport polymorphism — `HttpTransport` has no inbox concept; would need to stub or raise on a method that doesn't belong on its surface. Substitutability breaks.
+- (b) pushes inbox primitives (`nc.new_inbox()`, `nc.subscribe()`) into the pool, recreating the cross-layer leak the refactor exists to kill. Pool restart would couple stream lifecycle to heartbeat lifecycle.
+- (c) cleanly separates: transport owns NATS-specific resources (CM lifetime), pool owns CB+registry semantics. The CM's `__aexit__` guarantees subscription cleanup even on early caller break. P4 simply doesn't implement `open_inbox()`.
+
+**B2 (a) over (b) and (c):**
+- (b) externalizes the retry+stale-mark loop to each domain client (TTS, STT, Image, future-N) — replicates the N×M duplication the epic exists to eliminate.
+- (c) over-abstracts at construction time: constructor flag couples pool to subject-naming conventions and forces it to import `roxabi_contracts`; templates preclude dynamic subject construction.
+- (a) keeps `_registry` private, unifies LLM (queue-group) and per-worker routing behind one pool method, costs one callable argument.
+
+### Trade-offs
+
+**B1:**
+1. `NatsTransport` exposes 2 public methods (`call` + `open_inbox`) instead of 1. Asymmetric with P4's `HttpTransport` which exposes only `call`. Asymmetry is documented and intentional — streaming is a NATS-shape capability, not a universal transport one.
+2. Pool's `stream_request` is the stable public interface; transport's `open_inbox` is "transport-internal-but-callable-from-pool" by convention, not by access control. Linter or doc convention enforces non-domain access.
+3. Adds one async context manager primitive — readers must understand the CM semantics. Cost is bounded; CM is standard Python.
+
+**B2:**
+1. `subject_fn` is a callable parameter; unit tests must verify the call site passes the correct lambda. Indirection minimal.
+2. LLM's queue-group case carries the cost of going through the routing iterator (1 iteration) — micro-overhead, not measurable.
+3. Pool logs every routing attempt — log volume grows with retry depth. Acceptable in prod; can be downgraded to debug for stable pools later.
+
+## Alternatives
+
+### B1
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| (a) `NatsTransport.stream()` | devops (round 1) | Forces transport polymorphism for P4's HttpTransport which has no inbox; semantically wrong for HTTP SSE; widens transport contract |
+| (b) Pool-level streaming | product-lead (round 1) | Pool reaching into transport internals (`nc.new_inbox`, `nc.subscribe`) replicates the cross-layer leak the refactor exists to kill |
+
+### B2
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| (b) `pool.scored_workers()` iterator | devops (round 1) | Domain clients re-implement retry + stale-mark — recreates N×M duplication |
+| (c) Constructor flag `subject_strategy` | (theoretical) | Over-abstracts at construction; couples pool to subject-naming conventions; templates can't express dynamic subjects |
+
+## Dissent
+
+**B1:** Devops initially preferred (a) for "one finally block, one log site". After round 2 ranked (b) #1 with a proposal that exposes narrow `create_inbox()` + `subscribe_inbox()` methods on transport — **structurally identical to (c)** at the boundary. Devops conceded that `HttpTransport` substitutability is a real cost and ranked (a) #3. δ recorded: dissent on labeling, not on shape.
+
+**B2:** Devops initially preferred (b) for log clarity. After round 2 accepted (a) under the constraint that pool emits mandatory structured logs (`worker_id`, `subject`, `attempt`, `result`) at every retry attempt. δ recorded: dissent on observability minimum, fully addressed by structured-log requirement now in the consensus shape.
+
+## Implementation Notes
+
+The following must appear in the revised spec and be carried forward into S2/S3 implementation:
+
+### B1 — `open_inbox()` contract
+
+- **Return type**: `AsyncContextManager[InboxStream]` where `InboxStream` is a typed dataclass `(inbox_subject: str, messages: AsyncIterator[Result[bytes, SanitizedError]])`.
+- **Lifecycle**: CM creates inbox + subscribes on `__aenter__`; unsubscribes + drains on `__aexit__`. Both events log at INFO level (`inbox=%s timeout=%.1fs` open, `inbox=%s reason=%s` close).
+- **Error path**: messages iterator yields `Err(SanitizedError(...))` on timeout, no-responders, or sanitized exceptions. Never raises.
+- **`HttpTransport` (P4)**: declares `open_inbox` as `NotImplementedError` with message `"HTTP transport does not provide inbox-based streaming; use codec-level SSE."` — explicit contract failure, not silent.
+
+### B2 — `request_with_routing()` contract
+
+- **Mandatory logging**: pool MUST emit a structured log line with `pool`, `worker_id`, `subject`, `attempt`, `result` BEFORE each `transport.call()`. No domain-side logging required for routing visibility.
+- **Stale-marking**: pool calls `registry.mark_stale(worker_id)` on `Err` with `code in {"transport.timeout", "transport.no_responders"}`. Other error codes do not mark stale.
+- **Exhaustion**: when `scored_workers()` yields nothing, pool emits a WARN log (`pool=%s no_live_workers=true`) and returns `Err(SanitizedError(code="pool.no_live_workers", ...))`.
+- **LLM call shape**: `pool.request_with_routing(lambda _: SUBJECTS.generate_request, payload, max_attempts=1)` — the queue-group case routes through the same method.
+- **`WorkerHandle`** is **not** exposed publicly. `scored_workers()` is a private iterator inside the pool.
+
+### Slice impact on the spec
+
+- **S2 (NatsTransport)**: must include `open_inbox()` CM + `_sanitize` + `call`. Test coverage must include subscription cleanup on caller-side early break (`async for ... break` inside `async with`).
+- **S3 (WorkerPoolClient)**: must include `request_with_routing(subject_fn, payload, ...)` + `stream_request(payload, ...)` + structured logging. Both compose transport primitives.
+- **S4 (LlmClient)**: `complete` calls `pool.request_with_routing(lambda _: SUBJECTS.generate_request, payload, max_attempts=1)`. `stream` calls `pool.stream_request(payload)`.
+- **S5 (TTS/STT/Image)**: each domain client passes its own `per_worker_*` subject helper from `roxabi_contracts`. Domain client shrinks to encode + decode only — no `_walk_registry` equivalent remains in domain code.
+
+### Stakeholder visibility
+
+- **P4 author (#1281)** must know before P1 merges that `HttpTransport` exposes only `call(...)`. The `open_inbox()` asymmetry is documented and intentional.
+- **P2/P3 authors** (#1279, #1280) are unaffected by either decision.
+
+## Next
+
+Revise spec `artifacts/specs/1278-nats-transport-workerpool-spec.mdx`:
+
+1. Resolve `[chi:1]` (streaming) with B1 consensus — update breadboard `stream` row, add `open_inbox` to transport affordance table, update class diagram.
+2. Resolve `[chi:2]` (TTS routing) with B2 consensus — update TTS/STT/Image breadboards, add `request_with_routing` to pool affordance table, drop `pool._registry` references.
+3. Fix unrelated review findings: type annotation bug `Result[bytes, str]` → `Result[bytes, SanitizedError]`; class diagram Mermaid inheritance for `Result` (use note instead); `register_worker` consistency; LOC criterion needs binary threshold; sub-issues #840 + #1067 detached from absorbed list (separate scope decision).
+4. Re-run pre-check → re-present to user for approval.

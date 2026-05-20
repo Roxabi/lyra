@@ -82,6 +82,7 @@ on rotation events.
 `NoNewPrivileges=true` | `ReadOnly=true` | `DropCapability=all`
 `UserNS=keep-id:uid=1500,gid=1500` for lyra units (UID 1500 = `lyra`)
 Secrets via `type=mount` (tmpfs) — ¬env vars, ¬volume wrappers for credentials.
+Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL/secret changes require container restart (not HUP) to refresh. See [`docs/ops/nats-authconf-update.md`](../docs/ops/nats-authconf-update.md).
 ¬inline `#` comments after `Volume=` values — Quadlet passes them to Podman as mount options.
 
 ### Known residual risk — clipool `core.hooksPath` override (tracked #1245)

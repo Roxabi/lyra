@@ -249,6 +249,8 @@ full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf
 	make -C "$$LYRA_DIR" quadlet-secrets-install; \
 	echo "==> NATS: restarting (refresh mount-typed Podman secret)..."; \
 	systemctl --user restart lyra-nats; \
+	systemctl --user is-active --wait lyra-nats \
+		|| { echo "ERROR: lyra-nats failed to reach active state"; exit 1; }; \
 	echo "==> Lyra: restarting containers..."; \
 	systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool; \
 	echo ""; \
@@ -283,13 +285,12 @@ remote:
 nats-setup:
 	@bash deploy/nats/setup.sh
 
-nats-regen-authconf:          ## re-render auth.conf from existing seeds, upload Podman secret, restart NATS
+nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart NATS
 	@lyra-acl genkeys --regen-authconf
-	@$(MAKE) quadlet-secrets-install
-	@# Restart (not HUP): Podman secrets mounted type=mount are tmpfs bind-mounts
-	@# bound at container init — `--replace` updates the store, but the in-container
-	@# file still has the old content. Restart forces container recreation → fresh
-	@# mount. See docs/ops/nats-authconf-update.md and PR #1292 deploy notes.
+	@test -d "$(LYRA_NKEYS_DIR)" || { echo "ERROR: $(LYRA_NKEYS_DIR) not found"; exit 1; }
+	@# auth.conf only — seed rotation is a different runbook (nkey-rotation.md).
+	@podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"
+	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.
 	@systemctl --user restart lyra-nats
 
 test:

@@ -170,21 +170,21 @@ HealthRetries=3
 **What is needed:**
 
 ```makefile
-nats-rotate-secrets: ## atomic: regen auth.conf → install secrets → restart NATS → verify
+nats-rotate-secrets: ## atomic: regen + scoped install + restart (via nats-regen-authconf) → wait-ready → verify → smoke
 	@$(MAKE) nats-regen-authconf
-	@$(MAKE) quadlet-secrets-install
-	@# Restart (not reload/HUP): Podman secrets type=mount are tmpfs bind-mounts
-	@# bound at container init — HUP re-reads the path but the path is stale.
-	@# See docs/ops/nats-authconf-update.md.
-	@ssh $(PROD) "systemctl --user restart lyra-nats"
-	@sleep 3
-	@ssh $(PROD) "journalctl --user -u lyra-nats --since '10 seconds ago' | grep -i 'permission\|error\|fatal'" \
-		&& echo "WARNING: errors detected after restart — check logs" \
-		|| echo "No errors detected — rotation complete"
+	@# nats-regen-authconf scopes the install to lyra-nats-auth and restarts lyra-nats.
+	@# This wrapper adds remote wait-ready + log verification + voice smoke.
+	@ssh $(PROD) "systemctl --user is-active --wait lyra-nats" \
+		|| { echo "ERROR: lyra-nats failed to reach active state on $(PROD)"; exit 1; }
+	@if ssh $(PROD) "journalctl --user -u lyra-nats --since '10 seconds ago' | grep -qi 'permission\|error\|fatal'"; then \
+		echo "ERROR: violations detected in lyra-nats log — inspect: journalctl --user -u lyra-nats"; \
+		exit 1; \
+	fi
+	@echo "No errors detected — rotation complete"
 	@$(MAKE) voice-smoke
 ```
 
-The post-restart verification step (grep for `permissions violation` in first 30s, run smoke test) is load-bearing — it turns a silent partial-apply into an immediate failure.
+The post-restart verification step is load-bearing — it turns a silent partial-apply into an immediate failure. Key correctness properties: (a) `is-active --wait` blocks until systemd transitions the unit to `active` (or `failed`) before we scan logs, eliminating the "journald not ready yet" race; (b) the `if grep -qi …; then exit 1; fi` form fails loudly on detection (the prior `&& A || B` chain silently mapped grep no-match — and grep no-input — to "complete").
 
 ---
 

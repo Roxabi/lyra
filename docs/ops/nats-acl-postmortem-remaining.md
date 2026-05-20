@@ -174,9 +174,9 @@ nats-rotate-secrets: ## atomic: regen + scoped install + restart (via nats-regen
 	@$(MAKE) nats-regen-authconf
 	@# nats-regen-authconf scopes the install to lyra-nats-auth and restarts lyra-nats.
 	@# This wrapper adds remote wait-ready + log verification + voice smoke.
-	@ssh $(PROD) "systemctl --user is-active --wait lyra-nats" \
-		|| { echo "ERROR: lyra-nats failed to reach active state on $(PROD)"; exit 1; }
-	@if ssh $(PROD) "journalctl --user -u lyra-nats --since '10 seconds ago' | grep -qi 'permission\|error\|fatal'"; then \
+	@ssh $(DEPLOY_HOST) "systemctl --user is-active --wait lyra-nats" \
+		|| { echo "ERROR: lyra-nats failed to reach active state on $(DEPLOY_HOST)"; exit 1; }
+	@if ssh $(DEPLOY_HOST) "journalctl --user -u lyra-nats --since '10 seconds ago' | grep -qi 'permission\|error\|fatal'"; then \
 		echo "ERROR: violations detected in lyra-nats log — inspect: journalctl --user -u lyra-nats"; \
 		exit 1; \
 	fi

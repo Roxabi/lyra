@@ -67,6 +67,9 @@ Send a message to the bot on any channel and confirm a reply arrives. This valid
 ```bash
 # Replace TIMESTAMP with the backup suffix printed by `make nats-regen-authconf` in step 2
 cp ~/.lyra/nkeys/auth.conf.bak.TIMESTAMP ~/.lyra/nkeys/auth.conf
+# Rollback uses the full `quadlet-secrets-install` (all 5 secrets) — broader
+# than the scoped forward path (`nats-regen-authconf` only touches lyra-nats-auth).
+# Intentional: emergency rollback restores a known-good snapshot atomically.
 make quadlet-secrets-install
 systemctl --user restart lyra-nats
 ```

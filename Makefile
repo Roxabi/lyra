@@ -287,7 +287,8 @@ nats-setup:
 
 nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart NATS
 	@lyra-acl genkeys --regen-authconf
-	@test -d "$(LYRA_NKEYS_DIR)" || { echo "ERROR: $(LYRA_NKEYS_DIR) not found"; exit 1; }
+	@test -s "$(LYRA_NKEYS_DIR)/auth.conf" \
+		|| { echo "ERROR: $(LYRA_NKEYS_DIR)/auth.conf missing or empty after genkeys"; exit 1; }
 	@# auth.conf only — seed rotation is a different runbook (nkey-rotation.md).
 	@podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"
 	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.

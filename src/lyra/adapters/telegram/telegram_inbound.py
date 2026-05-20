@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
@@ -15,50 +14,18 @@ from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
+from lyra.inbound.context import DispatchCtx
+from lyra.inbound.dispatcher import Dispatcher
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
 
 log = logging.getLogger("lyra.adapters.telegram")
 
-
-async def _push_to_hub(
-    adapter: TelegramAdapter,
-    hub_msg: InboundMessage,
-    on_drop: Callable[[], None] | None = None,
-) -> None:
-    """Put hub_msg on the inbound bus with circuit-open and backpressure guards.
-
-    on_drop is called before early return in both circuit-open and QueueFull
-    cases (e.g. to clean up a temp audio file). Always returns normally so
-    aiogram receives HTTP 200.
-    """
-    _meta = hub_msg.platform_meta
-    chat_id = _meta.chat_id if isinstance(_meta, TelegramMeta) else None
-
-    async def _send_bp(text: str) -> None:
-        if chat_id is None:
-            log.error(
-                "_push_to_hub: platform_meta missing 'chat_id',"
-                " dropping backpressure ack for user_id=%s",
-                hub_msg.user_id,
-            )
-            return
-        await adapter.bot.send_message(chat_id, text)
-
-    await push_to_hub_guarded(
-        inbound_bus=adapter._inbound_bus,
-        platform=Platform.TELEGRAM,
-        msg=hub_msg,
-        circuit_registry=adapter._circuit_registry,
-        on_drop=on_drop,
-        send_backpressure=_send_bp,
-        get_msg=adapter._msg,
-        outbound_listener=adapter._outbound_listener,
-    )
+_dispatcher = Dispatcher()
 
 
-async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
+async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps
     """Handle an incoming aiogram message: apply backpressure and put on bus."""
     if not msg.from_user or getattr(msg.from_user, "is_bot", False):
         return
@@ -123,9 +90,30 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:
     # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
     # the update indefinitely.
     adapter._start_typing(msg.chat.id)
-    await _push_to_hub(
-        adapter,
+    _meta = hub_msg.platform_meta
+    _chat_id = _meta.chat_id if isinstance(_meta, TelegramMeta) else None
+
+    async def _tg_backpressure(text: str) -> None:
+        if _chat_id is None:
+            log.error(
+                "handle_message: platform_meta missing 'chat_id',"
+                " dropping backpressure ack for user_id=%s",
+                hub_msg.user_id,
+            )
+            return
+        await adapter.bot.send_message(_chat_id, text)
+
+    dispatch_ctx = DispatchCtx(
+        inbound_bus=adapter._inbound_bus,
+        circuit_registry=adapter._circuit_registry,
+        outbound_listener=adapter._outbound_listener,
+        typing=adapter._typing,
+        msg_catalog=adapter._msg_manager,
+    )
+    await _dispatcher.dispatch(
         hub_msg,
+        dispatch_ctx,
+        _tg_backpressure,
         on_drop=lambda: adapter._cancel_typing(msg.chat.id),
     )
 

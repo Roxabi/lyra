@@ -5,9 +5,17 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from lyra.adapters.shared._shared import push_to_hub_guarded
+from lyra.core.messaging.message import Platform
+
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
     from lyra.inbound.context import DispatchCtx
+
+
+def _default_get_msg(key: str, fallback: str = "") -> str:
+    """Fallback message getter used when no MessageManager is available."""
+    return fallback or key
 
 
 class Dispatcher:
@@ -20,8 +28,6 @@ class Dispatcher:
 
     ``send_backpressure`` is passed per-call (not held in context) because its
     closure captures the raw platform message reference.
-
-    Stub: full logic implemented in Wave 2 (Slice 2).
     """
 
     async def dispatch(
@@ -32,4 +38,22 @@ class Dispatcher:
         on_drop: Callable[[], None] | None = None,
     ) -> None:
         """Dispatch *msg* to the hub bus with backpressure and drop guards."""
-        raise NotImplementedError
+        _catalog = ctx.msg_catalog
+
+        def _catalog_get_msg(key: str, fallback: str) -> str:
+            looked_up = _catalog.get(key) if _catalog is not None else None
+            return looked_up or fallback or key
+
+        get_msg: Callable[[str, str], str] = (
+            _catalog_get_msg if _catalog is not None else _default_get_msg
+        )
+        await push_to_hub_guarded(
+            inbound_bus=ctx.inbound_bus,
+            platform=Platform[msg.platform.upper()],
+            msg=msg,
+            circuit_registry=ctx.circuit_registry,
+            on_drop=on_drop,
+            send_backpressure=send_backpressure,
+            get_msg=get_msg,
+            outbound_listener=ctx.outbound_listener,
+        )

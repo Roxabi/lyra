@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from lyra.adapters.shared._shared import TypingTaskManager
     from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.circuit_breaker import CircuitRegistry
@@ -71,11 +73,11 @@ class SessionCtx:
 class DispatchCtx:
     """Dispatch-stage context."""
 
-    inbound_bus: Bus[object]
-    circuit_registry: CircuitRegistry | None
-    outbound_listener: OutboundListener | None
-    typing: TypingTaskManager
-    msg_catalog: MessageManager | None
+    inbound_bus: "Bus[Any]"
+    circuit_registry: "CircuitRegistry | None"
+    outbound_listener: "OutboundListener | None"
+    typing: "TypingTaskManager"
+    msg_catalog: "MessageManager | None"
 
 
 @dataclass(frozen=True)

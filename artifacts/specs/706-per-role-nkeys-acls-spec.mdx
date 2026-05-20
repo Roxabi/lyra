@@ -16,6 +16,8 @@ and is verified by `scripts/check-acl-matrix-spec.sh` on every CI run.
 <!-- acl-matrix:begin -->
 | Subject | hub | telegram-adapter | discord-adapter | voice-tts | voice-stt | llm-worker | image-worker | monitor | clipool-worker | voice-client |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `$JS.API.>` | PUB | PUB | PUB | PUB | PUB | PUB | PUB | — | PUB | — |
+| `$KV.lyra-state.>` | PUB | SUB | SUB | SUB | SUB | SUB | SUB | — | SUB | — |
 | `_inbox.clipool-worker.>` | — | — | — | — | — | — | — | — | SUB | — |
 | `_inbox.discord-adapter.*.*` | — | — | SUB | — | — | — | — | — | — | — |
 | `_inbox.discord-adapter.>` | — | — | SUB | — | — | — | — | — | — | — |

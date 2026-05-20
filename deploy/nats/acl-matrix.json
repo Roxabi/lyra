@@ -84,15 +84,18 @@
       "created_at": "2026-04-21",
       "owner": "voicecli",
       "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Inbox normalized to _inbox.voice-tts.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "notes": "$JS.API.> + $KV.lyra-state.> required for roxabi-nats v0.4.x readiness probe (wait_for_hub via JetStream KV). Tighter per-operation scoping tracked in #1293 (holistic hardening: workers + adapters + SDK-drift CI gate). Continues the pre-existing adapter pattern.",
       "allow_responses": true,
       "publish": [
         "lyra.voice.tts.heartbeat",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.voice.tts.request",
         "lyra.voice.tts.request.>",
-        "_inbox.voice-tts.>"
+        "_inbox.voice-tts.>",
+        "$KV.lyra-state.>"
       ]
     },
     "voice-stt": {
@@ -100,15 +103,18 @@
       "created_at": "2026-04-21",
       "owner": "voicecli",
       "description": "voicecli nats-serve STT worker on Machine 1 (#689). Inbox normalized to _inbox.voice-stt.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "notes": "$JS.API.> + $KV.lyra-state.> required for roxabi-nats v0.4.x readiness probe (wait_for_hub via JetStream KV). Tighter per-operation scoping tracked in #1293 (holistic hardening: workers + adapters + SDK-drift CI gate). Continues the pre-existing adapter pattern.",
       "allow_responses": true,
       "publish": [
         "lyra.voice.stt.heartbeat",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.voice.stt.request",
         "lyra.voice.stt.request.>",
-        "_inbox.voice-stt.>"
+        "_inbox.voice-stt.>",
+        "$KV.lyra-state.>"
       ]
     },
     "llm-worker": {
@@ -116,13 +122,16 @@
       "created_at": "2026-04-21",
       "owner": "reserved",
       "description": "llmCLI nats-serve worker. Worker uses inbox_prefix=_inbox.llmcli-llm (does not match the llm-worker role name), so the renderer's request_reply_flows derivation cannot auto-grant it — the inbox is listed explicitly in subscribe. See #1142.",
+      "notes": "$JS.API.> + $KV.lyra-state.> required for roxabi-nats v0.4.x readiness probe (wait_for_hub via JetStream KV). Tighter per-operation scoping tracked in #1293 (holistic hardening: workers + adapters + SDK-drift CI gate). Continues the pre-existing adapter pattern.",
       "allow_responses": true,
       "publish": [
-        "lyra.llm.heartbeat"
+        "lyra.llm.heartbeat",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.llm.generate.request",
-        "_inbox.llmcli-llm.>"
+        "_inbox.llmcli-llm.>",
+        "$KV.lyra-state.>"
       ]
     },
     "image-worker": {
@@ -130,13 +139,16 @@
       "created_at": "2026-04-21",
       "owner": "imagecli",
       "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Inbox normalized to _inbox.image-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "notes": "$JS.API.> + $KV.lyra-state.> required for roxabi-nats v0.4.x readiness probe (wait_for_hub via JetStream KV). Tighter per-operation scoping tracked in #1293 (holistic hardening: workers + adapters + SDK-drift CI gate). Continues the pre-existing adapter pattern.",
       "allow_responses": true,
       "publish": [
-        "lyra.image.heartbeat"
+        "lyra.image.heartbeat",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.image.generate.request",
-        "_inbox.image-worker.>"
+        "_inbox.image-worker.>",
+        "$KV.lyra-state.>"
       ]
     },
     "monitor": {

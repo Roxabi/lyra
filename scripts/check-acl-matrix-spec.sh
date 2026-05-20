@@ -61,7 +61,7 @@ render_table() {
         .value | (.publish // []) + (.subscribe // [])
       ] |
       flatten | unique |
-      map(select(startswith("lyra.") or startswith("_inbox.")))
+      map(select(startswith("lyra.") or startswith("_inbox.") or startswith("$JS.API.") or startswith("$KV.")))
     ) as $subjects |
 
     "| Subject |" + ($ids | map(" \(.) |") | join("")),

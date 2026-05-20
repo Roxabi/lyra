@@ -1,0 +1,57 @@
+---
+title: Make stream() a true async generator across LlmProvider + 4 drivers
+issue: 1201
+status: draft
+tier: F-lite
+date: 2026-05-20
+---
+
+## Problem
+
+`LlmProvider.stream(...)` is declared `async def` returning `AsyncIterator[LlmEvent]` but every driver implements it as `return self._stream_gen(...)` — i.e. an async function that *returns* an async iterator rather than a true async generator. Callers must therefore `await stream(...)` first to unwrap the coroutine, then `async for` over the result. Any caller that writes the natural-looking `async for ev in client.stream(...)` without the leading `await` silently iterates over a coroutine object, yielding zero events with no error and no type-check warning.
+
+PR #1197 review flagged this as a fragile contract (3 agents — backend-dev, architect, product-lead — C82%). The trap was deferred from PR #1119 because converting `stream()` to a true async generator requires a coordinated change across the protocol, all 4 drivers, every caller, and existing tests — out of scope for that F-lite cutover.
+
+The fix is mechanical but cross-cutting: change the protocol annotation, rewrite each driver's `stream` as a true async generator (`async def stream(...): async for ev in self._gen(...): yield ev`), and drop `await` at every callsite.
+
+## Who
+
+- **Primary:** Lyra LLM-driver maintainers and anyone touching `src/lyra/llm/` or `src/lyra/core/ports/llm.py`. They own the contract that newcomers will copy.
+- **Secondary:** Agent authors who consume `stream(...)` (`simple_agent.py` today, future agents). They benefit from a contract where the obvious-looking call shape works.
+
+## Constraints
+
+- Touches: protocol (`src/lyra/core/ports/llm.py`), 4 drivers (`ClaudeCliDriver`, `NatsLlmDriver`, `CliNatsDriver`, `NatsLlmClient`), callers (currently `simple_agent.py:259`), and all existing tests that use `await stream(...)`.
+- Mechanical conversion — no new architecture, no new dependencies.
+- Must land as a single PR (protocol + drivers + callers + tests change together; partial cutover breaks at runtime).
+- Schedule: only after PR #1119 has landed and the M₁ soak window confirms no streaming regression from that change.
+- Effort estimate from issue body: 3–5 hours.
+
+## Out of Scope
+
+- Changing streaming *semantics* (event shapes, ordering, buffering) — only the calling convention changes.
+- Adding new drivers or new agent code.
+- Refactoring `_stream_gen` internals beyond what the protocol change requires.
+- Touching the NATS transport contracts (`packages/roxabi-contracts/`).
+- Production cutover or M₁ soak validation (handled by `/promote` after merge).
+
+## Premise Validity
+
+**Success in 6 months:** Zero `await driver.stream(...)` callsites remain in `src/lyra` (`grep -r "await.*\.stream(" src/lyra` count = 0). `LlmProvider.stream` is a true async generator. All 4 drivers + callers + tests use `async for ev in driver.stream(...)` directly. No regression in LLM streaming observed during M₁ soak window post-merge.
+
+**Failure in 6 months:** Either (a) `grep -r "await.*\.stream(" src/lyra` returns >0 hits 6 months post-merge (cutover incomplete or new code reintroduced the pattern), OR (b) a regression report or M₁ log shows LLM streaming dropped events / hung after the refactor.
+
+**Simplest alternative:** Option 2 from issue body — add a docstring on `LlmProvider.stream` and every driver: "Callers must `await` this coroutine to obtain the iterator before iterating." Keep the current two-step pattern.
+
+**Why not simplest:** Docstrings ¬enforced; the silent-zero-items trap remains forever. Future callers writing the natural `async for ev in client.stream(...)` without `await` still get 0 events with no error and no type-check warning. The trap was the precipitating bug — documenting it ¬fixes it.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (LLM transport), mechanical conversion, solution path already chosen in issue body.
+
+Signals observed:
+- Single domain (`src/lyra/llm/` + `core/ports/llm.py` + thin caller/test edits).
+- Bounded file count (~7–10 files: protocol, 4 drivers, 1+ caller, ≥1 test file).
+- No new patterns or unknowns — the target shape is a textbook async generator.
+- Effort 3–5h aligns with F-lite envelope.
+- Must ship as a single coordinated PR (¬multi-domain, ¬multi-PR).

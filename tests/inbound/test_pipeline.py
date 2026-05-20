@@ -160,9 +160,7 @@ class TestInboundPipeline:
         parser.parse = MagicMock(return_value=msg)
         send_backpressure = AsyncMock()
 
-        async def _pre_route_hook(
-            _msg: InboundMessage, _ctx: InboundContext
-        ) -> None:
+        async def _pre_route_hook(_msg: InboundMessage, _ctx: InboundContext) -> None:
             _ctx.router.owned_threads.add(123)
 
         # Act

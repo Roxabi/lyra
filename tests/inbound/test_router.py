@@ -189,9 +189,7 @@ class TestRouterDiscord:
         msg = _make_msg(
             platform="discord",
             is_mention=True,
-            platform_meta=_discord_meta(
-                guild_id=_GUILD_ID, thread_id=_OWNED_THREAD_ID
-            ),
+            platform_meta=_discord_meta(guild_id=_GUILD_ID, thread_id=_OWNED_THREAD_ID),
         )
         # Act
         decision = router.decide(msg, router_ctx_discord)
@@ -205,9 +203,7 @@ class TestRouterDiscord:
         msg = _make_msg(
             platform="discord",
             is_mention=False,
-            platform_meta=_discord_meta(
-                guild_id=_GUILD_ID, thread_id=_OWNED_THREAD_ID
-            ),
+            platform_meta=_discord_meta(guild_id=_GUILD_ID, thread_id=_OWNED_THREAD_ID),
         )
         # Act
         decision = router.decide(msg, router_ctx_discord)

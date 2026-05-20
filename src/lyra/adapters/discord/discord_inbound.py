@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import logging
+import sqlite3
 from typing import TYPE_CHECKING, Any
 
 import discord
@@ -56,7 +57,7 @@ async def _discord_pre_route_hook(
     try:
         if await adapter._thread_store.is_owned(str(meta.thread_id), adapter._bot_id):
             ctx.router.owned_threads.add(meta.thread_id)
-    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except sqlite3.Error:
         # ThreadStore I/O failure — fall through; Router will DROP unrecognized thread
         log.warning(
             "pre_route_hook: ThreadStore.is_owned failed for thread %s",
@@ -127,18 +128,14 @@ async def _discord_pre_session_hook(  # noqa: C901 — DEBT:wiring-bootstrap-dep
                 resolved_thread_id = raw_message.thread.id
                 ctx.router.owned_threads.add(raw_message.thread.id)
                 if adapter._thread_store is not None:
-                    try:
-                        await persist_thread_claim(
-                            adapter._thread_store,
-                            thread_id=raw_message.thread.id,
-                            bot_id=adapter._bot_id,
-                            channel_id=raw_message.channel.id,
-                            guild_id=getattr(raw_message.guild, "id", None),
-                        )
-                    except Exception as e:  # noqa: BLE001 — DEBT:boundary-broad-catch
-                        log.warning(
-                            "Failed to persist thread claim in recovery path: %s", e
-                        )
+                    await persist_thread_claim(
+                        adapter._thread_store,
+                        thread_id=raw_message.thread.id,
+                        bot_id=adapter._bot_id,
+                        channel_id=raw_message.channel.id,
+                        guild_id=getattr(raw_message.guild, "id", None),
+                    )
+                    # persist_thread_claim already catches and logs failures internally.
 
     # Claim an existing thread when directly mentioned inside it.
     if _is_mention and isinstance(raw_message.channel, discord.Thread):

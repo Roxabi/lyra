@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.llm.drivers.cli_nats import CliNatsDriver
-    from lyra.nats.nats_llm_client import NatsLlmClient
+    from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
 
@@ -158,7 +158,7 @@ def register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — registr
     tts_service: TtsProtocol | None,
     agent_store: AgentStore | None,
     raw_config: dict,
-    nats_llm_client: "NatsLlmClient | None",
+    nats_llm_client: "LlmClient | None",
     *,
     cli_nats_driver: "CliNatsDriver | None" = None,
 ) -> None:
@@ -173,7 +173,7 @@ def register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — registr
         tts_service,
         agent_store=agent_store,
         llm_cfg=llm_cfg,
-        nats_llm_client=nats_llm_client,
+        nats_llm_client=nats_llm_client,  # type: ignore[arg-type]  # T24 will update _resolve_agents to LlmClient
         cli_nats_driver=cli_nats_driver,
     )
     for ag in all_agents.values():

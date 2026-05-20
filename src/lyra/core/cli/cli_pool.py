@@ -135,7 +135,9 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
 
             if entry is None or not entry.is_alive():
                 entry = await self._spawn(
-                    pool_id, model_config, system_prompt,
+                    pool_id,
+                    model_config,
+                    system_prompt,
                     agent_name=agent_name,
                     agent_email=agent_email,
                     lyra_session_id=lyra_session_id,
@@ -149,7 +151,9 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
                 )
                 await self._kill(pool_id, preserve_session=False)
                 entry = await self._spawn(
-                    pool_id, model_config, system_prompt,
+                    pool_id,
+                    model_config,
+                    system_prompt,
                     agent_name=agent_name,
                     agent_email=agent_email,
                     lyra_session_id=lyra_session_id,

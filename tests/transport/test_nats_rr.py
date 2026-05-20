@@ -2,6 +2,7 @@
 
 Spec: SC-07 (sanitization), SC-15 (transport suite passes), B1 consensus.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock

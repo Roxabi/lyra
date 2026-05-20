@@ -38,6 +38,10 @@ class LlmClient:
         del pool_id
         return self._pool.is_pool_alive()
 
+    async def stop(self) -> None:
+        """Stop heartbeat subscription on the underlying pool."""
+        await self._pool.stop()
+
     async def complete(  # noqa: PLR0913 — LlmProvider protocol signature
         self,
         pool_id: str,

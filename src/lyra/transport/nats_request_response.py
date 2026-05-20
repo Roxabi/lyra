@@ -4,6 +4,7 @@ Owns NATS-specific resources (Client ref, inbox lifecycle, sanitization).
 Spec: artifacts/specs/1278-nats-transport-workerpool-spec.mdx (S2).
 Consensus: artifacts/analyses/1278-nats-transport-workerpool-consensus.mdx (B1 hybrid).
 """
+
 from __future__ import annotations
 
 import asyncio

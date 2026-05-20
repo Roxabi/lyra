@@ -1,227 +1,64 @@
-"""NatsSttClient — hub-side NATS request-reply client for STT.
+"""NatsSttClient — thin STT domain client over WorkerPoolClient + SttCodec.
 
-Maintains a ``WorkerRegistry`` populated from heartbeats, and routes each
-transcription to workers in score order via per-worker subject
-``lyra.voice.stt.request.{worker_id}``. Walks the registry on timeout or
-NoRespondersError, marking stale workers and trying the next candidate.
+Composition (3-layer): NatsSttClient → WorkerPoolClient → NatsTransport.
+Implements STTProtocol. Per-worker routing via roxabi_contracts.voice.per_worker_stt.
 """
 
 from __future__ import annotations
 
-import base64
 import logging
-import os
-from datetime import datetime, timezone
-from typing import NoReturn
-from uuid import uuid4
+from typing import TYPE_CHECKING
 
-import nats.errors
-from nats.aio.client import Client as NATS
-from nats.errors import NoRespondersError
-from pydantic import ValidationError
-
-import nats
-from lyra.core.ports.stt import (
-    STTNoiseError,
-    STTUnavailableError,
-    TranscriptionResult,
-)
-from lyra.nats._worker_client_base import NatsWorkerClientBase
+from lyra.core.ports.stt import STTNoiseError, STTUnavailableError, TranscriptionResult
+from lyra.nats.nats_stt_codec import SttEncodeParams
 from lyra.nats.stt_helpers import is_whisper_noise
-from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_contracts.voice import (
-    SUBJECTS,
-    SttRequest,
-    SttResponse,
-    per_worker_stt,
-    validate_worker_id,
-)
+from roxabi_contracts.voice import per_worker_stt
+
+if TYPE_CHECKING:
+    from nats.aio.client import Client as NATS
+
+    from lyra.nats.nats_stt_codec import SttCodec
+    from lyra.transport.worker_pool_client import WorkerPoolClient
 
 log = logging.getLogger(__name__)
 
 
-def _stt_result_from_wire(resp: SttResponse) -> TranscriptionResult:
-    """Map a validated SttResponse to TranscriptionResult.
-
-    Precondition: resp.ok=True and _enforce_success_invariant passed.
-    """
-    return TranscriptionResult(
-        text=resp.text,  # type: ignore[arg-type]  # narrowed by _enforce_success_invariant
-        language=resp.language,  # type: ignore[arg-type]
-        duration_seconds=resp.duration_seconds,  # type: ignore[arg-type]
-    )
-
-
-_STT_TIMEOUT_DEFAULT = 15.0
-_STT_TIMEOUT_MIN = 1.0
-_STT_TIMEOUT_MAX = 300.0
-
-
-def _parse_stt_timeout(timeout: float | None) -> float:
-    """Resolve STT timeout: explicit arg > LYRA_STT_TIMEOUT env var > 15s default.
-
-    Accepts values in [1.0, 300.0] seconds; falls back to 15s on invalid input.
-    """
-    if timeout is not None:
-        value = timeout
-    else:
-        raw = os.environ.get("LYRA_STT_TIMEOUT", str(_STT_TIMEOUT_DEFAULT))
-        try:
-            value = float(raw)
-        except ValueError:
-            log.warning(
-                "LYRA_STT_TIMEOUT=%r is not a valid float; using %.0fs",
-                raw,
-                _STT_TIMEOUT_DEFAULT,
-            )
-            return _STT_TIMEOUT_DEFAULT
-    if not (_STT_TIMEOUT_MIN <= value <= _STT_TIMEOUT_MAX):
-        log.warning(
-            "STT timeout %.1fs out of range [%.0f, %.0f]; using %.0fs",
-            value,
-            _STT_TIMEOUT_MIN,
-            _STT_TIMEOUT_MAX,
-            _STT_TIMEOUT_DEFAULT,
-        )
-        return _STT_TIMEOUT_DEFAULT
-    return value
-
-
-def _is_no_responders(exc: Exception) -> bool:
-    """Check if the exception is a NATS NoRespondersError."""
-    return isinstance(exc, NoRespondersError)
-
-
-class NatsSttClient(NatsWorkerClientBase):
-    HB_SUBJECT = SUBJECTS.stt_heartbeat
-    LOG_PREFIX = "stt_client:"
-    VALIDATE_WORKER_ID = staticmethod(validate_worker_id)
-
-    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
+class NatsSttClient:
+    def __init__(
         self,
-        nc: NATS,
+        pool: "WorkerPoolClient",
+        codec: "SttCodec",
         *,
-        timeout: float | None = None,
         model: str = "large-v3-turbo",
-        language_detection_threshold: float | None = None,
-        language_detection_segments: int | None = None,
-        language_fallback: str | None = None,
+        nc: "NATS | None" = None,
     ) -> None:
-        super().__init__(nc, timeout=_parse_stt_timeout(timeout))
+        self._pool = pool
+        self._codec = codec
         self._model = model
-        self._detection_threshold = language_detection_threshold
-        self._detection_segments = language_detection_segments
-        self._detection_fallback = language_fallback
+        self._nc = nc
+
+    async def start(self) -> None:
+        """Start heartbeat subscription. nc must have been provided at __init__."""
+        if self._nc is None:
+            raise RuntimeError("NatsSttClient.start() called without nc at __init__")
+        await self._pool.start(self._nc)
+
+    async def stop(self) -> None:
+        await self._pool.stop()
 
     def is_available(self) -> bool:
-        """Check if any STT workers are registered via heartbeats."""
-        return self._registry.any_alive()
-
-    def _parse_reply(self, raw: bytes) -> SttResponse:
-        """Validate a NATS reply against SttResponse; translate a ValidationError
-        into STTUnavailableError + record a circuit-breaker failure."""
-        try:
-            return SttResponse.model_validate_json(raw)
-        except ValidationError as exc:
-            log.warning(
-                "STT reply validation failed — raw bytes (%d): %r",
-                len(raw),
-                raw[:500],
-                exc_info=True,
-            )
-            self._cb.record_failure()
-            raise STTUnavailableError("STT reply failed schema validation") from exc
-
-    async def _walk_registry(self, payload: bytes) -> SttResponse:
-        """Iterate over workers in score order until one succeeds.
-
-        On TimeoutError/NoRespondersError: mark worker stale, continue to next.
-        On other exceptions: raise via _raise_nats_failure (terminal).
-        After exhaustion: record_failure once, raise STTUnavailableError chained
-        from last exception.
-        """
-        candidates = self._registry.ordered_by_score()
-        if not candidates:
-            raise STTUnavailableError("STT: no live worker (heartbeat stale >15s)")
-
-        payload_kb = len(payload) / 1024
-        last_exc: Exception | None = None
-
-        for worker in candidates:
-            target = per_worker_stt(worker.worker_id)
-            try:
-                reply = await self._nc.request(target, payload, timeout=self._timeout)
-                return self._parse_reply(reply.data)
-            except TimeoutError:
-                self._registry.mark_stale(worker.worker_id)
-                last_exc = TimeoutError()
-                continue
-            except (nats.errors.Error, TimeoutError) as exc:
-                if _is_no_responders(exc):
-                    self._registry.mark_stale(worker.worker_id)
-                    last_exc = exc
-                    continue
-                # Terminal: other exceptions go through failure path
-                self._raise_nats_failure(exc, payload_kb)
-
-        # All candidates exhausted
-        log.warning(
-            "STT: all workers unresponsive, last error type=%s",
-            type(last_exc).__name__ if last_exc else "None",
-        )
-        self._cb.record_failure()
-        raise STTUnavailableError("STT: all workers unresponsive") from last_exc
+        return self._pool.is_pool_alive()
 
     async def transcribe(self, audio: bytes, mime: str) -> TranscriptionResult:
-        if self._cb.is_open():
-            raise STTUnavailableError(
-                "STT circuit open — adapter temporarily unavailable"
-            )
-        request = SttRequest(
-            contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
-            issued_at=datetime.now(timezone.utc),
-            request_id=str(uuid4()),
-            audio_b64=base64.b64encode(audio).decode("ascii"),
-            mime_type=mime,
-            model=self._model,
-            language_detection_threshold=self._detection_threshold,
-            language_detection_segments=self._detection_segments,
-            language_fallback=self._detection_fallback,
+        params = SttEncodeParams(model=self._model)
+        payload = self._codec.encode(audio, mime, params)
+        result = await self._pool.request_with_routing(
+            per_worker_stt, payload, max_attempts=None
         )
-        payload = request.model_dump_json(exclude_none=True).encode("utf-8")
-        resp = await self._walk_registry(payload)
-        if not resp.ok:
-            self._cb.record_failure()
-            raise STTUnavailableError(resp.error or "STT transcription failed")
-        result = _stt_result_from_wire(resp)
-        self._cb.record_success()
-        if is_whisper_noise(result.text):
-            log.info(
-                "STT noise result via NATS: text=%r lang=%s",
-                result.text,
-                result.language,
-            )
-            raise STTNoiseError(f"Noise transcript: {result.text!r}")
-        return result
-
-    def _raise_nats_failure(self, exc: Exception, payload_kb: float) -> NoReturn:
-        """Convert a NATS request exception to STTUnavailableError.
-
-        Domain errors (``STTUnavailableError``) pass through unchanged so callers
-        can rely on this being the single translation boundary for NATS-transport
-        exceptions — no per-site ``except STTUnavailableError: raise`` guard
-        needed anywhere in this file.
-        """
-        if isinstance(exc, STTUnavailableError):
-            raise exc
-        if "max_payload" in str(exc).lower() or "MaxPayload" in type(exc).__name__:
-            log.error(
-                "STT payload too large (%.0f KB) — check NATS max_payload",
-                payload_kb,
-            )
-            self._cb.record_failure()
-            raise STTUnavailableError("STT request payload too large") from exc
-        log.warning("STT adapter unreachable: %s: %s", type(exc).__name__, exc)
-        self._cb.record_failure()
-        raise STTUnavailableError("STT adapter unreachable") from exc
+        tr = self._codec.decode(result)
+        if tr.error:
+            raise STTUnavailableError(tr.error)
+        if is_whisper_noise(tr.text):
+            log.info("STT noise result via NATS: text=%r lang=%s", tr.text, tr.language)
+            raise STTNoiseError(f"Noise transcript: {tr.text!r}")
+        return tr

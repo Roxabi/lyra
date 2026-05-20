@@ -41,9 +41,7 @@ class ImageCodec:
     decode: maps Result[bytes, SanitizedError] → ImageResult; never raises.
     """
 
-    def encode(
-        self, prompt: str, engine: str, params: ImageGenParams | None
-    ) -> bytes:
+    def encode(self, prompt: str, engine: str, params: ImageGenParams | None) -> bytes:
         """Build canonical ImageRequest payload bytes.
 
         Mirrors NatsImageClient.generate() payload-builder exactly so the wire

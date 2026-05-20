@@ -5,6 +5,7 @@ Composes a transport (NATS today, HTTP tomorrow). Owns CircuitBreaker
 Image) call request_with_routing() / stream_request(); pool stays
 domain-agnostic. Spec § Slice S3. Consensus § B2.
 """
+
 from __future__ import annotations
 
 import asyncio

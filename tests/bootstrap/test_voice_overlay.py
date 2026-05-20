@@ -8,10 +8,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.bootstrap.factory.voice_overlay import (
+    init_nats_image,
     init_nats_stt,
     init_nats_tts,
     probe_voice_services,
 )
+from lyra.nats.nats_image_client import NatsImageClient
 from lyra.nats.nats_stt_client import NatsSttClient
 from lyra.nats.nats_tts_client import NatsTtsClient
 
@@ -85,6 +87,12 @@ class TestInitNatsTts:
         monkeypatch.delenv("LYRA_TTS_ENABLED", raising=False)
         client = init_nats_tts(mock_nc)
         assert isinstance(client, NatsTtsClient)
+
+
+class TestInitNatsImage:
+    def test_returns_client(self, mock_nc: MagicMock) -> None:
+        client = init_nats_image(mock_nc)
+        assert isinstance(client, NatsImageClient)
 
 
 class TestProbeVoiceServices:

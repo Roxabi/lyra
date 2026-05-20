@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from lyra.infrastructure.stores.agent_store import AgentStore
     from lyra.infrastructure.stores.auth_store import AuthStore
     from lyra.llm.drivers.cli_nats import CliNatsDriver
-    from lyra.nats.nats_llm_client import NatsLlmClient
+    from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ async def shutdown_hub_runtime(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps 
     proxies,
     pm: PairingManager | None,
     cli_nats_driver: "CliNatsDriver | None",
-    nats_llm_client: "NatsLlmClient | None",
+    nats_llm_client: "LlmClient | None",
 ) -> None:
     """Run the post-cancellation teardown sequence for hub_standalone."""
     await readiness_sub.unsubscribe()
@@ -124,5 +124,5 @@ async def shutdown_hub_runtime(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps 
     if cli_nats_driver is not None:
         await cli_nats_driver.stop()
     if nats_llm_client is not None:
-        await nats_llm_client.stop()
+        await nats_llm_client.stop()  # type: ignore[attr-defined]  # T24/T31 will wire pool.stop()
     await hub.shutdown()

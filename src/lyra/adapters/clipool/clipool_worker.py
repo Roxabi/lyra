@@ -134,6 +134,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             heartbeat_subject=_HEARTBEAT_SUBJECT,
             heartbeat_interval=_HEARTBEAT_INTERVAL,
             identity_name=identity_name,
+            wait_ready=False,  # worker semantics — see NatsAdapterBase docstring
         )
         self._pool = pool
 

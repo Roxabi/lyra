@@ -67,3 +67,39 @@ async def test_call_sanitized_error_no_str_exc():
     assert isinstance(result, Err)
     assert "internal-secret-state" not in result.error.message
     assert result.error.message == "TimeoutError"
+
+
+@pytest.mark.asyncio
+async def test_open_inbox_cleanup_on_early_break():
+    # B1 consensus: early break must trigger CM __aexit__ → unsubscribe.
+    nc = AsyncMock()
+    mock_msg = MagicMock()
+    mock_msg.data = b"chunk1"
+    mock_sub = AsyncMock()
+    mock_sub.next_msg = AsyncMock(return_value=mock_msg)
+    nc.subscribe = AsyncMock(return_value=mock_sub)
+    nc.new_inbox = MagicMock(return_value="_INBOX.test")
+
+    t = NatsTransport(nc)
+    async with t.open_inbox() as stream:  # type: ignore[attr-defined]
+        async for _ in stream.messages:
+            break
+
+    mock_sub.unsubscribe.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_open_inbox_yields_inbox_stream():
+    """CM yields InboxStream with inbox_subject set from nc.new_inbox()."""
+    from lyra.transport._result import InboxStream
+
+    nc = AsyncMock()
+    mock_sub = AsyncMock()
+    mock_sub.next_msg = AsyncMock(side_effect=TimeoutError())
+    nc.subscribe = AsyncMock(return_value=mock_sub)
+    nc.new_inbox = MagicMock(return_value="_INBOX.abc123")
+
+    t = NatsTransport(nc)
+    async with t.open_inbox() as stream:  # type: ignore[attr-defined]
+        assert isinstance(stream, InboxStream)
+        assert stream.inbox_subject == "_INBOX.abc123"

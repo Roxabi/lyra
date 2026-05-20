@@ -109,6 +109,39 @@ class TestDispatcher:
         assert isinstance(text_sent, str) and len(text_sent) > 0
 
     @pytest.mark.asyncio
+    async def test_dispatch_circuit_open_uses_msg_catalog(self) -> None:
+        # Arrange — catalog returns a custom text for "circuit_open_ack".
+        catalog = MagicMock()
+        catalog.get = MagicMock(return_value="custom catalog text")
+        bus = AsyncMock()
+        registry = _open_circuit_registry()
+        typing = MagicMock()
+        ctx = DispatchCtx(
+            inbound_bus=bus,  # type: ignore[arg-type]
+            circuit_registry=registry,  # type: ignore[arg-type]
+            outbound_listener=None,  # type: ignore[arg-type]
+            typing=typing,
+            msg_catalog=catalog,
+        )
+        msg = _make_msg()
+        send_backpressure = AsyncMock()
+        on_drop = MagicMock()
+
+        dispatcher = Dispatcher()
+
+        # Act
+        await dispatcher.dispatch(msg, ctx, send_backpressure, on_drop)
+
+        # Assert — catalog path: send_backpressure receives the catalog's return value,
+        # NOT the hardcoded fallback from _default_get_msg.
+        # Negative: replacing _catalog_get_msg with _default_get_msg in dispatcher.py
+        # (or deleting the `if _catalog is not None` branch) causes send_backpressure
+        # to receive the fallback string instead of "custom catalog text".
+        catalog.get.assert_called_once_with("circuit_open_ack")
+        send_backpressure.assert_awaited_once_with("custom catalog text")
+        bus.put.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_dispatch_queue_full_calls_on_drop_and_backpressure(self) -> None:
         # Arrange — bus.put raises QueueFull to simulate a saturated queue.
         bus = AsyncMock()

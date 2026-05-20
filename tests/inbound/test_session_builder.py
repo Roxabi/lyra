@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -284,3 +285,40 @@ class TestSessionBuilderPathD:
             session_id="sess-first",
             pool_id="pool-first",
         )
+
+    @pytest.mark.asyncio
+    async def test_thread_update_fn_returns_early_when_thread_id_none(self) -> None:
+        # Arrange — owned thread path; capture the session_update_fn closure.
+        prior = ThreadSession(session_id=_SESSION_ID, pool_id="discord:main:thread:123")
+        ts = _make_turn_store()
+        th = _make_thread_store(session=prior)
+        cache: dict = {}
+        builder = SessionBuilder()
+        msg = _make_msg(
+            platform="discord",
+            scope_id="thread:123",
+            platform_meta=DiscordMeta(channel_id=10, guild_id=50, thread_id=123),
+        )
+        ctx = _make_session_ctx(
+            turn_store=ts, thread_store=th, thread_sessions_cache=cache
+        )
+        result = await builder.build(msg, ctx)
+        update_fn = result.session_update_fn
+        assert update_fn is not None
+
+        # Build an updated msg where thread_id=None so _tid evaluates to None inside
+        # the closure.  Use dataclasses.replace to produce a new DiscordMeta.
+        updated_meta = dataclasses.replace(result.platform_meta, thread_id=None)
+        updated_msg = dataclasses.replace(result, platform_meta=updated_meta)
+
+        # Reset the mock so only calls triggered by update_fn are counted.
+        th.update_session.reset_mock()
+
+        # Act
+        await update_fn(updated_msg, "sess-irrelevant", "pool-irrelevant")
+
+        # Assert — guard `if _tid is None: return` fired; thread_store never written.
+        # Negative: deleting the `if _tid is None: return` guard in _thread_update_fn
+        # makes _tid_str = str(None) = "None" and update_session IS called, failing
+        # this assertion.
+        th.update_session.assert_not_awaited()

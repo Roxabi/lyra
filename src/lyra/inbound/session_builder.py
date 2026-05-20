@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import sqlite3
 from typing import TYPE_CHECKING
 
 from lyra.core.hub.hub_protocol import RoutingKey
-from lyra.core.messaging.message import DiscordMeta, Platform, TelegramMeta
+from lyra.core.messaging.message import DiscordMeta, Platform
+from lyra.core.stores.thread_store_protocol import ThreadSession
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
-    from lyra.core.stores.thread_store_protocol import ThreadSession
     from lyra.inbound.context import SessionCtx
 
 log = logging.getLogger("lyra.inbound.session_builder")
@@ -91,7 +92,7 @@ class SessionBuilder:
         _prior_session_id: str | None = None
         try:
             _prior_session_id = await ts.get_last_session(_pool_id)
-        except Exception:
+        except (sqlite3.Error, RuntimeError):
             log.exception(
                 "SessionBuilder: TurnStore.get_last_session failed pool_id=%s", _pool_id
             )
@@ -107,11 +108,7 @@ class SessionBuilder:
             await _ts.start_session(session_id, pool_id)
 
         _replacements: dict = {"session_update_fn": _turnstore_update_fn}
-        if _prior_session_id is not None and isinstance(meta, TelegramMeta):
-            _replacements["platform_meta"] = dataclasses.replace(
-                meta, thread_session_id=_prior_session_id
-            )
-        elif _prior_session_id is not None and isinstance(meta, DiscordMeta):
+        if _prior_session_id is not None and hasattr(meta, "thread_session_id"):
             _replacements["platform_meta"] = dataclasses.replace(
                 meta, thread_session_id=_prior_session_id
             )
@@ -156,7 +153,7 @@ class SessionBuilder:
                         del _cache[_oldest]
                     _cache[_thread_id_str] = _ts_result
                 _stored = _ts_result if _ts_result.is_resolved else None
-        except Exception:
+        except (sqlite3.Error, RuntimeError):
             log.exception(
                 "SessionBuilder: ThreadStore.get_session failed thread_id=%s",
                 _thread_id_str,
@@ -196,11 +193,9 @@ class SessionBuilder:
                         " thread_id=%s (cache full)",
                         _oldest_key,
                     )
-                from lyra.core.stores.thread_store_protocol import ThreadSession
-
                 _cache.pop(_tid_str, None)
                 _cache[_tid_str] = ThreadSession(session_id=session_id, pool_id=pool_id)
-            except Exception:
+            except (sqlite3.Error, RuntimeError):
                 log.exception(
                     "SessionBuilder: ThreadStore.update_session failed thread_id=%s",
                     _tid_str,

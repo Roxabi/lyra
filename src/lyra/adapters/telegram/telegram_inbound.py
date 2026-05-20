@@ -25,12 +25,19 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("lyra.adapters.telegram")
 
+# Telegram has no thread model — owned_threads is always empty.
+# frozenset avoids allocating a fresh set() on every inbound message.
+# Router only reads owned_threads (never calls .add()); Discord-only hooks mutate it.
+_EMPTY_OWNED_THREADS: frozenset[int] = frozenset()
+
 _dispatcher = Dispatcher()
 _router = Router()
 _session_builder = SessionBuilder()
 _pipeline = InboundPipeline(
     router=_router, session_builder=_session_builder, dispatcher=_dispatcher
 )
+# Adapters are process-singletons created at bootstrap; id-keying is safe for
+# this lifecycle (no GC + id-reuse window). Revisit when bootstrap DI lands (#1283).
 _parser_cache: dict[int, TelegramWireParser] = {}  # one parser per adapter instance
 
 
@@ -54,7 +61,7 @@ async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
     inbound_ctx = InboundContext(
         router=RouterCtx(
             bot_id=adapter._bot_id,
-            owned_threads=set(),  # Telegram has no thread model
+            owned_threads=_EMPTY_OWNED_THREADS,  # type: ignore[arg-type]  # Telegram has no thread model; Router only reads, never mutates
             watch_channels=None,
         ),
         session=SessionCtx(

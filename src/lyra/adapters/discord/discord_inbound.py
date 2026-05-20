@@ -34,6 +34,8 @@ _session_builder = SessionBuilder()
 _pipeline = InboundPipeline(
     router=_router, session_builder=_session_builder, dispatcher=_dispatcher
 )
+# Adapters are process-singletons created at bootstrap; id-keying is safe for
+# this lifecycle (no GC + id-reuse window). Revisit when bootstrap DI lands (#1283).
 _parser_cache: dict[int, DiscordWireParser] = {}  # one parser per adapter instance
 
 
@@ -57,8 +59,9 @@ async def _discord_pre_route_hook(
     try:
         if await adapter._thread_store.is_owned(str(meta.thread_id), adapter._bot_id):
             ctx.router.owned_threads.add(meta.thread_id)
-    except sqlite3.Error:
-        # ThreadStore I/O failure — fall through; Router will DROP unrecognized thread
+    except (sqlite3.Error, RuntimeError):
+        # sqlite3.Error: I/O failure; RuntimeError: DB not yet connected (_require_db).
+        # Both cases: fall through; Router will DROP the unrecognized thread.
         log.warning(
             "pre_route_hook: ThreadStore.is_owned failed for thread %s",
             meta.thread_id,
@@ -66,16 +69,105 @@ async def _discord_pre_route_hook(
         )
 
 
-async def _discord_pre_session_hook(  # noqa: C901 — DEBT:wiring-bootstrap-deps; verbatim extraction of auto-thread block
+async def _try_auto_create_thread(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — raw_message/ctx/adapter are distinct dependencies
+    raw_message: Any,
+    ctx: InboundContext,
+    adapter: "DiscordAdapter",
+    *,
+    is_mention: bool,
+    is_dm: bool,
+    is_thread: bool,
+) -> int | None:
+    """Auto-create a Discord thread when mention / watch-channel triggers it.
+
+    Mutates ctx.router.owned_threads on success.
+    Returns resolved thread_id, or None if not created.
+    """
+    _is_watch_channel = (
+        not is_dm
+        and not is_thread
+        and raw_message.channel.id in adapter._watch_channels
+    )
+    if not (adapter._auto_thread and (is_mention or _is_watch_channel)):
+        return None
+    if isinstance(raw_message.channel, discord.Thread):
+        return None
+    if not hasattr(raw_message.channel, "create_thread"):
+        return None
+
+    try:
+        thread = await raw_message.create_thread(
+            name=make_thread_name(
+                raw_message.content, raw_message.author.display_name
+            )
+        )
+        ctx.router.owned_threads.add(thread.id)
+        if adapter._thread_store is not None:
+            await persist_thread_claim(
+                adapter._thread_store,
+                thread_id=thread.id,
+                bot_id=adapter._bot_id,
+                channel_id=raw_message.channel.id,
+                guild_id=getattr(raw_message.guild, "id", None),
+            )
+        return thread.id
+    except Exception:
+        log.exception(
+            "Failed to create Discord thread for message id=%s",
+            raw_message.id,
+        )
+        # Discord may have created the thread despite the error —
+        # recover thread_id to keep scope_id consistent.
+        recovered = getattr(raw_message, "thread", None)
+        if recovered is None:
+            return None
+        # NOTE: persist_thread_claim swallows its own exceptions silently
+        # (see discord_threads.py), so a DB failure here is not observable.
+        # The hot-set add may diverge from the DB transiently; the next
+        # inbound message in this thread triggers _discord_pre_route_hook
+        # which performs a cold-path is_owned lookup that reconciles state.
+        # Eventual consistency is the documented contract.
+        ctx.router.owned_threads.add(recovered.id)
+        if adapter._thread_store is not None:
+            await persist_thread_claim(
+                adapter._thread_store,
+                thread_id=recovered.id,
+                bot_id=adapter._bot_id,
+                channel_id=raw_message.channel.id,
+                guild_id=getattr(raw_message.guild, "id", None),
+            )
+        return recovered.id
+
+
+async def _claim_existing_thread(
+    raw_message: Any,
+    ctx: InboundContext,
+    adapter: "DiscordAdapter",
+    *,
+    is_mention: bool,
+) -> None:
+    """Claim an existing thread when bot is mentioned inside it."""
+    if not (is_mention and isinstance(raw_message.channel, discord.Thread)):
+        return
+    ctx.router.owned_threads.add(raw_message.channel.id)
+    if adapter._thread_store is None:
+        return
+    await persist_thread_claim(
+        adapter._thread_store,
+        thread_id=raw_message.channel.id,
+        bot_id=adapter._bot_id,
+        channel_id=getattr(raw_message.channel, "parent_id", raw_message.channel.id),
+        guild_id=getattr(raw_message.guild, "id", None),
+    )
+
+
+async def _discord_pre_session_hook(
     msg: InboundMessage,
     ctx: InboundContext,
     raw_message: Any,
     adapter: "DiscordAdapter",
 ) -> InboundMessage:
-    """Auto-create or claim a Discord thread when mention / watch-channel triggers it.
-
-    Returns the (possibly updated) InboundMessage with DiscordMeta.thread_id
-    set so downstream stages address the new thread.
+    """Pre-session hook: auto-thread create + claim; returns updated InboundMessage.
 
     Must be bound with ``functools.partial(raw_message=..., adapter=...)`` before
     passing to ``InboundPipeline.run`` as ``pre_session_hook``.
@@ -84,72 +176,15 @@ async def _discord_pre_session_hook(  # noqa: C901 — DEBT:wiring-bootstrap-dep
     if not isinstance(meta, DiscordMeta):
         return msg
 
-    _is_mention = msg.is_mention
-    _is_dm = raw_message.guild is None
-    _is_thread = isinstance(raw_message.channel, discord.Thread)
-    _is_watch_channel = (
-        not _is_dm
-        and not _is_thread
-        and raw_message.channel.id in adapter._watch_channels
+    is_mention = msg.is_mention
+    is_dm = raw_message.guild is None
+    is_thread = isinstance(raw_message.channel, discord.Thread)
+
+    resolved_thread_id = await _try_auto_create_thread(
+        raw_message, ctx, adapter,
+        is_mention=is_mention, is_dm=is_dm, is_thread=is_thread,
     )
-
-    # Auto-thread creation — creates a new thread from the message.
-    resolved_thread_id: int | None = None
-    if (
-        adapter._auto_thread
-        and (_is_mention or _is_watch_channel)
-        and not isinstance(raw_message.channel, discord.Thread)
-        and hasattr(raw_message.channel, "create_thread")
-    ):
-        try:
-            thread = await raw_message.create_thread(
-                name=make_thread_name(
-                    raw_message.content, raw_message.author.display_name
-                )
-            )
-            resolved_thread_id = thread.id
-            ctx.router.owned_threads.add(thread.id)
-            if adapter._thread_store is not None:
-                await persist_thread_claim(
-                    adapter._thread_store,
-                    thread_id=thread.id,
-                    bot_id=adapter._bot_id,
-                    channel_id=raw_message.channel.id,
-                    guild_id=getattr(raw_message.guild, "id", None),
-                )
-        except Exception:
-            log.exception(
-                "Failed to create Discord thread for message id=%s",
-                raw_message.id,
-            )
-            # Discord may have created the thread despite the error —
-            # recover thread_id to keep scope_id consistent.
-            if hasattr(raw_message, "thread") and raw_message.thread is not None:
-                resolved_thread_id = raw_message.thread.id
-                ctx.router.owned_threads.add(raw_message.thread.id)
-                if adapter._thread_store is not None:
-                    await persist_thread_claim(
-                        adapter._thread_store,
-                        thread_id=raw_message.thread.id,
-                        bot_id=adapter._bot_id,
-                        channel_id=raw_message.channel.id,
-                        guild_id=getattr(raw_message.guild, "id", None),
-                    )
-                    # persist_thread_claim already catches and logs failures internally.
-
-    # Claim an existing thread when directly mentioned inside it.
-    if _is_mention and isinstance(raw_message.channel, discord.Thread):
-        ctx.router.owned_threads.add(raw_message.channel.id)
-        if adapter._thread_store is not None:
-            await persist_thread_claim(
-                adapter._thread_store,
-                thread_id=raw_message.channel.id,
-                bot_id=adapter._bot_id,
-                channel_id=getattr(
-                    raw_message.channel, "parent_id", raw_message.channel.id
-                ),
-                guild_id=getattr(raw_message.guild, "id", None),
-            )
+    await _claim_existing_thread(raw_message, ctx, adapter, is_mention=is_mention)
 
     if resolved_thread_id is not None:
         new_scope_id = f"thread:{resolved_thread_id}"
@@ -171,13 +206,6 @@ async def _discord_pre_session_hook(  # noqa: C901 — DEBT:wiring-bootstrap-dep
             routing=new_routing,
         )
     return msg
-
-
-def _resolve_send_to_id(message: Any) -> int:
-    """Return the channel or thread id to target for typing cancellation."""
-    if isinstance(message.channel, discord.Thread):
-        return message.channel.id
-    return message.channel.id
 
 
 async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
@@ -208,7 +236,9 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
         if await adapter._handle_voice_command(message, TrustLevel.PUBLIC):
             return
 
-    send_to_id = _resolve_send_to_id(message)
+    # _cancel_typing is keyed by id — use channel.id (what was started); never
+    # thread.id (auto-thread is created later by pre_session_hook, after typing starts).
+    send_to_id = message.channel.id
     adapter._start_typing(send_to_id)
 
     # Per-adapter parser — avoid recreating each message.

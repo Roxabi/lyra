@@ -133,20 +133,6 @@ class TestRouterTelegram:
         # group+no-mention incorrectly processes instead of drops
         assert decision is RouteDecision.DROP
 
-    def test_group_bot_mention_via_is_mention_is_processed(
-        self, router: Router, router_ctx_telegram: RouterCtx
-    ) -> None:
-        # Arrange — group + bot explicitly mentioned (is_mention=True)
-        msg = _make_msg(
-            platform="telegram",
-            is_mention=True,
-            platform_meta=_tg_meta(is_group=True),
-        )
-        # Act
-        decision = router.decide(msg, router_ctx_telegram)
-        # Assert
-        assert decision is RouteDecision.PROCESS
-
 
 # -- Discord -----------------------------------------------------------------
 

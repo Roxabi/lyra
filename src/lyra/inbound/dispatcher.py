@@ -13,9 +13,15 @@ if TYPE_CHECKING:
     from lyra.inbound.context import DispatchCtx
 
 
-def _default_get_msg(key: str, fallback: str = "") -> str:
-    """Fallback message getter used when no MessageManager is available."""
-    return fallback or key
+def _default_get_msg(key: str, display_fallback: str = "") -> str:
+    """Return *display_fallback* when no catalog is available, else *key*.
+
+    Unlike ``MessageManager.get(key, fallback)``, there is no catalog lookup
+    here — the no-catalog case has no message store.  Call sites always pass a
+    real user-visible string as *display_fallback*; *key* (an identifier such as
+    ``circuit_open_ack``) is the last resort when no fallback was given.
+    """
+    return display_fallback or key
 
 
 class Dispatcher:

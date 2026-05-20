@@ -23,13 +23,17 @@ cd ~/projects/lyra
 git pull
 ```
 
-**2. Regenerate auth.conf and reload NATS**
+**2. Regenerate auth.conf and restart NATS**
 
 ```bash
 make nats-regen-authconf
 ```
 
-This runs `scripts/gen_nkeys.py` (entry point `lyra-acl genkeys --regen-authconf`) to re-derive `auth.conf` from all existing seeds, back up the previous `auth.conf`, recreate the Podman secret, then sends `podman kill -s HUP lyra-nats` to trigger a live reload (the in-container NATS server reloads its config on SIGHUP — the host `nats-server` CLI is not used in the Quadlet deployment).
+This runs `scripts/gen_nkeys.py` (entry point `lyra-acl genkeys --regen-authconf`) to re-derive `auth.conf` from all existing seeds, back up the previous `auth.conf`, recreate the Podman secret, then runs `systemctl --user restart lyra-nats` to recreate the container with the refreshed mount.
+
+> **Why restart and not SIGHUP?** Podman secrets declared `type=mount` in `deploy/quadlet/lyra-nats.container` are tmpfs bind-mounts bound at container init. `podman secret create --replace` updates the secret store, but the file inside the running container still resolves to the old tmpfs content. `nats-server` re-reads its config path on SIGHUP, but the path itself is stale — so ACL changes silently fail to apply. Container recreation is the only way to refresh a mount-typed secret. Confirmed during PR #1292 deploy (2026-05-20); see #1293 for the broader ACL-hardening epic.
+>
+> **What about `type=env`?** It does not avoid the restart requirement. Podman injects `type=env` secrets into the container's environment at start; SIGHUP does not re-exec the entrypoint and does not update `environ`, so the value is also baked in. `type=env` would trade `type=mount`'s init-bound tmpfs for an `environ`-baked value with the additional cost of secret content being visible to `podman inspect`. Both forms require container recreation for ACL changes; `type=mount` is preferred by the hardening invariants in [`deploy/CLAUDE.md`](../../deploy/CLAUDE.md#hardening-invariants).
 
 **3. Verify — no permission violations**
 
@@ -48,7 +52,7 @@ journalctl --user -u lyra-discord  --since "2 min ago" | grep -i "nats\|connecte
 journalctl --user -u lyra-clipool  --since "2 min ago" | grep -i "nats\|connected\|error"
 ```
 
-Services reconnect automatically after a NATS reload — no service restart required unless the ACL change added a new identity whose seed is newly generated (in which case restart that service only). Reconnect typically completes in under 1 second on the Podman bridge network; if a service has not reconnected within 10 s, treat it as a failure and proceed to Rollback.
+Services reconnect automatically after the NATS restart — no service restart required unless the ACL change added a new identity whose seed is newly generated (in which case restart that service only). Reconnect typically completes in under 2 seconds on the Podman bridge network once `lyra-nats` is back up; if a service has not reconnected within 10 s, treat it as a failure and proceed to Rollback.
 
 **5. Smoke test**
 
@@ -63,8 +67,11 @@ Send a message to the bot on any channel and confirm a reply arrives. This valid
 ```bash
 # Replace TIMESTAMP with the backup suffix printed by `make nats-regen-authconf` in step 2
 cp ~/.lyra/nkeys/auth.conf.bak.TIMESTAMP ~/.lyra/nkeys/auth.conf
+# Rollback uses the full `quadlet-secrets-install` (all 5 secrets) — broader
+# than the scoped forward path (`nats-regen-authconf` only touches lyra-nats-auth).
+# Intentional: emergency rollback restores a known-good snapshot atomically.
 make quadlet-secrets-install
-podman kill -s HUP lyra-nats
+systemctl --user restart lyra-nats
 ```
 
 Then revert the `acl-matrix.json` change in git and investigate before re-applying.

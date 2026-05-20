@@ -25,6 +25,7 @@ Let:
 | `docs/CONFIGURATION.md` | Config files, load order |
 | `docs/agent-management.md` | Agent seed flow + CLI |
 | `docs/ops/container-publishing.md` | CI → GHCR → Quadlet pattern |
+| `deploy/quadlet/lyra-nats.container` | NATS Quadlet unit — `type=mount` secret anchor (restart-not-HUP for ACL changes) |
 | `packages/roxabi-nats/` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/` | NATS contract schemas (ADR-049) |
 | `src/lyra/transport/` | NATS transport + WorkerPoolClient (3-layer composition, #1278) |

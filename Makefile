@@ -224,7 +224,7 @@ deploy:
 	echo "Units installed + daemon-reload done."; \
 	echo "To restart: make remote lyra reload  (or: systemctl --user restart voicecli-tts voicecli-stt)"'
 
-full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf → secrets → HUP NATS → restart lyra
+full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf → secrets → restart NATS → restart lyra
 	$(require_machine1)
 	@echo "Full deploy to $(DEPLOY_HOST)..."
 	@ssh $(DEPLOY_HOST) '\
@@ -247,8 +247,10 @@ full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf
 	sudo env "PATH=$$PATH" lyra-acl genkeys --regen-authconf; \
 	echo "==> NATS: installing Podman secrets..."; \
 	make -C "$$LYRA_DIR" quadlet-secrets-install; \
-	echo "==> NATS: reloading (HUP)..."; \
-	podman kill -s HUP lyra-nats; \
+	echo "==> NATS: restarting (refresh mount-typed Podman secret)..."; \
+	systemctl --user restart lyra-nats; \
+	systemctl --user is-active --wait lyra-nats \
+		|| { echo "ERROR: lyra-nats failed to reach active state"; exit 1; }; \
 	echo "==> Lyra: restarting containers..."; \
 	systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool; \
 	echo ""; \
@@ -283,10 +285,14 @@ remote:
 nats-setup:
 	@bash deploy/nats/setup.sh
 
-nats-regen-authconf:          ## re-render auth.conf from existing seeds, upload Podman secret, HUP NATS
+nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart NATS
 	@lyra-acl genkeys --regen-authconf
-	@$(MAKE) quadlet-secrets-install
-	@podman kill -s HUP lyra-nats
+	@test -s "$(LYRA_NKEYS_DIR)/auth.conf" \
+		|| { echo "ERROR: $(LYRA_NKEYS_DIR)/auth.conf missing or empty after genkeys"; exit 1; }
+	@# auth.conf only — seed rotation is a different runbook (nkey-rotation.md).
+	@podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"
+	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.
+	@systemctl --user restart lyra-nats
 
 test:
 	uv run pytest -v

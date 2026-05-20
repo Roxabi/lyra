@@ -80,7 +80,7 @@ When deploying this change, the following order must be respected:
 
 1. **Enable JetStream on NATS.** Both container and systemd installs use the `jetstream { store_dir: ... }` stanza in the NATS config. Container installs: the stanza is in `nats-container.conf`, backed by the `lyra-jetstream.volume` bind-mount (`~/.lyra/nats/jetstream` → `/var/lib/nats/jetstream`). The `-js` CLI flag was removed in #1055. Systemd installs: the stanza is in `nats.conf`.
 2. **Regen auth.conf.** Run `make nats-regen-authconf` to add the `$KV.lyra-state.>` subscribe grants and voice-client identity to the production ACL.
-3. **Reload NATS.** `make quadlet-secrets-install && podman kill -s HUP lyra-nats` (container) or `systemctl reload nats-server` (systemd).
+3. **Restart NATS.** `make quadlet-secrets-install && systemctl --user restart lyra-nats` (container — restart, not HUP, because the Podman secret is `type=mount` and the tmpfs file inside the running container is bound at init; see [`nats-authconf-update.md`](../../ops/nats-authconf-update.md#steps)) or `systemctl reload nats-server` (systemd — file-backed config, HUP refreshes content in place).
 4. **Deploy code.** `make deploy` — hub wires `announce_hub_ready()` on startup; adapters call `wait_for_hub()` instead of the legacy probe.
 
-If NATS is reloaded before the code is deployed, adapters continue using the legacy probe path without error. If code is deployed before NATS is reloaded, adapters degrade gracefully (JetStream unavailable → WARNING, adapter starts anyway).
+If NATS is restarted before the code is deployed, adapters continue using the legacy probe path without error. If code is deployed before NATS is restarted, adapters degrade gracefully (JetStream unavailable → WARNING, adapter starts anyway).

@@ -1,0 +1,106 @@
+---
+title: "PR #1296 iteration-2 findings — Expert Consensus"
+issue: 1293
+pr: 1296
+status: consensus-reached
+date: 2026-05-21
+panel: architect, devops, security-auditor
+confidence: high
+---
+
+## Problem
+
+PR #1296 had a first consensus round (iter-1 → unanimous 3-0 on 9 findings,
+fixes in `dbb136e2`). A re-review (iter-2) by 3 fresh agents surfaced 4 small
+new findings introduced by the iter-1 fix commit or pre-existing minor. User
+asked the panel to debate each, then apply all.
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | SSoT discipline, semantic correctness |
+| devops | recipe failure modes, operator ergonomics |
+| security-auditor | silent-failure detection, fail-safe defaults |
+
+## Consensus ρ
+
+| # | Consensus ρ |
+|---|-------------|
+| F1 | Replace `@test -d "$(LYRA_NKEYS_DIR)"` (line 290) with `@test -s "$(LYRA_NKEYS_DIR)/auth.conf"` placed immediately before `podman secret create`. Post-genkeys size-check is strictly stronger than `test -f` (catches zero-byte writes per security's corrupt-write concern) AND fixes the placement (guard now precedes the operation it protects). Drop pre-genkeys `test -d` as redundant — `lyra-acl` exits non-zero on missing dir; `make` aborts. |
+| F2 | Add one-line comment above the rollback `make quadlet-secrets-install`: full reinstall is intentional (rollback = atomic restore of all secrets), not a bug introduced by the iter-1 B2 scoping. |
+| F3 | Rename `$(PROD)` → `$(DEPLOY_HOST)` in the postmortem-remaining `nats-rotate-secrets` snippet. `$(DEPLOY_HOST)` is the canonical defined variable used by `full-deploy`, `remote`, and other remote recipes. |
+| F4 | No action. Historical bare-metal rollout step in a closed ADR; editing post-hoc rewrites a completed migration record. |
+
+### Rationale (debate notes)
+
+**F1 — 2-1 reconciled via hybrid.** Architect + devops preferred Solution 2
+(`test -f` post-genkeys, semantically correct: assert the output exists
+before the secret-install consumes it). Security preferred Solution 1
+(`test -d` pre-genkeys) plus a bonus post-write `test -s` to catch
+corrupt/empty writes. The hybrid (`test -s` post-genkeys) is strictly
+stronger than `test -f` (also catches empty files) AND addresses security's
+corrupt-write framing AND satisfies the "guard immediately before consumer"
+semantic from architect/devops. Pre-genkeys `test -d` is dropped: if the
+directory is missing, `lyra-acl genkeys --regen-authconf` exits non-zero on
+its own and `make` propagates the failure — `test -d` adds no information.
+
+**F3 — 2-1 majority.** Architect + devops chose `$(DEPLOY_HOST)` (canonical
+SSoT used everywhere else in the Makefile). Security raised the
+"undefined-variable landmine" concern via a literal hostname or `?=`
+default. The landmine is fully addressed by using a *defined* variable;
+`$(DEPLOY_HOST)` is defined in `.env`. Literal hostname is rejected because
+it diverges from existing Makefile convention and adds maintenance cost.
+
+### Trade-offs
+
+- F1 hybrid creates an implicit contract: `lyra-acl genkeys --regen-authconf`
+  MUST write a non-empty `auth.conf` to `$(LYRA_NKEYS_DIR)` or the recipe
+  aborts before the destructive `podman secret create --replace`. This is
+  the desired fail-safe property.
+- F2 is purely additive doc; no risk.
+- F3 is in a *proposed* snippet (not yet in Makefile); zero runtime risk
+  even if wrong, but the rename closes a copy-paste landmine.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| F1 Solution 1 alone (`test -d` pre-genkeys) | security | Catches misconfiguration but not corrupt writes; weaker than hybrid. |
+| F1 maximalist (both `test -d` pre + `test -s` post) | security | Belt-and-suspenders; `test -d` adds no signal since `lyra-acl` would fail first. |
+| F1 Solution 2 with `test -f` instead of `test -s` | architect/devops | `test -s` is strictly stronger (catches zero-byte file) at same cost. |
+| F3 literal hostname `roxabituwer` | security | Divergent from `$(DEPLOY_HOST)` convention used by all other remote recipes. |
+| F3 `PROD ?= roxabituwer` default | security | Introduces a second variable for the same concept; noise vs. SSoT. |
+| F4 inline "(historical)" annotation | (panel canvassed) | ADR `status:` frontmatter + redirect banner already convey this. Editing one-time migration records sets a bad precedent. |
+
+## Dissent
+
+- **F1 — security:** would have preferred a pre-genkeys `test -d` as primary
+  guard (fail-fast on misconfiguration); accepted the hybrid because
+  post-genkeys `test -s` covers the same misconfiguration case (via lyra-acl
+  failure → make abort) plus the corrupt-write case.
+- **F3 — security:** would have preferred a literal hostname; accepted
+  `$(DEPLOY_HOST)` once aligned with the defined-variable invariant.
+
+Both dissents accepted via reconciliation; recorded for traceability.
+
+## Implementation Notes
+
+### Order of application
+
+1. **F3** — postmortem snippet rename. Zero risk, zero cross-cut.
+2. **F1** — Makefile guard rewrite. Single recipe; verify `make -n` renders.
+3. **F2** — runbook rollback comment. Doc-only, additive.
+4. **F4** — skipped.
+
+### Cross-cutting
+
+- None of F1/F2/F3 share state or have ordering constraints beyond
+  ergonomic preference (F3 trivial first, F1 logic next, F2 doc last).
+
+## Next
+
+Apply F1 + F2 + F3 in order. Commit as `fix(nats): apply iter-2 consensus
+(F1, F2, F3)` on the existing branch `fix/1293-runbook-restart-not-hup`.
+F4 = no-op. After apply, merge as-is (no 3rd /code-review — loop cap
+guidance: 3rd review iteration would be advisory only).

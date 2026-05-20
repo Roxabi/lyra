@@ -90,6 +90,17 @@ NATS subjects:
 - `lyra.clipool.control` — control commands (reset, heartbeat)
 - `lyra.clipool.heartbeat` — periodic health announcements
 
+## Pipeline stages
+
+Inbound stages (parse, route, session, dispatch) live in `src/lyra/inbound/` — see
+`src/lyra/inbound/CLAUDE.md`. Per-platform helpers (audio, voice, thread
+management, formatting, normalization) stay here in `adapters/{platform}/`.
+
+Adapter `handle_message` is reduced to: bot filter → platform-only short-circuits
+(audio, voice command) → `pipeline.run(raw, ctx, parser, …)`. Hooks needed by a
+single platform live in that adapter module (e.g. `_discord_pre_route_hook`,
+`_discord_pre_session_hook`) and are bound via `functools.partial`.
+
 ## Telegram vs Discord — non-obvious differences
 
 | Aspect | Telegram | Discord |

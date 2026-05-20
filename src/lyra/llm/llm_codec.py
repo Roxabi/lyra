@@ -1,7 +1,8 @@
 """LlmCodec — pure encode/decode boundary between LlmClient and transport bytes.
 
-No I/O, no network, no NATS imports. Replays NatsLlmClient._build_request for
-encode; handles Result[bytes, SanitizedError] → LlmResult for decode.
+No I/O, no network, no NATS imports. encode builds canonical LlmRequest payload;
+decode maps Result[bytes, SanitizedError] → LlmResult; decode_chunk maps streaming
+chunks → LlmEvent.
 
 CB is NOT touched on decode failure — see spec § "Error path — decode failure".
 """

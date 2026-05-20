@@ -72,10 +72,10 @@ class WorkerPoolClient:
             await self._sub.unsubscribe()
 
     async def _on_heartbeat(self, msg: Any) -> None:
-        """Dual-validation heartbeat handler — replayed from NatsWorkerClientBase.
+        """Dual-validation heartbeat handler.
 
         1. parse JSON payload -> extract worker_id
-        2. VALIDATE_WORKER_ID(worker_id) — primary guard (subclass-injected)
+        2. validate_worker_id(worker_id) — primary guard (injected callable)
         3. WorkerRegistry secondary guard via record_heartbeat (validates nats_token)
         Both checks preserved for defense-in-depth per ADR-045.
         """

@@ -124,5 +124,5 @@ async def shutdown_hub_runtime(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps 
     if cli_nats_driver is not None:
         await cli_nats_driver.stop()
     if nats_llm_client is not None:
-        await nats_llm_client.stop()  # type: ignore[attr-defined]  # T24/T31 will wire pool.stop()
+        await nats_llm_client.stop()
     await hub.shutdown()

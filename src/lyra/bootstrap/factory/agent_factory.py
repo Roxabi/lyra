@@ -54,7 +54,7 @@ def _build_shared_base_providers(
     """Build ``{backend: base LlmProvider}`` reusable across all agents.
 
     ``claude-cli`` (ClaudeCliDriver or CliNatsDriver), ``nats`` (Retry ->
-    NatsLlmClient, only when ``nats_llm_client`` is provided). Callers layer
+    LlmClient, only when ``nats_llm_client`` is provided). Callers layer
     decorators per agent via ``_build_per_agent_registry``.
 
     ``cli_nats_driver`` takes precedence over ``cli_pool`` for the
@@ -152,7 +152,7 @@ def _create_agent(  # noqa: PLR0913  — DEBT:wiring-bootstrap-deps — factory 
                 provider = provider_registry.get("nats")
             except KeyError as exc:
                 raise RuntimeError(
-                    "backend='nats' registered but NatsLlmClient missing from"
+                    "backend='nats' registered but LlmClient missing from"
                     " registry -- is NATS_URL set and driver started?"
                 ) from exc
         elif provider_registry is not None:
@@ -217,7 +217,7 @@ def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     Returns a dict mapping agent_name to AgentBase instance.
 
     ``nats_llm_client`` -- if provided (NATS_URL set), registers the shared
-    ``NatsLlmClient`` as the ``"nats"`` backend. Must be started first.
+    ``LlmClient`` as the ``"nats"`` backend. Must be started first.
 
     ``cli_nats_driver`` -- if provided, used as the ``claude-cli`` backend
     instead of an in-process ``CliPool``. Takes precedence over ``cli_pool``.

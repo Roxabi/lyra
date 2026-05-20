@@ -22,11 +22,33 @@ not add it to the Protocol until all drivers implement it.
 |--------|-------------|-----------|-------------|
 | `ClaudeCliDriver` | `"claude-cli"` | in-process (`CliPool` subprocess) | single-process |
 | `CliNatsDriver` | `"claude-cli"` | NATS request-reply → clipool worker | multi-process (hub side) |
-| `NatsLlmClient` | `"nats"` | NATS request-reply → llmCLI worker | multi-process (hub side) |
+| `LlmClient` | `"nats"` | NATS request-reply via `WorkerPoolClient` | multi-process (hub side) |
 
 `ClaudeCliDriver` and `CliNatsDriver` share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap, not by registry key.
 
-`NatsLlmClient` lives in `lyra.nats`, **not** in `llm/` — cross-package gotcha. Replaces deleted `NatsLlmDriver` (#1119).
+`LlmClient` lives in `lyra.llm.llm_client` (this package). The legacy `NatsLlmClient`
+(formerly in `lyra.nats`) was deleted in #1278.
+
+## LlmClient + LlmCodec layering
+
+The NATS LLM driver is a 3-layer composition (since #1278):
+
+```
+LlmClient (lyra.llm.llm_client)
+   ├─ pool: WorkerPoolClient (lyra.transport.worker_pool_client)
+   │     └─ transport: NatsTransport (lyra.transport.nats_request_response)
+   └─ codec: LlmCodec (lyra.llm.llm_codec)
+```
+
+- `LlmClient`: implements `LlmProvider`; orchestrates encode → pool → decode.
+- `LlmCodec`: pure, no I/O. `encode(text, model_cfg, system_prompt, messages, *, stream)`
+  → bytes payload + trace_id. `decode(result, trace_id)` → LlmResult.
+  `decode_chunk(result)` → LlmEvent (TextLlmEvent | ResultLlmEvent | None).
+- `WorkerPoolClient`: routing + CB + heartbeat — domain-agnostic, see `lyra.transport`.
+
+CB is enforced at the **pool** layer (since #1278). Wiring sites wrap `LlmClient` with
+`RetryDecorator` only — do NOT add `CircuitBreakerDecorator` (reserved for `ClaudeCliDriver`
+which has no built-in CB).
 
 ## Decorator stack
 
@@ -37,7 +59,7 @@ CircuitBreakerDecorator → SmartRoutingDecorator → RetryDecorator → Driver
 Stack assembled in `bootstrap/`, not in `llm/`. Order matters: circuit-breaker wraps
 outermost, retry wraps the driver.
 
-`NatsLlmClient` carries its own `NatsCircuitBreaker`; at wiring sites it is wrapped only
+`LlmClient` carries its own CB via `WorkerPoolClient`; at wiring sites it is wrapped only
 by `RetryDecorator`. `CircuitBreakerDecorator` is reserved for `ClaudeCliDriver`.
 
 ## LlmEvent

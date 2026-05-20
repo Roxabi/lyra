@@ -80,7 +80,7 @@ async def _collect_stream(driver: CliNatsDriver, mock_chunks: list[dict]) -> lis
 
     events = []
     with patch.object(driver, "_dict_stream_gen", new=_mock_dict_stream_gen):
-        async for event in await driver.stream(
+        async for event in driver.stream(
             "pool-1", "hello", _make_model_cfg(), "You are helpful."
         ):
             events.append(event)
@@ -204,9 +204,7 @@ class TestStream:
 
         # Act
         with patch.object(driver, "_dict_stream_gen", new=_mock_dict_stream_gen):
-            async for ev in await driver.stream(
-                "pool-1", "hi", _make_model_cfg(), "sys"
-            ):
+            async for ev in driver.stream("pool-1", "hi", _make_model_cfg(), "sys"):
                 events.append(ev)
 
         # Assert
@@ -230,7 +228,7 @@ class TestStream:
 
         # Act
         with patch.object(driver, "_dict_stream_gen", new=_spy_dict_stream_gen):
-            async for _ in await driver.stream("p1", "hi", _make_model_cfg(), "sys"):
+            async for _ in driver.stream("p1", "hi", _make_model_cfg(), "sys"):
                 pass
 
         # Assert
@@ -271,9 +269,7 @@ class TestStream:
             patch("lyra.llm.drivers.cli_nats.log") as mock_log,
             patch.object(driver, "_dict_stream_gen", new=_raising_dict_stream_gen),
         ):
-            async for ev in await driver.stream(
-                "pool-1", "hi", _make_model_cfg(), "sys"
-            ):
+            async for ev in driver.stream("pool-1", "hi", _make_model_cfg(), "sys"):
                 events.append(ev)
 
         # Assert — exactly one terminal error event
@@ -333,9 +329,7 @@ class TestStream:
 
         # Act
         with patch.object(driver, "_dict_stream_gen", new=_raising_dict_stream_gen):
-            async for ev in await driver.stream(
-                "pool-1", "hi", _make_model_cfg(), "sys"
-            ):
+            async for ev in driver.stream("pool-1", "hi", _make_model_cfg(), "sys"):
                 events.append(ev)
 
         # Assert
@@ -366,9 +360,7 @@ class TestStream:
 
         # Act
         with patch.object(driver, "_dict_stream_gen", new=_partial_then_raise):
-            async for ev in await driver.stream(
-                "pool-1", "hi", _make_model_cfg(), "sys"
-            ):
+            async for ev in driver.stream("pool-1", "hi", _make_model_cfg(), "sys"):
                 events.append(ev)
 
         # Assert — partial text delivered, then a sanitized terminal event
@@ -973,9 +965,7 @@ class TestStreamGenLlmSessionPersistence:
 
         # Act
         with patch.object(driver, "_dict_stream_gen", new=_mock_dict_stream_gen):
-            async for ev in await driver.stream(
-                "pool-1", "hello", _make_model_cfg(), "sys"
-            ):
+            async for ev in driver.stream("pool-1", "hello", _make_model_cfg(), "sys"):
                 events.append(ev)
 
         await asyncio.sleep(0)
@@ -1013,9 +1003,7 @@ class TestStreamGenLlmSessionPersistence:
 
         # Act / Assert — no AttributeError
         with patch.object(driver, "_dict_stream_gen", new=_mock_dict_stream_gen):
-            async for _ in await driver.stream(
-                "pool-1", "hi", _make_model_cfg(), "sys"
-            ):
+            async for _ in driver.stream("pool-1", "hi", _make_model_cfg(), "sys"):
                 pass
 
     @pytest.mark.asyncio
@@ -1051,7 +1039,7 @@ class TestStreamGenLlmSessionPersistence:
         # Act
         events = []
         with patch.object(driver, "_dict_stream_gen", new=_mock_dict_stream_gen):
-            async for ev in await driver.stream("pool-1", "hi", _make_model_cfg(), ""):
+            async for ev in driver.stream("pool-1", "hi", _make_model_cfg(), ""):
                 events.append(ev)
         await asyncio.sleep(0)  # let the fire-and-forget task run
 

@@ -10,4 +10,4 @@ src/lyra/core           # 15 files — DEBT:folder-exemptions — #858 config da
 src/lyra/infrastructure/stores  # 15 files — DEBT:folder-exemptions — #935 ADR-048 store migration (4 files moved from core/stores)
 src/lyra/core/cli           # 14 files — DEBT:folder-exemptions — #957 cli_pool_entry.py extracted to break _ProcessEntry circular import
 src/lyra/core/messaging     # 13 files — DEBT:folder-exemptions — #1016 WorkerError: error_extractor.py + metrics.py added; #1031 tool_recap_format.py + tool_display_config.py added
-src/lyra/nats  # 15 files — DEBT:folder-exemptions — #1235 — dedup of heartbeat lifecycle adds _worker_client_base.py; NATS subsystem owns transport + per-protocol client + per-protocol helper modules + shared worker-client base; see ADR-049
+src/lyra/nats  # 16 files — DEBT:folder-exemptions — #1278 codec split from clients (T11/T12 added nats_{tts,stt,image}_codec.py); _worker_client_base.py + nats_llm_client.py deleted (net +1 vs 15 pre-#1278 baseline: -2 deletions + 3 codec files)

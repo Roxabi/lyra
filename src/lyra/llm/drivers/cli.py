@@ -77,9 +77,10 @@ class ClaudeCliDriver:
         *,
         messages: list[dict] | None = None,  # protocol compliance; ignored by CliPool
     ) -> AsyncIterator[LlmEvent]:
-        """Return a streaming iterator yielding LlmEvent objects.
-
-        Yields TextLlmEvent for text chunks, ToolUseLlmEvent when the LLM
-        calls a tool, and a terminal ResultLlmEvent at end of turn.
-        """
-        return await self._pool.send_streaming(pool_id, text, model_cfg, system_prompt)
+        """Yield LlmEvent objects (TextLlm/ToolUse/Result) from the streaming pool."""
+        del messages
+        streaming = await self._pool.send_streaming(
+            pool_id, text, model_cfg, system_prompt
+        )
+        async for event in streaming:
+            yield event

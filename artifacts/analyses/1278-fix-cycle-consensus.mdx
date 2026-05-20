@@ -1,0 +1,94 @@
+---
+title: "PR #1288 Fix Cycle — Expert Consensus"
+issue: 1278
+status: consensus-reached
+date: 2026-05-20
+panel: architect, security-auditor, backend-dev
+confidence: high
+---
+
+## Problem
+
+`/code-review` on PR #1288 (issue #1278 Phase 1 NATS Transport refactor) produced 12 findings. 4 blockers (B1-B4) auto-applied in commit `17e54cb4`. 7 remained pending 1b1 decision. User requested consensus across applied fixes + remaining items.
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | layer separation, maintainability, scope discipline |
+| security-auditor | sanitization, attack surface, compliance (#1212) |
+| backend-dev | impl quality, type discipline, async semantics |
+
+## Consensus ρ
+
+### Applied fixes (B1-B4): all accepted
+
+- **B1** — `WorkerPoolClient.stream_request(subject, payload)` publishes via `NatsTransport.publish` before iterating. Inbox lifecycle bounded by CM. Concern (backend-dev): `timeout` arg is `del`-ed; document or remove from public API in P4.
+- **B2** — KNOWN_CODES extended with `pool.{circuit_open,no_live_workers}` + `transport.payload_too_large`. New `pool` domain consistent with naming convention.
+- **B3** — `isinstance(exc, MaxPayloadError)` replaces `str(exc)` substring read. Branch predicate fully closed against worker-controlled text. #1212 invariant restored.
+- **B4** — `LlmClient.stream` is real async-gen; Protocol declares `def stream → AsyncIterator` (no `async`). All implementers (CliDriver, CliNatsDriver, Retry/CircuitBreakerDecorator) use `async for / yield` delegation. No production callers were using `await provider.stream(...)` (verified by backend-dev scan).
+
+### Remaining findings: apply now (S1, S3+B5, S4, S5, S6), defer (S2)
+
+| # | Finding | Action | Effort |
+|---|---|---|---|
+| B5 | LoC overages (3 files) | **apply** — move `ImageGenParams` to codec; exempt `llm_codec.py` 170L; exempt `llm_client.py` 88L (architect: "trivially over, not a god-file signal") | S |
+| S1 | `WorkerPoolClient.stop()` race | **apply** — `await self._task` (catch CancelledError) before `unsubscribe` | S |
+| S2 | `lyra.transport` not in importlinter layers | **defer-to-issue** — requires moving `worker_registry` out of `lyra.nats`; cross-Phase-1 scope | M-L |
+| S3 | codec → client import inversion (`ImageGenParams`) | **apply** — move to `nats_image_codec.py`; re-export shim with deprecation comment | S |
+| S4 | `assert isinstance(Ok)` stripped under `-O` (4 sites) | **apply** — remove; pyright already narrows after Err branch | S |
+| S5 | `_sub: Any` type gap | **apply** — `Subscription \| None` under TYPE_CHECKING | S |
+| S6 | folder_exemptions rationale comment misleading | **apply** — update text to cite both deletions | S |
+
+### Rationale
+
+- **S1 wins majority (2-1)**: security-auditor flags as Low (in-process TOCTOU, not exploitable) but defers to backend-dev. Both impl experts agree the fix is trivial (3 lines) and the race is a real lifecycle hazard on shutdown under active heartbeat traffic. Cost-of-fix << cost-of-defer.
+- **S2 unanimous defer**: clean fix requires moving `worker_registry` out of `lyra.nats`, which is structural and crosses Phase 1 boundary. Current `ignore_imports` workaround with DEBT tag is honest.
+- **S3 wins majority (2-1)**: codec→client inversion will fail importlinter once `lyra.transport` is layered in Phase 2; better fix now (small) than future regression unpick.
+- **S4/S5/S6 win majority (2-1)**: small independent fixes; security has no objection, just no security stake.
+- **B5 win majority**: trim image_client via S3 (move ImageGenParams to codec); exempt llm_client (88L borderline) and llm_codec (170L spec-acknowledged for non-trivial wire shape).
+
+### Trade-offs
+
+1. **S1 deferral risk vs. fix complexity** — One-liner fix vs. cryptic NATS errors on shutdown under load. Apply.
+2. **S2 importlinter gap vs. scope creep** — DEBT-tracked layer-boundary absence means future code can import `WorkerPoolClient` anywhere without lint failure. Acceptable Phase 1; tracked for Phase 2.
+3. **S3 backward-compat shim** — Re-exporting `ImageGenParams` from `nats_image_client.__all__` for callers needs a deprecation comment, else maintainers may repeat the inversion.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|---|---|
+| Split `llm_codec.py` (170L → 2× sub-80L) | implicit | No cohesion benefit; encode/decode/decode_chunk are conceptually paired |
+| Remove `LlmClient.stop()` to trim 88L | implicit | Encapsulation violation — callers shouldn't reach through to pool directly |
+| Add `lyra.transport` as importlinter layer in this PR | S2 author | Requires `worker_registry` extraction; scope expansion |
+| Replace S4 asserts with explicit `raise TypeError` | implicit | Reintroduces exceptions to a module documented as exception-free |
+
+## Dissent
+
+- **S1 (1-2 split)**: security-auditor preferred defer (Low severity from security pov); architect + backend-dev preferred apply. Recorded.
+- **S3 (1-2 split)**: security-auditor preferred defer (no sec impact); architect + backend-dev preferred apply (importlinter regression prevention). Recorded.
+- **B4 caller risk (backend-dev concern)**: verified no production callers using `await provider.stream(...)` outside of audio/voice (unrelated domain). Concern documented, fix accepted.
+
+## Bonus security concern (preventive follow-up)
+
+`SanitizedError.detail: str | None` field (`src/lyra/transport/_result.py:36`) has no construction-time validator enforcing `type(exc).__name__`-only content. All current callers pass `None`, but a future caller could populate `detail=str(exc)` without any type-check or test failure — silent #1212 regression surface.
+
+**Recommendation:** open a separate issue to either remove `detail` from `SanitizedError` or add a validator mirroring `WorkerError._sanitize_detail`. **Not a merge blocker** — preventive control.
+
+## Implementation Notes
+
+Apply order:
+1. **S3 + B5(image)** — move `ImageGenParams` to `nats_image_codec.py`; add backward-compat re-export with deprecation comment. Verify `nats_image_client.py` LoC drops ≤80L.
+2. **S1** — fix `WorkerPoolClient.stop()` task await.
+3. **S4** — remove `assert isinstance(Ok)` at 4 codec sites.
+4. **S5** — type `_sub` as `Subscription | None` (TYPE_CHECKING).
+5. **S6** — update folder_exemptions comment.
+6. **B5 exemptions** — add `llm_client.py` (88L) and `llm_codec.py` (170L) to `file_exemptions.txt`.
+7. Quality gates (lint/typecheck/test) — must pass.
+8. Single commit `fix(transport): #1278 review S1+S3+S4+S5+S6+B5 consensus`.
+9. **S2 follow-up issue** — file before merge with reference to this consensus.
+10. **Sanitization detail follow-up issue** — file with reference to this consensus.
+
+## Next
+
+`/fix` continues — apply consensus items, then re-review (`/code-review`) or merge as-is. After this round, the `/dev` pipeline advances to cleanup.

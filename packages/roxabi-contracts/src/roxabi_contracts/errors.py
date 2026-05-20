@@ -130,7 +130,7 @@ class CodeMeta(BaseModel):
 # ---------------------------------------------------------------------------
 # KNOWN_CODES — canonical registry (ADR-066 § "The code namespace")
 # ---------------------------------------------------------------------------
-# Domains: transport | worker | cli | llm | voice | image
+# Domains: transport | pool | worker | cli | llm | voice | image
 # ---------------------------------------------------------------------------
 
 KNOWN_CODES: dict[str, CodeMeta] = {
@@ -164,6 +164,22 @@ KNOWN_CODES: dict[str, CodeMeta] = {
         domain="transport",
         default_retryable=True,
         description="Generic NATS / network transport failure not covered by a more specific code (e.g. connection reset, protocol error).",  # noqa: E501
+    ),
+    "transport.payload_too_large": CodeMeta(
+        domain="transport",
+        default_retryable=False,
+        description="Request payload exceeded the NATS server's max_payload limit.",
+    ),
+    # --- pool ----------------------------------------------------------------
+    "pool.circuit_open": CodeMeta(
+        domain="pool",
+        default_retryable=True,
+        description="WorkerPoolClient circuit breaker is open; call short-circuited without dispatching to a worker.",  # noqa: E501
+    ),
+    "pool.no_live_workers": CodeMeta(
+        domain="pool",
+        default_retryable=True,
+        description="WorkerPoolClient exhausted its registry without reaching a healthy worker.",  # noqa: E501
     ),
     # --- worker --------------------------------------------------------------
     "worker.crash": CodeMeta(

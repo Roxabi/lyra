@@ -170,18 +170,21 @@ HealthRetries=3
 **What is needed:**
 
 ```makefile
-nats-rotate-secrets: ## atomic: regen auth.conf → install secrets → reload NATS → verify
+nats-rotate-secrets: ## atomic: regen auth.conf → install secrets → restart NATS → verify
 	@$(MAKE) nats-regen-authconf
 	@$(MAKE) quadlet-secrets-install
-	@ssh $(PROD) "systemctl --user reload lyra-nats.service || systemctl --user restart lyra-nats.service"
+	@# Restart (not reload/HUP): Podman secrets type=mount are tmpfs bind-mounts
+	@# bound at container init — HUP re-reads the path but the path is stale.
+	@# See docs/ops/nats-authconf-update.md.
+	@ssh $(PROD) "systemctl --user restart lyra-nats"
 	@sleep 3
 	@ssh $(PROD) "journalctl --user -u lyra-nats --since '10 seconds ago' | grep -i 'permission\|error\|fatal'" \
-		&& echo "WARNING: errors detected after reload — check logs" \
+		&& echo "WARNING: errors detected after restart — check logs" \
 		|| echo "No errors detected — rotation complete"
 	@$(MAKE) voice-smoke
 ```
 
-The post-reload verification step (grep for `permissions violation` in first 30s, run smoke test) is load-bearing — it turns a silent partial-apply into an immediate failure.
+The post-restart verification step (grep for `permissions violation` in first 30s, run smoke test) is load-bearing — it turns a silent partial-apply into an immediate failure.
 
 ---
 

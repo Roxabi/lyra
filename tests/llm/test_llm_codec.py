@@ -60,9 +60,7 @@ def _ok_chunk(
 class TestLlmCodecEncode:
     def test_encode_empty_messages_produces_single_user_message(self) -> None:
         codec = LlmCodec()
-        payload, trace_id = codec.encode(
-            "hello", _MODEL, "sys", None, stream=False
-        )
+        payload, trace_id = codec.encode("hello", _MODEL, "sys", None, stream=False)
         body = json.loads(payload)
         assert body["messages"] == [{"role": "user", "content": "hello"}]
         assert isinstance(trace_id, str) and len(trace_id) > 0
@@ -70,18 +68,14 @@ class TestLlmCodecEncode:
     def test_encode_passthrough_when_last_message_matches_text(self) -> None:
         codec = LlmCodec()
         messages = [{"role": "user", "content": "hello"}]
-        payload, _ = codec.encode(
-            "hello", _MODEL, "sys", messages, stream=False
-        )
+        payload, _ = codec.encode("hello", _MODEL, "sys", messages, stream=False)
         body = json.loads(payload)
         assert body["messages"] == messages
 
     def test_encode_appends_when_last_message_differs_from_text(self) -> None:
         codec = LlmCodec()
         messages = [{"role": "user", "content": "first"}]
-        payload, _ = codec.encode(
-            "second", _MODEL, "sys", messages, stream=False
-        )
+        payload, _ = codec.encode("second", _MODEL, "sys", messages, stream=False)
         body = json.loads(payload)
         assert len(body["messages"]) == 2
         assert body["messages"][-1] == {"role": "user", "content": "second"}

@@ -1,0 +1,1118 @@
+---
+title: "Plan: Phase 1 — NATS Transport + WorkerPoolClient extraction"
+issue: 1278
+spec: artifacts/specs/1278-nats-transport-workerpool-spec.mdx
+consensus: artifacts/analyses/1278-nats-transport-workerpool-consensus.mdx
+complexity: 8/10
+tier: F-full
+generated: 2026-05-20
+---
+
+## Summary
+
+One atomic PR replaces the 4-client inheritance chain (`Nats{Llm,Tts,Stt,Image}Client → NatsWorkerClientBase → NatsDriverBase`) with a 3-layer composition (`domain client → WorkerPoolClient → NatsTransport`), deleting `NatsWorkerClientBase` and its test, and updating all 4 bootstrap factory files and CLAUDE.md entries. All 25 acceptance criteria verified by targeted unit/integration tests across 6 slices and 4 waves.
+
+## Architecture
+
+### Data flow
+
+```mermaid
+flowchart TD
+    subgraph Bootstrap [bootstrap/factory]
+        LO[llm_overlay.py\ntransport + pool + codec\n→ LlmClient]
+        VO[voice_overlay.py\ntransport + pool×3 + codec×3\n→ TtsClient SttClient ImageClient]
+        HB[hub_builder.py\ntype annotation only\nLlmClient | None]
+        WH[wiring_helpers.py\ntype annotation only\nLlmClient | None]
+    end
+
+    subgraph Transport [src/lyra/transport]
+        TR[NatsTransport\nnats_request_response.py\ncall + open_inbox + _sanitize]
+        PC[WorkerPoolClient\nworker_pool_client.py\nrequest_with_routing + stream_request\n_heartbeat_loop + _registry + _cb]
+        RT[_result.py\nOk Err SanitizedError InboxStream]
+    end
+
+    subgraph Domain [domain clients]
+        LC[LlmClient\nsrc/lyra/llm/llm_client.py\ncomplete + stream + is_alive]
+        LX[LlmCodec\nsrc/lyra/llm/llm_codec.py\nencode + decode]
+        TC[TtsClient\nnats_tts_client.py thinned]
+        TX[TtsCodec\nnats_tts_codec.py]
+        SC[SttClient\nnats_stt_client.py thinned]
+        SX[SttCodec\nnats_stt_codec.py]
+        IC[ImageClient\nnats_image_client.py thinned]
+        IX[ImageCodec\nnats_image_codec.py]
+    end
+
+    subgraph Runtime [runtime consumers]
+        HUB[hub MessagePipeline]
+        AF[agent_factory]
+    end
+
+    LO -- "NatsTransport(nc)" --> TR
+    LO -- "WorkerPoolClient(transport, hb_subject, validate_worker_id)" --> PC
+    LO -- "LlmCodec()" --> LX
+    LO -- "LlmClient(pool, codec)" --> LC
+    VO -- "same pattern ×3" --> TC
+    VO --> SC
+    VO --> IC
+
+    LC --> PC
+    TC --> PC
+    SC --> PC
+    IC --> PC
+    PC --> TR
+    TR --> RT
+
+    LC --> LX
+    TC --> TX
+    SC --> SX
+    IC --> IX
+
+    HUB --> LC
+    HUB --> TC
+    HUB --> SC
+    HUB --> IC
+    AF --> LC
+
+    HB -. "annotation update" .-> LC
+    WH -. "annotation update" .-> LC
+```
+
+### File × Function map
+
+```mermaid
+flowchart LR
+    subgraph L1 [Layer 1 — Transport]
+        R[_result.py\nOk Err SanitizedError\nInboxStream Result alias]
+        N[nats_request_response.py\nNatsTransport\n.call .open_inbox ._sanitize]
+    end
+
+    subgraph L2 [Layer 2 — Pool]
+        P[worker_pool_client.py\nWorkerPoolClient\n.start .stop\n.request_with_routing\n.stream_request\n.is_pool_alive\n.register_worker\n._on_heartbeat\n._heartbeat_loop]
+    end
+
+    subgraph L3_LLM [Layer 3 — LLM domain]
+        LC[llm/llm_client.py\nLlmClient\n.complete .stream .is_alive]
+        LX[llm/llm_codec.py\nLlmCodec\n.encode .decode]
+    end
+
+    subgraph L3_VOICE [Layer 3 — Voice domain]
+        TC[nats/nats_tts_client.py\nTtsClient thinned\n.synthesize .is_alive]
+        TX[nats/nats_tts_codec.py\nTtsCodec\n.encode .decode]
+        SC[nats/nats_stt_client.py\nSttClient thinned\n.transcribe .is_alive]
+        SX[nats/nats_stt_codec.py\nSttCodec\n.encode .decode]
+        IC[nats/nats_image_client.py\nImageClient thinned\n.generate .is_alive]
+        IX[nats/nats_image_codec.py\nImageCodec\n.encode .decode]
+    end
+
+    subgraph Bootstrap [bootstrap/factory]
+        LO[llm_overlay.py]
+        VO[voice_overlay.py]
+        HB[hub_builder.py]
+        WH[wiring_helpers.py]
+    end
+
+    subgraph Tests [test consumers]
+        TRR[tests/transport/test_nats_rr.py]
+        TWP[tests/transport/test_worker_pool_client.py]
+        TLL[tests/llm/test_nats_llm_client_provider.py\nrewritten by layer]
+        TVS[tests/nats/test_nats_{tts,stt,image}_client.py\nrewritten by layer]
+        TIE[tests/integration/test_worker_error_e2e.py]
+    end
+
+    subgraph Deleted [deleted in S6]
+        WB[nats/_worker_client_base.py DELETE]
+        TWB[tests/nats/test_worker_client_base.py DELETE]
+    end
+
+    R --> N
+    N --> P
+    P --> LC
+    P --> TC
+    P --> SC
+    P --> IC
+    LX --> LC
+    TX --> TC
+    SX --> SC
+    IX --> IC
+
+    LO --> LC
+    VO --> TC
+    VO --> SC
+    VO --> IC
+    HB --> LC
+    WH --> LC
+
+    TRR -.consumes.-> N
+    TWP -.consumes.-> P
+    TLL -.consumes.-> LC
+    TLL -.consumes.-> LX
+    TVS -.consumes.-> TC
+    TVS -.consumes.-> TX
+    TIE -.consumes.-> LC
+
+    WB -. "replaced by composition" .-> P
+    TWB -. "deleted S6" .-> WB
+```
+
+## Bootstrap Context
+
+The 3-layer DI composition is mechanical. Each factory constructs stack bottom-up and tears down top-down:
+
+**`bootstrap/factory/llm_overlay.py`** (replaces single-class construction):
+```python
+transport = NatsTransport(nc, default_timeout=timeout)
+pool = WorkerPoolClient(
+    transport,
+    hb_subject=SUBJECTS.heartbeat,
+    validate_worker_id=validate_worker_id,
+)
+await pool.start(nc)   # subscribes to hb_subject, spawns _heartbeat_loop
+codec = LlmCodec()
+client = LlmClient(pool, codec)
+# teardown: await pool.stop()
+```
+
+**`bootstrap/factory/voice_overlay.py`** (same pattern × 3):
+```python
+# TTS
+tts_transport = NatsTransport(nc, default_timeout=tts_timeout)
+tts_pool = WorkerPoolClient(tts_transport, hb_subject=SUBJECTS.tts_heartbeat,
+                             validate_worker_id=voice_validate_worker_id)
+await tts_pool.start(nc)
+tts_client = TtsClient(tts_pool, TtsCodec())
+
+# STT — same pattern with SUBJECTS.stt_heartbeat
+# Image — same pattern with SUBJECTS.image_heartbeat
+```
+
+**`bootstrap/factory/hub_builder.py`** and **`wiring_helpers.py`**: only type annotations change. `NatsLlmClient | None` → `LlmClient | None`. No logic changes. `VoiceBundle.nats_llm_client` field type updated accordingly in `wiring_helpers.py`.
+
+Heartbeat lifecycle previously inherited from `NatsDriverBase` (subscribe on `start()`, cancel task + unsubscribe on `stop()`) is replayed inside `WorkerPoolClient.start/stop` with identical atomicity semantics. The defense-in-depth dual validation from `_worker_client_base.py` (`VALIDATE_WORKER_ID` + `registry.validate_nats_token` secondary guard) is preserved in `WorkerPoolClient._on_heartbeat`.
+
+## Agents
+
+| Agent instance | Task count | File domains |
+|---|---|---|
+| `backend-dev-A` | 6 | `src/lyra/transport/` (NatsTransport + _result.py) |
+| `backend-dev-B` | 5 | `src/lyra/transport/worker_pool_client.py` |
+| `backend-dev-C` | 4 | `src/lyra/llm/llm_codec.py`, `src/lyra/nats/nats_{tts,stt,image}_codec.py` |
+| `backend-dev-D` | 6 | `src/lyra/llm/llm_client.py`, thinned voice clients, bootstrap factories |
+| `tester-A` | 5 | `tests/transport/test_nats_rr.py`, `tests/transport/test_worker_pool_client.py` |
+| `tester-B` | 5 | `tests/llm/`, `tests/nats/test_nats_{tts,stt,image}_client.py` |
+| `architect` | 3 | smoke + grep sweep (S6) |
+| `doc-writer` | 3 | CLAUDE.md updates (4 files + root) |
+| `devops` | 2 | `tools/file_exemptions.txt`, quality-gate verification |
+
+## Wave Structure
+
+```
+W1 (parallel entry)
+  backend-dev-A: T01 _result.py stub (S1-RED)
+  tester-A:      T02 result type roundtrip tests (S1-RED)
+
+W2 (W1 complete — all T01+T02 green)
+  backend-dev-A: T03 NatsTransport call (S2-RED→GREEN)
+                 T04 NatsTransport open_inbox CM (S2-RED→GREEN)
+  tester-A:      T05 transport call tests (S2-RED)
+                 T06 open_inbox cleanup tests incl. early-break (S2-RED)
+                 T07 RED-GATE S2
+  backend-dev-B: T08 WorkerPoolClient scaffold + heartbeat (S3-RED→GREEN)
+                 T09 request_with_routing + mandatory log (S3-GREEN)
+  backend-dev-C: T10 LlmCodec (S2/S4 boundary — domain codec)
+                 T11 TtsCodec + SttCodec (S5 codec)
+                 T12 ImageCodec (S5 codec)
+
+W3 (W2 complete — tests/transport/ all green)
+  backend-dev-A: T13 RED-GATE S3
+  tester-A:      T14 pool CB + routing tests (S3-RED)
+                 T15 pool stream_request tests (S3-RED)
+                 T16 RED-GATE S3 transport suite
+  backend-dev-D: T17 LlmClient thin wrapper (S4-GREEN)
+                 T18 llm_overlay.py DI rewire (S4-GREEN)
+                 T19 TtsClient + SttClient + ImageClient thin (S5-GREEN)
+                 T20 voice_overlay.py DI rewire (S5-GREEN)
+  tester-B:      T21 LlmClient + LlmCodec layer tests (S4-RED)
+                 T22 voice client + codec layer tests (S5-RED)
+                 T23 RED-GATE S4+S5
+
+W4 (W3 green — full suite passes)
+  architect:     T24 delete _worker_client_base.py + test (S6)
+                 T25 grep sweep — 7 transport boundary criteria (S6)
+                 T26 smoke tools/smoke_llm_e2e.sh (S6-GATE)
+  doc-writer:    T27 CLAUDE.md nats/ update
+                 T28 CLAUDE.md llm/ update
+                 T29 CLAUDE.md bootstrap/ + root CLAUDE.md
+  devops:        T30 file_exemptions.txt — remove nats_llm_client.py exemption
+                 T31 full suite + quality-gate sweep (S6-FINAL-GATE)
+```
+
+### Budget Table
+
+| Wave | Tasks | Agents | Parallelism | Est. total ops |
+|---|---|---|---|---|
+| W1 | T01–T02 | 2 | full parallel | ~15 |
+| W2 | T03–T12 | 4 | 3-way parallel (A∥B∥C) | ~80 |
+| W3 | T13–T23 | 4 | 2-way parallel (D∥tester-B, A+tester-A serial) | ~90 |
+| W4 | T24–T31 | 3 | 3-way parallel (architect∥doc-writer∥devops) | ~50 |
+| **Total** | **31** | **9** | | **~235** |
+
+## Consistency Report
+
+**Spec AC coverage**: 25/25 (100%)
+
+| SC ID | AC text (abbrev) | Traced to tasks |
+|---|---|---|
+| SC-01 | `_raise_nats_failure` → 0 occurrences | T25 grep sweep |
+| SC-02 | `_is_no_responders` → 0 occurrences | T25 grep sweep |
+| SC-03 | `NatsWorkerClientBase` in src/lyra/ → 0 | T24 + T25 |
+| SC-04 | `_worker_client_base.py` does not exist | T24 |
+| SC-05 | `str(exc)` in nats/llm → 0 occurrences | T25 grep sweep |
+| SC-06 | f-string exc in domain files → 0 | T25 grep sweep |
+| SC-07 | `_sanitize\|SanitizedError` in transport → ≥1 | T03 impl + T05 test |
+| SC-08 | `from lyra.nats._worker_client_base` → 0 | T24 + T25 |
+| SC-09 | `NatsDriverBase` in nats/ → 0 | T25 grep sweep |
+| SC-10 | `nats_request_response.py` exists ≤150L | T03+T04 + T31 devops gate |
+| SC-11 | `worker_pool_client.py` exists ≤200L | T08+T09 + T31 |
+| SC-12 | domain clients ≤80L each | T17+T19 + T31 |
+| SC-13 | codec classes ≤120L each | T10+T11+T12 + T31 |
+| SC-14 | `_registry` in domain code → 0 | T25 grep sweep |
+| SC-15 | `tests/transport/` all pass | T07 RED-GATE S2 + T16 RED-GATE S3 |
+| SC-16 | `tests/llm/` all pass | T23 RED-GATE S4 |
+| SC-17 | `tests/nats/test_nats_{tts,stt,image}_client.py` all pass | T23 RED-GATE S5 |
+| SC-18 | `tests/integration/test_worker_error_e2e.py` passes | T26 smoke gate |
+| SC-19 | full suite passes | T31 final gate |
+| SC-20 | LOC delta ≤ −1200 lines | T31 devops check |
+| SC-21 | `ruff check` → 0 new errors | T31 devops gate |
+| SC-22 | `pyright` → 0 new type errors | T31 devops gate |
+| SC-23 | `pool._registry\|pool.scored_workers` in domain → 0 | T25 grep sweep |
+| SC-24 | structured log before every transport.call() — unit test | T14 pool tests |
+| SC-25 | bootstrap old names → 0 occurrences | T18+T20 impl + T25 sweep |
+
+**Uncovered ACs**: 0
+
+**Untraced tasks**: 0
+
+**Exemption entries**: `src/lyra/nats/nats_llm_client.py` exemption in `tools/file_exemptions.txt` must be removed (file deleted → replaced by `src/lyra/llm/llm_client.py` which is ≤80L, under cap). All new files are under 300L cap — no new exemptions needed. Task T30 handles exemption cleanup.
+
+## Micro-Tasks
+
+### S1 — Result types (`src/lyra/transport/_result.py`)
+
+---
+
+**T01** — Create `src/lyra/transport/_result.py` with `Ok`, `Err`, `SanitizedError`, `InboxStream`, `Result` type alias
+
+File: `src/lyra/transport/_result.py`
+
+```python
+from dataclasses import dataclass
+from typing import AsyncIterator, Generic, TypeVar, Union
+
+T = TypeVar("T"); E = TypeVar("E")
+
+@dataclass(frozen=True)
+class Ok(Generic[T]): value: T
+
+@dataclass(frozen=True)
+class Err(Generic[E]): error: E
+
+Result = Union[Ok[T], Err[E]]
+
+@dataclass(frozen=True)
+class SanitizedError:
+    code: str; message: str; retryable: bool; detail: str | None = None
+
+@dataclass(frozen=True)
+class InboxStream:
+    inbox_subject: str
+    messages: AsyncIterator["Result[bytes, SanitizedError]"]
+```
+
+Verify: `python -c "from lyra.transport._result import Ok, Err, SanitizedError, InboxStream; x: Ok[int] | Err[str] = Ok(1); assert isinstance(x, Ok); print(x.value)"`
+Expected: `1`
+Verify: `uv run pyright src/lyra/transport/_result.py`
+Expected: `0 errors`
+Time: 5min | Agent: `backend-dev-A` | Spec: SC-07, U1 | Slice: S1 | Phase: GREEN | Difficulty: 1
+
+---
+
+**T02** — Write `tests/transport/test_result_types.py` — roundtrip + narrowing + pyright stubs
+
+File: `tests/transport/test_result_types.py`
+
+```python
+from lyra.transport._result import Ok, Err, SanitizedError, InboxStream, Result
+
+def test_ok_isinstance() -> None:
+    x: Result[int, str] = Ok(42)
+    assert isinstance(x, Ok)
+    assert x.value == 42
+
+def test_err_isinstance() -> None:
+    x: Result[int, str] = Err("boom")
+    assert isinstance(x, Err)
+    assert x.error == "boom"
+
+def test_sanitized_error_frozen() -> None:
+    se = SanitizedError(code="transport.timeout", message="TimeoutError",
+                        retryable=True)
+    assert se.retryable is True
+```
+
+Verify: `uv run pytest tests/transport/test_result_types.py -v`
+Expected: `3 passed`
+Time: 5min | Agent: `tester-A` | Spec: SC-07, U1 | Slice: S1 | Phase: RED | Difficulty: 1
+
+---
+
+**T-RG-S1** — RED-GATE S1: import check + pyright
+
+Verify: `python -c "from lyra.transport._result import Ok, Err, SanitizedError, InboxStream, Result; print('ok')" && uv run pytest tests/transport/test_result_types.py -q && uv run pyright src/lyra/transport/_result.py`
+Expected: `ok` + `3 passed` + `0 errors`
+Time: 3min | Agent: `tester-A` | Slice: S1 | Phase: RED-GATE | Difficulty: 1
+
+---
+
+### S2 — NatsTransport (`src/lyra/transport/nats_request_response.py`)
+
+---
+
+**T03** — Implement `NatsTransport.call` + `_sanitize` with all 4 error codes
+
+File: `src/lyra/transport/nats_request_response.py`
+
+```python
+class NatsTransport:
+    def __init__(self, nc: "NATS", *, default_timeout: float = 120.0) -> None:
+        self._nc = nc
+        self._default_timeout = default_timeout
+
+    async def call(
+        self, subject: str, payload: bytes, *, timeout: float | None = None
+    ) -> "Result[bytes, SanitizedError]":
+        t = timeout if timeout is not None else self._default_timeout
+        try:
+            reply = await self._nc.request(subject, payload, timeout=t)
+            return Ok(reply.data)
+        except TimeoutError as exc:
+            return Err(self._sanitize(exc, context="call.timeout"))
+        except NoRespondersError as exc:
+            return Err(self._sanitize(exc, context="call.no_responders"))
+        except nats.errors.Error as exc:
+            return Err(self._sanitize(exc, context="call.error",
+                                      payload_kb=len(payload)/1024))
+
+    def _sanitize(self, exc: Exception, *, context: str = "",
+                  payload_kb: float = 0.0) -> "SanitizedError":
+        name = type(exc).__name__
+        if "max_payload" in str(exc).lower():
+            return SanitizedError(code="transport.payload_too_large",
+                                  message=name, retryable=False)
+        code_map = {"TimeoutError": "transport.timeout",
+                    "NoRespondersError": "transport.no_responders"}
+        code = code_map.get(name, "transport.error")
+        return SanitizedError(code=code, message=name, retryable=True)
+```
+
+Verify: `uv run pyright src/lyra/transport/nats_request_response.py`
+Expected: `0 errors`
+Time: 8min | Agent: `backend-dev-A` | Spec: SC-07, SC-10, U1 | Slice: S2 | Phase: GREEN | Difficulty: 3
+
+---
+
+**T04** — Implement `NatsTransport.open_inbox` async context manager + `InboxStream`
+
+File: `src/lyra/transport/nats_request_response.py`
+
+```python
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def open_inbox(self):
+    inbox = self._nc.new_inbox()
+    sub = await self._nc.subscribe(inbox)
+    log.info("transport.inbox_open inbox=%s", inbox)
+    async def _messages():
+        try:
+            while True:
+                try:
+                    msg = await sub.next_msg(timeout=self._default_timeout)
+                    yield Ok(msg.data)
+                except (TimeoutError, asyncio.TimeoutError) as exc:
+                    yield Err(self._sanitize(exc, context="inbox.timeout"))
+                    return
+        except Exception as exc:
+            yield Err(self._sanitize(exc, context="inbox.error"))
+    try:
+        yield InboxStream(inbox_subject=inbox, messages=_messages())
+    finally:
+        await sub.unsubscribe()
+        log.info("transport.inbox_close inbox=%s", inbox)
+```
+
+Verify: `uv run pytest tests/transport/test_nats_rr.py::test_open_inbox_cleanup_on_early_break -v`
+Expected: `1 passed`
+Time: 10min | Agent: `backend-dev-A` | Spec: SC-15, B1-consensus | Slice: S2 | Phase: GREEN | Difficulty: 4
+
+---
+
+**T05** — Write `tests/transport/test_nats_rr.py` — call() error paths return Result (never raise)
+
+File: `tests/transport/test_nats_rr.py`
+
+```python
+import nats.errors, pytest
+from unittest.mock import AsyncMock
+from lyra.transport.nats_request_response import NatsTransport
+from lyra.transport._result import Ok, Err, SanitizedError
+
+@pytest.mark.asyncio
+async def test_call_success_returns_ok():
+    nc = AsyncMock(); nc.request = AsyncMock(return_value=AsyncMock(data=b"hi"))
+    t = NatsTransport(nc); result = await t.call("subj", b"payload")
+    assert isinstance(result, Ok); assert result.value == b"hi"
+
+@pytest.mark.asyncio
+async def test_call_timeout_returns_err_never_raises():
+    nc = AsyncMock(); nc.request = AsyncMock(side_effect=TimeoutError())
+    t = NatsTransport(nc); result = await t.call("subj", b"x")
+    assert isinstance(result, Err); assert result.error.code == "transport.timeout"
+```
+
+Verify: `uv run pytest tests/transport/test_nats_rr.py -v -k "not inbox"`
+Expected: all transport call tests pass
+Time: 8min | Agent: `tester-A` | Spec: SC-07, SC-15 | Slice: S2 | Phase: RED | Difficulty: 2 | `[P]`
+
+---
+
+**T06** — Write `tests/transport/test_nats_rr.py` — `open_inbox` CM including early `break` cleanup
+
+File: `tests/transport/test_nats_rr.py` (append)
+
+```python
+@pytest.mark.asyncio
+async def test_open_inbox_cleanup_on_early_break():
+    """Caller breaks early from async for inside async with — unsubscribe must fire."""
+    nc = AsyncMock()
+    mock_sub = AsyncMock()
+    mock_sub.next_msg = AsyncMock(return_value=AsyncMock(data=b"chunk1"))
+    nc.subscribe = AsyncMock(return_value=mock_sub)
+    nc.new_inbox = MagicMock(return_value="_INBOX.test")
+
+    t = NatsTransport(nc)
+    async with t.open_inbox() as stream:
+        async for _ in stream.messages:
+            break   # early exit
+
+    mock_sub.unsubscribe.assert_called_once()   # CM __aexit__ fired
+```
+
+Verify: `uv run pytest tests/transport/test_nats_rr.py::test_open_inbox_cleanup_on_early_break -v`
+Expected: `1 passed`
+Time: 8min | Agent: `tester-A` | Spec: SC-15, B1-consensus | Slice: S2 | Phase: RED | Difficulty: 3
+
+---
+
+**T-RG-S2** — RED-GATE S2: full transport tests + line count
+
+Verify: `uv run pytest tests/transport/ -v && wc -l src/lyra/transport/nats_request_response.py`
+Expected: all pass + line count ≤150
+Time: 3min | Agent: `tester-A` | Spec: SC-10, SC-15 | Slice: S2 | Phase: RED-GATE | Difficulty: 1
+
+---
+
+### S3 — WorkerPoolClient (`src/lyra/transport/worker_pool_client.py`)
+
+---
+
+**T08** — Implement `WorkerPoolClient.__init__`, `start`, `stop`, `_on_heartbeat`, `_heartbeat_loop`
+
+File: `src/lyra/transport/worker_pool_client.py`
+
+```python
+class WorkerPoolClient:
+    def __init__(self, transport: NatsTransport, *, hb_subject: str,
+                 validate_worker_id: Callable[[str], None],
+                 hb_ttl: float = 15.0, name: str = "pool") -> None:
+        self._transport = transport
+        self._registry: WorkerRegistry = WorkerRegistry()
+        self._cb: NatsCircuitBreaker = NatsCircuitBreaker()
+        self._hb_subject = hb_subject
+        self._validate_worker_id = validate_worker_id
+        self._hb_ttl = hb_ttl
+        self._name = name
+        self._sub: object = None
+        self._task: asyncio.Task | None = None
+
+    async def start(self, nc: "NATS") -> None:
+        self._sub = await nc.subscribe(self._hb_subject, cb=self._on_heartbeat)
+        self._task = asyncio.create_task(self._heartbeat_loop(), name=f"{self._name}.hb")
+
+    async def stop(self) -> None:
+        if self._task: self._task.cancel()
+        if self._sub: await self._sub.unsubscribe()
+```
+
+Note: `_on_heartbeat` replays dual-validation from `NatsWorkerClientBase._on_heartbeat` verbatim: `VALIDATE_WORKER_ID(worker_id)` + `registry.validate_nats_token` secondary guard. Both checks must be preserved for defense-in-depth per ADR-045.
+
+Verify: `uv run pyright src/lyra/transport/worker_pool_client.py`
+Expected: `0 errors`
+Time: 10min | Agent: `backend-dev-B` | Spec: SC-11, U4 | Slice: S3 | Phase: GREEN | Difficulty: 4
+
+---
+
+**T09** — Implement `request_with_routing`, `stream_request`, `is_pool_alive` with mandatory structured log
+
+File: `src/lyra/transport/worker_pool_client.py` (extend)
+
+```python
+async def request_with_routing(
+    self, subject_fn: Callable[[str], str], payload: bytes, *,
+    timeout: float | None = None, max_attempts: int | None = None
+) -> "Result[bytes, SanitizedError]":
+    if self._cb.is_open():
+        return Err(SanitizedError(code="pool.circuit_open", message="CircuitOpen",
+                                  retryable=True))
+    attempt = 0
+    for worker in self._registry.scored():
+        if max_attempts is not None and attempt >= max_attempts:
+            break
+        subject = subject_fn(worker.id)
+        log.info("pool.routing", extra={"pool": self._name, "worker_id": worker.id,
+                  "subject": subject, "attempt": attempt, "result": "pending"})
+        result = await self._transport.call(subject, payload, timeout=timeout)
+        attempt += 1
+        if isinstance(result, Ok):
+            self._cb.record_success()
+            return result
+        if result.error.code in {"transport.timeout", "transport.no_responders"}:
+            self._registry.mark_stale(worker.id)
+        self._cb.record_failure()
+    log.warning("pool.no_live_workers pool=%s", self._name)
+    return Err(SanitizedError(code="pool.no_live_workers", message="NoLiveWorkers",
+                              retryable=True))
+```
+
+Verify: `uv run pytest tests/transport/test_worker_pool_client.py -v`
+Expected: routing + log tests pass
+Time: 10min | Agent: `backend-dev-B` | Spec: SC-24, B2-consensus | Slice: S3 | Phase: GREEN | Difficulty: 4
+
+---
+
+**T10** — Implement `LlmCodec.encode` + `LlmCodec.decode` in `src/lyra/llm/llm_codec.py`
+
+File: `src/lyra/llm/llm_codec.py`
+
+```python
+class LlmCodec:
+    def encode(self, text, model_cfg, system_prompt, messages, *, stream) -> tuple[bytes, str]:
+        # Text-folding: replays _build_request logic from NatsLlmClient
+        # Returns (payload_bytes, trace_id)
+        ...
+
+    def decode(self, result: "Result[bytes, SanitizedError]", trace_id: str) -> "LlmResult":
+        # Err → LlmResult(worker_error=...); CB NOT touched here
+        # Ok → model_validate_json; ValidationError → LlmResult(error="decode.validation_error")
+        # Pool CB unaffected on decode failure (spec §"Error path — decode failure")
+        ...
+```
+
+Verify: `uv run pytest tests/llm/ -k codec -v`
+Expected: codec unit tests pass
+Time: 10min | Agent: `backend-dev-C` | Spec: SC-16, U1 | Slice: S4 (codec boundary) | Phase: GREEN | Difficulty: 3 | `[P]`
+
+---
+
+**T11** — Implement `TtsCodec` + `SttCodec` in `src/lyra/nats/nats_tts_codec.py` and `nats_stt_codec.py`
+
+Files: `src/lyra/nats/nats_tts_codec.py`, `src/lyra/nats/nats_stt_codec.py`
+
+```python
+class TtsCodec:
+    def encode(self, text, config) -> bytes:
+        # Builds TtsRequest bytes; replays NatsTtsClient synthesize() payload logic
+        ...
+    def decode(self, result: "Result[bytes, SanitizedError]") -> "SynthesisResult":
+        # Err → SynthesisResult(error=...); ValidationError → SynthesisResult(error=...)
+        # CB unaffected — decode failure is not a worker-health event
+        ...
+```
+
+Verify: `uv run pytest tests/nats/ -k "tts_codec or stt_codec" -v`
+Expected: codec tests pass
+Time: 10min | Agent: `backend-dev-C` | Spec: SC-13, SC-17 | Slice: S5 (codec boundary) | Phase: GREEN | Difficulty: 3 | `[P]`
+
+---
+
+**T12** — Implement `ImageCodec` in `src/lyra/nats/nats_image_codec.py`
+
+File: `src/lyra/nats/nats_image_codec.py`
+
+```python
+class ImageCodec:
+    def encode(self, prompt, params) -> bytes:
+        # Builds ImageRequest bytes
+        ...
+    def decode(self, result: "Result[bytes, SanitizedError]") -> "ImageResult":
+        # Err → ImageResult(error=...); ValidationError wrapped; CB unaffected
+        ...
+```
+
+Verify: `uv run pytest tests/nats/ -k "image_codec" -v`
+Expected: image codec tests pass
+Time: 5min | Agent: `backend-dev-C` | Spec: SC-13, SC-17 | Slice: S5 (codec boundary) | Phase: GREEN | Difficulty: 2 | `[P]`
+
+---
+
+**T13** — Write `tests/transport/test_worker_pool_client.py` — CB open returns Err, heartbeat lifecycle
+
+File: `tests/transport/test_worker_pool_client.py`
+
+```python
+@pytest.mark.asyncio
+async def test_cb_open_returns_err_without_transport_call():
+    transport = FakeTransport()  # mock returning Ok
+    pool = WorkerPoolClient(transport, hb_subject="lyra.test.hb",
+                            validate_worker_id=lambda _: None)
+    pool._cb._open_until = time.monotonic() + 100.0
+    result = await pool.request_with_routing(lambda _: "subj", b"payload")
+    assert isinstance(result, Err)
+    assert transport.call_count == 0   # transport never called
+
+@pytest.mark.asyncio
+async def test_heartbeat_loop_start_stop():
+    nc = AsyncMock(); nc.subscribe = AsyncMock(return_value=AsyncMock())
+    transport = FakeTransport()
+    pool = WorkerPoolClient(transport, hb_subject="hb", validate_worker_id=lambda _: None)
+    await pool.start(nc)
+    assert pool._task is not None
+    await pool.stop()
+    pool._task.cancelled()  # task was cancelled
+```
+
+Verify: `uv run pytest tests/transport/test_worker_pool_client.py -v`
+Expected: heartbeat lifecycle + CB tests pass
+Time: 8min | Agent: `tester-A` | Spec: SC-15, U3, U4 | Slice: S3 | Phase: RED | Difficulty: 3
+
+---
+
+**T14** — Write pool routing + structured log tests
+
+File: `tests/transport/test_worker_pool_client.py` (append)
+
+```python
+@pytest.mark.asyncio
+async def test_request_with_routing_emits_structured_log(caplog):
+    """Mandatory structured log before every transport.call() — B2 consensus."""
+    import logging
+    pool = _make_pool_with_worker("w-1")
+    with caplog.at_level(logging.INFO, logger="lyra.transport.worker_pool_client"):
+        result = await pool.request_with_routing(lambda wid: f"subj.{wid}", b"x")
+    log_records = [r for r in caplog.records if "pool.routing" in r.getMessage()]
+    assert len(log_records) >= 1
+    record = log_records[0]
+    assert hasattr(record, "worker_id") or "worker_id" in record.getMessage()
+```
+
+Verify: `uv run pytest tests/transport/test_worker_pool_client.py -k routing_log -v`
+Expected: `1 passed`
+Time: 8min | Agent: `tester-A` | Spec: SC-24 | Slice: S3 | Phase: RED | Difficulty: 3
+
+---
+
+**T15** — Write `stream_request` test including `open_inbox` composition
+
+File: `tests/transport/test_worker_pool_client.py` (append)
+
+```python
+@pytest.mark.asyncio
+async def test_stream_request_composes_open_inbox():
+    """stream_request delegates to transport.open_inbox() CM — pool never touches nc directly."""
+    mock_transport = MagicMock(spec=NatsTransport)
+    inbox_ctx = AsyncMock()
+    inbox_ctx.__aenter__ = AsyncMock(return_value=InboxStream(
+        inbox_subject="_INBOX.x",
+        messages=_async_gen([Ok(b"chunk"), Ok(b"done")])
+    ))
+    inbox_ctx.__aexit__ = AsyncMock(return_value=False)
+    mock_transport.open_inbox.return_value = inbox_ctx
+
+    pool = WorkerPoolClient(mock_transport, hb_subject="hb",
+                            validate_worker_id=lambda _: None)
+    _seed_pool_worker(pool, "w-1")
+    results = [r async for r in await pool.stream_request(b"payload")]
+    mock_transport.open_inbox.assert_called_once()
+```
+
+Verify: `uv run pytest tests/transport/test_worker_pool_client.py -k stream_request -v`
+Expected: `1 passed`
+Time: 8min | Agent: `tester-A` | Spec: SC-15, B1-consensus | Slice: S3 | Phase: RED | Difficulty: 3
+
+---
+
+**T16** — RED-GATE S3: full transport suite
+
+Verify: `uv run pytest tests/transport/ -v && wc -l src/lyra/transport/worker_pool_client.py`
+Expected: all transport tests pass + line count ≤200
+Time: 3min | Agent: `tester-A` | Spec: SC-11, SC-15 | Slice: S3 | Phase: RED-GATE | Difficulty: 1
+
+---
+
+### S4 — LlmClient + LLM bootstrap (canonical pilot)
+
+---
+
+**T17** — Write `src/lyra/llm/llm_client.py` — thin domain client ≤80L
+
+File: `src/lyra/llm/llm_client.py`
+
+```python
+class LlmClient:
+    capabilities: dict = {"streaming": True, "auth": "nats"}
+
+    def __init__(self, pool: WorkerPoolClient, codec: LlmCodec,
+                 *, timeout: float | None = None) -> None:
+        self._pool = pool
+        self._codec = codec
+        self._timeout = timeout
+
+    def is_alive(self, pool_id: str) -> bool:
+        del pool_id  # LlmProvider protocol slot; pool is stateless per-pool-id
+        return self._pool.is_pool_alive()
+
+    async def complete(self, pool_id, text, model_cfg, system_prompt,
+                       *, messages=None) -> LlmResult:
+        payload, trace_id = self._codec.encode(text, model_cfg, system_prompt,
+                                               messages, stream=False)
+        result = await self._pool.request_with_routing(
+            lambda _: SUBJECTS.generate_request, payload, max_attempts=1,
+            timeout=self._timeout)
+        return self._codec.decode(result, trace_id)
+
+    async def stream(self, pool_id, text, model_cfg, system_prompt,
+                     *, messages=None) -> AsyncIterator[LlmEvent]:
+        payload, _ = self._codec.encode(text, model_cfg, system_prompt,
+                                        messages, stream=True)
+        return self._pool.stream_request(payload, timeout=self._timeout)
+```
+
+Verify: `wc -l src/lyra/llm/llm_client.py && uv run pyright src/lyra/llm/llm_client.py`
+Expected: ≤80 lines + 0 type errors
+Time: 8min | Agent: `backend-dev-D` | Spec: SC-12, SC-16, U2 | Slice: S4 | Phase: GREEN | Difficulty: 3
+
+---
+
+**T18** — Rewire `bootstrap/factory/llm_overlay.py` to 3-layer DI composition
+
+File: `src/lyra/bootstrap/factory/llm_overlay.py`
+
+```python
+async def init_nats_llm(nc: "NATS | None") -> "LlmClient | None":
+    if nc is None or not os.environ.get("NATS_URL"):
+        return None
+    from lyra.transport.nats_request_response import NatsTransport
+    from lyra.transport.worker_pool_client import WorkerPoolClient
+    from lyra.llm.llm_client import LlmClient
+    from lyra.llm.llm_codec import LlmCodec
+    from roxabi_contracts.llm import SUBJECTS, validate_worker_id
+    transport = NatsTransport(nc)
+    pool = WorkerPoolClient(transport, hb_subject=SUBJECTS.heartbeat,
+                            validate_worker_id=validate_worker_id)
+    await pool.start(nc)
+    codec = LlmCodec()
+    client = LlmClient(pool, codec)
+    log.info("LlmClient: initialised (3-layer composition)")
+    return client
+```
+
+Also update `hub_builder.py` + `wiring_helpers.py`: type annotation `NatsLlmClient | None` → `LlmClient | None`. No logic changes.
+
+Verify: `uv run pyright src/lyra/bootstrap/factory/llm_overlay.py src/lyra/bootstrap/factory/hub_builder.py src/lyra/bootstrap/factory/wiring_helpers.py`
+Expected: 0 type errors
+Time: 8min | Agent: `backend-dev-D` | Spec: SC-25 | Slice: S4 | Phase: GREEN | Difficulty: 3
+
+---
+
+**T21** — Rewrite `tests/llm/test_nats_llm_client_provider.py` — restructured by layer (LlmClient + LlmCodec)
+
+File: `tests/llm/test_nats_llm_client_provider.py`
+
+```python
+# Layer 1: LlmCodec unit tests — no pool, no transport
+class TestLlmCodec:
+    def test_encode_text_folding_empty_messages(self): ...
+    def test_encode_text_folding_passthrough(self): ...
+    def test_decode_ok_returns_llm_result(self): ...
+    def test_decode_err_maps_worker_error(self): ...
+    def test_decode_validation_error_cb_unaffected(self): ...
+
+# Layer 2: LlmClient unit tests — fake WorkerPoolClient
+class TestLlmClient:
+    async def test_complete_delegates_to_pool(self): ...
+    async def test_stream_delegates_to_pool(self): ...
+    async def test_is_alive_delegates_to_pool(self): ...
+```
+
+Verify: `uv run pytest tests/llm/test_nats_llm_client_provider.py -v`
+Expected: all pass, NatsWorkerClientBase not imported
+Time: 10min | Agent: `tester-B` | Spec: SC-16, U5 | Slice: S4 | Phase: RED | Difficulty: 4
+
+---
+
+### S5 — TTS/STT/Image + voice bootstrap
+
+---
+
+**T19** — Thin `nats_tts_client.py`, `nats_stt_client.py`, `nats_image_client.py` in place to ≤80L each
+
+Files: `src/lyra/nats/nats_tts_client.py`, `src/lyra/nats/nats_stt_client.py`, `src/lyra/nats/nats_image_client.py`
+
+```python
+# nats_tts_client.py — after thinning (skeleton)
+class TtsClient:
+    def __init__(self, pool: WorkerPoolClient, codec: TtsCodec) -> None:
+        self._pool = pool; self._codec = codec
+
+    def is_alive(self) -> bool:
+        return self._pool.is_pool_alive()
+
+    async def synthesize(self, text, *, agent_tts=None, ...) -> SynthesisResult:
+        payload = self._codec.encode(text, config=agent_tts)
+        result = await self._pool.request_with_routing(per_worker_tts, payload,
+                                                        max_attempts=None)
+        return self._codec.decode(result)
+```
+
+NatsWorkerClientBase import removed. `_walk_registry`, `_raise_nats_failure`, `_is_no_responders` deleted. `_registry` never accessed. Same pattern for STT + Image.
+
+Verify: `grep -n "NatsWorkerClientBase\|_registry\|_raise_nats_failure\|_is_no_responders" src/lyra/nats/nats_tts_client.py src/lyra/nats/nats_stt_client.py src/lyra/nats/nats_image_client.py`
+Expected: 0 occurrences
+Time: 10min | Agent: `backend-dev-D` | Spec: SC-01, SC-02, SC-03, SC-12, SC-14 | Slice: S5 | Phase: GREEN | Difficulty: 4
+
+---
+
+**T20** — Rewire `bootstrap/factory/voice_overlay.py` to 3-layer DI for TTS, STT, Image
+
+File: `src/lyra/bootstrap/factory/voice_overlay.py`
+
+```python
+async def init_nats_tts(nc: "NATS") -> "TtsClient":
+    from lyra.transport.nats_request_response import NatsTransport
+    from lyra.transport.worker_pool_client import WorkerPoolClient
+    from lyra.nats.nats_tts_client import TtsClient
+    from lyra.nats.nats_tts_codec import TtsCodec
+    from roxabi_contracts.voice import SUBJECTS, validate_worker_id
+    transport = NatsTransport(nc)
+    pool = WorkerPoolClient(transport, hb_subject=SUBJECTS.tts_heartbeat,
+                            validate_worker_id=validate_worker_id)
+    await pool.start(nc)
+    return TtsClient(pool, TtsCodec())
+# STT + Image follow same pattern
+```
+
+Verify: `uv run pyright src/lyra/bootstrap/factory/voice_overlay.py`
+Expected: 0 type errors
+Time: 8min | Agent: `backend-dev-D` | Spec: SC-25, U2 | Slice: S5 | Phase: GREEN | Difficulty: 3
+
+---
+
+**T22** — Rewrite `tests/nats/test_nats_tts_client.py`, `test_nats_stt_client.py`, `test_nats_image_client.py` by layer
+
+Files: `tests/nats/test_nats_tts_client.py`, `tests/nats/test_nats_stt_client.py`, `tests/nats/test_nats_image_client.py`
+
+```python
+# Per-client structure (TTS shown, mirror for STT/Image):
+class TestTtsCodec:
+    def test_encode_builds_tts_request(self): ...
+    def test_decode_ok_returns_synthesis_result(self): ...
+    def test_decode_err_cb_unaffected(self): ...  # CB not touched on decode error
+
+class TestTtsClient:
+    async def test_synthesize_delegates_to_pool(self): ...
+    async def test_is_alive_delegates_to_pool(self): ...
+```
+
+Verify: `uv run pytest tests/nats/test_nats_tts_client.py tests/nats/test_nats_stt_client.py tests/nats/test_nats_image_client.py -v`
+Expected: all pass; no NatsWorkerClientBase import
+Time: 10min | Agent: `tester-B` | Spec: SC-17, U5 | Slice: S5 | Phase: RED | Difficulty: 4
+
+---
+
+**T23** — RED-GATE S4+S5: domain + bootstrap tests
+
+Verify: `uv run pytest tests/llm/ tests/nats/test_nats_tts_client.py tests/nats/test_nats_stt_client.py tests/nats/test_nats_image_client.py -v`
+Expected: all pass
+Time: 3min | Agent: `tester-B` | Spec: SC-16, SC-17 | Slice: S5 | Phase: RED-GATE | Difficulty: 1
+
+---
+
+### S6 — Cleanup + sweep
+
+---
+
+**T24** — Delete `src/lyra/nats/_worker_client_base.py` and `tests/nats/test_worker_client_base.py`
+
+Files: `src/lyra/nats/_worker_client_base.py` (delete), `tests/nats/test_worker_client_base.py` (delete)
+
+```bash
+git rm src/lyra/nats/_worker_client_base.py
+git rm tests/nats/test_worker_client_base.py
+```
+
+Note: verify full suite still passes after deletion before proceeding to T25.
+
+Verify: `test -f src/lyra/nats/_worker_client_base.py && echo EXISTS || echo DELETED`
+Expected: `DELETED`
+Verify: `uv run pytest -x -q 2>&1 | tail -5`
+Expected: no new failures
+Time: 5min | Agent: `architect` | Spec: SC-03, SC-04, SC-08 | Slice: S6 | Phase: REFACTOR | Difficulty: 1
+
+---
+
+**T25** — Grep sweep — all 7 transport boundary success criteria (1:1 with spec SC-01..SC-09, SC-14, SC-23, SC-25)
+
+File: N/A (verification only)
+
+```bash
+# SC-01
+grep -rn "_raise_nats_failure" src/lyra/nats/
+# SC-02
+grep -rn "_is_no_responders" src/lyra/nats/
+# SC-03 + SC-08
+grep -rn "NatsWorkerClientBase\|from lyra.nats._worker_client_base" src/lyra/
+# SC-05
+grep -rn "str(exc)" src/lyra/nats/ src/lyra/llm/
+# SC-06
+grep -rn 'f".*{exc}' src/lyra/llm/llm_client.py src/lyra/nats/nats_tts_client.py src/lyra/nats/nats_stt_client.py src/lyra/nats/nats_image_client.py
+# SC-09
+grep -rn "NatsDriverBase" src/lyra/nats/
+# SC-14 + SC-23
+grep -rn "_registry\|pool\.scored_workers" src/lyra/llm/ src/lyra/nats/nats_tts_client.py src/lyra/nats/nats_stt_client.py src/lyra/nats/nats_image_client.py
+# SC-25
+grep -rn "NatsWorkerClientBase\|NatsLlmClient\|NatsTtsClient\|NatsSttClient\|NatsImageClient" src/lyra/bootstrap/
+```
+
+Expected: all → 0 occurrences
+Time: 5min | Agent: `architect` | Spec: SC-01–SC-09, SC-14, SC-23, SC-25 | Slice: S6 | Phase: REFACTOR | Difficulty: 1
+
+---
+
+**T26** — Smoke test `tools/smoke_llm_e2e.sh` (S6 final RED-GATE for S4)
+
+```bash
+tools/smoke_llm_e2e.sh --timeout 30
+```
+
+Expected: `[smoke_llm_e2e] ok — LlmResponse received with ok=true`
+If NATS not reachable in CI: mark as `xfail` with comment "requires live NATS + LLM worker; run manually on roxabituwer".
+
+Verify: `uv run pytest tests/integration/test_worker_error_e2e.py -v`
+Expected: all integration tests pass
+Time: 5min | Agent: `architect` | Spec: SC-18 | Slice: S6 | Phase: RED-GATE | Difficulty: 1
+
+---
+
+**T27** — Update `src/lyra/nats/CLAUDE.md` — remove NatsWorkerClientBase reference, add transport layer pointer
+
+File: `src/lyra/nats/CLAUDE.md`
+
+Update "NatsLlmClient lives here, not in llm/" section: remove (LlmClient moves to `src/lyra/llm/`). Add entry noting `NatsTransport` + `WorkerPoolClient` live in `src/lyra/transport/`. Update import rules table. Remove `_worker_client_base.py` from any file lists.
+
+Verify: `grep -n "NatsWorkerClientBase\|NatsLlmClient lives here\|_worker_client_base" src/lyra/nats/CLAUDE.md`
+Expected: 0 occurrences (or only historical references clearly marked as deleted)
+Time: 5min | Agent: `doc-writer` | Spec: none (hygiene) | Slice: S6 | Phase: REFACTOR | Difficulty: 1 | `[P]`
+
+---
+
+**T28** — Update `src/lyra/llm/CLAUDE.md` — add `LlmClient`, `LlmCodec` as primary entries
+
+File: `src/lyra/llm/CLAUDE.md`
+
+Add `llm_client.py` and `llm_codec.py` as canonical domain client + codec. Note that `NatsLlmClient` (deleted) is replaced by this composition. Add import rules: `lyra.llm` may import from `lyra.transport`.
+
+Verify: `grep -n "LlmClient\|LlmCodec\|transport" src/lyra/llm/CLAUDE.md`
+Expected: at least one entry for each
+Time: 5min | Agent: `doc-writer` | Spec: none (hygiene) | Slice: S6 | Phase: REFACTOR | Difficulty: 1 | `[P]`
+
+---
+
+**T29** — Update `src/lyra/bootstrap/CLAUDE.md` + root `CLAUDE.md` — transport layer entry, updated key files table
+
+Files: `src/lyra/bootstrap/CLAUDE.md`, `CLAUDE.md`
+
+In root CLAUDE.md "Key files" table: replace `packages/roxabi-nats/` entry description to note that `src/lyra/transport/` is the new in-tree transport layer. Add row for `src/lyra/transport/`. In bootstrap CLAUDE.md: update factory/ description.
+
+Verify: `grep -n "transport\|NatsTransport" CLAUDE.md src/lyra/bootstrap/CLAUDE.md`
+Expected: at least one entry per file
+Time: 5min | Agent: `doc-writer` | Spec: none (hygiene) | Slice: S6 | Phase: REFACTOR | Difficulty: 1 | `[P]`
+
+---
+
+**T30** — Update `tools/file_exemptions.txt` — remove `nats_llm_client.py` exemption (file deleted)
+
+File: `tools/file_exemptions.txt`
+
+Remove the exemption line for `src/lyra/nats/nats_llm_client.py`. All new files (`llm_client.py` ≤80L, `nats_request_response.py` ≤150L, `worker_pool_client.py` ≤200L, codecs ≤120L) are under the 300L cap — no new exemption entries needed.
+
+Verify: `grep "nats_llm_client" tools/file_exemptions.txt`
+Expected: 0 occurrences
+Time: 3min | Agent: `devops` | Spec: SC-20 | Slice: S6 | Phase: REFACTOR | Difficulty: 1 | `[P]`
+
+---
+
+**T31** — Full suite + quality-gate sweep (final gate)
+
+```bash
+uv run pytest -q
+uv run ruff check .
+uv run pyright
+uv run bash tools/check_file_length.sh
+```
+
+Verify LOC delta: `wc -l src/lyra/nats/nats_{tts,stt,image}_client.py src/lyra/nats/nats_llm_client.py 2>/dev/null || echo "nats_llm_client deleted"` (target: ≤−1200 vs pre-PR baseline)
+
+Expected: all pass; 0 new ruff errors; 0 new pyright errors; no new file-length violations
+Time: 5min | Agent: `devops` | Spec: SC-19, SC-20, SC-21, SC-22 | Slice: S6 | Phase: RED-GATE | Difficulty: 1
+
+---
+
+## Task Seeding Blueprint
+
+| T# | Agent instance | blockedBy | Subject |
+|---|---|---|---|
+| **Wave 1** | | | |
+| T01 | backend-dev-A | — | Create `src/lyra/transport/_result.py` with Ok, Err, SanitizedError, InboxStream |
+| T02 | tester-A | — | Write `tests/transport/test_result_types.py` roundtrip + narrowing tests |
+| T-RG-S1 | tester-A | T01,T02 | RED-GATE S1: import check + pyright on _result.py |
+| **Wave 2** | | | |
+| T03 | backend-dev-A | T-RG-S1 | Implement `NatsTransport.call` + `_sanitize` (4 error codes) |
+| T04 | backend-dev-A | T03 | Implement `NatsTransport.open_inbox` async CM + InboxStream yield |
+| T05 | tester-A | T-RG-S1 | Write transport `call()` error-path tests (never raise, Result return) |
+| T06 | tester-A | T05 | Write `open_inbox` early-break cleanup test |
+| T-RG-S2 | tester-A | T04,T06 | RED-GATE S2: full transport tests + line count ≤150 |
+| T08 | backend-dev-B | T-RG-S1 | Implement `WorkerPoolClient.__init__`, `start`, `stop`, `_on_heartbeat`, `_heartbeat_loop` |
+| T09 | backend-dev-B | T08 | Implement `request_with_routing`, `stream_request`, `is_pool_alive` + mandatory log |
+| T10 | backend-dev-C | T-RG-S1 | Implement `LlmCodec.encode` + `LlmCodec.decode` in `src/lyra/llm/llm_codec.py` |
+| T11 | backend-dev-C | T-RG-S1 | Implement `TtsCodec` + `SttCodec` in `nats_tts_codec.py`, `nats_stt_codec.py` |
+| T12 | backend-dev-C | T-RG-S1 | Implement `ImageCodec` in `nats_image_codec.py` |
+| **Wave 3** | | | |
+| T13 | backend-dev-A | T-RG-S2,T09 | RED-GATE S3 transport: wc -l worker_pool_client.py ≤200 |
+| T14 | tester-A | T-RG-S2,T09 | Write pool CB + routing tests (circuit-open returns Err, no transport call) |
+| T15 | tester-A | T14 | Write `stream_request` test: open_inbox composition verified |
+| T16 | tester-A | T13,T15 | RED-GATE S3: full transport/ tests + ≤200L check |
+| T17 | backend-dev-D | T16,T10 | Write `src/lyra/llm/llm_client.py` thin domain client ≤80L |
+| T18 | backend-dev-D | T17 | Rewire `llm_overlay.py` + annotation-only updates to `hub_builder.py`, `wiring_helpers.py` |
+| T19 | backend-dev-D | T16,T11,T12 | Thin `nats_tts_client.py`, `nats_stt_client.py`, `nats_image_client.py` in place ≤80L each |
+| T20 | backend-dev-D | T19 | Rewire `voice_overlay.py` to 3-layer DI for TTS, STT, Image |
+| T21 | tester-B | T18 | Rewrite `tests/llm/test_nats_llm_client_provider.py` by layer (LlmClient + LlmCodec) |
+| T22 | tester-B | T20 | Rewrite `tests/nats/test_nats_{tts,stt,image}_client.py` by layer |
+| T23 | tester-B | T21,T22 | RED-GATE S4+S5: `uv run pytest tests/llm/ tests/nats/test_nats_{tts,stt,image}*` |
+| **Wave 4** | | | |
+| T24 | architect | T23 | `git rm` `_worker_client_base.py` + `test_worker_client_base.py`; verify full suite |
+| T25 | architect | T24 | Grep sweep all 7 transport-boundary criteria → 0 occurrences each |
+| T26 | architect | T25 | Smoke `tools/smoke_llm_e2e.sh` + `pytest tests/integration/test_worker_error_e2e.py` |
+| T27 | doc-writer | T24 | Update `src/lyra/nats/CLAUDE.md` — remove WCB refs, add transport layer pointer |
+| T28 | doc-writer | T24 | Update `src/lyra/llm/CLAUDE.md` — add LlmClient + LlmCodec entries |
+| T29 | doc-writer | T27,T28 | Update `src/lyra/bootstrap/CLAUDE.md` + root `CLAUDE.md` transport layer entry |
+| T30 | devops | T24 | Remove `nats_llm_client.py` exemption from `tools/file_exemptions.txt` |
+| T31 | devops | T26,T29,T30 | Full suite + ruff + pyright + check_file_length.sh (final gate) |

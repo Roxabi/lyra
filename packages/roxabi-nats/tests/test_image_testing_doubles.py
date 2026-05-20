@@ -217,15 +217,18 @@ async def _run_loopback_passes_guard(url: str) -> None:
 
 
 async def test_g3_accepts_ipv4_loopback() -> None:
-    await _run_loopback_passes_guard("nats://127.0.0.1:4222")
+    # Port 14222 (not 4222) — avoids collision with a NATS broker that may be
+    # running on the canonical port in dev environments. The test only needs
+    # any closed port for the post-G3 connection attempt to fail.
+    await _run_loopback_passes_guard("nats://127.0.0.1:14222")
 
 
 async def test_g3_accepts_ipv6_loopback() -> None:
-    await _run_loopback_passes_guard("nats://[::1]:4222")
+    await _run_loopback_passes_guard("nats://[::1]:14222")
 
 
 async def test_g3_accepts_ipv6_loopback_full() -> None:
-    await _run_loopback_passes_guard("nats://[0:0:0:0:0:0:0:1]:4222")
+    await _run_loopback_passes_guard("nats://[0:0:0:0:0:0:0:1]:14222")
 
 
 # ---------------------------------------------------------------------------

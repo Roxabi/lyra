@@ -14,8 +14,9 @@ from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
-from lyra.inbound.context import DispatchCtx
+from lyra.inbound.context import DispatchCtx, RouterCtx
 from lyra.inbound.dispatcher import Dispatcher
+from lyra.inbound.router import RouteDecision, Router
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("lyra.adapters.telegram")
 
 _dispatcher = Dispatcher()
+_router = Router()
 
 
 async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps
@@ -33,13 +35,13 @@ async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:  # noqa: C
     # C3: adapters send raw identity fields; Hub resolves trust in run().
     hub_msg = adapter.normalize(msg, trust_level=TrustLevel.PUBLIC, is_admin=False)
 
-    # In group chats, only respond when directly mentioned.
-    # In private chats, always respond.
-    if (
-        isinstance(hub_msg.platform_meta, TelegramMeta)
-        and hub_msg.platform_meta.is_group
-        and not hub_msg.is_mention
-    ):
+    # Route decision: drop group messages without mention; pass DMs and mentions.
+    _router_ctx = RouterCtx(
+        bot_id=adapter._bot_id,
+        owned_threads=set(),  # Telegram has no thread model
+        watch_channels=None,
+    )
+    if _router.decide(hub_msg, _router_ctx) is RouteDecision.DROP:
         return
 
     # Session wiring: inject prior session_id + persist callback.

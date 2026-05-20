@@ -18,8 +18,9 @@ from lyra.adapters.discord.discord_threads import (
 from lyra.adapters.shared._shared import AUDIO_MIME_TYPES
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import DiscordMeta, InboundMessage
-from lyra.inbound.context import DispatchCtx
+from lyra.inbound.context import DispatchCtx, RouterCtx
 from lyra.inbound.dispatcher import Dispatcher
+from lyra.inbound.router import RouteDecision, Router
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -27,6 +28,36 @@ if TYPE_CHECKING:
 log = logging.getLogger("lyra.adapters.discord")
 
 _dispatcher = Dispatcher()
+_router = Router()
+
+
+async def _discord_pre_route_hook(
+    msg: InboundMessage, router_ctx: RouterCtx, adapter: "DiscordAdapter"
+) -> None:
+    """Cold-path: lazy ThreadStore.is_owned warmup so revived threads route correctly.
+
+    Mutates ``router_ctx.owned_threads`` in place when the DB confirms ownership.
+    Called inline in ``handle_message`` before ``Router.decide``.
+    """
+    meta = msg.platform_meta
+    if not isinstance(meta, DiscordMeta):
+        return
+    if meta.thread_id is None:
+        return  # not a thread
+    if meta.thread_id in router_ctx.owned_threads:
+        return  # hot set already knows
+    if adapter._thread_store is None:
+        return
+    try:
+        if await adapter._thread_store.is_owned(str(meta.thread_id), adapter._bot_id):
+            router_ctx.owned_threads.add(meta.thread_id)
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        # ThreadStore I/O failure — fall through; Router will DROP unrecognized thread
+        log.warning(
+            "pre_route_hook: ThreadStore.is_owned failed for thread %s",
+            meta.thread_id,
+            exc_info=True,
+        )
 
 
 async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps
@@ -58,45 +89,24 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         if await adapter._handle_voice_command(message, TrustLevel.PUBLIC):
             return
 
-    # Pre-detect mention (needed for auto-thread decision)
+    # Pre-detect mention (needed for auto-thread decision below)
     _is_mention = (
         adapter._bot_user is not None and adapter._bot_user in message.mentions
     )
-
-    # In DMs (no guild), always respond.
-    # In servers: only respond when directly mentioned or in an owned thread.
     _is_dm = message.guild is None
     _is_thread = isinstance(message.channel, discord.Thread)
+
+    # Build routing context; owned_threads shared by reference (pre_route_hook mutates).
+    _router_ctx = RouterCtx(
+        bot_id=adapter._bot_id,
+        owned_threads=adapter._owned_threads,  # mutable — shared by reference
+        watch_channels=adapter._watch_channels if adapter._watch_channels else None,
+    )
+    # Derived routing flags (still needed for auto-thread decision below).
     _in_owned_thread = _is_thread and message.channel.id in adapter._owned_threads
-
-    # Cold-path lazy check: thread not in hot set, query DB and warm cache on hit.
-    if (
-        not _is_dm
-        and not _is_mention
-        and not _in_owned_thread
-        and _is_thread
-        and adapter._thread_store is not None
-    ):
-        try:
-            if await adapter._thread_store.is_owned(
-                str(message.channel.id), adapter._bot_id
-            ):
-                adapter._owned_threads.add(message.channel.id)
-                _in_owned_thread = True
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
-            log.warning(
-                "ThreadStore: lazy is_owned check failed for thread_id=%s",
-                message.channel.id,
-            )
-
-    # Watch channel: process all messages in designated channels (no mention needed).
     _is_watch_channel = (
         not _is_dm and not _is_thread and message.channel.id in adapter._watch_channels
     )
-
-    _should_process = _is_dm or _is_mention or _in_owned_thread or _is_watch_channel
-    if not _should_process:
-        return
 
     # Auto-thread creation BEFORE normalize() (frozen dataclass)
     resolved_thread_id: int | None = None
@@ -186,6 +196,13 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
         )
     except Exception:
         log.exception("Failed to normalize discord message id=%s", message.id)
+        return
+
+    # pre_route_hook: cold-path lazy owned-thread warmup (T20).
+    await _discord_pre_route_hook(hub_msg, _router_ctx, adapter)
+
+    # Routing decision — Router reads hub_msg.platform_meta + router_ctx.
+    if _router.decide(hub_msg, _router_ctx) is RouteDecision.DROP:
         return
 
     # Inject stored thread_session_id into typed DiscordMeta.

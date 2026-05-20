@@ -11,10 +11,10 @@ import asyncio
 import json
 import logging
 from contextlib import AbstractAsyncContextManager
-from typing import TYPE_CHECKING, Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Protocol
 
 from lyra.nats.worker_registry import WorkerRegistry
-from lyra.transport._result import InboxStream, Result, SanitizedError
+from lyra.transport._result import Err, InboxStream, Ok, Result, SanitizedError
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
 if TYPE_CHECKING:
@@ -73,7 +73,7 @@ class WorkerPoolClient:
     async def _on_heartbeat(self, msg: Any) -> None:
         """Dual-validation heartbeat handler — replayed from NatsWorkerClientBase.
 
-        1. parse JSON payload → extract worker_id
+        1. parse JSON payload -> extract worker_id
         2. VALIDATE_WORKER_ID(worker_id) — primary guard (subclass-injected)
         3. WorkerRegistry secondary guard via record_heartbeat (validates nats_token)
         Both checks preserved for defense-in-depth per ADR-045.
@@ -108,3 +108,69 @@ class WorkerPoolClient:
 
     def is_pool_alive(self) -> bool:
         return self._registry.any_alive()
+
+    async def request_with_routing(
+        self,
+        subject_fn: Callable[[str], str],
+        payload: bytes,
+        *,
+        timeout: float | None = None,
+        max_attempts: int | None = None,
+    ) -> Result[bytes, SanitizedError]:
+        """Iterate scored workers; subject_fn(worker_id) -> subject.
+
+        Emits mandatory structured log (pool, worker_id, subject, attempt, result)
+        before each transport.call(). Consensus § B2.
+        """
+        if self._cb.is_open():
+            return Err(
+                SanitizedError(
+                    code="pool.circuit_open", message="CircuitOpen", retryable=True
+                )
+            )
+        attempt = 0
+        for worker in self._registry.ordered_by_score():
+            if max_attempts is not None and attempt >= max_attempts:
+                break
+            subject = subject_fn(worker.worker_id)
+            log.info(
+                "pool.routing",
+                extra={
+                    "pool": self._name,
+                    "worker_id": worker.worker_id,
+                    "subject": subject,
+                    "attempt": attempt,
+                    "result": "pending",
+                },
+            )
+            result = await self._transport.call(subject, payload, timeout=timeout)
+            attempt += 1
+            if isinstance(result, Ok):
+                self._cb.record_success()
+                return result
+            if result.error.code in {"transport.timeout", "transport.no_responders"}:
+                self._registry.mark_stale(worker.worker_id)
+            self._cb.record_failure()
+        log.warning("pool.no_live_workers pool=%s", self._name)
+        return Err(
+            SanitizedError(
+                code="pool.no_live_workers", message="NoLiveWorkers", retryable=True
+            )
+        )
+
+    async def stream_request(
+        self, payload: bytes, *, timeout: float | None = None
+    ) -> AsyncIterator[Result[bytes, SanitizedError]]:
+        """Compose transport.open_inbox. Yields Result[bytes, SanitizedError] chunks."""
+        if self._cb.is_open():
+            yield Err(
+                SanitizedError(
+                    code="pool.circuit_open", message="CircuitOpen", retryable=True
+                )
+            )
+            return
+        async with self._transport.open_inbox() as stream:
+            # Domain layer publishes the request with the inbox subject as reply field;
+            # workers stream responses into the inbox.
+            async for msg in stream.messages:
+                yield msg

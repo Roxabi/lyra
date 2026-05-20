@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from roxabi_nats import sanitize_for_wire
-from roxabi_nats.errors import DEFAULT_MAX_LEN
+from roxabi_nats import DEFAULT_MAX_LEN, sanitize_for_wire
 
 
 class TestStrCast:
@@ -44,23 +43,27 @@ class TestStrCast:
 
 
 class TestCredentialScrub:
-    def test_nats_url_userinfo_scrubbed(self) -> None:
-        exc = RuntimeError("connect failed: nats://admin:s3cret@broker:4222")
-        assert "admin:s3cret" not in sanitize_for_wire(exc)
-        assert "***:***@broker:4222" in sanitize_for_wire(exc)
-
-    def test_postgres_url_userinfo_scrubbed(self) -> None:
-        exc = RuntimeError("pg error: postgres://u:p@db.host/mydb")
-        assert "u:p" not in sanitize_for_wire(exc)
-        assert "***:***@db.host" in sanitize_for_wire(exc)
-
     @pytest.mark.parametrize(
         "scheme",
-        ["nats", "nats+tls", "redis", "rediss", "amqp", "amqps", "http", "https"],
+        [
+            "nats",
+            "nats+tls",
+            "redis",
+            "rediss",
+            "amqp",
+            "amqps",
+            "http",
+            "https",
+            "postgres",
+            "postgresql",
+            "mysql",
+        ],
     )
-    def test_allowlisted_scheme_scrubbed(self, scheme: str) -> None:
+    def test_allowlisted_scheme_userinfo_scrubbed(self, scheme: str) -> None:
         exc = RuntimeError(f"err: {scheme}://user:pass@host/path")
-        assert "user:pass" not in sanitize_for_wire(exc)
+        result = sanitize_for_wire(exc)
+        assert "user:pass" not in result
+        assert "***:***@host" in result
 
     def test_unknown_scheme_unchanged(self) -> None:
         # custom:// is not in the credential scheme allowlist
@@ -81,6 +84,29 @@ class TestCredentialScrub:
         assert "***:***@x" in result
         assert "***:***@y" in result
 
+    def test_ipv6_host_userinfo_scrubbed(self) -> None:
+        # Bracketed IPv6 host is a common regex blind spot. Delegating to
+        # urlsplit (RFC 3986) handles it correctly; pin the behavior so a
+        # future regex change cannot regress silently.
+        exc = RuntimeError("connect: nats://user:pass@[::1]:4222")
+        result = sanitize_for_wire(exc)
+        assert "user:pass" not in result
+        assert "***:***@[::1]:4222" in result
+
+    def test_password_with_percent_encoded_at(self) -> None:
+        exc = RuntimeError("connect: nats://user:p%40ss@host:4222")
+        result = sanitize_for_wire(exc)
+        assert "p%40ss" not in result
+        assert "***:***@host:4222" in result
+
+    def test_password_with_raw_at(self) -> None:
+        # RFC 3986 anchors userinfo on the LAST `@` before the host,
+        # so a raw `@` inside the password must still be scrubbed.
+        exc = RuntimeError("connect: nats://user:p@ss@host:4222")
+        result = sanitize_for_wire(exc)
+        assert "user:p@ss" not in result
+        assert "***:***@host:4222" in result
+
 
 class TestTruncation:
     def test_below_limit_unchanged(self) -> None:
@@ -97,26 +123,48 @@ class TestTruncation:
         assert len(result) == 100
         assert result.endswith("…")
 
+    def test_overflow_at_marker_length_returns_marker_only(self) -> None:
+        # max_len=1 is the smallest legal limit (marker length).
+        # An overflowing input must reduce to just the marker.
+        result = sanitize_for_wire(RuntimeError("hello"), max_len=1)
+        assert result == "…"
+
     def test_default_max_len_applied(self) -> None:
         msg = "z" * (DEFAULT_MAX_LEN + 100)
         result = sanitize_for_wire(RuntimeError(msg))
         assert len(result) == DEFAULT_MAX_LEN
         assert result.endswith("…")
 
-    def test_default_max_len_is_200(self) -> None:
-        # Pinned for ADR/contract clarity — if the default ever moves,
-        # update consumers + this test in the same change.
+    def test_default_max_len_contract_value_200(self) -> None:
+        # Pinned by contract — worker repos consume `sanitize_for_wire` from
+        # `roxabi-nats` and may size their own buffers to this value. Moving
+        # the default is a contract change: bump it deliberately and update
+        # consumers in lockstep.
         assert DEFAULT_MAX_LEN == 200
+
+    @pytest.mark.parametrize("max_len", [0, -1, -100])
+    def test_max_len_below_marker_raises(self, max_len: int) -> None:
+        # Below the marker length (1) the truncate primitive cannot produce
+        # a bounded string. Refuse loudly rather than return an oversized
+        # result that violates the caller's max_len contract.
+        with pytest.raises(ValueError):
+            sanitize_for_wire(RuntimeError("hello"), max_len=max_len)
 
 
 class TestScrubBeforeTruncate:
-    def test_scrub_then_truncate_order(self) -> None:
-        # Scrub first: a long URL with credentials must have its userinfo
-        # replaced before truncation, so secrets cannot survive by virtue
-        # of being past the cutoff.
-        url = "nats://verylonguser:verylongpassword@broker.example.com:4222/path"
-        msg = f"failure connecting: {url}"
-        result = sanitize_for_wire(RuntimeError(msg), max_len=80)
-        assert "verylonguser" not in result
-        assert "verylongpassword" not in result
-        assert len(result) <= 80
+    def test_scrub_runs_before_truncate(self) -> None:
+        # Pipeline order matters: scrub MUST run before truncate. Otherwise
+        # truncation could cut the URL between the credential and the `@host`
+        # anchor, and scrub (which keys off `@`) would leave the partial
+        # credential exposed.
+        #
+        # With max_len=35:
+        #   scrub-first:    "connect_error: nats://***:***@brok…"  (credentials gone)
+        #   truncate-first: "connect_error: nats://canary_user:…"  (no @, scrub no-ops)
+        #
+        # If the pipeline order ever flips, the canary_user assertion fails.
+        msg = "connect_error: nats://canary_user:canary_pass@broker:4222"
+        result = sanitize_for_wire(RuntimeError(msg), max_len=35)
+        assert "canary_user" not in result
+        assert "canary_pass" not in result
+        assert result.endswith("…")

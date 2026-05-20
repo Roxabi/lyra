@@ -32,8 +32,13 @@ def sanitize_for_wire(exc: BaseException, *, max_len: int = DEFAULT_MAX_LEN) -> 
     ``postgres``, ``redis``, ``http``, etc.) → ``truncate_with_marker``
     (caps at ``max_len`` chars, replacing the tail with ``…`` on overflow).
 
+    ``max_len`` must be ≥ 1 (the truncation marker length). Smaller values
+    cannot produce a bounded string and raise ``ValueError``.
+
     Prefer ``WorkerError(code=..., message=str(exc))`` on NATS reply
     subjects — it applies the same sanitization via field validators
     inside a typed envelope the consumer can dispatch on.
     """
+    if max_len < 1:
+        raise ValueError(f"max_len must be >= 1, got {max_len}")
     return truncate_with_marker(scrub_credentials(str(exc)), max_len)

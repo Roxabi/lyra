@@ -80,9 +80,11 @@ def scrub_credentials(value: str) -> str:
     """Scrub credentials from any embedded URLs in `value`.
 
     Replaces the userinfo (``user:pass@``) of every URL whose scheme is in
-    ``_CREDENTIAL_SCHEMES`` with ``***:***``. Returns the value unchanged
-    if no scrubbing applies. Safe to call on arbitrary free-text such as
-    ``str(exc)``.
+    the credential-bearing allowlist (``nats``, ``nats+tls``, ``amqp``,
+    ``amqps``, ``redis``, ``rediss``, ``http``, ``https``, ``postgres``,
+    ``postgresql``, ``mysql``) with ``***:***``. Returns the value
+    unchanged if no scrubbing applies. Safe to call on arbitrary free-text
+    such as ``str(exc)``.
     """
     return _URL_RE.sub(lambda m: _scrub_url(m.group(0)), value)
 

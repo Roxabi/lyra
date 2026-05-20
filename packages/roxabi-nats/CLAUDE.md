@@ -29,8 +29,8 @@ for external consumers (branch pinning only in plugin-dev branches).
 
 | Package | Owns |
 |---|---|
-| `roxabi-nats` | Transport primitives: connection, adapter lifecycle, serialization, circuit breaker, readiness, worker base |
-| `roxabi-contracts` | Wire schemas, `CONTRACT_VERSION`, envelope definitions |
+| `roxabi-nats` | Transport primitives: connection, adapter lifecycle, serialization, circuit breaker, readiness, worker base; wire-side error sanitization helpers (`sanitize_for_wire`) for socket-bound daemon paths |
+| `roxabi-contracts` | Wire schemas, `CONTRACT_VERSION`, envelope definitions; sanitization primitives (`scrub_credentials`, `truncate_with_marker`) reused by `WorkerError` and `sanitize_for_wire` |
 
 `CONTRACT_VERSION` canonical home is `roxabi_contracts.envelope`. The compat
 re-export in `roxabi_nats.adapter_base` was removed at v0.3.0 (BREAKING CHANGE).

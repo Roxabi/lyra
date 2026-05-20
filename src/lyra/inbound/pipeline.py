@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from lyra.inbound.wire_parser import WireParser
 
 from lyra.inbound.dispatcher import Dispatcher
-from lyra.inbound.router import Router
+from lyra.inbound.router import RouteDecision, Router
 from lyra.inbound.session_builder import SessionBuilder
 
 
@@ -47,8 +47,12 @@ class InboundPipeline:
         ctx: InboundContext,
         parser: WireParser,
         *,
-        pre_route_hook: Callable[..., Awaitable[None]] | None = None,
-        pre_session_hook: Callable[..., Awaitable[InboundMessage]] | None = None,
+        pre_route_hook: (
+            Callable[[InboundMessage, InboundContext], Awaitable[None]] | None
+        ) = None,
+        pre_session_hook: (
+            Callable[[InboundMessage, InboundContext], Awaitable[InboundMessage]] | None
+        ) = None,
         send_backpressure: Callable[[str], Awaitable[None]],
         on_drop: Callable[[], None] | None = None,
     ) -> None:
@@ -72,4 +76,16 @@ class InboundPipeline:
             on_drop: Optional sync callable invoked when the message is dropped
                 (circuit-open or QueueFull).  Typically cancels a typing indicator.
         """
-        raise NotImplementedError
+        msg = parser.parse(raw, ctx)
+        if msg is None:
+            return
+        if pre_route_hook is not None:
+            await pre_route_hook(msg, ctx)
+        if self._router.decide(msg, ctx.router) is RouteDecision.DROP:
+            if on_drop is not None:
+                on_drop()
+            return
+        if pre_session_hook is not None:
+            msg = await pre_session_hook(msg, ctx)
+        msg = await self._session_builder.build(msg, ctx.session)
+        await self._dispatcher.dispatch(msg, ctx.dispatch, send_backpressure, on_drop)

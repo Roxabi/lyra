@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import functools
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -13,10 +15,12 @@ from lyra.adapters.discord.discord_threads import persist_thread_claim
 from lyra.adapters.shared._shared import AUDIO_MIME_TYPES
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import DiscordMeta, InboundMessage
-from lyra.inbound.context import DispatchCtx, RouterCtx, SessionCtx
+from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
 from lyra.inbound.dispatcher import Dispatcher
-from lyra.inbound.router import RouteDecision, Router
+from lyra.inbound.pipeline import InboundPipeline
+from lyra.inbound.router import Router
 from lyra.inbound.session_builder import SessionBuilder
+from lyra.inbound.wire_parser_discord import DiscordWireParser
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -26,28 +30,32 @@ log = logging.getLogger("lyra.adapters.discord")
 _dispatcher = Dispatcher()
 _router = Router()
 _session_builder = SessionBuilder()
+_pipeline = InboundPipeline(
+    router=_router, session_builder=_session_builder, dispatcher=_dispatcher
+)
+_parser_cache: dict[int, DiscordWireParser] = {}  # one parser per adapter instance
 
 
 async def _discord_pre_route_hook(
-    msg: InboundMessage, router_ctx: RouterCtx, adapter: "DiscordAdapter"
+    msg: InboundMessage, ctx: InboundContext, adapter: "DiscordAdapter"
 ) -> None:
     """Cold-path: lazy ThreadStore.is_owned warmup so revived threads route correctly.
 
-    Mutates ``router_ctx.owned_threads`` in place when the DB confirms ownership.
-    Called inline in ``handle_message`` before ``Router.decide``.
+    Mutates ``ctx.router.owned_threads`` in place when the DB confirms ownership.
+    Bound with ``functools.partial(adapter=...)`` before passing to the pipeline.
     """
     meta = msg.platform_meta
     if not isinstance(meta, DiscordMeta):
         return
     if meta.thread_id is None:
         return  # not a thread
-    if meta.thread_id in router_ctx.owned_threads:
+    if meta.thread_id in ctx.router.owned_threads:
         return  # hot set already knows
     if adapter._thread_store is None:
         return
     try:
         if await adapter._thread_store.is_owned(str(meta.thread_id), adapter._bot_id):
-            router_ctx.owned_threads.add(meta.thread_id)
+            ctx.router.owned_threads.add(meta.thread_id)
     except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
         # ThreadStore I/O failure — fall through; Router will DROP unrecognized thread
         log.warning(
@@ -57,18 +65,135 @@ async def _discord_pre_route_hook(
         )
 
 
-async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps
+async def _discord_pre_session_hook(  # noqa: C901 — DEBT:wiring-bootstrap-deps; verbatim extraction of auto-thread block
+    msg: InboundMessage,
+    ctx: InboundContext,
+    raw_message: Any,
+    adapter: "DiscordAdapter",
+) -> InboundMessage:
+    """Auto-create or claim a Discord thread when mention / watch-channel triggers it.
+
+    Returns the (possibly updated) InboundMessage with DiscordMeta.thread_id
+    set so downstream stages address the new thread.
+
+    Must be bound with ``functools.partial(raw_message=..., adapter=...)`` before
+    passing to ``InboundPipeline.run`` as ``pre_session_hook``.
+    """
+    meta = msg.platform_meta
+    if not isinstance(meta, DiscordMeta):
+        return msg
+
+    _is_mention = msg.is_mention
+    _is_dm = raw_message.guild is None
+    _is_thread = isinstance(raw_message.channel, discord.Thread)
+    _is_watch_channel = (
+        not _is_dm
+        and not _is_thread
+        and raw_message.channel.id in adapter._watch_channels
+    )
+
+    # Auto-thread creation — creates a new thread from the message.
+    resolved_thread_id: int | None = None
+    if (
+        adapter._auto_thread
+        and (_is_mention or _is_watch_channel)
+        and not isinstance(raw_message.channel, discord.Thread)
+        and hasattr(raw_message.channel, "create_thread")
+    ):
+        try:
+            thread = await raw_message.create_thread(
+                name=make_thread_name(
+                    raw_message.content, raw_message.author.display_name
+                )
+            )
+            resolved_thread_id = thread.id
+            ctx.router.owned_threads.add(thread.id)
+            if adapter._thread_store is not None:
+                await persist_thread_claim(
+                    adapter._thread_store,
+                    thread_id=thread.id,
+                    bot_id=adapter._bot_id,
+                    channel_id=raw_message.channel.id,
+                    guild_id=getattr(raw_message.guild, "id", None),
+                )
+        except Exception:
+            log.exception(
+                "Failed to create Discord thread for message id=%s",
+                raw_message.id,
+            )
+            # Discord may have created the thread despite the error —
+            # recover thread_id to keep scope_id consistent.
+            if hasattr(raw_message, "thread") and raw_message.thread is not None:
+                resolved_thread_id = raw_message.thread.id
+                ctx.router.owned_threads.add(raw_message.thread.id)
+                if adapter._thread_store is not None:
+                    try:
+                        await persist_thread_claim(
+                            adapter._thread_store,
+                            thread_id=raw_message.thread.id,
+                            bot_id=adapter._bot_id,
+                            channel_id=raw_message.channel.id,
+                            guild_id=getattr(raw_message.guild, "id", None),
+                        )
+                    except Exception as e:  # noqa: BLE001 — DEBT:boundary-broad-catch
+                        log.warning(
+                            "Failed to persist thread claim in recovery path: %s", e
+                        )
+
+    # Claim an existing thread when directly mentioned inside it.
+    if _is_mention and isinstance(raw_message.channel, discord.Thread):
+        ctx.router.owned_threads.add(raw_message.channel.id)
+        if adapter._thread_store is not None:
+            await persist_thread_claim(
+                adapter._thread_store,
+                thread_id=raw_message.channel.id,
+                bot_id=adapter._bot_id,
+                channel_id=getattr(
+                    raw_message.channel, "parent_id", raw_message.channel.id
+                ),
+                guild_id=getattr(raw_message.guild, "id", None),
+            )
+
+    if resolved_thread_id is not None:
+        new_scope_id = f"thread:{resolved_thread_id}"
+        new_meta = dataclasses.replace(meta, thread_id=resolved_thread_id)
+        new_routing = (
+            dataclasses.replace(
+                msg.routing,
+                scope_id=new_scope_id,
+                thread_id=str(resolved_thread_id),
+                platform_meta=new_meta,
+            )
+            if msg.routing is not None
+            else None
+        )
+        return dataclasses.replace(
+            msg,
+            scope_id=new_scope_id,
+            platform_meta=new_meta,
+            routing=new_routing,
+        )
+    return msg
+
+
+def _resolve_send_to_id(message: Any) -> int:
+    """Return the channel or thread id to target for typing cancellation."""
+    if isinstance(message.channel, discord.Thread):
+        return message.channel.id
+    return message.channel.id
+
+
+async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
     """Handle incoming Gateway message.
 
-    Filters own/bot messages, creates auto-thread before normalization,
-    applies backpressure, and enqueues to hub bus.
+    Filters own/bot messages, dispatches audio/voice short-circuits,
+    then delegates to InboundPipeline for the text path.
     """
     # Discard bot messages early — before normalization to avoid waste.
     if message.author.bot:
         return
 
-    # C3: adapters send raw identity fields; Hub resolves trust in run().
-    # Audio attachment detection
+    # Audio attachment short-circuit.
     audio_attachment = next(
         (
             a
@@ -79,144 +204,56 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:  # no
     )
     if audio_attachment is not None:
         await _handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
-        return  # audio messages handled separately; skip text path
+        return
 
     # Voice command dispatch — guild-only; runs before mention/DM filter.
     if message.guild is not None:
         if await adapter._handle_voice_command(message, TrustLevel.PUBLIC):
             return
 
-    # Pre-detect mention (needed for auto-thread decision below)
-    _is_mention = (
-        adapter._bot_user is not None and adapter._bot_user in message.mentions
-    )
-    _is_dm = message.guild is None
-    _is_thread = isinstance(message.channel, discord.Thread)
-
-    # Build routing context; owned_threads shared by reference (pre_route_hook mutates).
-    _router_ctx = RouterCtx(
-        bot_id=adapter._bot_id,
-        owned_threads=adapter._owned_threads,  # mutable — shared by reference
-        watch_channels=adapter._watch_channels if adapter._watch_channels else None,
-    )
-    # Derived routing flag (still needed for auto-thread decision below).
-    _is_watch_channel = (
-        not _is_dm and not _is_thread and message.channel.id in adapter._watch_channels
-    )
-
-    # Auto-thread creation BEFORE normalize() (frozen dataclass)
-    resolved_thread_id: int | None = None
-    resolved_channel_id: int = message.channel.id
-    if (
-        adapter._auto_thread
-        and (_is_mention or _is_watch_channel)
-        and not isinstance(message.channel, discord.Thread)
-        and hasattr(message.channel, "create_thread")
-    ):
-        try:
-            thread = await message.create_thread(
-                name=make_thread_name(message.content, message.author.display_name)
-            )
-            resolved_thread_id = thread.id
-            adapter._owned_threads.add(thread.id)
-            if adapter._thread_store is not None:
-                await persist_thread_claim(
-                    adapter._thread_store,
-                    thread_id=thread.id,
-                    bot_id=adapter._bot_id,
-                    channel_id=message.channel.id,
-                    guild_id=getattr(message.guild, "id", None),
-                )
-        except Exception:
-            log.exception(
-                "Failed to create Discord thread for message id=%s",
-                message.id,
-            )
-            # Discord may have created the thread despite the error —
-            # recover thread_id to keep scope_id consistent.
-            if hasattr(message, "thread") and message.thread is not None:
-                resolved_thread_id = message.thread.id
-                adapter._owned_threads.add(message.thread.id)
-                if adapter._thread_store is not None:
-                    try:
-                        await persist_thread_claim(
-                            adapter._thread_store,
-                            thread_id=message.thread.id,
-                            bot_id=adapter._bot_id,
-                            channel_id=message.channel.id,
-                            guild_id=getattr(message.guild, "id", None),
-                        )
-                    except Exception as e:  # noqa: BLE001 — DEBT:boundary-broad-catch
-                        log.warning(
-                            "Failed to persist thread claim in recovery path: %s", e
-                        )
-
-    # Claim an existing thread when directly mentioned inside it.
-    if _is_mention and isinstance(message.channel, discord.Thread):
-        adapter._owned_threads.add(message.channel.id)
-        if adapter._thread_store is not None:
-            await persist_thread_claim(
-                adapter._thread_store,
-                thread_id=message.channel.id,
-                bot_id=adapter._bot_id,
-                channel_id=getattr(message.channel, "parent_id", message.channel.id),
-                guild_id=getattr(message.guild, "id", None),
-            )
-
-    try:
-        hub_msg = adapter.normalize(
-            message,
-            thread_id=resolved_thread_id,
-            channel_id=resolved_channel_id,
-            trust_level=TrustLevel.PUBLIC,
-            is_admin=False,
-        )
-    except Exception:
-        log.exception("Failed to normalize discord message id=%s", message.id)
-        return
-
-    # pre_route_hook: cold-path lazy owned-thread warmup (T20).
-    await _discord_pre_route_hook(hub_msg, _router_ctx, adapter)
-
-    # Routing decision — Router reads hub_msg.platform_meta + router_ctx.
-    if _router.decide(hub_msg, _router_ctx) is RouteDecision.DROP:
-        return
-
-    session_ctx = SessionCtx(
-        turn_store=adapter._turn_store,
-        thread_store=adapter._thread_store,
-        thread_sessions_cache=adapter._thread_sessions,  # MUTABLE — shared by reference
-    )
-    hub_msg = await _session_builder.build(hub_msg, session_ctx)
-
-    log.info(
-        "message_received",
-        extra={
-            "platform": "discord",
-            "user_id": hub_msg.user_id,
-            "scope_id": hub_msg.scope_id,
-            "msg_id": hub_msg.id,
-        },
-    )
-
-    send_to_id: int = (
-        resolved_thread_id if resolved_thread_id is not None else resolved_channel_id
-    )
+    send_to_id = _resolve_send_to_id(message)
     adapter._start_typing(send_to_id)
+
+    # Per-adapter parser — avoid recreating each message.
+    parser = _parser_cache.get(id(adapter))
+    if parser is None:
+        parser = DiscordWireParser(adapter)
+        _parser_cache[id(adapter)] = parser
+
+    inbound_ctx = InboundContext(
+        router=RouterCtx(
+            bot_id=adapter._bot_id,
+            owned_threads=adapter._owned_threads,  # mutable — shared by reference
+            watch_channels=adapter._watch_channels if adapter._watch_channels else None,
+        ),
+        session=SessionCtx(
+            turn_store=adapter._turn_store,
+            thread_store=adapter._thread_store,
+            thread_sessions_cache=adapter._thread_sessions,  # MUTABLE shared by ref
+        ),
+        dispatch=DispatchCtx(
+            inbound_bus=adapter._inbound_bus,
+            circuit_registry=adapter._circuit_registry,
+            outbound_listener=adapter._outbound_listener,
+            typing=adapter._typing,
+            msg_catalog=adapter._msg_manager,
+        ),
+    )
+
+    pre_route = functools.partial(_discord_pre_route_hook, adapter=adapter)
+    pre_session = functools.partial(
+        _discord_pre_session_hook, raw_message=message, adapter=adapter
+    )
 
     async def _dc_backpressure(text: str) -> None:
         await message.reply(text)
 
-    dispatch_ctx = DispatchCtx(
-        inbound_bus=adapter._inbound_bus,
-        circuit_registry=adapter._circuit_registry,
-        outbound_listener=adapter._outbound_listener,
-        typing=adapter._typing,
-        msg_catalog=adapter._msg_manager,
-    )
-    await _dispatcher.dispatch(
-        hub_msg,
-        dispatch_ctx,
-        _dc_backpressure,
+    await _pipeline.run(
+        message,
+        inbound_ctx,
+        parser,
+        pre_route_hook=pre_route,
+        pre_session_hook=pre_session,
+        send_backpressure=_dc_backpressure,
         on_drop=lambda: adapter._cancel_typing(send_to_id),
     )

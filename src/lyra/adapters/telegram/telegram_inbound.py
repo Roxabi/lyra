@@ -12,11 +12,13 @@ from lyra.adapters.telegram.telegram_audio import _download_audio
 from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import Platform, TelegramMeta
-from lyra.inbound.context import DispatchCtx, RouterCtx, SessionCtx
+from lyra.core.messaging.message import Platform
+from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
 from lyra.inbound.dispatcher import Dispatcher
-from lyra.inbound.router import RouteDecision, Router
+from lyra.inbound.pipeline import InboundPipeline
+from lyra.inbound.router import Router
 from lyra.inbound.session_builder import SessionBuilder
+from lyra.inbound.wire_parser_telegram import TelegramWireParser
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -26,68 +28,56 @@ log = logging.getLogger("lyra.adapters.telegram")
 _dispatcher = Dispatcher()
 _router = Router()
 _session_builder = SessionBuilder()
+_pipeline = InboundPipeline(
+    router=_router, session_builder=_session_builder, dispatcher=_dispatcher
+)
+_parser_cache: dict[int, TelegramWireParser] = {}  # one parser per adapter instance
 
 
-async def handle_message(adapter: TelegramAdapter, msg: Any) -> None:  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps
+async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
     """Handle an incoming aiogram message: apply backpressure and put on bus."""
+    # Defense-in-depth bot filter (TelegramWireParser also filters, but keep fast path).
     if not msg.from_user or getattr(msg.from_user, "is_bot", False):
         return
 
-    # C3: adapters send raw identity fields; Hub resolves trust in run().
-    hub_msg = adapter.normalize(msg, trust_level=TrustLevel.PUBLIC, is_admin=False)
-
-    # Route decision: drop group messages without mention; pass DMs and mentions.
-    _router_ctx = RouterCtx(
-        bot_id=adapter._bot_id,
-        owned_threads=set(),  # Telegram has no thread model
-        watch_channels=None,
-    )
-    if _router.decide(hub_msg, _router_ctx) is RouteDecision.DROP:
-        return
-
-    session_ctx = SessionCtx(
-        turn_store=adapter._turn_store,
-        thread_store=None,  # Telegram has no thread model
-    )
-    hub_msg = await _session_builder.build(hub_msg, session_ctx)
-
-    log.info(
-        "message_received",
-        extra={
-            "platform": "telegram",
-            "user_id": hub_msg.user_id,
-            "scope_id": hub_msg.scope_id,
-            "msg_id": hub_msg.id,
-        },
-    )
     # IMPORTANT: Always return normally to aiogram — webhook must return
     # {"ok": True} (HTTP 200). Never raise here or Telegram will retry
     # the update indefinitely.
     adapter._start_typing(msg.chat.id)
-    _meta = hub_msg.platform_meta
-    _chat_id = _meta.chat_id if isinstance(_meta, TelegramMeta) else None
+
+    # Per-adapter parser — avoid recreating each message.
+    parser = _parser_cache.get(id(adapter))
+    if parser is None:
+        parser = TelegramWireParser(adapter)
+        _parser_cache[id(adapter)] = parser
+
+    inbound_ctx = InboundContext(
+        router=RouterCtx(
+            bot_id=adapter._bot_id,
+            owned_threads=set(),  # Telegram has no thread model
+            watch_channels=None,
+        ),
+        session=SessionCtx(
+            turn_store=adapter._turn_store,
+            thread_store=None,  # Telegram has no thread model
+        ),
+        dispatch=DispatchCtx(
+            inbound_bus=adapter._inbound_bus,
+            circuit_registry=adapter._circuit_registry,
+            outbound_listener=adapter._outbound_listener,
+            typing=adapter._typing,
+            msg_catalog=adapter._msg_manager,
+        ),
+    )
 
     async def _tg_backpressure(text: str) -> None:
-        if _chat_id is None:
-            log.error(
-                "handle_message: platform_meta missing 'chat_id',"
-                " dropping backpressure ack for user_id=%s",
-                hub_msg.user_id,
-            )
-            return
-        await adapter.bot.send_message(_chat_id, text)
+        await adapter.bot.send_message(msg.chat.id, text)
 
-    dispatch_ctx = DispatchCtx(
-        inbound_bus=adapter._inbound_bus,
-        circuit_registry=adapter._circuit_registry,
-        outbound_listener=adapter._outbound_listener,
-        typing=adapter._typing,
-        msg_catalog=adapter._msg_manager,
-    )
-    await _dispatcher.dispatch(
-        hub_msg,
-        dispatch_ctx,
-        _tg_backpressure,
+    await _pipeline.run(
+        msg,
+        inbound_ctx,
+        parser,
+        send_backpressure=_tg_backpressure,
         on_drop=lambda: adapter._cancel_typing(msg.chat.id),
     )
 

@@ -19,5 +19,16 @@ class WireParser(Protocol):
     """
 
     def parse(self, raw: Any, ctx: InboundContext) -> InboundMessage | None:
-        """Parse *raw* into an ``InboundMessage``, or ``None`` to drop."""
+        """Parse *raw* into an ``InboundMessage``, or ``None`` to drop early.
+
+        Returns ``None`` when the event must be silently discarded before
+        reaching the router.  Common cases:
+
+        - The message was sent by a bot (own-message guard, author.bot check).
+        - The raw event carries no usable text or media (platform-specific).
+        - The parser cannot produce a valid ``InboundMessage`` from the event.
+
+        ``None`` is a *clean* early return — no logging, no error.  Use it
+        only for expected filter conditions, not for unexpected failures.
+        """
         ...

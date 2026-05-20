@@ -1,0 +1,167 @@
+---
+title: "PR #1286 review findings — Expert Consensus"
+issue: 1280
+status: consensus-reached
+date: 2026-05-20
+panel: architect, backend-dev, product-lead
+confidence: high
+---
+
+## Problem
+
+`/code-review` on PR #1286 (Phase 3 stage-axis decomposition) produced 5 interpretive
+findings (B3, B5, W3, W6, S4) where review agents disagreed or the spec wording is
+ambiguous. We need consensus before the `/fix` skill applies blockers.
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | layer invariants, structural soundness, refactor cost/benefit |
+| backend-dev | Python idioms, complexity-vs-cohesion, test discipline |
+| product-lead | spec interpretation, criterion intent, scope discipline |
+
+## Findings & Resolution
+
+### B3 — `isinstance(meta, …Meta)` branches in `session_builder.py` (5×)
+
+**Verdict: spec-amendment-needed** — unanimous (3-0).
+
+The spec criterion (line 318) prohibits `isinstance(platform_meta, …Meta)` branches in
+module code, "allowed in unit tests only." But the Router module (`router.py`) uses
+the same discriminator and is spec-approved with the rationale "PlatformMeta lives in
+`lyra.core`, not platform libs." The criterion's *actual intent* is "no platform
+library imports" (the binary `grep -E "import (discord|aiogram)"` gate, lines 316-317),
+which `session_builder.py` already satisfies. The literal isinstance restriction is
+an over-specification that conflicts with the Router precedent.
+
+**Action**: amend spec line 318 to drop the isinstance prohibition (the import-grep
+gate is sufficient). No code change required.
+
+**Trade-offs**: (1) duck-typed `getattr` would be nominally weaker than isinstance
+(future platform with coincidental `thread_id` field would silently misfire) — all 3
+agents agreed. (2) The Router precedent demands consistency. (3) Spec amendment
+costs less than a rewrite that introduces a worse defect.
+
+**Dissent**: none.
+
+---
+
+### B5 — `# noqa: C901` retained on `_discord_pre_session_hook`
+
+**Verdict: blocker** — 2-1 (architect + backend-dev = blocker; product-lead = accept).
+
+The hook is ~105 LOC with two orthogonal logical branches (auto-create new thread vs
+claim existing thread) plus a recovery path. The spec gate says no `C901` in
+`*_inbound.py` with no carve-out for helpers. Architect: "leaving the noqa signals
+the decomposition is incomplete." Backend-dev: "the split into `_create_auto_thread`
++ `_claim_existing_thread` is not artificial — it maps to real structure." The
+helpers can stay in `discord_inbound.py` (adapter-side, allowed); no new layer
+crossing.
+
+**Action**: split `_discord_pre_session_hook` into 2 helpers:
+- `_create_auto_thread(raw_message, ctx, adapter) → int | None` (resolved thread id)
+- `_claim_existing_thread(raw_message, ctx, adapter) → None`
+
+The hook becomes a 4-line dispatcher calling either/both with the existing guards.
+Drop the `C901` noqa.
+
+**Dissent**: product-lead reads the criterion as scoped to `handle_message` complexity
+(now drained), with the hook as the necessary extraction artifact. Recorded; can
+escalate if the split proves structurally impossible.
+
+**Blocking ξ that would change verdict**: if both helpers themselves trigger `C901`
+after the split, spec amendment with explicit carve-out becomes correct resolution.
+
+---
+
+### W3 — `.importlinter` doesn't enforce `lyra.inbound` layer
+
+**Verdict: warning + follow-up issue** — 3-way split (blocker / warning / defer).
+
+`dispatcher.py:8` runtime-imports `lyra.adapters.shared._shared.push_to_hub_guarded`;
+`context.py:31-32` TYPE_CHECKING-imports `TypingTaskManager` / `OutboundListener`
+from `lyra.adapters.shared`. `CLAUDE.md` documents "stages depend on `lyra.core`
+only" but nothing enforces it. P3 spec has no `.importlinter` Success Criterion.
+
+The architectural seam is real (inbound depends on adapters.shared), but P6 (bootstrap
+DI) is the natural place to clarify the final dependency graph. Moving
+`push_to_hub_guarded` to `lyra.core` or `lyra.shared` is non-trivial.
+
+**Action**: file follow-up issue "Enforce `lyra.inbound` layer in `.importlinter`"
+blocked-by P6 (#1283); document the seam explicitly in `inbound/CLAUDE.md` (already
+done as part of the layer-invariants section). Do not block PR #1286.
+
+**Dissent**: architect reads this as blocker (in/out reversal); recorded — the
+follow-up issue captures the architectural concern for P6 resolution.
+
+---
+
+### W6 — `on_drop` test isolation in `test_full_happy_path_calls_all_stages`
+
+**Verdict: accept-as-is** — 2-1 (backend-dev + product-lead = accept; architect = warning).
+
+The shared `on_drop` MagicMock between pipeline call and dispatcher mock means
+`on_drop.assert_not_called()` doesn't isolate "pipeline didn't call it" from
+"dispatcher mock didn't invoke it." But the dispatcher mock is `AsyncMock(return_value=None)`
+— it does not invoke callbacks. The assertion holds for the right reason today.
+
+**Action**: accept-as-is. Note in CLAUDE.md test patterns: "if pipeline path changes
+to conditionally call on_drop before delegating, this test needs split mocks."
+
+**Dissent**: architect notes the fix is 1 line and the assertion would be more
+explicit. Recorded as an opt-in cleanup the implementer may apply during `/fix`.
+
+---
+
+### S4 — `_parser_cache` keyed by `id(adapter)`
+
+**Verdict: accept-as-is** — 2-1 (architect + product-lead = accept; backend-dev = defer).
+
+Adapters are process-level singletons created at bootstrap. CPython will not
+garbage-collect a live adapter, so `id()` reuse is impossible in current usage.
+`WeakKeyDictionary` would require adapter classes to be weakly referenceable
+(uncertain across `discord.Client` and aiogram inheritance).
+
+**Action**: accept-as-is. Add a one-line comment near the cache: `# adapters are
+process-singletons; id-keying is safe for this lifecycle`. P6 bootstrap DI is the
+right time to revisit cache shape if adapter lifecycle changes.
+
+**Dissent**: backend-dev would prefer a `WeakKeyDictionary` to express ownership
+intent. Recorded as design note for P6.
+
+## Implementation Notes for `/fix`
+
+| Finding | Action | Files |
+|---|---|---|
+| B1 dead `_resolve_send_to_id` | **FIX** — replace with proper resolved-thread-id propagation | `discord_inbound.py:175-211` |
+| B2 narrow `sqlite3.Error` | **FIX** — broaden to `(sqlite3.Error, RuntimeError)` | `discord_inbound.py:60` |
+| B3 isinstance prohibition | **SPEC AMEND** — update spec line 318; no code change | `artifacts/specs/1280-…-spec.mdx` |
+| B4 smoke evidence | **DOC** — check Test Plan checkboxes after running scripted smoke OR note deferred | PR description |
+| B5 C901 noqa on hook | **FIX** — split hook into `_create_auto_thread` + `_claim_existing_thread` | `discord_inbound.py:61-155` |
+| W1 inverted fallback | **FIX** — `_default_get_msg` returns `fallback or key` (current logic mishandles catalog-override) | `dispatcher.py:16-18` |
+| W2 auto-thread hot-set | **FIX** — only add to `owned_threads` after persist succeeds | `discord_inbound.py:120-129` |
+| W3 importlinter coverage | **FOLLOW-UP ISSUE** — blocked-by #1283 | new issue |
+| W4 test_dispatcher catalog branch | **FIX** — add test with mock catalog | `test_dispatcher.py` |
+| W5 _thread_update_fn None guard | **FIX** — add negative test | `test_session_builder.py` |
+| W6 on_drop isolation | **OPTIONAL FIX** — split into 2 mocks if cheap | `test_pipeline.py` |
+| W7 parallel Telegram tests | **FIX** — delete duplicate | `test_router.py:136-148` |
+| S1 elif duplicate in session_builder | **FIX** — collapse branch | `session_builder.py:110-117` |
+| S2 deferred ThreadSession import | **FIX** — hoist to module-level runtime import | `session_builder.py` |
+| S3 Telegram fresh set per msg | **FIX** — module-level `_EMPTY_THREADS: frozenset[int]` | `telegram_inbound.py` |
+| S4 _parser_cache id keying | **DOC** — comment explaining singleton lifecycle | `*_inbound.py` |
+| S5 session_builder bare excepts | **FIX** — narrow `Exception` → specific types (mirror B2) | `session_builder.py:94, 159, 203` |
+
+## Next
+
+`/fix` invocation should:
+
+1. Apply all rows marked **FIX** (12 items)
+2. Apply optional row W6 only if it costs ≤ 5 LOC
+3. Update spec for B3 (and re-verify §SC criteria still apply)
+4. Add doc comments for S4 (design note)
+5. Open follow-up issue for W3 with `blocked-by:#1283` label
+6. Re-run quality gates after fixes
+7. Address B4 by either attaching scripted smoke output to the PR or annotating Test Plan as deferred-to-manual-QA
+
+After `/fix` returns clean, re-review (max 2 iterations per skill cap).

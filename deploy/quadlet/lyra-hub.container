@@ -30,8 +30,8 @@ EnvironmentFile=%h/.lyra/env/hub.env
 # NATS_URL is overridden inline below; cutover = update .env.hub directly.
 Environment=NATS_URL=nats://lyra-nats:4222
 # ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
-Secret=lyra-nkey-hub,type=mount,target=hub.seed,mode=0400,uid=1500,gid=1500
-Environment=NATS_NKEY_SEED_PATH=/run/secrets/hub.seed
+Secret=lyra-nats-hub,type=mount,target=lyra-nats-hub.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-hub.seed
 Volume=lyra-data.volume:/home/lyra/.lyra:z
 # Inline single-file bind mount — Quadlet .volume units wrapping a single file
 # either fail with loop-device errors or are silently downgraded to empty named
@@ -53,7 +53,7 @@ Exec=lyra hub
 
 [Service]
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 # Cap at 2 full cores — prevents a runaway worker from starving hub + NATS.
 CPUQuota=200%
 # Pre-create single-file bind-mount sources if absent — prevents Podman from

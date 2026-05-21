@@ -49,7 +49,7 @@ Exec=python -m lyra.tools.gh_token.daemon
 
 [Service]
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 
 [Install]
 WantedBy=default.target

@@ -25,8 +25,8 @@ UserNS=keep-id:uid=1500,gid=1500
 # See `## Bot credentials` in docs/CONFIGURATION.md.
 Environment=NATS_URL=nats://lyra-nats:4222
 # ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
-Secret=lyra-nkey-telegram-adapter,type=mount,target=telegram-adapter.seed,mode=0400,uid=1500,gid=1500
-Environment=NATS_NKEY_SEED_PATH=/run/secrets/telegram-adapter.seed
+Secret=lyra-nats-telegram,type=mount,target=lyra-nats-telegram.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-telegram.seed
 # Bot tokens are provisioned as Podman secrets — one per bot (and optionally
 # one per webhook). Use `lyra bot secret install telegram <bot_id>` to provision,
 # then `make quadlet-bot-secrets-render` to generate the fragment to paste here.
@@ -45,7 +45,7 @@ Exec=lyra adapter telegram
 
 [Service]
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 # Cap at 2 full cores — prevents a runaway worker from starving hub + NATS.
 CPUQuota=200%
 

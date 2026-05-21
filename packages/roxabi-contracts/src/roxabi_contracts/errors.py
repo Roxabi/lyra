@@ -256,6 +256,11 @@ KNOWN_CODES: dict[str, CodeMeta] = {
         default_retryable=True,
         description="No LLM worker is subscribed on the expected NATS subject.",
     ),
+    "llm.lifecycle_rejected": CodeMeta(
+        domain="llm",
+        default_retryable=False,
+        description="Lifecycle operation rejected by the worker (unknown model, engine=remote, VRAM budget exceeded, or catalog parse error).",  # noqa: E501
+    ),
     # --- voice ---------------------------------------------------------------
     "voice.engine_unavailable": CodeMeta(
         domain="voice",

@@ -22,9 +22,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import (
-    lyra_app as app,  # type: ignore[attr-defined]  # secret sub-app not yet
-)
+from lyra.cli import lyra_app as app
 
 runner = CliRunner()
 

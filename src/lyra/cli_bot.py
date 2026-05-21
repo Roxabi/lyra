@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from typing import Optional
 
 import typer
 
@@ -16,17 +15,25 @@ bot_app = typer.Typer(
 secret_app = typer.Typer(help="Manage bot credentials as Podman secrets.")
 bot_app.add_typer(secret_app, name="secret")
 
-_BOT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_BOT_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
 
 
 def _validate_bot_id(bot_id: str) -> None:
-    if not _BOT_ID_RE.match(bot_id):
+    if not _BOT_ID_RE.fullmatch(bot_id):
         typer.echo(
-            f"invalid bot_id {bot_id!r}: must match {_BOT_ID_RE.pattern} "
+            f"invalid bot_id {bot_id!r}: must match [A-Za-z0-9_-]+ "
             "(alphanumeric, hyphen, underscore only)",
             err=True,
         )
         raise typer.Exit(2)
+
+
+def _read_env(var: str) -> bytes:
+    value = os.environ.get(var)
+    if value is None:
+        typer.echo(f"env var {var!r} not set", err=True)
+        raise typer.Exit(1)
+    return value.encode()
 
 
 def _podman_secret_create(name: str, content: bytes) -> None:
@@ -41,19 +48,19 @@ def _podman_secret_create(name: str, content: bytes) -> None:
 def install(
     platform: str,
     bot_id: str,
-    from_env: Optional[str] = typer.Option(None, "--from-env"),
-    webhook_from_env: Optional[str] = typer.Option(None, "--webhook-from-env"),
+    from_env: str | None = typer.Option(None, "--from-env"),
+    webhook_from_env: str | None = typer.Option(None, "--webhook-from-env"),
 ) -> None:
     """Create or replace a Podman secret holding a bot token."""
     _validate_bot_id(bot_id)
     token = (
-        os.environ[from_env].encode()
+        _read_env(from_env)
         if from_env
         else typer.prompt("Token", hide_input=True).encode()
     )
     _podman_secret_create(f"lyra-bot-{platform}-{bot_id}", token)
     if webhook_from_env:
-        webhook = os.environ[webhook_from_env].encode()
+        webhook = _read_env(webhook_from_env)
         _podman_secret_create(f"lyra-bot-{platform}-{bot_id}-webhook", webhook)
 
 
@@ -78,5 +85,6 @@ def list_() -> None:
         ["podman", "secret", "ls", "--filter", "name=lyra-bot-", "--format", "json"],
         check=True,
         capture_output=True,
+        text=True,
     )
     typer.echo(result.stdout)

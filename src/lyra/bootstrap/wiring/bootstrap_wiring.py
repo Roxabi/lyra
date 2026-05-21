@@ -44,6 +44,7 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-dep
 
     Returns (adapters, dispatchers) lists.
     """
+    # Deferred: avoids circular import with bootstrap.standalone.adapter_standalone.
     from lyra.bootstrap.standalone.adapter_standalone import _load_bot_token
 
     adapters: list[TelegramAdapter] = []
@@ -122,6 +123,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
     Returns (adapters_with_config, dispatchers) where each adapter entry is
     (adapter, bot_cfg, token) — the token is needed later for ``adapter.start()``.
     """
+    # Deferred: avoids circular import with bootstrap.standalone.adapter_standalone.
     from lyra.bootstrap.standalone.adapter_standalone import _load_bot_token
 
     adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]] = []

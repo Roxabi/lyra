@@ -21,8 +21,8 @@ DropCapability=all
 # ADR-054 Decision 2: UserNS=keep-id maps container UID to host UID 1000 (mickael),
 # which owns ~/.lyra/*. Replaces User=lyra (UID 1500) which could not read host files.
 UserNS=keep-id:uid=1500,gid=1500
-# ADR-054 Decision 4: bot tokens come from config.db via LyraKeyring (since #417).
-# No EnvironmentFile needed for tokens — discord.env.example deleted.
+# Bot tokens delivered via Podman secrets (superseded by #1057).
+# See `## Bot credentials` in docs/CONFIGURATION.md.
 Environment=NATS_URL=nats://lyra-nats:4222
 # ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
 Secret=lyra-nkey-discord-adapter,type=mount,target=discord-adapter.seed,mode=0400,uid=1500,gid=1500

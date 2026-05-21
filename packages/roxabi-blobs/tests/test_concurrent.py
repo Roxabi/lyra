@@ -65,35 +65,70 @@ async def test_lock_actually_serializes_with_forced_yield(
     store: FsBlobStore,
     monkeypatch: pytest.MonkeyPatch,  # noqa: F811
 ) -> None:
-    """consensus S5 — falsifier for the asyncio.Lock.
+    """consensus S5 + iter-2 W2 — strong falsifier for the `asyncio.Lock`.
 
-    Force a yield point between the dedup SELECT and the INSERT so the
-    coroutine scheduler can interleave. Without the lock, two parallel
-    `put` calls of the same content can both find no existing row and
-    both attempt to write the file — second one hits `FileExistsError`
-    or `IntegrityError`. With the lock, exactly one writes, the other
-    sees the existing row.
+    Two checks:
+
+    1. **Acquisition count** — instrument the store's `_lock.acquire` so
+       we can assert it was awaited exactly once per `put` call. Remove
+       `async with lock` from `put` and the count drops to 0.
+    2. **Mutual exclusion** — track `_lookup_existing` in-flight count.
+       Under a working lock the maximum is 1; without the lock the
+       forced yield lets a second coroutine observe an in-flight value
+       of 2 before the first one returns.
     """
     real_lookup = store._lookup_existing  # type: ignore[attr-defined]
+    in_flight = 0
+    max_in_flight = 0
 
     async def slow_lookup(conn: object, content_hash: str) -> object:
-        result = await real_lookup(conn, content_hash)
-        # yield to scheduler — gives other coroutines a chance to interleave
-        await asyncio.sleep(0)
-        return result
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        try:
+            # Hand control back to the scheduler — without the lock a
+            # second coroutine will enter here before this one returns.
+            await asyncio.sleep(0)
+            return await real_lookup(conn, content_hash)
+        finally:
+            in_flight -= 1
 
     monkeypatch.setattr(store, "_lookup_existing", slow_lookup)
+
+    lock = store._lock  # type: ignore[attr-defined]
+    assert lock is not None
+    real_acquire = lock.acquire
+    acquire_calls = 0
+
+    async def counting_acquire() -> bool:
+        nonlocal acquire_calls
+        acquire_calls += 1
+        return await real_acquire()
+
+    monkeypatch.setattr(lock, "acquire", counting_acquire)
 
     data = b"forced-yield-test"
     refs = await asyncio.gather(
         store.put(data, mime="t", source="a"),
         store.put(data, mime="t", source="b"),
     )
-    # Both calls succeed AND see exactly 1 file on FS, 1 blobs row, 2 refs.
+
+    # Falsifier 1 — lock was acquired once per put.
+    assert acquire_calls == 2, (
+        f"expected 2 lock acquisitions (one per put), got {acquire_calls}"
+    )
+    # Falsifier 2 — `_lookup_existing` was never in-flight concurrently.
+    assert max_in_flight == 1, (
+        f"lock failed to serialise — max concurrent _lookup_existing was "
+        f"{max_in_flight}"
+    )
+    # Sanity — final state is correct.
     assert refs[0].content_hash == refs[1].content_hash
     conn = store._conn  # type: ignore[attr-defined]
     assert conn is not None
     blob_count = await (await conn.execute("SELECT COUNT(*) FROM blobs")).fetchone()
-    ref_count = await (await conn.execute("SELECT COUNT(*) FROM blob_refs")).fetchone()
+    ref_count = await (
+        await conn.execute("SELECT COUNT(*) FROM blob_refs")
+    ).fetchone()
     assert blob_count is not None and int(blob_count[0]) == 1
     assert ref_count is not None and int(ref_count[0]) == 2

@@ -318,9 +318,10 @@ class FsBlobStore:
                 # (V6 reconciler reclaims by content_hash); phantom row is not.
                 await conn.commit()
             except aiosqlite.Error as e:
+                # Static message — do not leak SQLite schema details (column /
+                # table / constraint names) across the package boundary.
                 raise BlobWriteError(
-                    f"delete failed for blob_ref_id={blob_ref_id}: "
-                    f"{getattr(e, 'args', ('aiosqlite error',))[0]}"
+                    f"delete failed for blob_ref_id={blob_ref_id}"
                 ) from e
 
             if drop_file:

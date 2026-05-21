@@ -440,7 +440,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Config | `~/projects/lyra/config.toml` |
 | Credentials | `~/.lyra/config.db` (encrypted, via `lyra bot add`) |
 | Nkey seeds | `~/.lyra/nkeys/*.seed` |
-| Podman secrets | `podman secret ls` (lyra-nats-auth, lyra-nkey-*) |
+| Podman secrets | `podman secret ls` (lyra-nats-auth, lyra-nats-hub, lyra-nats-telegram, lyra-nats-discord, lyra-nats-clipool) |
 | Logs | `journalctl --user -u lyra-hub` |
 | Diagrams | `~/.roxabi/forge/` (if installed) |
 | Firewall | UFW, SSH only |

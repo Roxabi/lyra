@@ -82,3 +82,10 @@ Rules: add/delete/move → update P | new subdir with non-obvious invariants →
 Topics: `lyra.inbound.<platform>.<bot_id>` | `lyra.outbound.<platform>.<bot_id>`
 
 Unified: `lyra start` → hub + adapters in 1 process + embedded NATS
+
+## Container deployment
+
+Prod: Podman Quadlet (systemd `--user`) on M₁ (`lyra-hub` role). Six containers: `lyra-nats`, `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`, `lyra-gh-helper`. Install: `deploy/install.sh` (idempotent). Manifest: `deploy/quadlet.toml`.
+
+→ `docs/QUADLET-DEPLOYMENT.md` — install runbook, secret rotation, diagnostic
+→ `~/projects/docs/container-deployment-standard.md` — 18 standards (S7 secret target, S8 naming, S12 RestartSec=10)

@@ -185,7 +185,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             from lyra.infrastructure.stores.thread_store import ThreadStore
 
             # Read per-bot settings then close — don't hold config.db open
-            # during the long-lived adapter lifecycle (same pattern as CredentialStore).
+            # during the long-lived adapter lifecycle (short-lived reads, same pattern).
             agent_store = AgentStore(db_path=vault_dir / "config.db")
             await agent_store.connect()
             dc_bot_watch_channels: dict[str, frozenset[int]] = {}

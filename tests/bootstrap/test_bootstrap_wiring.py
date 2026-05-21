@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -34,10 +34,6 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
     # bot_agent_map maps ("telegram", bot_id) → agent_name
     bot_agent_map: dict[tuple[str, str], str] = {("telegram", "main"): "lyra_default"}
 
-    # Mock CredentialStore: get_full returns (token, webhook_secret)
-    cred_store = MagicMock()
-    cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
-
     circuit_registry = CircuitRegistry()
 
     msg_manager = MagicMock()
@@ -45,19 +41,26 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
 
     # Patch TelegramAdapter so we don't make real HTTP calls.
     # resolve_identity() is an async method that calls the Telegram API — mock it.
+    from unittest.mock import AsyncMock
+
     mock_adapter_instance = MagicMock()
     mock_adapter_instance.resolve_identity = AsyncMock()
 
-    with patch(
-        "lyra.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
-        return_value=mock_adapter_instance,
+    with (
+        patch(
+            "lyra.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
+            return_value=mock_adapter_instance,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+            return_value=("fake-token", "fake-secret"),
+        ),
     ):
         # Act
         adapters, dispatchers = await wire_telegram_adapters(
             hub=hub,
             tg_bot_auths=[(bot_cfg, auth)],
             bot_agent_map=bot_agent_map,
-            cred_store=cred_store,
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
         )
@@ -82,22 +85,26 @@ async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
     bot_cfg = TelegramBotConfig(bot_id="main")
     auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
-    cred_store = MagicMock()
-    cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
+    from unittest.mock import AsyncMock
 
     mock_adapter_instance = MagicMock()
     mock_adapter_instance.resolve_identity = AsyncMock()
     mock_adapter_instance._outbound_listener = None
 
-    with patch(
-        "lyra.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
-        return_value=mock_adapter_instance,
+    with (
+        patch(
+            "lyra.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
+            return_value=mock_adapter_instance,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+            return_value=("fake-token", "fake-secret"),
+        ),
     ):
         adapters, _ = await wire_telegram_adapters(
             hub=hub,
             tg_bot_auths=[(bot_cfg, auth)],
             bot_agent_map={("telegram", "main"): "lyra_default"},
-            cred_store=cred_store,
             circuit_registry=CircuitRegistry(),
             msg_manager=MagicMock(),
         )
@@ -118,18 +125,15 @@ async def test_wire_telegram_adapters_skips_missing_agent_mapping() -> None:
     bot_cfg = TelegramBotConfig(bot_id="orphan_bot")
     auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
-    cred_store = MagicMock()
-    cred_store.get_full = AsyncMock(return_value=("token", None))
-
     circuit_registry = CircuitRegistry()
     msg_manager = MagicMock()
 
-    # Act — bot_agent_map is empty so "orphan_bot" has no agent
+    # Act — bot_agent_map is empty so "orphan_bot" has no agent,
+    # and the function returns before _load_bot_token is called.
     adapters, dispatchers = await wire_telegram_adapters(
         hub=hub,
         tg_bot_auths=[(bot_cfg, auth)],
         bot_agent_map={},
-        cred_store=cred_store,
         circuit_registry=circuit_registry,
         msg_manager=msg_manager,
     )

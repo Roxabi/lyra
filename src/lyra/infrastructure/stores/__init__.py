@@ -3,11 +3,6 @@
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.bot_agent_map import BotAgentMapStore
-from lyra.infrastructure.stores.credential_store import (
-    BotSecretRow,
-    CredentialStore,
-    LyraKeyring,
-)
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.message_index import MessageIndex
 from lyra.infrastructure.stores.pairing import (
@@ -24,10 +19,7 @@ __all__ = [
     "AgentStore",
     "AuthStore",
     "BotAgentMapStore",
-    "BotSecretRow",
-    "CredentialStore",
     "IdentityAliasStore",
-    "LyraKeyring",
     "MessageIndex",
     "PairingManager",
     "PrefsStore",

@@ -110,7 +110,10 @@ async def run_daemon(config: DaemonConfig) -> None:
     rate_limiter = RateLimiter(min_interval_s=config.rate_limit_s)
     lock = asyncio.Lock()
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as http:
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(10.0),
+        limits=httpx.Limits(max_keepalive_connections=0),
+    ) as http:
         dispenser = Dispenser(
             cache=cache,
             signer=signer,

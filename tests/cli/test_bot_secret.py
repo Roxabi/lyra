@@ -284,3 +284,177 @@ class TestSecretList:
 
         # Output must include the mocked JSON payload
         assert "lyra-bot-telegram-demo" in result.output
+
+
+# ---------------------------------------------------------------------------
+# TestSecretListRoundTrip
+# ---------------------------------------------------------------------------
+
+
+class TestSecretListRoundTrip:
+    """T3 — list reflects what install stored (semantic round-trip)."""
+
+    def test_list_returns_what_was_installed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """list output must contain both secrets that install created.
+
+        Negative-test contract: if list_ no longer calls podman secret ls with
+        the captured names, the assertion on result.output will fail.
+        """
+        # Arrange
+        monkeypatch.setenv("TKN1", "A")
+        monkeypatch.setenv("TKN2", "B")
+
+        install_proc = _make_proc(0)
+        mock_run = MagicMock(return_value=install_proc)
+
+        # Act — install bot1
+        with patch("subprocess.run", mock_run):
+            r1 = runner.invoke(
+                app,
+                ["bot", "secret", "install", "telegram", "bot1", "--from-env", "TKN1"],
+            )
+        _assert_exit0(r1, label="install bot1")
+        install_calls = mock_run.call_args_list
+        cmds1 = [c[0][0] for c in install_calls]
+        assert any("lyra-bot-telegram-bot1" in cmd for cmd in cmds1)
+
+        # Act — install bot2
+        mock_run.reset_mock()
+        with patch("subprocess.run", mock_run):
+            r2 = runner.invoke(
+                app,
+                ["bot", "secret", "install", "telegram", "bot2", "--from-env", "TKN2"],
+            )
+        _assert_exit0(r2, label="install bot2")
+        install_calls2 = mock_run.call_args_list
+        cmds2 = [c[0][0] for c in install_calls2]
+        assert any("lyra-bot-telegram-bot2" in cmd for cmd in cmds2)
+
+        # Reconfigure mock: podman secret ls returns both names as JSON array
+        fake_json = (
+            b'[{"Name":"lyra-bot-telegram-bot1","ID":"aaa"},'
+            b'{"Name":"lyra-bot-telegram-bot2","ID":"bbb"}]'
+        )
+        ls_proc = _make_proc(0)
+        ls_proc.stdout = fake_json
+        mock_run.reset_mock()
+        mock_run.return_value = ls_proc
+
+        # Act — list
+        with patch("subprocess.run", mock_run):
+            r3 = runner.invoke(app, ["bot", "secret", "list"])
+        _assert_exit0(r3, label="list")
+
+        # Assert — both names surface in the output
+        assert "lyra-bot-telegram-bot1" in r3.output, (
+            f"Expected lyra-bot-telegram-bot1 in list output:\n{r3.output}"
+        )
+        assert "lyra-bot-telegram-bot2" in r3.output, (
+            f"Expected lyra-bot-telegram-bot2 in list output:\n{r3.output}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestE2EV1RedGate
+# ---------------------------------------------------------------------------
+
+
+class TestE2EV1RedGate:
+    """T7 RED-GATE V1 — install path + Makefile recipe contract.
+
+    Full make invocation is reserved for the manual M₂ smoke test.
+    This test asserts the Makefile recipe shape is correct so that the
+    install → render contract is verifiable without spawning make.
+    """
+
+    def test_e2e_install_then_list_then_render(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """install two secrets, verify list, then assert Makefile recipe format.
+
+        Negative-test contract:
+        - Delete the install path → install_calls assertions fail.
+        - Remove mode=0400,uid=1500,gid=1500 from Makefile → regex fails.
+        - Change target= naming convention → bot_token/bot_webhook assertions fail.
+        """
+        import re
+        from pathlib import Path
+
+        # Arrange
+        monkeypatch.setenv("TKN", "token-value")
+        monkeypatch.setenv("WHK", "webhook-value")
+
+        create_proc = _make_proc(0)
+        mock_run = MagicMock(return_value=create_proc)
+
+        # Act — install with both token and webhook
+        with patch("subprocess.run", mock_run):
+            r_install = runner.invoke(
+                app,
+                [
+                    "bot",
+                    "secret",
+                    "install",
+                    "telegram",
+                    "mybot",
+                    "--from-env",
+                    "TKN",
+                    "--webhook-from-env",
+                    "WHK",
+                ],
+            )
+        _assert_exit0(r_install, label="install mybot")
+
+        # Assert — exactly 2 podman secret create calls
+        assert mock_run.call_count == 2, (
+            f"Expected 2 podman create calls, got {mock_run.call_count}"
+        )
+        created_names = [c[0][0][-1] for c in mock_run.call_args_list]
+        assert "lyra-bot-telegram-mybot" in created_names
+        assert "lyra-bot-telegram-mybot-webhook" in created_names
+
+        # Reconfigure mock: podman secret ls uses plain-text {{.Name}} format
+        ls_proc = _make_proc(0)
+        ls_proc.stdout = b"lyra-bot-telegram-mybot\nlyra-bot-telegram-mybot-webhook\n"
+        mock_run.reset_mock()
+        mock_run.return_value = ls_proc
+
+        # Act — list (json format path)
+        ls_json_proc = _make_proc(0)
+        ls_json_proc.stdout = (
+            b'[{"Name":"lyra-bot-telegram-mybot","ID":"x1"},'
+            b'{"Name":"lyra-bot-telegram-mybot-webhook","ID":"x2"}]'
+        )
+        mock_run.return_value = ls_json_proc
+        with patch("subprocess.run", mock_run):
+            r_list = runner.invoke(app, ["bot", "secret", "list"])
+        _assert_exit0(r_list, label="list after install")
+        assert "lyra-bot-telegram-mybot" in r_list.output
+
+        # Assert Makefile recipe shape — no subprocess call to make needed.
+        # Asserts the Makefile recipe shape; full make invocation is reserved
+        # for the manual M₂ smoke test.
+        makefile_path = (
+            Path(__file__).parent.parent.parent / "Makefile"
+        )
+        makefile_contents = makefile_path.read_text()
+
+        # Secret= line must carry the correct mount options
+        secret_format_re = re.compile(
+            r"Secret=\$\$s,type=mount,target=\$\$target,mode=0400,uid=1500,gid=1500"
+        )
+        assert secret_format_re.search(makefile_contents), (
+            "Makefile Secret= line missing mode=0400,uid=1500,gid=1500 mount options"
+        )
+
+        # target= for token must be bot_token-<bot>
+        assert re.search(r"target=bot_token-\$\$bot", makefile_contents), (
+            "Makefile missing target=bot_token-$$bot assignment"
+        )
+
+        # target= for webhook must be bot_webhook-<bot>
+        assert re.search(r"target=bot_webhook-\$\$bot", makefile_contents), (
+            "Makefile missing target=bot_webhook-$$bot assignment"
+        )

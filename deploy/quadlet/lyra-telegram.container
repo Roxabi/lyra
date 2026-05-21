@@ -21,12 +21,23 @@ DropCapability=all
 # ADR-054 Decision 2: UserNS=keep-id maps container UID to host UID 1000 (mickael),
 # which owns ~/.lyra/*. Replaces User=lyra (UID 1500) which could not read host files.
 UserNS=keep-id:uid=1500,gid=1500
-# ADR-054 Decision 4: bot tokens come from config.db via LyraKeyring (since #417).
-# No EnvironmentFile needed for tokens — telegram.env.example deleted.
+# Bot tokens delivered via Podman secrets (superseded by #1057).
+# See `## Bot credentials` in docs/CONFIGURATION.md.
 Environment=NATS_URL=nats://lyra-nats:4222
 # ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
 Secret=lyra-nkey-telegram-adapter,type=mount,target=telegram-adapter.seed,mode=0400,uid=1500,gid=1500
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/telegram-adapter.seed
+# Bot tokens are provisioned as Podman secrets — one per bot (and optionally
+# one per webhook). Use `lyra bot secret install telegram <bot_id>` to provision,
+# then `make quadlet-bot-secrets-render` to generate the fragment to paste here.
+#
+# Each line follows the shape:
+#   Secret=lyra-bot-telegram-<bot_id>,type=mount,target=bot_token-<bot_id>,mode=0400,uid=1500,gid=1500
+#   Secret=lyra-bot-telegram-<bot_id>-webhook,type=mount,target=bot_webhook-<bot_id>,mode=0400,uid=1500,gid=1500
+#
+# --- BEGIN bot secrets (regenerate via `make quadlet-bot-secrets-render`) ---
+# Secret=lyra-bot-telegram-demo,type=mount,target=bot_token-demo,mode=0400,uid=1500,gid=1500
+# --- END bot secrets ---
 Volume=lyra-data.volume:/home/lyra/.lyra:z
 # Inline single-file bind mount — see rationale in lyra-hub.container.
 Volume=%h/.lyra/config.toml:/app/config.toml:ro,z

@@ -19,26 +19,13 @@ def _make_raw_config(platform: str) -> dict:
     }
 
 
-def _mock_cred_store(token: str, webhook_secret: str = "") -> MagicMock:
-    """Return a mock CredentialStore that returns the given token."""
-    mock = MagicMock()
-    mock.connect = AsyncMock()
-    mock.close = AsyncMock()
-    mock.get_full = AsyncMock(return_value=(token, webhook_secret))
-    return mock
-
-
 def _cred_store_patches(token: str, webhook_secret: str = "") -> tuple:
-    """Patches for LyraKeyring + CredentialStore constructor."""
-    mock_store = _mock_cred_store(token, webhook_secret)
+    """Patch for _load_bot_token in adapter_standalone (returns token + webhook)."""
+    webhook: str | None = webhook_secret if webhook_secret else None
     return (
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.LyraKeyring.load_or_create",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "lyra.bootstrap.standalone.adapter_standalone.CredentialStore",
-            return_value=mock_store,
+            "lyra.bootstrap.credentials.load_bot_token",
+            return_value=(token, webhook),
         ),
     )
 
@@ -70,7 +57,7 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
     mock_inbound_bus.start = AsyncMock()
     mock_inbound_bus.stop = AsyncMock()
 
-    keyring_patch, cred_patch = _cred_store_patches("test-token", "webhook-secret")
+    (load_token_patch,) = _cred_store_patches("test-token", "webhook-secret")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
@@ -83,8 +70,7 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
-        keyring_patch,
-        cred_patch,
+        load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
     ):
         await _bootstrap_adapter_standalone(
@@ -117,7 +103,7 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     mock_inbound_bus_dc.start = AsyncMock()
     mock_inbound_bus_dc.stop = AsyncMock()
 
-    keyring_patch, cred_patch = _cred_store_patches("discord-token")
+    (load_token_patch_dc,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
@@ -130,8 +116,7 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
-        keyring_patch,
-        cred_patch,
+        load_token_patch_dc,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
     ):
         await _bootstrap_adapter_standalone(
@@ -164,12 +149,11 @@ async def test_nc_close_called_even_on_exception() -> None:
     )
 
     mock_nc = AsyncMock()
-    keyring_patch, cred_patch = _cred_store_patches("t")
+    (load_token_patch_exc,) = _cred_store_patches("t")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
         patch("lyra.nats.nats_bus.NatsBus", side_effect=RuntimeError("boom")),
-        keyring_patch,
-        cred_patch,
+        load_token_patch_exc,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
         pytest.raises(RuntimeError, match="boom"),
     ):

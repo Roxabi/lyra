@@ -46,7 +46,7 @@ The flat `[telegram]` and `[discord]` sections use `bot_id = "main"` internally.
 
 Replace the flat sections with `[[telegram.bots]]` and `[[discord.bots]]` arrays. Each entry takes a `bot_id` that must match a corresponding `[[auth.telegram_bots]]` or `[[auth.discord_bots]]` entry.
 
-> **Note:** In production multi-bot deployments, tokens are resolved via CredentialStore at bootstrap (see `docs/CONFIGURATION.md`). The `token` fields below illustrate the legacy single-bot `env:` path only.
+> **Note:** In production multi-bot deployments, tokens are delivered via per-bot Podman secrets mounted at `/run/secrets/bot_token-<bot_id>` — provision them with `lyra bot secret install <platform> <bot_id>` (see the `## Bot credentials` section in `docs/CONFIGURATION.md`). The `token` fields below illustrate the legacy single-bot `env:` path only.
 
 ```toml
 [admin]

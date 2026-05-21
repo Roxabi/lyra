@@ -1,117 +1,65 @@
-"""Tests for bootstrap MissingCredentialsError (issue #262, S2).
+"""Tests for bootstrap error on missing /run/secrets/ token file (issue #1057).
 
-Verifies that the bootstrap path raises MissingCredentialsError when
-CredentialStore.get_full() returns None, and that the error class exposes
-the expected attributes and message content.
+Verifies that the adapter bootstrap raises when the expected secret file
+bot_token-<bot_id> is absent from LYRA_RUN_SECRETS_DIR, and that the error
+message contains the expected path and the install command hint.
 
-These tests operate at the unit level: they mock CredentialStore + other heavy
-adapters so no real network or filesystem access is needed.
+Tests are RED until T9 lands the implementation.
 """
 
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import lyra.__main__ as main_mod
-from lyra.core.auth.authenticator import Authenticator as AuthMiddleware
-from lyra.errors import MissingCredentialsError
-from tests.conftest import make_fake_stores, patch_bootstrap_common
 
-# ---------------------------------------------------------------------------
-# TestMissingCredentials — bootstrap raises MissingCredentialsError
-# ---------------------------------------------------------------------------
+async def test_adapter_raises_bootstrap_error_on_missing_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Missing bot_token-mybot → error raised with path hint and install command."""
+    # Arrange — LYRA_RUN_SECRETS_DIR exists but contains no token file for "mybot"
+    run_secrets_dir = tmp_path / "run-secrets"
+    run_secrets_dir.mkdir()
 
+    monkeypatch.setenv("LYRA_RUN_SECRETS_DIR", str(run_secrets_dir))
+    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
 
-class TestMissingCredentials:
-    """CredentialStore.get_full() returns None → MissingCredentialsError raised."""
+    raw_config = {"telegram": {"bots": [{"bot_id": "mybot"}]}}
 
-    async def test_missing_telegram_credentials_raises(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """telegram get_full() → None raises MissingCredentialsError."""
-        # Arrange
-        patch_bootstrap_common(monkeypatch)
-        _, _ = make_fake_stores(monkeypatch, tg_creds=None)
+    stop = asyncio.Event()
+    stop.set()
 
-        monkeypatch.setattr(
-            main_mod,
-            "_load_raw_config",
-            lambda: {
-                "telegram": {"bots": [{"bot_id": "main"}]},
-                "auth": {"telegram_bots": [{"bot_id": "main", "default": "public"}]},
-            },
-        )
-        # Patch from_bot_config so auth validation passes
-        monkeypatch.setattr(
-            AuthMiddleware,
-            "from_bot_config",
-            classmethod(lambda cls, raw, platform, bot_id, **kw: MagicMock()),
-        )
+    mock_nc = AsyncMock()
+    mock_inbound_bus = AsyncMock()
+    mock_inbound_bus.register = MagicMock()
+    mock_inbound_bus.start = AsyncMock()
+    mock_inbound_bus.stop = AsyncMock()
 
-        stop = asyncio.Event()
-        stop.set()
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
 
-        # Act + Assert — MissingCredentialsError is caught and converted to SystemExit
-        with pytest.raises(SystemExit) as exc_info:
-            await main_mod._main(_stop=stop)
+    with (
+        patch("nats.connect", AsyncMock(return_value=mock_nc)),
+        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            AsyncMock(return_value=True),
+        ),
+    ):
+        # Act + Assert — error raised with path hint and install command
+        with pytest.raises(
+            Exception,
+            match=r"bot_token-mybot",
+        ) as exc_info:
+            await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
 
-        assert "telegram" in str(exc_info.value.code)
-        assert "main" in str(exc_info.value.code)
-
-    async def test_missing_discord_credentials_raises(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """discord get_full() → None raises MissingCredentialsError."""
-        # Arrange
-        patch_bootstrap_common(monkeypatch)
-        _, _ = make_fake_stores(
-            monkeypatch, tg_creds=("tg-token", "tg-secret"), dc_creds=None
-        )
-
-        monkeypatch.setattr(
-            main_mod,
-            "_load_raw_config",
-            lambda: {
-                "discord": {"bots": [{"bot_id": "main"}]},
-                "auth": {"discord_bots": [{"bot_id": "main", "default": "public"}]},
-            },
-        )
-        monkeypatch.setattr(
-            AuthMiddleware,
-            "from_bot_config",
-            classmethod(lambda cls, raw, platform, bot_id, **kw: MagicMock()),
-        )
-
-        stop = asyncio.Event()
-        stop.set()
-
-        # Act + Assert — MissingCredentialsError is caught and converted to SystemExit
-        with pytest.raises(SystemExit) as exc_info:
-            await main_mod._main(_stop=stop)
-
-        assert "discord" in str(exc_info.value.code)
-        assert "main" in str(exc_info.value.code)
-
-    async def test_missing_credentials_error_message_contains_hint(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """MissingCredentialsError message includes the CLI hint."""
-        # Arrange — test the error class directly, no bootstrap wiring needed
-        err = MissingCredentialsError("telegram", "my-bot")
-
-        # Assert
-        assert "telegram" in str(err)
-        assert "my-bot" in str(err)
-        assert "lyra bot add" in str(err)
-
-    def test_missing_credentials_error_attributes(self) -> None:
-        """MissingCredentialsError exposes .platform and .bot_id attributes."""
-        # Arrange + Act
-        err = MissingCredentialsError("discord", "secondary")
-
-        # Assert
-        assert err.platform == "discord"
-        assert err.bot_id == "secondary"
+    # Assert — install command hint is present in the error message
+    assert "lyra bot secret install telegram mybot" in str(exc_info.value)

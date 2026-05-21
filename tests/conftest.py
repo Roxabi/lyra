@@ -192,34 +192,24 @@ def make_fake_stores(
     tg_creds: tuple[str, str | None] | None = ("fake-token", "fake-secret"),
     dc_creds: tuple[str, str | None] | None = ("fake-dc-token", None),
 ) -> tuple[MagicMock, MagicMock]:
-    """Patch LyraKeyring and CredentialStore in stores_mod.
+    """Patch load_bot_token at the credentials module to return fake creds.
 
-    Returns (fake_keyring, fake_cred_store) for assertions.
+    Returns (MagicMock(), MagicMock()) for API compatibility with callers that
+    previously received (fake_keyring, fake_cred_store).  Callers that ignore
+    both return values are unaffected.
     """
-    fake_keyring = MagicMock()
-    fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
+    import lyra.bootstrap.credentials as credentials_mod
 
-    fake_cred_store = MagicMock()
-    fake_cred_store.connect = AsyncMock()
-    fake_cred_store.close = AsyncMock()
-
-    # get_full side_effect: return tg_creds for telegram, dc_creds for discord
-    async def _get_full(platform: str, bot_id: str) -> tuple[str, str | None] | None:
+    def _fake_load(platform: str, bot_id: str) -> tuple[str, str | None]:
         if platform == "telegram":
-            return tg_creds
+            return tg_creds or ("fake-token", None)
         if platform == "discord":
-            return dc_creds
-        return None
+            creds = dc_creds or ("fake-dc-token", None)
+            return creds
+        return ("fake-token", None)
 
-    fake_cred_store.get_full = AsyncMock(side_effect=_get_full)
-
-    monkeypatch.setattr(
-        stores_mod,
-        "LyraKeyring",
-        MagicMock(load_or_create=MagicMock(return_value=fake_keyring)),
-    )
-    monkeypatch.setattr(stores_mod, "CredentialStore", lambda **kwargs: fake_cred_store)
-    return fake_keyring, fake_cred_store
+    monkeypatch.setattr(credentials_mod, "load_bot_token", _fake_load)
+    return MagicMock(), MagicMock()
 
 
 def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
@@ -359,19 +349,12 @@ def patch_all(
     _fake_agent_store.set_bot_agent = AsyncMock()
     monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
 
-    _fake_keyring = MagicMock()
-    _fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
-    _fake_cred_store = MagicMock()
-    _fake_cred_store.connect = AsyncMock()
-    _fake_cred_store.close = AsyncMock()
-    _fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
+    import lyra.bootstrap.credentials as credentials_mod
+
     monkeypatch.setattr(
-        stores_mod,
-        "LyraKeyring",
-        MagicMock(load_or_create=AsyncMock(return_value=_fake_keyring)),
-    )
-    monkeypatch.setattr(
-        stores_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
+        credentials_mod,
+        "load_bot_token",
+        lambda platform, bot_id: ("fake-token", "fake-secret"),
     )
     monkeypatch.setattr(
         wiring_helpers_mod,
@@ -415,19 +398,12 @@ def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
         AsyncMock(return_value={("telegram", "main"): "lyra_default"}),
     )
 
-    _fake_keyring = MagicMock()
-    _fake_keyring.key = b"fake-key-32-bytes-for-fernet-key"
-    _fake_cred_store = MagicMock()
-    _fake_cred_store.connect = AsyncMock()
-    _fake_cred_store.close = AsyncMock()
-    _fake_cred_store.get_full = AsyncMock(return_value=("fake-token", "fake-secret"))
+    import lyra.bootstrap.credentials as credentials_mod
+
     monkeypatch.setattr(
-        stores_mod,
-        "LyraKeyring",
-        MagicMock(load_or_create=AsyncMock(return_value=_fake_keyring)),
-    )
-    monkeypatch.setattr(
-        stores_mod, "CredentialStore", lambda **kwargs: _fake_cred_store
+        credentials_mod,
+        "load_bot_token",
+        lambda platform, bot_id: ("fake-token", "fake-secret"),
     )
 
     _patch_nats_stubs(monkeypatch)

@@ -49,6 +49,7 @@
 | llm.context_too_long | false | Input tokens exceed the model's context window. |
 | llm.model_unavailable | true | Requested LLM model is temporarily or permanently unavailable. |
 | llm.no_responders | true | No LLM worker is subscribed on the expected NATS subject. |
+| llm.lifecycle_rejected | false | Lifecycle operation rejected by the worker (unknown model, engine=remote, VRAM budget exceeded, or catalog parse error). |
 
 ## voice.*
 

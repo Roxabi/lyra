@@ -1,7 +1,7 @@
 """Tests for lyra setup commands CLI (#291).
 
 Covers:
-  - _register_all() with mocked CredentialStore and Bot
+  - _register_all() with mocked _load_bot_token and Bot
   - Admin commands excluded from registration
   - Missing token handled gracefully
   - Idempotent re-run
@@ -39,15 +39,10 @@ def empty_config(tmp_path: Path) -> Path:
 
 def _mock_patches():
     """Return context managers for all external dependencies."""
-    mock_cred_store = AsyncMock()
-    mock_cred_store.get_full.return_value = ("fake_token", "fake_secret")
-
-    mock_keyring = MagicMock()
-
     mock_plugin_loader = MagicMock()
     mock_plugin_loader.get_command_descriptions.return_value = {}
 
-    return mock_cred_store, mock_keyring, mock_plugin_loader
+    return mock_plugin_loader
 
 
 class TestRegisterAll:
@@ -55,18 +50,14 @@ class TestRegisterAll:
     async def test_registers_commands(self, config_file: Path) -> None:
         from lyra.cli_setup import _register_all
 
-        mock_cred_store, mock_keyring, mock_plugin_loader = _mock_patches()
+        mock_plugin_loader = _mock_patches()
 
         mock_register = AsyncMock(return_value="test_bot_user")
 
         with (
             patch(
-                "lyra.infrastructure.stores.credential_store.LyraKeyring.load_or_create",
-                return_value=mock_keyring,
-            ),
-            patch(
-                "lyra.infrastructure.stores.credential_store.CredentialStore",
-                return_value=mock_cred_store,
+                "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+                return_value=("fake_token", "fake_secret"),
             ),
             patch(
                 "lyra.core.commands.command_loader.CommandLoader",
@@ -96,12 +87,8 @@ class TestRegisterAll:
         # Should not raise — prints message and returns
         with (
             patch(
-                "lyra.infrastructure.stores.credential_store.LyraKeyring.load_or_create",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "lyra.infrastructure.stores.credential_store.CredentialStore",
-                return_value=AsyncMock(),
+                "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+                return_value=(MagicMock(), None),
             ),
             patch(
                 "lyra.core.commands.command_loader.CommandLoader",
@@ -112,21 +99,19 @@ class TestRegisterAll:
 
     @pytest.mark.asyncio()
     async def test_missing_credentials(self, config_file: Path) -> None:
+        """Missing token file raises RuntimeError from _load_bot_token.
+
+        cli_setup._register_bot catches RuntimeError, prints an error, and
+        _register_all raises typer.Exit(1) after collecting the error count.
+        """
         from click.exceptions import Exit as ClickExit
 
         from lyra.cli_setup import _register_all
 
-        mock_cred_store = AsyncMock()
-        mock_cred_store.get_full.return_value = None
-
         with (
             patch(
-                "lyra.infrastructure.stores.credential_store.LyraKeyring.load_or_create",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "lyra.infrastructure.stores.credential_store.CredentialStore",
-                return_value=mock_cred_store,
+                "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+                side_effect=RuntimeError("bot_token-test_bot"),
             ),
             patch(
                 "lyra.core.commands.command_loader.CommandLoader",
@@ -142,17 +127,13 @@ class TestRegisterAll:
     async def test_idempotent_rerun(self, config_file: Path) -> None:
         from lyra.cli_setup import _register_all
 
-        mock_cred_store, mock_keyring, mock_plugin_loader = _mock_patches()
+        mock_plugin_loader = _mock_patches()
         mock_register = AsyncMock(return_value="test_bot_user")
 
         with (
             patch(
-                "lyra.infrastructure.stores.credential_store.LyraKeyring.load_or_create",
-                return_value=mock_keyring,
-            ),
-            patch(
-                "lyra.infrastructure.stores.credential_store.CredentialStore",
-                return_value=mock_cred_store,
+                "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+                return_value=("fake_token", "fake_secret"),
             ),
             patch(
                 "lyra.core.commands.command_loader.CommandLoader",

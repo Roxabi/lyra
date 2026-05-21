@@ -232,7 +232,7 @@ class TestSecretRm:
 
         call_count = 0
 
-        def _side_effect(cmd: list[str], **kwargs: object) -> MagicMock:
+        def _side_effect(cmd: list[str], **_: object) -> MagicMock:
             nonlocal call_count
             call_count += 1
             # Simulate webhook secret missing

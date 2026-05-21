@@ -30,7 +30,7 @@ Exec=nats-server -c /etc/nats/nats.conf
 
 [Service]
 Restart=always
-RestartSec=5
+RestartSec=10
 # Cap at 2 full cores — keeps NATS from starving hub/adapters under load.
 CPUQuota=200%
 

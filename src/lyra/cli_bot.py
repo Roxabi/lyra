@@ -166,6 +166,64 @@ async def _bot_list_async() -> None:
         await store.close()
 
 
+@secret_app.command("migrate")
+def migrate(
+    vault: Path = typer.Option(
+        Path.home() / ".lyra",
+        help="Vault directory (contains config.db + keyring.key).",
+    ),
+) -> None:
+    """Migrate bot_secrets rows from config.db to Podman secrets.
+
+    Reads each row, decrypts via existing LyraKeyring, and creates a Podman
+    secret per (platform, bot_id) pair. Idempotent by construction
+    (--replace overwrites). Safe to drop the bot_secrets table afterwards.
+    """
+    from lyra.infrastructure.stores.credential_store import (
+        CredentialStore,
+        LyraKeyring,
+    )
+
+    keyring = LyraKeyring.load_or_create(vault / "keyring.key")
+    store = CredentialStore(db_path=vault / "config.db", keyring=keyring)
+    asyncio.run(_run_migrate(store))
+
+
+async def _run_migrate(store: "CredentialStore") -> None:
+    await store.connect()
+    tokens = 0
+    webhooks = 0
+    try:
+        rows = await store.list_all()
+        for row in rows:
+            full = await store.get_full(row.platform, row.bot_id)
+            if full is None:
+                typer.echo(
+                    f"{row.platform} {row.bot_id} SKIP (decryption returned None)",
+                    err=True,
+                )
+                continue
+            token, webhook = full
+            _podman_secret_create(
+                f"lyra-bot-{row.platform}-{row.bot_id}", token.encode()
+            )
+            tokens += 1
+            if webhook is not None:
+                _podman_secret_create(
+                    f"lyra-bot-{row.platform}-{row.bot_id}-webhook",
+                    webhook.encode(),
+                )
+                webhooks += 1
+            wh_marker = "OK" if webhook is not None else "-"
+            typer.echo(f"{row.platform} {row.bot_id} OK {wh_marker}")
+    finally:
+        await store.close()
+    typer.echo(
+        f"Migrated {tokens} tokens, {webhooks} webhook secrets;"
+        " safe to drop bot_secrets table."
+    )
+
+
 @bot_app.command("remove")
 def bot_remove(
     platform: str = typer.Option(...),

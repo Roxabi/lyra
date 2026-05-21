@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class BlobRef(BaseModel):
@@ -45,3 +45,13 @@ class BlobRef(BaseModel):
         description="Distinct from platform_ref; reconstructs the conversation thread.",
     )
     created_at: datetime = Field(description="Provenance: when this ref was ingested.")
+
+    @field_validator("created_at")
+    @classmethod
+    def _ensure_tz_aware(cls, v: datetime) -> datetime:
+        """Reject naive datetimes — callers downstream rely on `astimezone(...)`."""
+        if v.tzinfo is None:
+            raise ValueError(
+                "BlobRef.created_at must be timezone-aware (got naive datetime)"
+            )
+        return v

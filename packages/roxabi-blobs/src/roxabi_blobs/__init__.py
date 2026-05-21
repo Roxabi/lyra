@@ -10,6 +10,7 @@ from roxabi_blobs.errors import (
     BlobConsistencyError,
     BlobError,
     BlobNotFoundError,
+    BlobStateError,
     BlobWriteError,
 )
 from roxabi_blobs.fs_store import FsBlobStore
@@ -21,6 +22,7 @@ __all__ = [
     "BlobError",
     "BlobNotFoundError",
     "BlobRef",
+    "BlobStateError",
     "BlobStore",
     "BlobWriteError",
     "FsBlobStore",

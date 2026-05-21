@@ -1,0 +1,110 @@
+---
+title: "Consensus: PR #1298 BlobStore review findings"
+issue: 1063
+status: consensus-reached
+date: 2026-05-21
+panel-a: architect, security-auditor, backend-dev
+panel-b: architect, backend-dev, devops
+confidence: high
+---
+
+## Problem
+
+PR #1298 (V1 BlobStore package) /code-review surfaced 8 blockers + 6 warnings clustered in two themes:
+- **A — API design**: path traversal (B1), lifecycle guard semantics (B3, B6), path disclosure (W1), lock typing (W4)
+- **B — Concurrency & crash safety**: delete order (B2), inter-process race (B4), raw error leaks (B5), exists() TOCTOU (B8), executescript footgun (W3)
+
+Two 3-expert panels ran in parallel; consensus reached on all 10 findings with one recorded dissent.
+
+## Panels
+
+### Panel A — API design
+
+| α | Focus |
+|---|---|
+| architect | maintainability, scalability across V2+ consumers |
+| security-auditor | OWASP A03/A05, defense-in-depth |
+| backend-dev | idiomatic Python ≥3.12, ergonomic exception hierarchy |
+
+### Panel B — Concurrency & crash safety
+
+| α | Focus |
+|---|---|
+| architect | invariants, crash-recovery, future-proofing |
+| backend-dev | aiosqlite/WAL idioms, async cancel-safety |
+| devops | ops impact, V6 reconciler scope, ADR-067 §single-host invariant |
+
+## Consensus ρ
+
+### Theme A (API design)
+
+| Finding | Decision |
+|---|---|
+| B1 path traversal | `get()` resolves the path then asserts `is_relative_to(self.root.resolve())`. On failure → `BlobNotFoundError("blob not found")` with **static message** (no path leak; no oracle for attacker to distinguish "rejected" vs "missing"). |
+| B3 wrong error type | Introduce `BlobStateError(BlobError)` — lifecycle violation. `_require_open` raises it (was `BlobWriteError`). |
+| B6 asymmetric guard | `get()` calls `_require_open()` first — uniform lifecycle across all 4 methods. |
+| W1 path disclosure | Strip absolute paths from user-facing error messages. Use `content_hash` or static text. Internal logging at DEBUG may retain full path. |
+| W4 lock typing | `_lock: asyncio.Lock \| None`. Lazy init in `__aenter__` (no loop binding at construct). Drop `assert + # type: ignore`. |
+
+`_require_open()` signature change (architect proposed, all approved):
+```python
+def _require_open(self) -> tuple[aiosqlite.Connection, asyncio.Lock]:
+    if self._conn is None or self._lock is None:
+        raise BlobStateError("FsBlobStore used outside an `async with` context.")
+    return self._conn, self._lock
+```
+
+### Theme B (Concurrency & crash safety)
+
+| Finding | Decision |
+|---|---|
+| B2 delete order | Swap to **commit-before-unlink**. Crash window leaves orphan file (recoverable by V6 reconciler — content-addressed, bytes are identical). Current order leaves phantom row (unrecoverable, permanent `BlobConsistencyError`). |
+| B4 inter-process race | `INSERT OR IGNORE INTO blobs`. Idempotent on `content_hash PRIMARY KEY`. Cheap defense-in-depth even under V1 single-process invariant (ADR-067). |
+| B5 raw error leaks | Wrap `aiosqlite.Error` at every public method boundary. `delete` → `BlobWriteError`; `exists` → `BlobConsistencyError` (manifest read failure semantically distinct from write failure). |
+| B8 exists() TOCTOU | Acquire `_lock` in `exists()`. **Dissent recorded** (devops): under V1 single-writer ADR invariant, lock cost is paid for zero safety gain. Majority (architect + backend) prevails — minimal cost, future-proofs against V2 read-write upgrade. |
+| W3 executescript | Split `SCHEMA_SQL` into individual `conn.execute()` calls + one explicit `commit()`. Removes implicit-commit footgun for future migration code. |
+
+## Trade-offs
+
+- `_require_open` return-type widening touches all 4 methods in one diff (wider patch, but kills 4× `assert + type: ignore`).
+- Static error messages in `get()` reduce debug fidelity at the package boundary — full path logged at DEBUG inside; opaque key in exception.
+- `BlobStateError` is a new public symbol — minor API surface addition; cleanly distinguishes lifecycle violations from write failures across V2+ consumers (TG adapter, STT/TTS workers).
+- Acquiring `_lock` in `exists()` serializes reads with writes — acceptable in V1 (delete not on production paths); revisit with `aiorwlock` if V2 measures contention pressure.
+- `INSERT OR IGNORE` silently drops duplicate `blobs` rows from cross-process winners — content-addressing makes the bytes identical, so silent-drop is correct.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|---|---|
+| Change Protocol to `get(content_hash)` instead of `get(store_key)` | architect (mentioned, rejected) | Breaks `store_key` opacity; S3 URIs / CDN tokens don't map to content hashes; Protocol must stay impl-agnostic |
+| Exception middleware sanitizer at package boundary | architect | Hides paths from internal log pipeline too — structured `.path` attribute on individual errors is more auditable |
+| Allowlist validation via SQLite manifest lookup before reading | security-auditor (rejected own option) | DB round-trip per `get()`; `resolve().relative_to()` is zero-cost, offline, sufficient |
+| `BEGIN IMMEDIATE` transaction wrapping `delete` for multi-process safety | backend-dev (rejected own option) | ADR-067 explicit single-process invariant; adds latency + contention for non-V1 problem |
+| `aiorwlock` read-write lock for `exists()` throughput | architect/backend-dev | External dep; no measured V1 contention; tracked as V2 precondition |
+| `BlobStoreClosedError` naming (backend-dev preference) | backend-dev (Panel A) | 2-1 in favor of `BlobStateError` — slightly broader category, fits future "lifecycle violation" cases beyond closed-state |
+
+## Dissent
+
+**B8 (exists() TOCTOU)** — devops dissented from majority. Argued V1 single-writer ADR invariant makes TOCTOU a non-issue and `_lock` on read paths is pure overhead. Recorded; majority position (acquire `_lock`) prevails on future-proofing grounds. V2 work tracking the `aiorwlock` upgrade is the agreed mitigation if contention emerges.
+
+## Implementation Notes
+
+Order of code changes:
+1. `errors.py` — add `BlobStateError(BlobError)`
+2. `__init__.py` — export new error class
+3. `models.py` — add tz-aware validator on `BlobRef.created_at` (W5)
+4. `_schema.py` (rename from `schema.py`) — internal-prefix convention (S6)
+5. `fs_store.py` — apply all 10 fixes in one pass:
+   - `_lock: asyncio.Lock | None`
+   - `_require_open()` returns `(conn, lock)` tuple, raises `BlobStateError`
+   - `__aenter__` splits schema apply into individual `execute()` calls
+   - `put`: `INSERT OR IGNORE INTO blobs`; cleanup partial file on `OSError` (W2)
+   - `get`: `_require_open()` + path containment check + static error
+   - `exists`: acquire `_lock`; wrap as `BlobConsistencyError`
+   - `delete`: wrap as `BlobWriteError`; commit-before-unlink
+6. Test updates per all consensus + S1-S8 findings
+7. Root `pyproject.toml`: pyright include + dev group entry (B7, S7)
+
+## Next
+
+Apply fixes in `feat/1063-roxabi-blobs-package` worktree → QG → push → re-run `/code-review`.

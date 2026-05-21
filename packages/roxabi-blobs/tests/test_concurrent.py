@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 
+import pytest
+
 from roxabi_blobs import FsBlobStore
 
 
@@ -57,3 +59,41 @@ async def test_concurrent_puts_different_blobs(store: FsBlobStore) -> None:
     assert conn is not None
     blob_count = await (await conn.execute("SELECT COUNT(*) FROM blobs")).fetchone()
     assert blob_count is not None and int(blob_count[0]) == 10
+
+
+async def test_lock_actually_serializes_with_forced_yield(
+    store: FsBlobStore,
+    monkeypatch: pytest.MonkeyPatch,  # noqa: F811
+) -> None:
+    """consensus S5 — falsifier for the asyncio.Lock.
+
+    Force a yield point between the dedup SELECT and the INSERT so the
+    coroutine scheduler can interleave. Without the lock, two parallel
+    `put` calls of the same content can both find no existing row and
+    both attempt to write the file — second one hits `FileExistsError`
+    or `IntegrityError`. With the lock, exactly one writes, the other
+    sees the existing row.
+    """
+    real_lookup = store._lookup_existing  # type: ignore[attr-defined]
+
+    async def slow_lookup(conn: object, content_hash: str) -> object:
+        result = await real_lookup(conn, content_hash)
+        # yield to scheduler — gives other coroutines a chance to interleave
+        await asyncio.sleep(0)
+        return result
+
+    monkeypatch.setattr(store, "_lookup_existing", slow_lookup)
+
+    data = b"forced-yield-test"
+    refs = await asyncio.gather(
+        store.put(data, mime="t", source="a"),
+        store.put(data, mime="t", source="b"),
+    )
+    # Both calls succeed AND see exactly 1 file on FS, 1 blobs row, 2 refs.
+    assert refs[0].content_hash == refs[1].content_hash
+    conn = store._conn  # type: ignore[attr-defined]
+    assert conn is not None
+    blob_count = await (await conn.execute("SELECT COUNT(*) FROM blobs")).fetchone()
+    ref_count = await (await conn.execute("SELECT COUNT(*) FROM blob_refs")).fetchone()
+    assert blob_count is not None and int(blob_count[0]) == 1
+    assert ref_count is not None and int(ref_count[0]) == 2

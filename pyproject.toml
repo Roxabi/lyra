@@ -108,7 +108,7 @@ show_missing = true
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-contracts/src"]
+include = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-contracts/src", "packages/roxabi-blobs/src"]
 venvPath = "."
 venv = ".venv"
 # ── Permanent policy ──────────────────────────────────────────────────────────
@@ -170,6 +170,7 @@ dev = [
     # Workspace member [testing] extras — pulls scipy+numpy needed by
     # roxabi_contracts.voice.fixtures. `uv sync` doesn't auto-expand
     # extras on workspace members (#1174), so we declare them here.
+    "roxabi-blobs[testing]",
     "roxabi-contracts[testing]",
     "roxabi-nats[testing]",
 ]

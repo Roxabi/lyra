@@ -6,17 +6,23 @@ Verifies the shape contract from ADR-067 §Interface and the V1 spec.
 from __future__ import annotations
 
 import inspect
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
 from roxabi_blobs import (
     BlobConsistencyError,
+    BlobError,
     BlobNotFoundError,
     BlobRef,
+    BlobStateError,
     BlobStore,
     BlobWriteError,
 )
+
+
+def _utc(year: int = 2026, month: int = 5, day: int = 21) -> datetime:
+    return datetime(year, month, day, tzinfo=UTC)
 
 
 class TestBlobStoreProtocol:
@@ -84,7 +90,7 @@ class TestBlobRefEnvelope:
             mime="audio/ogg",
             size=42,
             source="telegram",
-            created_at=datetime(2026, 5, 21),
+            created_at=_utc(),
         )
         assert ref.filename is None
         assert ref.platform_ref is None
@@ -98,7 +104,7 @@ class TestBlobRefEnvelope:
                 mime="x",
                 size=-1,
                 source="x",
-                created_at=datetime(2026, 5, 21),
+                created_at=_utc(),
             )
 
     def test_frozen(self) -> None:
@@ -108,15 +114,48 @@ class TestBlobRefEnvelope:
             mime="x",
             size=0,
             source="x",
-            created_at=datetime(2026, 5, 21),
+            created_at=_utc(),
         )
         with pytest.raises(Exception):
             ref.size = 99  # frozen — must raise
 
+    def test_created_at_rejects_naive(self) -> None:
+        """tz-naive datetime is rejected (consensus W5)."""
+        with pytest.raises(ValueError, match="timezone-aware"):
+            BlobRef(
+                store_key="x",
+                content_hash="x",
+                mime="x",
+                size=0,
+                source="x",
+                created_at=datetime(2026, 5, 21),  # naive
+            )
+
 
 class TestTypedErrors:
-    """All errors subclass a common base and are importable from the package root."""
+    """All package errors inherit from `BlobError` so callers can catch one base."""
 
-    def test_errors_share_base(self) -> None:
-        for exc in (BlobNotFoundError, BlobWriteError, BlobConsistencyError):
-            assert issubclass(exc, Exception)
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            BlobNotFoundError,
+            BlobWriteError,
+            BlobConsistencyError,
+            BlobStateError,
+        ],
+    )
+    def test_subclass_of_blob_error(self, exc: type[Exception]) -> None:
+        """consensus S2 — assert against `BlobError`, not `Exception` (tautology)."""
+        assert issubclass(exc, BlobError)
+
+    def test_blob_error_catchable(self) -> None:
+        """All typed errors can be caught uniformly via `BlobError`."""
+        types = (
+            BlobNotFoundError,
+            BlobWriteError,
+            BlobConsistencyError,
+            BlobStateError,
+        )
+        for cls in types:
+            with pytest.raises(BlobError):
+                raise cls("test")

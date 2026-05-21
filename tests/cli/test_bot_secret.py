@@ -6,6 +6,7 @@ These tests MUST FAIL until T2 implements the `secret` sub-app in
       [--from-env VAR] [--webhook-from-env VAR]
   - lyra bot secret rm <platform> <bot_id>
   - lyra bot secret list
+  - lyra bot secret migrate --vault <dir>
 
 Mock strategy: `subprocess.run` is patched so that no real podman process is
 spawned. The root `lyra_app` from `lyra.cli` is invoked through `CliRunner`
@@ -15,6 +16,7 @@ to exercise the full Typer command tree (bot → secret).
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -457,4 +459,193 @@ class TestE2EV1RedGate:
         # target= for webhook must be bot_webhook-<bot>
         assert re.search(r"target=bot_webhook-\$\$bot", makefile_contents), (
             "Makefile missing target=bot_webhook-$$bot assignment"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestSecretMigrate
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def tmp_vault_with_rows(tmp_path: Path) -> object:
+    """Yield (tmp_path, async _setup(rows)) seeded via real CredentialStore.
+
+    rows is a list of tuples passed directly to store.set(*row).
+    Acceptable tuple shapes:
+      (platform, bot_id, token)
+      (platform, bot_id, token, webhook_secret)
+    """
+    from lyra.infrastructure.stores.credential_store import (
+        CredentialStore,
+        LyraKeyring,
+    )
+
+    keyring = LyraKeyring.load_or_create(tmp_path / "keyring.key")
+    store = CredentialStore(db_path=tmp_path / "config.db", keyring=keyring)
+
+    async def _setup(rows: list[tuple[object, ...]]) -> None:
+        await store.connect()
+        for r in rows:
+            await store.set(*r)  # type: ignore[arg-type]
+        await store.close()
+
+    yield tmp_path, _setup
+
+
+class TestSecretMigrate:
+    """lyra bot secret migrate — reads CredentialStore rows, pushes to podman."""
+
+    def test_migrate_copies_all_bot_secrets_rows(
+        self, tmp_vault_with_rows: object
+    ) -> None:
+        """migrate calls podman secret create --replace for every stored token.
+
+        Negative-test contract: deleting the loop that iterates over rows from
+        CredentialStore will cause mock_run.call_count == 0, failing the
+        assert_any_call checks below.
+        """
+        import asyncio
+
+        tmp_path, _setup = tmp_vault_with_rows  # type: ignore[misc]
+
+        asyncio.run(
+            _setup(
+                [
+                    ("telegram", "bot1", "TKN1"),
+                    ("discord", "bot2", "TKN2"),
+                ]
+            )
+        )
+
+        mock_run = MagicMock(return_value=_make_proc(0))
+        with patch("subprocess.run", mock_run):
+            result = runner.invoke(
+                app,
+                ["bot", "secret", "migrate", "--vault", str(tmp_path)],
+            )
+
+        _assert_exit0(result, label="migrate two rows")
+
+        # Both token secrets must have been created via podman
+        all_cmds = [c[0][0] for c in mock_run.call_args_list]
+        token_names = [cmd[-1] for cmd in all_cmds if "--replace" in cmd]
+        assert "lyra-bot-telegram-bot1" in token_names, (
+            f"Expected lyra-bot-telegram-bot1 in podman calls; got {token_names}"
+        )
+        assert "lyra-bot-discord-bot2" in token_names, (
+            f"Expected lyra-bot-discord-bot2 in podman calls; got {token_names}"
+        )
+
+        # Token bytes piped as stdin
+        stdin_values = [c[1].get("input") for c in mock_run.call_args_list]
+        assert b"TKN1" in stdin_values, (
+            f"Expected b'TKN1' passed as stdin; got {stdin_values}"
+        )
+        assert b"TKN2" in stdin_values, (
+            f"Expected b'TKN2' passed as stdin; got {stdin_values}"
+        )
+
+        # Summary line in stdout
+        assert "Migrated 2 tokens, 0 webhook secrets" in result.output, (
+            f"Expected summary in output:\n{result.output}"
+        )
+
+    def test_migrate_handles_null_webhook(
+        self, tmp_vault_with_rows: object
+    ) -> None:
+        """migrate creates webhook secret only when webhook_secret IS NOT NULL.
+
+        Negative-test contract: removing the webhook branch (so that only token
+        secrets are created regardless of row data) will cause call_count == 2
+        instead of 3, failing the assertion below.
+        """
+        import asyncio
+
+        tmp_path, _setup = tmp_vault_with_rows  # type: ignore[misc]
+
+        asyncio.run(
+            _setup(
+                [
+                    ("telegram", "bot1", "TKN1", "WHK1"),  # has webhook
+                    ("telegram", "bot2", "TKN2"),  # no webhook
+                ]
+            )
+        )
+
+        mock_run = MagicMock(return_value=_make_proc(0))
+        with patch("subprocess.run", mock_run):
+            result = runner.invoke(
+                app,
+                ["bot", "secret", "migrate", "--vault", str(tmp_path)],
+            )
+
+        _assert_exit0(result, label="migrate null webhook")
+
+        # 2 token secrets + 1 webhook secret = 3 podman calls total
+        assert mock_run.call_count == 3, (
+            f"Expected 3 podman calls (2 tokens + 1 webhook), "
+            f"got {mock_run.call_count}"
+        )
+
+        all_cmds = [c[0][0] for c in mock_run.call_args_list]
+        secret_names = [cmd[-1] for cmd in all_cmds]
+        assert "lyra-bot-telegram-bot1-webhook" in secret_names, (
+            f"Expected webhook secret name in calls; got {secret_names}"
+        )
+        # bot2 must NOT have a webhook secret call
+        assert "lyra-bot-telegram-bot2-webhook" not in secret_names, (
+            f"bot2 has no webhook but a webhook secret was created: {secret_names}"
+        )
+
+        assert "Migrated 2 tokens, 1 webhook secrets" in result.output, (
+            f"Expected summary in output:\n{result.output}"
+        )
+
+    def test_migrate_exits_zero_on_idempotent_rerun(
+        self, tmp_vault_with_rows: object
+    ) -> None:
+        """migrate exits 0 on both first and second invocation (--replace semantics).
+
+        Negative-test contract: if migrate adds a skip-on-existing-secret guard
+        (rather than always passing --replace to podman), the second run would
+        produce a different call count or different output, failing the equality
+        assertion below.
+        """
+        import asyncio
+
+        tmp_path, _setup = tmp_vault_with_rows  # type: ignore[misc]
+
+        asyncio.run(
+            _setup(
+                [
+                    ("telegram", "bot1", "TKN1"),
+                ]
+            )
+        )
+
+        mock_run = MagicMock(return_value=_make_proc(0))
+
+        # First run
+        with patch("subprocess.run", mock_run):
+            result1 = runner.invoke(
+                app,
+                ["bot", "secret", "migrate", "--vault", str(tmp_path)],
+            )
+
+        # Second run — same mock, no state change
+        with patch("subprocess.run", mock_run):
+            result2 = runner.invoke(
+                app,
+                ["bot", "secret", "migrate", "--vault", str(tmp_path)],
+            )
+
+        _assert_exit0(result1, label="migrate run 1")
+        _assert_exit0(result2, label="migrate run 2")
+
+        # Both runs must produce identical summary output
+        assert result1.output == result2.output, (
+            f"Expected identical output on idempotent rerun.\n"
+            f"Run 1: {result1.output!r}\n"
+            f"Run 2: {result2.output!r}"
         )

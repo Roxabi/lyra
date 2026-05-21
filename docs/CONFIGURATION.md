@@ -141,7 +141,7 @@ bot_id = "lyra"
 agent = "lyra_default"         # fallback if DB has no bot→agent mapping
 ```
 
-Credentials (token, webhook_secret) are resolved from `CredentialStore` at bootstrap, not stored here.
+Credentials (token, webhook_secret) are read from Podman secrets at bootstrap — see `## Bot credentials`.
 
 ### `[[discord.bots]]` — Discord bot instances
 
@@ -306,6 +306,46 @@ Services: `claude-cli`, `telegram`, `discord`, `hub`.
 
 ---
 
+## Bot credentials
+
+Bot tokens and webhook secrets are stored as **Podman secrets**, not in `~/.lyra/config.db`. Adapter containers mount these via `Secret=` directives in `deploy/quadlet/lyra-<platform>.container`; the adapter process reads each token at bootstrap from `/run/secrets/bot_token-<bot_id>` (and optionally `/run/secrets/bot_webhook-<bot_id>`).
+
+### CLI
+
+| Command | Purpose |
+|---|---|
+| `lyra bot secret install <platform> <bot_id> [--from-env TOK] [--webhook-from-env WHK]` | Create or replace a bot's token (and optional webhook secret) |
+| `lyra bot secret rm <platform> <bot_id>` | Remove the bot's token + webhook secret |
+| `lyra bot secret list` | List provisioned bot secrets (filtered by `lyra-bot-` prefix) |
+
+`<bot_id>` must match `^[A-Za-z0-9_-]+$` (alphanumeric, hyphen, underscore — slash-free for safe Podman secret names and tmpfs mount targets).
+
+### Quadlet wiring
+
+Each bot expects one `Secret=` line per credential in the appropriate `.container` file:
+
+```
+Secret=lyra-bot-telegram-<bot_id>,type=mount,target=bot_token-<bot_id>,mode=0400,uid=1500,gid=1500
+Secret=lyra-bot-telegram-<bot_id>-webhook,type=mount,target=bot_webhook-<bot_id>,mode=0400,uid=1500,gid=1500
+```
+
+(Omit the webhook line if the bot does not use webhooks.)
+
+Regenerate the fragment from currently-provisioned secrets:
+
+```bash
+make quadlet-bot-secrets-render
+# Writes deploy/quadlet/.bot-secrets.fragment — paste into the platform .container file.
+```
+
+After editing `.container` files, restart the adapter to remount: `make telegram-adapter restart` (or `discord-adapter`). `type=mount` secrets are tmpfs binds; `podman secret create --replace` updates the store but the in-container file is stale until container restart.
+
+### Rationale
+
+webhook_secret packing: separate secret (not packed into JSON). This matches the project's raw-bytes single-purpose convention (every other Podman secret in `Makefile:181-200`), keeps the failure-loud bootstrap path free of a JSON parser, and supports independent rotation of token vs. webhook.
+
+---
+
 ## `lyra.toml` — Monitoring Only
 
 Read exclusively by `lyra.monitoring`. Hub does NOT read this file.
@@ -346,7 +386,7 @@ health_secret = ""                            # optional health endpoint auth
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `TELEGRAM_TOKEN` | No (legacy single-bot path only; multi-bot production uses CredentialStore — see `[[telegram.bots]]`) | Bot token |
+| `TELEGRAM_TOKEN` | No (legacy single-bot path only; multi-bot production uses Podman secrets — see `## Bot credentials`) | Bot token |
 | `TELEGRAM_WEBHOOK_SECRET` | Yes (hub) | Webhook secret |
 | `TELEGRAM_ADMIN_CHAT_ID` | No (legacy single-bot path only; see #1035) | Chat ID for alerts |
 | `TELEGRAM_BOT_USERNAME` | No | Bot username for help text |
@@ -433,7 +473,6 @@ Runs `podman quadlet --dryrun` (parse errors) and a comment-guard that rejects i
 | `discord.db` | Discord thread data (owned by Discord adapter) |
 | `auth.db` | Auth grants, identity aliases |
 | `message_index.db` | Message index for search/retrieval |
-| `keyring.key` | Encryption key for credential store |
 
 **Migration:** On first startup after upgrading from pre-v15, Lyra automatically migrates existing rows from `auth.db` to `config.db`, `turns.db`, and `discord.db`. Old `auth.db` is kept as tombstone.
 

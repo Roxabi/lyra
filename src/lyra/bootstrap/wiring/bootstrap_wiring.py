@@ -10,6 +10,7 @@ from typing import Any
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
+from lyra.bootstrap import credentials
 from lyra.config import (
     DiscordBotConfig,
     DiscordMultiConfig,
@@ -21,10 +22,8 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
 from lyra.core.messaging.message import Platform
 from lyra.core.messaging.messages import MessageManager
-from lyra.errors import MissingCredentialsError
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
-from lyra.infrastructure.stores.credential_store import CredentialStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.thread_store import ThreadStore
 
@@ -38,7 +37,6 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-dep
     hub: Hub,
     tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]],
     bot_agent_map: dict[tuple[str, str], str],
-    cred_store: CredentialStore,
     circuit_registry: CircuitRegistry,
     msg_manager: MessageManager,
     nats_client: Any = None,
@@ -59,10 +57,9 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-dep
             )
             continue
 
-        tg_creds = await cred_store.get_full("telegram", bot_cfg.bot_id)
-        if tg_creds is None:
-            raise MissingCredentialsError("telegram", bot_cfg.bot_id)
-        tg_token, tg_webhook_secret = tg_creds
+        tg_token, tg_webhook_secret = credentials.load_bot_token(
+            "telegram", bot_cfg.bot_id
+        )
 
         adapter = TelegramAdapter(
             bot_id=bot_cfg.bot_id,
@@ -111,7 +108,6 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
     hub: Hub,
     dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]],
     bot_agent_map: dict[tuple[str, str], str],
-    cred_store: CredentialStore,
     circuit_registry: CircuitRegistry,
     msg_manager: MessageManager,
     agent_store: AgentStore | None = None,
@@ -148,10 +144,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
                 )
                 continue
 
-            dc_creds = await cred_store.get_full("discord", bot_cfg.bot_id)
-            if dc_creds is None:
-                raise MissingCredentialsError("discord", bot_cfg.bot_id)
-            dc_token, _ = dc_creds
+            dc_token, _ = credentials.load_bot_token("discord", bot_cfg.bot_id)
 
             watch_channels: frozenset[int] = frozenset()
             if agent_store is not None:

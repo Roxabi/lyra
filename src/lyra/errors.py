@@ -74,10 +74,10 @@ class ProviderApiError(ProviderError):
 
 
 class MissingCredentialsError(Exception):
-    def __init__(self, platform: str, bot_id: str) -> None:
+    def __init__(self, platform: str, bot_id: str, hint: str | None = None) -> None:
+        suffix = hint or f"lyra bot secret install {platform} {bot_id}"
         super().__init__(
-            f"No credentials found for {platform}/{bot_id}. "
-            f"Run: lyra bot add --platform {platform} --bot-id {bot_id} --token <token>"
+            f"No credentials found for {platform}/{bot_id}. Provision via: {suffix}"
         )
         self.platform = platform
         self.bot_id = bot_id
@@ -87,7 +87,7 @@ class KeyringError(Exception):
     def __init__(self, path: str, reason: str) -> None:
         super().__init__(
             f"Keyring error at {path}: {reason}. "
-            f"Re-create with: rm {path} && lyra bot add ..."
+            f"Re-create with: rm {path} && lyra bot secret install ..."
         )
         self.path = path
         self.reason = reason

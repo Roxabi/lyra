@@ -9,12 +9,12 @@ import sys
 from pathlib import Path
 
 from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+from lyra.bootstrap import credentials
 from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.core.messaging.metrics import log_contracts_version
-from lyra.infrastructure.stores.credential_store import CredentialStore, LyraKeyring
 from lyra.nats.queue_groups import adapter_outbound
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
@@ -69,28 +69,11 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             if not tg_multi_cfg.bots:
                 sys.exit("No telegram bots configured")
 
-            # Gather credentials then close the store immediately — don't hold
-            # config.db open during long-lived polling (causes Hub DB lock).
-            keyring = LyraKeyring.load_or_create(vault_dir / "keyring.key")
-            cred_store = CredentialStore(
-                db_path=vault_dir / "config.db", keyring=keyring
-            )
-            await cred_store.connect()
             tg_creds: dict[str, tuple[str, str | None]] = {}
-            try:
-                for bot_cfg in tg_multi_cfg.bots:
-                    bot_id = bot_cfg.bot_id
-                    creds = await cred_store.get_full("telegram", bot_id)
-                    if creds is None:
-                        log.error(
-                            "adapter_standalone: no credentials for telegram/%s"
-                            " — skipping",
-                            bot_id,
-                        )
-                        continue
-                    tg_creds[bot_id] = creds
-            finally:
-                await cred_store.close()
+            for bot_cfg in tg_multi_cfg.bots:
+                bot_id = bot_cfg.bot_id
+                tg_creds[bot_id] = credentials.load_bot_token("telegram", bot_id)
+                log.info("read token from /run/secrets/bot_token-%s", bot_id)
 
             from lyra.infrastructure.stores.turn_store import TurnStore as TurnStore
 
@@ -173,34 +156,18 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             if not dc_multi_cfg.bots:
                 sys.exit("No discord bots configured")
 
-            # Gather credentials then close the store immediately.
-            keyring = LyraKeyring.load_or_create(vault_dir / "keyring.key")
-            cred_store = CredentialStore(
-                db_path=vault_dir / "config.db", keyring=keyring
-            )
-            await cred_store.connect()
             dc_creds: dict[str, str] = {}
-            try:
-                for bot_cfg in dc_multi_cfg.bots:
-                    bot_id = bot_cfg.bot_id
-                    creds = await cred_store.get_full("discord", bot_id)
-                    if creds is None:
-                        log.error(
-                            "adapter_standalone: no credentials for discord/%s"
-                            " — skipping",
-                            bot_id,
-                        )
-                        continue
-                    token, _ = creds
-                    dc_creds[bot_id] = token
-            finally:
-                await cred_store.close()
+            for bot_cfg in dc_multi_cfg.bots:
+                bot_id = bot_cfg.bot_id
+                token, _ = credentials.load_bot_token("discord", bot_id)
+                dc_creds[bot_id] = token
+                log.info("read token from /run/secrets/bot_token-%s", bot_id)
 
             from lyra.infrastructure.stores.agent_store import AgentStore
             from lyra.infrastructure.stores.thread_store import ThreadStore
 
             # Read per-bot settings then close — don't hold config.db open
-            # during the long-lived adapter lifecycle (same pattern as CredentialStore).
+            # during the long-lived adapter lifecycle (short-lived reads, same pattern).
             agent_store = AgentStore(db_path=vault_dir / "config.db")
             await agent_store.connect()
             dc_bot_watch_channels: dict[str, frozenset[int]] = {}

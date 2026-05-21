@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import tomllib
-from pathlib import Path
 from typing import Any
 
 import typer
@@ -56,12 +55,13 @@ async def _register_bot(
     bot_cfg: dict[str, Any],
     raw: dict[str, Any],
     command_loader: Any,
-    cred_store: Any,
     voice_commands: list,
 ) -> bool:
     """Register commands for a single Telegram bot. Returns True on error."""
+    from lyra.bootstrap import credentials
     from lyra.core.commands.command_registry import collect_commands
     from lyra.core.commands.command_router import CommandRouter
+    from lyra.errors import MissingCredentialsError
 
     bot_id = bot_cfg.get("bot_id", "unknown")
     agent_name = bot_cfg.get("agent", "")
@@ -97,12 +97,12 @@ async def _register_bot(
     all_commands = collect_commands(builtin_meta, plugin_descs, voice_commands)
     public_commands = [cmd for cmd in all_commands if not cmd.admin_only]
 
-    # Resolve token
-    creds = await cred_store.get_full("telegram", bot_id)
-    if creds is None:
-        typer.echo(f"Error: no credentials for telegram bot_id={bot_id}", err=True)
+    # Resolve token from /run/secrets
+    try:
+        token, _ = credentials.load_bot_token("telegram", bot_id)
+    except MissingCredentialsError as exc:
+        typer.echo(f"Error: {exc}", err=True)
         return True
-    token, _ = creds
 
     # Register with Telegram
     try:
@@ -123,7 +123,6 @@ async def _register_all(config_path: str) -> None:
     """For each Telegram bot: resolve token, collect commands, set_my_commands."""
     from lyra.adapters.discord.voice.discord_voice_commands import VOICE_COMMANDS
     from lyra.core.commands.command_loader import CommandLoader
-    from lyra.infrastructure.stores.credential_store import CredentialStore, LyraKeyring
 
     try:
         with open(config_path, "rb") as f:
@@ -137,23 +136,13 @@ async def _register_all(config_path: str) -> None:
         typer.echo("No Telegram bots configured.")
         return
 
-    lyra_dir = Path.home() / ".lyra"
-    keyring = LyraKeyring.load_or_create(lyra_dir / "keyring.key")
-    cred_store = CredentialStore(lyra_dir / "config.db", keyring)
-    await cred_store.connect()
-
     command_loader = CommandLoader(PLUGINS_DIR)
 
     errors = 0
-    try:
-        for bot_cfg in tg_bots:
-            had_error = await _register_bot(
-                bot_cfg, raw, command_loader, cred_store, VOICE_COMMANDS
-            )
-            if had_error:
-                errors += 1
-    finally:
-        await cred_store.close()
+    for bot_cfg in tg_bots:
+        had_error = await _register_bot(bot_cfg, raw, command_loader, VOICE_COMMANDS)
+        if had_error:
+            errors += 1
 
     if errors:
         raise typer.Exit(1)

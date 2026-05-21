@@ -70,7 +70,7 @@ class TelegramBotConfig(BaseModel):
     """Configuration for a single Telegram bot instance.
 
     Credentials (token, webhook_secret) are NOT stored here — they are resolved
-    at bootstrap time from CredentialStore.
+    at bootstrap time from /run/secrets/bot_token-<bot_id>.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -83,7 +83,7 @@ class DiscordBotConfig(BaseModel):
     """Configuration for a single Discord bot instance.
 
     Credentials (token) are NOT stored here — they are resolved at bootstrap
-    time from CredentialStore.
+    time from /run/secrets/bot_token-<bot_id>.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -113,7 +113,7 @@ def _parse_telegram_bots(raw: dict[str, Any]) -> list[TelegramBotConfig]:
     Optional: agent (default "lyra_default").
 
     Credentials (token, webhook_secret) are resolved at bootstrap time from
-    CredentialStore and are not read here.
+    /run/secrets/bot_token-<bot_id> and are not read here.
     """
     tg_section: dict = raw.get("telegram", {})
     bots_raw: list[dict] = tg_section.get("bots", [])
@@ -138,8 +138,8 @@ def _parse_discord_bots(raw: dict[str, Any]) -> list[DiscordBotConfig]:
     Each entry requires: bot_id.
     Optional: auto_thread (default True), agent (default "lyra_default").
 
-    Credentials (token) are resolved at bootstrap time from CredentialStore
-    and are not read here.
+    Credentials (token) are resolved at bootstrap time from
+    /run/secrets/bot_token-<bot_id> and are not read here.
     """
     dc_section: dict = raw.get("discord", {})
     bots_raw: list[dict] = dc_section.get("bots", [])
@@ -184,7 +184,7 @@ def load_multibot_config(
     # → synthesize a single TelegramBotConfig with bot_id="main" (legacy path).
     # Use "bots" not in telegram section (not top-level key) to distinguish
     # "no bots declared" from "bots declared but all failed resolution".
-    # Credentials are NOT stored here — resolved at bootstrap from CredentialStore.
+    # Credentials are NOT stored here — resolved at bootstrap from /run/secrets.
     tg_has_bots_key = "bots" in raw.get("telegram", {})
     if not tg_bots and not tg_has_bots_key and raw.get("auth", {}).get("telegram"):
         log.info(

@@ -179,10 +179,10 @@ LYRA_NKEYS_DIR := $(HOME)/.lyra/nkeys
 quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 	@test -d "$(LYRA_NKEYS_DIR)" || { echo "ERROR: $(LYRA_NKEYS_DIR) not found"; exit 1; }
 	@podman secret create --replace lyra-nats-auth              "$(LYRA_NKEYS_DIR)/auth.conf"
-	@podman secret create --replace lyra-nkey-hub               "$(LYRA_NKEYS_DIR)/hub.seed"
-	@podman secret create --replace lyra-nkey-telegram-adapter  "$(LYRA_NKEYS_DIR)/telegram-adapter.seed"
-	@podman secret create --replace lyra-nkey-discord-adapter   "$(LYRA_NKEYS_DIR)/discord-adapter.seed"
-	@podman secret create --replace lyra-nkey-clipool-worker    "$(LYRA_NKEYS_DIR)/clipool-worker.seed"
+	@podman secret create --replace lyra-nats-hub               "$(LYRA_NKEYS_DIR)/hub.seed"
+	@podman secret create --replace lyra-nats-telegram          "$(LYRA_NKEYS_DIR)/telegram-adapter.seed"
+	@podman secret create --replace lyra-nats-discord           "$(LYRA_NKEYS_DIR)/discord-adapter.seed"
+	@podman secret create --replace lyra-nats-clipool           "$(LYRA_NKEYS_DIR)/clipool-worker.seed"
 	@if [ -f "$(HOME)/.lyra/gh-app.pem" ]; then \
 		podman secret create --replace lyra-gh-pem "$(HOME)/.lyra/gh-app.pem"; \
 		echo "lyra-gh-pem secret created from ~/.lyra/gh-app.pem"; \

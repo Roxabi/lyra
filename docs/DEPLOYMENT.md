@@ -6,7 +6,7 @@ Running Lyra as a managed service on Machine 1 (Ubuntu Server 26.04 LTS) using r
 
 ## Overview
 
-Lyra runs as **five containers** on a shared `roxabi.network` bridge, managed by **Podman Quadlet** (systemd --user). A `linger`-enabled systemd user session ensures all containers auto-start on boot without a login session.
+Lyra runs as **six containers** on a shared `roxabi.network` bridge, managed by **Podman Quadlet** (systemd --user). A `linger`-enabled systemd user session ensures all containers auto-start on boot without a login session.
 
 ```
 Machine 1 (roxabituwer, 192.168.1.16)
@@ -15,7 +15,8 @@ Machine 1 (roxabituwer, 192.168.1.16)
 │   ├── lyra-hub.service          ← hub container (NatsBus, pool, routing, memory)
 │   ├── lyra-telegram.service     ← Telegram adapter container
 │   ├── lyra-discord.service      ← Discord adapter container
-│   └── lyra-clipool.service      ← CliPool NATS worker (Claude subprocesses)
+│   ├── lyra-clipool.service      ← CliPool NATS worker (Claude subprocesses)
+│   └── lyra-gh-helper.service    ← GitHub App token-mint helper (lyra-gh.pod)
 ├── Quadlet unit files: ~/.config/containers/systemd/
 │   ├── roxabi.network
 │   ├── lyra-hub.container
@@ -23,11 +24,13 @@ Machine 1 (roxabituwer, 192.168.1.16)
 │   ├── lyra-discord.container
 │   ├── lyra-clipool.container
 │   ├── lyra-nats.container
+│   ├── lyra-gh-helper.container
+│   ├── lyra-gh.pod
 │   └── lyra-*.volume
 ├── config: ~/projects/lyra/config.toml
 ├── credentials: ~/.lyra/config.db (encrypted, via `lyra bot add`)
 ├── nkey seeds: ~/.lyra/nkeys/*.seed
-├── Podman secrets: lyra-nats-auth, lyra-nkey-*
+├── Podman secrets: lyra-nats-auth, lyra-nats-hub, lyra-nats-telegram, lyra-nats-discord, lyra-nats-clipool
 └── logs: journalctl --user -u lyra-hub
 ```
 
@@ -95,7 +98,7 @@ lyra bot add --platform discord --bot-id lyra
 ```ini
 # In lyra-hub.container, lyra-telegram.container, etc.
 Environment=NATS_URL=nats://lyra-nats:4222
-Environment=NATS_NKEY_SEED_PATH=/run/secrets/hub.seed
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-hub.seed
 ```
 
 **Nkey secrets:** Seed files are mounted as Podman secrets from `~/.lyra/nkeys/`:

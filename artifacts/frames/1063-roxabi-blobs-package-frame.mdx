@@ -1,0 +1,57 @@
+---
+title: "Frame: #1063 — roxabi-blobs package (V1 BlobStore)"
+issue: 1063
+status: approved
+tier: F-lite
+date: 2026-05-21
+---
+
+## Problem
+
+V1 slice of epic [#1061](https://github.com/Roxabi/lyra/issues/1061) (BlobStore for large binary payloads). Today, audio bytes ride inline through NATS as `audio_b64` / `audio_bytes` on `SttRequest`, `TtsResponse`, `AudioPayload` — fragile (50 MB JetStream ceiling, base64 overhead, hub memory spikes, no dedup). [ADR-067](../../docs/architecture/adr/067-blobstore-abstraction-flat-fs-content-addressed.mdx) (accepted) locks in a content-addressed flat-FS + SQLite store behind a `BlobStore` Protocol.
+
+This issue ships **only the package** — the foundation that V2 (contracts), V3/V4 (adapters), V5 (workers), V6 (ops) build on. No consumer changes here.
+
+## Who
+
+- **Primary:** lyra hub/adapters/workers — future consumers of `BlobStore.put/get/exists`
+- **Secondary:** ML/debug operator (Mickael) — queries SQLite directly (`sqlite3 index.sqlite`) for training-data extraction
+- **Tertiary:** voiceCLI STT/TTS workers — cross-repo consumer in V5
+
+## Constraints
+
+- **ADR-067 binding** — flat-FS, SQLite split schema, sha256 dedup, fsync ordering, no inline-threshold, GC interface present but retain-all policy
+- **uv workspace member** — joins `packages/roxabi-nats`, `packages/roxabi-contracts`
+- **Async API** — `put` / `get` / `exists` are coroutines (consumers are asyncio)
+- **Single writer per instance** — SQLite WAL; readers bypass SQLite (raw FS read by `store_key`)
+- **No consumer changes in this slice** — package only; contracts/adapters/workers are V2+
+- **`BlobRef` envelope defined in `roxabi-contracts`** — but its delivery is V2 (#1064); V1 may inline the Pydantic model or import from a stub
+
+## Out of Scope
+
+- `BlobRef` field on contract models (V2 / #1064)
+- Telegram / Discord adapter ingest (V3/V4 / #1065/#1066)
+- voiceCLI STT/TTS worker rewire (V5 / #1067 + voiceCLI repo)
+- Quadlet bind-mount, alerts, reconciler, backup runbook (V6 / #1068)
+- Cross-host transport (FS → MinIO/S3 swap deferred)
+- Active GC / TTL enforcement (interface designed; v1 retain-all)
+- Encryption at rest, access control, signed URLs
+
+## Premise Validity
+
+**Success in 6 months:** `packages/roxabi-blobs` shipped as uv workspace member with `BlobStore` Protocol (`put` / `get` / `exists` + `delete` designed) + Flat-FS + SQLite impl + ≥90% public-API unit-test coverage. Importable cleanly from lyra + voiceCLI. Unblocks V2–V6.
+
+**Failure in 6 months:** After 3 release cycles from V1 merge, EITHER package still not imported by any consumer (V2 contracts blocked), OR public-API unit-test coverage <90%, OR SHA-256 dedup ratio <1.5× on synthetic round-trip test (put same blob 5×, observe 1 file + 5 `blob_refs` rows + 1 `blobs` row).
+
+**Simplest alternative:** Keep `audio_b64` inline; bump NATS `max_payload` to 200 MB; no package, no dedup.
+**Why not simplest:** Per ADR-067 Option A rejection — JetStream archive grows unbounded on shared `store_dir`, hub memory spikes per audio exchange, no cross-blob dedup, ML/debug can't query archive without a NATS client. Doesn't address the scope-expanded epic (TG/Discord attachment archive).
+
+## Complexity
+
+**Tier: F-lite** — single domain (package internals), clear scope (3-method Protocol + FS+SQLite impl), no architecture unknowns (ADR-067 binding).
+
+Signals observed:
+- Single domain — `packages/roxabi-blobs/` only; no cross-package call-sites in V1
+- New package but established pattern — mirrors `roxabi-nats` / `roxabi-contracts` workspace shape
+- No unknowns — all 4 brainstorm Open Questions resolved at spec/ADR level
+- Issue label `size:F-lite` confirms classification

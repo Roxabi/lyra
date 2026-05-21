@@ -32,8 +32,10 @@ tests/data/traces/*.json
 # Machine-local build state (image digest capture, ADR-053 §3)
 .image-digest
 
-# Machine-generated per-host Quadlet bot secret fragment (quadlet-bot-secrets-render)
+# Machine-generated per-host Quadlet bot secret fragments (quadlet-bot-secrets-render)
 deploy/quadlet/.bot-secrets.fragment
+deploy/quadlet/.bot-secrets.telegram.fragment
+deploy/quadlet/.bot-secrets.discord.fragment
 
 .gitnexus
 # CocoIndex Code (ccc)

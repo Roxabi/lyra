@@ -16,6 +16,17 @@ secret_app = typer.Typer(help="Manage bot credentials as Podman secrets.")
 bot_app.add_typer(secret_app, name="secret")
 
 _BOT_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
+_VALID_PLATFORMS = ("telegram", "discord")
+
+
+def _validate_platform(platform: str) -> None:
+    if platform not in _VALID_PLATFORMS:
+        typer.echo(
+            f"invalid platform {platform!r}: must be one of "
+            f"{', '.join(_VALID_PLATFORMS)}",
+            err=True,
+        )
+        raise typer.Exit(2)
 
 
 def _validate_bot_id(bot_id: str) -> None:
@@ -52,6 +63,7 @@ def install(
     webhook_from_env: str | None = typer.Option(None, "--webhook-from-env"),
 ) -> None:
     """Create or replace a Podman secret holding a bot token."""
+    _validate_platform(platform)
     _validate_bot_id(bot_id)
     token = (
         _read_env(from_env)
@@ -67,6 +79,7 @@ def install(
 @secret_app.command("rm")
 def rm(platform: str, bot_id: str) -> None:
     """Remove a bot's Podman secret (token + optional webhook)."""
+    _validate_platform(platform)
     _validate_bot_id(bot_id)
     subprocess.run(
         ["podman", "secret", "rm", f"lyra-bot-{platform}-{bot_id}"],

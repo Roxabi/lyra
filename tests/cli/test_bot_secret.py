@@ -48,9 +48,7 @@ def _assert_exit0(result: object, label: str = "") -> None:
 
     r = cast(Result, result)
     prefix = f"[{label}] " if label else ""
-    assert r.exit_code == 0, (
-        f"{prefix}Expected exit 0, got {r.exit_code}:\n{r.output}"
-    )
+    assert r.exit_code == 0, f"{prefix}Expected exit 0, got {r.exit_code}:\n{r.output}"
 
 
 # ---------------------------------------------------------------------------
@@ -101,22 +99,29 @@ class TestSecretInstall:
     @pytest.mark.parametrize(
         "bad_id",
         [
-            "bot/1",
-            "bot id",
-            "../etc",
-            "",
+            "bot/1",  # slash forbidden
+            "bot id",  # whitespace forbidden
+            "../etc",  # path-traversal shape
+            "bot@host",  # @ forbidden
+            "bôt",  # non-ASCII forbidden
+            "bot.id",  # dot forbidden
+            "bot$id",  # shell metachar forbidden
         ],
     )
     def test_install_rejects_unsafe_bot_id(
         self, bad_id: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """bot_id not matching ^[A-Za-z0-9_-]+$ exits 2 with a validation msg.
+        """bot_id not matching [A-Za-z0-9_-]+ exits 2 with a validation msg.
 
-        Negative-test contract: once the `secret` sub-app exists, deleting the
-        bot_id regex guard must make this test fail (the command would succeed
-        instead of exiting 2 with a validation message).  We therefore assert
-        on a bot_id-specific error keyword so the test is NOT tautologically
-        satisfied by "No such command 'secret'".
+        Negative-test contract: deleting the bot_id regex guard would make this
+        test fail (the command would attempt to call podman instead of exiting
+        2 with a validation message).  We assert on a bot_id-specific error
+        keyword AND assert no podman call was made — both must hold for the
+        regex guard to be exercising the rejection path.
+
+        The empty-string case (which Typer rejects at the argument-parse layer
+        before our validator runs) is covered separately by
+        ``test_install_rejects_empty_bot_id``.
         """
         monkeypatch.setenv("TKN", "ABC")
 
@@ -154,6 +159,124 @@ class TestSecretInstall:
         )
         # No podman call should have been made
         mock_run.assert_not_called()
+
+    def test_install_accepts_long_valid_bot_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A long bot_id that matches the regex (200 'a's) is accepted.
+
+        Locks in that the validator has no implicit length cap — only the
+        character class matters. If a future patch adds a length cap, this
+        test must be updated explicitly rather than failing silently.
+        """
+        monkeypatch.setenv("TKN", "ABC")
+
+        long_id = "a" * 200
+        mock_run = MagicMock(return_value=_make_proc(0))
+        with patch("subprocess.run", mock_run):
+            result = runner.invoke(
+                app,
+                [
+                    "bot",
+                    "secret",
+                    "install",
+                    "telegram",
+                    long_id,
+                    "--from-env",
+                    "TKN",
+                ],
+            )
+
+        _assert_exit0(result, label="long valid bot_id")
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        assert f"lyra-bot-telegram-{long_id}" in cmd
+
+    def test_install_rejects_empty_bot_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Empty bot_id exits non-zero and never reaches podman.
+
+        Empty argument is caught by Typer's argument-parse layer (exit 2) before
+        our validator runs.  This test exists to lock in the no-podman-call
+        contract for that path — splitting from the regex-validator suite so
+        the negative-test contract is not tautological.
+        """
+        monkeypatch.setenv("TKN", "ABC")
+
+        mock_run = MagicMock(return_value=_make_proc(0))
+        with patch("subprocess.run", mock_run):
+            result = runner.invoke(
+                app,
+                [
+                    "bot",
+                    "secret",
+                    "install",
+                    "telegram",
+                    "",
+                    "--from-env",
+                    "TKN",
+                ],
+            )
+
+        assert result.exit_code != 0, (
+            f"Expected non-zero exit for empty bot_id, got {result.exit_code}"
+        )
+        mock_run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "bad_platform",
+        ["slack", "tele", "", "telegram; echo pwned"],
+    )
+    def test_install_rejects_unknown_platform(
+        self, bad_platform: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unknown platform exits 2 before any podman call.
+
+        Once the platform allowlist is in place, deleting it would cause this
+        test to pass through to podman with a polluted secret name.  We assert
+        no podman call was made.
+        """
+        monkeypatch.setenv("TKN", "ABC")
+
+        mock_run = MagicMock(return_value=_make_proc(0))
+        with patch("subprocess.run", mock_run):
+            result = runner.invoke(
+                app,
+                [
+                    "bot",
+                    "secret",
+                    "install",
+                    bad_platform,
+                    "demo",
+                    "--from-env",
+                    "TKN",
+                ],
+            )
+
+        assert result.exit_code != 0, (
+            f"Expected non-zero exit for platform={bad_platform!r}, "
+            f"got {result.exit_code}:\n{result.output}"
+        )
+        mock_run.assert_not_called()
+
+    def test_install_prompts_for_token_when_from_env_omitted(self) -> None:
+        """install without --from-env reads token from stdin via typer.prompt."""
+        mock_run = MagicMock(return_value=_make_proc(0))
+        with patch("subprocess.run", mock_run):
+            result = runner.invoke(
+                app,
+                ["bot", "secret", "install", "telegram", "demo"],
+                input="prompted-token\n",
+            )
+
+        _assert_exit0(result, label="install prompts for token")
+
+        mock_run.assert_called_once()
+        kwargs = mock_run.call_args[1]
+        assert kwargs.get("input") == b"prompted-token", (
+            f"Expected piped token b'prompted-token', got {kwargs.get('input')!r}"
+        )
 
     def test_install_with_webhook_creates_two_secrets(
         self, monkeypatch: pytest.MonkeyPatch
@@ -435,9 +558,7 @@ class TestE2EV1RedGate:
         # Assert Makefile recipe shape — no subprocess call to make needed.
         # Asserts the Makefile recipe shape; full make invocation is reserved
         # for the manual M₂ smoke test.
-        makefile_path = (
-            Path(__file__).parent.parent.parent / "Makefile"
-        )
+        makefile_path = Path(__file__).parent.parent.parent / "Makefile"
         makefile_contents = makefile_path.read_text()
 
         # Secret= line must carry the correct mount options

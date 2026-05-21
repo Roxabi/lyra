@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+from lyra.bootstrap import credentials
 from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from lyra.core.messaging.bus import Bus
@@ -20,25 +21,6 @@ from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
-
-
-def _load_bot_token(platform: str, bot_id: str) -> tuple[str, str | None]:
-    """Read a bot's token and optional webhook secret from /run/secrets/.
-
-    The base directory is overridable via LYRA_RUN_SECRETS_DIR (used by tests
-    and local development). Defaults to /run/secrets in production containers.
-    """
-    base = Path(os.environ.get("LYRA_RUN_SECRETS_DIR", "/run/secrets"))
-    tok_path = base / f"bot_token-{bot_id}"
-    if not tok_path.exists():
-        raise RuntimeError(
-            f"missing bot token at {tok_path} — provision via "
-            f"`lyra bot secret install {platform} {bot_id}`"
-        )
-    token = tok_path.read_text().strip()
-    wh_path = base / f"bot_webhook-{bot_id}"
-    webhook = wh_path.read_text().strip() if wh_path.exists() else None
-    return (token, webhook)
 
 
 async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migration-sequence-bootstrap
@@ -90,7 +72,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             tg_creds: dict[str, tuple[str, str | None]] = {}
             for bot_cfg in tg_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
-                tg_creds[bot_id] = _load_bot_token("telegram", bot_id)
+                tg_creds[bot_id] = credentials.load_bot_token("telegram", bot_id)
                 log.info("read token from /run/secrets/bot_token-%s", bot_id)
 
             from lyra.infrastructure.stores.turn_store import TurnStore as TurnStore
@@ -177,7 +159,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             dc_creds: dict[str, str] = {}
             for bot_cfg in dc_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
-                token, _ = _load_bot_token("discord", bot_id)
+                token, _ = credentials.load_bot_token("discord", bot_id)
                 dc_creds[bot_id] = token
                 log.info("read token from /run/secrets/bot_token-%s", bot_id)
 

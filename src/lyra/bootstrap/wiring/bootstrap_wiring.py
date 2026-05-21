@@ -10,6 +10,7 @@ from typing import Any
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
+from lyra.bootstrap import credentials
 from lyra.config import (
     DiscordBotConfig,
     DiscordMultiConfig,
@@ -44,9 +45,6 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-dep
 
     Returns (adapters, dispatchers) lists.
     """
-    # Deferred: avoids circular import with bootstrap.standalone.adapter_standalone.
-    from lyra.bootstrap.standalone.adapter_standalone import _load_bot_token
-
     adapters: list[TelegramAdapter] = []
     dispatchers: list[OutboundDispatcher] = []
 
@@ -59,7 +57,9 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-dep
             )
             continue
 
-        tg_token, tg_webhook_secret = _load_bot_token("telegram", bot_cfg.bot_id)
+        tg_token, tg_webhook_secret = credentials.load_bot_token(
+            "telegram", bot_cfg.bot_id
+        )
 
         adapter = TelegramAdapter(
             bot_id=bot_cfg.bot_id,
@@ -123,9 +123,6 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
     Returns (adapters_with_config, dispatchers) where each adapter entry is
     (adapter, bot_cfg, token) — the token is needed later for ``adapter.start()``.
     """
-    # Deferred: avoids circular import with bootstrap.standalone.adapter_standalone.
-    from lyra.bootstrap.standalone.adapter_standalone import _load_bot_token
-
     adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]] = []
     dispatchers: list[OutboundDispatcher] = []
 
@@ -147,7 +144,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
                 )
                 continue
 
-            dc_token, _ = _load_bot_token("discord", bot_cfg.bot_id)
+            dc_token, _ = credentials.load_bot_token("discord", bot_cfg.bot_id)
 
             watch_channels: frozenset[int] = frozenset()
             if agent_store is not None:

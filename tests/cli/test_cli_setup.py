@@ -1,7 +1,7 @@
 """Tests for lyra setup commands CLI (#291).
 
 Covers:
-  - _register_all() with mocked _load_bot_token and Bot
+  - _register_all() with mocked load_bot_token and Bot
   - Admin commands excluded from registration
   - Missing token handled gracefully
   - Idempotent re-run
@@ -56,7 +56,7 @@ class TestRegisterAll:
 
         with (
             patch(
-                "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+                "lyra.bootstrap.credentials.load_bot_token",
                 return_value=("fake_token", "fake_secret"),
             ),
             patch(
@@ -87,7 +87,7 @@ class TestRegisterAll:
         # Should not raise — prints message and returns
         with (
             patch(
-                "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+                "lyra.bootstrap.credentials.load_bot_token",
                 return_value=(MagicMock(), None),
             ),
             patch(
@@ -99,19 +99,21 @@ class TestRegisterAll:
 
     @pytest.mark.asyncio()
     async def test_missing_credentials(self, config_file: Path) -> None:
-        """Missing token file raises RuntimeError from _load_bot_token.
+        """Missing token raises MissingCredentialsError from load_bot_token.
 
-        cli_setup._register_bot catches RuntimeError, prints an error, and
-        _register_all raises typer.Exit(1) after collecting the error count.
+        cli_setup._register_bot catches MissingCredentialsError, prints an
+        error, and _register_all raises typer.Exit(1) after collecting the
+        error count.
         """
         from click.exceptions import Exit as ClickExit
 
         from lyra.cli_setup import _register_all
+        from lyra.errors import MissingCredentialsError
 
         with (
             patch(
-                "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
-                side_effect=RuntimeError("bot_token-test_bot"),
+                "lyra.bootstrap.credentials.load_bot_token",
+                side_effect=MissingCredentialsError("telegram", "test_bot"),
             ),
             patch(
                 "lyra.core.commands.command_loader.CommandLoader",
@@ -132,7 +134,7 @@ class TestRegisterAll:
 
         with (
             patch(
-                "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+                "lyra.bootstrap.credentials.load_bot_token",
                 return_value=("fake_token", "fake_secret"),
             ),
             patch(

@@ -200,25 +200,31 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 	@echo "Podman secrets installed. Verify: podman secret ls"
 
 .PHONY: quadlet-bot-secrets-render
-quadlet-bot-secrets-render: ## Render per-bot Secret= lines into deploy/quadlet/.bot-secrets.fragment
+quadlet-bot-secrets-render: ## Render per-platform Secret= lines into deploy/quadlet/.bot-secrets.{telegram,discord}.fragment
 	@echo "Reading bot secrets from Podman store…"
-	@: > deploy/quadlet/.bot-secrets.fragment
+	@: > deploy/quadlet/.bot-secrets.telegram.fragment
+	@: > deploy/quadlet/.bot-secrets.discord.fragment
 	@bots=$$(podman secret ls --filter name=lyra-bot- --format '{{.Name}}' | sort); \
 	for s in $$bots; do \
 	  case "$$s" in \
-	    lyra-bot-telegram-*-webhook) bot=$${s#lyra-bot-telegram-}; bot=$${bot%-webhook}; target=bot_webhook-$$bot ;; \
-	    lyra-bot-telegram-*)          bot=$${s#lyra-bot-telegram-};                       target=bot_token-$$bot ;; \
-	    lyra-bot-discord-*-webhook)  bot=$${s#lyra-bot-discord-};  bot=$${bot%-webhook}; target=bot_webhook-$$bot ;; \
-	    lyra-bot-discord-*)           bot=$${s#lyra-bot-discord-};                        target=bot_token-$$bot ;; \
+	    lyra-bot-telegram-*-webhook) bot=$${s#lyra-bot-telegram-}; bot=$${bot%-webhook}; target=bot_webhook-$$bot; out=deploy/quadlet/.bot-secrets.telegram.fragment ;; \
+	    lyra-bot-telegram-*)         bot=$${s#lyra-bot-telegram-};                       target=bot_token-$$bot;   out=deploy/quadlet/.bot-secrets.telegram.fragment ;; \
+	    lyra-bot-discord-*-webhook)  bot=$${s#lyra-bot-discord-};  bot=$${bot%-webhook}; target=bot_webhook-$$bot; out=deploy/quadlet/.bot-secrets.discord.fragment ;; \
+	    lyra-bot-discord-*)          bot=$${s#lyra-bot-discord-};                        target=bot_token-$$bot;   out=deploy/quadlet/.bot-secrets.discord.fragment ;; \
 	    *) echo "skip unknown $$s" >&2; continue ;; \
 	  esac; \
-	  echo "Secret=$$s,type=mount,target=$$target,mode=0400,uid=1500,gid=1500" >> deploy/quadlet/.bot-secrets.fragment; \
+	  echo "Secret=$$s,type=mount,target=$$target,mode=0400,uid=1500,gid=1500" >> $$out; \
 	done
-	@if [ ! -s deploy/quadlet/.bot-secrets.fragment ]; then \
-	  echo "No lyra-bot-* secrets found in Podman store."; \
-	else \
-	  echo "Wrote $$(wc -l < deploy/quadlet/.bot-secrets.fragment) Secret= line(s) to deploy/quadlet/.bot-secrets.fragment"; \
-	fi
+	@for f in telegram discord; do \
+	  frag=deploy/quadlet/.bot-secrets.$$f.fragment; \
+	  if [ ! -s "$$frag" ]; then \
+	    echo "No lyra-bot-$$f-* secrets found — $$frag is empty."; \
+	  else \
+	    echo "Wrote $$(wc -l < $$frag) Secret= line(s) to $$frag — paste into deploy/quadlet/lyra-$$f.container:"; \
+	    cat $$frag; \
+	    echo; \
+	  fi; \
+	done
 
 # ── Deploy + remote ──────────────────────────────────────────────────────────
 

@@ -58,9 +58,10 @@ async def _register_bot(
     voice_commands: list,
 ) -> bool:
     """Register commands for a single Telegram bot. Returns True on error."""
-    from lyra.bootstrap.standalone.adapter_standalone import _load_bot_token
+    from lyra.bootstrap import credentials
     from lyra.core.commands.command_registry import collect_commands
     from lyra.core.commands.command_router import CommandRouter
+    from lyra.errors import MissingCredentialsError
 
     bot_id = bot_cfg.get("bot_id", "unknown")
     agent_name = bot_cfg.get("agent", "")
@@ -98,8 +99,8 @@ async def _register_bot(
 
     # Resolve token from /run/secrets
     try:
-        token, _ = _load_bot_token("telegram", bot_id)
-    except RuntimeError as exc:
+        token, _ = credentials.load_bot_token("telegram", bot_id)
+    except MissingCredentialsError as exc:
         typer.echo(f"Error: {exc}", err=True)
         return True
 
@@ -139,9 +140,7 @@ async def _register_all(config_path: str) -> None:
 
     errors = 0
     for bot_cfg in tg_bots:
-        had_error = await _register_bot(
-            bot_cfg, raw, command_loader, VOICE_COMMANDS
-        )
+        had_error = await _register_bot(bot_cfg, raw, command_loader, VOICE_COMMANDS)
         if had_error:
             errors += 1
 

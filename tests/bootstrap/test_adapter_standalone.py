@@ -24,7 +24,7 @@ def _cred_store_patches(token: str, webhook_secret: str = "") -> tuple:
     webhook: str | None = webhook_secret if webhook_secret else None
     return (
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+            "lyra.bootstrap.credentials.load_bot_token",
             return_value=(token, webhook),
         ),
     )

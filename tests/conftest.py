@@ -192,15 +192,13 @@ def make_fake_stores(
     tg_creds: tuple[str, str | None] | None = ("fake-token", "fake-secret"),
     dc_creds: tuple[str, str | None] | None = ("fake-dc-token", None),
 ) -> tuple[MagicMock, MagicMock]:
-    """Patch _load_bot_token in adapter_standalone to return fake credentials.
+    """Patch load_bot_token at the credentials module to return fake creds.
 
     Returns (MagicMock(), MagicMock()) for API compatibility with callers that
-    previously received (fake_keyring, fake_cred_store).  Callers that only
-    assert on the second return value (cred_store.close etc.) should migrate to
-    asserting on the _load_bot_token mock directly; callers that ignore both
-    return values are unaffected.
+    previously received (fake_keyring, fake_cred_store).  Callers that ignore
+    both return values are unaffected.
     """
-    import lyra.bootstrap.standalone.adapter_standalone as adapter_standalone_mod
+    import lyra.bootstrap.credentials as credentials_mod
 
     def _fake_load(platform: str, bot_id: str) -> tuple[str, str | None]:
         if platform == "telegram":
@@ -210,7 +208,7 @@ def make_fake_stores(
             return creds
         return ("fake-token", None)
 
-    monkeypatch.setattr(adapter_standalone_mod, "_load_bot_token", _fake_load)
+    monkeypatch.setattr(credentials_mod, "load_bot_token", _fake_load)
     return MagicMock(), MagicMock()
 
 
@@ -351,11 +349,11 @@ def patch_all(
     _fake_agent_store.set_bot_agent = AsyncMock()
     monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
 
-    import lyra.bootstrap.standalone.adapter_standalone as adapter_standalone_mod
+    import lyra.bootstrap.credentials as credentials_mod
 
     monkeypatch.setattr(
-        adapter_standalone_mod,
-        "_load_bot_token",
+        credentials_mod,
+        "load_bot_token",
         lambda platform, bot_id: ("fake-token", "fake-secret"),
     )
     monkeypatch.setattr(
@@ -400,11 +398,11 @@ def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
         AsyncMock(return_value={("telegram", "main"): "lyra_default"}),
     )
 
-    import lyra.bootstrap.standalone.adapter_standalone as adapter_standalone_mod
+    import lyra.bootstrap.credentials as credentials_mod
 
     monkeypatch.setattr(
-        adapter_standalone_mod,
-        "_load_bot_token",
+        credentials_mod,
+        "load_bot_token",
         lambda platform, bot_id: ("fake-token", "fake-secret"),
     )
 

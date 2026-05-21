@@ -52,7 +52,7 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
             return_value=mock_adapter_instance,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+            "lyra.bootstrap.credentials.load_bot_token",
             return_value=("fake-token", "fake-secret"),
         ),
     ):
@@ -97,7 +97,7 @@ async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
             return_value=mock_adapter_instance,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone._load_bot_token",
+            "lyra.bootstrap.credentials.load_bot_token",
             return_value=("fake-token", "fake-secret"),
         ),
     ):

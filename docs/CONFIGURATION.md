@@ -331,14 +331,27 @@ Secret=lyra-bot-telegram-<bot_id>-webhook,type=mount,target=bot_webhook-<bot_id>
 
 (Omit the webhook line if the bot does not use webhooks.)
 
-Regenerate the fragment from currently-provisioned secrets:
+Regenerate the per-platform fragments from currently-provisioned secrets:
 
 ```bash
 make quadlet-bot-secrets-render
-# Writes deploy/quadlet/.bot-secrets.fragment — paste into the platform .container file.
+# Writes deploy/quadlet/.bot-secrets.telegram.fragment + .bot-secrets.discord.fragment
+# and prints the Secret= lines to stdout. Paste each fragment into the matching
+# .container file (lyra-telegram.container, lyra-discord.container).
 ```
 
 After editing `.container` files, restart the adapter to remount: `make telegram-adapter restart` (or `discord-adapter`). `type=mount` secrets are tmpfs binds; `podman secret create --replace` updates the store but the in-container file is stale until container restart.
+
+### Migrating from pre-#1057 `bot_secrets` rows
+
+Operators on M₁ with a pre-existing `~/.lyra/config.db` `bot_secrets` table run the one-shot migration script — it reads each row, decrypts via the existing Fernet keyring, and provisions a Podman secret per `(platform, bot_id)`. The script is self-contained (it does NOT depend on the deleted `CredentialStore` class) and idempotent:
+
+```bash
+python3 tools/migrate_bot_secrets_to_podman.py            # apply
+python3 tools/migrate_bot_secrets_to_podman.py --dry-run  # preview
+```
+
+After migration: regenerate the Quadlet fragments (`make quadlet-bot-secrets-render`), paste them into the matching `.container` file, restart the adapters, and optionally drop the now-orphan `bot_secrets` table (`sqlite3 ~/.lyra/config.db 'DROP TABLE bot_secrets'`). The script prints the same post-migration checklist on success.
 
 ### Rationale
 

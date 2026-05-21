@@ -166,7 +166,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-timeout>=2.4.0",
     "pytest-xdist>=3.8.0",
-    "ruff>=0.15.12",
+    "ruff>=0.15.13",
     # Workspace member [testing] extras — pulls scipy+numpy needed by
     # roxabi_contracts.voice.fixtures. `uv sync` doesn't auto-expand
     # extras on workspace members (#1174), so we declare them here.

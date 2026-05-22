@@ -22,3 +22,16 @@ DomainClient           — thin wrapper in lyra.nats / lyra.llm (compose pool + 
 - `Result[T]` / `Ok[T]` / `Err` are the return types for all transport-level calls.
   `SanitizedError` strips internal detail before propagation to users (#1212).
 - CB lives in `WorkerPoolClient` — domain clients must NOT add a second CB layer.
+
+## SanitizedError.from_message — Phase 5 addendum (#1282)
+
+`from_message` was added in Phase 5 (#1282) as a Phase 1 addendum to the transport boundary.
+
+Purpose: scrub user-safe soft-error wire text (e.g. upstream model errors) before bus propagation. Callers do NOT embed raw exception text — they pass a pre-selected message string (or empty).
+
+Sanitization rules:
+- empty input → `message = "model_error"` (fallback)
+- control chars → replaced with space (`c.isprintable()` guard)
+- truncated to 200 chars (`_BUS_MESSAGE_MAX_LEN`); suffix `…` if cut
+
+Security boundary semantics UNCHANGED: `SanitizedError.message` still never carries `str(exc)` — `from_message` accepts only callee-controlled strings and applies guardrails on top.

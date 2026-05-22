@@ -15,6 +15,7 @@ from typing import Any
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage
+from roxabi_contracts import BlobRef
 
 # ---------------------------------------------------------------------------
 # Default constants
@@ -60,7 +61,13 @@ def make_voice_message(
     Any remaining kwargs override InboundMessage fields.
     """
     audio = AudioPayload(
-        audio_bytes=audio_bytes,
+        blob_ref=BlobRef(
+            store_key="test-blob",
+            content_hash="",
+            mime=mime_type,
+            size=len(audio_bytes),
+            source="test",
+        ),
         mime_type=mime_type,
         duration_ms=duration_ms,
         file_id=file_id,

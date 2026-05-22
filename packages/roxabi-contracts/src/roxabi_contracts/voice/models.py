@@ -14,6 +14,7 @@ from typing import Annotated, Self
 
 from pydantic import StringConstraints, model_validator
 
+from roxabi_contracts.blob_ref import BlobRef
 from roxabi_contracts.envelope import ContractEnvelope
 from roxabi_contracts.errors import WorkerError
 
@@ -45,7 +46,7 @@ class TtsResponse(ContractEnvelope):
     """TTS synthesis response.
 
     Success-path invariant (enforced by ``_enforce_success_invariant``):
-    when ``ok=True``, ``audio_b64`` AND ``mime_type`` AND ``duration_ms``
+    when ``ok=True``, ``blob_ref`` AND ``mime_type`` AND ``duration_ms``
     are all non-null. Error-path (``ok=False``) omits them and sets
     ``error``.
     """
@@ -53,7 +54,7 @@ class TtsResponse(ContractEnvelope):
     ok: bool
     request_id: Annotated[str, StringConstraints(min_length=1)]
     error: str | None = None
-    audio_b64: str | None = None
+    blob_ref: BlobRef | None = None
     mime_type: str | None = None
     duration_ms: int | None = None
     waveform_b64: str | None = None
@@ -62,11 +63,11 @@ class TtsResponse(ContractEnvelope):
     @model_validator(mode="after")
     def _enforce_success_invariant(self) -> Self:
         if self.ok and (
-            self.audio_b64 is None or self.mime_type is None or self.duration_ms is None
+            self.blob_ref is None or self.mime_type is None or self.duration_ms is None
         ):
             raise ValueError(
-                "TtsResponse with ok=True must carry audio_b64, mime_type, "
-                "and duration_ms (see spec #763 drift item #1)"
+                "TtsResponse with ok=True must carry blob_ref, mime_type, "
+                "and duration_ms (ADR-067; spec #763 drift item #1)"
             )
         return self
 
@@ -75,7 +76,7 @@ class SttRequest(ContractEnvelope):
     """STT transcription request. Canonical subject: ``lyra.voice.stt.request``."""
 
     request_id: Annotated[str, StringConstraints(min_length=1)]
-    audio_b64: Annotated[str, StringConstraints(min_length=1)]
+    blob_ref: BlobRef
     model: str
     mime_type: str | None = None
     language: str | None = None

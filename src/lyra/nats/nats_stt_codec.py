@@ -8,7 +8,6 @@ CB is NOT touched on decode failure — see spec § "Error path — decode failu
 
 from __future__ import annotations
 
-import base64
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -18,6 +17,7 @@ from pydantic import ValidationError
 
 from lyra.core.ports.stt import TranscriptionResult
 from lyra.transport._result import Err, Result, SanitizedError
+from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import SttRequest, SttResponse
 
@@ -52,7 +52,13 @@ class SttCodec:
             trace_id=str(uuid4()),
             issued_at=datetime.now(timezone.utc),
             request_id=str(uuid4()),
-            audio_b64=base64.b64encode(audio).decode("ascii"),
+            blob_ref=BlobRef(
+                store_key=PENDING_STORE_KEY,
+                content_hash="",
+                mime=mime,
+                size=len(audio),
+                source="lyra-hub",
+            ),
             mime_type=mime,
             model=params.model,
             language_detection_threshold=params.language_detection_threshold,

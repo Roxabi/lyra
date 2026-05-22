@@ -12,7 +12,6 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -29,7 +28,7 @@ runner = CliRunner()
 # ---------------------------------------------------------------------------
 
 _FAKE_AUDIO = b"FAKE_AUDIO_BYTES"
-_FAKE_AUDIO_B64 = base64.b64encode(_FAKE_AUDIO).decode("ascii")
+_FAKE_AUDIO_SIZE = len(_FAKE_AUDIO)
 
 
 def _nats_reply(data: dict) -> SimpleNamespace:
@@ -38,7 +37,18 @@ def _nats_reply(data: dict) -> SimpleNamespace:
 
 
 def _tts_ok_response() -> dict:
-    return {"ok": True, "audio_b64": _FAKE_AUDIO_B64, "mime_type": "audio/ogg"}
+    return {
+        "ok": True,
+        "blob_ref": {
+            "store_key": "test-tts-blob",
+            "content_hash": "",
+            "mime": "audio/ogg",
+            "size": _FAKE_AUDIO_SIZE,
+            "source": "voicecli",
+        },
+        "mime_type": "audio/ogg",
+        "duration_ms": 1000,
+    }
 
 
 def _stt_ok_response(text: str = "one two three") -> dict:
@@ -129,14 +139,15 @@ class TestVoiceSmokeHappyPath:
         assert "[2/2] STT request" in result.output
         assert "PASS" in result.output
 
-    def test_prints_audio_byte_count(self) -> None:
-        """Output includes the number of audio bytes from TTS."""
+    def test_prints_blob_ref_store_key(self) -> None:
+        """Output includes the blob_ref store_key and size from TTS response."""
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("voice test"))
 
         with _patch_nats(nc):
             result = runner.invoke(lyra_app, ["voice-smoke"])
 
-        assert str(len(_FAKE_AUDIO)) in result.output
+        assert "test-tts-blob" in result.output
+        assert str(_FAKE_AUDIO_SIZE) in result.output
 
     def test_prints_transcript(self) -> None:
         """Output includes the transcript returned by STT."""
@@ -207,11 +218,16 @@ class TestVoiceSmokeTtsFailure:
 
         assert result.exit_code == 1
 
-    def test_exits_one_on_tts_empty_audio(self) -> None:
-        """TTS response with empty audio_b64 → exit 1."""
-        tts_empty = {"ok": True, "audio_b64": "", "mime_type": "audio/ogg"}
+    def test_exits_one_on_tts_missing_blob_ref(self) -> None:
+        """TTS response with ok=True but blob_ref=None → exit 1 (V2 invariant)."""
+        tts_no_blob = {
+            "ok": True,
+            "blob_ref": None,
+            "mime_type": "audio/ogg",
+            "duration_ms": 1000,
+        }
         nc = AsyncMock()
-        nc.request = AsyncMock(return_value=_nats_reply(tts_empty))
+        nc.request = AsyncMock(return_value=_nats_reply(tts_no_blob))
         nc.drain = AsyncMock()
 
         with _patch_nats(nc):

@@ -25,7 +25,6 @@ def _make_pool(*, alive: bool = True) -> MagicMock:
 
 
 def _ok_response() -> ImageResponse:
-    import base64
     import json
 
     raw = json.dumps(
@@ -35,7 +34,13 @@ def _ok_response() -> ImageResponse:
             "issued_at": "2026-04-19T00:00:00+00:00",
             "ok": True,
             "request_id": "r1",
-            "image_b64": base64.b64encode(b"img").decode(),
+            "blob_ref": {
+                "store_key": "test-img",
+                "content_hash": "",
+                "mime": "image/png",
+                "size": 3,
+                "source": "imagecli",
+            },
             "mime_type": "image/png",
             "width": 512,
             "height": 512,

@@ -21,7 +21,6 @@ from __future__ import annotations
 import nats  # noqa: F401  # pyright: ignore[reportUnusedImport]  # isort:skip
 
 import asyncio
-import base64
 import logging
 from datetime import datetime, timezone
 
@@ -31,6 +30,7 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from pydantic import ValidationError
 
+from roxabi_contracts import BlobRef
 from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.voice.fixtures import sample_transcript_en, silence_wav_16khz
 from roxabi_contracts.voice.models import (
@@ -146,7 +146,13 @@ class FakeTtsWorker:
                 issued_at=datetime.now(timezone.utc),
                 ok=True,
                 request_id=req.request_id,
-                audio_b64=base64.b64encode(self._reply_fixture).decode("ascii"),
+                blob_ref=BlobRef(
+                    store_key="test-audio",
+                    content_hash="hash",
+                    mime="audio/wav",
+                    size=len(self._reply_fixture),
+                    source="testing",
+                ),
                 mime_type="audio/wav",
                 duration_ms=1000,
             )

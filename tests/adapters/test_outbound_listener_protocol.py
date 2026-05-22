@@ -25,6 +25,7 @@ from lyra.adapters.shared.outbound_listener import OutboundListener
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
+from roxabi_contracts import BlobRef
 
 # Module-level static structural check. mypy/pyright verify that
 # NatsOutboundListener (the class object) is assignable to
@@ -60,7 +61,13 @@ def _make_voice_message() -> InboundMessage:
         trust_level=TrustLevel.TRUSTED,
         modality="voice",
         audio=AudioPayload(
-            audio_bytes=b"\x00",
+            blob_ref=BlobRef(
+                store_key="test-blob",
+                content_hash="",
+                mime="audio/ogg",
+                size=1,
+                source="test",
+            ),
             mime_type="audio/ogg",
             duration_ms=None,
             file_id=None,

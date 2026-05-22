@@ -113,7 +113,8 @@ class SttMiddleware:
 
         try:
             result = await asyncio.wait_for(
-                hub._stt.transcribe(msg.audio.audio_bytes, msg.audio.mime_type),
+                # blob_ref → bytes resolution lands in #1067; transitional placeholder.
+                hub._stt.transcribe(b"", msg.audio.mime_type),
                 timeout=timeout_s,
             )
         except asyncio.TimeoutError:

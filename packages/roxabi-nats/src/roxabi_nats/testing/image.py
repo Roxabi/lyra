@@ -22,7 +22,6 @@ from __future__ import annotations
 import nats  # noqa: F401  # pyright: ignore[reportUnusedImport]  # isort:skip
 
 import asyncio
-import base64
 import logging
 from datetime import datetime, timezone
 
@@ -32,6 +31,7 @@ from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
 from pydantic import ValidationError
 
+from roxabi_contracts import BlobRef
 from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.image.fixtures import (
     tiny_png_1x1,
@@ -141,7 +141,13 @@ class FakeImageWorker:
                 issued_at=datetime.now(timezone.utc),
                 ok=True,
                 request_id=req.request_id,
-                image_b64=base64.b64encode(self._reply_fixture).decode("ascii"),
+                blob_ref=BlobRef(
+                    store_key="test-image",
+                    content_hash="hash",
+                    mime=tiny_png_mime,
+                    size=len(self._reply_fixture),
+                    source="testing",
+                ),
                 mime_type=tiny_png_mime,
                 width=tiny_png_width,
                 height=tiny_png_height,

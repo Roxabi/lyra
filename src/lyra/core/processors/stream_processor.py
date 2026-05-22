@@ -56,6 +56,7 @@ from lyra.core.messaging.render_events import (
 )
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.trace import TraceContext
+from lyra.streaming.state_machine import StateMachine
 
 log = logging.getLogger(__name__)
 
@@ -169,31 +170,18 @@ class StreamProcessor:
         self._pending_text: str = ""
         self._total_text: str = ""  # full accumulated text for final emit
 
-        # --- Slice 3 (#1100) ToolCall* lifecycle state ---
-        # Open-call tracker for orphan ``ToolCallEnd`` synthesis. Populated on
-        # ``ToolCallStart`` emission, cleared on ``ToolCallEnd``. Anything still
-        # in the set at ``ResultLlmEvent`` time gets a synthesized end event.
-        # Dedupe of duplicate ``ToolUseLlmEvent``s lives in the parser
-        # (``cli_streaming_parser._emitted_tool_use_ids``) — wire-level
-        # artifacts of the Anthropic CLI stay below the application boundary.
-        self._open_tool_call_ids: set[str] = set()
-        # tool_id → tool_name map populated on ``ToolUseLlmEvent`` so the
-        # ``_sanitize_tool_result_content`` boundary scrubber can decide whether
-        # to redact based on tool name (Read/Bash/Edit/Write are sensitive).
+        # --- Slice 3 (#1282) StateMachine instances (one per concern) ---
+        # _sm_text: open text block (key = block_id, value = "text" sentinel).
+        # _sm_reasoning: open reasoning block (key = block_id, value = "reasoning").
+        # _sm_tool: open tool call IDs (key = tool_id, value = tool_name).
+        self._sm_text: StateMachine[str, str] = StateMachine()
+        self._sm_reasoning: StateMachine[str, str] = StateMachine()
+        self._sm_tool: StateMachine[str, str] = StateMachine()
+
+        # tool_id → tool_name map; kept as plain dict because the lookup
+        # semantics differ from StateMachine open/close (we need to read the
+        # name even after the tool call has ended).
         self._tool_id_to_name: dict[str, str] = {}
-
-        # --- Slice 2 (#1099) v2 Text triplet state ---
-        # Tracks the message_id of the currently open text block (TextStart).
-        # None when no text block is open. Set on TextStart, cleared on TextEnd.
-        self._open_text_block_id: str | None = None
-
-        # --- Slice 4 (#1101) Reasoning block state ---
-        # Tracks the message_id of the currently open reasoning block.
-        # None when no reasoning block is open. Set on first ThinkingLlmEvent
-        # chunk, cleared when any non-Thinking event arrives (or on
-        # truncation / exception). Defensive-close guards on every
-        # non-Thinking branch ensure the block is always properly terminated.
-        self._open_reasoning_block_id: str | None = None
 
         # --- reuse guard ---
         self._consumed: bool = False
@@ -202,7 +190,7 @@ class StreamProcessor:
     # Public interface
     # ------------------------------------------------------------------
 
-    async def process(  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps — event-type dispatch + terminal fallbacks
+    async def process(
         self, events: AsyncIterator[LlmEvent]
     ) -> AsyncGenerator[RenderEvent, None]:
         """Process an async stream of ``LlmEvent`` objects.
@@ -243,121 +231,17 @@ class StreamProcessor:
         _result_error_text: str | None = None
         try:
             async for event in events:
-                if isinstance(event, TextLlmEvent):
-                    # ───── Slice 4 (#1101) reasoning-close guard ─────
-                    for _re in self._close_reasoning_if_open():
-                        yield _re
-                    self._pending_text += event.text
-                    self._total_text += event.text
-                    # ───── Slice 2 (#1099) v2 Text triplet ─────
-                    if self._open_text_block_id is None:
-                        self._open_text_block_id = _mint_text_block_id()
-                        yield TextStartRenderEvent(message_id=self._open_text_block_id)
-                    yield TextDeltaRenderEvent(
-                        message_id=self._open_text_block_id,
-                        delta=event.text,
-                    )
-
-                elif isinstance(event, ToolUseLlmEvent):
-                    # ───── Slice 4 (#1101) reasoning-close guard ─────
-                    for _re in self._close_reasoning_if_open():
-                        yield _re
-                    # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
-                    if self._open_text_block_id is not None:
-                        yield TextEndRenderEvent(message_id=self._open_text_block_id)
-                        self._open_text_block_id = None
-                    async for render_event in self._handle_tool_event(event):
-                        yield render_event
-
-                elif isinstance(event, ToolUseDeltaLlmEvent):
-                    # ───── Slice 4 (#1101) reasoning-close guard ─────
-                    for _re in self._close_reasoning_if_open():
-                        yield _re
-                    yield ToolCallArgsRenderEvent(
-                        tool_call_id=event.tool_id, delta=event.partial_json
-                    )
-
-                elif isinstance(event, ToolUseEndLlmEvent):
-                    # ───── Slice 4 (#1101) reasoning-close guard ─────
-                    for _re in self._close_reasoning_if_open():
-                        yield _re
-                    self._open_tool_call_ids.discard(event.tool_id)
-                    yield ToolCallEndRenderEvent(tool_call_id=event.tool_id)
-
-                elif isinstance(event, ToolResultLlmEvent):
-                    # ───── Slice 4 (#1101) reasoning-close guard ─────
-                    for _re in self._close_reasoning_if_open():
-                        yield _re
-                    tool_name = self._tool_id_to_name.get(event.tool_id)
-                    yield ToolCallResultRenderEvent(
-                        tool_call_id=event.tool_id,
-                        content=_sanitize_tool_result_content(event.content, tool_name),
-                        is_error=event.is_error,
-                    )
-
-                elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
+                if isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
                     _result_received = True
                     _result_is_error = event.is_error
                     _result_error_text = event.error_text
-                    # ───── Slice 4 (#1101) reasoning-close guard ─────
-                    for _re in self._close_reasoning_if_open():
-                        yield _re
-                    # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
-                    if self._open_text_block_id is not None:
-                        yield TextEndRenderEvent(message_id=self._open_text_block_id)
-                        self._open_text_block_id = None
-                    # Synthesize ToolCallEnd for any open tool_call_ids that
-                    # never received a content_block_stop (truncated stream,
-                    # partial tool call). Loud WARN log per orphan.
-                    for orphan_event in self._synth_orphan_tool_ends():
-                        yield orphan_event
-
-                elif isinstance(event, ThinkingLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
-                    # ───── Slice 4 (#1101) reasoning block emission ─────
-                    # SC-6 (spec v2 lines 65, 260): drop the chunk entirely
-                    # when show_intermediate=False — no Reasoning* produced,
-                    # no v1 intermediate.
-                    if not self._show_intermediate:
-                        continue
-                    if self._open_reasoning_block_id is None:
-                        self._open_reasoning_block_id = _mint_reasoning_block_id()
-                        log.debug(
-                            "reasoning block opened message_id=%s",
-                            self._open_reasoning_block_id,
-                        )
-                        yield ReasoningStartRenderEvent(
-                            message_id=self._open_reasoning_block_id
-                        )
-                    yield ReasoningDeltaRenderEvent(
-                        message_id=self._open_reasoning_block_id,
-                        delta=event.text,
-                    )
-
-                else:
-                    # Cross-slice invariant 3: no silent event drop. When the
-                    # ``LlmEvent`` union widens (e.g. Slice 4 reasoning events)
-                    # without updating this dispatch, ``assert_never`` surfaces
-                    # the gap at pyright time AND raises ``AssertionError`` at
-                    # runtime so a missing branch is never silently swallowed.
-                    assert_never(event)
+                for re in self._dispatch_event(event):
+                    yield re
 
             # Stream ended without ResultLlmEvent (truncation or upstream error)
             if not _result_received:
-                # ───── Slice 4 (#1101) orphan reasoning-close (truncated stream) ─────
-                if self._open_reasoning_block_id is not None:
-                    log.warning(
-                        "StreamProcessor: orphan ReasoningEnd synthesis "
-                        "(truncated stream) message_id=…%s",
-                        self._open_reasoning_block_id[-6:],
-                    )
-                    yield ReasoningEndRenderEvent(
-                        message_id=self._open_reasoning_block_id
-                    )
-                    self._open_reasoning_block_id = None
-                # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
-                if self._open_text_block_id is not None:
-                    yield TextEndRenderEvent(message_id=self._open_text_block_id)
-                    self._open_text_block_id = None
+                for re in self._close_truncated_stream():
+                    yield re
         except Exception as exc:
             # Slice 1 (#1098): infrastructure-level exception during stream
             # processing. Surface a RunErrorRenderEvent then re-raise so the
@@ -368,19 +252,8 @@ class StreamProcessor:
             # carry file paths, internal hostnames, auth-token fragments from
             # httpx/aiohttp errors, DB connection strings, etc. RunErrorRenderEvent
             # is published on the NATS bus where any subscriber can read it.
-            # ───── Slice 4 (#1101) orphan reasoning-close (exception) ─────
-            if self._open_reasoning_block_id is not None:
-                log.warning(
-                    "StreamProcessor: orphan ReasoningEnd synthesis (exception) "
-                    "message_id=…%s",
-                    self._open_reasoning_block_id[-6:],
-                )
-                yield ReasoningEndRenderEvent(message_id=self._open_reasoning_block_id)
-                self._open_reasoning_block_id = None
-            # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
-            if self._open_text_block_id is not None:
-                yield TextEndRenderEvent(message_id=self._open_text_block_id)
-                self._open_text_block_id = None
+            for re in self._close_exception_path():
+                yield re
             yield RunErrorRenderEvent(
                 run_id=run_id, message=type(exc).__name__, code=None
             )
@@ -408,29 +281,175 @@ class StreamProcessor:
         else:
             yield RunFinishedRenderEvent(run_id=run_id, outcome="success")
 
-    async def _handle_tool_event(
-        self, event: ToolUseLlmEvent
-    ) -> AsyncGenerator[RenderEvent, None]:
-        """Handle a single ``ToolUseLlmEvent``, yielding any resulting ``RenderEvent``s.
+    # ------------------------------------------------------------------
+    # Per-LlmEvent sub-handlers (Slice 3, #1282)
+    # ------------------------------------------------------------------
 
-        Slice 3 (#1100) emits ``ToolCallStartRenderEvent`` with cross-event
-        ``tool_call_id`` correlator. The parser already deduplicates the dual
-        emission of ``ToolUseLlmEvent`` (streaming + post-hoc paths), so this
-        handler sees each ``tool_id`` exactly once.
+    def _dispatch_event(self, event: LlmEvent) -> Iterator[RenderEvent]:
+        """Route a single ``LlmEvent`` to the appropriate sub-handler.
 
-        Flushes pending text state when ``show_intermediate`` is enabled,
-        then accumulates the tool call into internal accumulators.
+        Returns a synchronous ``Iterator[RenderEvent]`` — all sub-handlers are
+        pure synchronous generators (no ``await`` inside). The caller uses
+        ``yield from`` to forward events into the outer async generator.
+
+        The ``assert_never`` fallthrough (cross-slice invariant 3) ensures that
+        when the ``LlmEvent`` union widens without a matching branch being added
+        here, pyright surfaces the gap at type-check time AND an ``AssertionError``
+        is raised at runtime — so no new event type is ever silently dropped.
         """
-        self._open_tool_call_ids.add(event.tool_id)
+        if isinstance(event, TextLlmEvent):
+            yield from self._handle_text(event)
+        elif isinstance(event, ToolUseLlmEvent):
+            yield from self._handle_tool_use(event)
+        elif isinstance(event, ToolUseDeltaLlmEvent):
+            yield from self._handle_tool_use_delta(event)
+        elif isinstance(event, ToolUseEndLlmEvent):
+            yield from self._handle_tool_use_end(event)
+        elif isinstance(event, ToolResultLlmEvent):
+            yield from self._handle_tool_result(event)
+        elif isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
+            yield from self._handle_result(event)
+        elif isinstance(event, ThinkingLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
+            yield from self._handle_thinking(event)
+        else:
+            assert_never(event)
+
+    def _handle_text(self, event: TextLlmEvent) -> Iterator[RenderEvent]:
+        """Emit TextStart/TextDelta; manage open text block via _sm_text."""
+        yield from self._close_reasoning_if_open()
+        self._pending_text += event.text
+        self._total_text += event.text
+        open_text = next(iter(self._sm_text.open_blocks), None)
+        if open_text is None:
+            block_id = _mint_text_block_id()
+            self._sm_text.open(block_id, "text")
+            yield TextStartRenderEvent(message_id=block_id)
+            open_text = block_id
+        yield TextDeltaRenderEvent(message_id=open_text, delta=event.text)
+
+    def _handle_thinking(self, event: ThinkingLlmEvent) -> Iterator[RenderEvent]:
+        """Emit ReasoningStart/Delta; manage open reasoning block via _sm_reasoning."""
+        # SC-6 (spec v2 lines 65, 260): drop the chunk entirely
+        # when show_intermediate=False — no Reasoning* produced.
+        if not self._show_intermediate:
+            return
+        open_reasoning = next(iter(self._sm_reasoning.open_blocks), None)
+        if open_reasoning is None:
+            block_id = _mint_reasoning_block_id()
+            self._sm_reasoning.open(block_id, "reasoning")
+            log.debug("reasoning block opened message_id=%s", block_id)
+            yield ReasoningStartRenderEvent(message_id=block_id)
+            open_reasoning = block_id
+        yield ReasoningDeltaRenderEvent(message_id=open_reasoning, delta=event.text)
+
+    def _handle_tool_use(self, event: ToolUseLlmEvent) -> Iterator[RenderEvent]:
+        """Emit ToolCallStart; register open tool call via _sm_tool."""
+        yield from self._close_reasoning_if_open()
+        # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
+        open_text = next(iter(self._sm_text.open_blocks), None)
+        if open_text is not None:
+            yield TextEndRenderEvent(message_id=open_text)
+            self._sm_text.close(open_text)
+        self._sm_tool.open(event.tool_id, event.tool_name)
         self._tool_id_to_name[event.tool_id] = event.tool_name
         yield ToolCallStartRenderEvent(
             tool_call_id=event.tool_id, tool_name=event.tool_name
         )
-
-        # Clear per-segment pending text buffer on each tool event.
         if self._show_intermediate:
             self._pending_text = ""
         self._accumulate(event)
+
+    def _handle_tool_use_delta(
+        self, event: ToolUseDeltaLlmEvent
+    ) -> Iterator[RenderEvent]:
+        """Emit ToolCallArgs."""
+        yield from self._close_reasoning_if_open()
+        yield ToolCallArgsRenderEvent(
+            tool_call_id=event.tool_id, delta=event.partial_json
+        )
+
+    def _handle_tool_use_end(
+        self, event: ToolUseEndLlmEvent
+    ) -> Iterator[RenderEvent]:
+        """Emit ToolCallEnd; close open tool call in _sm_tool."""
+        yield from self._close_reasoning_if_open()
+        self._sm_tool.close(event.tool_id)
+        yield ToolCallEndRenderEvent(tool_call_id=event.tool_id)
+
+    def _handle_tool_result(
+        self, event: ToolResultLlmEvent
+    ) -> Iterator[RenderEvent]:
+        """Emit ToolCallResult with sanitized content."""
+        yield from self._close_reasoning_if_open()
+        tool_name = self._tool_id_to_name.get(event.tool_id)
+        yield ToolCallResultRenderEvent(
+            tool_call_id=event.tool_id,
+            content=_sanitize_tool_result_content(event.content, tool_name),
+            is_error=event.is_error,
+        )
+
+    def _handle_result(self, event: ResultLlmEvent) -> Iterator[RenderEvent]:
+        """Close open text/reasoning blocks; synthesize orphan ToolCallEnds."""
+        yield from self._close_reasoning_if_open()
+        # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
+        open_text = next(iter(self._sm_text.open_blocks), None)
+        if open_text is not None:
+            yield TextEndRenderEvent(message_id=open_text)
+            self._sm_text.close(open_text)
+        # Synthesize ToolCallEnd for any open tool_call_ids that
+        # never received a content_block_stop (truncated stream,
+        # partial tool call). Loud WARN log per orphan.
+        for orphan_event in self._synth_orphan_tool_ends():
+            yield orphan_event
+
+    # ------------------------------------------------------------------
+    # Shared helpers (called from sub-handlers and truncation paths)
+    # ------------------------------------------------------------------
+
+    def _close_truncated_stream(self) -> Iterator[RenderEvent]:
+        """Close open blocks when the stream ends without a ResultLlmEvent.
+
+        Handles truncation (upstream error / subprocess kill). Yields orphan
+        ReasoningEnd then orphan TextEnd if their respective blocks are open.
+        """
+        # ───── Slice 4 (#1101) orphan reasoning-close (truncated stream) ─────
+        open_reasoning = next(iter(self._sm_reasoning.open_blocks), None)
+        if open_reasoning is not None:
+            log.warning(
+                "StreamProcessor: orphan ReasoningEnd synthesis "
+                "(truncated stream) message_id=…%s",
+                open_reasoning[-6:],
+            )
+            yield ReasoningEndRenderEvent(message_id=open_reasoning)
+            self._sm_reasoning.close(open_reasoning)
+        # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
+        open_text = next(iter(self._sm_text.open_blocks), None)
+        if open_text is not None:
+            yield TextEndRenderEvent(message_id=open_text)
+            self._sm_text.close(open_text)
+
+    def _close_exception_path(self) -> Iterator[RenderEvent]:
+        """Close open blocks on the exception path (infrastructure error).
+
+        Mirrors ``_close_truncated_stream`` but logs with the 'exception'
+        context label. Called inside ``except`` before emitting
+        ``RunErrorRenderEvent``.
+        """
+        # ───── Slice 4 (#1101) orphan reasoning-close (exception) ─────
+        open_reasoning = next(iter(self._sm_reasoning.open_blocks), None)
+        if open_reasoning is not None:
+            log.warning(
+                "StreamProcessor: orphan ReasoningEnd synthesis (exception) "
+                "message_id=…%s",
+                open_reasoning[-6:],
+            )
+            yield ReasoningEndRenderEvent(message_id=open_reasoning)
+            self._sm_reasoning.close(open_reasoning)
+        # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
+        open_text = next(iter(self._sm_text.open_blocks), None)
+        if open_text is not None:
+            yield TextEndRenderEvent(message_id=open_text)
+            self._sm_text.close(open_text)
 
     def _close_reasoning_if_open(self) -> Iterator[ReasoningEndRenderEvent]:
         """Yield ``ReasoningEndRenderEvent`` and clear state if a block is open.
@@ -440,13 +459,11 @@ class StreamProcessor:
         thinking blocks before emitting text or tool calls; this guard handles
         any interleaving that slips through (architect review B).
         """
-        if self._open_reasoning_block_id is not None:
-            log.debug(
-                "reasoning block closed message_id=%s",
-                self._open_reasoning_block_id,
-            )
-            yield ReasoningEndRenderEvent(message_id=self._open_reasoning_block_id)
-            self._open_reasoning_block_id = None
+        open_reasoning = next(iter(self._sm_reasoning.open_blocks), None)
+        if open_reasoning is not None:
+            log.debug("reasoning block closed message_id=%s", open_reasoning)
+            yield ReasoningEndRenderEvent(message_id=open_reasoning)
+            self._sm_reasoning.close(open_reasoning)
 
     def _synth_orphan_tool_ends(
         self,
@@ -460,13 +477,13 @@ class StreamProcessor:
         of the full opaque tool_call_id is not exposed in shared log
         aggregation (#1100 review S2).
         """
-        for tid in sorted(self._open_tool_call_ids):
+        for tid in sorted(self._sm_tool.open_blocks):
             log.warning(
                 "StreamProcessor: synthesizing orphan ToolCallEnd for tool_call_id=…%s",
                 tid[-6:],
             )
             yield ToolCallEndRenderEvent(tool_call_id=tid)
-        self._open_tool_call_ids.clear()
+        self._sm_tool.open_blocks.clear()
 
     # ------------------------------------------------------------------
     # Internal helpers

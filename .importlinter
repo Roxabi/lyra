@@ -126,3 +126,13 @@ forbidden_modules =
     lyra.adapters
     lyra.infrastructure
 allow_indirect_imports = true
+
+[importlinter:contract:no-streaming-emitter-shim]
+name = adapters must not re-introduce the legacy streaming-emitter shim (#1279 T28)
+type = forbidden
+source_modules =
+    lyra.adapters
+forbidden_modules =
+    lyra.adapters.shared._shared_streaming_emitter
+    lyra.adapters.shared._shared_streaming
+allow_indirect_imports = true

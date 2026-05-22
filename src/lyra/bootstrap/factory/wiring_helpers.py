@@ -46,7 +46,6 @@ from lyra.nats.queue_groups import HUB_INBOUND
 
 if TYPE_CHECKING:
     import nats
-    from lyra.llm.drivers.cli_nats import CliNatsDriver
     from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
@@ -79,7 +78,7 @@ class BotAuthBundle:
 @dataclass
 class CliPoolBundle:
     cli_pool: CliPool
-    cli_nats_driver: "CliNatsDriver | None"
+    cli_nats_driver: "LlmClient | None"
     worker: object
     audit_sink: JetStreamAuditSink
 
@@ -301,15 +300,15 @@ async def _init_clipool(
     raw_config: dict,
     stores: object,
 ) -> CliPoolBundle:
-    """Build CliNatsDriver, CliPool, CliPoolNatsWorker."""
+    """Build LlmClient (clipool), CliPool, CliPoolNatsWorker."""
     from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
-    from lyra.bootstrap.factory.hub_builder import build_cli_nats_driver
+    from lyra.bootstrap.factory.hub_builder import build_llm_client
 
     cli_pool_cfg = _load_cli_pool_config(raw_config)
     audit_sink = JetStreamAuditSink()
     await audit_sink.provision(nc)
 
-    cli_nats_driver = await build_cli_nats_driver(nc)
+    cli_nats_driver = await build_llm_client(nc)
     cli_pool = CliPool(
         idle_ttl=cli_pool_cfg.idle_ttl,
         default_timeout=cli_pool_cfg.default_timeout,

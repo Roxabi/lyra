@@ -24,6 +24,15 @@ import pytest
 NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
 COMPOSE_FILE = Path("docker/docker-compose.test.yml")
 
+# V2 BlobRef sentinel used in STT request fixtures (content-addressed pointer).
+_STT_BLOB_REF = {
+    "store_key": "test-stt-blob",
+    "content_hash": "",
+    "mime": "audio/ogg",
+    "size": 16,
+    "source": "test",
+}
+
 
 def _nats_available() -> bool:
     """Check if NATS server is reachable."""
@@ -186,7 +195,7 @@ class TestWorkerHeartbeatFlow:
             "trace_id": "test-trace-001",
             "issued_at": "2024-01-01T12:00:00Z",
             "request_id": "test-req-001",
-            "audio_b64": "dGVzdC1hdWRpby1kYXRh",  # base64 "test-audio-data"
+            "blob_ref": _STT_BLOB_REF,
             "mime_type": "audio/ogg",
         }
 
@@ -213,7 +222,7 @@ class TestWorkerHeartbeatFlow:
             "trace_id": "test-trace-002",
             "issued_at": "2024-01-01T12:00:00Z",
             "request_id": "test-req-002",
-            "audio_b64": "dGVzdC1hdWRpby1kYXRh",
+            "blob_ref": _STT_BLOB_REF,
             "mime_type": "audio/ogg",
         }
 
@@ -300,7 +309,7 @@ class TestLoadAwareRoutingLocal:
                 "trace_id": "test-trace-load-001",
                 "issued_at": "2024-01-01T12:00:00Z",
                 "request_id": "test-req-load-001",
-                "audio_b64": "dGVzdC1hdWRpby1kYXRh",
+                "blob_ref": _STT_BLOB_REF,
                 "mime_type": "audio/ogg",
             }
 
@@ -339,7 +348,7 @@ class TestLoadAwareRoutingLocal:
             "trace_id": "test-trace-fallback-001",
             "issued_at": "2024-01-01T12:00:00Z",
             "request_id": "test-req-fallback-001",
-            "audio_b64": "dGVzdC1hdWRpby1kYXRh",
+            "blob_ref": _STT_BLOB_REF,
             "mime_type": "audio/ogg",
         }
 

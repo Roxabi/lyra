@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from roxabi_contracts.blob_ref import BlobRef
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice.models import SttResponse, TtsResponse
 
@@ -68,7 +69,7 @@ def build_tts_response(  # noqa: PLR0913 — builder with optional success/error
     payload: dict[str, Any],
     *,
     ok: bool,
-    audio_b64: str | None = None,
+    blob_ref: BlobRef | None = None,
     mime_type: str | None = None,
     duration_ms: int | None = None,
     error: str | None = None,
@@ -80,9 +81,10 @@ def build_tts_response(  # noqa: PLR0913 — builder with optional success/error
     Args:
         payload: The request payload dict. Must contain 'request_id'.
             'trace_id' is optional; falls back to request_id.
-        ok: Success flag. When True, audio_b64, mime_type, and duration_ms
+        ok: Success flag. When True, blob_ref, mime_type, and duration_ms
             are required (validated by TtsResponse model).
-        audio_b64: Base64-encoded audio data (required when ok=True).
+        blob_ref: BlobRef pointer (required when ok=True; sentinel
+            store_key=PENDING_STORE_KEY allowed during adapter transition).
         mime_type: Audio MIME type (required when ok=True).
         duration_ms: Audio duration in milliseconds (required when ok=True).
         error: Error message (required when ok=False).
@@ -106,7 +108,7 @@ def build_tts_response(  # noqa: PLR0913 — builder with optional success/error
         issued_at=issued_at if issued_at is not None else datetime.now(timezone.utc),
         ok=ok,
         request_id=request_id,
-        audio_b64=audio_b64,
+        blob_ref=blob_ref,
         mime_type=mime_type,
         duration_ms=duration_ms,
         error=error,

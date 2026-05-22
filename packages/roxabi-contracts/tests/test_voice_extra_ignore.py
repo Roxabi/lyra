@@ -31,7 +31,20 @@ _ENVELOPE: dict[str, Any] = {
 _REQUIRED: list[tuple[type[BaseModel], dict[str, Any]]] = [
     (TtsRequest, {"request_id": "r1", "text": "hello"}),
     (TtsResponse, {"ok": False, "request_id": "r1", "error": "engine_unavailable"}),
-    (SttRequest, {"request_id": "r2", "audio_b64": "AAAA", "model": "m"}),
+    (
+        SttRequest,
+        {
+            "request_id": "r2",
+            "blob_ref": {
+                "store_key": "blob-stt-extra",
+                "content_hash": "deadbeef",
+                "mime": "audio/wav",
+                "size": 1024,
+                "source": "voicecli",
+            },
+            "model": "m",
+        },
+    ),
     (SttResponse, {"ok": False, "request_id": "r2", "error": "audio_decode_failed"}),
 ]
 

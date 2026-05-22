@@ -28,6 +28,7 @@ from lyra.core.hub.middleware.path_validation import resolve_context
 from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult, ResumeStatus
 from lyra.core.messaging.message import Platform, Response
 from lyra.infrastructure.stores.turn_store import TurnStore
+from roxabi_contracts import BlobRef
 from tests.core.conftest import _make_hub, make_inbound_message
 
 _DROP = PipelineResult(action=Action.DROP)
@@ -794,7 +795,16 @@ async def test_stt_middleware_no_msg_manager_replies() -> None:
     msg = make_inbound_message(modality="voice")
     msg = dataclasses.replace(
         msg,
-        audio=AudioPayload(audio_bytes=b"fake_audio", mime_type="audio/ogg"),
+        audio=AudioPayload(
+            blob_ref=BlobRef(
+                store_key="test-blob",
+                content_hash="deadbeef",
+                mime="audio/ogg",
+                size=len(b"fake_audio"),
+                source="test",
+            ),
+            mime_type="audio/ogg",
+        ),
     )
 
     next_mock = _make_next()

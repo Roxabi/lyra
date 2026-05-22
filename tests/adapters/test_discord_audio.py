@@ -12,6 +12,7 @@ import pytest
 from lyra.adapters.discord import DiscordAdapter
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.messaging.message import InboundMessage
+from roxabi_contracts import BlobRef
 
 
 def _make_audio_attachment(content_type: str = "audio/ogg") -> SimpleNamespace:
@@ -81,7 +82,12 @@ def test_normalize_audio_attachment_fields() -> None:
     # Audio payload checks
     assert isinstance(result.audio, AudioPayload)
     assert result.audio.mime_type == "audio/ogg"
-    assert result.audio.audio_bytes == b"bytes"
+    from roxabi_contracts import PENDING_STORE_KEY
+    assert isinstance(result.audio.blob_ref, BlobRef)
+    assert result.audio.blob_ref.store_key == PENDING_STORE_KEY
+    assert result.audio.blob_ref.size == len(b"bytes")
+    assert result.audio.blob_ref.source == "discord"
+    assert result.audio.blob_ref.mime == "audio/ogg"
     assert result.audio.duration_ms is None
     assert result.audio.file_id is None
     assert result.audio.waveform_b64 is None

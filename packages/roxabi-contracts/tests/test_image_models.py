@@ -1,26 +1,25 @@
 """Roundtrip + success-path invariant tests for roxabi_contracts.image models.
 
 Parametrized over the three envelope subclasses (ImageRequest,
-ImageResponse, ImageHeartbeat). Invariants per issue #806 (mirrors voice
+ImageResponse, ImageHeartbeat). Invariants per ADR-067 (mirrors voice
 drift items from spec #763).
 """
 
 from __future__ import annotations
 
-import base64
 from datetime import datetime, timezone
 from typing import Any
 
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from roxabi_contracts.blob_ref import BlobRef
 from roxabi_contracts.image import (
     ImageHeartbeat,
     ImageRequest,
     ImageResponse,
 )
 from roxabi_contracts.image.fixtures import (
-    tiny_png_1x1,
     tiny_png_height,
     tiny_png_mime,
     tiny_png_width,
@@ -33,16 +32,18 @@ _ENVELOPE: dict[str, Any] = {
 }
 
 
-def _b64(b: bytes) -> str:
-    return base64.b64encode(b).decode("ascii")
-
-
 def _ok_response_payload() -> dict[str, Any]:
     return {
         **_ENVELOPE,
         "ok": True,
         "request_id": "r1",
-        "image_b64": _b64(tiny_png_1x1),
+        "blob_ref": {
+            "store_key": "img-abc",
+            "content_hash": "deadbeef",
+            "mime": tiny_png_mime,
+            "size": 1024,
+            "source": "imagecli",
+        },
         "mime_type": tiny_png_mime,
         "width": tiny_png_width,
         "height": tiny_png_height,
@@ -89,7 +90,7 @@ def test_roundtrip(model: type[BaseModel], payload: dict[str, Any]) -> None:
 def test_image_response_success_accepts_complete_payload() -> None:
     """Valid ok=True payload with all required success fields parses cleanly."""
     resp = ImageResponse.model_validate(_ok_response_payload())
-    assert resp.image_b64 is not None
+    assert isinstance(resp.blob_ref, BlobRef) and resp.blob_ref.store_key == "img-abc"
     assert resp.mime_type == tiny_png_mime
     assert resp.width == tiny_png_width
     assert resp.height == tiny_png_height
@@ -97,29 +98,11 @@ def test_image_response_success_accepts_complete_payload() -> None:
     assert resp.seed_used == 42
 
 
-def test_image_response_success_accepts_file_path_variant() -> None:
-    """file_path is an accepted alternative to image_b64 when ok=True."""
+def test_image_response_ok_true_rejects_missing_blob_ref() -> None:
+    """ok=True with no blob_ref is a violation."""
     payload = _ok_response_payload()
-    payload["image_b64"] = None
-    payload["file_path"] = "/tmp/out.png"
-    resp = ImageResponse.model_validate(payload)
-    assert resp.file_path == "/tmp/out.png"
-    assert resp.image_b64 is None
-
-
-def test_image_response_ok_true_rejects_both_payload_fields() -> None:
-    """Exactly-one invariant: image_b64 AND file_path set is a violation."""
-    payload = _ok_response_payload()
-    payload["file_path"] = "/tmp/out.png"
-    with pytest.raises(ValidationError, match="exactly one"):
-        ImageResponse.model_validate(payload)
-
-
-def test_image_response_ok_true_rejects_neither_payload_field() -> None:
-    """Exactly-one invariant: neither image_b64 nor file_path set is a violation."""
-    payload = _ok_response_payload()
-    payload["image_b64"] = None
-    with pytest.raises(ValidationError, match="exactly one"):
+    payload["blob_ref"] = None
+    with pytest.raises(ValidationError, match="blob_ref"):
         ImageResponse.model_validate(payload)
 
 
@@ -143,8 +126,7 @@ def test_image_response_error_path_allows_null_success_fields() -> None:
         request_id="r1",
         error="engine_unavailable",
     )
-    assert resp.image_b64 is None
-    assert resp.file_path is None
+    assert resp.blob_ref is None
     assert resp.mime_type is None
     assert resp.width is None
     assert resp.height is None

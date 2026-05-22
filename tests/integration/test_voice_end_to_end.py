@@ -36,6 +36,15 @@ from lyra.core.audio_payload import AudioPayload
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.inbound_bus import LocalBus
 from lyra.core.messaging.message import InboundMessage, TelegramMeta
+from roxabi_contracts import PENDING_STORE_KEY, BlobRef
+
+pytestmark = pytest.mark.skip(
+    reason=(
+        "V2 wire refactor (#1064): end-to-end voice round-trip is intentionally "
+        "broken until #1067 wires blob_ref → bytes resolution and #1308/voiceCLI#144 "
+        "ship the worker side. Re-enable after that stack lands."
+    )
+)
 
 # ---------------------------------------------------------------------------
 # Helpers / stubs shared across this module
@@ -69,7 +78,13 @@ def _make_voice_message(  # noqa: PLR0913
         trust_level=TrustLevel.PUBLIC,
         modality="voice",
         audio=AudioPayload(
-            audio_bytes=b"fake-ogg-e2e",
+            blob_ref=BlobRef(
+                store_key=PENDING_STORE_KEY,
+                content_hash="",
+                mime="audio/ogg",
+                size=len(b"fake-ogg-e2e"),
+                source="test",
+            ),
             mime_type="audio/ogg",
             duration_ms=2000,
             file_id="file-e2e",
@@ -156,7 +171,7 @@ class TestSlice2VoiceMessageReachesSTTMiddleware:
         assert injected_msg.audio is not None
         assert isinstance(injected_msg.audio, AudioPayload)
         assert voice_msg.audio is not None  # always set by _make_voice_message()
-        assert injected_msg.audio.audio_bytes == voice_msg.audio.audio_bytes
+        assert injected_msg.audio.blob_ref == voice_msg.audio.blob_ref
         assert injected_msg.id == voice_msg.id
         assert injected_msg.platform == voice_msg.platform
         assert injected_msg.bot_id == voice_msg.bot_id

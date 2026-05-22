@@ -6,7 +6,6 @@ Exit 0 = PASS, 1 = FAIL. No voicecli import — NATS-only.
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import os
 from uuid import uuid4
@@ -15,6 +14,7 @@ import nats.errors
 import typer
 from nats.aio.client import Client as NATS
 
+from roxabi_contracts import PENDING_STORE_KEY
 from roxabi_contracts.voice import SUBJECTS
 from roxabi_nats.connect import nats_connect  # noqa: F401 — DEBT:re-export-init
 
@@ -102,11 +102,10 @@ async def _run_smoke(
     try:
         if require_voicecli_worker:
             await _require_voicecli_heartbeats(nc, heartbeat_wait)
-        audio_bytes, mime_type = await _step_tts(nc, timeout)
-        transcript = await _step_stt(nc, audio_bytes, mime_type, timeout)
+        blob_ref, mime_type = await _step_tts(nc, timeout)
+        transcript = await _step_stt(nc, blob_ref, mime_type, timeout)
         _assert_transcript(transcript)
-        typer.echo(f' ok (transcript: "{transcript}")')
-        typer.echo("PASS")
+        typer.echo(f' ok (transcript: "{transcript}")\nPASS')
     finally:
         await nc.drain()
         await nc.close()
@@ -171,8 +170,8 @@ def _extract_worker_id(raw: bytes) -> str | None:
     return worker_id if isinstance(worker_id, str) else None
 
 
-async def _step_tts(nc: NATS, timeout: float) -> tuple[bytes, str]:
-    """Send TTS request and return (audio_bytes, mime_type).
+async def _step_tts(nc: NATS, timeout: float) -> tuple[dict, str]:
+    """Send TTS request and return (blob_ref, mime_type).
 
     Prints progress and raises typer.Exit(1) on any failure.
     """
@@ -204,20 +203,17 @@ async def _step_tts(nc: NATS, timeout: float) -> tuple[bytes, str]:
     data = _parse_reply(reply.data, "TTS")
     _assert_ok(data, "TTS synthesis failed")
 
-    audio_b64 = data.get("audio_b64", "")
-    if not audio_b64:
-        _fail("TTS response missing audio_b64")
-    audio_bytes = base64.b64decode(audio_b64)
-    if not audio_bytes:
-        _fail("TTS returned empty audio_bytes")
+    blob_ref = data.get("blob_ref")
+    if not isinstance(blob_ref, dict) or not blob_ref.get("store_key"):
+        _fail("TTS response missing blob_ref")
+        raise typer.Exit(1)  # unreachable — satisfies pyright narrowing
+    typer.echo(
+        f" ok (blob_ref {blob_ref['store_key']!r}, {blob_ref.get('size', 0)} bytes)"
+    )
+    return blob_ref, data.get("mime_type", "audio/ogg")
 
-    typer.echo(f" ok ({len(audio_bytes)} bytes)")
-    return audio_bytes, data.get("mime_type", "audio/ogg")
 
-
-async def _step_stt(
-    nc: NATS, audio_bytes: bytes, mime_type: str, timeout: float
-) -> str:
+async def _step_stt(nc: NATS, blob_ref: dict, mime_type: str, timeout: float) -> str:
     """Send STT request and return the transcript text.
 
     Prints progress and raises typer.Exit(1) on any failure.
@@ -227,7 +223,13 @@ async def _step_stt(
         {
             "contract_version": _CONTRACT_VERSION,
             "request_id": str(uuid4()),
-            "audio_b64": base64.b64encode(audio_bytes).decode("ascii"),
+            "blob_ref": {
+                "store_key": PENDING_STORE_KEY,
+                "content_hash": "",
+                "mime": mime_type,
+                "size": 0,  # smoke test does not carry bytes through
+                "source": "voice-smoke",
+            },
             "mime_type": mime_type,
             "model": "large-v3-turbo",
         },

@@ -1417,7 +1417,7 @@ class TestToolCallLifecycle:
         cfg_ = ToolDisplayConfig(throttle_ms=0)
         processor = StreamProcessor(cfg_)
         seen: list[RenderEvent] = []
-        with __import__("pytest").raises(_Boom):
+        with pytest.raises(_Boom):
             async for ev in processor.process(_raising_events()):
                 seen.append(ev)
 

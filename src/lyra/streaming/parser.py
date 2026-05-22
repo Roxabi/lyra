@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Generic, Iterable, Protocol, TypeVar, runtime_checkable
 
-# Variance enforced by static analysis (mypy/pyright). @runtime_checkable is
+# Variance enforced by static analysis (pyright). @runtime_checkable is
 # shape-only — isinstance(x, Parser) does not see variance. See streaming/CLAUDE.md
 # §Protocol is structural.
 InT = TypeVar("InT", contravariant=True)

@@ -480,8 +480,9 @@ class StreamProcessor:
         used in log messages (F9, architect review — parallel-path-drift).
 
         Yields orphan ``ReasoningEndRenderEvent`` then ``TextEndRenderEvent``
-        for whichever blocks are currently open, clearing their state.
-        Open tool calls are handled separately by ``_synth_orphan_tool_ends``.
+        for whichever blocks are currently open, clearing their state. Also
+        delegates to ``_synth_orphan_tool_ends`` so open tool calls are closed
+        on the truncation/exception paths (symmetry with ``_handle_result``).
         """
         # ───── Slice 4 (#1101) orphan reasoning-close ─────
         open_reasoning = next(iter(self._sm_reasoning.open_blocks), None)
@@ -534,14 +535,16 @@ class StreamProcessor:
     ) -> Iterator[ToolCallEndRenderEvent]:
         """Synthesize ``ToolCallEndRenderEvent`` for any open tool_call_ids.
 
-        Called at ``ResultLlmEvent`` time. Tool calls that started but never
-        received a ``content_block_stop`` leave adapters with a dangling
-        open-call card; the synthesized end closes it. WARN-logged once per
+        Called when a run terminates (``ResultLlmEvent``, truncation, or
+        exception). Tool calls that started but never received a
+        ``content_block_stop`` leave adapters with a dangling open-call card;
+        the synthesized end closes it. WARN-logged once per
         orphan with a truncated id (last 6 chars) so cross-session correlation
         of the full opaque tool_call_id is not exposed in shared log
         aggregation (#1100 review S2).
         """
-        for tid in sorted(list(self._sm_tool.open_blocks.keys())):
+        # sorted() materialises keys before iteration; closing inside is safe.
+        for tid in sorted(self._sm_tool.open_blocks):
             log.warning(
                 "StreamProcessor: synthesizing orphan ToolCallEnd for tool_call_id=…%s",
                 tid[-6:],

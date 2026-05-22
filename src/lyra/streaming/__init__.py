@@ -5,6 +5,7 @@ Parser Protocol + StateMachine + EventEmitter composed by:
   - lyra.core.processors.stream_processor.StreamProcessor  (LlmEvent → RenderEvent)
 """
 
+from .event_emitter import EventEmitter
 from .parser import Parser
 
-__all__ = ["Parser"]
+__all__ = ["EventEmitter", "Parser"]

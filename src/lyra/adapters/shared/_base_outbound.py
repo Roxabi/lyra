@@ -2,7 +2,7 @@
 
 Defines the shared contract for Telegram and Discord outbound adapters:
 - abstract send() — platform-specific complete reply
-- concrete send_streaming() — shared algorithm via StreamingSession
+- concrete send_streaming() — shared algorithm via OutboundEmitter
 - abstract _make_streaming_callbacks() — platform-specific callback factory
 - abstract _start_typing() / _cancel_typing() — typing indicator lifecycle
 
@@ -19,7 +19,8 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
-from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
+from lyra.adapters.shared._shared_streaming import PlatformCallbacks
+from lyra.outbound.emitter import OutboundEmitter
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage, OutboundMessage
@@ -58,12 +59,17 @@ class OutboundAdapterBase(ABC):
         events: "AsyncIterator[RenderEvent]",
         outbound: "OutboundMessage | None" = None,
     ) -> None:
-        """Stream reply using the shared StreamingSession algorithm."""
-        session = StreamingSession(
+        """Stream reply using the shared OutboundEmitter algorithm.
+
+        Slices S4/S5 (#1279) will replace `_make_streaming_callbacks` with
+        `_make_emitter` on each platform adapter; this base method swaps
+        accordingly when both platforms have shipped the new factory.
+        """
+        emitter = OutboundEmitter(
             self._make_streaming_callbacks(original_msg, outbound),
             outbound,
         )
-        await session.run(events)
+        await emitter.run(events)
 
     @abstractmethod
     def _make_streaming_callbacks(
@@ -71,7 +77,7 @@ class OutboundAdapterBase(ABC):
         original_msg: "InboundMessage",
         outbound: "OutboundMessage | None",
     ) -> PlatformCallbacks:
-        """Build the platform-specific PlatformCallbacks for StreamingSession."""
+        """Build the platform-specific PlatformCallbacks for OutboundEmitter."""
 
     @abstractmethod
     def _start_typing(self, scope_id: int) -> None:

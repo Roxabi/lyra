@@ -18,7 +18,6 @@ from lyra.adapters.discord.discord_formatting import (
 from lyra.adapters.shared._shared import (
     DISCORD_MAX_LENGTH,
 )
-from lyra.adapters.shared._shared_streaming_state import STREAMING_EDIT_INTERVAL
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
@@ -28,6 +27,7 @@ from lyra.core.messaging.render_events import (
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
+from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -43,6 +43,26 @@ _PartialMessageable = (
     | discord.VoiceChannel
     | discord.StageChannel
 )
+
+
+# Implements ThrottleCapability Protocol from lyra.outbound.throttle.
+class DiscordTypingIndicator:
+    """ThrottleCapability impl for Discord — wraps adapter._start_typing/_cancel_typing.
+
+    Composed into OutboundEmitter by DiscordAdapter._make_emitter (T19 / Slice 5).
+    Holds no state beyond the back-reference to the adapter.
+    """
+
+    edit_interval_s: float = STREAMING_EDIT_INTERVAL
+
+    def __init__(self, adapter: "DiscordAdapter") -> None:
+        self._adapter = adapter
+
+    async def start_typing(self, scope_id: int) -> None:
+        self._adapter._start_typing(scope_id)
+
+    async def cancel_typing(self, scope_id: int) -> None:
+        self._adapter._cancel_typing(scope_id)
 
 
 async def _discord_typing_worker(  # noqa: C901 — DEBT:adapter-dispatch-complexity

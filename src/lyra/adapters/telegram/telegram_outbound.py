@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
 
-from lyra.adapters.shared._shared_streaming_state import STREAMING_EDIT_INTERVAL
 from lyra.adapters.telegram.telegram_formatting import (
     _render_buttons,
     _render_text,
@@ -27,12 +26,29 @@ from lyra.core.messaging.render_events import (
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
+from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 
 if TYPE_CHECKING:
     from lyra.adapters.shared._shared_streaming import PlatformCallbacks
     from lyra.adapters.telegram import TelegramAdapter
 
 log = logging.getLogger("lyra.adapters.telegram")
+
+
+# Implements ThrottleCapability Protocol from lyra.outbound.throttle
+class TelegramTypingIndicator:
+    """ThrottleCapability impl — wraps adapter._start_typing/_cancel_typing."""
+
+    edit_interval_s: float = STREAMING_EDIT_INTERVAL
+
+    def __init__(self, adapter: "TelegramAdapter") -> None:
+        self._adapter = adapter
+
+    async def start_typing(self, scope_id: int) -> None:
+        self._adapter._start_typing(scope_id)
+
+    async def cancel_typing(self, scope_id: int) -> None:
+        self._adapter._cancel_typing(scope_id)
 
 
 # ---------------------------------------------------------------------------

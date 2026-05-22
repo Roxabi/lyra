@@ -26,8 +26,8 @@ from lyra.adapters.shared._shared_audio import (
     mime_to_ext,
 )
 
-# Re-exports from _shared_streaming — importers can use either module.
-from lyra.adapters.shared._shared_streaming import (
+# Re-exports from _shared_streaming_state — importers can use either module.
+from lyra.adapters.shared._shared_streaming_state import (
     IntermediateTextState,
     StreamState,
 )
@@ -234,9 +234,14 @@ async def send_with_retry(
         try:
             await coro_fn()
             return
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — retry boundary, type sanitized
             if attempt == max_attempts - 1:
-                log.exception("%s failed after %d attempts", label, max_attempts)
+                log.warning(
+                    "%s failed after %d attempts: type=%s",
+                    label,
+                    max_attempts,
+                    type(exc).__name__,
+                )
                 return
             delay = 2**attempt  # 1 s, 2 s, 4 s ...
             log.warning(

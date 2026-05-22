@@ -14,10 +14,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.adapters.shared._shared_streaming_emitter import (
-    PlatformCallbacks,
-    StreamingSession,
-)
 from lyra.core.messaging.render_events import (
     RenderEvent,
     RunFinishedRenderEvent,
@@ -29,6 +25,8 @@ from lyra.core.messaging.render_events import (
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
+from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from lyra.outbound.emitter import PlatformCallbacks
 
 # ---------------------------------------------------------------------------
 # Helpers

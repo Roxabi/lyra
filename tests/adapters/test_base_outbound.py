@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
-from lyra.adapters.shared._shared_streaming import PlatformCallbacks
 from lyra.core.messaging.message import InboundMessage, OutboundMessage
 from lyra.core.messaging.render_events import RenderEvent, TextEndRenderEvent
+from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
 from tests.adapters.conftest import make_tg_msg
 
 # ---------------------------------------------------------------------------
@@ -34,6 +34,13 @@ class ConcreteAdapter(OutboundAdapterBase):
         self, original_msg: InboundMessage, outbound: OutboundMessage | None
     ) -> PlatformCallbacks:
         return MagicMock(spec=PlatformCallbacks)
+
+    def _make_emitter(
+        self, original_msg: InboundMessage, outbound: OutboundMessage | None
+    ) -> OutboundEmitter:
+        return OutboundEmitter(
+            self._make_streaming_callbacks(original_msg, outbound), outbound
+        )
 
     def _start_typing(self, scope_id: int) -> None:
         pass
@@ -70,6 +77,13 @@ class TestableAdapter(OutboundAdapterBase):
             placeholder_text="\u2026",
         )
 
+    def _make_emitter(
+        self, original_msg: InboundMessage, outbound: OutboundMessage | None
+    ) -> OutboundEmitter:
+        return OutboundEmitter(
+            self._make_streaming_callbacks(original_msg, outbound), outbound
+        )
+
     def _start_typing(self, scope_id: int) -> None:
         pass
 
@@ -100,6 +114,9 @@ class TestOutboundAdapterBaseABC:
             def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
+            def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
+                pass
+
             def _start_typing(self, scope_id):
                 pass
 
@@ -118,6 +135,9 @@ class TestOutboundAdapterBaseABC:
             async def send(self, original_msg, outbound):
                 pass
 
+            def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
+                pass
+
             def _start_typing(self, scope_id):
                 pass
 
@@ -128,6 +148,27 @@ class TestOutboundAdapterBaseABC:
         with pytest.raises(TypeError):
             MissingCallbacks()  # type: ignore[abstract]
 
+    def test_missing_make_emitter_raises_type_error(self) -> None:
+        """Instantiating a subclass that omits _make_emitter() must raise TypeError."""
+
+        # Arrange
+        class MissingEmitter(OutboundAdapterBase):
+            async def send(self, original_msg, outbound):
+                pass
+
+            def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
+                pass
+
+            def _start_typing(self, scope_id):
+                pass
+
+            def _cancel_typing(self, scope_id):
+                pass
+
+        # Act / Assert
+        with pytest.raises(TypeError):
+            MissingEmitter()  # type: ignore[abstract]
+
     def test_missing_start_typing_raises_type_error(self) -> None:
         """Instantiating a subclass that omits _start_typing() must raise TypeError."""
 
@@ -137,6 +178,9 @@ class TestOutboundAdapterBaseABC:
                 pass
 
             def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
+                pass
+
+            def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
             def _cancel_typing(self, scope_id):
@@ -155,6 +199,9 @@ class TestOutboundAdapterBaseABC:
                 pass
 
             def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
+                pass
+
+            def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
             def _start_typing(self, scope_id):
@@ -216,10 +263,15 @@ class TestOutboundAdapterBaseSendStreaming:
         # Assert — StreamingSession should have stored the placeholder message id
         assert "reply_message_id" in outbound.metadata
 
-    async def test_send_streaming_calls_make_streaming_callbacks(self) -> None:
-        """send_streaming() must call _make_streaming_callbacks() exactly once."""
+    async def test_send_streaming_calls_make_emitter_exactly_once(self) -> None:
+        """send_streaming() must call _make_emitter() exactly once.
+
+        This pins the base class dispatch contract \u2014 send_streaming delegates
+        to _make_emitter (not _make_streaming_callbacks, which is the
+        transitional path used internally by adapters).
+        """
         # Arrange
-        call_count = 0
+        emitter_call_count = 0
         original_msg = make_tg_msg()
 
         class TrackingAdapter(OutboundAdapterBase):
@@ -227,8 +279,6 @@ class TestOutboundAdapterBaseSendStreaming:
                 pass
 
             def _make_streaming_callbacks(self, original_msg, outbound):
-                nonlocal call_count
-                call_count += 1
                 return PlatformCallbacks(
                     send_placeholder=AsyncMock(return_value=(MagicMock(), 42)),
                     edit_placeholder_text=AsyncMock(),
@@ -242,6 +292,13 @@ class TestOutboundAdapterBaseSendStreaming:
                     placeholder_text="\u2026",
                 )
 
+            def _make_emitter(self, original_msg, outbound):
+                nonlocal emitter_call_count
+                emitter_call_count += 1
+                return OutboundEmitter(
+                    self._make_streaming_callbacks(original_msg, outbound), outbound
+                )
+
             def _start_typing(self, scope_id):
                 pass
 
@@ -253,5 +310,5 @@ class TestOutboundAdapterBaseSendStreaming:
         # Act
         await adapter.send_streaming(original_msg, _events(), outbound=None)
 
-        # Assert
-        assert call_count == 1
+        # Assert \u2014 send_streaming \u2192 _make_emitter dispatch fires exactly once
+        assert emitter_call_count == 1

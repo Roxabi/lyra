@@ -1,0 +1,36 @@
+# Outbound bus-bound baseline — captured at merge of #1279
+# Used for 6-month falsifiability checkpoint (frame failure_in_6mo).
+
+## except (Exception|BaseException) count on outbound bus-bound paths
+src/lyra/outbound/error_handler.py:5:13 ad-hoc `except Exception:  # noqa: BLE001` sites that used to live in
+src/lyra/outbound/error_handler.py:74:        except Exception as exc:  # noqa: BLE001 — single catch site for outbound boundaries
+src/lyra/adapters/discord/discord_outbound.py:85:            except Exception as exc:
+src/lyra/adapters/discord/discord_outbound.py:274:                except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: caller has no fallback for partial streams
+src/lyra/adapters/discord/discord_outbound.py:317:        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+src/lyra/outbound/CLAUDE.md:38:  `except Exception` in `lyra.outbound/`. Two terminal sites in `OutboundEmitter.run`
+src/lyra/outbound/emitter.py:399:        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
+src/lyra/outbound/emitter.py:503:        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
+src/lyra/adapters/discord/discord_formatter.py:138:        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+src/lyra/adapters/telegram/telegram_outbound.py:266:            except Exception:
+
+## str(exc) family on outbound paths
+src/lyra/outbound/error_handler.py:4:never str(exc)) and routes them via Result[T, SanitizedError]. Replaces the
+src/lyra/outbound/error_handler.py:46:        message is `type(exc).__name__` only — never `str(exc)`. This is the
+src/lyra/outbound/CLAUDE.md:31:  `SanitizedError(message=type(exc).__name__, …)` — never `str(exc)`. The discipline
+src/lyra/outbound/CLAUDE.md:32:  kills the `str(exc)` leak class (#1212 etc.).
+src/lyra/outbound/CLAUDE.md:79:A pre-commit grep check for bus-bound `str(exc)` patterns on outbound paths was scoped
+
+## wc -l outbound files
+  542 src/lyra/outbound/emitter.py
+  107 src/lyra/outbound/error_handler.py
+   61 src/lyra/outbound/formatter.py
+    6 src/lyra/outbound/__init__.py
+   25 src/lyra/outbound/throttle.py
+  150 src/lyra/adapters/telegram/telegram_formatter.py
+  139 src/lyra/adapters/discord/discord_formatter.py
+ 1030 total
+
+## Sibling-fix PR baseline reference (from spec frame Premise Validity)
+# Pre-PR cascade: #1212→#1215→#1219→#1252→#1253→#1256 (5 sibling-fixes for str(exc)
+# leak class observed 2026-05-19). 6m comparison target: 0 sibling-fixes on
+# outbound bus-bound bug-classes (broad-catch, str(exc), payload defensives).

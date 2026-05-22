@@ -1,8 +1,13 @@
-"""Streaming session and platform callbacks — StreamingSession, PlatformCallbacks.
+"""OutboundEmitter — platform-agnostic streaming orchestrator.
 
-Extracted from _shared_streaming.py (Issue #760).  Contains the orchestration
-algorithm (placeholder → debounced edits → final delivery) and the injectable
-PlatformCallbacks contract.  State types live in _shared_streaming_state.py.
+Relocated from src/lyra/adapters/shared/_shared_streaming_emitter.py (issue #1279,
+Phase 2 stage extraction). Renamed StreamingSession → OutboundEmitter.
+PlatformCallbacks dataclass kept here transitionally; split into
+Formatter/Throttle/ErrorHandler stages in subsequent slices.
+
+Contains the orchestration algorithm (placeholder → debounced edits → final
+delivery) and the injectable PlatformCallbacks contract. State types live in
+_shared_streaming_state.py.
 """
 
 from __future__ import annotations
@@ -11,17 +16,28 @@ import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, assert_never
+from typing import TYPE_CHECKING, Any, assert_never
 
-from lyra.adapters.shared._shared_streaming_state import (
-    STREAMING_EDIT_INTERVAL,
-    StreamState,
-    classify_stream_error,
-)
-from lyra.adapters.shared._tool_recap import (
-    ToolRecapAccumulator,
-    format_recap_lines,
-)
+# IMPORTANT: state + tool-recap imports are deferred to the BOTTOM of this file
+# (after the class definitions) to break a circular import. Both
+# lyra.adapters/__init__.py and lyra.adapters.shared/__init__.py do eager
+# package-level imports of DiscordAdapter / StreamingSession / PlatformCallbacks
+# that transitively re-enter this module through the
+# _shared_streaming_emitter shim. If the imports were at the top of this file,
+# Python would resolve them while emitter.py is still partially initialized,
+# and the shim's `from lyra.outbound.emitter import OutboundEmitter` would
+# fail with "partially initialized module". Deferring the import to the bottom
+# of the file means OutboundEmitter is defined before the shared-state import
+# fires, so the shim's lookup succeeds. (Issue #1279 keeps the state + recap
+# files under lyra.adapters.shared/ per resolved spec Open Q 2.)
+if TYPE_CHECKING:
+    from lyra.adapters.shared._shared_streaming_state import StreamState
+    from lyra.adapters.shared._tool_recap import (
+        ToolRecapAccumulator,
+        format_recap_lines,
+    )
+    from lyra.outbound.throttle import ThrottleCapability
+
 from lyra.core.messaging import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
@@ -40,6 +56,8 @@ from lyra.core.messaging import (
     ToolCallStartRenderEvent,
 )
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
+from lyra.outbound.error_handler import OutboundErrorHandler
+from lyra.transport._result import Err
 
 log = logging.getLogger(__name__)
 
@@ -60,13 +78,14 @@ async def _default_no_op_edit_reasoning(
     | ReasoningEndRenderEvent,
 ) -> None:
     """Default no-op — adapters that haven't opted in render nothing."""
+    del trace_obj, event
 
 
 @dataclass
 class PlatformCallbacks:
-    """Injectable platform callbacks for StreamingSession.
+    """Injectable platform callbacks for OutboundEmitter.
 
-    Callbacks may raise; StreamingSession catches and handles exceptions
+    Callbacks may raise; OutboundEmitter catches and handles exceptions
     internally except for stream errors which are re-raised from ``run()``.
     See adapters/CLAUDE.md for full field documentation.
     """
@@ -105,8 +124,11 @@ async def _prepend(
         yield ev
 
 
-class StreamingSession:
-    """Platform-agnostic streaming session.
+class OutboundEmitter:
+    """Platform-agnostic outbound streaming session.
+
+    Composes formatter + throttle + error_handler stages.
+    Relocated from src/lyra/adapters/shared/_shared_streaming_emitter.StreamingSession.
 
     Orchestrates the streaming lifecycle:
       1. Send response placeholder
@@ -124,10 +146,23 @@ class StreamingSession:
         self,
         callbacks: PlatformCallbacks,
         outbound: OutboundMessage | None,
+        *,
+        error_handler: OutboundErrorHandler | None = None,
+        typing: "ThrottleCapability | None" = None,
+        typing_scope_id: int | None = None,
     ) -> None:
         self._cb = callbacks
         self._outbound = outbound
+        self._handler = error_handler or OutboundErrorHandler(get_msg=callbacks.get_msg)
+        self._typing = typing
+        self._typing_scope_id = typing_scope_id
         self._st = StreamState()
+        # Edit-debounce interval: ThrottleCapability owns it when injected, else
+        # falls back to the module constant. Resolved at construction so callers
+        # see a single coherent interval per session.
+        self._edit_interval = (
+            typing.edit_interval_s if typing is not None else STREAMING_EDIT_INTERVAL
+        )
         self._trace_obj: Any | None = None
         self._recap_accum = ToolRecapAccumulator()
         self._last_recap_edit: float | None = None
@@ -141,11 +176,13 @@ class StreamingSession:
         """
         if self._trace_obj is not None:
             return True
-        try:
-            self._trace_obj, _ = await self._cb.send_trace_placeholder()
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
-            log.exception("trace placeholder failed")
+        result = await self._handler.guard(
+            self._cb.send_trace_placeholder,
+            context="ensure_trace_obj",
+        )
+        if isinstance(result, Err):
             return False
+        self._trace_obj, _ = result.value
         return self._trace_obj is not None
 
     async def _on_toolcall_v2(
@@ -187,14 +224,18 @@ class StreamingSession:
         now = time.monotonic()
         if (
             self._last_recap_edit is None
-            or (now - self._last_recap_edit) >= STREAMING_EDIT_INTERVAL
+            or (now - self._last_recap_edit) >= self._edit_interval
         ):
             lines = format_recap_lines(self._recap_accum, done=False)
             if lines:
-                try:
-                    await self._cb.edit_tool_recap(self._trace_obj, lines, False)
-                except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
-                    log.debug("recap edit skipped: %s", exc)
+                trace = self._trace_obj
+
+                result = await self._handler.guard(
+                    lambda t=trace, ls=lines: self._cb.edit_tool_recap(t, ls, False),
+                    context="recap_intermediate_edit",
+                )
+                if isinstance(result, Err):
+                    pass  # guard already logged; non-fatal
                 self._last_recap_edit = now
 
     async def _on_text_v2(
@@ -218,15 +259,17 @@ class StreamingSession:
                 now = time.monotonic()
                 if (
                     self._st.last_intermediate_edit is None
-                    or (now - self._st.last_intermediate_edit)
-                    >= STREAMING_EDIT_INTERVAL
+                    or (now - self._st.last_intermediate_edit) >= self._edit_interval
                 ):
-                    try:
-                        await self._cb.edit_placeholder_text(
-                            placeholder_obj, self._st.istate.display()
-                        )
-                    except Exception as edit_exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
-                        log.debug("Intermediate text edit skipped: %s", edit_exc)
+                    display = self._st.istate.display()
+                    result = await self._handler.guard(
+                        lambda p=placeholder_obj, d=display: (
+                            self._cb.edit_placeholder_text(p, d)
+                        ),
+                        context="intermediate_text_edit",
+                    )
+                    if isinstance(result, Err):
+                        pass  # guard already logged; non-fatal
                     self._st.last_intermediate_edit = now
         elif isinstance(event, TextEndRenderEvent):
             # TextEnd closes the text block; accumulated istate text is the final text.
@@ -241,6 +284,20 @@ class StreamingSession:
                     final = final[2:]
                 self._st.set_final_text(final)
 
+    async def _cancel_typing(self) -> None:
+        """Cancel typing via ThrottleCapability or legacy callback."""
+        if self._typing is not None and self._typing_scope_id is not None:
+            await self._typing.cancel_typing(self._typing_scope_id)
+        else:
+            self._cb.cancel_typing()
+
+    async def _start_typing(self) -> None:
+        """Start typing via ThrottleCapability or legacy callback."""
+        if self._typing is not None and self._typing_scope_id is not None:
+            await self._typing.start_typing(self._typing_scope_id)
+        else:
+            self._cb.start_typing()
+
     async def _send_placeholder(self) -> tuple[Any, int | None] | None:
         """Send the placeholder and record reply_message_id on outbound.
 
@@ -248,15 +305,17 @@ class StreamingSession:
         Returns None on failure (caller should call _handle_typing_tail and return).
         Returns (placeholder_obj, reply_message_id) on success.
         """
-        try:
-            placeholder_obj, reply_message_id = await self._cb.send_placeholder()
-            if self._outbound is not None:
-                self._outbound.metadata["reply_message_id"] = reply_message_id
-            return placeholder_obj, reply_message_id
-        except Exception:
-            self._cb.cancel_typing()
-            log.exception("Failed to send placeholder — falling back to non-streaming")
+        result = await self._handler.guard(
+            self._cb.send_placeholder,
+            context="send_placeholder",
+        )
+        if isinstance(result, Err):
+            await self._cancel_typing()
             return None
+        placeholder_obj, reply_message_id = result.value
+        if self._outbound is not None:
+            self._outbound.metadata["reply_message_id"] = reply_message_id
+        return placeholder_obj, reply_message_id
 
     async def _drain_fallback(self, events: AsyncIterator[RenderEvent]) -> None:
         """Drain remaining events, accumulate text, send via fallback callback."""
@@ -265,11 +324,13 @@ class StreamingSession:
             if isinstance(event, TextDeltaRenderEvent):
                 parts.append(event.delta)
         fallback_text = "".join(parts) or self._cb.placeholder_text
-        try:
-            fallback_message_id = await self._cb.send_fallback(fallback_text)
-        except Exception:
-            log.exception("Fallback send failed — message lost")
+        result = await self._handler.guard(
+            lambda t=fallback_text: self._cb.send_fallback(t),
+            context="drain_fallback",
+        )
+        if isinstance(result, Err):
             return
+        fallback_message_id = result.value
         if self._outbound is not None and fallback_message_id is not None:
             self._outbound.metadata["reply_message_id"] = fallback_message_id
 
@@ -338,9 +399,8 @@ class StreamingSession:
                 else:
                     assert_never(event)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
             self._st.stream_error = exc
-            log.exception("Stream interrupted")
 
     async def _deliver_text_chunks(
         self,
@@ -348,18 +408,21 @@ class StreamingSession:
         final_chunks: list[str],
     ) -> None:
         """Edit placeholder with first chunk, send overflow."""
-        try:
-            await self._cb.edit_placeholder_text(
-                placeholder_obj,
-                final_chunks[0],
-            )
-        except Exception:
-            log.exception("Final edit failed")
+        result = await self._handler.guard(
+            lambda p=placeholder_obj, c=final_chunks[0]: self._cb.edit_placeholder_text(
+                p, c
+            ),
+            context="deliver_final_edit",
+        )
+        if isinstance(result, Err):
+            pass  # guard already logged; non-fatal
         for extra_chunk in final_chunks[1:]:
-            try:
-                await self._cb.send_message(extra_chunk)
-            except Exception:
-                log.exception("Failed to send overflow chunk")
+            result = await self._handler.guard(
+                lambda c=extra_chunk: self._cb.send_message(c),
+                context="deliver_overflow_chunk",
+            )
+            if isinstance(result, Err):
+                pass  # guard already logged; non-fatal
 
     async def _deliver_final(
         self,
@@ -382,10 +445,13 @@ class StreamingSession:
             self._recap_done_emitted = True
             lines = format_recap_lines(self._recap_accum, done=True)
             if lines:
-                try:
-                    await self._cb.edit_tool_recap(self._trace_obj, lines, True)
-                except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
-                    log.debug("recap final edit skipped: %s", exc)
+                trace = self._trace_obj
+                result = await self._handler.guard(
+                    lambda t=trace, ls=lines: self._cb.edit_tool_recap(t, ls, True),
+                    context="recap_final_edit",
+                )
+                if isinstance(result, Err):
+                    pass  # guard already logged; non-fatal
 
         display_text = self._st.build_display_text(self._cb.get_msg)
         chunks = self._cb.chunk_text(display_text) if display_text else []
@@ -400,25 +466,28 @@ class StreamingSession:
             self._st.stream_error,
         )
         error_text = (
-            classify_stream_error(
+            self._handler.classify_stream_error(
                 self._st.stream_error,
                 had_tool_events=self._st.had_tool_events,
                 final_text=self._st.final_text,
-                msg_fn=self._cb.get_msg,
             )
             or GENERIC_ERROR_REPLY
         )
-        try:
-            await self._cb.edit_placeholder_text(placeholder_obj, error_text)
-        except Exception as edit_exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# streaming edit: any send failure is non-fatal
-            log.debug("Error edit skipped: %s", edit_exc)
+        result = await self._handler.guard(
+            lambda p=placeholder_obj, t=error_text: self._cb.edit_placeholder_text(
+                p, t
+            ),
+            context="error_edit",
+        )
+        if isinstance(result, Err):
+            pass  # guard already logged; non-fatal
 
-    def _handle_typing_tail(self) -> None:
+    async def _handle_typing_tail(self) -> None:
         """Start or cancel typing based on whether the turn is intermediate."""
         if self._outbound is not None and self._outbound.intermediate:
-            self._cb.start_typing()
+            await self._start_typing()
         else:
-            self._cb.cancel_typing()
+            await self._cancel_typing()
 
     async def run(self, events: AsyncIterator[RenderEvent]) -> None:
         """Run the full streaming lifecycle.
@@ -434,29 +503,43 @@ class StreamingSession:
             first_event = await events.__anext__()
         except StopAsyncIteration:
             pass
-        except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# streaming edit: any send failure is non-fatal
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
             peek_error = exc
         if first_event is None and peek_error is None:
             await self._drain_fallback(events)
-            self._handle_typing_tail()
+            await self._handle_typing_tail()
             return
         if peek_error is not None:
             self._st.stream_error = peek_error
             result = await self._send_placeholder()
             if result is not None:
                 await self._deliver_final(result[0])
-            self._handle_typing_tail()
+            await self._handle_typing_tail()
             raise peek_error
         assert first_event is not None  # narrowed above
         result = await self._send_placeholder()
         full = _prepend(first_event, events)
         if result is None:
             await self._drain_fallback(full)
-            self._handle_typing_tail()
+            await self._handle_typing_tail()
             return
         placeholder_obj, _ = result
         await self._run_event_loop(full, placeholder_obj)
         await self._deliver_final(placeholder_obj)
-        self._handle_typing_tail()
+        await self._handle_typing_tail()
         if self._st.stream_error is not None:
             raise self._st.stream_error
+
+
+# Deferred imports — see the explanatory comment at the top of the file.
+# These run AFTER OutboundEmitter is fully defined, so the shim's lookup of
+# OutboundEmitter (triggered transitively by lyra.adapters.__init__) finds a
+# fully initialized class instead of a partially loaded module.
+from lyra.adapters.shared._shared_streaming_state import (  # noqa: E402
+    StreamState,
+)
+from lyra.adapters.shared._tool_recap import (  # noqa: E402
+    ToolRecapAccumulator,
+    format_recap_lines,
+)
+from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL  # noqa: E402, F401

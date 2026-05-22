@@ -20,12 +20,12 @@ import discord
 import pytest
 
 from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.shared._shared_streaming_state import STREAMING_EDIT_INTERVAL
 from lyra.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
+from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 from tests.adapters.conftest import make_dc_inbound_msg
 
 # ---------------------------------------------------------------------------

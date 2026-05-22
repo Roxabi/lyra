@@ -9,6 +9,7 @@ type = layers
 layers =
     lyra.bootstrap
     lyra.adapters
+    lyra.outbound
     lyra.infrastructure
     lyra.llm | lyra.nats
     lyra.core
@@ -41,6 +42,16 @@ ignore_imports =
     # at the same layer as voice clients in lyra.nats; llm/ placement is domain grouping
     # only. Track for lyra.transport layer extraction — DEBT:importlinter-llm-transport-nats
     lyra.llm.llm_client -> lyra.transport.worker_pool_client
+    # OutboundEmitter (lyra.outbound) imports shared state types that REMAIN in
+    # lyra.adapters.shared per resolved Open Q 2 (spec §Resolved Open Questions).
+    # classify_stream_error has moved to OutboundErrorHandler (#1279), but StreamState
+    # + ToolRecapAccumulator still live under adapters.shared because moving them
+    # into lyra.outbound would re-introduce the circular load path through
+    # StreamState.build_display_text. Deferred imports at the bottom of emitter.py
+    # break the import-time cycle; these exemptions remain necessary until
+    # StreamState relocates in Phase 7 (#1284) — DEBT:importlinter-outbound-shared-state-transition
+    lyra.outbound.emitter -> lyra.adapters.shared._shared_streaming_state
+    lyra.outbound.emitter -> lyra.adapters.shared._tool_recap
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers
@@ -115,4 +126,14 @@ forbidden_modules =
     lyra.bootstrap
     lyra.adapters
     lyra.infrastructure
+allow_indirect_imports = true
+
+[importlinter:contract:no-streaming-emitter-shim]
+name = adapters must not re-introduce the legacy streaming-emitter shim (#1279 T28)
+type = forbidden
+source_modules =
+    lyra.adapters
+forbidden_modules =
+    lyra.adapters.shared._shared_streaming_emitter
+    lyra.adapters.shared._shared_streaming
 allow_indirect_imports = true

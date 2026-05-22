@@ -199,7 +199,7 @@ class TestSimpleAgentStreaming:
         # Arrange — provider has a stream() method
         provider = MagicMock()
         fake_iterator = _fake_async_gen("Hello", " world")
-        provider.stream = AsyncMock(return_value=fake_iterator)
+        provider.stream = MagicMock(return_value=fake_iterator)
         provider.is_alive = MagicMock(return_value=True)
         agent = make_streaming_agent(provider, streaming=True)
         msg = make_inbound_message("hello")
@@ -236,7 +236,7 @@ class TestSimpleAgentStreaming:
         # Arrange
         provider = MagicMock()
         fake_iterator = _fake_async_gen("token")
-        provider.stream = AsyncMock(return_value=fake_iterator)
+        provider.stream = MagicMock(return_value=fake_iterator)
         provider.is_alive = MagicMock(return_value=True)
         agent = make_streaming_agent(provider, streaming=True)
         msg = make_inbound_message("my question")
@@ -247,7 +247,7 @@ class TestSimpleAgentStreaming:
 
         # Assert — stream() called with the right pool_id, text, model_cfg,
         # system_prompt
-        provider.stream.assert_awaited_once()
+        provider.stream.assert_called_once()
         args = provider.stream.call_args[0]
         assert args[0] == "tg:main:user1"
         assert args[1] == "<user_message>my question</user_message>"
@@ -277,7 +277,7 @@ class TestSimpleAgentStreaming:
         # Arrange — pool has a custom system prompt override
         provider = MagicMock()
         fake_iterator = _fake_async_gen()
-        provider.stream = AsyncMock(return_value=fake_iterator)
+        provider.stream = MagicMock(return_value=fake_iterator)
         provider.is_alive = MagicMock(return_value=True)
         agent = make_streaming_agent(provider, streaming=True)
         msg = make_inbound_message("hello")
@@ -297,7 +297,7 @@ class TestSimpleAgentStreaming:
         # Arrange — no pool system prompt → agent config system_prompt used
         provider = MagicMock()
         fake_iterator = _fake_async_gen()
-        provider.stream = AsyncMock(return_value=fake_iterator)
+        provider.stream = MagicMock(return_value=fake_iterator)
         provider.is_alive = MagicMock(return_value=True)
         agent = make_streaming_agent(provider, streaming=True)
         msg = make_inbound_message("hello")

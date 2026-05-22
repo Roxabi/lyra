@@ -8,16 +8,7 @@ permissions:
   packages: write
 jobs:
   publish:
-    uses: Roxabi/.github/.github/workflows/publish-container.yml@v1
-    with:
-      image_name: ghcr.io/roxabi/lyra
-      release_please_component: lyra
-  publish-svc:
-    if: github.ref_type == 'branch'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -26,15 +17,44 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          REG=ghcr.io/roxabi/lyra
+          if [[ "$GITHUB_REF" == refs/heads/staging ]]; then
+            {
+              echo "bake_set<<EOF"
+              echo "agent-runtime.tags=${REG}:staging"
+              echo "svc-runtime.tags=${REG}:staging-svc"
+              echo "EOF"
+              echo "svc_tag=${REG}:staging-svc"
+            } >> "$GITHUB_OUTPUT"
+          else
+            full="${GITHUB_REF_NAME}"
+            ver="${full#*/v}"
+            major="${ver%%.*}"
+            {
+              echo "bake_set<<EOF"
+              echo "agent-runtime.tags=${REG}:${ver},${REG}:${major},${REG}:latest"
+              # svc-runtime intentionally omits a :latest-svc equivalent — Quadlet units pin to specific tags
+              echo "svc-runtime.tags=${REG}:${ver}-svc,${REG}:${major}-svc"
+              echo "EOF"
+              echo "svc_tag=${REG}:${ver}-svc"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/bake-action@6614cfa25eff9a0b2b2697efb0b6159e7680d584 # v7.2.0
         with:
-          context: .
-          target: svc-runtime
+          files: docker-bake.hcl
           push: true
-          tags: ghcr.io/roxabi/lyra:staging-svc
-          cache-from: type=gha,scope=lyra-svc
-          cache-to: type=gha,mode=max,scope=lyra-svc
+          set: |
+            ${{ steps.tags.outputs.bake_set }}
+            *.labels.org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            *.labels.org.opencontainers.image.revision=${{ github.sha }}
+            *.labels.org.opencontainers.image.version=${{ github.ref_name }}
+
       - name: Verify forbidden binaries absent (SC-3)
         run: |
-          docker run --rm ghcr.io/roxabi/lyra:staging-svc \
+          docker run --rm ${{ steps.tags.outputs.svc_tag }} \
             sh -c 'which bun claude corepack node lyra-gh 2>/dev/null && exit 1 || exit 0'

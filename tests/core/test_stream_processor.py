@@ -2049,3 +2049,42 @@ class TestTextTriplet:
         # Assert — guard clause prevents spurious TextEnd
         text_ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
         assert len(text_ends) == 0
+
+    # ------------------------------------------------------------------
+    # T6-6 -- TextEnd emitted on truncated stream (SC-11)
+    # ------------------------------------------------------------------
+
+    async def test_text_end_on_truncated_stream(self) -> None:
+        """Truncated stream mid-text: TextEndRenderEvent is emitted on close path.
+
+        v2 contract: when the stream ends without a ResultLlmEvent while a
+        text block is open, the truncation path in _close_open_blocks emits
+        TextEndRenderEvent before RunFinishedRenderEvent.
+
+        Mirror of TestReasoning.test_reasoning_orphan_close_on_truncated_stream.
+        """
+        # Arrange -- stream ends without ResultLlmEvent (truncation path)
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            TextLlmEvent(text="partial text"),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert -- TextEnd is emitted (close guard fires on truncation path)
+        text_ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
+        assert len(text_ends) == 1
+
+        # Assert -- TextEnd precedes the terminal run event
+        text_end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, TextEndRenderEvent)
+        )
+        run_finished_idx = next(
+            (i for i, e in enumerate(result) if isinstance(e, RunFinishedRenderEvent)),
+            None,
+        )
+        assert run_finished_idx is not None, "RunFinishedRenderEvent not found"
+        assert text_end_idx < run_finished_idx, (
+            "TextEnd must be emitted before RunFinished on truncation path"
+        )

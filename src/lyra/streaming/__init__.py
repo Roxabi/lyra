@@ -7,5 +7,6 @@ Parser Protocol + StateMachine + EventEmitter composed by:
 
 from .event_emitter import EventEmitter
 from .parser import Parser
+from .state_machine import StateMachine
 
-__all__ = ["EventEmitter", "Parser"]
+__all__ = ["EventEmitter", "Parser", "StateMachine"]

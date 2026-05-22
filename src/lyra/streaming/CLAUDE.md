@@ -39,10 +39,13 @@ Three primitives, all composed (not inherited):
   `RunError`/error envelope). Currently neither consumer uses `flush()` because they yield events
   directly; documented for future consumers.
 
-- **Protocol is structural** — `Parser` is `@runtime_checkable` but consumers MAY satisfy it via
-  duck typing. Current `parse_line` / `process` method names do not match `feed` exactly — see
-  spec #1282 for the migration path. `isinstance` checks against the Protocol are tolerated only
-  for Slice ≥2 RED-GATE placeholders.
+- **Protocol is structural** — `Parser` is `@runtime_checkable` but consumers do NOT satisfy
+  it at the method-name level today: `CliStreamingParser` exposes `parse_line` and
+  `StreamProcessor` exposes `process` (legacy public API). `isinstance(consumer, Parser)` would
+  return `False`. The Protocol documents the *target shape* for future stream sources
+  (NATS-stream, SSE); a follow-up issue will add `feed = parse_line` / `finalize` / `is_done`
+  aliases on the consumers once they're needed, at which point isinstance-conformance tests
+  can be added back. Until then, treat the Protocol as a shape-doc, not a runtime contract.
 
 ## Out of scope
 
@@ -60,7 +63,7 @@ Three primitives, all composed (not inherited):
 
 ```
 streaming/
-├── __init__.py          # Re-exports: Parser, EventEmitter
+├── __init__.py          # Re-exports: Parser, StateMachine, EventEmitter
 ├── parser.py            # Parser[InT, OutT] Protocol — duck-typed, @runtime_checkable
 ├── state_machine.py     # StateMachine[K, V] — open/close/mark_seen/drain
 └── event_emitter.py     # EventEmitter[OutT] — SanitizedError → OutT translator

@@ -195,7 +195,7 @@ class StreamProcessor:
     # Public interface
     # ------------------------------------------------------------------
 
-    async def process(  # noqa: C901
+    async def process(
         self, events: AsyncIterator[LlmEvent]
     ) -> AsyncGenerator[RenderEvent, None]:
         """Process an async stream of ``LlmEvent`` objects.
@@ -221,6 +221,12 @@ class StreamProcessor:
             ``ToolCallEndRenderEvent`` are emitted for tool-call lifecycle.
             ``RunStartedRenderEvent`` opens the turn; ``RunFinishedRenderEvent``
             closes it.
+
+        Notes
+        -----
+        Single-flight: the instance may only be used for one call to ``process()``.
+        ``_result_*`` attrs are reset here so no state leaks across calls (the
+        reuse guard in ``_mark_consumed`` also enforces single-flight).
         """
         self._mark_consumed()
         run_id = TraceContext.get_trace_id() or f"synthetic-{TraceContext.generate()}"
@@ -237,29 +243,13 @@ class StreamProcessor:
             )
         )
         yield RunStartedRenderEvent(run_id=run_id)
-        _result_received = False
-        # Soft-error capture: ResultLlmEvent.is_error=True signals the LLM
-        # backend returned an error response. Carried out of the try block so
-        # the post-finally emission can choose RunErrorRenderEvent vs
-        # RunFinishedRenderEvent. worker_error carries structured code/message
-        # already sanitized upstream (cli_streaming_parser).
-        _result_is_error = False
-        _result_worker_error: "WorkerError | None" = None
-        _result_error_text: str | None = None
+        # Reset soft-error state; written by _process_events, read post-finally.
+        self._result_is_error = False
+        self._result_worker_error: "WorkerError | None" = None
+        self._result_error_text: str | None = None
         try:
-            async for event in events:
-                if isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
-                    _result_received = True
-                    _result_is_error = event.is_error
-                    _result_worker_error = event.worker_error
-                    _result_error_text = event.error_text
-                for re in self._dispatch_event(event):
-                    yield re
-
-            # Stream ended without ResultLlmEvent (truncation or upstream error)
-            if not _result_received:
-                for re in self._close_truncated_stream():
-                    yield re
+            async for re in self._process_events(events):
+                yield re
         except Exception as exc:
             # Slice 1 (#1098): infrastructure-level exception during stream
             # processing. Surface a RunErrorRenderEvent then re-raise so the
@@ -293,7 +283,7 @@ class StreamProcessor:
             _aclose = getattr(events, "aclose", None)
             if _aclose is not None:
                 await _aclose()
-        if _result_is_error:
+        if self._result_is_error:
             # Soft error: LLM backend returned an error response. The run
             # completed cleanly (no infrastructure exception), but the user
             # should still see an ❌ prefix on the rendered message. Emit
@@ -302,14 +292,14 @@ class StreamProcessor:
             # Slice 4 (#1282) T15 — Site B: route through EventEmitter.
             # worker_error carries driver-curated message (already sanitized
             # upstream by cli_streaming_parser) — safe for NATS broadcast.
-            _we = _result_worker_error
+            _we = self._result_worker_error
             for _ev in _emitter.emit_terminal(
                 SanitizedError(
                     code=_we.code if _we else "stream.error",
                     message=(
                         _we.message
                         if _we
-                        else _result_error_text or "model_error"
+                        else self._result_error_text or "model_error"
                     ),
                     retryable=_we.retryable if _we else False,
                     detail=None,
@@ -318,6 +308,37 @@ class StreamProcessor:
                 yield _ev
         else:
             yield RunFinishedRenderEvent(run_id=run_id, outcome="success")
+
+    async def _process_events(
+        self, events: AsyncIterator[LlmEvent]
+    ) -> AsyncGenerator[RenderEvent, None]:
+        """Consume the raw LlmEvent stream and yield RenderEvents.
+
+        Separated from ``process()`` so the outer shell owns only the
+        try/except/finally lifecycle envelope (≤5 branches), keeping it below
+        PLR0912. Captures soft-error state onto ``self._result_*`` attrs so
+        ``process()`` can inspect them post-finally.
+
+        Parameters
+        ----------
+        events:
+            The same iterator passed to ``process()``. Finalization (``aclose``)
+            is the caller's responsibility — done in ``process()``'s finally block.
+        """
+        _result_received = False
+        async for event in events:
+            if isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
+                _result_received = True
+                self._result_is_error = event.is_error
+                self._result_worker_error = event.worker_error
+                self._result_error_text = event.error_text
+            for re in self._dispatch_event(event):
+                yield re
+
+        # Stream ended without ResultLlmEvent (truncation or upstream error)
+        if not _result_received:
+            for re in self._close_truncated_stream():
+                yield re
 
     # ------------------------------------------------------------------
     # Per-LlmEvent sub-handlers (Slice 3, #1282)

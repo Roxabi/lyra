@@ -1,9 +1,12 @@
-"""Tests for Parser[InT, OutT] Protocol conformance scaffold (Phase 5 — #1282).
+"""Tests for Parser[InT, OutT] Protocol shape (Phase 5 — #1282).
 
-Wave 1 / Slice 1 tests.  The consumer classes (CliStreamingParser, StreamProcessor)
-do NOT yet expose `feed` / `finalize` / `is_done` — those are wired in Slices 2–4.
-Tests here confirm the Protocol itself is well-formed; the isinstance conformance
-check is skipped with an explicit marker so future slices can unskip it.
+The Protocol is duck-typed and structural; consumer classes (CliStreamingParser,
+StreamProcessor) do NOT implement feed/finalize/is_done method names verbatim —
+they expose parse_line/process per the legacy public API. Runtime isinstance()
+conformance is therefore NOT asserted; tests below verify the Protocol itself
+is well-formed (importable, generic, method names declared). When consumers
+gain feed/finalize/is_done aliases in a future issue, an isinstance-based
+conformance test can be added; until then, this file documents the shape only.
 """
 
 from __future__ import annotations
@@ -52,32 +55,3 @@ class TestParserMethodNames:
         assert hasattr(Parser, method_name), (
             f"Parser Protocol is missing required method: {method_name!r}"
         )
-
-
-class TestParserConformancePlaceholder:
-    """Test 4 — Forward-compat: isinstance conformance (wired in Slice 2/3)."""
-
-    @pytest.mark.skip(reason="Slice 2/3 wires the protocol-aligned methods")
-    def test_cli_streaming_parser_satisfies_parser_protocol(self) -> None:
-        from lyra.core.cli.cli_streaming_parser import (  # noqa: PLC0415
-            CliStreamingParser,
-        )
-        from lyra.streaming import Parser  # noqa: PLC0415
-
-        instance = CliStreamingParser(pool_id="test-pool")
-        assert isinstance(instance, Parser)  # type: ignore[misc]
-
-    @pytest.mark.skip(reason="Slice 2/3 wires the protocol-aligned methods")
-    def test_stream_processor_satisfies_parser_protocol(self) -> None:
-        from lyra.core.messaging.tool_display_config import (  # noqa: PLC0415
-            ToolDisplayConfig,
-        )
-        from lyra.core.processors.stream_processor import (  # noqa: PLC0415
-            StreamProcessor,
-        )
-        from lyra.streaming import Parser  # noqa: PLC0415
-
-        # StreamProcessor.__init__ requires a config; use a minimal real instance.
-        config = ToolDisplayConfig()
-        instance = StreamProcessor(config=config)
-        assert isinstance(instance, Parser)  # type: ignore[misc]

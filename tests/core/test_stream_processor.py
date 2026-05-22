@@ -1227,6 +1227,9 @@ class TestRunLifecycle:
         # can leak file paths, hostnames, auth tokens onto the wire.
         assert seen[-1].message == "_Boom"
         assert "input died" not in seen[-1].message
+        # code is intentionally None per RunErrorRenderEvent docstring
+        # ("reserved for a future taxonomy" — #1097 carry-over). The EventEmitter
+        # translator deliberately drops SanitizedError.code on the wire.
         assert seen[-1].code is None
         assert seen[-1].run_id == seen[0].run_id
         # Position-aware: no RunFinished must appear before RunError, and

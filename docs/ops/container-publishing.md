@@ -129,10 +129,11 @@ containers. No manual intervention is needed after a staging merge.
 
 | Container | Image | AutoUpdate |
 |---|---|---|
-| lyra-hub | `ghcr.io/roxabi/lyra:staging` | registry |
-| lyra-telegram | `ghcr.io/roxabi/lyra:staging` | registry |
-| lyra-discord | `ghcr.io/roxabi/lyra:staging` | registry |
+| lyra-hub | `ghcr.io/roxabi/lyra:staging-svc` | registry |
+| lyra-telegram | `ghcr.io/roxabi/lyra:staging-svc` | registry |
+| lyra-discord | `ghcr.io/roxabi/lyra:staging-svc` | registry |
 | lyra-clipool | `ghcr.io/roxabi/lyra:staging` | registry |
+| lyra-gh-helper | `ghcr.io/roxabi/lyra:staging` | registry |
 | voicecli-tts | `ghcr.io/roxabi/voicecli-tts:staging` | registry |
 | voicecli-stt | `ghcr.io/roxabi/voicecli-stt:staging` | registry |
 | lyra-nats | pinned by digest | none (pinned) |
@@ -158,6 +159,11 @@ podman auto-update
   `podman login --get-login ghcr.io`.
 - Podman does not auto-rollback on startup failure. A bad image enters a restart loop
   (`Restart=on-failure`). Check with `podman ps` or `journalctl --user -u <unit>`.
+- **Parallel publish inconsistency window (known):** `publish` (`:staging`) and `publish-svc`
+  (`:staging-svc`) jobs run in parallel — if one fails, the other may still push. During that
+  window, autoupdate can pull one variant while the other is stale. Accepted risk at staging;
+  long-term fix is a single `docker buildx bake` job that pushes both targets atomically —
+  tracked in #1325.
 
 ---
 

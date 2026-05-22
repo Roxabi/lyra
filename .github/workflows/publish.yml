@@ -34,3 +34,7 @@ jobs:
           tags: ghcr.io/roxabi/lyra:staging-svc
           cache-from: type=gha,scope=lyra-svc
           cache-to: type=gha,mode=max,scope=lyra-svc
+      - name: Verify forbidden binaries absent (SC-3)
+        run: |
+          docker run --rm ghcr.io/roxabi/lyra:staging-svc \
+            sh -c 'which bun claude corepack node lyra-gh 2>/dev/null && exit 1 || exit 0'

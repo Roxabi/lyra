@@ -257,7 +257,7 @@ class SimpleAgent(AgentBase):
         # Streaming path: wrap with StreamProcessor to emit RenderEvent (#387)
         _stream_fn = getattr(self._provider, "stream", None)
         if model_cfg.streaming and _stream_fn is not None:
-            stream_iter = await _stream_fn(
+            stream_iter = _stream_fn(
                 pool.pool_id,
                 text,
                 model_cfg,

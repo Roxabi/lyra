@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -105,12 +106,19 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
         await db.execute(_CREATE_POOL_SESSIONS)
         await db.execute(_CREATE_IDX_POOL_SESSIONS)
         await db.commit()
-        # v4 migration: add cli_session_id to pool_sessions (idempotent)
-        async with db.execute("PRAGMA table_info(pool_sessions)") as cur:
-            cols = {row[1] for row in await cur.fetchall()}
-        if "cli_session_id" not in cols:
+        # v4 migration: add cli_session_id to pool_sessions (idempotent).
+        # Use try/except instead of a PRAGMA table_info read-then-write to
+        # avoid a TOCTOU race under xdist parallel workers: two workers can
+        # both observe "column absent" before either runs ALTER TABLE, then
+        # both attempt the ALTER and the second raises
+        # OperationalError("duplicate column name: cli_session_id").
+        # aiosqlite.OperationalError is sqlite3.OperationalError.
+        try:
             await db.execute("ALTER TABLE pool_sessions ADD COLUMN cli_session_id TEXT")
             await db.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
         # Gate backfill: skip if pool_sessions already has rows
         async with db.execute("SELECT 1 FROM pool_sessions LIMIT 1") as cur:
             if await cur.fetchone() is None:

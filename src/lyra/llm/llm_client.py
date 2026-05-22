@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Protocol
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from lyra.core.messaging.events import LlmEvent, ResultLlmEvent
 from lyra.core.ports.llm import LlmResult
 from lyra.transport._result import Ok
@@ -176,7 +178,8 @@ class LlmClient:
         try:
             ack = CliControlAck.model_validate_json(result.value)
             return bool(ack.resumed)
-        except (ValueError, Exception):  # noqa: BLE001 — CliControlAck parse; log suppressed intentionally
+        except ValidationError as exc:
+            log.warning("llm_client: CliControlAck parse failed: %r", exc)
             return False
 
     async def switch_cwd(self, pool_id: str, cwd: "Path") -> None:

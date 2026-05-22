@@ -30,6 +30,19 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+_ERROR_MAX_LEN = 512
+
+
+def _sanitize_worker_error(s: str | None) -> str | None:
+    """Cap length and strip non-printable chars from worker-controlled error strings.
+
+    Trust boundary: `resp.error` is free-form string from the clipool worker.
+    Truncate + filter before it reaches user-visible renders or logs.
+    """
+    if not s:
+        return None
+    return "".join(c for c in s[:_ERROR_MAX_LEN] if c.isprintable() or c == "\n")
+
 
 class _CliSessionStore(Protocol):
     """Minimal protocol for TurnStore operations needed by CliNatsCodec."""
@@ -117,7 +130,7 @@ class CliNatsCodec:
             return LlmResult(error="decode.validation_error", retryable=False)
 
         if not resp.ok:
-            error_msg = resp.error or "LLM generation failed"
+            error_msg = _sanitize_worker_error(resp.error) or "LLM generation failed"
             if resp.worker_error is not None:
                 return LlmResult(
                     error=error_msg,
@@ -167,14 +180,15 @@ class CliNatsCodec:
                 ),
             )
         if chunk.is_error:
+            sanitized_error = _sanitize_worker_error(chunk.error) or "LLM stream error"
             return ResultLlmEvent(
                 is_error=True,
                 duration_ms=chunk.duration_ms or 0,
                 cost_usd=None,
-                error_text=chunk.error or "LLM stream error",
+                error_text=sanitized_error,
                 worker_error=chunk.worker_error
                 or _make_worker_error(
-                    "worker.internal", chunk.error or "LLM stream error", retryable=True
+                    "worker.internal", sanitized_error, retryable=True
                 ),
             )
         if chunk.done:

@@ -51,6 +51,27 @@ CB is enforced at the **pool** layer (since #1278). Wiring sites wrap `LlmClient
 `RetryDecorator` only — do NOT add `CircuitBreakerDecorator` (reserved for `ClaudeCliDriver`
 which has no built-in CB).
 
+## Timeout responsibility
+
+`LlmClient` does **not** enforce a per-turn wall-clock deadline. This is intentional.
+
+| Layer | What is guaranteed | What is NOT guaranteed |
+|-------|-------------------|----------------------|
+| `NatsTransport` | Per-chunk liveness (`default_timeout=300s`) — no silent hangs between chunks | Upper bound on total turn duration |
+| `LlmClient` | Nothing beyond what the transport enforces | Any turn-level SLA |
+
+Per-turn wall-clock is a scheduling policy; the consumer defines what a "turn" is and
+what SLA applies. Wrap calls in `asyncio.timeout` when a deadline is required:
+
+```python
+async with asyncio.timeout(budget_seconds):
+    async for event in provider.stream(...):
+        ...
+```
+
+Historical: `CliNatsDriver` (deleted in #1281) inherited `max_total_duration=1800s` from
+`NatsDriverBase`; that responsibility now belongs to the caller.
+
 ## Decorator stack
 
 ```

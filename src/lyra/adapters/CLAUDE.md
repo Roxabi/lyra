@@ -60,24 +60,24 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         super().__init__(intents=intents)  # flows to discord.Client
 ```
 
-## PlatformCallbacks contract (`shared/_shared_streaming_emitter.py`)
+## OutboundFormatter / ThrottleCapability / OutboundErrorHandler stages (`src/lyra/outbound/`)
 
-| Field | Role |
-|-------|------|
-| `send_placeholder` | Send initial placeholder message |
-| `edit_placeholder_text` | Edit placeholder with intermediate text |
-| `send_message` | Send new message (tool-using turns) |
-| `send_fallback` | Fallback send when placeholder fails |
-| `chunk_text` | Split text into platform-sized chunks |
-| `start_typing` / `cancel_typing` | Typing indicator lifecycle |
-| `send_trace_placeholder` | Send reasoning-trace placeholder |
-| `edit_reasoning` | Render reasoning Start/Delta/End |
-| `edit_tool_recap` | Render tool recap card lines (debounced + final) |
-| `get_msg` | i18n message lookup |
-| `placeholder_text` | Initial placeholder text |
+#1279 Phase 2 pivot: per-target axis (telegram_outbound + discord_outbound +
+_shared_streaming_emitter) replaced by stage-axis composition under `src/lyra/outbound/`.
+Per-platform code is now thin formatter implementations (`telegram_formatter.py`,
+`discord_formatter.py` ≤200 LOC each) plus thin typing-indicator wrappers
+(`TelegramTypingIndicator`, `DiscordTypingIndicator`).
 
-`_tool_recap.py` — `ToolRecapAccumulator` / `format_recap_lines()` backing
-`edit_tool_recap` above.
+| Stage | Module | Role |
+|-------|--------|------|
+| Emitter | `lyra.outbound.emitter.OutboundEmitter` | Composes formatter + throttle + error_handler; owns placeholder→edits→delivery |
+| Formatter | `lyra.outbound.formatter.OutboundFormatter` (Protocol) | chunk, render_text, render_buttons, dim_italic, placeholder_text, edit_reasoning, edit_tool_recap |
+| Throttle | `lyra.outbound.throttle.ThrottleCapability` (Protocol) | start_typing/cancel_typing + edit_interval_s |
+| Error handler | `lyra.outbound.error_handler.OutboundErrorHandler` | guard (single broad-catch site), handle, classify_stream_error, get_msg |
+
+`PlatformCallbacks` dataclass is transitional — used by `_make_streaming_callbacks` for
+send-mechanics until a follow-up restructure absorbs it into the formatter Protocol.
+See `src/lyra/outbound/CLAUDE.md`.
 
 ## Clipool adapter (`clipool/`)
 

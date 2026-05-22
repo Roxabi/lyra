@@ -16,7 +16,7 @@ from roxabi_contracts.llm import SUBJECTS
 
 if TYPE_CHECKING:
     from lyra.core.agent.agent_config import ModelConfig
-    from lyra.llm.llm_codec import LlmCodec
+    from lyra.llm.codec import LlmCodec
     from lyra.transport.worker_pool_client import WorkerPoolClient
 
 

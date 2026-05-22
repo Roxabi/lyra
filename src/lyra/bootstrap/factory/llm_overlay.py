@@ -21,8 +21,8 @@ async def init_nats_llm(nc: "NATS | None") -> "LlmClient | None":
     if nc is None or not os.environ.get("NATS_URL"):
         return None
 
+    from lyra.llm.cli_nats_codec import CliNatsCodec
     from lyra.llm.llm_client import LlmClient
-    from lyra.llm.llm_codec import LlmCodec
     from lyra.transport.nats_request_response import NatsTransport
     from lyra.transport.worker_pool_client import WorkerPoolClient
     from roxabi_contracts.llm import SUBJECTS, validate_worker_id
@@ -35,7 +35,7 @@ async def init_nats_llm(nc: "NATS | None") -> "LlmClient | None":
         name="llm",
     )
     await pool.start(nc)
-    client = LlmClient(pool, LlmCodec())
+    client = LlmClient(pool, CliNatsCodec())
     log.info(
         "LlmClient: initialised 3-layer (NATS_URL=%s)",
         scrub_nats_url(os.environ.get("NATS_URL", "")),

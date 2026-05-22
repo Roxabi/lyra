@@ -24,8 +24,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator
-from typing import assert_never
+from typing import TYPE_CHECKING, assert_never
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from roxabi_contracts.errors import WorkerError
 
 from lyra.core.messaging.events import (
     LlmEvent,
@@ -56,7 +59,9 @@ from lyra.core.messaging.render_events import (
 )
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.trace import TraceContext
+from lyra.streaming.event_emitter import EventEmitter
 from lyra.streaming.state_machine import StateMachine
+from lyra.transport._result import SanitizedError
 
 log = logging.getLogger(__name__)
 
@@ -190,7 +195,7 @@ class StreamProcessor:
     # Public interface
     # ------------------------------------------------------------------
 
-    async def process(
+    async def process(  # noqa: C901
         self, events: AsyncIterator[LlmEvent]
     ) -> AsyncGenerator[RenderEvent, None]:
         """Process an async stream of ``LlmEvent`` objects.
@@ -219,21 +224,34 @@ class StreamProcessor:
         """
         self._mark_consumed()
         run_id = TraceContext.get_trace_id() or f"synthetic-{TraceContext.generate()}"
+        # Slice 4 (#1282) — SanitizedError boundary: instantiate a local emitter
+        # whose translator closes over ``run_id`` (a per-call value that cannot
+        # be captured in __init__). The emitter is purely a translation gateway;
+        # ``emit_ok`` / ``flush`` are not used here.
+        #
+        # RenderEvent is a TypeAlias (Union[...]), not a concrete class, so the
+        # Generic bound is left inferred by the translator return type.
+        _emitter: EventEmitter[RunErrorRenderEvent] = EventEmitter(
+            error_translator=lambda err: RunErrorRenderEvent(
+                run_id=run_id, message=err.message, code=None
+            )
+        )
         yield RunStartedRenderEvent(run_id=run_id)
         _result_received = False
         # Soft-error capture: ResultLlmEvent.is_error=True signals the LLM
         # backend returned an error response. Carried out of the try block so
         # the post-finally emission can choose RunErrorRenderEvent vs
-        # RunFinishedRenderEvent. error_text is driver-curated user-facing
-        # text (e.g. "Not logged in · Please run /login"), not an exception
-        # str() — safe to forward on the NATS bus.
+        # RunFinishedRenderEvent. worker_error carries structured code/message
+        # already sanitized upstream (cli_streaming_parser).
         _result_is_error = False
+        _result_worker_error: "WorkerError | None" = None
         _result_error_text: str | None = None
         try:
             async for event in events:
                 if isinstance(event, ResultLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
                     _result_received = True
                     _result_is_error = event.is_error
+                    _result_worker_error = event.worker_error
                     _result_error_text = event.error_text
                 for re in self._dispatch_event(event):
                     yield re
@@ -254,9 +272,19 @@ class StreamProcessor:
             # is published on the NATS bus where any subscriber can read it.
             for re in self._close_exception_path():
                 yield re
-            yield RunErrorRenderEvent(
-                run_id=run_id, message=type(exc).__name__, code=None
-            )
+            # Slice 4 (#1282) T15 — Site A: infrastructure exception path.
+            # message=type(exc).__name__ — never str(exc) (exception strings
+            # can carry file paths, auth tokens, hostnames).
+            # yield from is invalid in async generators; use for loop instead.
+            for _ev in _emitter.emit_terminal(
+                SanitizedError(
+                    code="stream.error",
+                    message=type(exc).__name__,
+                    retryable=False,
+                    detail=None,
+                )
+            ):
+                yield _ev
             raise
         finally:
             # Eagerly finalize the input iterator on both success and exception
@@ -271,13 +299,23 @@ class StreamProcessor:
             # should still see an ❌ prefix on the rendered message. Emit
             # RunErrorRenderEvent instead of RunFinishedRenderEvent so the
             # adapter's dispatch ladder can flag the turn as error.
-            # message is driver-curated user-facing text (ResultLlmEvent.
-            # error_text), not str(exception) — safe for NATS broadcast.
-            yield RunErrorRenderEvent(
-                run_id=run_id,
-                message=str(_result_error_text or "model_error"),
-                code=None,
-            )
+            # Slice 4 (#1282) T15 — Site B: route through EventEmitter.
+            # worker_error carries driver-curated message (already sanitized
+            # upstream by cli_streaming_parser) — safe for NATS broadcast.
+            _we = _result_worker_error
+            for _ev in _emitter.emit_terminal(
+                SanitizedError(
+                    code=_we.code if _we else "stream.error",
+                    message=(
+                        _we.message
+                        if _we
+                        else _result_error_text or "model_error"
+                    ),
+                    retryable=_we.retryable if _we else False,
+                    detail=None,
+                )
+            ):
+                yield _ev
         else:
             yield RunFinishedRenderEvent(run_id=run_id, outcome="success")
 

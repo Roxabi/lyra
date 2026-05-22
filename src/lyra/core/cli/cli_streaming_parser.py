@@ -13,7 +13,9 @@ from typing import Iterable
 
 from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 
+from ...streaming.event_emitter import EventEmitter
 from ...streaming.state_machine import StateMachine
+from ...transport._result import SanitizedError
 from ..messaging.events import (
     LlmEvent,
     ResultLlmEvent,
@@ -125,6 +127,23 @@ class CliStreamingParser:
         # open(idx, idx) on thinking content_block_start; close(idx) on stop.
         # Only one thinking block open at a time per turn.
         self._sm_thinking: StateMachine[int, int] = StateMachine()
+        # Slice 4 (#1282) T16 — SanitizedError boundary for the cli.parse terminal
+        # envelope. Translator wraps SanitizedError → ResultLlmEvent(is_error=True).
+        # session_id is captured at emit time (see _handle_json_decode_error).
+        self._emitter: EventEmitter[ResultLlmEvent] = EventEmitter(
+            error_translator=lambda err: ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                cost_usd=None,
+                error_text=err.message,
+                session_id=self.session_id,
+                worker_error=WorkerError(
+                    code=err.code,
+                    message=err.message,
+                    retryable=err.retryable,
+                ),
+            )
+        )
 
     # -- backward-compat properties so existing tests that probe internal state
     # -- continue to pass without modification (test_cli_streaming_parse.py:994,1113).
@@ -190,23 +209,22 @@ class CliStreamingParser:
         # subclasses. Full diagnostic preserved in log.warning below.
         log.warning("CLI JSON parse error: %r", exc)
         meta = KNOWN_CODES["cli.parse"]
-        worker_error = WorkerError(
-            code="cli.parse",
-            message=f"CLI emitted malformed JSON: {type(exc).__name__}",
-            retryable=meta.default_retryable,
-        )
+        # Slice 4 (#1282) T16 — route cli.parse terminal envelope through
+        # EventEmitter. The exact message format is preserved for downstream
+        # test compatibility (test_worker_error_e2e.py asserts this string).
+        # type(exc).__name__ is a deterministic, sanitized identifier — not
+        # a cascade producer.
         emit_populated_total(domain="cli")
         self._done = True
-        self._pending.append(
-            ResultLlmEvent(
-                is_error=True,
-                duration_ms=0,
-                cost_usd=None,
-                error_text=worker_error.message,
-                session_id=self.session_id,
-                worker_error=worker_error,
+        for result_event in self._emitter.emit_terminal(
+            SanitizedError(
+                code="cli.parse",
+                message=f"CLI emitted malformed JSON: {type(exc).__name__}",
+                retryable=meta.default_retryable,
+                detail=None,
             )
-        )
+        ):
+            self._pending.append(result_event)
 
     def _handle_system_init(self, data: dict) -> Iterable[LlmEvent]:
         """Handle system/init — capture session_id, emit nothing."""

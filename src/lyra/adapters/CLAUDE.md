@@ -85,8 +85,9 @@ See `src/lyra/outbound/CLAUDE.md`.
 ## Clipool adapter (`clipool/`)
 
 Not a platform adapter — the **NATS worker** that hosts `CliPool` in a separate
-process. Hub sends LLM requests via `CliNatsDriver`; worker runs the Claude CLI
-subprocess. Enables independent lifecycle and horizontal scaling.
+process. Hub sends LLM requests via `LlmClient` (composed from `WorkerPoolClient` +
+`CliNatsCodec` over NATS request-reply); worker runs the Claude CLI subprocess.
+Enables independent lifecycle and horizontal scaling.
 
 NATS subjects:
 - `lyra.clipool.cmd` — LLM requests from hub

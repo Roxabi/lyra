@@ -21,12 +21,13 @@ not add it to the Protocol until all drivers implement it.
 | Driver | Registry key | Transport | Wiring mode |
 |--------|-------------|-----------|-------------|
 | `ClaudeCliDriver` | `"claude-cli"` | in-process (`CliPool` subprocess) | single-process |
-| `CliNatsDriver` | `"claude-cli"` | NATS request-reply → clipool worker | multi-process (hub side) |
-| `LlmClient` | `"nats"` | NATS request-reply via `WorkerPoolClient` | multi-process (hub side) |
+| `LlmClient` | `"claude-cli"` / `"nats"` | NATS request-reply via `WorkerPoolClient` + `CliNatsCodec` | multi-process (hub side) |
 
-`ClaudeCliDriver` and `CliNatsDriver` share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap, not by registry key.
+`ClaudeCliDriver` and `LlmClient` may share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap (single-process picks `ClaudeCliDriver`, multi-process picks `LlmClient(WorkerPoolClient, CliNatsCodec)`).
 
-`LlmClient` lives in `lyra.llm.llm_client` (this package). The legacy `NatsLlmClient`
+`LlmClient` lives in `lyra.llm.llm_client` (this package). `LlmClient(pool, codec)` is the
+3-layer composition for the NATS LLM path; the legacy per-driver `CliNatsDriver`
+(formerly in `lyra.llm.drivers.cli_nats`) was deleted in #1281. The legacy `NatsLlmClient`
 (formerly in `lyra.nats`) was deleted in #1278.
 
 ## LlmClient + LlmCodec layering

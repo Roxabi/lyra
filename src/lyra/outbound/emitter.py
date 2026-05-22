@@ -16,17 +16,31 @@ import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, assert_never
+from typing import TYPE_CHECKING, Any, assert_never
 
-from lyra.adapters.shared._shared_streaming_state import (
-    STREAMING_EDIT_INTERVAL,
-    StreamState,
-    classify_stream_error,
-)
-from lyra.adapters.shared._tool_recap import (
-    ToolRecapAccumulator,
-    format_recap_lines,
-)
+# IMPORTANT: state + tool-recap imports are deferred to the BOTTOM of this file
+# (after the class definitions) to break a circular import. Both
+# lyra.adapters/__init__.py and lyra.adapters.shared/__init__.py do eager
+# package-level imports of DiscordAdapter / StreamingSession / PlatformCallbacks
+# that transitively re-enter this module through the
+# _shared_streaming_emitter shim. If the imports were at the top of this file,
+# Python would resolve them while emitter.py is still partially initialized,
+# and the shim's `from lyra.outbound.emitter import OutboundEmitter` would
+# fail with "partially initialized module". Deferring the import to the bottom
+# of the file means OutboundEmitter is defined before the shared-state import
+# fires, so the shim's lookup succeeds. (Issue #1279 keeps the state + recap
+# files under lyra.adapters.shared/ per resolved spec Open Q 2.)
+if TYPE_CHECKING:
+    from lyra.adapters.shared._shared_streaming_state import (
+        STREAMING_EDIT_INTERVAL,
+        StreamState,
+        classify_stream_error,
+    )
+    from lyra.adapters.shared._tool_recap import (
+        ToolRecapAccumulator,
+        format_recap_lines,
+    )
+
 from lyra.core.messaging import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
@@ -65,6 +79,7 @@ async def _default_no_op_edit_reasoning(
     | ReasoningEndRenderEvent,
 ) -> None:
     """Default no-op — adapters that haven't opted in render nothing."""
+    del trace_obj, event
 
 
 @dataclass
@@ -468,3 +483,18 @@ class OutboundEmitter:
         self._handle_typing_tail()
         if self._st.stream_error is not None:
             raise self._st.stream_error
+
+
+# Deferred imports — see the explanatory comment at the top of the file.
+# These run AFTER OutboundEmitter is fully defined, so the shim's lookup of
+# OutboundEmitter (triggered transitively by lyra.adapters.__init__) finds a
+# fully initialized class instead of a partially loaded module.
+from lyra.adapters.shared._shared_streaming_state import (  # noqa: E402
+    STREAMING_EDIT_INTERVAL,
+    StreamState,
+    classify_stream_error,
+)
+from lyra.adapters.shared._tool_recap import (  # noqa: E402
+    ToolRecapAccumulator,
+    format_recap_lines,
+)

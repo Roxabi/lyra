@@ -15,7 +15,7 @@ from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 
 from ...streaming.event_emitter import EventEmitter
 from ...streaming.state_machine import StateMachine
-from ...transport._result import SanitizedError
+from ...transport import SanitizedError
 from ..messaging.events import (
     LlmEvent,
     ResultLlmEvent,
@@ -150,15 +150,21 @@ class CliStreamingParser:
 
     @property
     def _open_thinking_index(self) -> int | None:
-        """Index of the currently open thinking block, or None."""
+        """Compat shim — index of the currently open thinking block, or None.
+
+        Returns a scalar (never a mutable ref). Mutations are not possible.
+        """
         if self._sm_thinking.open_blocks:
             return next(iter(self._sm_thinking.open_blocks))
         return None
 
     @property
     def _open_tool_blocks(self) -> dict[int, str]:
-        """Live index → tool_id map (read-only view for test introspection)."""
-        return self._sm_tool_blocks.open_blocks
+        """Compat shim — returns a SHALLOW COPY of open tool blocks.
+
+        Mutations to the returned dict do NOT affect parser state.
+        """
+        return dict(self._sm_tool_blocks.open_blocks)
 
     def parse_line(self, line: str) -> deque[LlmEvent]:
         """Parse a JSON line, update state, and return events to yield.
@@ -191,9 +197,7 @@ class CliStreamingParser:
 
         return self._pending
 
-    def _handle_json_decode_error(
-        self, line: str, exc: json.JSONDecodeError
-    ) -> None:
+    def _handle_json_decode_error(self, line: str, exc: json.JSONDecodeError) -> None:
         """Handle JSON decode failure — emit cli.parse terminal envelope.
 
         Spec C4 path (b): a `{`-shaped line that fails to parse is protocol

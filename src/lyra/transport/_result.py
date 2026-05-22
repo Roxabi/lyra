@@ -26,6 +26,9 @@ class Err(Generic[E]):
 Result = Union[Ok[T], Err[E]]
 
 
+_BUS_MESSAGE_MAX_LEN = 200
+
+
 @dataclass(frozen=True)
 class SanitizedError:
     """message = type(exc).__name__ only — never str(exc)."""
@@ -34,6 +37,26 @@ class SanitizedError:
     message: str
     retryable: bool
     detail: str | None = None
+
+    @classmethod
+    def from_message(
+        cls, message: str, *, code: str = "stream.error"
+    ) -> "SanitizedError":
+        """Scrub + bound arbitrary upstream wire text for safe bus propagation.
+
+        Strips control characters and truncates to ``_BUS_MESSAGE_MAX_LEN``
+        (mirrors ``_scrub_cli_error_text`` in cli_streaming_parser — same
+        security boundary: untrusted upstream content must not reach the NATS
+        bus raw). Falls back to ``"model_error"`` when ``message`` is empty.
+        """
+        if not message:
+            return cls(code=code, message="model_error", retryable=False, detail=None)
+        scrubbed = "".join(c if c.isprintable() else " " for c in message)
+        if len(scrubbed) > _BUS_MESSAGE_MAX_LEN:
+            scrubbed = scrubbed[: _BUS_MESSAGE_MAX_LEN - 1] + "…"
+        return cls(
+            code=code, message=scrubbed or "model_error", retryable=False, detail=None
+        )
 
 
 @dataclass(frozen=True)

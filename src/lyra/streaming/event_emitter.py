@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Callable, Generic, Iterable, TypeVar
 
-from lyra.transport._result import SanitizedError
+from lyra.transport import SanitizedError
 
 OutT = TypeVar("OutT")
 

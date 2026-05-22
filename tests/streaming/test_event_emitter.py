@@ -192,6 +192,7 @@ class TestOrderingInvariant:
         This test fails when emit_terminal is deleted (the terminal output
         disappears and result shrinks), documenting the ordering dependency.
         """
+
         # Arrange
         def code_tr2(e: SanitizedError) -> str:
             return f"ERR:{e.code}"
@@ -284,6 +285,7 @@ class TestTranslatorRaises:
 
     def test_pending_queue_unaffected_when_translator_raises(self) -> None:
         """Pending items survive a translator exception (queue not mutated)."""
+
         # Arrange
         def raising_translator(err: SanitizedError) -> str:
             raise RuntimeError("boom")

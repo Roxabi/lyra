@@ -61,7 +61,7 @@ from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.trace import TraceContext
 from lyra.streaming.event_emitter import EventEmitter
 from lyra.streaming.state_machine import StateMachine
-from lyra.transport._result import SanitizedError
+from lyra.transport import SanitizedError
 
 log = logging.getLogger(__name__)
 
@@ -292,19 +292,20 @@ class StreamProcessor:
             # Slice 4 (#1282) T15 — Site B: route through EventEmitter.
             # worker_error carries driver-curated message (already sanitized
             # upstream by cli_streaming_parser) — safe for NATS broadcast.
+            # F5 (security): when _we is None, _result_error_text is raw
+            # upstream wire content; scrub via SanitizedError.from_message
+            # before publishing on the NATS bus.
             _we = self._result_worker_error
-            for _ev in _emitter.emit_terminal(
-                SanitizedError(
-                    code=_we.code if _we else "stream.error",
-                    message=(
-                        _we.message
-                        if _we
-                        else self._result_error_text or "model_error"
-                    ),
-                    retryable=_we.retryable if _we else False,
+            if _we is not None:
+                _sanitized = SanitizedError(
+                    code=_we.code,
+                    message=_we.message,
+                    retryable=_we.retryable,
                     detail=None,
                 )
-            ):
+            else:
+                _sanitized = SanitizedError.from_message(self._result_error_text or "")
+            for _ev in _emitter.emit_terminal(_sanitized):
                 yield _ev
         else:
             yield RunFinishedRenderEvent(run_id=run_id, outcome="success")
@@ -427,17 +428,13 @@ class StreamProcessor:
             tool_call_id=event.tool_id, delta=event.partial_json
         )
 
-    def _handle_tool_use_end(
-        self, event: ToolUseEndLlmEvent
-    ) -> Iterator[RenderEvent]:
+    def _handle_tool_use_end(self, event: ToolUseEndLlmEvent) -> Iterator[RenderEvent]:
         """Emit ToolCallEnd; close open tool call in _sm_tool."""
         yield from self._close_reasoning_if_open()
         self._sm_tool.close(event.tool_id)
         yield ToolCallEndRenderEvent(tool_call_id=event.tool_id)
 
-    def _handle_tool_result(
-        self, event: ToolResultLlmEvent
-    ) -> Iterator[RenderEvent]:
+    def _handle_tool_result(self, event: ToolResultLlmEvent) -> Iterator[RenderEvent]:
         """Emit ToolCallResult with sanitized content."""
         yield from self._close_reasoning_if_open()
         tool_name = self._tool_id_to_name.get(event.tool_id)
@@ -465,18 +462,23 @@ class StreamProcessor:
     # Shared helpers (called from sub-handlers and truncation paths)
     # ------------------------------------------------------------------
 
-    def _close_truncated_stream(self) -> Iterator[RenderEvent]:
-        """Close open blocks when the stream ends without a ResultLlmEvent.
+    def _close_open_blocks(self, reason: str) -> Iterator[RenderEvent]:
+        """Close all open state-machine blocks and yield the corresponding *End events.
 
-        Handles truncation (upstream error / subprocess kill). Yields orphan
-        ReasoningEnd then orphan TextEnd if their respective blocks are open.
+        Shared by ``_close_truncated_stream`` and ``_close_exception_path`` —
+        the only difference between those two call-sites is the ``reason`` label
+        used in log messages (F9, architect review — parallel-path-drift).
+
+        Yields orphan ``ReasoningEndRenderEvent`` then ``TextEndRenderEvent``
+        for whichever blocks are currently open, clearing their state.
+        Open tool calls are handled separately by ``_synth_orphan_tool_ends``.
         """
-        # ───── Slice 4 (#1101) orphan reasoning-close (truncated stream) ─────
+        # ───── Slice 4 (#1101) orphan reasoning-close ─────
         open_reasoning = next(iter(self._sm_reasoning.open_blocks), None)
         if open_reasoning is not None:
             log.warning(
-                "StreamProcessor: orphan ReasoningEnd synthesis "
-                "(truncated stream) message_id=…%s",
+                "StreamProcessor: orphan ReasoningEnd synthesis (%s) message_id=…%s",
+                reason,
                 open_reasoning[-6:],
             )
             yield ReasoningEndRenderEvent(message_id=open_reasoning)
@@ -486,29 +488,20 @@ class StreamProcessor:
         if open_text is not None:
             yield TextEndRenderEvent(message_id=open_text)
             self._sm_text.close(open_text)
+
+    def _close_truncated_stream(self) -> Iterator[RenderEvent]:
+        """Close open blocks when the stream ends without a ResultLlmEvent.
+
+        Handles truncation (upstream error / subprocess kill).
+        """
+        yield from self._close_open_blocks("truncated stream")
 
     def _close_exception_path(self) -> Iterator[RenderEvent]:
         """Close open blocks on the exception path (infrastructure error).
 
-        Mirrors ``_close_truncated_stream`` but logs with the 'exception'
-        context label. Called inside ``except`` before emitting
-        ``RunErrorRenderEvent``.
+        Called inside ``except`` before emitting ``RunErrorRenderEvent``.
         """
-        # ───── Slice 4 (#1101) orphan reasoning-close (exception) ─────
-        open_reasoning = next(iter(self._sm_reasoning.open_blocks), None)
-        if open_reasoning is not None:
-            log.warning(
-                "StreamProcessor: orphan ReasoningEnd synthesis (exception) "
-                "message_id=…%s",
-                open_reasoning[-6:],
-            )
-            yield ReasoningEndRenderEvent(message_id=open_reasoning)
-            self._sm_reasoning.close(open_reasoning)
-        # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
-        open_text = next(iter(self._sm_text.open_blocks), None)
-        if open_text is not None:
-            yield TextEndRenderEvent(message_id=open_text)
-            self._sm_text.close(open_text)
+        yield from self._close_open_blocks("exception")
 
     def _close_reasoning_if_open(self) -> Iterator[ReasoningEndRenderEvent]:
         """Yield ``ReasoningEndRenderEvent`` and clear state if a block is open.

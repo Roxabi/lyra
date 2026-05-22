@@ -21,8 +21,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
-from lyra.adapters.shared._shared_streaming import PlatformCallbacks
-from lyra.outbound.emitter import OutboundEmitter
+from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage, OutboundMessage

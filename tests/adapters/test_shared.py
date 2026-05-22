@@ -10,7 +10,6 @@ from lyra.adapters.shared._shared import (
     chunk_text,
     send_with_retry,
 )
-from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
 from lyra.core.messaging.message import OutboundMessage
 from lyra.core.messaging.render_events import (
     RenderEvent,
@@ -19,6 +18,8 @@ from lyra.core.messaging.render_events import (
     TextEndRenderEvent,
     TextStartRenderEvent,
 )
+from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from lyra.outbound.emitter import PlatformCallbacks
 
 # ---------------------------------------------------------------------------
 # Helpers shared by v2 Text dispatch tests

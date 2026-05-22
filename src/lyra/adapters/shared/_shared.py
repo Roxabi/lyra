@@ -26,8 +26,8 @@ from lyra.adapters.shared._shared_audio import (
     mime_to_ext,
 )
 
-# Re-exports from _shared_streaming — importers can use either module.
-from lyra.adapters.shared._shared_streaming import (
+# Re-exports from _shared_streaming_state — importers can use either module.
+from lyra.adapters.shared._shared_streaming_state import (
     IntermediateTextState,
     StreamState,
 )

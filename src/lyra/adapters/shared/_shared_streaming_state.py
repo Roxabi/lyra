@@ -1,8 +1,13 @@
-"""Streaming state primitives — IntermediateTextState, StreamState, error helpers.
+"""Streaming state primitives — IntermediateTextState, StreamState.
 
 Extracted from _shared_streaming.py (Issue #760).  These types represent the
 mutable state of a single streaming turn; they carry no platform knowledge and
 import nothing from the platform layer.
+
+S7 of #1279: classify_stream_error legacy wrapper removed (build_display_text
+now calls OutboundErrorHandler directly via deferred import).
+STREAMING_EDIT_INTERVAL re-export shim removed (consumers import from
+lyra.outbound.throttle directly).
 """
 
 from __future__ import annotations
@@ -14,10 +19,6 @@ from dataclasses import dataclass, field
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY
 
 log = logging.getLogger(__name__)
-
-
-# STREAMING_EDIT_INTERVAL re-exported from lyra.outbound.throttle — transitional shim,
-# deleted at S7 of #1279. The authoritative definition moved to outbound/throttle.py.
 
 
 # Maximum accumulated intermediate text length. Segments beyond this are
@@ -68,29 +69,6 @@ class IntermediateTextState:
     def display(self) -> str:
         """Return the accumulated intermediate text for the placeholder."""
         return self._text
-
-
-def classify_stream_error(
-    stream_error: Exception | None,
-    *,
-    had_tool_events: bool,
-    final_text: str | None,
-    msg_fn: Callable[[str, str], str],
-) -> str | None:
-    """Legacy module-level wrapper \u2014 delegates to OutboundErrorHandler.
-
-    Kept for tests and any pre-#1279 consumers. The new code path goes through
-    OutboundErrorHandler.classify_stream_error which carries its own get_msg.
-    Removed at S7 of #1279.
-    """
-    from lyra.outbound.error_handler import OutboundErrorHandler
-
-    handler = OutboundErrorHandler(get_msg=msg_fn)
-    return handler.classify_stream_error(
-        stream_error,
-        had_tool_events=had_tool_events,
-        final_text=final_text,
-    )
 
 
 @dataclass
@@ -145,11 +123,17 @@ class StreamState:
         turns so the user always sees a meaningful message.
         """
         if self.final_text is None:
-            return classify_stream_error(
+            # Deferred import — avoids circular load: emitter.py imports this
+            # module at the bottom, and error_handler is part of lyra.outbound.
+            from lyra.outbound.error_handler import (
+                OutboundErrorHandler,  # noqa: PLC0415
+            )
+
+            handler = OutboundErrorHandler(get_msg=msg_fn)
+            return handler.classify_stream_error(
                 self.stream_error,
                 had_tool_events=self.had_tool_events,
                 final_text=None,
-                msg_fn=msg_fn,
             )
         # Error-turn detection: is_error_turn (legacy path set at set_final_text
         # time) OR is_error_pending (RunErrorRenderEvent observed in the
@@ -163,12 +147,3 @@ class StreamState:
             else:
                 display = msg_fn("generic", GENERIC_ERROR_REPLY)
         return display
-
-
-# Deferred import — placed here (after all class definitions) to avoid the
-# circular-load issue: emitter.py's deferred-import block imports this module,
-# which would re-enter emitter.py if throttle.py imported adapters.* at the
-# top level. throttle.py is pure (no adapters imports), so this is safe.
-from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL  # noqa: E402, I001 — deferred + transitional re-export, deleted at S7 of #1279
-
-__all__ = ["STREAMING_EDIT_INTERVAL"]  # re-export for backwards-compat consumers

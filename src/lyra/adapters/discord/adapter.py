@@ -12,12 +12,11 @@ import discord
 from lyra.core.stores.thread_store_protocol import ThreadSession
 
 if TYPE_CHECKING:
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
     from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.messaging.bus import Bus
     from lyra.core.stores.thread_store_protocol import ThreadStoreProtocol
     from lyra.infrastructure.stores.turn_store import TurnStore
-    from lyra.outbound.emitter import OutboundEmitter
+    from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
 
 from lyra.adapters.discord import discord_audio  # noqa: I001 — DEBT:module-level-patch-fixtures
 from lyra.adapters.discord import discord_audio_outbound

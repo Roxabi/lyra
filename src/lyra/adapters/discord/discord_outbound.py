@@ -31,7 +31,7 @@ from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
+    from lyra.outbound.emitter import PlatformCallbacks
 
 log = logging.getLogger("lyra.adapters.discord")
 
@@ -201,7 +201,7 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
     telegram_outbound.build_streaming_callbacks().
     """
     from lyra.adapters.shared._shared import send_with_retry
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
+    from lyra.outbound.emitter import PlatformCallbacks
 
     meta = _validate_inbound(original_msg, "build_streaming_callbacks")
     if meta is None:

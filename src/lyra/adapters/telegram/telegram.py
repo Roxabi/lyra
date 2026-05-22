@@ -14,11 +14,10 @@ from typing import TYPE_CHECKING, Any
 from fastapi import Depends, FastAPI, HTTPException, Request
 
 if TYPE_CHECKING:
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
     from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.messaging.bus import Bus
     from lyra.infrastructure.stores.turn_store import TurnStore
-    from lyra.outbound.emitter import OutboundEmitter
+    from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
 
 from lyra.adapters.telegram import telegram_audio  # noqa: I001 — DEBT:lint-residual
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase

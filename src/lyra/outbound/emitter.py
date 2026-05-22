@@ -31,10 +31,7 @@ from typing import TYPE_CHECKING, Any, assert_never
 # fires, so the shim's lookup succeeds. (Issue #1279 keeps the state + recap
 # files under lyra.adapters.shared/ per resolved spec Open Q 2.)
 if TYPE_CHECKING:
-    from lyra.adapters.shared._shared_streaming_state import (
-        STREAMING_EDIT_INTERVAL,
-        StreamState,
-    )
+    from lyra.adapters.shared._shared_streaming_state import StreamState
     from lyra.adapters.shared._tool_recap import (
         ToolRecapAccumulator,
         format_recap_lines,
@@ -536,10 +533,10 @@ class OutboundEmitter:
 # OutboundEmitter (triggered transitively by lyra.adapters.__init__) finds a
 # fully initialized class instead of a partially loaded module.
 from lyra.adapters.shared._shared_streaming_state import (  # noqa: E402
-    STREAMING_EDIT_INTERVAL,
     StreamState,
 )
 from lyra.adapters.shared._tool_recap import (  # noqa: E402
     ToolRecapAccumulator,
     format_recap_lines,
 )
+from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL  # noqa: E402, F401

@@ -29,8 +29,8 @@ from lyra.core.messaging.render_events import (
 from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 
 if TYPE_CHECKING:
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
     from lyra.adapters.telegram import TelegramAdapter
+    from lyra.outbound.emitter import PlatformCallbacks
 
 log = logging.getLogger("lyra.adapters.telegram")
 
@@ -194,7 +194,7 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
     Extracted from TelegramAdapter._make_streaming_callbacks to keep telegram.py
     under the 300-line file-length limit.
     """
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
+    from lyra.outbound.emitter import PlatformCallbacks
 
     meta = _validate_inbound(original_msg, "send_streaming")
     if meta is None:

@@ -103,9 +103,9 @@ class CliStreamingParser:
     Parses NDJSON lines from the CLI subprocess stdout into LlmEvent objects.
     Maintains session state (session_id, error) across parse calls.
 
-    Implements (duck-typed) the ``lyra.streaming.Parser[str, LlmEvent]`` Protocol
-    via ``parse_line`` (maps to ``feed``), ``finalize``, and ``is_done``. Composed,
-    not inherited — see spec #1282 §Breadboard.
+    Only ``parse_line`` is implemented today. The ``Parser`` Protocol's
+    ``feed``/``finalize``/``is_done`` shape is the target for future stream
+    sources — see streaming/CLAUDE.md §Protocol is structural.
     """
 
     def __init__(self, pool_id: str) -> None:
@@ -318,17 +318,15 @@ class CliStreamingParser:
         elif delta_type == _DELTA_INPUT_JSON:
             idx = event_data.get("index")
             partial_json = delta.get("partial_json", "")
-            if (
-                isinstance(idx, int)
-                and self._sm_tool_blocks.is_open(idx)
-                and partial_json
-            ):
-                return [
-                    ToolUseDeltaLlmEvent(
-                        tool_id=self._sm_tool_blocks.open_blocks[idx],
-                        partial_json=partial_json,
-                    )
-                ]
+            if isinstance(idx, int) and partial_json:
+                tool_id = self._sm_tool_blocks.get(idx)
+                if tool_id is not None:
+                    return [
+                        ToolUseDeltaLlmEvent(
+                            tool_id=tool_id,
+                            partial_json=partial_json,
+                        )
+                    ]
         return ()
 
     def _handle_content_block_stop(self, event_data: dict) -> Iterable[LlmEvent]:
@@ -377,6 +375,10 @@ class CliStreamingParser:
 
         Path (a) via _classify_cli_error preserved verbatim.
         Downgrade logic is_error=True + subtype=success + had_text_delta preserved.
+
+        Name collision: CSP takes ``dict``, SP takes ``ResultLlmEvent`` —
+        intentional shadowing by class context, NOT shared behavior. Cross-ref:
+        the other ``_handle_result`` in ``StreamProcessor``.
         """
         sid = data.get("session_id", "")
         if sid:

@@ -63,7 +63,7 @@ def _make_voice_message() -> InboundMessage:
         audio=AudioPayload(
             blob_ref=BlobRef(
                 store_key="test-blob",
-                content_hash="",
+                content_hash="deadbeef",
                 mime="audio/ogg",
                 size=1,
                 source="test",

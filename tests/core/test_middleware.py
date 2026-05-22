@@ -798,7 +798,7 @@ async def test_stt_middleware_no_msg_manager_replies() -> None:
         audio=AudioPayload(
             blob_ref=BlobRef(
                 store_key="test-blob",
-                content_hash="",
+                content_hash="deadbeef",
                 mime="audio/ogg",
                 size=len(b"fake_audio"),
                 source="test",

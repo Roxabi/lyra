@@ -14,6 +14,7 @@ import nats.errors
 import typer
 from nats.aio.client import Client as NATS
 
+from roxabi_contracts import PENDING_STORE_KEY
 from roxabi_contracts.voice import SUBJECTS
 from roxabi_nats.connect import nats_connect  # noqa: F401 — DEBT:re-export-init
 
@@ -104,8 +105,7 @@ async def _run_smoke(
         blob_ref, mime_type = await _step_tts(nc, timeout)
         transcript = await _step_stt(nc, blob_ref, mime_type, timeout)
         _assert_transcript(transcript)
-        typer.echo(f' ok (transcript: "{transcript}")')
-        typer.echo("PASS")
+        typer.echo(f' ok (transcript: "{transcript}")\nPASS')
     finally:
         await nc.drain()
         await nc.close()
@@ -213,9 +213,7 @@ async def _step_tts(nc: NATS, timeout: float) -> tuple[dict, str]:
     return blob_ref, data.get("mime_type", "audio/ogg")
 
 
-async def _step_stt(
-    nc: NATS, blob_ref: dict, mime_type: str, timeout: float
-) -> str:
+async def _step_stt(nc: NATS, blob_ref: dict, mime_type: str, timeout: float) -> str:
     """Send STT request and return the transcript text.
 
     Prints progress and raises typer.Exit(1) on any failure.
@@ -226,7 +224,7 @@ async def _step_stt(
             "contract_version": _CONTRACT_VERSION,
             "request_id": str(uuid4()),
             "blob_ref": {
-                "store_key": "__pending__",
+                "store_key": PENDING_STORE_KEY,
                 "content_hash": "",
                 "mime": mime_type,
                 "size": 0,  # smoke test does not carry bytes through

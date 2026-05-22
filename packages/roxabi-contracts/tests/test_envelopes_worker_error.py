@@ -170,7 +170,7 @@ def test_tts_response_worker_error_defaults_none() -> None:
         request_id="r1",
         blob_ref=BlobRef(
             store_key="test-audio",
-            content_hash="",
+            content_hash="deadbeef",
             mime="audio/wav",
             size=len(silence_wav_16khz),
             source="testing",

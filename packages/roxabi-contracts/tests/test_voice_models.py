@@ -258,3 +258,23 @@ def test_min_length_one_rejects_empty_string(
     payload[field] = ""
     with pytest.raises(ValidationError):
         model.model_validate(payload)
+
+
+# ---------------------------------------------------------------------------
+# Legacy-field regression guard — spec SC-2, plan T6.
+# ContractEnvelope uses extra="ignore", so audio_b64 is silently dropped; the
+# request then fails on the now-required blob_ref. The model rejects the
+# legacy payload shape either way — this test pins that the failure happens.
+# ---------------------------------------------------------------------------
+
+
+def test_stt_request_rejects_legacy_audio_b64_field() -> None:
+    """Spec SC-2: SttRequest(audio_b64=...) must raise ValidationError."""
+    payload: dict[str, Any] = {
+        **_ENVELOPE,
+        "request_id": "r-legacy",
+        "audio_b64": "ZmFrZS1ieXRlcw==",
+        "model": "large-v3-turbo",
+    }
+    with pytest.raises(ValidationError):
+        SttRequest.model_validate(payload)

@@ -161,7 +161,7 @@ async def test_stt_roundtrip_default_fixture(nats_server_url: str) -> None:
             request_id="r2",
             blob_ref=BlobRef(
                 store_key="test-stt",
-                content_hash="",
+                content_hash="deadbeef",
                 mime="audio/wav",
                 size=len(silence_wav_16khz),
                 source="testing",

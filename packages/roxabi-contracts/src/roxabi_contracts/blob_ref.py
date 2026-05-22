@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 PENDING_STORE_KEY = "__pending__"
 """Sentinel store_key emitted by adapters before BlobStore ingest lands.
@@ -63,3 +63,11 @@ class BlobRef(BaseModel):
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
     """UTC-aware creation timestamp."""
+
+    @model_validator(mode="after")
+    def _require_content_hash_unless_sentinel(self) -> BlobRef:
+        if self.content_hash == "" and self.store_key != PENDING_STORE_KEY:
+            raise ValueError(
+                "content_hash must be non-empty unless store_key == PENDING_STORE_KEY"
+            )
+        return self

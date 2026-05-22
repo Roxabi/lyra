@@ -36,7 +36,7 @@ def _ok_response() -> ImageResponse:
             "request_id": "r1",
             "blob_ref": {
                 "store_key": "test-img",
-                "content_hash": "",
+                "content_hash": "deadbeef",
                 "mime": "image/png",
                 "size": 3,
                 "source": "imagecli",

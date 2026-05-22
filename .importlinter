@@ -9,6 +9,7 @@ type = layers
 layers =
     lyra.bootstrap
     lyra.adapters
+    lyra.outbound
     lyra.infrastructure
     lyra.llm | lyra.nats
     lyra.core
@@ -41,6 +42,15 @@ ignore_imports =
     # at the same layer as voice clients in lyra.nats; llm/ placement is domain grouping
     # only. Track for lyra.transport layer extraction — DEBT:importlinter-llm-transport-nats
     lyra.llm.llm_client -> lyra.transport.worker_pool_client
+    # OutboundEmitter (lyra.outbound) imports shared state types that STAY in
+    # lyra.adapters.shared per resolved Open Q 2 (spec §Resolved Open Questions):
+    # StreamState.build_display_text calls classify_stream_error, creating a circular
+    # import if state were moved into lyra.outbound. These are runtime deferred imports
+    # (bottom of emitter.py) to break the circular init path. Tracked for S2 migration
+    # where classify_stream_error moves to OutboundErrorHandler, eliminating the need
+    # for these exemptions — DEBT:importlinter-outbound-shared-state-transition
+    lyra.outbound.emitter -> lyra.adapters.shared._shared_streaming_state
+    lyra.outbound.emitter -> lyra.adapters.shared._tool_recap
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers

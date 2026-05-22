@@ -3,7 +3,9 @@
 Defines the shared contract for Telegram and Discord outbound adapters:
 - abstract send() — platform-specific complete reply
 - concrete send_streaming() — shared algorithm via OutboundEmitter
-- abstract _make_streaming_callbacks() — platform-specific callback factory
+- abstract _make_emitter() — platform-specific stage-composed emitter factory
+- abstract _make_streaming_callbacks() — legacy callback factory (kept during
+  S4→S7 transition; consumed by some tests directly)
 - abstract _start_typing() / _cancel_typing() — typing indicator lifecycle
 
 Discord MRO constraint: __init__ must be a no-op. discord.Client's __init__
@@ -34,11 +36,14 @@ class OutboundAdapterBase(ABC):
 
     Subclasses must implement:
     - send()
-    - _make_streaming_callbacks()
+    - _make_emitter() — stage-composed factory (#1279 T15/T19)
+    - _make_streaming_callbacks() — legacy callbacks factory (kept until S7 cleanup)
     - _start_typing()
     - _cancel_typing()
 
     send_streaming() is provided as a concrete method and must NOT be overridden.
+    It now delegates to _make_emitter so each platform's stage composition
+    (formatter + typing + error_handler) is the active path.
 
     MRO note: __init__ is intentionally absent. DiscordAdapter uses multiple
     inheritance (discord.Client first), and discord.Client.__init__ must receive
@@ -59,17 +64,24 @@ class OutboundAdapterBase(ABC):
         events: "AsyncIterator[RenderEvent]",
         outbound: "OutboundMessage | None" = None,
     ) -> None:
-        """Stream reply using the shared OutboundEmitter algorithm.
-
-        Slices S4/S5 (#1279) will replace `_make_streaming_callbacks` with
-        `_make_emitter` on each platform adapter; this base method swaps
-        accordingly when both platforms have shipped the new factory.
-        """
-        emitter = OutboundEmitter(
-            self._make_streaming_callbacks(original_msg, outbound),
-            outbound,
-        )
+        """Stream reply using the shared OutboundEmitter algorithm."""
+        emitter = self._make_emitter(original_msg, outbound)
         await emitter.run(events)
+
+    @abstractmethod
+    def _make_emitter(
+        self,
+        original_msg: "InboundMessage",
+        outbound: "OutboundMessage | None",
+    ) -> OutboundEmitter:
+        """Build the platform-specific OutboundEmitter (stage-composed).
+
+        Composes OutboundFormatter + ThrottleCapability + OutboundErrorHandler
+        per #1279 Phase 2. Subclasses construct the per-platform formatter
+        + typing indicator + error handler and return OutboundEmitter wired
+        through the existing PlatformCallbacks dataclass (transitional; the
+        dataclass itself is removed in S7 along with _make_streaming_callbacks).
+        """
 
     @abstractmethod
     def _make_streaming_callbacks(
@@ -77,7 +89,11 @@ class OutboundAdapterBase(ABC):
         original_msg: "InboundMessage",
         outbound: "OutboundMessage | None",
     ) -> PlatformCallbacks:
-        """Build the platform-specific PlatformCallbacks for OutboundEmitter."""
+        """Legacy callbacks factory — consumed by `_make_emitter` and a few tests.
+
+        Removed in S7 of #1279 once the formatter Protocol fully owns the
+        callback surface.
+        """
 
     @abstractmethod
     def _start_typing(self, scope_id: int) -> None:

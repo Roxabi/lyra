@@ -15,6 +15,7 @@ from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.adapters.shared._shared_streaming import PlatformCallbacks
 from lyra.core.messaging.message import InboundMessage, OutboundMessage
 from lyra.core.messaging.render_events import RenderEvent, TextEndRenderEvent
+from lyra.outbound.emitter import OutboundEmitter
 from tests.adapters.conftest import make_tg_msg
 
 # ---------------------------------------------------------------------------
@@ -34,6 +35,13 @@ class ConcreteAdapter(OutboundAdapterBase):
         self, original_msg: InboundMessage, outbound: OutboundMessage | None
     ) -> PlatformCallbacks:
         return MagicMock(spec=PlatformCallbacks)
+
+    def _make_emitter(
+        self, original_msg: InboundMessage, outbound: OutboundMessage | None
+    ) -> OutboundEmitter:
+        return OutboundEmitter(
+            self._make_streaming_callbacks(original_msg, outbound), outbound
+        )
 
     def _start_typing(self, scope_id: int) -> None:
         pass
@@ -70,6 +78,13 @@ class TestableAdapter(OutboundAdapterBase):
             placeholder_text="\u2026",
         )
 
+    def _make_emitter(
+        self, original_msg: InboundMessage, outbound: OutboundMessage | None
+    ) -> OutboundEmitter:
+        return OutboundEmitter(
+            self._make_streaming_callbacks(original_msg, outbound), outbound
+        )
+
     def _start_typing(self, scope_id: int) -> None:
         pass
 
@@ -100,6 +115,9 @@ class TestOutboundAdapterBaseABC:
             def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
+            def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
+                pass
+
             def _start_typing(self, scope_id):
                 pass
 
@@ -118,6 +136,9 @@ class TestOutboundAdapterBaseABC:
             async def send(self, original_msg, outbound):
                 pass
 
+            def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
+                pass
+
             def _start_typing(self, scope_id):
                 pass
 
@@ -128,6 +149,27 @@ class TestOutboundAdapterBaseABC:
         with pytest.raises(TypeError):
             MissingCallbacks()  # type: ignore[abstract]
 
+    def test_missing_make_emitter_raises_type_error(self) -> None:
+        """Instantiating a subclass that omits _make_emitter() must raise TypeError."""
+
+        # Arrange
+        class MissingEmitter(OutboundAdapterBase):
+            async def send(self, original_msg, outbound):
+                pass
+
+            def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
+                pass
+
+            def _start_typing(self, scope_id):
+                pass
+
+            def _cancel_typing(self, scope_id):
+                pass
+
+        # Act / Assert
+        with pytest.raises(TypeError):
+            MissingEmitter()  # type: ignore[abstract]
+
     def test_missing_start_typing_raises_type_error(self) -> None:
         """Instantiating a subclass that omits _start_typing() must raise TypeError."""
 
@@ -137,6 +179,9 @@ class TestOutboundAdapterBaseABC:
                 pass
 
             def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
+                pass
+
+            def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
             def _cancel_typing(self, scope_id):
@@ -155,6 +200,9 @@ class TestOutboundAdapterBaseABC:
                 pass
 
             def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
+                pass
+
+            def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
             def _start_typing(self, scope_id):
@@ -240,6 +288,11 @@ class TestOutboundAdapterBaseSendStreaming:
                     cancel_typing=MagicMock(),
                     get_msg=MagicMock(side_effect=lambda key, fb: fb),
                     placeholder_text="\u2026",
+                )
+
+            def _make_emitter(self, original_msg, outbound):
+                return OutboundEmitter(
+                    self._make_streaming_callbacks(original_msg, outbound), outbound
                 )
 
             def _start_typing(self, scope_id):

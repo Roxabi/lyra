@@ -1,0 +1,142 @@
+---
+title: "ADR-073: Axis of Decomposition — Stage of Pipeline"
+description: Primary axis chosen for system variation — prevents N×M drift across platform/adapter dimension
+axial: true
+---
+
+## Status
+
+Accepted
+
+## Context
+
+This ADR ratifies the architectural pivot that began with Epic #1277 (2026-05-20) and is being
+executed through Phases #1278–#1284. It makes the axis choice explicit and grep-discoverable.
+
+Lyra varies along two axes:
+
+| Axis | Instances (now) | Growth (12m) |
+|------|-----------------|--------------|
+| **Stage** (pipeline slice) | inbound → router → session → dispatcher → llm/clipool → streaming → outbound | +2–3 stages expected (NATS-stream, SSE parsers, declarative DI layer) |
+| **Platform/Adapter** | telegram, discord, cli, nats | +1–3 adapters possible (Slack, web, …) |
+
+Prior to #1277, the de-facto primary axis was **platform/adapter**: one file per integration
+target, each accreting the full set of M pipeline concerns. Growth function: N targets × M
+concerns = N×M sites. Consequence: every bug fix required N sibling edits, every new target
+required copy-pasting M concerns. Empirical signal: 5 sibling-fixes for a single bug class
+(`str(exc)` leak), branching factor ≥1.5× per fix cycle (2026-05-19).
+
+Reference: `artifacts/analyses/1277-stage-axis-refactor-strategy.mdx` — full root-cause
+analysis, 4-producer cascade model, measurable success criteria, and phase decomposition.
+
+## Options Considered
+
+### Option A: `platform/adapter` as primary (status quo ante)
+
+One file/module per integration target (telegram, discord, cli, nats). Each target owns its
+full pipeline stack inline.
+
+- **Pros:** Simple initial file; no abstraction cost at N=1.
+- **Cons:** Growth = N×M (multiplicative). Bug fix → N sites. New target → copy M concerns.
+  New concern → edit all N targets. Confirmed by empirical cascade data (§1 of strategy doc).
+- **Drift signature:** `adapters/telegram/`, `adapters/discord/`, `adapters/cli/` each
+  containing parallel parse/sanitize/route/emit logic.
+
+### Option B: `stage` as primary (chosen)
+
+One module per pipeline stage (inbound, streaming, outbound, transport, …). Targets become
+**pipeline configurations**: thin compositions of existing stage primitives.
+
+- **Pros:** Growth = N+M (additive). Bug fix → 1 stage module. New target → compose existing
+  stages; zero stage duplication. New concern → 1 module, applied automatically. Layering
+  enforced by import-linter (`.importlinter`).
+- **Cons:** Upfront composition cost. Existing targets require refactor to thin configuration
+  wrappers (7-phase epic, ~10 weeks). Transitional exemptions in `.importlinter` until Phase 7.
+- **Drift signature:** `class.*Client.*Client` in `src/lyra/nats/` or `src/lyra/adapters/`.
+
+## Decision
+
+**Primary axis:** `stage` (pipeline slice)
+**Reason category:** Stability — stages (parse, sanitize, route, execute, emit) change rarely
+and express the structural invariants of the pipeline; adapters are product-volatile (any new
+channel adds a target but must NOT add new stage logic).
+
+When extending the system:
+
+- New **stage** → 1 new module under its subsystem (`streaming/`, `transport/`, `outbound/`,
+  etc.), composes existing transport/error primitives.
+- New **platform/adapter** → 1 thin configuration file composing existing stage primitives;
+  does NOT re-implement parse, sanitize, route, emit, or error-handling logic.
+
+Composition pattern (from strategy doc §4):
+
+```python
+telegram = Pipeline(
+    wire_in   = TelegramParser,
+    sanitize  = DefaultSanitizer,
+    transport = NatsRequestResponse,
+    business  = HubDispatcher,
+    wire_out  = TelegramEmitter,
+    caps      = [Retry(3), Throttle(20), CircuitBreaker()],
+)
+```
+
+Architectural commitments already encoded in code structure:
+
+- `Result[T, E]` return type — callers cannot ignore errors; no exception propagation path.
+- `SanitizedError` boundary — single site in `transport/`, never re-constructed downstream.
+- Layering: `transport → streaming → core/processors → adapters/outbound → bootstrap`
+  (enforced by `.importlinter` `clean-architecture-layers` contract).
+- Per-subsystem CLAUDE.md files (streaming, transport, inbound, outbound, …) own their
+  stage-specific invariants.
+
+## Consequences
+
+### Positive
+
+- Bug fix in a stage concern → 1 module touched → 0 sibling cascade possible.
+- New adapter cost: <100 lines (composition config) vs ~500 lines (copy-paste stack).
+- `boundary-broad-catch` debt: 104 sites → target ≤30 post-epic.
+- `wiring-bootstrap-deps` debt: 84 sites → target ≤30 post-epic.
+- Net LOC reduction: −2500 to −3000 across NATS + adapters + drivers.
+- 15 paused issues unblock automatically when Phase 7 (#1284) closes.
+
+### Negative (Expected Debt)
+
+- **Cross-stage feature cost** — a feature that spans multiple stages (e.g. per-platform
+  streaming throttle variant) requires a shared primitive or a stage-level configuration hook,
+  not a per-target override. Mitigation: capability layer (#493) as a future composition point;
+  accepted as known trade-off.
+- **Transitional period** — `.importlinter` carries exemptions for cross-layer TYPE_CHECKING
+  imports until Phase 7 closes. These are tracked under `DEBT:importlinter-adr048-transition`
+  and `DEBT:importlinter-outbound-shared-state-transition`.
+- **Protocol conformance gap** — `Parser` Protocol in `streaming/` documents the target shape
+  but `isinstance(consumer, Parser)` currently returns `False` for existing consumers. A
+  follow-up issue will add `feed`/`finalize`/`is_done` aliases; until then the Protocol is a
+  shape-doc, not a runtime contract.
+
+### Anti-pattern signal
+
+Grep pattern: `class.*Client.*Client` in `src/lyra/nats/`.
+If this pattern appears, a new domain client is subclassing or wrapping another client instead
+of composing `WorkerPoolClient` directly — drift along the wrong (platform) axis is starting.
+
+Secondary signal: parallel parse/emit logic blocks in `src/lyra/adapters/telegram/` and
+`src/lyra/adapters/discord/` (grep: `def.*parse` or `def.*emit` duplicated across adapter dirs).
+
+### Revisit triggers
+
+- `boundary-broad-catch` still > 30 after Phase 7 (#1284) — diagnose residual axis drift.
+- Sibling-fix rate > 3/week on any stage concern post-epic — stage boundary has leaked.
+- New integration cost > 200 lines/domain after Phase 7 — composition pattern has not propagated.
+- 6-monthly axial review (calendar: 2026-11-01).
+
+## Trail
+
+- Epic: #1277 — stage-axis decomposition (root-cause analysis + 7 phases)
+- Scope issue: #1321 — ADR + documentation cleanup
+- Phase 7: #1284 — docs/ADR cleanup (this ADR is a deliverable)
+- Strategy SSoT: `artifacts/analyses/1277-stage-axis-refactor-strategy.mdx`
+- Enforcing contract: `.importlinter` → `clean-architecture-layers`
+- Subsystem invariants: `src/lyra/streaming/CLAUDE.md`, `src/lyra/transport/CLAUDE.md`,
+  `src/lyra/inbound/CLAUDE.md`, `src/lyra/outbound/CLAUDE.md`

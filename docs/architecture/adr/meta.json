@@ -2,6 +2,8 @@
   "title": "ADRs (decision archive)",
   "description": "Historical decision records. For current state see ../<domain>.md.",
   "pages": [
+    "---Foundational---",
+    "073-axial-stage-of-pipeline-decomposition",
     "---Messaging & NATS---",
     "001-routing-key-platform-bot-id-user-id",
     "002-hub-impl-contracts-dispatch-pool-deprecation",

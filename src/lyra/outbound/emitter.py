@@ -39,6 +39,7 @@ if TYPE_CHECKING:
         ToolRecapAccumulator,
         format_recap_lines,
     )
+    from lyra.outbound.throttle import ThrottleCapability
 
 from lyra.core.messaging import (
     ReasoningDeltaRenderEvent,
@@ -150,12 +151,16 @@ class OutboundEmitter:
         outbound: OutboundMessage | None,
         *,
         error_handler: OutboundErrorHandler | None = None,
+        typing: "ThrottleCapability | None" = None,
+        typing_scope_id: int | None = None,
     ) -> None:
         self._cb = callbacks
         self._outbound = outbound
         self._handler = error_handler or OutboundErrorHandler(
             get_msg=callbacks.get_msg
         )
+        self._typing = typing
+        self._typing_scope_id = typing_scope_id
         self._st = StreamState()
         self._trace_obj: Any | None = None
         self._recap_accum = ToolRecapAccumulator()
@@ -279,6 +284,20 @@ class OutboundEmitter:
                     final = final[2:]
                 self._st.set_final_text(final)
 
+    async def _cancel_typing(self) -> None:
+        """Cancel typing via ThrottleCapability or legacy callback."""
+        if self._typing is not None and self._typing_scope_id is not None:
+            await self._typing.cancel_typing(self._typing_scope_id)
+        else:
+            self._cb.cancel_typing()
+
+    async def _start_typing(self) -> None:
+        """Start typing via ThrottleCapability or legacy callback."""
+        if self._typing is not None and self._typing_scope_id is not None:
+            await self._typing.start_typing(self._typing_scope_id)
+        else:
+            self._cb.start_typing()
+
     async def _send_placeholder(self) -> tuple[Any, int | None] | None:
         """Send the placeholder and record reply_message_id on outbound.
 
@@ -291,7 +310,7 @@ class OutboundEmitter:
             context="send_placeholder",
         )
         if isinstance(result, Err):
-            self._cb.cancel_typing()
+            await self._cancel_typing()
             return None
         placeholder_obj, reply_message_id = result.value
         if self._outbound is not None:
@@ -463,12 +482,12 @@ class OutboundEmitter:
         if isinstance(result, Err):
             pass  # guard already logged; non-fatal
 
-    def _handle_typing_tail(self) -> None:
+    async def _handle_typing_tail(self) -> None:
         """Start or cancel typing based on whether the turn is intermediate."""
         if self._outbound is not None and self._outbound.intermediate:
-            self._cb.start_typing()
+            await self._start_typing()
         else:
-            self._cb.cancel_typing()
+            await self._cancel_typing()
 
     async def run(self, events: AsyncIterator[RenderEvent]) -> None:
         """Run the full streaming lifecycle.
@@ -488,26 +507,26 @@ class OutboundEmitter:
             peek_error = exc
         if first_event is None and peek_error is None:
             await self._drain_fallback(events)
-            self._handle_typing_tail()
+            await self._handle_typing_tail()
             return
         if peek_error is not None:
             self._st.stream_error = peek_error
             result = await self._send_placeholder()
             if result is not None:
                 await self._deliver_final(result[0])
-            self._handle_typing_tail()
+            await self._handle_typing_tail()
             raise peek_error
         assert first_event is not None  # narrowed above
         result = await self._send_placeholder()
         full = _prepend(first_event, events)
         if result is None:
             await self._drain_fallback(full)
-            self._handle_typing_tail()
+            await self._handle_typing_tail()
             return
         placeholder_obj, _ = result
         await self._run_event_loop(full, placeholder_obj)
         await self._deliver_final(placeholder_obj)
-        self._handle_typing_tail()
+        await self._handle_typing_tail()
         if self._st.stream_error is not None:
             raise self._st.stream_error
 

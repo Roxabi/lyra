@@ -30,6 +30,12 @@ caller workflow that feeds project-specific inputs.
   > silently drop this instruction. The reusable workflow sets `oci-mediatypes=false` on the
   > `docker/build-push-action` step to force Docker v2 schema 2, so `HEALTHCHECK` is preserved
   > in the published image. No action needed in the Dockerfile or caller workflow.
+
+  > **svc-runtime (`staging-svc`) requires `config.toml` bind-mount:** `lyra config validate`
+  > opens `config.toml` from `WORKDIR /app` and exits 1 on `FileNotFoundError`. In production
+  > Quadlets the file is bind-mounted, so this is fine. Running `docker run` without the mount
+  > (local dev, CI smoke tests) will immediately mark the container unhealthy — this is expected
+  > behaviour, not a bug.
 - **OCI labels** — do not set `org.opencontainers.image.*` labels in the Dockerfile. They are
   injected at build time by `docker/metadata-action@v5` in the reusable workflow, ensuring labels
   always match the actual pushed tag and commit SHA.

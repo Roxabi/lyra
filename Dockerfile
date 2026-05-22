@@ -18,6 +18,7 @@ COPY src/ src/
 RUN uv sync --frozen --no-dev
 
 # ── Slim service runtime (hub, telegram, discord) ───────────────────────────
+# TODO: pin base-svc by digest — track alongside base:latest pinning issue
 FROM ghcr.io/roxabi/base-svc:latest AS svc-runtime
 
 USER root

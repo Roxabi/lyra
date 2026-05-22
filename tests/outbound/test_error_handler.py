@@ -25,6 +25,7 @@ from lyra.transport._result import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _passthrough_get_msg(key: str, fallback: str) -> str:
     """Return the fallback unchanged — used when we want to inspect raw values."""
     return fallback
@@ -37,6 +38,7 @@ def _make_handler() -> OutboundErrorHandler:
 # ---------------------------------------------------------------------------
 # handle() — sanitization
 # ---------------------------------------------------------------------------
+
 
 def test_handle_uses_type_name_only() -> None:
     """handle() returns type name only; connection details must not appear."""
@@ -60,6 +62,7 @@ def test_handle_uses_type_name_only() -> None:
 # ---------------------------------------------------------------------------
 # guard() — Result wrapping
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_guard_returns_ok_on_success() -> None:
@@ -98,6 +101,7 @@ async def test_guard_returns_err_on_exception() -> None:
 # ---------------------------------------------------------------------------
 # classify_stream_error() — routing
 # ---------------------------------------------------------------------------
+
 
 def test_classify_stream_error_timeout() -> None:
     """StreamChunkTimeout is rendered via the 'error_timeout' key / fallback."""
@@ -140,6 +144,15 @@ def test_classify_stream_error_no_error_no_tool_events_returns_none() -> None:
     assert result is None
 
 
+def test_classify_stream_error_no_error_no_tool_events_no_final_returns_none() -> None:
+    """No error + no tool events + no final → None (caller uses GENERIC_ERROR_REPLY)."""
+    handler = _make_handler()
+
+    result = handler.classify_stream_error(None, had_tool_events=False, final_text=None)
+
+    assert result is None
+
+
 def test_classify_stream_error_tool_events_no_final_returns_no_final_fallback() -> None:
     """Tool events received but no final text → non-None 'no final' fallback string."""
     handler = _make_handler()
@@ -154,6 +167,7 @@ def test_classify_stream_error_tool_events_no_final_returns_no_final_fallback() 
 # ---------------------------------------------------------------------------
 # guard() — log level discipline
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_guard_logs_at_debug_not_exception(

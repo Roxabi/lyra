@@ -153,12 +153,16 @@ class OutboundEmitter:
     ) -> None:
         self._cb = callbacks
         self._outbound = outbound
-        self._handler = error_handler or OutboundErrorHandler(
-            get_msg=callbacks.get_msg
-        )
+        self._handler = error_handler or OutboundErrorHandler(get_msg=callbacks.get_msg)
         self._typing = typing
         self._typing_scope_id = typing_scope_id
         self._st = StreamState()
+        # Edit-debounce interval: ThrottleCapability owns it when injected, else
+        # falls back to the module constant. Resolved at construction so callers
+        # see a single coherent interval per session.
+        self._edit_interval = (
+            typing.edit_interval_s if typing is not None else STREAMING_EDIT_INTERVAL
+        )
         self._trace_obj: Any | None = None
         self._recap_accum = ToolRecapAccumulator()
         self._last_recap_edit: float | None = None
@@ -220,7 +224,7 @@ class OutboundEmitter:
         now = time.monotonic()
         if (
             self._last_recap_edit is None
-            or (now - self._last_recap_edit) >= STREAMING_EDIT_INTERVAL
+            or (now - self._last_recap_edit) >= self._edit_interval
         ):
             lines = format_recap_lines(self._recap_accum, done=False)
             if lines:
@@ -255,8 +259,7 @@ class OutboundEmitter:
                 now = time.monotonic()
                 if (
                     self._st.last_intermediate_edit is None
-                    or (now - self._st.last_intermediate_edit)
-                    >= STREAMING_EDIT_INTERVAL
+                    or (now - self._st.last_intermediate_edit) >= self._edit_interval
                 ):
                     display = self._st.istate.display()
                     result = await self._handler.guard(
@@ -406,8 +409,8 @@ class OutboundEmitter:
     ) -> None:
         """Edit placeholder with first chunk, send overflow."""
         result = await self._handler.guard(
-            lambda p=placeholder_obj, c=final_chunks[0]: (
-                self._cb.edit_placeholder_text(p, c)
+            lambda p=placeholder_obj, c=final_chunks[0]: self._cb.edit_placeholder_text(
+                p, c
             ),
             context="deliver_final_edit",
         )
@@ -471,8 +474,8 @@ class OutboundEmitter:
             or GENERIC_ERROR_REPLY
         )
         result = await self._handler.guard(
-            lambda p=placeholder_obj, t=error_text: (
-                self._cb.edit_placeholder_text(p, t)
+            lambda p=placeholder_obj, t=error_text: self._cb.edit_placeholder_text(
+                p, t
             ),
             context="error_edit",
         )

@@ -191,23 +191,19 @@ class TestDeadStreamNoKeepaliveRaisesTimeout:
     """An empty queue with no keepalives raises StreamChunkTimeout."""
 
     @pytest.mark.asyncio
-    async def test_dead_stream_no_keepalive_raises_timeout(self) -> None:
+    async def test_dead_stream_no_keepalive_raises_timeout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """StreamChunkTimeout raised when no chunks and no keepalives arrive."""
         import lyra.adapters.nats.nats_stream_decoder as mod
 
-        original_poll = mod._LIVENESS_POLL_SECONDS
-        original_timeout = mod._CHUNK_TIMEOUT_SECONDS
-        mod._LIVENESS_POLL_SECONDS = 0.05
-        mod._CHUNK_TIMEOUT_SECONDS = 0.2
+        monkeypatch.setattr(mod, "_LIVENESS_POLL_SECONDS", 0.05)
+        monkeypatch.setattr(mod, "_CHUNK_TIMEOUT_SECONDS", 0.2)
 
         q: asyncio.Queue[dict] = asyncio.Queue()
 
-        try:
-            with pytest.raises(StreamChunkTimeout):
-                await _drain("msg-dead", q)
-        finally:
-            mod._LIVENESS_POLL_SECONDS = original_poll
-            mod._CHUNK_TIMEOUT_SECONDS = original_timeout
+        with pytest.raises(StreamChunkTimeout):
+            await _drain("msg-dead", q)
 
 
 # ---------------------------------------------------------------------------

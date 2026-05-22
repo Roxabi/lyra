@@ -76,13 +76,10 @@ async def _run_keepalive_loop(
                     subject,
                     json.dumps(chunk, ensure_ascii=False).encode("utf-8"),
                 )
-                log.debug(
-                    "keepalive published stream_id=%s seq=%d", stream_id, ka_seq
-                )
+                log.debug("keepalive published stream_id=%s seq=%d", stream_id, ka_seq)
             except nats.errors.Error:
                 log.warning(
-                    "NatsChannelProxy: failed to publish keepalive"
-                    " for stream_id=%r",
+                    "NatsChannelProxy: failed to publish keepalive for stream_id=%r",
                     stream_id,
                 )
 
@@ -230,10 +227,12 @@ class NatsChannelProxy:
                     subject,
                     json.dumps(terminal, ensure_ascii=False).encode("utf-8"),
                 )
-            except Exception:
-                log.exception(
+            except Exception as exc:  # noqa: BLE001 — bus boundary, type sanitized
+                log.warning(
                     "NatsChannelProxy: NATS publish failed during streaming,"
-                    " draining iterator"
+                    " stream_id=%r type=%s — draining iterator",
+                    original_msg.id,
+                    type(exc).__name__,
                 )
                 await self._publish_stream_error(subject, original_msg.id)
                 async for _ in events:

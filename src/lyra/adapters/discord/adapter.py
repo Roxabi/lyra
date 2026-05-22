@@ -236,11 +236,13 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         original_msg: InboundMessage,
         outbound: OutboundMessage | None,
     ) -> "OutboundEmitter":
-        """Build an OutboundEmitter composed of Discord stages (T19, Slice 5, #1279).
+        """Build an OutboundEmitter composed of Discord stages (#1279).
 
-        Adds the stage-axis path alongside the legacy _make_streaming_callbacks path.
-        The base send_streaming() still calls _make_streaming_callbacks; this method
-        is wired in by T16 (OutboundAdapterBase swap) once Telegram also ships T15.
+        Active since OutboundAdapterBase.send_streaming was flipped to call
+        _make_emitter (T16). Legacy _make_streaming_callbacks is retained for
+        send-mechanics until the S7 follow-up absorbs send_* into the
+        formatter Protocol; the formatter's rendering slots (edit_reasoning,
+        edit_tool_recap, chunk_text) are patched onto the callbacks below.
         """
         from lyra.adapters.discord.discord_formatter import DiscordFormatter
         from lyra.adapters.discord.discord_formatting import _validate_inbound

@@ -26,8 +26,7 @@ _ERR_TIMEOUT_FALLBACK = (
     "⏱️ The backend took longer than 120 s to respond. Please try again."
 )
 _ERR_NO_FINAL_FALLBACK = (
-    "⚠️ Response ended without a final message"
-    " (tool events only). Please try again."
+    "⚠️ Response ended without a final message (tool events only). Please try again."
 )
 
 
@@ -99,8 +98,7 @@ class OutboundErrorHandler:
                 return self._get_msg("error_timeout", _ERR_TIMEOUT_FALLBACK)
             return self._get_msg(
                 "error_stream",
-                f"⚠️ Streaming error: {type(stream_error).__name__}."
-                f" Please try again.",
+                f"⚠️ Streaming error: {type(stream_error).__name__}. Please try again.",
             )
         if final_text is None and had_tool_events:
             return self._get_msg("error_no_final", _ERR_NO_FINAL_FALLBACK)

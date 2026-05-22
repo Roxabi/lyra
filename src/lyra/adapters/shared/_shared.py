@@ -234,9 +234,14 @@ async def send_with_retry(
         try:
             await coro_fn()
             return
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — retry boundary, type sanitized
             if attempt == max_attempts - 1:
-                log.exception("%s failed after %d attempts", label, max_attempts)
+                log.warning(
+                    "%s failed after %d attempts: type=%s",
+                    label,
+                    max_attempts,
+                    type(exc).__name__,
+                )
                 return
             delay = 2**attempt  # 1 s, 2 s, 4 s ...
             log.warning(

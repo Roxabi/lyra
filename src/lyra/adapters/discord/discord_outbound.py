@@ -82,13 +82,14 @@ async def _discord_typing_worker(  # noqa: C901 — DEBT:adapter-dispatch-comple
             try:
                 channel = await resolve_channel(channel_id)
                 break
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — typing-worker resolve retry, type sanitized on warn-and-raise
                 if _attempt == 2:
                     log.warning(
-                        "typing: failed to resolve channel %d after %d attempts: %s",
+                        "typing: failed to resolve channel %d after"
+                        " %d attempts: type=%s",
                         channel_id,
                         _attempt + 1,
-                        exc,
+                        type(exc).__name__,
                     )
                     raise
                 await asyncio.sleep(1.0 * (2**_attempt))

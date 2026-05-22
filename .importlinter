@@ -42,13 +42,14 @@ ignore_imports =
     # at the same layer as voice clients in lyra.nats; llm/ placement is domain grouping
     # only. Track for lyra.transport layer extraction — DEBT:importlinter-llm-transport-nats
     lyra.llm.llm_client -> lyra.transport.worker_pool_client
-    # OutboundEmitter (lyra.outbound) imports shared state types that STAY in
-    # lyra.adapters.shared per resolved Open Q 2 (spec §Resolved Open Questions):
-    # StreamState.build_display_text calls classify_stream_error, creating a circular
-    # import if state were moved into lyra.outbound. These are runtime deferred imports
-    # (bottom of emitter.py) to break the circular init path. Tracked for S2 migration
-    # where classify_stream_error moves to OutboundErrorHandler, eliminating the need
-    # for these exemptions — DEBT:importlinter-outbound-shared-state-transition
+    # OutboundEmitter (lyra.outbound) imports shared state types that REMAIN in
+    # lyra.adapters.shared per resolved Open Q 2 (spec §Resolved Open Questions).
+    # classify_stream_error has moved to OutboundErrorHandler (#1279), but StreamState
+    # + ToolRecapAccumulator still live under adapters.shared because moving them
+    # into lyra.outbound would re-introduce the circular load path through
+    # StreamState.build_display_text. Deferred imports at the bottom of emitter.py
+    # break the import-time cycle; these exemptions remain necessary until
+    # StreamState relocates in Phase 7 (#1284) — DEBT:importlinter-outbound-shared-state-transition
     lyra.outbound.emitter -> lyra.adapters.shared._shared_streaming_state
     lyra.outbound.emitter -> lyra.adapters.shared._tool_recap
 

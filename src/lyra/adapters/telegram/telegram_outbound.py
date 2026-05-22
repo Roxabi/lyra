@@ -263,8 +263,11 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
                 last = await adapter.bot.send_message(
                     chat_id=chat_id, text=chunk, parse_mode="MarkdownV2"
                 )
-            except Exception:
-                log.exception("Failed to send final text chunk")
+            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal final-chunk send, type sanitized
+                log.warning(
+                    "Failed to send final text chunk: type=%s",
+                    type(exc).__name__,
+                )
         return last.message_id if last else None
 
     async def _send_fallback(text: str) -> int | None:

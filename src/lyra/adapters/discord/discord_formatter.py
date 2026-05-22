@@ -129,11 +129,14 @@ class DiscordFormatter:
         """
         if not lines:
             return
-        title = lines[0]
-        description = "\n".join(lines[1:]) or "​"  # zero-width space placeholder
+        # Discord embed limits: title ≤256, description ≤4096 (per discord API).
+        title = lines[0][:256]
+        description = ("\n".join(lines[1:]) or "​")[
+            :4096
+        ]  # zero-width space placeholder
         color = discord.Color.green() if done else discord.Color.blue()
         embed = discord.Embed(title=title, description=description, color=color)
         try:
             await trace_obj.edit(embed=embed)
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
-            log.debug("Tool recap edit skipped: %s", type(exc).__name__)
+        except discord.DiscordException as exc:
+            log.debug("Tool recap edit skipped: type=%s", type(exc).__name__)

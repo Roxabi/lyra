@@ -263,10 +263,15 @@ class TestOutboundAdapterBaseSendStreaming:
         # Assert — StreamingSession should have stored the placeholder message id
         assert "reply_message_id" in outbound.metadata
 
-    async def test_send_streaming_calls_make_streaming_callbacks(self) -> None:
-        """send_streaming() must call _make_streaming_callbacks() exactly once."""
+    async def test_send_streaming_calls_make_emitter_exactly_once(self) -> None:
+        """send_streaming() must call _make_emitter() exactly once.
+
+        This pins the base class dispatch contract \u2014 send_streaming delegates
+        to _make_emitter (not _make_streaming_callbacks, which is the
+        transitional path used internally by adapters).
+        """
         # Arrange
-        call_count = 0
+        emitter_call_count = 0
         original_msg = make_tg_msg()
 
         class TrackingAdapter(OutboundAdapterBase):
@@ -274,8 +279,6 @@ class TestOutboundAdapterBaseSendStreaming:
                 pass
 
             def _make_streaming_callbacks(self, original_msg, outbound):
-                nonlocal call_count
-                call_count += 1
                 return PlatformCallbacks(
                     send_placeholder=AsyncMock(return_value=(MagicMock(), 42)),
                     edit_placeholder_text=AsyncMock(),
@@ -290,6 +293,8 @@ class TestOutboundAdapterBaseSendStreaming:
                 )
 
             def _make_emitter(self, original_msg, outbound):
+                nonlocal emitter_call_count
+                emitter_call_count += 1
                 return OutboundEmitter(
                     self._make_streaming_callbacks(original_msg, outbound), outbound
                 )
@@ -305,5 +310,5 @@ class TestOutboundAdapterBaseSendStreaming:
         # Act
         await adapter.send_streaming(original_msg, _events(), outbound=None)
 
-        # Assert
-        assert call_count == 1
+        # Assert \u2014 send_streaming \u2192 _make_emitter dispatch fires exactly once
+        assert emitter_call_count == 1

@@ -77,7 +77,7 @@ class TelegramFormatter:
                     parse_mode="MarkdownV2",
                 )
             except TelegramAPIError as exc:
-                log.debug("Reasoning trace edit skipped: %s", exc)
+                log.debug("Reasoning trace edit skipped: type=%s", type(exc).__name__)
 
     async def edit_reasoning(
         self,
@@ -147,4 +147,4 @@ class TelegramFormatter:
                 parse_mode="MarkdownV2",
             )
         except TelegramAPIError as exc:
-            log.debug("Tool recap edit skipped: %s", exc)
+            log.debug("Tool recap edit skipped: type=%s", type(exc).__name__)

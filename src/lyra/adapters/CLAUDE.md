@@ -40,12 +40,15 @@ Inherit for every new platform adapter. Abstract methods to implement:
 | Method | Role |
 |--------|------|
 | `send(original_msg, outbound)` | Send complete reply |
-| `_make_streaming_callbacks(original_msg, outbound) -> PlatformCallbacks` | Build platform callbacks |
+| `_make_emitter(original_msg, outbound) -> OutboundEmitter` | Compose stage objects (formatter + throttle + error_handler) |
+| `_make_streaming_callbacks(original_msg, outbound) -> PlatformCallbacks` | Build send-mechanics callbacks (transitional — pending S7 absorption) |
 | `_start_typing(scope_id)` | Start typing indicator |
 | `_cancel_typing(scope_id)` | Cancel typing indicator |
 
-`send_streaming()` is **concrete** on the base — delegates to `StreamingSession`.
-Do NOT override it. Platform differences belong in `_make_streaming_callbacks()`.
+`send_streaming()` is **concrete** on the base — delegates to `_make_emitter()`
+which returns an `OutboundEmitter`. Do NOT override `send_streaming()`. Platform
+differences belong in `_make_emitter()` (stage composition) and the per-platform
+formatter/typing-indicator implementations under `outbound/`.
 
 `OutboundAdapterBase` has no `__init__` intentionally. Do NOT add one — it breaks
 cooperative MRO with `discord.Client`.

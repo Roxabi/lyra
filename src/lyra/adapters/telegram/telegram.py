@@ -256,14 +256,13 @@ class TelegramAdapter(OutboundAdapterBase):
         original_msg: InboundMessage,
         outbound: OutboundMessage | None,
     ) -> "OutboundEmitter":
-        """Construct an OutboundEmitter composed from stage objects (T15, #1279).
+        """Construct an OutboundEmitter composed from stage objects (#1279).
 
-        Dormant: the base class still calls _make_streaming_callbacks. T16 will
-        flip the base to call _make_emitter once Discord also has the method.
-
-        The formatter's edit_reasoning/edit_tool_recap are wired onto the
-        PlatformCallbacks so the legacy orchestration path picks them up
-        during the transition period.
+        Active since OutboundAdapterBase.send_streaming was flipped to call
+        _make_emitter (T16). The formatter's edit_reasoning/edit_tool_recap
+        are wired onto the PlatformCallbacks so send-mechanics share the same
+        rendering surface until the S7 follow-up absorbs send_* into the
+        formatter Protocol and PlatformCallbacks is deleted.
         """
         from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
         from lyra.adapters.telegram.telegram_formatting import _validate_inbound

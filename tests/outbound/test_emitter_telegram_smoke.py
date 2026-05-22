@@ -212,7 +212,11 @@ class TestTelegramSendStreamingSmoke:
         )
 
     async def test_send_streaming_final_edit_uses_markdownv2(self) -> None:
-        """Final delivery edit_message_text call must include parse_mode='MarkdownV2'."""  # noqa: E501
+        """Final delivery edit_message_text (last call) must use parse_mode=MarkdownV2.
+
+        Distinct from the intermediate-edit assertion: this pins the *last*
+        edit_message_text call (the final delivery) to MarkdownV2 specifically.
+        """  # noqa: E501
         # Arrange
         adapter, bot = _make_tg_adapter_with_bot()
         original_msg = _make_tg_inbound(chat_id=42, message_id=10)
@@ -223,14 +227,12 @@ class TestTelegramSendStreamingSmoke:
             original_msg, _three_chunk_events(), outbound=outbound
         )
 
-        # Assert — at least one edit_message_text call with MarkdownV2
+        # Assert — the final (last) edit_message_text call carries MarkdownV2
         bot.edit_message_text.assert_awaited()
-        found_markdownv2 = any(
-            call.kwargs.get("parse_mode") == "MarkdownV2"
-            for call in bot.edit_message_text.call_args_list
-        )
-        assert found_markdownv2, (
-            "Expected at least one edit_message_text with parse_mode='MarkdownV2'"
+        last_call = bot.edit_message_text.call_args_list[-1]
+        assert last_call.kwargs.get("parse_mode") == "MarkdownV2", (
+            "Expected final edit_message_text to use parse_mode='MarkdownV2', "
+            f"got kwargs: {last_call.kwargs}"
         )
 
     async def test_send_streaming_populates_reply_message_id_in_metadata(
@@ -283,9 +285,7 @@ class TestTelegramSendStreamingSmoke:
         if "edit" in call_order:
             first_send = call_order.index("send")
             first_edit = call_order.index("edit")
-            assert first_send < first_edit, (
-                "Placeholder must be sent before any edit"
-            )
+            assert first_send < first_edit, "Placeholder must be sent before any edit"
 
     async def test_send_streaming_completes_without_raising(self) -> None:
         """send_streaming() must not raise for a normal 3-chunk stream."""
@@ -306,9 +306,7 @@ class TestTelegramSendStreamingSmoke:
         original_msg = _make_tg_inbound(chat_id=42, message_id=10)
 
         # Act / Assert
-        await adapter.send_streaming(
-            original_msg, _three_chunk_events(), outbound=None
-        )
+        await adapter.send_streaming(original_msg, _three_chunk_events(), outbound=None)
 
     async def test_send_streaming_text_content_in_final_edit(self) -> None:
         """The final edit must contain the accumulated text ('Hello world')."""

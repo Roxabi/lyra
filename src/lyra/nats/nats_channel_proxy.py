@@ -6,9 +6,11 @@ Used by the standalone Hub process to dispatch responses to remote adapters.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -34,10 +36,55 @@ log = logging.getLogger(__name__)
 
 _NATS_UNSAFE = re.compile(r"[.*> ]")
 
+KEEPALIVE_INTERVAL_S = 30.0
+KEEPALIVE_EVENT_TYPE = "stream_keepalive"
+
 
 def _safe_subject_token(value: str) -> str:
     """Sanitize a value for use as a NATS subject token."""
     return _NATS_UNSAFE.sub("_", value)
+
+
+async def _run_keepalive_loop(
+    nc: NATS,
+    subject: str,
+    stream_id: str,
+    seq_box: list[int],
+    last_publish_box: list[float],
+) -> None:
+    """Publish stream_keepalive sentinels during idle periods (#687).
+
+    ``seq_box`` and ``last_publish_box`` are single-element lists used as
+    mutable references shared with the caller's publish loop.  Keepalive only
+    fires when the elapsed time since the last real publish exceeds
+    ``KEEPALIVE_INTERVAL_S``.
+    """
+    while True:
+        await asyncio.sleep(KEEPALIVE_INTERVAL_S)
+        if time.monotonic() - last_publish_box[0] >= KEEPALIVE_INTERVAL_S:
+            ka_seq = seq_box[0]
+            seq_box[0] += 1
+            chunk = {
+                "stream_id": stream_id,
+                "seq": ka_seq,
+                "event_type": KEEPALIVE_EVENT_TYPE,
+                "payload": {},
+                "done": False,
+            }
+            try:
+                await nc.publish(
+                    subject,
+                    json.dumps(chunk, ensure_ascii=False).encode("utf-8"),
+                )
+                log.debug(
+                    "keepalive published stream_id=%s seq=%d", stream_id, ka_seq
+                )
+            except nats.errors.Error:
+                log.warning(
+                    "NatsChannelProxy: failed to publish keepalive"
+                    " for stream_id=%r",
+                    stream_id,
+                )
 
 
 class NatsChannelProxy:
@@ -117,13 +164,18 @@ class NatsChannelProxy:
         events: AsyncIterator[RenderEvent],
         outbound: OutboundMessage | None = None,
     ) -> None:
-        """Publish streaming render events to NATS as chunked messages."""
-        subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
+        """Publish streaming render events to NATS as chunked messages.
 
+        A parallel keepalive task fires every ``KEEPALIVE_INTERVAL_S`` seconds
+        while the events iterator is idle (e.g. long tool calls).  This prevents
+        the adapter's ``decode_stream_events`` per-chunk timeout from tripping on
+        legitimate slow turns (#687).  Keepalive chunks carry
+        ``event_type="stream_keepalive"`` and are skipped by the decoder without
+        yielding a render event to the caller.
+        """
+        subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
         self._active_streams.add(original_msg.id)
 
-        # Send outbound metadata so the adapter can honour the intermediate flag
-        # (typing indicator lifecycle) and other outbound fields.
         if outbound is not None:
             header = {
                 "type": "stream_start",
@@ -136,17 +188,24 @@ class NatsChannelProxy:
                 ),
             }
             await self._nc.publish(
-                subject,
-                json.dumps(header, ensure_ascii=False).encode("utf-8"),
+                subject, json.dumps(header, ensure_ascii=False).encode("utf-8")
             )
-        seq = 0
+
+        # Shared mutable boxes for keepalive coordination (avoids nonlocal in task).
+        seq_box: list[int] = [0]
+        last_publish_box: list[float] = [time.monotonic()]
+        keepalive_task = asyncio.create_task(
+            _run_keepalive_loop(
+                self._nc, subject, original_msg.id, seq_box, last_publish_box
+            )
+        )
         try:
             try:
                 async for event in events:
                     event_type, payload, is_done = self._codec.encode(event)
                     chunk = {
                         "stream_id": original_msg.id,
-                        "seq": seq,
+                        "seq": seq_box[0],
                         "event_type": event_type,
                         "payload": payload,
                         "done": is_done,
@@ -155,13 +214,14 @@ class NatsChannelProxy:
                         subject,
                         json.dumps(chunk, ensure_ascii=False).encode("utf-8"),
                     )
-                    seq += 1
+                    last_publish_box[0] = time.monotonic()
+                    seq_box[0] += 1
                 # Always publish a terminal sentinel so the adapter's
                 # _drain_stream exits cleanly even when the events iterator
                 # was empty or the last event did not set is_final=True.
                 terminal = {
                     "stream_id": original_msg.id,
-                    "seq": seq,
+                    "seq": seq_box[0],
                     "event_type": "stream_end",
                     "payload": {},
                     "done": True,
@@ -175,28 +235,36 @@ class NatsChannelProxy:
                     "NatsChannelProxy: NATS publish failed during streaming,"
                     " draining iterator"
                 )
-                error_envelope = {
-                    "type": "stream_error",
-                    "stream_id": original_msg.id,
-                    "reason": "streaming_exception",
-                }
-                try:
-                    await self._nc.publish(
-                        subject,
-                        json.dumps(error_envelope, ensure_ascii=False).encode("utf-8"),
-                    )
-                except nats.errors.Error:
-                    log.warning(
-                        "NatsChannelProxy: failed to publish stream_error"
-                        " for stream_id=%r",
-                        original_msg.id,
-                    )
+                await self._publish_stream_error(subject, original_msg.id)
                 async for _ in events:
                     pass
         finally:
+            keepalive_task.cancel()
+            try:
+                await keepalive_task
+            except asyncio.CancelledError:
+                pass
             # Ensure stream_id is always removed from the tracking set, regardless
             # of success, streaming exception, or publish failure in the except path.
             self._active_streams.discard(original_msg.id)
+
+    async def _publish_stream_error(self, subject: str, stream_id: str) -> None:
+        """Publish a stream_error envelope, swallowing NATS transport errors."""
+        error_envelope = {
+            "type": "stream_error",
+            "stream_id": stream_id,
+            "reason": "streaming_exception",
+        }
+        try:
+            await self._nc.publish(
+                subject,
+                json.dumps(error_envelope, ensure_ascii=False).encode("utf-8"),
+            )
+        except nats.errors.Error:
+            log.warning(
+                "NatsChannelProxy: failed to publish stream_error for stream_id=%r",
+                stream_id,
+            )
 
     async def publish_stream_errors(self, reason: str = "hub_shutdown") -> None:
         """Publish stream_error for all active streams, then clear the set.

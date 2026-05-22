@@ -288,7 +288,7 @@ async def test_intermediate_edit_uses_blue_color_and_working_title() -> None:
         # 10s gap between each call → always past debounce interval
         return float(_call_count * 10)
 
-    _patch_target = "lyra.adapters.shared._shared_streaming_emitter.time.monotonic"
+    _patch_target = "lyra.outbound.emitter.time.monotonic"
     with patch(_patch_target, _fake_monotonic):
         # Act — drive tool events; debounce is bypassed by time patch
         await adapter.send_streaming(

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from lyra.core.messaging.bus import Bus
     from lyra.core.stores.thread_store_protocol import ThreadStoreProtocol
     from lyra.infrastructure.stores.turn_store import TurnStore
+    from lyra.outbound.emitter import OutboundEmitter
 
 from lyra.adapters.discord import discord_audio  # noqa: I001 — DEBT:module-level-patch-fixtures
 from lyra.adapters.discord import discord_audio_outbound
@@ -25,6 +26,7 @@ from lyra.adapters.discord.discord_inbound import handle_message
 from lyra.adapters.discord.discord_normalize import normalize as _normalize_impl
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.adapters.discord.discord_outbound import (
+    DiscordTypingIndicator,
     _discord_typing_worker,
     build_streaming_callbacks as _build_streaming_callbacks,
     send as _send_impl,
@@ -229,6 +231,57 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
     ) -> "PlatformCallbacks":
         """Build platform-specific callbacks for StreamingSession."""
         return _build_streaming_callbacks(self, original_msg, outbound)
+
+    def _make_emitter(
+        self,
+        original_msg: InboundMessage,
+        outbound: OutboundMessage | None,
+    ) -> "OutboundEmitter":
+        """Build an OutboundEmitter composed of Discord stages (T19, Slice 5, #1279).
+
+        Adds the stage-axis path alongside the legacy _make_streaming_callbacks path.
+        The base send_streaming() still calls _make_streaming_callbacks; this method
+        is wired in by T16 (OutboundAdapterBase swap) once Telegram also ships T15.
+        """
+        from lyra.adapters.discord.discord_formatter import DiscordFormatter
+        from lyra.adapters.discord.discord_formatting import _validate_inbound
+        from lyra.outbound.emitter import OutboundEmitter
+        from lyra.outbound.error_handler import OutboundErrorHandler
+
+        meta = _validate_inbound(original_msg, "_make_emitter")
+        if meta is None:
+            # Bad inbound: fall back to legacy callbacks path so existing error handling
+            # (ValueError "not a discord message") is preserved for this edge case.
+            callbacks = self._make_streaming_callbacks(original_msg, outbound)
+            return OutboundEmitter(callbacks, outbound)
+
+        channel_id, thread_id, _ = meta
+        send_to_id = thread_id if thread_id is not None else channel_id
+        placeholder_text = self._msg("stream_placeholder", "…")
+        formatter = DiscordFormatter(
+            self,
+            send_to_id=send_to_id,
+            get_msg=self._msg,
+            placeholder_text=placeholder_text,
+        )
+        typing = DiscordTypingIndicator(self)
+        handler = OutboundErrorHandler(get_msg=self._msg)
+        # Legacy callbacks still own the send-mechanics; formatter overrides
+        # the rendering-only slots so both paths stay consistent during transition.
+        callbacks = self._make_streaming_callbacks(original_msg, outbound)
+        callbacks.edit_reasoning = formatter.edit_reasoning
+        callbacks.edit_tool_recap = formatter.edit_tool_recap
+        callbacks.chunk_text = formatter.chunk
+        callbacks.placeholder_text = formatter.placeholder_text()
+        callbacks.start_typing = lambda: self._start_typing(send_to_id)
+        callbacks.cancel_typing = lambda: self._cancel_typing(send_to_id)
+        return OutboundEmitter(
+            callbacks,
+            outbound,
+            error_handler=handler,
+            typing=typing,
+            typing_scope_id=send_to_id,
+        )
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         """Send an OutboundAudio envelope as a Discord voice message."""

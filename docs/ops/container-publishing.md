@@ -30,6 +30,12 @@ caller workflow that feeds project-specific inputs.
   > silently drop this instruction. The reusable workflow sets `oci-mediatypes=false` on the
   > `docker/build-push-action` step to force Docker v2 schema 2, so `HEALTHCHECK` is preserved
   > in the published image. No action needed in the Dockerfile or caller workflow.
+
+  > **svc-runtime (`staging-svc`) requires `config.toml` bind-mount:** `lyra config validate`
+  > opens `config.toml` from `WORKDIR /app` and exits 1 on `FileNotFoundError`. In production
+  > Quadlets the file is bind-mounted, so this is fine. Running `docker run` without the mount
+  > (local dev, CI smoke tests) will immediately mark the container unhealthy — this is expected
+  > behaviour, not a bug.
 - **OCI labels** — do not set `org.opencontainers.image.*` labels in the Dockerfile. They are
   injected at build time by `docker/metadata-action@v5` in the reusable workflow, ensuring labels
   always match the actual pushed tag and commit SHA.
@@ -123,10 +129,11 @@ containers. No manual intervention is needed after a staging merge.
 
 | Container | Image | AutoUpdate |
 |---|---|---|
-| lyra-hub | `ghcr.io/roxabi/lyra:staging` | registry |
-| lyra-telegram | `ghcr.io/roxabi/lyra:staging` | registry |
-| lyra-discord | `ghcr.io/roxabi/lyra:staging` | registry |
+| lyra-hub | `ghcr.io/roxabi/lyra:staging-svc` | registry |
+| lyra-telegram | `ghcr.io/roxabi/lyra:staging-svc` | registry |
+| lyra-discord | `ghcr.io/roxabi/lyra:staging-svc` | registry |
 | lyra-clipool | `ghcr.io/roxabi/lyra:staging` | registry |
+| lyra-gh-helper | `ghcr.io/roxabi/lyra:staging` | registry |
 | voicecli-tts | `ghcr.io/roxabi/voicecli-tts:staging` | registry |
 | voicecli-stt | `ghcr.io/roxabi/voicecli-stt:staging` | registry |
 | lyra-nats | pinned by digest | none (pinned) |
@@ -152,6 +159,11 @@ podman auto-update
   `podman login --get-login ghcr.io`.
 - Podman does not auto-rollback on startup failure. A bad image enters a restart loop
   (`Restart=on-failure`). Check with `podman ps` or `journalctl --user -u <unit>`.
+- **Parallel publish inconsistency window (known):** `publish` (`:staging`) and `publish-svc`
+  (`:staging-svc`) jobs run in parallel — if one fails, the other may still push. During that
+  window, autoupdate can pull one variant while the other is stale. Accepted risk at staging;
+  long-term fix is a single `docker buildx bake` job that pushes both targets atomically —
+  tracked in #1325.
 
 ---
 

@@ -17,8 +17,28 @@ COPY packages/ packages/
 COPY src/ src/
 RUN uv sync --frozen --no-dev
 
-# ── Runtime stage ────────────────────────────────────────────────────────────
-FROM ghcr.io/roxabi/base:latest AS runtime
+# ── Slim service runtime (hub, telegram, discord) ───────────────────────────
+# TODO: pin base-svc by digest — track alongside base:latest pinning issue
+FROM ghcr.io/roxabi/base-svc:latest AS svc-runtime
+
+USER root
+
+# UID 1500 pinned per ADR-053 (Quadlet container UID stability)
+RUN useradd -u 1500 -m lyra
+
+COPY --from=builder --chown=lyra:lyra /app /app
+
+WORKDIR /app
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+USER lyra
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD lyra config validate || exit 1
+
+# ── Agent runtime (clipool — full gh_token tooling) ───────────────────────────
+FROM ghcr.io/roxabi/base:latest AS agent-runtime
 
 USER root
 

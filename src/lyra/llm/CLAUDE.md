@@ -21,12 +21,13 @@ not add it to the Protocol until all drivers implement it.
 | Driver | Registry key | Transport | Wiring mode |
 |--------|-------------|-----------|-------------|
 | `ClaudeCliDriver` | `"claude-cli"` | in-process (`CliPool` subprocess) | single-process |
-| `CliNatsDriver` | `"claude-cli"` | NATS request-reply → clipool worker | multi-process (hub side) |
-| `LlmClient` | `"nats"` | NATS request-reply via `WorkerPoolClient` | multi-process (hub side) |
+| `LlmClient` | `"claude-cli"` / `"nats"` | NATS request-reply via `WorkerPoolClient` + `CliNatsCodec` | multi-process (hub side) |
 
-`ClaudeCliDriver` and `CliNatsDriver` share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap, not by registry key.
+`ClaudeCliDriver` and `LlmClient` may share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap (single-process picks `ClaudeCliDriver`, multi-process picks `LlmClient(WorkerPoolClient, CliNatsCodec)`).
 
-`LlmClient` lives in `lyra.llm.llm_client` (this package). The legacy `NatsLlmClient`
+`LlmClient` lives in `lyra.llm.llm_client` (this package). `LlmClient(pool, codec)` is the
+3-layer composition for the NATS LLM path; the legacy per-driver `CliNatsDriver`
+(formerly in `lyra.llm.drivers.cli_nats`) was deleted in #1281. The legacy `NatsLlmClient`
 (formerly in `lyra.nats`) was deleted in #1278.
 
 ## LlmClient + LlmCodec layering
@@ -49,6 +50,27 @@ LlmClient (lyra.llm.llm_client)
 CB is enforced at the **pool** layer (since #1278). Wiring sites wrap `LlmClient` with
 `RetryDecorator` only — do NOT add `CircuitBreakerDecorator` (reserved for `ClaudeCliDriver`
 which has no built-in CB).
+
+## Timeout responsibility
+
+`LlmClient` does **not** enforce a per-turn wall-clock deadline. This is intentional.
+
+| Layer | What is guaranteed | What is NOT guaranteed |
+|-------|-------------------|----------------------|
+| `NatsTransport` | Per-chunk liveness (`default_timeout=300s`) — no silent hangs between chunks | Upper bound on total turn duration |
+| `LlmClient` | Nothing beyond what the transport enforces | Any turn-level SLA |
+
+Per-turn wall-clock is a scheduling policy; the consumer defines what a "turn" is and
+what SLA applies. Wrap calls in `asyncio.timeout` when a deadline is required:
+
+```python
+async with asyncio.timeout(budget_seconds):
+    async for event in provider.stream(...):
+        ...
+```
+
+Historical: `CliNatsDriver` (deleted in #1281) inherited `max_total_duration=1800s` from
+`NatsDriverBase`; that responsibility now belongs to the caller.
 
 ## Decorator stack
 

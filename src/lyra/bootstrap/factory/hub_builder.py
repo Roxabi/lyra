@@ -39,24 +39,32 @@ if TYPE_CHECKING:
     from lyra.core.ports.audit_sink import AuditSink
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
-    from lyra.llm.drivers.cli_nats import CliNatsDriver
     from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
 
 
-async def build_cli_nats_driver(
+async def build_llm_client(
     nc: NATS,
     *,
     timeout: float = 120.0,
-    max_total_duration: float | None = None,
-) -> "CliNatsDriver":
-    """Build and start a CliNatsDriver connected to the clipool worker."""
-    from lyra.llm.drivers.cli_nats import CliNatsDriver
+) -> "LlmClient":
+    """Build and start an LlmClient connected to the clipool worker via NATS."""
+    from lyra.llm.cli_nats_codec import CliNatsCodec
+    from lyra.llm.llm_client import LlmClient
+    from lyra.transport.nats_request_response import NatsTransport
+    from lyra.transport.worker_pool_client import WorkerPoolClient
+    from roxabi_contracts._nats_utils import validate_worker_id
 
-    driver = CliNatsDriver(nc, timeout=timeout, max_total_duration=max_total_duration)
-    await driver.start()
-    return driver
+    transport = NatsTransport(nc)
+    pool = WorkerPoolClient(
+        transport,
+        hb_subject="lyra.clipool.heartbeat",
+        validate_worker_id=validate_worker_id,
+        name="clipool",
+    )
+    await pool.start(nc)
+    return LlmClient(pool, CliNatsCodec(), timeout=timeout)
 
 
 def build_inbound_bus(
@@ -160,7 +168,7 @@ def register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — registr
     raw_config: dict,
     nats_llm_client: "LlmClient | None",
     *,
-    cli_nats_driver: "CliNatsDriver | None" = None,
+    cli_nats_driver: "LlmClient | None" = None,
 ) -> None:
     """Resolve agents from configs and register them on the hub."""
     llm_cfg = _load_llm_config(raw_config)

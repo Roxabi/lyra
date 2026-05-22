@@ -14,9 +14,9 @@ from lyra.bootstrap.bootstrap_stores import open_stores
 from lyra.bootstrap.factory.agent_factory import _resolve_bot_agent_map
 from lyra.bootstrap.factory.config import MessageIndexConfig
 from lyra.bootstrap.factory.hub_builder import (
-    build_cli_nats_driver,
     build_hub,
     build_inbound_bus,
+    build_llm_client,
     register_agents,
 )
 from lyra.bootstrap.factory.llm_overlay import init_nats_llm
@@ -166,7 +166,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         audit_sink = JetStreamAuditSink()
         await audit_sink.provision(nc)
 
-        cli_nats_driver = await build_cli_nats_driver(nc)
+        cli_nats_driver = await build_llm_client(nc)
         cli_nats_driver.set_turn_store(stores.turn)
         hub.cli_pool = None  # CliPool now runs in lyra-clipool container
 

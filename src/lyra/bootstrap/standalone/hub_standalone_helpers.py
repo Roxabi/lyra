@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from lyra.core.hub.hub import Hub
     from lyra.infrastructure.stores.agent_store import AgentStore
     from lyra.infrastructure.stores.auth_store import AuthStore
-    from lyra.llm.drivers.cli_nats import CliNatsDriver
     from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
@@ -110,7 +109,7 @@ async def shutdown_hub_runtime(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps 
     dispatchers,
     proxies,
     pm: PairingManager | None,
-    cli_nats_driver: "CliNatsDriver | None",
+    cli_nats_driver: "LlmClient | None",
     nats_llm_client: "LlmClient | None",
 ) -> None:
     """Run the post-cancellation teardown sequence for hub_standalone."""

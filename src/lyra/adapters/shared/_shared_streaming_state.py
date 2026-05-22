@@ -16,9 +16,8 @@ from lyra.core.messaging.message import GENERIC_ERROR_REPLY
 log = logging.getLogger(__name__)
 
 
-# Seconds between intermediate streaming edits (debounce).
-# Shared by Telegram and Discord adapters; aligned with each platform's rate limit.
-STREAMING_EDIT_INTERVAL = 1.0
+# STREAMING_EDIT_INTERVAL re-exported from lyra.outbound.throttle — transitional shim,
+# deleted at S7 of #1279. The authoritative definition moved to outbound/throttle.py.
 
 
 # Maximum accumulated intermediate text length. Segments beyond this are
@@ -164,3 +163,12 @@ class StreamState:
             else:
                 display = msg_fn("generic", GENERIC_ERROR_REPLY)
         return display
+
+
+# Deferred import — placed here (after all class definitions) to avoid the
+# circular-load issue: emitter.py's deferred-import block imports this module,
+# which would re-enter emitter.py if throttle.py imported adapters.* at the
+# top level. throttle.py is pure (no adapters imports), so this is safe.
+from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL  # noqa: E402, I001 — deferred + transitional re-export, deleted at S7 of #1279
+
+__all__ = ["STREAMING_EDIT_INTERVAL"]  # re-export for backwards-compat consumers

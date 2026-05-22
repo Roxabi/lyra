@@ -2123,6 +2123,11 @@ class TestTextTriplet:
         text block is open, the truncation path in _close_open_blocks emits
         TextEndRenderEvent before RunFinishedRenderEvent.
 
+        Contract dependency: the terminal event on the truncation path is
+        RunFinishedRenderEvent (NOT RunErrorRenderEvent) because _result_is_error
+        stays False. If that contract ever flips to emit RunError on truncation,
+        the run_finished_idx assertion below will need to be updated.
+
         Mirror of TestReasoning.test_reasoning_orphan_close_on_truncated_stream.
         """
         # Arrange -- stream ends without ResultLlmEvent (truncation path)

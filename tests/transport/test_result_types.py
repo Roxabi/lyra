@@ -149,3 +149,26 @@ class TestSanitizedErrorFromMessage:
         assert result.message == raw
         assert result.code == "stream.error"
         assert result.retryable is False
+
+    def test_all_control_chars_becomes_whitespace_only(self) -> None:
+        """All-control-char input scrubs to a whitespace-only message.
+
+        Contract note: ``"".join(c if c.isprintable() else " " for c in raw)``
+        substitutes each control char with a single space. The fallback
+        ``scrubbed or "model_error"`` only fires when ``scrubbed`` is empty —
+        whitespace-only strings are truthy, so the fallback is skipped. This
+        test locks the current behavior so a future caller cannot silently
+        rely on a "non-empty visible content" invariant that ``from_message``
+        does not guarantee. (Security boundary unchanged: no exception text
+        leaks; the result is just a whitespace-only banner.)
+        """
+        # Arrange -- 10 NUL bytes; all non-printable
+        raw = "\x00" * 10
+
+        # Act
+        result = SanitizedError.from_message(raw)
+
+        # Assert -- 10 spaces, NOT the "model_error" fallback
+        assert result.message == " " * 10
+        assert result.message != "model_error"
+        assert result.code == "stream.error"

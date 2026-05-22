@@ -1,0 +1,81 @@
+---
+title: "Phase 4 — LLM drivers thinned to codec"
+issue: 1281
+status: approved
+tier: F-lite
+date: 2026-05-22
+---
+
+## Problem
+
+The LLM driver layer is decomposed along a **per-target axis**: `src/lyra/llm/drivers/cli_nats.py` (321 lines) and `src/lyra/llm/drivers/cli.py` (86 lines) each accrete the same concerns — transport plumbing (request/response, inbox streaming), envelope encode/decode, error handling, broad-catch sites, streaming generator boilerplate. Adding a new LLM provider (Claude direct HTTP, an OpenAI-compatible endpoint, a local SLM) requires re-implementing the full transport + codec stack per file; bug classes (re-export-init, boundary-broad-catch in driver sites) replicate N times.
+
+Empirical signature on this layer today: 321 LOC in `cli_nats.py` alone for what is **two distinct concerns mashed together** — the on-wire encoding contract (envelope shape, streaming chunk schema, error sanitization) and the transport plumbing (NATS request/inbox lifecycle, timeouts, sanitized error capture). After Phase 1 (#1278, merged 2026-05-20), the transport plumbing already lives in `src/lyra/transport/` as `NatsTransport` + `WorkerPoolClient`; the driver files have not yet been thinned to take advantage of it. Phase 4 completes that pivot.
+
+Phase 4 pivots LLM drivers to **stage-axis** composition: extract `Codec` (Protocol — envelope encode + decode + stream-chunk decode) at `src/lyra/llm/codec.py`, implement per-driver codecs (e.g. `cli_nats_codec.py`, a Claude-direct `claude_codec.py` sibling), and re-write `LlmClient` as `LlmClient(transport, codec)`. HTTP-based drivers (Claude direct, OpenAI-compatible) get a sibling `HttpTransport` in `src/lyra/transport/` alongside the existing `NatsTransport`; the Phase 1 consensus already defined its contract surface (`call(...)` only, no `open_inbox`).
+
+## Who
+
+- **Primary:** Lyra hub → LLM driver paths. Any code that requests an LLM completion (turn handler, agent execution, streaming reply emitter) goes through `LlmClient`. Phase 4 is invisible to call sites — the protocol stays — but every adapter that runs a turn is in the blast radius for validation.
+- **Secondary:**
+  - Future LLM providers (Claude direct, OpenAI-compatible, local SLM) — Phase 4 sets the cost of a new provider to "1 codec file + driver registration" (<100 LOC) instead of "full transport+codec re-implementation" (~300 LOC).
+  - Worker-pool family symmetry — Phase 4 mirrors what Phase 1 did for the worker-pool clients (`NatsTtsClient`, `NatsSttClient`, `NatsImageClient`); Phase 4 closes the LLM-shaped variant.
+  - `boundary-broad-catch` debt drain — Phase 4 is one of three phases (P1, P2, P5) draining this debt slug. P4 specifically targets the driver-site subset.
+
+## Constraints
+
+- **Phase 1 deliverables are the substrate** — `NatsTransport`, `WorkerPoolClient`, `SanitizedError`, `Result[bytes, SanitizedError]` already merged via #1278/#1288. P4 composes them, does ¬redefine them.
+- **HttpTransport surface is pre-committed** — Phase 1 consensus (`artifacts/analyses/1278-nats-transport-workerpool-consensus.mdx` §B1) fixed `HttpTransport.call()` as the only public method; `open_inbox()` raises `NotImplementedError` with explicit message. P4 must respect that contract — streaming over HTTP is a codec-level concern (SSE) inside the HTTP codec, ¬a transport-level method.
+- **Protocol stability** — `LlmProvider` interface (`src/lyra/llm/base.py`) stays unchanged; all call sites (hub, agent execution, streaming emitter) remain wire-compatible. Refactor is internal to `src/lyra/llm/`.
+- **Subsumed work** — #1201 (`stream()` async generator duplicated across 4 drivers) closes naturally as part of Phase 4: driver duplication is the symptom that motivated the codec split. The async-generator code lives in `LlmClient` once and is parameterized by codec.
+- **F-lite envelope** — 1 PR, ~1 week, no new architectural decisions (the architecture was settled in the Phase 1 consensus). Risk is mechanical (regression on the LLM call path), not design.
+- **Parallel with #1279 (Phase 2 — Outbound)** — disjoint file scope (P2: `src/lyra/outbound/` + `adapters/{telegram,discord}/*_outbound.py` | P4: `src/lyra/llm/` + `src/lyra/transport/HttpTransport`). Only carrefour: `src/lyra/bootstrap/wiring.py` may be touched by both — to be resolved at merge time via worktree separation, ¬sequencing.
+
+## Out of Scope
+
+- New LLM providers (Claude direct HTTP, OpenAI-compatible) — P4 *enables* them by establishing the codec contract + `HttpTransport`, but ¬ships any new provider. Adding a provider is a follow-up issue.
+- `LlmProvider` protocol changes — the call-site contract stays frozen. Any change there is a separate scope.
+- Streaming chunk schema redesign — the existing wire format (NATS streaming via inbox, current chunk envelope) is preserved verbatim; only its decode path moves from driver to codec.
+- Composite worker flows (#1048 NATS-LLM proxy, #1052 vault.add_from_url) — those are Phase-6 worker compositions; P4 only refactors the driver substrate they will eventually compose against.
+- Wiring / bootstrap simplification via DI — that is Phase 6 (#1283); P4 keeps the existing wiring conventions and only adjusts the construction sites (`LlmClient(transport, codec)` instead of `NatsLlmClient(...)`).
+- Documentation / ADR cleanup for the refactor — that is Phase 7 (#1284); P4 ships the code change with inline docstrings only.
+
+## Premise Validity
+
+**Success in 6 months:**
+- `src/lyra/llm/codec.py` exists as a Protocol with per-driver implementations (`cli_nats_codec.py` + at least one HTTP-shaped codec for the Claude-direct sibling).
+- `LlmClient` is a single ≤200-line composition class parameterized by `(transport, codec)`; the 4 drivers' streaming/inbox bookkeeping appears exactly **once** in `LlmClient`, ¬N times across driver files.
+- Per-driver code files ≤ 80 lines (current: `cli_nats.py` = 321 → target ≤ 80; `cli.py` = 86 → target ≤ 80).
+- 0 transport plumbing in driver files (no `nats.connect`, no inbox subscriptions, no `Result` unpacking — drivers describe shape only, not lifecycle).
+- `HttpTransport` exists in `src/lyra/transport/` with only `call(...)` public; `open_inbox()` raises `NotImplementedError` with the message fixed by P1 consensus.
+- All providers (Claude direct via `cli.py`, NATS-clipool via `cli_nats.py`) function identically to pre-P4 — smoke test: end-to-end turn on both transports completes a reply round-trip.
+- #1201 closes as subsumed (driver-level `stream()` duplication eliminated).
+- `boundary-broad-catch` driver-site count drops from current driver-file occurrences (~12 sites in `cli_nats.py` per the analysis doc) → ≤ 3 sites total across the LLM domain.
+- New-provider integration cost demonstrated as <100 LOC by a spike (¬shipped — sanity-check only).
+
+**Failure in 6 months (falsifiable):**
+After Phase 4 ships, at the 6-month checkpoint:
+- ≥2 sibling-fix PRs land on LLM driver bug-classes (re-export-init in driver, broad-catch in driver site, sanitization leak on the LLM path) — i.e. the cascade producer survived the refactor; OR
+- Driver files re-grow past 150 lines under additive feature pressure (indicating transport plumbing leaked back into per-driver code); OR
+- A spike attempt to add a new LLM provider (Claude direct HTTP or OpenAI-compatible) still requires >150 LOC of per-driver wiring instead of a thin codec + driver registration; OR
+- `HttpTransport` substitutability breaks — i.e. `LlmClient` ends up branching on transport type at runtime (`isinstance(transport, NatsTransport)`), proving the abstraction leaked.
+
+Any of these falsifies the premise: the stage-axis pivot for LLM drivers didn't actually change the axis of decomposition; we paid a refactor cost without changing growth from multiplicative to additive.
+
+**Simplest alternative:**
+Leave the existing 4 driver files as-is. Extract only the `stream()` async-generator duplication (#1201's original scope) into a shared mixin or utility. Migrate the broad-catch sites by hand to use `WorkerError._sanitize_message`. Land in 2 days as a "fix" without restructuring the codec/transport split.
+
+**Why not simplest:**
+The parent-epic root-cause analysis (`artifacts/analyses/1277-stage-axis-refactor-strategy.mdx` §2, §4) demonstrates that driver duplication is a **symptom** of the per-target axis. A shared mixin or utility leaves the axis intact: the next concern (a new error sanitization rule, a new chunk format, a new transport shape) re-creates the duplication on a new dimension. Phase 1 already shipped the substrate (`NatsTransport`, `WorkerPoolClient`) on the assumption that the driver layer would be thinned next; not completing P4 leaves the codebase in a half-pivoted state where worker-pool clients (TTS/STT/Image) have the new shape but LLM drivers do not — an asymmetry that will be load-bearing for Phase 6 (DI wiring) and Phase 7 (docs). Empirical evidence: `cli_nats.py` at 321 LOC versus a target driver size of ≤ 80 LOC reflects the structural debt. The F-lite cost (1 week, 1 PR) is justified by the strategy doc's projected drain (LLM-domain `boundary-broad-catch` to ≤ 3, new-provider integration cost to <100 LOC, and closure of #1201).
+
+## Complexity
+
+**Tier: F-lite** — Clear scope (1 domain: `src/lyra/llm/` + sibling `HttpTransport` in `src/lyra/transport/`), substrate already exists from Phase 1, architecture pre-committed by Phase 1 consensus. Risk is regression on the LLM call path (mechanical), ¬new design unknowns.
+
+Signals observed:
+- Body label hint: body says "F-lite" explicitly (no `size:` label on issue — to be added during PR).
+- Complexity marker: `<!-- complexity: 5 -->` in body.
+- Single domain (`src/lyra/llm/` + the `HttpTransport` sibling), no cross-domain plumbing.
+- No new architectural decisions — `LlmClient(transport, codec)` shape and `HttpTransport.call()`-only surface were fixed by the Phase 1 consensus document.
+- Smoke test surface is small and well-defined (turn round-trip on both transports).
+- Empirical sizing: 321 LOC (`cli_nats.py`) + 86 LOC (`cli.py`) + 168 LOC (`llm_codec.py`) + 87 LOC (`llm_client.py`) = 662 LOC under refactor; target net delta −300 to −400 LOC.

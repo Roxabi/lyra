@@ -86,7 +86,7 @@ def _podman_secret_create(name: str, content: bytes, *, dry_run: bool) -> None:
         return
     try:
         subprocess.run(
-            ["podman", "secret", "create", "--replace", name],
+            ["podman", "secret", "create", "--replace", name, "-"],
             input=content,
             check=True,
         )

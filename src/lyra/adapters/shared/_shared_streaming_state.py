@@ -11,7 +11,6 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from lyra.core.exceptions import StreamChunkTimeout
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY
 
 log = logging.getLogger(__name__)
@@ -72,15 +71,6 @@ class IntermediateTextState:
         return self._text
 
 
-_ERR_TIMEOUT_FALLBACK = (
-    "\u23f1\ufe0f The backend took longer than 120 s to respond. Please try again."
-)
-_ERR_NO_FINAL_FALLBACK = (
-    "\u26a0\ufe0f Response ended without a final message"
-    " (tool events only). Please try again."
-)
-
-
 def classify_stream_error(
     stream_error: Exception | None,
     *,
@@ -88,34 +78,20 @@ def classify_stream_error(
     final_text: str | None,
     msg_fn: Callable[[str, str], str],
 ) -> str | None:
-    """Return a descriptive error string for terminal error states.
+    """Legacy module-level wrapper \u2014 delegates to OutboundErrorHandler.
 
-    Returns ``None`` when there is no error and a final text is present
-    (caller renders ``final_text`` normally).  Returns a user-facing string
-    for every error branch so callers never fall through to a bare
-    GENERIC_ERROR_REPLY silently.
-
-    Args:
-        stream_error:    Exception captured by the stream loop, or ``None``.
-        had_tool_events: Whether tool events were seen before the error.
-        final_text:      Final text captured from the stream, or ``None``.
-        msg_fn:          ``get_msg(key, fallback)`` callback for i18n.
+    Kept for tests and any pre-#1279 consumers. The new code path goes through
+    OutboundErrorHandler.classify_stream_error which carries its own get_msg.
+    Removed at S7 of #1279.
     """
-    if stream_error is not None:
-        if isinstance(stream_error, StreamChunkTimeout):
-            return msg_fn("error_timeout", _ERR_TIMEOUT_FALLBACK)
-        # Use exception class name only, never str(exc): exception strings can
-        # carry hostnames, file paths, auth-token fragments, connection strings
-        # (httpx/aiohttp/NATS errors). Mirrors the discipline at
-        # stream_processor.py RunErrorRenderEvent emission site.
-        return msg_fn(
-            "error_stream",
-            f"\u26a0\ufe0f Streaming error: {type(stream_error).__name__}."
-            f" Please try again.",
-        )
-    if final_text is None and had_tool_events:
-        return msg_fn("error_no_final", _ERR_NO_FINAL_FALLBACK)
-    return None
+    from lyra.outbound.error_handler import OutboundErrorHandler
+
+    handler = OutboundErrorHandler(get_msg=msg_fn)
+    return handler.classify_stream_error(
+        stream_error,
+        had_tool_events=had_tool_events,
+        final_text=final_text,
+    )
 
 
 @dataclass

@@ -1227,6 +1227,9 @@ class TestRunLifecycle:
         # can leak file paths, hostnames, auth tokens onto the wire.
         assert seen[-1].message == "_Boom"
         assert "input died" not in seen[-1].message
+        # code is intentionally None per RunErrorRenderEvent docstring
+        # ("reserved for a future taxonomy" — #1097 carry-over). The EventEmitter
+        # translator deliberately drops SanitizedError.code on the wire.
         assert seen[-1].code is None
         assert seen[-1].run_id == seen[0].run_id
         # Position-aware: no RunFinished must appear before RunError, and
@@ -1989,6 +1992,43 @@ class TestTextTriplet:
         assert end_idx is not None, "TextEndRenderEvent not found in stream"
         assert error_idx is not None, "RunErrorRenderEvent not found in stream"
         assert end_idx < error_idx
+
+    # ------------------------------------------------------------------
+    # T6-4 — TextEnd emitted BEFORE RunErrorRenderEvent on soft-error result
+    # ------------------------------------------------------------------
+
+    async def test_text_end_before_run_error_on_soft_error(self) -> None:
+        """Site B ordering invariant: TextEnd must precede RunError when a text block
+        is open at the time a soft-error result (is_error=True, error_text=...) arrives.
+        """
+        # Arrange — text block is open when the soft-error result arrives
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            TextLlmEvent(text="partial response"),
+            ResultLlmEvent(is_error=True, duration_ms=0, error_text="overload"),
+        )
+
+        # Act
+        all_events = await collect(processor.process(events))
+
+        # Assert — ordering invariant: TextEnd < RunError
+        text_end_idx = next(
+            (i for i, e in enumerate(all_events) if isinstance(e, TextEndRenderEvent)),
+            None,
+        )
+        run_error_idx = next(
+            (i for i, e in enumerate(all_events) if isinstance(e, RunErrorRenderEvent)),
+            None,
+        )
+        assert text_end_idx is not None, "TextEndRenderEvent not found in stream"
+        assert run_error_idx is not None, "RunErrorRenderEvent not found in stream"
+        assert text_end_idx < run_error_idx, (
+            "TextEnd must be emitted before RunError on soft-error"
+        )
+
+        # Last event must be the RunError
+        assert isinstance(all_events[-1], RunErrorRenderEvent)
+        assert all_events[-1].message == "overload"
 
     # ------------------------------------------------------------------
     # T6-5 — No TextEnd when no text block is open

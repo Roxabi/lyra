@@ -54,14 +54,14 @@ class TestBuildCliPoolAuditSinkWiring:
 
 class TestJetStreamAuditSinkBootstrapIntegration:
     async def test_provision_is_called_before_cli_pool_in_standalone(self) -> None:
-        """provision() must be called before build_cli_nats_driver in hub_standalone."""
+        """provision() must be called before build_llm_client in hub_standalone."""
         call_order: list[str] = []
 
         async def _fake_provision(*_: object) -> None:
             call_order.append("provision")
 
-        async def _fake_build_cli_nats_driver(*_: object) -> None:  # type: ignore[misc]
-            call_order.append("build_cli_nats_driver")
+        async def _fake_build_llm_client(*_: object) -> None:  # type: ignore[misc]
+            call_order.append("build_llm_client")
 
         with patch(
             "lyra.bootstrap.standalone.hub_standalone.JetStreamAuditSink"
@@ -71,8 +71,8 @@ class TestJetStreamAuditSinkBootstrapIntegration:
             MockSink.return_value = mock_sink
 
             with patch(
-                "lyra.bootstrap.standalone.hub_standalone.build_cli_nats_driver",
-                side_effect=_fake_build_cli_nats_driver,
+                "lyra.bootstrap.standalone.hub_standalone.build_llm_client",
+                side_effect=_fake_build_llm_client,
             ):
                 # Import the module — both symbols are referenced at module level
                 import lyra.bootstrap.standalone.hub_standalone as hub_mod
@@ -80,8 +80,8 @@ class TestJetStreamAuditSinkBootstrapIntegration:
                 # Verify structural presence — imported at module level
                 assert hasattr(hub_mod, "JetStreamAuditSink")
 
-        # If both were called, provision must precede build_cli_nats_driver
-        _key = "build_cli_nats_driver"
+        # If both were called, provision must precede build_llm_client
+        _key = "build_llm_client"
         if "provision" in call_order and _key in call_order:
             assert call_order.index("provision") < call_order.index(_key)
 

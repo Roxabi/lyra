@@ -21,9 +21,6 @@ from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
 
 if TYPE_CHECKING:
-    from lyra.llm.drivers.cli_nats import (
-        CliNatsDriver,  # noqa: F401 — DEBT:re-export-init
-    )
     from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
@@ -49,11 +46,11 @@ def _build_shared_base_providers(
     llm_cfg: LlmConfig,
     *,
     nats_llm_client: "LlmClient | None" = None,
-    cli_nats_driver: "CliNatsDriver | None" = None,
+    cli_nats_driver: "LlmClient | None" = None,
 ) -> dict[str, LlmProvider]:
     """Build ``{backend: base LlmProvider}`` reusable across all agents.
 
-    ``claude-cli`` (ClaudeCliDriver or CliNatsDriver), ``nats`` (Retry ->
+    ``claude-cli`` (ClaudeCliDriver or LlmClient via clipool), ``nats`` (Retry ->
     LlmClient, only when ``nats_llm_client`` is provided). Callers layer
     decorators per agent via ``_build_per_agent_registry``.
 
@@ -137,7 +134,7 @@ def _create_agent(  # noqa: PLR0913  — DEBT:wiring-bootstrap-deps — factory 
     tts: TtsProtocol | None = None,
     provider_registry: ProviderRegistry | None = None,
     agent_store: AgentStore | None = None,
-    cli_nats_driver: "CliNatsDriver | None" = None,
+    cli_nats_driver: "LlmClient | None" = None,
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.llm_config.backend
@@ -204,7 +201,7 @@ def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     agent_store: AgentStore | None = None,
     llm_cfg: LlmConfig | None = None,
     nats_llm_client: "LlmClient | None" = None,
-    cli_nats_driver: "CliNatsDriver | None" = None,
+    cli_nats_driver: "LlmClient | None" = None,
 ) -> dict[str, AgentBase]:
     """Create all uniquely named agents referenced by bot configs.
 

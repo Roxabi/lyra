@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from lyra.core.ports.stt import STTProtocol
     from lyra.core.ports.tts import TtsProtocol
     from lyra.infrastructure.stores.agent_store import AgentStore
-    from lyra.llm.drivers.cli_nats import CliNatsDriver
+    from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ class SimpleAgent(AgentBase):
         agent_store: "AgentStore | None" = None,
         tool_display_config: ToolDisplayConfig | None = None,
         session_tools: SessionTools | None = None,
-        cli_nats_driver: "CliNatsDriver | None" = None,
+        cli_nats_driver: "LlmClient | None" = None,
     ) -> None:
         self._tool_display_config = tool_display_config or ToolDisplayConfig()
         resolved_agents_dir = agents_dir or _AGENTS_DIR

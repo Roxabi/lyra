@@ -58,6 +58,7 @@ File/rename → update P immediately
 | `src/lyra/monitoring/CLAUDE.md` | standalone health-check subsystem (`python -m lyra.monitoring`) |
 | `src/lyra/obs/CLAUDE.md` | observability scaffolding (OTel/Langfuse) — ¬wired, see #1235 |
 | `src/lyra/outbound/CLAUDE.md` | outbound stage composition (formatter/throttle/error_handler/emitter, #1279) |
+| `src/lyra/streaming/CLAUDE.md` | stage-axis streaming primitives (parser Protocol, state_machine, event_emitter) — composed by CliStreamingParser + StreamProcessor (#1282) |
 | `src/lyra/transport/CLAUDE.md` | NATS transport + WorkerPoolClient (3-layer primitives, #1278) |
 | `src/lyra/nats/CLAUDE.md` | in-tree NATS integration (subjects, codec, domain clients) |
 | `src/lyra/tools/CLAUDE.md` | GitHub token dispenser (gh_token submodule) |

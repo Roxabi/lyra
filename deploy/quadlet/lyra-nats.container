@@ -27,9 +27,11 @@ Volume=lyra-jetstream.volume:/var/lib/nats/jetstream:z
 # with "loop device setup" in Podman 5.x. Bootstrap: `make quadlet-secrets-install`.
 Secret=lyra-nats-auth,type=mount,target=/etc/nats/nkeys/auth.conf,mode=0444
 Exec=nats-server -c /etc/nats/nats.conf
+HealthCmd=pgrep -f nats-server
+HealthInterval=30s
 
 [Service]
-Restart=always
+Restart=on-failure
 RestartSec=10
 # Cap at 2 full cores — keeps NATS from starving hub/adapters under load.
 CPUQuota=200%

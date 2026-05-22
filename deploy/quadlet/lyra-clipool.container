@@ -73,6 +73,8 @@ Environment=GIT_CONFIG_GLOBAL=/etc/lyra/git.config.tmpl
 # (token cache 0600/uid 1501; env scoped via `lyra-gh` exec). Revisit if a
 # future threat model surfaces /proc/<helper-pid>/environ as a leak vector.
 Exec=lyra adapter clipool
+HealthCmd=pgrep -f "lyra adapter clipool"
+HealthInterval=30s
 
 [Service]
 Restart=on-failure

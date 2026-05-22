@@ -36,11 +36,9 @@ jobs:
             major="${ver%%.*}"
             {
               echo "bake_set<<EOF"
-              echo "agent-runtime.tags=${REG}:${ver}"
-              echo "agent-runtime.tags=${REG}:${major}"
-              echo "agent-runtime.tags=${REG}:latest"
-              echo "svc-runtime.tags=${REG}:${ver}-svc"
-              echo "svc-runtime.tags=${REG}:${major}-svc"
+              echo "agent-runtime.tags=${REG}:${ver},${REG}:${major},${REG}:latest"
+              # svc-runtime intentionally omits a :latest-svc equivalent — Quadlet units pin to specific tags
+              echo "svc-runtime.tags=${REG}:${ver}-svc,${REG}:${major}-svc"
               echo "EOF"
               echo "svc_tag=${REG}:${ver}-svc"
             } >> "$GITHUB_OUTPUT"

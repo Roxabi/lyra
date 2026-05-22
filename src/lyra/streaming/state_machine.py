@@ -50,6 +50,10 @@ class StateMachine(Generic[K, V]):
         """Return True if *key* is currently in open_blocks."""
         return key in self.open_blocks
 
+    def get(self, key: K) -> V | None:
+        """Return the open block value for *key*, or None if not open."""
+        return self.open_blocks.get(key)
+
     def mark_seen(self, key: K) -> bool:
         """Add *key* to dedup_seen. Return True only on first addition."""
         if key in self.dedup_seen:

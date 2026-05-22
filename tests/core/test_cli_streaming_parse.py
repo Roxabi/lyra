@@ -1111,3 +1111,72 @@ class TestThinking:
         # Thinking state fully cleared; tool index not contaminated
         assert parser._open_thinking_index is None
         assert 0 not in parser._open_tool_blocks
+
+
+# ---------------------------------------------------------------------------
+# Shallow-copy mutation isolation — F7 contract (#1282 Phase 5)
+# ---------------------------------------------------------------------------
+
+
+def test_open_tool_blocks_shallow_copy_isolation() -> None:
+    """Mutating the captured _open_tool_blocks dict does NOT leak into parser state.
+
+    Falsification: removing the ``dict(...)`` wrapper in the ``_open_tool_blocks``
+    compat property would make this test fail, because external mutation of the
+    returned reference would propagate into ``_sm_tool_blocks.open_blocks``.
+
+    Spec SC-10 / plan T11 (#1321).
+    """
+    # Arrange — open a tool block so _open_tool_blocks is non-empty
+    parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+    cb_start = json.dumps(
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "index": 3,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": "toolu_ISOLATION",
+                    "name": "Bash",
+                    "input": {},
+                },
+            },
+        }
+    )
+    _collect_all(parser, cb_start)
+
+    # Act — capture the compat property and mutate it externally
+    captured = parser._open_tool_blocks
+    assert captured == {3: "toolu_ISOLATION"}, (
+        f"pre-mutation snapshot unexpected: {captured!r}"
+    )
+    captured.clear()  # external mutation: wipe out the captured copy
+
+    # Assert — parser internal state is unaffected; subsequent parse_line works
+    # Feed a delta that requires the open block to be present; it must still route
+    delta_line = json.dumps(
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "index": 3,
+                "delta": {"type": "input_json_delta", "partial_json": '{"cmd":'},
+            },
+        }
+    )
+    events = _collect_all(parser, delta_line)
+
+    # The block is still open internally → delta routes correctly → ToolUseDeltaLlmEvent
+    assert len(events) == 1, (
+        f"expected 1 ToolUseDeltaLlmEvent after mutation; got {events!r}"
+    )
+    assert isinstance(events[0], ToolUseDeltaLlmEvent)
+    assert events[0].tool_id == "toolu_ISOLATION"
+    assert events[0].partial_json == '{"cmd":'
+
+    # Confirm internal state directly via a fresh capture (the original is wiped)
+    assert parser._open_tool_blocks == {3: "toolu_ISOLATION"}, (
+        "parser internal state was mutated by external dict operation — "
+        "dict(...) shallow-copy wrapper missing in _open_tool_blocks property"
+    )

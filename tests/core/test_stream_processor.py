@@ -1375,6 +1375,68 @@ class TestToolCallLifecycle:
         assert len(ends) == 1
         assert ends[0].tool_call_id == "t1"
 
+    async def test_orphan_tool_end_on_truncated_stream(self) -> None:
+        """Stream truncated mid-tool — orphan ToolCallEnd synthesized on close path.
+
+        Phase 5 #1321 T4 (A4): _close_open_blocks now yields from
+        _synth_orphan_tool_ends so the truncation path (no ResultLlmEvent)
+        also closes dangling tool blocks. Reverting T4 — removing the
+        ``yield from self._synth_orphan_tool_ends()`` line at the end of
+        _close_open_blocks — makes this test fail.
+        """
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
+            # NO ToolUseEndLlmEvent, NO ResultLlmEvent — stream truncates here
+        )
+
+        result = await collect(processor.process(events))
+
+        ends = [e for e in result if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(ends) == 1, (
+            f"truncated stream must synth 1 orphan ToolCallEnd; got {ends!r}"
+        )
+        assert ends[0].tool_call_id == "t1"
+
+    async def test_orphan_tool_end_on_exception_path(self) -> None:
+        """Exception mid-tool — orphan ToolCallEnd synthesized before re-raise.
+
+        Phase 5 #1321 T4 (A4): _close_exception_path delegates to
+        _close_open_blocks, which now yields orphan ToolCallEnds. The order
+        is: orphan ToolCallEnd → RunErrorRenderEvent → re-raise.
+        """
+
+        class _Boom(RuntimeError):
+            pass
+
+        async def _raising_events():
+            yield ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={})
+            raise _Boom("oops")
+
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
+        processor = StreamProcessor(cfg_)
+        seen: list[RenderEvent] = []
+        with pytest.raises(_Boom):
+            async for ev in processor.process(_raising_events()):
+                seen.append(ev)
+
+        ends = [e for e in seen if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(ends) == 1, (
+            f"exception path must synth 1 orphan ToolCallEnd; got {ends!r}"
+        )
+        assert ends[0].tool_call_id == "t1"
+        # Ordering: orphan ToolCallEnd precedes RunErrorRenderEvent
+        end_idx = next(
+            i for i, e in enumerate(seen) if isinstance(e, ToolCallEndRenderEvent)
+        )
+        err_idx = next(
+            i for i, e in enumerate(seen) if isinstance(e, RunErrorRenderEvent)
+        )
+        assert end_idx < err_idx, (
+            "orphan ToolCallEnd must be emitted before RunErrorRenderEvent"
+        )
+
     # B8-14: v1 removed in #1192 S3; "dual-emit" premise invalid post-cutover.
     # Removed per spec #1211.
 
@@ -2049,3 +2111,47 @@ class TestTextTriplet:
         # Assert — guard clause prevents spurious TextEnd
         text_ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
         assert len(text_ends) == 0
+
+    # ------------------------------------------------------------------
+    # T6-6 -- TextEnd emitted on truncated stream (SC-11)
+    # ------------------------------------------------------------------
+
+    async def test_text_end_on_truncated_stream(self) -> None:
+        """Truncated stream mid-text: TextEndRenderEvent is emitted on close path.
+
+        v2 contract: when the stream ends without a ResultLlmEvent while a
+        text block is open, the truncation path in _close_open_blocks emits
+        TextEndRenderEvent before RunFinishedRenderEvent.
+
+        Contract dependency: the terminal event on the truncation path is
+        RunFinishedRenderEvent (NOT RunErrorRenderEvent) because _result_is_error
+        stays False. If that contract ever flips to emit RunError on truncation,
+        the run_finished_idx assertion below will need to be updated.
+
+        Mirror of TestReasoning.test_reasoning_orphan_close_on_truncated_stream.
+        """
+        # Arrange -- stream ends without ResultLlmEvent (truncation path)
+        processor = StreamProcessor(cfg())
+        events = async_events(
+            TextLlmEvent(text="partial text"),
+        )
+
+        # Act
+        result = await collect(processor.process(events))
+
+        # Assert -- TextEnd is emitted (close guard fires on truncation path)
+        text_ends = [e for e in result if isinstance(e, TextEndRenderEvent)]
+        assert len(text_ends) == 1
+
+        # Assert -- TextEnd precedes the terminal run event
+        text_end_idx = next(
+            i for i, e in enumerate(result) if isinstance(e, TextEndRenderEvent)
+        )
+        run_finished_idx = next(
+            (i for i, e in enumerate(result) if isinstance(e, RunFinishedRenderEvent)),
+            None,
+        )
+        assert run_finished_idx is not None, "RunFinishedRenderEvent not found"
+        assert text_end_idx < run_finished_idx, (
+            "TextEnd must be emitted before RunFinished on truncation path"
+        )

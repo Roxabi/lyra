@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from lyra.streaming.event_emitter import EventEmitter
-from lyra.transport._result import SanitizedError
+from lyra.transport import SanitizedError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -204,9 +204,9 @@ class TestOrderingInvariant:
         # Act — reversed (wrong) order for documentation purposes
         result = [*emitter.emit_terminal(err), *emitter.flush()]
 
-        # Assert — terminal appears first (demonstrates the invariant violation)
-        assert result[0] == "ERR:WRONG_ORDER"
-        assert result[1] == "item-A"
+        # Assert — terminal appears first (demonstrates the invariant violation);
+        # full list shape so that deleting emit_ok's _pending.append breaks this test.
+        assert result == ["ERR:WRONG_ORDER", "item-A"]
 
 
 # ---------------------------------------------------------------------------

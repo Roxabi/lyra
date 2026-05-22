@@ -202,6 +202,11 @@ class StreamProcessor:
 
         Yields ``RenderEvent`` objects as they are produced.
 
+        Uses the local ``EventEmitter`` only for ``emit_terminal``;
+        ``flush``/``emit_ok`` are intentionally unused — events are yielded
+        directly. See ``streaming/CLAUDE.md`` §Ordering rule for the deferred
+        narrowing rationale.
+
         Parameters
         ----------
         events:
@@ -445,7 +450,12 @@ class StreamProcessor:
         )
 
     def _handle_result(self, event: ResultLlmEvent) -> Iterator[RenderEvent]:
-        """Close open text/reasoning blocks; synthesize orphan ToolCallEnds."""
+        """Close open text/reasoning blocks; synthesize orphan ToolCallEnds.
+
+        Name collision: CSP takes ``dict``, SP takes ``ResultLlmEvent`` —
+        intentional shadowing by class context, NOT shared behavior. Cross-ref:
+        the other ``_handle_result`` in ``CliStreamingParser``.
+        """
         yield from self._close_reasoning_if_open()
         # ───── Slice 2 (#1099) v2 Text triplet — close open block ─────
         open_text = next(iter(self._sm_text.open_blocks), None)
@@ -470,8 +480,9 @@ class StreamProcessor:
         used in log messages (F9, architect review — parallel-path-drift).
 
         Yields orphan ``ReasoningEndRenderEvent`` then ``TextEndRenderEvent``
-        for whichever blocks are currently open, clearing their state.
-        Open tool calls are handled separately by ``_synth_orphan_tool_ends``.
+        for whichever blocks are currently open, clearing their state. Also
+        delegates to ``_synth_orphan_tool_ends`` so open tool calls are closed
+        on the truncation/exception paths (symmetry with ``_handle_result``).
         """
         # ───── Slice 4 (#1101) orphan reasoning-close ─────
         open_reasoning = next(iter(self._sm_reasoning.open_blocks), None)
@@ -488,6 +499,8 @@ class StreamProcessor:
         if open_text is not None:
             yield TextEndRenderEvent(message_id=open_text)
             self._sm_text.close(open_text)
+        # ───── #1321 A4 — orphan ToolCallEnd symmetry on truncation/exception ─────
+        yield from self._synth_orphan_tool_ends()
 
     def _close_truncated_stream(self) -> Iterator[RenderEvent]:
         """Close open blocks when the stream ends without a ResultLlmEvent.
@@ -522,20 +535,22 @@ class StreamProcessor:
     ) -> Iterator[ToolCallEndRenderEvent]:
         """Synthesize ``ToolCallEndRenderEvent`` for any open tool_call_ids.
 
-        Called at ``ResultLlmEvent`` time. Tool calls that started but never
-        received a ``content_block_stop`` leave adapters with a dangling
-        open-call card; the synthesized end closes it. WARN-logged once per
+        Called when a run terminates (``ResultLlmEvent``, truncation, or
+        exception). Tool calls that started but never received a
+        ``content_block_stop`` leave adapters with a dangling open-call card;
+        the synthesized end closes it. WARN-logged once per
         orphan with a truncated id (last 6 chars) so cross-session correlation
         of the full opaque tool_call_id is not exposed in shared log
         aggregation (#1100 review S2).
         """
+        # sorted() materialises keys before iteration; closing inside is safe.
         for tid in sorted(self._sm_tool.open_blocks):
             log.warning(
                 "StreamProcessor: synthesizing orphan ToolCallEnd for tool_call_id=…%s",
                 tid[-6:],
             )
             yield ToolCallEndRenderEvent(tool_call_id=tid)
-        self._sm_tool.open_blocks.clear()
+            self._sm_tool.close(tid)
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -1375,6 +1375,68 @@ class TestToolCallLifecycle:
         assert len(ends) == 1
         assert ends[0].tool_call_id == "t1"
 
+    async def test_orphan_tool_end_on_truncated_stream(self) -> None:
+        """Stream truncated mid-tool — orphan ToolCallEnd synthesized on close path.
+
+        Phase 5 #1321 T4 (A4): _close_open_blocks now yields from
+        _synth_orphan_tool_ends so the truncation path (no ResultLlmEvent)
+        also closes dangling tool blocks. Reverting T4 — removing the
+        ``yield from self._synth_orphan_tool_ends()`` line at the end of
+        _close_open_blocks — makes this test fail.
+        """
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
+        processor = StreamProcessor(cfg_)
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
+            # NO ToolUseEndLlmEvent, NO ResultLlmEvent — stream truncates here
+        )
+
+        result = await collect(processor.process(events))
+
+        ends = [e for e in result if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(ends) == 1, (
+            f"truncated stream must synth 1 orphan ToolCallEnd; got {ends!r}"
+        )
+        assert ends[0].tool_call_id == "t1"
+
+    async def test_orphan_tool_end_on_exception_path(self) -> None:
+        """Exception mid-tool — orphan ToolCallEnd synthesized before re-raise.
+
+        Phase 5 #1321 T4 (A4): _close_exception_path delegates to
+        _close_open_blocks, which now yields orphan ToolCallEnds. The order
+        is: orphan ToolCallEnd → RunErrorRenderEvent → re-raise.
+        """
+
+        class _Boom(RuntimeError):
+            pass
+
+        async def _raising_events():
+            yield ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={})
+            raise _Boom("oops")
+
+        cfg_ = ToolDisplayConfig(throttle_ms=0)
+        processor = StreamProcessor(cfg_)
+        seen: list[RenderEvent] = []
+        with __import__("pytest").raises(_Boom):
+            async for ev in processor.process(_raising_events()):
+                seen.append(ev)
+
+        ends = [e for e in seen if isinstance(e, ToolCallEndRenderEvent)]
+        assert len(ends) == 1, (
+            f"exception path must synth 1 orphan ToolCallEnd; got {ends!r}"
+        )
+        assert ends[0].tool_call_id == "t1"
+        # Ordering: orphan ToolCallEnd precedes RunErrorRenderEvent
+        end_idx = next(
+            i for i, e in enumerate(seen) if isinstance(e, ToolCallEndRenderEvent)
+        )
+        err_idx = next(
+            i for i, e in enumerate(seen) if isinstance(e, RunErrorRenderEvent)
+        )
+        assert end_idx < err_idx, (
+            "orphan ToolCallEnd must be emitted before RunErrorRenderEvent"
+        )
+
     # B8-14: v1 removed in #1192 S3; "dual-emit" premise invalid post-cutover.
     # Removed per spec #1211.
 

@@ -34,7 +34,6 @@ if TYPE_CHECKING:
     from lyra.adapters.shared._shared_streaming_state import (
         STREAMING_EDIT_INTERVAL,
         StreamState,
-        classify_stream_error,
     )
     from lyra.adapters.shared._tool_recap import (
         ToolRecapAccumulator,
@@ -59,6 +58,8 @@ from lyra.core.messaging import (
     ToolCallStartRenderEvent,
 )
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
+from lyra.outbound.error_handler import OutboundErrorHandler
+from lyra.transport._result import Err
 
 log = logging.getLogger(__name__)
 
@@ -147,9 +148,14 @@ class OutboundEmitter:
         self,
         callbacks: PlatformCallbacks,
         outbound: OutboundMessage | None,
+        *,
+        error_handler: OutboundErrorHandler | None = None,
     ) -> None:
         self._cb = callbacks
         self._outbound = outbound
+        self._handler = error_handler or OutboundErrorHandler(
+            get_msg=callbacks.get_msg
+        )
         self._st = StreamState()
         self._trace_obj: Any | None = None
         self._recap_accum = ToolRecapAccumulator()
@@ -164,11 +170,13 @@ class OutboundEmitter:
         """
         if self._trace_obj is not None:
             return True
-        try:
-            self._trace_obj, _ = await self._cb.send_trace_placeholder()
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
-            log.exception("trace placeholder failed")
+        result = await self._handler.guard(
+            self._cb.send_trace_placeholder,
+            context="ensure_trace_obj",
+        )
+        if isinstance(result, Err):
             return False
+        self._trace_obj, _ = result.value
         return self._trace_obj is not None
 
     async def _on_toolcall_v2(
@@ -214,10 +222,14 @@ class OutboundEmitter:
         ):
             lines = format_recap_lines(self._recap_accum, done=False)
             if lines:
-                try:
-                    await self._cb.edit_tool_recap(self._trace_obj, lines, False)
-                except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
-                    log.debug("recap edit skipped: %s", exc)
+                trace = self._trace_obj
+
+                result = await self._handler.guard(
+                    lambda t=trace, ls=lines: self._cb.edit_tool_recap(t, ls, False),
+                    context="recap_intermediate_edit",
+                )
+                if isinstance(result, Err):
+                    pass  # guard already logged; non-fatal
                 self._last_recap_edit = now
 
     async def _on_text_v2(
@@ -244,12 +256,15 @@ class OutboundEmitter:
                     or (now - self._st.last_intermediate_edit)
                     >= STREAMING_EDIT_INTERVAL
                 ):
-                    try:
-                        await self._cb.edit_placeholder_text(
-                            placeholder_obj, self._st.istate.display()
-                        )
-                    except Exception as edit_exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
-                        log.debug("Intermediate text edit skipped: %s", edit_exc)
+                    display = self._st.istate.display()
+                    result = await self._handler.guard(
+                        lambda p=placeholder_obj, d=display: (
+                            self._cb.edit_placeholder_text(p, d)
+                        ),
+                        context="intermediate_text_edit",
+                    )
+                    if isinstance(result, Err):
+                        pass  # guard already logged; non-fatal
                     self._st.last_intermediate_edit = now
         elif isinstance(event, TextEndRenderEvent):
             # TextEnd closes the text block; accumulated istate text is the final text.
@@ -271,15 +286,17 @@ class OutboundEmitter:
         Returns None on failure (caller should call _handle_typing_tail and return).
         Returns (placeholder_obj, reply_message_id) on success.
         """
-        try:
-            placeholder_obj, reply_message_id = await self._cb.send_placeholder()
-            if self._outbound is not None:
-                self._outbound.metadata["reply_message_id"] = reply_message_id
-            return placeholder_obj, reply_message_id
-        except Exception:
+        result = await self._handler.guard(
+            self._cb.send_placeholder,
+            context="send_placeholder",
+        )
+        if isinstance(result, Err):
             self._cb.cancel_typing()
-            log.exception("Failed to send placeholder — falling back to non-streaming")
             return None
+        placeholder_obj, reply_message_id = result.value
+        if self._outbound is not None:
+            self._outbound.metadata["reply_message_id"] = reply_message_id
+        return placeholder_obj, reply_message_id
 
     async def _drain_fallback(self, events: AsyncIterator[RenderEvent]) -> None:
         """Drain remaining events, accumulate text, send via fallback callback."""
@@ -288,11 +305,13 @@ class OutboundEmitter:
             if isinstance(event, TextDeltaRenderEvent):
                 parts.append(event.delta)
         fallback_text = "".join(parts) or self._cb.placeholder_text
-        try:
-            fallback_message_id = await self._cb.send_fallback(fallback_text)
-        except Exception:
-            log.exception("Fallback send failed — message lost")
+        result = await self._handler.guard(
+            lambda t=fallback_text: self._cb.send_fallback(t),
+            context="drain_fallback",
+        )
+        if isinstance(result, Err):
             return
+        fallback_message_id = result.value
         if self._outbound is not None and fallback_message_id is not None:
             self._outbound.metadata["reply_message_id"] = fallback_message_id
 
@@ -361,9 +380,8 @@ class OutboundEmitter:
                 else:
                     assert_never(event)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
             self._st.stream_error = exc
-            log.exception("Stream interrupted")
 
     async def _deliver_text_chunks(
         self,
@@ -371,18 +389,21 @@ class OutboundEmitter:
         final_chunks: list[str],
     ) -> None:
         """Edit placeholder with first chunk, send overflow."""
-        try:
-            await self._cb.edit_placeholder_text(
-                placeholder_obj,
-                final_chunks[0],
-            )
-        except Exception:
-            log.exception("Final edit failed")
+        result = await self._handler.guard(
+            lambda p=placeholder_obj, c=final_chunks[0]: (
+                self._cb.edit_placeholder_text(p, c)
+            ),
+            context="deliver_final_edit",
+        )
+        if isinstance(result, Err):
+            pass  # guard already logged; non-fatal
         for extra_chunk in final_chunks[1:]:
-            try:
-                await self._cb.send_message(extra_chunk)
-            except Exception:
-                log.exception("Failed to send overflow chunk")
+            result = await self._handler.guard(
+                lambda c=extra_chunk: self._cb.send_message(c),
+                context="deliver_overflow_chunk",
+            )
+            if isinstance(result, Err):
+                pass  # guard already logged; non-fatal
 
     async def _deliver_final(
         self,
@@ -405,10 +426,13 @@ class OutboundEmitter:
             self._recap_done_emitted = True
             lines = format_recap_lines(self._recap_accum, done=True)
             if lines:
-                try:
-                    await self._cb.edit_tool_recap(self._trace_obj, lines, True)
-                except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
-                    log.debug("recap final edit skipped: %s", exc)
+                trace = self._trace_obj
+                result = await self._handler.guard(
+                    lambda t=trace, ls=lines: self._cb.edit_tool_recap(t, ls, True),
+                    context="recap_final_edit",
+                )
+                if isinstance(result, Err):
+                    pass  # guard already logged; non-fatal
 
         display_text = self._st.build_display_text(self._cb.get_msg)
         chunks = self._cb.chunk_text(display_text) if display_text else []
@@ -423,18 +447,21 @@ class OutboundEmitter:
             self._st.stream_error,
         )
         error_text = (
-            classify_stream_error(
+            self._handler.classify_stream_error(
                 self._st.stream_error,
                 had_tool_events=self._st.had_tool_events,
                 final_text=self._st.final_text,
-                msg_fn=self._cb.get_msg,
             )
             or GENERIC_ERROR_REPLY
         )
-        try:
-            await self._cb.edit_placeholder_text(placeholder_obj, error_text)
-        except Exception as edit_exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# streaming edit: any send failure is non-fatal
-            log.debug("Error edit skipped: %s", edit_exc)
+        result = await self._handler.guard(
+            lambda p=placeholder_obj, t=error_text: (
+                self._cb.edit_placeholder_text(p, t)
+            ),
+            context="error_edit",
+        )
+        if isinstance(result, Err):
+            pass  # guard already logged; non-fatal
 
     def _handle_typing_tail(self) -> None:
         """Start or cancel typing based on whether the turn is intermediate."""
@@ -457,7 +484,7 @@ class OutboundEmitter:
             first_event = await events.__anext__()
         except StopAsyncIteration:
             pass
-        except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# streaming edit: any send failure is non-fatal
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
             peek_error = exc
         if first_event is None and peek_error is None:
             await self._drain_fallback(events)
@@ -492,7 +519,6 @@ class OutboundEmitter:
 from lyra.adapters.shared._shared_streaming_state import (  # noqa: E402
     STREAMING_EDIT_INTERVAL,
     StreamState,
-    classify_stream_error,
 )
 from lyra.adapters.shared._tool_recap import (  # noqa: E402
     ToolRecapAccumulator,

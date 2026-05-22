@@ -129,6 +129,10 @@ class StreamProcessor:
 
     One instance per turn — do not reuse across turns.
 
+    Implements (duck-typed) the ``lyra.streaming.Parser[LlmEvent, RenderEvent]``
+    Protocol via ``process`` (maps to ``feed``), ``finalize``, and ``is_done``.
+    Composed, not inherited — see spec #1282 §Breadboard.
+
     Parameters
     ----------
     config:

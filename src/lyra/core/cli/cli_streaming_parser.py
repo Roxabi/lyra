@@ -98,6 +98,10 @@ class CliStreamingParser:
 
     Parses NDJSON lines from the CLI subprocess stdout into LlmEvent objects.
     Maintains session state (session_id, error) across parse calls.
+
+    Implements (duck-typed) the ``lyra.streaming.Parser[str, LlmEvent]`` Protocol
+    via ``parse_line`` (maps to ``feed``), ``finalize``, and ``is_done``. Composed,
+    not inherited — see spec #1282 §Breadboard.
     """
 
     def __init__(self, pool_id: str) -> None:

@@ -28,6 +28,7 @@ jobs:
               echo "agent-runtime.tags=${REG}:staging"
               echo "svc-runtime.tags=${REG}:staging-svc"
               echo "EOF"
+              echo "svc_tag=${REG}:staging-svc"
             } >> "$GITHUB_OUTPUT"
           else
             full="${GITHUB_REF_NAME}"
@@ -41,6 +42,7 @@ jobs:
               echo "svc-runtime.tags=${REG}:${ver}-svc"
               echo "svc-runtime.tags=${REG}:${major}-svc"
               echo "EOF"
+              echo "svc_tag=${REG}:${ver}-svc"
             } >> "$GITHUB_OUTPUT"
           fi
 
@@ -55,7 +57,6 @@ jobs:
             *.labels.org.opencontainers.image.version=${{ github.ref_name }}
 
       - name: Verify forbidden binaries absent (SC-3)
-        if: github.ref == 'refs/heads/staging'
         run: |
-          docker run --rm ghcr.io/roxabi/lyra:staging-svc \
+          docker run --rm ${{ steps.tags.outputs.svc_tag }} \
             sh -c 'which bun claude corepack node lyra-gh 2>/dev/null && exit 1 || exit 0'

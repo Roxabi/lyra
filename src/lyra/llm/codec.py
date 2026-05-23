@@ -5,7 +5,7 @@ Concrete impls: CliNatsCodec (NATS path) ; future HTTP codecs.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from lyra.core.agent.agent_config import ModelConfig
@@ -25,6 +25,7 @@ class LlmCodec(Protocol):
         messages: list[dict] | None,
         *,
         stream: bool,
+        **kwargs: Any,
     ) -> tuple[bytes, str]: ...
 
     def decode(

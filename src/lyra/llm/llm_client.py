@@ -51,10 +51,12 @@ class LlmClient:
         codec: "LlmCodec",
         *,
         timeout: float | None = None,
+        request_subject: str | None = None,
     ) -> None:
         self._pool = pool
         self._codec = codec
         self._timeout = timeout
+        self._request_subject = request_subject or SUBJECTS.generate_request
         self._lyra_sessions: dict[str, str] = {}
         self._turn_store: _CliSessionStore | None = None
 
@@ -75,12 +77,17 @@ class LlmClient:
         *,
         messages: list[dict] | None = None,
     ) -> LlmResult:
-        del pool_id
         payload, trace_id = self._codec.encode(
-            text, model_cfg, system_prompt, messages, stream=False
+            text,
+            model_cfg,
+            system_prompt,
+            messages,
+            stream=False,
+            pool_id=pool_id,
+            lyra_session_id=self._lyra_sessions.get(pool_id),
         )
         result = await self._pool.request_with_routing(
-            lambda _: SUBJECTS.generate_request,
+            lambda _: self._request_subject,
             payload,
             max_attempts=1,
             timeout=self._timeout,
@@ -96,12 +103,17 @@ class LlmClient:
         *,
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
-        del pool_id
         payload, _ = self._codec.encode(
-            text, model_cfg, system_prompt, messages, stream=True
+            text,
+            model_cfg,
+            system_prompt,
+            messages,
+            stream=True,
+            pool_id=pool_id,
+            lyra_session_id=self._lyra_sessions.get(pool_id),
         )
         async for result in self._pool.stream_request(
-            SUBJECTS.generate_request, payload, timeout=self._timeout
+            self._request_subject, payload, timeout=self._timeout
         ):
             event = self._codec.decode_chunk(result)
             if event is None:

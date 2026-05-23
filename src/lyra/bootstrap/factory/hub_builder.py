@@ -50,7 +50,7 @@ async def build_llm_client(
     timeout: float = 120.0,
 ) -> "LlmClient":
     """Build and start an LlmClient connected to the clipool worker via NATS."""
-    from lyra.llm.cli_nats_codec import CliNatsCodec
+    from lyra.llm.cli_pool_codec import CliPoolCodec
     from lyra.llm.llm_client import LlmClient
     from lyra.transport.nats_request_response import NatsTransport
     from lyra.transport.worker_pool_client import WorkerPoolClient
@@ -64,7 +64,12 @@ async def build_llm_client(
         name="clipool",
     )
     await pool.start(nc)
-    return LlmClient(pool, CliNatsCodec(), timeout=timeout)
+    return LlmClient(
+        pool,
+        CliPoolCodec(),
+        timeout=timeout,
+        request_subject="lyra.clipool.cmd",
+    )
 
 
 def build_inbound_bus(

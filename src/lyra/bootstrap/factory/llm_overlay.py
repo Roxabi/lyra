@@ -35,7 +35,7 @@ async def init_nats_llm(nc: "NATS | None") -> "LlmClient | None":
         name="llm",
     )
     await pool.start(nc)
-    client = LlmClient(pool, CliNatsCodec())
+    client = LlmClient(pool, CliNatsCodec(), request_subject=SUBJECTS.generate_request)
     log.info(
         "LlmClient: initialised 3-layer (NATS_URL=%s)",
         scrub_nats_url(os.environ.get("NATS_URL", "")),

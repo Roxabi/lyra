@@ -8,6 +8,7 @@ import pytest
 
 from lyra.bootstrap.factory.llm_overlay import init_nats_llm
 from lyra.llm.llm_client import LlmClient
+from roxabi_contracts.llm import SUBJECTS
 
 
 class TestInitNatsLlm:
@@ -43,3 +44,19 @@ class TestInitNatsLlm:
         # Assert — driver returned and pool.start() was called (subscribe invoked)
         assert isinstance(driver, LlmClient)
         nc.subscribe.assert_awaited_once()
+
+    async def test_request_subject_is_generate_request(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: init_nats_llm must route to the generic LLM subject."""
+        # Arrange
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+        nc = AsyncMock()
+        nc.subscribe = AsyncMock(return_value=AsyncMock())
+
+        # Act
+        driver = await init_nats_llm(nc)
+
+        # Assert
+        assert isinstance(driver, LlmClient)
+        assert driver._request_subject == SUBJECTS.generate_request

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -82,6 +82,7 @@ class CliNatsCodec:
         messages: list[dict] | None,
         *,
         stream: bool,
+        **kwargs: Any,
     ) -> tuple[bytes, str]:
         """Build canonical LlmRequest payload and return (bytes, trace_id).
 

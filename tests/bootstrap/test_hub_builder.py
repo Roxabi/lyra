@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from lyra.bootstrap.factory.hub_builder import build_cli_pool, register_agents
+from lyra.bootstrap.factory.hub_builder import (
+    build_cli_pool,
+    build_llm_client,
+    register_agents,
+)
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.llm.llm_client import LlmClient
 
 # ---------------------------------------------------------------------------
 # test_build_cli_pool_returns_none_without_claude_cli
@@ -42,6 +47,25 @@ class TestBuildCliPool:
         assert result is None, (
             "build_cli_pool must return None when no agent has backend='claude-cli'"
         )
+
+
+# ---------------------------------------------------------------------------
+# test_build_llm_client_routes_to_clipool_cmd
+# ---------------------------------------------------------------------------
+
+
+class TestBuildLlmClient:
+    async def test_request_subject_is_clipool_cmd(self) -> None:
+        """Regression: build_llm_client must route to lyra.clipool.cmd."""
+        from unittest.mock import AsyncMock
+
+        nc = AsyncMock()
+        nc.subscribe = AsyncMock(return_value=AsyncMock())
+
+        client = await build_llm_client(nc)
+
+        assert isinstance(client, LlmClient)
+        assert client._request_subject == "lyra.clipool.cmd"
 
 
 # ---------------------------------------------------------------------------

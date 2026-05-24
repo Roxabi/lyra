@@ -2,10 +2,8 @@
 Description=Lyra NATS server
 
 [Container]
-# Pinned by digest (immutable) — bump on upstream NATS releases.
-# Tag 2.10.29-alpine resolved via Docker Hub registry API (see issue #652).
-# autoupdate intentionally omitted — NATS version is pinned by digest, update manually.
-Image=docker.io/library/nats:2.10.29-alpine@sha256:b83efabe3e7def1e0a4a31ec6e078999bb17c80363f881df35edc70fcb6bb927
+Image=docker.io/library/nats:2.10.29-alpine
+Label=io.containers.autoupdate=registry
 ContainerName=lyra-nats
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).

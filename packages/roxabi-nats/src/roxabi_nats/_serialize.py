@@ -1,11 +1,14 @@
 """Type-aware JSON serializer for NatsBus wire format.
 
-Handles encoding/decoding of Lyra dataclasses to/from UTF-8 JSON bytes:
+Handles encoding/decoding of Lyra dataclasses and Pydantic models to/from
+UTF-8 JSON bytes:
 - Enum  → .value (str/int)
 - datetime → .isoformat()
 - bytes → "b64:<base64>" prefixed string
+- Pydantic models → dict via ``model_dump()`` / ``dict()`` (duck-typed,
+  no hard dependency)
 - callable fields skipped (session_update_fn, similar non-serializable fields)
-- nested dataclasses serialized recursively
+- nested dataclasses / models serialized recursively
 """
 
 from __future__ import annotations
@@ -141,10 +144,25 @@ def _get_hints(dc_type: type, resolver: _TypeHintResolver) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _encode_pydantic(obj: Any) -> Any | None:
+    """Duck-typed Pydantic encoder — returns dict or None if not a model.
+
+    Avoids a hard runtime dependency on pydantic so roxabi-nats stays
+    transport-only.
+    """
+    _model_dump = getattr(obj, "model_dump", None)
+    if _model_dump is not None and callable(_model_dump):
+        return _encode(_model_dump())
+    _model_dict = getattr(obj, "dict", None)
+    if _model_dict is not None and callable(_model_dict):
+        return _encode(_model_dict())
+    return None
+
+
 def _encode(obj: Any) -> Any:
     """Recursively encode obj to a JSON-safe value.
 
-    Handles: dataclass, Enum, datetime, bytes, list, dict, scalars.
+    Handles: dataclass, Pydantic model, Enum, datetime, bytes, list, dict, scalars.
     """
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         result: dict[str, Any] = {}
@@ -155,6 +173,10 @@ def _encode(obj: Any) -> Any:
                 continue
             result[f.name] = _encode(value)
         return result
+
+    pydantic_encoded = _encode_pydantic(obj)
+    if pydantic_encoded is not None:
+        return pydantic_encoded
 
     if isinstance(obj, Enum):
         return obj.value
@@ -230,15 +252,52 @@ def _decode_union(
     return value
 
 
+def _decode_pydantic(
+    value: dict[str, Any], target_type: type
+) -> Any | None:
+    """Duck-typed Pydantic decoder — returns instance or None if not a model."""
+    _model_validate = getattr(target_type, "model_validate", None)
+    if _model_validate is not None and callable(_model_validate):
+        return _model_validate(value)
+    _parse_obj = getattr(target_type, "parse_obj", None)
+    if _parse_obj is not None and callable(_parse_obj):
+        return _parse_obj(value)
+    return None
+
+
+def _decode_dataclass_direct(
+    value: Any, target_type: type, resolver: _TypeHintResolver
+) -> Any:
+    """Dispatch for dataclass decoding (null guard + dict guard)."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        return value
+    return _decode_dataclass(value, target_type, resolver)
+
+
+def _decode_bytes(value: Any) -> bytes:
+    """Decode a wire bytes value (b64-prefixed string or raw bytes)."""
+    if isinstance(value, str) and value.startswith(_B64_PREFIX):
+        return base64.b64decode(value[len(_B64_PREFIX) :])
+    if isinstance(value, bytes):
+        return value
+    raise ValueError(
+        f"Expected b64:-prefixed string for bytes field, got {type(value).__name__}"
+    )
+
+
 def _decode_concrete(value: Any, target_type: Any, resolver: _TypeHintResolver) -> Any:
     """Decode value for concrete (non-generic, non-union) types."""
     # ── Dataclass ────────────────────────────────────────────────────────────
     if dataclasses.is_dataclass(target_type) and isinstance(target_type, type):
-        if value is None:
-            return None
-        if not isinstance(value, dict):
-            return value
-        return _decode_dataclass(value, target_type, resolver)
+        return _decode_dataclass_direct(value, target_type, resolver)
+
+    # ── Pydantic model (duck-typed, no hard dependency) ──────────────────────
+    if isinstance(target_type, type) and isinstance(value, dict):
+        pydantic_decoded = _decode_pydantic(value, target_type)
+        if pydantic_decoded is not None:
+            return pydantic_decoded
 
     # ── Enum ──────────────────────────────────────────────────────────────────
     if isinstance(target_type, type) and issubclass(target_type, Enum):
@@ -252,13 +311,7 @@ def _decode_concrete(value: Any, target_type: Any, resolver: _TypeHintResolver) 
 
     # ── bytes ─────────────────────────────────────────────────────────────────
     if target_type is bytes:
-        if isinstance(value, str) and value.startswith(_B64_PREFIX):
-            return base64.b64decode(value[len(_B64_PREFIX) :])
-        if isinstance(value, bytes):
-            return value
-        raise ValueError(
-            f"Expected b64:-prefixed string for bytes field, got {type(value).__name__}"
-        )
+        return _decode_bytes(value)
 
     # ── Scalar / dict / unknown ───────────────────────────────────────────────
     return value

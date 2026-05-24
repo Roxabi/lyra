@@ -74,7 +74,7 @@ the backend (co-located writer exception). All other consumers use the Protocol 
 
 | Primitive | Current state | Target pattern | Notes |
 |---|---|---|---|
-| BlobStore | FsBlobStore direct-FS (co-located writers) | HTTP-fronted FsBlobStore (Protocol-based) | HTTP service = V8 issue (#1068 descendant). Cross-host clients use `HttpBlobStore`. See ADR-067 (amended). |
+| BlobStore | FsBlobStore direct-FS (co-located writers) | HTTP-fronted FsBlobStore (Protocol-based) | HTTP service = dedicated Quadlet `lyra-blobstore.container` on `lyra-hub` (M₁), FastAPI on `:8449`, V8 issue #1330. Cross-host clients use `HttpBlobStore`. Auth: shared bearer via Podman secret (Phase 1) → per-identity tokens + scoped grants (Phase 2). See ADR-067 (amended) §HTTP service deployment & §Auth plane. |
 | TurnStore + L3 memory (incl. L1 sessions `pool_sessions` table in `turns.db`) | Direct-write to SQLite (co-located, deviation) | α — subscriber-writes-DB | Tolerated until either (a) the TurnStore α-refactor issue lands (#TODO), OR (b) a 3rd adapter is added on top of TurnStore — whichever comes first. The 3rd-adapter trigger reflects the axial ADR-073 three-strikes rule (N×M cross-cutting trap). |
 | Hub readiness signal (JS-KV `lyra-state`) | JetStream KV `lyra-state`, key `hub.ready` | β (current state) | Already compliant. Narrow scope: readiness signaling only (see `roxabi_nats/readiness.py`). |
 | Audit | JetStream stream `LYRA_AUDIT` | β (current state) | Already compliant. |

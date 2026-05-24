@@ -137,6 +137,126 @@ When multi-host transport becomes a requirement (or when access control / presig
 
 Pre-trigger: the `source` field on `BlobRef` acts as a tier hint enabling a future scratch/archive tier split without contract change (see `BlobRef` schema above).
 
+## HTTP service deployment design (Phase 1)
+
+Per ADR-068 Ecosystem Service Plane, the v1 `FsBlobStore` backend is fronted by a dedicated HTTP service for ecosystem-transparent access. Deployment topology committed 2026-05-24.
+
+### Container topology
+
+- **Unit:** dedicated Quadlet `lyra-blobstore.container` (NOT embedded in `lyra-hub` process). Independent lifecycle, failure isolation, prepares MinIO swap.
+- **Host role:** `lyra-hub` (M₁ today). Backend remains single-host until a Migration path trigger fires.
+- **Image:** `ghcr.io/roxabi/lyra:<version>` invoked with a `lyra blobstore serve` subcommand.
+  - Rationale: zero-overhead in Phase 1 — image is already pulled on M₁ for hub/adapters; shares `roxabi-contracts` version pinning automatically (no skew risk); CI pipeline already in place.
+  - Migration trigger to dedicated image (`ghcr.io/roxabi/blobstore`): Protocol v2 stabilized (post-#1334) AND ≥3 consumers cross-repo (voice + image + llm). Three-strikes rule before extraction.
+- **Framework:** FastAPI + uvicorn. Already in `pyproject.toml`; existing usage in `src/lyra/adapters/telegram/telegram.py` (webhook) and `src/lyra/bootstrap/infra/health.py` (health endpoint). Pydantic v2 native = aligned with `roxabi-contracts`.
+- **Port:** TCP `8449` (chosen contiguous to `8443` hub-health; ¬conflict). Same port for internal Quadlet network and Tailnet exposure.
+- **Host data dir:** `~/.lyra/blobs/` (grandfathered per CLI convention — `feedback_tool_data_dirs_grandfathered`). Bind-mounted into the container at `/data/lyra/blobs/` (matches §v1 implementation paths).
+- **Host env file:** `~/.roxabi/lyra/env/blobstore.env` (Quadlet env convention — container-deployment-standard.md S7; distinct from data dir).
+- **Networking:**
+  - Same-host clients (hub, adapters, clipool) reach `http://lyra-blobstore:8449` via Quadlet network DNS.
+  - Cross-host clients (M₂ workers) reach `http://roxabituwer.goose-logarithm.ts.net:8449` via Tailnet (`PublishPort=8449:8449`).
+- **Startup ordering:** `After=lyra-blobstore.service` + `Wants=` on `lyra-hub` and adapter units. `HttpBlobStore` clients also retry on connect with bounded backoff for graceful boot.
+
+### Wiring per process
+
+| Process | BlobStore impl | URL |
+|---|---|---|
+| `lyra-blobstore` (the service) | `FsBlobStore` direct (in-process) | — |
+| `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool` | `HttpBlobStore` | `http://lyra-blobstore:8449` |
+| voiceCLI workers (M₂) | `HttpBlobStore` | `http://roxabituwer.goose-logarithm.ts.net:8449` |
+| imageCLI / llm-worker (M₂) | `HttpBlobStore` | idem |
+
+All consumers speak the same `BlobStore` Protocol; the concrete impl is injected at bootstrap.
+
+### HTTP API (Protocol mapping)
+
+| Protocol method | HTTP endpoint | Body / Return |
+|---|---|---|
+| `put(bytes, mime?, ...)` → `BlobRef` | `PUT /blobs` (Content-Type: mime) | body=bytes → `{store_key, content_hash, size, dedup: bool, …}` |
+| `get(store_key)` → bytes | `GET /blobs/<store_key>` | streams response body |
+| `exists(store_key)` → bool | `HEAD /blobs/<store_key>` | 200 / 404 |
+| `delete(store_key)` | `DELETE /blobs/<store_key>` | 204 |
+| (v2 — #1334) `put_multipart(stream)` | `POST /blobs/multipart` + `PUT /blobs/multipart/<id>/<part>` + `POST /blobs/multipart/<id>/complete` | S3-compat multipart flow |
+| (v2 — #1334) `get_stream(store_key)` | `GET /blobs/<store_key>` with `Range:` header support | chunked transfer |
+| Health | `GET /healthz` | `{status, disk_used_pct, blob_count}` |
+| Metrics | `GET /metrics` | Prometheus format — `disk_used_pct` gauge feeds MinIO swap trigger (>70%) |
+
+Per ADR-068, `store_key` is opaque to the client: never assume FS-path semantics. URL-encoded as path segment.
+
+### Backup (Phase 1)
+
+- **Strategy:** Restic → Cloudflare R2 (encrypted, dedup, off-site, cheap). Daily cron on M₁.
+- **Atomicity:** `index.sqlite` MUST be backed up via SQLite `.backup` API (or WAL checkpoint) BEFORE the FS snapshot. Naive `tar` of live FS + DB = inconsistent backup (see "Open questions / known gaps" in storage.md).
+- **Syncthing:** `~/.lyra/blobs/` is excluded — content-addressed payload doesn't benefit from real-time replication, and volume is too large.
+
+## Auth plane — Phase 1 (shared bearer) → Phase 2 (per-identity)
+
+### Phase 1 — shared bearer token
+
+- **Mechanism:** single shared bearer token. HTTP header `Authorization: Bearer <tok>`.
+- **Storage:** Podman secret `lyra_blobstore_token`, `type=mount` (per ADR-054 secret hardening — NOT `type=env`).
+- **Rotation:** manual via `podman secret create` + `systemctl --user restart lyra-blobstore.service`.
+- **Audit (Phase-2-compatible from day one):** blobstore emits `{subject, op, store_key, ts, result}` to `LYRA_AUDIT` JetStream stream (β pattern, ADR-068). Phase 1 emits `subject = "service:<token_holder>"`; Phase 2 emits real `agent/<id>` or `user/<id>` — no schema change at the boundary.
+- **Limitations** (acceptable for Phase 1, trigger for Phase 2 if violated):
+  - No per-identity scoping (read = write, all blobs accessible to any token-holder).
+  - No per-{agent, user} audit attribution (only the service is identified).
+  - No quota per identity.
+
+### Phase 2 — per-identity tokens & scoped grants (deferred, design committed)
+
+**Trigger conditions** (any-of):
+- Agents own user-uploaded blobs and cross-agent read isolation is required.
+- Per-{agent, user} audit trail of blob access is required (compliance, debugging).
+- Untrusted third-party consumers join the Tailnet and need bounded access.
+- Quota enforcement per identity is required.
+
+**Token model** (pick one at implementation time; both compatible with the Phase 1 `Authorization: Bearer <tok>` header — server-side upgrade only):
+
+| Backend | Verification | Revocation | Best for |
+|---|---|---|---|
+| **JWT HS256** (claims: `sub`, `scope`, `prefix`, `iat`, `exp`) | stateless (shared secret) | denylist + short TTL + refresh | cross-machine without DB hit |
+| **`~/.lyra/auth.db` lookup** (aligned with project `CLAUDE.md` `A := ~/.lyra/auth.db` grants/identity) | SQLite query per request (cheap WAL; ≤1k rps OK) | instant (delete row) | aligns with existing Lyra identity model |
+
+Recommendation: **`auth.db` lookup** if Lyra continues brokering identity via `auth.db` for adapters; **JWT** if blobstore needs verification without `auth.db` access (e.g., deployed off-M₁).
+
+**Scoping model:**
+
+- **Dimensions:** `read | write | delete` × prefix-or-blob-bound (e.g., `agent/<id>/*`).
+- **Token issuance:** handled by `lyra-hub` (or a dedicated auth service later). Endpoint shape:
+  ```
+  POST /auth/blob-token
+    body: { subject: "agent/<id>" | "user/<id>",
+            scope: ["read", "write"],
+            prefix?: "agent/<id>/*",
+            ttl?: "1h" }
+    → { token: "<bearer>" }
+  ```
+- **Server-side enforcement:** blobstore middleware validates `subject` + `scope` + `prefix` against the requested operation BEFORE invoking `FsBlobStore`.
+
+**Ownership model (compat with content-addressed dedup):**
+
+Content-addressed storage means N uploaders can produce the same `sha256` — no natural "owner" on the blob itself. Solution: a separate `blob_grants` table in `index.sqlite`:
+
+```sql
+CREATE TABLE blob_grants (
+    subject       TEXT NOT NULL,     -- "agent/<id>" or "user/<id>"
+    store_key     TEXT NOT NULL,
+    perms         TEXT NOT NULL,     -- "r" | "rw" | "rwd"
+    created_at    INTEGER NOT NULL,
+    PRIMARY KEY (subject, store_key)
+);
+```
+
+- A new upload publishes a new grant row on the existing-or-new blob — no copy.
+- Read check: middleware verifies a `(subject, store_key, perms ⊇ requested)` row exists.
+- **Dedup invariant preserved:** bytes live once on disk; grants are the access-control plane.
+
+**Non-goals (Phase 2):**
+- mTLS / per-agent certs (complex cert mgmt; doesn't distinguish multiple agents on the same host).
+- Per-blob ACL (vs prefix scoping): only if granular sharing requirements emerge — not anticipated.
+
+**Implementation tracking:** no issue filed yet — this section is the design record. Filing trigger = first concrete Phase 2 trigger condition met (see above).
+
 ## Consequences
 
 ### Positive

@@ -153,16 +153,22 @@ Binary payloads (Telegram/Discord attachments, STT/TTS audio) are stored behind 
 Protocol with three methods: `put`, `get`, `exists`. The v1 backend is `FsBlobStore`: a
 SHA-256-addressed flat-FS tree (`/data/lyra/blobs/<sha[:2]>/<sha>`) plus a SQLite index at
 `/data/lyra/blobs/index.sqlite` (two tables: `blobs` keyed by `content_hash`; `blob_refs` for
-per-ingestion provenance). The backend runs on `lyra-hub` role (M₁) and is exposed via an HTTP
-service (V8 issue, #1068 descendant) for cross-host clients. Direct-FS access is reserved for
-co-located writers only (telegram_normalize, hub middleware); all other consumers (e.g., M₂
-image-worker) use `HttpBlobStore` — the store host is invisible to them. Dedup: `put()` hashes
-first; if `blobs.content_hash` exists, only a new `blob_refs` row is appended. Write durability
-order: write file → `fsync` → INSERT. `audio_b64` / `audio_bytes` in `roxabi-contracts` are
-deprecated; removal is a coordinated atomic migration across contracts → voiceCLI workers → lyra
-adapters. Adapters download eagerly at ingress (Telegram URL valid ≥1h; Discord CDN URLs expire
-~24h). Raw bytes never traverse NATS. MinIO swap triggers: disk >70% on blobstore volume, HA
-requirement, or ML S3 demand. → ADR-067 (amended), ADR-068
+per-ingestion provenance). The backend runs on `lyra-hub` role (M₁) and is exposed via a
+dedicated Quadlet container `lyra-blobstore.container` (FastAPI on TCP `:8449`, image
+`ghcr.io/roxabi/lyra` + `lyra blobstore serve` subcommand) — V8 issue #1330. Host paths:
+`~/.lyra/blobs/` (data, bind-mount into container) and `~/.roxabi/lyra/env/blobstore.env`
+(Quadlet env). Direct-FS access is reserved for co-located writers only (telegram_normalize,
+hub middleware); all other consumers (e.g., M₂ image-worker) use `HttpBlobStore` — the store
+host is invisible to them. Auth: shared bearer token via Podman secret `lyra_blobstore_token`
+(`type=mount`) in Phase 1 → per-identity JWT or `auth.db` lookup + `blob_grants` table in
+Phase 2 (see ADR-067 §Auth plane). Dedup: `put()` hashes first; if `blobs.content_hash`
+exists, only a new `blob_refs` row is appended. Write durability order: write file → `fsync`
+→ INSERT. Backup (Phase 1): Restic → Cloudflare R2 daily, `index.sqlite` snapshotted via
+SQLite `.backup` API before FS tarball (atomicity invariant). `audio_b64` / `audio_bytes` in
+`roxabi-contracts` are deprecated; removal is a coordinated atomic migration across contracts
+→ voiceCLI workers → lyra adapters. Adapters download eagerly at ingress (Telegram URL valid
+≥1h; Discord CDN URLs expire ~24h). Raw bytes never traverse NATS. MinIO swap triggers: disk
+>70% on blobstore volume, HA requirement, or ML S3 demand. → ADR-067 (amended), ADR-068
 
 ### Event bus DI
 

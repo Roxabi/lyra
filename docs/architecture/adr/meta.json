@@ -29,6 +29,7 @@
     "029-db-first-agent-config-and-hot-reload",
     "063-thread-store-teardown-bootstrap-ownership",
     "067-blobstore-abstraction-flat-fs-content-addressed",
+    "068-ecosystem-service-plane",
     "---Security & Routing---",
     "046-nkey-provisioning-declarative-authconf",
     "051-per-identity-nats-inbox-prefix",

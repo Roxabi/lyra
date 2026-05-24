@@ -7,6 +7,8 @@ status: accepted
 > **Current truth** → [`docs/architecture/storage.md`](../storage.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
 
+> **Partially superseded by ADR-068 (Ecosystem Service Plane)** — §single-host and §workers-direct-FS scopes are subsumed by the Ecosystem Service Plane Protocol rule. The BlobStore backend choice below remains in force; the access pattern is governed by ADR-068.
+
 
 ## Status
 
@@ -111,7 +113,7 @@ class BlobRef(BaseModel):
 - **No inline-threshold (per Q3 resolution):** every binary is content-addressed regardless of size. Text, emoji entities, and reaction metadata are out-of-scope for `BlobStore` — they travel as NATS message fields (plain JSON), as they already do.
 - **GC interface designed in v1, retain-all policy:** `BlobStore.delete(blob_ref_id)` shape defined; reference-count check on `blobs.content_hash` before unlinking the file. Policy in v1 = never call delete; interface exists so future retention/quota policies don't require schema migration.
 - **Mount options:** `noatime` on the blob mount (ext4 atime updates thrash replay/debug workloads).
-- **Workers read directly via FS path** (single-host today). Cross-process via NATS message carrying `BlobRef`; raw bytes never traverse NATS.
+- **v1 host:** FsBlobStore single-host on `lyra-hub` role (M₁); exposed via HTTP service (issue #1068 V7 ops + new V8 issue) for cross-host clients implementing the Protocol. Direct-FS access is reserved for co-located writers only (telegram_normalize, hub middleware). Cross-process via NATS message carrying `BlobRef`; raw bytes never traverse NATS.
 - **Eager download at adapter ingress** for Telegram/Discord (URL-race avoidance). Hub never handles raw bytes for inbound files.
 - **Deprecation policy (per Q4 resolution):** atomic migration — `audio_b64` / `audio_bytes` removed from `SttRequest`, `TtsResponse`, `AudioPayload` in the same epic. No `DeprecationWarning` shim. Coordinated PRs across `roxabi-contracts` → voiceCLI workers → lyra adapters.
 
@@ -126,6 +128,14 @@ class BlobRef(BaseModel):
 ### Migration path
 
 When multi-host transport becomes a requirement (or when access control / presigned URLs / off-host replication are needed), the FS implementation is swapped for an S3/MinIO implementation behind the same `BlobStore` interface. Migration data path: SHA-addressed flat tree → `aws s3 sync` (or equivalent) into a content-hash-keyed bucket; SQLite index re-imported as object metadata. Adapter and worker call sites are unchanged.
+
+#### Triggers for (b) HTTP-fronted FsBlobStore → (a) MinIO swap (any-of)
+
+- Disk utilization >70% on `lyra-hub` blobstore volume (growth pressure requires distributed storage)
+- HA requirement for blob availability (FsBlobStore single-host is not acceptable)
+- ML/computer-vision workflow demanding S3-compatible API natively
+
+Pre-trigger: the `source` field on `BlobRef` acts as a tier hint enabling a future scratch/archive tier split without contract change (see `BlobRef` schema above).
 
 ## Consequences
 

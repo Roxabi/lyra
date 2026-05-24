@@ -6,8 +6,8 @@ description: Current truth for all store, persistence, and event-bus decisions i
 # Storage & Persistence — Lyra
 
 > Status: LIVING — current truth for store/persistence/event-bus decisions.
-> Last updated: 2026-05-09.
-> Source ADRs: 008, 022 (amended), 024, 029, 063, 067. Absorbed via 059: 048.
+> Last updated: 2026-05-24.
+> Source ADRs: 008, 022 (amended), 024, 029, 063, 067 (amended), 068. Absorbed via 059: 048.
 
 ## Scope
 
@@ -150,15 +150,19 @@ The `wire_discord_adapters` function returns `(adapters, dispatchers, thread_sto
 ### BlobStore (content-addressed)
 
 Binary payloads (Telegram/Discord attachments, STT/TTS audio) are stored behind a `BlobStore`
-Protocol with three methods: `put`, `get`, `exists`. The v1 implementation is a SHA-256-addressed
-flat-FS tree (`/data/lyra/blobs/<sha[:2]>/<sha>`) plus a SQLite index at
+Protocol with three methods: `put`, `get`, `exists`. The v1 backend is `FsBlobStore`: a
+SHA-256-addressed flat-FS tree (`/data/lyra/blobs/<sha[:2]>/<sha>`) plus a SQLite index at
 `/data/lyra/blobs/index.sqlite` (two tables: `blobs` keyed by `content_hash`; `blob_refs` for
-per-ingestion provenance). Dedup: `put()` hashes first; if `blobs.content_hash` exists, only a
-new `blob_refs` row is appended. Write durability order: write file → `fsync` → INSERT.
-`audio_b64` / `audio_bytes` in `roxabi-contracts` are deprecated; removal is a coordinated
-atomic migration across contracts → voiceCLI workers → lyra adapters. Adapters download eagerly
-at ingress (Telegram URL valid ≥1h; Discord CDN URLs expire ~24h). Raw bytes never traverse
-NATS. → ADR-067
+per-ingestion provenance). The backend runs on `lyra-hub` role (M₁) and is exposed via an HTTP
+service (V8 issue, #1068 descendant) for cross-host clients. Direct-FS access is reserved for
+co-located writers only (telegram_normalize, hub middleware); all other consumers (e.g., M₂
+image-worker) use `HttpBlobStore` — the store host is invisible to them. Dedup: `put()` hashes
+first; if `blobs.content_hash` exists, only a new `blob_refs` row is appended. Write durability
+order: write file → `fsync` → INSERT. `audio_b64` / `audio_bytes` in `roxabi-contracts` are
+deprecated; removal is a coordinated atomic migration across contracts → voiceCLI workers → lyra
+adapters. Adapters download eagerly at ingress (Telegram URL valid ≥1h; Discord CDN URLs expire
+~24h). Raw bytes never traverse NATS. MinIO swap triggers: disk >70% on blobstore volume, HA
+requirement, or ML S3 demand. → ADR-067 (amended), ADR-068
 
 ### Event bus DI
 
@@ -206,8 +210,10 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
   backup. SQLite `.backup` API or WAL checkpoint before FS snapshot is mandatory if a
   backup cron is added. Not yet implemented.
 - Blob mount inode/disk alerts (threshold 80%) are specified in ADR-067 but not yet wired.
-- v1 BlobStore is single-host; cross-host transport (e.g., STT on M₁ + TTS on M₂) requires
-  swapping the FS implementation for an S3/MinIO backend.
+- v1 BlobStore is single-host but ecosystem-transparent: cross-host consumers use `HttpBlobStore`
+  (V8 HTTP service); MinIO swap is triggered only by disk pressure, HA need, or S3 demand. → ADR-068
+- TurnStore + L3 memory (including L1 sessions — `pool_sessions` table in `turns.db`) use direct-write to SQLite (co-located, ADR-068 pattern α deviation). Tolerated until either (a) the TurnStore α-refactor issue (#1331) lands, OR (b) a 3rd adapter is added on top of TurnStore — whichever comes first (ADR-073 three-strikes rule).
+- JetStream KV `lyra-state` is used exclusively for hub readiness signaling (`hub.ready` key, `roxabi_nats/readiness.py`). It is NOT a session store.
 
 ## See also
 
@@ -224,5 +230,6 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 | 024 | AgentStore SQLite | Accepted |
 | 029 | DB-first agent config | Accepted |
 | 063 | ThreadStore teardown | Accepted |
-| 067 | BlobStore content-addressed | Accepted |
+| 067 | BlobStore content-addressed | Accepted (amended 2026-05-24) |
+| 068 | Ecosystem Service Plane | Accepted |
 | 048 | Lyra infrastructure layer | Absorbed by ADR-059 |

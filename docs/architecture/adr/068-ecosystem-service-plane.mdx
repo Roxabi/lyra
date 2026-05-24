@@ -1,0 +1,125 @@
+---
+title: "ADR-068: Ecosystem Service Plane — NATS-mediated stateful primitives"
+description: Establish the foundational axiom for shared-state access across the Roxabi compute pool. Every shared primitive must be ecosystem-transparent (host-invisible). Defines Pattern α (subscriber-writes-DB) and Pattern β (stream-native) as the two canonical implementation choices.
+status: accepted
+date: 2026-05-24
+supersedes_partial: ["067"]
+---
+
+> **Current truth** → [`docs/architecture/storage.md`](../storage.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+
+## Status
+
+Accepted — 2026-05-24
+
+## Context
+
+Roxabi runs on a fungible compute pool (M₁/M₂ today; additional hosts possible). The current
+pattern for shared state (BlobStore, TurnStore, L3 memory, sessions) assumes single-host FS
+access or co-located writes. This assumption breaks silently when consumers and stores land on
+different hosts — e.g., M₂ voice workers consuming blobs stored on M₁, or an M₂ image worker
+writing to a store that only M₁ can reach directly.
+
+Three observations drove this ADR:
+
+- **Machines are fungible.** M₁/M₂ is a current billing/hardware assignment, not an
+  architectural boundary. Pinning shared-state access to host identity couples logical design
+  to physical topology.
+- **NATS is already the ecosystem bus.** All cross-process messaging in Lyra already passes
+  through NATS. Shared state accessed via NATS-mediated services is host-invisible by
+  construction.
+- **Backend single-host is acceptable.** The axiom does not require distributed backends. A
+  SQLite store on one host is valid — provided the *contract* for access does not leak host
+  identity to producers or consumers.
+
+## Decision
+
+### Axiom — Ecosystem Service Plane
+
+> ∀ shared state → ecosystem primitive accessible via NATS, host-invisible.
+> Backend single-host is OK **if and only if** the contract is ecosystem-transparent.
+> Producers/consumers MUST NOT depend on the store's host topology.
+
+A corollary: direct-FS access to a shared store is allowed only for processes co-located with
+the backend (co-located writer exception). All other consumers use the Protocol client.
+
+### Pattern α — subscriber-writes-DB
+
+- **Mechanism:** backend is a DB on one host; writer is a NATS subscriber on that host.
+  Consumers query the DB directly (co-located) or via a NATS service subject (remote).
+- **Use when:** rich queries are needed — SQL joins, sqlite-vec semantic search, BM25
+  full-text, time-window scans.
+- **Trade-off:** single-instance backend; HA upgrade path = Litestream streaming replication
+  or Postgres streaming replication. Not a day-one requirement.
+
+### Pattern β — stream-native
+
+- **Mechanism:** data lives in a JetStream stream or KV bucket. Writers publish to subjects;
+  readers subscribe or use `kv.get` / `kv.watch`.
+- **Use when:** data is event-shaped; replay or audit is needed; rich query expressiveness is
+  not required.
+- **Trade-off:** limited query expressiveness. No ad-hoc SQL; aggregations require a consumer
+  or a dedicated subscriber that materialises views.
+
+### Choice criterion
+
+| Data shape | Required queries | → Pattern |
+|---|---|---|
+| Event / audit / session state | None beyond key lookup or replay | β |
+| Relational / semantic / time-window | SQL / BM25 / vec similarity | α |
+
+## Application Map
+
+| Primitive | Current state | Target pattern | Notes |
+|---|---|---|---|
+| BlobStore | FsBlobStore direct-FS (co-located writers) | HTTP-fronted FsBlobStore (Protocol-based) | HTTP service = V8 issue (#1068 descendant). Cross-host clients use `HttpBlobStore`. See ADR-067 (amended). |
+| TurnStore + L3 memory (incl. L1 sessions `pool_sessions` table in `turns.db`) | Direct-write to SQLite (co-located, deviation) | α — subscriber-writes-DB | Tolerated until either (a) the TurnStore α-refactor issue lands (#TODO), OR (b) a 3rd adapter is added on top of TurnStore — whichever comes first. The 3rd-adapter trigger reflects the axial ADR-073 three-strikes rule (N×M cross-cutting trap). |
+| Hub readiness signal (JS-KV `lyra-state`) | JetStream KV `lyra-state`, key `hub.ready` | β (current state) | Already compliant. Narrow scope: readiness signaling only (see `roxabi_nats/readiness.py`). |
+| Audit | JetStream stream `LYRA_AUDIT` | β (current state) | Already compliant. |
+
+## Consequences
+
+### Positive
+
+- HTTP-fronted FsBlobStore delivers ecosystem-access for BlobStore **without** requiring a
+  MinIO swap. Single-host backend remains valid under the axiom.
+- Cross-host consumers (e.g., M₂ image-worker reading M₁ blobs) use `HttpBlobStore`, not FS
+  paths. The store host is invisible to the consumer.
+- All future shared-state designs have an explicit two-option decision tree (α or β) with
+  documented rationale requirements.
+- Hub readiness signal (JS-KV `lyra-state`) and audit are already compliant — no action required.
+
+### Negative
+
+- TurnStore + L3 memory (including L1 sessions in `pool_sessions`) require an α-refactor
+  (publish/subscribe writes instead of direct writes). Co-located direct writes are a
+  documented deviation, tolerated until either (a) the TurnStore α-refactor issue (#1331)
+  lands, OR (b) a 3rd adapter is added on top of TurnStore — whichever comes first. The
+  3rd-adapter trigger reflects the axial ADR-073 three-strikes rule (N×M cross-cutting trap).
+  If TurnStore consumers move off M₁ before then, the deviation becomes a blocking gap.
+- HTTP BlobStore service introduces one additional network hop for cross-host consumers
+  (~1–5 ms on LAN / Tailnet). Acceptable at current scale.
+
+### Neutral
+
+- ∀ future shared-state design MUST declare pattern α or β with rationale. Undeclared or
+  host-coupled designs are rejected at architecture review.
+- The axiom does not mandate replication or HA. Single-instance backends are explicitly valid;
+  HA is an upgrade path triggered by operational need, not an initial requirement.
+
+## Supersedes (partial)
+
+ADR-067 §single-host §workers-direct-FS. The BlobStore interface and backend choice in ADR-067
+remain in force. The access-pattern rule (ecosystem-transparent Protocol) supersedes the
+single-host assumption.
+
+Note: ADR-067's MinIO swap triggers (disk >70% / HA / ML S3) are governed jointly with this ADR. 067 owns the trigger conditions; 068 enforces that any backend migration MUST preserve the ecosystem-Protocol contract (HttpBlobStore stays the access path; backend swap is transparent to consumers).
+
+## Related
+
+- ADR-067 — BlobStore abstraction (amended; HTTP service added to v1 contract)
+- Epic #1061 — BlobStore implementation
+- Issue #1067 — Voice workers Protocol-based BlobStore client
+- V8 issue — HTTP BlobStore service (descendant of #1068)

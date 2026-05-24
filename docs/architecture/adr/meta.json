@@ -38,6 +38,7 @@
     "069-provision-warn-subid-overlap-defensive-posture",
     "---Deployment---",
     "055-quadlet-ecosystem-conventions",
+    "074-bot-credential-delivery-podman-secrets",
     "---Contracts---",
     "045-roxabi-nats-sdk-uv-workspace-extraction",
     "049-roxabi-contracts-shared-schema-package",

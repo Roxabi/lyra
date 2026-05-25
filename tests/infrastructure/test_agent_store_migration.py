@@ -1,4 +1,7 @@
-"""Tests for AgentStore migration: effort column addition (T0a, #1101)."""
+"""Tests for AgentStore migrations.
+
+Covers: effort column addition (#1101) and show_tool_recap drop (#1335).
+"""
 
 from __future__ import annotations
 
@@ -41,9 +44,13 @@ class TestFreshDb:
         """_CREATE_AGENTS DDL must declare effort TEXT column."""
         assert "effort TEXT" in _CREATE_AGENTS
 
+    def test_create_ddl_does_not_contain_show_tool_recap(self) -> None:
+        """_CREATE_AGENTS DDL must not declare the dropped show_tool_recap column."""
+        assert "show_tool_recap" not in _CREATE_AGENTS
+
     @pytest.mark.asyncio
     async def test_fresh_db_has_effort_column(self) -> None:
-        """A brand-new AgentStore has effort in its schema (25 columns)."""
+        """A brand-new AgentStore has effort in its schema (24 columns)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "agents.db"
             store = AgentStore(db_path)
@@ -53,13 +60,15 @@ class TestFreshDb:
                 rows = await _pragma_table_info(db, "agents")
                 cols = _col_names(rows)
                 assert "effort" in cols
-                assert len(rows) == 25
+                assert "show_tool_recap" not in cols
+                assert len(rows) == 24
             finally:
                 await store.close()
 
 
 # ---------------------------------------------------------------------------
-# T2 — Pre-existing 24-col DB: migration applies cleanly
+# T2 — Pre-existing legacy DB (show_tool_recap present, effort absent):
+#      migration applies cleanly
 # ---------------------------------------------------------------------------
 
 
@@ -105,22 +114,23 @@ CREATE TABLE IF NOT EXISTS bot_agent_map (
 
 
 async def _make_legacy_db(db_path: Path) -> None:
-    """Create a 24-column agents DB (pre-effort schema) with one row."""
+    """Create a legacy agents DB (show_tool_recap present, effort absent), 1 row."""
     async with aiosqlite.connect(db_path) as db:
         await db.execute(_DDL_24_COL)
         await db.execute(_DDL_BOT_AGENT_MAP)
         await db.execute(_CREATE_AGENT_RUNTIME_STATE)
         await db.execute(
-            "INSERT INTO agents (name, backend, model) VALUES (?, ?, ?)",
-            ("legacy-agent", "claude-cli", "claude-3-5-sonnet"),
+            "INSERT INTO agents (name, backend, model, show_tool_recap) "
+            "VALUES (?, ?, ?, ?)",
+            ("legacy-agent", "claude-cli", "claude-3-5-sonnet", 1),
         )
         await db.commit()
 
 
 class TestLegacyDbMigration:
     @pytest.mark.asyncio
-    async def test_migration_adds_effort_column(self) -> None:
-        """Migration on a 24-col DB adds effort; existing row has NULL."""
+    async def test_migration_adds_effort_drops_show_tool_recap(self) -> None:
+        """Migration on legacy DB adds effort, drops show_tool_recap (24 cols)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "agents.db"
             await _make_legacy_db(db_path)
@@ -130,7 +140,8 @@ class TestLegacyDbMigration:
                 rows = await _pragma_table_info(db, "agents")
                 cols = _col_names(rows)
                 assert "effort" in cols
-                assert len(rows) == 25
+                assert "show_tool_recap" not in cols
+                assert len(rows) == 24
 
     @pytest.mark.asyncio
     async def test_existing_rows_have_null_effort(self) -> None:
@@ -150,7 +161,7 @@ class TestLegacyDbMigration:
 
     @pytest.mark.asyncio
     async def test_migration_is_idempotent(self) -> None:
-        """Running migration twice on a 25-col DB is a no-op (no exception)."""
+        """Running migration twice on a 24-col DB is a no-op (no exception)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "agents.db"
             await _make_legacy_db(db_path)
@@ -160,18 +171,45 @@ class TestLegacyDbMigration:
                 # Second run must not raise
                 await run_agent_migrations(db)
                 rows = await _pragma_table_info(db, "agents")
-                assert len(rows) == 25
+                assert len(rows) == 24
+
+    @pytest.mark.asyncio
+    async def test_drop_show_tool_recap_idempotent(self) -> None:
+        """PRAGMA guard prevents OperationalError when column already absent.
+
+        Scenario: fresh DB (show_tool_recap never existed) → connect() twice.
+        The second connect must not raise even though the DROP COLUMN
+        migration runs again. Directly tests the
+        ``if "show_tool_recap" in cols`` guard in run_agent_migrations.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "agents.db"
+            # First connect: schema without show_tool_recap, migration is no-op
+            store = AgentStore(db_path)
+            await store.connect()
+            await store.close()
+            # Second connect: show_tool_recap still absent; guard prevents DROP
+            store2 = AgentStore(db_path)
+            await store2.connect()
+            try:
+                db = store2._require_db()
+                rows = await _pragma_table_info(db, "agents")
+                cols = _col_names(rows)
+                assert "show_tool_recap" not in cols
+                assert "effort" in cols
+            finally:
+                await store2.close()
 
 
 # ---------------------------------------------------------------------------
-# T3 — PRAGMA table_info reports 25 columns after migration
+# T3 — PRAGMA table_info reports 24 columns (fresh and post-migration)
 # ---------------------------------------------------------------------------
 
 
 class TestColumnCount:
     @pytest.mark.asyncio
-    async def test_pragma_reports_25_cols_fresh(self) -> None:
-        """Fresh DB: PRAGMA table_info('agents') returns 25 rows."""
+    async def test_pragma_reports_24_cols_fresh(self) -> None:
+        """Fresh DB: PRAGMA table_info('agents') returns 24 rows."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "agents.db"
             store = AgentStore(db_path)
@@ -179,13 +217,13 @@ class TestColumnCount:
             try:
                 db = store._require_db()
                 rows = await _pragma_table_info(db, "agents")
-                assert len(rows) == 25
+                assert len(rows) == 24
             finally:
                 await store.close()
 
     @pytest.mark.asyncio
-    async def test_pragma_reports_25_cols_after_migration(self) -> None:
-        """Legacy DB: PRAGMA table_info('agents') returns 25 rows after migration."""
+    async def test_pragma_reports_24_cols_after_migration(self) -> None:
+        """Legacy DB: PRAGMA table_info('agents') returns 24 rows after migration."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "agents.db"
             await _make_legacy_db(db_path)
@@ -193,4 +231,4 @@ class TestColumnCount:
             async with aiosqlite.connect(db_path) as db:
                 await run_agent_migrations(db)
                 rows = await _pragma_table_info(db, "agents")
-                assert len(rows) == 25
+                assert len(rows) == 24

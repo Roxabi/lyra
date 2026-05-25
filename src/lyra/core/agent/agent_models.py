@@ -24,7 +24,7 @@ def _utc_now_iso() -> str:
 
 @dataclass
 class AgentRow:
-    """One row from the agents table (25 columns after #1101 effort column)."""
+    """One row from the agents table (24 columns after #1335 dropped dead column)."""
 
     name: str
     backend: str
@@ -41,7 +41,6 @@ class AgentRow:
     workspaces_json: str | None = None
     commands_json: str | None = None
     streaming: bool = False
-    show_tool_recap: bool = True
     # #343 — DB-first agent config
     persona_json: str | None = None
     voice_json: str | None = None  # {"tts": {...}, "stt": {...}}
@@ -56,7 +55,7 @@ class AgentRow:
 
     @classmethod
     def from_db_row(cls, row: tuple[Any, ...]) -> "AgentRow":
-        """Construct an AgentRow from a raw aiosqlite SELECT tuple (25 columns)."""
+        """Construct an AgentRow from a raw aiosqlite SELECT tuple (24 columns)."""
         (
             name,
             backend,
@@ -81,7 +80,6 @@ class AgentRow:
             fallback_language,
             patterns_json,
             passthroughs_json,
-            show_tool_recap,
             effort,
         ) = row
         return cls(
@@ -100,9 +98,6 @@ class AgentRow:
             workspaces_json=workspaces_json,
             commands_json=commands_json,
             streaming=bool(streaming),
-            show_tool_recap=(
-                bool(show_tool_recap) if show_tool_recap is not None else True
-            ),
             persona_json=persona_json,
             voice_json=voice_json,
             fallback_language=fallback_language or "en",

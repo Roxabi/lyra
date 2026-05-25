@@ -173,7 +173,6 @@ class AgentStore(SqliteStore):
                 row.fallback_language,
                 row.patterns_json,
                 row.passthroughs_json,
-                1 if row.show_tool_recap else 0,
                 row.effort,
                 # ON CONFLICT updated_at value
                 now,
@@ -196,7 +195,6 @@ class AgentStore(SqliteStore):
             workspaces_json=row.workspaces_json,
             commands_json=row.commands_json,
             streaming=row.streaming,
-            show_tool_recap=row.show_tool_recap,
             persona_json=row.persona_json,
             voice_json=row.voice_json,
             fallback_language=row.fallback_language,

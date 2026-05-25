@@ -276,7 +276,6 @@ class StreamProcessor:
                     code="stream.error",
                     message=type(exc).__name__,
                     retryable=False,
-                    detail=None,
                 )
             ):
                 yield _ev
@@ -306,7 +305,6 @@ class StreamProcessor:
                     code=_we.code,
                     message=_we.message,
                     retryable=_we.retryable,
-                    detail=None,
                 )
             else:
                 _sanitized = SanitizedError.from_message(self._result_error_text or "")

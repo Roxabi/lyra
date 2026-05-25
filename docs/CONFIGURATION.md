@@ -358,6 +358,34 @@ After migration: regenerate the Quadlet fragments (`make quadlet-bot-secrets-ren
 
 webhook_secret packing: separate secret (not packed into JSON). This matches the project's raw-bytes single-purpose convention (every other Podman secret in `Makefile:181-200`), keeps the failure-loud bootstrap path free of a JSON parser, and supports independent rotation of token vs. webhook.
 
+### Backup
+
+Podman secrets are the authoritative copy of bot tokens. There is no automatic backup; operators must snapshot them explicitly.
+
+**Snapshot all bot secrets:**
+
+```bash
+podman secret ls --filter name=lyra-bot- --format '{{.Name}}' | \
+  xargs -n1 --no-run-if-empty podman secret inspect --showsecret | \
+  jq -s '[.[] | {name: .[0].Spec.Name, data: .[0].SecretData}]' \
+  > lyra-bot-secrets-$(date +%Y%m%d).json
+```
+
+**Recommended cadence:** snapshot after every token rotation or bot provisioning change. Store the JSON file in your usual infrastructure backup location (e.g. alongside `~/.lyra/config.db` backups, or in your password-manager/secret-manager's export path).
+
+**Restore a secret from snapshot:**
+
+```bash
+# Re-create a single secret from the snapshot file
+cat lyra-bot-secrets-YYYYMMDD.json | \
+  jq -r '.[] | select(.name == "lyra-bot-telegram-mybot") | .data' | \
+  podman secret create lyra-bot-telegram-mybot -
+```
+
+After restoring, regenerate Quadlet fragments (`make quadlet-bot-secrets-render`) and restart the affected adapter.
+
+**Note:** The snapshot contains raw secret data. Encryption-at-rest for the snapshot file is out of scope for this document; handle it according to your organization's secret-management policy.
+
 ---
 
 ## `lyra.toml` — Monitoring Only

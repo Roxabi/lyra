@@ -1,0 +1,64 @@
+---
+title: Delete dead tool-display code (StreamProcessor accumulator + emit_tool_recap plumbing + show_tool_recap agent column)
+issue: 1335
+status: approved
+tier: F-lite
+date: 2026-05-25
+---
+
+## Problem
+
+A 2026-05-24 multi-agent audit (`dev-core:axial-adr-review` + `dev-core:architect`) of lyra's tool-display path surfaced parallel-path-drift across three independent dead surfaces, all converging on the same broken concern (config-driven tool-recap display):
+
+1. **`StreamProcessor` accumulator** (`src/lyra/core/processors/stream_processor.py`) — `_accumulate*`, `_has_any_tool_events`, accumulator fields. Writes config-aware state read **only by tests**. The live recap card uses a separate accumulator in `adapters/shared/_tool_recap.py` that ignores config entirely.
+2. **`emit_tool_recap` plumbing** (`pool_processor_streaming.py` + `pool_processor_exec.py`) — param declared, value computed and passed in, never read by callee.
+3. **`show_tool_recap` per-agent DB column** — fully wired through schema/seeder/store/builder/db_loader, reached in `pool_processor_exec`, dropped at the `build_streaming_capture` boundary (see surface #2).
+4. **`tool_display_config` SimpleAgent threading** — constructor param + storage + pass-through to `StreamProcessor`'s now-dead `config` use. Never set by bootstrap in production — `_load_tool_display_config` has zero production callers (verified — tests-only).
+
+Re-verified at frame-time (`/recheck` 2026-05-25): premises still hold; 3 recent commits on cited paths (2 tests on `ToolDisplayConfig` kept-model, 1 unrelated `SanitizedError.detail` cleanup) do not invalidate the deletion scope.
+
+Why now: the audit was triggered by a target-axis-trap analysis (parallel-path drift) vs ADR-073 (axial decomposition). The dead surfaces block future `ToolDisplayConfig` wiring (Phase B), force readers to disambiguate live vs dead state, and compound every time someone touches these files.
+
+## Who
+
+- **Primary:** Lyra contributors editing `core/processors/`, `core/pool/`, `core/agent/`, `agents/simple_agent.py` — currently must trace dead branches when reasoning about tool-display behavior.
+- **Secondary:** Anyone landing Phase B (`ToolDisplayConfig` wiring into the live recap accumulator) — a clean base shrinks Phase B to a single-purpose PR rather than a delete-then-wire bundle.
+
+## Constraints
+
+- **No behavior change** for users — the live tool-recap card (Telegram + Discord) must render identically before/after.
+- **`ToolDisplayConfig` class is kept** (`src/lyra/core/messaging/tool_display_config.py`) — Phase B needs it.
+- **`_load_tool_display_config` function is kept** (`src/lyra/bootstrap/factory/config.py`) — Phase B will add the production caller.
+- **`tests/test_tool_display_config.py` is kept** — the model is still valid; tests stay (recently extended with kwarg-typo guard 2026-05-25).
+- **SQLite migration must drop `show_tool_recap` column safely** — SQLite < 3.35 lacks `DROP COLUMN`; table-rebuild migration required. Verify production SQLite version before locking the migration shape.
+- **Pipeline tier: F-lite** (`size:F-lite` label) — clear scope, single domain (agent/processor/pool layer in `core/`), no new architecture.
+- Quality gates: pyright, pytest, ruff, importlinter must all pass.
+
+## Out of Scope
+
+- **Wiring `ToolDisplayConfig` into the live `ToolRecapAccumulator`** — explicit Phase B follow-up, filed separately. Requires:
+  - Resolving the circular-import constraint between `lyra.adapters.__init__` and `lyra.outbound.emitter` (currently worked around per `src/lyra/outbound/CLAUDE.md`).
+  - Deciding canonical home of `ToolRecapAccumulator` (architect: likely `src/lyra/outbound/`; axial reviewer: stays in `adapters/shared/`).
+  - Threading config through `OutboundAdapterBase.send_streaming` (not per-platform `_make_emitter` — target-axis-trap).
+- Specificity, agent nesting, unknown-tool args — feature follow-ups, post-Phase B.
+- Refactoring `adapters/shared/_tool_recap.py` (the live accumulator) — untouched by this PR.
+
+## Premise Validity
+
+**Success in 6 months:** dead symbols stay deleted (zero re-introductions of `show_tool_recap`, `emit_tool_recap`, `StreamProcessor._accumulate*`, `_has_any_tool_events`, `tool_display_config` on `SimpleAgent`) ∧ Phase B (`ToolDisplayConfig` wiring) lands cleanly on the cleaned base.
+
+**Failure in 6 months (falsifiable):** any deleted symbol reappears via `grep -rn "show_tool_recap\|emit_tool_recap\|_has_any_tool_events" src/` > 0 within 6 months OR Phase B issue (`ToolDisplayConfig` wiring) is closed `not_planned` because a hidden reader of the dead state surfaces post-merge.
+
+**Simplest alternative:** leave the dead code in place; only wire `ToolDisplayConfig` in Phase B.
+
+**Why not simplest:** the dead surfaces actively obscure the wiring path — Phase B would have to either compound the parallel-path drift (wire through dead-but-reachable plumbing) or delete the dead code first anyway. Pre-deletion makes Phase B single-purpose. The drift also violates axial ADR-073 (parallel-path-drift was the trigger of the audit).
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (core/agent + core/pool + core/processors + agents/simple_agent + infrastructure/stores/agent_store), no new architecture, no unknowns. Confirmed by `size:F-lite` label.
+
+Signals observed:
+- 10 files modified across `src/`, plus 3 test files
+- One SQLite migration (table-rebuild for `DROP COLUMN`)
+- No new patterns, no new modules
+- All deletions verified safe by 2-agent independent review + frame-time re-verification

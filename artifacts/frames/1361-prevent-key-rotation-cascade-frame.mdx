@@ -1,0 +1,57 @@
+---
+title: Prevent NATS key-rotation cascade when adding a new identity
+issue: 1361
+status: approved
+tier: F-lite
+date: 2026-05-25
+---
+
+## Problem
+
+`lyra-acl genkeys` today exposes two modes: `_mode_full_provision` (rotates every seed) and `--regen-authconf` (requires all existing seeds to be present on disk). There is no path to add a single new identity without touching the others.
+
+On 2026-05-25, adding `turn-writer` for #1331 forced a full rotation. Recovery succeeded only because the Podman secret store still held the prior seeds and could repopulate them; an operator working on a fresh host would have lost the active identities for ≥30 minutes of forensics on top of the 41-minute deploy. The root cause was an absent CLI verb, not operator error — the safe path did not exist.
+
+Items 6 (`make nats-add-identity`) and 9 (rename + extend `nats-identity-retirement.md` → `nats-identity-lifecycle.md`) are direct consequences of item 1: the new verb needs an obvious wrapper and a discoverable runbook entry so operators reach for it instead of falling back to `--regen-authconf` under pressure.
+
+## Who
+
+- **Primary:** ops operator adding/refreshing a NATS identity on M₁ (lyra-hub) or M₂ (satellites). Today: Mickael; future: anyone running the runbook cold.
+- **Secondary:** any process holding an active nkey (hub, adapters, turn-writer, monitor, image-worker, llm-operator) that would be invalidated by an unintended rotation cascade.
+
+## Constraints
+
+- Must coexist with existing `_mode_full_provision` + `--regen-authconf` — ¬breaking change to current invocations.
+- Must write only the new seed file + the updated `auth.conf` block for that identity. Other seeds untouched on disk, byte-for-byte.
+- Output must be idempotent and re-runnable (running `--add-identity X` twice with X already present = no-op + clear message).
+- `make nats-add-identity NAME=<x>` must chain the genkey + `podman secret create` + targeted restart without any prompt for the rotation flow.
+- Runbook lives under `docs/ops/`; rename keeps the URL slug stable enough that existing links are easy to redirect or grep.
+
+## Out of Scope
+
+- Item 5 (CI integration test ReadOnly+JetStream+ACL) — split to its own follow-up issue during /spec.
+- Item 7 (`make quadlet-preflight` for tagless images) — unrelated to key rotation; separate follow-up.
+- Item 8 (M₂ satellite Podman secret refresh) — opportunistic per-identity work; documented in the new runbook section but no automation in this slice.
+- Any change to `_mode_full_provision` behavior or auth.conf renderer beyond the per-identity block append.
+- Multi-identity batch add (`--add-identity a,b,c`) — single identity per invocation; batching can come later if needed.
+
+## Premise Validity
+
+**Success in 6 months:** Adding a new NATS identity to lyra never again triggers a full key rotation. Between 2026-05-25 and 2026-11-25, every `add-identity` invocation (≥1 expected: `monitor`, `image-worker`, `llm-operator` refreshes + any new satellite) preserves all pre-existing seeds. Zero recovery scrambles tied to the add-identity flow appear in postmortems.
+
+**Failure in 6 months:** ≥1 incident postmortem between 2026-05-25 and 2026-11-25 cites "had to rotate active seeds to add a new identity," OR `--add-identity` shipped but operators bypassed it (used `--regen-authconf` anyway) ≥1 time. Either signal means the prevention layer did not take — reassess CLI shape, Makefile discoverability, or runbook placement.
+
+**Simplest alternative:** Document a manual procedure in the runbook only — "edit `auth.conf` by hand, append the new pubkey block, regenerate that one seed file, restart NATS." No code change.
+
+**Why not simplest:** The 2026-05-25 incident already had a manual procedure in operator memory and it still cascaded into a full rotation under time pressure. The goal is to make the safe path the *default* path (one verb, one seed change, atomic), not the one operators have to remember to avoid. Docs alone repeat the original failure mode.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, 1 domain (ops/tooling), no new architecture; 4–10 files across CLI + Makefile + runbook.
+
+Signals observed:
+- Single domain (ops/CLI/docs) — no UI, no DB, no transport changes
+- Concrete acceptance criteria already drafted in issue body
+- Existing code patterns to extend (`scripts/_modes.py`, `scripts/gen_nkeys.py`, `scripts/_renderer.py`)
+- File estimate: `scripts/_modes.py` (new mode), `scripts/gen_nkeys.py` (argparse wiring), `Makefile` (new target), `docs/ops/nats-identity-lifecycle.md` (rename + extend), `tests/` (unit coverage for add-identity idempotency) — ~5-7 files
+- No unknowns — postmortem identified the gap precisely

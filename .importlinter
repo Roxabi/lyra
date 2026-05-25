@@ -13,6 +13,7 @@ layers =
     lyra.infrastructure
     lyra.llm | lyra.nats
     lyra.core
+    lyra.transport
 ignore_imports =
     # Downward TYPE_CHECKING imports (ADR-048 transition) — DEBT:importlinter-adr048-transition
     lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store

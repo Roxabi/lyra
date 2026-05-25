@@ -14,7 +14,6 @@ import logging
 from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Protocol
 
-from lyra.nats.worker_registry import WorkerRegistry
 from lyra.transport._result import Err, InboxStream, Ok, Result, SanitizedError
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
 
@@ -23,6 +22,22 @@ if TYPE_CHECKING:
     from nats.aio.subscription import Subscription
 
 log = logging.getLogger(__name__)
+
+
+class _RegistryLike(Protocol):
+    """Structural type for the worker registry dependency.
+
+    WorkerRegistry (lyra.nats.worker_registry) satisfies this protocol.
+    Defined here so lyra.transport has no import dependency on lyra.nats.
+    """
+
+    def record_heartbeat(self, payload: dict) -> None: ...
+
+    def any_alive(self) -> bool: ...
+
+    def ordered_by_score(self) -> list[Any]: ...
+
+    def mark_stale(self, worker_id: str) -> None: ...
 
 
 class _TransportLike(Protocol):
@@ -45,17 +60,18 @@ class _TransportLike(Protocol):
 
 
 class WorkerPoolClient:
-    def __init__(
+    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         transport: _TransportLike,
         *,
+        registry: _RegistryLike,
         hb_subject: str,
         validate_worker_id: Callable[[str], None],
         hb_ttl: float = 15.0,
         name: str = "pool",
     ) -> None:
         self._transport = transport
-        self._registry: WorkerRegistry = WorkerRegistry()
+        self._registry = registry
         self._cb: NatsCircuitBreaker = NatsCircuitBreaker()
         self._hb_subject = hb_subject
         self._validate_worker_id = validate_worker_id

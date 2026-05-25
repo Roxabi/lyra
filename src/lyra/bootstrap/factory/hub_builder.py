@@ -52,6 +52,7 @@ async def build_llm_client(
     """Build and start an LlmClient connected to the clipool worker via NATS."""
     from lyra.llm.cli_pool_codec import CliPoolCodec
     from lyra.llm.llm_client import LlmClient
+    from lyra.nats.worker_registry import WorkerRegistry
     from lyra.transport.nats_request_response import NatsTransport
     from lyra.transport.worker_pool_client import WorkerPoolClient
     from roxabi_contracts._nats_utils import validate_worker_id
@@ -59,6 +60,7 @@ async def build_llm_client(
     transport = NatsTransport(nc)
     pool = WorkerPoolClient(
         transport,
+        registry=WorkerRegistry(),
         hb_subject="lyra.clipool.heartbeat",
         validate_worker_id=validate_worker_id,
         name="clipool",

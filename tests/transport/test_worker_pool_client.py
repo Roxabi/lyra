@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.nats.worker_registry import WorkerRegistry
 from lyra.transport._result import Err, InboxStream, Ok, SanitizedError
 from lyra.transport.nats_request_response import NatsTransport
 from lyra.transport.worker_pool_client import WorkerPoolClient
@@ -24,6 +25,7 @@ def _make_pool_with_workers(*worker_ids: str):
     mock_transport = MagicMock(spec=NatsTransport)
     pool = WorkerPoolClient(
         mock_transport,
+        registry=WorkerRegistry(),
         hb_subject="hb",
         validate_worker_id=lambda _: None,
         name="test-pool",
@@ -98,7 +100,7 @@ class TestRequestWithRoutingMarksStaleOnTimeout:
         await pool.request_with_routing(lambda wid: f"subj.{wid}", b"payload")
 
         # w-1 must be stale: last_heartbeat set to 0.0
-        assert pool._registry._workers["w-1"].last_heartbeat == 0.0
+        assert pool._registry._workers["w-1"].last_heartbeat == 0.0  # type: ignore[union-attr]
 
 
 class TestRequestWithRoutingNoLiveWorkers:

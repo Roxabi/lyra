@@ -119,7 +119,13 @@ if [[ "$SECRETS_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
-# ── 3. Copy Quadlet units ────────────────────────────────────────────────────
+# ── 3. Ensure data directories ──────────────────────────────────────────────
+
+log "Ensuring data directories ..."
+run mkdir -p "${HOME}/.lyra/turn-writer"
+echo "  [ok]   ~/.lyra/turn-writer/"
+
+# ── 4. Copy Quadlet units ────────────────────────────────────────────────────
 
 log "Copying Quadlet units to ${QUADLET_DST} ..."
 run mkdir -p "${QUADLET_DST}"
@@ -129,7 +135,7 @@ for f in "${QUADLET_SRC}"/*.container "${QUADLET_SRC}"/*.network "${QUADLET_SRC}
   echo "  [cp]   $(basename "$f")"
 done
 
-# ── 4. daemon-reload ─────────────────────────────────────────────────────────
+# ── 5. daemon-reload ─────────────────────────────────────────────────────────
 
 log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload

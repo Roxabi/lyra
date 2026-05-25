@@ -17,11 +17,12 @@ and is verified by `scripts/check-acl-matrix-spec.sh` on every CI run.
 | Subject | hub | telegram-adapter | discord-adapter | voice-tts | voice-stt | llm-worker | llm-operator | image-worker | monitor | clipool-worker | voice-client | turn-writer |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | `$JS.API.>` | PUB | PUB | PUB | PUB | PUB | PUB | — | PUB | — | PUB | — | — |
-| `$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | SUB |
-| `$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | SUB |
-| `$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | SUB |
-| `$JS.API.STREAM.CREATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | SUB |
-| `$JS.API.STREAM.INFO.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | SUB |
+| `$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.STREAM.CREATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.STREAM.INFO.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.STREAM.UPDATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB |
 | `$KV.lyra-state.>` | PUB | SUB | SUB | SUB | SUB | SUB | — | SUB | — | SUB | — | — |
 | `_inbox.clipool-worker.>` | — | — | — | — | — | — | — | — | — | SUB | — | — |
 | `_inbox.discord-adapter.*.*` | — | — | SUB | — | — | — | — | — | — | — | — | — |

@@ -21,10 +21,12 @@ UserNS=keep-id:uid=1500,gid=1500
 Secret=lyra-nats-turn-writer,type=mount,target=lyra-nats-turn-writer.seed,uid=1500,gid=1500,mode=0400
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-turn-writer.seed
 Environment=NATS_URL=nats://lyra-nats:4222
-# turns.db — sole writer bind-mount (rw). Hub will be flipped to ro in T26.
+# turn-writer/ directory bind-mount (rw) — SQLite WAL requires sibling files
+# (turns.db-wal, turns.db-shm) in the same directory; a file-level bind mount
+# with ReadOnly=true rootfs would cause EROFS at store open (B4 fix, #1331).
 # NOTE: Do NOT add inline # comments after Volume= values; Quadlet does not strip them
 # and Podman receives the literal comment text as a mount-option string (issue #1083).
-Volume=%h/.lyra/turns.db:/data/turns.db:z
+Volume=%h/.lyra/turn-writer/:/data/:z
 Environment=LYRA_TURNS_DB=/data/turns.db
 Environment=PYTHONUNBUFFERED=1
 Exec=lyra turn-writer

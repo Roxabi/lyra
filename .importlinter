@@ -4,7 +4,7 @@ source_root = src
 include_external_packages = True
 
 [importlinter:contract:clean-architecture-layers]
-name = Clean architecture layers (core ← llm/nats ← infrastructure ← adapters ← bootstrap)
+name = Clean architecture layers (transport ← streaming ← core ← llm/nats ← infrastructure ← adapters ← bootstrap)
 type = layers
 layers =
     lyra.bootstrap
@@ -13,6 +13,7 @@ layers =
     lyra.infrastructure
     lyra.llm | lyra.nats
     lyra.core
+    lyra.streaming
     lyra.transport
 ignore_imports =
     # Downward TYPE_CHECKING imports (ADR-048 transition) — DEBT:importlinter-adr048-transition

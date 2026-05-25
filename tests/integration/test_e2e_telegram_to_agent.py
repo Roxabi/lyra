@@ -166,6 +166,7 @@ class TestE2ETelegramToAgent:
 
     async def test_streaming_response_reaches_adapter(self) -> None:
         """Streaming path: provider.stream() → adapter.send_streaming()."""
+
         async def _fake_stream():
             yield TextLlmEvent(text="chunk1")
             yield TextLlmEvent(text=" chunk2")

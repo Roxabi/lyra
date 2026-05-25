@@ -168,8 +168,7 @@ def test_on_resume_fn_awaited_at_callsites() -> None:
                 non_awaited.append(f"{rel}:{lineno}: {stripped}")
 
     assert not non_awaited, (
-        "Found _on_resume_fn( callsites without 'await':\n"
-        + "\n".join(non_awaited)
+        "Found _on_resume_fn( callsites without 'await':\n" + "\n".join(non_awaited)
     )
 
 

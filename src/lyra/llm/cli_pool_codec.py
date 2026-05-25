@@ -118,9 +118,7 @@ class CliPoolCodec:
 
         if chunk.is_error or chunk.event_type == "error":
             sanitized = (
-                chunk.worker_error.message
-                if chunk.worker_error
-                else "LLM stream error"
+                chunk.worker_error.message if chunk.worker_error else "LLM stream error"
             )
             return ResultLlmEvent(
                 is_error=True,

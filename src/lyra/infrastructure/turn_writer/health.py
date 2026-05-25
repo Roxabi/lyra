@@ -28,8 +28,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _METRICS_HELP = (
-    "# HELP turn_writer_lag_seconds"
-    " Seconds since oldest pending unacked message"
+    "# HELP turn_writer_lag_seconds Seconds since oldest pending unacked message"
 )
 _METRICS_TYPE = "# TYPE turn_writer_lag_seconds gauge"
 
@@ -79,9 +78,7 @@ class TurnWriterHealthServer:
         self._server_task = asyncio.create_task(
             server.serve(), name="turn-writer-health"
         )
-        log.info(
-            "turn-writer health server started on %s:%d", self._host, self._port
-        )
+        log.info("turn-writer health server started on %s:%d", self._host, self._port)
 
     async def stop(self) -> None:
         """Cancel the health server task."""

@@ -264,8 +264,7 @@ async def test_processed_events_table_dedupe_after_simulated_crash(
     # Assert: e4 now has exactly one row.
     count_after_replay = await _count_processed_events(store, e4_id)
     assert count_after_replay == 1, (
-        f"replay: expected 1 row for e4 in processed_events, "
-        f"got {count_after_replay}"
+        f"replay: expected 1 row for e4 in processed_events, got {count_after_replay}"
     )
 
     # Act — process e5 normally.
@@ -362,11 +361,7 @@ async def test_lsof_sole_writer(tmp_path) -> None:
             text=True,
             check=False,
         )
-        pids = [
-            line[1:]
-            for line in result.stdout.splitlines()
-            if line.startswith("p")
-        ]
+        pids = [line[1:] for line in result.stdout.splitlines() if line.startswith("p")]
         assert len(pids) == 1, (
             f"SC-12 violation: expected exactly 1 process to hold {db_path}, "
             f"got {len(pids)}: {pids}"

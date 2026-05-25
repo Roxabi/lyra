@@ -41,7 +41,7 @@ SUBJECT_FILTER = "lyra.turns.write"
 ACK_WAIT_SECONDS = 60.0
 MAX_DELIVER = 5
 MAX_AGE_SECONDS = 24 * 60 * 60  # 24 h
-MAX_BYTES = 256 * 1024 * 1024   # 256 MiB
+MAX_BYTES = 256 * 1024 * 1024  # 256 MiB
 
 
 def _stream_config() -> StreamConfig:

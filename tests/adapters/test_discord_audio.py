@@ -83,6 +83,7 @@ def test_normalize_audio_attachment_fields() -> None:
     assert isinstance(result.audio, AudioPayload)
     assert result.audio.mime_type == "audio/ogg"
     from roxabi_contracts import PENDING_STORE_KEY
+
     assert isinstance(result.audio.blob_ref, BlobRef)
     assert result.audio.blob_ref.store_key == PENDING_STORE_KEY
     assert result.audio.blob_ref.size == len(b"bytes")

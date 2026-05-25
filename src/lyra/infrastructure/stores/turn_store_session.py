@@ -109,9 +109,7 @@ class TurnStoreSessionMixin:
                 row = await cur.fetchone()
                 return int(row[0]) if row else 0
         except Exception:
-            log.exception(
-                "TurnStore.get_resume_count failed (session=%s)", session_id
-            )
+            log.exception("TurnStore.get_resume_count failed (session=%s)", session_id)
             return 0
 
     async def _increment_resume_count(self, session_id: str) -> None:

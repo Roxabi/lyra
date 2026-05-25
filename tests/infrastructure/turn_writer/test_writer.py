@@ -181,9 +181,7 @@ async def test_log_turn_writes_row(writer: TurnWriter, store: TurnStore) -> None
 
 
 @pytest.mark.anyio
-async def test_log_turn_dedupe_on_unique(
-    writer: TurnWriter, store: TurnStore
-) -> None:
+async def test_log_turn_dedupe_on_unique(writer: TurnWriter, store: TurnStore) -> None:
     """SC-5: duplicate (platform, message_id) is a no-op — only 1 row persisted."""
     pool_id = "pool:tg:chat:11"
     session_id = "sess-dedup-001"
@@ -199,9 +197,7 @@ async def test_log_turn_dedupe_on_unique(
 
 
 @pytest.mark.anyio
-async def test_start_session_idempotent(
-    writer: TurnWriter, store: TurnStore
-) -> None:
+async def test_start_session_idempotent(writer: TurnWriter, store: TurnStore) -> None:
     """SC-6: start_session uses INSERT OR IGNORE — duplicate is silently dropped."""
     session_id = "sess-start-001"
     pool_id = "pool:tg:chat:20"
@@ -222,9 +218,7 @@ async def test_start_session_idempotent(
 
 
 @pytest.mark.anyio
-async def test_end_session_idempotent(
-    writer: TurnWriter, store: TurnStore
-) -> None:
+async def test_end_session_idempotent(writer: TurnWriter, store: TurnStore) -> None:
     """SC-6: end_session stamps ended_at once; second call is no-op."""
     session_id = "sess-end-001"
     pool_id = "pool:tg:chat:21"
@@ -249,9 +243,7 @@ async def test_end_session_idempotent(
 
 
 @pytest.mark.anyio
-async def test_set_cli_session_overwrite(
-    writer: TurnWriter, store: TurnStore
-) -> None:
+async def test_set_cli_session_overwrite(writer: TurnWriter, store: TurnStore) -> None:
     """SC-7: set_cli_session is an UPDATE — second call with new value wins."""
     session_id = "sess-cli-001"
     pool_id = "pool:tg:chat:30"
@@ -360,9 +352,7 @@ async def test_increment_resume_count_event_id_dedup(
 
 
 @pytest.mark.anyio
-async def test_per_pool_order_preserved(
-    writer: TurnWriter, store: TurnStore
-) -> None:
+async def test_per_pool_order_preserved(writer: TurnWriter, store: TurnStore) -> None:
     """SC-9: two different pool_ids accumulate turns independently.
 
     Tests isolation only — JetStream subject-key ordering is not tested here.

@@ -252,9 +252,7 @@ def _decode_union(
     return value
 
 
-def _decode_pydantic(
-    value: dict[str, Any], target_type: type
-) -> Any | None:
+def _decode_pydantic(value: dict[str, Any], target_type: type) -> Any | None:
     """Duck-typed Pydantic decoder — returns instance or None if not a model."""
     _model_validate = getattr(target_type, "model_validate", None)
     if _model_validate is not None and callable(_model_validate):

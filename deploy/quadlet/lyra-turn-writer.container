@@ -28,6 +28,10 @@ Environment=NATS_URL=nats://lyra-nats:4222
 # and Podman receives the literal comment text as a mount-option string (issue #1083).
 Volume=%h/.lyra/turn-writer/:/data/:z
 Environment=LYRA_TURNS_DB=/data/turns.db
+# LYRA_VAULT_DIR=/data ensures bootstrap mkdir targets the writable bind-mount
+# under ReadOnly=true rootfs even when LYRA_TURNS_DB resolution falls back
+# (defense in depth for #1359).
+Environment=LYRA_VAULT_DIR=/data
 Environment=PYTHONUNBUFFERED=1
 Exec=lyra turn-writer
 HealthCmd=pgrep -f "lyra turn-writer"

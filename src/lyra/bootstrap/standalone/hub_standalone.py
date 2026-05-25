@@ -163,6 +163,14 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)
 
+        from lyra.transport.turn_publisher import TurnPublisher
+
+        js = nc.jetstream()
+        hub.set_turn_publisher(TurnPublisher(js))
+        assert hub._turn_publisher is not None, (  # noqa: S101
+            "TurnPublisher not wired — startup check failed"
+        )
+
         audit_sink = JetStreamAuditSink()
         await audit_sink.provision(nc)
 

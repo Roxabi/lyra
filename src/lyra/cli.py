@@ -138,6 +138,16 @@ def _run_adapter(platform: str) -> None:
     _boot(lambda raw: _bootstrap_adapter_standalone(raw, platform))
 
 
+@lyra_app.command("turn-writer")
+def _turn_writer() -> None:
+    """Run standalone TurnWriter process (subscribes to lyra.turns.write)."""
+    from lyra.bootstrap.standalone.turn_writer_standalone import (
+        _bootstrap_turn_writer_standalone,
+    )
+
+    _boot(_bootstrap_turn_writer_standalone)
+
+
 # ---------------------------------------------------------------------------
 # lyra (root)
 # ---------------------------------------------------------------------------

@@ -36,3 +36,13 @@ Sanitization rules:
 - truncated to 200 chars (`_BUS_MESSAGE_MAX_LEN`); suffix `…` if cut
 
 Security boundary semantics UNCHANGED: `SanitizedError.message` still never carries `str(exc)` — `from_message` accepts only callee-controlled strings and applies guardrails on top.
+
+## TurnPublisher (#1331)
+
+`TurnPublisher` (transport-level) publishes `TurnWriteEvent` to JetStream
+subject `lyra.turns.write`, awaiting PubAck before returning. Used by
+pool/observer/inbound rewire (#1331) to replace direct TurnStore mutator
+calls. Required `trace_id: str` per call (non-empty; threaded from
+inbound msg.id when available, else uuid4().hex).
+
+Consumer: `lyra.infrastructure.turn_writer.TurnWriter` (sole writer).

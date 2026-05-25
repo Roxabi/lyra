@@ -38,7 +38,7 @@ class TurnStoreSessionMixin:
         """Return DB connection. Must be overridden by host class."""
         raise NotImplementedError("Host class must provide _db_or_raise")
 
-    async def start_session(self, session_id: str, pool_id: str) -> None:
+    async def _start_session(self, session_id: str, pool_id: str) -> None:
         """Register a new session. Uses INSERT OR IGNORE — safe on restart."""
         db = self._db_or_raise()
         ts = datetime.now(UTC).isoformat()
@@ -65,7 +65,7 @@ class TurnStoreSessionMixin:
         """
         return await get_session_pool_id(self._db_or_raise(), session_id)
 
-    async def set_cli_session(self, session_id: str, cli_session_id: str) -> None:
+    async def _set_cli_session(self, session_id: str, cli_session_id: str) -> None:
         """Store the CLI session ID for a Lyra session (for --resume after restart)."""
         db = self._db_or_raise()
         try:
@@ -75,7 +75,7 @@ class TurnStoreSessionMixin:
             )
             await db.commit()
         except Exception:
-            log.exception("TurnStore.set_cli_session failed (session=%s)", session_id)
+            log.exception("TurnStore._set_cli_session failed (session=%s)", session_id)
             return
 
     async def get_cli_session(self, session_id: str) -> str | None:
@@ -98,7 +98,21 @@ class TurnStoreSessionMixin:
         """
         return await list_sessions_for_pool(self._db_or_raise(), pool_id, limit)
 
-    async def increment_resume_count(self, session_id: str) -> None:
+    async def get_resume_count(self, session_id: str) -> int:
+        """Return current resume_count for *session_id*, or 0 if not found."""
+        db = self._db_or_raise()
+        try:
+            async with db.execute(
+                "SELECT resume_count FROM pool_sessions WHERE session_id = ?",
+                (session_id,),
+            ) as cur:
+                row = await cur.fetchone()
+                return int(row[0]) if row else 0
+        except Exception:
+            log.exception("TurnStore.get_resume_count failed (session=%s)", session_id)
+            return 0
+
+    async def _increment_resume_count(self, session_id: str) -> None:
         """Increment resume_count for *session_id*. Tolerant: 0-row OK."""
         db = self._db_or_raise()
         try:
@@ -111,11 +125,11 @@ class TurnStoreSessionMixin:
             await db.commit()
         except Exception:
             log.exception(
-                "TurnStore.increment_resume_count failed (session=%s)", session_id
+                "TurnStore._increment_resume_count failed (session=%s)", session_id
             )
             return
 
-    async def end_session(self, session_id: str) -> None:
+    async def _end_session(self, session_id: str) -> None:
         """Stamp ended_at on *session_id*. No-op if already stamped."""
         db = self._db_or_raise()
         ts = datetime.now(UTC).isoformat()
@@ -127,5 +141,5 @@ class TurnStoreSessionMixin:
             )
             await db.commit()
         except Exception:
-            log.exception("TurnStore.end_session failed (session=%s)", session_id)
+            log.exception("TurnStore._end_session failed (session=%s)", session_id)
             return

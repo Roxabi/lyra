@@ -8,6 +8,9 @@ def test_cli_nats_codec_satisfies_protocol() -> None:
 
 
 def test_protocol_surface() -> None:
-    members = {"encode", "decode", "decode_chunk", "encode_control", "set_session_store"}  # noqa: E501
+    members = {"encode", "decode", "decode_chunk", "encode_control"}
     for m in members:
         assert hasattr(LlmCodec, m), f"Protocol missing {m}"
+    assert not hasattr(LlmCodec, "set_session_store"), (
+        "set_session_store was removed from LlmCodec Protocol (Slice 3)"
+    )

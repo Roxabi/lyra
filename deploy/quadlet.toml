@@ -31,3 +31,8 @@ host_roles = ["lyra-hub"]
 container = "lyra-gh-helper.container"
 required_secrets = []
 host_roles = ["lyra-hub"]
+
+[component.turn-writer]
+container = "lyra-turn-writer.container"
+required_secrets = ["lyra-nats-turn-writer"]
+host_roles = ["lyra-hub"]

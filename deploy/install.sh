@@ -59,6 +59,7 @@ declare -A SEEDS=(
   [lyra-nats-telegram]="${NKEYS_DIR}/telegram-adapter.seed"
   [lyra-nats-discord]="${NKEYS_DIR}/discord-adapter.seed"
   [lyra-nats-clipool]="${NKEYS_DIR}/clipool-worker.seed"
+  [lyra-nats-turn-writer]="${NKEYS_DIR}/turn-writer.seed"
 )
 
 MISSING=0
@@ -118,7 +119,13 @@ if [[ "$SECRETS_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
-# ── 3. Copy Quadlet units ────────────────────────────────────────────────────
+# ── 3. Ensure data directories ──────────────────────────────────────────────
+
+log "Ensuring data directories ..."
+run mkdir -p "${HOME}/.lyra/turn-writer"
+echo "  [ok]   ~/.lyra/turn-writer/"
+
+# ── 4. Copy Quadlet units ────────────────────────────────────────────────────
 
 log "Copying Quadlet units to ${QUADLET_DST} ..."
 run mkdir -p "${QUADLET_DST}"
@@ -128,10 +135,10 @@ for f in "${QUADLET_SRC}"/*.container "${QUADLET_SRC}"/*.network "${QUADLET_SRC}
   echo "  [cp]   $(basename "$f")"
 done
 
-# ── 4. daemon-reload ─────────────────────────────────────────────────────────
+# ── 5. daemon-reload ─────────────────────────────────────────────────────────
 
 log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
-log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper"
+log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer"

@@ -65,9 +65,7 @@ class ImageResponse(ContractEnvelope):
         if not self.ok:
             return self
         if self.blob_ref is None:
-            raise ValueError(
-                "ImageResponse with ok=True must carry blob_ref (ADR-067)"
-            )
+            raise ValueError("ImageResponse with ok=True must carry blob_ref (ADR-067)")
         if (
             self.mime_type is None
             or self.width is None

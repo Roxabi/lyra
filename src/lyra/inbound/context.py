@@ -38,6 +38,7 @@ if TYPE_CHECKING:
         ThreadStoreProtocol,
     )
     from lyra.infrastructure.stores.turn_store import TurnStore
+    from lyra.transport.turn_publisher import TurnPublisher
 
 
 @dataclass(frozen=True)
@@ -62,10 +63,15 @@ class SessionCtx:
     ``thread_sessions_cache`` is a **mutable dict** (frozen-container,
     mutable-contents contract): ``SessionBuilder`` writes through to it via
     ``persist_thread_session`` so cached entries survive across messages.
+
+    ``turn_publisher`` is the NATS publisher used by ``SessionBuilder`` to
+    publish ``start_session`` events instead of writing TurnStore directly.
+    When ``None`` (test/CLI mode), session persistence is skipped.
     """
 
     turn_store: TurnStore | None
     thread_store: ThreadStoreProtocol | None
+    turn_publisher: TurnPublisher | None = None
     thread_sessions_cache: dict[str, ThreadSession] = field(default_factory=dict)
 
 

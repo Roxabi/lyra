@@ -19,6 +19,7 @@ lyra.core (protocols) ← lyra.llm | lyra.nats ← lyra.infrastructure (implemen
 |--------|----------|-----|
 | `stores/` | SQLite store implementations | ADR-048 |
 | `audit/` | `JetStreamAuditSink` — publishes `SecurityEvent` to NATS JetStream | ADR-057 |
+| `turn_writer/` | JetStream subscriber-writer for turns.db (sole writer post-#1331) | ADR-075 |
 
 ## Governance rule
 

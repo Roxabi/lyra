@@ -1,0 +1,41 @@
+[Unit]
+Description=Lyra TurnWriter — JetStream subscriber for lyra.turns.write
+After=lyra-nats.service
+Requires=lyra-nats.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=ghcr.io/roxabi/lyra:staging-svc
+Label=io.containers.autoupdate=registry
+ContainerName=lyra-turn-writer
+Network=roxabi.network
+# Hardening — defense in depth (see issue #652).
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+# ADR-054 Decision 2: UserNS=keep-id maps container UID to host UID 1000 (mickael),
+# which owns ~/.lyra/*. uid=1500 is the lyra service user inside the container.
+UserNS=keep-id:uid=1500,gid=1500
+# ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
+Secret=lyra-nats-turn-writer,type=mount,target=lyra-nats-turn-writer.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-turn-writer.seed
+Environment=NATS_URL=nats://lyra-nats:4222
+# turn-writer/ directory bind-mount (rw) — SQLite WAL requires sibling files
+# (turns.db-wal, turns.db-shm) in the same directory; a file-level bind mount
+# with ReadOnly=true rootfs would cause EROFS at store open (B4 fix, #1331).
+# NOTE: Do NOT add inline # comments after Volume= values; Quadlet does not strip them
+# and Podman receives the literal comment text as a mount-option string (issue #1083).
+Volume=%h/.lyra/turn-writer/:/data/:z
+Environment=LYRA_TURNS_DB=/data/turns.db
+Environment=PYTHONUNBUFFERED=1
+Exec=lyra turn-writer
+HealthCmd=pgrep -f "lyra turn-writer"
+HealthInterval=30s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -44,14 +44,6 @@ def _sanitize_worker_error(s: str | None) -> str | None:
     return "".join(c for c in s[:_ERROR_MAX_LEN] if c.isprintable() or c == "\n")
 
 
-class _CliSessionStore(Protocol):
-    """Minimal protocol for TurnStore operations needed by CliNatsCodec."""
-
-    async def set_cli_session(self, session_id: str, cli_session_id: str) -> None: ...
-
-    async def get_cli_session(self, session_id: str) -> str | None: ...
-
-
 def _make_worker_error(code: str, message: str, retryable: bool) -> WorkerError:
     assert code in KNOWN_CODES, f"unknown WorkerError code: {code}"
     return WorkerError(code=code, message=message, retryable=retryable, detail=None)
@@ -63,14 +55,7 @@ class CliNatsCodec:
     encode: builds LlmRequest bytes + returns trace_id.
     decode: maps Result[bytes, SanitizedError] → LlmResult; never raises.
     encode_control: builds CliControlCmd bytes for control-plane operations.
-    set_session_store: wires the _CliSessionStore for envelope session-id injection.
     """
-
-    _session_store: "_CliSessionStore | None" = None
-
-    def set_session_store(self, store: "_CliSessionStore") -> None:
-        """Wire the hub TurnStore so the codec can persist cli_session_id mappings."""
-        self._session_store = store
 
     def encode(
         self,

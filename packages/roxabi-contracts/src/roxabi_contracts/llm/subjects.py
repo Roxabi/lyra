@@ -27,7 +27,9 @@ class _Subjects:
     lifecycle_stop: Literal["lyra.llm.lifecycle.stop"] = "lyra.llm.lifecycle.stop"
     lifecycle_status: Literal["lyra.llm.lifecycle.status"] = "lyra.llm.lifecycle.status"
     lifecycle_list: Literal["lyra.llm.lifecycle.list"] = "lyra.llm.lifecycle.list"
-    lifecycle_reload_catalog: Literal["lyra.llm.lifecycle.reload-catalog"] = "lyra.llm.lifecycle.reload-catalog"  # noqa: E501
+    lifecycle_reload_catalog: Literal["lyra.llm.lifecycle.reload-catalog"] = (
+        "lyra.llm.lifecycle.reload-catalog"  # noqa: E501
+    )
 
 
 SUBJECTS = _Subjects()

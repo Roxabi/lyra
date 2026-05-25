@@ -206,12 +206,13 @@ class TestCreatePool:
         next_fn.assert_awaited_once()
         assert ctx.pool is not None
 
-    async def test_on_resume_fn_wired_when_turn_store_present(self) -> None:
+    async def test_on_resume_fn_wired_when_turn_publisher_present(self) -> None:
         from lyra.core.hub.hub_protocol import Binding
 
         hub = _make_hub()
-        hub._turn_store = MagicMock()
-        hub._turn_store.increment_resume_count = AsyncMock()
+        publisher = MagicMock()
+        publisher.publish_increment_resume_count = AsyncMock()
+        hub._turn_publisher = publisher
         agent = hub.agent_registry["lyra"]
         binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
         mw = MessagePrepMiddleware()
@@ -221,7 +222,8 @@ class TestCreatePool:
         await mw(msg, ctx, _make_next())
 
         assert ctx.pool is not None
-        assert ctx.pool._on_resume_fn is hub._turn_store.increment_resume_count  # type: ignore[attr-defined]
+        # _on_resume_fn is a closure; verify it is wired (not None)
+        assert ctx.pool._on_resume_fn is not None  # type: ignore[attr-defined]
 
     async def test_on_resume_fn_not_set_when_turn_store_absent(self) -> None:
         from lyra.core.hub.hub_protocol import Binding
@@ -244,7 +246,7 @@ class TestCreatePool:
 
         hub = _make_hub()
         hub._turn_store = MagicMock()
-        hub._turn_store.increment_resume_count = AsyncMock()
+        hub._turn_store._increment_resume_count = AsyncMock()
 
         # Pre-create the pool and assign a sentinel
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")

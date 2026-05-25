@@ -14,7 +14,7 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox normalized to lowercase _inbox.hub.> (ADR-051 + postmortem Fix 1).",
-      "notes": "Hub provisions the lyra-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.lyra-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up.",
+      "notes": "Hub provisions the lyra-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.lyra-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up. lyra.turns.write added by T27 (#1331): hub publishes TurnWriteEvents.",
       "allow_responses": false,
       "publish": [
         "lyra.outbound.telegram.>",
@@ -26,6 +26,7 @@
         "lyra.clipool.cmd",
         "lyra.clipool.control",
         "lyra.audit.>",
+        "lyra.turns.write",
         "$JS.API.>",
         "$KV.lyra-state.>"
       ],
@@ -46,11 +47,12 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Telegram bot adapter — inbox normalized to _inbox.telegram-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up.",
+      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up. lyra.turns.write added by T27 (#1331): telegram adapter publishes TurnWriteEvents.",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.telegram.>",
         "lyra.system.ready",
+        "lyra.turns.write",
         "$JS.API.>"
       ],
       "subscribe": [
@@ -65,11 +67,12 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Discord bot adapter — inbox normalized to _inbox.discord-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up.",
+      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up. lyra.turns.write added by T27 (#1331): discord adapter publishes TurnWriteEvents.",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.discord.>",
         "lyra.system.ready",
+        "lyra.turns.write",
         "$JS.API.>"
       ],
       "subscribe": [
@@ -208,6 +211,27 @@
       ],
       "subscribe": [
         "_inbox.voice-client.>"
+      ]
+    },
+    "turn-writer": {
+      "status": "active",
+      "created_at": "2026-05-25",
+      "owner": "lyra",
+      "description": "TurnWriter JetStream subscriber-writer — sole writer for turns.db (ADR-075, #1331). Consumes lyra.turns.> durable consumer turn-writer-v1, queue group turn-writer. nkey seed delivered via lyra-nats-turn-writer Podman secret (provisioned by install.sh T25).",
+      "notes": "JetStream API subjects scoped to LYRA_TURNS stream + turn-writer-v1 consumer only (principle of least privilege). _INBOX.> required for pull-subscribe ACK reply path. allow_responses=true for pull-subscribe protocol. $JS.API.* in publish (not subscribe) because nc.request() publishes at protocol level (B1). CONSUMER.CREATE uses wildcard suffix to cover filter-subject variants (B2). STREAM.UPDATE added for retention/limits changes on subsequent boots (B3).",
+      "allow_responses": true,
+      "publish": [
+        "_INBOX.>",
+        "$JS.API.STREAM.CREATE.LYRA_TURNS",
+        "$JS.API.STREAM.INFO.LYRA_TURNS",
+        "$JS.API.STREAM.UPDATE.LYRA_TURNS",
+        "$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>",
+        "$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1",
+        "$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1"
+      ],
+      "subscribe": [
+        "lyra.turns.>",
+        "_INBOX.>"
       ]
     }
   }

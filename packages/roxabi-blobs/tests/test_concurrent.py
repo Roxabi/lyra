@@ -127,8 +127,6 @@ async def test_lock_actually_serializes_with_forced_yield(
     conn = store._conn  # type: ignore[attr-defined]
     assert conn is not None
     blob_count = await (await conn.execute("SELECT COUNT(*) FROM blobs")).fetchone()
-    ref_count = await (
-        await conn.execute("SELECT COUNT(*) FROM blob_refs")
-    ).fetchone()
+    ref_count = await (await conn.execute("SELECT COUNT(*) FROM blob_refs")).fetchone()
     assert blob_count is not None and int(blob_count[0]) == 1
     assert ref_count is not None and int(ref_count[0]) == 2

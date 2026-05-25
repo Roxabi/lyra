@@ -83,3 +83,10 @@ tag; group `roxabi-contracts` and `roxabi-nats` in a single Renovate rule
 New domains land as new submodules + a minor version tag. Placeholder
 directories MUST NOT be created — an empty module lets `import
 roxabi_contracts.<domain>` succeed silently with missing attributes.
+
+## turns/ (#1331)
+
+`roxabi_contracts.turns` — TurnWriteEvent discriminated union (5 payload
+kinds) + `SUBJECTS.turn_write = "lyra.turns.write"`. Consumed by
+`lyra.transport.turn_publisher` (publishers) and
+`lyra.infrastructure.turn_writer` (subscriber-writer).

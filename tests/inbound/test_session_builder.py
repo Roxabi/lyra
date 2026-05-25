@@ -60,6 +60,12 @@ def _make_turn_store(*, last_session: str | None = None) -> MagicMock:
     return ts
 
 
+def _make_turn_publisher() -> MagicMock:
+    pub = MagicMock()
+    pub.publish_start_session = AsyncMock(return_value=None)
+    return pub
+
+
 def _make_thread_store(*, session: ThreadSession | None = None) -> MagicMock:
     th = MagicMock()
     if session is None:
@@ -74,12 +80,14 @@ def _make_session_ctx(
     turn_store: object = None,
     thread_store: object = None,
     thread_sessions_cache: dict | None = None,
+    turn_publisher: object = None,
 ) -> SessionCtx:
     cache: dict = thread_sessions_cache if thread_sessions_cache is not None else {}
     return SessionCtx(
         turn_store=turn_store,  # type: ignore[arg-type]
         thread_store=thread_store,  # type: ignore[arg-type]
         thread_sessions_cache=cache,
+        turn_publisher=turn_publisher,  # type: ignore[arg-type]
     )
 
 
@@ -115,12 +123,13 @@ class TestSessionBuilderPathB:
     async def test_turn_store_only_telegram_dm(self) -> None:
         # Arrange
         ts = _make_turn_store(last_session=_SESSION_ID)
+        pub = _make_turn_publisher()
         builder = SessionBuilder()
         msg = _make_msg(
             platform="telegram",
             platform_meta=TelegramMeta(chat_id=1, is_group=False),
         )
-        ctx = _make_session_ctx(turn_store=ts, thread_store=None)
+        ctx = _make_session_ctx(turn_store=ts, thread_store=None, turn_publisher=pub)
 
         # Act
         result = await builder.build(msg, ctx)
@@ -134,22 +143,27 @@ class TestSessionBuilderPathB:
         assert isinstance(result.platform_meta, TelegramMeta)
         assert result.platform_meta.thread_session_id == _SESSION_ID
 
-        # Closure test: calling session_update_fn triggers start_session.
+        # Closure test: calling session_update_fn triggers publish_start_session.
         await result.session_update_fn(result, "new-sess", "pool-1")
-        ts.start_session.assert_awaited_once_with("new-sess", "pool-1")
+        pub.publish_start_session.assert_called_once()
+        _, kwargs = pub.publish_start_session.call_args
+        assert kwargs["session_id"] == "new-sess"
+        assert kwargs["pool_id"] == "pool-1"
+        assert kwargs["trace_id"]  # non-empty
 
     @pytest.mark.asyncio
     async def test_turn_store_only_telegram_group_mention(self) -> None:
         # Arrange — Telegram routing already decided PROCESS before SessionBuilder.
         # SessionBuilder uses turn_store regardless of is_group/is_mention.
         ts = _make_turn_store(last_session=None)
+        pub = _make_turn_publisher()
         builder = SessionBuilder()
         msg = _make_msg(
             platform="telegram",
             is_mention=True,
             platform_meta=TelegramMeta(chat_id=5, is_group=True),
         )
-        ctx = _make_session_ctx(turn_store=ts, thread_store=None)
+        ctx = _make_session_ctx(turn_store=ts, thread_store=None, turn_publisher=pub)
 
         # Act
         result = await builder.build(msg, ctx)
@@ -163,9 +177,12 @@ class TestSessionBuilderPathB:
         assert isinstance(result.platform_meta, TelegramMeta)
         assert result.platform_meta.thread_session_id is None
 
-        # Closure still fires.
+        # Closure still fires via publisher.
         await result.session_update_fn(result, "sess-new", "pool-2")
-        ts.start_session.assert_awaited_once_with("sess-new", "pool-2")
+        pub.publish_start_session.assert_called_once()
+        _, kwargs = pub.publish_start_session.call_args
+        assert kwargs["session_id"] == "sess-new"
+        assert kwargs["pool_id"] == "pool-2"
 
 
 class TestSessionBuilderPathC:
@@ -176,13 +193,14 @@ class TestSessionBuilderPathC:
         # Arrange — Discord DM: guild_id=None, thread_id=None
         ts = _make_turn_store(last_session=_SESSION_ID)
         th = _make_thread_store()
+        pub = _make_turn_publisher()
         builder = SessionBuilder()
         msg = _make_msg(
             platform="discord",
             scope_id="channel:999",
             platform_meta=DiscordMeta(channel_id=999, guild_id=None, thread_id=None),
         )
-        ctx = _make_session_ctx(turn_store=ts, thread_store=th)
+        ctx = _make_session_ctx(turn_store=ts, thread_store=th, turn_publisher=pub)
 
         # Act
         result = await builder.build(msg, ctx)
@@ -194,9 +212,12 @@ class TestSessionBuilderPathC:
         th.get_session.assert_not_awaited()
         assert result.session_update_fn is not None
 
-        # Closure writes via turn_store, not thread_store.
+        # Closure publishes via publisher, not thread_store.
         await result.session_update_fn(result, "sess-dm", "pool-dm")
-        ts.start_session.assert_awaited_once_with("sess-dm", "pool-dm")
+        pub.publish_start_session.assert_called_once()
+        _, kwargs = pub.publish_start_session.call_args
+        assert kwargs["session_id"] == "sess-dm"
+        assert kwargs["pool_id"] == "pool-dm"
         th.update_session.assert_not_awaited()
 
 

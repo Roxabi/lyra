@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
     from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.infrastructure.stores.turn_store import TurnStore
+    from lyra.transport.turn_publisher import TurnPublisher
 
     from ..agent import AgentBase
     from ..auth.authenticator import Authenticator
@@ -40,6 +41,7 @@ class HubRegistrationMixin:
         _message_index: MessageIndex | None
         _platform_queue_maxsize: int
         _turn_store: TurnStore | None
+        _turn_publisher: TurnPublisher | None
 
         @property
         def pools(self) -> dict[str, Pool]: ...
@@ -69,6 +71,12 @@ class HubRegistrationMixin:
         self._turn_store = store
         for pool in self.pools.values():
             pool._observer.register_turn_store(store)
+
+    def set_turn_publisher(self, publisher: TurnPublisher) -> None:
+        """Wire TurnPublisher for NATS-backed turn writes on hub + all pools."""
+        self._turn_publisher = publisher
+        for pool in self.pools.values():
+            pool._observer.register_turn_publisher(publisher)
 
     def set_message_index(self, store: MessageIndex) -> None:
         self._message_index = store

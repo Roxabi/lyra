@@ -35,9 +35,11 @@ _SUBJECT_CONTROL = "lyra.clipool.control"
 
 
 class _CliSessionStore(Protocol):
-    """Minimal protocol for TurnStore operations needed by LlmClient."""
+    """Read-side protocol for TurnStore lookups needed by LlmClient.
 
-    async def set_cli_session(self, session_id: str, cli_session_id: str) -> None: ...
+    Writes (set_cli_session) flow through TurnPublisher → TurnWriter — they
+    no longer live on this protocol.
+    """
 
     async def get_cli_session(self, session_id: str) -> str | None: ...
 
@@ -125,9 +127,8 @@ class LlmClient:
     # ── Control-plane methods (re-homed from CliNatsDriver, Slice S2) ────
 
     def set_turn_store(self, store: _CliSessionStore) -> None:
-        """Wire the session store onto the codec for envelope session-id injection."""
+        """Wire the session store for cli_session_id lookups in resume_and_reset."""
         self._turn_store = store
-        self._codec.set_session_store(store)
 
     def link_lyra_session(self, pool_id: str, lyra_session_id: str) -> None:
         """Store lyra_session_id for pool_id; encode uses it for envelope injection.

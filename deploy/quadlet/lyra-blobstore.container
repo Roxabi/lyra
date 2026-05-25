@@ -1,0 +1,61 @@
+[Unit]
+Description=Lyra BlobStore HTTP service
+# Soft dependency — audit sink degrades to logger if NATS unreachable at startup;
+# blobstore can boot and serve HTTP traffic without NATS (see spec §Boot failure modes).
+After=lyra-nats.service
+Wants=lyra-nats.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+# Image digest pinning deferred per three-strikes deferral (ADR-073) — same cadence
+# as lyra-hub.container. Dedicated blobstore image blocked until Protocol v2 + ≥3
+# cross-repo consumers; see analysis §Shape A rationale.
+Image=ghcr.io/roxabi/lyra:staging-svc
+Label=io.containers.autoupdate=registry
+ContainerName=lyra-blobstore
+Network=roxabi.network
+# Hardening — defense in depth (see issue #652).
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+# ADR-054: UserNS=keep-id maps container UID to host UID 1000 (mickael),
+# so the blobstore process can read %h/.lyra/blobstore/ owned by the host user.
+UserNS=keep-id:uid=1500,gid=1500
+# blobstore.env holds operational vars (see deploy/quadlet/blobstore.env.example).
+# Do NOT add the `-` prefix — Podman 5.7 treats it as a literal path character.
+EnvironmentFile=%h/.lyra/env/blobstore.env
+# NATS target for audit sink + readiness KV; mirrors hub convention.
+Environment=NATS_URL=nats://lyra-nats:4222
+# D4: bearer token secret (type=mount, tmpfs-backed). Bootstrap: see docs/QUADLET-DEPLOYMENT.md.
+# Rotation: write new token → podman secret create --replace → systemctl --user restart
+# (type=mount files are bound at container init; restart is mandatory — ADR-054).
+Secret=lyra_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/lyra_blobstore_token
+# Blob data directory — bind-mount so data persists across container restarts.
+# Host path mirrors the FsBlobStore default (~/.lyra/blobstore); container path resolves
+# under the lyra home (/home/lyra/.lyra/blobstore via UserNS=keep-id).
+# NOTE: Do NOT add inline # comments after Volume= values; Quadlet passes them to
+# Podman as mount-option strings (issue #1083).
+Volume=%h/.lyra/blobstore:/home/lyra/.lyra/blobstore:z
+# config.toml — required by the staging-svc image variant (svc-runtime entrypoint
+# reads config at startup; see docs/ops/container-publishing.md §svc-runtime).
+Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
+# Bind port to the Tailscale IPv4 of M₁ so the service is reachable from the Tailnet
+# but NOT from the LAN. Resolved at provision time via `tailscale ip -4 | head -1`.
+# RESIDUAL RISK: if TAILSCALE_IPV4 is unset or tailscale0 is absent, PublishPort falls
+# back to 0.0.0.0:8449 (LAN-exposed). Bearer token is then the sole auth boundary.
+# Accepted for V8; document in deploy/CLAUDE.md §Residual risks.
+PublishPort=${TAILSCALE_IPV4}:8449:8449
+Exec=lyra blobstore serve --token-path /run/secrets/lyra_blobstore_token --host 0.0.0.0 --port 8449
+HealthCmd=pgrep -f "lyra blobstore serve"
+HealthInterval=30s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+# Cold-path I/O service — 1 full core is sufficient; prevents it from starving
+# hub + NATS under load. Increase to 200% if blob throughput warrants it.
+CPUQuota=100%
+
+[Install]
+WantedBy=default.target

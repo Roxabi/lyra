@@ -23,6 +23,7 @@ Cross-repo adoption checklist → `docs/ops/container-publishing.md § Cross-rep
 | `quadlet/lyra-clipool.container` | `lyra-clipool` | `lyra-clipool.service` |
 | `quadlet/lyra-nats.container` | `lyra-nats` | `lyra-nats.service` |
 | `quadlet/lyra-gh-helper.container` | `lyra-gh-helper` | `lyra-gh-helper.service` |
+| `quadlet/lyra-blobstore.container` | `lyra-blobstore` | `lyra-blobstore.service` |
 
 Pattern: `lyra-<component>.container` → `ContainerName=lyra-<component>`.
 Network: all units attach to `roxabi.network` (defined in `quadlet/roxabi.network`).
@@ -84,6 +85,22 @@ on rotation events.
 Secrets via `type=mount` (tmpfs) — ¬env vars, ¬volume wrappers for credentials.
 Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL/secret changes require container restart (not HUP) to refresh. See [`docs/ops/nats-authconf-update.md`](../docs/ops/nats-authconf-update.md).
 ¬inline `#` comments after `Volume=` values — Quadlet passes them to Podman as mount options.
+
+### Secret naming convention
+
+NATS-related secrets use hyphens (`lyra-nats-<role>`) — this predates the underscore
+convention and is preserved for NATS NKey compatibility. Non-NATS secrets (bearer tokens,
+API keys) use underscores (`lyra_<service>_<purpose>`, e.g. `lyra_blobstore_token`).
+Mixing styles is intentional and tracked; do not "normalize" without coordinating
+with the operator (Mickael).
+
+### Known residual risk — blobstore PublishPort Tailscale fallback (#1330)
+
+`lyra-blobstore.container` binds `PublishPort` to `${TAILSCALE_IPV4}:8449:8449` (resolved at
+provision time via `tailscale ip -4 | head -1`). If `TAILSCALE_IPV4` is unset or `tailscale0`
+is absent at container start, Podman falls back to `0.0.0.0:8449` (LAN-exposed). The bearer
+token (`lyra_blobstore_token`) is then the **sole** auth boundary. Accepted for V8; Phase 2
+(network policy / per-identity tokens) will address this systematically.
 
 ### Known residual risk — clipool `core.hooksPath` override (tracked #1245)
 

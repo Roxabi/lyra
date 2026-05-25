@@ -44,6 +44,10 @@ class BlobRef(BaseModel):
         default=None,
         description="Distinct from platform_ref; reconstructs the conversation thread.",
     )
+    id: int | None = Field(
+        default=None,
+        description="SQLite blob_refs row id; None for non-FS impls or pre-put state.",
+    )
     created_at: datetime = Field(description="Provenance: when this ref was ingested.")
 
     @field_validator("created_at")

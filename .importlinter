@@ -8,7 +8,7 @@ name = Clean architecture layers (transport ← streaming ← core ← llm/nats 
 type = layers
 layers =
     lyra.bootstrap
-    lyra.adapters
+    lyra.adapters | lyra.blobstore
     lyra.outbound
     lyra.infrastructure
     lyra.llm | lyra.nats

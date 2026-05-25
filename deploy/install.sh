@@ -60,7 +60,24 @@ declare -A SEEDS=(
   [lyra-nats-discord]="${NKEYS_DIR}/discord-adapter.seed"
   [lyra-nats-clipool]="${NKEYS_DIR}/clipool-worker.seed"
   [lyra-nats-turn-writer]="${NKEYS_DIR}/turn-writer.seed"
+  [lyra_blobstore_token]="${HOME}/.lyra/blobstore.tok"
 )
+
+# ── 1b. Generate blobstore bearer token (idempotent) ────────────────────────
+
+BLOBSTORE_TOK="${HOME}/.lyra/blobstore.tok"
+if [[ ! -f "${BLOBSTORE_TOK}" || "$FORCE" -eq 1 ]]; then
+  log "Generating blobstore bearer token → ${BLOBSTORE_TOK} ..."
+  run mkdir -p "${HOME}/.lyra"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48 > "${BLOBSTORE_TOK}"
+    chmod 0600 "${BLOBSTORE_TOK}"
+  else
+    echo "[dry-run] would generate ${BLOBSTORE_TOK} (48 url-safe chars, mode 0600)"
+  fi
+else
+  echo "  [skip] ${BLOBSTORE_TOK} already exists (use --force to regenerate)"
+fi
 
 MISSING=0
 for secret_name in "${!SEEDS[@]}"; do
@@ -141,4 +158,4 @@ log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
-log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer"
+log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer lyra-blobstore"

@@ -146,11 +146,11 @@ async def handle_head(store_key: str, request: Request) -> Response:
             await cursor2.close()
     except aiosqlite.Error:
         _log.exception("HEAD /blobs/%s db lookup failed", store_key)
-        await _emit_audit("head", "error", store_key=store_key)
+        await _emit_audit("exists", "error", store_key=store_key)
         return JSONResponse({"detail": "internal error"}, status_code=500)
 
     if row is None:
-        await _emit_audit("head", "not_found", store_key=store_key)
+        await _emit_audit("exists", "not_found", store_key=store_key)
         return Response(status_code=404)
 
     content_hash = str(row[0])
@@ -158,14 +158,14 @@ async def handle_head(store_key: str, request: Request) -> Response:
         blob_ref = await store.exists(content_hash)
     except Exception:  # noqa: BLE001
         _log.exception("HEAD /blobs/%s exists check failed", store_key)
-        await _emit_audit("head", "error", store_key=store_key)
+        await _emit_audit("exists", "error", store_key=store_key)
         return JSONResponse({"detail": "internal error"}, status_code=500)
 
     if blob_ref is None:
-        await _emit_audit("head", "not_found", store_key=store_key)
+        await _emit_audit("exists", "not_found", store_key=store_key)
         return Response(status_code=404)
 
-    await _emit_audit("head", "ok", store_key=store_key)
+    await _emit_audit("exists", "ok", store_key=store_key)
     return Response(status_code=200)
 
 

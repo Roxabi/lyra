@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pathlib
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -249,3 +250,91 @@ class TestStaleToken:
             "NEW token (current file content) must be rejected "
             "(server must not re-read the token file)"
         )
+
+
+# ---------------------------------------------------------------------------
+# SC-Code-12 — 401 emits audit event with result="unauthorized"
+# ---------------------------------------------------------------------------
+
+
+class TestUnauthorizedAuditEmission:
+    """401 responses must emit a BlobAuditEvent(result='unauthorized') — SC-Code-12."""
+
+    def test_401_on_missing_bearer_emits_audit_event(
+        self, blob_root: pathlib.Path
+    ) -> None:
+        """GET without Authorization header returns 401 and emits audit event."""
+        app = build_app(token="test-token", blob_root=blob_root)
+        mock_sink = AsyncMock()
+        mock_sink.emit = AsyncMock()
+
+        with TestClient(app) as client:
+            # Inject mock after lifespan start so it isn't overwritten
+            app.state.audit_sink = mock_sink
+            response = client.get("/blobs/some-key")
+
+        assert response.status_code == 401
+        mock_sink.emit.assert_awaited_once()
+        event = mock_sink.emit.call_args[0][0]
+        assert event.result == "unauthorized"
+        assert event.op == "get"
+
+    def test_401_on_wrong_bearer_emits_audit_event(
+        self, blob_root: pathlib.Path
+    ) -> None:
+        """PUT with wrong bearer returns 401 and emits audit event."""
+        app = build_app(token="test-token", blob_root=blob_root)
+        mock_sink = AsyncMock()
+        mock_sink.emit = AsyncMock()
+
+        with TestClient(app) as client:
+            app.state.audit_sink = mock_sink
+            response = client.put(
+                "/blobs",
+                content=b"data",
+                headers={"Authorization": "Bearer wrong-token"},
+            )
+
+        assert response.status_code == 401
+        mock_sink.emit.assert_awaited_once()
+        event = mock_sink.emit.call_args[0][0]
+        assert event.result == "unauthorized"
+        assert event.op == "put"
+
+    def test_401_audit_event_does_not_contain_rejected_token(
+        self, blob_root: pathlib.Path
+    ) -> None:
+        """Regression guard: audit event payload must not leak the rejected bearer."""
+        app = build_app(token="test-token", blob_root=blob_root)
+        mock_sink = AsyncMock()
+        mock_sink.emit = AsyncMock()
+        rejected_token = "super-secret-bad-token"
+
+        with TestClient(app) as client:
+            app.state.audit_sink = mock_sink
+            response = client.get(
+                "/blobs/some-key",
+                headers={"Authorization": f"Bearer {rejected_token}"},
+            )
+
+        assert response.status_code == 401
+        mock_sink.emit.assert_awaited_once()
+        event = mock_sink.emit.call_args[0][0]
+        # Serialize to JSON and ensure the rejected token value is absent
+        event_json = event.model_dump_json()
+        assert rejected_token not in event_json, (
+            f"Rejected token found in audit event payload: {event_json!r}"
+        )
+
+    def test_401_no_audit_when_sink_absent(self, blob_root: pathlib.Path) -> None:
+        """When audit_sink is not on app.state, 401 still returns without error."""
+        app = build_app(token="test-token", blob_root=blob_root)
+
+        with TestClient(app) as client:
+            # Remove audit_sink to simulate un-provisioned state
+            del app.state.audit_sink
+            response = client.get(
+                "/blobs/key", headers={"Authorization": "Bearer wrong"}
+            )
+
+        assert response.status_code == 401

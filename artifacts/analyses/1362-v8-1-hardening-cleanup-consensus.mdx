@@ -1,0 +1,83 @@
+---
+title: "PR #1364 residual findings — Expert Consensus"
+issue: 1362
+status: consensus-reached
+date: 2026-05-26
+panel: architect, devops, product-lead
+confidence: high
+---
+
+## Problem
+
+PR #1364 (V8.1 BlobStore hardening cleanup) received a first auto-applied commit
+draining B1 (Tailscale guard env scope), B2 (BlobAuditSink dead exception),
+and N1 (dead `_conn_ro`). 6 residual review findings remain (N2-N7). N5 was
+auto-resolved by the B2 fix. The panel evaluated whether each remaining finding
+warrants in-PR action, deferral to a follow-up issue, or skip.
+
+## Panel
+
+| Agent | Focus |
+|-------|-------|
+| architect | encapsulation, layer boundaries, Protocol v2 readiness |
+| devops | Quadlet correctness, audit forensic completeness, package release hygiene |
+| product-lead | scope discipline, parking-lot drain principle, F-lite tier shape |
+
+## Consensus ρ
+
+| Finding | Verdict | Vote | Solution |
+|---------|---------|------|----------|
+| N2 (double `nc.jetstream()`) | **SKIP** | 3-0 unanimous | — (idempotent in nats-py; both fix options trade encapsulation for zero behavioral gain) |
+| N3 (tautological snapshot test) | **APPLY** | 2-1 majority | Tighten regex to require `${VAR}` sigil + `-n` test |
+| N4 (HttpBlobStore sentinel `content_hash`) | **DEFER** | 2-1 majority | Follow-up issue tied to roxabi-blobs package release boundary + Protocol v2 ambiguity |
+| N5 (provision async w/ zero await) | **RESOLVED** | — | B2 fix already added `await self._js.account_info()` |
+| N6 (HEAD audit drops `content_hash`) | **APPLY** | 3-0 unanimous | Add `content_hash=str(row[0])` to `_emit_audit` call (already in scope) |
+| N7 (whitespace `TAILSCALE_IPV4` bypass) | **DEFER** | 3-0 unanimous | Follow-up — Podman's parse error provides accidental defense in depth; correct fix is a behavioral guard change |
+
+### Rationale
+
+The two unanimous applies (N3, N6) are both single-line changes with data
+already in scope. N3 locks the guard's `${VAR}` sigil shape so a future
+refactor of the H1 ExecStartPre cannot regress vacuously. N6 reinstates the
+content_hash field that the L1 lookup-collapse silently dropped from HEAD
+audit events — a forensic regression vs the pre-V8.1 path.
+
+The two deferrals (N4, N7) both cross genuine scope lines: N4 touches the
+`packages/roxabi-blobs/` release boundary and may be obviated by Protocol v2;
+N7 changes a security-adjacent guard behavior and warrants its own tracked
+PR rather than a rushed shell-pipeline change inside a 30-min budget.
+
+N2 was unanimously skipped: `nc.jetstream()` is documented idempotent in
+nats-py (the client caches the JetStream context), and the proposed fixes
+either widen the encapsulation surface of `BlobAuditSink` or introduce
+SLF001 noqa for a private attribute — both worse than the status quo.
+
+### Trade-offs
+
+- **In-PR scope**: 2 trivial applies (N3, N6) keep PR within F-lite shape; deferrals add ticket noise but preserve cleanup-tier discipline
+- **Parking-lot drain**: 4 of 6 findings get terminal action (apply or defer with traceable follow-up issue); N5 self-resolved; N2 skipped with rationale — no residual debt
+- **Architect dissent on N4**: silent type confusion in `BlobRef.content_hash` could compromise future dedup callers — recorded as known risk in the deferred issue body
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| Apply N4 (content_hash="") in-PR | architect | crosses roxabi-blobs package release boundary; Protocol v2 may restructure exists() entirely |
+| Apply N7 (tr -d whitespace) in-PR | (none) | shell pipeline in ExecStartPre is brittle; Podman's downstream parse error provides defense in depth |
+| Defer N3 to follow-up | product-lead | test-tautology class is hard to revisit later because nobody hits it as a runtime bug; 1-line regex fix is well-defined |
+
+## Dissent
+
+- **N3**: product-lead preferred deferral (test-quality, not correctness) but conceded the regex tighten is 1-line and locks in the sigil shape that N7's eventual fix will rely on. 2-1 APPLY stands.
+- **N4**: architect argued that silent type confusion in `BlobRef.content_hash` (storing a store_key in a sha256-typed field) could corrupt future dedup logic; recommended in-PR fix `content_hash=""`. devops + product-lead both deferred citing package release hygiene + Protocol v2 ambiguity. 2-1 DEFER stands, but architect's risk note is preserved in the N4 follow-up issue.
+
+## Implementation Notes
+
+- **N3 fix**: edit `tests/blobstore/test_quadlet_unit.py` — replace the loose `any("TAILSCALE_IPV4" in line ...)` check with `re.search(r'\[\s*-n.*\$\{?TAILSCALE_IPV4\}?', line)` per ExecStartPre line.
+- **N6 fix**: edit `src/lyra/blobstore/_handlers.py:208` — add `content_hash=str(row[0])` to the `_emit_audit(...)` kwargs. `row` is in scope.
+- **N4 follow-up**: file issue "fix(roxabi-blobs): HttpBlobStore.exists sentinel content_hash field type" with body referencing PR #1364 #issuecomment-4537497690 and architect's risk note. Blocked-by #1362.
+- **N7 follow-up**: file issue "fix(deploy): blobstore Tailscale guard whitespace-safe" referencing comment + devops original finding. Blocked-by #1362.
+
+## Next
+
+Return to `/fix` Phase 6 — apply N3 + N6, defer N4 + N7 via `triage.ts create --blocked-by #1362`.

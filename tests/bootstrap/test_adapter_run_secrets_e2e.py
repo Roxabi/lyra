@@ -52,6 +52,25 @@ def test_adapter_and_wiring_use_credentials_module() -> None:
         )
 
 
+def test_credentials_has_prod_guard_on_env_override() -> None:
+    """`bootstrap/credentials.py` must contain a production guard that ignores
+    LYRA_RUN_SECRETS_DIR when running inside a container or when LYRA_ENV=prod
+    (issue #1304)."""
+    src = CREDENTIALS.read_text()
+    assert "_is_prod_env" in src, (
+        "credentials.py must define _is_prod_env (production detection helper)"
+    )
+    assert "LYRA_ENV=prod" in src or 'os.environ.get("LYRA_ENV") == "prod"' in src, (
+        "credentials.py must check LYRA_ENV=prod in the production guard"
+    )
+    assert "/run/.containerenv" in src, (
+        "credentials.py must check /run/.containerenv in the production guard"
+    )
+    assert "ignored in production" in src, (
+        "credentials.py docstring must warn that the override is ignored in production"
+    )
+
+
 def test_no_credential_store_in_adapter_call_chain() -> None:
     """The deleted CredentialStore class must not be imported anywhere in the
     adapter credential path."""

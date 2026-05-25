@@ -54,16 +54,9 @@ def test_sanitized_error_frozen() -> None:
         se.retryable = False  # type: ignore[misc]
 
 
-def test_sanitized_error_detail_defaults_none() -> None:
-    se = SanitizedError(code="transport.err", message="ValueError", retryable=False)
-    assert se.detail is None
-
-
-def test_sanitized_error_detail_explicit() -> None:
-    se = SanitizedError(
-        code="transport.err", message="ValueError", retryable=False, detail="extra"
-    )
-    assert se.detail == "extra"
+def test_sanitized_error_has_exactly_expected_fields() -> None:
+    fields = {f.name for f in dataclasses.fields(SanitizedError)}
+    assert fields == {"code", "message", "retryable"}
 
 
 async def _stub_messages() -> AsyncIterator[Result[bytes, SanitizedError]]:
@@ -107,7 +100,6 @@ class TestSanitizedErrorFromMessage:
         assert result.message == "model_error"
         assert result.code == "stream.error"
         assert result.retryable is False
-        assert result.detail is None
 
     def test_control_chars_are_stripped(self) -> None:
         """Non-printable control chars (NUL, BEL, newline, CR) become spaces."""

@@ -14,6 +14,7 @@ from roxabi_blobs.errors import (
     BlobWriteError,
 )
 from roxabi_blobs.fs_store import FsBlobStore
+from roxabi_blobs.ingest import ingest_bytes_to_blob_ref
 from roxabi_blobs.models import BlobRef
 from roxabi_blobs.protocol import BlobStore
 
@@ -26,4 +27,5 @@ __all__ = [
     "BlobStore",
     "BlobWriteError",
     "FsBlobStore",
+    "ingest_bytes_to_blob_ref",
 ]

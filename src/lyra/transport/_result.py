@@ -36,7 +36,6 @@ class SanitizedError:
     code: str
     message: str
     retryable: bool
-    detail: str | None = None
 
     @classmethod
     def from_message(
@@ -50,13 +49,11 @@ class SanitizedError:
         bus raw). Falls back to ``"model_error"`` when ``message`` is empty.
         """
         if not message:
-            return cls(code=code, message="model_error", retryable=False, detail=None)
+            return cls(code=code, message="model_error", retryable=False)
         scrubbed = "".join(c if c.isprintable() else " " for c in message)
         if len(scrubbed) > _BUS_MESSAGE_MAX_LEN:
             scrubbed = scrubbed[: _BUS_MESSAGE_MAX_LEN - 1] + "…"
-        return cls(
-            code=code, message=scrubbed or "model_error", retryable=False, detail=None
-        )
+        return cls(code=code, message=scrubbed or "model_error", retryable=False)
 
 
 @dataclass(frozen=True)

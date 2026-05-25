@@ -52,11 +52,9 @@ class _CliSessionStore(Protocol):
     async def get_cli_session(self, session_id: str) -> str | None: ...
 
 
-def _make_worker_error(
-    code: str, message: str, retryable: bool, detail: str | None = None
-) -> WorkerError:
+def _make_worker_error(code: str, message: str, retryable: bool) -> WorkerError:
     assert code in KNOWN_CODES, f"unknown WorkerError code: {code}"
-    return WorkerError(code=code, message=message, retryable=retryable, detail=detail)
+    return WorkerError(code=code, message=message, retryable=retryable, detail=None)
 
 
 class CliNatsCodec:
@@ -120,9 +118,7 @@ class CliNatsCodec:
             return LlmResult(
                 error=err.message,
                 retryable=err.retryable,
-                worker_error=_make_worker_error(
-                    err.code, err.message, err.retryable, err.detail
-                ),
+                worker_error=_make_worker_error(err.code, err.message, err.retryable),
             )
         try:
             resp = LlmResponse.model_validate_json(result.value)
@@ -163,9 +159,7 @@ class CliNatsCodec:
                 duration_ms=0,
                 cost_usd=None,
                 error_text=err.message,
-                worker_error=_make_worker_error(
-                    err.code, err.message, err.retryable, err.detail
-                ),
+                worker_error=_make_worker_error(err.code, err.message, err.retryable),
             )
         try:
             chunk = LlmChunkEvent.model_validate_json(result.value)

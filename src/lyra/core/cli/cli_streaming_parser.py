@@ -225,7 +225,6 @@ class CliStreamingParser:
                 code="cli.parse",
                 message=f"CLI emitted malformed JSON: {type(exc).__name__}",
                 retryable=meta.default_retryable,
-                detail=None,
             )
         ):
             self._pending.append(result_event)

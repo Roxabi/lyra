@@ -51,7 +51,6 @@ class OutboundErrorHandler:
             code=context,
             message=type(exc).__name__,
             retryable=False,
-            detail=None,
         )
 
     async def guard(

@@ -74,8 +74,16 @@ jobs:
                    in_cand && /plucky/ { print pkg; in_cand = 0 }')
           # grep -Fxv exits 1 when all lines are excluded (list is clean) — that
           # is the expected happy path, so || true is scoped only to this step.
+          # Allowlist: 3 pinned packages + transitive runtime deps from plucky.
+          # libgpg-error*, libgpgme11t64, apport-symptoms leak in because
+          # podman 5.4.1 links against newer libgpgme (observed 2026-05-25, #1350).
+          # Re-audit when bumping the pinned podman/conmon/crun versions.
           PLUCKY_EXTRA=$(printf '%s\n' "${PLUCKY_PKGS}" \
-            | grep -Fxv -e podman -e conmon -e crun || true)
+            | grep -Fxv \
+                -e podman -e conmon -e crun \
+                -e apport-symptoms \
+                -e libgpg-error-l10n -e libgpg-error0 \
+                -e libgpgme11t64 || true)
           if [[ -n "${PLUCKY_EXTRA}" ]]; then
             echo "::error::Unexpected plucky packages installed: ${PLUCKY_EXTRA}"
             exit 1

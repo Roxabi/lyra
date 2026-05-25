@@ -37,10 +37,12 @@ class BlobAuditSink:
 
         Stream LYRA_AUDIT is shared and managed by JetStreamAuditSink — this sink
         only takes a jetstream handle and falls back to the lyra.security logger
-        on error.
+        on error. The `account_info()` probe forces a live JetStream RPC at boot
+        so degradation is detected synchronously, not deferred to first emit().
         """
+        self._js = nc.jetstream()
         try:
-            self._js = nc.jetstream()
+            await self._js.account_info()
         except nats.errors.Error as exc:
             log.warning(
                 "BLOB-AUDIT: JetStream unavailable — falling back to lyra.security: %s",

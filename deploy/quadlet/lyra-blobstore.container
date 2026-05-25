@@ -53,6 +53,12 @@ HealthCmd=pgrep -f "lyra blobstore serve"
 HealthInterval=30s
 
 [Service]
+# `[Container] EnvironmentFile=` becomes Podman's `--env-file` (container scope only) —
+# the generated `[Service]` carries no env vars, so `${TAILSCALE_IPV4}` is UNSET in
+# ExecStartPre's systemd scope without this second declaration. Quadlet passes `[Service]`
+# through verbatim, so this loads the file twice — once for systemd (here), once for
+# Podman (above) — both intentional.
+EnvironmentFile=%h/.lyra/env/blobstore.env
 # Fail-closed guard: refuse to start when TAILSCALE_IPV4 is empty/unset.
 # Note: the `PublishPort=${TAILSCALE_IPV4}:8449:8449` line above is resolved
 # by Podman BEFORE this ExecStartPre fires — so the publish-port spec is

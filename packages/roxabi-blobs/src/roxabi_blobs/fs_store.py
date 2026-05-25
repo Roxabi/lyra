@@ -111,20 +111,16 @@ class FsBlobStore:
         self._lock = None
 
     def _require_open(self) -> tuple[aiosqlite.Connection, asyncio.Lock]:
-        """Lifecycle guard — raises `BlobStateError` (neutral re. read/write)."""
+        """Lifecycle guard — raises `BlobStateError` (neutral re. read/write).
+
+        Returns `(conn, lock)`. Read-only callers may use `conn` without acquiring
+        `lock`: SQLite WAL mode gives readers a consistent snapshot without
+        blocking writers, so the write-lock is the writer's concern, not the
+        reader's.
+        """
         if self._conn is None or self._lock is None:
             raise BlobStateError("FsBlobStore used outside an `async with` context.")
         return self._conn, self._lock
-
-    def _conn_ro(self) -> aiosqlite.Connection:
-        """Return the open connection for read-only callers (no write-lock needed).
-
-        WAL read-isolation makes lock-skip safe: SQLite WAL mode lets readers see a
-        consistent snapshot without blocking writers; the write-lock is the writer's
-        concern, not the reader's.
-        """
-        conn, _ = self._require_open()
-        return conn
 
     async def put(  # noqa: PLR0913 — signature locked by ADR-067 §Interface
         self,

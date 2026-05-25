@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from lyra.bootstrap.credentials import _is_prod_env, load_bot_token
+from lyra.errors import MissingCredentialsError
 
 
 class TestIsProdEnv:
@@ -24,7 +25,10 @@ class TestIsProdEnv:
         monkeypatch.setenv("LYRA_ENV", "prod")
         assert _is_prod_env() is True
 
-    def test_true_when_containerenv_exists(self, tmp_path: Path) -> None:
+    def test_true_when_containerenv_exists(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    ) -> None:
+        monkeypatch.delenv("LYRA_ENV", raising=False)
         fake_containerenv = tmp_path / ".containerenv"
         fake_containerenv.write_text("")
         with patch(
@@ -66,6 +70,7 @@ class TestLoadBotTokenProdGuard:
         (prod_secrets / "bot_token-mybot").write_text("PROD_TOKEN")
 
         monkeypatch.setenv("LYRA_RUN_SECRETS_DIR", str(fake_secrets))
+        monkeypatch.delenv("LYRA_ENV", raising=False)
 
         with patch("lyra.bootstrap.credentials._PROD_SECRETS_DIR", prod_secrets):
             with patch(
@@ -158,7 +163,7 @@ class TestLoadBotTokenProdGuard:
         monkeypatch.setenv("LYRA_ENV", "prod")
 
         with patch("lyra.bootstrap.credentials._PROD_SECRETS_DIR", prod_secrets):
-            with pytest.raises(Exception) as exc_info:
+            with pytest.raises(MissingCredentialsError) as exc_info:
                 load_bot_token("telegram", "mybot")
 
-        assert "bot_token-mybot" in str(exc_info.value)
+        assert str(prod_secrets / "bot_token-mybot") in str(exc_info.value)

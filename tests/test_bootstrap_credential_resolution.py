@@ -68,6 +68,7 @@ async def test_adapter_reads_token_from_run_secrets(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
+        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
         await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
@@ -131,6 +132,7 @@ async def test_adapter_reads_webhook_when_present(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
+        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
         await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
@@ -194,6 +196,7 @@ async def test_adapter_omits_webhook_when_absent(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
+        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
         await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
@@ -266,6 +269,7 @@ async def test_adapter_handles_multi_bot(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
+        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
         await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
@@ -368,6 +372,7 @@ async def test_discord_adapter_handles_multi_bot(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
+        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
         await _bootstrap_adapter_standalone(raw_config, "discord", _stop=stop)

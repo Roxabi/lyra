@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -121,16 +120,15 @@ class TurnWriter:
             except asyncio.CancelledError:
                 return
 
-            for msg in msgs:
-                received_at = datetime.now(UTC)
-                if self._oldest_pending is None:
-                    self._oldest_pending = received_at
+            # Record oldest-pending once per batch (W5: not per-message).
+            if msgs and self._oldest_pending is None:
+                self._oldest_pending = datetime.now(UTC)
 
+            for msg in msgs:
                 try:
                     event = TurnWriteEvent.model_validate_json(msg.data)
                     await self._handle(event)
                     await msg.ack()
-                    self._oldest_pending = None
                 except Exception:
                     log.exception(
                         "turn-writer: handler failed for msg subject=%s — naking",
@@ -140,7 +138,10 @@ class TurnWriter:
                         await msg.nak()
                     except Exception:
                         log.exception("turn-writer: nak failed")
-                    self._oldest_pending = None
+
+            # Reset lag gauge only after the entire batch has been processed (W5).
+            if msgs:
+                self._oldest_pending = None
 
     async def _handle(self, event: TurnWriteEvent) -> None:
         payload = event.payload
@@ -156,29 +157,20 @@ class TurnWriter:
             # Narrowed to IncrementResumeCountPayload by union exhaustion.
             await self._handle_increment_resume_count(event, payload)
 
-    async def _handle_log_turn(
-        self, event: TurnWriteEvent, p: LogTurnPayload
-    ) -> None:
-        # _log_turn uses bare INSERT; UNIQUE(platform, message_id) raises
-        # IntegrityError on duplicate — treat as idempotent no-op.
-        try:
-            await self._store._log_turn(
-                pool_id=event.pool_id,
-                session_id=event.session_id,
-                role=p.role,
-                platform=event.platform,
-                user_id=event.user_id,
-                content=p.content,
-                message_id=p.message_id,
-                reply_message_id=p.reply_message_id,
-                metadata=p.metadata,
-            )
-        except sqlite3.IntegrityError:
-            log.debug(
-                "turn-writer: duplicate (platform=%s message_id=%s) — skipped",
-                event.platform,
-                p.message_id,
-            )
+    async def _handle_log_turn(self, event: TurnWriteEvent, p: LogTurnPayload) -> None:
+        # _log_turn uses INSERT OR IGNORE; duplicate (platform, message_id) is
+        # a silent no-op — no exception raised (W2).
+        await self._store._log_turn(
+            pool_id=event.pool_id,
+            session_id=event.session_id,
+            role=p.role,
+            platform=event.platform,
+            user_id=event.user_id,
+            content=p.content,
+            message_id=p.message_id,
+            reply_message_id=p.reply_message_id,
+            metadata=p.metadata,
+        )
 
     async def _handle_start_session(
         self, event: TurnWriteEvent, p: StartSessionPayload
@@ -204,26 +196,34 @@ class TurnWriter:
         # High-water mark + processed_events catch.
         # Bypasses _increment_resume_count (which does +1) in favour of
         # max(current, target_count) to guarantee idempotence on replay.
+        # W1: explicit BEGIN/COMMIT/ROLLBACK so UPDATE + INSERT are atomic.
         db = self._store._db_or_raise()
-        async with db.cursor() as cur:
-            await cur.execute(
-                "SELECT 1 FROM processed_events WHERE event_id = ?",
-                (str(event.event_id),),
-            )
-            if await cur.fetchone() is not None:
-                log.debug(
-                    "turn-writer: event_id=%s already processed — skipped",
-                    event.event_id,
+        await db.execute("BEGIN")
+        try:
+            async with db.cursor() as cur:
+                await cur.execute(
+                    "SELECT 1 FROM processed_events WHERE event_id = ?",
+                    (str(event.event_id),),
                 )
-                return
-            await cur.execute(
-                "UPDATE pool_sessions"
-                " SET resume_count = max(resume_count, ?)"
-                " WHERE session_id = ?",
-                (p.target_count, event.session_id),
-            )
-            await cur.execute(
-                "INSERT INTO processed_events(event_id, processed_at) VALUES (?, ?)",
-                (str(event.event_id), datetime.now(UTC).isoformat()),
-            )
-        await db.commit()
+                if await cur.fetchone() is not None:
+                    log.debug(
+                        "turn-writer: event_id=%s already processed — skipped",
+                        event.event_id,
+                    )
+                    await db.execute("ROLLBACK")
+                    return
+                await cur.execute(
+                    "UPDATE pool_sessions"
+                    " SET resume_count = max(resume_count, ?)"
+                    " WHERE session_id = ?",
+                    (p.target_count, event.session_id),
+                )
+                await cur.execute(
+                    "INSERT INTO processed_events"
+                    "(event_id, processed_at) VALUES (?, ?)",
+                    (str(event.event_id), datetime.now(UTC).isoformat()),
+                )
+            await db.commit()
+        except Exception:
+            await db.execute("ROLLBACK")
+            raise

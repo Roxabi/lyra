@@ -44,7 +44,7 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
 
     vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
     vault_dir.mkdir(parents=True, exist_ok=True)
-    db_path = vault_dir / "turns.db"
+    db_path = Path(os.environ.get("LYRA_TURNS_DB") or (vault_dir / "turns.db"))
 
     log.info(
         "turn-writer: starting (db=%s, nats=%s)",

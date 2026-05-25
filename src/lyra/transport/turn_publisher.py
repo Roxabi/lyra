@@ -73,7 +73,7 @@ class TurnPublisher:
         user_id: str,
         role: str,
         content: str,
-        message_id: str,
+        message_id: str | None = None,
         reply_message_id: str | None = None,
         metadata: dict | None = None,
         trace_id: str,

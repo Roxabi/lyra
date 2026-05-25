@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS processed_events (
 """
 
 _INSERT = """
-INSERT INTO conversation_turns
+INSERT OR IGNORE INTO conversation_turns
     (pool_id, session_id, role, platform, user_id,
      content, message_id, reply_message_id, timestamp, metadata)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

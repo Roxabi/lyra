@@ -128,7 +128,7 @@ class PoolObserver:
                 user_id=user_id,
                 role=role,
                 content=content,
-                message_id=message_id or "",
+                message_id=message_id or None,
                 reply_message_id=reply_message_id,
                 trace_id=trace_id,
             )

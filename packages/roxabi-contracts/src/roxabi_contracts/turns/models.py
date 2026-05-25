@@ -27,7 +27,8 @@ class LogTurnPayload(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     # Natural dedupe key — UNIQUE(platform, message_id) on conversation_turns.
-    message_id: str
+    # None for assistant turns that have no platform message_id.
+    message_id: str | None = None
     reply_message_id: str | None = None
     metadata: dict = Field(default_factory=dict)
 

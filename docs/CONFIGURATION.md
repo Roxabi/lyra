@@ -317,6 +317,7 @@ Bot tokens and webhook secrets are stored as **Podman secrets**, not in `~/.lyra
 | `lyra bot secret install <platform> <bot_id> [--from-env TOK] [--webhook-from-env WHK]` | Create or replace a bot's token (and optional webhook secret) |
 | `lyra bot secret rm <platform> <bot_id>` | Remove the bot's token + webhook secret |
 | `lyra bot secret list` | List provisioned bot secrets (filtered by `lyra-bot-` prefix) |
+| *(not a subcommand)* `python3 tools/migrate_bot_secrets_to_podman.py` | One-shot operator script — migrates pre-#1057 `bot_secrets` rows from `config.db` to Podman secrets; run once on M₁ then discard. See [§ Migrating from pre-#1057 `bot_secrets` rows](#migrating-from-pre-1057-bot_secrets-rows) |
 
 `<bot_id>` must match `^[A-Za-z0-9_-]+$` (alphanumeric, hyphen, underscore — slash-free for safe Podman secret names and tmpfs mount targets).
 

@@ -210,7 +210,7 @@ Slice ordering: S1 is independent. S2 depends on S1 (target invokes the verb). S
 - [ ] Restart loop is `is-active`-gated: on a host where only `lyra-nats` is running (no adapters), `systemctl restart` is invoked exactly once for `lyra-nats`; verified via shell trace
 - [ ] `docs/ops/nats-identity-lifecycle.md` exists; `docs/ops/nats-identity-retirement.md` does not exist; `git log --follow docs/ops/nats-identity-lifecycle.md` shows the rename
 - [ ] `rg 'nats-identity-retirement' .` returns no matches in tracked files
-- [ ] `docs/ops/nats-identity-lifecycle.md` has sections "Adding an identity" (with `make nats-add-identity` example, step 2 rewritten from `--regen-authconf` to the new verb), "Retiring an identity" (existing content preserved verbatim), "Recovery — podman secret create fails after lyra-acl", and "Refreshing a satellite secret on M₂"
+- [ ] `docs/ops/nats-identity-lifecycle.md` has sections "Adding an identity" (with `make nats-add-identity` example, step 2 rewritten from `--regen-authconf` to the new verb), "Retiring an identity" (existing content preserved verbatim), "Recovery — Phase 2 fails after lyra-acl succeeded", and "Multi-host: running on M₁, M₂, Mₙ"
 - [ ] All existing `lyra-acl` modes (`full provision`, `--regen-authconf`, `--regenerate`, `--show`, `--fix-perms`, `--emit-merged-authconf`) continue to pass their existing tests with zero modification
 - [ ] `scripts/check-acl-authconf-drift.sh` (existing pre-commit hook) continues to pass on a tree where `--add-identity` was used to add an identity
 

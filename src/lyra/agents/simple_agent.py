@@ -21,7 +21,6 @@ from lyra.core.messaging.message import (
     Response,
 )
 from lyra.core.messaging.messages import MessageManager
-from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.pool import Pool
 from lyra.core.ports.stt import STTNoiseError
 from lyra.core.processors.stream_processor import StreamProcessor
@@ -75,11 +74,9 @@ class SimpleAgent(AgentBase):
         runtime_config: RuntimeConfig | None = None,
         agents_dir: Path | None = None,
         agent_store: "AgentStore | None" = None,
-        tool_display_config: ToolDisplayConfig | None = None,
         session_tools: SessionTools | None = None,
         cli_nats_driver: "LlmClient | None" = None,
     ) -> None:
-        self._tool_display_config = tool_display_config or ToolDisplayConfig()
         resolved_agents_dir = agents_dir or _AGENTS_DIR
         rc = (
             runtime_config
@@ -264,7 +261,6 @@ class SimpleAgent(AgentBase):
                 pool._system_prompt or self.config.system_prompt,
             )
             processor = StreamProcessor(
-                config=self._tool_display_config,
                 show_intermediate=self.config.show_intermediate,
             )
             return processor.process(stream_iter)

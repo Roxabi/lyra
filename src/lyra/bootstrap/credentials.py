@@ -11,16 +11,40 @@ from lyra.errors import MissingCredentialsError
 log = logging.getLogger(__name__)
 
 
+_PROD_SECRETS_DIR = Path("/run/secrets")
+
+
+def _is_prod_env() -> bool:
+    """Detect production runtime: container or explicit prod flag."""
+    in_container = Path("/run/.containerenv").exists()
+    explicit_prod = os.environ.get("LYRA_ENV") == "prod"
+    return bool(explicit_prod or in_container)
+
+
 def load_bot_token(platform: str, bot_id: str) -> tuple[str, str | None]:
     """Read a bot's token and optional webhook secret from /run/secrets/.
 
     The base directory is overridable via LYRA_RUN_SECRETS_DIR (used by tests
     and local development). Defaults to /run/secrets in production containers.
 
+    In production (container or LYRA_ENV=prod) the override is ignored as a
+    defense-in-depth measure — an attacker with env-write access cannot redirect
+    token reads to an arbitrary path.
+
     Raises MissingCredentialsError when the token file is absent — the message
     points the operator at `lyra bot secret install`.
     """
-    base = Path(os.environ.get("LYRA_RUN_SECRETS_DIR", "/run/secrets"))
+    override = os.environ.get("LYRA_RUN_SECRETS_DIR")
+    if override and _is_prod_env():
+        log.warning(
+            "LYRA_RUN_SECRETS_DIR is set to %s but ignored in production "
+            "(container or LYRA_ENV=prod). Using %s.",
+            override,
+            _PROD_SECRETS_DIR,
+        )
+        base = _PROD_SECRETS_DIR
+    else:
+        base = Path(override) if override else _PROD_SECRETS_DIR
     tok_path = base / f"bot_token-{bot_id}"
     try:
         raw_token = tok_path.read_text()

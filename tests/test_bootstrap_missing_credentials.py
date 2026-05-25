@@ -53,6 +53,7 @@ async def test_adapter_raises_bootstrap_error_on_missing_token(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
+        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act + Assert — error raised with path hint and install command
         with pytest.raises(

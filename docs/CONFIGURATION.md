@@ -358,6 +358,19 @@ After migration: regenerate the Quadlet fragments (`make quadlet-bot-secrets-ren
 
 webhook_secret packing: separate secret (not packed into JSON). This matches the project's raw-bytes single-purpose convention (every other Podman secret in `Makefile:181-200`), keeps the failure-loud bootstrap path free of a JSON parser, and supports independent rotation of token vs. webhook.
 
+### Production guard
+
+`LYRA_RUN_SECRETS_DIR` lets tests and local development point at a temporary directory instead of `/run/secrets`. In production this override is **ignored** as a defense-in-depth measure: an attacker with env-write access on a prod host cannot redirect token reads to a path they control.
+
+The guard activates when **either** condition is true:
+
+| Condition | Detection |
+|---|---|
+| Inside a container | `/run/.containerenv` exists (Podman runtime marker) |
+| Explicit prod mode | `LYRA_ENV=prod` |
+
+When active, `load_bot_token` logs a warning and falls back to `/run/secrets` regardless of the env variable. Operators should **never** set `LYRA_RUN_SECRETS_DIR=` in Quadlet `.container` files — the override is intended for local dev and CI only.
+
 ### Backup
 
 Podman secrets are the authoritative copy of bot tokens. There is no automatic backup; operators must snapshot them explicitly.

@@ -6,7 +6,7 @@ Agents are stored in **`~/.lyra/config.db`** (SQLite). TOML files are seed sourc
 
 | Table | Purpose |
 |-------|---------|
-| `agents` | Agent configurations (25 columns — see `effort` below) |
+| `agents` | Agent configurations (24 columns — see `effort` below) |
 | `bot_agent_map` | Maps `(platform, bot_id)` → `agent_name` |
 | `agent_runtime_state` | Runtime status (idle/active/error, pool_count) |
 
@@ -135,7 +135,7 @@ Workspaces: `/workspace <key>` switches pool's cwd for the session.
 | `fallback_language` | TEXT | `'en'` |
 | `patterns_json` | TEXT | NULL |
 | `passthroughs_json` | TEXT | NULL |
-| `show_tool_recap` | INTEGER | 1 |
+| `effort` | TEXT | NULL |
 | `created_at` | TEXT | `datetime('now')` |
 | `updated_at` | TEXT | `datetime('now')` |
 

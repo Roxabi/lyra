@@ -40,7 +40,6 @@ from lyra.core.messaging.render_events import (
     ReasoningStartRenderEvent,
     RenderEvent,
 )
-from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.processors.stream_processor import StreamProcessor
 from lyra.outbound.emitter import OutboundEmitter as StreamingSession
 from lyra.outbound.emitter import PlatformCallbacks
@@ -70,13 +69,6 @@ _POOL_ID = "pool-e2e-reasoning"
 # ---------------------------------------------------------------------------
 
 
-def _cfg() -> ToolDisplayConfig:
-    """Minimal ToolDisplayConfig with throttle disabled."""
-    return ToolDisplayConfig.model_validate(
-        dict(names_threshold=3, group_threshold=3, bash_max_len=60, throttle_ms=0)
-    )
-
-
 def _load_fixture_lines() -> list[str]:
     """Read the fixture file and return non-comment, non-blank NDJSON lines."""
     raw = _FIXTURE_PATH.read_text(encoding="utf-8").splitlines()
@@ -102,7 +94,7 @@ async def _async_seq(*items: LlmEvent) -> AsyncIterator[LlmEvent]:
 
 async def _collect_render_events(llm_events: list[LlmEvent]) -> list[RenderEvent]:
     """Drive StreamProcessor and collect all emitted RenderEvents."""
-    sp = StreamProcessor(_cfg())
+    sp = StreamProcessor()
     return [ev async for ev in sp.process(_async_seq(*llm_events))]
 
 

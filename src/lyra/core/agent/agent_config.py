@@ -211,7 +211,6 @@ class Agent(BaseModel):
     i18n_language: str = "en"
     smart_routing: SmartRoutingConfig | None = None
     show_intermediate: bool = False  # show ⏳-prefixed intermediate turns to the user
-    show_tool_recap: bool = True  # show 🔧-prefixed tool summary card after tool use
     workspaces: dict[str, Path] = {}
     voice: AgentVoiceConfig | None = None  # #343 — unified voice config
     patterns: dict[str, bool] = {}  # #345 — rewrite rules

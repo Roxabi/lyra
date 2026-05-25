@@ -104,17 +104,21 @@ Avec `ReadOnly=true` + `LYRA_TURNS_DB=/data/turns.db` mais sans `LYRA_VAULT_DIR`
 
 ## Actions de suivi
 
-| #   | Action                                                                                                                                                                                                 | Priorité      |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| 1   | **PR source** : `lyra-acl genkeys --add-identity <name>` pour générer UN seul seed sans toucher aux autres                                                                                              | **HIGH**      |
-| 2   | **PR source** : guard `vault_dir.mkdir()` si `LYRA_TURNS_DB` set → skip mkdir, OR try/except OSError                                                                                                    | **HIGH**      |
-| 3   | **PR source** : fix `acl-matrix.json` turn-writer `_INBOX.>` → `_inbox.turn-writer.>` (déjà fait live sur M₁)                                                                                           | **HIGH**      |
-| 4   | **PR source** : `deploy/quadlet/lyra-turn-writer.container` ajouter `Environment=LYRA_VAULT_DIR=/data`                                                                                                  | **HIGH**      |
-| 5   | **CI** : test intégration avec auth.conf réelle ET ReadOnly rootfs (catch #2, #3, #4 d'un coup)                                                                                                         | MED           |
-| 6   | **Runbook** : `make nats-add-identity` qui chaîne `genkeys --add-identity` + secret create + restart sans re-rotation                                                                                   | MED           |
-| 7   | **Runbook** : pre-restart vérifier `podman images \| grep -v '<none>'` pour les images critiques (catch #2)                                                                                             | LOW           |
-| 8   | **Refresh M₂** : satellites (`monitor`, `image-worker`, `llm-operator`) ont pubkey neuf en `auth.conf`. Quand un service revient en ligne, refresh son Podman secret depuis le seed Syncthing-syncé    | LOW (dormants) |
-| 9   | **Doc** : ajouter à `docs/ops/nats-identity-retirement.md` un cas "ajouter une nouvelle identité"                                                                                                       | LOW           |
+| #   | Action                                                                                                                                                                                                 | Priorité      | Statut |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- | ------ |
+| 1   | **PR source** : `lyra-acl genkeys --add-identity <name>` pour générer UN seul seed sans toucher aux autres                                                                                              | **HIGH**      | open — tracked in follow-up issue |
+| 2   | **PR source** : guard `vault_dir.mkdir()` si `LYRA_TURNS_DB` set → skip mkdir, OR try/except OSError                                                                                                    | **HIGH**      | ✅ #1359 / PR #1360 (mkdir → db_path.parent) |
+| 3   | **PR source** : fix `acl-matrix.json` turn-writer `_INBOX.>` → `_inbox.turn-writer.>` (déjà fait live sur M₁)                                                                                           | **HIGH**      | ✅ #1359 / PR #1360 |
+| 4   | **PR source** : `deploy/quadlet/lyra-turn-writer.container` ajouter `Environment=LYRA_VAULT_DIR=/data`                                                                                                  | **HIGH**      | ✅ #1359 / PR #1360 |
+| 5   | **CI** : test intégration avec auth.conf réelle ET ReadOnly rootfs (catch #2, #3, #4 d'un coup)                                                                                                         | MED           | open — tracked in follow-up issue |
+| 6   | **Runbook** : `make nats-add-identity` qui chaîne `genkeys --add-identity` + secret create + restart sans re-rotation                                                                                   | MED           | open — tracked in follow-up issue |
+| 7   | **Runbook** : pre-restart vérifier `podman images \| grep -v '<none>'` pour les images critiques (catch #2)                                                                                             | LOW           | open — tracked in follow-up issue |
+| 8   | **Refresh M₂** : satellites (`monitor`, `image-worker`, `llm-operator`) ont pubkey neuf en `auth.conf`. Quand un service revient en ligne, refresh son Podman secret depuis le seed Syncthing-syncé    | LOW (dormants) | open — tracked in follow-up issue |
+| 9   | **Doc** : ajouter à `docs/ops/nats-identity-retirement.md` un cas "ajouter une nouvelle identité"                                                                                                       | LOW           | open — tracked in follow-up issue |
+
+**Source-tree fixes** (actions 2-4) shipped in PR #1360 / issue #1359 (parent #1277, blocked-by #1331). Verified live on M₁ pre-PR.
+
+**Structural follow-ups** (actions 1, 5–9) tracked in a separate issue (see related), blocked-by #1331 for lineage.
 
 ## Métrique de l'incident
 

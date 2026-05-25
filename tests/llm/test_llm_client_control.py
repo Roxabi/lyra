@@ -72,18 +72,16 @@ def _make_client(
 
 
 class TestSetTurnStore:
-    def test_set_turn_store_wires_codec_and_stores_locally(self) -> None:
+    def test_set_turn_store_stores_locally(self) -> None:
         # Arrange
         fake_transport = _FakeTransport()
-        client, codec, _ = _make_client(fake_transport)
+        client, _, _ = _make_client(fake_transport)
         store = MagicMock()
 
         # Act
         client.set_turn_store(store)
 
-        # Assert — codec's _session_store is updated
-        assert codec._session_store is store
-        # Assert — LlmClient stores it locally too
+        # Assert — LlmClient stores the read-side reference locally.
         assert client._turn_store is store
 
     def test_set_turn_store_no_transport_call(self) -> None:

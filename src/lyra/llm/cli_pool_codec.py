@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -31,18 +31,8 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class _CliSessionStore(Protocol):
-    async def set_cli_session(self, session_id: str, cli_session_id: str) -> None: ...
-    async def get_cli_session(self, session_id: str) -> str | None: ...
-
-
 class CliPoolCodec:
     """Codec for CliPool-over-NATS (lyra.clipool.cmd)."""
-
-    _session_store: _CliSessionStore | None = None
-
-    def set_session_store(self, store: _CliSessionStore) -> None:
-        self._session_store = store
 
     def encode(
         self,

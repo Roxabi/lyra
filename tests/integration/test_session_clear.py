@@ -1,13 +1,11 @@
-"""Integration test — /clear rotates Pool session UUID and notifies TurnStore."""
+"""Integration test — /clear rotates Pool session UUID and publishes via TurnPublisher.
+"""
 
 from __future__ import annotations
 
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from lyra.infrastructure.stores.turn_store import TurnStore
 
 pytestmark = pytest.mark.asyncio
 
@@ -30,31 +28,43 @@ def _make_pool(pool_id: str = "telegram:main:chat:42"):
     return Pool(pool_id, "lyra", ctx)
 
 
-class _FakeTurnStore:
-    """Inline fake that records end_session / start_session calls."""
+class _FakeTurnPublisher:
+    """Inline fake that records publish_end_session / publish_start_session calls."""
 
     def __init__(self) -> None:
         self.ended: list[str] = []
-        self.started: list[tuple[str, str]] = []
+        self.started: list[tuple[str, str]] = []  # (session_id, pool_id)
+        self._call_order: list[str] = []
 
-    async def end_session(self, session_id: str) -> None:
+    async def publish_end_session(
+        self,
+        *,
+        pool_id: str,
+        session_id: str,
+        platform: str,
+        user_id: str,
+        trace_id: str,
+    ) -> None:
         self.ended.append(session_id)
+        self._call_order.append(f"end:{session_id}")
 
-    async def start_session(self, session_id: str, pool_id: str) -> None:
+    async def publish_start_session(
+        self,
+        *,
+        pool_id: str,
+        session_id: str,
+        platform: str,
+        user_id: str,
+        trace_id: str,
+    ) -> None:
         self.started.append((session_id, pool_id))
+        self._call_order.append(f"start:{session_id}")
 
-    # Stubs for other TurnStore methods the observer may call
-    async def log_turn(self, **_kwargs) -> None:  # noqa: ANN003
+    async def publish_log_turn(self, **_kwargs) -> None:  # noqa: ANN003
         pass
 
-    async def get_last_session(self, pool_id: str) -> str | None:
-        return None
-
-    async def increment_resume_count(self, session_id: str) -> None:
+    async def publish_increment_resume_count(self, **_kwargs) -> None:  # noqa: ANN003
         pass
-
-    async def get_session_pool_id(self, session_id: str) -> str | None:
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -78,58 +88,48 @@ async def test_reset_session_rotates_uuid() -> None:
 
 
 async def test_reset_session_calls_end_session_on_turn_store() -> None:
-    """pool.reset_session() must call TurnStore.end_session(before_sid)."""
+    """pool.reset_session() must publish end_session(before_sid) via TurnPublisher."""
     pool = _make_pool("telegram:main:chat:42")
-    fake_store = _FakeTurnStore()
-    pool._observer._turn_store = cast(TurnStore, fake_store)
+    fake_pub = _FakeTurnPublisher()
+    pool._observer.register_turn_publisher(fake_pub)  # type: ignore[arg-type]
 
     before_sid = pool.session_id
 
     await pool.reset_session()
 
-    assert before_sid in fake_store.ended, (
-        f"end_session({before_sid!r}) was not called on TurnStore"
+    assert before_sid in fake_pub.ended, (
+        f"publish_end_session({before_sid!r}) was not called on TurnPublisher"
     )
 
 
 async def test_reset_session_calls_start_session_on_turn_store() -> None:
-    """pool.reset_session() must call TurnStore.start_session(new_sid, pool_id)."""
+    """pool.reset_session() must publish start_session(new_sid, pool_id)."""
     pool = _make_pool("telegram:main:chat:42")
-    fake_store = _FakeTurnStore()
-    pool._observer._turn_store = cast(TurnStore, fake_store)
+    fake_pub = _FakeTurnPublisher()
+    pool._observer.register_turn_publisher(fake_pub)  # type: ignore[arg-type]
 
     await pool.reset_session()
 
-    assert len(fake_store.started) >= 1, (
-        "start_session() was not called on TurnStore after reset_session()"
+    assert len(fake_pub.started) >= 1, (
+        "publish_start_session() was not called on TurnPublisher after reset_session()"
     )
-    new_sid, recorded_pool_id = fake_store.started[0]
+    new_sid, recorded_pool_id = fake_pub.started[0]
     assert recorded_pool_id == "telegram:main:chat:42"
     assert new_sid == pool.session_id
 
 
 async def test_reset_session_end_before_start() -> None:
-    """end_session must be called with the OLD id before start_session is called."""
+    """publish_end_session must be called before publish_start_session."""
     pool = _make_pool("telegram:main:chat:42")
-    call_order: list[str] = []
-
-    class _OrderedStore(_FakeTurnStore):
-        async def end_session(self, session_id: str) -> None:
-            call_order.append(f"end:{session_id}")
-            await super().end_session(session_id)
-
-        async def start_session(self, session_id: str, pool_id: str) -> None:
-            call_order.append(f"start:{session_id}")
-            await super().start_session(session_id, pool_id)
-
-    pool._observer._turn_store = _OrderedStore()  # type: ignore
+    fake_pub = _FakeTurnPublisher()
+    pool._observer.register_turn_publisher(fake_pub)  # type: ignore[arg-type]
     before_sid = pool.session_id
 
     await pool.reset_session()
 
-    assert call_order[0] == f"end:{before_sid}", (
-        "end_session must be called before start_session"
+    assert fake_pub._call_order[0] == f"end:{before_sid}", (
+        "publish_end_session must be called before publish_start_session"
     )
-    assert call_order[1].startswith("start:"), (
-        "start_session must be called after end_session"
+    assert fake_pub._call_order[1].startswith("start:"), (
+        "publish_start_session must be called after publish_end_session"
     )

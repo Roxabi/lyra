@@ -67,6 +67,8 @@ class PoolManager:
             )
             if self._hub._turn_store is not None:
                 new_pool._observer.register_turn_store(self._hub._turn_store)
+            if self._hub._turn_publisher is not None:
+                new_pool._observer.register_turn_publisher(self._hub._turn_publisher)
             if self._hub._message_index is not None:
                 new_pool._observer.register_message_index(self._hub._message_index)
             # Wire pairing manager from composition root (ADR-059 V4).

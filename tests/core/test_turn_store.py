@@ -57,7 +57,7 @@ class TestTurnStoreSchema:
 class TestTurnStoreLogTurn:
     async def test_log_user_turn(self, store: TurnStore) -> None:
         """log_turn persists a user turn with correct fields."""
-        await store.log_turn(
+        await store._log_turn(
             pool_id="telegram:main:chat:1",
             session_id="sess-abc",
             role="user",
@@ -78,7 +78,7 @@ class TestTurnStoreLogTurn:
 
     async def test_log_assistant_turn(self, store: TurnStore) -> None:
         """log_turn persists an assistant turn with reply_message_id."""
-        await store.log_turn(
+        await store._log_turn(
             pool_id="telegram:main:chat:1",
             session_id="sess-abc",
             role="assistant",
@@ -95,7 +95,7 @@ class TestTurnStoreLogTurn:
     async def test_log_multiple_turns(self, store: TurnStore) -> None:
         """Multiple turns are all persisted."""
         for i in range(5):
-            await store.log_turn(
+            await store._log_turn(
                 pool_id="pool:1",
                 session_id="sess",
                 role="user" if i % 2 == 0 else "assistant",
@@ -110,7 +110,7 @@ class TestTurnStoreLogTurn:
         """get_turns returns rows ordered newest-first (ORDER BY timestamp DESC)."""
         contents = ["first", "second", "third"]
         for c in contents:
-            await store.log_turn(
+            await store._log_turn(
                 pool_id="pool:ord",
                 session_id="s",
                 role="user",
@@ -125,7 +125,7 @@ class TestTurnStoreLogTurn:
 
     async def test_get_turns_scoped_to_pool(self, store: TurnStore) -> None:
         """get_turns returns only turns for the requested pool_id."""
-        await store.log_turn(
+        await store._log_turn(
             pool_id="pool:A",
             session_id="s",
             role="user",
@@ -133,7 +133,7 @@ class TestTurnStoreLogTurn:
             user_id="u",
             content="A",
         )
-        await store.log_turn(
+        await store._log_turn(
             pool_id="pool:B",
             session_id="s",
             role="user",
@@ -146,7 +146,7 @@ class TestTurnStoreLogTurn:
 
     async def test_get_turns_scoped_to_user(self, store: TurnStore) -> None:
         """get_turns filters by user_id — cross-user reads return no rows."""
-        await store.log_turn(
+        await store._log_turn(
             pool_id="pool:1",
             session_id="s",
             role="user",
@@ -161,7 +161,7 @@ class TestTurnStoreLogTurn:
     async def test_get_turns_respects_limit(self, store: TurnStore) -> None:
         """get_turns(limit=N) returns at most N rows."""
         for _ in range(10):
-            await store.log_turn(
+            await store._log_turn(
                 pool_id="pool:1",
                 session_id="s",
                 role="user",
@@ -183,7 +183,7 @@ class TestTurnStoreLogTurn:
 
     async def test_log_turn_with_metadata(self, store: TurnStore) -> None:
         """metadata dict is stored as JSON and deserialized on read."""
-        await store.log_turn(
+        await store._log_turn(
             pool_id="p",
             session_id="s",
             role="user",
@@ -214,7 +214,7 @@ class TestTurnStoreErrors:
     async def test_invalid_role_raises(self, store: TurnStore) -> None:
         """log_turn raises ValueError for an unrecognized role."""
         with pytest.raises(ValueError, match="invalid role"):
-            await store.log_turn(
+            await store._log_turn(
                 pool_id="p",
                 session_id="s",
                 role="system",
@@ -260,32 +260,31 @@ class TestTurnStoreIntegrationWithPool:
         return ctx
 
     async def test_pool_append_logs_user_turn(self) -> None:
-        """When _turn_store is set, append() fires a task to log the user turn."""
+        """When _turn_publisher is set, append() publishes the user turn."""
         from lyra.core.pool import Pool
 
-        store = TurnStore(":memory:")
-        await store.connect()
+        publisher = MagicMock()
+        publisher.publish_log_turn = AsyncMock(return_value=None)
         pool = Pool(pool_id="p:1", agent_name="a", ctx=self._make_ctx())
-        pool._observer.register_turn_store(store)
+        pool._observer.register_turn_publisher(publisher)
         msg = self._make_msg()
 
         await pool.append(msg)
 
-        rows = await store.get_turns("p:1", user_id="u1")
-        assert len(rows) == 1
-        assert rows[0]["role"] == "user"
-        assert rows[0]["content"] == "hello"
-        assert rows[0]["message_id"] == "m1"
-
-        await store.close()
+        publisher.publish_log_turn.assert_called_once()
+        _, kwargs = publisher.publish_log_turn.call_args
+        assert kwargs["role"] == "user"
+        assert kwargs["content"] == "hello"
+        assert kwargs["message_id"] == "m1"
+        assert kwargs["pool_id"] == "p:1"
 
     async def test_process_one_logs_assistant_turn(self) -> None:
-        """_process_one() logs an assistant turn after dispatching a Response."""
+        """_process_one() publishes user + assistant turns via TurnPublisher."""
         from lyra.core.messaging.message import OutboundMessage, Response
         from lyra.core.pool import Pool
 
-        store = TurnStore(":memory:")
-        await store.connect()
+        publisher = MagicMock()
+        publisher.publish_log_turn = AsyncMock(return_value=None)
 
         ctx = self._make_ctx()
 
@@ -312,7 +311,7 @@ class TestTurnStoreIntegrationWithPool:
         ctx.get_agent = MagicMock(return_value=agent)
 
         pool = Pool(pool_id="p:2", agent_name="stub", ctx=ctx)
-        pool._observer.register_turn_store(store)
+        pool._observer.register_turn_publisher(publisher)
 
         from lyra.core.pool.pool_processor_exec import process_one
 
@@ -320,15 +319,14 @@ class TestTurnStoreIntegrationWithPool:
         await process_one(msg, agent, pool)
         await asyncio.sleep(0.05)
 
-        rows = await store.get_turns("p:2", user_id="u2")
-        roles = {r["role"] for r in rows}
+        # Verify both user and assistant turns were published
+        assert publisher.publish_log_turn.call_count >= 2
+        all_calls = publisher.publish_log_turn.call_args_list
+        roles = {call.kwargs["role"] for call in all_calls}
         assert "user" in roles
         assert "assistant" in roles
-        assistant_row = next(r for r in rows if r["role"] == "assistant")
-        assert assistant_row["content"] == "hi there"
-        assert assistant_row["reply_message_id"] == "bot_msg_42"
-
-        await store.close()
+        assistant_call = next(c for c in all_calls if c.kwargs["role"] == "assistant")
+        assert assistant_call.kwargs["content"] == "hi there"
 
     async def test_concurrent_writes_two_pools(self) -> None:
         """Concurrent log_turn calls from two pools both persist successfully."""
@@ -336,7 +334,7 @@ class TestTurnStoreIntegrationWithPool:
         await store.connect()
 
         await asyncio.gather(
-            store.log_turn(
+            store._log_turn(
                 pool_id="pool:A",
                 session_id="s",
                 role="user",
@@ -344,7 +342,7 @@ class TestTurnStoreIntegrationWithPool:
                 user_id="uA",
                 content="from A",
             ),
-            store.log_turn(
+            store._log_turn(
                 pool_id="pool:B",
                 session_id="s",
                 role="user",
@@ -363,8 +361,8 @@ class TestTurnStoreIntegrationWithPool:
 class TestPoolSessions:
     async def test_start_session_idempotent(self, store: TurnStore) -> None:
         """start_session called twice with the same session_id inserts only 1 row."""
-        await store.start_session("sess-idem", "pool:idem")
-        await store.start_session("sess-idem", "pool:idem")
+        await store._start_session("sess-idem", "pool:idem")
+        await store._start_session("sess-idem", "pool:idem")
 
         db = store._db_or_raise()
         async with db.execute(
@@ -377,7 +375,7 @@ class TestPoolSessions:
 
     async def test_get_last_session_from_pool_sessions(self, store: TurnStore) -> None:
         """get_last_session returns the session registered via start_session."""
-        await store.start_session("sess-latest", "pool:q")
+        await store._start_session("sess-latest", "pool:q")
         result = await store.get_last_session("pool:q")
         assert result == "sess-latest"
 
@@ -416,7 +414,7 @@ class TestPoolSessions:
 
     async def test_log_turn_updates_last_active_at(self, store: TurnStore) -> None:
         """log_turn updates last_active_at on the matching pool_sessions row."""
-        await store.start_session("sess-ts", "pool:ts")
+        await store._start_session("sess-ts", "pool:ts")
 
         db = store._db_or_raise()
         async with db.execute(
@@ -430,7 +428,7 @@ class TestPoolSessions:
         # Small sleep to guarantee the timestamp advances.
         await asyncio.sleep(0.01)
 
-        await store.log_turn(
+        await store._log_turn(
             pool_id="pool:ts",
             session_id="sess-ts",
             role="user",
@@ -452,9 +450,9 @@ class TestPoolSessions:
     async def test_get_last_session_returns_most_recent(self, store: TurnStore) -> None:
         """get_last_session returns the most recently started session, not first."""
         # Arrange — register two sessions with a measurable time gap
-        await store.start_session("sess-first", "pool:order")
+        await store._start_session("sess-first", "pool:order")
         await asyncio.sleep(0.01)  # ensure distinct last_active_at timestamps
-        await store.start_session("sess-second", "pool:order")
+        await store._start_session("sess-second", "pool:order")
 
         # Act
         result = await store.get_last_session("pool:order")
@@ -545,9 +543,9 @@ class TestListSessions:
         """Newest pool_sessions row first; limit caps the result."""
         for i in range(7):
             sid = f"sess-{i}"
-            await store.start_session(sid, "pool:x")
-            await store.set_cli_session(sid, f"cli-{i}")
-            await store.log_turn(
+            await store._start_session(sid, "pool:x")
+            await store._set_cli_session(sid, f"cli-{i}")
+            await store._log_turn(
                 pool_id="pool:x",
                 session_id=sid,
                 role="user",
@@ -574,8 +572,8 @@ class TestListSessions:
         self, store: TurnStore
     ) -> None:
         """first_user_msg is the first user turn in the session, not the assistant."""
-        await store.start_session("sess-a", "pool:y")
-        await store.log_turn(
+        await store._start_session("sess-a", "pool:y")
+        await store._log_turn(
             pool_id="pool:y",
             session_id="sess-a",
             role="assistant",
@@ -583,7 +581,7 @@ class TestListSessions:
             user_id="u",
             content="welcome",
         )
-        await store.log_turn(
+        await store._log_turn(
             pool_id="pool:y",
             session_id="sess-a",
             role="user",
@@ -600,8 +598,8 @@ class TestListSessions:
         self, store: TurnStore
     ) -> None:
         """A session with only an assistant greeting returns None for first_user_msg."""
-        await store.start_session("sess-empty", "pool:z")
-        await store.log_turn(
+        await store._start_session("sess-empty", "pool:z")
+        await store._log_turn(
             pool_id="pool:z",
             session_id="sess-empty",
             role="assistant",

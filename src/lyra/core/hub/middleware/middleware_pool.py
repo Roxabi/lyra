@@ -115,8 +115,28 @@ class MessagePrepMiddleware:
             # runs as a single asyncio task (sequential). Concurrent refactor
             # would require asyncio.Lock here.
 
-        if pool._on_resume_fn is None and ctx.hub._turn_store is not None:  # #597
-            pool._on_resume_fn = ctx.hub._turn_store.increment_resume_count
+        if pool._on_resume_fn is None and ctx.hub._turn_publisher is not None:  # #597
+            _pub = ctx.hub._turn_publisher
+            _store = ctx.hub._turn_store
+            _pool_ref = pool
+
+            async def _resume_fn(session_id: str) -> None:
+                # Reads current resume_count then publishes target_count = current + 1.
+                # The writer applies max(resume_count, target_count) for idempotence.
+                # trace_id: use session_id as lifecycle correlation key.
+                current = 0
+                if _store is not None:
+                    current = await _store.get_resume_count(session_id)
+                await _pub.publish_increment_resume_count(
+                    pool_id=_pool_ref.pool_id,
+                    session_id=session_id,
+                    platform=_pool_ref.medium or "",
+                    user_id=_pool_ref.user_id or "",
+                    target_count=current + 1,
+                    trace_id=session_id,
+                )
+
+            pool._on_resume_fn = _resume_fn
         # Parse command context and rewrite bare URLs (#99).
         cmd_ctx = _command_parser.parse(msg.text)
         if cmd_ctx is not None:

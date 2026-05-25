@@ -70,6 +70,19 @@ CREATE INDEX IF NOT EXISTS idx_pool_sessions_pool
 ON pool_sessions(pool_id, last_active_at)
 """
 
+_CREATE_IDX_DEDUPE = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_turns_dedupe
+ON conversation_turns(platform, message_id)
+WHERE message_id IS NOT NULL
+"""
+
+_CREATE_PROCESSED_EVENTS = """
+CREATE TABLE IF NOT EXISTS processed_events (
+    event_id      TEXT PRIMARY KEY,
+    processed_at  TEXT NOT NULL
+)
+"""
+
 _INSERT = """
 INSERT INTO conversation_turns
     (pool_id, session_id, role, platform, user_id,
@@ -105,6 +118,8 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
         await db.commit()
         await db.execute(_CREATE_POOL_SESSIONS)
         await db.execute(_CREATE_IDX_POOL_SESSIONS)
+        await db.execute(_CREATE_IDX_DEDUPE)
+        await db.execute(_CREATE_PROCESSED_EVENTS)
         await db.commit()
         # v4 migration: add cli_session_id to pool_sessions (idempotent).
         # Use try/except instead of a PRAGMA table_info read-then-write to
@@ -130,7 +145,7 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
             raise RuntimeError("TurnStore not connected — call await connect() first")
         return self._db
 
-    async def log_turn(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
+    async def _log_turn(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         *,
         pool_id: str,
@@ -197,7 +212,7 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
             await db.commit()
         except Exception:
             log.exception(
-                "TurnStore.log_turn failed (pool=%s session=%s role=%s)",
+                "TurnStore._log_turn failed (pool=%s session=%s role=%s)",
                 pool_id,
                 session_id,
                 role,

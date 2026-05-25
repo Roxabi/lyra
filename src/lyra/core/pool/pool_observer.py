@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.infrastructure.stores.turn_store import TurnStore
+    from lyra.transport.turn_publisher import TurnPublisher
 
     from ..messaging.message import InboundMessage
 
@@ -30,6 +31,7 @@ class PoolObserver:
         self._session_id_fn = session_id_fn
 
         self._turn_store: TurnStore | None = None
+        self._turn_publisher: TurnPublisher | None = None
         self._message_index: MessageIndex | None = None
         self._turn_logger: Callable[[str, InboundMessage], Awaitable[None]] | None = (
             None
@@ -44,8 +46,12 @@ class PoolObserver:
     # ------------------------------------------------------------------
 
     def register_turn_store(self, store: TurnStore) -> None:
-        """Wire the TurnStore for L1 raw turn logging."""
+        """Wire the TurnStore for L1 raw turn logging (kept for read paths)."""
         self._turn_store = store
+
+    def register_turn_publisher(self, publisher: TurnPublisher) -> None:
+        """Wire the TurnPublisher for NATS-backed turn writes."""
+        self._turn_publisher = publisher
 
     def register_message_index(self, store: MessageIndex) -> None:
         """Wire the MessageIndex for session routing on reply-to (#341)."""
@@ -76,14 +82,21 @@ class PoolObserver:
     # ------------------------------------------------------------------
 
     async def end_session_async(self, session_id: str) -> None:
-        """Await end_session via TurnStore; no-op if not connected."""
-        if self._turn_store is None:
+        """Publish end_session via TurnPublisher; no-op if not connected."""
+        if self._turn_publisher is None:
             return
         try:
-            await self._turn_store.end_session(session_id)
+            # trace_id: use session_id as the lifecycle correlation key
+            await self._turn_publisher.publish_end_session(
+                pool_id=self._pool_id,
+                session_id=session_id,
+                platform="",  # unknown at this point — lifecycle event only
+                user_id="",
+                trace_id=session_id,
+            )
         except Exception:
             log.error(
-                "turn_store end_session failed (pool=%s session=%s)",
+                "turn_publisher end_session failed (pool=%s session=%s)",
                 self._pool_id,
                 session_id,
                 exc_info=True,
@@ -99,23 +112,29 @@ class PoolObserver:
         message_id: str | None = None,
         reply_message_id: str | None = None,
     ) -> None:
-        """Await turn logging via TurnStore; no-op if not connected."""
-        if self._turn_store is None:
+        """Publish turn via TurnPublisher; no-op if not connected."""
+        if self._turn_publisher is None:
             return
         try:
-            await self._turn_store.log_turn(
+            # trace_id: use message_id if non-empty (natural per-message key),
+            # otherwise fall back to a fresh uuid4 hex
+            import uuid
+
+            trace_id = (message_id or "").strip() or uuid.uuid4().hex
+            await self._turn_publisher.publish_log_turn(
                 pool_id=self._pool_id,
                 session_id=self._session_id_fn(),
-                role=role,
                 platform=platform,
                 user_id=user_id,
+                role=role,
                 content=content,
-                message_id=message_id,
+                message_id=message_id or "",
                 reply_message_id=reply_message_id,
+                trace_id=trace_id,
             )
         except Exception:
             log.error(
-                "turn_store write failed (pool=%s role=%s)",
+                "turn_publisher write failed (pool=%s role=%s)",
                 self._pool_id,
                 role,
                 exc_info=True,

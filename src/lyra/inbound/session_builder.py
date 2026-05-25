@@ -98,14 +98,26 @@ class SessionBuilder:
             )
 
         # Capture by value so the closure is safe after build() returns.
-        _ts = ts
+        _publisher = ctx.turn_publisher
+        _platform_str = msg.platform
+        _user_id = msg.user_id
 
         async def _turnstore_update_fn(
             _msg: InboundMessage, session_id: str, pool_id: str
         ) -> None:
-            # Closure captures _ts and is called by the turn handler after a
-            # session_id has been assigned.  Safe to call after build() returns.
-            await _ts.start_session(session_id, pool_id)
+            # Publishes start_session via TurnPublisher (NATS) if available.
+            # Closure captures _publisher, _platform_str, _user_id and is called
+            # by the turn handler after a session_id has been assigned.
+            if _publisher is None:
+                return
+            # trace_id: use session_id as lifecycle correlation key
+            await _publisher.publish_start_session(
+                pool_id=pool_id,
+                session_id=session_id,
+                platform=_platform_str,
+                user_id=_msg.user_id or _user_id,
+                trace_id=session_id,
+            )
 
         _replacements: dict = {"session_update_fn": _turnstore_update_fn}
         if _prior_session_id is not None and isinstance(

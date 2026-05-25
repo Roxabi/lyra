@@ -59,6 +59,7 @@ declare -A SEEDS=(
   [lyra-nats-telegram]="${NKEYS_DIR}/telegram-adapter.seed"
   [lyra-nats-discord]="${NKEYS_DIR}/discord-adapter.seed"
   [lyra-nats-clipool]="${NKEYS_DIR}/clipool-worker.seed"
+  [lyra-nats-turn-writer]="${NKEYS_DIR}/turn-writer.seed"
 )
 
 MISSING=0
@@ -134,4 +135,4 @@ log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
-log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper"
+log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer"

@@ -33,6 +33,10 @@ Environment=NATS_URL=nats://lyra-nats:4222
 Secret=lyra-nats-hub,type=mount,target=lyra-nats-hub.seed,uid=1500,gid=1500,mode=0400
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-hub.seed
 Volume=lyra-data.volume:/home/lyra/.lyra:z
+# T26 (#1331): hub is now a READER — turns.db must be ro; lyra-turn-writer owns writes.
+# Specific bind-mount after the broad lyra-data volume; Podman last-mount-wins on the
+# same path, so this ro overlay takes precedence over the rw volume for turns.db alone.
+Volume=%h/.lyra/turns.db:/home/lyra/.lyra/turns.db:ro,z
 # Inline single-file bind mount — Quadlet .volume units wrapping a single file
 # either fail with loop-device errors or are silently downgraded to empty named
 # volumes (IsADirectoryError at read time). Inline Volume= does a direct bind.

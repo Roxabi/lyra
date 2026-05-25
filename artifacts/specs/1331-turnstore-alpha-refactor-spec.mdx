@@ -15,7 +15,7 @@ TurnStore is the L1 raw-turn store (SQLite, `~/.lyra/turns.db`). The **read** si
 
 ADR-068 §Application Map flags this as the canonical α-pattern deviation. ADR-073 (axial: stage-of-pipeline) flags the duplication along the non-primary axis. The third adapter (CLI pool) is queued — we land the refactor before the three-strikes threshold.
 
-**Governance prerequisite (Slice 0):** `src/lyra/infrastructure/CLAUDE.md` mandates an ADR for any new subdirectory under `infrastructure/`. Slice 0 adds **ADR-074 — TurnWriter subscriber-writer sublayer** before any code lands under `infrastructure/turn_writer/`. Without this, the spec violates the governance rule.
+**Governance prerequisite (Slice 0):** `src/lyra/infrastructure/CLAUDE.md` mandates an ADR for any new subdirectory under `infrastructure/`. Slice 0 adds **ADR-075 — TurnWriter subscriber-writer sublayer** before any code lands under `infrastructure/turn_writer/`. Without this, the spec violates the governance rule.
 
 > **Issue-body correction:** the acceptance criterion `0 occurrence \`turn_store.add(\`` refers to a method that doesn't exist on `TurnStore`. The actual write methods are `log_turn`, `start_session`, `end_session`, `set_cli_session`, `increment_resume_count`. The criterion in `## Success Criteria` is rewritten accordingly. Issue body is patched in parallel with spec approval so the GitHub issue does not carry a stale criterion.
 
@@ -126,7 +126,7 @@ flowchart LR
 
 | ID | Element | Layer | Handler |
 |---|---|---|---|
-| A0 | **ADR-074** — TurnWriter subscriber-writer sublayer, authorising `infrastructure/turn_writer/` | docs | `docs/architecture/adr/074-turn-writer-subscriber.mdx` |
+| A0 | **ADR-075** — TurnWriter subscriber-writer sublayer, authorising `infrastructure/turn_writer/` | docs | `docs/architecture/adr/075-turn-writer-subscriber.mdx` |
 | N1 | Subject `lyra.turns.write` | NATS / contracts | `roxabi_contracts.turns.SUBJECTS.turn_write` |
 | N2 | JetStream **stream** `LYRA_TURNS` — subject `lyra.turns.>`, retention `WorkQueue`, `MaxAge=24h`, `MaxBytes=256MiB` | NATS / writer | created at writer bootstrap (`nats stream add` or programmatic) |
 | N3 | JetStream **durable consumer** `turn-writer-v1` — queue group `turn-writer`, `AckExplicit`, `AckWait=60s`, `MaxDeliver=5` | NATS / writer | created at writer bootstrap |
@@ -143,7 +143,7 @@ flowchart LR
 ### Wiring
 
 ```
-A0 (ADR-074) authorises infrastructure/turn_writer/ — prerequisite to S3/S7
+A0 (ADR-075) authorises infrastructure/turn_writer/ — prerequisite to S3/S7
 
 adapter → pool_observer (S5) / session_builder / cli_pool_session / middleware_pool (S6)
    └─ TurnPublisher.publish (S2) → N1 → JetStream stream LYRA_TURNS (N2)
@@ -164,7 +164,7 @@ writer exposes /health + turn_writer_lag_seconds (S9)
 
 | # | Slice | Affordances | Demo |
 |---|---|---|---|
-| 0 | **Governance** — write ADR-074 authorising `infrastructure/turn_writer/` sublayer; merge before any code below | A0 | `ls docs/architecture/adr/074-turn-writer-subscriber.mdx` + `status: accepted` |
+| 0 | **Governance** — write ADR-075 authorising `infrastructure/turn_writer/` sublayer; merge before any code below | A0 | `ls docs/architecture/adr/075-turn-writer-subscriber.mdx` + `status: accepted` |
 | 1 | **Contracts + publisher** — `TurnWriteEvent` discriminated union, `lyra.turns.write` subject literal, `TurnPublisher` awaiting `PubAck`; no consumer yet | N1, S1, S2 | unit test: publish each `kind`, assert NATS receives it, assert `PubAck` returned before publisher returns |
 | 2 | **Writer service + private rename atomically** — DDL migration (S4), `TurnWriter` (S3) consuming the subject, `TurnStore` write methods renamed private (S7), tests updated in the same commit | N2, N3, S3, S4, S7 | integration test: stream/consumer created; publish 5 `log_turn` events (1 dup msg_id) → DB has 4 rows; publish `increment_resume_count` twice with same `target_count=3` → counter ends at 3, not 4; existing unit tests still green |
 | 3 | **Rewire call-sites** — `pool_observer`, `pool`, `pool_processor_*`, `session_builder`, `cli_pool_session`, `middleware_pool` publish instead of direct call; `_on_resume_fn` wires the publish coroutine and the call-site `await`s it | S5, S6 | `grep -rE "(_turn_store\|turn_store)\.(log_turn\|start_session\|end_session\|set_cli_session\|increment_resume_count)" src/lyra/` returns matches only inside `src/lyra/infrastructure/turn_writer/` |
@@ -173,7 +173,7 @@ writer exposes /health + turn_writer_lag_seconds (S9)
 
 ## Success Criteria
 
-- [ ] ADR-074 merged (`docs/architecture/adr/074-turn-writer-subscriber.mdx` with `status: accepted`) before Slice 2 lands.
+- [ ] ADR-075 merged (`docs/architecture/adr/075-turn-writer-subscriber.mdx` with `status: accepted`) before Slice 2 lands.
 - [ ] Grep enforces privatization (rewrites issue-body criterion using actual method names):
       `grep -rE "(_turn_store\|turn_store)\.(log_turn\|start_session\|end_session\|set_cli_session\|increment_resume_count)" src/lyra/ --include='*.py'`
       returns matches only inside `src/lyra/infrastructure/turn_writer/`.

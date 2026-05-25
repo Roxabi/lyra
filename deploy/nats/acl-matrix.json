@@ -218,10 +218,10 @@
       "created_at": "2026-05-25",
       "owner": "lyra",
       "description": "TurnWriter JetStream subscriber-writer — sole writer for turns.db (ADR-075, #1331). Consumes lyra.turns.> durable consumer turn-writer-v1, queue group turn-writer. nkey seed delivered via lyra-nats-turn-writer Podman secret (provisioned by install.sh T25).",
-      "notes": "JetStream API subjects scoped to LYRA_TURNS stream + turn-writer-v1 consumer only (principle of least privilege). _INBOX.> required for pull-subscribe ACK reply path. allow_responses=true for pull-subscribe protocol. $JS.API.* in publish (not subscribe) because nc.request() publishes at protocol level (B1). CONSUMER.CREATE uses wildcard suffix to cover filter-subject variants (B2). STREAM.UPDATE added for retention/limits changes on subsequent boots (B3).",
+      "notes": "JetStream API subjects scoped to LYRA_TURNS stream + turn-writer-v1 consumer only (principle of least privilege). _inbox.turn-writer.> required for pull-subscribe ACK reply path — nats-py emits lowercase identity-scoped inboxes when identity_name is set (#1359). allow_responses=true for pull-subscribe protocol. $JS.API.* in publish (not subscribe) because nc.request() publishes at protocol level (B1). CONSUMER.CREATE uses wildcard suffix to cover filter-subject variants (B2). STREAM.UPDATE added for retention/limits changes on subsequent boots (B3).",
       "allow_responses": true,
       "publish": [
-        "_INBOX.>",
+        "_inbox.turn-writer.>",
         "$JS.API.STREAM.CREATE.LYRA_TURNS",
         "$JS.API.STREAM.INFO.LYRA_TURNS",
         "$JS.API.STREAM.UPDATE.LYRA_TURNS",
@@ -231,7 +231,7 @@
       ],
       "subscribe": [
         "lyra.turns.>",
-        "_INBOX.>"
+        "_inbox.turn-writer.>"
       ]
     }
   }

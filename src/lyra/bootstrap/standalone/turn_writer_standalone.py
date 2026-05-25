@@ -42,9 +42,16 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
     if not nats_url:
         sys.exit("NATS_URL is required for standalone turn-writer mode.")
 
-    vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
-    vault_dir.mkdir(parents=True, exist_ok=True)
-    db_path = Path(os.environ.get("LYRA_TURNS_DB") or (vault_dir / "turns.db"))
+    # mkdir the actual db parent — avoids EROFS when LYRA_TURNS_DB overrides
+    # to a writable bind-mount under a ReadOnly=true rootfs (#1359).
+    db_path = Path(
+        os.environ.get("LYRA_TURNS_DB")
+        or (
+            Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+            / "turns.db"
+        )
+    )
+    db_path.parent.mkdir(parents=True, exist_ok=True)
 
     log.info(
         "turn-writer: starting (db=%s, nats=%s)",

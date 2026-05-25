@@ -135,6 +135,7 @@ Workspaces: `/workspace <key>` switches pool's cwd for the session.
 | `fallback_language` | TEXT | `'en'` |
 | `patterns_json` | TEXT | NULL |
 | `passthroughs_json` | TEXT | NULL |
+| `effort` | TEXT | NULL |
 | `created_at` | TEXT | `datetime('now')` |
 | `updated_at` | TEXT | `datetime('now')` |
 

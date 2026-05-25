@@ -33,6 +33,33 @@ Defined by `__all__` in `src/roxabi_blobs/__init__.py`:
 
 `_`-prefixed submodules (`_schema` if any) are internal.
 
+## Usage: ingest_bytes_to_blob_ref
+
+Shared eager-ingest helper for adapter code (Telegram #1065, Discord #1066, future Slack/CLI).
+Prevents N×M duplication by centralising the ingest path (ADR-073 three-strikes rule).
+
+```python
+from roxabi_blobs import FsBlobStore, ingest_bytes_to_blob_ref
+
+async with FsBlobStore(root) as store:
+    ref = await ingest_bytes_to_blob_ref(
+        store,
+        data,                            # raw bytes
+        mime="audio/ogg",
+        source="telegram_voice",         # verbatim — no enum validation
+        platform_ref="tg:file_id_abc",   # optional
+        platform_message_id="msg-42",    # optional
+        filename="voice.ogg",            # optional
+    )
+    # ref.store_key → opaque handle; pass to store.get(ref.store_key)
+    # ref.content_hash → sha256 hex
+```
+
+- Dedup: same bytes ingested N× → 1 file on FS, N `blob_refs` provenance rows.
+- `source` accepts any string — do NOT add an enum here (extensibility invariant).
+- Import: `from roxabi_blobs import ingest_bytes_to_blob_ref` or `from roxabi_blobs.ingest import ...`
+- Zero `lyra.*` imports — safe to consume from voiceCLI, imageCLI, etc.
+
 ## Invariants
 
 - **Write order:** `file → fsync(file) → fsync(shard dir) → INSERT blobs → INSERT blob_refs`. Missing dir-fsync = crash-recovery hole.

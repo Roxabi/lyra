@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 from fastapi.testclient import TestClient
+
 from lyra.blobstore.serve import build_app
 
 # ---------------------------------------------------------------------------
@@ -12,10 +15,15 @@ from lyra.blobstore.serve import build_app
 
 
 @pytest.fixture()
-def client() -> TestClient:
+def client(tmp_path: pathlib.Path):  # type: ignore[return]
     """Synchronous TestClient for build_app with a fixed test token."""
-    app = build_app(token="test-token")
-    return TestClient(app)
+    tok = tmp_path / "blobstore.tok"
+    tok.write_text("test-token")
+    blob_root = tmp_path / "blobs"
+    blob_root.mkdir()
+    app = build_app(token_path=tok, blob_root=blob_root)
+    with TestClient(app) as c:
+        yield c
 
 
 # ---------------------------------------------------------------------------

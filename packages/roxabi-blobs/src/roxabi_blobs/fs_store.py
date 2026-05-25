@@ -158,7 +158,7 @@ class FsBlobStore:
             else:
                 store_path, mime, size = existing
 
-            await conn.execute(
+            ref_cur = await conn.execute(
                 "INSERT INTO blob_refs (content_hash, source, platform_ref, "
                 "platform_message_id, filename, ingested_at) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -171,9 +171,11 @@ class FsBlobStore:
                     now.isoformat(),
                 ),
             )
+            blob_ref_id = ref_cur.lastrowid
             await conn.commit()
 
             return BlobRef(
+                id=blob_ref_id,
                 store_key=store_path,
                 content_hash=content_hash,
                 mime=mime,

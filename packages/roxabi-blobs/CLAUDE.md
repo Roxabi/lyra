@@ -60,6 +60,13 @@ async with FsBlobStore(root) as store:
 - Import: `from roxabi_blobs import ingest_bytes_to_blob_ref` or `from roxabi_blobs.ingest import ...`
 - Zero `lyra.*` imports — safe to consume from voiceCLI, imageCLI, etc.
 
+## HttpBlobStore (V8 — #1330)
+
+- `HttpBlobStore` is the HTTP client mirror of `FsBlobStore` — implements the same `BlobStore` Protocol against a remote `lyra blobstore serve` HTTP service.
+- `HttpBlobStore.exists` semantics differ from `FsBlobStore.exists`: over HTTP the argument is interpreted as a `store_key` (wire path) OR a `content_hash` (server HEAD handler does both lookups); the synthesized `BlobRef` returned by `HttpBlobStore.exists` is a sentinel (size=0) sufficient for Protocol truthiness checks.
+- `HttpBlobStore.delete(blob_ref_id)` → `DELETE /blobs/{blob_ref_id}` — server-side polymorphic path arg resolves numeric keys as `blob_ref_id` directly.
+- Retry policy (connection budget + backoff) is deferred to T24 — not yet implemented.
+
 ## Invariants
 
 - **Write order:** `file → fsync(file) → fsync(shard dir) → INSERT blobs → INSERT blob_refs`. Missing dir-fsync = crash-recovery hole.

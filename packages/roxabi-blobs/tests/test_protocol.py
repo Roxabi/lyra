@@ -69,6 +69,7 @@ class TestBlobRefEnvelope:
     """`BlobRef` mirrors ADR-067 §BlobRef envelope exactly."""
 
     EXPECTED_FIELDS = {
+        "id",
         "store_key",
         "content_hash",
         "mime",

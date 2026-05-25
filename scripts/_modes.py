@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
+from scripts._acl_models import LoadedMatrix
 from scripts._loader import load_matrix
 from scripts._nk import (
     FakeNkeyProvider,
@@ -126,6 +127,128 @@ def _mode_regen_authconf(args: argparse.Namespace) -> None:
     content = render_auth_conf(matrix, pubkeys)
     auth_conf = seeds_dir / "auth.conf"
     atomic_write(auth_conf, content, 0o600)
+
+
+def _add_identity_validate(
+    name: str, matrix_path: Path, matrix: LoadedMatrix, seeds_dir: Path
+) -> list[str]:
+    """Validate name + status + other-seed presence. Return list of OTHER active names.
+
+    Exits non-zero on any validation failure (fail-fast, no write).
+    """
+    if name not in matrix["identities"]:
+        print(
+            f"error: identity '{name}' not declared in {matrix_path} — add it first",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    identity = matrix["identities"][name]
+    if identity["status"] != "active":
+        print(
+            f"error: identity '{name}' has status '{identity['status']}';"
+            " --add-identity only provisions active identities",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    active_others = [
+        n
+        for n, ident in matrix["identities"].items()
+        if ident["status"] == "active" and n != name
+    ]
+    for other in active_others:
+        if not (seeds_dir / f"{other}.seed").exists():
+            print(
+                f"error: cannot render auth.conf — missing seed for active identity"
+                f" '{other}'; run --regen-authconf or full provision first",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    return active_others
+
+
+def _add_identity_detect_state(name: str, seeds_dir: Path) -> str:
+    """Inspect filesystem and return 'noop', 'repaired', or 'added'."""
+    seed_present = (seeds_dir / f"{name}.seed").exists()
+    auth_conf_path = seeds_dir / "auth.conf"
+    block_present = auth_conf_path.exists() and (
+        f"# {name}" in auth_conf_path.read_text()
+    )
+    if seed_present and block_present:
+        return "noop"
+    if seed_present:
+        return "repaired"
+    return "added"
+
+
+def _add_identity_write(
+    name: str,
+    state: str,
+    seeds_dir: Path,
+    matrix: LoadedMatrix,
+    provider: NkeyProvider,
+) -> None:
+    """Gather pubkeys, gen seed if added, render + write auth.conf (user mirror)."""
+    seed_file = seeds_dir / f"{name}.seed"
+    pubkeys: dict[str, str] = {}
+
+    active_others = [
+        n
+        for n, ident in matrix["identities"].items()
+        if ident["status"] == "active" and n != name
+    ]
+    for other in active_others:
+        other_bytes = (seeds_dir / f"{other}.seed").read_bytes()
+        pubkeys[other] = provider.pubkey_from_seed(other_bytes)
+
+    if state == "added":
+        seed = provider.gen_seed(name)
+        seed_str = seed.decode() if seed.endswith(b"\n") else seed.decode() + "\n"
+        atomic_write(seed_file, seed_str, 0o600)
+        pubkeys[name] = provider.pubkey_from_seed(seed)
+    else:
+        # repaired: seed exists — reuse, do NOT regenerate
+        pubkeys[name] = provider.pubkey_from_seed(seed_file.read_bytes())
+
+    atomic_write(seeds_dir / "auth.conf", render_auth_conf(matrix, pubkeys), 0o600)
+
+
+def _mode_add_identity(args: argparse.Namespace) -> None:
+    """--add-identity NAME: rootless single-identity provisioning + auth.conf re-render.
+
+    Parent pattern: _mode_regen_authconf. Writes only to _seeds_dir()/.
+    Never calls _require_root(); never touches _auth_dir().
+    Emits STATE=noop|repaired|added on stdout.
+    """
+    seeds_dir = _seeds_dir()
+    matrix = load_matrix(args.matrix)
+    name = args.add_identity
+    provider = _get_provider()
+
+    _add_identity_validate(name, args.matrix, matrix, seeds_dir)
+    state = _add_identity_detect_state(name, seeds_dir)
+
+    if state == "noop":
+        print(
+            f"identity '{name}' already provisioned and present in auth.conf;"
+            " no changes",
+            file=sys.stderr,
+        )
+        print("STATE=noop")
+        return
+
+    _add_identity_write(name, state, seeds_dir, matrix, provider)
+
+    if state == "repaired":
+        print(
+            f"identity '{name}' seed exists but auth.conf missing block;"
+            " re-rendered auth.conf",
+            file=sys.stderr,
+        )
+    # state == "added": no stderr message on normal success path.
+
+    print(f"STATE={state}")
 
 
 def _mode_emit_merged_authconf(args: argparse.Namespace) -> None:

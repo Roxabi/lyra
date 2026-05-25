@@ -169,6 +169,43 @@ class TestHeadBlob:
         assert response.status_code == 404
 
 
+    def test_head_does_not_call_store_exists(
+        self, blob_root: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """HEAD /blobs/{store_key} must not call FsBlobStore.exists — L1 (#1362).
+
+        The handler was refactored (T3) to query the DB directly (≤2 SELECTs).
+        Calling store.exists() would be a redundant 3rd DB hit.  We assert the
+        absence of that call by replacing exists with a sentinel that raises if
+        reached; a successful HEAD proves the handler never touched it.
+        """
+
+        # Arrange — PUT a blob so HEAD can succeed on the happy path
+        app = build_app(token="test-token", blob_root=blob_root)
+        with TestClient(app) as client:
+            put_resp = client.put(
+                "/blobs",
+                content=_PNG_BYTES,
+                headers=_put_headers(),
+            )
+            assert put_resp.status_code == 201
+            store_key = put_resp.json()["store_key"]
+
+            # Replace exists on the live store instance so the monkeypatch is
+            # scoped to the already-opened store (lifespan has run by this point).
+            def _exists_must_not_be_called(*_a: object, **_kw: object) -> None:
+                raise AssertionError("HEAD must not call store.exists()")
+
+            monkeypatch.setattr(app.state.store, "exists", _exists_must_not_be_called)
+
+            # Act — HEAD on the known key
+            response = client.head(f"/blobs/{store_key}", headers=_auth_headers())
+
+        # Assert — 200 proves the handler reached the success path without
+        # calling exists() (which would have raised AssertionError → 500).
+        assert response.status_code == 200
+
+
 # ---------------------------------------------------------------------------
 # N4 — DELETE /blobs/{store_key}
 # ---------------------------------------------------------------------------

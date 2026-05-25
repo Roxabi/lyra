@@ -116,6 +116,16 @@ class FsBlobStore:
             raise BlobStateError("FsBlobStore used outside an `async with` context.")
         return self._conn, self._lock
 
+    def _conn_ro(self) -> aiosqlite.Connection:
+        """Return the open connection for read-only callers (no write-lock needed).
+
+        WAL read-isolation makes lock-skip safe: SQLite WAL mode lets readers see a
+        consistent snapshot without blocking writers; the write-lock is the writer's
+        concern, not the reader's.
+        """
+        conn, _ = self._require_open()
+        return conn
+
     async def put(  # noqa: PLR0913 — signature locked by ADR-067 §Interface
         self,
         data: bytes,

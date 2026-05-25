@@ -43,7 +43,9 @@ Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 # Bind port to the Tailscale IPv4 of M₁ so the service is reachable from the Tailnet
 # but NOT from the LAN. Resolved at provision time via `tailscale ip -4 | head -1`.
 # RESIDUAL RISK: if TAILSCALE_IPV4 is unset or tailscale0 is absent, PublishPort falls
-# back to 0.0.0.0:8449 (LAN-exposed). Bearer token is then the sole auth boundary.
+# back to 0.0.0.0:8449 (LAN-exposed). The ExecStartPre guard below prevents the container
+# from entering running state in that case, so no traffic is ever served (fail-closed).
+# Bearer token remains the sole auth boundary on a misconfigured host (guard circumvented).
 # Accepted for V8; document in deploy/CLAUDE.md §Residual risks.
 PublishPort=${TAILSCALE_IPV4}:8449:8449
 Exec=lyra blobstore serve --token-path /run/secrets/lyra_blobstore_token --host 0.0.0.0 --port 8449
@@ -51,6 +53,13 @@ HealthCmd=pgrep -f "lyra blobstore serve"
 HealthInterval=30s
 
 [Service]
+# Fail-closed guard: refuse to start when TAILSCALE_IPV4 is empty/unset.
+# Note: the `PublishPort=${TAILSCALE_IPV4}:8449:8449` line above is resolved
+# by Podman BEFORE this ExecStartPre fires — so the publish-port spec is
+# already constructed (and could read as 0.0.0.0). This guard prevents the
+# CONTAINER from entering running state, so no traffic is ever served.
+# Operationally equivalent to closing the port (nothing accepts traffic).
+ExecStartPre=/bin/sh -c '[ -n "${TAILSCALE_IPV4}" ] || exit 1'
 Restart=on-failure
 RestartSec=10
 # Cold-path I/O service — 1 full core is sufficient; prevents it from starving

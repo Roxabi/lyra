@@ -199,21 +199,11 @@ async def handle_head(store_key: str, request: Request) -> Response:
         )
         return Response(status_code=404)
 
-    content_hash = str(row[0])
-    try:
-        blob_ref = await store.exists(content_hash)
-    except Exception:  # noqa: BLE001
-        _log.exception("HEAD /blobs/%s exists check failed", store_key)
-        await _emit_audit(
-            request.app, op="exists", result="internal_error", store_key=store_key
-        )
-        return JSONResponse({"detail": "internal error"}, status_code=500)
-
-    if blob_ref is None:
-        await _emit_audit(
-            request.app, op="exists", result="not_found", store_key=store_key
-        )
-        return Response(status_code=404)
+    # Row confirms existence — no need to call store.exists() (which would be a
+    # redundant 3rd DB hit). HEAD only signals existence; body is always empty.
+    # content_hash is available as str(row[0]) if callers need it in a future
+    # Content-Digest header. Fallback path (content_hash lookup) is preserved
+    # above: ≤2 SELECTs total, 0 calls to store.exists().
 
     await _emit_audit(request.app, op="exists", result="ok", store_key=store_key)
     return Response(status_code=200)
@@ -276,6 +266,8 @@ async def handle_delete(key: str, request: Request) -> Response:
         )
         return JSONResponse({"detail": "internal error"}, status_code=500)
 
+    # DELETE is idempotent (RFC 9110 §9.3.5) — the 204↔404 TOCTOU window between
+    # the existence check and the unlink is safe; concurrent deletes converge.
     if exists_row is None:
         await _emit_audit(request.app, op="delete", result="not_found", store_key=key)
         return JSONResponse({"detail": "blob not found"}, status_code=404)

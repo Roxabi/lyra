@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
+import shutil
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, AsyncIterator
 
@@ -21,11 +22,31 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-_METRICS_BODY = (
-    "# HELP blobstore_up Whether the blobstore service is up\n"
-    "# TYPE blobstore_up gauge\n"
-    "blobstore_up 1\n"
-)
+
+async def _disk_used_pct(blob_root: pathlib.Path) -> float | None:
+    """Return disk usage percentage for the blob root mount, or None on failure."""
+    try:
+        usage = shutil.disk_usage(blob_root)
+        return round(usage.used / usage.total * 100, 1)
+    except Exception:  # noqa: BLE001
+        _log.warning("BLOBSTORE: disk_usage failed for %s", blob_root)
+        return None
+
+
+async def _blob_count(app: FastAPI) -> int | None:
+    """Return total row count from the blobs table, or None on failure."""
+    try:
+        store: FsBlobStore = app.state.store
+        conn = store._conn  # noqa: SLF001
+        if conn is None:
+            return None
+        cursor = await conn.execute("SELECT COUNT(*) FROM blobs")
+        row = await cursor.fetchone()
+        await cursor.close()
+        return int(row[0]) if row is not None else None
+    except Exception:  # noqa: BLE001
+        _log.warning("BLOBSTORE: blob_count query failed")
+        return None
 
 
 async def _provision_nats(app: FastAPI, nc: NATS) -> None:
@@ -136,24 +157,38 @@ def build_app(
     app.state.nats_provisioned = False
     app.state.audit_sink = BlobAuditSink()
 
-    _register_routes(app)
+    _register_routes(app, blob_root=blob_root)
     return app
 
 
-def _register_routes(app: FastAPI) -> None:
+def _register_routes(app: FastAPI, *, blob_root: pathlib.Path) -> None:
     """Attach all HTTP routes to the app."""
 
     @app.get("/healthz")
     async def healthz(request: Request) -> dict:  # N5 — no auth
         await _maybe_provision(request.app)
-        return {"status": "ok"}
+        used_pct = await _disk_used_pct(blob_root)
+        count = await _blob_count(request.app)
+        return {"status": "ok", "disk_used_pct": used_pct, "blob_count": count}
 
     @app.get("/metrics")
-    async def metrics() -> PlainTextResponse:  # N6 — no auth
-        return PlainTextResponse(
-            _METRICS_BODY,
-            media_type="text/plain; version=0.0.4",
+    async def metrics(request: Request) -> PlainTextResponse:  # N6 — no auth
+        used_pct = await _disk_used_pct(blob_root)
+        count = await _blob_count(request.app)
+        used_val = used_pct if used_pct is not None else 0.0
+        count_val = count if count is not None else 0
+        body = (
+            "# HELP blobstore_up Whether the blobstore service is up\n"
+            "# TYPE blobstore_up gauge\n"
+            "blobstore_up 1\n"
+            "# HELP blobstore_disk_used_pct Disk usage of blob root mount (0..100)\n"
+            "# TYPE blobstore_disk_used_pct gauge\n"
+            f"blobstore_disk_used_pct {used_val}\n"
+            "# HELP blobstore_blob_count Total rows in the blobs table\n"
+            "# TYPE blobstore_blob_count gauge\n"
+            f"blobstore_blob_count {count_val}\n"
         )
+        return PlainTextResponse(body, media_type="text/plain; version=0.0.4")
 
     @app.put("/blobs")
     async def put_blob(request: Request) -> Response:  # N1

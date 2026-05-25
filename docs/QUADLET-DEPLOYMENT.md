@@ -8,7 +8,7 @@ Runbook for installing, operating, and rotating secrets in the Lyra Quadlet depl
 
 ## Architecture
 
-Six containers on `roxabi.network` (systemd `--user`, linger enabled):
+Eight containers on `roxabi.network` (systemd `--user`, linger enabled):
 
 | Service | Container | Role |
 |---|---|---|
@@ -18,6 +18,8 @@ Six containers on `roxabi.network` (systemd `--user`, linger enabled):
 | `lyra-discord` | lyra | Discord adapter |
 | `lyra-clipool` | lyra | CliPool NATS worker (Claude subprocesses) |
 | `lyra-gh-helper` | lyra | GitHub App token-mint helper (`lyra-gh.pod`) |
+| `lyra-turn-writer` | lyra | JetStream subscriber-writer for turns.db (#1331) |
+| `lyra-blobstore` | lyra | HTTP-fronted BlobStore service (port 8449, #1330) |
 
 ## Install
 
@@ -109,7 +111,7 @@ mandatory (ADR-054). Keep the prior source file as `.prev` until rotation is con
 
 1. Write the new token to the host source file:
    ```bash
-   printf '%s' "$NEW_TOK" > ~/.lyra/blobstore.tok && chmod 0400 ~/.lyra/blobstore.tok
+   printf '%s' "$NEW_TOK" > ~/.lyra/blobstore.tok && chmod 0600 ~/.lyra/blobstore.tok
    ```
    Keeping the source file at `~/.lyra/blobstore.tok` ensures reinstall scripts remain idempotent.
 

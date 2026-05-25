@@ -86,6 +86,14 @@ Secrets via `type=mount` (tmpfs) — ¬env vars, ¬volume wrappers for credentia
 Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL/secret changes require container restart (not HUP) to refresh. See [`docs/ops/nats-authconf-update.md`](../docs/ops/nats-authconf-update.md).
 ¬inline `#` comments after `Volume=` values — Quadlet passes them to Podman as mount options.
 
+### Secret naming convention
+
+NATS-related secrets use hyphens (`lyra-nats-<role>`) — this predates the underscore
+convention and is preserved for NATS NKey compatibility. Non-NATS secrets (bearer tokens,
+API keys) use underscores (`lyra_<service>_<purpose>`, e.g. `lyra_blobstore_token`).
+Mixing styles is intentional and tracked; do not "normalize" without coordinating
+with the operator (Mickael).
+
 ### Known residual risk — blobstore PublishPort Tailscale fallback (#1330)
 
 `lyra-blobstore.container` binds `PublishPort` to `${TAILSCALE_IPV4}:8449:8449` (resolved at

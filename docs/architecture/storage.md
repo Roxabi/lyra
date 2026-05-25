@@ -219,6 +219,16 @@ is a violation of this boundary from V8 onwards.
 **Backup and restore:** see `docs/QUADLET-DEPLOYMENT.md` (§ Rotating the BlobStore bearer
 token and §§ Backing up the BlobStore / Restore invariant) for the operator runbook.
 
+#### Restore invariant
+
+After a restore, the SQLite manifest is authoritative. Any FS shard file that is NOT
+referenced by a `blobs.store_path` row is a content-addressed orphan and is safely
+discardable. Reconciliation (full runbook in `docs/QUADLET-DEPLOYMENT.md § Restore invariant`):
+
+1. `sqlite3 index.sqlite "SELECT store_path FROM blobs"` → expected file list
+2. `find sha256 -type f` → actual file list
+3. Discard files in (2)\(1) — they are dedup-orphans from a mid-backup write, never user data loss.
+
 ### Event bus DI
 
 `PipelineEventBus` is injected via `Hub.__init__(event_bus: "PipelineEventBus | None" = None)`.

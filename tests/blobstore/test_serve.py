@@ -32,8 +32,8 @@ def client(tmp_path: pathlib.Path):  # type: ignore[return]
 
 
 class TestHealthz:
-    def test_healthz_returns_200_with_status_ok(self, client: TestClient) -> None:
-        """GET /healthz returns 200 and JSON body contains at least {status: ok}."""
+    def test_healthz_returns_200_with_full_body(self, client: TestClient) -> None:
+        """GET /healthz returns 200 with status, disk_used_pct, and blob_count."""
         # Arrange — no headers required (N5: Auth = none)
         # Act
         response = client.get("/healthz")
@@ -41,6 +41,15 @@ class TestHealthz:
         assert response.status_code == 200
         body = response.json()
         assert body["status"] == "ok"
+        # SC-Obs-1: disk_used_pct + blob_count required (None acceptable on failure)
+        assert "disk_used_pct" in body
+        assert "blob_count" in body
+        if body["disk_used_pct"] is not None:
+            assert isinstance(body["disk_used_pct"], (int, float))
+            assert 0.0 <= float(body["disk_used_pct"]) <= 100.0
+        if body["blob_count"] is not None:
+            assert isinstance(body["blob_count"], int)
+            assert body["blob_count"] >= 0
 
 
 # ---------------------------------------------------------------------------
@@ -49,8 +58,10 @@ class TestHealthz:
 
 
 class TestMetrics:
-    def test_metrics_returns_200_prometheus_text(self, client: TestClient) -> None:
-        """GET /metrics returns 200 with Content-Type starting with text/plain."""
+    def test_metrics_returns_200_with_disk_used_pct_gauge(
+        self, client: TestClient
+    ) -> None:
+        """GET /metrics returns 200 with blobstore_up, disk_used_pct, blob_count."""
         # Arrange — no headers required (N6: Auth = none)
         # Act
         response = client.get("/metrics")
@@ -58,6 +69,11 @@ class TestMetrics:
         assert response.status_code == 200
         content_type = response.headers.get("content-type", "")
         assert content_type.startswith("text/plain")
+        body = response.text
+        # SC-Obs-2: required gauges
+        assert "blobstore_up" in body
+        assert "blobstore_disk_used_pct" in body
+        assert "blobstore_blob_count" in body
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from pydantic import Field
+
 from roxabi_contracts.envelope import ContractEnvelope
 
 __all__ = ["BlobAuditEvent"]
@@ -37,6 +39,18 @@ class BlobAuditEvent(ContractEnvelope):
 
     source: str | None
     """Value of the X-Blob-Source request header; None for non-PUT operations."""
+
+    kind: Literal["blobs.op"] = "blobs.op"
+    """Event kind discriminator — always 'blobs.op' for V8."""
+
+    subject: str = Field(
+        default="service:lyra-blobstore",
+        description=(
+            "Phase 1: 'service:lyra-blobstore'. Phase 2 (#1334): 'agent/<id>' "
+            "once per-identity tokens land. Migration anchor for the audit consumer."
+        ),
+    )
+    """Caller identity — phase 1 fixed service identity, phase 2 per-agent (#1334)."""
 
     @classmethod
     def subject_for(cls, op: str) -> str:

@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -320,6 +320,21 @@ nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth sec
 	@podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"
 	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.
 	@systemctl --user restart lyra-nats
+
+nats-add-identity:  ## add a single NATS identity rootless; restart consumers
+	@test -n "$(NAME)" || { echo "usage: make nats-add-identity NAME=<x>"; exit 2; }
+	@state=$$(uv run --project . lyra-acl genkeys --add-identity "$(NAME)" \
+	          | grep -oE 'STATE=(noop|repaired|added)' || echo "STATE=unknown"); \
+	echo "lyra-acl: $$state"; \
+	if [ "$$state" = "STATE=noop" ] && podman secret inspect "lyra-nats-$(NAME)" >/dev/null 2>&1; then \
+	  echo "no-op: $(NAME) already provisioned + Podman secret present locally"; \
+	  exit 0; \
+	fi; \
+	podman secret create --replace "lyra-nats-$(NAME)" "$(LYRA_NKEYS_DIR)/$(NAME).seed"; \
+	podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"; \
+	for svc in lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool; do \
+	  systemctl --user is-active --quiet $$svc && systemctl --user restart $$svc || true; \
+	done
 
 test:
 	uv run pytest -v

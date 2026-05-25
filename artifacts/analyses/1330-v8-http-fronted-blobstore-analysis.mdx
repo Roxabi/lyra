@@ -197,8 +197,12 @@ Cloned from `deploy/quadlet/lyra-hub.container` with the following deltas:
 
 | Setting | Value | Rationale |
 |---------|-------|-----------|
+| `Description=` | `Lyra BlobStore HTTP service` | `[Unit]` stanza — `systemctl status` clarity |
+| `ContainerName=` | `lyra-blobstore` | Quadlet DNS handle for same-host clients (`http://lyra-blobstore:8449`) |
+| `Network=` | `roxabi.network` | shared Podman network with hub/adapters/NATS |
 | `Image=` | `ghcr.io/roxabi/lyra:staging-svc` | svc-runtime variant — requires `config.toml` bind-mount; same as hub/telegram/discord |
 | `Exec=` | `lyra blobstore serve` | typer subcommand |
+| `Environment=NATS_URL=` | `nats://lyra-nats:4222` | audit sink + readiness KV target — matches hub convention |
 | `PublishPort=` | bind to Tailscale IPv4 (resolved at provision time via `tailscale ip -4`) — `<ts-ipv4>:8449:8449` | LAN exposure is unintentional surface — bearer token is the only auth; restrict to Tailnet. `0.0.0.0:8449` is the fallback if `tailscale0` is absent, accepted as documented residual risk. |
 | `HealthCmd=` | `pgrep -f "lyra blobstore serve"` | mirrors hub pattern |
 | `CPUQuota=` | `100%` | cold-path I/O; doesn't need hub's `200%` |

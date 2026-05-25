@@ -9,7 +9,13 @@ from __future__ import annotations
 
 from typing import Literal
 
+from roxabi_contracts.audit.blobs import BlobAuditEvent
 from roxabi_contracts.envelope import ContractEnvelope
+
+__all__ = [
+    "BlobAuditEvent",
+    "SecurityEvent",
+]
 
 
 class SecurityEvent(ContractEnvelope):

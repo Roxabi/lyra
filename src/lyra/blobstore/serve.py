@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import pathlib
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import TYPE_CHECKING, AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse, Response
 
 from lyra.blobstore._handlers import handle_delete, handle_get, handle_head, handle_put
+from lyra.blobstore.audit_sink import BlobAuditSink
 from lyra.blobstore.auth import BearerAuthMiddleware
 from roxabi_blobs import FsBlobStore
+
+if TYPE_CHECKING:
+    from nats.aio.client import Client as NATS
+
+_log = logging.getLogger(__name__)
 
 _METRICS_BODY = (
     "# HELP blobstore_up Whether the blobstore service is up\n"
@@ -20,34 +28,124 @@ _METRICS_BODY = (
 )
 
 
+async def _provision_nats(app: FastAPI, nc: NATS) -> None:
+    """Wire JetStream audit sink and KV readiness announce."""
+    from nats.js.errors import BucketNotFoundError
+
+    try:
+        js = nc.jetstream()
+        sink = BlobAuditSink()
+        sink._js = js  # noqa: SLF001
+        app.state.audit_sink = sink
+    except Exception:  # noqa: BLE001
+        _log.warning("BLOBSTORE: JetStream unavailable — audit sink degraded")
+        app.state.audit_sink = BlobAuditSink()
+        return
+
+    try:
+        try:
+            kv = await js.key_value("lyra-state")
+        except BucketNotFoundError:
+            from nats.js.api import KeyValueConfig, StorageType
+
+            kv = await js.create_key_value(
+                KeyValueConfig(bucket="lyra-state", storage=StorageType.FILE)
+            )
+        await kv.put("blobstore.ready", b"true")
+        _log.info("Blobstore KV ready announced")
+    except Exception:  # noqa: BLE001
+        _log.warning("BLOBSTORE: KV readiness announce failed", exc_info=True)
+
+    app.state.nats_provisioned = True
+
+
+async def _connect_nats() -> NATS | None:
+    """Attempt production NATS connect; return None on failure (degraded mode)."""
+    nats_url = os.environ.get("NATS_URL")
+    if not nats_url:
+        _log.warning("BLOBSTORE: NATS_URL not set — running in degraded mode")
+        return None
+    try:
+        from roxabi_nats import nats_connect
+
+        return await nats_connect(nats_url, identity_name="blobstore")
+    except Exception:  # noqa: BLE001
+        _log.warning("BLOBSTORE: NATS connect failed — running in degraded mode")
+        return None
+
+
+async def _maybe_provision(app: FastAPI) -> None:
+    """Lazy-init NATS when lifespan was not triggered (e.g. ASGITransport tests)."""
+    if app.state.nats_provisioned:
+        return
+    nc: NATS | None = getattr(app.state, "nats_client", None)
+    if nc is not None:
+        await _provision_nats(app, nc)
+
+
+def _make_lifespan(blob_root: pathlib.Path, injected_nats: NATS | None):  # type: ignore[return]
+    """Return an asynccontextmanager lifespan for build_app."""
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        nc = injected_nats
+        _own_nc = nc is None
+        if nc is None:
+            nc = await _connect_nats()
+
+        async with FsBlobStore(root=blob_root) as store:
+            app.state.store = store
+            app.state.audit_sink = BlobAuditSink()
+            app.state.nats_provisioned = False
+            app.state.nats_client = nc
+            if nc is not None:
+                await _provision_nats(app, nc)
+            yield
+
+        if nc is not None and _own_nc:
+            await nc.close()
+
+    return lifespan
+
+
 def build_app(
     *,
     token_path: pathlib.Path | None = None,
     blob_root: pathlib.Path,
     token: str | None = None,
+    nats: NATS | None = None,
 ) -> FastAPI:
     """Return a FastAPI app wired with auth middleware and V2 routes.
 
     Token read ONCE from `token_path` at startup (SC-Code-5).  Pass `token`
     as a plain string for test-only usage (avoids a temp file in fixtures).
     `FsBlobStore` is opened for the lifetime of the process via the ASGI lifespan.
+    Pass `nats` to inject a pre-connected NATS client (tests + production inject path).
+    On NATS failure, proceeds in degraded mode (SC-Code-S4: ¬abort startup).
     """
     if token is None:
         if token_path is None:
             raise ValueError("Either token_path or token must be provided.")
         token = token_path.read_text().strip()
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        async with FsBlobStore(root=blob_root) as store:
-            app.state.store = store
-            yield
-
-    app = FastAPI(title="lyra-blobstore", lifespan=lifespan)
+    app = FastAPI(title="lyra-blobstore", lifespan=_make_lifespan(blob_root, nats))
     app.add_middleware(BearerAuthMiddleware, token=token)
 
+    # Stash for lazy-init (when lifespan doesn't run, e.g. tests via ASGITransport)
+    app.state.nats_client = nats
+    app.state.nats_provisioned = False
+    app.state.audit_sink = BlobAuditSink()
+
+    _register_routes(app)
+    return app
+
+
+def _register_routes(app: FastAPI) -> None:
+    """Attach all HTTP routes to the app."""
+
     @app.get("/healthz")
-    async def healthz() -> dict:  # N5 — no auth (allowlist in BearerAuthMiddleware)
+    async def healthz(request: Request) -> dict:  # N5 — no auth
+        await _maybe_provision(request.app)
         return {"status": "ok"}
 
     @app.get("/metrics")
@@ -72,5 +170,3 @@ def build_app(
     @app.delete("/blobs/{key:path}")
     async def delete_blob(key: str, request: Request) -> Response:  # N4
         return await handle_delete(key, request)
-
-    return app

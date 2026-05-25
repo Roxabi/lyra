@@ -99,8 +99,9 @@ consumer (`nats_tts_client.py`). `stt_helpers.py` provides Whisper noise tokens
 - `NatsBus`: caller owns the NATS connection; bus only manages subscriptions.
   Registrations survive `stop()` — safe to restart without re-registering. Never
   `register()` after `start()`.
-- `WorkerPoolClient` (from `lyra.transport`) owns CB + `WorkerRegistry` + heartbeat
-  subscription. Domain clients here DO NOT touch `nc.new_inbox()` / `nc.subscribe()`
+- `WorkerPoolClient` (from `lyra.transport`) owns CB + heartbeat subscription; accepts
+  `WorkerRegistry` via DI (bootstrap/factory owns the instance). Domain clients here DO
+  NOT touch `nc.new_inbox()` / `nc.subscribe()`
   directly — they call `pool.request_with_routing(subject_fn, payload)` or
   `pool.stream_request(payload)`.
 - All error paths in domain clients return either a populated domain value object

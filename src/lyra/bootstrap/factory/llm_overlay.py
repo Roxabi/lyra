@@ -23,6 +23,7 @@ async def init_nats_llm(nc: "NATS | None") -> "LlmClient | None":
 
     from lyra.llm.cli_nats_codec import CliNatsCodec
     from lyra.llm.llm_client import LlmClient
+    from lyra.nats.worker_registry import WorkerRegistry
     from lyra.transport.nats_request_response import NatsTransport
     from lyra.transport.worker_pool_client import WorkerPoolClient
     from roxabi_contracts.llm import SUBJECTS, validate_worker_id
@@ -30,6 +31,7 @@ async def init_nats_llm(nc: "NATS | None") -> "LlmClient | None":
     transport = NatsTransport(nc)
     pool = WorkerPoolClient(
         transport,
+        registry=WorkerRegistry(),
         hb_subject=SUBJECTS.heartbeat,
         validate_worker_id=validate_worker_id,
         name="llm",

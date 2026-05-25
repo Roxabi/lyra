@@ -195,23 +195,7 @@ Step 1 must happen **before** step 2 (else a blob_refs row may point to a hash w
 
 Cloned from `deploy/quadlet/lyra-hub.container` with the following deltas:
 
-| Setting | Value | Rationale |
-|---------|-------|-----------|
-| `Description=` | `Lyra BlobStore HTTP service` | `[Unit]` stanza — `systemctl status` clarity |
-| `ContainerName=` | `lyra-blobstore` | Quadlet DNS handle for same-host clients (`http://lyra-blobstore:8449`) |
-| `Network=` | `roxabi.network` | shared Podman network with hub/adapters/NATS |
-| `Image=` | `ghcr.io/roxabi/lyra:staging-svc` | svc-runtime variant — requires `config.toml` bind-mount; same as hub/telegram/discord |
-| `Exec=` | `lyra blobstore serve` | typer subcommand |
-| `Environment=NATS_URL=` | `nats://lyra-nats:4222` | audit sink + readiness KV target — matches hub convention |
-| `PublishPort=` | bind to Tailscale IPv4 (resolved at provision time via `tailscale ip -4`) — `<ts-ipv4>:8449:8449` | LAN exposure is unintentional surface — bearer token is the only auth; restrict to Tailnet. `0.0.0.0:8449` is the fallback if `tailscale0` is absent, accepted as documented residual risk. |
-| `HealthCmd=` | `pgrep -f "lyra blobstore serve"` | mirrors hub pattern |
-| `CPUQuota=` | `100%` | cold-path I/O; doesn't need hub's `200%` |
-| `After=` / `Wants=` | `lyra-nats.service` (soft) | audit sink degrades to logger if NATS unreachable; service can start without NATS |
-| `Volume=` | `%h/.lyra/blobs:/data/lyra/blobs:z` + `%h/.lyra/config.toml:/app/config.toml:ro,z` | content dir bind + config bind |
-| `Secret=` | `lyra_blobstore_token,type=mount,target=lyra_blobstore_token,uid=1500,gid=1500,mode=0400` | ADR-054 |
-| `Label=` | `io.containers.autoupdate=registry` | same autoupdate cadence as svc-runtime peers |
-| `EnvironmentFile=` | `%h/.lyra/env/blobstore.env` | per Quadlet env convention |
-| Hardening | `NoNewPrivileges=true`, `ReadOnly=true`, `DropCapability=all`, `UserNS=keep-id:uid=1500,gid=1500` | clones hub |
+| _(superseded — see [docs/QUADLET-DEPLOYMENT.md](../../docs/QUADLET-DEPLOYMENT.md))_ |
 
 ### Cross-host integration test
 

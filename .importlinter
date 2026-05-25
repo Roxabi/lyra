@@ -109,6 +109,9 @@ forbidden_modules =
     lyra.bootstrap.wiring
 allow_indirect_imports = true
 
+# NOTE: lyra.blobstore is intentionally absent from source_modules below — it is a
+# peer-layer service (own systemd unit + NATS attach, ADR-073), not a shared floating
+# module. See src/lyra/blobstore/CLAUDE.md "peer-of-adapters" placement.
 [importlinter:contract:shared-modules-upper-boundary]
 name = Shared floating modules must not import bootstrap, adapters, or infrastructure
 type = forbidden

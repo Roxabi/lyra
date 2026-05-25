@@ -53,16 +53,13 @@ async def _provision_nats(app: FastAPI, nc: NATS) -> None:
     """Wire JetStream audit sink and KV readiness announce."""
     from nats.js.errors import BucketNotFoundError
 
-    try:
-        js = nc.jetstream()
-        sink = BlobAuditSink()
-        sink._js = js  # noqa: SLF001
-        app.state.audit_sink = sink
-    except Exception:  # noqa: BLE001
-        _log.warning("BLOBSTORE: JetStream unavailable — audit sink degraded")
-        app.state.audit_sink = BlobAuditSink()
+    sink = BlobAuditSink()
+    await sink.provision(nc)
+    app.state.audit_sink = sink
+    if sink._degraded:  # noqa: SLF001 — read-only check
         return
 
+    js = nc.jetstream()  # provision() succeeded — JetStream is available
     try:
         try:
             kv = await js.key_value("lyra-state")
@@ -116,11 +113,14 @@ def _make_lifespan(blob_root: pathlib.Path, injected_nats: NATS | None):  # type
 
         async with FsBlobStore(root=blob_root) as store:
             app.state.store = store
-            app.state.audit_sink = BlobAuditSink()
             app.state.nats_provisioned = False
             app.state.nats_client = nc
             if nc is not None:
+                # _provision_nats sets app.state.audit_sink (success OR degraded)
                 await _provision_nats(app, nc)
+            else:
+                # No NATS at all — audit sink is a logger-only stub.
+                app.state.audit_sink = BlobAuditSink()
             yield
 
         if nc is not None and _own_nc:

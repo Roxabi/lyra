@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -14,7 +15,6 @@ from .models import BlobRef
 class HttpBlobStore:
     """HTTP client for a remote `lyra blobstore serve` service.
 
-    Retry policy (T24): not yet implemented.
     Per-request timeout = 5 s connect / 5 s read.
     """
 
@@ -23,12 +23,10 @@ class HttpBlobStore:
         base_url: str,
         token: str,
         *,
-        connect_retry_max_s: float = 10.0,
         _transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._token = token
-        self._connect_retry_max_s = connect_retry_max_s
         self._transport = _transport
         self._client: httpx.AsyncClient | None = None
         # ASGI lifespan support (test seam only — production uses real HTTP)
@@ -144,8 +142,6 @@ class HttpBlobStore:
         # HEAD returns no body — synthesise a sentinel BlobRef so Protocol
         # callers that only test truthiness get a non-None result.
         # The content_hash field is set to the argument value (store_key in HTTP).
-        from datetime import UTC, datetime
-
         return BlobRef(
             store_key=content_hash,
             content_hash=content_hash,

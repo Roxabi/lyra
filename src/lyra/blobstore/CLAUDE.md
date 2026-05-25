@@ -107,6 +107,15 @@ URL path argument is tested against `^\d+$`:
 
 Protocol signature uses `blob_ref_id`; HTTP wire identifier is `store_key`.
 
+## HEAD handler dual lookup
+
+`handle_head` in `src/lyra/blobstore/_handlers.py` performs two sequential database lookups:
+
+1. **`store_key` lookup** — primary path for callers that pass an opaque `store_key` (the wire path on disk); the handler resolves it directly via `store_path` in the manifest.
+2. **`content_hash` fallback** — secondary path for callers like `HttpBlobStore.exists` that pass a `content_hash` directly (see `packages/roxabi-blobs/CLAUDE.md §HttpBlobStore.exists` for the call shape); the symmetry between the two lookup paths is asserted via the existing inline comment at `_handlers.py:181-182`.
+
+Both `content_hash` and `store_key` must be handled because the `BlobStore` Protocol allows either opaque identifier to act as an existence key. The dual-lookup design keeps the server handler generic without requiring callers to pre-resolve which form they hold.
+
 ## Reference pointers
 
 - `docs/QUADLET-DEPLOYMENT.md` — install runbook, secret rotation, backup procedures

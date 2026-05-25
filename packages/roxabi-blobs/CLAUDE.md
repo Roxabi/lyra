@@ -68,27 +68,7 @@ async with FsBlobStore(root) as store:
 
 ### Retry policy
 
-**V8 ships with default httpx behaviour — no in-band retry logic is implemented.**
-
-`connect_retry_max_s` (constructor param, default `10.0`) is accepted and stored but is
-not wired to any retry loop in V8. Future work will implement exponential-backoff connect
-retries against this budget (first retry after 0.5 s, cap 5 s per attempt, terminal
-exception `httpx.ConnectError` when budget exhausted — per spec §Breadboard C1).
-
-**Per-request timeout:** `httpx.Timeout(5.0, connect=5.0)` — 5 s connect / 5 s read,
-applied to every request.
-
-**Per-method behaviour (V8 — no retry):**
-
-| Method | Idempotent | Retry safe | V8 behaviour |
-|--------|-----------|------------|--------------|
-| GET | yes | yes | single attempt; raises `BlobNotFoundError` on 404, `httpx.HTTPStatusError` on other 4xx/5xx |
-| HEAD | yes | yes | single attempt; returns `None` on 404, raises on other errors |
-| DELETE | yes | yes | single attempt; raises `BlobNotFoundError` on 404 |
-| PUT | no | no | single attempt; `BlobWriteError` NOT raised client-side — caller gets `httpx.HTTPStatusError` on 5xx |
-
-Until retry is implemented, callers operating over Tailnet should wrap `HttpBlobStore`
-operations in their own retry / circuit-breaker logic if the connection window matters.
+Retry-on-connect-error is not implemented; callers operating over Tailnet should wrap `HttpBlobStore` with their own retry policy.
 
 ## Invariants
 

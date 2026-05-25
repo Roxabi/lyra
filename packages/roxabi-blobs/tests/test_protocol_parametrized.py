@@ -12,11 +12,11 @@ from pathlib import Path
 
 import httpx
 import pytest
+
+from roxabi_blobs import BlobStore, FsBlobStore
 from roxabi_blobs.http_store import (  # does not exist yet — RED
     HttpBlobStore,
 )
-
-from roxabi_blobs import BlobStore, FsBlobStore
 
 # ---------------------------------------------------------------------------
 # Parametrized store fixture

@@ -14,7 +14,6 @@ import pytest
 from lyra.blobstore.audit_sink import (
     BlobAuditSink,  # type: ignore[import-not-found]  # noqa: F401
 )
-
 from roxabi_contracts.audit.blobs import BlobAuditEvent
 
 # ---------------------------------------------------------------------------

@@ -54,7 +54,7 @@ Environment=LYRA_HEALTH_HOST=0.0.0.0
 Environment=LYRA_TTS_TIMEOUT=90
 PublishPort=127.0.0.1:8443:8443
 Exec=lyra hub
-HealthCmd=pgrep -f "lyra hub"
+HealthCmd=grep -q hub /proc/1/cmdline
 HealthInterval=30s
 
 [Service]

@@ -307,6 +307,26 @@ systemctl --user status podman-auto-update.timer
 | Container restart loop | `RestartSec=10` applies — check logs | `journalctl --user -u <svc> -n 50` |
 | Auto-update not pulling | Timer inactive | `systemctl --user start podman-auto-update.timer` |
 
+## Pitfall: double-quotes in HealthCmd= are dropped by the Quadlet generator
+
+The Quadlet generator silently drops the closing double-quote from `HealthCmd=` values,
+turning `HealthCmd=pgrep -f "lyra adapter X"` into the JSON array
+`["CMD-SHELL","pgrep -f \"lyra adapter X"]` — note the missing closing `"`.
+`/bin/sh` then fails with `Syntax error: Unterminated quoted string`, and the container
+reports `unhealthy` indefinitely (all 6 `lyra-*` units were affected until issue #1370).
+
+Workaround: use `/proc/1/cmdline` — no quotes required, and `grep`/`cat` are present in
+both the slim (`:staging-svc`) and fat (`:staging`) images (unlike `pgrep` which requires
+`procps`):
+
+```ini
+# correct — no quotes, no procps dependency
+HealthCmd=grep -q telegram /proc/1/cmdline
+```
+
+The `quadlet-lint.yml` CI workflow enforces this via a `grep -nP 'HealthCmd=.*"'` check that
+fails on any double-quote in a `HealthCmd=` line. See issue #1370.
+
 ## References
 
 - `deploy/quadlet/` — unit files (authoritative)

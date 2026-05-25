@@ -49,7 +49,7 @@ Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 # Accepted for V8; document in deploy/CLAUDE.md §Residual risks.
 PublishPort=${TAILSCALE_IPV4}:8449:8449
 Exec=lyra blobstore serve --token-path /run/secrets/lyra_blobstore_token --host 0.0.0.0 --port 8449
-HealthCmd=pgrep -f "lyra blobstore serve"
+HealthCmd=grep -q blobstore /proc/1/cmdline
 HealthInterval=30s
 
 [Service]

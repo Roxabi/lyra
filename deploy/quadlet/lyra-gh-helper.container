@@ -46,7 +46,7 @@ Environment=LYRA_GH_PEM_PATH=/run/secrets/gh-app.pem
 Volume=lyra-gh-token.volume:/run/lyra-gh-token:rw
 
 Exec=python -m lyra.tools.gh_token.daemon
-HealthCmd=pgrep -f "lyra.tools.gh_token.daemon"
+HealthCmd=grep -q gh_token /proc/1/cmdline
 HealthInterval=30s
 
 [Service]

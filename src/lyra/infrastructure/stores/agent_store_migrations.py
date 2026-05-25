@@ -36,6 +36,10 @@ async def run_agent_migrations(db: aiosqlite.Connection) -> None:
     cur = await db.execute("PRAGMA table_info(agents)")
     cols = {row[1] for row in await cur.fetchall()}
     if "show_tool_recap" in cols:
-        await db.execute("ALTER TABLE agents DROP COLUMN show_tool_recap")
+        try:
+            await db.execute("ALTER TABLE agents DROP COLUMN show_tool_recap")
+        except aiosqlite.OperationalError as exc:
+            if "no such column" not in str(exc).lower():
+                raise
 
     await db.commit()

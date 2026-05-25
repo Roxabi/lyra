@@ -72,7 +72,7 @@ class TestFreshDb:
 # ---------------------------------------------------------------------------
 
 
-_DDL_24_COL = """
+_DDL_LEGACY_WITH_RECAP = """
 CREATE TABLE IF NOT EXISTS agents (
     name TEXT PRIMARY KEY,
     backend TEXT NOT NULL,
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS bot_agent_map (
 async def _make_legacy_db(db_path: Path) -> None:
     """Create a legacy agents DB (show_tool_recap present, effort absent), 1 row."""
     async with aiosqlite.connect(db_path) as db:
-        await db.execute(_DDL_24_COL)
+        await db.execute(_DDL_LEGACY_WITH_RECAP)
         await db.execute(_DDL_BOT_AGENT_MAP)
         await db.execute(_CREATE_AGENT_RUNTIME_STATE)
         await db.execute(
@@ -143,6 +143,17 @@ class TestLegacyDbMigration:
                 assert "show_tool_recap" not in cols
                 assert len(rows) == 24
 
+                # Confirm the pre-existing row survived with its original fields intact.
+                async with db.execute(
+                    "SELECT name, backend, model FROM agents WHERE name = ?",
+                    ("legacy-agent",),
+                ) as cur:
+                    row = await cur.fetchone()
+                assert row is not None
+                assert row[0] == "legacy-agent"
+                assert row[1] == "claude-cli"
+                assert row[2] == "claude-3-5-sonnet"
+
     @pytest.mark.asyncio
     async def test_existing_rows_have_null_effort(self) -> None:
         """Pre-existing rows must have effort IS NULL after migration."""
@@ -161,44 +172,26 @@ class TestLegacyDbMigration:
 
     @pytest.mark.asyncio
     async def test_migration_is_idempotent(self) -> None:
-        """Running migration twice on a 24-col DB is a no-op (no exception)."""
+        """Running migration twice on a legacy DB is a no-op (no exception).
+
+        Exercises the idempotency path of ``run_agent_migrations``: the first call
+        drops ``show_tool_recap``; the second call either skips via the
+        ``if "show_tool_recap" in cols`` PRAGMA guard or swallows the resulting
+        ``OperationalError("no such column")`` — both paths must leave the schema
+        intact with 24 columns and ``show_tool_recap`` absent.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "agents.db"
             await _make_legacy_db(db_path)
 
             async with aiosqlite.connect(db_path) as db:
                 await run_agent_migrations(db)
-                # Second run must not raise
+                # Second run must not raise — guard skips DROP on already-absent column
                 await run_agent_migrations(db)
                 rows = await _pragma_table_info(db, "agents")
-                assert len(rows) == 24
-
-    @pytest.mark.asyncio
-    async def test_drop_show_tool_recap_idempotent(self) -> None:
-        """PRAGMA guard prevents OperationalError when column already absent.
-
-        Scenario: fresh DB (show_tool_recap never existed) → connect() twice.
-        The second connect must not raise even though the DROP COLUMN
-        migration runs again. Directly tests the
-        ``if "show_tool_recap" in cols`` guard in run_agent_migrations.
-        """
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "agents.db"
-            # First connect: schema without show_tool_recap, migration is no-op
-            store = AgentStore(db_path)
-            await store.connect()
-            await store.close()
-            # Second connect: show_tool_recap still absent; guard prevents DROP
-            store2 = AgentStore(db_path)
-            await store2.connect()
-            try:
-                db = store2._require_db()
-                rows = await _pragma_table_info(db, "agents")
                 cols = _col_names(rows)
+                assert len(rows) == 24
                 assert "show_tool_recap" not in cols
-                assert "effort" in cols
-            finally:
-                await store2.close()
 
 
 # ---------------------------------------------------------------------------

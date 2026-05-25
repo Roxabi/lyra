@@ -242,11 +242,11 @@ class TestStreamProcessor:
         assert text_end_idx < tool_start_idx
 
     async def test_write_tool_tracked(self) -> None:
-        """Write tool calls emit ToolCallStart/End and update _files (B8-2, #1211 S4).
+        """Write tool calls emit ToolCallStart/End (B8-2, #1211 S4).
 
         v2 contract: Write tool emits the same ToolCall lifecycle as Edit.
-        The file accumulator records the path. No ToolSummaryRenderEvent exists
-        post-v1 removal; internal state (_files) is the authoritative record.
+        ToolCallStart/End events in the stream are the authoritative record;
+        no ToolSummaryRenderEvent exists post-v1 removal.
         """
         # Arrange
         processor = StreamProcessor()
@@ -279,7 +279,8 @@ class TestStreamProcessor:
         v2 contract: 5 Edit calls at names_threshold=5 keeps names mode —
         the edits list has 5 entries (not cleared to count-only). Each Edit
         emits one ToolCallStart; orphan synthesis at ResultLlmEvent emits 5
-        ToolCallEnd events. Internal _files accumulator carries the edits list.
+        ToolCallEnd events. The ToolCallStart/End event stream is the
+        authoritative record.
         """
         # Arrange
         processor = StreamProcessor()
@@ -340,12 +341,12 @@ class TestStreamProcessor:
     # ------------------------------------------------------------------
 
     async def test_two_files_no_group(self) -> None:
-        """Two distinct files below group_threshold: each tracked in _files (L02).
+        """Two distinct files below group_threshold: one ToolCallStart each (L02).
 
         v2 contract: 2 Edit calls at group_threshold=3 stays per-file — both
-        paths are tracked in the _files accumulator. Each Edit emits one
-        ToolCallStart; orphan synthesis at ResultLlmEvent emits 2 ToolCallEnd.
-        No v1 ToolSummaryRenderEvent; _files is the authoritative record.
+        emit distinct ToolCallStart events. Orphan synthesis at ResultLlmEvent
+        emits 2 ToolCallEnd events. The ToolCallStart/End event stream is the
+        authoritative record; no v1 ToolSummaryRenderEvent exists.
         """
         # Arrange
         processor = StreamProcessor()
@@ -370,13 +371,13 @@ class TestStreamProcessor:
     # ------------------------------------------------------------------
 
     async def test_three_files_group(self) -> None:
-        """Three distinct files at group_threshold: all tracked in _files (L03).
+        """Three distinct files at group_threshold: one ToolCallStart each (L03).
 
-        v2 contract: 3 Edit calls at group_threshold=3 — all three are tracked
-        in the _files accumulator. Each Edit emits one ToolCallStart; orphan
-        synthesis at ResultLlmEvent emits 3 ToolCallEnd events. No v1
-        ToolSummaryRenderEvent; _files is the authoritative record. Group-display
-        decisions live at the adapter layer, not StreamProcessor.
+        v2 contract: 3 Edit calls at group_threshold=3 — all three emit distinct
+        ToolCallStart events. Orphan synthesis at ResultLlmEvent emits 3 ToolCallEnd
+        events. The ToolCallStart/End event stream is the authoritative record; no v1
+        ToolSummaryRenderEvent exists. Group-display decisions live at the adapter
+        layer, not StreamProcessor.
         """
         # Arrange
         processor = StreamProcessor()
@@ -406,8 +407,8 @@ class TestStreamProcessor:
 
         v2 contract: 80 Edit calls cycling 5 files at names_threshold=3 puts all
         files into count mode (16 > 3). Each Edit emits ToolCallStart; orphan
-        synthesis at ResultLlmEvent emits 80 ToolCallEnd events. _files accumulator
-        holds 5 entries each with count==16 and edits==[].
+        synthesis at ResultLlmEvent emits 80 ToolCallEnd events. The ToolCallStart/End
+        event stream is the authoritative record (80 starts, 80 ends across 5 paths).
         """
         # Arrange
         processor = StreamProcessor()
@@ -436,11 +437,11 @@ class TestStreamProcessor:
     # ------------------------------------------------------------------
 
     async def test_bash_truncation(self) -> None:
-        """Bash commands > bash_max_len truncated in _bash accumulator (B8-5, #1211 S4).
+        """Bash tool emits ToolCallStart/End (B8-5, #1211 S4).
 
         v2 contract: Bash tool emits ToolCallStart/End like any other tool.
-        The command is stored in _bash accumulator truncated to bash_max_len.
-        No ToolSummaryRenderEvent post-v1 removal; accumulator is authoritative.
+        The ToolCallStart/End event stream is the authoritative record;
+        no ToolSummaryRenderEvent exists post-v1 removal.
         """
         # Arrange
         processor = StreamProcessor()
@@ -470,9 +471,9 @@ class TestStreamProcessor:
         """Read/Grep/Glob: ToolCall lifecycle + silent counters (B8-6, #1211 S4).
 
         v2 contract: ToolCallStart is emitted for every tool (including silent ones)
-        since _handle_tool_event always yields it. Silent Read/Grep/Glob update
-        the _silent_reads/_silent_greps/_silent_globs counters but do NOT add to
-        _files, _bash, _web_fetches, or _agent_calls.
+        since _handle_tool_event always yields it. The ToolCallStart/End event stream
+        is the authoritative record; Read/Grep/Glob each produce one ToolCallStart
+        and one ToolCallEnd (via orphan synthesis).
         """
         # Arrange
         processor = StreamProcessor()
@@ -498,11 +499,11 @@ class TestStreamProcessor:
     # ------------------------------------------------------------------
 
     async def test_web_fetch_visible(self) -> None:
-        """WebFetch: ToolCallStart/End + URL in _web_fetches (B8-7, #1211 S4).
+        """WebFetch: ToolCallStart/End emitted (B8-7, #1211 S4).
 
-        v2 contract: WebFetch (show["web_fetch"]=True by default) emits the
-        ToolCall lifecycle and appends the URL to _web_fetches. No
-        ToolSummaryRenderEvent post-v1 removal.
+        v2 contract: WebFetch emits ToolCallStart/End like any other tool.
+        The ToolCallStart/End event stream is the authoritative record;
+        no ToolSummaryRenderEvent exists post-v1 removal.
         """
         # Arrange
         processor = StreamProcessor()
@@ -527,11 +528,11 @@ class TestStreamProcessor:
         assert len(ends) == 1
 
     async def test_web_search_visible(self) -> None:
-        """WebSearch: ToolCallStart/End emitted + query in _web_fetches (L05).
+        """WebSearch: ToolCallStart/End emitted (L05).
 
-        v2 contract: WebSearch (show["web_search"]=True by default) emits the
-        ToolCall lifecycle and appends the query to _web_fetches accumulator.
-        Parity with the active test_web_fetch_visible (line 526).
+        v2 contract: WebSearch emits ToolCallStart/End like any other tool.
+        The ToolCallStart/End event stream is the authoritative record.
+        Parity with the active test_web_fetch_visible.
         """
         # Arrange
         processor = StreamProcessor()
@@ -627,8 +628,8 @@ class TestStreamProcessor:
 
         v2 contract: there is no mid-turn ToolSummaryRenderEvent throttle
         post-v1 removal. Two Edit tool calls produce 2 ToolCallStart + 2
-        ToolCallEnd events regardless of throttle_ms setting. Both file paths
-        appear in the _files accumulator.
+        ToolCallEnd events regardless of throttle_ms setting. The ToolCallStart/End
+        event stream is the authoritative record (2 starts, 2 ends).
         """
         # Arrange
         processor = StreamProcessor()

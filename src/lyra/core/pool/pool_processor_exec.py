@@ -184,7 +184,6 @@ async def process_one(  # noqa: C901, PLR0915 — DEBT:complexity-residual — s
         # Streaming path — delegate to helpers in pool_processor_streaming.py
         _result_iter_for_sid = result
         _content_parts: list[str] = []
-        _cfg = getattr(agent, "config", None)
         _stream_done = asyncio.Event() if _processor is not None else None
 
         # Wrap iterator to capture text content and signal completion

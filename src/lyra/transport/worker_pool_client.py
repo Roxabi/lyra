@@ -1,9 +1,10 @@
 """WorkerPoolClient — hub-side worker pool with CB + registry + heartbeat.
 
-Composes a transport (NATS today, HTTP tomorrow). Owns CircuitBreaker
-+ WorkerRegistry + heartbeat subscription. Domain clients (LLM, TTS, STT,
-Image) call request_with_routing() / stream_request(); pool stays
-domain-agnostic. Spec § Slice S3. Consensus § B2.
+Composes a transport (NATS today, HTTP tomorrow). Owns CircuitBreaker +
+heartbeat subscription; accepts WorkerRegistry via DI (bootstrap owns the
+instance). Domain clients (LLM, TTS, STT, Image) call
+request_with_routing() / stream_request(); pool stays domain-agnostic.
+Spec § Slice S3. Consensus § B2.
 """
 
 from __future__ import annotations

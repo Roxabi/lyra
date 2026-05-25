@@ -155,9 +155,12 @@ def test_add_identity_writes_only_new_seed(tmp_path: Path) -> None:
         f"Expected STATE=added in stdout; got: {result.stdout!r}"
     )
 
-    # New seed must exist
+    # New seed must exist AND be 0o600 (review W2, #1363)
     new_seed = seeds_dir / "turn-writer.seed"
     assert new_seed.exists(), "turn-writer.seed must be created"
+    assert new_seed.stat().st_mode & 0o777 == 0o600, (
+        f"turn-writer.seed must be 0o600; got 0o{new_seed.stat().st_mode & 0o777:o}"
+    )
 
     # Existing seeds must be byte-identical (SHA-256 unchanged)
     assert _sha256(seeds_dir / "hub.seed") == hub_sha, (
@@ -167,9 +170,12 @@ def test_add_identity_writes_only_new_seed(tmp_path: Path) -> None:
         "telegram-adapter.seed was modified — must be untouched"
     )
 
-    # auth.conf must contain pubkey blocks for all three identities
+    # auth.conf must contain pubkey blocks for all three identities + be 0o600 (W2)
     auth_conf = seeds_dir / "auth.conf"
     assert auth_conf.exists(), "auth.conf must be written"
+    assert auth_conf.stat().st_mode & 0o777 == 0o600, (
+        f"auth.conf must be 0o600; got 0o{auth_conf.stat().st_mode & 0o777:o}"
+    )
     content = auth_conf.read_text()
     assert "hub" in content, "auth.conf must contain hub block"
     assert "telegram-adapter" in content, (
@@ -392,9 +398,11 @@ def test_add_identity_missing_other_seed_fails_no_orphan(tmp_path: Path) -> None
         env={"SEEDS_DIR": str(seeds_dir), "AUTH_DIR": str(auth_dir)},
     )
 
-    # Assert — non-zero, no orphan new seed, stderr names the missing identity
-    assert result.returncode != 0, (
-        f"Expected non-zero exit for missing other-seed; got {result.returncode}"
+    # Assert — exact exit 1 (controlled sys.exit, not a crash).
+    # `!= 0` would also accept a Python traceback exit (W4, #1363).
+    assert result.returncode == 1, (
+        f"Expected exit 1 (controlled validation failure); got {result.returncode}\n"
+        f"stderr: {result.stderr}"
     )
     new_seed = seeds_dir / "turn-writer.seed"
     assert not new_seed.exists(), (
@@ -419,6 +427,10 @@ def test_add_identity_runs_as_non_root(tmp_path: Path) -> None:
     Spec trace: SC-9.
     RED: --add-identity not wired yet → argparse error (NOT a root error).
     """
+    # Precondition: must run as non-root, otherwise this test is tautological —
+    # a buggy mode calling _require_root() would still exit 0 under root (W3, #1363).
+    assert os.getuid() != 0, "this test requires a non-root user"
+
     # Arrange
     seeds_dir = tmp_path / "nkeys"
     auth_dir = tmp_path / "etc-nats"

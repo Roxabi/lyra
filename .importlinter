@@ -38,11 +38,6 @@ ignore_imports =
     lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store
     lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store
     lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store
-    # LlmClient (lyra.llm) TYPE_CHECKING import of WorkerPoolClient (lyra.transport),
-    # which transitively imports lyra.nats.worker_registry. LlmClient is semantically
-    # at the same layer as voice clients in lyra.nats; llm/ placement is domain grouping
-    # only. Track for lyra.transport layer extraction — DEBT:importlinter-llm-transport-nats
-    lyra.llm.llm_client -> lyra.transport.worker_pool_client
     # OutboundEmitter (lyra.outbound) imports shared state types that REMAIN in
     # lyra.adapters.shared per resolved Open Q 2 (spec §Resolved Open Questions).
     # classify_stream_error has moved to OutboundErrorHandler (#1279), but StreamState

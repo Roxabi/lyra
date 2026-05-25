@@ -19,6 +19,7 @@ if str(_REPO_ROOT) not in sys.path:
 from scripts._acl_models import Flow, Identity  # noqa: E402
 from scripts._loader import load_matrix  # noqa: E402
 from scripts._modes import (  # noqa: E402
+    _mode_add_identity,
     _mode_emit_merged_authconf,
     _mode_fix_perms,
     _mode_full_provision,
@@ -50,6 +51,10 @@ def _cmd_genkeys(args: argparse.Namespace) -> None:
 
     if args.validate_supervisor:
         _cmd_validate_supervisor(args)
+        return
+
+    if args.add_identity:
+        _mode_add_identity(args)
         return
 
     if args.regen_authconf:
@@ -225,6 +230,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--yes",
         action="store_true",
         help="Skip confirmation prompts (for use with --regenerate in CI/scripts)",
+    )
+    gk.add_argument(
+        "--add-identity",
+        metavar="NAME",
+        default=None,
+        help=(
+            "Add a single identity rootless without rotating other seeds."
+            " NAME must already be declared with status=active in acl-matrix.json."
+        ),
     )
     gk.set_defaults(func=_cmd_genkeys)
 

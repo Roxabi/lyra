@@ -1,0 +1,59 @@
+---
+title: "PR #1363 review 1b1 findings — Expert Consensus"
+issue: 1361
+status: consensus-reached
+date: 2026-05-25
+panel: architect, devops, product-lead
+confidence: high
+---
+
+## Problem
+
+6 single-agent review findings from PR #1363 needed disposition (APPLY / DEFER / SKIP). Lead routed through /consensus rather than 1b1 walkthrough.
+
+## Panel
+
+| Role | Focus |
+|---|---|
+| architect | correctness contract, fail-louder principles, false-negative cost |
+| devops | operational blast radius, rollback simplicity |
+| product-lead | scope discipline, stakeholder transparency, P2 urgency |
+
+## Consensus
+
+| Finding | Decision | Vote | Action |
+|---|---|---|---|
+| W2 (0o600 permission asserts) | APPLY | 3-0 | Add `stat().st_mode & 0o777 == 0o600` for new seed + auth.conf |
+| W3 (non-root precondition) | APPLY | 3-0 | Prepend `assert os.getuid() != 0` to `runs_as_non_root` |
+| W4 (exact exit code 1) | APPLY | 3-0 | `returncode == 1` (not `!= 0`) in missing-other-seed test |
+| N3 (spec SC-17 text drift) | APPLY | 3-0 | 1-line spec text update to match runbook section name |
+| W5 (M₁ smoke + CI shell-test) | DEFER | 3-0 | File follow-up issue; merge under risk-acceptance |
+| N4 (3 stale M₂ secrets) | DEFER | 2-1 | File XS issue for the 3 specific identity refreshes |
+
+### Rationale (unanimous APPLY items)
+
+W2/W3/W4 are direct reinforcements of the PR's central invariants (rootless contract, 3-state machine correctness, controlled fail-fast vs. crash). All are mechanical fixes (1-2 lines each). The cost of skipping is silent false-positives in future regressions. N3 is a 1-line spec correctness fix.
+
+### Rationale (W5 DEFER)
+
+The `systemctl --user restart lyra-nats` branch is the exact recovery-from-#1331 path, so verifying it end-to-end has high diagnostic value. But: the Makefile syntax + per-state flow ARE covered by existing unit tests and the M₂ smoke. The actual `restart` invocation requires a live `lyra-nats.service` (M₁ only) or a systemd-in-container CI rig (medium effort, doesn't exercise `type=mount` secret refresh). All 3 panelists agreed: not a merge blocker.
+
+### Rationale (N4 DEFER, 2-1)
+
+Majority (architect + devops): the 3 specific operational refreshes are a concrete unmet obligation from #1331; subsuming them into an L architectural follow-up risks them never happening. File XS issue.
+
+Dissent (product-lead): the 3 affected services are dormant; operator will handle refresh naturally at service revival. Tracking adds noise.
+
+Lead resolution: follow majority. The XS issue is cheap to file and easy to close; closing it later (if operator decides to skip) is also low-cost.
+
+## Implementation Notes
+
+Apply W2, W3, W4, N3 inline. Create 2 follow-up issues via `bun triage.ts create`:
+1. `test(nats): #1361 follow-up — CI shell-test + M₁ smoke for nats-add-identity restart branch`
+2. `chore(ops): #1361 follow-up — refresh 3 stale M₂ Podman secrets post-#1331 (monitor, image-worker, llm-operator)`
+
+Then commit + push + label PR `reviewed`.
+
+## Next
+
+Apply fixes → push → label `reviewed` → human merges.

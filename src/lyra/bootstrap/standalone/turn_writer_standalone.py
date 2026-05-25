@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from lyra.infrastructure.stores.turn_store import TurnStore
+from lyra.infrastructure.turn_writer.health import TurnWriterHealthServer
 from lyra.infrastructure.turn_writer.stream_setup import (
     ensure_consumer,
     ensure_stream,
@@ -71,12 +72,18 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
     writer = TurnWriter(store, js)
     await writer.start()
 
+    health_host = os.environ.get("LYRA_TURN_WRITER_HEALTH_HOST", "0.0.0.0")
+    health_port = int(os.environ.get("LYRA_TURN_WRITER_HEALTH_PORT", "8083"))
+    health_server = TurnWriterHealthServer(writer, store, nc, health_host, health_port)
+    await health_server.start()
+
     stop = setup_shutdown_event()
 
     try:
         await stop.wait()
     finally:
         log.info("turn-writer: stopping")
+        await health_server.stop()
         await writer.stop()
         await store.close()
         await nc.close()

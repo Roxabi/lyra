@@ -35,7 +35,6 @@ from lyra.core.messaging.render_events import (
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.processors.stream_processor import StreamProcessor
 from lyra.core.trace import TraceContext
 
@@ -96,13 +95,6 @@ async def async_events(*evts) -> AsyncIterator:
         yield e
 
 
-def cfg(**kw: object) -> ToolDisplayConfig:
-    """Base config: throttle_ms=0 (disabled). Override via kw."""
-    defaults: dict[str, object] = dict(
-        names_threshold=3, group_threshold=3, bash_max_len=60, throttle_ms=0
-    )
-    return ToolDisplayConfig.model_validate({**defaults, **kw})
-
 
 # ---------------------------------------------------------------------------
 # T9 — T24: StreamProcessor integration tests
@@ -125,7 +117,7 @@ class TestStreamProcessor:
           TextStartRenderEvent, TextDeltaRenderEvent × 2, TextEndRenderEvent.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="Hello "),
             TextLlmEvent(text="world"),
@@ -164,7 +156,7 @@ class TestStreamProcessor:
           ToolCallStart → ToolCallEnd.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="Refactoring..."),
             ToolUseLlmEvent(
@@ -199,9 +191,6 @@ class TestStreamProcessor:
         assert tool_starts[0].tool_name == "Edit"
         assert tool_ends[0].tool_call_id == "t1"
 
-        # Assert — file accumulator updated
-        assert "src/foo.py" in processor._files
-
     async def test_single_edit_no_intermediate(self) -> None:
         """Single Edit: no intermediate ToolSummaryRenderEvent in v2 (L01).
 
@@ -211,7 +200,7 @@ class TestStreamProcessor:
         the ToolUseLlmEvent arrives, and ToolCallEnd is synthesised at ResultLlmEvent.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="Refactoring..."),
             ToolUseLlmEvent(
@@ -253,14 +242,14 @@ class TestStreamProcessor:
         assert text_end_idx < tool_start_idx
 
     async def test_write_tool_tracked(self) -> None:
-        """Write tool calls emit ToolCallStart/End and update _files (B8-2, #1211 S4).
+        """Write tool calls emit ToolCallStart/End (B8-2, #1211 S4).
 
         v2 contract: Write tool emits the same ToolCall lifecycle as Edit.
-        The file accumulator records the path. No ToolSummaryRenderEvent exists
-        post-v1 removal; internal state (_files) is the authoritative record.
+        ToolCallStart/End events in the stream are the authoritative record;
+        no ToolSummaryRenderEvent exists post-v1 removal.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(
                 tool_name="Write", tool_id="w1", input={"path": "src/new.py"}
@@ -280,12 +269,6 @@ class TestStreamProcessor:
         assert len(tool_ends) == 1
         assert tool_ends[0].tool_call_id == "w1"
 
-        # Assert — file accumulator updated with Write path
-        assert "src/new.py" in processor._files
-        entry = processor._files["src/new.py"]
-        assert entry.count == 1
-        assert "Write" in entry.edits
-
     # ------------------------------------------------------------------
     # T11 — Five edits at threshold (SC-4: names mode)
     # ------------------------------------------------------------------
@@ -296,10 +279,11 @@ class TestStreamProcessor:
         v2 contract: 5 Edit calls at names_threshold=5 keeps names mode —
         the edits list has 5 entries (not cleared to count-only). Each Edit
         emits one ToolCallStart; orphan synthesis at ResultLlmEvent emits 5
-        ToolCallEnd events. Internal _files accumulator carries the edits list.
+        ToolCallEnd events. The ToolCallStart/End event stream is the
+        authoritative record.
         """
         # Arrange
-        processor = StreamProcessor(cfg(names_threshold=5))
+        processor = StreamProcessor()
         edit_events = [
             ToolUseLlmEvent(
                 tool_name="Edit", tool_id=f"t{i}", input={"path": "src/foo.py"}
@@ -320,12 +304,6 @@ class TestStreamProcessor:
         assert len(ends) == 5, f"Expected 5 ToolCallEnd, got {len(ends)}"
         assert [e.tool_call_id for e in starts] == [f"t{i}" for i in range(5)]
 
-        # Assert — file accumulator in names mode (count=5, edits list populated)
-        assert "src/foo.py" in processor._files
-        entry = processor._files["src/foo.py"]
-        assert entry.count == 5
-        assert len(entry.edits) == 5  # names mode — at threshold, not cleared
-
     # ------------------------------------------------------------------
     # T12 — Six edits: count mode (SC-4: threshold+1)
     # ------------------------------------------------------------------
@@ -338,7 +316,7 @@ class TestStreamProcessor:
         still emits ToolCallStart; orphan synthesis emits 6 ToolCallEnd events.
         """
         # Arrange
-        processor = StreamProcessor(cfg(names_threshold=5))
+        processor = StreamProcessor()
         edit_events = [
             ToolUseLlmEvent(
                 tool_name="Edit", tool_id=f"t{i}", input={"path": "src/foo.py"}
@@ -358,26 +336,20 @@ class TestStreamProcessor:
         assert len(starts) == 6, f"Expected 6 ToolCallStart, got {len(starts)}"
         assert len(ends) == 6, f"Expected 6 ToolCallEnd, got {len(ends)}"
 
-        # Assert — file accumulator in count mode (edits cleared)
-        assert "src/foo.py" in processor._files
-        entry = processor._files["src/foo.py"]
-        assert entry.count == 6
-        assert entry.edits == []  # count mode: cleared when count > names_threshold
-
     # ------------------------------------------------------------------
     # T13 — Two files, no group (SC-5)
     # ------------------------------------------------------------------
 
     async def test_two_files_no_group(self) -> None:
-        """Two distinct files below group_threshold: each tracked in _files (L02).
+        """Two distinct files below group_threshold: one ToolCallStart each (L02).
 
         v2 contract: 2 Edit calls at group_threshold=3 stays per-file — both
-        paths are tracked in the _files accumulator. Each Edit emits one
-        ToolCallStart; orphan synthesis at ResultLlmEvent emits 2 ToolCallEnd.
-        No v1 ToolSummaryRenderEvent; _files is the authoritative record.
+        emit distinct ToolCallStart events. Orphan synthesis at ResultLlmEvent
+        emits 2 ToolCallEnd events. The ToolCallStart/End event stream is the
+        authoritative record; no v1 ToolSummaryRenderEvent exists.
         """
         # Arrange
-        processor = StreamProcessor(cfg(group_threshold=3))
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={"path": "a.py"}),
             ToolUseLlmEvent(tool_name="Edit", tool_id="t2", input={"path": "b.py"}),
@@ -394,27 +366,21 @@ class TestStreamProcessor:
         assert len(ends) == 2, f"Expected 2 ToolCallEnd, got {len(ends)}"
         assert {e.tool_call_id for e in starts} == {"t1", "t2"}
 
-        # Assert — both file paths tracked per-file in _files accumulator
-        assert "a.py" in processor._files
-        assert "b.py" in processor._files
-        assert processor._files["a.py"].count == 1
-        assert processor._files["b.py"].count == 1
-
     # ------------------------------------------------------------------
     # T14 — Three files at group_threshold (SC-5)
     # ------------------------------------------------------------------
 
     async def test_three_files_group(self) -> None:
-        """Three distinct files at group_threshold: all tracked in _files (L03).
+        """Three distinct files at group_threshold: one ToolCallStart each (L03).
 
-        v2 contract: 3 Edit calls at group_threshold=3 — all three are tracked
-        in the _files accumulator. Each Edit emits one ToolCallStart; orphan
-        synthesis at ResultLlmEvent emits 3 ToolCallEnd events. No v1
-        ToolSummaryRenderEvent; _files is the authoritative record. Group-display
-        decisions live at the adapter layer, not StreamProcessor.
+        v2 contract: 3 Edit calls at group_threshold=3 — all three emit distinct
+        ToolCallStart events. Orphan synthesis at ResultLlmEvent emits 3 ToolCallEnd
+        events. The ToolCallStart/End event stream is the authoritative record; no v1
+        ToolSummaryRenderEvent exists. Group-display decisions live at the adapter
+        layer, not StreamProcessor.
         """
         # Arrange
-        processor = StreamProcessor(cfg(group_threshold=3))
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={"path": "a.py"}),
             ToolUseLlmEvent(tool_name="Edit", tool_id="t2", input={"path": "b.py"}),
@@ -432,14 +398,6 @@ class TestStreamProcessor:
         assert len(ends) == 3, f"Expected 3 ToolCallEnd, got {len(ends)}"
         assert {e.tool_call_id for e in starts} == {"t1", "t2", "t3"}
 
-        # Assert — all three file paths tracked in _files accumulator
-        assert "a.py" in processor._files
-        assert "b.py" in processor._files
-        assert "c.py" in processor._files
-        assert processor._files["a.py"].count == 1
-        assert processor._files["b.py"].count == 1
-        assert processor._files["c.py"].count == 1
-
     # ------------------------------------------------------------------
     # T15 — 80 edits over 5 files (SC-4, SC-5)
     # ------------------------------------------------------------------
@@ -449,11 +407,11 @@ class TestStreamProcessor:
 
         v2 contract: 80 Edit calls cycling 5 files at names_threshold=3 puts all
         files into count mode (16 > 3). Each Edit emits ToolCallStart; orphan
-        synthesis at ResultLlmEvent emits 80 ToolCallEnd events. _files accumulator
-        holds 5 entries each with count==16 and edits==[].
+        synthesis at ResultLlmEvent emits 80 ToolCallEnd events. The ToolCallStart/End
+        event stream is the authoritative record (80 starts, 80 ends across 5 paths).
         """
         # Arrange
-        processor = StreamProcessor(cfg(names_threshold=3))
+        processor = StreamProcessor()
         file_names = [f"src/file{i}.py" for i in range(5)]
         edit_events = [
             ToolUseLlmEvent(
@@ -474,31 +432,19 @@ class TestStreamProcessor:
         assert len(starts) == 80, f"Expected 80 ToolCallStart, got {len(starts)}"
         assert len(ends) == 80, f"Expected 80 ToolCallEnd, got {len(ends)}"
 
-        # Assert — _files accumulator has 5 entries all in count mode
-        assert len(processor._files) == 5
-        for file_name in file_names:
-            assert file_name in processor._files
-            entry = processor._files[file_name]
-            assert entry.count == 16, (
-                f"{file_name}: expected count=16, got {entry.count}"
-            )
-            assert entry.edits == [], (
-                f"{file_name}: expected count mode (edits=[]), got {entry.edits}"
-            )
-
     # ------------------------------------------------------------------
     # T16 — Bash truncation (SC-6)
     # ------------------------------------------------------------------
 
     async def test_bash_truncation(self) -> None:
-        """Bash commands > bash_max_len truncated in _bash accumulator (B8-5, #1211 S4).
+        """Bash tool emits ToolCallStart/End (B8-5, #1211 S4).
 
         v2 contract: Bash tool emits ToolCallStart/End like any other tool.
-        The command is stored in _bash accumulator truncated to bash_max_len.
-        No ToolSummaryRenderEvent post-v1 removal; accumulator is authoritative.
+        The ToolCallStart/End event stream is the authoritative record;
+        no ToolSummaryRenderEvent exists post-v1 removal.
         """
         # Arrange
-        processor = StreamProcessor(cfg(bash_max_len=60))
+        processor = StreamProcessor()
         long_command = "x" * 80
         events = async_events(
             ToolUseLlmEvent(
@@ -517,10 +463,6 @@ class TestStreamProcessor:
         assert starts[0].tool_name == "Bash"
         assert len(ends) == 1
 
-        # Assert — bash accumulator has truncated command
-        assert len(processor._bash) == 1
-        assert len(processor._bash[0]) == 60  # truncated to bash_max_len
-
     # ------------------------------------------------------------------
     # T17 — Silent Read/Grep/Glob (SC-7)
     # ------------------------------------------------------------------
@@ -529,12 +471,12 @@ class TestStreamProcessor:
         """Read/Grep/Glob: ToolCall lifecycle + silent counters (B8-6, #1211 S4).
 
         v2 contract: ToolCallStart is emitted for every tool (including silent ones)
-        since _handle_tool_event always yields it. Silent Read/Grep/Glob update
-        the _silent_reads/_silent_greps/_silent_globs counters but do NOT add to
-        _files, _bash, _web_fetches, or _agent_calls.
+        since _handle_tool_event always yields it. The ToolCallStart/End event stream
+        is the authoritative record; Read/Grep/Glob each produce one ToolCallStart
+        and one ToolCallEnd (via orphan synthesis).
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="r1", input={}),
             ToolUseLlmEvent(tool_name="Grep", tool_id="g1", input={}),
@@ -552,30 +494,19 @@ class TestStreamProcessor:
         assert len(ends) == 3, f"Expected 3 ToolCallEnd, got {len(ends)}"
         assert {e.tool_name for e in starts} == {"Read", "Grep", "Glob"}
 
-        # Assert — silent counters incremented
-        assert processor._silent_reads == 1
-        assert processor._silent_greps == 1
-        assert processor._silent_globs == 1
-
-        # Assert — no file/bash/web accumulator entries
-        assert processor._files == {}
-        assert processor._bash == []
-        assert processor._web_fetches == []
-        assert processor._agent_calls == []
-
     # ------------------------------------------------------------------
     # T18 — WebFetch visible (SC-9)
     # ------------------------------------------------------------------
 
     async def test_web_fetch_visible(self) -> None:
-        """WebFetch: ToolCallStart/End + URL in _web_fetches (B8-7, #1211 S4).
+        """WebFetch: ToolCallStart/End emitted (B8-7, #1211 S4).
 
-        v2 contract: WebFetch (show["web_fetch"]=True by default) emits the
-        ToolCall lifecycle and appends the URL to _web_fetches. No
-        ToolSummaryRenderEvent post-v1 removal.
+        v2 contract: WebFetch emits ToolCallStart/End like any other tool.
+        The ToolCallStart/End event stream is the authoritative record;
+        no ToolSummaryRenderEvent exists post-v1 removal.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(
                 tool_name="WebFetch",
@@ -596,19 +527,15 @@ class TestStreamProcessor:
         assert starts[0].tool_call_id == "wf1"
         assert len(ends) == 1
 
-        # Assert — URL accumulated (show["web_fetch"]=True by default)
-        assert len(processor._web_fetches) == 1
-        assert processor._web_fetches[0] == "https://example.com"
-
     async def test_web_search_visible(self) -> None:
-        """WebSearch: ToolCallStart/End emitted + query in _web_fetches (L05).
+        """WebSearch: ToolCallStart/End emitted (L05).
 
-        v2 contract: WebSearch (show["web_search"]=True by default) emits the
-        ToolCall lifecycle and appends the query to _web_fetches accumulator.
-        Parity with the active test_web_fetch_visible (line 526).
+        v2 contract: WebSearch emits ToolCallStart/End like any other tool.
+        The ToolCallStart/End event stream is the authoritative record.
+        Parity with the active test_web_fetch_visible.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(
                 tool_name="WebSearch",
@@ -630,21 +557,15 @@ class TestStreamProcessor:
         assert len(ends) == 1
         assert ends[0].tool_call_id == "ws1"
 
-        # Assert — query accumulated in _web_fetches (show["web_search"]=True)
-        assert len(processor._web_fetches) == 1
-        assert processor._web_fetches[0] == "python asyncio"
-
     async def test_web_fetch_hidden_when_show_false(self) -> None:
-        """WebFetch show=False: lifecycle emitted, URL not accumulated (L06).
+        """WebFetch: ToolCallStart/End lifecycle always emitted (L06).
 
-        v2 contract: show["web_fetch"]=False suppresses URL accumulation in
-        _web_fetches but does NOT suppress ToolCallStart/End lifecycle events
-        (those are always emitted by _handle_tool_event). The show flag only
-        controls the _accumulate_web call.
+        v2 contract: ToolCallStart/End are always emitted by _handle_tool_event
+        regardless of any show configuration (show flags are an adapter concern
+        post-v1 removal). This test retains the emission-side assertion only.
         """
         # Arrange
-        config = ToolDisplayConfig.model_validate({"show": {"web_fetch": False}})
-        processor = StreamProcessor(config)
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(
                 tool_name="WebFetch",
@@ -664,78 +585,6 @@ class TestStreamProcessor:
         assert starts[0].tool_name == "WebFetch"
         assert len(ends) == 1
 
-        # Assert — URL NOT accumulated (show["web_fetch"]=False)
-        assert processor._web_fetches == [], (
-            f"Expected empty _web_fetches when show=False, got {processor._web_fetches}"
-        )
-
-    # ------------------------------------------------------------------
-    # T19 — Agent calls accumulation (SC-10)
-    # ------------------------------------------------------------------
-
-    async def test_agent_calls_accumulation(self) -> None:
-        """Agent calls: ToolCallStart/End + description in _agent_calls (L07).
-
-        v2 contract: the live _agent_calls path in StreamProcessor._accumulate
-        appends event.input["description"] when show["agent"]=True (default).
-        ToolCall lifecycle is always emitted. _agent_calls is authoritative.
-        Targets stream_processor.py:157,532,542.
-
-        Two calls used to verify list accumulation (single item would not
-        distinguish append from replace).
-        """
-        # Arrange — default cfg() has show["agent"]=True
-        processor = StreamProcessor(cfg())
-        events = async_events(
-            ToolUseLlmEvent(
-                tool_name="Agent", tool_id="a1", input={"description": "sub-task"}
-            ),
-            ToolUseLlmEvent(
-                tool_name="Agent", tool_id="a2", input={"description": "another-task"}
-            ),
-            ResultLlmEvent(is_error=False, duration_ms=50),
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — ToolCall lifecycle emitted for both agent calls
-        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
-        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 2
-        assert {e.tool_call_id for e in starts} == {"a1", "a2"}
-        assert len(ends) == 2
-
-        # Assert — agent call descriptions accumulated in _agent_calls (live path)
-        assert processor._agent_calls == ["sub-task", "another-task"]
-
-        # Assert — _has_any_tool_events() returns True when _agent_calls is non-empty
-        assert processor._has_any_tool_events()
-
-    async def test_agent_calls_skipped_when_show_agent_false(self) -> None:
-        """L07 negative: show={"agent": False} → `_agent_calls` stays empty."""
-        # Arrange
-        config = ToolDisplayConfig.model_validate(
-            {
-                "show": {"agent": False},
-                "throttle_ms": 0,
-            }
-        )
-        processor = StreamProcessor(config)
-        events = async_events(
-            ToolUseLlmEvent(
-                tool_name="Agent", tool_id="a1", input={"description": "sub-task-1"}
-            ),
-            ToolUseEndLlmEvent(tool_id="a1"),
-            ResultLlmEvent(is_error=False, duration_ms=10),
-        )
-
-        # Act
-        await collect(processor.process(events))
-
-        # Assert — show=False means _agent_calls stays empty (no accumulation)
-        assert processor._agent_calls == []
-
     # ------------------------------------------------------------------
     # T20 — ResultLlmEvent bypasses throttle (SC-8)
     # ------------------------------------------------------------------
@@ -743,14 +592,12 @@ class TestStreamProcessor:
     async def test_result_bypasses_throttle(self) -> None:
         """ToolCallEnd is always emitted at ResultLlmEvent time (B8-8, #1211 S4).
 
-        v2 contract: throttle_ms is stored in ToolDisplayConfig but not used for
-        suppression in StreamProcessor (v1 ToolSummaryRenderEvent throttle is gone).
-        Every tool call gets a ToolCallStart immediately, and a ToolCallEnd either
-        via ToolUseEndLlmEvent or orphan synthesis at ResultLlmEvent. Setting a
-        large throttle_ms has no effect on v2 ToolCall* emission.
+        v2 contract: there is no throttle in StreamProcessor (v1 ToolSummaryRenderEvent
+        throttle is gone). Every tool call gets a ToolCallStart immediately, and a
+        ToolCallEnd either via ToolUseEndLlmEvent or orphan synthesis at ResultLlmEvent.
         """
         # Arrange
-        processor = StreamProcessor(cfg(throttle_ms=9_999_999))
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(
                 tool_name="Edit", tool_id="t1", input={"path": "src/foo.py"}
@@ -781,11 +628,11 @@ class TestStreamProcessor:
 
         v2 contract: there is no mid-turn ToolSummaryRenderEvent throttle
         post-v1 removal. Two Edit tool calls produce 2 ToolCallStart + 2
-        ToolCallEnd events regardless of throttle_ms setting. Both file paths
-        appear in the _files accumulator.
+        ToolCallEnd events regardless of throttle_ms setting. The ToolCallStart/End
+        event stream is the authoritative record (2 starts, 2 ends).
         """
         # Arrange
-        processor = StreamProcessor(cfg(throttle_ms=9_999_999))
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={"path": "a.py"}),
             ToolUseLlmEvent(tool_name="Edit", tool_id="t2", input={"path": "b.py"}),
@@ -802,10 +649,6 @@ class TestStreamProcessor:
         assert len(ends) == 2, f"Expected 2 ToolCallEnd, got {len(ends)}"
         assert {e.tool_call_id for e in starts} == {"t1", "t2"}
 
-        # Assert — both file paths in accumulator
-        assert "a.py" in processor._files
-        assert "b.py" in processor._files
-
     # ------------------------------------------------------------------
     # T23 — Text accumulation across multiple chunks (SC-2)
     # ------------------------------------------------------------------
@@ -820,7 +663,7 @@ class TestStreamProcessor:
         the delta-concatenation property within a single text block.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="Hello"),
             TextLlmEvent(text=" "),
@@ -856,7 +699,7 @@ class TestStreamProcessor:
         The error flag is carried on the run-level event, not on TextEnd.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="error response"),
             ResultLlmEvent(is_error=True, duration_ms=0),
@@ -887,7 +730,7 @@ class TestStreamProcessor:
         Confirms the v2 contract: soft-error text is carried on the run-level
         terminal event (RunErrorRenderEvent.message), not buried in a text event.
         """
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ResultLlmEvent(is_error=True, duration_ms=0, error_text="boom"),
         )
@@ -907,7 +750,7 @@ class TestStreamProcessor:
         test_is_error_propagated_to_text_render_event (is_error=True).
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="normal response"),
             ResultLlmEvent(is_error=False, duration_ms=0),
@@ -939,7 +782,7 @@ class TestStreamProcessor:
         `error_text` is the only text-bearing field.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ResultLlmEvent(
                 is_error=True,
@@ -969,7 +812,7 @@ class TestStreamProcessor:
         does not suppress or replace the streamed text.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="recovered output"),
             ResultLlmEvent(
@@ -1001,7 +844,7 @@ class TestStreamProcessor:
         Minimum envelope: RunStarted → RunFinished only.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
 
         # Act
         result = await collect(processor.process(async_events()))
@@ -1025,7 +868,7 @@ class TestStreamProcessor:
         False. No v1 TextRenderEvent(is_final=False) fallback.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(TextLlmEvent(text="partial response"))
 
         # Act
@@ -1096,7 +939,7 @@ class TestRunLifecycle:
         v2 contract: RunStarted → TextStart → TextDelta → TextEnd → RunFinished.
         No v1 TextRenderEvent in the stream post-v1 removal.
         """
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="hello"),
             ResultLlmEvent(is_error=False, duration_ms=10),
@@ -1124,7 +967,7 @@ class TestRunLifecycle:
         No v1 ToolSummaryRenderEvent post-v1 removal. ToolCallEnd is synthesised
         by the orphan-end path at ResultLlmEvent time (no ToolUseEndLlmEvent sent).
         """
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(
                 tool_name="Edit", tool_id="t1", input={"path": "src/foo.py"}
@@ -1150,7 +993,7 @@ class TestRunLifecycle:
         """RunStarted/RunFinished both carry run_id == TraceContext.trace_id."""
         token = TraceContext.set_trace_id("abc-123")
         try:
-            processor = StreamProcessor(cfg())
+            processor = StreamProcessor()
             events = async_events(
                 TextLlmEvent(text="x"),
                 ResultLlmEvent(is_error=False, duration_ms=1),
@@ -1171,7 +1014,7 @@ class TestRunLifecycle:
         assert TraceContext.get_trace_id() is None, (
             "test leaked trace_id from a prior test — see test_run_id_matches_trace_id"
         )
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="x"),
             ResultLlmEvent(is_error=False, duration_ms=1),
@@ -1192,7 +1035,7 @@ class TestRunLifecycle:
         """
         token = TraceContext.set_trace_id("")
         try:
-            processor = StreamProcessor(cfg())
+            processor = StreamProcessor()
             events = async_events(
                 TextLlmEvent(text="x"),
                 ResultLlmEvent(is_error=False, duration_ms=1),
@@ -1214,7 +1057,7 @@ class TestRunLifecycle:
             yield TextLlmEvent(text="partial")
             raise _Boom("input died — this string MUST NOT reach the wire")
 
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         seen: list[RenderEvent] = []
         with __import__("pytest").raises(_Boom):
             async for ev in processor.process(_raising_events()):
@@ -1261,7 +1104,7 @@ class TestRunLifecycle:
         path and does NOT trigger RunError (no exception raised). Pairs with
         the pre-existing `test_empty_stream` which strips lifecycle events.
         """
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         result = await collect(processor.process(async_events()))
 
         assert isinstance(result[0], RunStartedRenderEvent)
@@ -1297,8 +1140,7 @@ class TestToolCallLifecycle:
 
     async def test_emission_order_single_call(self) -> None:
         """Start → Args (×N) → End → Result, all sharing tool_call_id."""
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
             ToolUseDeltaLlmEvent(tool_id="t1", partial_json='{"file_path":'),
@@ -1343,8 +1185,7 @@ class TestToolCallLifecycle:
         reaches `process()` corresponds to a unique tool_call. Parser-level
         dedupe is verified separately in test_cli_streaming_parse.py.
         """
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
             ToolUseEndLlmEvent(tool_id="t1"),
@@ -1362,8 +1203,7 @@ class TestToolCallLifecycle:
 
     async def test_orphan_end_synthesis_at_result(self) -> None:
         """Start without End triggers synthesized End at ResultLlmEvent time."""
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
             # NO ToolUseEndLlmEvent
@@ -1384,8 +1224,7 @@ class TestToolCallLifecycle:
         ``yield from self._synth_orphan_tool_ends()`` line at the end of
         _close_open_blocks — makes this test fail.
         """
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
             # NO ToolUseEndLlmEvent, NO ResultLlmEvent — stream truncates here
@@ -1414,8 +1253,7 @@ class TestToolCallLifecycle:
             yield ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={})
             raise _Boom("oops")
 
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         seen: list[RenderEvent] = []
         with pytest.raises(_Boom):
             async for ev in processor.process(_raising_events()):
@@ -1441,8 +1279,7 @@ class TestToolCallLifecycle:
     # Removed per spec #1211.
 
     async def test_tool_call_args_passes_partial_json_verbatim(self) -> None:
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
             ToolUseDeltaLlmEvent(tool_id="t1", partial_json='{"a":'),
@@ -1455,8 +1292,7 @@ class TestToolCallLifecycle:
         assert [e.delta for e in args] == ['{"a":', "1}"]
 
     async def test_tool_call_result_carries_is_error(self) -> None:
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         # Use a non-sensitive tool name so the S1 boundary scrubber does not
         # redact the content (Read/Bash/Edit/Write are sanitized by default).
         events = async_events(
@@ -1474,8 +1310,7 @@ class TestToolCallLifecycle:
 
     async def test_sensitive_tool_result_content_is_redacted(self) -> None:
         """S1 (#1100 review): tool result for sensitive tools is redacted on the bus."""
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
             ToolUseEndLlmEvent(tool_id="t1"),
@@ -1495,8 +1330,7 @@ class TestToolCallLifecycle:
 
     async def test_orphan_tool_result_redacted_fail_closed(self) -> None:
         """ToolResult without prior ToolUseLlmEvent (unknown tool_name) is redacted."""
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         # No ToolUseLlmEvent → tool_name unknown → fail-closed redaction.
         events = async_events(
             ToolResultLlmEvent(tool_id="t1", content="leaked", is_error=False),
@@ -1510,8 +1344,7 @@ class TestToolCallLifecycle:
 
     async def test_large_tool_result_content_truncated(self) -> None:
         """S3 (#1100 review): content larger than MAX_CONTENT_BYTES is truncated."""
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         large = "x" * 100_000
         events = async_events(
             ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
@@ -1528,8 +1361,7 @@ class TestToolCallLifecycle:
 
     async def test_multi_orphan_end_synthesis_preserves_ids(self) -> None:
         """T2 (#1100 review): two open tools both get their own synthesized End."""
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
             ToolUseLlmEvent(tool_name="Glob", tool_id="t2", input={}),
@@ -1543,8 +1375,7 @@ class TestToolCallLifecycle:
 
     async def test_no_explicit_dispatch_silent_drop(self) -> None:
         """ToolUseDeltaLlmEvent reaches process() and is mapped, not absorbed."""
-        cfg_ = ToolDisplayConfig(throttle_ms=0)
-        processor = StreamProcessor(cfg_)
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
             ToolUseDeltaLlmEvent(tool_id="t1", partial_json="{}"),
@@ -1580,7 +1411,7 @@ class TestReasoning:
     ) -> None:
         """ThinkingLlmEvents produce Start, Delta×N, End all sharing one message_id."""
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ThinkingLlmEvent(text="a"),
             ThinkingLlmEvent(text="b"),
@@ -1618,7 +1449,7 @@ class TestReasoning:
         by `TextStartRenderEvent` for the v2 triplet) happens AFTER `ReasoningEnd`.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ThinkingLlmEvent(text="a"),
             ThinkingLlmEvent(text="b"),
@@ -1645,7 +1476,7 @@ class TestReasoning:
     async def test_reasoning_closes_on_tool_transition(self) -> None:
         """ReasoningEndRenderEvent is emitted before the first ToolCall* RenderEvent."""
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ThinkingLlmEvent(text="think"),
             ToolUseLlmEvent(tool_name="Glob", tool_id="t1", input={}),
@@ -1672,7 +1503,7 @@ class TestReasoning:
     async def test_reasoning_closes_on_result_transition(self) -> None:
         """Thinking-only turn: ReasoningEnd fires before TextRenderEvent(is_final)."""
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ThinkingLlmEvent(text="think"),
             ResultLlmEvent(is_error=False, duration_ms=10),
@@ -1702,7 +1533,7 @@ class TestReasoning:
         ToolUseDelta branch so any future re-ordering does not leave an open block.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ThinkingLlmEvent(text="think"),
             ToolUseLlmEvent(tool_name="Read", tool_id="t1", input={}),
@@ -1734,7 +1565,7 @@ class TestReasoning:
         (show_intermediate=True, default).
         """
         # Arrange — show_intermediate=False passed to StreamProcessor
-        processor = StreamProcessor(cfg(), show_intermediate=False)
+        processor = StreamProcessor(show_intermediate=False)
         events = async_events(
             ThinkingLlmEvent(text="a"),
             ThinkingLlmEvent(text="b"),
@@ -1765,7 +1596,7 @@ class TestReasoning:
         truncated-stream orphan path — this test catches that regression.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ThinkingLlmEvent(text="think"),
             ToolUseEndLlmEvent(tool_id="t1"),
@@ -1796,7 +1627,7 @@ class TestReasoning:
         test catches that regression.
         """
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ThinkingLlmEvent(text="think"),
             ToolResultLlmEvent(tool_id="t1", content="ok"),
@@ -1835,7 +1666,7 @@ class TestReasoning:
             raise _Boom("stream died")
 
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         seen: list[RenderEvent] = []
 
         # Act
@@ -1872,7 +1703,7 @@ class TestReasoning:
     ) -> None:
         """Truncated stream mid-thinking: orphan ReasoningEnd + warning logged."""
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         # Stream ends without ResultLlmEvent
         events = async_events(
             ThinkingLlmEvent(text="partial think"),
@@ -1903,7 +1734,7 @@ class TestReasoning:
         """Normal thinking flow: exactly one 'reasoning block opened' and one
         'reasoning block closed' debug log, both carrying message_id context."""
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ThinkingLlmEvent(text="think"),
             TextLlmEvent(text="ok"),
@@ -1962,7 +1793,7 @@ class TestTextTriplet:
     async def test_text_triplet_single_block_ordering(self) -> None:
         """TextStart → TextDelta → TextEnd all share the same message_id."""
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="Hello world"),
             ResultLlmEvent(is_error=False, duration_ms=50),
@@ -1993,7 +1824,7 @@ class TestTextTriplet:
     async def test_text_triplet_multi_block_distinct_ids(self) -> None:
         """Two text blocks separated by a tool call produce 2 distinct message_ids."""
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="Before"),
             ToolUseLlmEvent(tool_name="Glob", tool_id="g1", input={}),
@@ -2036,7 +1867,7 @@ class TestTextTriplet:
             raise _Boom("boom")
 
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         seen: list[RenderEvent] = []
 
         # Act
@@ -2064,7 +1895,7 @@ class TestTextTriplet:
         is open at the time a soft-error result (is_error=True, error_text=...) arrives.
         """
         # Arrange — text block is open when the soft-error result arrives
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="partial response"),
             ResultLlmEvent(is_error=True, duration_ms=0, error_text="overload"),
@@ -2099,7 +1930,7 @@ class TestTextTriplet:
     async def test_no_text_end_when_no_block_open(self) -> None:
         """ToolUseLlmEvent with no preceding text: NO TextEndRenderEvent emitted."""
         # Arrange
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             ToolUseLlmEvent(tool_name="Glob", tool_id="g1", input={}),
             ResultLlmEvent(is_error=False, duration_ms=50),
@@ -2131,7 +1962,7 @@ class TestTextTriplet:
         Mirror of TestReasoning.test_reasoning_orphan_close_on_truncated_stream.
         """
         # Arrange -- stream ends without ResultLlmEvent (truncation path)
-        processor = StreamProcessor(cfg())
+        processor = StreamProcessor()
         events = async_events(
             TextLlmEvent(text="partial text"),
         )

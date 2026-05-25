@@ -124,7 +124,6 @@ class TestWorkerErrorE2E:
         from lyra.core.messaging.error_extractor import _extract_worker_error
         from lyra.core.messaging.events import ResultLlmEvent
         from lyra.core.messaging.metrics import emit_populated_total
-        from lyra.core.messaging.tool_display_config import ToolDisplayConfig
         from lyra.core.processors.stream_processor import StreamProcessor
         from roxabi_contracts.errors import WorkerError
 
@@ -156,7 +155,7 @@ class TestWorkerErrorE2E:
 
             # (c) rendering — processor calls _extract_worker_error internally
             # and emits emit_received_total (T18 path).
-            processor = StreamProcessor(config=ToolDisplayConfig())
+            processor = StreamProcessor()
             render_events = [
                 event
                 async for event in processor.process(_fake_event_stream(result_event))

@@ -41,7 +41,6 @@ from lyra.core.messaging.events import (
     ToolUseLlmEvent,
 )
 from lyra.core.messaging.render_events import (
-    FileEditSummary,
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
@@ -57,7 +56,6 @@ from lyra.core.messaging.render_events import (
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.trace import TraceContext
 from lyra.streaming.event_emitter import EventEmitter
 from lyra.streaming.state_machine import StateMachine
@@ -77,8 +75,7 @@ log = logging.getLogger(__name__)
 # names tools that return path-only / structural data — never file content,
 # shell output, or arbitrary network responses. Everything else is redacted
 # by default. Slice 5 (#1102) is the natural place to refine with a per-tool
-# ``is_sensitive: bool`` flag in ``ToolDisplayConfig`` if richer rendering is
-# needed.
+# ``is_sensitive: bool`` flag if richer rendering is needed.
 _NON_SENSITIVE_TOOL_NAMES: frozenset[str] = frozenset(
     {"glob", "grep", "ls", "todoread", "todowrite"}
 )
@@ -141,9 +138,6 @@ class StreamProcessor:
 
     Parameters
     ----------
-    config:
-        Controls display thresholds, bash truncation, throttle window, and
-        which tool names surface in the summary card.
     show_intermediate:
         When ``True`` (default), ``TextDeltaRenderEvent`` chunks are emitted
         as they arrive so adapters can display text progressively.
@@ -153,23 +147,9 @@ class StreamProcessor:
     """
 
     def __init__(
-        self, config: ToolDisplayConfig, *, show_intermediate: bool = True
+        self, *, show_intermediate: bool = True
     ) -> None:
-        self._config = config
         self._show_intermediate = show_intermediate
-
-        # --- per-file accumulator ---
-        self._files: dict[str, FileEditSummary] = {}
-
-        # --- list accumulators ---
-        self._bash: list[str] = []
-        self._web_fetches: list[str] = []
-        self._agent_calls: list[str] = []
-
-        # --- silent counters ---
-        self._silent_reads: int = 0
-        self._silent_greps: int = 0
-        self._silent_globs: int = 0
 
         # --- pending text ---
         self._pending_text: str = ""
@@ -420,7 +400,6 @@ class StreamProcessor:
         )
         if self._show_intermediate:
             self._pending_text = ""
-        self._accumulate(event)
 
     def _handle_tool_use_delta(
         self, event: ToolUseDeltaLlmEvent
@@ -562,74 +541,6 @@ class StreamProcessor:
                 "Create a new instance per turn."
             )
         self._consumed = True
-
-    def _accumulate_web(
-        self, event: ToolUseLlmEvent, *, show_key: str, input_key: str
-    ) -> None:
-        """Append a web tool input value if the show flag is set."""
-        if self._config.show.get(show_key, False):
-            self._web_fetches.append(event.input.get(input_key, ""))
-
-    def _accumulate_file_edit(self, event: ToolUseLlmEvent) -> None:
-        """Update the per-file accumulator for an edit or write tool call."""
-        path = event.input.get("path", event.tool_id)
-        existing = self._files.get(path)
-        if existing is None:
-            new_count = 1
-            new_edits: list[str] = [event.tool_name]
-        else:
-            new_count = existing.count + 1
-            if new_count > self._config.names_threshold:
-                # count mode — clear edits list
-                new_edits = []
-            else:
-                # names mode — append tool name
-                new_edits = list(existing.edits) + [event.tool_name]
-        self._files[path] = FileEditSummary(path=path, edits=new_edits, count=new_count)
-
-    def _accumulate(self, event: ToolUseLlmEvent) -> None:
-        """Route a tool-use event into the appropriate accumulator bucket."""
-        tool_key = event.tool_name.lower()
-
-        if tool_key in ("edit", "write"):
-            self._accumulate_file_edit(event)
-
-        elif tool_key == "bash":
-            command = event.input.get("command", "")
-            self._bash.append(command[: self._config.bash_max_len])
-
-        elif tool_key == "read":
-            self._silent_reads += 1
-
-        elif tool_key == "grep":
-            self._silent_greps += 1
-
-        elif tool_key == "glob":
-            self._silent_globs += 1
-
-        elif tool_key in ("web_fetch", "webfetch"):
-            self._accumulate_web(event, show_key="web_fetch", input_key="url")
-
-        elif tool_key in ("web_search", "websearch"):
-            self._accumulate_web(event, show_key="web_search", input_key="query")
-
-        elif tool_key == "agent":
-            if self._config.show.get("agent", False):
-                self._agent_calls.append(event.input.get("description", "agent"))
-
-        # anything else with show.get(key, False) == False → ignored
-
-    def _has_any_tool_events(self) -> bool:
-        """Return True when at least one tool accumulator is non-empty."""
-        return bool(
-            self._files
-            or self._bash
-            or self._web_fetches
-            or self._agent_calls
-            or self._silent_reads > 0
-            or self._silent_greps > 0
-            or self._silent_globs > 0
-        )
 
 
 __all__ = ["StreamProcessor"]

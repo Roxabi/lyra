@@ -174,7 +174,6 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — DEBT:complexity-residual —
         i18n_language=i18n_language,
         smart_routing=smart_routing,
         show_intermediate=row.show_intermediate,
-        show_tool_recap=row.show_tool_recap,
         workspaces=workspaces,
         voice=voice,
         patterns=patterns,

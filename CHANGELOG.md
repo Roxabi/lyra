@@ -25,6 +25,10 @@ Entries are generated automatically by `/promote` and committed to staging befor
 - `src/lyra/core/messaging/tool_recap_format.py` removed (v1 tool summary formatting helper,
   no longer referenced after v1 cutover).
 - v1 registry entries (`text`, `tool_summary`) removed from `NatsRenderEventCodec`.
+- `show_tool_recap` key removed from the agent TOML schema (dead code, never wired to the
+  live tool-recap renderer). Operators with `show_tool_recap = true|false` in
+  `~/.lyra/agents/*.toml` will see the key silently ignored after upgrade; no replacement
+  until Phase B re-wiring lands. (#1335)
 
 > **Coordinated deploy required.** This slice bumps the render-event schema floor. The
 > `lyra-hub`, `lyra-telegram`, and `lyra-discord` container images must be released and

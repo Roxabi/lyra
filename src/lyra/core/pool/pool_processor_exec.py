@@ -184,8 +184,6 @@ async def process_one(  # noqa: C901, PLR0915 — DEBT:complexity-residual — s
         # Streaming path — delegate to helpers in pool_processor_streaming.py
         _result_iter_for_sid = result
         _content_parts: list[str] = []
-        _cfg = getattr(agent, "config", None)
-        _emit_tool_recap = _cfg.show_tool_recap if _cfg is not None else True
         _stream_done = asyncio.Event() if _processor is not None else None
 
         # Wrap iterator to capture text content and signal completion
@@ -194,7 +192,6 @@ async def process_one(  # noqa: C901, PLR0915 — DEBT:complexity-residual — s
             _content_parts,
             pool,
             _stream_done,
-            _emit_tool_recap,
         )
 
         # Build outbound with turn-logging callback

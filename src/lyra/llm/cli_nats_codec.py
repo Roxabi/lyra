@@ -121,7 +121,7 @@ class CliNatsCodec:
                 error=err.message,
                 retryable=err.retryable,
                 worker_error=_make_worker_error(
-                    err.code, err.message, err.retryable, err.detail
+                    err.code, err.message, err.retryable
                 ),
             )
         try:
@@ -164,7 +164,7 @@ class CliNatsCodec:
                 cost_usd=None,
                 error_text=err.message,
                 worker_error=_make_worker_error(
-                    err.code, err.message, err.retryable, err.detail
+                    err.code, err.message, err.retryable
                 ),
             )
         try:

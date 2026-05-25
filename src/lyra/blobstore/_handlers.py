@@ -201,11 +201,17 @@ async def handle_head(store_key: str, request: Request) -> Response:
 
     # Row confirms existence — no need to call store.exists() (which would be a
     # redundant 3rd DB hit). HEAD only signals existence; body is always empty.
-    # content_hash is available as str(row[0]) if callers need it in a future
-    # Content-Digest header. Fallback path (content_hash lookup) is preserved
-    # above: ≤2 SELECTs total, 0 calls to store.exists().
+    # Fallback path (content_hash lookup) is preserved above: ≤2 SELECTs total,
+    # 0 calls to store.exists(). content_hash flows into the audit event so the
+    # forensic record matches the pre-collapse 3-lookup behavior.
 
-    await _emit_audit(request.app, op="exists", result="ok", store_key=store_key)
+    await _emit_audit(
+        request.app,
+        op="exists",
+        result="ok",
+        store_key=store_key,
+        content_hash=str(row[0]),
+    )
     return Response(status_code=200)
 
 

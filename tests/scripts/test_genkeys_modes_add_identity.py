@@ -195,12 +195,20 @@ def test_add_identity_noop_when_full_consistency(tmp_path: Path) -> None:
 
     _write_fake_seeds(seeds_dir, ["hub", "telegram-adapter", "turn-writer"])
 
-    # Write a valid auth.conf that already contains the turn-writer block
-    # (minimal content sufficient for the block-presence check)
+    # Write a real auth.conf via the actual renderer so parse_auth_conf sees
+    # a structurally valid users block containing turn-writer (review B1).
+    from scripts._loader import load_matrix
+    from scripts._nk import FakeNkeyProvider
+    from scripts._renderer import render_auth_conf
+
+    matrix = load_matrix(matrix_path)
+    provider = FakeNkeyProvider()
+    pubkeys = {
+        name: provider.pubkey_from_seed((seeds_dir / f"{name}.seed").read_bytes())
+        for name in ("hub", "telegram-adapter", "turn-writer")
+    }
     auth_conf = seeds_dir / "auth.conf"
-    auth_conf.write_text(
-        "authorization {\n  # hub\n  # telegram-adapter\n  # turn-writer\n}\n"
-    )
+    auth_conf.write_text(render_auth_conf(matrix, pubkeys))
     auth_conf.chmod(0o600)
 
     # Capture mtimes before invocation
@@ -259,6 +267,7 @@ def test_add_identity_repairs_when_seed_present_but_block_missing(
     auth_conf.chmod(0o600)
 
     seed_mtime_before = (seeds_dir / "turn-writer.seed").stat().st_mtime
+    auth_conf_mtime_before = auth_conf.stat().st_mtime
     time.sleep(0.02)  # ensure mtime granularity for auth.conf rewrite detection
 
     # Act
@@ -276,8 +285,9 @@ def test_add_identity_repairs_when_seed_present_but_block_missing(
         f"Expected STATE=repaired in stdout; got: {result.stdout!r}"
     )
 
-    # auth.conf mtime must have advanced (rewrite happened)
-    assert auth_conf.stat().st_mtime > seed_mtime_before - 0.1, (
+    # auth.conf mtime must have advanced past its own pre-run mtime (rewrite happened).
+    # The prior `> seed_mtime_before - 0.1` was tautological (review W1, #1363).
+    assert auth_conf.stat().st_mtime > auth_conf_mtime_before, (
         "auth.conf must be rewritten in STATE=repaired"
     )
 

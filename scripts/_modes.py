@@ -20,7 +20,7 @@ from scripts._nk import (
     SubprocessNkeyProvider,
     ensure_nk_or_exit,
 )
-from scripts._renderer import render_auth_conf
+from scripts._renderer import parse_auth_conf, render_auth_conf
 
 _provider_factory: Callable[[], NkeyProvider] = SubprocessNkeyProvider
 
@@ -131,11 +131,8 @@ def _mode_regen_authconf(args: argparse.Namespace) -> None:
 
 def _add_identity_validate(
     name: str, matrix_path: Path, matrix: LoadedMatrix, seeds_dir: Path
-) -> list[str]:
-    """Validate name + status + other-seed presence. Return list of OTHER active names.
-
-    Exits non-zero on any validation failure (fail-fast, no write).
-    """
+) -> None:
+    """Validate name + status + other-seed presence (exits non-zero on failure)."""
     if name not in matrix["identities"]:
         print(
             f"error: identity '{name}' not declared in {matrix_path} — add it first",
@@ -161,20 +158,25 @@ def _add_identity_validate(
         if not (seeds_dir / f"{other}.seed").exists():
             print(
                 f"error: cannot render auth.conf — missing seed for active identity"
-                f" '{other}'; run --regen-authconf or full provision first",
+                f" '{other}'; run full provision first (--regen-authconf has the"
+                " same missing-seed guard)",
                 file=sys.stderr,
             )
             sys.exit(1)
-    return active_others
 
 
 def _add_identity_detect_state(name: str, seeds_dir: Path) -> str:
-    """Inspect filesystem and return 'noop', 'repaired', or 'added'."""
+    """Inspect filesystem and return 'noop', 'repaired', or 'added'.
+
+    Block-presence uses parse_auth_conf (not substring match) to avoid
+    prefix collisions like 'hub' matching inside '# hub-extra' (#1361 review B1).
+    """
     seed_present = (seeds_dir / f"{name}.seed").exists()
     auth_conf_path = seeds_dir / "auth.conf"
-    block_present = auth_conf_path.exists() and (
-        f"# {name}" in auth_conf_path.read_text()
-    )
+    block_present = False
+    if auth_conf_path.exists():
+        parsed = parse_auth_conf(auth_conf_path.read_text())
+        block_present = any(u.comment_name == name for u in parsed.users)
     if seed_present and block_present:
         return "noop"
     if seed_present:

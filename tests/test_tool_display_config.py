@@ -84,6 +84,12 @@ class TestToolDisplayConfigDefaults:
         # Assert — contents are equal but not the same object
         assert cfg1.show is not cfg2.show
 
+    def test_unknown_direct_kwarg_silently_dropped(self) -> None:
+        # Documents the extra="ignore" behaviour at direct-kwarg construction —
+        # callers will get a silently misconfigured instance, not a ValidationError.
+        cfg = ToolDisplayConfig(throttle_window=0.0)
+        assert cfg.throttle_ms == 2000  # default kept; typo dropped
+
 
 # ---------------------------------------------------------------------------
 # ToolDisplayConfig.model_validate()
@@ -270,15 +276,3 @@ class TestLoadToolDisplayConfig:
         cfg = _load_tool_display_config(raw)
         # Assert
         assert cfg == ToolDisplayConfig()
-
-
-# ---------------------------------------------------------------------------
-# Direct-kwarg construction footgun — extra="ignore"
-# ---------------------------------------------------------------------------
-
-
-def test_unknown_direct_kwarg_silently_dropped() -> None:
-    # Documents the extra="ignore" behaviour at direct-kwarg construction —
-    # callers will get a silently misconfigured instance, not a ValidationError.
-    cfg = ToolDisplayConfig(throttle_window=0.0)  # type: ignore[call-arg]
-    assert cfg.throttle_ms == 2000  # default kept; typo dropped

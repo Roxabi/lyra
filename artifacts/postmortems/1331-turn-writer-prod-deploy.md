@@ -114,7 +114,7 @@ Avec `ReadOnly=true` + `LYRA_TURNS_DB=/data/turns.db` mais sans `LYRA_VAULT_DIR`
 | 6   | **Runbook** : `make nats-add-identity` qui chaîne `genkeys --add-identity` + secret create + restart sans re-rotation                                                                                   | MED           | open — tracked in follow-up issue |
 | 7   | **Runbook** : pre-restart vérifier `podman images \| grep -v '<none>'` pour les images critiques (catch #2)                                                                                             | LOW           | open — tracked in follow-up issue |
 | 8   | **Refresh M₂** : satellites (`monitor`, `image-worker`, `llm-operator`) ont pubkey neuf en `auth.conf`. Quand un service revient en ligne, refresh son Podman secret depuis le seed Syncthing-syncé    | LOW (dormants) | open — tracked in follow-up issue |
-| 9   | **Doc** : ajouter à `docs/ops/nats-identity-retirement.md` un cas "ajouter une nouvelle identité"                                                                                                       | LOW           | open — tracked in follow-up issue |
+| 9   | **Doc** : ajouter à `docs/ops/nats-identity-lifecycle.md` un cas "ajouter une nouvelle identité"                                                                                                        | LOW           | open — tracked in follow-up issue |
 
 **Source-tree fixes** (actions 2-4) shipped in PR #1360 / issue #1359 (parent #1277, blocked-by #1331). Verified live on M₁ pre-PR.
 

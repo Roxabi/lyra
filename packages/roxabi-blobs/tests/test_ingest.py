@@ -16,7 +16,6 @@ import asyncio
 import hashlib
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
@@ -24,9 +23,6 @@ import pytest
 from roxabi_blobs import FsBlobStore, ingest_bytes_to_blob_ref
 from roxabi_blobs.ingest import ingest_bytes_to_blob_ref as ingest_direct
 from roxabi_blobs.models import BlobRef
-
-if TYPE_CHECKING:
-    pass
 
 
 class TestRoundTrip:
@@ -117,6 +113,9 @@ class TestDedup:
             store, data, mime="audio/ogg", source="telegram_voice"
         )
         first_creat_count = creat_calls
+        assert first_creat_count > 0, (
+            "first ingest must have triggered at least one O_CREAT"
+        )
 
         ref2 = await ingest_bytes_to_blob_ref(
             store, data, mime="audio/ogg", source="discord_audio"

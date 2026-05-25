@@ -366,7 +366,7 @@ Podman secrets are the authoritative copy of bot tokens. There is no automatic b
 
 ```bash
 podman secret ls --filter name=lyra-bot- --format '{{.Name}}' | \
-  xargs -n1 podman secret inspect --showsecret | \
+  xargs -n1 --no-run-if-empty podman secret inspect --showsecret | \
   jq -s '[.[] | {name: .[0].Spec.Name, data: .[0].SecretData}]' \
   > lyra-bot-secrets-$(date +%Y%m%d).json
 ```

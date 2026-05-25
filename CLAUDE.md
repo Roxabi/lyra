@@ -49,6 +49,7 @@ File/rename → update P immediately
 | `src/lyra/adapters/CLAUDE.md` | Telegram, Discord, CLI, NATS |
 | `src/lyra/inbound/CLAUDE.md` | stage-axis inbound pipeline (parser, router, session, dispatcher) |
 | `src/lyra/agents/CLAUDE.md` | agent impls |
+| `src/lyra/blobstore/CLAUDE.md` | HTTP-fronted BlobStore service (peer-of-adapters, #1330 V8) |
 | `src/lyra/bootstrap/CLAUDE.md` | process bootstrap (standalone, wiring, lifecycle, factory, infra) |
 | `src/lyra/commands/CLAUDE.md` | plugin commands |
 | `src/lyra/infrastructure/CLAUDE.md` | store implementations (ADR-048) |

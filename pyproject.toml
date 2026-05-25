@@ -96,6 +96,7 @@ filterwarnings = [
 ]
 markers = [
     "nats_integration: NATS integration tests requiring Docker Compose",
+    "integration: cross-host integration tests requiring M1 Tailnet",
 ]
 
 [tool.coverage.run]

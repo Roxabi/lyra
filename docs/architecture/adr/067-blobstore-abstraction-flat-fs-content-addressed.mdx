@@ -174,7 +174,7 @@ All consumers speak the same `BlobStore` Protocol; the concrete impl is injected
 |---|---|---|
 | `put(bytes, mime?, ...)` → `BlobRef` | `PUT /blobs` (Content-Type: mime) | body=bytes → `{store_key, content_hash, size, dedup: bool, …}` |
 | `get(store_key)` → bytes | `GET /blobs/<store_key>` | streams response body |
-| `exists(store_key)` → bool | `HEAD /blobs/<store_key>` | 200 / 404 |
+| `exists(store_key)` → bool | `HEAD /blobs/<store_key>` (auth: bearer; audit: `lyra.audit.blobs.exists`) | server resolves `content_hash` via SQLite `SELECT content_hash FROM blobs WHERE store_path = ?` then calls `FsBlobStore.exists(content_hash)` — `content_hash` is NOT parsed from the opaque `store_key` string → 200 / 401 / 404 |
 | `delete(store_key)` | `DELETE /blobs/<store_key>` | 204 |
 | (v2 — #1334) `put_multipart(stream)` | `POST /blobs/multipart` + `PUT /blobs/multipart/<id>/<part>` + `POST /blobs/multipart/<id>/complete` | S3-compat multipart flow |
 | (v2 — #1334) `get_stream(store_key)` | `GET /blobs/<store_key>` with `Range:` header support | chunked transfer |
@@ -282,3 +282,8 @@ CREATE TABLE blob_grants (
 - `BlobRef` adds two fields beyond minimum (`platform_message_id`, `created_at`); these enable training-data reconstruction and provenance — not strictly necessary for transport, but cheap to carry.
 - Deprecation window for `audio_b64` / `audio_bytes` will live across at least one release cycle.
 - **Volume separation from JetStream (`#1055`):** the blob mount (e.g., `/data/lyra/blobs` + sibling `index.sqlite`) must be a distinct filesystem from the JetStream `store_dir` mount provisioned by [#1055](https://github.com/Roxabi/lyra/issues/1055). The two growth domains must not share a filesystem — unbounded blob growth must not be able to impact NATS durability (KV stores, streams, message persistence). #1055 remains independently valuable for JetStream; the original "prereq for slice 7" dependency in #1061 dissolves with the NATS-OS drop.
+
+### V8 shipped (2026-05-25, [#1330](https://github.com/Roxabi/lyra/issues/1330))
+
+- V8 of the BlobStore ecosystem plan ([#1061](https://github.com/Roxabi/lyra/issues/1061)): HTTP front + Quadlet unit (`deploy/quadlet/lyra-blobstore.container`) + cross-host integration scaffold shipped; ADR §HTTP API gains the HEAD row above.
+- Spec: `artifacts/specs/1330-v8-http-fronted-blobstore-spec.mdx`.

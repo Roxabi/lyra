@@ -459,6 +459,30 @@ health_secret = ""                            # optional health endpoint auth
 |----------|---------|-------------|
 | `NATS_URL` | `nats://localhost:4222` | NATS server URL (required for standalone hub) |
 
+#### BlobStore env file
+
+`deploy/quadlet/blobstore.env.example` is an operator-facing template for the BlobStore
+Quadlet container. It is NOT loaded by the lyra application itself; it is consumed by
+`lyra-blobstore.container` at container start via `EnvironmentFile=%h/.lyra/env/blobstore.env`.
+
+| File | Versioned | Purpose |
+|------|-----------|---------|
+| `deploy/quadlet/blobstore.env.example` | Yes (template) | Documents all env vars for `lyra-blobstore.service`; NOT loaded by lyra |
+| `~/.lyra/env/blobstore.env` (on M₁) | No (operator copy) | Live env file read by the container at startup |
+
+Operator setup: copy the template and fill in `TAILSCALE_IPV4` before starting the service.
+
+```bash
+mkdir -p ~/.lyra/env
+cp deploy/quadlet/blobstore.env.example ~/.lyra/env/blobstore.env
+chmod 600 ~/.lyra/env/blobstore.env
+# Edit: set TAILSCALE_IPV4=$(tailscale ip -4 | head -1)
+```
+
+Load order: N/A — this is a Quadlet env file, not an application config file. The bearer
+token and blob data path are delivered via `Secret=` and `Volume=` directives in
+`deploy/quadlet/lyra-blobstore.container` (not via env vars).
+
 #### JetStream persistent storage
 
 JetStream is enabled via the config file stanza in `deploy/nats/nats-container.conf` (the `-js` CLI flag was removed in #1055). Storage is backed by a Quadlet bind-mount volume:

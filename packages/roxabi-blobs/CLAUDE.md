@@ -60,6 +60,36 @@ async with FsBlobStore(root) as store:
 - Import: `from roxabi_blobs import ingest_bytes_to_blob_ref` or `from roxabi_blobs.ingest import ...`
 - Zero `lyra.*` imports — safe to consume from voiceCLI, imageCLI, etc.
 
+## HttpBlobStore (V8 — #1330)
+
+- `HttpBlobStore` is the HTTP client mirror of `FsBlobStore` — implements the same `BlobStore` Protocol against a remote `lyra blobstore serve` HTTP service.
+- `HttpBlobStore.exists` semantics differ from `FsBlobStore.exists`: over HTTP the argument is interpreted as a `store_key` (wire path) OR a `content_hash` (server HEAD handler does both lookups); the synthesized `BlobRef` returned by `HttpBlobStore.exists` is a sentinel (size=0) sufficient for Protocol truthiness checks.
+- `HttpBlobStore.delete(blob_ref_id)` → `DELETE /blobs/{blob_ref_id}` — server-side polymorphic path arg resolves numeric keys as `blob_ref_id` directly.
+
+### Retry policy
+
+**V8 ships with default httpx behaviour — no in-band retry logic is implemented.**
+
+`connect_retry_max_s` (constructor param, default `10.0`) is accepted and stored but is
+not wired to any retry loop in V8. Future work will implement exponential-backoff connect
+retries against this budget (first retry after 0.5 s, cap 5 s per attempt, terminal
+exception `httpx.ConnectError` when budget exhausted — per spec §Breadboard C1).
+
+**Per-request timeout:** `httpx.Timeout(5.0, connect=5.0)` — 5 s connect / 5 s read,
+applied to every request.
+
+**Per-method behaviour (V8 — no retry):**
+
+| Method | Idempotent | Retry safe | V8 behaviour |
+|--------|-----------|------------|--------------|
+| GET | yes | yes | single attempt; raises `BlobNotFoundError` on 404, `httpx.HTTPStatusError` on other 4xx/5xx |
+| HEAD | yes | yes | single attempt; returns `None` on 404, raises on other errors |
+| DELETE | yes | yes | single attempt; raises `BlobNotFoundError` on 404 |
+| PUT | no | no | single attempt; `BlobWriteError` NOT raised client-side — caller gets `httpx.HTTPStatusError` on 5xx |
+
+Until retry is implemented, callers operating over Tailnet should wrap `HttpBlobStore`
+operations in their own retry / circuit-breaker logic if the connection window matters.
+
 ## Invariants
 
 - **Write order:** `file → fsync(file) → fsync(shard dir) → INSERT blobs → INSERT blob_refs`. Missing dir-fsync = crash-recovery hole.

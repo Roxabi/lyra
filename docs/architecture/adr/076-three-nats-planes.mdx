@@ -57,6 +57,20 @@ envelope shape may appear on Messages and Persistence (a `TurnEvelope` is shippe
 Persistence plane today, but a future hot-path replay over the Messages plane would not change
 its shape).
 
+### Enforcement
+
+The plane assignment governs the wire (subject + NATS type), not the envelope payload. The
+Typing plane in particular has a keying contract that lives outside the plane table and
+must be enforced explicitly:
+
+- **Typing plane keying** — keyed on `WorkScope` (`platform + bot_id + scope_id`). ACL
+  enforces only `platform + bot_id` (the subject tokens); `scope_id` lives in the envelope
+  body. The publisher contract (T1, see #1376 spec) requires every envelope to carry
+  `scope_id`; subscribers MUST reject envelopes missing `scope_id` and log a structured
+  error. Validation failures surface in the **adapter** units
+  (`journalctl --user -u lyra-{discord,telegram}`), NOT in `lyra-nats.service` — this is
+  the monitoring grep target if the #1374 bug class re-emerges.
+
 ### Choosing Core vs JetStream
 
 The choice is forced by the durability column, not by convenience:
@@ -76,11 +90,16 @@ only correct choice.
 
 When adding a NATS subject:
 
-1. Decide durability first (Core vs JetStream) — that decides the plane.
+1. Decide durability first (see "Choosing Core vs JetStream" above) — that determines the plane.
 2. If the durability + direction shape already matches one of the three planes → use that
    plane's prefix.
 3. Only file a new ADR + open a new plane if **durability + direction + lifecycle ownership**
    all differ from the three existing planes.
+
+Partial difference (1 or 2 of 3 prongs) is **not** sufficient — the existing plane must be
+stretched or the subject reclassified, never a new plane opened. The three-prong test is
+conjunctive on purpose: partial matches mean an existing plane is the right home with a
+narrower (or wider) keying contract, not a new wire shape.
 
 ## Distinguish from sibling subjects
 
@@ -96,6 +115,12 @@ each other:
 If a future emitter sits between "job-internal" and "display feedback" (e.g. TTS rendering
 progress visible to the user), the rule is: **does the consumer need it to drive UX it will
 re-render after restart?** Yes → JetStream; no → Typing plane.
+
+**Caveat — `job_id` keying disqualifies the Typing plane.** If the answer above is "no"
+(lossy-OK) **AND** the natural key is `job_id` (not `WorkScope`), this is **NOT** the Typing
+plane — open or extend a Workers plane that keys on `job_id`. The Typing plane's `WorkScope`
+keying contract (per Alternative D) is precisely what prevents the #1374 bug class;
+re-keying on `job_id` re-opens it.
 
 ## Relationship to ADR-073 (axial: stage-of-pipeline)
 
@@ -117,13 +142,19 @@ Diagrammatically:
                        primary axis (ADR-073) — stages
                        ───────────────────────────────►
                        inbound │ router │ session │ dispatcher │ outbound
-                               │        │         │            │
-   transport sub-axis          │        │         │            │
-   (this ADR — ADR-076)        │        │         │            │
-   ─────────────────           │        │         │            │
-   messages   ◄════════════════│════════│═════════│════════════│═══════════►
-   persistence ════════════════│════════│═════════►                          (hub-only)
-   typing     ═════════════════│════════│═════════►════════════►════════════►
+
+   ┌─── transport sub-axis (this ADR — confined to the transport hop, NOT a new stage) ───┐
+   │                                                                                       │
+   │   messages    ◄═══════════════════════════════════════════════════════════════════►   │
+   │               (Core, ephemeral, bidirectional adapter ↔ hub)                          │
+   │                                                                                       │
+   │   persistence ═══════════════════════════════════►        (hub-only)                  │
+   │               (JetStream durable, hub → turn-writer)                                  │
+   │                                                                                       │
+   │   typing     ═══════════════════════════════════════════════════════════════►         │
+   │               (Core, ephemeral, hub → adapters)                                       │
+   │                                                                                       │
+   └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 The transport sub-axis slices the transport stage horizontally; it does not slice the
@@ -160,6 +191,14 @@ the design question — surface it, do not silently file a new plane.
   `deploy/nats/auth.conf` for every identity that publishes or subscribes. Tracked in
   `artifacts/specs/706-per-role-nkeys-acls-spec.mdx` (T1 of Epic #1375 adds
   `lyra.typing.>` grants).
+- **Worker pub grants MUST be per-platform/bot, not plane-wildcard** (when #1044 lands).
+  A future worker identity publishing on the Typing plane must hold a grant on
+  `lyra.typing.<platform>.<bot_id>` matching the job's assigned scope — never the
+  plane-level wildcard `lyra.typing.>`. The wildcard would let any worker publish typing
+  on behalf of any bot, regardless of the job's relationship to that bot. Refreshing the
+  grant means rewriting `auth.conf` and restarting `lyra-nats` (`systemctl --user restart
+  lyra-nats`); the `type=mount` secret pattern (per
+  `~/projects/docs/container-deployment-standard.md` S7) does NOT support HUP refresh.
 - **Sub-axis is invisible from filenames.** Unlike the stage axis (where the directory name
   IS the stage), plane membership is encoded in the subject string only. Mitigation: this ADR's
   table is the lookup; the documentation pattern (domain page → ADR archive) places it in

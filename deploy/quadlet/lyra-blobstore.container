@@ -59,13 +59,18 @@ HealthInterval=30s
 # through verbatim, so this loads the file twice — once for systemd (here), once for
 # Podman (above) — both intentional.
 EnvironmentFile=%h/.lyra/env/blobstore.env
-# Fail-closed guard: refuse to start when TAILSCALE_IPV4 is empty/unset.
+# Fail-closed guard: refuse to start when TAILSCALE_IPV4 is empty, unset,
+# or whitespace-only. `[ -n "   " ]` is TRUE in POSIX sh, so a bare -n test
+# passes on whitespace-only values — Podman would then construct a malformed
+# PublishPort spec and reject it downstream (fail-closed by accident, not by
+# intent). The tr-based strip removes all whitespace before the -n test so
+# the guard is the authoritative rejection point, not Podman's parser.
 # Note: the `PublishPort=${TAILSCALE_IPV4}:8449:8449` line above is resolved
 # by Podman BEFORE this ExecStartPre fires — so the publish-port spec is
 # already constructed (and could read as 0.0.0.0). This guard prevents the
 # CONTAINER from entering running state, so no traffic is ever served.
 # Operationally equivalent to closing the port (nothing accepts traffic).
-ExecStartPre=/bin/sh -c '[ -n "${TAILSCALE_IPV4}" ] || exit 1'
+ExecStartPre=/bin/sh -c 'v=$(printf %s "${TAILSCALE_IPV4}" | tr -d "[:space:]"); [ -n "$v" ] || exit 1'
 Restart=on-failure
 RestartSec=10
 # Cold-path I/O service — 1 full core is sufficient; prevents it from starving

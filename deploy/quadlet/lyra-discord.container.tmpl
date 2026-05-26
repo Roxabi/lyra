@@ -36,7 +36,7 @@ Volume=lyra-data.volume:/home/lyra/.lyra:z
 # Inline single-file bind mount — see rationale in lyra-hub.container.
 Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 Exec=lyra adapter discord
-HealthCmd=pgrep -f "lyra adapter discord"
+HealthCmd=grep -q discord /proc/1/cmdline
 HealthInterval=30s
 
 [Service]

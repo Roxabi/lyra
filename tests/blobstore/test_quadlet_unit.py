@@ -1,17 +1,24 @@
 """Snapshot test for deploy/quadlet/lyra-blobstore.container — H1 (#1362)."""
+
 from __future__ import annotations
 
 import pathlib
 import re
+import subprocess
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 QUADLET_UNIT = REPO_ROOT / "deploy" / "quadlet" / "lyra-blobstore.container"
 
-# Match the shell expression shape `[ -n "${TAILSCALE_IPV4}" ]` (with optional
-# braces / whitespace around the bracket). An inert stub like
-# `ExecStartPre=/bin/sh -c 'exit 0' # TAILSCALE_IPV4` (string-only mention)
-# fails this pattern — the test is no longer tautological.
-_GUARD_PATTERN = re.compile(r'\[\s*-n\s+"\$\{?TAILSCALE_IPV4\}?"\s*\]')
+# Match the whitespace-safe guard shape: tr -d strips whitespace then -n tests
+# the residue. An inert stub or the old bare `[ -n "${TAILSCALE_IPV4}" ]` form
+# fails this pattern — the test is no longer tautological after #1368.
+# Two sub-patterns checked independently on the same line:
+#   - tr -d is present (whitespace strip)
+#   - [ -n "$v" ] is present (test on stripped residue, not raw var)
+_TR_STRIP_PATTERN = re.compile(r"tr\s+-d")
+_STRIPPED_TEST_PATTERN = re.compile(r'\[\s*-n\s+"\\?\$v"\s*\]')
+# Also verify the variable is still referenced in the guard line.
+_VAR_PATTERN = re.compile(r"\$\{?TAILSCALE_IPV4\}?")
 
 
 def test_exec_start_pre_guards_tailscale_ipv4() -> None:
@@ -27,10 +34,81 @@ def test_exec_start_pre_guards_tailscale_ipv4() -> None:
         line for line in content.splitlines() if line.startswith("ExecStartPre=")
     ]
     assert exec_start_pre_lines, "ExecStartPre= directive missing from Quadlet unit"
-    guarded = [line for line in exec_start_pre_lines if _GUARD_PATTERN.search(line)]
+    # Verify tr-based whitespace strip + stripped-residue test + variable reference
+    # are all present on the same ExecStartPre= line.
+    guarded = [
+        line
+        for line in exec_start_pre_lines
+        if (
+            _TR_STRIP_PATTERN.search(line)
+            and _STRIPPED_TEST_PATTERN.search(line)
+            and _VAR_PATTERN.search(line)
+        )
+    ]
     assert guarded, (
-        "No ExecStartPre= line carries the `[ -n \"${TAILSCALE_IPV4}\" ]` "
-        "shell test — guard is missing or refactored to a tautology"
+        "No ExecStartPre= line carries the whitespace-safe guard "
+        '(tr -d + [ -n "$v" ] + ${TAILSCALE_IPV4} reference) — '
+        "guard is missing, uses old bare -n form, or refactored to a tautology (#1368)"
+    )
+
+
+def _extract_exec_start_pre_shell(content: str) -> str | None:
+    """Return the shell command string from the first ExecStartPre= line, or None."""
+    for line in content.splitlines():
+        if line.startswith("ExecStartPre="):
+            # Strip the directive prefix and any surrounding /bin/sh -c '...' wrapper.
+            value = line[len("ExecStartPre=") :]
+            # Extract the inner shell script from `/bin/sh -c '<script>'`.
+            m = re.search(r"/bin/sh\s+-c\s+'(.+)'", value)
+            if m:
+                return m.group(1)
+    return None
+
+
+def test_whitespace_only_tailscale_ipv4_rejected() -> None:
+    """Whitespace-only TAILSCALE_IPV4 must exit 1 (not pass the guard).
+
+    `[ -n "   " ]` is TRUE in POSIX sh — the old bare -n guard let whitespace
+    values through. The tr-based strip must strip first so the test sees an
+    empty string and exits 1. Behavioral test: runs the extracted shell command
+    via /bin/sh with controlled env vars (#1368).
+    """
+    content = QUADLET_UNIT.read_text(encoding="utf-8")
+    script = _extract_exec_start_pre_shell(content)
+    assert script is not None, "Could not extract shell script from ExecStartPre= line"
+
+    # Whitespace-only — must be rejected (exit 1).
+    result_ws = subprocess.run(
+        ["/bin/sh", "-c", script],
+        env={"TAILSCALE_IPV4": "   ", "PATH": "/bin:/usr/bin"},
+        capture_output=True,
+    )
+    assert result_ws.returncode == 1, (
+        "Whitespace-only TAILSCALE_IPV4 passed the guard "
+        f"(exit {result_ws.returncode}); "
+        "expected exit 1 — guard is not whitespace-safe (#1368)"
+    )
+
+    # Empty string — must be rejected (exit 1).
+    result_empty = subprocess.run(
+        ["/bin/sh", "-c", script],
+        env={"TAILSCALE_IPV4": "", "PATH": "/bin:/usr/bin"},
+        capture_output=True,
+    )
+    assert result_empty.returncode == 1, (
+        f"Empty TAILSCALE_IPV4 passed the guard (exit {result_empty.returncode}); "
+        "expected exit 1"
+    )
+
+    # Valid IP — must be accepted (exit 0).
+    result_valid = subprocess.run(
+        ["/bin/sh", "-c", script],
+        env={"TAILSCALE_IPV4": "100.64.1.2", "PATH": "/bin:/usr/bin"},
+        capture_output=True,
+    )
+    assert result_valid.returncode == 0, (
+        "Valid TAILSCALE_IPV4 was rejected by the guard "
+        f"(exit {result_valid.returncode}); expected exit 0"
     )
 
 
@@ -54,9 +132,7 @@ def test_service_env_file_in_scope_for_exec_start_pre() -> None:
             continue
         if in_service:
             service_lines.append(line)
-    assert any(
-        line.strip().startswith("EnvironmentFile=") for line in service_lines
-    ), (
+    assert any(line.strip().startswith("EnvironmentFile=") for line in service_lines), (
         "[Service] section must declare EnvironmentFile= so ${TAILSCALE_IPV4} "
         "resolves in the ExecStartPre= systemd scope"
     )

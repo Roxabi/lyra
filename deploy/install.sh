@@ -45,19 +45,21 @@ run() {
 log() { echo "==> $*"; }
 warn() { echo "WARN: $*" >&2; }
 
-# ── 0. Refuse to install with placeholder nkeys still in auth.conf ───────────
-
-if grep -qE '^[[:space:]]*nkey:[[:space:]]+UDET' "${SCRIPT_DIR}/nats/auth.conf"; then
-  echo "ERROR: deploy/nats/auth.conf still contains UDET* placeholder pubkeys." >&2
-  echo "       Run: make nats-regen-authconf  (renders nkeys from ~/.lyra/nkeys/*.seed)" >&2
-  exit 1
-fi
-
 # ── 1. Verify nkeys dir ──────────────────────────────────────────────────────
 
 log "Checking ~/.lyra/nkeys/ ..."
 if [[ ! -d "${NKEYS_DIR}" ]]; then
   echo "ERROR: ${NKEYS_DIR} not found. Run: make nats-setup" >&2
+  exit 1
+fi
+
+# Refuse to install with placeholder nkeys still in the live auth.conf.
+# Skipped under --dry-run so the operator can still preview install actions.
+if [[ "$DRY_RUN" -eq 0 ]] \
+  && [[ -f "${NKEYS_DIR}/auth.conf" ]] \
+  && grep -qE '^[[:space:]]*nkey:[[:space:]]+"UDET' "${NKEYS_DIR}/auth.conf"; then
+  echo "ERROR: ${NKEYS_DIR}/auth.conf still contains UDET* placeholder pubkeys." >&2
+  echo "       Run: make nats-regen-authconf  (renders nkeys from ${NKEYS_DIR}/*.seed)" >&2
   exit 1
 fi
 

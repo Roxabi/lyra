@@ -1,0 +1,274 @@
+---
+title: "ADR-076: Three NATS planes — messages, persistence, typing/lifecycle"
+description: Catalogue the three orthogonal NATS planes that emerged in Lyra and the rule for choosing Core vs JetStream when adding a subject.
+status: accepted
+date: 2026-05-26
+deciders: [Mickael, architect, product-lead, devops, axial-adr-review]
+supersedes: []
+superseded_by: []
+related: [035, 045, 065, 073, 075]
+---
+
+## Status
+
+Accepted — 2026-05-26.
+
+The decision is ratified now; the third plane (`lyra.typing.*`) lands operationally with
+Epic #1375 / T1 (#1376). The ADR documents the pattern that already underlies the messages
+and persistence planes and prescribes where the new plane fits.
+
+## Context
+
+Lyra runs three structurally distinct NATS usage patterns. The first two have been in place
+since ADR-035 (subject naming) and ADR-075 (TurnWriter); they were never described as a single
+family. The third pattern — ephemeral display-feedback events keyed on a work scope — emerged
+implicitly while wiring typing indicators across `discord`/`telegram` adapters.
+
+Before this ADR, the third pattern had no SSoT: typing was started imperatively on one key
+(`channel.id`) and cancelled on another (`thread.id`) once an inbound pre-session hook mutated
+the message, → orphan `TypingTaskManager` tasks pinging Discord every 9s until the process
+restarted (#1374; same bug class in `discord_audio.py:250`). Without a documented plane there
+was no place for "Where does this NATS subject belong?" to land — every new emitter risked
+re-inventing the keying contract.
+
+The three patterns differ on three axes the codebase already cares about:
+
+| Axis | Implication |
+|---|---|
+| **Durability** | Core (in-memory, lossy-OK) vs JetStream durable (at-least-once, replay) |
+| **Direction** | bidirectional adapter↔hub vs unidirectional hub→subscriber |
+| **Lifecycle ownership** | producer drives state (Core) vs consumer replays state from stream (JetStream) |
+
+A single ADR cataloguing the three planes makes "what plane is this subject?" answerable by
+reading a table rather than reverse-engineering from existing subject naming.
+
+## Decision
+
+Three planes are recognised. Every NATS subject in Lyra MUST belong to exactly one.
+
+| Plane | Subject prefix | NATS type | Durability | Producers | Consumers | When to use |
+|---|---|---|---|---|---|---|
+| **Messages** | `lyra.{inbound,outbound}.<platform>.<bot_id>` | Core | ephemeral | adapters ↔ hub | hub, adapters | bidirectional hub↔adapter routing of user content |
+| **Persistence** | `lyra.turns.>` | JetStream durable (stream `LYRA_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub | turn-writer | append-only state changes (turn log, session lifecycle, resume counts) requiring at-least-once delivery |
+| **Typing / Lifecycle** *(NEW)* | `lyra.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
+
+Plane membership is a frontmatter property of the subject, not of the message: the same
+envelope shape may appear on Messages and Persistence (a `TurnEvelope` is shipped over the
+Persistence plane today, but a future hot-path replay over the Messages plane would not change
+its shape).
+
+### Enforcement
+
+The plane assignment governs the wire (subject + NATS type), not the envelope payload. The
+Typing plane in particular has a keying contract that lives outside the plane table and
+must be enforced explicitly:
+
+- **Typing plane keying** — keyed on `WorkScope` (`platform + bot_id + scope_id`). ACL
+  enforces only `platform + bot_id` (the subject tokens); `scope_id` lives in the envelope
+  body. The publisher contract (T1, see #1376 spec) requires every envelope to carry
+  `scope_id`; subscribers MUST reject envelopes missing `scope_id` and log a structured
+  error. Validation failures surface in the **adapter** units
+  (`journalctl --user -u lyra-{discord,telegram}`), NOT in `lyra-nats.service` — this is
+  the monitoring grep target if the #1374 bug class re-emerges.
+
+### Choosing Core vs JetStream
+
+The choice is forced by the durability column, not by convenience:
+
+- **Hard guarantee needed** (write must survive a crash, must be re-readable from offset) → JetStream.
+- **Lossy-OK** (consumer state auto-expires or is recomputable) → Core.
+
+A typing event has no recovery value 30s after it was emitted (Discord/Telegram both expire
+the indicator client-side in ≤10s; the worst case after an adapter restart is ~20s without a
+visible typing bubble). Putting it on JetStream would pay storage + ACK overhead for a signal
+whose useful life is shorter than the round-trip.
+
+A turn-log event, by contrast, MUST land or the L1 audit invariant breaks — JetStream is the
+only correct choice.
+
+### Where new subjects go
+
+When adding a NATS subject:
+
+1. Decide durability first (see "Choosing Core vs JetStream" above) — that determines the plane.
+2. If the durability + direction shape already matches one of the three planes → use that
+   plane's prefix.
+3. Only file a new ADR + open a new plane if **durability + direction + lifecycle ownership**
+   all differ from the three existing planes.
+
+Partial difference (1 or 2 of 3 prongs) is **not** sufficient — the existing plane must be
+stretched or the subject reclassified, never a new plane opened. The three-prong test is
+conjunctive on purpose: partial matches mean an existing plane is the right home with a
+narrower (or wider) keying contract, not a new wire shape.
+
+## Distinguish from sibling subjects
+
+Three subjects routinely cause confusion with the Typing plane; they belong to neither it nor
+each other:
+
+| Subject | Plane | Why it is NOT typing |
+|---|---|---|
+| `lyra.progress.<job_id>` (#1044) | Workers (TBD) | Progress is **job-internal** — reports "step 3/7" inside a long-running compute job. Typing is **display feedback** — reports "the bot is thinking about your scope right now." Same wire shape, different semantic owner; conflating them would force progress to be keyed on `WorkScope` rather than `job_id`. |
+| `lyra.clipool.heartbeat` | Health (control-plane) | Internal liveness of a subprocess runner. Not user-facing, not scoped to a conversation. Lives alongside `lyra.{voice,llm,image}.heartbeat` and `lyra.system.ready` — a control-plane that may eventually become its own catalogued plane but is not the same shape as Typing. |
+| `$KV.lyra-state.hub.ready` | KV (control-plane) | Persistent flag in JetStream KV, watched by adapters. Lifecycle owned by the **store**, not by a producer-publish event. |
+
+If a future emitter sits between "job-internal" and "display feedback" (e.g. TTS rendering
+progress visible to the user), the rule is: **does the consumer need it to drive UX it will
+re-render after restart?** Yes → JetStream; no → Typing plane.
+
+**Caveat — `job_id` keying disqualifies the Typing plane.** If the answer above is "no"
+(lossy-OK) **AND** the natural key is `job_id` (not `WorkScope`), this is **NOT** the Typing
+plane — open or extend a Workers plane that keys on `job_id`. The Typing plane's `WorkScope`
+keying contract (per Alternative D) is precisely what prevents the #1374 bug class;
+re-keying on `job_id` re-opens it.
+
+## Relationship to ADR-073 (axial: stage-of-pipeline)
+
+This section is the load-bearing one. ADR-073 ratifies **stage-of-pipeline** as the primary
+axis of decomposition. Reading this ADR's three-plane table as a competing primary axis would
+re-introduce exactly the N×M drift ADR-073 closes.
+
+The three-plane decomposition is a **sub-axis of the `transport/` stage**, not a primary axis.
+
+- **Primary axis (unchanged):** stage-of-pipeline — parse → route → session → dispatch →
+  outbound. One stage = one module = one process boundary (ADR-073, ADR-075).
+- **Transport sub-axis (this ADR):** within the transport stage, NATS subjects partition
+  horizontally into messages / persistence / typing planes. This is a property of *what flows
+  over the wire*, not of *which stage produced or consumes it*.
+
+Diagrammatically:
+
+```
+                       primary axis (ADR-073) — stages
+                       ───────────────────────────────►
+                       inbound │ router │ session │ dispatcher │ outbound
+
+   ┌─── transport sub-axis (this ADR — confined to the transport hop, NOT a new stage) ───┐
+   │                                                                                       │
+   │   messages    ◄═══════════════════════════════════════════════════════════════════►   │
+   │               (Core, ephemeral, bidirectional adapter ↔ hub)                          │
+   │                                                                                       │
+   │   persistence ═══════════════════════════════════►        (hub-only)                  │
+   │               (JetStream durable, hub → turn-writer)                                  │
+   │                                                                                       │
+   │   typing     ═══════════════════════════════════════════════════════════════►         │
+   │               (Core, ephemeral, hub → adapters)                                       │
+   │                                                                                       │
+   └───────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+The transport sub-axis slices the transport stage horizontally; it does not slice the
+adapters/stages vertically. Adding a new adapter does NOT add a new plane (that would be the
+prohibited platform-axis growth from ADR-073 Option A). Adding a new plane MUST be justified
+by a durability + direction + lifecycle shape that none of the three existing planes accommodates.
+
+When extending Lyra, a contributor adding a NATS subject MUST consult both ADRs:
+
+1. **ADR-073** → which stage produces / consumes the subject. Determines the module home.
+2. **ADR-076** → which plane the subject belongs to. Determines `Core` vs `JetStream`,
+   durability config, and subject prefix.
+
+If the two ADRs disagree (e.g. a stage that wants its own bespoke plane), the disagreement is
+the design question — surface it, do not silently file a new plane.
+
+## Consequences
+
+### Positive
+
+- The Core-vs-JetStream choice is now mechanical: durability column → plane → wire type. No
+  per-subject re-deliberation.
+- Typing indicator bugs of the #1374 class (orphan tasks from key drift) become structurally
+  impossible: the publisher owns the keying contract, subscribers are the only side-effect site.
+- Future worker subjects (#1044) have a documented home: progress events on `lyra.progress.*`,
+  user-facing typing on `lyra.typing.*` — same publisher, different planes, different durability.
+- Adapter authors get a single grep target (`lyra.typing.<platform>.*`) for "what is the bot
+  currently telling this scope," instead of inspecting `_start_typing/_cancel_typing` call sites
+  scattered across inbound, outbound, and audio modules.
+
+### Negative / Expected debt
+
+- **Per-plane ACL surface grows.** Each plane requires its own ACL entries in
+  `deploy/nats/auth.conf` for every identity that publishes or subscribes. Tracked in
+  `artifacts/specs/706-per-role-nkeys-acls-spec.mdx` (T1 of Epic #1375 adds
+  `lyra.typing.>` grants).
+- **Worker pub grants MUST be per-platform/bot, not plane-wildcard** (when #1044 lands).
+  A future worker identity publishing on the Typing plane must hold a grant on
+  `lyra.typing.<platform>.<bot_id>` matching the job's assigned scope — never the
+  plane-level wildcard `lyra.typing.>`. The wildcard would let any worker publish typing
+  on behalf of any bot, regardless of the job's relationship to that bot. Refreshing the
+  grant means rewriting `auth.conf` and restarting `lyra-nats` (`systemctl --user restart
+  lyra-nats`); the `type=mount` secret pattern (per
+  `~/projects/docs/container-deployment-standard.md` S7) does NOT support HUP refresh.
+- **Sub-axis is invisible from filenames.** Unlike the stage axis (where the directory name
+  IS the stage), plane membership is encoded in the subject string only. Mitigation: this ADR's
+  table is the lookup; the documentation pattern (domain page → ADR archive) places it in
+  `messaging.md` as the SSoT contributors hit first.
+- **Plane proliferation pressure.** The next emitter that does not cleanly fit will face the
+  question "new plane or stretched plane." The "durability + direction + lifecycle" three-prong
+  test in this ADR is the gate, but it requires judgement; expect at least one panel review
+  before adding a 4th plane.
+
+### Revisit triggers
+
+- A 4th plane is proposed → re-open this ADR's gate test, do not pattern-match.
+- Typing events start being lost in a user-visible way (≥10s of missing indicator after
+  adapter restart consistently) → re-evaluate `Core` choice for the Typing plane.
+- Workers (#1044) require a typing-like ephemeral plane keyed on `job_id` rather than
+  `WorkScope` → may indicate the Typing plane should split, not extend.
+
+## Alternatives considered
+
+### A. Embed typing as a field on `OutboundMessage`
+
+Treat typing-start/typing-end as flags on the existing outbound envelope so no new subject
+is required.
+
+- **Rejected.** Typing must start **before** any `OutboundMessage` exists — at inbound receipt,
+  while the agent is still computing whether there will even be a response. There is no
+  envelope to hang a flag on at the moment the signal is needed.
+
+### B. Use JetStream for typing with a short `max_age`
+
+Reuse the `LYRA_TURNS`-style durable consumer pattern for typing, with `max_age=10s` to keep
+storage bounded.
+
+- **Rejected.** Typing has no recovery value past its on-screen lifetime. Paying JetStream's
+  ACK + persistence cost for a signal whose consumer auto-expires the state client-side is
+  pure overhead. The wire shape would suggest replay semantics that the consumer cannot
+  meaningfully act on.
+
+### C. In-process callback on a shared event bus
+
+Keep typing entirely in-process via a callback registry in the hub.
+
+- **Rejected.** Hub and adapters are split processes (ADR-073 stage = process). An in-process
+  bus does not cross the process boundary, so adapters could not subscribe. The NATS bus is
+  already the cross-process channel; reusing it is cheaper than building a parallel transport.
+
+### D. A single plane for "everything ephemeral"
+
+Collapse Typing and any future ephemeral subjects into one open-ended plane.
+
+- **Rejected.** Erases the keying contract that prevents the #1374 bug class. Typing is keyed
+  on `WorkScope` (`platform + bot_id + scope_id`); progress is keyed on `job_id`. A shared
+  plane forces a lowest-common-denominator key and re-opens the orphan-task vulnerability.
+
+## References
+
+- **ADR-073** — Axis of Decomposition: Stage of Pipeline (primary axial; transport sub-axis
+  positioning).
+- **ADR-075** — TurnWriter subscriber-writer sublayer (established `lyra.turns.>` Persistence
+  plane; same shape this ADR extends).
+- **ADR-035** — NATS subject naming convention (`lyra.{domain}.{qualifier...}` rule the
+  Typing plane inherits).
+- **ADR-045** — `roxabi-nats` SDK (transport abstraction the three planes share).
+- **ADR-065** — KV readiness probe (control-plane example called out in "Distinguish from
+  sibling subjects").
+- Epic **#1277** — stage-axis refactor (primary-axis epic ADR-073 ratifies).
+- Epic **#1044** — workers (future consumer of Typing plane; introduces
+  `lyra.progress.<job_id>` as a sibling, not a member).
+- Epic **#1375** — typing-indicator lifecycle via `lyra.typing.*` (operational landing of
+  this ADR; T1 ships the publisher/listener, T2 closes #1374).
+- Spec: `artifacts/specs/706-per-role-nkeys-acls-spec.mdx` — ACL grants for the new plane.
+- Domain page: `docs/architecture/messaging.md` — SSoT for messaging/NATS current truth;
+  carries the plane table in living form.

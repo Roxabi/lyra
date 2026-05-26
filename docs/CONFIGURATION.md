@@ -680,11 +680,9 @@ After fixing the underlying issue, run a normal `make quadlet-install` (without
 
 ---
 
-## Monitoring — DEPRECATED (#1035)
+## Monitoring — removed; superseded by Monitoring v2 (#1035)
 
-The host-timer health monitor (`lyra-monitor.{service,timer}` + `src/lyra/monitoring/`) is **deprecated**. It pokes `systemctl --user`, `podman logs`, and host loopback ports — none of which translate cleanly to a containerised world — and offers no UI beyond a Telegram message.
-
-It is being replaced by **Monitoring v2** — a NATS event stream + Tauri desktop dashboard — tracked in [#1035](https://github.com/Roxabi/lyra/issues/1035). Banners on the deprecated files retain the existing check logic so the v2 spec author can mine it.
+The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/lyra/monitoring/` is retained for [Monitoring v2 (#1035)](https://github.com/Roxabi/lyra/issues/1035) spec mining. It pokes `systemctl --user`, `podman logs`, and host loopback ports — none of which translate cleanly to a containerised world — and offers no UI beyond a Telegram message.
 
 For ad-hoc hub-health probes, hit `/health/detail` directly:
 

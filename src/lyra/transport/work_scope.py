@@ -9,5 +9,5 @@ class WorkScope:
     trace_id: str
 
     def __post_init__(self) -> None:
-        if not self.trace_id:
+        if not self.trace_id.strip():
             raise ValueError("WorkScope.trace_id must be non-empty")

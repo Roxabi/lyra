@@ -39,6 +39,11 @@ Entries are generated automatically by `/promote` and committed to staging befor
 
 ### Fixed
 
+- `HttpBlobStore.exists()` sentinel `BlobRef.content_hash` is now `""` instead of
+  carrying the `store_key` argument (which is a wire path, not a sha256). HEAD does
+  not return a content_hash, so failing fast on any downstream integrity check is
+  preferable to silently passing a wrong-typed value. Updates `roxabi-blobs` to
+  `0.1.1`. (#1367)
 - Tool activity recap card (`🔧 Working… / Done ✅`) restored on Telegram and Discord
   multi-tool turns. Card had been blank since the v1 cutover (#1192 slice 3) which removed
   the v1 emitter while leaving `_on_toolcall_v2` as a stub. Rebuild sources card state

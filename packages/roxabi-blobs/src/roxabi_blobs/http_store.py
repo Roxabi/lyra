@@ -130,6 +130,10 @@ class HttpBlobStore:
 
         Over HTTP the argument is treated as a store_key (wire path), NOT a
         content_hash as in FsBlobStore.exists — see CLAUDE.md §HttpBlobStore.
+
+        Returned ``BlobRef.content_hash`` is empty — full content_hash is not
+        available via HEAD; callers needing it should PUT and capture the
+        response.
         """
         # HEAD endpoint only returns 200/404; reconstruct a minimal BlobRef on hit.
         # Full BlobRef data is not available via HEAD — callers needing the full
@@ -141,10 +145,12 @@ class HttpBlobStore:
         resp.raise_for_status()
         # HEAD returns no body — synthesise a sentinel BlobRef so Protocol
         # callers that only test truthiness get a non-None result.
-        # The content_hash field is set to the argument value (store_key in HTTP).
+        # content_hash="" — the argument is a store_key in HTTP, and the full
+        # sha256 is not available via HEAD; empty fails fast in any downstream
+        # integrity check rather than silently passing a wrong-typed value.
         return BlobRef(
             store_key=content_hash,
-            content_hash=content_hash,
+            content_hash="",
             mime="application/octet-stream",
             size=0,
             source="http",

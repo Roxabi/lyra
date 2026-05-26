@@ -73,6 +73,22 @@ class TestHttpBlobStoreExists:
         assert found is not None
         assert missing is None
 
+    async def test_http_blob_store_exists_sentinel_content_hash_is_empty(
+        self, asgi_store: HttpBlobStore
+    ) -> None:
+        """exists() sentinel BlobRef has empty content_hash — HEAD has no body."""
+        # Arrange
+        payload = b"sentinel content_hash check"
+        # Act
+        async with asgi_store:
+            ref = await asgi_store.put(
+                payload, mime="application/octet-stream", source="test"
+            )
+            found = await asgi_store.exists(ref.content_hash)
+        # Assert
+        assert found is not None
+        assert found.content_hash == ""
+
 
 # ---------------------------------------------------------------------------
 # N4 — delete removes blob

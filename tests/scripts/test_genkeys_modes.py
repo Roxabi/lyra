@@ -515,46 +515,63 @@ def _make_matrix(
 class TestExternalFailLoud:
     """#1379 Slice V2 — _mode_full_provision fail-loud on external identities."""
 
-    def test_full_provision_no_externals_exits_0(
+    def test_full_provision_returns_externals_list(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """_mode_full_provision returns [] when matrix has no external identities.
+        """_mode_full_provision returns the right externals list for both shapes.
 
-        SC-7: when zero external identities exist, the function returns [] and
-        the caller does NOT emit a manifest or exit 2.
-        RED: _mode_full_provision currently returns None — it has no return value.
-        Will turn GREEN when T7 changes the return type to list[tuple[...]] and
-        adds the externals-collection loop.
+        SC-7: when zero externals exist → []; when ≥1 exists → list[(name, deploy)]
+        for each. Asserting BOTH paths catches the deletion of the collection
+        loop (a no-loop function returns [] in the no-externals case but also
+        returns [] in the with-externals case — the empty-only assertion is
+        tautological).
+
+        verified: removing the `if deploy.get("type") == "external"` branch
+        causes the with-external assertion to fail (empty list vs expected 1).
         """
         import argparse
 
         from scripts._modes import _mode_full_provision
 
-        # Arrange
         seeds_dir = tmp_path / "nkeys"
         auth_dir = tmp_path / "auth"
         auth_dir.mkdir(parents=True)
-        matrix_path = _make_matrix(tmp_path, with_external=False)
-
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
         monkeypatch.setenv("NKEY_PROVIDER", "fake")
         monkeypatch.setenv("LYRA_TEST_MODE", "1")
 
-        args = argparse.Namespace(
-            matrix=matrix_path,
-            yes=True,
-            ack_external_distribution=False,
+        # No externals → []
+        matrix_no_ext = _make_matrix(tmp_path, with_external=False)
+        args_no = argparse.Namespace(
+            matrix=matrix_no_ext, yes=True, ack_external_distribution=False
+        )
+        assert _mode_full_provision(args_no) == [], (
+            "_mode_full_provision must return [] when no external identities exist"
         )
 
-        # Act
-        externals = _mode_full_provision(args)
+        # With externals → exactly the external entry, with correct shape
+        seeds_dir2 = tmp_path / "nkeys2"
+        auth_dir2 = tmp_path / "auth2"
+        auth_dir2.mkdir(parents=True)
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir2))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir2))
 
-        # Assert — must return an empty list (not None)
-        assert externals == [], (
-            f"_mode_full_provision must return [] when no external identities exist;"
-            f" got: {externals!r}"
+        matrix_with_ext = _make_matrix(tmp_path, with_external=True)
+        args_yes = argparse.Namespace(
+            matrix=matrix_with_ext, yes=True, ack_external_distribution=True
         )
+        externals = _mode_full_provision(args_yes)
+        assert len(externals) == 1, (
+            f"with_external=True matrix has exactly one external identity;"
+            f" _mode_full_provision returned {externals!r}"
+        )
+        name, deploy = externals[0]
+        assert name == "voice-client", (
+            f"expected the single external to be 'voice-client'; got '{name}'"
+        )
+        assert deploy["type"] == "external"
+        assert "host" in deploy and "target_path" in deploy
 
     def test_full_provision_externals_no_ack_exits_2(
         self,
@@ -602,6 +619,15 @@ class TestExternalFailLoud:
         assert scp_lines, (
             "stderr must contain at least one line beginning with '  scp '"
         )
+        # SC-11: enforce exact `scp <src> <user>@<host>:<target_path>` format
+        # (catches drift like missing `user@` or malformed targets).
+        import re as _re
+
+        scp_re = _re.compile(r"^scp\s+\S+\s+\w[\w.-]*@\S+:\S+$")
+        assert any(scp_re.match(ln.strip()) for ln in scp_lines), (
+            f"no scp line matches '<src> <user>@<host>:<path>' format;"
+            f" got: {scp_lines!r}"
+        )
 
     def test_full_provision_externals_with_ack_exits_0(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -637,9 +663,16 @@ class TestExternalFailLoud:
             f"Expected exit 0 with --ack flag; got {result.returncode}\n"
             f"stderr: {result.stderr}"
         )
-        # Manifest must still be visible on stderr even with ack
-        assert "scp " in result.stderr, (
-            "Manifest scp lines must still be printed when --ack flag is given"
+        # Manifest must still be visible on stderr even with ack — full format.
+        import re as _re
+
+        scp_re = _re.compile(r"^scp\s+\S+\s+\w[\w.-]*@\S+:\S+$")
+        scp_lines = [
+            ln for ln in result.stderr.splitlines() if ln.strip().startswith("scp ")
+        ]
+        assert any(scp_re.match(ln.strip()) for ln in scp_lines), (
+            f"manifest must still print a full scp '<src> <user>@<host>:<path>'"
+            f" line when --ack flag is given; got: {scp_lines!r}"
         )
 
     def test_external_manifest_uses_sudo_user(
@@ -772,3 +805,70 @@ class TestExternalFailLoud:
             "hub.seed must contain freshly-generated content, not the pre-regen"
             " backup — rollback must NOT fire on SystemExit(2)"
         )
+
+    def test_handle_externals_empty_returns_silently(self, tmp_path: Path) -> None:
+        """_handle_externals is a no-op when externals list is empty.
+
+        Covers the `if not externals: return` guard directly. Subprocess tests
+        cannot distinguish this branch from "no externals in matrix" — the
+        unit test pins the contract.
+        """
+        import argparse
+
+        from scripts._modes import _handle_externals
+
+        args = argparse.Namespace(ack_external_distribution=False)
+        # Must not raise, must not exit
+        _handle_externals([], tmp_path, args)
+
+    def test_handle_externals_no_ack_raises_exit_2(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """_handle_externals raises SystemExit(2) when externals present and no ack."""
+        import argparse
+
+        from scripts._acl_models import ExternalDeploy
+        from scripts._modes import _handle_externals
+
+        externals: list[tuple[str, ExternalDeploy]] = [
+            (
+                "voice-client",
+                ExternalDeploy(
+                    type="external",
+                    host="roxabitower",
+                    target_path="~/.voicecli/nkeys/voice-client.seed",
+                ),
+            )
+        ]
+        args = argparse.Namespace(ack_external_distribution=False)
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_externals(externals, tmp_path, args)
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "External seeds require manual fan-out" in captured.err
+
+    def test_handle_externals_with_ack_returns_silently(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """_handle_externals does not exit with ack flag; manifest still prints."""
+        import argparse
+
+        from scripts._acl_models import ExternalDeploy
+        from scripts._modes import _handle_externals
+
+        externals: list[tuple[str, ExternalDeploy]] = [
+            (
+                "voice-client",
+                ExternalDeploy(
+                    type="external",
+                    host="roxabitower",
+                    target_path="~/.voicecli/nkeys/voice-client.seed",
+                ),
+            )
+        ]
+        args = argparse.Namespace(ack_external_distribution=True)
+        # Must not raise
+        _handle_externals(externals, tmp_path, args)
+        # But manifest still prints (operator visibility)
+        captured = capsys.readouterr()
+        assert "External seeds require manual fan-out" in captured.err

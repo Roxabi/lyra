@@ -157,7 +157,7 @@
       "subscribe": [
         "_inbox.llm-operator.>"
       ],
-      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/llmcli/nkeys/operator.seed" }
+      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/llmcli/nkeys/operator.creds" }
     },
     "image-worker": {
       "status": "active",

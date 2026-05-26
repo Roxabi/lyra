@@ -121,23 +121,10 @@ The `PipelineEventBus` is injected via constructor (DI, not singleton) per ADR-0
 
 ## Health Monitoring
 
-> **Removed — see [#1035](https://github.com/Roxabi/lyra/issues/1035).** The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/lyra/monitoring/` is preserved for Monitoring v2 spec reference. The section below documents its check logic.
+> **Removed — see [#1035](https://github.com/Roxabi/lyra/issues/1035).** The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/lyra/monitoring/` is preserved for Monitoring v2 spec reference.
 
-A separate two-layer monitoring system runs on a configurable interval (default: 5 min):
-
-- **Layer 1 — Health checks:** hits `http://localhost:8443/health`, checks queue depth, idle thresholds.
-- **Layer 2 — LLM diagnosis:** aggregates Layer 1 results into a natural-language `DiagnosisReport`.
-
-Config keys (in `config.toml` under `[monitoring]`):
-
-| Key | Default | Purpose |
-|-----|---------|---------|
-| `check_interval_minutes` | 5 | How often checks run |
-| `health_endpoint_timeout_s` | 5 | HTTP timeout for `/health` |
-| `queue_depth_threshold` | 80 | Alert threshold |
-| `idle_check_enabled` | `false` | Enable the idle check (opt-in; check is skipped when `false`) |
-| `idle_threshold_hours` | 6 | Flag pools idle longer than this (only used when `idle_check_enabled = true`) |
-| `quiet_start` / `quiet_end` | `00:00` / `08:00` | Suppress alerts during quiet hours |
+> For ad-hoc hub health probes, see `docs/CONFIGURATION.md` § Monitoring — removed.
+> For the planned successor, see [#1035](https://github.com/Roxabi/lyra/issues/1035) (Monitoring v2 — NATS event stream + Tauri dashboard).
 
 ---
 

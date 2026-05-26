@@ -2,7 +2,7 @@
 
 ## Invariants
 
-**STANDALONE** — invoked as `python -m lyra.monitoring` (legacy host-timer integration removed; superseded by Monitoring v2 #1035).
+**STANDALONE** — invoked as `python -m lyra.monitoring` (valid triggers: manual / cron / CI smoke — ¬systemd timer).
 ¬imported by any other `src/lyra/*` module. Only tests import this package.
 
 **Exit-code contract** — `main()` returns and `SystemExit` propagates:

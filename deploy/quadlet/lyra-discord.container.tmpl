@@ -27,6 +27,7 @@ Environment=NATS_URL=nats://lyra-nats:4222
 # ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
 Secret=lyra-nats-discord,type=mount,target=lyra-nats-discord.seed,uid=1500,gid=1500,mode=0400
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-discord.seed
+Environment=LYRA_TYPING_ENABLED=false
 # Per-bot Secret= directives are rendered at install time from
 # ~/.lyra/config.toml's [[auth.<platform>_bots]] enumeration.
 # Use `make quadlet-install` to render them. See docs/QUADLET-DEPLOYMENT.md.

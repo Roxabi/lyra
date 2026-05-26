@@ -116,6 +116,18 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 adapter._outbound_listener = listener
                 await adapter.astart()
 
+                from lyra.adapters.telegram.telegram import _telegram_scope_resolver
+                from lyra.typing.listener import TypingListener
+
+                tg_typing_listener = TypingListener(
+                    nc=nc,
+                    subject=f"lyra.typing.telegram.{bot_id}",
+                    resolver=_telegram_scope_resolver,
+                    factory_builder=adapter._build_telegram_typing_factory,
+                    manager=adapter._typing,
+                )
+                await tg_typing_listener.start()
+
                 wired.append((adapter, inbound_bus))
                 log.info(
                     "adapter_standalone: Telegram bot_id=%s ready (NATS mode)", bot_id
@@ -236,6 +248,18 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 )
                 adapter_dc._outbound_listener = listener_dc
                 await adapter_dc.astart()
+
+                from lyra.adapters.discord.adapter import _discord_scope_resolver
+                from lyra.typing.listener import TypingListener
+
+                dc_typing_listener = TypingListener(
+                    nc=nc,
+                    subject=f"lyra.typing.discord.{bot_id}",
+                    resolver=_discord_scope_resolver,
+                    factory_builder=adapter_dc._build_discord_typing_factory,
+                    manager=adapter_dc._typing,
+                )
+                await dc_typing_listener.start()
 
                 wired_dc.append((adapter_dc, token, inbound_bus_dc))
                 log.info(

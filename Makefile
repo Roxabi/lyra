@@ -294,10 +294,15 @@ remote:
 
 # ── Dev tools ────────────────────────────────────────────────────────────────
 
+# Shared list of services that hold NATS subject auth and must restart
+# whenever `auth.conf` is regenerated or a new identity is added. The bare
+# `lyra-nats` is restarted separately by the target itself before this list.
+LYRA_NATS_CLIENTS := lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper
+
 nats-setup:
 	@bash deploy/nats/setup.sh
 
-nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart NATS
+nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart all NATS clients
 	@lyra-acl genkeys --regen-authconf
 	@test -s "$(LYRA_NKEYS_DIR)/auth.conf" \
 		|| { echo "ERROR: $(LYRA_NKEYS_DIR)/auth.conf missing or empty after genkeys"; exit 1; }
@@ -305,6 +310,16 @@ nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth sec
 	@podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"
 	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.
 	@systemctl --user restart lyra-nats
+	@systemctl --user is-active --wait lyra-nats \
+		|| { echo "ERROR: lyra-nats failed to reach active state"; exit 1; }
+	@# All NATS clients hold stale subject auth after an ACL change (#1390).
+	@failed=""; \
+	for svc in $(LYRA_NATS_CLIENTS); do \
+	  if systemctl --user is-active --quiet $$svc; then \
+	    systemctl --user restart $$svc || { echo "ERROR: restart $$svc failed"; failed="$$failed $$svc"; }; \
+	  fi; \
+	done; \
+	[ -z "$$failed" ] || { echo "ERROR: restart failed for:$$failed"; exit 1; }
 
 nats-add-identity:  ## add a single NATS identity rootless; idempotent after full-consistency (seed+secret present)
 	@test -n "$(NAME)" || { echo "usage: make nats-add-identity NAME=<x>"; exit 2; }
@@ -322,7 +337,7 @@ nats-add-identity:  ## add a single NATS identity rootless; idempotent after ful
 	podman secret create --replace "lyra-nats-$(NAME)" "$(LYRA_NKEYS_DIR)/$(NAME).seed"; \
 	podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"; \
 	failed=""; \
-	for svc in lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper; do \
+	for svc in lyra-nats $(LYRA_NATS_CLIENTS); do \
 	  if systemctl --user is-active --quiet $$svc; then \
 	    systemctl --user restart $$svc || { echo "ERROR: restart $$svc failed"; failed="$$failed $$svc"; }; \
 	  fi; \

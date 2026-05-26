@@ -126,14 +126,22 @@ class HttpBlobStore:
         return resp.content
 
     async def exists(self, content_hash: str) -> BlobRef | None:
-        """HEAD /blobs/{content_hash}; returns BlobRef-like object or None.
+        """HEAD /blobs/{content_hash}; returns sentinel BlobRef or None.
 
         Over HTTP the argument is treated as a store_key (wire path), NOT a
         content_hash as in FsBlobStore.exists — see CLAUDE.md §HttpBlobStore.
 
-        Returned ``BlobRef.content_hash`` is empty — full content_hash is not
-        available via HEAD; callers needing it should PUT and capture the
-        response.
+        Returns a **sentinel BlobRef** (``is_sentinel=True``,
+        ``content_hash=""``) on hit. The sentinel carries no metadata beyond
+        existence — ``content_hash``/``size``/``mime``/``created_at`` are
+        placeholders. Callers needing the full envelope should PUT and capture
+        the response.
+
+        WARNING: do NOT forward this sentinel into a ``roxabi_contracts.BlobRef``
+        constructor — the wire model's validator requires either a non-empty
+        ``content_hash`` or ``store_key == PENDING_STORE_KEY``, and this
+        sentinel satisfies neither. Convert deliberately (substitute
+        ``PENDING_STORE_KEY``) or call PUT to obtain a full envelope.
         """
         # HEAD endpoint only returns 200/404; reconstruct a minimal BlobRef on hit.
         # Full BlobRef data is not available via HEAD — callers needing the full
@@ -144,10 +152,9 @@ class HttpBlobStore:
             return None
         resp.raise_for_status()
         # HEAD returns no body — synthesise a sentinel BlobRef so Protocol
-        # callers that only test truthiness get a non-None result.
-        # content_hash="" — the argument is a store_key in HTTP, and the full
-        # sha256 is not available via HEAD; empty fails fast in any downstream
-        # integrity check rather than silently passing a wrong-typed value.
+        # callers that only test truthiness get a non-None result. is_sentinel=True
+        # makes the sparseness machine-checkable (BlobRef validator rejects
+        # content_hash="" without it, mirroring roxabi-contracts PENDING_STORE_KEY).
         return BlobRef(
             store_key=content_hash,
             content_hash="",
@@ -155,6 +162,7 @@ class HttpBlobStore:
             size=0,
             source="http",
             created_at=datetime.now(tz=UTC),
+            is_sentinel=True,
         )
 
     async def delete(self, blob_ref_id: int) -> None:

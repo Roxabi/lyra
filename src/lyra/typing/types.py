@@ -29,7 +29,7 @@ class TypingManagerProtocol(Protocol):
     def start(
         self,
         target: int,
-        coro_factory: Callable[[], Coroutine[Any, Any, None]],
+        coro_factory: CoroFactory,
     ) -> None: ...
 
     def cancel(self, target: int) -> None: ...

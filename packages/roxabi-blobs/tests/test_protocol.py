@@ -79,6 +79,7 @@ class TestBlobRefEnvelope:
         "platform_ref",
         "platform_message_id",
         "created_at",
+        "is_sentinel",
     }
 
     def test_field_set(self) -> None:
@@ -131,6 +132,32 @@ class TestBlobRefEnvelope:
                 source="x",
                 created_at=datetime(2026, 5, 21),  # naive
             )
+
+    def test_empty_content_hash_rejected_without_sentinel_flag(self) -> None:
+        """content_hash="" requires is_sentinel=True — #1367."""
+        with pytest.raises(ValueError, match="content_hash must be non-empty"):
+            BlobRef(
+                store_key="x",
+                content_hash="",
+                mime="x",
+                size=0,
+                source="x",
+                created_at=_utc(),
+            )
+
+    def test_empty_content_hash_accepted_for_sentinel(self) -> None:
+        """Sentinel BlobRef bypasses the content_hash guard (#1367)."""
+        ref = BlobRef(
+            store_key="wire/path",
+            content_hash="",
+            mime="application/octet-stream",
+            size=0,
+            source="http",
+            created_at=_utc(),
+            is_sentinel=True,
+        )
+        assert ref.is_sentinel is True
+        assert ref.content_hash == ""
 
 
 class TestTypedErrors:

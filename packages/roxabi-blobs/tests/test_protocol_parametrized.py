@@ -92,7 +92,13 @@ class TestBlobStoreProtocol:
     async def test_exists_returns_true_after_put_false_before(
         self, store: BlobStore
     ) -> None:
-        """exists() returns BlobRef after put, None for unknown content_hash."""
+        """exists() returns BlobRef after put, None for unknown content_hash.
+
+        Protocol contract is non-None on hit / None on miss only. The returned
+        BlobRef's content_hash is backend-specific: FsBlobStore returns the full
+        sha256; HttpBlobStore returns a sentinel with ``content_hash=""`` because
+        HEAD has no body (see CLAUDE.md §HttpBlobStore, #1367).
+        """
         # Arrange
         payload = b"exists check"
         # Act
@@ -101,11 +107,18 @@ class TestBlobStoreProtocol:
         missing = await store.exists("aaaa" * 16)  # 64-char hex that was never put
         # Assert
         assert found is not None
-        assert found.content_hash == ref.content_hash
         assert missing is None
 
     async def test_delete_removes_blob_from_store(self, store: BlobStore) -> None:
-        """delete(blob_ref_id) causes exists() to return None for that hash."""
+        """delete(blob_ref_id) causes exists() to return None for that hash.
+
+        Cross-backend note: ``store.exists(ref.content_hash)`` is the natural
+        argument for FsBlobStore (which looks up by content_hash). For
+        HttpBlobStore the argument is structurally a store_key — the server-side
+        HEAD handler does dual lookup (store_path then content_hash fallback,
+        see src/lyra/blobstore/CLAUDE.md §HEAD handler dual lookup), so the call
+        succeeds pre-delete and fails post-delete on both backends.
+        """
         # Arrange
         payload = b"blob to delete"
         # Act

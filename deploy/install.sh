@@ -79,6 +79,24 @@ else
   echo "  [skip] ${BLOBSTORE_TOK} already exists (use --force to regenerate)"
 fi
 
+# ── 1c. Bootstrap blobstore.env (idempotent) ─────────────────────────────────
+
+ENV_FILE="${HOME}/.lyra/env/blobstore.env"
+if [[ ! -f "${ENV_FILE}" ]]; then
+  log "Generating ${ENV_FILE} ..."
+  run mkdir -p "$(dirname "${ENV_FILE}")"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || true)
+    printf 'TAILSCALE_IPV4=%s\nNATS_URL=\n' "${TS_IP}" > "${ENV_FILE}"
+    chmod 0600 "${ENV_FILE}"
+    log "[ok] generated ${ENV_FILE} (TAILSCALE_IPV4=${TS_IP:-<empty>})"
+  else
+    echo "[dry-run] would generate ${ENV_FILE} (TAILSCALE_IPV4 from tailscale ip -4)"
+  fi
+else
+  echo "  [skip] ${ENV_FILE} already exists"
+fi
+
 MISSING=0
 for secret_name in "${!SEEDS[@]}"; do
   seed_path="${SEEDS[$secret_name]}"

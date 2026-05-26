@@ -4,6 +4,7 @@
 Token in template: {{bot_secrets}}  →  one `Secret=` line per bot.
 Bots come from config.toml [[auth.<platform>_bots]]; sorted by bot_id.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,17 +54,26 @@ def sort_bots(bots: list[dict]) -> list[dict]:
 
 
 def render_secrets(platform: str, bots: list[dict]) -> str:
-    lines = [
-        (
-            f"Secret=lyra-bot-{platform}-{b['bot_id']},"
+    lines: list[str] = []
+    for b in bots:
+        bot_id = b["bot_id"]
+        lines.append(
+            f"Secret=lyra-bot-{platform}-{bot_id},"
             f"type=mount,"
-            f"target=bot_token-{b['bot_id']},"
+            f"target=bot_token-{bot_id},"
             f"mode=0400,"
             f"uid=1500,"
             f"gid=1500"
         )
-        for b in bots
-    ]
+        if b.get("webhook_enabled", False):
+            lines.append(
+                f"Secret=lyra-bot-{platform}-{bot_id}-webhook,"
+                f"type=mount,"
+                f"target=bot_webhook-{bot_id},"
+                f"mode=0400,"
+                f"uid=1500,"
+                f"gid=1500"
+            )
     return "\n".join(lines)
 
 

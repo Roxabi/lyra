@@ -247,10 +247,14 @@ def test_missing_bots_key(tmp_path: Path) -> None:
 
     result = _run_render(
         [
-            "--platform", "telegram",
-            "--config", str(config),
-            "--tmpl", str(tmpl),
-            "--dest", str(dest),
+            "--platform",
+            "telegram",
+            "--config",
+            str(config),
+            "--tmpl",
+            str(tmpl),
+            "--dest",
+            str(dest),
         ]
     )
 
@@ -352,6 +356,169 @@ def test_missing_config(tmp_path: Path) -> None:
         "Error message must reference the missing config path.\n"
         f"Combined output: {combined!r}"
     )
+
+
+def make_config_with_webhook(
+    tmp_path: Path, bots: list[dict], filename: str = "config.toml"
+) -> Path:
+    """Write a config.toml supporting arbitrary per-bot fields (e.g. webhook_enabled).
+
+    bots: list of dicts with at least 'bot_id'; may include 'webhook_enabled'.
+    """
+    path = tmp_path / filename
+    lines = ["[auth]\n"]
+    for bot in bots:
+        lines.append(f'[[auth.telegram_bots]]\nbot_id = "{bot["bot_id"]}"\n')
+        if "webhook_enabled" in bot:
+            val = "true" if bot["webhook_enabled"] else "false"
+            lines.append(f"webhook_enabled = {val}\n")
+        lines.append("\n")
+    path.write_text("".join(lines))
+    return path
+
+
+def test_webhook_enabled_happy_path(tmp_path: Path) -> None:
+    """Bot with webhook_enabled = true → emits both bot_token- and bot_webhook- lines.
+
+    Spec trace: #1373 happy path webhook
+    Negative sentinel: if the webhook branch is absent, only the token line appears
+    and the bot_webhook- assertion fails.
+    """
+    config = make_config_with_webhook(
+        tmp_path, bots=[{"bot_id": "lyra", "webhook_enabled": True}]
+    )
+    tmpl = make_tmpl(tmp_path, with_marker=True)
+    dest = tmp_path / "lyra-telegram.container"
+
+    result = _run_render(
+        [
+            "--platform",
+            "telegram",
+            "--config",
+            str(config),
+            "--tmpl",
+            str(tmpl),
+            "--dest",
+            str(dest),
+        ]
+    )
+
+    assert result.returncode == 0, (
+        f"Expected exit 0; got {result.returncode}\nstderr: {result.stderr}"
+    )
+    content = dest.read_text()
+
+    expected_token = (
+        "Secret=lyra-bot-telegram-lyra,"
+        "type=mount,"
+        "target=bot_token-lyra,"
+        "mode=0400,"
+        "uid=1500,"
+        "gid=1500"
+    )
+    expected_webhook = (
+        "Secret=lyra-bot-telegram-lyra-webhook,"
+        "type=mount,"
+        "target=bot_webhook-lyra,"
+        "mode=0400,"
+        "uid=1500,"
+        "gid=1500"
+    )
+    assert expected_token in content, (
+        f"Missing bot_token- Secret= line.\nContent:\n{content}"
+    )
+    assert expected_webhook in content, (
+        f"Missing bot_webhook- Secret= line.\nContent:\n{content}"
+    )
+
+    # webhook line must appear immediately after the token line (grouped per bot)
+    token_idx = content.index(expected_token)
+    webhook_idx = content.index(expected_webhook)
+    assert token_idx < webhook_idx, (
+        "bot_token- line must precede bot_webhook- line in output"
+    )
+
+
+def test_webhook_disabled_no_webhook_line(tmp_path: Path) -> None:
+    """Bot without webhook_enabled (default false) → only bot_token- line emitted.
+
+    Spec trace: #1373 regression — default false
+    Negative sentinel: if webhook_enabled defaults to True, this test fails on the
+    no-webhook-line assertion.
+    """
+    # webhook_enabled absent → default false
+    config = make_config(tmp_path, bots=["lyra"])
+    tmpl = make_tmpl(tmp_path, with_marker=True)
+    dest = tmp_path / "lyra-telegram.container"
+
+    result = _run_render(
+        [
+            "--platform",
+            "telegram",
+            "--config",
+            str(config),
+            "--tmpl",
+            str(tmpl),
+            "--dest",
+            str(dest),
+        ]
+    )
+
+    assert result.returncode == 0, (
+        f"Expected exit 0; got {result.returncode}\nstderr: {result.stderr}"
+    )
+    content = dest.read_text()
+
+    assert "bot_token-lyra" in content, "bot_token- line must be present"
+    assert "bot_webhook-lyra" not in content, (
+        "bot_webhook- line must NOT appear when webhook_enabled is false/absent"
+    )
+
+
+def test_webhook_mixed_bots(tmp_path: Path) -> None:
+    """Bot A (webhook_enabled=true) + Bot B (default false) → webhook only for A.
+
+    Spec trace: #1373 mixed bots
+    Negative sentinel: if webhook_enabled is ignored and always emitted, bot_webhook-b
+    appears and the assertion fails.
+    """
+    config = make_config_with_webhook(
+        tmp_path,
+        bots=[
+            {"bot_id": "a", "webhook_enabled": True},
+            {"bot_id": "b"},
+        ],
+    )
+    tmpl = make_tmpl(tmp_path, with_marker=True)
+    dest = tmp_path / "lyra-telegram.container"
+
+    result = _run_render(
+        [
+            "--platform",
+            "telegram",
+            "--config",
+            str(config),
+            "--tmpl",
+            str(tmpl),
+            "--dest",
+            str(dest),
+        ]
+    )
+
+    assert result.returncode == 0, (
+        f"Expected exit 0; got {result.returncode}\nstderr: {result.stderr}"
+    )
+    content = dest.read_text()
+
+    assert "bot_webhook-a" in content, (
+        "bot_webhook-a must appear for webhook_enabled bot"
+    )
+    assert "bot_webhook-b" not in content, (
+        "bot_webhook-b must NOT appear for bot without webhook_enabled"
+    )
+    # Both token lines must be present
+    assert "bot_token-a" in content
+    assert "bot_token-b" in content
 
 
 def test_toml_syntax_error(tmp_path: Path) -> None:

@@ -297,7 +297,7 @@ remote:
 nats-setup:
 	@bash deploy/nats/setup.sh
 
-nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart NATS
+nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart NATS + hub + adapters
 	@lyra-acl genkeys --regen-authconf
 	@test -s "$(LYRA_NKEYS_DIR)/auth.conf" \
 		|| { echo "ERROR: $(LYRA_NKEYS_DIR)/auth.conf missing or empty after genkeys"; exit 1; }
@@ -305,6 +305,14 @@ nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth sec
 	@podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"
 	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.
 	@systemctl --user restart lyra-nats
+	@# Hub + adapters must also restart: they hold stale subject auth after an ACL change (#1390).
+	@failed=""; \
+	for svc in lyra-hub lyra-telegram lyra-discord lyra-clipool; do \
+	  if systemctl --user is-active --quiet $$svc; then \
+	    systemctl --user restart $$svc || { echo "ERROR: restart $$svc failed"; failed="$$failed $$svc"; }; \
+	  fi; \
+	done; \
+	[ -z "$$failed" ] || { echo "ERROR: restart failed for:$$failed"; exit 1; }
 
 nats-add-identity:  ## add a single NATS identity rootless; idempotent after full-consistency (seed+secret present)
 	@test -n "$(NAME)" || { echo "usage: make nats-add-identity NAME=<x>"; exit 2; }

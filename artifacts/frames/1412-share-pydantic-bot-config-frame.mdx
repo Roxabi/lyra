@@ -1,0 +1,71 @@
+---
+title: "refactor(config): partager Pydantic BotConfig runtime↔render — dédupliquer [telegram.bots] + [[auth.*_bots]]"
+issue: 1412
+status: approved
+tier: F-lite
+date: 2026-05-26
+---
+
+## Problem
+
+Le `config.toml` de Lyra utilise **deux namespaces TOML parallèles** par bot, parsés par deux chemins de code séparés avec des contrats incompatibles :
+
+```
+[[telegram.bots]]          ──► TelegramBotConfig (Pydantic, frozen)   → runtime adapter
+                                src/lyra/config.py:69-79
+                                fields: bot_id, agent
+
+[[auth.telegram_bots]]     ──► raw dict[str, Any]                     → render-time secrets
+                                tools/render_quadlet.py:56-72
+                                fields: bot_id, webhook_enabled (#1398)
+```
+
+Idem Discord : `[[discord.bots]]` (Pydantic `DiscordBotConfig`) vs `[[auth.discord_bots]]` (raw dict).
+
+Conséquences observables :
+
+1. **Silent typo trap** côté render : `bot.get("webhook_enable")` (typo) → `None` → traité comme `False`, aucune erreur. PR #1398 a ajouté `webhook_enabled` sans validateur ; le finding G18 du consensus 2026-05-26 a flaggé `ssot-violation` (vote 3-0 DEFER).
+2. **Bot_id mismatch silencieux** : `bot_id="lyra"` dans `[telegram.bots]` + `bot_id="lyra2"` dans `[[auth.telegram_bots]]` → runtime démarre OK, `render_quadlet` rate le `Secret=` (le bot n'a aucune credential mountée → tous webhooks rejetés au prochain `make quadlet-install`).
+3. **Champs éparpillés sans schema unifié** : `agent` vit dans `[telegram.bots]`, `webhook_enabled` dans `[[auth.telegram_bots]]`. Ajout futur d'un champ bot → décision arbitraire de la section cible, drift garanti.
+4. **Boundary-contract drift** entre runtime path (typé Pydantic) et render path (raw dict) — pattern récurrent (`feedback_boundary_contract_drift`).
+
+## Who
+
+- **Primary** : développeurs ajoutant un nouveau champ bot (lieu actuel ambigu, validation à mi-chemin). Ops déployant via `make quadlet-install` après edit de `config.toml` (un typo passe en prod sans signal).
+- **Secondary** : code review (G18 a été déféré faute de catch automatique) ; futurs intégrateurs de nouveaux platforms (CLI workers, Slack, etc. — sans modèle unifié, chacun ré-invente).
+
+## Constraints
+
+- **Back-compat config.toml** : migration **one-shot OK** (peut casser le format existant si nécessaire, ops fera l'update une fois).
+- **Runtime fonctionnel inchangé** : webhook continue de marcher comme avant ; pas de nouveau comportement applicatif.
+- **Importlinter** : le modèle Pydantic doit respecter les contrats de layer (probablement `lyra.config` ou `roxabi-contracts` — tranché en /spec).
+- **Pas de nouveau champ** : on type + déduplique l'existant uniquement.
+- **#1373 toujours OPEN** : pas un blocker dur (le code de #1373 a été shipped via #1398), mais traçabilité à préserver.
+
+## Out of Scope
+
+- Ajout de nouveaux champs bot (token rotation, webhook URL, etc.).
+- Refactor du LoadConfig pipeline en dehors de la section bots.
+- Migration vers `roxabi-contracts` package (à juger en /spec, mais probablement pas nécessaire pour ce scope — config Lyra reste in-tree).
+- Changement de comportement runtime (webhook, secrets, adapter wiring).
+
+## Premise Validity
+
+**Success in 6 months :** `webhook_enabled` (et tout champ bot) est un champ Pydantic typé. Un typo de champ → `ValidationError` au load (¬`False` silencieux). `render_quadlet.py` consomme un modèle Pydantic, pas un raw dict. Si on garde 2 sections TOML, un `bot_id` mismatch entre `[telegram.bots]` et `[[auth.telegram_bots]]` est détecté au load avec un message explicite.
+
+**Failure in 6 months (falsifiable) :** après 3 mois post-merge, `grep -rn "\.get(\"webhook_enabled\"\|bot\[\"bot_id\"\]" tools/ src/` retourne ≥1 occurrence (raw dict survivant). Test reproductible : modifier `config.toml` avec `webhook_enable` (typo) → si `lyra hub` démarre sans `ValidationError`, c'est un fail observable.
+
+**Simplest alternative :** ajouter `webhook_enabled: bool = False` à `TelegramBotConfig`/`DiscordBotConfig` existants, sans toucher `render_quadlet.py` (continue raw dict).
+
+**Why not simplest :** le typo silencieux reste côté render (la section `[[auth.*_bots]]` continue d'être lue en raw dict). Le boundary-contract drift (runtime typé ↔ render raw) persiste exactement comme avant — on a juste re-typé une moitié. Ne résout aucun des 4 problèmes listés.
+
+## Complexity
+
+**Tier: F-lite** — scope clair (≈5-10 fichiers), 1 domaine (config + render-tooling), pas de nouvelle archi cross-domain, ≤2 inconnues mineures (placement du modèle Pydantic, unify vs share).
+
+Signals observés :
+- 1 domaine (config/typing de `config.toml`)
+- Pas de cross-module (touche `src/lyra/config.py` + `tools/render_quadlet.py` + tests)
+- Inconnues : Option A (unify) vs Option B (share) vs Option C (separate) — décision /spec
+- Pas de coordination cross-repo (in-tree only)
+- Back-compat one-shot OK (réduit l'effort migration)

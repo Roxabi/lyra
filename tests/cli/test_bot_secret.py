@@ -555,26 +555,26 @@ class TestE2EV1RedGate:
         _assert_exit0(r_list, label="list after install")
         assert "lyra-bot-telegram-mybot" in r_list.output
 
-        # Assert Makefile recipe shape — no subprocess call to make needed.
-        # Asserts the Makefile recipe shape; full make invocation is reserved
-        # for the manual M₂ smoke test.
+        # Assert Makefile recipe shape — install→render contract.
+        # As of #1369, the render step moved from inline Makefile shell to
+        # tools/render_quadlet.py. The Secret= line shape (mode=0400/uid=1500/
+        # gid=1500, bot_token-/bot_webhook- targets) is enforced against the
+        # renderer's output in tests/scripts/test_render_quadlet.py.
+        # Here we only assert that quadlet-install delegates to the renderer.
         makefile_path = Path(__file__).parent.parent.parent / "Makefile"
         makefile_contents = makefile_path.read_text()
 
-        # Secret= line must carry the correct mount options
-        secret_format_re = re.compile(
-            r"Secret=\$\$s,type=mount,target=\$\$target,mode=0400,uid=1500,gid=1500"
+        assert "render_quadlet.py" in makefile_contents, (
+            "Makefile quadlet-install missing tools/render_quadlet.py invocation"
         )
-        assert secret_format_re.search(makefile_contents), (
-            "Makefile Secret= line missing mode=0400,uid=1500,gid=1500 mount options"
-        )
-
-        # target= for token must be bot_token-<bot>
-        assert re.search(r"target=bot_token-\$\$bot", makefile_contents), (
-            "Makefile missing target=bot_token-$$bot assignment"
-        )
-
-        # target= for webhook must be bot_webhook-<bot>
-        assert re.search(r"target=bot_webhook-\$\$bot", makefile_contents), (
-            "Makefile missing target=bot_webhook-$$bot assignment"
-        )
+        # Makefile uses backslash line continuation; match across newlines.
+        assert re.search(
+            r"render_quadlet\.py.*?--platform telegram",
+            makefile_contents,
+            re.DOTALL,
+        ), "Makefile missing render_quadlet --platform telegram invocation"
+        assert re.search(
+            r"render_quadlet\.py.*?--platform discord",
+            makefile_contents,
+            re.DOTALL,
+        ), "Makefile missing render_quadlet --platform discord invocation"

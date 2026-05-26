@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import pathlib
 import re
 import subprocess
@@ -16,6 +17,8 @@ QUADLET_UNIT = REPO_ROOT / "deploy" / "quadlet" / "lyra-blobstore.container"
 #   - tr -d is present (whitespace strip)
 #   - [ -n "$v" ] is present (test on stripped residue, not raw var)
 _TR_STRIP_PATTERN = re.compile(r"tr\s+-d")
+# `\\?` makes the backslash optional: matches both literal `"$v"` and
+# systemd-escaped `"\$v"` (the latter prevents %-expansion in some scopes).
 _STRIPPED_TEST_PATTERN = re.compile(r'\[\s*-n\s+"\\?\$v"\s*\]')
 # Also verify the variable is still referenced in the guard line.
 _VAR_PATTERN = re.compile(r"\$\{?TAILSCALE_IPV4\}?")
@@ -59,7 +62,7 @@ def _extract_exec_start_pre_shell(content: str) -> str | None:
             # Strip the directive prefix and any surrounding /bin/sh -c '...' wrapper.
             value = line[len("ExecStartPre=") :]
             # Extract the inner shell script from `/bin/sh -c '<script>'`.
-            m = re.search(r"/bin/sh\s+-c\s+'(.+)'", value)
+            m = re.search(r"/bin/sh\s+-c\s+'([^']+)'", value)
             if m:
                 return m.group(1)
     return None
@@ -80,7 +83,7 @@ def test_whitespace_only_tailscale_ipv4_rejected() -> None:
     # Whitespace-only — must be rejected (exit 1).
     result_ws = subprocess.run(
         ["/bin/sh", "-c", script],
-        env={"TAILSCALE_IPV4": "   ", "PATH": "/bin:/usr/bin"},
+        env=os.environ | {"TAILSCALE_IPV4": "   "},
         capture_output=True,
     )
     assert result_ws.returncode == 1, (
@@ -92,7 +95,7 @@ def test_whitespace_only_tailscale_ipv4_rejected() -> None:
     # Empty string — must be rejected (exit 1).
     result_empty = subprocess.run(
         ["/bin/sh", "-c", script],
-        env={"TAILSCALE_IPV4": "", "PATH": "/bin:/usr/bin"},
+        env=os.environ | {"TAILSCALE_IPV4": ""},
         capture_output=True,
     )
     assert result_empty.returncode == 1, (
@@ -103,12 +106,61 @@ def test_whitespace_only_tailscale_ipv4_rejected() -> None:
     # Valid IP — must be accepted (exit 0).
     result_valid = subprocess.run(
         ["/bin/sh", "-c", script],
-        env={"TAILSCALE_IPV4": "100.64.1.2", "PATH": "/bin:/usr/bin"},
+        env=os.environ | {"TAILSCALE_IPV4": "100.64.1.2"},
         capture_output=True,
     )
     assert result_valid.returncode == 0, (
         "Valid TAILSCALE_IPV4 was rejected by the guard "
         f"(exit {result_valid.returncode}); expected exit 0"
+    )
+
+    # Tab-only — must be rejected (exit 1).
+    result_tab = subprocess.run(
+        ["/bin/sh", "-c", script],
+        env=os.environ | {"TAILSCALE_IPV4": "\t"},
+        capture_output=True,
+    )
+    assert result_tab.returncode == 1, (
+        "Tab-only TAILSCALE_IPV4 passed the guard "
+        f"(exit {result_tab.returncode}); "
+        "expected exit 1 — guard is not whitespace-safe (#1368)"
+    )
+
+    # Newline-only — must be rejected (exit 1).
+    result_newline = subprocess.run(
+        ["/bin/sh", "-c", script],
+        env=os.environ | {"TAILSCALE_IPV4": "\n"},
+        capture_output=True,
+    )
+    assert result_newline.returncode == 1, (
+        "Newline-only TAILSCALE_IPV4 passed the guard "
+        f"(exit {result_newline.returncode}); "
+        "expected exit 1 — guard is not whitespace-safe (#1368)"
+    )
+
+    # Mixed-whitespace — must be rejected (exit 1).
+    result_mixed = subprocess.run(
+        ["/bin/sh", "-c", script],
+        env=os.environ | {"TAILSCALE_IPV4": " \t  "},
+        capture_output=True,
+    )
+    assert result_mixed.returncode == 1, (
+        "Mixed-whitespace TAILSCALE_IPV4 passed the guard "
+        f"(exit {result_mixed.returncode}); "
+        "expected exit 1 — guard is not whitespace-safe (#1368)"
+    )
+
+    # Unset (key absent) — also rejected via POSIX empty-expansion.
+    parent_env = {k: v for k, v in os.environ.items() if k != "TAILSCALE_IPV4"}
+    result_unset = subprocess.run(
+        ["/bin/sh", "-c", script],
+        env=parent_env,
+        capture_output=True,
+    )
+    assert result_unset.returncode == 1, (
+        f"Unset TAILSCALE_IPV4 passed the guard (exit {result_unset.returncode}); "
+        "expected exit 1 — POSIX expands unset to empty, "
+        "which the guard should reject (#1368)"
     )
 
 

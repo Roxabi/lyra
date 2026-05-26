@@ -102,6 +102,12 @@ is absent at container start, Podman falls back to `0.0.0.0:8449` (LAN-exposed).
 token (`lyra_blobstore_token`) is then the **sole** auth boundary. Accepted for V8; Phase 2
 (network policy / per-identity tokens) will address this systematically.
 
+The `ExecStartPre=` guard strips all whitespace before the `-n` test (POSIX `tr -d`) so
+empty, unset, **and whitespace-only** values are all rejected at the systemd layer (#1368).
+Prior to #1368, `[ -n "   " ]` was TRUE in POSIX sh — a whitespace-only value passed the
+guard and Podman's downstream parse error provided fail-closed behaviour by accident, not
+by design. The guard is now the authoritative rejection point.
+
 ### Known residual risk — clipool `core.hooksPath` override (tracked #1245)
 
 The clipool unit sets `core.hooksPath = /opt/lyra-gh/hooks` via `GIT_CONFIG_GLOBAL`

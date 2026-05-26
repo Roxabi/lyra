@@ -129,12 +129,12 @@ quadlet-preflight:  ## advisory pre-flight checks before Quadlet install (non-bl
 		echo "         (or persist in /etc/sysctl.d/99-rootless-ports.conf)"; \
 	fi
 
-quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment guard (issue #1083)
+quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment guard (issue #1083) + template purity (issue #1369)
 	@echo "==> quadlet --dryrun"
 	@QUADLET_UNIT_DIRS=$(CURDIR)/deploy/quadlet /usr/libexec/podman/quadlet --dryrun --user
 	@echo "==> inline-comment check"
 	@_bad=0; \
-	for f in deploy/quadlet/*.container deploy/quadlet/*.volume deploy/quadlet/*.network; do \
+	for f in deploy/quadlet/*.container deploy/quadlet/*.container.tmpl deploy/quadlet/*.volume deploy/quadlet/*.network; do \
 	    [ -f "$$f" ] || continue; \
 	    if grep -Pn '^\s*[^#;].*[[:space:]]#' "$$f"; then \
 	        echo "ERROR: $$f has inline # comments on value lines (Quadlet does not strip them)"; \
@@ -142,6 +142,8 @@ quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment g
 	    fi; \
 	done; \
 	[ $$_bad -eq 0 ] || exit 1
+	@echo "==> template purity check"
+	@bash tools/check_quadlet_template_purity.sh
 	@echo "quadlet-lint passed"
 
 quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify (NO_RESTART=1 skips restart/verify)
@@ -157,8 +159,16 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@chmod 0700 "$(HOME)/.lyra/nats/jetstream"
 	@cp deploy/quadlet/lyra-nats.container             "$(QUADLET_DIR)/lyra-nats.container"
 	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"
-	@cp deploy/quadlet/lyra-telegram.container         "$(QUADLET_DIR)/lyra-telegram.container"
-	@cp deploy/quadlet/lyra-discord.container          "$(QUADLET_DIR)/lyra-discord.container"
+	@uv run python tools/render_quadlet.py \
+		--platform telegram \
+		--config "$(HOME)/.lyra/config.toml" \
+		--tmpl deploy/quadlet/lyra-telegram.container.tmpl \
+		--dest "$(QUADLET_DIR)/lyra-telegram.container"
+	@uv run python tools/render_quadlet.py \
+		--platform discord \
+		--config "$(HOME)/.lyra/config.toml" \
+		--tmpl deploy/quadlet/lyra-discord.container.tmpl \
+		--dest "$(QUADLET_DIR)/lyra-discord.container"
 	@cp deploy/quadlet/lyra-gh.pod                     "$(QUADLET_DIR)/lyra-gh.pod"
 	@cp deploy/quadlet/lyra-gh-helper.container        "$(QUADLET_DIR)/lyra-gh-helper.container"
 	@cp deploy/quadlet/lyra-clipool.container          "$(QUADLET_DIR)/lyra-clipool.container"
@@ -198,33 +208,6 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 		echo "      Generate with: claude setup-token > ~/.lyra/claude-oauth.tok && chmod 600 ~/.lyra/claude-oauth.tok"; \
 	fi
 	@echo "Podman secrets installed. Verify: podman secret ls"
-
-.PHONY: quadlet-bot-secrets-render
-quadlet-bot-secrets-render: ## Render per-platform Secret= lines into deploy/quadlet/.bot-secrets.{telegram,discord}.fragment
-	@echo "Reading bot secrets from Podman store…"
-	@: > deploy/quadlet/.bot-secrets.telegram.fragment
-	@: > deploy/quadlet/.bot-secrets.discord.fragment
-	@bots=$$(podman secret ls --filter name=lyra-bot- --format '{{.Name}}' | sort); \
-	for s in $$bots; do \
-	  case "$$s" in \
-	    lyra-bot-telegram-*-webhook) bot=$${s#lyra-bot-telegram-}; bot=$${bot%-webhook}; target=bot_webhook-$$bot; out=deploy/quadlet/.bot-secrets.telegram.fragment ;; \
-	    lyra-bot-telegram-*)         bot=$${s#lyra-bot-telegram-};                       target=bot_token-$$bot;   out=deploy/quadlet/.bot-secrets.telegram.fragment ;; \
-	    lyra-bot-discord-*-webhook)  bot=$${s#lyra-bot-discord-};  bot=$${bot%-webhook}; target=bot_webhook-$$bot; out=deploy/quadlet/.bot-secrets.discord.fragment ;; \
-	    lyra-bot-discord-*)          bot=$${s#lyra-bot-discord-};                        target=bot_token-$$bot;   out=deploy/quadlet/.bot-secrets.discord.fragment ;; \
-	    *) echo "skip unknown $$s" >&2; continue ;; \
-	  esac; \
-	  echo "Secret=$$s,type=mount,target=$$target,mode=0400,uid=1500,gid=1500" >> $$out; \
-	done
-	@for f in telegram discord; do \
-	  frag=deploy/quadlet/.bot-secrets.$$f.fragment; \
-	  if [ ! -s "$$frag" ]; then \
-	    echo "No lyra-bot-$$f-* secrets found — $$frag is empty."; \
-	  else \
-	    echo "Wrote $$(wc -l < $$frag) Secret= line(s) to $$frag — paste into deploy/quadlet/lyra-$$f.container:"; \
-	    cat $$frag; \
-	    echo; \
-	  fi; \
-	done
 
 # ── Deploy + remote ──────────────────────────────────────────────────────────
 

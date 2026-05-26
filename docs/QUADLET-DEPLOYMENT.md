@@ -70,6 +70,75 @@ All seed secrets use `type=mount` (tmpfs-backed). `lyra-claude-oauth` uses `type
 `lyra_blobstore_token` uses `type=mount`; the bearer token is read once at container startup by
 the auth middleware and never re-read until the container restarts (ADR-054).
 
+## Bot credentials
+
+### (a) No manual splicing
+
+The tracked files `deploy/quadlet/lyra-{telegram,discord}.container.tmpl` are **pure templates** — they contain a `{{bot_secrets}}` marker and zero `Secret=lyra-bot-*` lines. Per-bot `Secret=lyra-bot-<platform>-<bot_id>,…` directives are generated at install time by `tools/render_quadlet.py`, which reads `[[auth.<platform>_bots]]` entries from `~/.lyra/config.toml` and substitutes the rendered block into each template before writing the live Quadlet to `~/.config/containers/systemd/`.
+
+**Never edit `~/.config/containers/systemd/lyra-{telegram,discord}.container` directly.** Any manual change is silently overwritten on the next `make quadlet-install`. This replaces the prior fragment-paste workflow that caused the 2026-05-26 crash-loop cascade (#1369): a `git pull --ff-only` during the #1331 deploy discarded an operator-spliced `BEGIN/END` block, stranding 4 bot-token mounts and forcing 6.5 h of adapter crash-loop before re-splice. Use the onboarding flow in (b) instead.
+
+### (b) Bot onboarding
+
+End-to-end flow for adding a new bot:
+
+1. Install the Podman secret for the bot token (host-local):
+   ```bash
+   lyra bot secret install <platform> <bot_id>
+   ```
+   This creates `lyra-bot-<platform>-<bot_id>` in the Podman secret store. For webhook variants, also run:
+   ```bash
+   lyra bot secret install <platform> <bot_id>-webhook
+   ```
+
+2. Add the bot to `~/.lyra/config.toml`:
+   ```toml
+   [[auth.<platform>_bots]]
+   bot_id = "<bot_id>"
+   ```
+   (Replace `<platform>` with `telegram` or `discord`.)
+
+3. Render and restart:
+   ```bash
+   make quadlet-install
+   ```
+   The render step reads the updated `config.toml`, generates the `Secret=` directive, writes the new Quadlet atomically, runs `systemctl --user daemon-reload`, then restarts the adapter container.
+
+4. Verify the adapter is healthy:
+   ```bash
+   systemctl --user status lyra-<platform>
+   ```
+   Expected: `Active: active (running)` with `NRestarts=0`.
+
+> **Why `systemctl --user restart` is mandatory after a `Secret=` change:** `systemctl daemon-reload` regenerates the transient `.service` from the new Quadlet definition but does NOT propagate `Secret=` mount changes into an already-running container. The new tmpfs mount only takes effect when the container is (re)started. `make quadlet-install` issues the restart automatically — do not skip it.
+
+### (c) CI guard
+
+Three artefacts prevent re-introduction of the manual-splice pattern:
+
+- `tools/check_quadlet_template_purity.sh` — enforces three invariants on all tracked `deploy/quadlet/*.container.tmpl` files: (i) no `Secret=lyra-bot-*` lines present; (ii) no `# --- BEGIN … ---` splice-block markers present; (iii) `tools/render_quadlet.py` exists (guards against accidental deletion of the render script).
+- `make quadlet-lint` — local entry point; run before pushing to catch purity failures early.
+- `.github/workflows/quadlet-lint.yml` — CI job that runs the purity check on every PR touching `deploy/quadlet/**`. A PR that reintroduces a `Secret=lyra-bot-` line or a `BEGIN/END` splice block into any `.container.tmpl` will fail here.
+
+### (d) Multi-host caveat
+
+`~/.lyra/config.toml` is Syncthing-synced across M₁, M₂, and laptop. That means `[[auth.telegram_bots]]` and `[[auth.discord_bots]]` enumerate **all bots across all hosts** in one shared file. The render step reads this file on whichever host runs `make quadlet-install` — so the rendered Quadlet on every host includes `Secret=` lines for every configured bot.
+
+However, Podman secrets (`lyra-bot-<platform>-<bot_id>`) are **host-local** and must be installed per host. A mismatch — `config.toml` lists a bot but its Podman secret is absent — causes `systemctl --user start lyra-<platform>` to fail immediately:
+
+```
+Error: looking up secret name "lyra-bot-telegram-<bot_id>": no such secret
+```
+
+**Mitigation:** When adding a bot, run `lyra bot secret install <platform> <bot_id>` on **every host that runs the adapter for that platform** before executing `make quadlet-install`.
+
+Current host-role mapping (from `~/projects/hosts.toml`):
+
+| Host | Role | Adapter units |
+|---|---|---|
+| M₁ `roxabituwer` | `lyra-hub` | `lyra-telegram`, `lyra-discord` (all 4 bots) |
+| M₂ `roxabitower` | `image-worker` | none today |
+
 ## Secret rotation
 
 ### Rotate an nkey seed

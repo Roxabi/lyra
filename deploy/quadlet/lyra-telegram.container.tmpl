@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra Discord adapter
+Description=Lyra Telegram adapter
 # After= orders startup; no Requires=/BindsTo= so a hub restart does not
 # propagate a stop to the adapter. Adapters reconnect to NATS on their own
 # once the hub is back; tearing them down blocks auto-recovery.
@@ -12,7 +12,7 @@ StartLimitBurst=5
 # (CI tag-by-SHA strategy).
 Image=ghcr.io/roxabi/lyra:staging-svc
 Label=io.containers.autoupdate=registry
-ContainerName=lyra-discord
+ContainerName=lyra-telegram
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).
 NoNewPrivileges=true
@@ -25,24 +25,18 @@ UserNS=keep-id:uid=1500,gid=1500
 # See `## Bot credentials` in docs/CONFIGURATION.md.
 Environment=NATS_URL=nats://lyra-nats:4222
 # ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
-Secret=lyra-nats-discord,type=mount,target=lyra-nats-discord.seed,uid=1500,gid=1500,mode=0400
-Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-discord.seed
-# Bot tokens are provisioned as Podman secrets — one per bot (and optionally
-# one per webhook). Use `lyra bot secret install discord <bot_id>` to provision,
-# then `make quadlet-bot-secrets-render` to generate the fragment to paste here.
-#
-# Each line follows the shape:
-#   Secret=lyra-bot-discord-<bot_id>,type=mount,target=bot_token-<bot_id>,mode=0400,uid=1500,gid=1500
-#   Secret=lyra-bot-discord-<bot_id>-webhook,type=mount,target=bot_webhook-<bot_id>,mode=0400,uid=1500,gid=1500
-#
-# --- BEGIN bot secrets (regenerate via `make quadlet-bot-secrets-render`) ---
-# Secret=lyra-bot-discord-demo,type=mount,target=bot_token-demo,mode=0400,uid=1500,gid=1500
-# --- END bot secrets ---
+Secret=lyra-nats-telegram,type=mount,target=lyra-nats-telegram.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-telegram.seed
+# Per-bot Secret= directives are rendered at install time from
+# ~/.lyra/config.toml's [[auth.<platform>_bots]] enumeration.
+# Use `make quadlet-install` to render them. See docs/QUADLET-DEPLOYMENT.md.
+# Rendered by tools/render_quadlet.py (str.replace, not Jinja2 or Go-template).
+{{bot_secrets}}
 Volume=lyra-data.volume:/home/lyra/.lyra:z
 # Inline single-file bind mount — see rationale in lyra-hub.container.
 Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
-Exec=lyra adapter discord
-HealthCmd=pgrep -f "lyra adapter discord"
+Exec=lyra adapter telegram
+HealthCmd=pgrep -f "lyra adapter telegram"
 HealthInterval=30s
 
 [Service]

@@ -7,6 +7,25 @@ Owner = Literal["lyra", "voicecli", "imagecli", "reserved"]
 Status = Literal["active", "retired"]
 
 
+class ContainerDeploy(TypedDict):
+    type: Literal["container"]
+    secret: str  # podman secret name
+
+
+class HostDeploy(TypedDict):
+    type: Literal["host"]
+    path: str  # absolute or ~-expanded
+
+
+class ExternalDeploy(TypedDict):
+    type: Literal["external"]
+    host: str  # resolvable hostname / MagicDNS short
+    target_path: str  # path on the remote host
+
+
+Deploy = ContainerDeploy | HostDeploy | ExternalDeploy
+
+
 class Identity(TypedDict):
     owner: Owner
     status: Status
@@ -17,6 +36,7 @@ class Identity(TypedDict):
     created_at: str
     retired_at: NotRequired[str]
     notes: NotRequired[str]
+    deploy: NotRequired[Deploy]
 
 
 class Flow(TypedDict):

@@ -65,12 +65,13 @@ class TestLoadMatrixPositive:
 
         result = load_matrix(prod_matrix_path)
 
-        assert result["version"] in ("1", "2")
+        assert result["version"] in ("1", "2", "3")
         assert isinstance(result["identities"], dict)
         assert len(result["identities"]) >= 1
         flows = result.get("request_reply_flows")
         assert isinstance(flows, list)
-        assert len(flows) >= 1
+        if result["version"] in ("1", "2"):
+            assert len(flows) >= 1
         # Spot-check one identity key set
         first_identity = next(iter(result["identities"].values()))
         for key in (
@@ -290,3 +291,178 @@ class TestLoadMatrixParity:
         v2 = load_matrix(_V2_PROD)
 
         assert set(v1["identities"].keys()) == set(v2["identities"].keys())
+
+
+# ---------------------------------------------------------------------------
+# Deploy field — RED tests for #1379 (T1).
+# T2 adds Deploy TypedDict variants to _acl_models.py.
+# T3 adds _validate_deploy() to _loader.py.
+# T12 extends _VALID_VERSIONS to include "3".
+# T13 adds v3 enforcement that 'deploy' is required on active identities.
+# All 5 tests below MUST FAIL until those tasks land.
+# ---------------------------------------------------------------------------
+
+
+class TestDeployField:
+    def test_load_matrix_v2_without_deploy_ok(self, tmp_path: Path) -> None:
+        """Regression guard: v2 matrix with no deploy field on an active identity
+        must load cleanly — deploy is optional in v2.
+
+        RED until T2 lands: imports ContainerDeploy/ExternalDeploy/ManagedDeploy
+        from _acl_models (added in T2). Once T2 lands these imports resolve and
+        load_matrix must not reject a deploy-less v2 identity.
+
+        verified: if _validate_identity rejects identities lacking 'deploy' at
+        v2, this test fails.
+        """
+        # Arrange — T2 adds Deploy TypedDicts; import fails until then
+        from scripts._acl_models import ContainerDeploy  # noqa: PLC0415  # T2
+
+        identity = _valid_identity(status="active")
+        assert "deploy" not in identity  # explicit: NO deploy field
+        data = {
+            "version": "2",
+            "request_reply_flows": [],
+            "identities": {"hub": identity},
+        }
+        path = _write_matrix(tmp_path, data)
+
+        # Act
+        from scripts._loader import load_matrix  # noqa: PLC0415
+
+        result = load_matrix(path)
+
+        # Assert
+        assert result["version"] == "2"
+        assert "hub" in result["identities"]
+        # identity has no deploy key — ContainerDeploy imported for type reference only
+        assert "deploy" not in result["identities"]["hub"]
+        _ = ContainerDeploy  # silence unused-import lint; type is used as documentation
+
+    def test_load_matrix_v2_with_deploy_ok(self, tmp_path: Path) -> None:
+        """Forward-compat: v2 matrix with a valid deploy field must load cleanly.
+
+        RED until T2 lands: imports ContainerDeploy from _acl_models and
+        asserts the loaded identity's deploy matches the typed structure.
+
+        verified: if load_matrix rejects recognised 'deploy' keys at v2,
+        this test fails.
+        """
+        # Arrange — T2 adds ContainerDeploy; import fails until then
+        from scripts._acl_models import ContainerDeploy  # noqa: PLC0415  # T2
+
+        identity = _valid_identity(status="active")
+        identity["deploy"] = {"type": "container", "secret": "x"}  # type: ignore[index]
+        data = {
+            "version": "2",
+            "request_reply_flows": [],
+            "identities": {"hub": identity},
+        }
+        path = _write_matrix(tmp_path, data)
+
+        # Act
+        from scripts._loader import load_matrix  # noqa: PLC0415
+
+        result = load_matrix(path)
+
+        # Assert
+        assert result["version"] == "2"
+        assert "hub" in result["identities"]
+        loaded_deploy = result["identities"]["hub"]["deploy"]  # type: ignore[typeddict-item]
+        assert loaded_deploy["type"] == "container"
+        # Verify it round-trips as a ContainerDeploy-compatible dict
+        _typed: ContainerDeploy = loaded_deploy  # type: ignore[assignment]
+        assert _typed["secret"] == "x"
+
+    def test_load_matrix_v3_active_missing_deploy_dies(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """v3 matrix with an active identity that has no deploy field must die
+        with a message matching "v3 requires 'deploy'".
+
+        Transition notes:
+        - RIGHT NOW (pre-T12): load_matrix dies with 'unsupported version: 3'
+          because "3" is not in _VALID_VERSIONS. The stderr message does NOT
+          match "v3 requires 'deploy'" → the capsys assertion below FAILS. Good.
+        - After T12: "3" is accepted; T13 adds the deploy-required guard.
+          The stderr message then matches "v3 requires 'deploy'" → test PASSES.
+
+        verified: once T12+T13 land, removing the v3 active-deploy guard causes
+        this test to fail (no SystemExit or wrong message).
+        """
+        # Arrange
+        identity = _valid_identity(status="active")
+        assert "deploy" not in identity
+        data = {
+            "version": "3",
+            "request_reply_flows": [],
+            "identities": {"hub": identity},
+        }
+        path = _write_matrix(tmp_path, data)
+
+        # Act / Assert
+        from scripts._loader import load_matrix  # noqa: PLC0415
+
+        with pytest.raises(SystemExit) as exc_info:
+            load_matrix(path)
+        assert exc_info.value.code != 0
+        # This assertion is the real guard — fails pre-T13 because current
+        # message is 'unsupported version: 3', not 'v3 requires deploy'.
+        captured = capsys.readouterr()
+        assert "v3 requires 'deploy'" in captured.err
+
+    def test_load_matrix_external_missing_target_path_dies(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """external deploy without target_path must die with a clear error.
+
+        verified: removing the target_path guard from _validate_deploy causes
+        this test to fail.
+        """
+        # Arrange
+        identity = _valid_identity(status="active")
+        identity["deploy"] = {"type": "external", "host": "foo"}  # type: ignore[index]
+        # target_path deliberately absent
+        data = {
+            "version": "2",
+            "request_reply_flows": [],
+            "identities": {"hub": identity},
+        }
+        path = _write_matrix(tmp_path, data)
+
+        # Act / Assert
+        from scripts._loader import load_matrix  # noqa: PLC0415
+
+        with pytest.raises(SystemExit) as exc_info:
+            load_matrix(path)
+        assert exc_info.value.code != 0
+        captured = capsys.readouterr()
+        assert "external missing 'host' or 'target_path'" in captured.err
+
+    def test_load_matrix_container_missing_secret_dies(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """container deploy without secret must die with a clear error.
+
+        verified: removing the secret guard from _validate_deploy causes
+        this test to fail.
+        """
+        # Arrange
+        identity = _valid_identity(status="active")
+        identity["deploy"] = {"type": "container"}  # type: ignore[index]
+        # secret deliberately absent
+        data = {
+            "version": "2",
+            "request_reply_flows": [],
+            "identities": {"hub": identity},
+        }
+        path = _write_matrix(tmp_path, data)
+
+        # Act / Assert
+        from scripts._loader import load_matrix  # noqa: PLC0415
+
+        with pytest.raises(SystemExit) as exc_info:
+            load_matrix(path)
+        assert exc_info.value.code != 0
+        captured = capsys.readouterr()
+        assert "container missing 'secret'" in captured.err

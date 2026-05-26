@@ -449,3 +449,326 @@ class TestRenderedNkeyLength:
                 assert stripped.startswith('nkey: "') and stripped.endswith('"'), (
                     f"nkey line must open and close quote on same line; got: {line!r}"
                 )
+
+
+# ── T6 — #1379 Slice V2: external seed fail-loud tests ───────────────────────
+
+
+def _make_matrix(
+    tmp_path: Path,
+    *,
+    with_external: bool,
+    external_name: str = "voice-client",
+    external_host: str = "roxabitower",
+    external_target_path: str = "~/.voicecli/nkeys/voice-client.seed",
+) -> Path:
+    """Write a minimal acl-matrix.json to tmp_path and return its Path.
+
+    When with_external=True, adds one external identity (voice-client) alongside
+    two container identities (hub, clipool-worker).  When False, only container
+    identities are present — no externals.
+    """
+    identities: dict = {
+        "hub": {
+            "status": "active",
+            "created_at": "2026-01-01",
+            "owner": "lyra",
+            "description": "hub",
+            "allow_responses": False,
+            "publish": ["lyra.out.>"],
+            "subscribe": ["lyra.in.>"],
+            "deploy": {"type": "container", "secret": "lyra-nats-hub"},
+        },
+        "clipool-worker": {
+            "status": "active",
+            "created_at": "2026-01-01",
+            "owner": "lyra",
+            "description": "clipool worker",
+            "allow_responses": True,
+            "publish": ["lyra.clipool.heartbeat"],
+            "subscribe": ["lyra.clipool.cmd"],
+            "deploy": {"type": "container", "secret": "lyra-nats-clipool"},
+        },
+    }
+    if with_external:
+        identities[external_name] = {
+            "status": "active",
+            "created_at": "2026-01-01",
+            "owner": "voicecli",
+            "description": "voice client on M2",
+            "allow_responses": False,
+            "publish": ["lyra.voice.>"],
+            "subscribe": ["lyra.voice.response.>"],
+            "deploy": {
+                "type": "external",
+                "host": external_host,
+                "target_path": external_target_path,
+            },
+        }
+    matrix_path = tmp_path / "matrix.json"
+    matrix_path.write_text(
+        json.dumps({"version": "2", "identities": identities}), encoding="utf-8"
+    )
+    return matrix_path
+
+
+class TestExternalFailLoud:
+    """#1379 Slice V2 — _mode_full_provision fail-loud on external identities."""
+
+    def test_full_provision_no_externals_exits_0(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_mode_full_provision returns [] when matrix has no external identities.
+
+        SC-7: when zero external identities exist, the function returns [] and
+        the caller does NOT emit a manifest or exit 2.
+        RED: _mode_full_provision currently returns None — it has no return value.
+        Will turn GREEN when T7 changes the return type to list[tuple[...]] and
+        adds the externals-collection loop.
+        """
+        import argparse
+
+        from scripts._modes import _mode_full_provision
+
+        # Arrange
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir(parents=True)
+        matrix_path = _make_matrix(tmp_path, with_external=False)
+
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("NKEY_PROVIDER", "fake")
+        monkeypatch.setenv("LYRA_TEST_MODE", "1")
+
+        args = argparse.Namespace(
+            matrix=matrix_path,
+            yes=True,
+            ack_external_distribution=False,
+        )
+
+        # Act
+        externals = _mode_full_provision(args)
+
+        # Assert — must return an empty list (not None)
+        assert externals == [], (
+            f"_mode_full_provision must return [] when no external identities exist;"
+            f" got: {externals!r}"
+        )
+
+    def test_full_provision_externals_no_ack_exits_2(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Full provisioning exits 2 when externals present and --ack flag absent.
+
+        SC-8/SC-9: seeds and auth.conf are written first, then the caller
+        emits the manifest and exits 2 (sentinel "regen done, manual action required").
+        RED: external-detection, manifest emission, and exit-2 logic don't exist yet.
+        Will turn GREEN when T7/T8/T9 land.
+        """
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir(parents=True)
+        matrix_path = _make_matrix(tmp_path, with_external=True)
+
+        result = _run_genkeys(
+            [
+                "--regenerate",
+                "--yes",
+                "--matrix",
+                str(matrix_path),
+            ],
+            env={
+                "SEEDS_DIR": str(seeds_dir),
+                "AUTH_DIR": str(auth_dir),
+            },
+        )
+
+        # Assert exit 2
+        assert result.returncode == 2, (
+            f"Expected exit 2 (external sentinel); got {result.returncode}\n"
+            f"stderr: {result.stderr}"
+        )
+        # Assert manifest content in stderr
+        assert "External seeds require manual fan-out" in result.stderr, (
+            "stderr must contain 'External seeds require manual fan-out'"
+        )
+        scp_lines = [
+            ln for ln in result.stderr.splitlines() if ln.strip().startswith("scp ")
+        ]
+        assert scp_lines, (
+            "stderr must contain at least one line beginning with '  scp '"
+        )
+
+    def test_full_provision_externals_with_ack_exits_0(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Full provisioning exits 0 when externals present and --ack flag given.
+
+        SC-10: operator passes --ack-external-distribution → no exit-2 sentinel.
+        Manifest lines are still printed to stderr (visible for copy-paste).
+        RED: flag handling and manifest path don't exist yet.
+        Will turn GREEN when T9 wires the exit-2 guard.
+        """
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir(parents=True)
+        matrix_path = _make_matrix(tmp_path, with_external=True)
+
+        result = _run_genkeys(
+            [
+                "--regenerate",
+                "--yes",
+                "--ack-external-distribution",
+                "--matrix",
+                str(matrix_path),
+            ],
+            env={
+                "SEEDS_DIR": str(seeds_dir),
+                "AUTH_DIR": str(auth_dir),
+            },
+        )
+
+        # Assert exit 0 (no sentinel when operator acknowledged)
+        assert result.returncode == 0, (
+            f"Expected exit 0 with --ack flag; got {result.returncode}\n"
+            f"stderr: {result.stderr}"
+        )
+        # Manifest must still be visible on stderr even with ack
+        assert "scp " in result.stderr, (
+            "Manifest scp lines must still be printed when --ack flag is given"
+        )
+
+    def test_external_manifest_uses_sudo_user(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_emit_external_manifest uses SUDO_USER for the scp user, not 'root'.
+
+        SC-11: manifest format is `scp <src> <user>@<host>:<target_path>`.
+        `<user>` = SUDO_USER when set; falls back to getpass.getuser() when unset.
+        RED: _emit_external_manifest and _operator_user don't exist yet.
+        Will turn GREEN when T8 adds those helpers.
+        """
+        from scripts._acl_models import ExternalDeploy
+        from scripts._modes import _emit_external_manifest, _operator_user
+
+        # _operator_user imported for symbol-existence check (T8 introduces it)
+        _ = _operator_user
+
+        seeds_dir = tmp_path / "nkeys"
+        seeds_dir.mkdir()
+        externals: list[tuple[str, ExternalDeploy]] = [
+            (
+                "voice-client",
+                ExternalDeploy(
+                    type="external",
+                    host="roxabitower",
+                    target_path="~/.voicecli/nkeys/voice-client.seed",
+                ),
+            )
+        ]
+
+        # Case 1: SUDO_USER set → manifest uses that username
+        monkeypatch.setenv("SUDO_USER", "mickael")
+        import io
+        import sys as _sys
+
+        captured = io.StringIO()
+        orig_stderr = _sys.stderr
+        _sys.stderr = captured
+        try:
+            _emit_external_manifest(externals, seeds_dir)
+        finally:
+            _sys.stderr = orig_stderr
+
+        manifest = captured.getvalue()
+        assert "mickael@roxabitower:" in manifest, (
+            f"Manifest must use SUDO_USER 'mickael'; got:\n{manifest}"
+        )
+        assert "root@" not in manifest, "Manifest must not use 'root' as user"
+
+        # Case 2: SUDO_USER unset → falls back to getpass.getuser()
+        monkeypatch.delenv("SUDO_USER", raising=False)
+        import getpass
+
+        expected_fallback = getpass.getuser()
+        captured2 = io.StringIO()
+        _sys.stderr = captured2
+        try:
+            _emit_external_manifest(externals, seeds_dir)
+        finally:
+            _sys.stderr = orig_stderr
+
+        manifest2 = captured2.getvalue()
+        assert f"{expected_fallback}@roxabitower:" in manifest2, (
+            f"Manifest must use getpass.getuser() '{expected_fallback}' when"
+            f" SUDO_USER is unset; got:\n{manifest2}"
+        )
+
+    def test_regenerate_rollback_not_triggered_on_exit_2(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SystemExit(2) from the external-manifest path must NOT trigger rollback.
+
+        CRITICAL ARCHITECT TEST (spec § Wiring / D-architect-blocker):
+        _mode_regenerate wraps _mode_full_provision in try/except BaseException for
+        rollback safety. SystemExit IS a BaseException. The exit-2 sentinel must be
+        raised by the CALLER (outside the try/except), not inside _mode_full_provision,
+        to avoid incorrectly rolling back a successful regen.
+
+        Verification: after _mode_regenerate raises SystemExit(2), the newly-generated
+        seed files must still exist in seeds_dir (not replaced by the pre-regen backup).
+
+        RED: exits 1 today (non-root check), not 2; external logic absent.
+        Will turn GREEN when T7/T8/T9 wire the external path at the correct call-site.
+        """
+        import argparse
+
+        from scripts._modes import _mode_regenerate
+
+        # Arrange: a pre-existing seeds_dir with a "backup-era" seed
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir(parents=True)
+        seeds_dir.mkdir()
+        # Old seed that would be restored by a (wrong) rollback
+        old_seed_path = seeds_dir / "hub.seed"
+        old_seed_path.write_bytes(b"OLD-SEED-CONTENT")
+
+        matrix_path = _make_matrix(tmp_path, with_external=True)
+
+        monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
+        monkeypatch.setenv("AUTH_DIR", str(auth_dir))
+        monkeypatch.setenv("NKEY_PROVIDER", "fake")
+        monkeypatch.setenv("LYRA_TEST_MODE", "1")
+
+        args = argparse.Namespace(
+            matrix=matrix_path,
+            yes=True,
+            ack_external_distribution=False,
+        )
+
+        # Act: _mode_regenerate should raise SystemExit(2) — not roll back seeds
+        with pytest.raises(SystemExit) as exc_info:
+            _mode_regenerate(args)
+
+        # Assert: exit code is 2 (external sentinel), not 1 (root check) or 0
+        assert exc_info.value.code == 2, (
+            f"Expected SystemExit(2) from external sentinel path;"
+            f" got SystemExit({exc_info.value.code!r})"
+        )
+
+        # CRITICAL: newly-generated seeds must survive (no rollback on exit-2)
+        # After a successful regen + exit-2, seeds_dir exists with fresh seeds.
+        # If rollback fired (wrong), seeds_dir would contain OLD-SEED-CONTENT.
+        assert seeds_dir.exists(), "seeds_dir must exist after regen (not rolled back)"
+        hub_seed = seeds_dir / "hub.seed"
+        assert hub_seed.exists(), "hub.seed must exist after regen"
+        # Fake provider writes name.encode() — content would be b"hub"
+        assert hub_seed.read_bytes() != b"OLD-SEED-CONTENT", (
+            "hub.seed must contain freshly-generated content, not the pre-regen"
+            " backup — rollback must NOT fire on SystemExit(2)"
+        )

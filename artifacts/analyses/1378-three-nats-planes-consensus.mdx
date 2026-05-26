@@ -1,0 +1,171 @@
+---
+title: "ADR-076 Three NATS planes — Expert Consensus on PR #1388 review findings"
+issue: 1378
+pr: 1388
+status: consensus-reached
+date: 2026-05-26
+panel: architect, devops, product-lead
+confidence: high
+---
+
+## Problem
+
+PR #1388 adds ADR-076 (three NATS planes — messages, persistence, typing/lifecycle) as
+T5 of Epic #1375. The `/code-review` pass returned 4 actionable suggestions + 2 forward-looking
+thoughts (no blockers, verdict = Approve with comments). User invoked `/consensus` to decide
+per-finding whether to apply, modify, or reject before merging.
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | ADR rigor, durability of the decision against future planes |
+| devops | NATS ops, ACL surface, Quadlet implications, M₁ deploy safety |
+| product-lead | Contributor-developer experience, ADR readability, T1/T2 runway |
+
+## Consensus ρ (per-finding)
+
+### F1 — WorkScope keying enforcement note (axial 85%)
+
+**Decision:** Apply Sol 1, modified. Add an "Enforcement" line to the Typing plane row in
+the Decision table that:
+1. Points at T1 (#1376) spec as the locus where `scope_id` validation lands.
+2. Phrases the requirement as "envelope MUST carry `scope_id`; subscribers reject on
+   absence and log a structured error" (ADR prescribes *what*, T1 spec owns *how*).
+3. Notes the operator-side observability path: scope_id validation failures surface in
+   the adapter's `journalctl --user -u lyra-{discord,telegram}`, NOT in
+   `lyra-nats.service` — devops monitoring lens.
+
+**Rationale (unanimous):** ACL enforces only `platform+bot_id`; `scope_id` lives in the
+envelope body and is unvalidated today — same gap class as #1374. One sentence in the
+table row closes the paper-claim risk and points future implementers + operators at the
+right enforcement and observability sites.
+
+**Rejected:** Sol 2 (cross-ref Alternative D only) — adds rationale, not enforcement
+locus. Insufficient on its own.
+
+### F2 — ASCII diagram orientation annotation (architect + axial 78%)
+
+**Decision:** Apply Sol 1. Annotate the diagram with a `(transport stage only)` label (or
+equivalent column-bracket) so the plane rows are visually confined to the transport
+stage. Keep the ASCII diagram.
+
+**Rationale (unanimous):** Horizontal plane rows spanning inbound→outbound impersonate
+the primary axis at a glance; a single-label fix preserves the spatial relationship
+without rewriting the diagram. Fumadocs renderer parity for ASCII art should be
+spot-checked but does not block the fix.
+
+**Rejected:** Sol 2 (replace ASCII with prose) — destroys the only visual that makes the
+primary-axis / sub-axis orthogonality spatially legible. All three panellists rejected.
+
+### F3 — 3-prong gate partial-case rule (axial 75%)
+
+**Decision:** Apply Sol 1 only. Add the sentence: "Partial difference (1 or 2 of 3
+prongs) is **not** sufficient — the existing plane must be stretched or the subject
+reclassified, never a new plane opened."
+
+**Rationale (2-1 majority):** Sol 1 alone closes the gate logically with one sentence.
+Sol 2 (worked rejection example for `lyra.progress.*`) partially duplicates the
+"Distinguish from sibling subjects" table that already shows `lyra.progress.*` is not
+a Typing plane member.
+
+**Recorded dissent (architect):** Architect preferred applying both Sol 1 + Sol 2
+together for compound clarity. Majority (devops + product-lead) viewed the worked example
+as duplicative of existing content. Dissent does not block; future drift can be addressed
+in a follow-up if the abstract rule proves insufficient.
+
+### F4 — Procedure duplication cleanup (architect 65%)
+
+**Decision:** Apply Sol 1. Collapse "Where new subjects go" step 1 to a forward-reference:
+"1. Decide durability (see 'Choosing Core vs JetStream' above) — that determines the
+plane."
+
+**Rationale (2-1 majority — architect + devops):** Single source for the rule; removes
+the drift surface where the two versions could diverge if rationale is updated. ADR is
+~235 lines — section bouncing is acceptable.
+
+**Recorded dissent (product-lead):** Restatement is intentional reader affordance for
+skimmers reading the procedure section standalone. Collapse forces section-bouncing for
+a 3-step checklist. Confidence 65% on the original finding; not load-bearing if dissent
+prevails. Recorded but overridden by majority.
+
+### F5 — Worker ACL wildcard note (security 65%, escalated to suggestion-class by devops)
+
+**Decision:** Apply Sol 1. Add to Consequences → Negative: "When workers are admitted as
+producers (#1044), their pub grant MUST be scoped to `lyra.typing.<platform>.<bot_id>`
+matching the job's assigned scope, not the plane-level wildcard. Updating the
+`type=mount` secret requires a container restart (¬HUP) per
+`~/projects/docs/container-deployment-standard.md` S7."
+
+**Rationale (unanimous on Sol 1; devops escalated severity):** The ACL spec
+`artifacts/specs/706-per-role-nkeys-acls-spec.mdx` currently carries **zero**
+`lyra.typing.*` rows — T1 has not added them yet. The ADR is the design contract read
+first by T1 implementers; absent guidance, a plane-level wildcard grant could land in
+`auth.conf` before per-bot scoping is documented. The note in Consequences → Negative
+forecloses that.
+
+**Out-of-scope follow-up (devops recommendation):** File a sibling task under Epic #1375
+to add `lyra.typing.*` rows to the ACL spec. This is OWNED by T1 (#1376) per the epic
+body and is NOT filed here — T1 already enumerates the ACL spec updates as in-scope.
+
+### F6 — `lyra.progress.*` lossy + job_id edge case (axial 70%)
+
+**Decision:** Apply Sol 1. Extend the escape-hatch rule: "If lossy-OK AND keyed on
+`job_id` (not `WorkScope`) → Workers plane, not Typing." Phrase tightly to avoid
+duplicating Alternative D's rejection rationale.
+
+**Rationale (unanimous):** Current escape-hatch is binary (JetStream vs Typing) and does
+not handle the user-facing TTS-progress case where lossy-OK + `job_id`-keyed would
+mislead a reader into the Typing plane. One additive sentence closes the alternative
+that Alt D currently rejects only implicitly.
+
+## Trade-offs (overall)
+
+- **Net additions:** ~7–9 sentences across F1/F2/F3/F4/F5/F6. ADR grows from ~235 to
+  ~245 lines — comfortably within the project's ≤350-line guidance for self-contained
+  docs.
+- **Defense-in-depth on the keying contract:** F1 + F5 + F6 together harden the same
+  invariant from publisher, ACL, and plane-membership angles. Correct for the
+  security-adjacent claim that triggered #1374.
+- **Fumadocs render parity (F2):** ASCII art in MDX can break on some renderers; the
+  `(transport stage only)` annotation must be visually verified before merge.
+- **Dissent on F3 (architect, compound rule) and F4 (product-lead, reader affordance):**
+  both are non-blocking and override-able by future PRs if they prove load-bearing.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| Sol 2 for F2 (replace ASCII with prose) | review (architect option) | Loses bidirectional/unidirectional legibility at a glance |
+| Sol 2 for F3 (worked rejection example) | review (axial-adr-review option) | Duplicates existing "Distinguish from sibling subjects" table |
+| Reject F4 entirely | product-lead (dissent) | Architect + devops view single-source rule as more durable; recorded as δ |
+| Defer F5/F6 to follow-up issues | n/a (panel rejected) | 1-sentence fixes cheaper than issue churn |
+| Escalate F5 to `suggestion(blocking)` | devops | Severity acknowledged; solution unchanged, no merge block needed |
+
+## Dissent
+
+- **architect** on F3: preferred Sol 1 + Sol 2 combined for compound clarity. Overridden
+  by majority. Future drift may resurface this; addressable in follow-up.
+- **product-lead** on F4: preferred Reject. Argued the restatement is intentional reader
+  affordance. Overridden by majority. ADR length not yet load-bearing.
+
+## Implementation Notes
+
+All edits land in a single file: `docs/architecture/adr/076-three-nats-planes.mdx`.
+
+Sequence:
+1. F1 — add Enforcement line to Typing plane row (Decision table) + journalctl pointer.
+2. F2 — add `(transport stage only)` annotation to ASCII diagram.
+3. F3 — add "Partial difference is not sufficient" sentence in "Where new subjects go".
+4. F4 — collapse "Where new subjects go" step 1 to forward-reference.
+5. F5 — append worker-ACL-scoping sentence to Consequences → Negative.
+6. F6 — extend escape-hatch rule with `job_id` clause in "Distinguish from sibling
+   subjects".
+
+Quality gates: ruff + pyright + pytest already pass (CI green). Pre-commit hooks will
+re-run on commit; expected to pass (no Python touched).
+
+## Next
+
+`/fix` Phase 6 (apply all 6 edits) → Phase 7 (push + `reviewed` label) → Phase 8 (post
+"Review Fixes Applied" comment) → return to `/dev` → cleanup.

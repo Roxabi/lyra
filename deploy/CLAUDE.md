@@ -94,6 +94,13 @@ API keys) use underscores (`lyra_<service>_<purpose>`, e.g. `lyra_blobstore_toke
 Mixing styles is intentional and tracked; do not "normalize" without coordinating
 with the operator (Mickael).
 
+Bot per-platform secrets follow the hyphen convention:
+
+| Secret name | In-container target | Mode | Notes |
+|---|---|---|---|
+| `lyra-bot-<platform>-<bot_id>` | `bot_token-<bot_id>` | 0400 | Bot token; always emitted per bot |
+| `lyra-bot-<platform>-<bot_id>-webhook` | `bot_webhook-<bot_id>` | 0400 | Telegram webhook secret; only emitted when `[[auth.<platform>_bots]].webhook_enabled = true` |
+
 ### Known residual risk — blobstore PublishPort Tailscale fallback (#1330)
 
 `lyra-blobstore.container` binds `PublishPort` to `${TAILSCALE_IPV4}:8449:8449` (resolved at

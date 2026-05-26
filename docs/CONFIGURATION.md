@@ -161,6 +161,10 @@ bot_id = "lyra"
 default = "blocked"            # "blocked" | "trusted" | "owner"
 owner_users = [123456789]      # numeric Telegram IDs — seeded into DB
 trusted_users = [987654321]    # can interact, cannot admin
+# Optional: webhook_enabled — bool, default false. When true, the
+#   render_quadlet pipeline emits an additional Secret=…bot_webhook-<bot_id>
+#   mount for the Telegram webhook secret verification path.
+webhook_enabled = false
 
 [[auth.discord_bots]]
 bot_id = "lyra"

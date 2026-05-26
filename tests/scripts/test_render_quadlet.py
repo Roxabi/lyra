@@ -20,6 +20,8 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "tools" / "render_quadlet.py"
 
@@ -357,19 +359,40 @@ def test_missing_config(tmp_path: Path) -> None:
 
 
 def make_config_with_webhook(
-    tmp_path: Path, bots: list[dict], filename: str = "config.toml"
+    tmp_path: Path,
+    bots: list[dict],
+    filename: str = "config.toml",
+    raw_webhook_value: str | None = None,
+    platform: str = "telegram",
 ) -> Path:
     """Write a config.toml supporting arbitrary per-bot fields (e.g. webhook_enabled).
 
     bots: list of dicts with at least 'bot_id'; may include 'webhook_enabled'.
+    raw_webhook_value: if provided, write this literal TOML text for webhook_enabled
+        on every bot that lacks an explicit 'webhook_enabled' key (e.g. '"yes"', '1',
+        'false', 'true'). Use this for non-bool TOML variants that cannot be
+        represented as Python bool without truthy-coercion.
+    platform: 'telegram' or 'discord' — determines the section name used.
+
+    Raises ValueError if a bot dict provides 'webhook_enabled' with a non-bool value
+    and raw_webhook_value is not set — callers MUST use raw_webhook_value for non-bool
+    TOML literals.
     """
     path = tmp_path / filename
+    section = f"auth.{platform}_bots"
     lines = ["[auth]\n"]
     for bot in bots:
-        lines.append(f'[[auth.telegram_bots]]\nbot_id = "{bot["bot_id"]}"\n')
-        if "webhook_enabled" in bot:
-            val = "true" if bot["webhook_enabled"] else "false"
-            lines.append(f"webhook_enabled = {val}\n")
+        lines.append(f'[[{section}]]\nbot_id = "{bot["bot_id"]}"\n')
+        if raw_webhook_value is not None:
+            lines.append(f"webhook_enabled = {raw_webhook_value}\n")
+        elif "webhook_enabled" in bot:
+            val = bot["webhook_enabled"]
+            if not isinstance(val, bool):
+                raise ValueError(
+                    f"webhook_enabled must be a bool; got {type(val).__name__!r}. "
+                    "Use raw_webhook_value= for non-bool TOML literals."
+                )
+            lines.append(f"webhook_enabled = {'true' if val else 'false'}\n")
         lines.append("\n")
     path.write_text("".join(lines))
     return path
@@ -437,8 +460,8 @@ def test_webhook_enabled_happy_path(tmp_path: Path) -> None:
     )
 
 
-def test_webhook_disabled_no_webhook_line(tmp_path: Path) -> None:
-    """Bot without webhook_enabled (default false) → only bot_token- line emitted.
+def test_webhook_key_absent_no_webhook_line(tmp_path: Path) -> None:
+    """Bot without webhook_enabled key (default false) → only bot_token- line emitted.
 
     Spec trace: #1373 regression — default false
     Negative sentinel: if webhook_enabled defaults to True, this test fails on the
@@ -519,23 +542,27 @@ def test_webhook_mixed_bots(tmp_path: Path) -> None:
     assert "bot_token-b" in content
 
 
-def test_webhook_string_value_does_not_emit(tmp_path: Path) -> None:
-    """webhook_enabled = "yes" (TOML string, not bool) must NOT emit webhook line.
+@pytest.mark.parametrize("string_value", ["yes", "true", "false"])
+def test_webhook_string_value_does_not_emit(tmp_path: Path, string_value: str) -> None:
+    """webhook_enabled = <string> (TOML string, not bool) must NOT emit webhook line.
 
     Defensive: tomllib produces a str for quoted values; strict `is True` check
     in render_secrets() must reject non-bool to avoid silent misconfig.
+    Covers "yes", "true", and "false" — all are truthy-ish strings that a
+    loose check would mishandle.
 
-    Spec trace: #1373 F5 follow-on
-    Negative sentinel: if the check were truthy (e.g. `if b.get(...):`), a string
-    "yes" would be truthy and incorrectly emit a bot_webhook- line.
+    Spec trace: #1373 F5 follow-on (G16: parametrized)
+    Negative sentinel: if the check were truthy (e.g. `if b.get(...):`), strings
+    "yes" and "true" would incorrectly emit a bot_webhook- line.
     """
-    # Write config.toml with webhook_enabled = "yes" (TOML string — NOT bool true)
-    config = tmp_path / "config.toml"
-    config.write_text(
-        '[auth]\n[[auth.telegram_bots]]\nbot_id = "lyra"\nwebhook_enabled = "yes"\n'
+    config = make_config_with_webhook(
+        tmp_path,
+        bots=[{"bot_id": "lyra"}],
+        raw_webhook_value=f'"{string_value}"',
+        filename=f"config-str-{string_value}.toml",
     )
     tmpl = make_tmpl(tmp_path, with_marker=True)
-    dest = tmp_path / "lyra-telegram.container"
+    dest = tmp_path / f"lyra-telegram-str-{string_value}.container"
 
     result = _run_render(
         [
@@ -555,10 +582,10 @@ def test_webhook_string_value_does_not_emit(tmp_path: Path) -> None:
     )
     content = dest.read_text()
 
-    # String "yes" must NOT trigger webhook line emission
+    # String value must NOT trigger webhook line emission
     assert "target=bot_webhook-" not in content, (
-        'webhook_enabled = "yes" (string) must NOT emit a bot_webhook- Secret= line; '
-        f"got:\n{content}"
+        f'webhook_enabled = "{string_value}" (string) must NOT emit a bot_webhook- '
+        f"Secret= line; got:\n{content}"
     )
     # Token line must still be emitted normally
     assert "target=bot_token-lyra" in content, (
@@ -612,4 +639,155 @@ def test_toml_syntax_error(tmp_path: Path) -> None:
     assert any(sig.lower() in combined.lower() for sig in toml_error_signals), (
         f"Error output must include TOML parser exception text.\n"
         f"Combined output: {combined!r}"
+    )
+
+
+def test_webhook_enabled_false_bool_no_emit(tmp_path: Path) -> None:
+    """webhook_enabled = false (explicit bool) → no webhook line, token line present.
+
+    Distinct from test_webhook_key_absent_no_webhook_line: here the key IS present
+    with value false (bool), exercising the explicit-false TOML path separately
+    from the absent-key path.
+
+    Spec trace: #1398 G10
+    Negative sentinel: if the check uses truthiness instead of `is True`, explicit
+    false (bool) still passes (since bool False is falsy), so the test would pass
+    vacuously — but the intent is to confirm the strict-is-True branch handles both
+    absent and explicit-false correctly.
+    """
+    config = make_config_with_webhook(
+        tmp_path, bots=[{"bot_id": "lyra", "webhook_enabled": False}]
+    )
+    tmpl = make_tmpl(tmp_path, with_marker=True)
+    dest = tmp_path / "lyra-telegram.container"
+
+    result = _run_render(
+        [
+            "--platform",
+            "telegram",
+            "--config",
+            str(config),
+            "--tmpl",
+            str(tmpl),
+            "--dest",
+            str(dest),
+        ]
+    )
+
+    assert result.returncode == 0, (
+        f"Expected exit 0; got {result.returncode}\nstderr: {result.stderr}"
+    )
+    content = dest.read_text()
+
+    assert "target=bot_webhook-" not in content, (
+        "webhook_enabled = false (explicit bool) must NOT emit a bot_webhook- line;\n"
+        f"got:\n{content}"
+    )
+    assert "target=bot_token-lyra" in content, (
+        "bot_token- line must still be present when webhook_enabled = false"
+    )
+
+
+def test_webhook_enabled_int_does_not_emit(tmp_path: Path) -> None:
+    """webhook_enabled = 1 (TOML integer, not bool) must NOT emit webhook line.
+
+    tomllib distinguishes int from bool: `1` is an int, not True. The strict
+    `is True` check must reject it.
+
+    Spec trace: #1398 G11
+    Negative sentinel: if the check were truthy (`if b.get("webhook_enabled"):`),
+    integer 1 is truthy and would incorrectly emit a bot_webhook- line.
+    """
+    config = make_config_with_webhook(
+        tmp_path,
+        bots=[{"bot_id": "lyra"}],
+        raw_webhook_value="1",
+    )
+    tmpl = make_tmpl(tmp_path, with_marker=True)
+    dest = tmp_path / "lyra-telegram.container"
+
+    result = _run_render(
+        [
+            "--platform",
+            "telegram",
+            "--config",
+            str(config),
+            "--tmpl",
+            str(tmpl),
+            "--dest",
+            str(dest),
+        ]
+    )
+
+    assert result.returncode == 0, (
+        f"Expected exit 0; got {result.returncode}\nstderr: {result.stderr}"
+    )
+    content = dest.read_text()
+
+    assert "target=bot_webhook-" not in content, (
+        "webhook_enabled = 1 (int) must NOT emit a bot_webhook- Secret= line "
+        "(strict `is True` must reject non-bool);\n"
+        f"got:\n{content}"
+    )
+    assert "target=bot_token-lyra" in content, (
+        "bot_token- line must still appear even when webhook_enabled is an int"
+    )
+
+
+def test_webhook_enabled_discord(tmp_path: Path) -> None:
+    """Discord bot with webhook_enabled = true → emits bot_webhook- for discord.
+
+    render_secrets() is platform-agnostic via {platform} substitution. This test
+    confirms the discord branch substitutes correctly:
+    lyra-bot-discord-<bot_id>-webhook, target=bot_webhook-<bot_id>.
+
+    Spec trace: #1398 G12 — Discord platform parity
+    Negative sentinel: if render_secrets() hard-codes 'telegram' instead of using
+    the platform variable, the discord secret name would contain 'telegram' and the
+    expected_webhook assertion would fail.
+    """
+    config = make_config_with_webhook(
+        tmp_path,
+        bots=[{"bot_id": "lyra", "webhook_enabled": True}],
+        platform="discord",
+    )
+    # Use a discord-named template file (name is cosmetic for the test)
+    tmpl_path = tmp_path / "lyra-discord.container.tmpl"
+    tmpl_path.write_text(
+        "[Unit]\nDescription=lyra-discord adapter\n\n[Container]\n{{bot_secrets}}\n"
+    )
+    dest = tmp_path / "lyra-discord.container"
+
+    result = _run_render(
+        [
+            "--platform",
+            "discord",
+            "--config",
+            str(config),
+            "--tmpl",
+            str(tmpl_path),
+            "--dest",
+            str(dest),
+        ]
+    )
+
+    assert result.returncode == 0, (
+        f"Expected exit 0; got {result.returncode}\nstderr: {result.stderr}"
+    )
+    content = dest.read_text()
+
+    expected_webhook = (
+        "Secret=lyra-bot-discord-lyra-webhook,"
+        "type=mount,"
+        "target=bot_webhook-lyra,"
+        "mode=0400,"
+        "uid=1500,"
+        "gid=1500"
+    )
+    assert expected_webhook in content, (
+        f"Missing discord bot_webhook- Secret= line.\nExpected: {expected_webhook!r}\n"
+        f"Content:\n{content}"
+    )
+    assert "target=bot_token-lyra" in content, (
+        "bot_token- line must also be present for discord bot"
     )

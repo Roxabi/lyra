@@ -172,6 +172,8 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@cp deploy/quadlet/lyra-gh.pod                     "$(QUADLET_DIR)/lyra-gh.pod"
 	@cp deploy/quadlet/lyra-gh-helper.container        "$(QUADLET_DIR)/lyra-gh-helper.container"
 	@cp deploy/quadlet/lyra-clipool.container          "$(QUADLET_DIR)/lyra-clipool.container"
+	@cp deploy/quadlet/lyra-blobstore.container        "$(QUADLET_DIR)/lyra-blobstore.container"
+	@cp deploy/quadlet/lyra-turn-writer.container      "$(QUADLET_DIR)/lyra-turn-writer.container"
 	@echo "Quadlet units copied."
 	@if [ "$(NO_RESTART)" = "1" ]; then \
 		echo "NO_RESTART=1 — skipping daemon-reload, restart, and verification."; \

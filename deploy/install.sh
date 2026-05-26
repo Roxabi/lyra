@@ -45,6 +45,14 @@ run() {
 log() { echo "==> $*"; }
 warn() { echo "WARN: $*" >&2; }
 
+# ── 0. Refuse to install with placeholder nkeys still in auth.conf ───────────
+
+if grep -qE '^[[:space:]]*nkey:[[:space:]]+UDET' "${SCRIPT_DIR}/nats/auth.conf"; then
+  echo "ERROR: deploy/nats/auth.conf still contains UDET* placeholder pubkeys." >&2
+  echo "       Run: make nats-regen-authconf  (renders nkeys from ~/.lyra/nkeys/*.seed)" >&2
+  exit 1
+fi
+
 # ── 1. Verify nkeys dir ──────────────────────────────────────────────────────
 
 log "Checking ~/.lyra/nkeys/ ..."

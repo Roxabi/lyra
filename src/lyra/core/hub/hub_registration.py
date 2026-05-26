@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.infrastructure.stores.turn_store import TurnStore
     from lyra.transport.turn_publisher import TurnPublisher
+    from lyra.transport.typing_publisher import TypingPublisher
 
     from ..agent import AgentBase
     from ..auth.authenticator import Authenticator
@@ -42,6 +43,7 @@ class HubRegistrationMixin:
         _platform_queue_maxsize: int
         _turn_store: TurnStore | None
         _turn_publisher: TurnPublisher | None
+        _typing_publisher: TypingPublisher | None
 
         @property
         def pools(self) -> dict[str, Pool]: ...
@@ -77,6 +79,10 @@ class HubRegistrationMixin:
         self._turn_publisher = publisher
         for pool in self.pools.values():
             pool._observer.register_turn_publisher(publisher)
+
+    def set_typing_publisher(self, publisher: TypingPublisher) -> None:
+        """Wire the TypingPublisher (called by bootstrap; consumed by T2)."""
+        self._typing_publisher = publisher
 
     def set_message_index(self, store: MessageIndex) -> None:
         self._message_index = store

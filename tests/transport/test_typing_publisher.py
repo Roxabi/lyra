@@ -58,7 +58,30 @@ async def test_flag_off_no_publish(scope: WorkScope) -> None:
 
 @pytest.mark.asyncio
 async def test_publish_error_swallow(scope: WorkScope) -> None:
+    """AC5: publish error swallowed; ref-count NOT rolled back (best-effort)."""
     nc = AsyncMock()
     nc.publish.side_effect = RuntimeError("boom")
     pub = TypingPublisher(nc, enabled=True)
     await pub.publish_started(scope)  # AC5 — must not raise
+    # AC5 — best-effort: ref-count remains incremented despite publish failure.
+    # A regression that rolled back on error would fail this assertion.
+    key = (scope.platform, scope.bot_id, scope.scope_id)
+    assert pub._refcount[key] == 1
+
+
+@pytest.mark.asyncio
+async def test_publish_ended_error_swallow(scope: WorkScope) -> None:
+    """AC5 (sibling): publish_ended swallows error AND ref-count is decremented to 0
+    (the impl decrements before _publish call, so rollback would re-increment)."""
+    nc = AsyncMock()
+    pub = TypingPublisher(nc, enabled=True)
+    await pub.publish_started(scope)  # ref-count → 1, one successful publish
+    key = (scope.platform, scope.bot_id, scope.scope_id)
+    assert pub._refcount[key] == 1
+
+    nc.publish.side_effect = RuntimeError("boom")
+    await pub.publish_ended(scope)  # AC5 — must not raise
+
+    # AC5 best-effort: decrement before _publish error; no re-increment rollback.
+    # Key may be removed (count → 0) per the impl's del branch.
+    assert key not in pub._refcount

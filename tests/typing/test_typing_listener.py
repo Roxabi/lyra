@@ -122,3 +122,23 @@ async def test_flag_off_no_subscribe() -> None:
     )
     await listener.start()
     nc.subscribe.assert_not_called()  # AC4
+
+
+@pytest.mark.asyncio
+async def test_flag_off_on_msg_no_dispatch() -> None:
+    """AC4 defense-in-depth: even if _on_msg is invoked when disabled,
+    dispatch must not fire. Guards against test-driver/race scenarios."""
+    nc = AsyncMock()
+    mgr = MagicMock()
+    listener = TypingListener(
+        nc,
+        "s",
+        lambda s: s.scope_id,
+        lambda t: _async_noop,
+        mgr,
+        enabled=False,
+    )
+    scope = WorkScope(platform="discord", bot_id="x", scope_id=42, trace_id="t")
+    await listener._on_msg(_make_msg(TypingEvent(kind="started", scope=scope, ts=1.0)))
+    mgr.start.assert_not_called()
+    mgr.cancel.assert_not_called()

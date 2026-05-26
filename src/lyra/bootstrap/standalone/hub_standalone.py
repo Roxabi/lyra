@@ -175,7 +175,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         # T1: instantiate TypingPublisher (flag-off no-op via LYRA_TYPING_ENABLED).
         # T2 will wire it into Pool.process_one() scope contexts.
         typing_publisher = TypingPublisher(nc)
-        hub._typing_publisher = typing_publisher  # type: ignore[attr-defined]
+        hub.set_typing_publisher(typing_publisher)
 
         audit_sink = JetStreamAuditSink()
         await audit_sink.provision(nc)

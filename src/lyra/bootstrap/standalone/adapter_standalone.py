@@ -80,7 +80,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             tg_turn_store = TurnStore(db_path=vault_dir / "turns.db")
             await tg_turn_store.connect()
 
-            wired: list[tuple] = []  # (TelegramAdapter, Bus)
+            wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener)
 
             for bot_cfg in tg_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
@@ -128,7 +128,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 )
                 await tg_typing_listener.start()
 
-                wired.append((adapter, inbound_bus))
+                wired.append((adapter, inbound_bus, tg_typing_listener))
                 log.info(
                     "adapter_standalone: Telegram bot_id=%s ready (NATS mode)", bot_id
                 )
@@ -144,17 +144,21 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                     a.dp.start_polling(a.bot, handle_signals=False),
                     name=f"telegram:{a._bot_id}",
                 )
-                for a, _ in wired
+                for a, _, _tl in wired
             ]
             try:
                 await stop.wait()
-                for a, _ in wired:
+                for a, _, _tl in wired:
                     await a.dp.stop_polling()
                 await asyncio.gather(*poll_tasks, return_exceptions=True)
             finally:
                 await close_safely(
                     "tg",
-                    *[coro for a, ibus in wired for coro in (a.close(), ibus.stop())],
+                    *[
+                        coro
+                        for a, ibus, tl in wired
+                        for coro in (a.close(), ibus.stop(), tl.stop())
+                    ],
                 )
                 await tg_turn_store.close()
 
@@ -212,7 +216,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             dc_turn_store = TurnStore(db_path=vault_dir / "turns.db")
             await dc_turn_store.connect()
 
-            wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus)
+            wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener)
 
             for bot_cfg in dc_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
@@ -261,7 +265,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 )
                 await dc_typing_listener.start()
 
-                wired_dc.append((adapter_dc, token, inbound_bus_dc))
+                wired_dc.append((adapter_dc, token, inbound_bus_dc, dc_typing_listener))
                 log.info(
                     "adapter_standalone: Discord bot_id=%s ready (NATS mode)", bot_id
                 )
@@ -272,17 +276,22 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             stop_dc = setup_shutdown_event(_stop)
             start_tasks = [
                 asyncio.create_task(a.start(tok), name=f"discord:{a._bot_id}")
-                for a, tok, _ in wired_dc
+                for a, tok, _, _tl in wired_dc
             ]
             try:
                 await stop_dc.wait()
-                await close_safely("dc-adapters", *[a.close() for a, _, _ in wired_dc])
+                await close_safely(
+                    "dc-adapters", *[a.close() for a, _, _, _tl in wired_dc]
+                )
                 for t in start_tasks:
                     t.cancel()
                 await asyncio.gather(*start_tasks, return_exceptions=True)
             finally:
-                dc_bus_coros = [ibus.stop() for _, _, ibus in wired_dc]
+                dc_bus_coros = [ibus.stop() for _, _, ibus, _tl in wired_dc]
                 await close_safely("dc-buses", *dc_bus_coros)
+                await close_safely(
+                    "dc-typing", *[tl.stop() for _, _, _, tl in wired_dc]
+                )
                 await dc_thread_store.close()
                 await dc_turn_store.close()
 

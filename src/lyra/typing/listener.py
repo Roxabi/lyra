@@ -57,6 +57,9 @@ class TypingListener:
             self._sub = None
 
     async def _on_msg(self, msg: "Msg") -> None:
+        if not self._enabled:
+            # AC4 defense-in-depth; start() gates subscribe, guards race/test-driver
+            return
         target: int | None = None
         try:
             event = TypingEvent.model_validate_json(msg.data)

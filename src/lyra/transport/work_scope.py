@@ -8,7 +8,8 @@ _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,48}$")
 
 # `trace_id` flows to wire payloads (`TypingEvent`/`ContractEnvelope`) and logs.
 # Wider charset (hex/UUID conventions) but still bounded against log pollution
-# and CRLF injection in structured-log sinks.
+# and CRLF injection in structured-log sinks. Subsumes the #1392 non-empty
+# guard (the {1,128} bound + tight charset implies length ≥ 1, no whitespace).
 _TRACE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
@@ -21,7 +22,8 @@ class WorkScope:
     so a caller can never publish to a wildcard-matching subject.
 
     `trace_id` is not injected into subjects but flows to wire payloads and
-    structured logs; it MUST match `^[A-Za-z0-9_-]{1,128}$`.
+    structured logs; it MUST match `^[A-Za-z0-9_-]{1,128}$` — supersedes the
+    #1392 non-empty guard with a tighter charset + length bound.
 
     `scope_id` is `int` and is not interpolated into any subject — not
     validated here.

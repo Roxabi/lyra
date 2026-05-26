@@ -1,12 +1,14 @@
 """Tests for WorkScope NATS subject-injection allowlist (#1393).
 
-The platform/bot_id fields flow into `lyra.typing.{platform}.{bot_id}` (and other
-future subjects); NATS special chars (`.`, `*`, `>`) MUST be rejected at the
-dataclass boundary so callers can never publish to a wildcard-matching subject.
-trace_id flows to wire payloads and logs and is bounded similarly (wider charset).
+Supersedes the #1392 trace_id non-empty guard with a stricter allowlist:
+platform/bot_id MUST match `^[A-Za-z0-9_-]{1,48}$`; trace_id MUST match
+`^[A-Za-z0-9_-]{1,128}$`. The new pattern implies non-empty (length ≥ 1)
+plus tight charset (rejects whitespace, control chars, NATS specials).
 """
 
 from __future__ import annotations
+
+import dataclasses
 
 import pytest
 
@@ -83,7 +85,8 @@ class TestRejected:
     @pytest.mark.parametrize(
         "value",
         [
-            "",  # empty
+            "",  # empty (subsumes #1392 non-empty guard)
+            "   ",  # whitespace-only (also subsumes #1392 strip-non-empty guard)
             "a b",  # space
             "a.b",  # dot — rejected for trace_id same as for platform/bot_id
             "a\nb",  # newline (log-injection)
@@ -100,3 +103,21 @@ class TestRejected:
         """The ValueError MUST cite the offending value to aid debugging."""
         with pytest.raises(ValueError, match=r"x\.>"):
             _make(bot_id="x.>")
+
+
+class TestDataclassReplace:
+    """`dataclasses.replace` re-fires `__post_init__` on the new instance (#1392)."""
+
+    def test_replace_rejects_empty_trace_id(self) -> None:
+        scope = WorkScope(
+            platform="telegram", bot_id="bot-1", scope_id=42, trace_id="abc123"
+        )
+        with pytest.raises(ValueError, match="trace_id"):
+            dataclasses.replace(scope, trace_id="")
+
+    def test_replace_rejects_invalid_platform(self) -> None:
+        scope = WorkScope(
+            platform="telegram", bot_id="bot-1", scope_id=42, trace_id="abc123"
+        )
+        with pytest.raises(ValueError, match="platform"):
+            dataclasses.replace(scope, platform="bad.*")

@@ -562,8 +562,8 @@ def main() -> None:
             print()
 
     print(
-        "Note: Health monitoring (lyra-monitor.{service,timer}) is DEPRECATED. "
-        "Replacement tracked in #1035 (Monitoring v2 — NATS + Tauri desktop dashboard)."
+        "Note: Health monitoring host-timer units (lyra-monitor.{service,timer}) have been removed from deploy/. "
+        "Python module src/lyra/monitoring/ is retained for Monitoring v2 (#1035) spec mining."
     )
 
 

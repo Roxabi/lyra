@@ -22,7 +22,7 @@
 # ----------------------------------------------------------------------------
 
 [defaults]
-cwd = "~/projects"                      # working directory for agent subprocesses
+cwd = "~/projects"  # working directory for agent subprocesses
 # workspaces.lyra     = "~/projects/lyra"   # adds /lyra slash command
 # workspaces.projects = "~/projects"        # adds /projects slash command
 
@@ -64,15 +64,16 @@ user_ids = [
 # ----------------------------------------------------------------------------
 
 [[telegram.bots]]
-bot_id = "lyra"                         # must match the bot_id used in `lyra bot add`
+bot_id = "lyra"  # must match the bot_id used in `lyra bot add`
 # bot_username = "MyLyraBot"            # optional — used in help text (default: "lyra_bot")
 # agent = "lyra_default"               # fallback if DB has no bot→agent mapping yet
 
 [[auth.telegram_bots]]
 bot_id = "lyra"
-default = "blocked"                     # "blocked" | "trusted" | "owner"
-owner_users = []                        # numeric Telegram IDs — seeded into DB on startup
+default = "blocked"  # "blocked" | "trusted" | "owner"
+owner_users = []  # numeric Telegram IDs — seeded into DB on startup
 # trusted_users = []                    # numeric Telegram IDs with trusted (non-admin) access
+# webhook_enabled = false               # set true for webhook-mode bots; emits bot_webhook-<bot_id> Secret=
 
 # Add more bots by repeating the pair above:
 # [[telegram.bots]]
@@ -88,14 +89,14 @@ owner_users = []                        # numeric Telegram IDs — seeded into D
 # ----------------------------------------------------------------------------
 
 [[discord.bots]]
-bot_id = "lyra"                         # must match the bot_id used in `lyra bot add`
+bot_id = "lyra"  # must match the bot_id used in `lyra bot add`
 # auto_thread = true                    # optional — thread per conversation (default: true)
 # agent = "lyra_default"               # fallback if DB has no bot→agent mapping yet
 
 [[auth.discord_bots]]
 bot_id = "lyra"
-default = "blocked"                     # "blocked" | "trusted" | "owner"
-owner_users = []                        # numeric Discord snowflake IDs — seeded into DB on startup
+default = "blocked"  # "blocked" | "trusted" | "owner"
+owner_users = []  # numeric Discord snowflake IDs — seeded into DB on startup
 # trusted_roles = []                    # numeric Discord role snowflake IDs with trusted access
 
 # Add more bots by repeating the pair above:

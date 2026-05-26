@@ -2,8 +2,7 @@
 
 ## Invariants
 
-**STANDALONE** — invoked as `python -m lyra.monitoring` from a systemd timer
-(`deploy/lyra-monitor.{service,timer}`, currently deprecated pending Monitoring v2 #1035).
+**STANDALONE** — invoked as `python -m lyra.monitoring` (valid triggers: manual / cron / CI smoke — ¬systemd timer).
 ¬imported by any other `src/lyra/*` module. Only tests import this package.
 
 **Exit-code contract** — `main()` returns and `SystemExit` propagates:
@@ -56,5 +55,3 @@ Missing secrets → `ValueError` at startup (fail-fast, ¬silent misconfiguratio
 - `checks_varz.py` writes state to `~/.lyra/nats-monitor-state.json` to detect deltas across
   runs. ¬delete this file without expecting a spurious alert on the next run.
 - LLM backend: `claude` CLI (OAuth, ¬API key). If absent, falls back to raw Telegram alert.
-- `deploy/lyra-monitor.{service,timer}` are **deprecated** (`ConditionPathExists=/dev/null/disabled-see-1035`).
-  The units are retained for Monitoring v2 (#1035) spec reference. ¬install on new hosts.

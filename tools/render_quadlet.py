@@ -8,12 +8,24 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import tempfile
 import tomllib
 from pathlib import Path
 
 MARKER = "{{bot_secrets}}"
+_BOT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def validate_bot_id(bot_id: str, platform: str) -> None:
+    if not _BOT_ID_RE.fullmatch(bot_id):
+        print(
+            f"invalid bot_id {bot_id!r} for platform {platform}: "
+            "must match [a-z0-9][a-z0-9_-]{0,63}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def load_config(path: Path) -> dict:
@@ -65,12 +77,20 @@ def substitute(tmpl_text: str, secrets_block: str) -> str:
 
 
 def atomic_write(dest: Path, content: str) -> None:
-    with tempfile.NamedTemporaryFile(
-        mode="w", dir=dest.parent, prefix=f".{dest.name}.", delete=False
-    ) as tmp:
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-    os.replace(tmp_path, dest)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=dest.parent, prefix=f".{dest.name}.", delete=False
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(content)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp_path, dest)
+    except Exception:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -88,11 +108,27 @@ def main(argv: list[str] | None = None) -> int:
     auth = config.get("auth", {})
     key = f"{args.platform}_bots"
     raw_bots = auth.get(key, [])
+
+    for entry in raw_bots:
+        if not isinstance(entry, dict) or "bot_id" not in entry:
+            print(
+                f"config entry under [[auth.{key}]] missing 'bot_id' key: {entry!r}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    for entry in raw_bots:
+        validate_bot_id(entry["bot_id"], args.platform)
+
     bots = sort_bots(raw_bots)
 
     secrets_block = render_secrets(args.platform, bots)
 
-    tmpl_text = args.tmpl.read_text()
+    try:
+        tmpl_text = args.tmpl.read_text()
+    except FileNotFoundError:
+        print(f"template file not found: {args.tmpl}", file=sys.stderr)
+        sys.exit(1)
 
     try:
         rendered = substitute(tmpl_text, secrets_block)

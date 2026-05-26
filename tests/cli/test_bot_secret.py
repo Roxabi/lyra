@@ -489,18 +489,18 @@ class TestE2EV1RedGate:
 
     Full make invocation is reserved for the manual M₂ smoke test.
     This test asserts the Makefile recipe shape is correct so that the
-    install → render contract is verifiable without spawning make.
+    install → list → render-delegation contract is verifiable without spawning make.
     """
 
-    def test_e2e_install_then_list_then_render(
+    def test_install_list_and_makefile_render_delegation(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """install two secrets, verify list, then assert Makefile recipe format.
+        """Install two secrets, verify list, assert Makefile delegates render.
 
         Negative-test contract:
         - Delete the install path → install_calls assertions fail.
-        - Remove mode=0400,uid=1500,gid=1500 from Makefile → regex fails.
-        - Change target= naming convention → bot_token/bot_webhook assertions fail.
+        - Remove uv run python tools/render_quadlet.py from Makefile → regex fails.
+        - Change platform flags → --platform telegram/discord assertions fail.
         """
         import re
 
@@ -558,23 +558,31 @@ class TestE2EV1RedGate:
         # Assert Makefile recipe shape — install→render contract.
         # As of #1369, the render step moved from inline Makefile shell to
         # tools/render_quadlet.py. The Secret= line shape (mode=0400/uid=1500/
-        # gid=1500, bot_token-/bot_webhook- targets) is enforced against the
-        # renderer's output in tests/scripts/test_render_quadlet.py.
+        # gid=1500, bot_token- target) is enforced against the renderer's output in
+        # tests/scripts/test_render_quadlet.py.
+        # Webhook rendering is deferred — see TODO.
         # Here we only assert that quadlet-install delegates to the renderer.
-        makefile_path = Path(__file__).parent.parent.parent / "Makefile"
+        makefile_path = Path(__file__).resolve().parents[2] / "Makefile"
         makefile_contents = makefile_path.read_text()
 
         assert "render_quadlet.py" in makefile_contents, (
             "Makefile quadlet-install missing tools/render_quadlet.py invocation"
         )
         # Makefile uses backslash line continuation; match across newlines.
+        # Both invocations must use the actual Makefile shape (uv run python …).
         assert re.search(
-            r"render_quadlet\.py.*?--platform telegram",
+            r"uv run python tools/render_quadlet\.py.*?--platform telegram",
             makefile_contents,
             re.DOTALL,
-        ), "Makefile missing render_quadlet --platform telegram invocation"
+        ), (
+            "Makefile quadlet-install missing "
+            "`uv run python tools/render_quadlet.py --platform telegram` invocation"
+        )
         assert re.search(
-            r"render_quadlet\.py.*?--platform discord",
+            r"uv run python tools/render_quadlet\.py.*?--platform discord",
             makefile_contents,
             re.DOTALL,
-        ), "Makefile missing render_quadlet --platform discord invocation"
+        ), (
+            "Makefile quadlet-install missing "
+            "`uv run python tools/render_quadlet.py --platform discord` invocation"
+        )

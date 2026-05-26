@@ -95,6 +95,9 @@ def test_happy_path(tmp_path: Path) -> None:
     breaking the marker-absence assertion.
     """
     # Arrange
+    # bots listed deliberately out of alphabetical order — lyra before aryl — so that a
+    # missing sort_bots() call would produce out-of-order output and fail the
+    # sort assertion.
     config = make_config(tmp_path, bots=["lyra", "aryl"])
     tmpl = make_tmpl(tmp_path, with_marker=True)
     dest = tmp_path / "lyra-telegram.container"
@@ -230,6 +233,37 @@ def test_empty_bots(tmp_path: Path) -> None:
     )
 
 
+def test_missing_bots_key(tmp_path: Path) -> None:
+    """[[auth.telegram_bots]] key absent entirely → same as empty list (exit 0).
+
+    No Secret= lines produced when the key is missing.
+
+    Spec trace: implicit — auth.get(key, []) contract.
+    """
+    # writes [auth]\n only, no telegram_bots key
+    config = make_config(tmp_path, bots=None)
+    tmpl = make_tmpl(tmp_path, with_marker=True)
+    dest = tmp_path / "lyra-telegram.container"
+
+    result = _run_render(
+        [
+            "--platform", "telegram",
+            "--config", str(config),
+            "--tmpl", str(tmpl),
+            "--dest", str(dest),
+        ]
+    )
+
+    assert result.returncode == 0, (
+        f"Expected exit 0 when [[auth.telegram_bots]] key absent; "
+        f"got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert dest.exists()
+    content = dest.read_text()
+    assert "{{bot_secrets}}" not in content
+    assert "Secret=lyra-bot-telegram-" not in content
+
+
 def test_missing_marker(tmp_path: Path) -> None:
     """Template without {{bot_secrets}} marker → non-zero exit with error message.
 
@@ -262,6 +296,9 @@ def test_missing_marker(tmp_path: Path) -> None:
         f"Expected non-zero exit when marker is missing; got {result.returncode}\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
+
+    # dest must NOT be written when the marker is missing
+    assert not dest.exists(), "dest must NOT be written when the marker is missing"
 
     # Error message must mention the missing marker
     combined = result.stdout + result.stderr
@@ -306,14 +343,13 @@ def test_missing_config(tmp_path: Path) -> None:
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
 
-    # Error message must reference the missing path
+    # Error message must reference the missing path — clean message, no raw traceback.
     combined = result.stdout + result.stderr
-    assert (
-        str(config) in combined
-        or "config" in combined.lower()
-        or "not found" in combined.lower()
-    ), (
-        "Error message must mention the missing config path.\n"
+    assert "Traceback" not in combined, (
+        f"Expected clean error message; got Python traceback.\nCombined: {combined!r}"
+    )
+    assert "config" in combined.lower() or "not found" in combined.lower(), (
+        "Error message must reference the missing config path.\n"
         f"Combined output: {combined!r}"
     )
 
@@ -354,10 +390,12 @@ def test_toml_syntax_error(tmp_path: Path) -> None:
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
 
-    # Error output must propagate the underlying TOML parser exception text.
-    # tomllib raises TOMLDecodeError; its message typically contains "Invalid"
-    # or "Expected" — we check for recognisable TOML-error vocabulary.
+    # Error output must propagate the underlying TOML parser exception text — clean
+    # message, no raw traceback.
     combined = result.stdout + result.stderr
+    assert "Traceback" not in combined, (
+        f"Expected clean error message; got Python traceback.\nCombined: {combined!r}"
+    )
     toml_error_signals = ("TOMLDecodeError", "Invalid", "Expected", "toml", "parse")
     assert any(sig.lower() in combined.lower() for sig in toml_error_signals), (
         f"Error output must include TOML parser exception text.\n"

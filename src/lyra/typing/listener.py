@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable, Coroutine
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from lyra.transport.typing_event import TypingEvent
-from lyra.typing.types import ScopeResolver, TypingManagerProtocol
+from lyra.typing.types import (
+    FactoryBuilder,
+    ScopeResolver,
+    TypingManagerProtocol,
+)
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -14,9 +17,6 @@ if TYPE_CHECKING:
     from nats.aio.subscription import Subscription
 
 log = logging.getLogger(__name__)
-
-CoroFactory = Callable[[], Coroutine[Any, Any, None]]
-FactoryBuilder = Callable[[int], CoroFactory]
 
 
 class TypingListener:

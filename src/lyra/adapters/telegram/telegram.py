@@ -9,7 +9,7 @@ import os
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
@@ -51,6 +51,15 @@ from lyra.core.messaging.message import (
 from lyra.core.messaging.messages import MessageManager
 
 log = logging.getLogger(__name__)
+
+
+# ── Typing plane (#1376) — module-level resolver for AC8 ─────────────────
+from lyra.transport.work_scope import WorkScope  # noqa: E402
+
+
+def _telegram_scope_resolver(scope: WorkScope) -> int:
+    """Resolve WorkScope → Telegram chat_id (may be negative for groups)."""
+    return scope.scope_id
 
 
 # TelegramConfig/load_telegram_config live in lyra.core.config (ADR-059 V6).
@@ -201,6 +210,16 @@ class TelegramAdapter(OutboundAdapterBase):
 
     def _cancel_typing(self, scope_id: int) -> None:
         self._typing.cancel(scope_id)
+
+    def _build_telegram_typing_factory(
+        self, chat_id: int
+    ) -> Callable[[], Coroutine[Any, Any, None]]:
+        """Build coro_factory closure for TypingTaskManager.start(chat_id, factory)."""
+
+        def _factory() -> Coroutine[Any, Any, None]:
+            return _typing_worker(self.bot, chat_id)
+
+        return _factory
 
     async def astart(self) -> None:
         if self._outbound_listener is not None:

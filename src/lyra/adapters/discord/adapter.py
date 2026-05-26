@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Callable, Coroutine, cast
 
 import discord
 
@@ -54,6 +54,21 @@ from lyra.core.messaging.message import (
 from lyra.core.messaging.messages import MessageManager
 
 log = logging.getLogger(__name__)
+
+
+# ── Typing plane (#1376) — module-level resolver for AC8 ─────────────────
+from lyra.transport.work_scope import WorkScope  # noqa: E402
+
+
+def _discord_scope_resolver(scope: WorkScope) -> int:
+    """Resolve WorkScope → Discord parent channel.id.
+
+    AC8: module-level (not closure over adapter instance) so import-only
+    tests can verify without instantiating DiscordAdapter. WorkScope.scope_id
+    IS the parent channel.id by T2 construction (inbound captures
+    channel.id pre-pre-session-hook — auto-thread cannot drift the key).
+    """
+    return scope.scope_id
 
 
 class DiscordAdapter(discord.Client, OutboundAdapterBase):
@@ -140,6 +155,19 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         send_to_id = thread_id if thread_id is not None else (channel_id or None)
         if send_to_id is not None:
             self._cancel_typing(send_to_id)
+
+    def _build_discord_typing_factory(
+        self, channel_id: int
+    ) -> Callable[[], Coroutine[Any, Any, None]]:
+        """Build coro_factory closure for TypingTaskManager.start(channel_id, factory).
+
+        Wraps the existing _discord_typing_worker (9s refresh per adapter CLAUDE.md).
+        """
+
+        def _factory() -> Coroutine[Any, Any, None]:
+            return _discord_typing_worker(self._resolve_channel, channel_id)
+
+        return _factory
 
     async def astart(self) -> None:
         """Start the outbound listener if wired (NATS mode only)."""

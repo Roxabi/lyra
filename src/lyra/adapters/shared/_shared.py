@@ -174,21 +174,21 @@ class TypingTaskManager:
 
     def start(
         self,
-        chat_id: int,
+        target: int,
         coro_factory: Callable[[], Coroutine[Any, Any, None]],
     ) -> None:
-        """Cancel any existing task for *chat_id* and start a new one."""
-        existing = self._tasks.pop(chat_id, None)
+        """Cancel any existing task for *target* and start a new one."""
+        existing = self._tasks.pop(target, None)
         if existing and not existing.done():
             existing.cancel()
-        self._tasks[chat_id] = asyncio.create_task(
+        self._tasks[target] = asyncio.create_task(
             coro_factory(),
-            name=f"typing:{chat_id}",
+            name=f"typing:{target}",
         )
 
-    def cancel(self, chat_id: int) -> None:
-        """Cancel and remove the typing task for *chat_id* (no-op if absent)."""
-        task = self._tasks.pop(chat_id, None)
+    def cancel(self, target: int) -> None:
+        """Cancel and remove the typing task for *target* (no-op if absent)."""
+        task = self._tasks.pop(target, None)
         if task and not task.done():
             task.cancel()
 

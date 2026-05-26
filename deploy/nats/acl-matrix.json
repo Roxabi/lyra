@@ -27,6 +27,7 @@
         "lyra.clipool.control",
         "lyra.audit.>",
         "lyra.turns.write",
+        "lyra.typing.>",
         "$JS.API.>",
         "$KV.lyra-state.>"
       ],
@@ -58,6 +59,7 @@
       ],
       "subscribe": [
         "lyra.outbound.telegram.>",
+        "lyra.typing.telegram.>",
         "_inbox.telegram-adapter.>",
         "_inbox.telegram-adapter.*.*",
         "$KV.lyra-state.>"
@@ -79,6 +81,7 @@
       ],
       "subscribe": [
         "lyra.outbound.discord.>",
+        "lyra.typing.discord.>",
         "_inbox.discord-adapter.>",
         "_inbox.discord-adapter.*.*",
         "$KV.lyra-state.>"

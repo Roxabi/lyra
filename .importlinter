@@ -13,6 +13,7 @@ layers =
     lyra.infrastructure
     lyra.llm | lyra.nats
     lyra.core
+    lyra.typing
     lyra.streaming
     lyra.transport
 ignore_imports =

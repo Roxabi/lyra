@@ -3,6 +3,9 @@ from typing import Any, Protocol, runtime_checkable
 
 from lyra.transport.work_scope import WorkScope
 
+CoroFactory = Callable[[], Coroutine[Any, Any, None]]
+FactoryBuilder = Callable[[int], CoroFactory]
+
 
 @runtime_checkable
 class ScopeResolver(Protocol):

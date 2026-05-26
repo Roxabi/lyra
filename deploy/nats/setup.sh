@@ -137,7 +137,11 @@ if [ -f "${NKEYS_AUTH}" ]; then
   sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --regen-authconf
   sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --fix-perms
 else
-  sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys
+  # Fresh install: no consumer is reading external seeds yet, so the manual
+  # fan-out manifest has nothing to block — pre-ack the external-distribution
+  # guard so the cold-path provision completes. Operator must still scp the
+  # external seeds (voice-client → M₂, etc.) before those clients can connect.
+  sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --ack-external-distribution
 fi
 sudo test -f "${NKEYS_AUTH}" || error "Key generation failed — auth.conf missing"
 

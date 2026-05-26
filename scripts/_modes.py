@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import grp
 import os
 import pwd
 import shutil
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
-from scripts._acl_models import LoadedMatrix
+from scripts._acl_models import ExternalDeploy, LoadedMatrix
 from scripts._loader import load_matrix
 from scripts._nk import (
     FakeNkeyProvider,
@@ -98,6 +100,49 @@ def _operator_uid_gid() -> tuple[int, int]:
         pw = pwd.getpwnam(sudo_user)
         return pw.pw_uid, pw.pw_gid
     return os.getuid(), os.getgid()
+
+
+def _operator_user() -> str:
+    """Return invoking operator login.
+
+    Preserves SUDO_USER under sudo, falls back to current process user.
+    """
+    return os.environ.get("SUDO_USER") or getpass.getuser()
+
+
+def _emit_external_manifest(
+    externals: Sequence[tuple[str, ExternalDeploy]],
+    seeds_dir: Path,
+) -> None:
+    """Print scp commands to stderr — one per external identity."""
+    print(
+        "⚠ External seeds require manual fan-out"
+        " (seeds + auth.conf already committed):",
+        file=sys.stderr,
+    )
+    user = _operator_user()
+    for name, deploy in externals:
+        src = seeds_dir / f"{name}.seed"
+        target = f"{user}@{deploy['host']}:{deploy['target_path']}"
+        print(f"  scp {src} {target}", file=sys.stderr)
+
+
+def _handle_externals(
+    externals: Sequence[tuple[str, ExternalDeploy]],
+    seeds_dir: Path,
+    args: argparse.Namespace,
+) -> None:
+    """Emit manifest and exit 2 when external identities require manual fan-out.
+
+    No-op when externals is empty or --ack-external-distribution is set.
+    Must be called OUTSIDE any try/except BaseException to avoid triggering
+    rollback on SystemExit(2).
+    """
+    if not externals:
+        return
+    _emit_external_manifest(externals, seeds_dir)
+    if not getattr(args, "ack_external_distribution", False):
+        sys.exit(2)
 
 
 def _mode_regen_authconf(args: argparse.Namespace) -> None:
@@ -345,14 +390,17 @@ def _mode_regenerate(args: argparse.Namespace) -> None:
     if auth_conf.exists():
         auth_conf.unlink()
 
+    externals: list[tuple[str, ExternalDeploy]] = []
     try:
-        _mode_full_provision(args)
+        externals = _mode_full_provision(args)
     except BaseException:
         if backup_seeds and Path(backup_seeds).exists() and not seeds_dir.exists():
             shutil.copytree(backup_seeds, str(seeds_dir))
         if backup_auth and Path(backup_auth).exists() and not auth_conf.exists():
             shutil.copy2(backup_auth, str(auth_conf))
         raise
+    # OUTSIDE try/except — safe to exit without triggering rollback
+    _handle_externals(externals, seeds_dir, args)
 
 
 def _mode_show(args: argparse.Namespace) -> None:
@@ -391,8 +439,13 @@ def _mode_fix_perms(args: argparse.Namespace) -> None:
             os.chown(auth_conf, 0, nats_gid)
 
 
-def _mode_full_provision(args: argparse.Namespace) -> None:
-    """Default mode: generate all nkeys + dual-write auth.conf (root required)."""
+def _mode_full_provision(args: argparse.Namespace) -> list[tuple[str, ExternalDeploy]]:
+    """Default mode: generate all nkeys + dual-write auth.conf (root required).
+
+    Returns list of (name, deploy) tuples for external identities found in active set.
+    Caller is responsible for fan-out manifest + exit code (must run OUTSIDE
+    _mode_regenerate's try/except BaseException rollback block).
+    """
     _require_root()
     seeds_dir = _seeds_dir()
     auth_dir = _auth_dir()
@@ -434,3 +487,10 @@ def _mode_full_provision(args: argparse.Namespace) -> None:
     user_conf = seeds_dir / "auth.conf"
     atomic_write(user_conf, content, 0o600)
     os.chown(user_conf, uid, gid)
+
+    externals: list[tuple[str, ExternalDeploy]] = []
+    for name, identity in active.items():
+        deploy = identity.get("deploy")
+        if deploy and deploy.get("type") == "external":
+            externals.append((name, cast(ExternalDeploy, deploy)))
+    return externals

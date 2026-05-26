@@ -1,5 +1,5 @@
 {
-  "version": "2",
+  "version": "3",
   "request_reply_flows": [
     { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" },
     { "requester": "hub", "responder": "voice-tts",      "subject": "lyra.voice.tts.request.>" },
@@ -40,7 +40,8 @@
         "lyra.image.heartbeat",
         "lyra.clipool.heartbeat",
         "_inbox.hub.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-hub" }
     },
     "telegram-adapter": {
       "status": "active",
@@ -60,7 +61,8 @@
         "_inbox.telegram-adapter.>",
         "_inbox.telegram-adapter.*.*",
         "$KV.lyra-state.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-telegram" }
     },
     "discord-adapter": {
       "status": "active",
@@ -80,7 +82,8 @@
         "_inbox.discord-adapter.>",
         "_inbox.discord-adapter.*.*",
         "$KV.lyra-state.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-discord" }
     },
     "voice-tts": {
       "status": "active",
@@ -99,7 +102,8 @@
         "lyra.voice.tts.request.>",
         "_inbox.voice-tts.>",
         "$KV.lyra-state.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "voicecli-nats-tts" }
     },
     "voice-stt": {
       "status": "active",
@@ -118,7 +122,8 @@
         "lyra.voice.stt.request.>",
         "_inbox.voice-stt.>",
         "$KV.lyra-state.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "voicecli-nats-stt" }
     },
     "llm-worker": {
       "status": "active",
@@ -136,7 +141,8 @@
         "lyra.llm.lifecycle.>",
         "_inbox.llmcli-llm.>",
         "$KV.lyra-state.>"
-      ]
+      ],
+      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/llmcli/nkeys/llm-worker.seed" }
     },
     "llm-operator": {
       "status": "active",
@@ -150,7 +156,8 @@
       ],
       "subscribe": [
         "_inbox.llm-operator.>"
-      ]
+      ],
+      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/llmcli/nkeys/operator.creds" }
     },
     "image-worker": {
       "status": "active",
@@ -167,13 +174,16 @@
         "lyra.image.generate.request",
         "_inbox.image-worker.>",
         "$KV.lyra-state.>"
-      ]
+      ],
+      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/imagecli/nkeys/image-worker.seed" }
     },
     "monitor": {
-      "status": "active",
+      "status": "retired",
       "created_at": "2026-04-21",
+      "retired_at": "2026-05-26",
       "owner": "reserved",
       "description": "Monitoring identity — full pub+sub on lyra.monitor.> namespace.",
+      "notes": "Retired 2026-05-26: no confirmed NKey consumer found in codebase. src/lyra/monitoring/ uses the NATS HTTP endpoint (port 8222), not a NATS NKey credential. lyra-monitor.service/timer deprecated pending Monitoring v2 (#1035). deploy field intentionally absent per T4 convention (retired identities exempt).",
       "allow_responses": false,
       "publish": [
         "lyra.monitor.>"
@@ -198,7 +208,8 @@
         "lyra.clipool.control",
         "_inbox.clipool-worker.>",
         "$KV.lyra-state.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-clipool" }
     },
     "voice-client": {
       "status": "active",
@@ -211,7 +222,8 @@
       ],
       "subscribe": [
         "_inbox.voice-client.>"
-      ]
+      ],
+      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.voicecli/nkeys/voice-client.seed" }
     },
     "turn-writer": {
       "status": "active",
@@ -232,7 +244,8 @@
       "subscribe": [
         "lyra.turns.>",
         "_inbox.turn-writer.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-turn-writer" }
     }
   }
 }

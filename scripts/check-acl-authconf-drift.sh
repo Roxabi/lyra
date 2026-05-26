@@ -81,7 +81,7 @@ while IFS= read -r identity; do
     echo "::error::allow_responses mismatch: '${identity}' has allow_responses:false in acl-matrix.json but auth.conf does not" >&2
     allow_resp_failures=$((allow_resp_failures + 1))
   fi
-done < <(jq -r '.identities | to_entries[] | select(.value.allow_responses == false) | .key' "$ACL_MATRIX")
+done < <(jq -r '.identities | to_entries[] | select(.value.status == "active" and .value.allow_responses == false) | .key' "$ACL_MATRIX")
 
 if [ "$allow_resp_failures" -gt 0 ]; then
   echo "::error::${allow_resp_failures} allow_responses value(s) wrong in auth.conf — regenerate with: uv run lyra-acl genkeys --template-only > deploy/nats/auth.conf" >&2

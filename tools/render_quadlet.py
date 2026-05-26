@@ -65,7 +65,7 @@ def render_secrets(platform: str, bots: list[dict]) -> str:
             f"uid=1500,"
             f"gid=1500"
         )
-        if b.get("webhook_enabled", False):
+        if b.get("webhook_enabled") is True:
             lines.append(
                 f"Secret=lyra-bot-{platform}-{bot_id}-webhook,"
                 f"type=mount,"

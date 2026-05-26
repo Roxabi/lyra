@@ -125,12 +125,10 @@ def test_happy_path(tmp_path: Path) -> None:
 
     content = dest.read_text()
 
-    # Two Secret= lines — one per bot
-    secret_lines = [
-        ln for ln in content.splitlines() if ln.startswith("Secret=lyra-bot-telegram-")
-    ]
-    assert len(secret_lines) == 2, (
-        f"Expected exactly 2 Secret=lyra-bot-telegram-* lines; got {secret_lines!r}"
+    # Two token Secret= lines — one per bot (excludes webhook lines)
+    token_lines = [ln for ln in content.splitlines() if "target=bot_token-" in ln]
+    assert len(token_lines) == 2, (
+        f"Expected exactly 2 bot_token- Secret= lines; got {token_lines!r}"
     )
 
     # Each bot's Secret= line has the full required attributes
@@ -519,6 +517,53 @@ def test_webhook_mixed_bots(tmp_path: Path) -> None:
     # Both token lines must be present
     assert "bot_token-a" in content
     assert "bot_token-b" in content
+
+
+def test_webhook_string_value_does_not_emit(tmp_path: Path) -> None:
+    """webhook_enabled = "yes" (TOML string, not bool) must NOT emit webhook line.
+
+    Defensive: tomllib produces a str for quoted values; strict `is True` check
+    in render_secrets() must reject non-bool to avoid silent misconfig.
+
+    Spec trace: #1373 F5 follow-on
+    Negative sentinel: if the check were truthy (e.g. `if b.get(...):`), a string
+    "yes" would be truthy and incorrectly emit a bot_webhook- line.
+    """
+    # Write config.toml with webhook_enabled = "yes" (TOML string — NOT bool true)
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[auth]\n[[auth.telegram_bots]]\nbot_id = "lyra"\nwebhook_enabled = "yes"\n'
+    )
+    tmpl = make_tmpl(tmp_path, with_marker=True)
+    dest = tmp_path / "lyra-telegram.container"
+
+    result = _run_render(
+        [
+            "--platform",
+            "telegram",
+            "--config",
+            str(config),
+            "--tmpl",
+            str(tmpl),
+            "--dest",
+            str(dest),
+        ]
+    )
+
+    assert result.returncode == 0, (
+        f"Expected exit 0; got {result.returncode}\nstderr: {result.stderr}"
+    )
+    content = dest.read_text()
+
+    # String "yes" must NOT trigger webhook line emission
+    assert "target=bot_webhook-" not in content, (
+        'webhook_enabled = "yes" (string) must NOT emit a bot_webhook- Secret= line; '
+        f"got:\n{content}"
+    )
+    # Token line must still be emitted normally
+    assert "target=bot_token-lyra" in content, (
+        "bot_token- line must still appear even when webhook_enabled is a string"
+    )
 
 
 def test_toml_syntax_error(tmp_path: Path) -> None:

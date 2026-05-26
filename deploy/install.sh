@@ -70,13 +70,30 @@ if [[ ! -f "${BLOBSTORE_TOK}" || "$FORCE" -eq 1 ]]; then
   log "Generating blobstore bearer token → ${BLOBSTORE_TOK} ..."
   run mkdir -p "${HOME}/.lyra"
   if [[ "$DRY_RUN" -eq 0 ]]; then
-    head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48 > "${BLOBSTORE_TOK}"
-    chmod 0600 "${BLOBSTORE_TOK}"
+    (umask 0077; head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48 > "${BLOBSTORE_TOK}")
   else
     echo "[dry-run] would generate ${BLOBSTORE_TOK} (48 url-safe chars, mode 0600)"
   fi
 else
   echo "  [skip] ${BLOBSTORE_TOK} already exists (use --force to regenerate)"
+fi
+
+# ── 1c. Bootstrap blobstore.env (idempotent) ─────────────────────────────────
+
+ENV_FILE="${HOME}/.lyra/env/blobstore.env"
+if [[ ! -f "${ENV_FILE}" || "$FORCE" -eq 1 ]]; then
+  log "Generating ${ENV_FILE} ..."
+  run mkdir -p "$(dirname "${ENV_FILE}")"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || true)
+    # `run` only wraps exec; stream redirection (>) is dry-run-gated via the if block above.
+    (umask 0077; printf 'TAILSCALE_IPV4=%s\n' "${TS_IP}" > "${ENV_FILE}")
+    log "[ok] generated ${ENV_FILE} (TAILSCALE_IPV4=${TS_IP:-<empty>})"
+  else
+    echo "[dry-run] would generate ${ENV_FILE} (TAILSCALE_IPV4 from tailscale ip -4)"
+  fi
+else
+  echo "  [skip] ${ENV_FILE} already exists (use --force to regenerate)"
 fi
 
 MISSING=0

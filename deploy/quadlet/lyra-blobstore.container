@@ -22,7 +22,7 @@ DropCapability=all
 # ADR-054: UserNS=keep-id maps container UID to host UID 1000 (mickael),
 # so the blobstore process can read %h/.lyra/blobstore/ owned by the host user.
 UserNS=keep-id:uid=1500,gid=1500
-# blobstore.env holds operational vars (see deploy/quadlet/blobstore.env.example).
+# blobstore.env holds operational vars (TAILSCALE_IPV4, NATS_URL); generated idempotently by deploy/install.sh §1c.
 # Do NOT add the `-` prefix — Podman 5.7 treats it as a literal path character.
 EnvironmentFile=%h/.lyra/env/blobstore.env
 # NATS target for audit sink + readiness KV; mirrors hub convention.

@@ -37,6 +37,17 @@ Sanitization rules:
 
 Security boundary semantics UNCHANGED: `SanitizedError.message` still never carries `str(exc)` — `from_message` accepts only callee-controlled strings and applies guardrails on top.
 
+## WorkScope (#1393)
+
+`WorkScope` is a frozen dataclass whose `platform` and `bot_id` fields are
+interpolated directly into NATS subjects (e.g. `lyra.typing.{platform}.{bot_id}`).
+Both MUST match `^[A-Za-z0-9_-]{1,48}$`; `trace_id` MUST match
+`^[A-Za-z0-9_-]{1,128}$`. Enforced in `__post_init__` — `ValueError` on violation.
+Callers MUST NOT catch-and-ignore: a violation indicates a bug or an inbound
+attack and the publish must abort, not silently downgrade.
+
+`scope_id` is `int` and is not subject-interpolated; not validated here.
+
 ## TurnPublisher (#1331)
 
 `TurnPublisher` (transport-level) publishes `TurnWriteEvent` to JetStream

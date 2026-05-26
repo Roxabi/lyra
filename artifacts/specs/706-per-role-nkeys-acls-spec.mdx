@@ -13,6 +13,14 @@ and is verified by `scripts/check-acl-matrix-spec.sh` on every CI run.
 
 ## ACL Matrix
 
+**Deferred — `code-worker` ACL row (T3, blocked-by #1044/#1047 worker fleet integration):**
+
+```
+// TODO(T3): add code-worker row when nkey provisioned via make nats-add-identity NAME=code-worker (#1044, #1047)
+```
+
+The row will grant `subscribe: lyra.typing.>` to `code-worker` (it consumes typing events to throttle its own typing emission). Provisioning: `make nats-add-identity NAME=code-worker` when T3 worker fleet integration starts; the `_inbox.code-worker.>` grant is derived automatically from `request_reply_flows` per the renderer convention.
+
 <!-- acl-matrix:begin -->
 | Subject | hub | telegram-adapter | discord-adapter | voice-tts | voice-stt | llm-worker | llm-operator | image-worker | clipool-worker | voice-client | turn-writer |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|

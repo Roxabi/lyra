@@ -93,7 +93,7 @@ jobs:
             fi
           done < <(find "${QUADLET_DIR}" \
               -maxdepth 1 \
-              \( -name "*.container" -o -name "*.volume" -o -name "*.network" \) \
+              \( -name "*.container" -o -name "*.container.tmpl" -o -name "*.volume" -o -name "*.network" \) \
               -print0)
           if [[ ${#BAD_FILES[@]} -gt 0 ]]; then
             echo ""
@@ -102,3 +102,10 @@ jobs:
             exit 1
           fi
           echo "No inline comments on value lines — OK"
+
+      - name: Template purity check
+        # Enforces tracked deploy/quadlet/*.container.tmpl invariants (#1369):
+        #  - no `Secret=lyra-bot-*` lines (must come from render at install time)
+        #  - no `# --- BEGIN ... ---` splice blocks
+        #  - tools/render_quadlet.py exists
+        run: bash tools/check_quadlet_template_purity.sh

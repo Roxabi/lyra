@@ -1,4 +1,4 @@
-from lyra.typing.listener import TypingListener
+from lyra.typing.listener import TypingListener, make_typing_factory
 from lyra.typing.types import (
     CoroFactory,
     FactoryBuilder,
@@ -12,4 +12,5 @@ __all__ = [
     "ScopeResolver",
     "TypingListener",
     "TypingManagerProtocol",
+    "make_typing_factory",
 ]

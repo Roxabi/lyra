@@ -9,7 +9,7 @@ import os
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
@@ -210,16 +210,6 @@ class TelegramAdapter(OutboundAdapterBase):
 
     def _cancel_typing(self, scope_id: int) -> None:
         self._typing.cancel(scope_id)
-
-    def _build_telegram_typing_factory(
-        self, chat_id: int
-    ) -> Callable[[], Coroutine[Any, Any, None]]:
-        """Build coro_factory closure for TypingTaskManager.start(chat_id, factory)."""
-
-        def _factory() -> Coroutine[Any, Any, None]:
-            return _typing_worker(self.bot, chat_id)
-
-        return _factory
 
     async def astart(self) -> None:
         if self._outbound_listener is not None:

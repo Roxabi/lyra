@@ -6,7 +6,12 @@ from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
 from lyra.transport.typing_event import TypingEvent
-from lyra.typing.types import ScopeResolver, TypingManagerProtocol
+from lyra.typing.types import (
+    CoroFactory,
+    FactoryBuilder,
+    ScopeResolver,
+    TypingManagerProtocol,
+)
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -15,8 +20,24 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-CoroFactory = Callable[[], Coroutine[Any, Any, None]]
-FactoryBuilder = Callable[[int], CoroFactory]
+
+def make_typing_factory(
+    worker_fn: Callable[[int], Coroutine[Any, Any, None]],
+) -> FactoryBuilder:
+    """Stage-axis builder for typing FactoryBuilder closures (#1396, ADR-073).
+
+    Collapses per-adapter `_build_<platform>_typing_factory` methods into a
+    shared helper. `worker_fn` is a `scope_id → Coroutine` callable; this wraps
+    it in the `(scope_id) → () → Coroutine` shape that TypingTaskManager expects.
+    """
+
+    def factory_builder(scope_id: int) -> CoroFactory:
+        def _factory() -> Coroutine[Any, Any, None]:
+            return worker_fn(scope_id)
+
+        return _factory
+
+    return factory_builder
 
 
 class TypingListener:

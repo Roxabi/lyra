@@ -683,16 +683,7 @@ Seven zero-LLM checks run every 5 minutes:
 
 When Layer 1 detects an anomaly, the failed checks are sent to the Anthropic API (Haiku). The LLM returns severity + diagnosis + suggested remediation. Result is sent to Telegram admin chat. If the LLM call fails, a raw alert with check results is sent instead.
 
-### Status — DEPRECATED (#1035)
-
-The host-timer pattern described above is **deprecated**. It cannot be containerised cleanly (host-only deps: `systemctl --user`, `podman logs`, loopback HTTP), polls instead of pushing, and offers no UI beyond a Telegram message.
-
-Replacement is **Monitoring v2** — a NATS event stream + Tauri desktop dashboard, tracked in [#1035](https://github.com/Roxabi/lyra/issues/1035). The host timer was disabled on prod in 2026-05; the unit files and `src/lyra/monitoring/` package remain in the repo with deprecation banners so the v2 spec author can mine the check logic.
-
-### Configuration *(deprecated)*
-
-Thresholds: `[monitoring]` section in `lyra.toml`.
-Secrets: `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` in `.env`.
+> **Removed.** The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/lyra/monitoring/` is preserved for Monitoring v2 spec reference (#1035).
 
 ---
 

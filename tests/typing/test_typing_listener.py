@@ -106,6 +106,9 @@ async def test_factory_builder_exception_triggers_defensive_cancel() -> None:
     )
     scope = WorkScope(platform="discord", bot_id="x", scope_id=99, trace_id="t")
     await listener._on_msg(_make_msg(TypingEvent(kind="started", scope=scope, ts=1.0)))
+    # Cancel must come from the defensive finally, not from an "ended" dispatch:
+    # start was never reached because the builder raised pre-dispatch.
+    mgr.start.assert_not_called()
     mgr.cancel.assert_called_once_with(99)
 
 

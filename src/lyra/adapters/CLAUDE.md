@@ -17,6 +17,13 @@ No business logic, LLM calls, or agent logic lives here.
 - Formatting logic belongs in `{platform}_formatting.py`; never inline it in inbound or outbound.
 - Do NOT use `async with channel.typing():` on Discord — it auto-refreshes and triggers 429s.
   Call `await channel.typing()` manually every 9 s (`_discord_typing_worker`).
+- Compose typing `factory_builder` via `lyra.typing.make_typing_factory(worker_fn)` —
+  defined in `src/lyra/typing/listener.py`. Never hand-write a per-adapter
+  `_build_*_typing_factory` closure. Stage-axis helper avoids N×M drift (N platforms
+  × M typing concerns). Watch-trigger: a 3rd platform or a 2nd typing concern (e.g.
+  per-platform throttle) crosses the ADR-073 target-axis-trap threshold and must
+  reuse the helper, not duplicate the closure. See also #1409 — pending follow-up
+  to migrate the surviving `_start_typing` lambdas in each adapter to the same helper.
 
 ## ChannelAdapter protocol (`core/hub/hub_protocol.py`)
 

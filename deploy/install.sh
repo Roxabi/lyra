@@ -53,6 +53,16 @@ if [[ ! -d "${NKEYS_DIR}" ]]; then
   exit 1
 fi
 
+# Refuse to install with placeholder nkeys still in the live auth.conf.
+# Skipped under --dry-run so the operator can still preview install actions.
+if [[ "$DRY_RUN" -eq 0 ]] \
+  && [[ -f "${NKEYS_DIR}/auth.conf" ]] \
+  && grep -qE '^[[:space:]]*nkey:[[:space:]]+"UDET' "${NKEYS_DIR}/auth.conf"; then
+  echo "ERROR: ${NKEYS_DIR}/auth.conf still contains UDET* placeholder pubkeys." >&2
+  echo "       Run: make nats-regen-authconf  (renders nkeys from ${NKEYS_DIR}/*.seed)" >&2
+  exit 1
+fi
+
 declare -A SEEDS=(
   [lyra-nats-auth]="${NKEYS_DIR}/auth.conf"
   [lyra-nats-hub]="${NKEYS_DIR}/hub.seed"

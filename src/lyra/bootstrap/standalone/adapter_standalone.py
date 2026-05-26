@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import sys
+from functools import partial
 from pathlib import Path
 
 from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
@@ -117,13 +118,16 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 await adapter.astart()
 
                 from lyra.adapters.telegram.telegram import _telegram_scope_resolver
-                from lyra.typing.listener import TypingListener
+                from lyra.adapters.telegram.telegram_outbound import _typing_worker
+                from lyra.typing import TypingListener, make_typing_factory
 
                 tg_typing_listener = TypingListener(
                     nc=nc,
                     subject=f"lyra.typing.telegram.{bot_id}",
                     resolver=_telegram_scope_resolver,
-                    factory_builder=adapter._build_telegram_typing_factory,
+                    factory_builder=make_typing_factory(
+                        partial(_typing_worker, adapter.bot)
+                    ),
                     manager=adapter._typing,
                 )
                 await tg_typing_listener.start()
@@ -254,13 +258,18 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 await adapter_dc.astart()
 
                 from lyra.adapters.discord.adapter import _discord_scope_resolver
-                from lyra.typing.listener import TypingListener
+                from lyra.adapters.discord.discord_outbound import (
+                    _discord_typing_worker,
+                )
+                from lyra.typing import TypingListener, make_typing_factory
 
                 dc_typing_listener = TypingListener(
                     nc=nc,
                     subject=f"lyra.typing.discord.{bot_id}",
                     resolver=_discord_scope_resolver,
-                    factory_builder=adapter_dc._build_discord_typing_factory,
+                    factory_builder=make_typing_factory(
+                        partial(_discord_typing_worker, adapter_dc._resolve_channel)
+                    ),
                     manager=adapter_dc._typing,
                 )
                 await dc_typing_listener.start()

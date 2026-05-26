@@ -460,22 +460,31 @@ health_secret = ""                            # optional health endpoint auth
 
 #### BlobStore env file
 
-`deploy/quadlet/blobstore.env.example` is an operator-facing template for the BlobStore
-Quadlet container. It is NOT loaded by the lyra application itself; it is consumed by
-`lyra-blobstore.container` at container start via `EnvironmentFile=%h/.lyra/env/blobstore.env`.
+`~/.lyra/env/blobstore.env` is a Quadlet env file consumed by `lyra-blobstore.container` at
+container start via `EnvironmentFile=%h/.lyra/env/blobstore.env`. It is NOT loaded by the
+lyra application itself.
 
 | File | Versioned | Purpose |
 |------|-----------|---------|
-| `deploy/quadlet/blobstore.env.example` | Yes (template) | Documents all env vars for `lyra-blobstore.service`; NOT loaded by lyra |
 | `~/.lyra/env/blobstore.env` (on M₁) | No (operator copy) | Live env file read by the container at startup |
 
-Operator setup: copy the template and fill in `TAILSCALE_IPV4` before starting the service.
+**Bootstrap:** `deploy/install.sh` §1c generates this file idempotently — it skips creation
+if the file already exists, and regenerates it with `--force`.
+
+Variables written by install.sh:
+
+| Variable | Source | Notes |
+|----------|--------|-------|
+| `TAILSCALE_IPV4` | `tailscale ip -4 \| head -1` at bootstrap | Empty string if Tailscale is absent at install time — the unit's `ExecStartPre` guard rejects start when unset (fail-closed; see `deploy/CLAUDE.md §Known residual risk`) |
+| `NATS_URL` | Omitted from the file | Supplied exclusively by the unit's inline `Environment=NATS_URL=nats://lyra-nats:4222`; omitting it from the env file prevents an empty value in systemd scope from shadowing the inline directive |
+
+File permissions: `0600` (set atomically via `umask 0077` subshell in install.sh).
+
+**Recovery:** delete the file and re-run install.sh to regenerate.
 
 ```bash
-mkdir -p ~/.lyra/env
-cp deploy/quadlet/blobstore.env.example ~/.lyra/env/blobstore.env
-chmod 600 ~/.lyra/env/blobstore.env
-# Edit: set TAILSCALE_IPV4=$(tailscale ip -4 | head -1)
+rm ~/.lyra/env/blobstore.env
+./deploy/install.sh --force
 ```
 
 Load order: N/A — this is a Quadlet env file, not an application config file. The bearer

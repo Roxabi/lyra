@@ -20,6 +20,7 @@ UNITS=(
     lyra-telegram
     lyra-discord
     lyra-clipool
+    lyra-gh-helper
     lyra-blobstore
     lyra-turn-writer
 )

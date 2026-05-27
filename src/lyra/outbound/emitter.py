@@ -41,7 +41,7 @@ from lyra.core.messaging import (
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.outbound._streaming_state import StreamState
-from lyra.outbound._tool_recap import (  # noqa: F401
+from lyra.outbound._tool_recap import (
     ToolRecapAccumulator,
     format_recap_lines,
 )

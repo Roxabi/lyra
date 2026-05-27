@@ -10,9 +10,7 @@ from __future__ import annotations
 from typing import Protocol
 
 # Seconds between intermediate streaming edits (debounce). Shared by all
-# outbound emitters; aligned with each platform's rate-limit. Moved from
-# lyra.adapters.shared._shared_streaming_state — that module re-exports it
-# transitionally for backwards-compat (deleted at S7).
+# outbound emitters; aligned with each platform's rate-limit.
 STREAMING_EDIT_INTERVAL = 1.0
 
 

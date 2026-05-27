@@ -33,13 +33,13 @@ class ToolDisplayConfig(BaseModel):
     ----------
     names_threshold:
         Number of individual file-edit names to show per file before switching
-        to count-only mode (e.g. "3 edits").  Default: 3.
+        to count-only mode (e.g. "5 edits").  Default: 5.
     group_threshold:
         Number of distinct files before switching from per-file display to a
         grouped summary (e.g. "4 files edited").  Default: 3.
     bash_max_len:
         Maximum characters to display per bash command before truncating.
-        Default: 60.
+        Default: 80.
     throttle_ms:
         Minimum milliseconds between consecutive intermediate tool-card
         emissions during a single turn.  Terminal events bypass this throttle.

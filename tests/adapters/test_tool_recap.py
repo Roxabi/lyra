@@ -210,3 +210,39 @@ def test_done_true_emits_done_header_else_working() -> None:
 
     assert working_lines[0] == "🔧 Working…"
     assert done_lines[0] == "🔧 Done ✅"
+
+
+def test_pre_routed_observe_start_skips_in_flight() -> None:
+    """observe_start with input routes immediately and skips _in_flight.
+
+    Clipool path: ToolCallStartRenderEvent carries the full args dict.
+    The accumulator routes immediately and does NOT add to _in_flight,
+    so a subsequent observe_end naturally no-ops (partial is None).
+    """
+    accum = ToolRecapAccumulator()
+    accum.observe_start(
+        ToolCallStartRenderEvent(
+            tool_call_id="tc-1",
+            tool_name="Bash",
+            input={"command": "git status"},
+        )
+    )
+    # observe_end should be a no-op because the call was never buffered
+    accum.observe_end(ToolCallEndRenderEvent(tool_call_id="tc-1"))
+
+    assert accum.bash_commands == ["git status"]
+    assert not accum._in_flight
+
+
+def test_pre_routed_observe_start_file_edit() -> None:
+    """Pre-routed Edit call with input accumulates into files dict."""
+    accum = ToolRecapAccumulator()
+    accum.observe_start(
+        ToolCallStartRenderEvent(
+            tool_call_id="tc-2",
+            tool_name="Edit",
+            input={"path": "/a.py", "old_string": "x", "new_string": "y"},
+        )
+    )
+    assert len(accum.files) == 1
+    assert accum.files["/a.py"].count == 1

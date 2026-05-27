@@ -40,10 +40,11 @@ def test_make_agent_store_default_lyra_db_unset(
     monkeypatch.delenv("LYRA_VAULT_DIR", raising=False)
     mock_json, mock_sqlite = _patch_classes(monkeypatch)
 
-    _result = factory_mod.make_agent_store()
+    result = factory_mod.make_agent_store()
 
     mock_json.assert_not_called()
     mock_sqlite.assert_called_once()
+    assert result is mock_sqlite.return_value
     _call_kwargs = mock_sqlite.call_args.kwargs
     expected_default = Path.home() / ".lyra" / "config.db"
     assert _call_kwargs["db_path"] == expected_default
@@ -63,10 +64,11 @@ def test_make_agent_store_json_mode_default_path(
     monkeypatch.delenv("LYRA_VAULT_DIR", raising=False)
     mock_json, mock_sqlite = _patch_classes(monkeypatch)
 
-    _result = factory_mod.make_agent_store()
+    result = factory_mod.make_agent_store()
 
     mock_sqlite.assert_not_called()
     mock_json.assert_called_once()
+    assert result is mock_json.return_value
     _call_kwargs = mock_json.call_args.kwargs
     expected_default = Path.home() / ".lyra" / "agents_test.json"
     assert _call_kwargs["path"] == expected_default
@@ -80,10 +82,11 @@ def test_make_agent_store_json_mode_with_agent_store_path(
     monkeypatch.setenv("LYRA_AGENT_STORE_PATH", "/tmp/custom_agents.json")
     mock_json, mock_sqlite = _patch_classes(monkeypatch)
 
-    _result = factory_mod.make_agent_store()
+    result = factory_mod.make_agent_store()
 
     mock_sqlite.assert_not_called()
     mock_json.assert_called_once()
+    assert result is mock_json.return_value
     assert mock_json.call_args.kwargs["path"] == Path("/tmp/custom_agents.json")
 
 
@@ -100,10 +103,11 @@ def test_make_agent_store_db_path_override(
     mock_json, mock_sqlite = _patch_classes(monkeypatch)
     custom = Path("/tmp/override.db")
 
-    _result = factory_mod.make_agent_store(db_path=custom)
+    result = factory_mod.make_agent_store(db_path=custom)
 
     mock_json.assert_not_called()
     mock_sqlite.assert_called_once()
+    assert result is mock_sqlite.return_value
     assert mock_sqlite.call_args.kwargs["db_path"] == custom
 
 
@@ -119,8 +123,9 @@ def test_make_agent_store_does_not_call_connect(
     monkeypatch.delenv("LYRA_DB", raising=False)
     _mock_json, mock_sqlite = _patch_classes(monkeypatch)
 
-    _result = factory_mod.make_agent_store()
+    result = factory_mod.make_agent_store()
 
+    assert result is mock_sqlite.return_value
     instance = mock_sqlite.return_value
     instance.connect.assert_not_called()
 
@@ -137,10 +142,11 @@ def test_make_agent_store_invalid_lyra_db_fallback(
     monkeypatch.setenv("LYRA_DB", "postgres")
     mock_json, mock_sqlite = _patch_classes(monkeypatch)
 
-    _result = factory_mod.make_agent_store()
+    result = factory_mod.make_agent_store()
 
     mock_json.assert_not_called()
     mock_sqlite.assert_called_once()
+    assert result is mock_sqlite.return_value
 
 
 # ---------------------------------------------------------------------------
@@ -162,8 +168,9 @@ def test_make_agent_store_relative_path_with_vault_dir(
     monkeypatch.setenv("LYRA_VAULT_DIR", "/tmp/vault")
     mock_json, _mock_sqlite = _patch_classes(monkeypatch)
 
-    _result = factory_mod.make_agent_store()
+    result = factory_mod.make_agent_store()
 
+    assert result is mock_json.return_value
     # Actual behaviour: relative path is NOT resolved
     assert mock_json.call_args.kwargs["path"] == Path("agents.json")
 
@@ -181,7 +188,46 @@ def test_make_agent_store_relative_path_fallback_home(
     monkeypatch.delenv("LYRA_VAULT_DIR", raising=False)
     mock_json, _mock_sqlite = _patch_classes(monkeypatch)
 
-    _result = factory_mod.make_agent_store()
+    result = factory_mod.make_agent_store()
 
+    assert result is mock_json.return_value
     # Actual behaviour: relative path is NOT resolved to ~/.lyra
     assert mock_json.call_args.kwargs["path"] == Path("agents.json")
+
+
+# ---------------------------------------------------------------------------
+# LYRA_VAULT_DIR default path behaviour
+# ---------------------------------------------------------------------------
+
+
+def test_json_default_path_uses_lyra_vault_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LYRA_DB=json + LYRA_VAULT_DIR set uses vault dir for default path."""
+    monkeypatch.setenv("LYRA_DB", "json")
+    monkeypatch.setenv("LYRA_VAULT_DIR", "/tmp/vault")
+    monkeypatch.delenv("LYRA_AGENT_STORE_PATH", raising=False)
+    mock_json, mock_sqlite = _patch_classes(monkeypatch)
+
+    result = factory_mod.make_agent_store()
+
+    mock_sqlite.assert_not_called()
+    mock_json.assert_called_once()
+    assert result is mock_json.return_value
+    assert mock_json.call_args.kwargs["path"] == Path("/tmp/vault/agents_test.json")
+
+
+def test_sqlite_default_path_uses_lyra_vault_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LYRA_DB unset + LYRA_VAULT_DIR set uses vault dir for default db path."""
+    monkeypatch.delenv("LYRA_DB", raising=False)
+    monkeypatch.setenv("LYRA_VAULT_DIR", "/tmp/vault")
+    mock_json, mock_sqlite = _patch_classes(monkeypatch)
+
+    result = factory_mod.make_agent_store()
+
+    mock_json.assert_not_called()
+    mock_sqlite.assert_called_once()
+    assert result is mock_sqlite.return_value
+    assert mock_sqlite.call_args.kwargs["db_path"] == Path("/tmp/vault/config.db")

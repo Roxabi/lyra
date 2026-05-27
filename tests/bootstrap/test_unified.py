@@ -11,6 +11,7 @@ import inspect
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import nats.errors
 import pytest
 
 from lyra.bootstrap.types import LifecycleResources
@@ -359,6 +360,32 @@ async def test_cleanup_finally(
     fake_embedded.stop.assert_awaited_once()
 
     # Lockfile release
+    release_lockfile.assert_called_once()
+
+
+async def test_nats_close_error_in_finally_still_cleans_up(
+    monkeypatch: pytest.MonkeyPatch,
+    _patch_unified_boundaries: dict[str, Any],
+) -> None:
+    """Even if nc.close() raises nats.errors.Error in finally, cleanup continues."""
+    from lyra.bootstrap.factory.unified import _bootstrap_unified
+
+    fake_nc = _patch_unified_boundaries["fake_nc"]
+    fake_embedded = _patch_unified_boundaries["fake_embedded"]
+    fake_voice = _patch_unified_boundaries["fake_voice"]
+    release_lockfile = _patch_unified_boundaries["release_lockfile"]
+    run_lifecycle = _patch_unified_boundaries["run_lifecycle"]
+
+    fake_nc.close.side_effect = nats.errors.Error("close failed")
+    run_lifecycle.side_effect = RuntimeError("boom")
+
+    raw_config: dict = {}
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await _bootstrap_unified(raw_config)
+
+    fake_voice.nats_llm_client.stop.assert_awaited_once()
+    fake_embedded.stop.assert_awaited_once()
     release_lockfile.assert_called_once()
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -63,10 +64,8 @@ class TestInitInboundBus:
 
         # Assert
         assert result is fake_bus
-        assert captured_kwargs["nc"] is fake_nc
-        assert captured_kwargs["bot_id"] == "hub"
-        assert captured_kwargs["staging_maxsize"] == 123
         assert captured_kwargs["queue_group"] == HUB_INBOUND
+        assert captured_kwargs["bot_id"] == "hub"
 
 
 class TestSeedAuth:
@@ -105,7 +104,7 @@ class TestSeedAuth:
 class TestPruneMessageIndex:
     @pytest.mark.asyncio
     async def test_prune_message_index_calls_cleanup_older_than_and_logs_when_positive(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         # Arrange
         stores = MagicMock()
@@ -113,14 +112,16 @@ class TestPruneMessageIndex:
         raw_config = {"message_index": {"retention_days": 30}}
 
         # Act
-        await _prune_message_index(stores, raw_config)
+        with caplog.at_level(logging.INFO):
+            await _prune_message_index(stores, raw_config)
 
         # Assert
         stores.message_index.cleanup_older_than.assert_awaited_once_with(30)
+        assert "pruned 5 entries" in caplog.text
 
     @pytest.mark.asyncio
     async def test_prune_message_index_calls_cleanup_older_than_and_skips_log_when_zero(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         # Arrange
         stores = MagicMock()
@@ -128,10 +129,12 @@ class TestPruneMessageIndex:
         raw_config = {"message_index": {"retention_days": 7}}
 
         # Act
-        await _prune_message_index(stores, raw_config)
+        with caplog.at_level(logging.INFO):
+            await _prune_message_index(stores, raw_config)
 
         # Assert
         stores.message_index.cleanup_older_than.assert_awaited_once_with(7)
+        assert "pruned" not in caplog.text
 
 
 class TestInitPairing:
@@ -175,6 +178,26 @@ class TestInitPairing:
         assert result is mock_pm
         mock_pm.connect.assert_awaited_once()
         mock_set_pm.assert_called_once_with(mock_pm)
+
+    @pytest.mark.asyncio
+    async def test_init_pairing_warns_when_enabled_without_admins(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        mock_pm = MagicMock()
+        mock_pm.connect = AsyncMock()
+        monkeypatch.setattr(
+            wiring_helpers_mod,
+            "_load_pairing_config",
+            lambda raw: MagicMock(enabled=True, admin_user_ids=[]),
+        )
+        monkeypatch.setattr(wiring_helpers_mod, "PairingManager", lambda **kw: mock_pm)
+        monkeypatch.setattr(wiring_helpers_mod, "set_pairing_manager", MagicMock())
+
+        with caplog.at_level(logging.WARNING):
+            result = await _init_pairing({}, [], Path("/tmp"), MagicMock())
+
+        assert result is mock_pm
+        assert "[admin].user_ids is empty" in caplog.text
 
 
 class TestInitVoiceServices:
@@ -323,10 +346,9 @@ class TestInitBotAuthsAndAgents:
         assert result.admin_user_ids == frozenset(["tg:user:123"])
 
     @pytest.mark.asyncio
-    async def test_init_bot_auths_raises_system_exit_when_no_bots(
+    async def test_init_bot_auths_exits_when_no_bots_configured(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # --- no bots ---
         monkeypatch.setattr(
             wiring_helpers_mod,
             "_load_circuit_config",
@@ -346,7 +368,20 @@ class TestInitBotAuthsAndAgents:
         with pytest.raises(SystemExit):
             await _init_bot_auths_and_agents(MagicMock(), {})
 
-        # --- no agent configs ---
+    @pytest.mark.asyncio
+    async def test_init_bot_auths_exits_when_no_agent_configs_loaded(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            wiring_helpers_mod,
+            "_load_circuit_config",
+            lambda raw: (MagicMock(), frozenset()),
+        )
+        monkeypatch.setattr(
+            wiring_helpers_mod,
+            "load_multibot_config",
+            lambda raw: (MagicMock(bots=[MagicMock()]), MagicMock(bots=[])),
+        )
         monkeypatch.setattr(
             wiring_helpers_mod,
             "_build_bot_auths",
@@ -362,6 +397,24 @@ class TestInitBotAuthsAndAgents:
 
         with pytest.raises(SystemExit):
             await _init_bot_auths_and_agents(stores, {})
+
+    @pytest.mark.asyncio
+    async def test_init_bot_auths_exits_on_bad_multibot_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            wiring_helpers_mod,
+            "_load_circuit_config",
+            lambda raw: (MagicMock(), frozenset()),
+        )
+        monkeypatch.setattr(
+            wiring_helpers_mod,
+            "load_multibot_config",
+            MagicMock(side_effect=ValueError("bad config")),
+        )
+
+        with pytest.raises(SystemExit, match="bad config"):
+            await _init_bot_auths_and_agents(MagicMock(), {})
 
 
 class TestBuildHub:

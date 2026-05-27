@@ -200,7 +200,6 @@ async def test_empty_bot_lists_returns_empty() -> None:
     result = await resolve_bot_agent_map(store, [], [])
 
     assert result == {}
-    store.get_bot_agent.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

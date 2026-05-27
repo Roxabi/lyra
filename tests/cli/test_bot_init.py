@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import pytest
@@ -10,35 +9,11 @@ from typer.testing import CliRunner
 
 from lyra.cli import lyra_app as app
 from lyra.core.agent.bot_models import BotRow
-from lyra.infrastructure.stores.bot_store import BotStore
 from tests.helpers.bot_cli import write_bot_toml
+from tests.helpers.bot_store import db_get, db_upsert
 
+# typer.testing.CliRunner merges stderr into result.output by default.
 runner = CliRunner()
-
-
-def _db_get(db_path: Path, platform: str, bot_id: str) -> BotRow | None:
-    """Read a bot row from DB synchronously."""
-
-    async def _run() -> BotRow | None:
-        store = BotStore(db_path=str(db_path))
-        await store.connect()
-        row = store.get(platform, bot_id)
-        await store.close()
-        return row
-
-    return asyncio.run(_run())
-
-
-def _db_upsert(db_path: Path, row: BotRow) -> None:
-    """Upsert a bot row into DB synchronously."""
-
-    async def _run() -> None:
-        store = BotStore(db_path=str(db_path))
-        await store.connect()
-        await store.upsert(row)
-        await store.close()
-
-    asyncio.run(_run())
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +106,7 @@ class TestBotInitSeed:
 
         # Assert — DB has the row
         db_path = tmp_path / "config.db"
-        row = _db_get(db_path, "telegram", "main")
+        row = db_get(db_path, "telegram", "main")
         assert row is not None
         assert row.agent == "a"
 
@@ -149,14 +124,25 @@ class TestBotInitSeed:
         result1 = runner.invoke(app, ["bot", "init"])
         assert result1.exit_code == 0
 
+        # Capture updated_at after first run
+        db_path = tmp_path / "config.db"
+        first_row = db_get(db_path, "telegram", "main")
+        assert first_row is not None
+        first_updated_at = first_row.updated_at
+
         # Act — second run (idempotent)
         result2 = runner.invoke(app, ["bot", "init"])
 
-        # Assert
+        # Assert — output counts
         assert result2.exit_code == 0, result2.output
         assert "skipped" in result2.output
         assert "0 seeded" in result2.output
         assert "1 skipped" in result2.output
+
+        # Assert — DB row was NOT rewritten (updated_at unchanged)
+        second_row = db_get(db_path, "telegram", "main")
+        assert second_row is not None
+        assert second_row.updated_at == first_updated_at
 
     def test_force_overwrite(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -174,7 +160,7 @@ class TestBotInitSeed:
 
         # Arrange — manually mutate DB row
         db_path = tmp_path / "config.db"
-        _db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="mutated"))
+        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="mutated"))
 
         # Act — force re-seed
         result2 = runner.invoke(app, ["bot", "init", "--force"])
@@ -183,9 +169,24 @@ class TestBotInitSeed:
         assert result2.exit_code == 0, result2.output
         assert "seeded" in result2.output
 
-        row = _db_get(db_path, "telegram", "main")
+        row = db_get(db_path, "telegram", "main")
         assert row is not None
         assert row.agent == "a"
+
+    def test_force_on_empty_db(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # --force on a fresh DB with no prior rows must still seed normally.
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        write_bot_toml(
+            tmp_path,
+            '[[telegram.bots]]\nbot_id="main"\nagent="a"\n',
+        )
+
+        result = runner.invoke(app, ["bot", "init", "--force"])
+
+        assert result.exit_code == 0, result.output
+        assert "1 seeded" in result.output
 
     def test_merge_multi_section(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -213,7 +214,7 @@ class TestBotInitSeed:
         assert "1 seeded" in result.output  # single merged row
 
         db_path = tmp_path / "config.db"
-        row = _db_get(db_path, "telegram", "main")
+        row = db_get(db_path, "telegram", "main")
         assert row is not None
         assert row.agent == "b"  # auth.telegram_bots wins (last section)
         assert set(row.owner_users) == {"alice", "bob", "charlie"}  # concat + dedup
@@ -221,7 +222,8 @@ class TestBotInitSeed:
     def test_default_values(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange — minimal TOML with only agent
+        # Arrange — minimal TOML that omits auto_thread and thread_hot_hours
+        # so that dataclass defaults apply (conservative: False / 24).
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         write_bot_toml(
             tmp_path,
@@ -236,9 +238,38 @@ class TestBotInitSeed:
         assert "1 seeded" in result.output
 
         db_path = tmp_path / "config.db"
-        row = _db_get(db_path, "telegram", "main")
+        row = db_get(db_path, "telegram", "main")
         assert row is not None
         assert row.agent == "a"
         assert row.default_trust == "blocked"
-        assert row.auto_thread is True
-        assert row.thread_hot_hours == 36
+        assert row.auto_thread is False
+        assert row.thread_hot_hours == 24
+
+
+# ---------------------------------------------------------------------------
+# TestBotInitValidation
+# ---------------------------------------------------------------------------
+
+
+class TestBotInitValidation:
+    """Input validation: invalid bot_id / platform are skipped with error."""
+
+    def test_invalid_bot_id_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # bot_id with path-traversal characters must be rejected and counted as error.
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        write_bot_toml(
+            tmp_path,
+            '[[telegram.bots]]\nbot_id="../../evil"\nagent="a"\n',
+        )
+
+        result = runner.invoke(app, ["bot", "init"])
+
+        # exit_code 0 (validation errors are counted but do NOT cause exit 1)
+        assert result.exit_code == 1, result.output  # 1 error → exits 1
+        assert "error" in result.output.lower()
+        # DB must have 0 rows — invalid entry was not persisted
+        db_path = tmp_path / "config.db"
+        row = db_get(db_path, "telegram", "main")
+        assert row is None

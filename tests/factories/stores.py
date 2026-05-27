@@ -10,10 +10,12 @@ from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.pairing import PairingConfig, PairingManager
+from tests.helpers.bot_store import make_bot_store
 
 __all__ = [
     "agent_store",
     "auth_store",
+    "bot_store",
     "json_agent_store",
     "make_agent_row",
     "make_auth_store",
@@ -111,6 +113,16 @@ async def json_agent_store(tmp_path: Path):
 
     store = JsonAgentStore(path=tmp_path / "agents_test.json")
     await store.connect()
+    try:
+        yield store
+    finally:
+        await store.close()
+
+
+@pytest.fixture
+async def bot_store(tmp_path: Path):
+    """Fixture-based BotStore with automatic teardown."""
+    store = await make_bot_store(tmp_path)
     try:
         yield store
     finally:

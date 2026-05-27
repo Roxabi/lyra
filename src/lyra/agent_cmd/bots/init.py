@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -54,9 +55,9 @@ def init_bots(
                 typer.echo(f"Error parsing {config_path}: {e}", err=True)
                 raise typer.Exit(1)
 
-            bots = _merge_bots(raw)
+            bots, errors = _merge_bots(raw)
 
-            seeded = skipped = errors = 0
+            seeded = skipped = 0
             for row in bots:
                 try:
                     existing = store.get(row.platform, row.bot_id)
@@ -80,7 +81,14 @@ def init_bots(
     asyncio.run(_run())
 
 
-def _merge_bots(raw: dict[str, Any]) -> list[BotRow]:  # noqa: C901 — DEBT:complexity-residual — merge logic walks four config sections
+# bot_id and platform must match this pattern to prevent path-traversal / injection.
+# platform is derived from the section name (always "telegram" or "discord") so the
+# check is a defensive belt-and-suspenders guard; bot_id is operator-supplied.
+_BOT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_PLATFORM_RE = re.compile(r"^(telegram|discord)$")
+
+
+def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 — DEBT:complexity-residual — merge logic walks four config sections
     """Merge bot entries from config.toml per (platform, bot_id).
 
     Reads ``[[telegram.bots]]``, ``[[discord.bots]]``,
@@ -88,10 +96,16 @@ def _merge_bots(raw: dict[str, Any]) -> list[BotRow]:  # noqa: C901 — DEBT:com
     Scalar fields are overwritten (last section wins);
     list fields (owner_users, trusted_users) are concatenated
     and deduplicated.
+
+    Returns:
+        Tuple of (rows, validation_error_count). Entries with invalid
+        bot_id or platform are skipped and counted in validation_error_count.
     """
     merged: dict[tuple[str, str], dict[str, Any]] = {}
+    validation_errors = 0
 
     def _add_entries(section_path: tuple[str, ...], platform: str) -> None:  # noqa: C901
+        nonlocal validation_errors
         section: Any = raw
         for key in section_path[:-1]:
             section = section.get(key, {})
@@ -104,6 +118,13 @@ def _merge_bots(raw: dict[str, Any]) -> list[BotRow]:  # noqa: C901 — DEBT:com
             if not isinstance(entry, dict):
                 continue
             bot_id = entry.get("bot_id", "main")
+            if not _BOT_ID_RE.match(bot_id) or not _PLATFORM_RE.match(platform):
+                typer.echo(
+                    f"  error: invalid platform/bot_id ({platform}/{bot_id}) — skipped",
+                    err=True,
+                )
+                validation_errors += 1
+                continue
             key = (platform, bot_id)
             merged.setdefault(key, {"platform": platform, "bot_id": bot_id})
             for k, v in entry.items():
@@ -140,4 +161,4 @@ def _merge_bots(raw: dict[str, Any]) -> list[BotRow]:  # noqa: C901 — DEBT:com
                 thread_hot_hours=data.get("thread_hot_hours", DEFAULT_THREAD_HOT_HOURS),
             )
         )
-    return rows
+    return rows, validation_errors

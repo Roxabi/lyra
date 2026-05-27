@@ -35,6 +35,10 @@ Environment=LYRA_VAULT_DIR=/data
 Environment=PYTHONUNBUFFERED=1
 Exec=lyra turn-writer
 HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8083/health",timeout=3); sys.exit(0 if r.status==200 else 1)'
+# Intentional fleet divergence: HTTP probe failure → SIGKILL → Restart=on-failure
+# cycles the unit. Other lyra-* units use shallow process-presence probes where
+# kill-on-fail is overkill; here the writer's sole-writer contract makes a dead
+# probe a hard failure worth recycling. See ADR-075 and #1349.
 HealthOnFailure=kill
 HealthInterval=30s
 

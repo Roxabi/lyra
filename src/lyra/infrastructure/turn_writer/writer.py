@@ -120,7 +120,7 @@ class TurnWriter:
             except asyncio.CancelledError:
                 return
             except nats.errors.ConnectionClosedError as err:
-                log.warning(
+                log.error(
                     "TurnWriter: NATS connection lost, Quadlet will restart: %s",
                     err,
                 )

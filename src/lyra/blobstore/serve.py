@@ -7,7 +7,7 @@ import os
 import pathlib
 import shutil
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse, Response
@@ -105,7 +105,7 @@ def _make_lifespan(blob_root: pathlib.Path, injected_nats: NATS | None):  # type
     """Return an asynccontextmanager lifespan for build_app."""
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         nc = injected_nats
         _own_nc = nc is None
         if nc is None:

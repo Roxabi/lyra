@@ -17,7 +17,7 @@ import tempfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncGenerator
 
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
@@ -239,7 +239,7 @@ class StoreBundle:
 
 
 @asynccontextmanager
-async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
+async def open_stores(vault_dir: Path) -> AsyncGenerator[StoreBundle, None]:
     """Open every store, yield a *StoreBundle*, and close on exit.
 
     Runs the auth.db → config.db migration guard before opening stores (#417).

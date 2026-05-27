@@ -15,7 +15,7 @@ import stat as _stat
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncGenerator
 
 import typer
 from nats.aio.client import Client as NATS
@@ -120,7 +120,7 @@ def _read_seed(seed_path: Path) -> str:
 @asynccontextmanager
 async def _identity_connection(
     nats_url: str, seed_path: Path, error_sink: list[str]
-) -> AsyncIterator[NATS]:
+) -> AsyncGenerator[NATS, None]:
     """Yield a NATS client authed as a specific identity.
 
     The seed is read and passed to ``nats.connect`` directly — no env

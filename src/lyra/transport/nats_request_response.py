@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, AsyncGenerator
 
 import nats.errors
 from nats.errors import MaxPayloadError, NoRespondersError
@@ -69,12 +69,12 @@ class NatsTransport:
         return SanitizedError(code=code, message=name, retryable=True)
 
     @asynccontextmanager
-    async def open_inbox(self) -> AsyncIterator[InboxStream]:
+    async def open_inbox(self) -> AsyncGenerator[InboxStream, None]:
         inbox = self._nc.new_inbox()
         sub = await self._nc.subscribe(inbox)
         log.info("transport.inbox_open inbox=%s", inbox)
 
-        async def _messages() -> AsyncIterator[Result[bytes, SanitizedError]]:
+        async def _messages() -> AsyncGenerator[Result[bytes, SanitizedError], None]:
             try:
                 while True:
                     try:

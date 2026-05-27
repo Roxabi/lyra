@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -97,7 +97,7 @@ async def _typing_loop(
     bot: Any,
     chat_id: int,
     interval: float = 3.0,
-) -> AsyncIterator[None]:
+) -> AsyncGenerator[None, None]:
     """Send typing indicator immediately and refresh every *interval* seconds.
 
     Telegram expires the typing action after ~5s. The background task

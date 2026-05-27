@@ -18,6 +18,7 @@ from lyra.core.hub.middleware import MiddlewarePipeline
 from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult
 from lyra.core.messaging.message import InboundMessage, OutboundAudio, Response
 from tests.core.conftest import make_inbound_message, push_to_hub
+from tests.helpers.messages import make_test_blobref
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -50,7 +51,9 @@ class TestHubRunAudioDispatch:
         """Audio-only Response: dispatch_audio() called, not dispatch_response()."""
         hub = Hub()
         msg = make_inbound_message(platform="telegram", bot_id="main")
-        audio = OutboundAudio(audio_bytes=b"ogg_data", mime_type="audio/ogg")
+        audio = OutboundAudio(
+            blob_ref=make_test_blobref(b"ogg_data"), mime_type="audio/ogg"
+        )
         response = Response(content="", audio=audio)
         pipeline_result = _make_pipeline_result(response)
 
@@ -85,7 +88,9 @@ class TestHubRunAudioDispatch:
         """Response with both content and audio: both dispatch methods called."""
         hub = Hub()
         msg = make_inbound_message(platform="telegram", bot_id="main")
-        audio = OutboundAudio(audio_bytes=b"ogg_data", mime_type="audio/ogg")
+        audio = OutboundAudio(
+            blob_ref=make_test_blobref(b"ogg_data"), mime_type="audio/ogg"
+        )
         response = Response(content="hello", audio=audio)
         pipeline_result = _make_pipeline_result(response)
 
@@ -124,7 +129,9 @@ class TestHubRunAudioDispatch:
         """
         hub = Hub()
         msg = make_inbound_message(platform="telegram", bot_id="main")
-        audio = OutboundAudio(audio_bytes=b"ogg_data", mime_type="audio/ogg")
+        audio = OutboundAudio(
+            blob_ref=make_test_blobref(b"ogg_data"), mime_type="audio/ogg"
+        )
         response = Response(content="hello", audio=audio)
         pipeline_result = _make_pipeline_result(response)
 

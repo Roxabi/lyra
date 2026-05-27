@@ -9,6 +9,7 @@ functionality, we skip extraction when the request URL is relative.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -311,6 +312,40 @@ def discord_adapter(mock_inbound_bus):
         bot_id="main",
         inbound_bus=mock_inbound_bus,
     )
+
+
+@pytest.fixture(autouse=True)
+def patch_blobstore_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Auto-use fixture: mock HttpBlobStore so adapter tests don't hit the network."""
+    from unittest.mock import MagicMock
+
+    from roxabi_contracts import BlobRef
+    from tests.helpers.messages import _TEST_BLOB_REGISTRY
+
+    async def _mock_get(store_key: str) -> bytes:
+        return _TEST_BLOB_REGISTRY.get(store_key, b"mock-audio-bytes")
+
+    def _mock_put(data: bytes, *, mime: str, **kwargs: Any) -> BlobRef:
+        ref = BlobRef(
+            store_key="test-blob",
+            content_hash="deadbeef",
+            mime=mime,
+            size=len(data),
+            source="test",
+        )
+        _TEST_BLOB_REGISTRY[ref.store_key] = data
+        return ref
+
+    mock_store = MagicMock()
+    mock_store.get = AsyncMock(side_effect=_mock_get)
+    mock_store.put = AsyncMock(side_effect=_mock_put)
+    for target in (
+        "lyra.adapters.shared._blobstore_client.get_blobstore_client",
+        "lyra.adapters.telegram.telegram_audio.get_blobstore_client",
+        "lyra.adapters.discord.discord_audio_outbound.get_blobstore_client",
+        "lyra.adapters.shared._shared_audio.get_blobstore_client",
+    ):
+        monkeypatch.setattr(target, lambda: mock_store)
 
 
 _original_extract_cookies = httpx.Cookies.extract_cookies

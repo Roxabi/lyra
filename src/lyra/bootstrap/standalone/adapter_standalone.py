@@ -152,9 +152,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 )
                 await tg_typing_listener.start()
 
-                wired.append(
-                    (adapter, inbound_bus, tg_typing_listener)
-                )
+                wired.append((adapter, inbound_bus, tg_typing_listener))
                 log.info(
                     "adapter_standalone: Telegram bot_id=%s ready (NATS mode)",
                     bot_id,
@@ -316,9 +314,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 )
                 await dc_typing_listener.start()
 
-                wired_dc.append(
-                    (adapter_dc, token, inbound_bus_dc, dc_typing_listener)
-                )
+                wired_dc.append((adapter_dc, token, inbound_bus_dc, dc_typing_listener))
                 log.info(
                     "adapter_standalone: Discord bot_id=%s ready (NATS mode)",
                     bot_id,

@@ -141,9 +141,7 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
     assert loader_result.bash_max_len == 200
 
     hub = Hub()
-    bot_cfg = DiscordBotConfig(
-        bot_id="main", auto_thread=False, thread_hot_hours=4
-    )
+    bot_cfg = DiscordBotConfig(bot_id="main", auto_thread=False, thread_hot_hours=4)
     auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
     captured_kwargs: dict = {}

@@ -27,9 +27,7 @@ from lyra.outbound._tool_recap import ToolRecapAccumulator, format_recap_lines
 # ---------------------------------------------------------------------------
 
 
-def _feed_bash(
-    accum: ToolRecapAccumulator, call_id: str, command: str
-) -> None:
+def _feed_bash(accum: ToolRecapAccumulator, call_id: str, command: str) -> None:
     """Feed a single complete bash tool call through the accumulator."""
     accum.observe_start(
         ToolCallStartRenderEvent(tool_call_id=call_id, tool_name="bash")
@@ -53,9 +51,7 @@ def _feed_tool(
     accum.observe_start(
         ToolCallStartRenderEvent(tool_call_id=call_id, tool_name=tool_name)
     )
-    accum.observe_args(
-        ToolCallArgsRenderEvent(tool_call_id=call_id, delta=args_json)
-    )
+    accum.observe_args(ToolCallArgsRenderEvent(tool_call_id=call_id, delta=args_json))
     accum.observe_end(ToolCallEndRenderEvent(tool_call_id=call_id))
 
 

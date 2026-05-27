@@ -44,9 +44,7 @@ _LONG_CMD = "x" * 250  # 250-char bash command, exceeds bash_max_len=200
 async def _bash_event_stream(cmd: str) -> AsyncIterator[RenderEvent]:
     """Yield a minimal event sequence with one bash tool call."""
     yield ToolCallStartRenderEvent(tool_call_id="t1", tool_name="bash")
-    yield ToolCallArgsRenderEvent(
-        tool_call_id="t1", delta=json.dumps({"command": cmd})
-    )
+    yield ToolCallArgsRenderEvent(tool_call_id="t1", delta=json.dumps({"command": cmd}))
     yield ToolCallEndRenderEvent(tool_call_id="t1")
 
 
@@ -239,6 +237,7 @@ class TestTelegramBashMaxLen200:
         # Assert — done=True recap lines contain a bash line truncated within 200 chars
         # but retaining MORE than 80 chars (proving bash_max_len=200 is honored)
         import re
+
         lines = _capture_recap_lines(recap_mock)
         assert lines, "edit_tool_recap must have been called with done=True"
         bash_lines = [ln for ln in lines if "\U0001f4bb" in ln]
@@ -287,6 +286,7 @@ class TestDiscordBashMaxLen200:
 
         # Assert — bash line truncated within 200 chars but >80 (proving config honored)
         import re
+
         lines = _capture_recap_lines(recap_mock)
         assert lines, "edit_tool_recap must have been called with done=True"
         bash_lines = [ln for ln in lines if "\U0001f4bb" in ln]
@@ -338,7 +338,7 @@ class TestTelegramShowWebFetchFalse:
                 if "lines" in kwargs
                 else (args[1] if len(args) >= 2 else [])
             )
-            for line in (lines or []):
+            for line in lines or []:
                 assert "example.com" not in line, (
                     "web_fetch URL must not appear in recap "
                     f"when show.web_fetch=False: {line!r}"
@@ -380,7 +380,7 @@ class TestDiscordShowWebFetchFalse:
                 if "lines" in kwargs
                 else (args[1] if len(args) >= 2 else [])
             )
-            for line in (lines or []):
+            for line in lines or []:
                 assert "example.com" not in line, (
                     "web_fetch URL must not appear in recap "
                     f"when show.web_fetch=False: {line!r}"
@@ -421,6 +421,7 @@ class TestTelegramNoConfigUsesDefaults:
         bash_lines = [ln for ln in lines if "\U0001f4bb" in ln]
         assert bash_lines, f"Expected at least one bash line in recap: {lines}"
         import re
+
         for bash_line in bash_lines:
             match = re.search(r"`([^`]*)`", bash_line)
             if match:
@@ -462,6 +463,7 @@ class TestDiscordNoConfigUsesDefaults:
         bash_lines = [ln for ln in lines if "\U0001f4bb" in ln]
         assert bash_lines, f"Expected at least one bash line in recap: {lines}"
         import re
+
         for bash_line in bash_lines:
             match = re.search(r"`([^`]*)`", bash_line)
             if match:

@@ -46,8 +46,7 @@ from lyra.nats.queue_groups import HUB_INBOUND
 
 if TYPE_CHECKING:
     import nats
-    from lyra.llm.drivers.cli_nats import CliNatsDriver
-    from lyra.nats.nats_llm_client import NatsLlmClient
+    from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +60,7 @@ log = logging.getLogger(__name__)
 class VoiceBundle:
     stt_service: object
     tts_service: object
-    nats_llm_client: "NatsLlmClient | None"
+    nats_llm_client: "LlmClient | None"
 
 
 @dataclass
@@ -79,7 +78,7 @@ class BotAuthBundle:
 @dataclass
 class CliPoolBundle:
     cli_pool: CliPool
-    cli_nats_driver: "CliNatsDriver | None"
+    cli_nats_driver: "LlmClient | None"
     worker: object
     audit_sink: JetStreamAuditSink
 
@@ -301,15 +300,15 @@ async def _init_clipool(
     raw_config: dict,
     stores: object,
 ) -> CliPoolBundle:
-    """Build CliNatsDriver, CliPool, CliPoolNatsWorker."""
+    """Build LlmClient (clipool), CliPool, CliPoolNatsWorker."""
     from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
-    from lyra.bootstrap.factory.hub_builder import build_cli_nats_driver
+    from lyra.bootstrap.factory.hub_builder import build_llm_client
 
     cli_pool_cfg = _load_cli_pool_config(raw_config)
     audit_sink = JetStreamAuditSink()
     await audit_sink.provision(nc)
 
-    cli_nats_driver = await build_cli_nats_driver(nc)
+    cli_nats_driver = await build_llm_client(nc)
     cli_pool = CliPool(
         idle_ttl=cli_pool_cfg.idle_ttl,
         default_timeout=cli_pool_cfg.default_timeout,
@@ -377,7 +376,6 @@ async def _wire_adapters(
         hub,
         bundle.tg_bot_auths,
         bundle.bot_agent_map,
-        stores.cred,
         bundle.circuit_registry,
         bundle.msg_manager,
         nats_client=nc,
@@ -386,7 +384,6 @@ async def _wire_adapters(
         hub,
         bundle.dc_bot_auths,
         bundle.bot_agent_map,
-        stores.cred,
         bundle.circuit_registry,
         bundle.msg_manager,
         agent_store=stores.agent,

@@ -26,6 +26,8 @@ class CliCmdPayload(ContractEnvelope):
     system_prompt: str
     resume_session_id: str | None = None
     stream: bool = True
+    agent_name: str | None = None
+    agent_email: str | None = None
 
 
 class CliChunkEvent(ContractEnvelope):

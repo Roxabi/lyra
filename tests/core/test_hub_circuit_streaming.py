@@ -227,7 +227,7 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
         Path(__file__).resolve().parent.parent.parent
         / "src"
         / "lyra"
-        / "config"
+        / "data"
         / "messages.toml"
     )
 

@@ -48,6 +48,9 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — DEBT:complexity-residual —
     # Resolve cwd: DB row wins, then instance_overrides, then None
     cwd = _resolve_cwd(row.cwd or overrides.get("cwd"), row.name)
 
+    # ModelConfig() below also fires _validate_backend (Pydantic field validator).
+    # _validate_backend_model is kept here for the richer agent_name context in
+    # the error message. The double-check is intentional defense-in-depth.
     _validate_backend_model(row.backend, row.model, row.name)
 
     model_cfg = ModelConfig(
@@ -171,7 +174,6 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — DEBT:complexity-residual —
         i18n_language=i18n_language,
         smart_routing=smart_routing,
         show_intermediate=row.show_intermediate,
-        show_tool_recap=row.show_tool_recap,
         workspaces=workspaces,
         voice=voice,
         patterns=patterns,

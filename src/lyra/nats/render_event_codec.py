@@ -64,10 +64,16 @@ from roxabi_nats._version_check import check_schema_version
 
 log = logging.getLogger(__name__)
 
-# Synthetic terminal sentinels that are NOT in the RenderEvent union.
+# Synthetic terminals and non-terminal sentinels that are NOT in the RenderEvent union.
 # decode() checks membership here BEFORE registry lookup so these never
 # surface the "unknown event_type" warning on clean stream close.
+#
+# ``stream_keepalive`` is published by NatsChannelProxy.send_streaming during idle
+# periods (e.g. long tool calls) to prevent the adapter's decode_stream_events
+# per-chunk timeout from tripping (#687).  The decoder resets its per-chunk timer on
+# receipt but does NOT yield a render event to the caller.
 _SYNTHETIC_TERMINALS: frozenset[str] = frozenset({"stream_end", "stream_error"})
+_SYNTHETIC_NON_TERMINALS: frozenset[str] = frozenset({"stream_keepalive"})
 
 
 @dataclass(frozen=True)
@@ -132,7 +138,8 @@ class NatsRenderEventCodec:
                           | "tool_call_start" | "tool_call_args"
                           | "tool_call_end" | "tool_call_result"
                           | "reasoning_start" | "reasoning_delta"
-                          | "reasoning_end" | "stream_end" | "stream_error",
+                          | "reasoning_end" | "stream_end" | "stream_error"
+                          | "stream_keepalive",
             "payload":    dict,   # serialized event fields
             "done":       bool,
         }
@@ -140,6 +147,10 @@ class NatsRenderEventCodec:
     ``"stream_end"`` and ``"stream_error"`` are synthetic terminal sentinels
     (the latter emitted by the transport on mid-stream hub crash, #538);
     ``decode()`` returns ``None`` for both.
+    ``"stream_keepalive"`` is a non-terminal sentinel published by
+    ``NatsChannelProxy.send_streaming`` during idle periods (#687); ``decode()``
+    also returns ``None`` — the adapter resets its per-chunk timer but does not
+    yield a render event.
     ``is_done=True`` for ``RunFinishedRenderEvent`` and ``RunErrorRenderEvent``
     only; all other types yield ``is_done=False``.
     """
@@ -321,9 +332,12 @@ class NatsRenderEventCodec:
                         ``counter[envelope_name]`` on every version-check drop.
                         Pass ``None`` to skip counting.
         """
-        # Synthetic terminals — short-circuit BEFORE registry lookup so these
+        # Synthetic sentinels — short-circuit BEFORE registry lookup so these
         # never emit the "unknown event_type" warning on clean stream close.
-        if event_type in _SYNTHETIC_TERMINALS:
+        # _SYNTHETIC_TERMINALS: stream_end, stream_error — terminal, caller stops loop.
+        # _SYNTHETIC_NON_TERMINALS: stream_keepalive — non-terminal, caller continues.
+        # Both return None so the caller skips yielding a render event.
+        if event_type in _SYNTHETIC_TERMINALS or event_type in _SYNTHETIC_NON_TERMINALS:
             return None
 
         branch = self._by_type_str.get(event_type)

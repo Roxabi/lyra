@@ -178,9 +178,7 @@ async def test_multi_tool_turn_renders_recap_card_via_embed() -> None:
         if edit_icon in (getattr(c.kwargs["embed"], "description", "") or "")
         and bash_icon in (getattr(c.kwargs["embed"], "description", "") or "")
     ]
-    descriptions = [
-        getattr(c.kwargs["embed"], "description", None) for c in done_calls
-    ]
+    descriptions = [getattr(c.kwargs["embed"], "description", None) for c in done_calls]
     assert len(matching) >= 1, (
         f"Done embed description must contain both '✏️' and '💻'. "
         f"Descriptions: {descriptions}"
@@ -290,7 +288,7 @@ async def test_intermediate_edit_uses_blue_color_and_working_title() -> None:
         # 10s gap between each call → always past debounce interval
         return float(_call_count * 10)
 
-    _patch_target = "lyra.adapters.shared._shared_streaming_emitter.time.monotonic"
+    _patch_target = "lyra.outbound.emitter.time.monotonic"
     with patch(_patch_target, _fake_monotonic):
         # Act — drive tool events; debounce is bypassed by time patch
         await adapter.send_streaming(

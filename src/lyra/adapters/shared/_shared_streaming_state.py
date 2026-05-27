@@ -1,8 +1,13 @@
-"""Streaming state primitives — IntermediateTextState, StreamState, error helpers.
+"""Streaming state primitives — IntermediateTextState, StreamState.
 
 Extracted from _shared_streaming.py (Issue #760).  These types represent the
 mutable state of a single streaming turn; they carry no platform knowledge and
 import nothing from the platform layer.
+
+S7 of #1279: classify_stream_error legacy wrapper removed (build_display_text
+now calls OutboundErrorHandler directly via deferred import).
+STREAMING_EDIT_INTERVAL re-export shim removed (consumers import from
+lyra.outbound.throttle directly).
 """
 
 from __future__ import annotations
@@ -11,15 +16,9 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from lyra.core.exceptions import StreamChunkTimeout
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY
 
 log = logging.getLogger(__name__)
-
-
-# Seconds between intermediate streaming edits (debounce).
-# Shared by Telegram and Discord adapters; aligned with each platform's rate limit.
-STREAMING_EDIT_INTERVAL = 1.0
 
 
 # Maximum accumulated intermediate text length. Segments beyond this are
@@ -70,52 +69,6 @@ class IntermediateTextState:
     def display(self) -> str:
         """Return the accumulated intermediate text for the placeholder."""
         return self._text
-
-
-_ERR_TIMEOUT_FALLBACK = (
-    "\u23f1\ufe0f The backend took longer than 120 s to respond. Please try again."
-)
-_ERR_NO_FINAL_FALLBACK = (
-    "\u26a0\ufe0f Response ended without a final message"
-    " (tool events only). Please try again."
-)
-
-
-def classify_stream_error(
-    stream_error: Exception | None,
-    *,
-    had_tool_events: bool,
-    final_text: str | None,
-    msg_fn: Callable[[str, str], str],
-) -> str | None:
-    """Return a descriptive error string for terminal error states.
-
-    Returns ``None`` when there is no error and a final text is present
-    (caller renders ``final_text`` normally).  Returns a user-facing string
-    for every error branch so callers never fall through to a bare
-    GENERIC_ERROR_REPLY silently.
-
-    Args:
-        stream_error:    Exception captured by the stream loop, or ``None``.
-        had_tool_events: Whether tool events were seen before the error.
-        final_text:      Final text captured from the stream, or ``None``.
-        msg_fn:          ``get_msg(key, fallback)`` callback for i18n.
-    """
-    if stream_error is not None:
-        if isinstance(stream_error, StreamChunkTimeout):
-            return msg_fn("error_timeout", _ERR_TIMEOUT_FALLBACK)
-        # Use exception class name only, never str(exc): exception strings can
-        # carry hostnames, file paths, auth-token fragments, connection strings
-        # (httpx/aiohttp/NATS errors). Mirrors the discipline at
-        # stream_processor.py RunErrorRenderEvent emission site.
-        return msg_fn(
-            "error_stream",
-            f"\u26a0\ufe0f Streaming error: {type(stream_error).__name__}."
-            f" Please try again.",
-        )
-    if final_text is None and had_tool_events:
-        return msg_fn("error_no_final", _ERR_NO_FINAL_FALLBACK)
-    return None
 
 
 @dataclass
@@ -170,11 +123,17 @@ class StreamState:
         turns so the user always sees a meaningful message.
         """
         if self.final_text is None:
-            return classify_stream_error(
+            # Deferred import — avoids circular load: emitter.py imports this
+            # module at the bottom, and error_handler is part of lyra.outbound.
+            from lyra.outbound.error_handler import (
+                OutboundErrorHandler,  # noqa: PLC0415
+            )
+
+            handler = OutboundErrorHandler(get_msg=msg_fn)
+            return handler.classify_stream_error(
                 self.stream_error,
                 had_tool_events=self.had_tool_events,
                 final_text=None,
-                msg_fn=msg_fn,
             )
         # Error-turn detection: is_error_turn (legacy path set at set_final_text
         # time) OR is_error_pending (RunErrorRenderEvent observed in the

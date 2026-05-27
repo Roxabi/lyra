@@ -1,7 +1,7 @@
 # 03 - Compiled Truth (Markdown)
 
 ## À quoi ça sert ?
-Version **synthétique, propre et humaine** de chaque entité importante du système.  
+Version **synthétique, propre et humaine** de chaque entité importante du système.
 
 C'est la forme de connaissance la plus dense et la plus utile : elle est injectée en priorité dans les prompts des agents (orchestrateur surtout) pour fournir un contexte de très haute qualité sans bruit.
 
@@ -13,7 +13,7 @@ C'est la forme de connaissance la plus dense et la plus utile : elle est inject�
 
 ## Architecture technique détaillée
 
-- **Stockage** : un fichier Markdown par entité importante  
+- **Stockage** : un fichier Markdown par entité importante
   Exemple de chemin : `compiled_truth/projets/lyra.md` ou `compiled_truth/personnes/jean-dupont.md`
 - **Structure stricte du fichier** :
 

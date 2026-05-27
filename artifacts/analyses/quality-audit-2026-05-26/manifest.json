@@ -1,0 +1,33 @@
+{
+  "audit_id": "quality-audit-2026-05-26",
+  "project": "lyra",
+  "branch": "staging",
+  "status": "completed",
+  "date_started": "2026-05-26",
+  "date_completed": "2026-05-27",
+  "current_wave": 18,
+  "pending_agents": [],
+  "completed_agents": [
+    "architecture",
+    "security",
+    "code-smells",
+    "type-safety",
+    "async-patterns",
+    "error-handling",
+    "test-quality",
+    "tech-debt",
+    "synthesis"
+  ],
+  "reports_by_domain": {
+    "architecture": 10,
+    "security": 10,
+    "code-smells": 16,
+    "type-safety": 9,
+    "async-patterns": 10,
+    "error-handling": 10,
+    "test-quality": 6,
+    "tech-debt": 10
+  },
+  "total_reports": 81,
+  "output": "artifacts/analyses/quality-audit-2026-05-26/AUDIT-SUMMARY.md"
+}

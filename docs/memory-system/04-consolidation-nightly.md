@@ -1,7 +1,7 @@
 # 04 - Job de Consolidation Nocturne
 
 ## À quoi ça sert ?
-Processus automatique qui transforme la donnée brute du jour en connaissance structurée (Knowledge Graph + Compiled Truth).  
+Processus automatique qui transforme la donnée brute du jour en connaissance structurée (Knowledge Graph + Compiled Truth).
 
 C'est le **cœur du maintien de la mémoire** : il extrait, résout, renforce et fait vieillir intelligemment toutes les informations du système.
 

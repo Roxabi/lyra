@@ -12,11 +12,32 @@ Prereqs (checked on entry): git, uv, podman, claude, GitHub SSH access.
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 LYRA_DIR = Path(os.environ.get("LYRA_DIR", Path.home() / "projects" / "lyra"))
+HOSTS_TOML = Path(os.environ.get("HOSTS_TOML", Path.home() / "projects" / "hosts.toml"))
+
+
+def get_host_roles(hostname: str | None = None) -> set[str]:
+    """Read ~/projects/hosts.toml, return roles for current host.
+
+    Returns empty set if hosts.toml is missing or hostname is not listed
+    (non-destructive fallback — caller should warn and treat as no-roles).
+    """
+    name = hostname or socket.gethostname()
+    if not HOSTS_TOML.exists():
+        return set()
+    with open(HOSTS_TOML, "rb") as f:
+        data = tomllib.load(f)
+    entry = data.get("host", {}).get(name)
+    if not entry:
+        return set()
+    return set(entry.get("roles", []))
+
 
 # Hardcoded optional module registry — replaces the legacy deploy/stack.toml.
 # Lyra (this repo) is always installed by the caller before setup.py runs.
@@ -27,6 +48,7 @@ OPTIONAL_MODULES: list[dict[str, object]] = [
         "path": Path.home() / "projects" / "voiceCLI",
         "install": "uv sync",
         "description": "TTS/STT (requires NVIDIA GPU, ~3 GB)",
+        "requires_role": "voice-worker",
     },
     {
         "name": "imageCLI",
@@ -34,6 +56,7 @@ OPTIONAL_MODULES: list[dict[str, object]] = [
         "path": Path.home() / "projects" / "imageCLI",
         "install": "uv sync",
         "description": "Image generation CLI",
+        "requires_role": "image-worker",
     },
     {
         "name": "roxabi-vault",
@@ -41,6 +64,7 @@ OPTIONAL_MODULES: list[dict[str, object]] = [
         "path": Path.home() / "projects" / "roxabi-vault",
         "install": "uv sync",
         "description": "Knowledge vault",
+        "requires_role": None,
     },
 ]
 
@@ -111,10 +135,19 @@ def install_lyra(lyra_dir: Path) -> None:
     print("  ✓  lyra installed")
 
 
-def install_optional_module(module: dict, include_all: bool) -> Path | None:
+def install_optional_module(
+    module: dict, include_all: bool, host_roles: set[str]
+) -> Path | None:
     name = module["name"]
     path = Path(module["path"]).expanduser()
     desc = module["description"]
+    requires_role = module.get("requires_role")
+
+    # Role filter: skip silently when host has known roles but lacks the required one.
+    # When host_roles is empty (fallback), skip the filter to preserve old behaviour.
+    if host_roles and requires_role and requires_role not in host_roles:
+        print(f"  skip  {name}  (host lacks role '{requires_role}')")
+        return None
 
     if path.exists():
         print(f"  ✓  {name}  (already at {path})")
@@ -373,7 +406,11 @@ def setup_plugins(
 # ── Quadlet install + auto-start ────────────────────────────────────────────
 
 
-def install_quadlet_units(lyra_dir: Path) -> None:
+def install_quadlet_units(lyra_dir: Path, host_roles: set[str]) -> None:
+    # If we know the roles AND lyra-hub is not in them, skip cleanly.
+    if host_roles and "lyra-hub" not in host_roles:
+        print("  skip  Quadlet install (host lacks 'lyra-hub' role)")
+        return
     print("Installing Quadlet units (lyra)...")
     result = subprocess.run(["make", "quadlet-install"], cwd=lyra_dir)
     if result.returncode == 0:
@@ -384,7 +421,11 @@ def install_quadlet_units(lyra_dir: Path) -> None:
         sys.exit(1)
 
 
-def enable_linger() -> None:
+def enable_linger(host_roles: set[str]) -> None:
+    container_roles = {"lyra-hub", "voice-worker", "llm-worker", "image-worker"}
+    if host_roles and not (host_roles & container_roles):
+        print("  skip  linger (host runs no containers)")
+        return
     print("Enabling systemd linger...")
     user = os.environ.get("USER") or os.environ.get("LOGNAME")
     if not user:
@@ -401,11 +442,29 @@ def enable_linger() -> None:
 # ── Main ────────────────────────────────────────────────────────────────────
 
 
+def _print_host_roles(hostname: str, host_roles: set[str]) -> None:
+    """Print host/role banner; warn when hostname unknown or hosts.toml missing."""
+    if host_roles:
+        print(f"Host: {hostname} → roles: {sorted(host_roles)}")
+    elif not HOSTS_TOML.exists():
+        print(f"  !  {HOSTS_TOML} not found — proceeding without role filter")
+    else:
+        print(
+            f"  !  Host '{hostname}' not in {HOSTS_TOML}"
+            " — proceeding without role filter"
+        )
+
+
 def main() -> None:
     include_optional = "--all" in sys.argv
 
     print("\nLyra setup")
     print("─" * 40)
+    print()
+
+    hostname = socket.gethostname()
+    host_roles = get_host_roles(hostname)
+    _print_host_roles(hostname, host_roles)
     print()
 
     if not check_prereqs():
@@ -423,7 +482,7 @@ def main() -> None:
     print("Optional modules")
     print("─" * 40)
     for module in OPTIONAL_MODULES:
-        installed_path = install_optional_module(module, include_optional)
+        installed_path = install_optional_module(module, include_optional, host_roles)
         if module["name"] == "voiceCLI" and installed_path:
             voicecli_dir = installed_path
     print()
@@ -454,8 +513,8 @@ def main() -> None:
     setup_plugins(lyra_dir, voicecli_dir, include_optional)
 
     # Phase 5: Quadlet install + linger
-    install_quadlet_units(lyra_dir)
-    enable_linger()
+    install_quadlet_units(lyra_dir, host_roles)
+    enable_linger(host_roles)
 
     print()
     print("─" * 40)
@@ -503,8 +562,8 @@ def main() -> None:
             print()
 
     print(
-        "Note: Health monitoring (lyra-monitor.{service,timer}) is DEPRECATED. "
-        "Replacement tracked in #1035 (Monitoring v2 — NATS + Tauri desktop dashboard)."
+        "Note: Health monitoring host-timer units (lyra-monitor.{service,timer}) have been removed from deploy/. "
+        "Python module src/lyra/monitoring/ is retained for Monitoring v2 (#1035) spec mining."
     )
 
 

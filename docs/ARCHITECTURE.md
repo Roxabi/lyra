@@ -683,16 +683,7 @@ Seven zero-LLM checks run every 5 minutes:
 
 When Layer 1 detects an anomaly, the failed checks are sent to the Anthropic API (Haiku). The LLM returns severity + diagnosis + suggested remediation. Result is sent to Telegram admin chat. If the LLM call fails, a raw alert with check results is sent instead.
 
-### Status — DEPRECATED (#1035)
-
-The host-timer pattern described above is **deprecated**. It cannot be containerised cleanly (host-only deps: `systemctl --user`, `podman logs`, loopback HTTP), polls instead of pushing, and offers no UI beyond a Telegram message.
-
-Replacement is **Monitoring v2** — a NATS event stream + Tauri desktop dashboard, tracked in [#1035](https://github.com/Roxabi/lyra/issues/1035). The host timer was disabled on prod in 2026-05; the unit files and `src/lyra/monitoring/` package remain in the repo with deprecation banners so the v2 spec author can mine the check logic.
-
-### Configuration *(deprecated)*
-
-Thresholds: `[monitoring]` section in `lyra.toml`.
-Secrets: `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` in `.env`.
+> **Removed.** The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/lyra/monitoring/` is preserved for Monitoring v2 spec reference (#1035).
 
 ---
 
@@ -791,7 +782,7 @@ client = AsyncOpenAI(
 - **AgentStore** (#268 ✅) — SQLite-backed agent registry (`~/.lyra/config.db`, renamed from `auth.db` in v15). TOML files are seed sources only — imported via `lyra agent init`. Runtime reads from DB. CLI: `init`, `list`, `show`, `edit`, `validate`, `assign`, `unassign`, `delete`. In-memory cache warmed at `connect()` — no per-message file I/O. Includes `tts_json`/`stt_json` columns for per-agent TTS/STT config (serialized from TOML `[tts]`/`[stt]` sections, deserialized into `AgentTTSConfig`/`AgentSTTConfig`). See ADR-024.
 - **Raw turn logging** (#67 ✅) — `TurnStore` (`src/lyra/infrastructure/stores/turn_store.py`) persists every user + assistant turn to `~/.lyra/turns.db` (SQLite, separate from vault). Fire-and-forget writes via `asyncio.create_task`. Query: `get_session_turns()`, `get_pool_turns()`, `get_user_turns()`. This is the L1 memory layer.
 - **Retryable LlmResult** (#276 ✅) — `LlmResult` carries a `retryable: bool` flag. Non-retryable errors (auth failures, invalid requests) skip the retry/backoff loop in decorators.
-- **Hub command sessions** (#99 ✅, refactored to processor commands #363) — Processor command layer: `BaseProcessor` from `processor_registry.py`, registered via `@register()` decorators. `/vault-add` (scrape → LLM summary → vault write), `/explain` (scrape → LLM plain-language explanation), `/summarize` (scrape → LLM bullet points), `/search` (vault FTS). Bare URL messages auto-rewritten to `/vault-add <url>` — target command configurable in `src/lyra/config/patterns.toml` `[bare_url].command`. Processor commands land responses in pool history, enabling follow-up questions (unlike the old `SessionCommandHandler` pattern). `commands/search/` plugin implements `/search`.
+- **Hub command sessions** (#99 ✅, refactored to processor commands #363) — Processor command layer: `BaseProcessor` from `processor_registry.py`, registered via `@register()` decorators. `/vault-add` (scrape → LLM summary → vault write), `/explain` (scrape → LLM plain-language explanation), `/summarize` (scrape → LLM bullet points), `/search` (vault FTS). Bare URL messages auto-rewritten to `/vault-add <url>` — target command configurable in `src/lyra/data/patterns.toml` `[bare_url].command`. Processor commands land responses in pool history, enabling follow-up questions (unlike the old `SessionCommandHandler` pattern). `commands/search/` plugin implements `/search`.
 
 ### External tool integration
 

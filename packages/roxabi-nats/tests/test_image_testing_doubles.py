@@ -6,7 +6,6 @@ Moved from roxabi_contracts/tests/test_image_testing_doubles.py per ADR-059 V6.
 from __future__ import annotations
 
 import asyncio
-import base64
 import os
 import shutil
 import subprocess
@@ -217,15 +216,18 @@ async def _run_loopback_passes_guard(url: str) -> None:
 
 
 async def test_g3_accepts_ipv4_loopback() -> None:
-    await _run_loopback_passes_guard("nats://127.0.0.1:4222")
+    # Port 14222 (not 4222) — avoids collision with a NATS broker that may be
+    # running on the canonical port in dev environments. The test only needs
+    # any closed port for the post-G3 connection attempt to fail.
+    await _run_loopback_passes_guard("nats://127.0.0.1:14222")
 
 
 async def test_g3_accepts_ipv6_loopback() -> None:
-    await _run_loopback_passes_guard("nats://[::1]:4222")
+    await _run_loopback_passes_guard("nats://[::1]:14222")
 
 
 async def test_g3_accepts_ipv6_loopback_full() -> None:
-    await _run_loopback_passes_guard("nats://[0:0:0:0:0:0:0:1]:4222")
+    await _run_loopback_passes_guard("nats://[0:0:0:0:0:0:0:1]:14222")
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +261,9 @@ async def test_image_roundtrip_default_fixture(nats_server_url: str) -> None:
         assert reply.ok is True
         assert reply.request_id == "r1"
         assert reply.mime_type == tiny_png_mime
-        assert base64.b64decode(reply.image_b64) == tiny_png_1x1
+        assert reply.blob_ref is not None
+        assert reply.blob_ref.mime == tiny_png_mime
+        assert reply.blob_ref.size == len(tiny_png_1x1)
         assert len(worker.calls) == 1
         assert worker.calls[0].prompt == "a cat"
         await nc.close()

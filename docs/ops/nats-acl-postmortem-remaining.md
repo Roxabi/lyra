@@ -24,7 +24,7 @@ Source: [nats-acl-inbox-case-postmortem.md](nats-acl-inbox-case-postmortem.md)
 | Drop `allow_responses: true` from all identities | `5b3b6c4a` — hub/adapters explicit `false`; others omit field (NATS default = false) |
 | Kill hardcoded identity list in gen-nkeys.sh — IDENTITIES[] driven from JSON SSoT | `load_matrix()` populates from acl-matrix.json |
 | Alert on `permissions violation` in NATS logs | `src/lyra/monitoring/checks_log.py` — `check_nats_log_errors` |
-| Alert on sustained `_stream_gen timeout` in hub logs | `src/lyra/monitoring/checks_log.py:57` — `check_hub_stream_gen_timeout` |
+| Alert on sustained `_dict_stream_gen timeout` in hub logs | `src/lyra/monitoring/checks_log.py:57` — `check_hub_dict_stream_gen_timeout` |
 | NATS HTTP monitoring on 127.0.0.1 | `bcab1197` |
 | Retire `tts-adapter`/`sst-adapter` from acl-matrix.json | `5b3b6c4a` |
 | Fix gen-nkeys.sh missing `clipool-worker` in key-gen block | `5b3b6c4a` |
@@ -170,18 +170,21 @@ HealthRetries=3
 **What is needed:**
 
 ```makefile
-nats-rotate-secrets: ## atomic: regen auth.conf → install secrets → reload NATS → verify
+nats-rotate-secrets: ## atomic: regen + scoped install + restart (via nats-regen-authconf) → wait-ready → verify → smoke
 	@$(MAKE) nats-regen-authconf
-	@$(MAKE) quadlet-secrets-install
-	@ssh $(PROD) "systemctl --user reload lyra-nats.service || systemctl --user restart lyra-nats.service"
-	@sleep 3
-	@ssh $(PROD) "journalctl --user -u lyra-nats --since '10 seconds ago' | grep -i 'permission\|error\|fatal'" \
-		&& echo "WARNING: errors detected after reload — check logs" \
-		|| echo "No errors detected — rotation complete"
+	@# nats-regen-authconf scopes the install to lyra-nats-auth and restarts lyra-nats.
+	@# This wrapper adds remote wait-ready + log verification + voice smoke.
+	@ssh $(DEPLOY_HOST) "systemctl --user is-active --wait lyra-nats" \
+		|| { echo "ERROR: lyra-nats failed to reach active state on $(DEPLOY_HOST)"; exit 1; }
+	@if ssh $(DEPLOY_HOST) "journalctl --user -u lyra-nats --since '10 seconds ago' | grep -qi 'permission\|error\|fatal'"; then \
+		echo "ERROR: violations detected in lyra-nats log — inspect: journalctl --user -u lyra-nats"; \
+		exit 1; \
+	fi
+	@echo "No errors detected — rotation complete"
 	@$(MAKE) voice-smoke
 ```
 
-The post-reload verification step (grep for `permissions violation` in first 30s, run smoke test) is load-bearing — it turns a silent partial-apply into an immediate failure.
+The post-restart verification step is load-bearing — it turns a silent partial-apply into an immediate failure. Key correctness properties: (a) `is-active --wait` blocks until systemd transitions the unit to `active` (or `failed`) before we scan logs, eliminating the "journald not ready yet" race; (b) the `if grep -qi …; then exit 1; fi` form fails loudly on detection (the prior `&& A || B` chain silently mapped grep no-match — and grep no-input — to "complete").
 
 ---
 

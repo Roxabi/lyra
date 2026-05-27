@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from .checks_log import check_hub_stream_gen_timeout, check_nats_log_errors
+from .checks_log import check_hub_dict_stream_gen_timeout, check_nats_log_errors
 from .checks_varz import check_disk, check_nats_varz
 from .config import MonitoringConfig
 from .models import CheckResult, HealthReport
@@ -252,10 +252,10 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
         )
     )
 
-    # Check 8: Hub stream_gen timeouts (blocking → offload to thread)
+    # Check 8: Hub _dict_stream_gen timeouts (blocking → offload to thread)
     checks.append(
         await asyncio.to_thread(
-            check_hub_stream_gen_timeout,
+            check_hub_dict_stream_gen_timeout,
             config.hub_container_name,
             config.stream_gen_timeout_minutes,
             config.stream_gen_timeout_threshold,

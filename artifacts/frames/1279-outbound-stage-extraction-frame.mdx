@@ -1,0 +1,74 @@
+---
+title: "Phase 2 — Outbound adapters stage extraction (Telegram + Discord)"
+issue: 1279
+status: approved
+tier: F-lite
+date: 2026-05-22
+---
+
+## Problem
+
+The outbound adapter layer is decomposed along a **per-target axis**: `telegram_outbound.py` (369 lines), `discord_outbound.py` (361 lines), and `_shared_streaming_emitter.py` (462 lines) — 1192 LOC total — each accrete the same concerns (formatting, throttling, error handling, streaming emission). Adding a new outbound platform or changing one cross-cutting concern requires editing N target files; bug classes (broad-catch, bus-bound `str(exc)` leak, payload defensives) replicate N times.
+
+Empirical signature on this layer today: 29 `str(exc)`-family calls + 15 broad-catch sites concentrated in those 3 files — exactly the bus-bound leak class that produced the 5-sibling cascade observed 2026-05-19 (#1212→#1256). The cascade producer is structural, not site-local.
+
+Phase 2 pivots outbound to **stage-axis** composition: extract `formatter` (Protocol + per-platform impls), `throttle`, `error_handler` (uses `SanitizedError` from Phase 1), and a generic `emitter` that composes them. Per-platform code becomes thin formatter implementations.
+
+## Who
+
+- **Primary:** Lyra hub → adapter outbound paths (Telegram + Discord bot replies). Any code that sends bytes/text out of Lyra to a chat platform via the streaming emitter.
+- **Secondary:**
+  - Engineers maintaining outbound bugs (cascade rate ↓ when the per-target duplication is killed).
+  - Future outbound platforms (Slack, Matrix, …) — integration cost should drop from ~500 LOC to <100 once the stages exist.
+
+## Constraints
+
+- **Sequencing:** unblocked by Phase 1 (#1278, closed 2026-05-20). Primitives `SanitizedError`, `Result[T]`, `NatsTransport`, `WorkerPoolClient` verified present (`src/lyra/transport/_result.py` + `worker_pool_client.py`). `src/lyra/outbound/` directory does **not** exist yet — net-new package.
+- **Behavior preservation:** throttle + circuit-breaker semantics end-to-end (CB lives in WorkerPoolClient per transport CLAUDE.md — outbound MUST NOT add a second CB layer). No regression in CLI streaming UX (Telegram chunking, Discord edit-in-place).
+- **Issue absorption:** #687 (per-stream keepalive on hub→adapter outbound during long CLI turns) is in scope for Phase 2.
+- **Debt drain targets** (epic SSoT — `artifacts/analyses/1277-stage-axis-refactor-strategy.mdx`): `boundary-broad-catch` (outbound subset) and `defensive-narrow-payloads` (outbound subset).
+- **Architecture invariant:** outbound stages compose **on top of** the transport layer; they MUST NOT bypass `Result[T]`/`SanitizedError` (per `src/lyra/transport/CLAUDE.md`).
+- **Single PR:** epic body specifies 1 PR for this phase, ~1–1.5 weeks effort.
+
+## Out of Scope
+
+- Inbound adapter refactor (Phase 3 — #1280, independent).
+- LLM driver thinning (Phase 4 — #1281, blocked-by Phase 1).
+- Bootstrap / DI simplification (Phase 6 — #1283, blocked-by P1-5).
+- New outbound platforms (Slack/Matrix) — out of epic scope; the refactor enables them but doesn't ship them.
+- Hub statelessness (#640), capability layer (#493), BlobStore (#1061) — orthogonal per epic.
+- Cosmetic changes to formatting output (Telegram MarkdownV2 quirks, Discord embed rules) — preserve current behavior, no UX redesign.
+
+## Premise Validity
+
+**Success in 6 months:**
+- `src/lyra/outbound/` exists with `formatter.py` (Protocol + Telegram/Discord impls), `throttle.py`, `error_handler.py`, `emitter.py`.
+- Per-platform formatter files ≤ 200 lines each (current: 369 / 361 / 462).
+- 0 `f"...{exc}"` patterns on bus-bound paths in outbound code (current: 29 `str(exc)`-family calls).
+- Smoke test passes: Telegram + Discord bots send a message round-trip through the new emitter without behavioral regression.
+- `boundary-broad-catch` outbound site count drops from ~15 → ≤ 5 (the residual 5 are tolerated only if explicitly documented at the transport boundary, not in adapter code).
+
+**Failure in 6 months (falsifiable):**
+After Phase 2 ships, at the 6-month checkpoint:
+- ≥3 sibling-fix PRs land on outbound bus-bound bug-classes (broad-catch, str(exc) leak, payload defensives) across telegram/discord/emitter sites — i.e. the cascade producer survived the refactor; OR
+- Per-platform formatter files re-grow past 250 lines (indicating concerns leaked back into per-target files); OR
+- A new outbound platform (Slack/Matrix) integration would still require >250 LOC of duplicated stage logic instead of composing existing stages.
+
+Any of these falsifies the premise: the stage-axis pivot for outbound didn't actually change the axis of decomposition; we paid a refactor cost without changing growth from multiplicative to additive.
+
+**Simplest alternative:**
+Keep `telegram_outbound.py` + `discord_outbound.py` + `_shared_streaming_emitter.py` as-is. Dedup the broad-catch pattern via a single shared utility (`_handle_outbound_exc(exc)`). Migrate the 29 `str(exc)` sites to that utility. Land in 2–3 days as a normal F-lite "fix" without restructuring.
+
+**Why not simplest:**
+The parent-epic root-cause analysis (`artifacts/analyses/1277-stage-axis-refactor-strategy.mdx` §2, §4) demonstrates that broad-catch + str(exc) leak are **symptoms** of the per-target axis; deduplicating via a shared helper leaves the axis intact and the cascade producer alive. Empirical evidence: this exact class produced 5 sibling-fixes in one day (#1212→#1256), and `boundary-broad-catch` grew from ~85 → 104 sites in 19 days under sustained patching pressure. A shared helper changes nothing structural — the next concern (throttling tweak, formatting change, new platform) re-creates the duplication on a new dimension. The architecture altitude (§3) is the lowest tractable layer where the bug class becomes *impossible to introduce* in outbound code; the F-lite cost (1 week, 1 PR) is justified by the strategy doc's projected drain (`boundary-broad-catch` outbound subset 15 → ≤5) and the documented cost of new-platform integration dropping from ~500 to <100 LOC.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (outbound adapter layer), no new architectural patterns being invented (Phase 1 set the composition template; Phase 2 applies it to outbound), 1 PR per epic body.
+
+Signals observed:
+- Issue label `size:F-lite` — explicit.
+- Scope: 3 existing files (~1200 LOC) restructured into 4 new files in a new `src/lyra/outbound/` package + thin per-platform impls.
+- Single domain (adapter outbound only — does not touch inbound, transport, LLM drivers, bootstrap).
+- No unknowns: Phase 1 primitives are merged and verified; composition pattern is template-followed, not invented.
+- Effort estimate: 1–1.5 weeks (per epic body).

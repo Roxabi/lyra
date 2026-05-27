@@ -21,10 +21,7 @@ from lyra.llm.base import LlmProvider
 from lyra.llm.registry import ProviderRegistry
 
 if TYPE_CHECKING:
-    from lyra.llm.drivers.cli_nats import (
-        CliNatsDriver,  # noqa: F401 — DEBT:re-export-init
-    )
-    from lyra.nats.nats_llm_client import NatsLlmClient
+    from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
 
@@ -48,13 +45,13 @@ def _build_shared_base_providers(
     cli_pool: CliPool | None,
     llm_cfg: LlmConfig,
     *,
-    nats_llm_client: "NatsLlmClient | None" = None,
-    cli_nats_driver: "CliNatsDriver | None" = None,
+    nats_llm_client: "LlmClient | None" = None,
+    cli_nats_driver: "LlmClient | None" = None,
 ) -> dict[str, LlmProvider]:
     """Build ``{backend: base LlmProvider}`` reusable across all agents.
 
-    ``claude-cli`` (ClaudeCliDriver or CliNatsDriver), ``nats`` (Retry ->
-    NatsLlmClient, only when ``nats_llm_client`` is provided). Callers layer
+    ``claude-cli`` (ClaudeCliDriver or LlmClient via clipool), ``nats`` (Retry ->
+    LlmClient, only when ``nats_llm_client`` is provided). Callers layer
     decorators per agent via ``_build_per_agent_registry``.
 
     ``cli_nats_driver`` takes precedence over ``cli_pool`` for the
@@ -137,7 +134,7 @@ def _create_agent(  # noqa: PLR0913  — DEBT:wiring-bootstrap-deps — factory 
     tts: TtsProtocol | None = None,
     provider_registry: ProviderRegistry | None = None,
     agent_store: AgentStore | None = None,
-    cli_nats_driver: "CliNatsDriver | None" = None,
+    cli_nats_driver: "LlmClient | None" = None,
 ) -> AgentBase:
     """Select agent implementation based on backend config."""
     backend = config.llm_config.backend
@@ -152,7 +149,7 @@ def _create_agent(  # noqa: PLR0913  — DEBT:wiring-bootstrap-deps — factory 
                 provider = provider_registry.get("nats")
             except KeyError as exc:
                 raise RuntimeError(
-                    "backend='nats' registered but NatsLlmClient missing from"
+                    "backend='nats' registered but LlmClient missing from"
                     " registry -- is NATS_URL set and driver started?"
                 ) from exc
         elif provider_registry is not None:
@@ -203,8 +200,8 @@ def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     tts_service: TtsProtocol | None = None,
     agent_store: AgentStore | None = None,
     llm_cfg: LlmConfig | None = None,
-    nats_llm_client: "NatsLlmClient | None" = None,
-    cli_nats_driver: "CliNatsDriver | None" = None,
+    nats_llm_client: "LlmClient | None" = None,
+    cli_nats_driver: "LlmClient | None" = None,
 ) -> dict[str, AgentBase]:
     """Create all uniquely named agents referenced by bot configs.
 
@@ -217,7 +214,7 @@ def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     Returns a dict mapping agent_name to AgentBase instance.
 
     ``nats_llm_client`` -- if provided (NATS_URL set), registers the shared
-    ``NatsLlmClient`` as the ``"nats"`` backend. Must be started first.
+    ``LlmClient`` as the ``"nats"`` backend. Must be started first.
 
     ``cli_nats_driver`` -- if provided, used as the ``claude-cli`` backend
     instead of an in-process ``CliPool``. Takes precedence over ``cli_pool``.

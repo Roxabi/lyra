@@ -1,7 +1,7 @@
 """Slice 3 of #1096: shared streaming emitter must handle ToolCall* v2 events.
 
 After Slice 5 / #1192 v1 cutover: TextRenderEvent and ToolSummaryRenderEvent are
-gone. ToolCall* events are absorbed by the dispatch ladder (no edit_trace call).
+gone. ToolCall* events are absorbed by the dispatch ladder silently.
 Text is conveyed via the v2 TextStart/Delta/End triplet only.
 """
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
 from lyra.core.messaging.message import OutboundMessage
 from lyra.core.messaging.render_events import (
     RenderEvent,
@@ -24,6 +23,8 @@ from lyra.core.messaging.render_events import (
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
+from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from lyra.outbound.emitter import PlatformCallbacks
 
 
 def _make_callbacks() -> PlatformCallbacks:
@@ -31,7 +32,6 @@ def _make_callbacks() -> PlatformCallbacks:
         send_placeholder=AsyncMock(return_value=(object(), 42)),
         edit_placeholder_text=AsyncMock(),
         send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-        edit_trace=AsyncMock(),
         send_message=AsyncMock(return_value=99),
         send_fallback=AsyncMock(return_value=77),
         chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
@@ -68,24 +68,6 @@ class TestSharedEmitterIgnoresToolCallV2:
                 RunFinishedRenderEvent(run_id="r1"),
             )
         )
-
-    async def test_toolcall_v2_does_not_call_edit_trace_directly(self) -> None:
-        # Post-v1-cutover: ToolCall* events are silently absorbed (no edit_trace).
-        cb = _make_callbacks()
-        outbound = OutboundMessage.from_text("hi")
-        session = StreamingSession(cb, outbound=outbound)
-        await session.run(
-            _events(
-                RunStartedRenderEvent(run_id="r1"),
-                ToolCallStartRenderEvent(tool_call_id="t1", tool_name="Read"),
-                ToolCallEndRenderEvent(tool_call_id="t1"),
-                TextStartRenderEvent(message_id="msg-1"),
-                TextDeltaRenderEvent(message_id="msg-1", delta="bye"),
-                TextEndRenderEvent(message_id="msg-1"),
-                RunFinishedRenderEvent(run_id="r1"),
-            )
-        )
-        cb.edit_trace.assert_not_called()  # type: ignore[attr-defined]
 
     async def test_subclass_override_receives_toolcall_v2(self) -> None:
         """PL1 (#1100 review): _on_toolcall_v2 override seam is invoked.

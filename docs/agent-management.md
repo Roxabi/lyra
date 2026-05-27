@@ -6,7 +6,7 @@ Agents are stored in **`~/.lyra/config.db`** (SQLite). TOML files are seed sourc
 
 | Table | Purpose |
 |-------|---------|
-| `agents` | Agent configurations (25 columns — see `effort` below) |
+| `agents` | Agent configurations (24 columns — see `effort` below) |
 | `bot_agent_map` | Maps `(platform, bot_id)` → `agent_name` |
 | `agent_runtime_state` | Runtime status (idle/active/error, pool_count) |
 
@@ -135,7 +135,7 @@ Workspaces: `/workspace <key>` switches pool's cwd for the session.
 | `fallback_language` | TEXT | `'en'` |
 | `patterns_json` | TEXT | NULL |
 | `passthroughs_json` | TEXT | NULL |
-| `show_tool_recap` | INTEGER | 1 |
+| `effort` | TEXT | NULL |
 | `created_at` | TEXT | `datetime('now')` |
 | `updated_at` | TEXT | `datetime('now')` |
 
@@ -148,3 +148,66 @@ Workspaces: `/workspace <key>` switches pool's cwd for the session.
 | `agent_name` | TEXT |
 | `settings_json` | TEXT |
 | `updated_at` | TEXT |
+
+## Per-session git committer attribution (#1150)
+
+Every commit produced inside the clipool container can be attributed back to the
+originating agent and session via two independent channels:
+
+- **Committer field** — `GIT_COMMITTER_NAME` / `GIT_COMMITTER_EMAIL` override the
+  image-baked template identity on the commit object itself (full mode only).
+- **Message trailers** — `Lyra-Session-Id` and `Lyra-Agent` are appended by the
+  `prepare-commit-msg` hook (`deploy/lyra-gh/hooks/prepare-commit-msg`) whenever
+  `LYRA_SESSION_ID` and `LYRA_AGENT` are present in the subprocess environment.
+
+### Querying attribution
+
+```bash
+git log -1 --format='%cn|%ce|%(trailers:key=Lyra-Session-Id,valueonly)|%(trailers:key=Lyra-Agent,valueonly)'
+```
+
+Expected output by mode:
+
+```
+# Full mode (agent_name + agent_email both present)
+research-assistant|research-assistant@lyra.internal|ses_abc123|research-assistant
+
+# Trailers-only mode (agent_name present, agent_email absent)
+lyra[bot]|lyra-bot@users.noreply.github.com|ses_abc123|research-assistant
+```
+
+In trailers-only mode the committer falls back to the image-baked template identity,
+but the trailers still carry the full session + agent attribution.
+
+### Two modes
+
+The spawn-time gate in `CliPoolWorkerMixin._spawn()` is layered:
+
+| Condition | Behaviour |
+|---|---|
+| `agent_name` absent | No identity vars injected; subprocess uses the template identity entirely. |
+| `agent_name` present, `agent_email` absent | **Trailers-only mode**: `LYRA_AGENT` + `LYRA_SESSION_ID` injected; hook appends trailers; committer stays template. |
+| `agent_name` + `agent_email` both present | **Full mode**: all four vars injected; committer identity AND trailers carry attribution. |
+
+Trailers-only mode is the **production steady state today** — `AgentRow` does not yet
+model an `email` field, so the hub publishes `agent_name` only. This is not a degraded
+fallback: both `Lyra-Session-Id` and `Lyra-Agent` are present in every commit, which
+satisfies the attribution goal for reviewers and audit tooling.
+
+### Push identity is unchanged
+
+`git push` authentication is owned by `git-credential-lyra-gh` (GitHub App). Setting
+`GIT_COMMITTER_EMAIL` affects commit metadata only — it does not gate push authorization.
+GitHub maps the push to the App's bot identity server-side regardless of what the
+committer field contains.
+
+### Forward path
+
+When `AgentRow` gains an `email` field (tracked as #1244), the hub will publish
+`agent_email` and production will flip to full mode automatically — no code change is
+required in this slice.
+
+### Out of scope
+
+Author identity (`GIT_AUTHOR_*`) is not overridden — it stays image-baked. Only the
+committer field and the two trailers carry agent provenance.

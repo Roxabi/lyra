@@ -6,18 +6,24 @@ that handle common envelope fields and return JSON-serialized responses.
 
 from __future__ import annotations
 
-import base64
 import json
 
 import pytest
 
+from roxabi_contracts.blob_ref import BlobRef
 from roxabi_contracts.voice.builders import build_stt_response, build_tts_response
-from roxabi_contracts.voice.fixtures import sample_transcript_en, silence_wav_16khz
+from roxabi_contracts.voice.fixtures import sample_transcript_en
 
 
-def _b64(b: bytes) -> str:
-    """Encode bytes to base64 string."""
-    return base64.b64encode(b).decode("ascii")
+def _blob_ref() -> BlobRef:
+    """Minimal BlobRef for builder tests."""
+    return BlobRef(
+        store_key="k",
+        content_hash="h",
+        mime="audio/wav",
+        size=10,
+        source="voicecli",
+    )
 
 
 class TestBuildSttResponse:
@@ -75,16 +81,16 @@ class TestBuildTtsResponse:
     """Tests for build_tts_response builder function."""
 
     def test_build_tts_response_success(self) -> None:
-        """ok=True with audio_b64, mime_type, duration_ms builds valid JSON."""
+        """ok=True with blob_ref, mime_type, duration_ms builds valid JSON."""
         # Arrange
         payload = {"request_id": "tts-req-001"}
-        audio_b64 = _b64(silence_wav_16khz)
+        br = _blob_ref()
 
         # Act
         json_str = build_tts_response(
             payload,
             ok=True,
-            audio_b64=audio_b64,
+            blob_ref=br,
             mime_type="audio/wav",
             duration_ms=1000,
         )
@@ -93,7 +99,7 @@ class TestBuildTtsResponse:
         data = json.loads(json_str)
         assert data["ok"] is True
         assert data["request_id"] == "tts-req-001"
-        assert data["audio_b64"] == audio_b64
+        assert data["blob_ref"]["store_key"] == "k"
         assert data["mime_type"] == "audio/wav"
         assert data["duration_ms"] == 1000
         assert data["error"] is None
@@ -118,7 +124,7 @@ class TestBuildTtsResponse:
         assert data["ok"] is False
         assert data["request_id"] == "tts-req-002"
         assert data["error"] == "engine_unavailable"
-        assert data["audio_b64"] is None
+        assert data["blob_ref"] is None
         assert data["mime_type"] is None
         assert data["duration_ms"] is None
 
@@ -129,7 +135,13 @@ class TestBuildTtsResponse:
         json_str = build_tts_response(
             payload,
             ok=True,
-            audio_b64=_b64(silence_wav_16khz),
+            blob_ref=BlobRef(
+                store_key="wave-key",
+                content_hash="cafebabe",
+                mime="audio/wav",
+                size=512,
+                source="voicecli",
+            ),
             mime_type="audio/wav",
             duration_ms=1500,
             waveform_b64="base64encodedwaveform",

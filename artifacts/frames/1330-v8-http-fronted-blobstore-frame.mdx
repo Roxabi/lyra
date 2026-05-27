@@ -1,0 +1,69 @@
+---
+title: V8 — HTTP-fronted BlobStore service + HttpBlobStore client
+issue: 1330
+status: approved
+tier: F-full
+date: 2026-05-25
+---
+
+## Problem
+
+Lyra's BlobStore is currently single-host (`FsBlobStore`, #1063 closed). Cross-host Protocol consumers — clipool/STT/Image workers running on M₂ — cannot reach blobs stored on M₁ without either (a) ad-hoc filesystem sharing (NFS/Syncthing on the blob dir, which couples workers to FS layout and breaks the `store_key`-opaque contract from ADR-068) or (b) ad-hoc copies. The eager-ingest pipelines (TG #1065 already closed; Discord #1066 still open) and the cross-host inference paths (#1067 STT, #1308 Image) all need cross-host blob access to land.
+
+Per ADR-067 §HTTP service deployment + Q1 decision (option b — HTTP-fronted FS, ¬MinIO swap), the chosen path is a dedicated FastAPI service exposing the existing Protocol over HTTP, plus an `HttpBlobStore` client that satisfies the same Protocol — so the FS/HTTP backend choice is invisible to consumers.
+
+V8 is the slice that lands this service on M₁ (`lyra-hub` role) with auth Phase 1 (shared bearer, `type=mount` secret per ADR-054), audit emit to `LYRA_AUDIT` (β stream, schema-compatible with Phase 2 per-identity tokens), readiness signal, backup runbook, and a cross-host integration test (M₂ → M₁ via Tailnet).
+
+## Who
+
+- **Primary:** Lyra workers running on M₂ that need to read/write blobs persisted on M₁ — clipool sessions reading attachments, STT pipeline (#1067), Image pipeline (#1308). Today they have no Protocol-shaped cross-host access.
+- **Secondary:**
+  - Adapter processes on M₁ (Telegram, Discord) eager-ingesting attachments — keep using the local `FsBlobStore` instance (same-process, ¬HTTP roundtrip) but their blobs become accessible to M₂ consumers.
+  - Ops (Mickael) — needs the backup runbook (Restic→R2 + SQLite `.backup` atomicity) and rotation procedure for the bearer token.
+  - Roxabi sibling repos (voiceCLI#144) that consume the Protocol — gain HTTP transport without code change.
+
+## Constraints
+
+- **Single-host deployment** — only on `lyra-hub` (M₁). Multi-host blobstore is out of scope until a MinIO swap-in lands (triggered by disk >70% or three-strikes consumer rule).
+- **Image reuse** — Phase 1 ships as `ghcr.io/roxabi/lyra:<v>` + `lyra blobstore serve` subcommand. Dedicated `ghcr.io/roxabi/blobstore` image only after Protocol v2 (#1334) stabilises AND ≥3 cross-repo consumers (voice + image + llm) exist.
+- **Port** `TCP 8449` (contiguous to hub-health 8443).
+- **Networking** — same-host via Quadlet DNS (`http://lyra-blobstore:8449`); cross-host via Tailnet MagicDNS (`http://roxabituwer.goose-logarithm.ts.net:8449`, `PublishPort=8449:8449`).
+- **Secret hardening** — ADR-054 mandates `type=mount` (not `type=env`) for `lyra_blobstore_token`. Rotation = `podman secret create` + `systemctl --user restart` (¬HUP).
+- **Audit schema** — Phase 1 emits `{subject: "service:<token_holder>", op, store_key, ts, result}` to `LYRA_AUDIT`. Phase 2 swaps `subject` to `agent/<id>` or `user/<id>` without schema change.
+- **Backup atomicity** — `index.sqlite` snapshot via SQLite `.backup` API must run **before** the FS tarball (else inconsistent restore; documented as open question in `storage.md`).
+- **Syncthing exclusion** — `~/.lyra/blobs/` not synced (content-addressed, large volume, no benefit).
+- **Streaming + multipart endpoints** = deferred to #1334 (Protocol v2), additive.
+- **Active stage-axis refactor (#1277)** — none of the touched files (`packages/roxabi-blobs/`, `deploy/quadlet/`, new `src/lyra/blobstore/`) are on the freeze list. Verified before framing.
+
+## Out of Scope
+
+- Multi-host blobstore replication (no replicas in Phase 1).
+- MinIO swap-in (Q1 decision deferred behind disk-watermark + consumer-count triggers).
+- Per-identity tokens / `blob_grants` scoping (Phase 2 — ADR-067 §Auth plane roadmap, no issue filed yet).
+- Streaming + multipart upload endpoints (Protocol v2, #1334).
+- Dedicated `ghcr.io/roxabi/blobstore` image (three-strikes rule, post-#1334).
+- M₂-resident blob storage (M₂ is on-demand, off-able — cannot be a primary store per the Roxabi HA axiom).
+
+## Premise Validity
+
+**(Drafted from issue body + ADR context. Revise during approval.)**
+
+**Success in 6 months:** `lyra-blobstore.container` is the canonical cross-host blob access path on M₁. ≥2 downstream issues among {#1067, #1308, #1066} have shipped using `HttpBlobStore` (¬ad-hoc FS sharing, ¬manual copies). Cross-host put/get traffic is measurable on `disk_used_pct` + Prometheus counters. Backup runbook has been exercised at least once (manual restore drill) and the SQLite `.backup`-then-FS-tarball ordering held atomically.
+
+**Failure in 6 months:** Falsifiable observable: ≥1 of {#1067, #1308, #1066} shipped via an ad-hoc workaround (Syncthing mount, manual `scp`, or local-only fallback) instead of `HttpBlobStore`. OR: forced MinIO migration before the disk-watermark / three-strikes triggers fired — meaning the HTTP-fronted FS design hit an unforeseen operational ceiling. Either condition = the V8 architecture was wrong.
+
+**Simplest alternative:** Keep blobs local per-host (no cross-host access) and force each consumer to fetch source bytes again (re-download from Telegram CDN, re-fetch from S3, etc.).
+
+**Why not simplest:** Eager-ingest is the whole point of #1065/#1066 — the bytes were already pulled at ingest time and are content-addressed in `~/.lyra/blobs/`. Re-fetching defeats dedup, doubles egress cost, and reintroduces the source-dependency lag that eager-ingest was designed to eliminate. Cross-host Protocol access is the minimum that preserves the ingest invariant.
+
+## Complexity
+
+**Tier: F-full** — multi-domain (FastAPI service + Podman Quadlet + auth/secrets + audit emit + backup runbook + Protocol client + cross-host integration test), new container in the prod manifest, touches secrets convention (ADR-054), and crosses the Tailnet boundary for the first time on the Lyra hub.
+
+Signals observed:
+- Multi-domain: backend service, infra (Quadlet/secret), client SDK, ops (backup), test (cross-host integration).
+- New deployment unit (`lyra-blobstore.container`) joining the prod manifest.
+- Cross-host networking surface (Tailnet PublishPort) — first for Lyra hub.
+- Auth boundary (Phase 1 bearer, Phase 2-compatible audit shape).
+- Estimated effort per issue: 3–5 days.
+- Label `size:F-full`, `P1-high` confirm F-full classification.

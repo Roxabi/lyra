@@ -1,0 +1,54 @@
+---
+title: TurnStore α-refactor — publish/subscribe writes
+issue: 1331
+status: approved
+tier: F-lite
+date: 2026-05-25
+---
+
+## Problem
+
+`TurnStore.add()` is invoked synchronously by every inbound adapter (`telegram`, `discord`) directly into SQLite. This is a known deviation per ADR-068 §Application Map: the writer-subscriber (α) pattern is the project axiom for stateful writes, but TurnStore was grandfathered as direct-write. The same applies to L1 `pool_sessions`.
+
+Two adapter call-sites exist today (`src/lyra/adapters/telegram/telegram.py:83`, `src/lyra/adapters/discord/adapter.py:80`). ADR-073 (axial decomposition: stage-of-pipeline) flags duplication along the non-primary axis: each new adapter that re-implements the write path is one more sibling on the wrong axis. The three-strikes prevention threshold is the next adapter — CLI pool is queued. We refactor before the third call-site lands so the pattern is set in code, not retro-fitted.
+
+Observable impact: the deviation is documented but unbounded — any future adapter (or storage concern) silently grows the N×M surface. Crash-recovery is also weaker than the α path (no NATS persistence buffer between adapter and DB).
+
+## Who
+
+- **Primary:** Lyra inbound adapter authors (telegram, discord, future cli pool) — their write path becomes "publish event", uniform with the rest of the stage-axis architecture.
+- **Secondary:** Hub operators — gain crash-recovery guarantees from NATS persistence; lose visibility into a previously synchronous SQL path (subscriber must be observable).
+
+## Constraints
+
+- Subject naming: `lyra.turns.write` (consistent with existing `lyra.*` topology — `lyra.inbound.<platform>.<bot_id>`, `lyra.outbound.<platform>.<bot_id>`).
+- Idempotence: dedupe key by message-id (replay-safe; NATS at-least-once delivery).
+- Ordering: per-pool ordering must be preserved (queue group or partition strategy TBD at spec).
+- Lecture/read API of TurnStore unchanged — read path stays direct SQLite (only the write side moves).
+- L1 `pool_sessions` table grouped in same refactor (same ADR-068 deviation, same call-sites).
+- Deployment choice (dedicated `lyra-turn-writer.container` Quadlet vs in-process consumer in hub) deferred to spec; affects deployment manifest but not the contract.
+
+## Out of Scope
+
+- Read API of TurnStore (stays direct SQLite).
+- Other stores not flagged as α-deviations in ADR-068.
+- Migration tooling for existing SQLite content (refactor is greenfield; no in-flight data assumed).
+- Cross-cutting refactor of `lyra.*` subject naming (only adds `lyra.turns.write`).
+
+## Premise Validity
+
+**Success in 6 months:** 0 occurrences of `turn_store.add(` in `src/lyra/adapters/`; CLI pool (and any subsequent adapter) added without re-implementing the write path; adapter crash mid-publish results in no data loss (NATS persistence proven via test).
+
+**Failure in 6 months:** A new adapter still imports `TurnStore` directly to write (N×M deviation persists), OR an adapter-crash recovery test shows data loss, OR the chosen deployment shape (Quadlet vs in-process) is reverted within 3 sprints — any of these falsifies the refactor's value.
+
+**Simplest alternative:** Extract a `record_turn()` helper used by all adapters (still direct SQLite write, no NATS in the loop). **Why not enough:** still N adapters × M storage concerns; ADR-073 axial-decomposition deviation persists; crash-recovery still depends on synchronous SQLite write succeeding before adapter ack; the alternative trades duplication for one wrapper but doesn't move the architecture.
+
+## Complexity
+
+**Tier: F-lite** — clear scope (TurnStore + pool_sessions write path), single domain (infrastructure/stores + adapters), 1 new NATS subject, 1 new subscriber service. No new architectural pattern (α is canonical per ADR-068). Effort estimate ~1–2 days per issue body.
+
+Signals observed:
+- Issue label `size:F-lite` (P2-medium)
+- Single domain (stores + adapter wiring)
+- Pre-existing pattern (α writer-subscriber) — no architectural unknowns
+- One open deployment choice (Quadlet vs in-process) — defer to spec, not a frame-level unknown

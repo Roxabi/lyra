@@ -1,0 +1,69 @@
+---
+title: "feat(typing): T1 — WorkScope + TypingPublisher + TypingListener + lyra.typing.* plane"
+issue: 1376
+status: approved
+tier: F-lite
+date: 2026-05-26
+---
+
+## Problem
+
+Today, typing-indicator lifecycle in Discord/Telegram adapters is driven by ≥8 imperative `_start_typing`/`_cancel_typing` call sites scattered across `adapters/{discord,telegram}/{inbound,outbound,audio}`. Typing is keyed at inbound on `message.channel.id`, but `pre_session_hook` mutates the message (auto-thread creation), so cancellation runs against `thread_id` — `TypingTaskManager.cancel(absent_key)` is a silent no-op. The typing task survives as orphan, pinging Discord every ~9s until process restart (#1374). The same shape repro'd in audio flow (`discord_audio.py:250-256`).
+
+Root cause: **no SSoT for "turn active for scope X"** across the hub/adapter boundary. Each emission site keys typing locally, on a fragile assumption that the message reference is stable across the inbound pipeline.
+
+T1 lands the foundational machinery — `WorkScope` dataclass, `TypingPublisher` (ref-counted), `TypingListener` (stage-axis), `ScopeResolver` Protocol, ACL plane, env flag — so that T2 can replace all imperative call sites with publisher/listener wiring and close #1374 + the audio bug class by construction.
+
+## Who
+
+- **Primary:** developers of `src/lyra/transport/`, `src/lyra/typing/`, `src/lyra/adapters/{discord,telegram}/adapter.py` — they consume the new publisher + listener primitives at T2.
+- **Secondary:**
+  - operators (M₁ `lyra-hub` role) — must restart NATS + hub + adapters after `auth.conf` regen (type=mount secret, ¬HUP)
+  - future emitter owners (T3 / #1044 worker fleet, TTS, vision) — wire into the plane in ≤50 LOC per emitter
+  - bot users (Discord/Telegram) — invisible (T1 only; behavior changes ship in T2)
+
+## Constraints
+
+- **No call-site migration** — T1 lands machinery only; T2 (separate issue, #TBD) migrates the 8 imperative sites and closes #1374.
+- **`LYRA_TYPING_ENABLED` flag default `false`** — zero NATS traffic on `lyra.typing.*` until explicit opt-in.
+- **Ref-counted publisher state** — nested `publish_started` from sub-scope ¬emit; `publish_ended` order-independent (LIFO ¬assumed).
+- **PoolObserver-style failure mode** — NATS publish error = log + swallow, never raise into turn execution path.
+- **Listener as shared stage-axis** in `src/lyra/typing/` — mirror `src/lyra/inbound/` pattern (Epic #1277 explicitly demounts per-platform `<platform>_typing.py` shape).
+- **Per-platform `ScopeResolver` inline in `adapter.py`** — ≤10 LOC each. Discord: `channel.id` always (never `thread.id`). Telegram: `chat_id`.
+- **`WorkScope` Pool-internal** — not promoted to `roxabi-contracts` until T3 worker integration needs wire-serialization (#1044 follow-up).
+- **NATS Core (¬JetStream)** — typing auto-expires at 10s on Discord; loss of event = ≤20s display lag, acceptable.
+- **ACL coordinated with #1379** — `artifacts/specs/706-per-role-nkeys-acls-spec.mdx` and `deploy/nats/auth.conf` were modified today (2026-05-26) by #1379 (monitor demotion + gen_nkeys fail-loud). T1 must regen on top of #1379's state — additive, but watch the diff.
+- **`.importlinter` extends in same PR** — `lyra.typing` layer between `streaming` and `core` (avoid drift with #1287/#1289).
+- **Bootstrap DI alignment** — if #1283 (Phase 6 DI cleanup) lands first, align registration with post-#1283 pattern.
+- **Restart sequence on secret rotation** — type=mount secret → restart NATS + hub + adapters (¬HUP), document in PR per `deploy/CLAUDE.md`.
+
+## Out of Scope
+
+- Modification of existing `_start_typing`/`_cancel_typing` call sites (T2).
+- `Pool.process_one()` wrap in `async with typing_publisher.scope(...)` (T2).
+- Audio flow migration `discord_audio.py:250-256` (T2).
+- Closing #1374 (T2 — by construction).
+- Worker integration / `WorkScope` promotion to `roxabi-contracts` (T3, blocked on #1044/#1047).
+- Axial-companion ADR `NNN-three-nats-planes.mdx` (T5).
+- PoolObserver split (persistence vs presence) — separate follow-up.
+- OTel/Langfuse bridge on typing events — blocked-by #1235 / #667.
+
+## Premise Validity
+
+**Success in 6 months:** T1 + T2 deployed; zero orphan typing-tasks observed in `lyra-discord` / `lyra-telegram` across 30+ consecutive prod days (py-spy introspection or `_typing_tasks` len-check); `_start_typing` / `_cancel_typing` imperative call sites = 0; the 3rd NATS plane (`lyra.typing.*`) is the sole entry point for typing display feedback.
+
+**Failure in 6 months:** After T1+T2 deploy, `TypingTaskManager._tasks` count grows monotonically over a 14-day window in either Discord or Telegram production adapter (drift > 0/day), OR the publisher API forces a breaking refactor before T3 (worker integration / #1044) can land a single emitter in ≤50 LOC.
+
+**Simplest alternative:** Patch `discord_inbound.py:_start_typing` to key consistently on `channel.id` (never `thread.id`) post-`pre_session_hook` — closes #1374 directly, no new module, no NATS plane.
+**Why not simplest:** Only addresses 1 of ≥2 instances of the bug class (`discord_audio.py:250` has identical channel→thread mismatch). Future emitters (workers, TTS, vision) would repeat the same imperative `_start/_cancel` pattern with the same risk of key drift. No SSoT for "turn active for scope X" — every emitter keys typing locally. The plane decouples lifecycle (publisher ref-count) from emission location (listener + resolver), making sub-scope opt-out gratis.
+
+## Complexity
+
+**Tier: F-lite** — scope is unusually crisp (6 explicit AC, file list named, ref-count semantics specified, ACL deltas enumerated). Stage-axis pattern proven by `src/lyra/inbound/` mirror. No new architecture beyond `src/lyra/typing/` module.
+
+Signals observed:
+- Multi-domain (transport + new `typing/` stage-axis + adapters + deploy/NATS + tests) — pushes toward F-lite over S.
+- Issue body reads like ½-spec already → analyze phase would mostly re-state body (F-full surplus).
+- New stage-axis module exists, but mirror of `inbound/` — pattern validated, ¬novel.
+- ACL regen coordination with same-day #1379 commits → adds friction but not architectural unknown.
+- 4-agent panel pre-validation 2026-05-26 (architect, product-lead, devops, axial-adr-review) — known good shape, ¬exploratory.

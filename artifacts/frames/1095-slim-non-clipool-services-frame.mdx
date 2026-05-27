@@ -1,0 +1,66 @@
+---
+title: "perf(image): slim non-clipool services from the Claude-agent base"
+issue: 1095
+status: approved
+tier: F-lite
+date: 2026-05-22
+---
+
+## Problem
+
+`lyra-hub`, `lyra-telegram`, and `lyra-discord` run on `ghcr.io/roxabi/base:latest`, a
+Claude Code agent base that ships `bun` (573 MB), `claude-code` CLI (323 MB), `corepack`,
+and a full dev toolchain — none of which these three services use. Only `lyra-clipool`
+actually invokes `claude` as a subprocess; the other containers carry ~1.7 GB of dead
+weight each.
+
+Cumulative fresh-provision cost: ~2.43 GB × 4 services ≈ 10 GB, of which ~7 GB could be
+eliminated. More critically, every CVE in `bun`, `node`, or `claude-code` forces emergency
+rebuilds on containers that have no runtime exposure to those tools.
+
+## Who
+
+- **Primary:** ops — deploys to M₁, cold-provisions new hosts, manages Quadlet units
+- **Secondary:** CI runners — pay the pull cost on every build that rebuilds the lyra image
+
+## Constraints
+
+- Most of the work lives in `roxabi-container` (out-of-tree); this issue covers only the
+  Lyra Quadlet consumption side
+- Slim image must be published from `roxabi-container` before Quadlet tags can be updated
+- `lyra-clipool.container` must stay on the agent-heavy image — it runs `claude` as a
+  subprocess
+- Cross-repo coordination required: companion issue in `roxabi-container` tracks the image
+  build side
+
+## Out of Scope
+
+- Building or publishing the slim base image (that's `roxabi-container`)
+- Any Python/app code changes in lyra
+- Changing `lyra-clipool` — it stays on the heavy agent image
+
+## Premise Validity
+
+**Success in 6 months:** slim image published in `roxabi-container`; `lyra-hub`,
+`lyra-telegram`, `lyra-discord` Quadlets reference the slim tag; cold-pull for those 3
+containers totals ≤ 1 GB (vs ~7.3 GB today); `lyra-clipool` unchanged.
+
+**Failure in 6 months:** a CVE in `bun`, `claude-code`, or an unused node module forces an
+emergency image rebuild and redeploy of `lyra-hub`/`lyra-telegram`/`lyra-discord` —
+containers that have zero runtime exposure to those tools.
+
+**Simplest alternative:** accept status quo (2.43 GB everywhere, Podman dedupes layers on
+same host).
+**Why not simplest:** deduplication only helps same-host pulls; fresh provisions, new hosts,
+and CI runners pay full cost each time. The CVE surface area grows independently of whether
+the tools are used — security hygiene alone justifies the split.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (infra/deploy), no architectural unknowns.
+Lyra side is 3–4 one-line Quadlet `Image=` changes; the heavy lift is in `roxabi-container`.
+
+- ≤4 files touched in lyra (`deploy/quadlet/lyra-{hub,telegram,discord}.container`)
+- Single domain (container/deploy)
+- No new patterns introduced in lyra
+- Dependent on upstream (`roxabi-container`) publish, but not a lyra architectural unknown

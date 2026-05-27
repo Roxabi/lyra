@@ -508,8 +508,8 @@ class TestRun:
         )
 
     @pytest.mark.asyncio
-    async def test_wait_ready_always_called(self) -> None:
-        """_wait_ready() is called on every run() invocation."""
+    async def test_wait_ready_called_when_flag_is_true(self) -> None:
+        """wait_for_hub is called when wait_ready is True (default)."""
         # Arrange
         adapter = self._make_adapter()
         stop = asyncio.Event()
@@ -1182,3 +1182,82 @@ def test_type_registry_none_ok() -> None:
 
     # Assert
     assert adapter._resolver is _EMPTY_RESOLVER
+
+
+# ---------------------------------------------------------------------------
+# T8 — wait_ready opt-out (#1147)
+# ---------------------------------------------------------------------------
+
+
+class TestWaitReadyOptOut:
+    """T8 — wait_ready flag controls whether _wait_ready() / wait_for_hub is called."""
+
+    def _make_adapter(self, *, wait_ready: bool = True) -> _ConcreteAdapter:
+        return _ConcreteAdapter(
+            subject="lyra.inbound.telegram.main",
+            queue_group="telegram_workers",
+            envelope_name="InboundMessage",
+            schema_version=1,
+            wait_ready=wait_ready,
+        )
+
+    @pytest.mark.asyncio
+    async def test_wait_for_hub_called_when_wait_ready_true(self) -> None:
+        """wait_for_hub is invoked during run() when wait_ready=True (default)."""
+        # Arrange
+        adapter = self._make_adapter(wait_ready=True)
+        stop = asyncio.Event()
+        stop.set()
+
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = True
+        mock_nc.subscribe = AsyncMock()
+        mock_nc.drain = AsyncMock()
+        mock_nc.close = AsyncMock()
+
+        with (
+            patch(
+                "roxabi_nats.adapter_base.nats_connect",
+                new=AsyncMock(return_value=mock_nc),
+            ),
+            patch(
+                "roxabi_nats.adapter_base.wait_for_hub",
+                new=AsyncMock(return_value=True),
+            ) as mock_wait,
+        ):
+            await adapter.run("nats://localhost:4222", stop=stop)
+
+        # Assert — hub readiness probe must have been called
+        mock_wait.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_wait_for_hub_not_called_when_wait_ready_false(self) -> None:
+        """wait_for_hub is NOT invoked during run() when wait_ready=False."""
+        # Arrange
+        adapter = self._make_adapter(wait_ready=False)
+        stop = asyncio.Event()
+        stop.set()
+
+        mock_nc = AsyncMock()
+        mock_nc.is_connected = True
+        mock_nc.subscribe = AsyncMock()
+        mock_nc.drain = AsyncMock()
+        mock_nc.close = AsyncMock()
+
+        with (
+            patch(
+                "roxabi_nats.adapter_base.nats_connect",
+                new=AsyncMock(return_value=mock_nc),
+            ),
+            patch(
+                "roxabi_nats.adapter_base.wait_for_hub",
+                new=AsyncMock(return_value=True),
+            ) as mock_wait,
+        ):
+            await adapter.run("nats://localhost:4222", stop=stop)
+
+        # Assert — hub readiness probe must NOT have been called
+        mock_wait.assert_not_awaited()
+        # Adapter must still have reached operational state (subscription + timestamp)
+        mock_nc.subscribe.assert_awaited_once()
+        assert adapter._started_at is not None

@@ -49,11 +49,11 @@ class TestLogTurnAsync:
 
     @pytest.mark.anyio
     async def test_calls_turn_store_log_turn(self) -> None:
-        """log_turn_async awaits turn_store.log_turn."""
+        """log_turn_async publishes via TurnPublisher.publish_log_turn."""
         obs = _make_observer()
-        store = MagicMock()
-        store.log_turn = AsyncMock(return_value=None)
-        obs.register_turn_store(store)
+        publisher = MagicMock()
+        publisher.publish_log_turn = AsyncMock(return_value=None)
+        obs.register_turn_publisher(publisher)
 
         await obs.log_turn_async(
             role="user",
@@ -63,16 +63,17 @@ class TestLogTurnAsync:
             message_id="msg-1",
         )
 
-        store.log_turn.assert_called_once_with(
-            pool_id=_POOL_ID,
-            session_id=_SESSION_ID,
-            role="user",
-            platform="telegram",
-            user_id="alice",
-            content="hello",
-            message_id="msg-1",
-            reply_message_id=None,
-        )
+        publisher.publish_log_turn.assert_called_once()
+        _, kwargs = publisher.publish_log_turn.call_args
+        assert kwargs["pool_id"] == _POOL_ID
+        assert kwargs["session_id"] == _SESSION_ID
+        assert kwargs["role"] == "user"
+        assert kwargs["platform"] == "telegram"
+        assert kwargs["user_id"] == "alice"
+        assert kwargs["content"] == "hello"
+        assert kwargs["message_id"] == "msg-1"
+        assert kwargs["reply_message_id"] is None
+        assert kwargs["trace_id"]  # non-empty string
 
     @pytest.mark.anyio
     async def test_uses_current_session_id_from_fn(self) -> None:
@@ -80,16 +81,16 @@ class TestLogTurnAsync:
         session_ids = ["sess-first"]
         obs = PoolObserver(pool_id=_POOL_ID, session_id_fn=lambda: session_ids[-1])
 
-        store = MagicMock()
-        store.log_turn = AsyncMock(return_value=None)
-        obs.register_turn_store(store)
+        publisher = MagicMock()
+        publisher.publish_log_turn = AsyncMock(return_value=None)
+        obs.register_turn_publisher(publisher)
 
         session_ids.append("sess-second")
         await obs.log_turn_async(
             role="assistant", platform="telegram", user_id="bot", content="hi"
         )
 
-        _, kwargs = store.log_turn.call_args
+        _, kwargs = publisher.publish_log_turn.call_args
         assert kwargs["session_id"] == "sess-second"
 
 
@@ -167,16 +168,17 @@ class TestAppend:
 
     @pytest.mark.anyio
     async def test_append_logs_user_turn_via_turn_store(self) -> None:
-        """append() also logs the user turn through TurnStore."""
+        """append() also logs the user turn through TurnPublisher."""
         obs = _make_observer()
-        store = MagicMock()
-        store.log_turn = AsyncMock(return_value=None)
-        obs.register_turn_store(store)
+        publisher = MagicMock()
+        publisher.publish_log_turn = AsyncMock(return_value=None)
+        obs.register_turn_publisher(publisher)
 
         msg = make_inbound_message(user_id="bob", platform="discord")
         await obs.append(msg, session_id=_SESSION_ID)
 
-        _, kwargs = store.log_turn.call_args
+        publisher.publish_log_turn.assert_called_once()
+        _, kwargs = publisher.publish_log_turn.call_args
         assert kwargs["role"] == "user"
         assert kwargs["user_id"] == "bob"
         assert kwargs["platform"] == "discord"
@@ -272,13 +274,13 @@ class TestLogTurnAsyncErrorPath:
     async def test_error_does_not_propagate(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """log_turn_async: TurnStore exception is caught, does not raise."""
+        """log_turn_async: TurnPublisher exception is caught, does not raise."""
         import logging
 
         obs = _make_observer()
-        store = MagicMock()
-        store.log_turn = AsyncMock(side_effect=RuntimeError("DB error"))
-        obs.register_turn_store(store)
+        publisher = MagicMock()
+        publisher.publish_log_turn = AsyncMock(side_effect=RuntimeError("NATS error"))
+        obs.register_turn_publisher(publisher)
 
         with caplog.at_level(logging.ERROR, logger="lyra.core.pool.pool_observer"):
             # Act — must not raise
@@ -289,7 +291,7 @@ class TestLogTurnAsyncErrorPath:
                 content="hello",
             )
 
-        assert any("turn_store write failed" in r.message for r in caplog.records)
+        assert any("turn_publisher write failed" in r.message for r in caplog.records)
 
 
 class TestSessionUpdateAsyncErrorPath:

@@ -2,7 +2,7 @@
 
 Provides:
 - Heartbeat subscription and worker-freshness tracking
-- Ephemeral-inbox streaming (_stream_gen)
+- Ephemeral-inbox streaming (_dict_stream_gen)
 - Simple request-reply (_request)
 
 Subclass this to build hub-side drivers (e.g. CliNatsDriver).
@@ -36,7 +36,7 @@ class NatsDriverBase:
     # Subclasses set this to the heartbeat subject they subscribe to.
     # NatsDriverBase uses it in start()/stop() only if set.
     HB_SUBJECT: str = ""
-    # Absolute upper bound on a single _stream_gen call. Backstop against a
+    # Absolute upper bound on a single _dict_stream_gen call. Backstop against a
     # hung worker that keeps emitting keepalive chunks forever; the per-chunk
     # `timeout` is a liveness check, not a duration cap.
     DEFAULT_MAX_TOTAL_DURATION: float = 1800.0
@@ -133,14 +133,16 @@ class NatsDriverBase:
                     )
                 if elapsed_idle >= effective_timeout:
                     # Last-resort: 120s backstop (no liveness signal)
-                    log.warning("nats_driver_base: _stream_gen timeout on %s", subject)
+                    log.warning(
+                        "nats_driver_base: _dict_stream_gen timeout on %s", subject
+                    )
                     return None
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return None
                 poll = min(self.LIVENESS_POLL_INTERVAL, remaining)
 
-    async def _stream_gen(
+    async def _dict_stream_gen(
         self,
         subject: str,
         payload_dict: dict,
@@ -171,7 +173,7 @@ class NatsDriverBase:
                 queue.put_nowait(msg)
             except asyncio.QueueFull:
                 log.warning(
-                    "nats_driver_base: _stream_gen inbox queue full,"
+                    "nats_driver_base: _dict_stream_gen inbox queue full,"
                     " dropping chunk on %s",
                     subject,
                 )
@@ -185,7 +187,7 @@ class NatsDriverBase:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     log.warning(
-                        "nats_driver_base: _stream_gen absolute deadline (%.0fs) "
+                        "nats_driver_base: _dict_stream_gen absolute deadline (%.0fs) "
                         "exceeded on %s",
                         max_total,
                         subject,

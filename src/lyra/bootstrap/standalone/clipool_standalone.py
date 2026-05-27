@@ -8,6 +8,7 @@ import sys
 
 from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
 from lyra.bootstrap.factory.config import _load_cli_pool_config
+from lyra.bootstrap.infra.git_ownership_probe import run_git_ownership_probe
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.messaging.metrics import log_contracts_version
 from roxabi_nats.connect import scrub_nats_url
@@ -17,6 +18,7 @@ log = logging.getLogger(__name__)
 
 async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
     """Wire a standalone CliPoolNatsWorker connected to NATS."""
+    run_git_ownership_probe()
     nats_url = os.environ.get("NATS_URL")
     if not nats_url:
         sys.exit("NATS_URL is required for standalone clipool mode.")

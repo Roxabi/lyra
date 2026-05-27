@@ -14,11 +14,12 @@ Two backend paths exist; exactly one is active per agent instance:
 | Path | When | Key object |
 |------|------|------------|
 | Direct CLI | `backend = "claude-cli"`, single-process | `CliPool` |
-| NATS-relayed CLI | distributed / hub-spoke | `CliNatsDriver` |
+| NATS-relayed CLI | distributed / hub-spoke | `LlmClient` (composed via `CliNatsCodec` over `WorkerPoolClient`) |
 
 `configure_pool(pool)` wires `reset_fn / resume_fn / workspace_fn` callbacks before the first
 `process()` call. Both `cli_pool` and `cli_nats_driver` register the same callbacks; whichever is
-non-`None` at construction time is active.
+non-`None` at construction time is active. The kwarg name `cli_nats_driver` is historical (now
+holds an `LlmClient | None`); rename is a deferred follow-up per #1281 W2 decision.
 
 ## Hot-reload
 

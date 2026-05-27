@@ -45,7 +45,7 @@ Retain Job → Entity Resolution → Graph Update + Decay
 Nightly Consolidation Job → Impact Analysis → Compiled Truth Regeneration
 ```
 
-**Source unique de vérité** : **Raw Layer** (jamais modifiée après écriture).  
+**Source unique de vérité** : **Raw Layer** (jamais modifiée après écriture).
 Tout le reste (Graph, Compiled Truth) est dérivé et peut être reconstruit à tout moment.
 
 ---
@@ -88,5 +88,5 @@ Tout le reste (Graph, Compiled Truth) est dérivé et peut être reconstruit à 
 
 ---
 
-**Ce document est l'entrée unique du système de mémoire.**  
+**Ce document est l'entrée unique du système de mémoire.**
 Toutes les autres sections (01 à 08) détaillent chaque brique avec précision.

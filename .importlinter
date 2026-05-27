@@ -4,14 +4,18 @@ source_root = src
 include_external_packages = True
 
 [importlinter:contract:clean-architecture-layers]
-name = Clean architecture layers (core ← llm/nats ← infrastructure ← adapters ← bootstrap)
+name = Clean architecture layers (transport ← streaming ← core ← llm/nats ← infrastructure ← adapters ← bootstrap)
 type = layers
 layers =
     lyra.bootstrap
-    lyra.adapters
+    lyra.adapters | lyra.blobstore
+    lyra.outbound
     lyra.infrastructure
     lyra.llm | lyra.nats
     lyra.core
+    lyra.typing
+    lyra.streaming
+    lyra.transport
 ignore_imports =
     # Downward TYPE_CHECKING imports (ADR-048 transition) — DEBT:importlinter-adr048-transition
     lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store
@@ -28,8 +32,6 @@ ignore_imports =
     lyra.core.hub.hub_registration -> lyra.infrastructure.stores.message_index
     lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.message_index
     lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index
-    # Transitional: pairing_protocol facade (ADR-059 V3 pending) — DEBT:importlinter-adr048-transition
-    lyra.core.stores.pairing_protocol -> lyra.infrastructure.stores.pairing
     # TurnStore moved to infrastructure per ADR-048 (#760 review fix f2) — DEBT:importlinter-adr048-transition
     lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store
     lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store
@@ -38,6 +40,16 @@ ignore_imports =
     lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store
     lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store
     lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store
+    # OutboundEmitter (lyra.outbound) imports shared state types that REMAIN in
+    # lyra.adapters.shared per resolved Open Q 2 (spec §Resolved Open Questions).
+    # classify_stream_error has moved to OutboundErrorHandler (#1279), but StreamState
+    # + ToolRecapAccumulator still live under adapters.shared because moving them
+    # into lyra.outbound would re-introduce the circular load path through
+    # StreamState.build_display_text. Deferred imports at the bottom of emitter.py
+    # break the import-time cycle; these exemptions remain necessary until
+    # StreamState relocates in Phase 7 (#1284) — DEBT:importlinter-outbound-shared-state-transition
+    lyra.outbound.emitter -> lyra.adapters.shared._shared_streaming_state
+    lyra.outbound.emitter -> lyra.adapters.shared._tool_recap
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers
@@ -98,6 +110,9 @@ forbidden_modules =
     lyra.bootstrap.wiring
 allow_indirect_imports = true
 
+# NOTE: lyra.blobstore is intentionally absent from source_modules below — it is a
+# peer-layer service (own systemd unit + NATS attach, ADR-073), not a shared floating
+# module. See src/lyra/blobstore/CLAUDE.md "peer-of-adapters" placement.
 [importlinter:contract:shared-modules-upper-boundary]
 name = Shared floating modules must not import bootstrap, adapters, or infrastructure
 type = forbidden
@@ -112,4 +127,23 @@ forbidden_modules =
     lyra.bootstrap
     lyra.adapters
     lyra.infrastructure
+allow_indirect_imports = true
+
+[importlinter:contract:no-streaming-emitter-shim]
+name = adapters must not re-introduce the legacy streaming-emitter shim (#1279 T28)
+type = forbidden
+source_modules =
+    lyra.adapters
+forbidden_modules =
+    lyra.adapters.shared._shared_streaming_emitter
+    lyra.adapters.shared._shared_streaming
+allow_indirect_imports = true
+
+[importlinter:contract:adapters-no-bot-store]
+name = Adapters must not import BotStore directly (use BotStoreProtocol instead)
+type = forbidden
+source_modules =
+    lyra.adapters
+forbidden_modules =
+    lyra.infrastructure.stores.bot_store
 allow_indirect_imports = true

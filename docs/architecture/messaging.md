@@ -6,15 +6,16 @@ description: Living current-truth document for all messaging and NATS transport 
 # Messaging & NATS — Lyra
 
 > Status: LIVING — current truth for messaging/NATS decisions.
-> Last updated: 2026-05-09.
-> Source ADRs: 001, 002, 035, 036, 065. Absorbed via 045: 037, 040, 047, 062.
+> Last updated: 2026-05-26.
+> Source ADRs: 001, 002, 035, 036, 065, 076. Absorbed via 045: 037, 040, 047, 062.
 
 ## Scope
 
-This document covers routing key semantics, hub dispatch invariants, NATS subject naming,
-the Hub→Adapter streaming chunk protocol, and the hub readiness probe. It does not cover
-security/ACL policy (see `security-routing.md`), cross-project contract schemas (see
-`contracts.md`), or LLM streaming internals (see `llm-streaming.md`).
+This document covers the three NATS planes (messages, persistence, typing/lifecycle),
+routing key semantics, hub dispatch invariants, NATS subject naming, the Hub→Adapter
+streaming chunk protocol, and the hub readiness probe. It does not cover security/ACL
+policy (see `security-routing.md`), cross-project contract schemas (see `contracts.md`),
+or LLM streaming internals (see `llm-streaming.md`).
 
 ## Current state
 
@@ -98,6 +99,38 @@ removed entirely during the Phase 1b→2 refactor; the canonical routing fields 
 
 → ADR-002
 
+### NATS planes (catalogue)
+
+Every NATS subject in Lyra belongs to exactly one of three planes. The plane decides the
+NATS type (Core vs JetStream), the durability contract, and the keying shape:
+
+| Plane | Subject prefix | NATS type | Durability | Producers | Consumers | When to use |
+|---|---|---|---|---|---|---|
+| Messages | `lyra.{inbound,outbound}.<platform>.<bot_id>` | Core | ephemeral | adapters ↔ hub | hub, adapters | bidirectional hub↔adapter routing of user content |
+| Persistence | `lyra.turns.>` | JetStream durable (stream `LYRA_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub, telegram-adapter, discord-adapter | turn-writer | append-only state changes requiring at-least-once delivery |
+| Typing / Lifecycle | `lyra.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
+
+> Note: clipool-worker is intentionally excluded from publishing `lyra.turns.write`. It is a downstream command worker, not a user-message source — the upstream adapter records the turn before the dispatch reaches clipool. See ADR-075 and acl-matrix.json (`clipool-worker.notes`) for the full rationale.
+
+**Choosing a plane when adding a subject:**
+
+1. Decide durability first — hard guarantee needed → JetStream → Persistence plane; lossy-OK
+   → Core → Messages or Typing depending on direction.
+2. If durability + direction shape matches an existing plane, use that plane's prefix; do not
+   open a new one.
+3. A new plane requires a separate ADR — and a justification that durability + direction +
+   lifecycle ownership all differ from the three existing planes.
+
+**Distinguish from sibling subjects** — these are NOT typing-plane members despite the
+surface resemblance:
+
+- `lyra.progress.<job_id>` (#1044, future) — job-internal progress, keyed on `job_id`, not on
+  `WorkScope`.
+- `lyra.clipool.heartbeat` and the `*.heartbeat` family — internal liveness, control-plane.
+- `$KV.lyra-state.hub.ready` — persistent flag in JetStream KV, watched by adapters.
+
+→ ADR-076
+
 ### NATS subject naming
 
 All subjects follow `lyra.{domain}.{qualifier...}` (domain-first, NATS convention
@@ -107,11 +140,25 @@ All subjects follow `lyra.{domain}.{qualifier...}` (domain-first, NATS conventio
 |---|---|---|
 | `lyra.inbound.{platform}.{bot_id}` | adapter → hub | User message delivery |
 | `lyra.outbound.{platform}.{bot_id}` | hub → adapter | Response chunk delivery |
+| `lyra.typing.{platform}.{bot_id}` | hub → adapter | Ephemeral typing indicator lifecycle (Typing plane — Epic #1375, lands with T1 #1376) |
 | `lyra.llm.request` | hub → worker | LLM compute offload |
 | `lyra.llm.health.{worker_id}` | worker → hub | Satellite LLM worker heartbeats |
 | `lyra.clipool.cmd` | hub → CliPool | Submit turn + resume UUID |
 | `lyra.clipool.heartbeat` | CliPool → hub | CliPool subprocess runner health announcements |
 | `lyra.clipool.control` | hub → CliPool | Control commands (reset, drain) |
+| `lyra.voice.tts.heartbeat` | voice-tts → hub | TTS worker liveness signal for hub availability checks |
+| `lyra.voice.stt.heartbeat` | voice-stt → hub | STT worker liveness signal for hub availability checks |
+| `lyra.llm.heartbeat` | llm-worker → hub | LLM worker liveness signal for hub availability checks |
+| `lyra.image.heartbeat` | image-worker → hub | Image worker liveness signal for hub availability checks |
+| `lyra.system.ready` | adapters + workers → hub | Startup ready announcement; hub tracks liveness on subscribe |
+
+System-plane subjects (JetStream API + KV bucket) are governed by per-identity grants in
+`deploy/nats/acl-matrix.json` rather than restated here; see ADR-045 / ADR-046 + #1293.
+
+| Subject | Direction | Purpose |
+|---|---|---|
+| `$JS.API.>` | hub + adapters + workers → server | JetStream API surface for KV reads and consumer create (currently wildcard; tighter scoping in #1293) |
+| `$KV.lyra-state.>` | hub → server (write); adapters + workers ← server (read) | Direct KV bucket access — hub publishes `hub.ready`, others watch via `wait_for_hub` |
 
 `{platform}` is lowercase ASCII (`telegram`, `discord`). `{bot_id}` is a numeric string
 matching `^[1-9][0-9]*$` — a leading-zero or non-numeric value produces a shadow subject
@@ -236,4 +283,5 @@ part of the adapter startup path.
 | 036 | RenderEvent chunk protocol | Accepted |
 | 065 | KV readiness probe | Accepted |
 | 072 | Codec registry pattern (v2 RenderEvent) | Accepted — supersedes ADR-032 v1 wire shape |
+| 076 | Three NATS planes (messages / persistence / typing) | Accepted — 2026-05-26; operational landing with Epic #1375 |
 | 037, 040, 047, 062 | (various transport ADRs) | Absorbed by ADR-045 (roxabi-nats SDK) |

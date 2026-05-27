@@ -1,0 +1,444 @@
+---
+title: "Stage-axis decomposition — global integration layer refactor strategy"
+description: "Root-cause analysis of the recurring small-fix cascade pattern observed 2026-05-19 and the architectural pivot to stage-axis decomposition. Reference document for Epic #1277 and Phases 1-7 (#1278-#1284)."
+issue: 1277
+tier: F-full
+date: 2026-05-20
+---
+
+## Source
+
+> "Aujourd'hui, on a corrigé plein de petits issues, mais à chaque fois qu'on a corrigé une petite issue, on se retrouvait dans la situation où ça a recréé plein d'autres petits issues."
+>
+> — Trigger of the deep-dive investigation, 2026-05-19 evening
+
+This document captures the full root-cause analysis, architectural decisions, and rollout strategy from the investigation conversation 2026-05-19 → 2026-05-20. It is the **reference document** for Epic #1277 and all 7 phase issues (#1278-#1284). The Epic body is a condensed summary; this artifact is the exhaustive analytical record.
+
+## 1. Context — observed pattern (2026-05-19)
+
+Empirical signal from a single day's work:
+
+| Metric | Value |
+|---|---|
+| PRs merged | ~14 |
+| PRs still open at end of day | 7 |
+| Branching factor (new issues / closed issue) | ≥1.5 |
+| Sibling-fixes for a single bug class (`str(exc)` leak) | 5 (#1212 → #1215 → #1219 → #1252 → #1253 → #1256) |
+| Small PRs opened in a 7-minute window | 7 |
+
+Three distinct cascade shapes observed simultaneously:
+
+- **Lineage cascade**: a bug class fixed in one site exposes the next site via /code-review → next fix → next site. Each fix is technically correct, but the class is never closed.
+- **Review-deferral cascade**: each PR's /code-review generates ~7 "deferred warnings" → each becomes its own issue → each issue gets its own PR → each PR's review generates ~7 warnings.
+- **Side-discovery cascade**: working in area A surfaces N latent issues in area B (test drift, stale paths, undocumented kwargs). Each filed as a separate issue.
+
+The signal was **exponential**, not linear. Growth ≥1.5× per cycle = doubles every ~2 cycles.
+
+## 2. Root cause analysis — 4 stacked producers
+
+A 3-voice agent panel (architect / product-lead / devops) plus a code-quality audit (3 zones) plus a DEBT audit converged on a 4-producer model:
+
+```
+1. Boundary primitive↔intégration without typed abstraction  (architectural)
+        ↓ produces latent duplications (8 dormant cascades identified)
+2. When touched → /code-review surfaces sibling sites          (tooling calibration)
+        ↓
+3. Findings without Discard tier → all become filed issues    (process)
+        ↓
+4. Issues → DEBT-tagged → bucket "async-pipeline" w/o drain   (debt decoupling)
+        ↓ tracking sans pressure de fermeture
+        → la duplication latente persiste → 1. recommence avec plus de surface
+```
+
+Each layer alone is insufficient explanation. Together they form a self-stabilizing loop:
+
+- Architecture (1) provides the latent duplications
+- Tooling (2) detects them all when triggered
+- Process (3) converts every finding into work
+- Debt system (4) absorbs the work into untracked buckets, giving false closure
+
+The 4th producer was the key insight: the DEBT registry is **technically irreprochable on filing** (98.6% noqa tag coverage, all exemptions linked to issues or ADRs) but **poisoned on draining** — all drain slices point to abstract buckets ("async-pipeline", "P2b") with no concrete GitHub milestones. `boundary-broad-catch` grew from ~85 → 104 sites in 19 days without any closed-loop drain pressure.
+
+**Conclusion**: patching individual cascades treats symptoms. The root cause is structural — the system has no mechanism to make latent duplication impossible.
+
+## 3. Altitudes of intervention
+
+The investigation walked up an abstraction ladder:
+
+| Altitude | Question | Mechanism | Coût | Bénéfice |
+|---|---|---|---|---|
+| Patch | Comment fixer ce bug ? | Edit 5 sites manually | jours | Tue 1 instance |
+| Patch industrialisé | Comment empêcher ce bug ? | Typed port + import-linter + grep hook + test | semaine | Tue 1 classe |
+| Logique | Comment garantir la correction ? | Invariants déclarés + tests universels | semaine+ | Tue toute classe déclarée |
+| Architecture | Selon quel axe le système est-il découpé ? | Pivot d'axe de décomposition | semaines à mois | Tue la possibilité même de la classe |
+| Plateforme | Le code intégration existe-t-il du tout ? | Runtime déclaratif | trimestres | Le concept disparaît |
+
+Each higher altitude **renders lower altitudes less necessary** but doesn't replace all of them. A well-architected system still benefits from explicit invariants. An explicit-invariant codebase still benefits from well-calibrated tooling.
+
+The chosen altitude for this refactor is **Architecture** — the highest tractable level given current bandwidth. Platform-level Lyra is noted as a future direction but out of current scope (trimestre+ effort).
+
+## 4. The axis-of-decomposition insight
+
+The file tree reveals Lyra's current axis:
+
+```
+adapters/telegram/   adapters/discord/   adapters/cli/
+nats/nats_llm_client.py
+nats/nats_tts_client.py
+nats/nats_stt_client.py
+nats/nats_image_client.py
+llm/drivers/cli_nats.py    llm/drivers/claude.py
+integrations/supervisor.py  integrations/vault.py
+```
+
+**One file = one integration target.** Each target accretes the same M concerns (parse, validate, sanitize, route, retry, log, timeout, circuit-breaker, metrics).
+
+Growth function: **N targets × M concerns = N × M sites**. Multiplicative.
+
+Consequences (mechanical, not anecdotal):
+
+- Bug in a concern → N target files to fix → cascade
+- New target → copy-paste M concerns from neighbor → drift
+- New concern → add to all N targets → cascade
+- Audit finds duplication → confirms what the axis predicts
+
+**The cascade is not a pathology. It is the predicted consequence of the chosen axis.** Until the axis changes, no amount of patching closes the loop.
+
+### The alternative axis: by stage / capability
+
+Decomposition by horizontal slice of the data flow (stage) or by transverse concern (capability):
+
+```
+stages/{parse, sanitize, route, execute, emit}.py
+capabilities/{retry, throttle, circuit_breaker, heartbeat}.py
+```
+
+A target becomes a **pipeline configuration**, not a code file:
+
+```python
+telegram = Pipeline(
+    wire_in   = TelegramParser,
+    sanitize  = DefaultSanitizer,
+    transport = NatsRequestResponse,
+    business  = HubDispatcher,
+    wire_out  = TelegramEmitter,
+    caps      = [Retry(3), Throttle(20), CircuitBreaker()],
+)
+```
+
+Growth function: **N + M modules**. Additive.
+
+Consequences:
+
+- Bug in a concern → 1 module to fix → 0 cascade possible
+- New target → compose existing stages → no drift
+- New concern → 1 module, applied automatically via composition
+
+### Why Lyra ended up with the target axis
+
+Honest hypothesis (not a reproach):
+
+- 1st adapter written → contains everything because common stages aren't yet identified
+- 2nd adapter → cost-of-factoring > cost-of-copy-paste at that moment → copy is rational
+- 3rd adapter → the axis is locked, factor-cost prohibitive
+
+Lyra adopted **hexagonal architecture nominally** (`core/ports/`, hexagonal boundary tests) but in practice the "ports" are nominal Protocols without the stages being factored behind them. **Hexagonal in name, not in structure.**
+
+The code-quality audit confirmed this empirically: SDK layer (`roxabi-nats`) — crisp, audit rating 4.5/5. Per-client satellite layer (`nats/nats_*_client.py`) — copy-paste-over-abstract, audit rating 3.5/5. Same project, two different architectural disciplines, both visible.
+
+## 5. Target architecture — 3-layer composition
+
+For the worker-pool family (NATS clients), the target architecture is:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Domain clients (LlmClient, TtsClient, SttClient, ImageClient)│  ~80 lines each, thin
+│   • encode / decode                                          │
+│   • domain logic only                                        │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ composes
+┌─────────────────────▼───────────────────────────────────────┐
+│ WorkerPoolClient (generic, parameterized)                    │  ~200 lines
+│   • circuit breaker per-pool                                 │
+│   • heartbeat lifecycle                                      │
+│   • worker registry / freshness                              │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ composes
+┌─────────────────────▼───────────────────────────────────────┐
+│ NatsTransport                                                │  ~150 lines
+│   • call(pool_id, bytes) → Result[bytes, SanitizedError]     │
+│   • never raises                                             │
+│   • sanitize() internal                                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Architectural commitments encoded in the structure**:
+
+- **`Result[T, E]` return type** — callers cannot ignore errors (no exception path) and errors are pre-sanitized (no `str(exc)` path)
+- **Composition over inheritance** — no class-attr override magic, no `__init_subclass__` validation hooks; dependencies visible in constructor signatures
+- **Domain doesn't see transport details** — encode/decode operate on bytes, not on `nats.errors.Error` or connection metadata
+- **Capabilities (CB, heartbeat, registry) live ONCE** in `WorkerPoolClient`, not duplicated per domain
+
+Same pattern propagates to other zones (adapters in/out, LLM drivers, stream processors) — see Phase decomposition below.
+
+## 6. Phase decomposition — 7 phases
+
+```
+       P1 ──┬──→ P2 ──┐
+            ├──→ P4 ──┤
+            │         │
+       P3 ──┤         ├──→ P6 ──→ P7 ──→ 15 paused issues unblock
+            │         │
+       P5 ──┘         ┘
+```
+
+| # | Phase | Tier | Issue | Blocked-by | Scope |
+|---|---|---|---|---|---|
+| 1 | NATS Transport + WorkerPoolClient | F-full | #1278 | — | 4 worker-pool clients (LLM, TTS, STT, Image) refactored atomically |
+| 2 | Outbound adapters stage extraction | F-lite | #1279 | P1 | Telegram + Discord outbound + shared streaming emitter |
+| 3 | Inbound adapters stage extraction | F-lite | #1280 | — | Parser + session + router stages for Telegram + Discord |
+| 4 | LLM drivers thinned to codec | F-lite | #1281 | P1 | Per-driver becomes thin codec; HTTP transport added |
+| 5 | Stream processors stage extraction | F-lite | #1282 | — | core/processors + cli_streaming_parser → streaming/ stages |
+| 6 | Bootstrap & wiring via DI | F-lite | #1283 | P1-5 | Flatten bootstrap, isolate test fakes, tighten Protocols |
+| 7 | Docs / ADR cleanup post-refactor | F-lite | #1284 | P1-6 | ADR audit, domain pages, ADR-XXX stage-axis decision |
+
+Sequencing rationale:
+
+- P1 is first because it produces the foundational types (`Result`, `SanitizedError`, composition pattern) that P2/P4 reuse
+- P3 and P5 are scheduled independent of P1 because they touch different code regions, but using P1's `SanitizedError` once it lands
+- P6 must come last among code phases because the bootstrap layer benefits from all preceding composition patterns being stable
+- P7 closes the loop with documentation, reflecting reality not aspiration
+
+**Estimated chemin critique**: ~8-9 weeks for phases 1-6. P7 adds ~1 week. Total ~10 weeks if sequential, less with prudent parallelism on P3/P5.
+
+## 7. Architectural decisions (U1-U5)
+
+Resolved unknowns from the planning conversation, applicable principally to Phase 1 but propagating to subsequent phases.
+
+### U1 — `Result[T, E]` type implementation
+
+**Decision**: native Python tagged union (~25 lines).
+
+```python
+from dataclasses import dataclass
+from typing import Generic, TypeVar
+
+T = TypeVar("T"); E = TypeVar("E")
+
+@dataclass(frozen=True)
+class Ok(Generic[T]):  value: T
+
+@dataclass(frozen=True)
+class Err(Generic[E]): error: E
+
+Result = Ok[T] | Err[E]
+```
+
+**Rationale**:
+- Zero new dependencies
+- pyright type-narrows correctly on `isinstance(r, Ok)`
+- No friction "what's `bind`?" for new readers
+- Consistent with project's "invariants, not inventory" style (CLAUDE.md)
+
+**Rejected**: `returns` lib, `result` lib — too much monadic machinery for current needs.
+
+### U2 — Composition over inheritance
+
+**Decision**: full DI, abandon inheritance.
+
+Before: `class NatsLlmClient(NatsWorkerClientBase)` with class-attr overrides.
+
+After: `LlmClient(pool: WorkerPoolClient, codec: LlmCodec)` injected via constructor.
+
+**Rationale**:
+- Inheritance = the file-axis way of sharing code. The architectural pivot is precisely to STOP sharing by file.
+- DI makes tests trivial (inject fakes)
+- Dependencies become visible in constructor signatures (visible in pyright + IDE)
+- `_worker_client_base.py` (created in #1235) will be deleted post-migration — its work isn't lost, it's replayed as composition
+
+### U3 — Circuit breaker scope
+
+**Decision**: per worker-pool, preserved.
+
+The breaker semantically protects against worker failures (TTS workers crashing shouldn't break LLM). It is a **worker-pool concern**, not a transport concern.
+
+→ Lives in `WorkerPoolClient`, not in `NatsTransport`. Transport stays pure plumbing.
+
+### U4 — Heartbeat lifecycle
+
+**Decision**: composed into `WorkerPoolClient`.
+
+Was inherited via `NatsWorkerClientBase` (#1235 — the previous refactor iteration). The defense-in-depth + atomicity work done in #1235 is preserved, but moves from inheritance hook (`_on_heartbeat` override) to composition (constructor argument `heartbeat_subject`).
+
+The class-attr validation hooks (`VALIDATE_WORKER_ID`, `__init_subclass__`) become constructor args. Simpler, no metaclass magic.
+
+### U5 — Test restructuring
+
+**Decision**: tests restructured by layer (transport / pool / domain), not rewritten from scratch.
+
+- `tests/transport/test_nats_rr.py` — wire errors, timeout, no-responders
+- `tests/transport/test_worker_pool_client.py` — circuit breaker, heartbeat lifecycle
+- `tests/domain/test_llm_client.py` (and 3 similar) — codec + business, with fake `WorkerPoolClient`
+
+The tautologies surfaced by tester agent during #1242 review (`test_any_alive_delegates_to_registry`, throttle_window dropped) disappear naturally during the restructure — they were tests of inheritance plumbing that no longer exists.
+
+## 8. Debt drain map
+
+DEBT inventory audit conducted 2026-05-19 → 2026-05-20. The registry at `artifacts/debt/INDEX.md` has 18 distinct slugs, all properly registered. The system's filing discipline is strong (98.6% noqa tag coverage). What was broken was the drain side (all drains pointing to abstract buckets without concrete milestones).
+
+The refactor reconnects drains to concrete phase milestones:
+
+| Slug | Sites today | Phases draining | Expected after |
+|---|---|---|---|
+| boundary-broad-catch | 104 (growing) | P1, P2, P5 | ~20 |
+| wiring-bootstrap-deps | 84 (growing) | P1, P3, P6 | ~20 |
+| defensive-narrow-payloads | 26 | P2, P3, P5 | partial |
+| complexity-residual | 25 | P3, P5 | partial |
+| re-export-init | 18 | P4, P6 | partial |
+| migration-sequence-bootstrap | 14 | P6 | drained |
+| protocol-private-ducktyping | 8 | P6 | drained |
+| module-level-patch-fixtures | 7 | P6 | drained |
+| adapter-magic-constants | 4 | P3 | drained |
+| adapter-dispatch-complexity | 2 | P3 | drained |
+
+**Orthogonal to this refactor** (kept as-is — out of scope):
+
+`lint-residual`, `plc0415-deferred-import`, `typer-default-option`, `d401-property-accessor`, `file-exemptions`, `folder-exemptions`, `importlinter-adr048-transition`, `importlinter-shared-modules-transitive`.
+
+Expected outcome: ~10 of 18 slugs drained or significantly reduced. The remaining 8 are CLI/lint cosmetic concerns unrelated to integration boundary layer.
+
+## 9. Impact on existing work
+
+Strategic impact analysis on ~75 open issues, conducted 2026-05-19 → 2026-05-20.
+
+| Category | Count | Action |
+|---|---|---|
+| Subsumed (problem disappears with refactor) | 4 | Closed `not planned` |
+| Absorbed (track inside phase) | 10 | Set as sub-issue of relevant phase |
+| Paused (depend on refactor outcome) | 15 | `blocked-by #1284` (Phase 7, last) |
+| Orthogonal (no impact, proceed independently) | ~45 | Open, unchanged |
+
+### Closed as subsumed (4)
+
+- **#838** — wrap CircuitBreakerDecorator.stream() with CB check → CB composed in `WorkerPoolClient`, applies to all calls (P1)
+- **#1201** — make stream() a true async generator across 4 drivers → duplication "across 4 drivers" eliminated by `LlmCodec` pattern (P4)
+- **#1273** — boundary unit tests for `WorkerError._sanitize_message` → sanitization migrates to `NatsTransport` boundary, tests reconstructed at new layer (P1)
+- **#662** — consolidate reaper + tombstone + extract _drain_stream → consolidation absorbed into `WorkerPoolClient` design (P1)
+
+### Absorbed into phases (10)
+
+P1: #840, #1067 · P2: #687 · P3: #1065, #1066 · P5: #1113, #1274 · P6: #1079, #1093 · P7: #1152
+
+5 of these required detaching from their original epic parents (#445 Distributed Lyra, #726 NATS maturity, #1061 BlobStore epic) — cross-references preserved in comments.
+
+### Paused (15)
+
+The full `#1044` lyra-code-worker fleet chain (7 issues) + 8 standalone issues. All set `blocked-by #1284` so they unblock automatically when the epic closes.
+
+- `#1044, #1046, #1047, #1048, #1050, #1051, #1052, #1053` — lyra-code-worker fleet (would have built N new workers in the legacy per-target pattern; paused to avoid amplifying the dette during the refactor)
+- `#1082` — `lyra-gh.seed` worker (same coordination concern as #1044)
+- `#475` — channel rule engine (cleaner after Phase 3 inbound)
+- `#1009, #1058, #1059` — stores / wiring (cleaner after Phase 6 bootstrap)
+- `#1060` — Discord watch_channels (cleaner after Phase 3 inbound)
+- `#1275` — test acl-matrix fail-on-missing (deferred to ACL work, not refactor)
+
+### Orthogonal — proceed independently
+
+Examples: brand/LoRA training (`lane/o`), deploy/Quadlet ops (#1095, #1124, #1184), monitoring v2 epic (#1035, #1085), OTel observability (#667), BlobStore epic main body (#1061), Plugin SDK (#725), Dependabot deps (PRs #1227-#1232). ~45 issues total.
+
+### Urgent fix outside refactor scope
+
+**#1147** — ACL llmCLI worker tripping `$JS.API.STREAM.INFO.kv_lyra-state` denial. Production permissions issue, independent of refactor architecture. To be fixed before Phase 1 starts (~30 min, JetStream subject grant addition).
+
+## 10. Success criteria — measurable
+
+The refactor will be judged successful if and only if these metrics are met:
+
+| Criterion | Today | Target post-epic |
+|---|---|---|
+| `_raise_nats_failure` occurrences | 5 (3 files + 2 inline) | 0 (single site in transport) |
+| `_is_no_responders` occurrences | 2 (stt + tts) | 0 (single site in transport) |
+| `f"...{exc}"` patterns on bus-bound paths | 6+ known | 0 |
+| `boundary-broad-catch` total sites | 104 | ≤30 |
+| `wiring-bootstrap-deps` total sites | 84 | ≤30 |
+| LOC across NATS + adapters + drivers | ~baseline | -2500 to -3000 net |
+| New integration cost (per new domain) | ~500 lines | <100 lines |
+| Sibling-fix rate per discovered bug class (transport/sanitize) | 5/discovery | 0/discovery |
+| 4 subsumed issues | open | closed |
+| 15 paused issues | open | unblocked |
+
+**Falsifiable failure conditions**:
+
+- If a NATS transport bug surfaces post-Phase-1 and the fix touches more than 1 file in `src/lyra/transport/`, P1 has failed its goal.
+- If `boundary-broad-catch` is still > 30 after P7, the refactor has missed its target — diagnose what other axes are at play.
+- If new integration cost is still > 200 lines per new domain after P7, the composition pattern hasn't propagated correctly.
+
+## 11. Out of scope (explicit)
+
+Decisions taken about what this epic does NOT do:
+
+- **Hub statelessness epic #640** (graph:defer) — Redis stores migration is a separate decision
+- **Capability layer #493 / Plugin SDK #725** — orthogonal, can run in parallel if desired
+- **BlobStore epic #1061** main body — only the adapter-side ingest issues are absorbed (#1065, #1066, #1067)
+- **Brand/LoRA training** (lane/o) — entirely unrelated
+- **Deploy / Quadlet / monitoring infra** — independent ops concerns
+- **OTel observability pipeline #667** — instrumentation layer, separate concern
+- **Existing CLI lint debt** (`lint-residual`, `typer-default-option`, etc.) — orthogonal to integration layer
+- **Stores layer deep refactor** — conditional, only if drift surfaces post-Phase 6
+- **Platform-level / declarative Lyra** — future altitude, not this iteration
+
+## 12. Future altitudes — beyond this epic
+
+The investigation surfaced a higher altitude than chosen for this epic: **platform-level Lyra**.
+
+> Au-dessus encore : passer de "Lyra est du Python qu'on commit" à "Lyra est un runtime qui interprète des intégrations déclarées".
+
+Concretely: ajouter une cible = éditer 1 fichier YAML, pas commiter du Python. Le runtime applique les stages automatiquement.
+
+**Cost**: refonte sur trimestres. **Benefit**: la classe entière de cascades disparaît du domaine — il n'y a plus de code d'intégration à corriger, parce qu'il n'y a plus de code d'intégration tout court.
+
+This is noted explicitly here so that if the stage-axis refactor succeeds and the team gains confidence in declarative composition, the next altitude is identified and accessible. It is **not** committed work for this epic.
+
+## Appendix A — How layers stack (worked example)
+
+The `str(exc)` cascade case study illustrates how the 4 producers compose:
+
+- **Layer 1 (architecture)**: `f"...{exc}"` pattern is constructible at any call site because no typed `SanitizedError` port exists. 5 sites latent.
+- **Layer 2 (tooling)**: /code-review with 6 agents finds the 5 sites when one is touched. Each surfaced as a finding.
+- **Layer 3 (process)**: each finding becomes "blocker" (fix now in this PR) or "deferred warning" (new issue filed). The 4 not in current PR scope → 4 new issues filed.
+- **Layer 4 (debt)**: the `boundary-broad-catch` slug grows by ~15 sites in 19 days. Drain points to "async-pipeline" bucket. No closed-loop pressure.
+
+Cycle complete. Next cycle starts when the next site is touched.
+
+**After the refactor**:
+
+- Layer 1: `port.emit(f"...{exc}")` does not type-check. The pattern is lexically impossible in non-transport code.
+- Layer 2: /code-review cannot find sibling sites because there is one site (in transport).
+- Layer 3: 0 deferred warnings generated for this class. Loop disengages.
+- Layer 4: `boundary-broad-catch` stops growing for this concern category.
+
+The loop doesn't slow down. It stops, mechanically.
+
+## Appendix B — Methodology (how this analysis was conducted)
+
+The investigation used multiple agent-based instruments in parallel:
+
+- **3-voice panel** (architect / product-lead / devops) — each defended one hypothesis cluster, anticipated objections, found convergence/tension. Surfaced the layered-cause model.
+- **3-zone code-quality audit** (core / adapters / nats-llm) — each sampled 5 files older than 3 days, evaluated clarity / abstraction discipline / error consistency / test quality / comment hygiene. Surfaced 8 dormant cascades.
+- **DEBT inventory + recent-additions audit** — catalogued all `DEBT:` slugs, exemptions, noqa additions since 2026-05-01. Surfaced the drain-decoupling 4th producer.
+- **Strategic impact map** — walked through ~75 open issues, categorized by conflict / synergy / orthogonality. Drove the absorb/close/pause decisions.
+
+The total investigation took ~6 hours of conversation. The artifacts (this document, Epic #1277, Phases #1278-#1284, comments on absorbed/paused issues) capture the durable output.
+
+## References
+
+- Epic: https://github.com/Roxabi/lyra/issues/1277
+- Phase 1 (NATS Transport): https://github.com/Roxabi/lyra/issues/1278
+- Phase 2 (Outbound): https://github.com/Roxabi/lyra/issues/1279
+- Phase 3 (Inbound): https://github.com/Roxabi/lyra/issues/1280
+- Phase 4 (Drivers): https://github.com/Roxabi/lyra/issues/1281
+- Phase 5 (Streaming): https://github.com/Roxabi/lyra/issues/1282
+- Phase 6 (Bootstrap DI): https://github.com/Roxabi/lyra/issues/1283
+- Phase 7 (Docs/ADR): https://github.com/Roxabi/lyra/issues/1284
+- DEBT registry: `artifacts/debt/INDEX.md`
+- Previous heartbeat factoring iteration: #1235 (the precursor that will be replayed in composition during P1)

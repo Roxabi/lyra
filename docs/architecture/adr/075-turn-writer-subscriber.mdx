@@ -1,0 +1,133 @@
+---
+title: "ADR-075: TurnWriter subscriber-writer sublayer under infrastructure/"
+description: Authorise src/lyra/infrastructure/turn_writer/ as a new subdirectory per infrastructure/ Governance rule. Single cross-platform NATS subscriber writes L1 raw turns to SQLite; deployed as Quadlet sibling lyra-turn-writer.container.
+status: accepted
+date: 2026-05-25
+deciders: [Mickael, architect, devops, axial-adr-review]
+supersedes: []
+superseded_by: []
+related: [068, 073, 076]
+---
+
+## Status
+
+Accepted — 2026-05-25
+
+## Context
+
+TurnStore is the L1 raw-turn store (`turns.db`). Issue #1331 introduces `TurnWriter`, a
+subscriber-writer that consumes a NATS subject and writes turns to SQLite — replacing the
+current direct-write deviation documented in ADR-068 Application Map (TurnStore row: "tolerated
+until α-refactor #1331 lands").
+
+The proposed code lives at `src/lyra/infrastructure/turn_writer/`. The Governance rule in
+`src/lyra/infrastructure/CLAUDE.md` states:
+
+> Any new subdirectory under `infrastructure/` requires its own ADR.
+
+This ADR fulfils that requirement.
+
+### Current deviation
+
+All adapters (telegram, discord, clipool) currently write turns directly to SQLite via
+co-located store access. ADR-068 classified this as Pattern α deviation: tolerated until either
+the α-refactor landed or a third adapter was added (N×M trigger per ADR-073 three-strikes rule).
+Issue #1331 is the scheduled resolution of that deviation.
+
+## Options Considered
+
+### Option 1 — inline writer in `infrastructure/stores/`
+
+Extend the existing `stores/` subdirectory with a `TurnWriter` subscriber class alongside the
+existing `TurnStore` implementation.
+
+- **Pros:** No new subdirectory; no ADR required beyond this one; fewer files.
+- **Cons:** Conflates two distinct concerns — passive store implementation (read/query) and
+  active subscriber lifecycle (NATS connection, JetStream consumer, message ACK loop). A
+  subscriber has its own startup/shutdown contract incompatible with the passive store shape.
+  Breaks the single-responsibility invariant that `stores/` holds store implementations only.
+
+### Option 2 — `infrastructure/turn_writer/` as a new sublayer, deployed as Quadlet sibling (chosen)
+
+New `turn_writer/` sublayer owns the subscriber-writer lifecycle. `TurnStore` in `stores/`
+remains a passive SQLite implementation. The writer subscribes to `lyra.turns.write` on
+JetStream durable consumer `turn-writer-v1` (stream `LYRA_TURNS`) and calls `TurnStore` for
+persistence. Deployed as a separate Quadlet unit `lyra-turn-writer.container`.
+
+- **Pros:** Clean axial boundary per ADR-073 (one stage = one process). Independent restart
+  without restarting hub or adapters. NATS JetStream persistence buffers writes during
+  crash/restart. Future writers (e.g., L2SummaryWriter) follow the same pattern without
+  touching `stores/`.
+- **Cons:** New Quadlet unit requires: new container definition, new secret provisioning, update
+  to `deploy/install.sh`, hub mount change (`turns.db` rw → ro for hub; rw for writer only).
+
+### Option 3 — subscriber embedded in hub process
+
+Add the TurnWriter subscription to the hub startup sequence as an in-process background task.
+
+- **Pros:** No new container; simpler deployment.
+- **Cons:** Violates ADR-073 stage boundary (stage = process). Hub restart kills in-flight
+  write ACK loops. Hub crash loses buffered turn writes even though NATS JetStream has them.
+  Couples persistence lifecycle to hub business logic lifecycle.
+
+## Decision
+
+**Authorise `src/lyra/infrastructure/turn_writer/` as a new sublayer of `infrastructure/`.**
+
+Implementation shape:
+
+- Single cross-platform `TurnWriter` class — one subscriber consuming all platform writes via
+  subject `lyra.turns.write`, JetStream durable consumer `turn-writer-v1` on stream
+  `LYRA_TURNS`.
+- `TurnWriter` depends on `TurnStore` (from `infrastructure/stores/`) for SQLite persistence.
+  It is not a store itself; it is a lifecycle component that owns the subscriber loop.
+- Deployed as Quadlet sibling `lyra-turn-writer.container` on `lyra-hub` (M₁).
+
+**Panel vote (2026-05-25):** axial-adr-review voted Option 2 — stage boundary = process
+boundary per ADR-073; architect and devops voted Option 3 (simpler deployment). The
+axial-adr-review crystallisation argument prevailed: ADR-073 makes process-per-stage an
+architectural commitment, not a preference. Embedding in the hub would require a documented
+deviation from ADR-073, which the panel declined to accept.
+
+## Consequences
+
+### Positive
+
+- Clean axial boundary: TurnWriter is one stage, one process. Restart policy is independent of
+  hub and adapters. No stage concern leaks into hub startup.
+- NATS JetStream provides a persistence buffer: if `lyra-turn-writer` crashes and restarts, it
+  resumes from the durable consumer offset — zero turn writes lost.
+- Pattern scales additively: each future writer (L2SummaryWriter, etc.) gets its own container
+  and its own durable consumer on `LYRA_TURNS`. The hub and adapters are unaffected. Growth
+  function: N adapters + M writers (not N×M).
+- Resolves the ADR-068 deviation: TurnStore direct-write by adapters is replaced by a
+  NATS-mediated Pattern α implementation.
+
+### Negative
+
+- New Quadlet unit `lyra-turn-writer.container` requires:
+  - New container definition in `deploy/quadlet/`.
+  - New secret provisioning (NATS credentials for the writer identity).
+  - Update to `deploy/install.sh` to provision the writer unit.
+  - Hub `turns.db` mount changed from read-write to read-only; writer unit holds the rw mount.
+- Adapters lose direct `TurnStore` write access — they publish to `lyra.turns.write` and treat
+  acknowledgement as write confirmation. This is an intentional contract change.
+
+### Forward-compatible constraint
+
+If a future `L2SummaryWriter` (or any second writer) is added, it **MUST**:
+
+1. Share the `LYRA_TURNS` JetStream stream.
+2. Use a **distinct durable consumer** (e.g., `summary-writer-v1`) — not a parallel stream.
+3. Be deployed as a separate Quadlet unit with its own NATS identity.
+
+This preserves the ADR-073 stage boundary (one process per concern) and avoids a parallel-stream
+proliferation that would fragment the turn audit log.
+
+## References
+
+- ADR-068 — Ecosystem Service Plane (Pattern α; cited deviation for TurnStore)
+- ADR-073 — Axis of Decomposition: Stage of Pipeline (stage = process boundary argument)
+- Spec: `artifacts/specs/1331-turnstore-alpha-refactor-spec.mdx`
+- Plan: `artifacts/plans/1331-turnstore-alpha-refactor-plan.mdx`
+- Infrastructure governance: `src/lyra/infrastructure/CLAUDE.md`

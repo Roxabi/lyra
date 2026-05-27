@@ -17,6 +17,7 @@ from lyra.core.messaging.message import (
     RoutingContext,
 )
 from lyra.core.messaging.scope import user_scoped
+from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -107,10 +108,19 @@ def normalize_audio(
         routing=routing,
         modality="voice",
         audio=AudioPayload(
-            audio_bytes=audio_bytes,
+            blob_ref=BlobRef(
+                store_key=PENDING_STORE_KEY,
+                content_hash="",
+                mime=mime_type,
+                size=len(audio_bytes),
+                source="discord",
+                platform_ref=None,  # Discord: attachment URL fetched server-side (V2)
+                platform_message_id=str(raw.id),
+            ),
             mime_type=mime_type,
             duration_ms=None,
             file_id=None,
+            waveform_b64=None,
         ),
     )
 

@@ -1,8 +1,9 @@
 """Store lifecycle helpers for multibot bootstrap.
 
-#417 — auth.db split: AgentStore, CredentialStore, PrefsStore now connect to
-config.db.  ThreadStore connects to discord.db (owned by the Discord adapter
-after S4 lands).  AuthStore remains on auth.db (grants only).
+#417 — auth.db split: AgentStore, PrefsStore now connect to config.db.
+ThreadStore connects to discord.db (owned by the Discord adapter after S4 lands).
+AuthStore remains on auth.db (grants only).
+Bot tokens are read from /run/secrets (Podman secrets) per #1057.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from typing import AsyncIterator
 
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
-from lyra.infrastructure.stores.credential_store import CredentialStore, LyraKeyring
+from lyra.infrastructure.stores.bot_store import BotStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.message_index import MessageIndex
 from lyra.infrastructure.stores.prefs_store import PrefsStore
@@ -225,11 +226,12 @@ class StoreBundle:
     """All persistent stores needed by the multibot bootstrap.
 
     ThreadStore is NOT included — owned by the Discord adapter (#417 / S4).
+    Bot tokens read from /run/secrets (Podman secrets) per #1057 — no credential store.
     """
 
     auth: AuthStore
-    cred: CredentialStore
     agent: AgentStore
+    bot: BotStore | None
     turn: TurnStore
     prefs: PrefsStore
     message_index: MessageIndex
@@ -249,8 +251,8 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
     _ensure_discord_db(vault_dir)
 
     auth_store: AuthStore | None = None
-    cred_store: CredentialStore | None = None
     agent_store: AgentStore | None = None
+    bot_store: BotStore | None = None
     turn_store: TurnStore | None = None
     prefs_store: PrefsStore | None = None
     message_index_store: MessageIndex | None = None
@@ -262,15 +264,11 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
         identity_alias_store = IdentityAliasStore(db_path=vault_dir / "auth.db")
         await identity_alias_store.connect()
 
-        keyring = LyraKeyring.load_or_create(vault_dir / "keyring.key")
-        cred_store = CredentialStore(
-            db_path=vault_dir / "config.db",
-            keyring=keyring,
-        )
-        await cred_store.connect()
-
         agent_store = AgentStore(db_path=vault_dir / "config.db")
         await agent_store.connect()
+
+        bot_store = BotStore(db_path=vault_dir / "config.db")
+        await bot_store.connect()
 
         turn_store = TurnStore(db_path=vault_dir / "turns.db")
         await turn_store.connect()
@@ -285,8 +283,8 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
 
         yield StoreBundle(
             auth=auth_store,
-            cred=cred_store,
             agent=agent_store,
+            bot=bot_store,
             turn=turn_store,
             prefs=prefs_store,
             message_index=message_index_store,
@@ -294,9 +292,9 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
         )
     finally:
         all_stores = (
-            cred_store,
             auth_store,
             agent_store,
+            bot_store,
             turn_store,
             prefs_store,
             message_index_store,

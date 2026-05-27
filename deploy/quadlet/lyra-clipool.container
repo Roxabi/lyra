@@ -23,8 +23,8 @@ DropCapability=all
 # UserNS moved to lyra-gh.pod [Pod] section — do not re-declare here.
 # Network= moved to lyra-gh.pod — pod owns the network namespace.
 Environment=NATS_URL=nats://lyra-nats:4222
-Secret=lyra-nkey-clipool-worker,type=mount,target=clipool-worker.seed,mode=0400,uid=1500,gid=1500
-Environment=NATS_NKEY_SEED_PATH=/run/secrets/clipool-worker.seed
+Secret=lyra-nats-clipool,type=mount,target=lyra-nats-clipool.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-clipool.seed
 # Claude Code auth — 1-year setup-token bypasses the broken OAuth refresh
 # path in non-TTY subprocess contexts (anthropics/claude-code#50743).
 # Bootstrap: `claude setup-token | podman secret create lyra-claude-oauth -`
@@ -73,10 +73,12 @@ Environment=GIT_CONFIG_GLOBAL=/etc/lyra/git.config.tmpl
 # (token cache 0600/uid 1501; env scoped via `lyra-gh` exec). Revisit if a
 # future threat model surfaces /proc/<helper-pid>/environ as a leak vector.
 Exec=lyra adapter clipool
+HealthCmd=grep -q clipool /proc/1/cmdline
+HealthInterval=30s
 
 [Service]
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 TimeoutStopSec=120
 CPUQuota=400%
 ExecStartPre=/bin/bash -c 'test -e %h/.claude.json || echo "{}" > %h/.claude.json'

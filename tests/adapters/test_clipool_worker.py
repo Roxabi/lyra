@@ -247,7 +247,7 @@ async def test_handle_cmd_streaming_forwards_tool_use_as_keepalive() -> None:
     """ToolUseLlmEvent is forwarded as event_type='tool_use' chunk (done=False).
 
     Tool execution can take minutes without producing TextLlmEvents; without
-    this forward, the hub-side `_stream_gen` per-chunk timer would kill the
+    this forward, the hub-side `_dict_stream_gen` per-chunk timer would kill the
     healthy session. The chunk acts as a keepalive — the hub ignores its
     payload but the arrival resets the timer.
     """
@@ -670,6 +670,188 @@ async def test_classify_exception_parse_does_not_leak_byte_sequence() -> None:
         f"sensitive token leaked into WorkerError.message: {we.message!r}"
     )
     assert "UnicodeDecodeError" in we.message
+
+
+# ---------------------------------------------------------------------------
+# Finding #9 — worker forwards agent identity fields to pool
+#
+# Verifies that _handle_cmd_streaming and _handle_cmd_blocking actually pass
+# cmd.agent_name, cmd.agent_email, and cmd.lyra_session_id through to the pool.
+# Without this test, dropping any of those fields leaves all existing tests
+# green (they do not inspect the kwargs forwarded to pool.send_streaming/send).
+# ---------------------------------------------------------------------------
+
+
+async def test_identity_streaming_full_fields_forwarded_to_pool() -> None:
+    """Streaming + full identity: send_streaming receives agent_name/email/session.
+
+    Guards finding #9: if _handle_cmd_streaming stops forwarding any of the
+    three identity kwargs, this test fails even though all other tests pass.
+    """
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    # Arrange
+    pool = _make_pool()
+    result_event = ResultLlmEvent(is_error=False, duration_ms=0)
+    pool.send_streaming.return_value = _make_event_iter([result_event])
+
+    worker = CliPoolNatsWorker(pool)
+    worker._nc = AsyncMock()
+
+    msg = _make_nats_msg(reply="_INBOX.id1")
+    payload = _cmd_payload(
+        stream=True,
+        agent_name="agent-X",
+        agent_email="x@y",
+        lyra_session_id="S-1",
+    )
+
+    # Act
+    await worker._handle_cmd(msg, payload)
+
+    # Assert — all three identity kwargs forwarded to pool.send_streaming
+    pool.send_streaming.assert_called_once()
+    call_kwargs = pool.send_streaming.call_args.kwargs
+    assert call_kwargs.get("agent_name") == "agent-X"
+    assert call_kwargs.get("agent_email") == "x@y"
+    assert call_kwargs.get("lyra_session_id") == "S-1"
+
+
+async def test_identity_streaming_partial_identity_forwarded_to_pool() -> None:
+    """Streaming + partial identity (agent_email=None): pool receives None for email.
+
+    Guards the edge case where agent_email is absent (anonymous or trailers-only
+    identity). The worker must forward the None explicitly rather than omitting
+    the kwarg.
+    """
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    # Arrange
+    pool = _make_pool()
+    result_event = ResultLlmEvent(is_error=False, duration_ms=0)
+    pool.send_streaming.return_value = _make_event_iter([result_event])
+
+    worker = CliPoolNatsWorker(pool)
+    worker._nc = AsyncMock()
+
+    msg = _make_nats_msg(reply="_INBOX.id2")
+    payload = _cmd_payload(
+        stream=True,
+        agent_name="agent-X",
+        agent_email=None,
+        lyra_session_id="S-1",
+    )
+
+    # Act
+    await worker._handle_cmd(msg, payload)
+
+    # Assert — agent_email=None propagated (not silently dropped)
+    pool.send_streaming.assert_called_once()
+    call_kwargs = pool.send_streaming.call_args.kwargs
+    assert call_kwargs.get("agent_name") == "agent-X"
+    assert "agent_email" in call_kwargs, (
+        "agent_email kwarg absent from pool.send_streaming call"
+    )
+    assert call_kwargs["agent_email"] is None
+    assert call_kwargs.get("lyra_session_id") == "S-1"
+
+
+async def test_identity_blocking_full_fields_forwarded_to_pool() -> None:
+    """Blocking + full identity: pool.send receives agent_name/email/session.
+
+    Guards finding #9 for the non-streaming path. stream=False dispatches
+    through _handle_cmd_blocking which has its own pool.send call site.
+    """
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    # Arrange
+    pool = _make_pool()
+    pool.send.return_value = CliResult(result="ok", session_id="sid-b", error="")
+
+    worker = CliPoolNatsWorker(pool)
+    worker._nc = AsyncMock()
+
+    msg = _make_nats_msg(reply="_INBOX.id3")
+    payload = _cmd_payload(
+        stream=False,
+        agent_name="agent-X",
+        agent_email="x@y",
+        lyra_session_id="S-1",
+    )
+
+    # Act
+    await worker._handle_cmd(msg, payload)
+
+    # Assert — all three identity kwargs forwarded to pool.send
+    pool.send.assert_called_once()
+    call_kwargs = pool.send.call_args.kwargs
+    assert call_kwargs.get("agent_name") == "agent-X"
+    assert call_kwargs.get("agent_email") == "x@y"
+    assert call_kwargs.get("lyra_session_id") == "S-1"
+
+
+# ---------------------------------------------------------------------------
+# Finding #10 — forward-compat with legacy envelope (no agent_name/agent_email)
+#
+# A hub running on an older contract version publishes payloads without the new
+# identity fields. ContractEnvelope.extra='ignore' drops unknown fields and
+# CliCmdPayload defaults those fields to None. This test verifies the *worker*
+# correctly uses those defaults rather than KeyError-ing or passing unexpected
+# values to the pool.
+# ---------------------------------------------------------------------------
+
+
+async def test_legacy_envelope_passes_none_identity_to_pool() -> None:
+    """Legacy envelope (no agent_name/agent_email) → pool.send_streaming gets None/None.
+
+    Guards finding #10: the legacy dict is constructed field-by-field (not via
+    model_dump(exclude=...)) so the test accurately simulates a payload that
+    never carried these fields at the serialization boundary.
+
+    The critical mechanism under test: ContractEnvelope.extra='ignore' + field
+    defaults let CliCmdPayload.model_validate succeed and produce None for both
+    agent_name and agent_email; the worker then forwards those Nones to the pool.
+    """
+    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    # Arrange — legacy-shape payload constructed from scratch (no new fields present)
+    legacy_payload: dict = {
+        "contract_version": "1",
+        "trace_id": "trace-legacy",
+        "issued_at": datetime.now(timezone.utc).isoformat(),
+        "pool_id": "pool-legacy",
+        "lyra_session_id": "S-legacy",
+        "text": "what time is it",
+        "model_cfg": {},
+        "system_prompt": "",
+        "stream": True,
+        # agent_name and agent_email intentionally absent — old hub schema
+    }
+
+    pool = _make_pool()
+    result_event = ResultLlmEvent(is_error=False, duration_ms=0)
+    pool.send_streaming.return_value = _make_event_iter([result_event])
+
+    worker = CliPoolNatsWorker(pool)
+    worker._nc = AsyncMock()
+
+    msg = _make_nats_msg(reply="_INBOX.legacy")
+
+    # Act
+    await worker._handle_cmd(msg, legacy_payload)
+
+    # Assert — pool.send_streaming called with both identity fields as None
+    pool.send_streaming.assert_called_once()
+    call_kwargs = pool.send_streaming.call_args.kwargs
+    assert "agent_name" in call_kwargs, (
+        "agent_name kwarg absent; worker must forward the field even when None"
+    )
+    assert "agent_email" in call_kwargs, (
+        "agent_email kwarg absent; worker must forward the field even when None"
+    )
+    assert call_kwargs["agent_name"] is None
+    assert call_kwargs["agent_email"] is None
+    assert call_kwargs.get("lyra_session_id") == "S-legacy"
 
 
 async def test_handle_cmd_validation_error_does_not_leak_payload_fields() -> None:

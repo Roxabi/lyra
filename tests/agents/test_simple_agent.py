@@ -199,7 +199,7 @@ class TestSimpleAgentStreaming:
         # Arrange — provider has a stream() method
         provider = MagicMock()
         fake_iterator = _fake_async_gen("Hello", " world")
-        provider.stream = AsyncMock(return_value=fake_iterator)
+        provider.stream = MagicMock(return_value=fake_iterator)
         provider.is_alive = MagicMock(return_value=True)
         agent = make_streaming_agent(provider, streaming=True)
         msg = make_inbound_message("hello")
@@ -236,7 +236,7 @@ class TestSimpleAgentStreaming:
         # Arrange
         provider = MagicMock()
         fake_iterator = _fake_async_gen("token")
-        provider.stream = AsyncMock(return_value=fake_iterator)
+        provider.stream = MagicMock(return_value=fake_iterator)
         provider.is_alive = MagicMock(return_value=True)
         agent = make_streaming_agent(provider, streaming=True)
         msg = make_inbound_message("my question")
@@ -247,7 +247,7 @@ class TestSimpleAgentStreaming:
 
         # Assert — stream() called with the right pool_id, text, model_cfg,
         # system_prompt
-        provider.stream.assert_awaited_once()
+        provider.stream.assert_called_once()
         args = provider.stream.call_args[0]
         assert args[0] == "tg:main:user1"
         assert args[1] == "<user_message>my question</user_message>"
@@ -277,7 +277,7 @@ class TestSimpleAgentStreaming:
         # Arrange — pool has a custom system prompt override
         provider = MagicMock()
         fake_iterator = _fake_async_gen()
-        provider.stream = AsyncMock(return_value=fake_iterator)
+        provider.stream = MagicMock(return_value=fake_iterator)
         provider.is_alive = MagicMock(return_value=True)
         agent = make_streaming_agent(provider, streaming=True)
         msg = make_inbound_message("hello")
@@ -297,7 +297,7 @@ class TestSimpleAgentStreaming:
         # Arrange — no pool system prompt → agent config system_prompt used
         provider = MagicMock()
         fake_iterator = _fake_async_gen()
-        provider.stream = AsyncMock(return_value=fake_iterator)
+        provider.stream = MagicMock(return_value=fake_iterator)
         provider.is_alive = MagicMock(return_value=True)
         agent = make_streaming_agent(provider, streaming=True)
         msg = make_inbound_message("hello")
@@ -555,8 +555,8 @@ class TestSimpleAgentCliLifecycle:
 
 
 def make_agent_with_nats_driver(provider: object, nats_driver: object) -> SimpleAgent:
-    """Return a SimpleAgent wired with a CliNatsDriver (4-process NATS mode)."""
-    from lyra.llm.drivers.cli_nats import CliNatsDriver
+    """Return a SimpleAgent wired with a LlmClient (4-process NATS mode)."""
+    from lyra.llm.llm_client import LlmClient
 
     config = Agent(
         name="lyra",
@@ -567,7 +567,7 @@ def make_agent_with_nats_driver(provider: object, nats_driver: object) -> Simple
     return SimpleAgent(
         config,
         cast("LlmProvider", provider),
-        cli_nats_driver=cast(CliNatsDriver, nats_driver),
+        cli_nats_driver=cast(LlmClient, nats_driver),
     )
 
 
@@ -586,7 +586,7 @@ class TestSimpleAgentNatsLifecycle:
     """
 
     # ------------------------------------------------------------------
-    # T8n — regression: /clear routes reset through CliNatsDriver
+    # T8n — regression: /clear routes reset through LlmClient
     # ------------------------------------------------------------------
 
     async def test_t8n_reset_routes_through_nats_driver(self) -> None:
@@ -613,7 +613,7 @@ class TestSimpleAgentNatsLifecycle:
         nats_driver.reset.assert_called_once_with(pool.pool_id)
 
     # ------------------------------------------------------------------
-    # T9an — workspace switch routes through CliNatsDriver
+    # T9an — workspace switch routes through LlmClient
     # ------------------------------------------------------------------
 
     async def test_t9an_switch_cwd_routes_through_nats_driver(self) -> None:
@@ -635,7 +635,7 @@ class TestSimpleAgentNatsLifecycle:
         nats_driver.switch_cwd.assert_called_once_with(pool.pool_id, Path("/new/cwd"))
 
     # ------------------------------------------------------------------
-    # T9bn — resume routes through CliNatsDriver (sanity / existing behaviour)
+    # T9bn — resume routes through LlmClient (sanity / existing behaviour)
     # ------------------------------------------------------------------
 
     async def test_t9bn_resume_routes_through_nats_driver(self) -> None:

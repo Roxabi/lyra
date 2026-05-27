@@ -200,7 +200,7 @@ systemctl --user start voicecli-tts.service voicecli-stt.service
 
 Do not regen nkeys unless rotation is needed — the same seeds work with a path change and an auth.conf update.
 
-**Container UID and seed ownership:** ADR-054 Decision 2 uses `UserNS=keep-id`, mapping container processes to host UID 1000. Seed files owned by `mickael` (UID 1000) are readable without `chown`. New projects should adopt `UserNS=keep-id` by default unless they have a specific reason for a different UID model (document it in their own ADR).
+**Container UID and seed ownership:** ADR-054 Decision 2 uses `UserNS=keep-id:uid=1500,gid=1500` (container-internal UID 1500 = lyra per S10), mapping container processes to host UID 1000 (`mickael`). Seed files owned by `mickael` (UID 1000) are readable without `chown`. New projects should adopt `UserNS=keep-id` by default with their assigned UID block (S10: lyra=1500, voicecli=1501, llmcli=1502, imagecli=1503) unless they have a specific reason for a different UID model (document it in their own ADR).
 
 **Podman secret adoption (matching ADR-054):** voiceCLI follows Lyra's precedent — nkey seeds are delivered as Podman secrets, not bind-mounts. Naming convention: `<project>-nats-<identity>`. Bootstrap (run once during initial Quadlet install, **after** the path migration above completes):
 

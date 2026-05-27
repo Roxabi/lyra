@@ -29,6 +29,7 @@ from lyra.core.messaging.render_events import (
     ToolCallStartRenderEvent,
 )
 from lyra.nats.nats_channel_proxy import NatsChannelProxy
+from tests.helpers.messages import make_test_blobref
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -394,7 +395,9 @@ async def test_render_audio_publishes_to_nats() -> None:
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-audio")
-    audio = OutboundAudio(audio_bytes=b"\x00\x01", mime_type="audio/ogg")
+    audio = OutboundAudio(
+        blob_ref=make_test_blobref(b"\x00\x01"), mime_type="audio/ogg"
+    )
 
     await proxy.render_audio(audio, inbound)
 
@@ -648,7 +651,9 @@ async def test_send_streaming_exception_publishes_stream_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_streaming_stream_error_publish_failure_clears_active_streams() -> None:  # noqa: E501
+async def test_send_streaming_stream_error_publish_failure_clears_active_streams() -> (
+    None
+):  # noqa: E501
     """When stream_error publish itself fails, _active_streams is still cleared.
 
     Adapters depending on stream_end/stream_error WILL hang in this scenario —

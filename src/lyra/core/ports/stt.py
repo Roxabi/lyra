@@ -7,7 +7,7 @@ Adapter-adjacent helpers (noise detection, MIME mapping) live in lyra.nats.stt_h
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 
@@ -21,6 +21,7 @@ class TranscriptionResult:
     text: str
     language: str
     duration_seconds: float
+    error: str = field(default="")  # non-empty on codec decode failure
 
 
 class STTUnavailableError(Exception):
@@ -32,6 +33,9 @@ class STTNoiseError(Exception):
 
     The STT adapter is the owner of noise detection — middleware and agents catch
     this to dispatch the stt_noise template without re-implementing the logic.
+
+    Any positional arg is treated as an opaque human-readable message for logs
+    only; callers must not parse it or rely on a `.text` attribute.
     """
 
 

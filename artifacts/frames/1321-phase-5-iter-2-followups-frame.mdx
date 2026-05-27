@@ -1,0 +1,59 @@
+---
+title: "tech-debt(streaming): #1282 Phase 5 — 14 iter-2 review follow-ups"
+issue: 1321
+status: approved
+tier: F-lite
+date: 2026-05-22
+---
+
+## Problem
+
+PR #1317 (Phase 5 streaming primitives, closes #1282) merged with `Approve with comments` after `/code-review` iter 2 surfaced 14 sub-blocking advisory findings. The PR shipped as-is via merge-commit `08824dee`. The findings remain unaddressed in the tree.
+
+The 14 items cluster into 6 groups:
+1. **Test gaps** (#1, #4, #5, #11, #13) — `SanitizedError.from_message` branches uncovered; the F7 shallow-copy isolation contract not falsifiable in any test; `_close_open_blocks` truncation symmetry missing; one test imports `SanitizedError` from a private path; one test asserts on the wrong slot.
+2. **Stale-doc** (#2, #12, #14) — `tools/file_exemptions.txt` references closed issue `#1102`; `cli_streaming_parser` docstring claims methods that do not exist; `_handle_result` name collision between CSP and StreamProcessor undocumented.
+3. **API hygiene** (#3, #7) — `_synth_orphan_tool_ends` bypasses `StateMachine.close()` and `_handle_content_block_delta` reads `open_blocks[idx]` directly instead of through an accessor.
+4. **Symmetry decision** (#9) — `_close_open_blocks` does not synthesize orphan `ToolCallEnd` on truncation/exception paths. Pre-existing behavior, preserved by Phase 5 — decide whether to close the gap or document the asymmetry.
+5. **Protocol variance** (#8) — `Parser` Protocol declares variance annotations on TypeVars but `@runtime_checkable` does not enforce them.
+6. **Scope / dead surface** (#6, #10) — `SanitizedError.from_message` is an additive change to a Phase 1 file (transport public API expansion without a Phase 5 spec hook); the local `EventEmitter` in `StreamProcessor.process()` exposes unused `flush()`/`emit_ok()` surface.
+
+Two findings reported as "blocking" by the backend-dev agent during iter 2 were verified false / pre-existing and are explicitly **out of scope**: the `mark_seen` inversion claim (agent misread return semantics) and the `_close_open_blocks` missing tool synthesis claim (overlaps with the symmetry decision #9 — treated as a design call, not a bug).
+
+## Who
+
+- **Primary:** developers maintaining `src/lyra/streaming/`, `src/lyra/transport/`, `src/lyra/core/processors/`, `src/lyra/core/cli/` — the surface they touch daily.
+- **Secondary:** future contributors who will add CLI/transport drivers and rely on the `StateMachine` API and `Parser` Protocol contracts being honest.
+
+## Constraints
+
+- No functional regression on the streaming path (CLI, transport, terminal envelope routing).
+- File-length gate (`max_lines: 300` on `src/**/*.py`) must stay green; exemptions already exist for `stream_processor.py` and `cli_streaming_parser.py` — if either grows, raise the exemption or refactor, do not silently let the gate stay broken.
+- `import-linter` layering must continue to pass; do not introduce new edges across `transport → streaming → core` boundaries.
+- The 4 design items (#6, #8, #9, #10) must be **explicitly resolved** — `apply` or `accept-as-is` — and the decision recorded (spec note or ADR). No "decay into folklore".
+
+## Out of Scope
+
+- The 2 verified-false findings from iter 2 (`mark_seen` inversion, `_close_open_blocks` pre-existing behavior — except where #9 chooses to close the gap).
+- F8 transport→nats layering — tracked separately in #1319.
+- Any refactor of `StreamProcessor.process()` beyond extracting a narrower `TerminalTranslator` helper if #10 lands as `apply`.
+- New streaming features. This is cleanup of an already-merged slice.
+
+## Premise Validity
+
+**Success in 6 months:** All 14 findings landed — 10 applied, 4 design items (#6/#8/#9/#10) explicitly resolved with the decision recorded in the spec or an ADR. `tools/file_exemptions.txt` no longer references closed `#1102`. `StateMachine` direct-dict access removed from the two cited callsites and replaced by sanctioned verbs (`close(key)`, `get(key)`). All new tests pass under `uv run pytest`.
+
+**Failure in 6 months:** ≥1 of the 14 findings still observable in `git log` of the cited paths OR the same drift recurs — e.g. another stale `#NNNN` reference appears in `tools/file_exemptions.txt`, or another direct `_sm_tool.open_blocks` access lands without an accessor. This is falsifiable by running `grep -n "#1102" tools/file_exemptions.txt` and `grep -rn "open_blocks\[" src/lyra/`.
+
+**Simplest alternative:** Cherry-pick only the high-confidence test additions (#1, #4, #5) and skip the design decisions, API hygiene, and stale-doc cleanup.
+**Why not simplest:** the 4 design items (#6/#8/#9/#10) decay into folklore if not recorded now — six months later no one will remember whether the asymmetry in `_close_open_blocks` was deliberate or an oversight, and the `Parser` Protocol's aspirational variance will mislead the next driver author. #3/#7 keep accreting direct-dict callsites if the `StateMachine` API is not tightened in one pass — the cost of fixing it later grows with each new caller.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single subsystem cluster (streaming + adjacent transport/processors), 4–10 files touched, no new architecture. Design decisions exist but the iter-2 review already supplies the analysis — no separate `/analyze` needed.
+
+Signals observed:
+- Cited paths: 6 source files + 2 test files (within F-lite envelope).
+- No new architecture; cleanup of an existing slice.
+- 4 explicit design calls — requires spec-level capture but not deep technical exploration.
+- No new dependencies, no new subsystems.

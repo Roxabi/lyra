@@ -22,6 +22,7 @@ import tomllib
 
 import typer
 
+from lyra.blobstore.cli import blobstore_app
 from lyra.cli_agent import (
     agent_app,  # noqa: F401 — DEBT:re-export-init — re-exported for tests
 )
@@ -61,6 +62,7 @@ lyra_app.add_typer(bot_app, name="bot")
 lyra_app.add_typer(setup_app, name="setup")
 lyra_app.add_typer(voice_smoke_app, name="voice-smoke")
 lyra_app.add_typer(ops_app, name="ops")
+lyra_app.add_typer(blobstore_app, name="blobstore")
 
 hub_app = typer.Typer(name="hub", help="Run standalone Hub process (requires NATS).")
 lyra_app.add_typer(hub_app, name="hub")
@@ -136,6 +138,16 @@ def _run_adapter(platform: str) -> None:
     )
 
     _boot(lambda raw: _bootstrap_adapter_standalone(raw, platform))
+
+
+@lyra_app.command("turn-writer")
+def _turn_writer() -> None:
+    """Run standalone TurnWriter process (subscribes to lyra.turns.write)."""
+    from lyra.bootstrap.standalone.turn_writer_standalone import (
+        _bootstrap_turn_writer_standalone,
+    )
+
+    _boot(_bootstrap_turn_writer_standalone)
 
 
 # ---------------------------------------------------------------------------

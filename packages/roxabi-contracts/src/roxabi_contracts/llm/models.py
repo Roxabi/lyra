@@ -10,9 +10,9 @@ Three envelope models:
 
 from __future__ import annotations
 
-from typing import Annotated, Self
+from typing import Annotated, Literal, Optional, Self
 
-from pydantic import StringConstraints, model_validator
+from pydantic import Field, StringConstraints, model_validator
 
 from roxabi_contracts.envelope import ContractEnvelope
 from roxabi_contracts.errors import WorkerError
@@ -65,3 +65,29 @@ class LlmResponse(ContractEnvelope):
         if self.ok and self.text is None:
             raise ValueError("LlmResponse with ok=True must carry text")
         return self
+
+
+class LifecycleRequest(ContractEnvelope):
+    """Lifecycle control request. Canonical subjects: ``lyra.llm.lifecycle.*``."""
+
+    request_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,128}$")]
+    host: Optional[str] = Field(None, pattern=r"^[A-Za-z0-9._-]{0,253}$")
+    op: Literal["swap", "stop", "status", "list", "reload-catalog"]
+    model_name: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _swap_requires_model(self) -> Self:
+        if self.op == "swap" and not self.model_name:
+            raise ValueError("op='swap' requires model_name")
+        return self
+
+
+class LifecycleResponse(ContractEnvelope):
+    """Lifecycle control response. Published to the operator reply inbox."""
+
+    request_id: str
+    ok: bool
+    host: Optional[str] = None
+    error: Optional[str] = None
+    worker_error: Optional[WorkerError] = None
+    data: Optional[dict] = None

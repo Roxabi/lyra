@@ -10,6 +10,7 @@ resolution-markers = [
 [manifest]
 members = [
     "lyra",
+    "roxabi-blobs",
     "roxabi-contracts",
     "roxabi-nats",
 ]
@@ -639,7 +640,7 @@ wheels = [
 
 [[package]]
 name = "lyra"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiogram" },
@@ -650,6 +651,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "roxabi-blobs" },
     { name = "roxabi-nats" },
     { name = "roxabi-vault" },
     { name = "tabulate" },
@@ -673,6 +675,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
+    { name = "roxabi-blobs", extra = ["testing"] },
     { name = "roxabi-contracts", extra = ["testing"] },
     { name = "roxabi-nats", extra = ["testing"] },
     { name = "ruff" },
@@ -688,6 +691,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "roxabi-blobs", editable = "packages/roxabi-blobs" },
     { name = "roxabi-nats", editable = "packages/roxabi-nats" },
     { name = "roxabi-vault", git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging" },
     { name = "tabulate", specifier = ">=0.9" },
@@ -711,6 +715,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "roxabi-blobs", extras = ["testing"], editable = "packages/roxabi-blobs" },
     { name = "roxabi-contracts", extras = ["testing"], editable = "packages/roxabi-contracts" },
     { name = "roxabi-nats", extras = ["testing"], editable = "packages/roxabi-nats" },
     { name = "ruff", specifier = ">=0.15.12" },
@@ -1298,6 +1303,32 @@ wheels = [
 ]
 
 [[package]]
+name = "roxabi-blobs"
+version = "0.1.1"
+source = { editable = "packages/roxabi-blobs" }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+testing = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.20" },
+    { name = "pydantic", specifier = ">=2.13" },
+    { name = "pytest", marker = "extra == 'testing'", specifier = ">=8.4" },
+    { name = "pytest-asyncio", marker = "extra == 'testing'", specifier = ">=1.1" },
+    { name = "pytest-cov", marker = "extra == 'testing'", specifier = ">=6.0" },
+]
+provides-extras = ["testing"]
+
+[[package]]
 name = "roxabi-contracts"
 version = "0.4.0"
 source = { editable = "packages/roxabi-contracts" }
@@ -1331,7 +1362,7 @@ test = [
 
 [[package]]
 name = "roxabi-nats"
-version = "0.3.0"
+version = "0.4.1"
 source = { editable = "packages/roxabi-nats" }
 dependencies = [
     { name = "nats-py" },

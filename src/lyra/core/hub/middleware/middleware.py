@@ -77,6 +77,11 @@ Next = Callable[[InboundMessage, PipelineContext], Awaitable[PipelineResult]]
 class PipelineMiddleware(Protocol):
     """One stage of the inbound message pipeline.
 
+    Role interface (Fowler) co-located with the pipeline that uses it. This is
+    *not* a port in the hexagonal sense — it describes the collaboration
+    between pipeline stages (chain-of-responsibility), an internal pattern. It
+    must NOT migrate to ``core/ports/`` (driven ports only).
+
     Return a ``PipelineResult`` to short-circuit (DROP / COMMAND_HANDLED),
     or call ``await next(msg, ctx)`` to pass to the next middleware.
     """

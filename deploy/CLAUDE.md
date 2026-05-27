@@ -23,6 +23,7 @@ Cross-repo adoption checklist → `docs/ops/container-publishing.md § Cross-rep
 | `quadlet/lyra-clipool.container` | `lyra-clipool` | `lyra-clipool.service` |
 | `quadlet/lyra-nats.container` | `lyra-nats` | `lyra-nats.service` |
 | `quadlet/lyra-gh-helper.container` | `lyra-gh-helper` | `lyra-gh-helper.service` |
+| `quadlet/lyra-blobstore.container` | `lyra-blobstore` | `lyra-blobstore.service` |
 
 Pattern: `lyra-<component>.container` → `ContainerName=lyra-<component>`.
 Network: all units attach to `roxabi.network` (defined in `quadlet/roxabi.network`).
@@ -82,7 +83,49 @@ on rotation events.
 `NoNewPrivileges=true` | `ReadOnly=true` | `DropCapability=all`
 `UserNS=keep-id:uid=1500,gid=1500` for lyra units (UID 1500 = `lyra`)
 Secrets via `type=mount` (tmpfs) — ¬env vars, ¬volume wrappers for credentials.
+Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL/secret changes require container restart (not HUP) to refresh. See [`docs/ops/nats-authconf-update.md`](../docs/ops/nats-authconf-update.md).
 ¬inline `#` comments after `Volume=` values — Quadlet passes them to Podman as mount options.
+
+### Secret naming convention
+
+NATS-related secrets use hyphens (`lyra-nats-<role>`) — this predates the underscore
+convention and is preserved for NATS NKey compatibility. Non-NATS secrets (bearer tokens,
+API keys) use underscores (`lyra_<service>_<purpose>`, e.g. `lyra_blobstore_token`).
+Mixing styles is intentional and tracked; do not "normalize" without coordinating
+with the operator (Mickael).
+
+Bot per-platform secrets follow the hyphen convention:
+
+| Secret name | In-container target | Mode | Notes |
+|---|---|---|---|
+| `lyra-bot-<platform>-<bot_id>` | `bot_token-<bot_id>` | 0400 | Bot token; always emitted per bot |
+| `lyra-bot-<platform>-<bot_id>-webhook` | `bot_webhook-<bot_id>` | 0400 | Telegram webhook secret; only emitted when `[[auth.<platform>_bots]].webhook_enabled = true` |
+
+### Known residual risk — blobstore PublishPort Tailscale fallback (#1330)
+
+`lyra-blobstore.container` binds `PublishPort` to `${TAILSCALE_IPV4}:8449:8449` (resolved at
+provision time via `tailscale ip -4 | head -1`). If `TAILSCALE_IPV4` is unset or `tailscale0`
+is absent at container start, Podman falls back to `0.0.0.0:8449` (LAN-exposed). The bearer
+token (`lyra_blobstore_token`) is then the **sole** auth boundary. Accepted for V8; Phase 2
+(network policy / per-identity tokens) will address this systematically.
+
+The `ExecStartPre=` guard strips all whitespace before the `-n` test (POSIX `tr -d`) so
+empty, unset, **and whitespace-only** values are all rejected at the systemd layer (#1368).
+Prior to #1368, `[ -n "   " ]` was TRUE in POSIX sh — a whitespace-only value passed the
+guard and Podman's downstream parse error provided fail-closed behaviour by accident, not
+by design. The guard is now the authoritative rejection point.
+
+### Known residual risk — clipool `core.hooksPath` override (tracked #1245)
+
+The clipool unit sets `core.hooksPath = /opt/lyra-gh/hooks` via `GIT_CONFIG_GLOBAL`
+so the image-baked `prepare-commit-msg` hook fires on every commit. The workspace
+volume is mounted RW; a malicious subprocess (uid 1500) could write a per-repo
+`.git/config` containing its own `[core] hooksPath = …` that **overrides** the
+global setting at the per-repo layer. Within the single-tenant container threat
+model — the subprocess is already trusted to execute arbitrary code under
+`DropCapability=all` + `ReadOnly=true` — this is **accepted residual risk**.
+The follow-up (#1245) tracks switching to `GIT_CONFIG_SYSTEM` (or `GIT_CONFIG_COUNT`)
+so the hooksPath becomes process-immutable.
 
 ---
 

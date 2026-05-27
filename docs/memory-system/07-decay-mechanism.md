@@ -1,7 +1,7 @@
 # 07 - Mécanisme de Decay (Oubli Temporel)
 
 ## Objectif du Decay
-Le decay permet au système d'**oublier progressivement** les informations peu utilisées, exactement comme le cerveau humain (courbe d'Ebbinghaus).  
+Le decay permet au système d'**oublier progressivement** les informations peu utilisées, exactement comme le cerveau humain (courbe d'Ebbinghaus).
 
 Il s'applique à **deux niveaux distincts** :
 - Sur les **liens / relations** (`weight_temporal`)

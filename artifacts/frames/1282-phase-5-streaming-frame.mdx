@@ -1,0 +1,78 @@
+---
+title: "Phase 5 — Stream processors / parsers stage extraction"
+issue: 1282
+status: approved
+tier: F-lite
+date: 2026-05-22
+---
+
+## Problem
+
+The streaming layer is decomposed along a **per-source axis**: `src/lyra/core/processors/stream_processor.py` (549 lines) and `src/lyra/core/cli/cli_streaming_parser.py` (366 lines) — 915 LOC total — each implement their own state machine, event emission, and error-handling concerns. The CLI parser carries an explicit `# noqa: C901, PLR0912, PLR0915 — DEBT:complexity-residual — protocol event dispatch` on `parse_line` (cli_streaming_parser.py:127), confirming the residual-complexity hotspot. State-machine logic is duplicated between path-a and path-b inside the CLI parser, and again at the protocol boundary in `stream_processor.py`. Adding a new stream source (e.g. NATS-stream) requires re-implementing the same state-transition + event-emission scaffolding from scratch.
+
+The cascade signature is structural, not site-local: per-source decomposition forces protocol-translation, state-tracking, and exception-sanitization to be re-invented at each source. Phase 5 pivots streaming to **stage-axis** composition: extract a `parser` Protocol, a generic `state_machine`, and a generic `event_emitter` (consuming `SanitizedError` from Phase 1) into a net-new `src/lyra/streaming/` package. Per-source code becomes thin parser implementations (CLI today; NATS-stream and future sources tomorrow) composing the shared stages.
+
+Epic SSoT: `artifacts/analyses/1277-stage-axis-refactor-strategy.mdx` — Phase 5 is explicitly marked **independent** of Phases 2/3/4, with `SanitizedError` from Phase 1 as the only inbound dependency.
+
+## Who
+
+- **Primary:** Lyra hub stream processing (`StreamProcessor` consumed by `simple_agent.py`) + CLI streaming consumers (`cli_streaming.py` → `CliStreamingParser`). Any code that translates a stream of bytes/lines into typed events.
+- **Secondary:**
+  - Engineers maintaining stream-parser bugs (cascade rate ↓ when state-machine duplication is killed).
+  - Future stream sources (NATS-stream worker output, SSE-style sources, …) — integration cost should drop from re-implementing the state machine to writing a thin parser.
+  - Outbound adapters (`_shared_streaming_emitter.py`) — only **comment-level** references to `stream_processor.py` today (no imports); refactor is invisible to outbound.
+
+## Constraints
+
+- **Sequencing:** unblocked by Phase 1 (#1278, merged 2026-05-20). `SanitizedError` verified present in `src/lyra/transport/_result.py` (12 import sites tree-wide). `src/lyra/streaming/` package does **not** exist yet — net-new.
+- **Behavior preservation:** event-order semantics end-to-end (`stream_processor.py` RunErrorRenderEvent emission ordering relative to TextEnd — comments at `_shared_streaming_state.py:110`,`:152` document the existing ordering invariant; refactor must preserve it). CLI streaming UX must not regress (chunked text → typed `LlmEvent` stream consumed by `simple_agent.py`).
+- **Parallelism with #1279/#1281:** Phase 5 is explicitly parallel-safe per epic. File-level overlap with active P2/P4 work = `src/lyra/agents/simple_agent.py` only (P5 may update its `StreamProcessor` import path; P4 may touch its LLM-client wiring). Trivial merge resolution; no architectural blocker.
+- **Debt drain targets** (epic SSoT): `boundary-broad-catch` (streaming subset) and `complexity-residual` (the `parse_line` noqa hotspot specifically).
+- **Architecture invariant:** new streaming stages compose **on top of** the transport layer; they MUST consume `Result[T, SanitizedError]` at the bus boundary and MUST NOT introduce a second sanitization layer (per `src/lyra/transport/CLAUDE.md`).
+- **Single PR:** epic body specifies 1 PR for this phase, ~1.5 weeks effort.
+- **Folder-size cap:** `src/lyra/streaming/` must respect the 12-file/300-line gates (`tools/file_exemptions.txt` / `tools/folder_exemptions.txt` may need entries for any oversize files — prefer splitting over exemption).
+
+## Out of Scope
+
+- Outbound adapter refactor (Phase 2 — #1279, in progress).
+- Inbound adapter refactor (Phase 3 — #1280, independent).
+- LLM driver thinning (Phase 4 — #1281, in progress).
+- Bootstrap / DI simplification (Phase 6 — blocked-by P1-5).
+- New stream sources (NATS-stream parser implementation, SSE source, …) — out of epic scope; this refactor *enables* them but does not ship them.
+- Event-schema changes: `LlmEvent`, `RenderEvent`, and the messaging envelope in `src/lyra/core/messaging/events.py` are NOT redefined. Phase 5 restructures the *flow*, not the *vocabulary*.
+- Hub statelessness (#640), capability layer (#493), BlobStore (#1061) — orthogonal per epic.
+
+## Premise Validity
+
+**Success in 6 months:**
+- `src/lyra/streaming/` exists with `parser.py` (Protocol), `state_machine.py` (generic), `event_emitter.py` (generic, consumes `SanitizedError`).
+- CLI parser refactored to a thin implementation of the `parser` Protocol; `parse_line` complexity drops to **single-digit** McCabe (current: triggers C901+PLR0912+PLR0915 noqa).
+- `stream_processor.py` consumes the same `state_machine` abstraction — duplication between hub stream processing and CLI parsing eliminated.
+- 0 `f"...{exc}"` / `str(exc)` patterns in `src/lyra/streaming/` (greenfield enforcement; existing per-source files migrate cleanly).
+- Smoke test: existing CLI streaming round-trip (`cli_streaming.py` → `CliStreamingParser` → `simple_agent.py`) passes unchanged at the consumer interface; event ordering preserved.
+
+**Failure in 6 months (falsifiable):**
+After Phase 5 ships, at the 6-month checkpoint:
+- ≥3 sibling-fix PRs land on streaming bus-bound bug-classes (broad-catch, state-machine ordering, payload defensives) across hub stream-processor + CLI parser sites — i.e. the cascade producer survived the refactor; OR
+- The `parse_line` complexity reasserts itself: McCabe rises back above the C901 threshold OR a new noqa annotation for `complexity-residual` appears in `src/lyra/streaming/`; OR
+- Adding the next stream source (NATS-stream worker output) requires >150 LOC of duplicated state-machine/emitter logic instead of composing existing stages.
+
+Any of these falsifies the premise: the stage-axis pivot for streaming didn't change the axis of decomposition; we paid the refactor cost without changing growth from multiplicative to additive.
+
+**Simplest alternative:**
+Apply the `noqa: C901, PLR0912, PLR0915` annotation pattern (already present on `parse_line`) more aggressively — accept the complexity as a tolerated debt and migrate only the `str(exc)` sites to `SanitizedError` opportunistically (≤1 day, no restructuring).
+
+**Why not simplest:**
+The parent-epic root-cause analysis (`artifacts/analyses/1277-stage-axis-refactor-strategy.mdx` §2, §4) demonstrates that broad-catch + state-machine duplication are **symptoms** of the per-source axis; tolerating the complexity leaves the axis intact and the cascade producer alive. The state machine is *already* duplicated between path-a/path-b inside `cli_streaming_parser.py` and again at `stream_processor.py` — meaning the next concern change (new event type, ordering tweak, retry boundary) will replicate across three sites. The architecture altitude (§3) is the lowest tractable layer where the bug class becomes *impossible to introduce* in streaming code; the F-lite cost (1 week, 1 PR) is justified by the epic's projected drain of `complexity-residual` (parser hotspot) and the unblocking of NATS-stream as a future source.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (streaming layer), no new architectural patterns being invented (Phase 1 set the composition template; Phase 5 applies it to streaming), 1 PR per epic body.
+
+Signals observed:
+- Issue body explicit: `~1.5 weeks. 1 PR. F-lite.`
+- Scope: 2 existing files (915 LOC) restructured into 3 new files in a new `src/lyra/streaming/` package + thin per-source impls.
+- Single domain (streaming only — does not touch outbound, inbound, transport, LLM drivers, bootstrap).
+- No unknowns: Phase 1 primitives are merged and verified; composition pattern is template-followed, not invented; existing `parse_line` noqa marks the exact complexity hotspot.
+- Effort estimate: 1.5 weeks (per epic body).
+- Parallel-safe with active P2 (#1279) + P4 (#1281): file-level overlap = `simple_agent.py` only (trivial merge).

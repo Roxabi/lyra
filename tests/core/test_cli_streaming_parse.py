@@ -97,6 +97,38 @@ def _tool_result_user_line(
     )
 
 
+_EMPTY_TEXT_DELTA = _ndjson(
+    {
+        "type": "stream_event",
+        "event": {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": ""},
+        },
+    }
+)
+
+_EXTRA_DELTA = _ndjson(
+    {
+        "type": "stream_event",
+        "event": {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": "After result"},
+        },
+    }
+)
+
+_RESULT_SESS_999 = _ndjson(
+    {
+        "type": "result",
+        "session_id": "result-sess-999",
+        "duration_ms": 10,
+        "is_error": False,
+    }
+)
+
+_RESULT_EVT = ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123")
+
+
 # ---------------------------------------------------------------------------
 # TestStreamingIteratorYields
 # ---------------------------------------------------------------------------
@@ -105,107 +137,62 @@ def _tool_result_user_line(
 class TestStreamingIteratorYields:
     """StreamingIterator yields text_delta chunks from content_block_delta events."""
 
-    async def test_yields_text_delta_chunks(self) -> None:
-        # Arrange
-        proc = make_fake_proc(
-            [INIT_LINE, TEXT_DELTA_LINE, TEXT_DELTA_LINE2, RESULT_LINE]
-        )
+    @pytest.mark.parametrize(
+        "lines,expected",
+        [
+            pytest.param(
+                [INIT_LINE, TEXT_DELTA_LINE, TEXT_DELTA_LINE2, RESULT_LINE],
+                [
+                    TextLlmEvent(text="Hello"),
+                    TextLlmEvent(text=" world"),
+                    _RESULT_EVT,
+                ],
+                id="yields_text_delta_chunks",
+            ),
+            pytest.param(
+                [
+                    INIT_LINE,
+                    TEXT_DELTA_LINE,
+                    INPUT_JSON_DELTA_LINE,
+                    TEXT_DELTA_LINE2,
+                    RESULT_LINE,
+                ],
+                [
+                    TextLlmEvent(text="Hello"),
+                    TextLlmEvent(text=" world"),
+                    _RESULT_EVT,
+                ],
+                id="skips_input_json_delta_events",
+            ),
+            pytest.param(
+                [INIT_LINE, _EMPTY_TEXT_DELTA, TEXT_DELTA_LINE, RESULT_LINE],
+                [
+                    TextLlmEvent(text="Hello"),
+                    _RESULT_EVT,
+                ],
+                id="skips_empty_text_delta",
+            ),
+            pytest.param(
+                [INIT_LINE, TEXT_DELTA_LINE, RESULT_LINE, _EXTRA_DELTA],
+                [
+                    TextLlmEvent(text="Hello"),
+                    _RESULT_EVT,
+                ],
+                id="stops_on_result_event",
+            ),
+            pytest.param(
+                [INIT_LINE, TEXT_DELTA_LINE],
+                [TextLlmEvent(text="Hello")],
+                id="stops_on_eof",
+            ),
+        ],
+    )
+    async def test_streaming_iterator_yields(self, lines, expected) -> None:
+        proc = make_fake_proc(lines)
         entry = make_entry(proc)
-
-        # Act
         it = StreamingIterator(entry, DEFAULT_POOL_ID)
         chunks = [chunk async for chunk in it]
-
-        # Assert
-        assert chunks == [
-            TextLlmEvent(text="Hello"),
-            TextLlmEvent(text=" world"),
-            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
-        ]
-
-    async def test_skips_input_json_delta_events(self) -> None:
-        # Arrange — mix of text_delta and input_json_delta; only text_delta should yield
-        proc = make_fake_proc(
-            [
-                INIT_LINE,
-                TEXT_DELTA_LINE,
-                INPUT_JSON_DELTA_LINE,
-                TEXT_DELTA_LINE2,
-                RESULT_LINE,
-            ]
-        )
-        entry = make_entry(proc)
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        chunks = [chunk async for chunk in it]
-
-        # Assert — input_json_delta silently skipped
-        assert chunks == [
-            TextLlmEvent(text="Hello"),
-            TextLlmEvent(text=" world"),
-            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
-        ]
-
-    async def test_skips_empty_text_delta(self) -> None:
-        # Arrange — text_delta with empty string should not be yielded
-        empty_delta = _ndjson(
-            {
-                "type": "stream_event",
-                "event": {
-                    "type": "content_block_delta",
-                    "delta": {"type": "text_delta", "text": ""},
-                },
-            }
-        )
-        proc = make_fake_proc([INIT_LINE, empty_delta, TEXT_DELTA_LINE, RESULT_LINE])
-        entry = make_entry(proc)
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        chunks = [chunk async for chunk in it]
-
-        # Assert
-        assert chunks == [
-            TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
-        ]
-
-    async def test_stops_on_result_event(self) -> None:
-        # Arrange — result event must terminate iteration
-        extra_delta = _ndjson(
-            {
-                "type": "stream_event",
-                "event": {
-                    "type": "content_block_delta",
-                    "delta": {"type": "text_delta", "text": "After result"},
-                },
-            }
-        )
-        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE, RESULT_LINE, extra_delta])
-        entry = make_entry(proc)
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        chunks = [chunk async for chunk in it]
-
-        # Assert — stops at result; extra_delta not yielded
-        assert chunks == [
-            TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
-        ]
-
-    async def test_stops_on_eof(self) -> None:
-        # Arrange — no result event; proc sends EOF
-        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE])  # EOF appended by helper
-        entry = make_entry(proc)
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        chunks = [chunk async for chunk in it]
-
-        # Assert — EOF gracefully ends iteration with NO ResultLlmEvent
-        assert chunks == [TextLlmEvent(text="Hello")]
+        assert chunks == expected
 
     async def test_already_done_raises_stop_async_iteration(self) -> None:
         # Arrange — create iterator and exhaust it
@@ -227,65 +214,59 @@ class TestStreamingIteratorYields:
 class TestStreamingIteratorSessionId:
     """StreamingIterator captures and exposes session_id."""
 
-    async def test_session_id_captured_from_system_init(self) -> None:
-        # Arrange
-        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE, RESULT_LINE])
+    @pytest.mark.parametrize(
+        "lines,consume,expected_session_id,check_entry",
+        [
+            pytest.param(
+                [INIT_LINE, TEXT_DELTA_LINE, RESULT_LINE],
+                True,
+                "abc-123",
+                False,
+                id="from_system_init",
+            ),
+            pytest.param(
+                [TEXT_DELTA_LINE, _RESULT_SESS_999],
+                True,
+                "result-sess-999",
+                False,
+                id="from_result_event",
+            ),
+            pytest.param(
+                [INIT_LINE, TEXT_DELTA_LINE],
+                False,
+                None,
+                False,
+                id="none_when_closed_before_result",
+            ),
+            pytest.param(
+                [INIT_LINE, RESULT_LINE],
+                True,
+                "abc-123",
+                True,
+                id="propagated_to_entry",
+            ),
+        ],
+    )
+    async def test_streaming_iterator_session_id(
+        self,
+        lines: list[bytes],
+        consume: bool,
+        expected_session_id: str | None,
+        check_entry: bool,
+    ) -> None:
+        proc = make_fake_proc(lines)
         entry = make_entry(proc)
-
-        # Act
+        if check_entry:
+            assert entry.session_id is None
         it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        async for _ in it:
-            pass
-
-        # Assert
-        assert it.session_id == "abc-123"
-
-    async def test_session_id_updated_from_result_event(self) -> None:
-        # Arrange — result carries a different session_id (session_id from result)
-        result_with_session = _ndjson(
-            {
-                "type": "result",
-                "session_id": "result-sess-999",
-                "duration_ms": 10,
-                "is_error": False,
-            }
-        )
-        proc = make_fake_proc([TEXT_DELTA_LINE, result_with_session])
-        entry = make_entry(proc)
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        async for _ in it:
-            pass
-
-        # Assert — session_id from result event overwrites None
-        assert it.session_id == "result-sess-999"
-
-    async def test_session_id_none_when_closed_before_result(self) -> None:
-        # Arrange — close iterator before result arrives
-        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE])
-        entry = make_entry(proc)
-
-        # Act — close before consuming
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        await it.aclose()
-
-        # Assert — no session_id was set before close
-        assert it.session_id is None
-
-    async def test_session_id_propagated_to_entry(self) -> None:
-        # Arrange
-        proc = make_fake_proc([INIT_LINE, RESULT_LINE])
-        entry = make_entry(proc)
-        assert entry.session_id is None
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        async for _ in it:
-            pass
-
-        # Assert — entry.session_id updated on init
-        assert entry.session_id == "abc-123"
+        if consume:
+            async for _ in it:
+                pass
+        else:
+            await it.aclose()
+        assert it.session_id == expected_session_id
+        if check_entry:
+            assert entry.session_id == expected_session_id
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +336,130 @@ class TestStreamingIteratorNonJson:
         assert result.worker_error.retryable is False
         # error_text reuses the (scrubbed) WorkerError.message — never raw str(exc)
         assert result.error_text == result.worker_error.message
+
+    def test_malformed_json_does_not_leak_payload_into_worker_error(self) -> None:
+        """#1219 (sibling of #1212/#1215): bus-bound message keeps only the
+        exception type name; the raw malformed line (`JSONDecodeError.doc`)
+        must NOT surface in `WorkerError.message` or `error_text`.
+
+        Falsification: this test must fail if line 134 reverts to
+        ``f"...: {exc}"``. On CPython 3.12, ``str(JSONDecodeError)`` returns
+        a position string like ``"Unterminated string starting at: line 1
+        column 34 (char 33)"`` — it does NOT embed ``.doc``. A weak negative
+        assertion like ``sentinel not in msg`` passes both before and after
+        the fix (tautology). We therefore assert the exact sanitized form,
+        which differs from the reverted form character-for-character.
+        """
+        # Arrange — sensitive sentinel embedded in the malformed JSON payload.
+        # Picked to fail json.loads (unterminated string) while still looking
+        # like protocol content (`{`-shaped → triggers the cli.parse branch).
+        sentinel = "SENTINEL-LEAK-42"
+        malformed = f'{{"type": "result", "session_id": "{sentinel}'
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+
+        # Act
+        events = _collect_all(parser, malformed)
+
+        # Assert — exactly one terminal ResultLlmEvent with cli.parse envelope
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.worker_error is not None
+        assert result.worker_error.code == "cli.parse"
+
+        # Assert — exact sanitized form. Strong falsifier: reverting line 134
+        # to ``f"...: {exc}"`` produces ``"CLI emitted malformed JSON:
+        # Unterminated string starting at: ..."`` which fails this equality.
+        msg = result.worker_error.message
+        assert msg == "CLI emitted malformed JSON: JSONDecodeError", (
+            f"unexpected worker_error.message: {msg!r}"
+        )
+
+        # Assert — error_text mirrors worker_error.message verbatim. Guards
+        # against a future regression where error_text is sourced from a
+        # parallel path (e.g. raw ``str(exc)``) instead of the sanitized
+        # message. The raw malformed line (``exc.doc``) must never appear.
+        assert result.error_text == msg
+        assert malformed not in (result.error_text or ""), (
+            f"raw malformed line leaked into error_text: {result.error_text!r}"
+        )
+        assert sentinel not in (result.error_text or ""), (
+            f"sentinel leaked into error_text: {result.error_text!r}"
+        )
+
+    def test_result_is_error_path_a_scrubs_and_routes_via_worker_error(self) -> None:
+        """#1252 (sibling of #1212/#1215/#1219): path (a) result-event.
+
+        ``self.error`` is sourced verbatim from upstream wire fields
+        (``result.errors[0]`` / ``result.result``) and propagated to
+        ``WorkerError.message`` and ``ResultLlmEvent.error_text``. Two defenses
+        are exercised here:
+
+        1. ``WorkerError.message`` is bounded and control-chars are scrubbed.
+        2. ``error_text`` mirrors ``WorkerError.message`` — restoring
+           ``error_text=self.error`` would surface the un-scrubbed upstream
+           text and fail this test.
+
+        Falsification: reverting either the scrubber in
+        ``_classify_cli_error`` or the ``error_text`` source on the
+        ``ResultLlmEvent`` makes the assertions below fail. The leaky payload
+        embeds NUL, ESC, and a length-overflow tail that survive raw
+        ``self.error`` but are normalised by the scrubber.
+        """
+        # Arrange — upstream wire content carrying control chars + overflow.
+        # The scrubber must replace control bytes with spaces and truncate
+        # past _BUS_BOUND_MESSAGE_MAX_LEN (200 chars).
+        sentinel_ctrl = "\x00BLEED\x1bEDGE"
+        sentinel_padding = "X" * 300
+        leaky = f"upstream-{sentinel_ctrl}-{sentinel_padding}"
+        line = json.dumps(
+            {
+                "type": "result",
+                "session_id": "sess-1252",
+                "is_error": True,
+                "subtype": "execute_error",
+                "errors": [leaky],
+                "duration_ms": 50,
+            }
+        )
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+
+        # Act
+        events = _collect_all(parser, line)
+
+        # Assert — terminal ResultLlmEvent with cli.parse envelope
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.is_error is True
+        assert result.worker_error is not None
+        assert result.worker_error.code == "cli.parse"
+
+        # Assert — WorkerError.message is bounded + control-chars scrubbed.
+        msg = result.worker_error.message
+        assert "\x00" not in msg, f"NUL leaked into worker_error.message: {msg!r}"
+        assert "\x1b" not in msg, f"ESC leaked into worker_error.message: {msg!r}"
+        assert len(msg) <= 200, (
+            f"worker_error.message exceeds bound: len={len(msg)}, msg={msg!r}"
+        )
+
+        # Assert — error_text mirrors WorkerError.message. Strong falsifier:
+        # reverting `error_text=worker_error.message` to `error_text=self.error`
+        # produces the raw leaky payload (control bytes + > 300 chars) and
+        # fails this equality.
+        assert result.error_text == msg
+        assert result.error_text != leaky, (
+            "error_text equals raw upstream content — bus-bound sanitization "
+            "regression detected"
+        )
+        assert "\x00" not in (result.error_text or "")
+        assert "\x1b" not in (result.error_text or "")
+        assert len(result.error_text or "") <= 200
+
+        # Parser keeps the raw form on ``self.error`` (used for non-bus-bound
+        # introspection via ``StreamingIterator.error``). Only the bus-bound
+        # surfaces are scrubbed.
+        assert parser.error == leaky
 
 
 # ---------------------------------------------------------------------------
@@ -987,3 +1092,72 @@ class TestThinking:
         # Thinking state fully cleared; tool index not contaminated
         assert parser._open_thinking_index is None
         assert 0 not in parser._open_tool_blocks
+
+
+# ---------------------------------------------------------------------------
+# Shallow-copy mutation isolation — F7 contract (#1282 Phase 5)
+# ---------------------------------------------------------------------------
+
+
+def test_open_tool_blocks_shallow_copy_isolation() -> None:
+    """Mutating the captured _open_tool_blocks dict does NOT leak into parser state.
+
+    Falsification: removing the ``dict(...)`` wrapper in the ``_open_tool_blocks``
+    compat property would make this test fail, because external mutation of the
+    returned reference would propagate into ``_sm_tool_blocks.open_blocks``.
+
+    Spec SC-10 / plan T11 (#1321).
+    """
+    # Arrange — open a tool block so _open_tool_blocks is non-empty
+    parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+    cb_start = json.dumps(
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "index": 3,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": "toolu_ISOLATION",
+                    "name": "Bash",
+                    "input": {},
+                },
+            },
+        }
+    )
+    _collect_all(parser, cb_start)
+
+    # Act — capture the compat property and mutate it externally
+    captured = parser._open_tool_blocks
+    assert captured == {3: "toolu_ISOLATION"}, (
+        f"pre-mutation snapshot unexpected: {captured!r}"
+    )
+    captured.clear()  # external mutation: wipe out the captured copy
+
+    # Assert — parser internal state is unaffected; subsequent parse_line works
+    # Feed a delta that requires the open block to be present; it must still route
+    delta_line = json.dumps(
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "index": 3,
+                "delta": {"type": "input_json_delta", "partial_json": '{"cmd":'},
+            },
+        }
+    )
+    events = _collect_all(parser, delta_line)
+
+    # The block is still open internally → delta routes correctly → ToolUseDeltaLlmEvent
+    assert len(events) == 1, (
+        f"expected 1 ToolUseDeltaLlmEvent after mutation; got {events!r}"
+    )
+    assert isinstance(events[0], ToolUseDeltaLlmEvent)
+    assert events[0].tool_id == "toolu_ISOLATION"
+    assert events[0].partial_json == '{"cmd":'
+
+    # Confirm internal state directly via a fresh capture (the original is wiped)
+    assert parser._open_tool_blocks == {3: "toolu_ISOLATION"}, (
+        "parser internal state was mutated by external dict operation — "
+        "dict(...) shallow-copy wrapper missing in _open_tool_blocks property"
+    )

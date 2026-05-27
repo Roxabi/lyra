@@ -1,0 +1,61 @@
+---
+title: TurnWriter post-#1331 cleanups (robustness + docs)
+issue: 1349
+status: approved
+tier: F-lite
+date: 2026-05-26
+---
+
+## Problem
+
+PR #1347 (TurnStore α-refactor, hub → writer-subscriber split, closed #1331) merged with 6 non-blocking review suggestions deferred via `/fix` walkthrough. Three of them are latent operational risks — Quadlet false-green (S1), silent NATS error swallowing (S2), private-API coupling that breaks on dep upgrade (S3) — and three are doc/test debt that erodes the value of the just-shipped wiring (S4, S5, S7). Cost-of-doing is low (~7 files, single domain, ~1 PR) and known; cost-of-carrying compounds on the next prod incident or `nats-py` bump.
+
+Material drift surfaced by `/recheck`: #1370 already replaced `HealthCmd=pgrep` with `HealthCmd=grep -q turn-writer /proc/1/cmdline` across all `lyra-*` Quadlets. The S1 complaint stands — both forms are shallow process-presence checks — but the *premise wording* in the issue is stale. Frame must re-anchor S1 against current state.
+
+## Who
+
+- **Primary:** TurnWriter subsystem owner (`src/lyra/infrastructure/turn_writer/`) — applying the 6 fixes during a calm window.
+- **Secondary:**
+  - Ops / on-call — beneficiary of S1 (real health signal) and S2 (logged warning vs silent restart loop).
+  - Future `nats-py` upgrader — beneficiary of S3 (no private-API break).
+  - Documentation readers (`docs/architecture/messaging.mdx`, ACL matrix) — beneficiary of S4 + S5.
+  - CI regression coverage — beneficiary of S7.
+
+## Constraints
+
+- **Single PR, opportunistic merge** — issue body explicitly bundles all 6 items: "small enough to bundle into a single PR."
+- **No new arch decisions** — these are review findings from a merged PR; the design boundary is fixed.
+- **S1 wording must refresh** — apply against current `HealthCmd=grep -q turn-writer /proc/1/cmdline`, not the issue's stale `pgrep -f`.
+- **S3 public-API replacement** — must use only documented `JetStreamContext` methods; verify against `nats-py` public surface before edit.
+- **S7 strict assertion restoration** — depends on PR #1347's W4 fix (`_on_resume_fn` asserted in hub bootstrap) — verify that wire is still present.
+- **Stage-axis refactor (Epic #1277) active** — must not pull turn-writer further into legacy patterns; treat `infrastructure/turn_writer/` as already inbound-axis-clean (single writer, ADR-075).
+
+## Out of Scope
+
+- New TurnWriter features or contract changes — purely robustness + docs.
+- Re-evaluating the hub-vs-writer split (ADR-075 owns that).
+- S6 (skipped intentionally in original PR #1347 review — not in this bundle).
+- Cross-Quadlet HealthCmd unification beyond `lyra-turn-writer` — #1370 already covered the others.
+- ACL matrix changes for any identity other than `clipool-worker` ↔ `lyra.turns.write`.
+
+## Premise Validity
+
+**Success in 6 months:**
+All 6 items applied. `lyra-turn-writer` reports HTTP-based health on `:8083` (S1), the consume loop survives NATS connection loss with logged warning before re-raise (S2), stream/consumer bootstrap uses only public `JetStreamContext` methods (S3), ACL matrix + `docs/architecture/messaging.mdx` document the `clipool-worker` exclusion from `lyra.turns.write` (S4), `lyra-data.volume` description names the writer-subscriber as `turns.db` writer (S5), and `test_on_resume_fn_wired_when_turn_publisher_present` has its strict assertion restored (S7). No regressions in #1331 TurnWriter subsystem.
+
+**Failure in 6 months (falsifiable):**
+Quadlet reports `lyra-turn-writer` healthy while the consume loop is in a dead state (no NATS pull, no writes to `turns.db` for >5 min) — observable via `/health` probe + `turns.db` row-count delta — AND/OR a `nats-py` minor upgrade breaks `stream_setup.py` silently (no test catches it) — observable via CI matrix on upstream bump.
+
+**Simplest alternative:** Do nothing — leave the 6 items as logged review debt; revisit only on a real incident.
+**Why not simplest:** S1 is a deploy-time false-green risk (already cost us once via #1370 — a Quadlet `HealthCmd` parsing bug shipped to prod). S3 is a silent-break risk on the next `nats-py` bump. S7 weakens regression coverage of the just-shipped #1331 wiring. The 6 items are small enough to ship together (~7 files, single domain), so cost-of-doing is lower than carry cost.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (turn-writer + adjacent infra/docs), no unknowns, ~7 files, all items pre-specified in the issue body.
+
+Signals observed:
+- ≤10 files touched across `deploy/quadlet/`, `src/lyra/infrastructure/turn_writer/`, `deploy/nats/acl-matrix.json`, `docs/architecture/messaging.mdx`, `tests/integration/`.
+- Single semantic domain (TurnWriter cleanup).
+- Zero new architecture decisions; zero new patterns introduced.
+- All 6 fixes have named target files and explicit acceptance language in the issue body.
+- One drift-surfaced rewording (S1) — handled inline in `/spec`.

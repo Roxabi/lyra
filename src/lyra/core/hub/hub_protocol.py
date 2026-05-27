@@ -1,4 +1,30 @@
-"""Protocol types for the hub: ChannelAdapter, RoutingKey, Binding."""
+"""Protocol types for the hub: ChannelAdapter, RoutingKey, Binding.
+
+``ChannelAdapter`` is a **role interface** (Fowler) co-located with the hub
+sub-domain. It describes the contract a channel (Telegram/Discord/CLI/NATS)
+must fulfil to plug into the hub. RoutingKey and Binding share the same hub
+sub-domain vocabulary — splitting them across packages would obscure that
+cohesion.
+
+Why it does NOT live in ``core/ports/``: that directory holds **driven
+(secondary) ports** (Cockburn) — capabilities the domain consumes from the
+outside world (LLM, TTS, STT, audit). ``ChannelAdapter`` is internal: it
+defines the role channels play *inside* the hub, not an external capability.
+
+ISP debt
+--------
+``ChannelAdapter`` currently fuses two distinct collaborations:
+
+- inbound (driver direction): ``normalize``, ``normalize_audio`` — channels
+  drive the hub by surfacing platform events as ``InboundMessage``.
+- outbound (driven direction): ``send``, ``send_streaming`` — the hub drives
+  channels to emit responses.
+
+In a fully orthodox hexagonal split this would become two ports
+(``MessageReceiver`` + ``MessageSender``) living under ``core/ports/inbound/``
+and ``core/ports/outbound/``. See the "orthodoxie pure" note in
+``src/lyra/core/CLAUDE.md`` — tracked as future work, not blocking.
+"""
 
 from __future__ import annotations
 

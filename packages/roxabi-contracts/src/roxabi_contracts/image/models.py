@@ -14,6 +14,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import StringConstraints, model_validator
 
+from roxabi_contracts.blob_ref import BlobRef
 from roxabi_contracts.envelope import ContractEnvelope
 from roxabi_contracts.errors import WorkerError
 
@@ -42,16 +43,15 @@ class ImageResponse(ContractEnvelope):
     """Image generation response.
 
     Success-path invariant (enforced by ``_enforce_success_invariant``):
-    when ``ok=True``, exactly one of ``image_b64`` / ``file_path`` is
-    non-null, AND ``mime_type`` AND ``width`` AND ``height`` AND
-    ``engine`` AND ``seed_used`` are all non-null. Error-path
-    (``ok=False``) omits them and sets ``error``.
+    when ``ok=True``, ``blob_ref`` is non-null (ADR-067), AND
+    ``mime_type`` AND ``width`` AND ``height`` AND ``engine`` AND
+    ``seed_used`` are all non-null. Error-path (``ok=False``) omits
+    them and sets ``error``. See issue #806 for alignment rationale.
     """
 
     ok: bool
     request_id: Annotated[str, StringConstraints(min_length=1)]
-    image_b64: str | None = None
-    file_path: str | None = None
+    blob_ref: BlobRef | None = None
     mime_type: str | None = None
     width: int | None = None
     height: int | None = None
@@ -64,12 +64,8 @@ class ImageResponse(ContractEnvelope):
     def _enforce_success_invariant(self) -> Self:
         if not self.ok:
             return self
-        payload_set = (self.image_b64 is not None) ^ (self.file_path is not None)
-        if not payload_set:
-            raise ValueError(
-                "ImageResponse with ok=True must carry exactly one of "
-                "image_b64 / file_path (see issue #806)"
-            )
+        if self.blob_ref is None:
+            raise ValueError("ImageResponse with ok=True must carry blob_ref (ADR-067)")
         if (
             self.mime_type is None
             or self.width is None
@@ -79,7 +75,7 @@ class ImageResponse(ContractEnvelope):
         ):
             raise ValueError(
                 "ImageResponse with ok=True must carry mime_type, width, "
-                "height, engine, and seed_used (see issue #806)"
+                "height, engine, and seed_used (ADR-067; issue #806)"
             )
         return self
 

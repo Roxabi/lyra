@@ -1,0 +1,61 @@
+---
+title: gen_nkeys --regenerate must fail-loud on external seeds
+issue: 1379
+status: approved
+tier: F-lite
+date: 2026-05-26
+---
+
+## Problem
+
+`lyra-acl genkeys --regenerate` régénère tous les seeds NATS sur M₁ et reconstruit `auth.conf`, mais n'a aucune notion de **où le seed doit vivre pour être utilisable**. Toutes les identités sont traitées identiquement : seed écrit dans `~/.lyra/nkeys/{name}.seed`, ACL emise dans auth.conf, secret podman rechargé.
+
+Pour les identités **container-locales** (10 sur 12 : hub, voice-stt, voice-tts, adapters, workers, turn-writer) ça suffit — le seed est consommé via Podman secret sur la même machine.
+
+Pour les identités **externes** (`voice-client` sur M₂ aujourd'hui ; futurs `image-client`, `llm-client`), aucun fan-out n'a lieu : le seed M₂ devient silencieusement obsolète, et le client se fait rejeter en boucle par NATS sans qu'aucune alerte ne fire.
+
+**Incident déclencheur (2026-05-25/26)** : PR #1347 merge → regen → nouveau pubkey `voice-client = UC2WA4EL…` dans auth.conf, M₂ continue à présenter `UDFLPEFQ…`. ~30 erreurs auth/min pendant ~14h, `voicecli dictate nats` bloqué en epoll_wait, zéro signal opérateur. Hotfix manuel par scp.
+
+## Who
+
+- **Primary :** opérateur (Mickael) qui exécute `lyra-acl genkeys --regenerate` sur M₁ après chaque modification d'ACL ou rotation
+- **Secondary :**
+  - Clients externes consommant des seeds NATS : `voice-client` (M₂, voicecli dictate aujourd'hui)
+  - Identités externes futures (`image-client`, `llm-client`)
+  - CI éventuelle qui appellerait genkeys non-interactivement (à auditer avant merge)
+
+## Constraints
+
+- Schéma `deploy/nats/acl-matrix.json` est consommé par plusieurs outils : `check-acl-authconf-drift.sh`, `check_acl_matrix_retired.py` → champ `deploy` doit rester optionnel pendant la transition
+- Pas de fan-out automatique (Option 2 SSH) — scope minimal volontaire : détecter + rendre visible, pas exécuter
+- `hosts.toml` doit pouvoir résoudre le `host_role` des identités externes (ou hardcode `roxabitower` en attendant)
+- Validation pydantic existante via `_acl_models.py` — étendre avec discriminated union sans casser les modèles actuels
+- Exit code 2 sur `--regenerate` sans flag d'ack ne doit pas casser de call-site automatisé existant → auditer avant merge
+
+## Out of Scope
+
+- **Fan-out actif via SSH** (Option 2) : reportée. Coût ~80-100 LOC + dépendance SSH au runtime root. Justifiable à ≥3 identités externes ; pour 1 (`voice-client`), overkill.
+- **Smoke test post-régen** (Option 3) : ne détecte PAS l'incident d'aujourd'hui (le seed local sur M₁ matchait — c'est la propagation qui a manqué). Utile en complément, à filer séparément si besoin.
+- Changements à la sémantique des seeds container-locaux (continuent de marcher comme avant)
+- Migration des identités `status != active` (laissées avec `deploy` optionnel/null)
+
+## Premise Validity
+
+**Success in 6 months :** chaque exécution de `lyra-acl genkeys --regenerate` se termine soit en succès complet (tous clients reachable après procédure), soit en exit non-zéro avec un manifest scp copiable visible dans stderr. Zéro incident de type "regen-puis-client-locked-out-silencieusement" entre maintenant et 2026-11-26.
+
+**Failure in 6 months :** ≥1 incident où un regen laisse un client externe (voice-client ou futur image/llm-client) verrouillé pendant >1h sans notification opérateur, de la même forme que 2026-05-25/26 (~14h, ~30 erreurs auth/min côté serveur, blocage côté client). Métrique observable : count d'incidents matchant ce shape dans le journal d'incidents Roxabi.
+
+**Simplest alternative :** ajouter une ligne au runbook `docs/ops/nats-authconf-update.md` qui dit "après chaque regen, scp le voice-client seed vers M₂".
+**Why not simplest :** le mode de défaillance EST l'humain qui oublie la procédure runbook. Le runbook actuel ne mentionnait déjà rien sur la propagation post-régen ; ajouter du texte ne change pas la dynamique. Le fix doit imposer au script de **refuser** de procéder en silence — pas conseiller l'opérateur de se souvenir.
+
+## Complexity
+
+**Tier : F-lite** — scope clair, mono-domaine (deploy/scripts), ~5 fichiers touchés, pas de nouvelle architecture.
+
+Signaux observés :
+- Issue label Size = M → F-lite mapping
+- Complexité κ = 5 (au triage)
+- Files : `acl-matrix.json` (schema), `_acl_models.py` (pydantic), `_modes.py` (logic), `gen_nkeys.py` (CLI flag), `docs/ops/nats-authconf-update.md`, `tests/scripts/test_gen_nkeys.py` = 6 fichiers
+- Pas de cross-domain — toute la modification dans `scripts/` + `deploy/nats/` + `docs/ops/`
+- Migration schéma v2→v3 contrôlée (champ optionnel pendant transition)
+- Unknowns : 1 — comportement exact de `hosts.toml` lookup pour host externe (à clarifier en spec)

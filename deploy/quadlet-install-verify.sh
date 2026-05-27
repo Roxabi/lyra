@@ -20,6 +20,9 @@ UNITS=(
     lyra-telegram
     lyra-discord
     lyra-clipool
+    lyra-gh-helper
+    lyra-blobstore
+    lyra-turn-writer
 )
 
 # ── 1. Reload daemon so Quadlet generates fresh .service files ────────────────

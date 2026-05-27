@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -69,8 +70,21 @@ CREATE INDEX IF NOT EXISTS idx_pool_sessions_pool
 ON pool_sessions(pool_id, last_active_at)
 """
 
+_CREATE_IDX_DEDUPE = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_turns_dedupe
+ON conversation_turns(platform, message_id)
+WHERE message_id IS NOT NULL
+"""
+
+_CREATE_PROCESSED_EVENTS = """
+CREATE TABLE IF NOT EXISTS processed_events (
+    event_id      TEXT PRIMARY KEY,
+    processed_at  TEXT NOT NULL
+)
+"""
+
 _INSERT = """
-INSERT INTO conversation_turns
+INSERT OR IGNORE INTO conversation_turns
     (pool_id, session_id, role, platform, user_id,
      content, message_id, reply_message_id, timestamp, metadata)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -104,13 +118,22 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
         await db.commit()
         await db.execute(_CREATE_POOL_SESSIONS)
         await db.execute(_CREATE_IDX_POOL_SESSIONS)
+        await db.execute(_CREATE_IDX_DEDUPE)
+        await db.execute(_CREATE_PROCESSED_EVENTS)
         await db.commit()
-        # v4 migration: add cli_session_id to pool_sessions (idempotent)
-        async with db.execute("PRAGMA table_info(pool_sessions)") as cur:
-            cols = {row[1] for row in await cur.fetchall()}
-        if "cli_session_id" not in cols:
+        # v4 migration: add cli_session_id to pool_sessions (idempotent).
+        # Use try/except instead of a PRAGMA table_info read-then-write to
+        # avoid a TOCTOU race under xdist parallel workers: two workers can
+        # both observe "column absent" before either runs ALTER TABLE, then
+        # both attempt the ALTER and the second raises
+        # OperationalError("duplicate column name: cli_session_id").
+        # aiosqlite.OperationalError is sqlite3.OperationalError.
+        try:
             await db.execute("ALTER TABLE pool_sessions ADD COLUMN cli_session_id TEXT")
             await db.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
         # Gate backfill: skip if pool_sessions already has rows
         async with db.execute("SELECT 1 FROM pool_sessions LIMIT 1") as cur:
             if await cur.fetchone() is None:
@@ -122,7 +145,7 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
             raise RuntimeError("TurnStore not connected — call await connect() first")
         return self._db
 
-    async def log_turn(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
+    async def _log_turn(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,
         *,
         pool_id: str,
@@ -189,7 +212,7 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
             await db.commit()
         except Exception:
             log.exception(
-                "TurnStore.log_turn failed (pool=%s session=%s role=%s)",
+                "TurnStore._log_turn failed (pool=%s session=%s role=%s)",
                 pool_id,
                 session_id,
                 role,

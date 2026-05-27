@@ -10,6 +10,8 @@ import dataclasses
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from lyra.core.config import HubConfig
 from lyra.core.hub.middleware import (
     MiddlewarePipeline,
@@ -28,6 +30,7 @@ from lyra.core.hub.middleware.path_validation import resolve_context
 from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult, ResumeStatus
 from lyra.core.messaging.message import Platform, Response
 from lyra.infrastructure.stores.turn_store import TurnStore
+from roxabi_contracts import BlobRef
 from tests.core.conftest import _make_hub, make_inbound_message
 
 _DROP = PipelineResult(action=Action.DROP)
@@ -54,29 +57,22 @@ def _make_ctx(**overrides) -> PipelineContext:
 
 
 class TestValidatePlatform:
-    async def test_valid_platform_calls_next(self) -> None:
-        mw = ValidatePlatformMiddleware()
-        ctx = _make_ctx()
-        next_fn = _make_next()
-        msg = make_inbound_message(platform="telegram")
-
-        result = await mw(msg, ctx, next_fn)
-
-        next_fn.assert_awaited_once()
-        assert result == _PASS
-
-    async def test_unknown_platform_drops(self) -> None:
-        mw = ValidatePlatformMiddleware()
-        ctx = _make_ctx()
-        next_fn = _make_next()
-        msg = make_inbound_message(platform="unknown_plat")
-
-        result = await mw(msg, ctx, next_fn)
-
-        next_fn.assert_not_awaited()
-        assert result.action == Action.DROP
-
-    async def test_traces_platform_invalid(self) -> None:
+    @pytest.mark.parametrize(
+        "platform,expected_action,next_called,trace_event",
+        [
+            ("telegram", Action.SUBMIT_TO_POOL, True, None),
+            ("unknown_plat", Action.DROP, False, None),
+            ("bad_plat", Action.DROP, False, "platform_invalid"),
+        ],
+        ids=["valid_platform", "unknown_platform", "traces_platform_invalid"],
+    )
+    async def test_platform(
+        self,
+        platform: str,
+        expected_action: Action,
+        next_called: bool,
+        trace_event: str | None,
+    ) -> None:
         events: list[dict] = []
 
         def hook(stage, event, **kw):
@@ -84,11 +80,18 @@ class TestValidatePlatform:
 
         mw = ValidatePlatformMiddleware()
         ctx = _make_ctx(trace_hook=hook)
-        msg = make_inbound_message(platform="bad_plat")
+        next_fn = _make_next()
+        msg = make_inbound_message(platform=platform)
 
-        await mw(msg, ctx, _make_next())
+        result = await mw(msg, ctx, next_fn)
 
-        assert any(e["event"] == "platform_invalid" for e in events)
+        if next_called:
+            next_fn.assert_awaited_once()
+        else:
+            next_fn.assert_not_awaited()
+        assert result.action == expected_action
+        if trace_event:
+            assert any(e["event"] == trace_event for e in events)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -205,12 +208,13 @@ class TestCreatePool:
         next_fn.assert_awaited_once()
         assert ctx.pool is not None
 
-    async def test_on_resume_fn_wired_when_turn_store_present(self) -> None:
+    async def test_on_resume_fn_wired_when_turn_publisher_present(self) -> None:
         from lyra.core.hub.hub_protocol import Binding
 
         hub = _make_hub()
-        hub._turn_store = MagicMock()
-        hub._turn_store.increment_resume_count = AsyncMock()
+        publisher = MagicMock()
+        publisher.publish_increment_resume_count = AsyncMock()
+        hub._turn_publisher = publisher
         agent = hub.agent_registry["lyra"]
         binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
         mw = MessagePrepMiddleware()
@@ -220,7 +224,19 @@ class TestCreatePool:
         await mw(msg, ctx, _make_next())
 
         assert ctx.pool is not None
-        assert ctx.pool._on_resume_fn is hub._turn_store.increment_resume_count  # type: ignore[attr-defined]
+        await ctx.pool._on_resume_fn("test-session-id")  # type: ignore[attr-defined]
+        # _make_hub() leaves hub._turn_store=None → closure skips store-read
+        # → current=0 → target_count = current + 1 = 1. trace_id == session_id
+        # by design in this middleware: the closure derives trace_id from the
+        # session_id argument (see MessagePrepMiddleware._make_on_resume_fn).
+        publisher.publish_increment_resume_count.assert_awaited_once_with(
+            pool_id="telegram:main:chat:42",
+            session_id="test-session-id",
+            platform="",
+            user_id="",
+            target_count=1,
+            trace_id="test-session-id",
+        )
 
     async def test_on_resume_fn_not_set_when_turn_store_absent(self) -> None:
         from lyra.core.hub.hub_protocol import Binding
@@ -243,7 +259,7 @@ class TestCreatePool:
 
         hub = _make_hub()
         hub._turn_store = MagicMock()
-        hub._turn_store.increment_resume_count = AsyncMock()
+        hub._turn_store._increment_resume_count = AsyncMock()
 
         # Pre-create the pool and assign a sentinel
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
@@ -268,33 +284,30 @@ class TestCreatePool:
 
 
 class TestCommand:
-    async def test_non_command_calls_next(self) -> None:
-        from lyra.core.hub.hub_protocol import RoutingKey
-
-        hub = _make_hub()
-        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
-        mw = CommandMiddleware()
-        ctx = PipelineContext(
-            hub=hub,
-            pool=pool,
-            key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
-            router=None,
-        )
-        next_fn = _make_next()
-        msg = make_inbound_message()
-
-        await mw(msg, ctx, next_fn)
-
-        next_fn.assert_awaited_once()
-
-    async def test_command_dispatched(self) -> None:
+    @pytest.mark.parametrize(
+        "is_command,dispatch_return,expected_action,next_called",
+        [
+            (False, None, Action.SUBMIT_TO_POOL, True),
+            (True, Response(content="ok"), Action.COMMAND_HANDLED, False),
+            (True, None, Action.SUBMIT_TO_POOL, True),
+        ],
+        ids=["non_command", "command_dispatched", "command_fallthrough"],
+    )
+    async def test_command(
+        self,
+        is_command: bool,
+        dispatch_return: Response | None,
+        expected_action: Action,
+        next_called: bool,
+    ) -> None:
         from lyra.core.hub.hub_protocol import RoutingKey
 
         hub = _make_hub()
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
         router = MagicMock()
-        router.is_command.return_value = True
-        router.dispatch = AsyncMock(return_value=Response(content="ok"))
+        router.is_command.return_value = is_command
+        if is_command:
+            router.dispatch = AsyncMock(return_value=dispatch_return)
 
         mw = CommandMiddleware()
         ctx = PipelineContext(
@@ -308,33 +321,14 @@ class TestCommand:
 
         result = await mw(msg, ctx, next_fn)
 
-        assert result.action == Action.COMMAND_HANDLED
-        assert result.response is not None
-        assert result.response.content == "ok"
-        next_fn.assert_not_awaited()
-
-    async def test_command_fallthrough_calls_next(self) -> None:
-        from lyra.core.hub.hub_protocol import RoutingKey
-
-        hub = _make_hub()
-        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
-        router = MagicMock()
-        router.is_command.return_value = True
-        router.dispatch = AsyncMock(return_value=None)  # not found
-
-        mw = CommandMiddleware()
-        ctx = PipelineContext(
-            hub=hub,
-            pool=pool,
-            key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
-            router=router,
-        )
-        next_fn = _make_next()
-        msg = make_inbound_message()
-
-        await mw(msg, ctx, next_fn)
-
-        next_fn.assert_awaited_once()
+        assert result.action == expected_action
+        if dispatch_return is not None:
+            assert result.response is not None
+            assert result.response.content == "ok"
+        if next_called:
+            next_fn.assert_awaited_once()
+        else:
+            next_fn.assert_not_awaited()
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -474,33 +468,11 @@ class TestBuildDefaultPipeline:
 
 
 class TestCommandErrorPath:
-    async def test_dispatch_raises_returns_error_response(self) -> None:
-        """Command dispatch exception → COMMAND_HANDLED with generic error."""
-        from lyra.core.hub.hub_protocol import RoutingKey
-
-        hub = _make_hub()
-        pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
-        router = MagicMock()
-        router.is_command.return_value = True
-        router.dispatch = AsyncMock(side_effect=RuntimeError("boom"))
-
-        mw = CommandMiddleware()
-        ctx = PipelineContext(
-            hub=hub,
-            pool=pool,
-            key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
-            router=router,
-        )
-        msg = make_inbound_message()
-
-        result = await mw(msg, ctx, _make_next())
-
-        assert result.action == Action.COMMAND_HANDLED
-        assert result.response is not None
-        assert "boom" not in (result.response.content or "")
-
-    async def test_dispatch_raises_emits_command_error_trace(self) -> None:
-        """Command dispatch exception fires command_error trace event."""
+    @pytest.mark.parametrize(
+        "with_trace", [False, True], ids=["error_response", "error_trace"]
+    )
+    async def test_dispatch_raises(self, with_trace: bool) -> None:
+        """Command dispatch exception → COMMAND_HANDLED + trace (parametrized)."""
         from lyra.core.hub.hub_protocol import RoutingKey
 
         events: list[dict] = []
@@ -520,13 +492,17 @@ class TestCommandErrorPath:
             pool=pool,
             key=RoutingKey(Platform.TELEGRAM, "main", "chat:42"),
             router=router,
-            trace_hook=hook,
+            trace_hook=hook if with_trace else None,
         )
         msg = make_inbound_message()
 
-        await mw(msg, ctx, _make_next())
+        result = await mw(msg, ctx, _make_next())
 
-        assert any(e["event"] == "command_error" for e in events)
+        assert result.action == Action.COMMAND_HANDLED
+        assert result.response is not None
+        assert "boom" not in (result.response.content or "")
+        if with_trace:
+            assert any(e["event"] == "command_error" for e in events)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -655,30 +631,26 @@ class TestResolveContextMiddleware:
 
 
 class TestTraceExceptionSwallowing:
-    async def test_raising_trace_hook_does_not_propagate(self) -> None:
-        """A raising trace_hook must not propagate exceptions."""
+    @pytest.mark.parametrize(
+        "in_pipeline",
+        [False, True],
+        ids=["direct_ctx", "in_pipeline"],
+    )
+    async def test_raising_trace_hook(self, in_pipeline: bool) -> None:
+        """A raising trace_hook must not propagate or abort pipeline (parametrized)."""
 
         def bad_hook(stage, event, **kw):
             raise RuntimeError("trace bug")
 
-        ctx = _make_ctx(trace_hook=bad_hook)
-
-        # Must not raise
-        ctx.trace("stage", "event", key="value")
-
-    async def test_raising_trace_in_pipeline_does_not_abort(self) -> None:
-        """A raising trace_hook must not abort pipeline processing."""
-
-        def bad_hook(stage, event, **kw):
-            raise RuntimeError("trace bug")
-
-        hub = _make_hub()
-        pipeline = build_default_pipeline(hub, trace_hook=bad_hook)
-        msg = make_inbound_message()
-
-        result = await pipeline.process(msg)
-
-        assert result.action == Action.SUBMIT_TO_POOL
+        if in_pipeline:
+            hub = _make_hub()
+            pipeline = build_default_pipeline(hub, trace_hook=bad_hook)
+            msg = make_inbound_message()
+            result = await pipeline.process(msg)
+            assert result.action == Action.SUBMIT_TO_POOL
+        else:
+            ctx = _make_ctx(trace_hook=bad_hook)
+            ctx.trace("stage", "event", key="value")
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -687,25 +659,21 @@ class TestTraceExceptionSwallowing:
 
 
 class TestEmptyPipeline:
-    async def test_empty_pipeline_drops(self) -> None:
-        """A pipeline with no middlewares returns DROP."""
-        hub = _make_hub()
-        pipeline = MiddlewarePipeline([], hub)
-        msg = make_inbound_message()
-
-        result = await pipeline.process(msg)
-
-        assert result.action == Action.DROP
-
-    async def test_next_past_last_middleware_drops(self) -> None:
-        """Calling next past the last middleware returns DROP."""
+    @pytest.mark.parametrize(
+        "has_middleware",
+        [False, True],
+        ids=["empty", "past_last"],
+    )
+    async def test_empty_pipeline_drops(self, has_middleware: bool) -> None:
+        """Pipeline with no middlewares or past-last next → DROP (parametrized)."""
 
         class PassThrough:
             async def __call__(self, msg, ctx, next):
                 return await next(msg, ctx)
 
         hub = _make_hub()
-        pipeline = MiddlewarePipeline([PassThrough()], hub)
+        middlewares = [PassThrough()] if has_middleware else []
+        pipeline = MiddlewarePipeline(middlewares, hub)  # type: ignore[reportArgumentType]
         msg = make_inbound_message()
 
         result = await pipeline.process(msg)
@@ -794,7 +762,16 @@ async def test_stt_middleware_no_msg_manager_replies() -> None:
     msg = make_inbound_message(modality="voice")
     msg = dataclasses.replace(
         msg,
-        audio=AudioPayload(audio_bytes=b"fake_audio", mime_type="audio/ogg"),
+        audio=AudioPayload(
+            blob_ref=BlobRef(
+                store_key="test-blob",
+                content_hash="deadbeef",
+                mime="audio/ogg",
+                size=len(b"fake_audio"),
+                source="test",
+            ),
+            mime_type="audio/ogg",
+        ),
     )
 
     next_mock = _make_next()

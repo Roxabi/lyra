@@ -342,7 +342,7 @@ make lyra start
 
 ## Step 12 — Health monitoring
 
-> **Deprecated.** The legacy host-timer monitor (`lyra-monitor.{service,timer}`) is being replaced by Monitoring v2 — a NATS event stream + Tauri desktop dashboard — tracked in [#1035](https://github.com/Roxabi/lyra/issues/1035). Skip this step on new installs. The host-timer remains in the repo (with deprecation banners) only so the v2 spec author can mine its check logic.
+> **Removed.** The legacy host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. Only the Python module `src/lyra/monitoring/` is retained for [Monitoring v2 (#1035)](https://github.com/Roxabi/lyra/issues/1035) spec mining. Skip this step on new installs.
 
 If you still want a quick way to check hub health from the command line, hit the health endpoint directly:
 
@@ -440,7 +440,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Config | `~/projects/lyra/config.toml` |
 | Credentials | `~/.lyra/config.db` (encrypted, via `lyra bot add`) |
 | Nkey seeds | `~/.lyra/nkeys/*.seed` |
-| Podman secrets | `podman secret ls` (lyra-nats-auth, lyra-nkey-*) |
+| Podman secrets | `podman secret ls` (lyra-nats-auth, lyra-nats-hub, lyra-nats-telegram, lyra-nats-discord, lyra-nats-clipool) |
 | Logs | `journalctl --user -u lyra-hub` |
 | Diagrams | `~/.roxabi/forge/` (if installed) |
 | Firewall | UFW, SSH only |

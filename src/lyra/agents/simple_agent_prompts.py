@@ -10,14 +10,36 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from lyra.core.ports.stt import STTNoiseError
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
     from lyra.core.ports.stt import STTProtocol, TranscriptionResult
 
 log = logging.getLogger(__name__)
+
+
+def _validate_audio_path(path: Path) -> Path:
+    """Validate that the audio file path is safe (no directory traversal).
+
+    Ensures the path is within the system temp directory and contains no
+    parent-directory references.
+    """
+    if ".." in path.parts:
+        raise ValueError(f"Invalid audio path: traversal detected in {path}")
+    resolved = path.resolve()
+    tmp_dir = Path(tempfile.gettempdir()).resolve()
+    try:
+        resolved.relative_to(tmp_dir)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid audio path: {path} is outside temp directory"
+        ) from exc
+    return resolved
 
 
 async def build_llm_text(
@@ -50,7 +72,8 @@ async def build_llm_text(
         # (MessagePipeline._run_stt_stage) before agents are invoked. By the
         # time we reach this branch, stt is guaranteed non-None.
         assert stt is not None
-        tmp_path = Path(str(audio_attachment.url_or_path_or_bytes))
+        raw_path = str(audio_attachment.url_or_path_or_bytes)
+        tmp_path = _validate_audio_path(Path(raw_path))
         return await _build_audio_text(tmp_path, stt)
 
     if msg.modality == "voice":
@@ -95,14 +118,6 @@ async def _build_audio_text(
 
     escaped = html.escape(stt_result.text)
     return f"<voice_transcript>{escaped}</voice_transcript>", stt_result.text
-
-
-class STTNoiseError(Exception):
-    """Raised when STT detects only noise/silence."""
-
-    def __init__(self, text: str) -> None:
-        self.text = text
-        super().__init__(f"STT detected noise: {text[:50]}...")
 
 
 class STTError(Exception):

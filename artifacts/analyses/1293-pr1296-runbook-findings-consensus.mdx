@@ -1,0 +1,131 @@
+---
+title: "PR #1296 review findings — Expert Consensus"
+issue: 1293
+pr: 1296
+status: consensus-reached
+date: 2026-05-20
+panel: architect, devops, security-auditor
+confidence: high
+---
+
+## Problem
+
+PR #1296 (`fix(nats): restart container on ACL change`) lands a minimum-scope
+fix for the NATS ACL runbook (HUP → `systemctl --user restart lyra-nats`),
+prompted by an ops finding during the #1292 deploy on 2026-05-20. A 3-agent
+code review surfaced 9 findings (B1, B2, W1–W5, N1, N2). The user asked the
+expert panel to debate the right fix for **all 9** and apply them on this PR.
+
+The PR's primary intent (refresh mount-typed Podman secret via container
+recreation) is uncontroversial. The 9 findings cover pre-existing operational
+gaps + doc hygiene that surfaced once the operation was being touched.
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | SSoT discipline, invariant integrity, doc/code coherence, future-proofing |
+| devops | production safety, blast radius, idempotency, operator ergonomics |
+| security-auditor | fail-safe defaults, silent-failure detection, attack surface, defense-in-depth |
+
+## Consensus ρ
+
+**Unanimous (3-0) on all 9 findings.** No reconciliation round required.
+
+### Per-finding consensus
+
+| # | Finding | Consensus ρ |
+|---|---------|-------------|
+| B1 | full-deploy: no readiness gate after NATS restart | Insert `systemctl --user is-active --wait lyra-nats \|\| { echo "lyra-nats failed"; exit 1; }` between NATS restart and Lyra restart in the SSH heredoc. systemd 255 on M₁ supports `--wait` (since 232). |
+| B2 | `nats-regen-authconf` over-installs (all 5 secrets) but only restarts lyra-nats | Scope the recipe to `lyra-nats-auth` only via direct `podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"`. Stop delegating to `quadlet-secrets-install`. Matches runbook scope ("No seed file is replaced") mechanically. |
+| W1 | proposed `nats-rotate-secrets` grep idiom: `&& A \|\| B` false-passes on no-log-yet | Rewrite as `if ssh $(PROD) "… \| grep -qi …"; then echo "WARNING"; exit 1; fi`. Add `systemctl --user is-active --wait lyra-nats` before the grep to ensure logs are available. |
+| W2 | runbook blockquote claims `type=env` is "re-read on HUP" — false | Correct the claim: `type=env` secrets are injected at container start; SIGHUP does not re-exec or re-read env. Restart still required. Keep size + `podman inspect` cons. |
+| W3 | `deploy/CLAUDE.md` hardening invariants don't note operational restart consequence | Add one sentence after the `type=mount` line: "Operational consequence: secrets via `type=mount` require container restart (not HUP) to refresh — see `docs/ops/nats-authconf-update.md`." |
+| W4 | mount-secret rationale duplicated in Makefile + runbook + ADR-065 (no SSoT) | Trim Makefile 4-line `@#` block (lines 289–292) to a single pointer: `# Restart, not HUP — see docs/ops/nats-authconf-update.md.` Runbook blockquote stays as SSoT; ADR-065 inline link stays. |
+| W5 | proposed wrapper double-calls `quadlet-secrets-install` | Remove the outer `@$(MAKE) quadlet-secrets-install` from `nats-rotate-secrets`. The inner `nats-regen-authconf` already handles its (now-scoped) install. |
+| N1 | `@#` lines spawn bash subshells | Subsumed by W4 — collapsing to one pointer line fixes both. |
+| N2 | project root `CLAUDE.md` Key files table missing `deploy/quadlet/lyra-nats.container` | Add row: `deploy/quadlet/lyra-nats.container` \| `NATS Quadlet unit — type=mount secret, restart-not-HUP anchor`. |
+
+### Rationale (load-bearing themes)
+
+1. **B2 + W1 silent-failure chain** (security framing): an over-broad
+   `quadlet-secrets-install` can leave seed-consumers with stale mounts; the
+   detection layer (postmortem wrapper's grep) false-passes on no-log-yet.
+   Together they form a chain where a security-motivated ACL change can
+   complete with no service actually picking up the new ACL, all verification
+   reporting clean. Both B2 (scope down) and W1 (fix detection) must land
+   together to remove this chain.
+2. **W2 future-trap**: the misleading `type=env` HUP claim is the kind of
+   note a future operator follows when "simplifying" secret handling. The
+   precise correction is cheap and removes a latent migration foot-gun.
+3. **SSoT discipline (W4)**: the rationale exists in 3 places; only the
+   Makefile copy is self-contained. Trim it to a pointer; runbook stays SSoT.
+4. **Readiness gate (B1)**: `systemctl restart` returns when ExecStart is
+   forked, not when NATS is listening. Without a gate, Lyra services may hit
+   ECONNREFUSED on cold restart. `is-active --wait` closes the structural
+   race for sub-second cost.
+
+### Trade-offs
+
+- **B2** narrows recipe semantics — a future contributor must know to call
+  `quadlet-secrets-install` separately if they want full provisioning. Comment
+  in the target makes this explicit.
+- **W4** loses inline Makefile context (rationale not co-located). Acceptable
+  because the runbook is searchable and ADR-065 has a parenthetical pointer
+  already.
+- **B1** `is-active --wait` confirms unit state, not TCP readiness (~100–200ms
+  window remains). Out of scope for this PR; a HealthCmd on the Quadlet unit
+  is the proper long-term fix (postmortem-remaining item 4).
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| B2 option 2 (restart all seed consumers in `nats-regen-authconf`) | (panel canvassed) | Adds downtime to every routine ACL edit; the common case doesn't rotate seeds. |
+| B2 option 3 (document + trust runbook scope) | (panel canvassed) | Code already violates the documented contract silently — doc-only fix is not enforced. |
+| W2 option B (hedge with "(unverified)") | architect | Weaker than a precise correction; a known-wrong claim should be fixed, not hedged. |
+| W4 option B (accept current 4-line comment) | architect (raised, rejected by all) | Self-contained block is a 3rd copy, not a pointer. SSoT discipline directly applies. |
+| B1 option C (accept; trust Restart=on-failure) | (panel canvassed) | Recovery via failure is observable as a deploy blip; `--wait` is free and surfaces real failures hard. |
+
+## Dissent
+
+None — unanimous.
+
+## Implementation Notes
+
+### Order of application
+
+| # | Fix | Reason |
+|---|-----|--------|
+| 1 | B2 | Recipe scope must be correct before downstream wrapper composition. |
+| 2 | W5 | Wrapper now composes correctly atop the scoped recipe. |
+| 3 | W1 | Same file as W5; single edit pass. Add `is-active --wait` gate. |
+| 4 | B1 | Same gate pattern applied to `full-deploy` heredoc. |
+| 5 | W2 | Correct misleading runbook claim. |
+| 6 | W3 | Add pointer in `deploy/CLAUDE.md` to now-corrected runbook. |
+| 7 | W4 + N1 | Single Makefile edit trims rationale to one-line pointer. |
+| 8 | N2 | Project root CLAUDE.md row, last (lowest blast radius). |
+
+### Cross-cutting
+
+- **B2 ↔ W5** coupled: B2 scopes `nats-regen-authconf` to auth-only, which
+  changes what the wrapper's outer `quadlet-secrets-install` would have done.
+  Apply B2 before W5.
+- **W4 + N1** = same edit (Makefile lines 289–292).
+- **W2 ↔ W3**: W2 corrects the SSoT runbook; W3 points to it from
+  `deploy/CLAUDE.md`. Apply W2 first.
+
+### Not in scope (raised by panel, deferred)
+
+- **HealthCmd on `lyra-nats.container`** (B1 long-term fix) — would replace
+  the `is-active --wait` poll with proper readiness. Tracked in postmortem-
+  remaining item 4 (#1293 epic surface).
+- **`status: retired` for `acl-matrix.json` identities** — separate hardening
+  surface, postmortem-remaining item 3.
+- **Audit-trail log for rotations** — out of scope; raised by security.
+
+## Next
+
+Apply all 8 edits in the order above on the PR #1296 branch
+(`fix/1293-runbook-restart-not-hup`), commit as a follow-up to
+`6d4cd0da`, push.

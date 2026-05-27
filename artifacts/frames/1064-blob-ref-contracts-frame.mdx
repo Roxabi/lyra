@@ -1,0 +1,66 @@
+---
+title: "feat(contracts): add BlobRef; atomic removal of audio_b64/audio_bytes"
+issue: 1064
+status: approved
+tier: F-lite
+date: 2026-05-22
+---
+
+## Problem
+
+All binary payloads (voice audio, generated images) currently travel **inline** through NATS messages as raw bytes or base64-encoded strings. ADR-067 (accepted 2026-05-09) replaces this with a content-addressed BlobStore primitive (#1063, shipped) where messages carry only a typed `BlobRef`. Slice V2 of epic #1061 is the wire-contract update that propagates BlobRef into `SttRequest`, `TtsResponse`, `AudioPayload`, and `ImageResponse`.
+
+Without this slice, all downstream work in the BlobStore epic is blocked: voice domain client (#1067), image domain client (#1308), and the cross-repo worker mirrors (voiceCLI#144, imageCLI#97). The contracts package is the unblocking dependency.
+
+Per Q4 of parent #1061 spec: atomic migration, no `DeprecationWarning` shim — keeps a single source of truth and avoids field-precedence ambiguity.
+
+## Who
+
+- **Primary:** Lyra hub + adapters (Telegram, Discord) and the voiceCLI / imageCLI worker processes. They produce/consume `SttRequest`, `TtsResponse`, `AudioPayload`, `ImageResponse` and will see the `audio_b64`/`audio_bytes`/`image_b64`/`file_path` fields disappear in favour of `blob_ref: BlobRef`.
+- **Secondary:** ML/debug operator (Mickael) querying BlobStore SQLite for training-data extraction — schema unaffected, but contracts now reference the same `content_hash` that lives in the manifest.
+
+## Constraints
+
+- **Atomic-merge across 3 repos** — lyra#1064 + voiceCLI#144 + imageCLI#97 ship together. GitHub native deps wired ✓. Coordination happens at merge time (no shim window).
+- **No `DeprecationWarning` shim** — Q4 of parent spec is binding. Field rename is a clean cut.
+- **No introduction of new patterns** — this slice is a mechanical field-rename + new `BlobRef` model; it does not extend any "legacy" pattern that stage-axis refactor (#1277) is replacing. Therefore not blocked by the stage-axis pause memo.
+- **8 lyra consumer files updated in same PR** — adapters (`telegram_normalize.py`, `discord_audio.py`), codecs (`nats_{stt,tts,image}_codec.py`), client (`nats_image_client.py`), and core (`audio_payload.py`, `messaging/message.py`). Python is dynamic — without these updates, lyra fails at import time.
+- **`nats_image_client.py` slated for replacement by #1308** — edit conservatively (smallest field-rename diff, no architectural refinement that would conflict with stage-axis ImageClient).
+
+## Out of Scope
+
+- Adapter eager-ingest logic (TG/Discord download → BlobStore.put on inbound) — that is parent #1061 slices V3 + V4, separate tickets.
+- BlobStore reads/writes inside consumers — only the contract field rename happens here. Codecs and adapters pass `blob_ref` through without resolving it. End-to-end voice round-trip becomes green once #1067 + #1308 + voiceCLI#144 + imageCLI#97 land on top.
+- ImageClient stage-axis refactor (#1308) — `nats_image_client.py` is updated for the field rename only; structural changes belong to #1308.
+- AudioPayload promotion to roxabi-contracts package — it stays in `src/lyra/core/` as a lyra-internal type. Wire contracts are STT/TTS/Image; AudioPayload is the lyra-internal carrier inside `InboundMessage`.
+- BlobStore GC / TTL / encryption — designed in #1061 spec, out of scope for v1.
+
+## Premise Validity
+
+**Success in 6 months:**
+Voice and image payloads flow end-to-end via BlobRef across lyra ↔ voiceCLI ↔ imageCLI. NATS messages carry `blob_ref` only; no remaining `audio_b64` / `audio_bytes` / `image_b64` / `file_path` references in `packages/roxabi-contracts/` or in lyra wire codec paths. Voice round-trip latency unchanged within ±5%.
+
+**Failure in 6 months (falsifiable):**
+One of:
+1. Inline-bytes fields (`audio_b64`, `audio_bytes`, `image_b64`, `file_path`) still appear in `packages/roxabi-contracts/` after this PR merges (grep test on the package source returns ≥1 hit).
+2. Cross-repo couples voiceCLI#144 + imageCLI#97 still open 30 days after lyra#1064 merges — atomicity broken, contracts and workers diverged.
+3. The no-shim Q4 decision had to be reversed and a `DeprecationWarning` shim was added retroactively (commit grep on `DeprecationWarning` in voice/image models returns a hit).
+
+**Simplest alternative:**
+Add `blob_ref` as an OPTIONAL field next to existing `audio_b64`/`audio_bytes`/`image_b64`/`file_path` (parallel-write migration with deprecation shim window). Workers and adapters switch one at a time; inline fields removed in a later PR.
+
+**Why not simplest:**
+Q4 of parent #1061 spec already rejected this. The shim creates field-precedence ambiguity (which wins when both are set?), doubles the test matrix, and indefinitely defers the atomic cleanup. The four cross-repo couples + 5 lyra consumer files are a small enough coordination surface that atomic-merge is mechanically tractable. The shim path costs more long-term complexity than it saves at migration time.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single architectural domain (wire contracts), no unknowns, but coordination surface > S.
+
+Signals observed:
+- Files touched: ~9 (contracts pkg voice + image + builders + tests + 5 lyra consumers + AudioPayload + 1 client edited conservatively)
+- Technical risk: low — field rename + new Pydantic model, well-established patterns
+- Architectural impact: medium — contract change cascades to 2 worker repos + several lyra modules; no new abstractions introduced
+- Unknowns: 0 — parent #1061 spec resolved all 4 brainstorm-phase questions
+- Domain breadth: 1.5 — wire contracts (single domain) + lyra-internal type (AudioPayload spans into lyra/core)
+
+Per κ formula: ~4 → F-lite.

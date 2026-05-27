@@ -10,7 +10,6 @@ from lyra.adapters.shared._shared import (
     chunk_text,
     send_with_retry,
 )
-from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
 from lyra.core.messaging.message import OutboundMessage
 from lyra.core.messaging.render_events import (
     RenderEvent,
@@ -19,6 +18,8 @@ from lyra.core.messaging.render_events import (
     TextEndRenderEvent,
     TextStartRenderEvent,
 )
+from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from lyra.outbound.emitter import PlatformCallbacks
 
 # ---------------------------------------------------------------------------
 # Helpers shared by v2 Text dispatch tests
@@ -30,7 +31,6 @@ def _make_callbacks() -> PlatformCallbacks:
         send_placeholder=AsyncMock(return_value=(object(), 42)),
         edit_placeholder_text=AsyncMock(),
         send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-        edit_trace=AsyncMock(),
         send_message=AsyncMock(return_value=99),
         send_fallback=AsyncMock(return_value=77),
         chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),

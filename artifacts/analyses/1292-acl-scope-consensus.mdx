@@ -1,0 +1,79 @@
+---
+title: "PR #1292 — $JS.API.> grant scope for workers — Expert Consensus"
+issue: 1292
+status: consensus-reached
+date: 2026-05-20
+panel: architect, devops, security-auditor
+confidence: high
+---
+
+## Problem
+
+PR #1292 grants `$JS.API.>` (wildcard JetStream API publish) and `$KV.lyra-state.>` (KV subscribe) to 4 worker identities (voice-tts, voice-stt, llm-worker, image-worker) to enable the `roxabi-nats` v0.4.x readiness probe (`wait_for_hub` via JetStream KV).
+
+Security review flagged the wildcard publish as over-privileged: `$JS.API.>` covers destructive ops (`STREAM.DELETE`, `STREAM.PURGE`, `STREAM.CREATE`, `CONSUMER.DELETE`) far beyond the probe's actual need.
+
+Two options on the table:
+
+- **A) Scope-now**: narrow `$JS.API.>` to 4 specific subjects per identity matching the actual SDK call graph
+- **B) Defer-with-tracking**: keep `$JS.API.>` (matches existing adapter pattern), open tracking issue, link from `notes` before merge
+
+## Panel
+
+| Expert | Focus |
+|---|---|
+| architect | architectural soundness, pattern consistency, drift hazards |
+| devops | ops risk, deploy/rollback ergonomics, SDK-drift recurrence |
+| security-auditor | realistic attack surface, threat-model-adjusted severity |
+
+## Consensus ρ
+
+**Option B — defer-with-tracking**, with strict conditions enforced **before merge**:
+
+1. Tracking issue #1293 created and linked from `notes` field of all 4 worker identities (and ideally backfilled to the 3 adapters carrying the same pattern)
+2. The tracking issue must be scoped as a **holistic ACL-hardening epic**, not "narrow workers only" — workers + adapters tightened together
+3. The epic must include an **SDK-drift CI gate** that extracts NATS subjects from `packages/roxabi-nats` source and validates coverage in `acl-matrix.json` — same drift class that produced PR #1292 must not recur silently
+
+### Rationale
+
+The threat model is single-tenant container (`DropCapability=all`, `ReadOnly=true`, UID 1500, private rootless Podman bridge, no external network exposure). Worst-case under broad grant is **availability** impact (compromised worker purges `kv_lyra-state.hub.ready` → adapters block ~30 s on `wait_for_hub` until hub re-publish) — not confidentiality or integrity. `lyra-state` contains only `hub.ready=true`, no PII or secrets.
+
+The 16-subject enumeration in Option A creates a **brittle dependency** on `roxabi-nats` internals: future SDK versions may add subjects (as v0.4.x just did) that aren't in the narrow scope, producing silent worker breakage at runtime with no CI signal. This is the **same drift class** that triggered PR #1292 itself.
+
+Pattern consistency with adapters matters because the matrix becomes harder to audit if workers tighten while adapters remain broad. The right time to scope down is when **all** identities are tightened together AND the SDK-drift gate exists to prevent recurrence.
+
+### Trade-offs
+
+- **Security debt accumulates** — accepted because the blast radius is bounded to availability impact in the current threat model
+- **SDK coupling fragility deferred** — accepted because the proper fix (CI gate) belongs in the hardening epic, not in PR #1292
+- **Pattern consistency preserved** — workers and adapters both carry the broad grant until the holistic tightening lands
+
+## Alternatives
+
+| Option | Proposed by | Rejected because |
+|---|---|---|
+| A — Scope-now (workers only) | initial security review | (1) brittle vs SDK evolution — narrow scope guesses at SDK internals; (2) creates audit asymmetry (workers tight, adapters broad); (3) doesn't address the root-cause drift cycle that produced this PR; (4) marginal security gain in the single-tenant threat model where impact is bounded to 30s availability stall |
+| Hybrid — narrow workers + open issue for adapters | (mediator round, not needed) | not raised; consensus reached on B without dissent |
+
+## Dissent
+
+None — unanimous on B with the same blocking conditions independently arrived at by all three panel members.
+
+## Implementation Notes
+
+1. **Create tracking issue** before merge (DONE: #1293)
+2. **Update `notes` field** in `acl-matrix.json` for all 4 worker identities, replacing "tracked as a follow-up" with "#1293" — surfaces the follow-up to anyone reading the matrix
+3. **PR description / comment** must reference #1293 so the link is visible from the review timeline
+4. **#1293 must carry a concrete deliverable**: narrowed grant profile + SDK-drift CI gate + (separately) `max_streams` quota in `nats.conf` as a defense-in-depth bound on `STREAM.CREATE` abuse
+
+## Next
+
+- Merge PR #1292 once CI green + runbook fixes applied (separate Q_auto items)
+- Work on #1293 in a future cycle — likely paired with a `roxabi-nats` version-pin policy refresh
+
+## Cross-references
+
+- PR #1292 — the change that triggered this consensus
+- Issue #1293 — ACL hardening epic (created from this consensus)
+- ADR-045 — NATS transport SDK
+- ADR-046 — NKEY provisioning declarative auth.conf

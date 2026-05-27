@@ -1,7 +1,8 @@
 [project]
 name = "lyra"
-version = "0.2.0"
+version = "0.2.1"
 description = "Lyra by Roxabi — Personal AI agent engine"
+license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "roxabi-vault",
@@ -22,6 +23,8 @@ dependencies = [
     # roxabi-nats (packages/roxabi-nats/pyproject.toml is the canonical
     # source). See issue #731.
     "roxabi-nats",
+    # Workspace presence for V1 (#1063); consumers wire BlobStore in V2+ (#1064-#1068).
+    "roxabi-blobs",
     "typer>=0.25.1",
     "tomli-w>=1.0",
     "telegramify-markdown>=1.1.4",
@@ -68,11 +71,12 @@ override-dependencies = [
 pkuseg = ["numpy"]
 
 [tool.uv.workspace]
-members = ["packages/roxabi-nats", "packages/roxabi-contracts"]
+members = ["packages/roxabi-nats", "packages/roxabi-contracts", "packages/roxabi-blobs"]
 
 [tool.uv.sources]
 roxabi-contracts = { workspace = true }
 roxabi-nats = { workspace = true }
+roxabi-blobs = { workspace = true }
 roxabi-vault = { git = "https://github.com/Roxabi/roxabi-vault.git", branch = "staging" }
 
 [tool.hatch.build.targets.wheel]
@@ -81,7 +85,7 @@ packages = ["src/lyra", "scripts"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
-testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests"]
+testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests", "packages/roxabi-blobs/tests"]
 addopts = "--import-mode=importlib -n auto --dist=loadgroup"
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning",
@@ -93,11 +97,12 @@ filterwarnings = [
 ]
 markers = [
     "nats_integration: NATS integration tests requiring Docker Compose",
+    "integration: cross-host integration tests requiring M1 Tailnet",
 ]
 
 [tool.coverage.run]
 branch = true
-source = ["lyra", "roxabi_nats", "roxabi_contracts"]
+source = ["lyra", "roxabi_nats", "roxabi_contracts", "roxabi_blobs"]
 
 [tool.coverage.report]
 show_missing = true
@@ -105,7 +110,7 @@ show_missing = true
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-contracts/src"]
+include = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-contracts/src", "packages/roxabi-blobs/src"]
 venvPath = "."
 venv = ".venv"
 # ── Permanent policy ──────────────────────────────────────────────────────────
@@ -134,7 +139,7 @@ reportUnknownLambdaType = "none"
 reportMissingTypeArgument = "none"
 
 [tool.ruff]
-src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests", "packages/roxabi-contracts/src", "packages/roxabi-contracts/tests"]
+src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests", "packages/roxabi-contracts/src", "packages/roxabi-contracts/tests", "packages/roxabi-blobs/src", "packages/roxabi-blobs/tests"]
 exclude = [".claude/worktrees", "deploy"]
 
 [tool.ruff.lint]
@@ -167,6 +172,7 @@ dev = [
     # Workspace member [testing] extras — pulls scipy+numpy needed by
     # roxabi_contracts.voice.fixtures. `uv sync` doesn't auto-expand
     # extras on workspace members (#1174), so we declare them here.
+    "roxabi-blobs[testing]",
     "roxabi-contracts[testing]",
     "roxabi-nats[testing]",
 ]

@@ -18,7 +18,7 @@ accumulator reference with an already-emitted event.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 SCHEMA_VERSION_TEXT_START_RENDER_EVENT = 1
 SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT = 1
@@ -191,6 +191,7 @@ class ToolCallStartRenderEvent:
 
     tool_call_id: str
     tool_name: str
+    input: dict[str, Any] | None = None
     schema_version: int = SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT
 
 

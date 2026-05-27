@@ -22,8 +22,6 @@ class TestModelConfig:
         assert cfg.model == "claude-opus-4-6"
         assert cfg.max_turns is None  # None = unlimited (default)
         assert cfg.tools == ()
-        assert cfg.base_url is None
-        assert cfg.api_key is None
 
     def test_backend_litellm_rejected(self) -> None:
         from lyra.core.agent.agent_builder import _validate_backend_model
@@ -43,15 +41,20 @@ class TestModelConfig:
         # must not raise
         _validate_backend_model("nats", "claude-sonnet-4-6", "test-agent")
 
-    def test_base_url_invalid_scheme_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            ModelConfig(base_url="file:///etc/passwd")
-        with pytest.raises(ValidationError):
-            ModelConfig(base_url="gopher://example.com")
+    def test_backend_claude_cli_accepted(self) -> None:
+        from lyra.core.agent.agent_builder import _validate_backend_model
 
-    def test_base_url_http_and_https_accepted(self) -> None:
-        assert ModelConfig(base_url="http://localhost:11434/v1").base_url
-        assert ModelConfig(base_url="https://api.example.com").base_url
+        # must not raise
+        _validate_backend_model("claude-cli", "claude-opus-4-6", "test-agent")
+
+    @pytest.mark.parametrize("bad", ["litellm", "ollama", "unknown-xyz"])
+    def test_backend_invalid_at_construction(self, bad: str) -> None:
+        # Pydantic field_validator must reject the whole class of unknowns at
+        # construction time — direct ModelConfig() calls cannot bypass
+        # _VALID_BACKENDS. Parametrized to prove the guard fires for any
+        # non-member, not just a single coincident value.
+        with pytest.raises(ValidationError, match="Invalid backend"):
+            ModelConfig(backend=bad)
 
     def test_tools_field_is_tuple(self) -> None:
         cfg = ModelConfig(tools=("Read", "Grep"))
@@ -59,9 +62,13 @@ class TestModelConfig:
         assert cfg.tools == ("Read", "Grep")
 
     def test_frozen(self) -> None:
+        # frozen=True rejects any mutation. Using "nats" (≠ default "claude-cli")
+        # so the test is isolated from _validate_backend semantics — if a future
+        # Pydantic version no-op'd same-value set on frozen models, this would
+        # still catch the regression.
         cfg = ModelConfig()
         with pytest.raises(ValidationError):
-            setattr(cfg, "backend", "ollama")
+            setattr(cfg, "backend", "nats")
 
     def test_cwd_defaults_to_none(self) -> None:
         cfg = ModelConfig()
@@ -85,94 +92,6 @@ class TestModelConfig:
         a = ModelConfig(cwd=Path("/a"))
         b = ModelConfig(cwd=Path("/b"))
         assert hash(a) == hash(b)
-
-    # ------------------------------------------------------------------
-    # base_url field
-    # ------------------------------------------------------------------
-
-    def test_base_url_defaults_to_none(self) -> None:
-        cfg = ModelConfig()
-        assert cfg.base_url is None
-
-    def test_base_url_accepts_string(self) -> None:
-        cfg = ModelConfig(base_url="http://localhost:11434/v1")
-        assert cfg.base_url == "http://localhost:11434/v1"
-
-    def test_base_url_serializes_correctly(self) -> None:
-        cfg = ModelConfig(base_url="http://localhost:11434/v1")
-        dumped = cfg.model_dump()
-        assert dumped["base_url"] == "http://localhost:11434/v1"
-
-    def test_base_url_roundtrips_via_model_validate(self) -> None:
-        cfg = ModelConfig(base_url="http://localhost:11434/v1")
-        restored = ModelConfig.model_validate(cfg.model_dump())
-        assert restored.base_url == "http://localhost:11434/v1"
-
-    def test_eq_same_base_url_are_equal(self) -> None:
-        a = ModelConfig(base_url="http://localhost:11434/v1")
-        b = ModelConfig(base_url="http://localhost:11434/v1")
-        assert a == b
-
-    def test_eq_different_base_url_are_not_equal(self) -> None:
-        a = ModelConfig(base_url="http://localhost:11434/v1")
-        b = ModelConfig(base_url="http://remotehost:8080/v1")
-        assert a != b
-
-    def test_eq_one_base_url_none_not_equal(self) -> None:
-        a = ModelConfig(base_url=None)
-        b = ModelConfig(base_url="http://localhost:11434/v1")
-        assert a != b
-
-    def test_hash_same_base_url_same_hash(self) -> None:
-        a = ModelConfig(base_url="http://localhost:11434/v1")
-        b = ModelConfig(base_url="http://localhost:11434/v1")
-        assert hash(a) == hash(b)
-
-    # ------------------------------------------------------------------
-    # api_key field — excluded from hash and eq
-    # ------------------------------------------------------------------
-
-    def test_api_key_defaults_to_none(self) -> None:
-        cfg = ModelConfig()
-        assert cfg.api_key is None
-
-    def test_api_key_accepts_string(self) -> None:
-        cfg = ModelConfig(api_key="sk-secret")
-        assert cfg.api_key == "sk-secret"
-
-    def test_api_key_excluded_from_eq(self) -> None:
-        """Two configs differing only in api_key must be equal."""
-        a = ModelConfig(api_key="sk-one")
-        b = ModelConfig(api_key="sk-two")
-        assert a == b
-
-    def test_api_key_excluded_from_hash(self) -> None:
-        """Two configs differing only in api_key must share the same hash."""
-        a = ModelConfig(api_key="sk-one")
-        b = ModelConfig(api_key="sk-two")
-        assert hash(a) == hash(b)
-
-    def test_api_key_none_and_set_same_hash(self) -> None:
-        a = ModelConfig(api_key=None)
-        b = ModelConfig(api_key="sk-any")
-        assert hash(a) == hash(b)
-
-    def test_api_key_excluded_from_model_dump(self) -> None:
-        """api_key must never leak into serialized payloads (NATS, DB, logs)."""
-        cfg = ModelConfig(api_key="sk-secret")
-        dumped = cfg.model_dump()
-        assert "api_key" not in dumped
-
-    def test_api_key_excluded_from_repr(self) -> None:
-        """repr must not leak the credential in log/debug output."""
-        cfg = ModelConfig(api_key="sk-secret")
-        assert "sk-secret" not in repr(cfg)
-
-    def test_api_key_roundtrip_does_not_restore_value(self) -> None:
-        """model_dump → model_validate does not round-trip api_key by design."""
-        cfg = ModelConfig(api_key="sk-secret")
-        restored = ModelConfig.model_validate(cfg.model_dump())
-        assert restored.api_key is None
 
     # ------------------------------------------------------------------
     # effort field — included in __eq__ and __hash__ (CliPool guard)

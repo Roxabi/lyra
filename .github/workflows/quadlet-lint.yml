@@ -8,6 +8,7 @@ on:
     branches: [main, staging]
     paths:
       - "deploy/quadlet/**"
+      - ".github/workflows/quadlet-lint.yml"
   workflow_dispatch: {}
 
 concurrency:
@@ -48,39 +49,16 @@ jobs:
             'podman=5.4.1+ds1-1' \
             'conmon=2.1.12-4' \
             'crun=1.20-1syncable1'
-          # Assert no other plucky packages leaked in via transitive deps.
-          # Gather full apt-cache policy output in one batch call (no -I{} to
-          # avoid one subprocess per package; xargs batches all names at once).
-          RAW=$(dpkg-query -W -f='${Package}\n' \
-            | xargs apt-cache policy 2>/dev/null)
-          # Stateful awk over the full stream — no grep -B context window needed.
-          # apt-cache policy format (exact indentation matters):
-          #   podman:                          ← package header (no leading whitespace, ends in ':')
-          #     Installed: 5.4.1+ds1-1
-          #     Version table:
-          #    *** 5.4.1+ds1-1 100            ← active candidate (1 leading space + ***)
-          #           100 https://.../plucky  ← archive source (8 leading spaces)
-          #        4.9.0 500                  ← non-active version (5 leading spaces + non-space)
-          #           500 https://.../noble
-          # Rules:
-          #   - New package: line with no leading whitespace ending in ':'  → reset state
-          #   - Active candidate: " *** ..."                                → set in_cand=1
-          #   - Non-active version: "     <non-space>..."                   → set in_cand=0
-          #   - Archive line while in_cand && contains "plucky"             → print pkg (once)
-          PLUCKY_PKGS=$(printf '%s\n' "${RAW}" \
-            | awk '/^[^ \t].*:$/ { pkg = $0; sub(/:$/, "", pkg); in_cand = 0; next }
-                   /^ \*\*\*/     { in_cand = 1; next }
-                   /^     [^ ]/   { in_cand = 0; next }
-                   in_cand && /plucky/ { print pkg; in_cand = 0 }')
-          # grep -Fxv exits 1 when all lines are excluded (list is clean) — that
-          # is the expected happy path, so || true is scoped only to this step.
-          PLUCKY_EXTRA=$(printf '%s\n' "${PLUCKY_PKGS}" \
-            | grep -Fxv -e podman -e conmon -e crun || true)
-          if [[ -n "${PLUCKY_EXTRA}" ]]; then
-            echo "::error::Unexpected plucky packages installed: ${PLUCKY_EXTRA}"
-            exit 1
-          fi
-          # Verify we have Podman ≥ 5.x before proceeding.
+          # Assert the 3 pinned packages are installed at exactly the expected versions.
+          # Replaces the awk-based leak detector dropped in #1331 / #1350 — the
+          # apt-cache policy parser misfired on runner image 20260518.149+.
+          for pkg_ver in 'podman=5.4.1+ds1-1' 'conmon=2.1.12-4' 'crun=1.20-1syncable1'; do
+            pkg="${pkg_ver%%=*}"
+            want="${pkg_ver#*=}"
+            got=$(dpkg-query -W -f='${Version}' "$pkg")
+            [[ "$got" == "$want" ]] || { echo "::error::$pkg expected $want, got $got"; exit 1; }
+          done
+          # Verify we have Podman ≥ 5.x before proceeding (defense-in-depth).
           PODMAN_VERSION=$(podman --version | awk '{print $3}')
           echo "Installed Podman ${PODMAN_VERSION}"
           MAJOR=$(echo "${PODMAN_VERSION}" | cut -d. -f1)
@@ -97,6 +75,25 @@ jobs:
           # Emit generator logs to stderr; non-zero exit on parse error.
           /usr/libexec/podman/quadlet --dryrun --user 2>&1
           echo "quadlet --dryrun passed"
+
+      - name: Quadlet HealthCmd double-quote check
+        # The Quadlet generator silently drops the closing double-quote from
+        # HealthCmd= values, producing ["CMD-SHELL","pgrep -f \"lyra X"] which
+        # /bin/sh rejects with "Syntax error: Unterminated quoted string".
+        # All containers report unhealthy indefinitely.  Fix: use /proc/1/cmdline
+        # (no quotes needed).  Reject any HealthCmd= containing a double-quote.
+        # See issue #1370.
+        run: |
+          set -euo pipefail
+          if grep -nP "HealthCmd=(?!python3 -c ').*\"" deploy/quadlet/*.container; then
+            echo "::error::Double-quotes found in HealthCmd= in the above Quadlet unit(s)."
+            echo "The Quadlet generator drops the closing quote, producing a broken CMD-SHELL"
+            echo "array (/bin/sh: Syntax error: Unterminated quoted string). Use"
+            echo "  HealthCmd=grep -q <keyword> /proc/1/cmdline"
+            echo "instead (no quotes, no procps dependency). See issue #1370."
+            exit 1
+          fi
+          echo "No double-quotes in HealthCmd= lines — OK"
 
       - name: Quadlet inline-comment check
         # Quadlet does NOT strip trailing # comments from option values.
@@ -115,7 +112,7 @@ jobs:
             fi
           done < <(find "${QUADLET_DIR}" \
               -maxdepth 1 \
-              \( -name "*.container" -o -name "*.volume" -o -name "*.network" \) \
+              \( -name "*.container" -o -name "*.container.tmpl" -o -name "*.volume" -o -name "*.network" \) \
               -print0)
           if [[ ${#BAD_FILES[@]} -gt 0 ]]; then
             echo ""
@@ -124,3 +121,10 @@ jobs:
             exit 1
           fi
           echo "No inline comments on value lines — OK"
+
+      - name: Template purity check
+        # Enforces tracked deploy/quadlet/*.container.tmpl invariants (#1369):
+        #  - no `Secret=lyra-bot-*` lines (must come from render at install time)
+        #  - no `# --- BEGIN ... ---` splice blocks
+        #  - tools/render_quadlet.py exists
+        run: bash tools/check_quadlet_template_purity.sh

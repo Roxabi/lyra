@@ -6,7 +6,7 @@ import asyncio
 import hmac
 import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Coroutine
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -14,14 +14,15 @@ from typing import TYPE_CHECKING, Any
 from fastapi import Depends, FastAPI, HTTPException, Request
 
 if TYPE_CHECKING:
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
     from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.messaging.bus import Bus
     from lyra.infrastructure.stores.turn_store import TurnStore
+    from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
 
 from lyra.adapters.telegram import telegram_audio  # noqa: I001 — DEBT:lint-residual
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.adapters.shared._shared import TypingTaskManager, resolve_msg
+from lyra.typing import make_typing_factory
 from lyra.adapters.telegram.telegram_formatting import (
     _render_buttons as _render_buttons_impl,
     _render_text as _render_text_impl,
@@ -51,6 +52,15 @@ from lyra.core.messaging.message import (
 from lyra.core.messaging.messages import MessageManager
 
 log = logging.getLogger(__name__)
+
+
+# ── Typing plane (#1376) — module-level resolver for AC8 ─────────────────
+from lyra.transport.work_scope import WorkScope  # noqa: E402
+
+
+def _telegram_scope_resolver(scope: WorkScope) -> int:
+    """Resolve WorkScope → Telegram chat_id (may be negative for groups)."""
+    return scope.scope_id
 
 
 # TelegramConfig/load_telegram_config live in lyra.core.config (ADR-059 V6).
@@ -114,6 +124,7 @@ class TelegramAdapter(OutboundAdapterBase):
         )
         self._typing = TypingTaskManager()
         self._bot: Any = None
+        self._factory_builder = make_typing_factory(self._typing_worker_bound)
         self._dp: Any = None
         from aiogram import Dispatcher, F
 
@@ -196,8 +207,12 @@ class TelegramAdapter(OutboundAdapterBase):
         """Expose the internal task dict — used by tests and outbound submodules."""
         return self._typing._tasks
 
+    def _typing_worker_bound(self, chat_id: int) -> Coroutine[Any, Any, None]:
+        """Bound worker that reads ``self.bot`` lazily (tests replace via setter)."""
+        return _typing_worker(self.bot, chat_id)
+
     def _start_typing(self, scope_id: int) -> None:
-        self._typing.start(scope_id, lambda: _typing_worker(self.bot, scope_id))
+        self._typing.start(scope_id, self._factory_builder(scope_id))
 
     def _cancel_typing(self, scope_id: int) -> None:
         self._typing.cancel(scope_id)
@@ -250,6 +265,54 @@ class TelegramAdapter(OutboundAdapterBase):
         self, original_msg: InboundMessage, outbound: OutboundMessage | None
     ) -> "PlatformCallbacks":
         return _build_streaming_callbacks(self, original_msg, outbound)
+
+    def _make_emitter(
+        self,
+        original_msg: InboundMessage,
+        outbound: OutboundMessage | None,
+    ) -> "OutboundEmitter":
+        """Construct an OutboundEmitter composed from stage objects (#1279).
+
+        Active since OutboundAdapterBase.send_streaming was flipped to call
+        _make_emitter (T16). The formatter's edit_reasoning/edit_tool_recap
+        are wired onto the PlatformCallbacks so send-mechanics share the same
+        rendering surface until the S7 follow-up absorbs send_* into the
+        formatter Protocol and PlatformCallbacks is deleted.
+        """
+        from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+        from lyra.adapters.telegram.telegram_formatting import _validate_inbound
+        from lyra.adapters.telegram.telegram_outbound import TelegramTypingIndicator
+        from lyra.outbound.emitter import OutboundEmitter
+        from lyra.outbound.error_handler import OutboundErrorHandler
+
+        meta = _validate_inbound(original_msg, "send_streaming")
+        if meta is None:
+            callbacks = _build_streaming_callbacks(self, original_msg, outbound)
+            return OutboundEmitter(callbacks, outbound)
+
+        chat_id, _, _ = meta
+        placeholder_text = self._msg("stream_placeholder", "…")
+        formatter = TelegramFormatter(
+            self,
+            chat_id=chat_id,
+            get_msg=self._msg,
+            placeholder_text=placeholder_text,
+        )
+        typing = TelegramTypingIndicator(self)
+        handler = OutboundErrorHandler(get_msg=self._msg)
+        callbacks = _build_streaming_callbacks(self, original_msg, outbound)
+        # Wire formatter methods onto the mutable PlatformCallbacks dataclass so
+        # the legacy emitter orchestration calls the stage-extracted logic.
+        callbacks.edit_reasoning = formatter.edit_reasoning
+        callbacks.edit_tool_recap = formatter.edit_tool_recap
+        callbacks.chunk_text = formatter.chunk
+        return OutboundEmitter(
+            callbacks,
+            outbound,
+            error_handler=handler,
+            typing=typing,
+            typing_scope_id=chat_id,
+        )
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
         await telegram_audio.render_audio(self, msg, inbound)

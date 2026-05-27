@@ -6,8 +6,8 @@ description: Current truth for all store, persistence, and event-bus decisions i
 # Storage & Persistence — Lyra
 
 > Status: LIVING — current truth for store/persistence/event-bus decisions.
-> Last updated: 2026-05-09.
-> Source ADRs: 008, 022 (amended), 024, 029, 063, 067. Absorbed via 059: 048.
+> Last updated: 2026-05-24.
+> Source ADRs: 008, 022 (amended), 024, 029, 063, 067 (amended), 068. Absorbed via 059: 048.
 
 ## Scope
 
@@ -150,15 +150,84 @@ The `wire_discord_adapters` function returns `(adapters, dispatchers, thread_sto
 ### BlobStore (content-addressed)
 
 Binary payloads (Telegram/Discord attachments, STT/TTS audio) are stored behind a `BlobStore`
-Protocol with three methods: `put`, `get`, `exists`. The v1 implementation is a SHA-256-addressed
-flat-FS tree (`/data/lyra/blobs/<sha[:2]>/<sha>`) plus a SQLite index at
+Protocol with three methods: `put`, `get`, `exists`. The v1 backend is `FsBlobStore`: a
+SHA-256-addressed flat-FS tree (`/data/lyra/blobs/<sha[:2]>/<sha>`) plus a SQLite index at
 `/data/lyra/blobs/index.sqlite` (two tables: `blobs` keyed by `content_hash`; `blob_refs` for
-per-ingestion provenance). Dedup: `put()` hashes first; if `blobs.content_hash` exists, only a
-new `blob_refs` row is appended. Write durability order: write file → `fsync` → INSERT.
-`audio_b64` / `audio_bytes` in `roxabi-contracts` are deprecated; removal is a coordinated
-atomic migration across contracts → voiceCLI workers → lyra adapters. Adapters download eagerly
-at ingress (Telegram URL valid ≥1h; Discord CDN URLs expire ~24h). Raw bytes never traverse
-NATS. → ADR-067
+per-ingestion provenance). The backend runs on `lyra-hub` role (M₁) and is exposed via a
+dedicated Quadlet container `lyra-blobstore.container` (FastAPI on TCP `:8449`, image
+`ghcr.io/roxabi/lyra` + `lyra blobstore serve` subcommand) — V8 issue #1330. Host paths:
+`~/.lyra/blobs/` (data, bind-mount into container) and `~/.roxabi/lyra/env/blobstore.env`
+(Quadlet env). Direct-FS access is reserved for co-located writers only (telegram_normalize,
+hub middleware); all other consumers (e.g., M₂ image-worker) use `HttpBlobStore` — the store
+host is invisible to them. Auth: shared bearer token via Podman secret `lyra_blobstore_token`
+(`type=mount`) in Phase 1 → per-identity JWT or `auth.db` lookup + `blob_grants` table in
+Phase 2 (see ADR-067 §Auth plane). Dedup: `put()` hashes first; if `blobs.content_hash`
+exists, only a new `blob_refs` row is appended. Write durability order: write file → `fsync`
+→ INSERT. Backup (Phase 1): Restic → Cloudflare R2 daily, `index.sqlite` snapshotted via
+SQLite `.backup` API before FS tarball (atomicity invariant). `audio_b64` / `audio_bytes` in
+`roxabi-contracts` are deprecated; removal is a coordinated atomic migration across contracts
+→ voiceCLI workers → lyra adapters. Adapters download eagerly at ingress (Telegram URL valid
+≥1h; Discord CDN URLs expire ~24h). Raw bytes never traverse NATS. MinIO swap triggers: disk
+>70% on blobstore volume, HA requirement, or ML S3 demand. → ADR-067 (amended), ADR-068
+
+#### HTTP service (V8 — #1330)
+
+`lyra-blobstore` is a dedicated Quadlet container (`lyra-blobstore.service`) that exposes
+`FsBlobStore` over HTTP on port `8449`. It runs on the `lyra-hub` role (M₁, `roxabituwer`)
+only — same host as the data volume.
+
+Six endpoints (N1–N6 per spec):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `PUT` | `/blobs` | Upload blob; returns `store_key` + `content_hash` |
+| `GET` | `/blobs/{store_key}` | Download blob bytes |
+| `HEAD` | `/blobs/{store_key}` | Check existence, return metadata headers |
+| `DELETE` | `/blobs/{store_key}` | Remove blob |
+| `GET` | `/blobs/{store_key}/exists` | Boolean existence check |
+| `GET` | `/health` | Readiness + version |
+
+**Client:** `roxabi_blobs.HttpBlobStore` — implements the `BlobStore` Protocol using `httpx`
+async. Zero `lyra.*` imports; importable from voiceCLI, imageCLI, and any other cross-repo
+consumer without pulling in the Lyra runtime.
+
+**Auth (Phase 1):** shared bearer token via Podman secret `lyra_blobstore_token`
+(`type=mount`, `/run/secrets/lyra_blobstore_token`, uid=1500, gid=1500, mode=0400).
+Unauthorized requests return `401` with an audit row (`result: "unauthorized"`).
+
+**Wiring:** same-host clients (Telegram, Discord, clipool adapters) use Quadlet DNS
+`http://lyra-blobstore:8449`. Cross-host clients use Tailnet MagicDNS (see `## Cross-host
+access pattern` below). The Protocol call-site is identical in both cases.
+
+#### Cross-host access pattern
+
+M₂ workers (`llm-worker`, `image-worker`) and any other Tailnet member construct
+`HttpBlobStore` pointing to:
+
+```
+http://roxabituwer.goose-logarithm.ts.net:8449
+```
+
+Transport encryption is provided by Tailnet (WireGuard) — V8 is HTTP at the application
+layer. A future phase may add mTLS at the app layer if the Tailnet boundary is broadened
+(tracked as TBD in ADR-067 §Auth plane Phase 2).
+
+**Topology rule:** only the `lyra-blobstore` process uses `FsBlobStore` directly. Every
+other process — hub, adapters, M₂ workers — constructs `HttpBlobStore`. Direct-FS access
+is a violation of this boundary from V8 onwards.
+
+**Backup and restore:** see `docs/QUADLET-DEPLOYMENT.md` (§ Rotating the BlobStore bearer
+token and §§ Backing up the BlobStore / Restore invariant) for the operator runbook.
+
+#### Restore invariant
+
+After a restore, the SQLite manifest is authoritative. Any FS shard file that is NOT
+referenced by a `blobs.store_path` row is a content-addressed orphan and is safely
+discardable. Reconciliation (full runbook in `docs/QUADLET-DEPLOYMENT.md § Restore invariant`):
+
+1. `sqlite3 index.sqlite "SELECT store_path FROM blobs"` → expected file list
+2. `find sha256 -type f` → actual file list
+3. Discard files in (2)\(1) — they are dedup-orphans from a mid-backup write, never user data loss.
 
 ### Event bus DI
 
@@ -206,8 +275,10 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
   backup. SQLite `.backup` API or WAL checkpoint before FS snapshot is mandatory if a
   backup cron is added. Not yet implemented.
 - Blob mount inode/disk alerts (threshold 80%) are specified in ADR-067 but not yet wired.
-- v1 BlobStore is single-host; cross-host transport (e.g., STT on M₁ + TTS on M₂) requires
-  swapping the FS implementation for an S3/MinIO backend.
+- v1 BlobStore is single-host but ecosystem-transparent: cross-host consumers use `HttpBlobStore`
+  (V8 HTTP service); MinIO swap is triggered only by disk pressure, HA need, or S3 demand. → ADR-068
+- TurnStore + L3 memory (including L1 sessions — `pool_sessions` table in `turns.db`) use direct-write to SQLite (co-located, ADR-068 pattern α deviation). Tolerated until either (a) the TurnStore α-refactor issue (#1331) lands, OR (b) a 3rd adapter is added on top of TurnStore — whichever comes first (ADR-073 three-strikes rule).
+- JetStream KV `lyra-state` is used exclusively for hub readiness signaling (`hub.ready` key, `roxabi_nats/readiness.py`). It is NOT a session store.
 
 ## See also
 
@@ -224,5 +295,6 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 | 024 | AgentStore SQLite | Accepted |
 | 029 | DB-first agent config | Accepted |
 | 063 | ThreadStore teardown | Accepted |
-| 067 | BlobStore content-addressed | Accepted |
+| 067 | BlobStore content-addressed | Accepted (amended 2026-05-24) |
+| 068 | Ecosystem Service Plane | Accepted |
 | 048 | Lyra infrastructure layer | Absorbed by ADR-059 |

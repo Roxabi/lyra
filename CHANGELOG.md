@@ -25,6 +25,10 @@ Entries are generated automatically by `/promote` and committed to staging befor
 - `src/lyra/core/messaging/tool_recap_format.py` removed (v1 tool summary formatting helper,
   no longer referenced after v1 cutover).
 - v1 registry entries (`text`, `tool_summary`) removed from `NatsRenderEventCodec`.
+- `show_tool_recap` key removed from the agent TOML schema (dead code, never wired to the
+  live tool-recap renderer). Operators with `show_tool_recap = true|false` in
+  `~/.lyra/agents/*.toml` will see the key silently ignored after upgrade; no replacement
+  until Phase B re-wiring lands. (#1335)
 
 > **Coordinated deploy required.** This slice bumps the render-event schema floor. The
 > `lyra-hub`, `lyra-telegram`, and `lyra-discord` container images must be released and
@@ -35,6 +39,14 @@ Entries are generated automatically by `/promote` and committed to staging befor
 
 ### Fixed
 
+- `HttpBlobStore.exists()` sentinel `BlobRef.content_hash` is now `""` instead of
+  carrying the `store_key` argument (which is a wire path, not a sha256). HEAD does
+  not return a content_hash, so failing fast on any downstream integrity check is
+  preferable to silently passing a wrong-typed value. Adds `BlobRef.is_sentinel:
+  bool = False` field + `model_validator` that rejects `content_hash=""` unless
+  `is_sentinel=True` — mirrors the `roxabi-contracts.BlobRef` /
+  `PENDING_STORE_KEY` guard on the storage side. Updates `roxabi-blobs` to
+  `0.1.1`. (#1367)
 - Tool activity recap card (`🔧 Working… / Done ✅`) restored on Telegram and Discord
   multi-tool turns. Card had been blank since the v1 cutover (#1192 slice 3) which removed
   the v1 emitter while leaving `_on_toolcall_v2` as a stub. Rebuild sources card state

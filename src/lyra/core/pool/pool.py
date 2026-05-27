@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 from ..config import PoolConfig
 from ..debouncer import MessageDebouncer
 from ..messaging.message import InboundMessage, OutboundMessage
+from ..stores.pairing_protocol import PairingManagerProtocol
 from .pool_context import PoolContext as PoolContext
 from .pool_observer import PoolObserver
 from .pool_processor import PoolProcessor
@@ -119,6 +120,10 @@ class Pool:
             session_id_fn=lambda: self.session_id,
         )
         self._processor = PoolProcessor(self)
+        # Wired by PoolManager at construction (composition root).
+        # Command handlers read pool.pairing_manager instead of calling
+        # the deferred get_pairing_manager() facade (ADR-059 V4).
+        self.pairing_manager: PairingManagerProtocol | None = None
 
     @property
     def turn_store(self) -> "TurnStore | None":
@@ -230,18 +235,23 @@ class Pool:
         return result if result is not None else fallback
 
     async def reset_session(self) -> None:
-        """Reset session state; called by /clear. Rotates UUID, notifies TurnStore."""
+        """Reset session state; called by /clear. Rotates UUID, publishes to NATS."""
         self._pending_session_id = None
         old_sid = self.session_id
         await self._observer.end_session_async(old_sid)
         self.session_id = str(uuid.uuid4())
-        if self._observer._turn_store is not None:
+        if self._observer._turn_publisher is not None:
             try:
-                await self._observer._turn_store.start_session(
-                    self.session_id, self.pool_id
+                # trace_id: use new session_id as lifecycle correlation key
+                await self._observer._turn_publisher.publish_start_session(
+                    pool_id=self.pool_id,
+                    session_id=self.session_id,
+                    platform=self.medium or "",
+                    user_id=self.user_id or "",
+                    trace_id=self.session_id,
                 )
-            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: TurnStore errors must not abort session
-                log.exception("[pool:%s] start_session failed", self.pool_id)
+            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: publish errors must not abort session
+                log.exception("[pool:%s] publish_start_session failed", self.pool_id)
         self._observer.reset_session_persisted()
         if self._session_reset_fn is not None:
             await self._session_reset_fn()

@@ -13,7 +13,6 @@ from lyra.adapters.shared._shared import (
     resolve_msg,
     send_with_retry,
 )
-from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
 from lyra.adapters.shared._shared_text import (
     chunk_text,
     sanitize_filename,
@@ -21,6 +20,8 @@ from lyra.adapters.shared._shared_text import (
 )
 from lyra.adapters.shared.cli import CLIAdapter
 from lyra.adapters.shared.outbound_listener import OutboundListener
+from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from lyra.outbound.emitter import PlatformCallbacks
 
 __all__ = [
     "OutboundAdapterBase",

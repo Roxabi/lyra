@@ -79,6 +79,8 @@ When `--regen-authconf` encounters an identity in IDENTITIES whose seed file doe
 
 Each supervisor program's environment MUST reference its own seed file (`<identity>.seed`). The `.env` fallback to `hub.seed` is a configuration error, not a feature. The supervisor conf is the authoritative source of which NATS identity a process uses. If the seed file is absent at process start, the process MUST fail fast (exit non-zero) rather than silently degrade to a different identity.
 
+**Quadlet implementation (post-Commit 1B.2/1B.3):** In Podman Quadlet units, Invariant 4 is enforced by `Secret=<secret-name>,type=mount,target=<name>.seed` + `Environment=NATS_NKEY_SEED_PATH=/run/secrets/<name>.seed`. Secret names follow S8 convention (`lyra-nats-<role>`): `lyra-nats-hub`, `lyra-nats-telegram`, `lyra-nats-discord`, `lyra-nats-clipool`. If the Podman secret is absent, the container fails to start — structurally equivalent to the fail-fast mandate above.
+
 ### Invariant 5 — Drift is detectable before harm
 
 A `lyra ops verify` CLI command (or equivalent script) MUST be able to: (a) parse IDENTITIES from gen-nkeys.sh, (b) check which seeds exist on disk, (c) parse the live auth.conf, and (d) report any gap between the three — missing seeds, extra auth.conf entries, entries without permissions blocks. This check runs in CI and as a pre-deploy gate.

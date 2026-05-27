@@ -4,7 +4,7 @@ NatsDriverBase does not exist yet — all tests are expected to fail with
 ImportError until the implementation is in place (T2).
 
 Covers:
-- _stream_gen: yields chunks, stops on done=True, terminates on timeout
+- _dict_stream_gen: yields chunks, stops on done=True, terminates on timeout
 - is_alive: threshold behaviour (within/outside HB_TTL)
 - _on_heartbeat: updates _worker_freshness from JSON msg
 - _any_worker_alive: prunes stale entries older than HB_TTL*2
@@ -60,15 +60,15 @@ def _make_msg(data: dict) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# T_stream — _stream_gen
+# T_stream — _dict_stream_gen
 # ---------------------------------------------------------------------------
 
 
 class TestStreamGen:
-    """_stream_gen yields raw dict chunks until done=True."""
+    """_dict_stream_gen yields raw dict chunks until done=True."""
 
     @pytest.mark.asyncio
-    async def test_stream_gen_yields_chunks(self) -> None:
+    async def test_dict_stream_gen_yields_chunks(self) -> None:
         """Chunks without done=True are yielded in order."""
         # Arrange
         nc = _make_mock_nc()
@@ -106,7 +106,7 @@ class TestStreamGen:
 
         async def _run() -> None:
             nonlocal collected
-            gen = driver._stream_gen("lyra.clipool.exec", {"cmd": "echo hi"})
+            gen = driver._dict_stream_gen("lyra.clipool.exec", {"cmd": "echo hi"})
 
             # Consume the generator in a task; inject chunks from this coroutine.
             async def _consume() -> None:
@@ -133,7 +133,7 @@ class TestStreamGen:
         assert " world" in texts
 
     @pytest.mark.asyncio
-    async def test_stream_gen_stops_on_done(self) -> None:
+    async def test_dict_stream_gen_stops_on_done(self) -> None:
         """Generator terminates when a chunk with done=True arrives."""
         # Arrange
         nc = _make_mock_nc()
@@ -153,7 +153,7 @@ class TestStreamGen:
         collected: list[dict] = []
 
         async def _run() -> None:
-            gen = driver._stream_gen("lyra.clipool.exec", {"cmd": "ls"})
+            gen = driver._dict_stream_gen("lyra.clipool.exec", {"cmd": "ls"})
 
             async def _consume() -> None:
                 async for chunk in gen:
@@ -169,15 +169,15 @@ class TestStreamGen:
 
         await _run()
 
-        # Assert — _stream_gen yields the done=True chunk (yield before done check).
-        # The generator must have exited after yielding it.
+        # Assert — _dict_stream_gen yields the done=True chunk
+        # (yield before done check). The generator must have exited after yielding it.
         assert len(collected) == 1
         assert collected[0].get("done") is True
         # Find the sub_mock from the captured callback's closure to verify unsubscribe.
-        # (unsubscribe is called in the finally block of _stream_gen)
+        # (unsubscribe is called in the finally block of _dict_stream_gen)
 
     @pytest.mark.asyncio
-    async def test_stream_gen_timeout(self) -> None:
+    async def test_dict_stream_gen_timeout(self) -> None:
         """Generator terminates (yields nothing extra) when queue.get times out."""
         # Arrange
         nc = _make_mock_nc()
@@ -194,7 +194,9 @@ class TestStreamGen:
 
         # Act — no messages pushed; queue.get will time out after timeout seconds.
         async def _run() -> None:
-            async for chunk in driver._stream_gen("lyra.clipool.exec", {"cmd": "ls"}):
+            async for chunk in driver._dict_stream_gen(
+                "lyra.clipool.exec", {"cmd": "ls"}
+            ):
                 collected.append(chunk)
 
         await _run()
@@ -206,7 +208,7 @@ class TestStreamGen:
         sub_mock.unsubscribe.assert_awaited()
 
     @pytest.mark.asyncio
-    async def test_stream_gen_absolute_deadline(self) -> None:
+    async def test_dict_stream_gen_absolute_deadline(self) -> None:
         """Stream stops at max_total_duration even if keepalive chunks keep arriving.
 
         Backstop against a stuck worker that emits tool_use keepalives forever
@@ -235,7 +237,7 @@ class TestStreamGen:
         keepalive_pump_done = asyncio.Event()
 
         async def _run() -> None:
-            gen = driver._stream_gen("lyra.clipool.exec", {"cmd": "ls"})
+            gen = driver._dict_stream_gen("lyra.clipool.exec", {"cmd": "ls"})
 
             async def _consume() -> None:
                 async for chunk in gen:
@@ -722,12 +724,12 @@ class TestConstruction:
 
 
 # ---------------------------------------------------------------------------
-# T_stream_gen_liveness — health-check-driven stream abort
+# T_dict_stream_gen_liveness — health-check-driven stream abort
 # ---------------------------------------------------------------------------
 
 
 class TestStreamGenLiveness:
-    """_stream_gen raises WorkerUnavailableError when worker heartbeats stop."""
+    """_dict_stream_gen raises WorkerUnavailableError when worker heartbeats stop."""
 
     @pytest.mark.asyncio
     async def test_worker_unavailable_raises(self) -> None:
@@ -744,7 +746,7 @@ class TestStreamGenLiveness:
         from roxabi_nats.driver_base import WorkerUnavailableError
 
         with pytest.raises(WorkerUnavailableError):
-            async for _ in driver._stream_gen("lyra.clipool.exec", {"cmd": "ls"}):
+            async for _ in driver._dict_stream_gen("lyra.clipool.exec", {"cmd": "ls"}):
                 pass
 
     @pytest.mark.asyncio
@@ -762,7 +764,7 @@ class TestStreamGenLiveness:
         nc.subscribe = AsyncMock(return_value=sub_mock)
 
         collected: list[dict] = []
-        async for chunk in driver._stream_gen("lyra.test.exec", {"cmd": "ls"}):
+        async for chunk in driver._dict_stream_gen("lyra.test.exec", {"cmd": "ls"}):
             collected.append(chunk)
 
         # Falls back to timeout exit — no error raised

@@ -26,7 +26,6 @@ def build_streaming_capture(
     content_parts: list[str],
     pool: Pool,
     stream_done_event: object | None,
-    emit_tool_recap: bool,
 ) -> collections.abc.AsyncGenerator[RenderEvent, None]:
     """Build an async generator that captures TextDeltaRenderEvent content.
 

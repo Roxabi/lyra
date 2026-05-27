@@ -28,10 +28,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.shared._shared_streaming_emitter import (
-    PlatformCallbacks,
-    StreamingSession,
-)
 from lyra.core.cli.cli_streaming_parser import CliStreamingParser
 from lyra.core.messaging.events import (
     LlmEvent,
@@ -44,8 +40,9 @@ from lyra.core.messaging.render_events import (
     ReasoningStartRenderEvent,
     RenderEvent,
 )
-from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.processors.stream_processor import StreamProcessor
+from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from lyra.outbound.emitter import PlatformCallbacks
 
 # DEBT:v1-stubs — for skipped tests; rewrite for v2 (#1192 S3 follow-up)
 # Typed as Any so pyright doesn't flag v1-shape access in skipped tests.
@@ -70,13 +67,6 @@ _POOL_ID = "pool-e2e-reasoning"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _cfg() -> ToolDisplayConfig:
-    """Minimal ToolDisplayConfig with throttle disabled."""
-    return ToolDisplayConfig.model_validate(
-        dict(names_threshold=3, group_threshold=3, bash_max_len=60, throttle_ms=0)
-    )
 
 
 def _load_fixture_lines() -> list[str]:
@@ -104,7 +94,7 @@ async def _async_seq(*items: LlmEvent) -> AsyncIterator[LlmEvent]:
 
 async def _collect_render_events(llm_events: list[LlmEvent]) -> list[RenderEvent]:
     """Drive StreamProcessor and collect all emitted RenderEvents."""
-    sp = StreamProcessor(_cfg())
+    sp = StreamProcessor()
     return [ev async for ev in sp.process(_async_seq(*llm_events))]
 
 
@@ -114,7 +104,6 @@ def _make_callbacks(**overrides: object) -> PlatformCallbacks:
         send_placeholder=AsyncMock(return_value=(object(), 42)),
         edit_placeholder_text=AsyncMock(),
         send_trace_placeholder=AsyncMock(return_value=(object(), 43)),
-        edit_trace=AsyncMock(),
         send_message=AsyncMock(return_value=99),
         send_fallback=AsyncMock(return_value=77),
         chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),

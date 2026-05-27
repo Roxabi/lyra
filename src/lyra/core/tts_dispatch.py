@@ -245,16 +245,22 @@ class AudioPipeline:
                 voice=voice,
                 fallback_language=fallback_language,
             )
+            if result.blob_ref is None:
+                log.warning(
+                    "TTS result missing blob_ref for msg id=%s — dropping audio",
+                    msg.id,
+                )
+                return
             audio = OutboundAudio(
-                audio_bytes=result.audio_bytes,
+                blob_ref=result.blob_ref,
                 mime_type=result.mime_type,
                 duration_ms=result.duration_ms,
                 waveform_b64=result.waveform_b64,
             )
             await self._hub.dispatch_audio(msg, audio)
             log.info(
-                "Voice TTS dispatched: %d bytes for msg id=%s",
-                len(result.audio_bytes),
+                "Voice TTS dispatched: blob_ref=%s for msg id=%s",
+                result.blob_ref.store_key,
                 msg.id,
             )
         except Exception as _tts_exc:

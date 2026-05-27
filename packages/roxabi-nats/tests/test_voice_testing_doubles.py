@@ -6,7 +6,6 @@ Moved from roxabi_contracts/tests/test_voice_testing_doubles.py per ADR-059 V6.
 from __future__ import annotations
 
 import asyncio
-import base64
 import os
 import shutil
 import subprocess
@@ -21,6 +20,7 @@ from nats.aio.client import Client as NATS
 from nats.errors import NoServersError
 
 import nats as _nats
+from roxabi_contracts.blob_ref import BlobRef
 from roxabi_contracts.voice import (
     SttRequest,
     SttResponse,
@@ -88,17 +88,20 @@ async def _run_loopback_passes_guard(cls: type, url: str) -> None:
 
 @pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
 async def test_g3_accepts_ipv4_loopback(cls) -> None:
-    await _run_loopback_passes_guard(cls, "nats://127.0.0.1:4222")
+    # Port 14222 (not 4222) — avoids collision with a NATS broker that may be
+    # running on the canonical port in dev environments. The test only needs
+    # any closed port for the post-G3 connection attempt to fail.
+    await _run_loopback_passes_guard(cls, "nats://127.0.0.1:14222")
 
 
 @pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
 async def test_g3_accepts_ipv6_loopback(cls) -> None:
-    await _run_loopback_passes_guard(cls, "nats://[::1]:4222")
+    await _run_loopback_passes_guard(cls, "nats://[::1]:14222")
 
 
 @pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
 async def test_g3_accepts_ipv6_loopback_full(cls) -> None:
-    await _run_loopback_passes_guard(cls, "nats://[0:0:0:0:0:0:0:1]:4222")
+    await _run_loopback_passes_guard(cls, "nats://[0:0:0:0:0:0:0:1]:14222")
 
 
 @pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
@@ -135,8 +138,9 @@ async def test_tts_roundtrip_default_fixture(nats_server_url: str) -> None:
         assert reply.ok is True
         assert reply.request_id == "r1"
         assert reply.mime_type == "audio/wav"
-        assert reply.audio_b64 is not None
-        assert base64.b64decode(reply.audio_b64) == silence_wav_16khz
+        assert reply.blob_ref is not None
+        assert reply.blob_ref.mime == "audio/wav"
+        assert reply.blob_ref.size == len(silence_wav_16khz)
         assert len(worker.calls) == 1
         assert worker.calls[0].text == "hello"
         await nc.close()
@@ -155,7 +159,13 @@ async def test_stt_roundtrip_default_fixture(nats_server_url: str) -> None:
         req = SttRequest(
             **_ENVELOPE,
             request_id="r2",
-            audio_b64=base64.b64encode(silence_wav_16khz).decode("ascii"),
+            blob_ref=BlobRef(
+                store_key="test-stt",
+                content_hash="deadbeef",
+                mime="audio/wav",
+                size=len(silence_wav_16khz),
+                source="testing",
+            ),
             model="large-v3-turbo",
         )
         msg = await nc.request(

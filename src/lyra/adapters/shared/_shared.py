@@ -26,8 +26,8 @@ from lyra.adapters.shared._shared_audio import (
     mime_to_ext,
 )
 
-# Re-exports from _shared_streaming — importers can use either module.
-from lyra.adapters.shared._shared_streaming import (
+# Re-exports from _shared_streaming_state — importers can use either module.
+from lyra.adapters.shared._shared_streaming_state import (
     IntermediateTextState,
     StreamState,
 )
@@ -174,21 +174,21 @@ class TypingTaskManager:
 
     def start(
         self,
-        chat_id: int,
+        target: int,
         coro_factory: Callable[[], Coroutine[Any, Any, None]],
     ) -> None:
-        """Cancel any existing task for *chat_id* and start a new one."""
-        existing = self._tasks.pop(chat_id, None)
+        """Cancel any existing task for *target* and start a new one."""
+        existing = self._tasks.pop(target, None)
         if existing and not existing.done():
             existing.cancel()
-        self._tasks[chat_id] = asyncio.create_task(
+        self._tasks[target] = asyncio.create_task(
             coro_factory(),
-            name=f"typing:{chat_id}",
+            name=f"typing:{target}",
         )
 
-    def cancel(self, chat_id: int) -> None:
-        """Cancel and remove the typing task for *chat_id* (no-op if absent)."""
-        task = self._tasks.pop(chat_id, None)
+    def cancel(self, target: int) -> None:
+        """Cancel and remove the typing task for *target* (no-op if absent)."""
+        task = self._tasks.pop(target, None)
         if task and not task.done():
             task.cancel()
 
@@ -234,9 +234,14 @@ async def send_with_retry(
         try:
             await coro_fn()
             return
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — retry boundary, type sanitized
             if attempt == max_attempts - 1:
-                log.exception("%s failed after %d attempts", label, max_attempts)
+                log.warning(
+                    "%s failed after %d attempts: type=%s",
+                    label,
+                    max_attempts,
+                    type(exc).__name__,
+                )
                 return
             delay = 2**attempt  # 1 s, 2 s, 4 s ...
             log.warning(

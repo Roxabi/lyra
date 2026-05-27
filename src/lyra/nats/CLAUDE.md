@@ -2,10 +2,27 @@
 
 ## Purpose
 
-Owns the in-process NATS plumbing that connects hub, adapters, and LLM workers.
+Owns the in-process NATS plumbing that connects hub, adapters, and domain worker clients.
 This is NOT the transport SDK — that lives in `packages/roxabi-nats/` (serialization,
 validation, circuit breaker, type-hint resolver). This layer consumes the SDK and wires
 it to lyra's domain types.
+
+## Domain clients here vs transport in `lyra.transport`
+
+`nats_{tts,stt,image}_client.py` are domain clients that compose:
+- `WorkerPoolClient` (from `lyra.transport`) for routing + CB + heartbeat tracking
+- A domain codec (`nats_{tts,stt,image}_codec.py` — encode/decode of wire bytes ↔ domain values)
+
+Domain clients here own:
+- Their `roxabi_contracts.voice|image` subject helpers (`per_worker_tts/stt`)
+- Backward-compat `start(nc) / stop()` methods that delegate to `pool.start(nc) / pool.stop()`
+
+The transport SDK lives in `lyra.transport` (NOT here). Subject routing logic stays here
+because subjects are per-domain. See `src/lyra/transport/CLAUDE.md` if it exists.
+
+LLM is the outlier: `lyra.llm.llm_client.LlmClient` (canonical pilot) lives in `lyra.llm`
+because its codec depends on `lyra.core.messaging.events` (LlmEvent union) and that ownership
+is in the llm package.
 
 ## Boundary — what belongs here vs. packages
 
@@ -54,41 +71,42 @@ in #1104 to match the canonical ACL allow list; do NOT reintroduce them.
   version bump requires simultaneous hub + adapter deploy.
 - `NatsChunkEnvelope` (outer stream wrapper) is intentionally unversioned — only the
   inner payload carries a version.
-- `NatsLlmClient` uses `roxabi_contracts` Pydantic models (`LlmRequest`, `LlmResponse`,
-  `LlmChunkEvent`) directly — JSON, NOT the `roxabi_nats` serialize helpers.
+- LLM wire encoding is handled by `LlmCodec` in `lyra.llm` — it uses `roxabi_contracts`
+  Pydantic models (`LlmRequest`, `LlmResponse`, `LlmChunkEvent`) directly — JSON, NOT
+  the `roxabi_nats` serialize helpers.
 - Error messages forwarded onto the bus must use `type(exc).__name__` only (never
   `str(exc)`) to prevent NATS connection metadata or payload values leaking to users
   (#1212 sanitization rule).
 
-## STT/TTS NATS clients
+## STT/TTS/Image NATS clients
 
-`nats_stt_client.py` and `nats_tts_client.py` implement `STTProtocol` and `TtsProtocol` over NATS.
-Both use `_stt_result_from_wire` / `_tts_result_from_wire` private mappers to convert wire
-responses into domain value objects; keep mapping logic in these functions (¬inline in call sites).
-`tts_engine_selector.py` and `tts_text_normalization.py` are helpers extracted from the deleted
-`lyra.tts` package and relocated here to stay co-located with their consumer (`nats_tts_client.py`).
-`stt_helpers.py` provides Whisper noise tokens (`WHISPER_NOISE_TOKENS`), `is_whisper_noise`, and
-`mime_from_suffix` — adapter-specific concerns relocated here from `core/ports/stt.py` (#1224 review).
+`nats_stt_client.py`, `nats_tts_client.py`, and `nats_image_client.py` implement their
+respective domain protocols over NATS. Since #1278 each client is a thin domain wrapper
+that composes `WorkerPoolClient` (from `lyra.transport`) with a codec:
 
-## NatsLlmClient lives here, not in llm/
+- `nats_tts_codec.py` / `nats_stt_codec.py` / `nats_image_codec.py` — pure encode/decode,
+  no I/O; convert wire bytes ↔ domain value objects.
+- Domain clients call `pool.request_with_routing(subject_fn, payload)` or
+  `pool.stream_request(payload)` — they never call `nc.new_inbox()` or `nc.subscribe()`
+  directly.
 
-`NatsLlmClient` (`nats_llm_client.py`) implements the `LlmProvider` protocol and is
-imported by `lyra.llm` as a driver. It lives here because it depends on NATS internals
-(`WorkerRegistry`, `NatsCircuitBreaker`) — not on any LLM abstraction. Wiring into the
-decorator stack happens in `bootstrap/`, not here.
-
-`NatsLlmClient` carries its own `NatsCircuitBreaker`; callers must NOT wrap it with
-`CircuitBreakerDecorator` (reserved for `ClaudeCliDriver`).
+`tts_engine_selector.py` and `tts_text_normalization.py` are helpers co-located with their
+consumer (`nats_tts_client.py`). `stt_helpers.py` provides Whisper noise tokens
+(`WHISPER_NOISE_TOKENS`), `is_whisper_noise`, and `mime_from_suffix`.
 
 ## Key invariants
 
 - `NatsBus`: caller owns the NATS connection; bus only manages subscriptions.
   Registrations survive `stop()` — safe to restart without re-registering. Never
   `register()` after `start()`.
-- `NatsLlmClient` publishes to the canonical literal subject `SUBJECTS.generate_request`
-  (from `roxabi_contracts`); queue-group dispatch is handled by the broker.
-- All error paths in `NatsLlmClient` return a populated `LlmResult(worker_error=...)`
-  or yield a terminal `ResultLlmEvent(is_error=True)` — never raise to the caller.
+- `WorkerPoolClient` (from `lyra.transport`) owns CB + heartbeat subscription; accepts
+  `WorkerRegistry` via DI (bootstrap/factory owns the instance). Domain clients here DO
+  NOT touch `nc.new_inbox()` / `nc.subscribe()`
+  directly — they call `pool.request_with_routing(subject_fn, payload)` or
+  `pool.stream_request(payload)`.
+- All error paths in domain clients return either a populated domain value object
+  (`TranscriptionResult`/`SynthesisResult`/`ImageResult` with `.error` field) or raise the
+  domain exception (`TtsUnavailableError`, etc.) — never NATS-specific exceptions.
 - `NatsRenderEventCodec` is the single source of truth for hub↔adapter chunk encoding;
   both `NatsChannelProxy` (hub side) and `NatsOutboundListener` (adapter side) import it.
   Adding a new `RenderEvent` subtype requires a registry insertion here.

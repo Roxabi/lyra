@@ -18,18 +18,59 @@ not add it to the Protocol until all drivers implement it.
 
 ## Drivers
 
-| Provider | Location | Backend |
-|----------|----------|---------|
-| `ClaudeCliDriver` | `lyra.llm.drivers.cli` | Claude Code subprocess (`CliPool`) |
-| `CliNatsDriver` | `lyra.llm.drivers.cli_nats` | Hub-side dispatch over NATS |
-| `NatsLlmClient` | `lyra.nats.nats_llm_client` | Generic remote LLM worker (ADR-049) |
+| Driver | Registry key | Transport | Wiring mode |
+|--------|-------------|-----------|-------------|
+| `ClaudeCliDriver` | `"claude-cli"` | in-process (`CliPool` subprocess) | single-process |
+| `LlmClient` | `"claude-cli"` / `"nats"` | NATS request-reply via `WorkerPoolClient` + `CliNatsCodec` | multi-process (hub side) |
 
-`NatsLlmClient` lives in `lyra.nats`, **not** in `llm/` — cross-package gotcha.
+`ClaudeCliDriver` and `LlmClient` may share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap (single-process picks `ClaudeCliDriver`, multi-process picks `LlmClient(WorkerPoolClient, CliNatsCodec)`).
 
-**When to use which:**
-- `ClaudeCliDriver` — single-process mode (hub owns CliPool directly)
-- `CliNatsDriver` — multi-process mode (hub sends requests to clipool worker over NATS)
-- `NatsLlmClient` — generic remote LLM worker; replaces deleted `NatsLlmDriver` (#1119)
+`LlmClient` lives in `lyra.llm.llm_client` (this package). `LlmClient(pool, codec)` is the
+3-layer composition for the NATS LLM path; the legacy per-driver `CliNatsDriver`
+(formerly in `lyra.llm.drivers.cli_nats`) was deleted in #1281. The legacy `NatsLlmClient`
+(formerly in `lyra.nats`) was deleted in #1278.
+
+## LlmClient + LlmCodec layering
+
+The NATS LLM driver is a 3-layer composition (since #1278):
+
+```
+LlmClient (lyra.llm.llm_client)
+   ├─ pool: WorkerPoolClient (lyra.transport.worker_pool_client)
+   │     └─ transport: NatsTransport (lyra.transport.nats_request_response)
+   └─ codec: LlmCodec (lyra.llm.llm_codec)
+```
+
+- `LlmClient`: implements `LlmProvider`; orchestrates encode → pool → decode.
+- `LlmCodec`: pure, no I/O. `encode(text, model_cfg, system_prompt, messages, *, stream)`
+  → bytes payload + trace_id. `decode(result, trace_id)` → LlmResult.
+  `decode_chunk(result)` → LlmEvent (TextLlmEvent | ResultLlmEvent | None).
+- `WorkerPoolClient`: routing + CB + heartbeat — domain-agnostic, see `lyra.transport`.
+
+CB is enforced at the **pool** layer (since #1278). Wiring sites wrap `LlmClient` with
+`RetryDecorator` only — do NOT add `CircuitBreakerDecorator` (reserved for `ClaudeCliDriver`
+which has no built-in CB).
+
+## Timeout responsibility
+
+`LlmClient` does **not** enforce a per-turn wall-clock deadline. This is intentional.
+
+| Layer | What is guaranteed | What is NOT guaranteed |
+|-------|-------------------|----------------------|
+| `NatsTransport` | Per-chunk liveness (`default_timeout=300s`) — no silent hangs between chunks | Upper bound on total turn duration |
+| `LlmClient` | Nothing beyond what the transport enforces | Any turn-level SLA |
+
+Per-turn wall-clock is a scheduling policy; the consumer defines what a "turn" is and
+what SLA applies. Wrap calls in `asyncio.timeout` when a deadline is required:
+
+```python
+async with asyncio.timeout(budget_seconds):
+    async for event in provider.stream(...):
+        ...
+```
+
+Historical: `CliNatsDriver` (deleted in #1281) inherited `max_total_duration=1800s` from
+`NatsDriverBase`; that responsibility now belongs to the caller.
 
 ## Decorator stack
 
@@ -40,7 +81,7 @@ CircuitBreakerDecorator → SmartRoutingDecorator → RetryDecorator → Driver
 Stack assembled in `bootstrap/`, not in `llm/`. Order matters: circuit-breaker wraps
 outermost, retry wraps the driver.
 
-`NatsLlmClient` carries its own `NatsCircuitBreaker`; at wiring sites it is wrapped only
+`LlmClient` carries its own CB via `WorkerPoolClient`; at wiring sites it is wrapped only
 by `RetryDecorator`. `CircuitBreakerDecorator` is reserved for `ClaudeCliDriver`.
 
 ## LlmEvent

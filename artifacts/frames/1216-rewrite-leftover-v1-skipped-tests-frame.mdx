@@ -1,0 +1,62 @@
+---
+title: Rewrite remaining 18 v1-skipped tests in test_stream_processor.py
+issue: 1216
+status: approved
+tier: F-lite
+date: 2026-05-19
+---
+
+## Problem
+
+After PR #1218 closed #1211, `tests/core/test_stream_processor.py` contains 31 skipped tests with reason `v1 removed in #1192 S3 — rewrite for v2 deferred`. #1211's spec scope-locked the rewrite to 25 enumerated cases (B7-1..B7-11 + B8-1..B8-14), leaving **18 leftover skips** that cover secondary tool-path, reasoning, error-surfacing, and v1↔v2 parity behaviors.
+
+Two issues compound:
+
+1. **Contract contradiction.** `test_soft_error_emits_finished_not_error` (skipped) asserts soft errors produce `RunFinished(outcome="success")`. The now-active B8-10 asserts the same input produces `RunErrorRenderEvent` (terminal error). The two contracts are mutually exclusive and one must be deleted or amended.
+2. **Stub debt.** PR #1218 kept module-level `TextRenderEvent: Any = type(...)` and `ToolSummaryRenderEvent: Any = type(...)` shims at the top of `test_stream_processor.py` so the 18 deferred tests would still type-check. The shims must die when the deferred tests are resolved.
+
+Left unresolved, the file accumulates dead pyright suppressions, ambiguous contracts, and false-skip coverage signals that mask real regressions in the streaming/reasoning/error paths of `StreamProcessor`.
+
+## Who
+
+- **Primary:** lyra contributors editing `src/lyra/llm/stream_processor.py` or the v2 streaming/render contract — they rely on `test_stream_processor.py` as the live regression boundary.
+- **Secondary:** reviewers using skip count + suppression density as a quality signal on the test file; future me reading the file and trying to distinguish "deliberately skipped" from "rotten v1 holdover."
+
+## Constraints
+
+- Scope is confined to `tests/core/test_stream_processor.py` and the v2 contract types in `src/lyra/llm/` that the rewritten tests reference. No production behavior change unless B8-10 is amended.
+- `pyright` must remain green without `# pyright: report*=false` suppressions in this file (parent #1211 Slice 5 already enforced this).
+- B8-10 vs `test_soft_error_emits_finished_not_error` must be resolved in writing (spec entry, not buried in test comment).
+- Module-level `Any = type(...)` stubs must be removed by the time this issue closes. No `--allow-deferred-stub` carve-out this time.
+- `pytest --collect-only -q | grep -c SKIPPED` in this file must drop by 18 (from post-#1211 baseline of 31 → 13 or lower; 13 = unrelated upstream skips, not v1 holdovers).
+- Worktree-only work (per global rule); branch off `staging`.
+
+## Out of Scope
+
+- Rewriting B7-1..B7-11 + B8-1..B8-14 — already shipped in #1211 / PR #1218.
+- Modifying `StreamProcessor` behavior beyond what B8-10 reconciliation forces.
+- Touching other test files; the `Any = type(...)` shims here are local to this file.
+- Promoting the result to production (`/promote` is standalone).
+
+## Premise Validity
+
+**Success in 6 months:** Each of the 18 leftover skipped tests has been resolved (rewritten against v2 contracts or explicitly deleted with rationale recorded in the spec or PR body). `pytest --collect-only -q tests/core/test_stream_processor.py | grep -c SKIPPED` in the post-merge state shows a drop of 18 vs the post-#1211 baseline. The module-level `TextRenderEvent`/`ToolSummaryRenderEvent: Any = type(...)` shims are removed. The B8-10 vs `test_soft_error_emits_finished_not_error` contract clash is resolved in writing (spec entry naming which side wins and why).
+
+**Failure in 6 months (falsifiable):** Any one of:
+- `tests/core/test_stream_processor.py` still contains ≥1 skipped test with reason `v1 removed in #1192 S3 — rewrite for v2 deferred` 6 months from merge,
+- the `Any = type(...)` module-level stubs are still present in the file,
+- a production regression issue is filed against the streaming/reasoning/error path that maps to behavior one of these 18 tests would have covered if rewritten (i.e. wholesale deletion was the wrong call).
+
+**Simplest alternative:** Delete all 18 leftover skipped tests in one PR, drop the stubs, ship.
+**Why not simplest:** At least the parity/contract subset — `test_v1_parity_against_baseline_fixture`, `test_dual_emit_v1_text_alongside_reasoning_delta`, `test_text_end_before_v1_fallback_on_truncation`, `test_soft_error_emits_finished_not_error`, `test_is_error_false_propagated_to_text_render_event`, `test_error_text_surfaces_when_no_streamed_text` — covers behavior the v2 implementation should still honor (graceful v1 fallback under truncation, error-text surfacing semantics, parity envelope). Wholesale deletion forfeits regression coverage on actually-live code paths. Per-test triage (rewrite vs delete with rationale) is required.
+
+## Complexity
+
+**Tier: F-lite** — single test file, single domain (test rewrite), clear and enumerated scope, but contains one architectural decision (B8-10 reconciliation) that warrants a written spec entry rather than an inline PR call.
+
+Signals observed:
+- ≤2 files touched in `src/` (only if B8-10 amendment requires `StreamProcessor` change); test file count = 1.
+- Single domain: tests around `StreamProcessor` v2 contracts.
+- No new patterns — mirrors the harness, fixtures, and slice structure used in #1211 / PR #1218.
+- One contract decision required mid-flight; documented in spec, not deferred to implementer judgement.
+- Parent #1211 also ran F-lite — same tier matches the same shape of work.

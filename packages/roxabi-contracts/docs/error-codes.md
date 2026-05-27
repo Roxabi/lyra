@@ -14,6 +14,14 @@
 | transport.contract_mismatch | false | CONTRACT_VERSION or schema shape does not match what this consumer expects. |
 | transport.slow_consumer | true | NATS slow-consumer detected; message dropped by the broker. |
 | transport.error | true | Generic NATS / network transport failure not covered by a more specific code (e.g. connection reset, protocol error). |
+| transport.payload_too_large | false | Request payload exceeded the NATS server's max_payload limit. |
+
+## pool.*
+
+| code | retryable | description |
+|------|-----------|-------------|
+| pool.circuit_open | true | WorkerPoolClient circuit breaker is open; call short-circuited without dispatching to a worker. |
+| pool.no_live_workers | true | WorkerPoolClient exhausted its registry without reaching a healthy worker. |
 
 ## worker.*
 
@@ -41,6 +49,7 @@
 | llm.context_too_long | false | Input tokens exceed the model's context window. |
 | llm.model_unavailable | true | Requested LLM model is temporarily or permanently unavailable. |
 | llm.no_responders | true | No LLM worker is subscribed on the expected NATS subject. |
+| llm.lifecycle_rejected | false | Lifecycle operation rejected by the worker (unknown model, engine=remote, VRAM budget exceeded, or catalog parse error). |
 
 ## voice.*
 

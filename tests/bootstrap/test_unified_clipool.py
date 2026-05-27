@@ -1,8 +1,8 @@
-"""RED-phase tests for unified.py CliPool → CliNatsDriver wiring (T22).
+"""RED-phase tests for unified.py CliPool → LLM client wiring (T22 / #1281 T17).
 
 These tests verify the *post-T22* contract:
   - build_cli_pool is NOT called from unified.py
-  - build_cli_nats_driver IS called during startup
+  - build_llm_client IS called during startup
   - CliPoolNatsWorker IS instantiated
   - asyncio.create_task is called with the worker coroutine
 
@@ -33,9 +33,9 @@ class TestUnifiedNoBuildCliPool:
         )
 
 
-class TestUnifiedCliNatsDriverWired:
-    def test_unified_imports_build_cli_nats_driver(self) -> None:
-        """After T22, unified bootstrap must wire build_cli_nats_driver.
+class TestUnifiedLlmClientWired:
+    def test_unified_imports_build_llm_client(self) -> None:
+        """After T22 (#1281 T17 rename), unified bootstrap must wire build_llm_client.
 
         After the V10 refactor, the symbol lives in wiring_helpers.py (called
         by unified.py).  We inspect both modules so the test does not regress
@@ -48,9 +48,9 @@ class TestUnifiedCliNatsDriverWired:
         combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
 
         # Assert
-        assert "build_cli_nats_driver" in combined, (
+        assert "build_llm_client" in combined, (
             "Neither unified.py nor wiring_helpers.py references "
-            "build_cli_nats_driver — T22 should add CliNatsDriver wiring"
+            "build_llm_client — T22 should add LLM client wiring"
         )
 
     def test_unified_imports_clipool_nats_worker(self) -> None:

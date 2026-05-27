@@ -21,7 +21,7 @@ Lyra uses two types of configuration files with distinct responsibilities:
 | `~/.lyra/agents/<name>.toml` | Seed source | No | Agent seed: imported into DB by `lyra agent init` |
 | `src/lyra/agents/<name>.toml` | Seed source | Yes | Agent seed: system defaults, imported into DB |
 | `src/lyra/commands/<name>/plugin.toml` | System data | Yes | Plugin manifest: commands, handlers |
-| `src/lyra/config/messages.toml` | System data | Yes | i18n strings |
+| `src/lyra/data/messages.toml` | System data | Yes | i18n strings |
 | `pyproject.toml` | System data | Yes | Package metadata, dependencies, tool config |
 
 **Rule:** if a value is machine-specific, personal, or secret → `config.toml`. Everything else → versioned.
@@ -64,7 +64,7 @@ Resolution order:
 ```
 1. $LYRA_MESSAGES_CONFIG  (if set, must end in .toml and be under $HOME)
 2. ./messages.toml        (cwd)
-3. src/lyra/config/messages.toml  (bundled)
+3. src/lyra/data/messages.toml  (bundled)
 ```
 
 ### Store directory (`~/.lyra/`)
@@ -141,7 +141,7 @@ bot_id = "lyra"
 agent = "lyra_default"         # fallback if DB has no bot→agent mapping
 ```
 
-Credentials (token, webhook_secret) are resolved from `CredentialStore` at bootstrap, not stored here.
+Credentials (token, webhook_secret) are read from Podman secrets at bootstrap — see `## Bot credentials`.
 
 ### `[[discord.bots]]` — Discord bot instances
 
@@ -161,6 +161,10 @@ bot_id = "lyra"
 default = "blocked"            # "blocked" | "trusted" | "owner"
 owner_users = [123456789]      # numeric Telegram IDs — seeded into DB
 trusted_users = [987654321]    # can interact, cannot admin
+# Optional: webhook_enabled — bool, default false. When true, the
+#   render_quadlet pipeline emits an additional Secret=…bot_webhook-<bot_id>
+#   mount for the Telegram webhook secret verification path.
+webhook_enabled = false
 
 [[auth.discord_bots]]
 bot_id = "lyra"
@@ -306,6 +310,100 @@ Services: `claude-cli`, `telegram`, `discord`, `hub`.
 
 ---
 
+## Bot credentials
+
+Bot tokens and webhook secrets are stored as **Podman secrets**, not in `~/.lyra/config.db`. Adapter containers mount these via `Secret=` directives in `deploy/quadlet/lyra-<platform>.container`; the adapter process reads each token at bootstrap from `/run/secrets/bot_token-<bot_id>` (and optionally `/run/secrets/bot_webhook-<bot_id>`).
+
+### CLI
+
+| Command | Purpose |
+|---|---|
+| `lyra bot secret install <platform> <bot_id> [--from-env TOK] [--webhook-from-env WHK]` | Create or replace a bot's token (and optional webhook secret) |
+| `lyra bot secret rm <platform> <bot_id>` | Remove the bot's token + webhook secret |
+| `lyra bot secret list` | List provisioned bot secrets (filtered by `lyra-bot-` prefix) |
+| *(not a subcommand)* `python3 tools/migrate_bot_secrets_to_podman.py` | One-shot operator script — migrates pre-#1057 `bot_secrets` rows from `config.db` to Podman secrets; run once on M₁ then discard. See [§ Migrating from pre-#1057 `bot_secrets` rows](#migrating-from-pre-1057-bot_secrets-rows) |
+
+`<bot_id>` must match `^[A-Za-z0-9_-]+$` (alphanumeric, hyphen, underscore — slash-free for safe Podman secret names and tmpfs mount targets).
+
+### Quadlet wiring
+
+Each bot expects one `Secret=` line per credential in the appropriate `.container` file:
+
+```
+Secret=lyra-bot-telegram-<bot_id>,type=mount,target=bot_token-<bot_id>,mode=0400,uid=1500,gid=1500
+Secret=lyra-bot-telegram-<bot_id>-webhook,type=mount,target=bot_webhook-<bot_id>,mode=0400,uid=1500,gid=1500
+```
+
+(Omit the webhook line if the bot does not use webhooks.)
+
+Re-render the Quadlet after any secret provisioning change:
+
+```bash
+make quadlet-install
+# Renders per-bot Secret= directives from ~/.lyra/config.toml into
+# lyra-telegram.container and lyra-discord.container, then reloads units.
+```
+
+After running `make quadlet-install`, restart the adapter to remount: `make telegram-adapter restart` (or `discord-adapter`). `type=mount` secrets are tmpfs binds; `podman secret create --replace` updates the store but the in-container file is stale until container restart.
+
+### Migrating from pre-#1057 `bot_secrets` rows
+
+Operators on M₁ with a pre-existing `~/.lyra/config.db` `bot_secrets` table run the one-shot migration script — it reads each row, decrypts via the existing Fernet keyring, and provisions a Podman secret per `(platform, bot_id)`. The script is self-contained (it does NOT depend on the deleted `CredentialStore` class) and idempotent:
+
+```bash
+python3 tools/migrate_bot_secrets_to_podman.py            # apply
+python3 tools/migrate_bot_secrets_to_podman.py --dry-run  # preview
+```
+
+After migration: run `make quadlet-install` to re-render the Quadlet with the newly-provisioned secrets, restart the adapters, and optionally drop the now-orphan `bot_secrets` table (`sqlite3 ~/.lyra/config.db 'DROP TABLE bot_secrets'`). The script prints the same post-migration checklist on success.
+
+### Rationale
+
+webhook_secret packing: separate secret (not packed into JSON). This matches the project's raw-bytes single-purpose convention (every other Podman secret in `Makefile:181-200`), keeps the failure-loud bootstrap path free of a JSON parser, and supports independent rotation of token vs. webhook.
+
+### Production guard
+
+`LYRA_RUN_SECRETS_DIR` lets tests and local development point at a temporary directory instead of `/run/secrets`. In production this override is **ignored** as a defense-in-depth measure: an attacker with env-write access on a prod host cannot redirect token reads to a path they control.
+
+The guard activates when **either** condition is true:
+
+| Condition | Detection |
+|---|---|
+| Inside a container | `/run/.containerenv` exists (Podman runtime marker) |
+| Explicit prod mode | `LYRA_ENV=prod` |
+
+When active, `load_bot_token` logs a warning and falls back to `/run/secrets` regardless of the env variable. Operators should **never** set `LYRA_RUN_SECRETS_DIR=` in Quadlet `.container` files — the override is intended for local dev and CI only.
+
+### Backup
+
+Podman secrets are the authoritative copy of bot tokens. There is no automatic backup; operators must snapshot them explicitly.
+
+**Snapshot all bot secrets:**
+
+```bash
+podman secret ls --filter name=lyra-bot- --format '{{.Name}}' | \
+  xargs -n1 --no-run-if-empty podman secret inspect --showsecret | \
+  jq -s '[.[] | {name: .[0].Spec.Name, data: .[0].SecretData}]' \
+  > lyra-bot-secrets-$(date +%Y%m%d).json
+```
+
+**Recommended cadence:** snapshot after every token rotation or bot provisioning change. Store the JSON file in your usual infrastructure backup location (e.g. alongside `~/.lyra/config.db` backups, or in your password-manager/secret-manager's export path).
+
+**Restore a secret from snapshot:**
+
+```bash
+# Re-create a single secret from the snapshot file
+cat lyra-bot-secrets-YYYYMMDD.json | \
+  jq -r '.[] | select(.name == "lyra-bot-telegram-mybot") | .data' | \
+  podman secret create lyra-bot-telegram-mybot -
+```
+
+After restoring, run `make quadlet-install` to re-render the Quadlet and restart the affected adapter. Per-bot Secret= directives are rendered at install time; no fragment files need separate backup. Source of truth is `~/.lyra/config.toml`.
+
+**Note:** The snapshot contains raw secret data. Encryption-at-rest for the snapshot file is out of scope for this document; handle it according to your organization's secret-management policy.
+
+---
+
 ## `lyra.toml` — Monitoring Only
 
 Read exclusively by `lyra.monitoring`. Hub does NOT read this file.
@@ -346,7 +444,7 @@ health_secret = ""                            # optional health endpoint auth
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `TELEGRAM_TOKEN` | No (legacy single-bot path only; multi-bot production uses CredentialStore — see `[[telegram.bots]]`) | Bot token |
+| `TELEGRAM_TOKEN` | No (legacy single-bot path only; multi-bot production uses Podman secrets — see `## Bot credentials`) | Bot token |
 | `TELEGRAM_WEBHOOK_SECRET` | Yes (hub) | Webhook secret |
 | `TELEGRAM_ADMIN_CHAT_ID` | No (legacy single-bot path only; see #1035) | Chat ID for alerts |
 | `TELEGRAM_BOT_USERNAME` | No | Bot username for help text |
@@ -363,6 +461,39 @@ health_secret = ""                            # optional health endpoint auth
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NATS_URL` | `nats://localhost:4222` | NATS server URL (required for standalone hub) |
+
+#### BlobStore env file
+
+`~/.lyra/env/blobstore.env` is a Quadlet env file consumed by `lyra-blobstore.container` at
+container start via `EnvironmentFile=%h/.lyra/env/blobstore.env`. It is NOT loaded by the
+lyra application itself.
+
+| File | Versioned | Purpose |
+|------|-----------|---------|
+| `~/.lyra/env/blobstore.env` (on M₁) | No (operator copy) | Live env file read by the container at startup |
+
+**Bootstrap:** `deploy/install.sh` §1c generates this file idempotently — it skips creation
+if the file already exists, and regenerates it with `--force`.
+
+Variables written by install.sh:
+
+| Variable | Source | Notes |
+|----------|--------|-------|
+| `TAILSCALE_IPV4` | `tailscale ip -4 \| head -1` at bootstrap | Empty string if Tailscale is absent at install time — the unit's `ExecStartPre` guard rejects start when unset (fail-closed; see `deploy/CLAUDE.md §Known residual risk`) |
+| `NATS_URL` | Omitted from the file | Supplied exclusively by the unit's inline `Environment=NATS_URL=nats://lyra-nats:4222`; omitting it from the env file prevents an empty value in systemd scope from shadowing the inline directive |
+
+File permissions: `0600` (set atomically via `umask 0077` subshell in install.sh).
+
+**Recovery:** delete the file and re-run install.sh to regenerate.
+
+```bash
+rm ~/.lyra/env/blobstore.env
+./deploy/install.sh --force
+```
+
+Load order: N/A — this is a Quadlet env file, not an application config file. The bearer
+token and blob data path are delivered via `Secret=` and `Volume=` directives in
+`deploy/quadlet/lyra-blobstore.container` (not via env vars).
 
 #### JetStream persistent storage
 
@@ -433,7 +564,6 @@ Runs `podman quadlet --dryrun` (parse errors) and a comment-guard that rejects i
 | `discord.db` | Discord thread data (owned by Discord adapter) |
 | `auth.db` | Auth grants, identity aliases |
 | `message_index.db` | Message index for search/retrieval |
-| `keyring.key` | Encryption key for credential store |
 
 **Migration:** On first startup after upgrading from pre-v15, Lyra automatically migrates existing rows from `auth.db` to `config.db`, `turns.db`, and `discord.db`. Old `auth.db` is kept as tombstone.
 
@@ -550,11 +680,9 @@ After fixing the underlying issue, run a normal `make quadlet-install` (without
 
 ---
 
-## Monitoring — DEPRECATED (#1035)
+## Monitoring — removed; superseded by Monitoring v2 (#1035)
 
-The host-timer health monitor (`lyra-monitor.{service,timer}` + `src/lyra/monitoring/`) is **deprecated**. It pokes `systemctl --user`, `podman logs`, and host loopback ports — none of which translate cleanly to a containerised world — and offers no UI beyond a Telegram message.
-
-It is being replaced by **Monitoring v2** — a NATS event stream + Tauri desktop dashboard — tracked in [#1035](https://github.com/Roxabi/lyra/issues/1035). Banners on the deprecated files retain the existing check logic so the v2 spec author can mine it.
+The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/lyra/monitoring/` is retained for [Monitoring v2 (#1035)](https://github.com/Roxabi/lyra/issues/1035) spec mining. It pokes `systemctl --user`, `podman logs`, and host loopback ports — none of which translate cleanly to a containerised world — and offers no UI beyond a Telegram message.
 
 For ad-hoc hub-health probes, hit `/health/detail` directly:
 

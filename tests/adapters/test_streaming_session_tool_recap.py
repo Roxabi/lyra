@@ -14,10 +14,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.adapters.shared._shared_streaming_emitter import (
-    PlatformCallbacks,
-    StreamingSession,
-)
 from lyra.core.messaging.render_events import (
     RenderEvent,
     RunFinishedRenderEvent,
@@ -29,6 +25,8 @@ from lyra.core.messaging.render_events import (
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
+from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from lyra.outbound.emitter import PlatformCallbacks
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -41,7 +39,6 @@ def _make_callbacks(**overrides) -> PlatformCallbacks:
         send_placeholder=AsyncMock(return_value=(object(), 42)),
         edit_placeholder_text=AsyncMock(),
         send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-        edit_trace=AsyncMock(),
         send_message=AsyncMock(return_value=99),
         send_fallback=AsyncMock(return_value=77),
         chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
@@ -83,9 +80,7 @@ async def test_multi_tool_turn_invokes_edit_tool_recap_streaming_and_done() -> N
         _gen(
             RunStartedRenderEvent(run_id="r1"),
             ToolCallStartRenderEvent(tool_call_id="t1", tool_name="edit"),
-            ToolCallArgsRenderEvent(
-                tool_call_id="t1", delta='{"path": "src/foo.py"}'
-            ),
+            ToolCallArgsRenderEvent(tool_call_id="t1", delta='{"path": "src/foo.py"}'),
             ToolCallEndRenderEvent(tool_call_id="t1"),
             TextStartRenderEvent(message_id="msg-1"),
             TextDeltaRenderEvent(message_id="msg-1", delta="done"),
@@ -171,9 +166,7 @@ async def test_ungraceful_end_still_fires_done_true_edit() -> None:
 
     async def _abrupt_gen() -> AsyncIterator[RenderEvent]:
         yield ToolCallStartRenderEvent(tool_call_id="t1", tool_name="bash")
-        yield ToolCallArgsRenderEvent(
-            tool_call_id="t1", delta='{"command": "ls"}'
-        )
+        yield ToolCallArgsRenderEvent(tool_call_id="t1", delta='{"command": "ls"}')
         yield ToolCallEndRenderEvent(tool_call_id="t1")
         # No RunFinished — iterator ends here
 
@@ -185,8 +178,7 @@ async def test_ungraceful_end_still_fires_done_true_edit() -> None:
     done_true_calls = [
         c
         for c in all_calls
-        if c.kwargs.get("done") is True
-        or (len(c.args) >= 3 and c.args[2] is True)
+        if c.kwargs.get("done") is True or (len(c.args) >= 3 and c.args[2] is True)
     ]
     assert len(done_true_calls) == 1, (
         f"Expected exactly 1 done=True call after abrupt end, "
@@ -208,7 +200,6 @@ async def test_edit_tool_recap_field_has_default_noop() -> None:
         send_placeholder=AsyncMock(return_value=(object(), 42)),
         edit_placeholder_text=AsyncMock(),
         send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-        edit_trace=AsyncMock(),
         send_message=AsyncMock(return_value=99),
         send_fallback=AsyncMock(return_value=77),
         chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),

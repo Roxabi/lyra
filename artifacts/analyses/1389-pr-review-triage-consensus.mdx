@@ -1,0 +1,81 @@
+---
+title: "PR #1389 review findings triage — Expert Consensus"
+issue: 1376
+pr: 1389
+status: consensus-reached
+date: 2026-05-26
+panel: architect, devops, product-lead
+confidence: high
+---
+
+## Problem
+
+PR #1389 (`feat(typing): #1376 T1 — lyra.typing.* plane scaffold`) drew 15 review findings from a 7-agent multi-domain review: 5 marked blocking by reviewers, 10 marked suggestion/thought. Goal: decide per-finding whether to **fix-now** (land in this PR), **defer** (track as follow-up issue), or **skip** (not a real concern).
+
+## Panel
+
+| α | Focus |
+|---|-------|
+| architect | Arch soundness, maintainability, layer contracts, T1↔T2 handoff surface |
+| devops | Ops impact, deploy plane, secret rotation, runbook integrity, operator footguns |
+| product-lead | Scope adherence, T1↔T2/T3 contract, time-to-market, spec compliance |
+
+## Consensus
+
+6 findings → `fix-now`. 8 → `defer` (follow-up issues). 1 → `skip`.
+
+### Fix-now (6)
+
+| ID | Finding | Vote | Driving rationale |
+|----|---------|------|-------------------|
+| **B1** | `TypingListener.stop()` missing in bootstrap finally blocks | 2-1 fix-now | T1↔T2 handoff: gap is no-op today, but becomes a live subscription leak the moment staging soak flips the flag. One-liner fix. |
+| **B2** | AC5 ref-count rollback assertion missing | 3-0 fix-now | Unanimous. Tautology test passes a regression. AC5 is the most invariant publisher contract. |
+| **B3** | AC4 `_on_msg` dispatch gate missing | 2-1 fix-now | Spec compliance hole — `_enabled` should gate dispatch too, not just `start()`. Low churn now; high confusion if found later. |
+| **S1** | `Hub.set_typing_publisher()` (drop `# type: ignore[attr-defined]`) | 2-1 fix-now | Diverges from `set_turn_publisher` precedent in the SAME file. T2 will call the setter; suppressed pyright means signature drift goes unseen. |
+| **S6** | `LYRA_TYPING_ENABLED` propagation drift (`EnvironmentFile=` vs inline `Environment=`) | 2-1 fix-now | `parallel-path-drift`. Flag flip in `hub.env` does NOT propagate to adapter `.tmpl` — silent split-brain at staging soak. |
+| **S9** | AC5 `publish_ended` error-swallow test missing | 2-1 fix-now | Sibling to B2; same test-tautology class. Untested swallow path silently ships. |
+
+### Defer → follow-up issues (8)
+
+| ID | Finding | Vote | Trigger for follow-up |
+|----|---------|------|-----------------------|
+| **B4** | `make nats-regen-authconf` doesn't restart hub/adapters | 2-1 defer | Add restart cascade when T2 lands (or as a dedicated ops hardening issue). Mitigation: PR description must spell out the explicit restart sequence for operator. |
+| **B5** | `auth.conf` placeholder pubkeys lack sentinel guard | 2-1 defer | Ops hardening follow-up. Mitigation: PR description warns operator; `make nats-regen-authconf` is the existing pattern. |
+| **S2** | `WorkScope.trace_id` non-empty `__post_init__` guard | 3-0 defer | Land alongside T2 call-site wiring (when `trace_id` threads from inbound msg). |
+| **S3** | `WorkScope.platform`/`bot_id` allowlist (NATS subject injection) | 3-0 defer | Land in T2 when `WorkScope` is constructed from inbound messages (today config-sourced). |
+| **S5** | `CoroFactory`/`FactoryBuilder` promote to `lyra.typing.types` | 3-0 defer | Land alongside T2 when actual consumers exist. |
+| **S7** | `code-worker` T3 TODO sentinel in `acl-matrix.json` | 3-0 defer | Land in T3 issue (already blocked-by #1044/#1047). |
+| **S8** | `_build_<platform>_typing_factory` latent N×M | 2-1 defer | Track on T3 epic. Trigger: addition of a third platform OR a second typing-concern. |
+| **S10** | Telegram positive chat_id + factory_builder cancel test | 3-0 defer | T2 incremental coverage. |
+
+### Skip (1)
+
+| ID | Finding | Vote | Reason |
+|----|---------|------|--------|
+| **S4** | `TypingEvent` 4KB payload bound before `model_validate_json` | 2-1 skip | `TypingEvent` schema is fixed (kind + WorkScope + ts) — no unbounded user data. NATS `max_payload` (1MB) is the existing boundary. App-layer bound adds surface for zero benefit at T1 scope. |
+
+## Dissent
+
+Recorded for traceability — these are panel disagreements that did NOT change the verdict:
+
+- **B1, S1, S6 (devops dissent):** considered these latent/cosmetic ("no-op today", "type-ignore is cosmetic"). Majority overruled because T1↔T2 handoff surface is the load-bearing contract — every gap that compounds at flag-flip-time must close before T2.
+- **B3 (architect dissent):** considered the race "test-driver scenarios only". Majority overruled — devops + product-lead both argue dispatch gate is part of the flag contract semantics, not a defensive race-guard.
+- **B4, B5 (devops dissent):** considered these merge-blocking operator footguns. Majority overruled to `defer` because T1 has `LYRA_TYPING_ENABLED=false` default → no live ops risk today, and the PR description + post-merge runbook step mitigate footgun probability.
+- **S4 (architect dissent):** considered this defensible defence-in-depth (`defer`). Majority overruled to `skip` — fixed-schema internal type with no exploitation surface.
+- **S8 (architect dissent):** considered this `skip` (below 3-strike threshold per ADR-073). Majority overruled to `defer` — better to track than discard.
+- **S9 (architect dissent):** considered this T2 polish. Majority overruled to `fix-now` because sibling to B2 (unanimous fix-now) — symmetric coverage is cheap to land now.
+
+## Implementation Notes
+
+1. **Fix-now order (parallelizable in 3 fixer-agent shards):**
+   - Shard A (backend-dev, listener + bootstrap): B1, B3
+   - Shard B (backend-dev, Hub typed slot): S1
+   - Shard C (tester, test suite): B2, S9
+   - Shard D (devops, env propagation): S6
+2. **Defer items → 8 follow-up issues** via `bun /home/mickael/.claude/plugins/cache/roxabi-marketplace/dev-core/0.4.3/skills/issue-triage/triage.ts create` with `--blocked-by '#1376'` and `--parent '#1375'` (sibling rule under epic).
+3. **B4 + B5 mitigation:** update PR #1389 description to include explicit restart sequence (`systemctl --user restart lyra-hub lyra-telegram lyra-discord`) on flag flip + warn about `auth.conf` placeholder pre-`make nats-regen-authconf`.
+4. **Falsification gate (Phase 6.5 of /fix):** verify B2 + B3 + S9 test additions actually fail when impl is mutated — these are the highest-risk tautology candidates.
+
+## Next
+
+Continue `/fix` Phase 3 (auto-apply) with the 6 `fix-now` items, then Phase 5 to create the 8 defer issues.

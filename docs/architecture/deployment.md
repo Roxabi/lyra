@@ -97,7 +97,7 @@ All trust resolution is Hub-side. Adapters are untrusted normalizers.
 | Transport auth | Telegram HMAC webhook secret; Discord gateway token | Adapter container |
 | Trust resolution | C3 — adapters always send PUBLIC, hub resolves via Authenticator | Hub middleware stage 2–3 |
 | `auth.db` | Identity grants, trust assignments, cross-platform aliases | Hub container (`~/.lyra/auth.db`) |
-| Secrets | Bot tokens AES-encrypted via `LyraKeyring` | `config.db`, key in `keyring.key` |
+| Secrets | Bot tokens delivered as Podman secrets (`type=mount`) — see ADR-074 | `/run/secrets/bot_token-<bot_id>` inside adapter containers |
 | NATS channel | TLS + auth tokens required in production | Infrastructure |
 
 ---
@@ -125,7 +125,7 @@ Next session: build_system_prompt() recalls L3:
 
 ### reply-to session routing (`message_index.db`)
 
-Maps `(pool_id, platform_msg_id) → session_id`.  
+Maps `(pool_id, platform_msg_id) → session_id`.
 When a user replies to an old message, Hub resolves the original session and
 resumes it rather than starting fresh.
 
@@ -136,10 +136,10 @@ resumes it rather than starting fresh.
 | File | Container(s) | Access | Contents |
 |---|---|---|---|
 | `~/.lyra/auth.db` | Hub | rw | Auth grants, identity aliases |
-| `~/.lyra/config.db` | Hub, Telegram, Discord | Hub: rw · Adapters: ro (startup only) | Agent registry, bot secrets (encrypted), user prefs |
+| `~/.lyra/config.db` | Hub | rw | Agent registry, user prefs (bot secrets removed — see ADR-074) |
 | `~/.lyra/turns.db` | Hub, Telegram, Discord | rw | Conversation turns, pool sessions, lyra→cli session map |
 | `~/.lyra/message_index.db` | Hub | rw | reply-to session routing index |
-| `~/.lyra/keyring.key` | Hub, Telegram, Discord | Hub: rw · Adapters: ro (startup only) | Encryption key for `config.db` secrets |
+| `~/.lyra/keyring.key` | Hub | rw | Encryption key for `config.db` sibling stores (bot-secrets path removed — safe to delete once no remaining consumers; see ADR-074) |
 | `~/.lyra/discord.db` | Discord | rw | Thread ownership + session cache |
 | `~/.claude/` | CliPool | rw | Claude session `.jsonl` files (required for `--resume`) |
 

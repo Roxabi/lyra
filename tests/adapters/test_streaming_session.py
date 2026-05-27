@@ -17,13 +17,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.adapters.nats.nats_stream_decoder import decode_stream_events
-from lyra.adapters.shared._shared_streaming import PlatformCallbacks, StreamingSession
 from lyra.core.exceptions import StreamChunkTimeout
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
 from lyra.core.messaging.render_events import (
     TextDeltaRenderEvent,
     TextEndRenderEvent,
 )
+from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from lyra.outbound.emitter import PlatformCallbacks
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -36,7 +37,6 @@ def _make_callbacks(**overrides) -> PlatformCallbacks:
         send_placeholder=AsyncMock(return_value=(object(), 42)),
         edit_placeholder_text=AsyncMock(),
         send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-        edit_trace=AsyncMock(),
         send_message=AsyncMock(return_value=99),
         send_fallback=AsyncMock(return_value=77),
         chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
@@ -326,7 +326,6 @@ async def test_trace_placeholder_not_sent_on_text_only():
     )
 
     cb.send_trace_placeholder.assert_not_called()
-    cb.edit_trace.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

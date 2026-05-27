@@ -174,19 +174,22 @@ class TestClaudeCliDriverStream:
         driver = ClaudeCliDriver(pool=pool)
         model_cfg = make_model_cfg()
 
-        # Act
-        it = await driver.stream(
-            pool_id="my-pool",
-            text="hello",
-            model_cfg=model_cfg,
-            system_prompt="be helpful",
-        )
+        # Act — driver.stream() is an async-gen; iteration drives pool.send_streaming
+        chunks = [
+            chunk
+            async for chunk in driver.stream(
+                pool_id="my-pool",
+                text="hello",
+                model_cfg=model_cfg,
+                system_prompt="be helpful",
+            )
+        ]
 
-        # Assert — pool.send_streaming called with correct args
+        # Assert — pool.send_streaming called with correct args, chunks forwarded
         pool.send_streaming.assert_awaited_once_with(
             "my-pool", "hello", model_cfg, "be helpful"
         )
-        assert it is fake_iterator
+        assert chunks == ["Hello", " world"]
 
     async def test_stream_returns_async_iterator(self) -> None:
         # Arrange
@@ -196,13 +199,15 @@ class TestClaudeCliDriverStream:
         driver = ClaudeCliDriver(pool=pool)
 
         # Act
-        it = await driver.stream(
-            pool_id="p1",
-            text="hi",
-            model_cfg=make_model_cfg(),
-            system_prompt="",
-        )
-        chunks = [chunk async for chunk in it]
+        chunks = [
+            chunk
+            async for chunk in driver.stream(
+                pool_id="p1",
+                text="hi",
+                model_cfg=make_model_cfg(),
+                system_prompt="",
+            )
+        ]
 
         # Assert
         assert chunks == ["A", "B", "C"]
@@ -210,16 +215,17 @@ class TestClaudeCliDriverStream:
     async def test_stream_uses_correct_pool_id(self) -> None:
         # Arrange — verify pool_id is forwarded verbatim
         pool = MagicMock()
-        pool.send_streaming = AsyncMock(return_value=_fake_async_gen())
+        pool.send_streaming = AsyncMock(return_value=_fake_async_gen("x"))
         driver = ClaudeCliDriver(pool=pool)
 
-        # Act
-        await driver.stream(
+        # Act — iterate to drive the gen (pool is hit on the first __anext__)
+        async for _ in driver.stream(
             pool_id="specific-pool-id",
             text="test",
             model_cfg=make_model_cfg(),
             system_prompt="sys",
-        )
+        ):
+            break
 
         # Assert
         call_kwargs = pool.send_streaming.call_args

@@ -134,6 +134,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             heartbeat_subject=_HEARTBEAT_SUBJECT,
             heartbeat_interval=_HEARTBEAT_INTERVAL,
             identity_name=identity_name,
+            wait_ready=False,  # worker semantics — see NatsAdapterBase docstring
         )
         self._pool = pool
 
@@ -207,6 +208,9 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 cmd.text,
                 model_cfg,
                 cmd.system_prompt,
+                agent_name=cmd.agent_name,
+                agent_email=cmd.agent_email,
+                lyra_session_id=cmd.lyra_session_id,
             )
         except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
             log.exception(
@@ -282,6 +286,9 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 cmd.text,
                 model_cfg,
                 cmd.system_prompt,
+                agent_name=cmd.agent_name,
+                agent_email=cmd.agent_email,
+                lyra_session_id=cmd.lyra_session_id,
             )
         except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
             log.exception("clipool_worker: send failed for pool_id=%r", cmd.pool_id)

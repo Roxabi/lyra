@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
 
-from lyra.adapters.shared._shared_streaming_state import STREAMING_EDIT_INTERVAL
 from lyra.adapters.telegram.telegram_formatting import (
     _render_buttons,
     _render_text,
@@ -27,12 +26,29 @@ from lyra.core.messaging.render_events import (
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
+from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 
 if TYPE_CHECKING:
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
     from lyra.adapters.telegram import TelegramAdapter
+    from lyra.outbound.emitter import PlatformCallbacks
 
 log = logging.getLogger("lyra.adapters.telegram")
+
+
+# Implements ThrottleCapability Protocol from lyra.outbound.throttle
+class TelegramTypingIndicator:
+    """ThrottleCapability impl — wraps adapter._start_typing/_cancel_typing."""
+
+    edit_interval_s: float = STREAMING_EDIT_INTERVAL
+
+    def __init__(self, adapter: "TelegramAdapter") -> None:
+        self._adapter = adapter
+
+    async def start_typing(self, scope_id: int) -> None:
+        self._adapter._start_typing(scope_id)
+
+    async def cancel_typing(self, scope_id: int) -> None:
+        self._adapter._cancel_typing(scope_id)
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +194,7 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
     Extracted from TelegramAdapter._make_streaming_callbacks to keep telegram.py
     under the 300-line file-length limit.
     """
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
+    from lyra.outbound.emitter import PlatformCallbacks
 
     meta = _validate_inbound(original_msg, "send_streaming")
     if meta is None:
@@ -196,7 +212,6 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
             send_placeholder=_noop_placeholder,
             edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
             send_trace_placeholder=_noop_trace,
-            edit_trace=lambda ph, ev: asyncio.sleep(0),
             send_message=_noop_fallback,
             send_fallback=_noop_fallback,
             chunk_text=lambda text: [text],
@@ -240,11 +255,6 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         )
         return msg, msg.message_id
 
-    async def _edit_trace(trace_obj: Any, event: Any) -> None:
-        # v1 ToolSummaryRenderEvent removed in Slice 5 (#1192).
-        # edit_trace is a no-op; trace placeholder used only for reasoning.
-        pass
-
     async def _send_message(text: str) -> int | None:
         rendered = _render_text(text)
         last = None
@@ -253,8 +263,11 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
                 last = await adapter.bot.send_message(
                     chat_id=chat_id, text=chunk, parse_mode="MarkdownV2"
                 )
-            except Exception:
-                log.exception("Failed to send final text chunk")
+            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal final-chunk send, type sanitized
+                log.warning(
+                    "Failed to send final text chunk: type=%s",
+                    type(exc).__name__,
+                )
         return last.message_id if last else None
 
     async def _send_fallback(text: str) -> int | None:
@@ -363,7 +376,6 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         send_placeholder=_send_placeholder,
         edit_placeholder_text=_edit_placeholder_text,
         send_trace_placeholder=_send_trace_placeholder,
-        edit_trace=_edit_trace,
         send_message=_send_message,
         send_fallback=_send_fallback,
         chunk_text=lambda text: _render_text(text) or [text],

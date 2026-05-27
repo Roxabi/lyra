@@ -79,33 +79,33 @@ User voice msg on Telegram → STT → agent → TTS → voice reply on Telegram
 ```
 User    TG-Adapter           BlobStore(FS+SQLite)         NATS              Hub               STT                TTS
 
-  ──voice──▶                                                                                                       
-   (file_id)                                                                                                       
-              1. getFile + HTTP GET ─────────────────▶ Telegram CDN ──▶ bytes                                      
-              2. sha256(bytes)                                                                                     
-              3. exists(hash)? ────▶ SELECT WHERE hash=?                                                           
-              4a. miss → put() ────▶ write blobs/ab/abc... + INSERT                                                
-              4b. hit  → reuse ────▶ row.store_key                                                                 
-              5. BlobRef built                                                                                     
-              6. publish ─────────────────────────────▶ lyra.inbound.telegram.&lt;bot&gt; ───▶ Hub                       
-                 InboundMessage(audio=AudioPayload(blob_ref=...))                                                  
-                                                                              7. request ────▶ STT                 
-                                                                                 SttRequest(blob_ref=...)          
-                                       8. open(store_key) ◀── direct FS read ─────────────────                     
-                                                                              9. ◀─ reply ────                     
-                                                                                 SttResponse(text="…")             
-                                                                          10. agent processing on hub              
-                                                                              11. request ──────────────────▶ TTS  
-                                                                                 TtsRequest(text="reply…")         
-                                                                                                12. synth bytes    
-                                       13. put() ◀────────────── direct FS write ─────────────────────────────    
-                                          write blobs/cd/cde... + INSERT                                          
-                                                                              14. ◀─ reply ──                      
-                                                                                 TtsResponse(blob_ref=...)         
+  ──voice──▶
+   (file_id)
+              1. getFile + HTTP GET ─────────────────▶ Telegram CDN ──▶ bytes
+              2. sha256(bytes)
+              3. exists(hash)? ────▶ SELECT WHERE hash=?
+              4a. miss → put() ────▶ write blobs/ab/abc... + INSERT
+              4b. hit  → reuse ────▶ row.store_key
+              5. BlobRef built
+              6. publish ─────────────────────────────▶ lyra.inbound.telegram.&lt;bot&gt; ───▶ Hub
+                 InboundMessage(audio=AudioPayload(blob_ref=...))
+                                                                              7. request ────▶ STT
+                                                                                 SttRequest(blob_ref=...)
+                                       8. open(store_key) ◀── direct FS read ─────────────────
+                                                                              9. ◀─ reply ────
+                                                                                 SttResponse(text="…")
+                                                                          10. agent processing on hub
+                                                                              11. request ──────────────────▶ TTS
+                                                                                 TtsRequest(text="reply…")
+                                                                                                12. synth bytes
+                                       13. put() ◀────────────── direct FS write ─────────────────────────────
+                                          write blobs/cd/cde... + INSERT
+                                                                              14. ◀─ reply ──
+                                                                                 TtsResponse(blob_ref=...)
                                                                               15. publish ──▶ lyra.outbound.telegram.&lt;bot&gt;
-              16. open(store_key) ─▶ FS read                                                                       
-              17. sendVoice(bytes) ────────────────────▶ Telegram API                                              
-  ◀─voice──                                                                                                        
+              16. open(store_key) ─▶ FS read
+              17. sendVoice(bytes) ────────────────────▶ Telegram API
+  ◀─voice──
 ```
 
 Properties:

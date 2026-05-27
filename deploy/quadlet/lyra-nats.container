@@ -2,10 +2,8 @@
 Description=Lyra NATS server
 
 [Container]
-# Pinned by digest (immutable) — bump on upstream NATS releases.
-# Tag 2.10.29-alpine resolved via Docker Hub registry API (see issue #652).
-# autoupdate intentionally omitted — NATS version is pinned by digest, update manually.
-Image=docker.io/library/nats:2.10.29-alpine@sha256:b83efabe3e7def1e0a4a31ec6e078999bb17c80363f881df35edc70fcb6bb927
+Image=docker.io/library/nats:2.10.29-alpine
+Label=io.containers.autoupdate=registry
 ContainerName=lyra-nats
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).
@@ -15,7 +13,7 @@ DropCapability=all
 # Sole NATS on the host — host nats.service is retired (big-bang consolidation).
 # 4222 exposed on all interfaces — LAN clients (e.g. voice-client on M₂) connect via NKey auth.
 PublishPort=4222:4222
-# HTTP monitoring — localhost only, consumed by lyra-monitor check_nats_varz().
+# HTTP monitoring — localhost only, consumed by `python -m lyra.monitoring` (checks_varz.py).
 PublishPort=127.0.0.1:8222:8222
 Volume=%h/projects/lyra/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
 # Writable exception to ReadOnly=true — JetStream persistence (rootfs flag only in Podman).
@@ -27,10 +25,12 @@ Volume=lyra-jetstream.volume:/var/lib/nats/jetstream:z
 # with "loop device setup" in Podman 5.x. Bootstrap: `make quadlet-secrets-install`.
 Secret=lyra-nats-auth,type=mount,target=/etc/nats/nkeys/auth.conf,mode=0444
 Exec=nats-server -c /etc/nats/nats.conf
+HealthCmd=pgrep -f nats-server
+HealthInterval=30s
 
 [Service]
-Restart=always
-RestartSec=5
+Restart=on-failure
+RestartSec=10
 # Cap at 2 full cores — keeps NATS from starving hub/adapters under load.
 CPUQuota=200%
 

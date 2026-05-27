@@ -1,4 +1,4 @@
-"""Tests for AgentRow dataclass — effort field and from_db_row 25-column unpack."""
+"""Tests for AgentRow dataclass — effort field and from_db_row 24-column unpack."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ class TestAgentRowEffortField:
         row = AgentRow(name="test", backend="claude-cli", model="m", effort=None)
         assert row.effort is None
 
-    def test_from_db_row_25_columns_effort_at_end(self) -> None:
-        """from_db_row must unpack the 25th column (effort) correctly."""
+    def test_from_db_row_24_columns_effort_at_end(self) -> None:
+        """from_db_row must unpack the 24th column (effort) correctly."""
         row_tuple = (
             "myagent",  # name
             "claude-cli",  # backend
@@ -45,8 +45,7 @@ class TestAgentRowEffortField:
             "en",  # fallback_language
             None,  # patterns_json
             None,  # passthroughs_json
-            1,  # show_tool_recap
-            "high",  # effort (col 25)
+            "high",  # effort (col 24)
         )
         row = AgentRow.from_db_row(row_tuple)
         assert row.name == "myagent"
@@ -78,7 +77,6 @@ class TestAgentRowEffortField:
             "en",
             None,
             None,
-            1,
             None,  # effort = NULL in DB
         )
         row = AgentRow.from_db_row(row_tuple)

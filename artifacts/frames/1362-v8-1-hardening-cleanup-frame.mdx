@@ -1,0 +1,59 @@
+---
+title: V8.1 hardening + cleanup pass (parking-lot from PR #1358)
+issue: 1362
+status: approved
+tier: F-lite
+date: 2026-05-25
+---
+
+## Problem
+
+PR #1358 (closes #1330 — V8 HTTP-fronted BlobStore) shipped the production service. The `/code-review` Phase 3 multi-domain pass surfaced 12 non-structural items that were not blocking — flagged by a single agent, or below the confidence threshold, or design tradeoffs rather than bugs. Letting them rot in a PR comment violates the "drain the parking-lot" pattern that keeps review-debt from accumulating across sprints.
+
+The list spans three buckets:
+
+- **1 hardening item** (high value): the Quadlet unit silently binds `0.0.0.0:8449` when `${TAILSCALE_IPV4}` is empty — fail-open behavior that widens exposure. An `ExecStartPre=` guard fails the unit closed instead.
+- **2 medium items**: API/lifecycle drift — `BlobAuditSink.provision()` missing while `JetStreamAuditSink` has it (lifecycle asymmetry); `connect_retry_max_s` accepted + documented but unused (signature dishonesty).
+- **9 low-value items**: micro-perf nits, double-assignments, docstring gaps, contract verification, and one stale analysis table.
+
+Observable impact: residual exposure surface in deploy/, drift between sibling sinks in `src/lyra/blobstore/`, and signature/code lies in `packages/roxabi-blobs/` that mislead future callers.
+
+## Who
+
+- **Primary:** Lyra ops (production deployment of `lyra-blobstore` on M₁) — the Tailscale guard directly reduces deployment risk surface
+- **Secondary:** future blobstore consumers reading `HttpBlobStore` and `BlobAuditSink` (honest signatures, mirrored lifecycle), reviewers of subsequent blobstore PRs (no V8 carryover noise)
+
+## Constraints
+
+- Single domain: `src/lyra/blobstore/`, `packages/roxabi-blobs/`, `deploy/quadlet/lyra-blobstore.container`
+- Cherry-pick budget: "what fits 30-min" per the issue — not all 12 items must land; explicit skip rationale acceptable
+- No regression in existing 460-test blobstore suite
+- Quality gates green: `uv run pyright`, `uv run ruff check`, `uv run lint-imports`
+- No new architecture — V8 contract is frozen; pre-read 413 gate, streaming get, multipart, and dedicated `ghcr.io/roxabi/blobstore` image are explicitly out-of-scope (see `src/lyra/blobstore/CLAUDE.md` V8 contract + #1334 + ADR-073 three-strikes rule)
+
+## Out of Scope
+
+- Pre-read 413 oversized-blob gate (deferred per blobstore CLAUDE.md)
+- Protocol v2 streaming get / multipart (#1334)
+- Dedicated `ghcr.io/roxabi/blobstore` image (ADR-073)
+- Any refactor that touches BlobStore Protocol surface — items are non-structural by definition
+
+## Premise Validity
+
+**Success in 6 months:** Tailscale fail-closed guard active in prod (0.0.0.0 bind impossible); `BlobAuditSink.provision()` mirrors `JetStreamAuditSink`; `connect_retry_max_s` honest (implemented or removed); 460-test suite + lint-imports green; PR #1358's parking-lot drained — no item carried to a 3rd PR.
+
+**Failure in 6 months:** Within 2 sprints (~6w): ≥1 cherry-picked item reverted, OR the parking-lot grows again (>5 new V8.x items added) — signaling the cherry-pick pattern doesn't drain residual review debt.
+
+**Simplest alternative:** Apply only the high-value Tailscale guard; close the other 11 items as won't-fix.
+**Why not simplest:** The 2 medium items (provision symmetry + `connect_retry_max_s` no-op) are sub-30min each and remove honest API drift the review surfaced; leaving them perpetuates the very drift parking-lots are meant to drain. Skipping the high+medium tier defeats the purpose.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (blobstore), 4–6 files, no architectural unknowns, no new patterns.
+
+Signals observed:
+- Label `P3-low` (no size label)
+- 12 items pre-sorted by value in the issue body — spec phase just confirms cherry-pick set
+- Spans 3 directories but 1 logical domain
+- Each item has its own fix sketch in the body (no investigation required)
+- No cross-cutting refactor; no new contracts

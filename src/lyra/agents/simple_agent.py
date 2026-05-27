@@ -21,14 +21,14 @@ from lyra.core.messaging.message import (
     Response,
 )
 from lyra.core.messaging.messages import MessageManager
-from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.pool import Pool
+from lyra.core.ports.stt import STTNoiseError
 from lyra.core.processors.stream_processor import StreamProcessor
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 from lyra.integrations.base import SessionTools
 from lyra.llm.base import LlmProvider
 
-from .simple_agent_prompts import STTError, STTNoiseError, build_llm_text
+from .simple_agent_prompts import STTError, build_llm_text
 
 _AGENTS_DIR = Path(__file__).resolve().parent
 
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from lyra.core.ports.stt import STTProtocol
     from lyra.core.ports.tts import TtsProtocol
     from lyra.infrastructure.stores.agent_store import AgentStore
-    from lyra.llm.drivers.cli_nats import CliNatsDriver
+    from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
 
@@ -74,11 +74,9 @@ class SimpleAgent(AgentBase):
         runtime_config: RuntimeConfig | None = None,
         agents_dir: Path | None = None,
         agent_store: "AgentStore | None" = None,
-        tool_display_config: ToolDisplayConfig | None = None,
         session_tools: SessionTools | None = None,
-        cli_nats_driver: "CliNatsDriver | None" = None,
+        cli_nats_driver: "LlmClient | None" = None,
     ) -> None:
-        self._tool_display_config = tool_display_config or ToolDisplayConfig()
         resolved_agents_dir = agents_dir or _AGENTS_DIR
         rc = (
             runtime_config
@@ -256,14 +254,13 @@ class SimpleAgent(AgentBase):
         # Streaming path: wrap with StreamProcessor to emit RenderEvent (#387)
         _stream_fn = getattr(self._provider, "stream", None)
         if model_cfg.streaming and _stream_fn is not None:
-            stream_iter = await _stream_fn(
+            stream_iter = _stream_fn(
                 pool.pool_id,
                 text,
                 model_cfg,
                 pool._system_prompt or self.config.system_prompt,
             )
             processor = StreamProcessor(
-                config=self._tool_display_config,
                 show_intermediate=self.config.show_intermediate,
             )
             return processor.process(stream_iter)

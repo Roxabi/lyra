@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import grp
 import os
 import pwd
 import shutil
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
+from scripts._acl_models import ExternalDeploy, LoadedMatrix
 from scripts._loader import load_matrix
 from scripts._nk import (
     FakeNkeyProvider,
@@ -19,7 +22,7 @@ from scripts._nk import (
     SubprocessNkeyProvider,
     ensure_nk_or_exit,
 )
-from scripts._renderer import render_auth_conf
+from scripts._renderer import parse_auth_conf, render_auth_conf
 
 _provider_factory: Callable[[], NkeyProvider] = SubprocessNkeyProvider
 
@@ -99,6 +102,49 @@ def _operator_uid_gid() -> tuple[int, int]:
     return os.getuid(), os.getgid()
 
 
+def _operator_user() -> str:
+    """Return invoking operator login.
+
+    Preserves SUDO_USER under sudo, falls back to current process user.
+    """
+    return os.environ.get("SUDO_USER") or getpass.getuser()
+
+
+def _emit_external_manifest(
+    externals: Sequence[tuple[str, ExternalDeploy]],
+    seeds_dir: Path,
+) -> None:
+    """Print scp commands to stderr — one per external identity."""
+    print(
+        "⚠ External seeds require manual fan-out"
+        " (seeds + auth.conf already committed):",
+        file=sys.stderr,
+    )
+    user = _operator_user()
+    for name, deploy in externals:
+        src = seeds_dir / f"{name}.seed"
+        target = f"{user}@{deploy['host']}:{deploy['target_path']}"
+        print(f"  scp {src} {target}", file=sys.stderr)
+
+
+def _handle_externals(
+    externals: Sequence[tuple[str, ExternalDeploy]],
+    seeds_dir: Path,
+    args: argparse.Namespace,
+) -> None:
+    """Emit manifest and exit 2 when external identities require manual fan-out.
+
+    No-op when externals is empty or --ack-external-distribution is set.
+    Must be called OUTSIDE any try/except BaseException to avoid triggering
+    rollback on SystemExit(2).
+    """
+    if not externals:
+        return
+    _emit_external_manifest(externals, seeds_dir)
+    if not getattr(args, "ack_external_distribution", False):
+        sys.exit(2)
+
+
 def _mode_regen_authconf(args: argparse.Namespace) -> None:
     """--regen-authconf: re-derive pubkeys from existing seeds, write auth.conf."""
     seeds_dir = _seeds_dir()
@@ -126,6 +172,130 @@ def _mode_regen_authconf(args: argparse.Namespace) -> None:
     content = render_auth_conf(matrix, pubkeys)
     auth_conf = seeds_dir / "auth.conf"
     atomic_write(auth_conf, content, 0o600)
+
+
+def _add_identity_validate(
+    name: str, matrix_path: Path, matrix: LoadedMatrix, seeds_dir: Path
+) -> None:
+    """Validate name + status + other-seed presence (exits non-zero on failure)."""
+    if name not in matrix["identities"]:
+        print(
+            f"error: identity '{name}' not declared in {matrix_path} — add it first",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    identity = matrix["identities"][name]
+    if identity["status"] != "active":
+        print(
+            f"error: identity '{name}' has status '{identity['status']}';"
+            " --add-identity only provisions active identities",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    active_others = [
+        n
+        for n, ident in matrix["identities"].items()
+        if ident["status"] == "active" and n != name
+    ]
+    for other in active_others:
+        if not (seeds_dir / f"{other}.seed").exists():
+            print(
+                f"error: cannot render auth.conf — missing seed for active identity"
+                f" '{other}'; run full provision first (--regen-authconf has the"
+                " same missing-seed guard)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+
+def _add_identity_detect_state(name: str, seeds_dir: Path) -> str:
+    """Inspect filesystem and return 'noop', 'repaired', or 'added'.
+
+    Block-presence uses parse_auth_conf (not substring match) to avoid
+    prefix collisions like 'hub' matching inside '# hub-extra' (#1361 review B1).
+    """
+    seed_present = (seeds_dir / f"{name}.seed").exists()
+    auth_conf_path = seeds_dir / "auth.conf"
+    block_present = False
+    if auth_conf_path.exists():
+        parsed = parse_auth_conf(auth_conf_path.read_text())
+        block_present = any(u.comment_name == name for u in parsed.users)
+    if seed_present and block_present:
+        return "noop"
+    if seed_present:
+        return "repaired"
+    return "added"
+
+
+def _add_identity_write(
+    name: str,
+    state: str,
+    seeds_dir: Path,
+    matrix: LoadedMatrix,
+    provider: NkeyProvider,
+) -> None:
+    """Gather pubkeys, gen seed if added, render + write auth.conf (user mirror)."""
+    seed_file = seeds_dir / f"{name}.seed"
+    pubkeys: dict[str, str] = {}
+
+    active_others = [
+        n
+        for n, ident in matrix["identities"].items()
+        if ident["status"] == "active" and n != name
+    ]
+    for other in active_others:
+        other_bytes = (seeds_dir / f"{other}.seed").read_bytes()
+        pubkeys[other] = provider.pubkey_from_seed(other_bytes)
+
+    if state == "added":
+        seed = provider.gen_seed(name)
+        seed_str = seed.decode() if seed.endswith(b"\n") else seed.decode() + "\n"
+        atomic_write(seed_file, seed_str, 0o600)
+        pubkeys[name] = provider.pubkey_from_seed(seed)
+    else:
+        # repaired: seed exists — reuse, do NOT regenerate
+        pubkeys[name] = provider.pubkey_from_seed(seed_file.read_bytes())
+
+    atomic_write(seeds_dir / "auth.conf", render_auth_conf(matrix, pubkeys), 0o600)
+
+
+def _mode_add_identity(args: argparse.Namespace) -> None:
+    """--add-identity NAME: rootless single-identity provisioning + auth.conf re-render.
+
+    Parent pattern: _mode_regen_authconf. Writes only to _seeds_dir()/.
+    Never calls _require_root(); never touches _auth_dir().
+    Emits STATE=noop|repaired|added on stdout.
+    """
+    seeds_dir = _seeds_dir()
+    matrix = load_matrix(args.matrix)
+    name = args.add_identity
+    provider = _get_provider()
+
+    _add_identity_validate(name, args.matrix, matrix, seeds_dir)
+    state = _add_identity_detect_state(name, seeds_dir)
+
+    if state == "noop":
+        print(
+            f"identity '{name}' already provisioned and present in auth.conf;"
+            " no changes",
+            file=sys.stderr,
+        )
+        print("STATE=noop")
+        return
+
+    _add_identity_write(name, state, seeds_dir, matrix, provider)
+
+    if state == "repaired":
+        print(
+            f"identity '{name}' seed exists but auth.conf missing block;"
+            " re-rendered auth.conf",
+            file=sys.stderr,
+        )
+    # state == "added": no stderr message on normal success path.
+
+    print(f"STATE={state}")
 
 
 def _mode_emit_merged_authconf(args: argparse.Namespace) -> None:
@@ -220,14 +390,17 @@ def _mode_regenerate(args: argparse.Namespace) -> None:
     if auth_conf.exists():
         auth_conf.unlink()
 
+    externals: list[tuple[str, ExternalDeploy]] = []
     try:
-        _mode_full_provision(args)
+        externals = _mode_full_provision(args)
     except BaseException:
         if backup_seeds and Path(backup_seeds).exists() and not seeds_dir.exists():
             shutil.copytree(backup_seeds, str(seeds_dir))
         if backup_auth and Path(backup_auth).exists() and not auth_conf.exists():
             shutil.copy2(backup_auth, str(auth_conf))
         raise
+    # OUTSIDE try/except — safe to exit without triggering rollback
+    _handle_externals(externals, seeds_dir, args)
 
 
 def _mode_show(args: argparse.Namespace) -> None:
@@ -266,8 +439,13 @@ def _mode_fix_perms(args: argparse.Namespace) -> None:
             os.chown(auth_conf, 0, nats_gid)
 
 
-def _mode_full_provision(args: argparse.Namespace) -> None:
-    """Default mode: generate all nkeys + dual-write auth.conf (root required)."""
+def _mode_full_provision(args: argparse.Namespace) -> list[tuple[str, ExternalDeploy]]:
+    """Default mode: generate all nkeys + dual-write auth.conf (root required).
+
+    Returns list of (name, deploy) tuples for external identities found in active set.
+    Caller is responsible for fan-out manifest + exit code (must run OUTSIDE
+    _mode_regenerate's try/except BaseException rollback block).
+    """
     _require_root()
     seeds_dir = _seeds_dir()
     auth_dir = _auth_dir()
@@ -309,3 +487,10 @@ def _mode_full_provision(args: argparse.Namespace) -> None:
     user_conf = seeds_dir / "auth.conf"
     atomic_write(user_conf, content, 0o600)
     os.chown(user_conf, uid, gid)
+
+    externals: list[tuple[str, ExternalDeploy]] = []
+    for name, identity in active.items():
+        deploy = identity.get("deploy")
+        if deploy and deploy.get("type") == "external":
+            externals.append((name, cast(ExternalDeploy, deploy)))
+    return externals

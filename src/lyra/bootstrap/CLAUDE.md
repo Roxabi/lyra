@@ -26,6 +26,21 @@ Bootstrap = orchestration only. No business logic — all domain behaviour lives
 `auth_seeding.py`, `bootstrap_stores.py`, `types.py` stay flat — they bridge multiple
 subdirs and are imported by both `standalone/` and `factory/`.
 
+## NATS driver composition (post-#1278)
+
+`factory/llm_overlay.py` and `factory/voice_overlay.py` compose NATS drivers in 3 layers:
+
+```
+NatsTransport(nc) → WorkerPoolClient(transport, hb_subject, validate_worker_id)
+                 → DomainClient(pool, codec)
+```
+
+Each `init_nats_*` helper builds and returns the domain client. Callers (wiring_helpers)
+treat the returned object as opaque — they only call domain methods (`complete()`,
+`synthesize()`, etc.) plus `stop()` for shutdown.
+
+Owning ADRs: ADR-045 (transport SDK), ADR-049 (contracts), #1278 (layer extraction).
+
 ## Rules
 
 - All intra-bootstrap imports: full absolute paths (`lyra.bootstrap.<subdir>.<module>`).

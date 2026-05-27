@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -129,12 +129,12 @@ quadlet-preflight:  ## advisory pre-flight checks before Quadlet install (non-bl
 		echo "         (or persist in /etc/sysctl.d/99-rootless-ports.conf)"; \
 	fi
 
-quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment guard (issue #1083)
+quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment guard (issue #1083) + template purity (issue #1369)
 	@echo "==> quadlet --dryrun"
 	@QUADLET_UNIT_DIRS=$(CURDIR)/deploy/quadlet /usr/libexec/podman/quadlet --dryrun --user
 	@echo "==> inline-comment check"
 	@_bad=0; \
-	for f in deploy/quadlet/*.container deploy/quadlet/*.volume deploy/quadlet/*.network; do \
+	for f in deploy/quadlet/*.container deploy/quadlet/*.container.tmpl deploy/quadlet/*.volume deploy/quadlet/*.network; do \
 	    [ -f "$$f" ] || continue; \
 	    if grep -Pn '^\s*[^#;].*[[:space:]]#' "$$f"; then \
 	        echo "ERROR: $$f has inline # comments on value lines (Quadlet does not strip them)"; \
@@ -142,6 +142,8 @@ quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment g
 	    fi; \
 	done; \
 	[ $$_bad -eq 0 ] || exit 1
+	@echo "==> template purity check"
+	@bash tools/check_quadlet_template_purity.sh
 	@echo "quadlet-lint passed"
 
 quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify (NO_RESTART=1 skips restart/verify)
@@ -157,17 +159,39 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@chmod 0700 "$(HOME)/.lyra/nats/jetstream"
 	@cp deploy/quadlet/lyra-nats.container             "$(QUADLET_DIR)/lyra-nats.container"
 	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"
-	@cp deploy/quadlet/lyra-telegram.container         "$(QUADLET_DIR)/lyra-telegram.container"
-	@cp deploy/quadlet/lyra-discord.container          "$(QUADLET_DIR)/lyra-discord.container"
+	@uv run python tools/render_quadlet.py \
+		--platform telegram \
+		--config "$(HOME)/.lyra/config.toml" \
+		--tmpl deploy/quadlet/lyra-telegram.container.tmpl \
+		--dest "$(QUADLET_DIR)/lyra-telegram.container"
+	@uv run python tools/render_quadlet.py \
+		--platform discord \
+		--config "$(HOME)/.lyra/config.toml" \
+		--tmpl deploy/quadlet/lyra-discord.container.tmpl \
+		--dest "$(QUADLET_DIR)/lyra-discord.container"
 	@cp deploy/quadlet/lyra-gh.pod                     "$(QUADLET_DIR)/lyra-gh.pod"
 	@cp deploy/quadlet/lyra-gh-helper.container        "$(QUADLET_DIR)/lyra-gh-helper.container"
 	@cp deploy/quadlet/lyra-clipool.container          "$(QUADLET_DIR)/lyra-clipool.container"
+	@cp deploy/quadlet/lyra-blobstore.container        "$(QUADLET_DIR)/lyra-blobstore.container"
+	@cp deploy/quadlet/lyra-turn-writer.container      "$(QUADLET_DIR)/lyra-turn-writer.container"
 	@echo "Quadlet units copied."
 	@if [ "$(NO_RESTART)" = "1" ]; then \
 		echo "NO_RESTART=1 — skipping daemon-reload, restart, and verification."; \
 	else \
 		bash deploy/quadlet-install-verify.sh; \
 	fi
+
+QUADLET_SYNC_SRC := deploy/systemd
+QUADLET_SYNC_DST := $(HOME)/.config/systemd/user
+
+quadlet-sync-install:  ## install lyra-quadlet-sync timer + service → daemon-reload + enable
+	@mkdir -p "$(QUADLET_SYNC_DST)"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.service" "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.timer"   "$(QUADLET_SYNC_DST)/"
+	@echo "Sync units copied to $(QUADLET_SYNC_DST)"
+	@systemctl --user daemon-reload
+	@systemctl --user enable lyra-quadlet-sync.timer
+	@echo "[ok] lyra-quadlet-sync.timer enabled."
 
 quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.lyra/nkeys/auth.conf
 	@lyra-acl genkeys --emit-merged-authconf
@@ -179,10 +203,10 @@ LYRA_NKEYS_DIR := $(HOME)/.lyra/nkeys
 quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 	@test -d "$(LYRA_NKEYS_DIR)" || { echo "ERROR: $(LYRA_NKEYS_DIR) not found"; exit 1; }
 	@podman secret create --replace lyra-nats-auth              "$(LYRA_NKEYS_DIR)/auth.conf"
-	@podman secret create --replace lyra-nkey-hub               "$(LYRA_NKEYS_DIR)/hub.seed"
-	@podman secret create --replace lyra-nkey-telegram-adapter  "$(LYRA_NKEYS_DIR)/telegram-adapter.seed"
-	@podman secret create --replace lyra-nkey-discord-adapter   "$(LYRA_NKEYS_DIR)/discord-adapter.seed"
-	@podman secret create --replace lyra-nkey-clipool-worker    "$(LYRA_NKEYS_DIR)/clipool-worker.seed"
+	@podman secret create --replace lyra-nats-hub               "$(LYRA_NKEYS_DIR)/hub.seed"
+	@podman secret create --replace lyra-nats-telegram          "$(LYRA_NKEYS_DIR)/telegram-adapter.seed"
+	@podman secret create --replace lyra-nats-discord           "$(LYRA_NKEYS_DIR)/discord-adapter.seed"
+	@podman secret create --replace lyra-nats-clipool           "$(LYRA_NKEYS_DIR)/clipool-worker.seed"
 	@if [ -f "$(HOME)/.lyra/gh-app.pem" ]; then \
 		podman secret create --replace lyra-gh-pem "$(HOME)/.lyra/gh-app.pem"; \
 		echo "lyra-gh-pem secret created from ~/.lyra/gh-app.pem"; \
@@ -224,7 +248,7 @@ deploy:
 	echo "Units installed + daemon-reload done."; \
 	echo "To restart: make remote lyra reload  (or: systemctl --user restart voicecli-tts voicecli-stt)"'
 
-full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf → secrets → HUP NATS → restart lyra
+full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf → secrets → restart NATS → restart lyra
 	$(require_machine1)
 	@echo "Full deploy to $(DEPLOY_HOST)..."
 	@ssh $(DEPLOY_HOST) '\
@@ -247,8 +271,10 @@ full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf
 	sudo env "PATH=$$PATH" lyra-acl genkeys --regen-authconf; \
 	echo "==> NATS: installing Podman secrets..."; \
 	make -C "$$LYRA_DIR" quadlet-secrets-install; \
-	echo "==> NATS: reloading (HUP)..."; \
-	podman kill -s HUP lyra-nats; \
+	echo "==> NATS: restarting (refresh mount-typed Podman secret)..."; \
+	systemctl --user restart lyra-nats; \
+	systemctl --user is-active --wait lyra-nats \
+		|| { echo "ERROR: lyra-nats failed to reach active state"; exit 1; }; \
 	echo "==> Lyra: restarting containers..."; \
 	systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool; \
 	echo ""; \
@@ -280,13 +306,55 @@ remote:
 
 # ── Dev tools ────────────────────────────────────────────────────────────────
 
+# Shared list of services that hold NATS subject auth and must restart
+# whenever `auth.conf` is regenerated or a new identity is added. The bare
+# `lyra-nats` is restarted separately by the target itself before this list.
+LYRA_NATS_CLIENTS := lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper
+
 nats-setup:
 	@bash deploy/nats/setup.sh
 
-nats-regen-authconf:          ## re-render auth.conf from existing seeds, upload Podman secret, HUP NATS
+nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart all NATS clients
 	@lyra-acl genkeys --regen-authconf
-	@$(MAKE) quadlet-secrets-install
-	@podman kill -s HUP lyra-nats
+	@test -s "$(LYRA_NKEYS_DIR)/auth.conf" \
+		|| { echo "ERROR: $(LYRA_NKEYS_DIR)/auth.conf missing or empty after genkeys"; exit 1; }
+	@# auth.conf only — seed rotation is a different runbook (nkey-rotation.md).
+	@podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"
+	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.
+	@systemctl --user restart lyra-nats
+	@systemctl --user is-active --wait lyra-nats \
+		|| { echo "ERROR: lyra-nats failed to reach active state"; exit 1; }
+	@# All NATS clients hold stale subject auth after an ACL change (#1390).
+	@failed=""; \
+	for svc in $(LYRA_NATS_CLIENTS); do \
+	  if systemctl --user is-active --quiet $$svc; then \
+	    systemctl --user restart $$svc || { echo "ERROR: restart $$svc failed"; failed="$$failed $$svc"; }; \
+	  fi; \
+	done; \
+	[ -z "$$failed" ] || { echo "ERROR: restart failed for:$$failed"; exit 1; }
+
+nats-add-identity:  ## add a single NATS identity rootless; idempotent after full-consistency (seed+secret present)
+	@test -n "$(NAME)" || { echo "usage: make nats-add-identity NAME=<x>"; exit 2; }
+	@echo "$(NAME)" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9_-]*$$' \
+	  || { echo "error: NAME must match [a-zA-Z0-9][a-zA-Z0-9_-]* — got '$(NAME)'"; exit 1; }
+	@out=$$(uv run --project . lyra-acl genkeys --add-identity "$(NAME)"); \
+	rc=$$?; \
+	if [ $$rc -ne 0 ]; then echo "$$out" >&2; echo "lyra-acl failed (exit $$rc) — aborting"; exit $$rc; fi; \
+	state=$$(echo "$$out" | grep -oE 'STATE=(noop|repaired|added)'); \
+	echo "lyra-acl: $$state"; \
+	if [ "$$state" = "STATE=noop" ] && podman secret inspect "lyra-nats-$(NAME)" >/dev/null 2>&1; then \
+	  echo "no-op: $(NAME) already provisioned + Podman secret present locally"; \
+	  exit 0; \
+	fi; \
+	podman secret create --replace "lyra-nats-$(NAME)" "$(LYRA_NKEYS_DIR)/$(NAME).seed"; \
+	podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"; \
+	failed=""; \
+	for svc in lyra-nats $(LYRA_NATS_CLIENTS); do \
+	  if systemctl --user is-active --quiet $$svc; then \
+	    systemctl --user restart $$svc || { echo "ERROR: restart $$svc failed"; failed="$$failed $$svc"; }; \
+	  fi; \
+	done; \
+	[ -z "$$failed" ] || { echo "ERROR: restart failed for:$$failed"; exit 1; }
 
 test:
 	uv run pytest -v

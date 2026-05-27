@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from roxabi_contracts import BlobRef
+
 if TYPE_CHECKING:
     from lyra.core.agent.agent_config import AgentTTSConfig
 
@@ -32,6 +34,8 @@ class SynthesisResult:
     mime_type: str
     duration_ms: int | None  # None if WAV header unreadable
     waveform_b64: str | None = field(default=None)  # 256-byte amplitude array, base64
+    blob_ref: BlobRef | None = field(default=None)
+    error: str = field(default="")  # non-empty on codec decode failure
 
 
 class TtsUnavailableError(Exception):

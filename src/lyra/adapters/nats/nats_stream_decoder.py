@@ -108,7 +108,8 @@ async def decode_stream_events(
 
     Yields:
         Decoded render events until a terminal chunk arrives or the timeout
-        elapses.
+        elapses.  ``stream_keepalive`` chunks (#687) reset the idle timer and
+        are not yielded.
     """
     from lyra.nats.render_event_codec import NatsRenderEventCodec
 
@@ -134,6 +135,12 @@ async def decode_stream_events(
                 stream_id,
             )
             break
+        # Keepalive sentinel (#687): resets per-chunk idle timer; not yielded.
+        # Returning to the top of the while loop calls _wait_for_chunk again,
+        # which starts a fresh elapsed_idle counter — effectively resetting the
+        # 120 s timeout without delivering any render event to the caller.
+        if event_type == "stream_keepalive":
+            continue
         # stream_error is a transport-layer sentinel, not a render event —
         # terminate the stream without passing it through the codec.
         if event_type == "stream_error":

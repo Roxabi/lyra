@@ -18,7 +18,6 @@ from lyra.adapters.discord.discord_formatting import (
 from lyra.adapters.shared._shared import (
     DISCORD_MAX_LENGTH,
 )
-from lyra.adapters.shared._shared_streaming_state import STREAMING_EDIT_INTERVAL
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
@@ -28,10 +27,11 @@ from lyra.core.messaging.render_events import (
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
+from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
+    from lyra.outbound.emitter import PlatformCallbacks
 
 log = logging.getLogger("lyra.adapters.discord")
 
@@ -43,6 +43,26 @@ _PartialMessageable = (
     | discord.VoiceChannel
     | discord.StageChannel
 )
+
+
+# Implements ThrottleCapability Protocol from lyra.outbound.throttle.
+class DiscordTypingIndicator:
+    """ThrottleCapability impl for Discord — wraps adapter._start_typing/_cancel_typing.
+
+    Composed into OutboundEmitter by DiscordAdapter._make_emitter (T19 / Slice 5).
+    Holds no state beyond the back-reference to the adapter.
+    """
+
+    edit_interval_s: float = STREAMING_EDIT_INTERVAL
+
+    def __init__(self, adapter: "DiscordAdapter") -> None:
+        self._adapter = adapter
+
+    async def start_typing(self, scope_id: int) -> None:
+        self._adapter._start_typing(scope_id)
+
+    async def cancel_typing(self, scope_id: int) -> None:
+        self._adapter._cancel_typing(scope_id)
 
 
 async def _discord_typing_worker(  # noqa: C901 — DEBT:adapter-dispatch-complexity
@@ -62,13 +82,14 @@ async def _discord_typing_worker(  # noqa: C901 — DEBT:adapter-dispatch-comple
             try:
                 channel = await resolve_channel(channel_id)
                 break
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — typing-worker resolve retry, type sanitized on warn-and-raise
                 if _attempt == 2:
                     log.warning(
-                        "typing: failed to resolve channel %d after %d attempts: %s",
+                        "typing: failed to resolve channel %d after"
+                        " %d attempts: type=%s",
                         channel_id,
                         _attempt + 1,
-                        exc,
+                        type(exc).__name__,
                     )
                     raise
                 await asyncio.sleep(1.0 * (2**_attempt))
@@ -181,7 +202,7 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
     telegram_outbound.build_streaming_callbacks().
     """
     from lyra.adapters.shared._shared import send_with_retry
-    from lyra.adapters.shared._shared_streaming import PlatformCallbacks
+    from lyra.outbound.emitter import PlatformCallbacks
 
     meta = _validate_inbound(original_msg, "build_streaming_callbacks")
     if meta is None:
@@ -199,7 +220,6 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
             send_placeholder=_bad_placeholder,
             edit_placeholder_text=lambda ph, text: asyncio.sleep(0),
             send_trace_placeholder=_bad_trace,
-            edit_trace=lambda ph, ev: asyncio.sleep(0),
             send_message=_noop,
             send_fallback=_noop,
             chunk_text=lambda t: [t],
@@ -241,11 +261,6 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         messageable = await adapter._resolve_channel(send_to_id)
         msg = await messageable.send("🔧 …")
         return msg, msg.id
-
-    async def _edit_trace(trace_obj: Any, event: Any) -> None:
-        # v1 ToolSummaryRenderEvent removed in Slice 5 (#1192).
-        # edit_trace is a no-op; trace placeholder used only for reasoning.
-        pass
 
     async def _send_message(text: str) -> int | None:
         messageable = await adapter._resolve_channel(send_to_id)
@@ -355,7 +370,6 @@ def build_streaming_callbacks(  # noqa: C901 PLR0915 — DEBT:wiring-bootstrap-d
         send_placeholder=_send_placeholder,
         edit_placeholder_text=_edit_placeholder_text,
         send_trace_placeholder=_send_trace_placeholder,
-        edit_trace=_edit_trace,
         send_message=_send_message,
         send_fallback=_send_fallback,
         chunk_text=lambda text: render_text(text, DISCORD_MAX_LENGTH),

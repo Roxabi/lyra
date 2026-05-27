@@ -466,38 +466,14 @@ else
   info "uv installed ($(uv --version))."
 fi
 
-section "supervisord (process manager)"
-if command -v supervisord &>/dev/null; then
-  info "supervisord already installed."
-else
-  uv tool install supervisor
-  info "supervisord installed."
-fi
-
-section "systemd user unit (lyra auto-start)"
-UNIT_DIR="$HOME/.config/systemd/user"
-UNIT_FILE="$UNIT_DIR/lyra.service"
-mkdir -p "$UNIT_DIR"
-if [ -f "$UNIT_FILE" ]; then
-  info "lyra.service already exists."
-else
-  SRC_UNIT="$(dirname "$0")/lyra.service"
-  if [ ! -f "$SRC_UNIT" ]; then
-    error "Source unit not found: $SRC_UNIT"
-  fi
-  cp "$SRC_UNIT" "$UNIT_FILE"
-  info "lyra.service created (copied from $SRC_UNIT)."
-fi
-
 # Linger is already enabled (and verified) in the Podman section above —
 # do not call it again here. A duplicate `loginctl enable-linger ... || true`
 # would silently log success even if the real call had failed, creating false
 # confidence about persistent user services.
 
-# Note: legacy host-timer health monitoring (lyra-monitor.{service,timer}) is
-# DEPRECATED — superseded by Monitoring v2 (NATS event stream + Tauri desktop
-# dashboard, tracked in #1035). The host timer was disabled on prod in 2026-05;
-# do not install it on new hosts.
+# Note: lyra-monitor.{service,timer} host-timer units have been removed from deploy/
+# (superseded by Monitoring v2, tracked in #1035). Python module src/lyra/monitoring/
+# is retained for spec mining. ¬install any lyra-monitor units on new hosts.
 
 section "Node.js"
 if command -v node &>/dev/null; then
@@ -568,21 +544,23 @@ if [ "${NEEDS_REBOOT:-false}" = true ]; then
 else
   echo ""
   info "Next steps:"
-  echo "  1. Clone lyra and run setup:"
+  echo "  1. Clone lyra:"
   echo ""
   echo "     git clone git@github.com:Roxabi/lyra.git ~/projects/lyra"
+  echo ""
+  echo "  2. Run the lyra setup (clones optional modules, installs Quadlets if this host has the lyra-hub role):"
+  echo ""
   echo "     cd ~/projects/lyra && python3 deploy/setup.py"
   echo ""
-  echo "  2. Enable auto-start on boot:"
+  echo "  3. For multi-repo deploys across hosts (lyra + voiceCLI + llmCLI + imageCLI), use the cross-repo deployer:"
   echo ""
-  echo "     systemctl --user daemon-reload"
-  echo "     systemctl --user enable lyra.service"
+  echo "     ~/projects/deploy.sh        # idempotent, role-aware via ~/projects/hosts.toml"
   echo ""
-  echo "  3. Authenticate Claude CLI:"
+  echo "  4. Authenticate Claude CLI:"
   echo ""
   echo "     claude"
   echo ""
-  echo "  Recommended — NATS setup for multi-machine production (embedded nats-server covers dev/single-machine use):"
+  echo "  5. Recommended — NATS setup for multi-machine production (embedded nats-server covers dev/single-machine use):"
   echo ""
   echo "     cd ~/projects/lyra && make nats-setup"
   echo ""

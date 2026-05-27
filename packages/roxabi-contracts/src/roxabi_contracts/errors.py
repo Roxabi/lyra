@@ -10,7 +10,13 @@ from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field, field_validator
 
-__all__ = ["WorkerError", "CodeMeta", "KNOWN_CODES"]
+__all__ = [
+    "WorkerError",
+    "CodeMeta",
+    "KNOWN_CODES",
+    "scrub_credentials",
+    "truncate_with_marker",
+]
 
 # Maximum stored length for free-text fields. Long stack traces / framing errors
 # are truncated to fit; we never raise a ValidationError on overflow because
@@ -70,12 +76,20 @@ def _scrub_url(url: str) -> str:
     )
 
 
-def _scrub(value: str) -> str:
-    """Scrub credentials from any embedded URLs in `value`."""
+def scrub_credentials(value: str) -> str:
+    """Scrub credentials from any embedded URLs in `value`.
+
+    Replaces the userinfo (``user:pass@``) of every URL whose scheme is in
+    the credential-bearing allowlist (``nats``, ``nats+tls``, ``amqp``,
+    ``amqps``, ``redis``, ``rediss``, ``http``, ``https``, ``postgres``,
+    ``postgresql``, ``mysql``) with ``***:***``. Returns the value
+    unchanged if no scrubbing applies. Safe to call on arbitrary free-text
+    such as ``str(exc)``.
+    """
     return _URL_RE.sub(lambda m: _scrub_url(m.group(0)), value)
 
 
-def _truncate(value: str, limit: int) -> str:
+def truncate_with_marker(value: str, limit: int) -> str:
     """Truncate `value` to `limit` chars, replacing the tail with `…` on overflow.
 
     Truncates rather than raises so error-path code never crashes on long
@@ -107,16 +121,14 @@ class WorkerError(BaseModel):
     @field_validator("message")
     @classmethod
     def _sanitize_message(cls, v: str) -> str:
-        scrubbed = _scrub(v)
-        return _truncate(scrubbed, _MESSAGE_MAX)
+        return truncate_with_marker(scrub_credentials(v), _MESSAGE_MAX)
 
     @field_validator("detail")
     @classmethod
     def _sanitize_detail(cls, v: str | None) -> str | None:
         if v is None:
             return None
-        scrubbed = _scrub(v)
-        return _truncate(scrubbed, _DETAIL_MAX)
+        return truncate_with_marker(scrub_credentials(v), _DETAIL_MAX)
 
 
 class CodeMeta(BaseModel):
@@ -130,7 +142,7 @@ class CodeMeta(BaseModel):
 # ---------------------------------------------------------------------------
 # KNOWN_CODES — canonical registry (ADR-066 § "The code namespace")
 # ---------------------------------------------------------------------------
-# Domains: transport | worker | cli | llm | voice | image
+# Domains: transport | pool | worker | cli | llm | voice | image
 # ---------------------------------------------------------------------------
 
 KNOWN_CODES: dict[str, CodeMeta] = {
@@ -164,6 +176,22 @@ KNOWN_CODES: dict[str, CodeMeta] = {
         domain="transport",
         default_retryable=True,
         description="Generic NATS / network transport failure not covered by a more specific code (e.g. connection reset, protocol error).",  # noqa: E501
+    ),
+    "transport.payload_too_large": CodeMeta(
+        domain="transport",
+        default_retryable=False,
+        description="Request payload exceeded the NATS server's max_payload limit.",
+    ),
+    # --- pool ----------------------------------------------------------------
+    "pool.circuit_open": CodeMeta(
+        domain="pool",
+        default_retryable=True,
+        description="WorkerPoolClient circuit breaker is open; call short-circuited without dispatching to a worker.",  # noqa: E501
+    ),
+    "pool.no_live_workers": CodeMeta(
+        domain="pool",
+        default_retryable=True,
+        description="WorkerPoolClient exhausted its registry without reaching a healthy worker.",  # noqa: E501
     ),
     # --- worker --------------------------------------------------------------
     "worker.crash": CodeMeta(
@@ -227,6 +255,11 @@ KNOWN_CODES: dict[str, CodeMeta] = {
         domain="llm",
         default_retryable=True,
         description="No LLM worker is subscribed on the expected NATS subject.",
+    ),
+    "llm.lifecycle_rejected": CodeMeta(
+        domain="llm",
+        default_retryable=False,
+        description="Lifecycle operation rejected by the worker (unknown model, engine=remote, VRAM budget exceeded, or catalog parse error).",  # noqa: E501
     ),
     # --- voice ---------------------------------------------------------------
     "voice.engine_unavailable": CodeMeta(

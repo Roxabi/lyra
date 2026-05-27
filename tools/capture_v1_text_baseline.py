@@ -72,9 +72,6 @@ from lyra.core.messaging.render_events import (  # noqa: E402
     TextEndRenderEvent,
     TextStartRenderEvent,
 )
-from lyra.core.messaging.tool_display_config import (  # noqa: E402
-    ToolDisplayConfig,
-)
 from lyra.core.processors.stream_processor import StreamProcessor  # noqa: E402
 
 # v1 baseline = explicitly drop the Slice 2 (#1099) v2 Text family so the
@@ -121,9 +118,9 @@ async def _collect(gen) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-async def capture_single_block(config: ToolDisplayConfig) -> list[dict[str, Any]]:
+async def capture_single_block() -> list[dict[str, Any]]:
     """Scenario 1: pure text turn, no tool calls."""
-    sp = StreamProcessor(config, show_intermediate=False)
+    sp = StreamProcessor(show_intermediate=False)
     events_in = _aiter(
         TextLlmEvent(text="Hello "),
         TextLlmEvent(text="world."),
@@ -132,9 +129,9 @@ async def capture_single_block(config: ToolDisplayConfig) -> list[dict[str, Any]
     return await _collect(sp.process(events_in))
 
 
-async def capture_multi_block(config: ToolDisplayConfig) -> list[dict[str, Any]]:
+async def capture_multi_block() -> list[dict[str, Any]]:
     """Scenario 2: text → tool call → text → result."""
-    sp = StreamProcessor(config, show_intermediate=False)
+    sp = StreamProcessor(show_intermediate=False)
     events_in = _aiter(
         TextLlmEvent(text="Before tool "),
         ToolUseLlmEvent(
@@ -147,9 +144,9 @@ async def capture_multi_block(config: ToolDisplayConfig) -> list[dict[str, Any]]
     return await _collect(sp.process(events_in))
 
 
-async def capture_error(config: ToolDisplayConfig) -> list[dict[str, Any]]:
+async def capture_error() -> list[dict[str, Any]]:
     """Scenario 3: partial text then error result."""
-    sp = StreamProcessor(config, show_intermediate=False)
+    sp = StreamProcessor(show_intermediate=False)
     events_in = _aiter(
         TextLlmEvent(text="Partial "),
         ResultLlmEvent(
@@ -172,12 +169,9 @@ async def main() -> None:
     if not init_py.exists():
         init_py.write_text("")
 
-    # Use default config — throttle_ms=0 to avoid time-based suppression in tests
-    config = ToolDisplayConfig(throttle_ms=0)
-
-    single_block = await capture_single_block(config)
-    multi_block = await capture_multi_block(config)
-    error = await capture_error(config)
+    single_block = await capture_single_block()
+    multi_block = await capture_multi_block()
+    error = await capture_error()
 
     payload: dict[str, Any] = {
         "_normalization": (
@@ -185,9 +179,7 @@ async def main() -> None:
             "tools/capture_v1_text_baseline.py::normalize_run_id(). "
             "T6 parity assertion must apply the same normalization before diffing. "
             "show_intermediate=False is used so TextRenderEvent chunks are NOT emitted "
-            "per-chunk (only the final is_final=True event is emitted). "
-            "ToolDisplayConfig(throttle_ms=0) disables the throttle so "
-            "ToolSummaryRenderEvent is emitted deterministically on every tool call."
+            "per-chunk (only the final is_final=True event is emitted)."
         ),
         "single_block": single_block,
         "multi_block": multi_block,

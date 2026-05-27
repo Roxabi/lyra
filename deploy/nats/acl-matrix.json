@@ -1,5 +1,5 @@
 {
-  "version": "2",
+  "version": "3",
   "request_reply_flows": [
     { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" },
     { "requester": "hub", "responder": "voice-tts",      "subject": "lyra.voice.tts.request.>" },
@@ -14,7 +14,7 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox normalized to lowercase _inbox.hub.> (ADR-051 + postmortem Fix 1).",
-      "notes": "Hub provisions the lyra-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.lyra-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up.",
+      "notes": "Hub provisions the lyra-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.lyra-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up. lyra.turns.write added by T27 (#1331): hub publishes TurnWriteEvents.",
       "allow_responses": false,
       "publish": [
         "lyra.outbound.telegram.>",
@@ -26,6 +26,8 @@
         "lyra.clipool.cmd",
         "lyra.clipool.control",
         "lyra.audit.>",
+        "lyra.turns.write",
+        "lyra.typing.>",
         "$JS.API.>",
         "$KV.lyra-state.>"
       ],
@@ -39,111 +41,152 @@
         "lyra.image.heartbeat",
         "lyra.clipool.heartbeat",
         "_inbox.hub.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-hub" }
     },
     "telegram-adapter": {
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Telegram bot adapter — inbox normalized to _inbox.telegram-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up.",
+      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up. lyra.turns.write added by T27 (#1331): telegram adapter publishes TurnWriteEvents.",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.telegram.>",
         "lyra.system.ready",
+        "lyra.turns.write",
         "$JS.API.>"
       ],
       "subscribe": [
         "lyra.outbound.telegram.>",
+        "lyra.typing.telegram.>",
         "_inbox.telegram-adapter.>",
         "_inbox.telegram-adapter.*.*",
         "$KV.lyra-state.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-telegram" }
     },
     "discord-adapter": {
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Discord bot adapter — inbox normalized to _inbox.discord-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up.",
+      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up. lyra.turns.write added by T27 (#1331): discord adapter publishes TurnWriteEvents.",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.discord.>",
         "lyra.system.ready",
+        "lyra.turns.write",
         "$JS.API.>"
       ],
       "subscribe": [
         "lyra.outbound.discord.>",
+        "lyra.typing.discord.>",
         "_inbox.discord-adapter.>",
         "_inbox.discord-adapter.*.*",
         "$KV.lyra-state.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-discord" }
     },
     "voice-tts": {
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "voicecli",
       "description": "voicecli nats-serve TTS worker on Machine 1 (#689). Inbox normalized to _inbox.voice-tts.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "notes": "$JS.API.> + $KV.lyra-state.> required for roxabi-nats v0.4.x readiness probe (wait_for_hub via JetStream KV). Tighter per-operation scoping tracked in #1293 (holistic hardening: workers + adapters + SDK-drift CI gate). Continues the pre-existing adapter pattern.",
       "allow_responses": true,
       "publish": [
         "lyra.voice.tts.heartbeat",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.voice.tts.request",
         "lyra.voice.tts.request.>",
-        "_inbox.voice-tts.>"
-      ]
+        "_inbox.voice-tts.>",
+        "$KV.lyra-state.>"
+      ],
+      "deploy": { "type": "container", "secret": "voicecli-nats-tts" }
     },
     "voice-stt": {
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "voicecli",
       "description": "voicecli nats-serve STT worker on Machine 1 (#689). Inbox normalized to _inbox.voice-stt.> (ADR-051 + postmortem Fix 1; voicecli confirmed lowercase 2026-04-28). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "notes": "$JS.API.> + $KV.lyra-state.> required for roxabi-nats v0.4.x readiness probe (wait_for_hub via JetStream KV). Tighter per-operation scoping tracked in #1293 (holistic hardening: workers + adapters + SDK-drift CI gate). Continues the pre-existing adapter pattern.",
       "allow_responses": true,
       "publish": [
         "lyra.voice.stt.heartbeat",
-        "lyra.system.ready"
+        "lyra.system.ready",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.voice.stt.request",
         "lyra.voice.stt.request.>",
-        "_inbox.voice-stt.>"
-      ]
+        "_inbox.voice-stt.>",
+        "$KV.lyra-state.>"
+      ],
+      "deploy": { "type": "container", "secret": "voicecli-nats-stt" }
     },
     "llm-worker": {
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "reserved",
       "description": "llmCLI nats-serve worker. Worker uses inbox_prefix=_inbox.llmcli-llm (does not match the llm-worker role name), so the renderer's request_reply_flows derivation cannot auto-grant it — the inbox is listed explicitly in subscribe. See #1142.",
+      "notes": "$JS.API.> + $KV.lyra-state.> required for roxabi-nats v0.4.x readiness probe (wait_for_hub via JetStream KV). Tighter per-operation scoping tracked in #1293 (holistic hardening: workers + adapters + SDK-drift CI gate). Continues the pre-existing adapter pattern.",
       "allow_responses": true,
       "publish": [
-        "lyra.llm.heartbeat"
+        "lyra.llm.heartbeat",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.llm.generate.request",
-        "_inbox.llmcli-llm.>"
-      ]
+        "lyra.llm.lifecycle.>",
+        "_inbox.llmcli-llm.>",
+        "$KV.lyra-state.>"
+      ],
+      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/llmcli/nkeys/llm-worker.seed" }
+    },
+    "llm-operator": {
+      "status": "active",
+      "created_at": "2026-05-22",
+      "owner": "reserved",
+      "description": "llmCLI operator CLI — publishes lifecycle commands (swap/stop/status/list/reload-catalog) to llm-worker from M₂. Implements llmCLI spec #34 Slice 0 (A1). Creds installed at ~/.roxabi/llmcli/nkeys/operator.creds (S6 standard, llmCLI#38).",
+      "notes": "CLI tool, not a daemon — ¬wait_for_hub, ¬JetStream readiness probe. Inbox uses llm-operator role name (no #1142 mismatch). Coordinate cred path migration (legacy ~/.config/llmcli → ~/.roxabi/llmcli) with llmCLI#38.",
+      "allow_responses": true,
+      "publish": [
+        "lyra.llm.lifecycle.>"
+      ],
+      "subscribe": [
+        "_inbox.llm-operator.>"
+      ],
+      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/llmcli/nkeys/operator.creds" }
     },
     "image-worker": {
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "imagecli",
       "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Inbox normalized to _inbox.image-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "notes": "$JS.API.> + $KV.lyra-state.> required for roxabi-nats v0.4.x readiness probe (wait_for_hub via JetStream KV). Tighter per-operation scoping tracked in #1293 (holistic hardening: workers + adapters + SDK-drift CI gate). Continues the pre-existing adapter pattern.",
       "allow_responses": true,
       "publish": [
-        "lyra.image.heartbeat"
+        "lyra.image.heartbeat",
+        "$JS.API.>"
       ],
       "subscribe": [
         "lyra.image.generate.request",
-        "_inbox.image-worker.>"
-      ]
+        "_inbox.image-worker.>",
+        "$KV.lyra-state.>"
+      ],
+      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/imagecli/nkeys/image-worker.seed" }
     },
     "monitor": {
-      "status": "active",
+      "status": "retired",
       "created_at": "2026-04-21",
+      "retired_at": "2026-05-26",
       "owner": "reserved",
       "description": "Monitoring identity — full pub+sub on lyra.monitor.> namespace.",
+      "notes": "Retired 2026-05-26: no confirmed NKey consumer found in codebase. src/lyra/monitoring/ uses the NATS HTTP endpoint (port 8222), not a NATS NKey credential. lyra-monitor.service/timer removed from deploy/; src/lyra/monitoring/ Python module retained for Monitoring v2 (#1035) spec mining. deploy field intentionally absent per T4 convention (retired identities exempt).",
       "allow_responses": false,
       "publish": [
         "lyra.monitor.>"
@@ -157,6 +200,7 @@
       "created_at": "2026-04-27",
       "owner": "lyra",
       "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Inbox normalized to _inbox.clipool-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "notes": "clipool-worker is intentionally excluded from publishing lyra.turns.write. Rationale: clipool is a downstream command worker (executes lyra.clipool.cmd dispatches), not a user-message source — the upstream adapter has already recorded the turn via lyra.turns.write before the dispatch reaches clipool. Active publishers of lyra.turns.write: hub, telegram-adapter, discord-adapter (all per #1331 T27). See ADR-075 and #1349.",
       "allow_responses": true,
       "publish": [
         "lyra.clipool.heartbeat",
@@ -168,7 +212,8 @@
         "lyra.clipool.control",
         "_inbox.clipool-worker.>",
         "$KV.lyra-state.>"
-      ]
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-clipool" }
     },
     "voice-client": {
       "status": "active",
@@ -181,7 +226,30 @@
       ],
       "subscribe": [
         "_inbox.voice-client.>"
-      ]
+      ],
+      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.voicecli/nkeys/voice-client.seed" }
+    },
+    "turn-writer": {
+      "status": "active",
+      "created_at": "2026-05-25",
+      "owner": "lyra",
+      "description": "TurnWriter JetStream subscriber-writer — sole writer for turns.db (ADR-075, #1331). Consumes lyra.turns.> durable consumer turn-writer-v1, queue group turn-writer. nkey seed delivered via lyra-nats-turn-writer Podman secret (provisioned by install.sh T25).",
+      "notes": "JetStream API subjects scoped to LYRA_TURNS stream + turn-writer-v1 consumer only (principle of least privilege). _inbox.turn-writer.> required for pull-subscribe ACK reply path — nats-py emits lowercase identity-scoped inboxes when identity_name is set (#1359). allow_responses=true for pull-subscribe protocol. $JS.API.* in publish (not subscribe) because nc.request() publishes at protocol level (B1). CONSUMER.CREATE uses wildcard suffix to cover filter-subject variants (B2). STREAM.UPDATE added for retention/limits changes on subsequent boots (B3).",
+      "allow_responses": true,
+      "publish": [
+        "_inbox.turn-writer.>",
+        "$JS.API.STREAM.CREATE.LYRA_TURNS",
+        "$JS.API.STREAM.INFO.LYRA_TURNS",
+        "$JS.API.STREAM.UPDATE.LYRA_TURNS",
+        "$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>",
+        "$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1",
+        "$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1"
+      ],
+      "subscribe": [
+        "lyra.turns.>",
+        "_inbox.turn-writer.>"
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-turn-writer" }
     }
   }
 }

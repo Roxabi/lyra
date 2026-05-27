@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 
+from roxabi_contracts import BlobRef
 from roxabi_contracts.cli.models import CliChunkEvent
 from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.image import ImageResponse
@@ -167,7 +168,13 @@ def test_tts_response_worker_error_defaults_none() -> None:
         **_ENV,
         ok=True,
         request_id="r1",
-        audio_b64=_b64(silence_wav_16khz),
+        blob_ref=BlobRef(
+            store_key="test-audio",
+            content_hash="deadbeef",
+            mime="audio/wav",
+            size=len(silence_wav_16khz),
+            source="testing",
+        ),
         mime_type="audio/wav",
         duration_ms=1000,
     )

@@ -15,6 +15,7 @@ from lyra.core.messaging.message import (
     RoutingContext,
     TelegramMeta,
 )
+from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
@@ -272,7 +273,15 @@ def normalize_audio(
         reply_to_id=reply_to_id,
         modality="voice",
         audio=AudioPayload(
-            audio_bytes=audio_bytes,
+            blob_ref=BlobRef(
+                store_key=PENDING_STORE_KEY,
+                content_hash="",
+                mime=mime_type,
+                size=len(audio_bytes),
+                source="telegram",
+                platform_ref=file_id,
+                platform_message_id=str(message_id) if message_id is not None else None,
+            ),
             mime_type=mime_type,
             duration_ms=duration_ms,
             file_id=file_id,

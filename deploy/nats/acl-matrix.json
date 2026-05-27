@@ -29,6 +29,8 @@
         "lyra.audit.>",
         "lyra.turns.write",
         "lyra.typing.>",
+        "lyra.event.>",
+        "lyra.metric.>",
         "$JS.API.>",
         "$KV.lyra-state.>"
       ],
@@ -56,6 +58,8 @@
         "lyra.inbound.telegram.>",
         "lyra.system.ready",
         "lyra.turns.write",
+        "lyra.event.>",
+        "lyra.metric.>",
         "$JS.API.>"
       ],
       "subscribe": [
@@ -78,6 +82,8 @@
         "lyra.inbound.discord.>",
         "lyra.system.ready",
         "lyra.turns.write",
+        "lyra.event.>",
+        "lyra.metric.>",
         "$JS.API.>"
       ],
       "subscribe": [
@@ -206,6 +212,8 @@
       "publish": [
         "lyra.clipool.heartbeat",
         "lyra.system.ready",
+        "lyra.event.>",
+        "lyra.metric.>",
         "$JS.API.>"
       ],
       "subscribe": [
@@ -215,6 +223,20 @@
         "$KV.lyra-state.>"
       ],
       "deploy": { "type": "container", "secret": "lyra-nats-clipool" }
+    },
+    "dashboard-reader": {
+      "status": "active",
+      "created_at": "2026-05-27",
+      "owner": "reserved",
+      "description": "Monitoring dashboard reader — consumes lyra.event.> and lyra.metric.> for future dashboard/visualization (Monitoring v2, #1035).",
+      "notes": "Future identity for Monitoring v2 dashboard. No confirmed consumer yet — seed provisioned when dashboard lands. Subscribes to both event and metric namespaces. $JS.API.> omitted intentionally until consumer creation needs are known.",
+      "allow_responses": false,
+      "publish": [],
+      "subscribe": [
+        "lyra.event.>",
+        "lyra.metric.>"
+      ],
+      "deploy": { "type": "host", "path": "~/.lyra/nkeys/dashboard-reader.seed" }
     },
     "voice-client": {
       "status": "active",

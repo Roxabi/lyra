@@ -22,54 +22,56 @@ and is verified by `scripts/check-acl-matrix-spec.sh` on every CI run.
 The row will grant `subscribe: lyra.typing.>` to `code-worker` (it consumes typing events to throttle its own typing emission). Provisioning: `make nats-add-identity NAME=code-worker` when T3 worker fleet integration starts; the `_inbox.code-worker.>` grant is derived automatically from `request_reply_flows` per the renderer convention.
 
 <!-- acl-matrix:begin -->
-| Subject | hub | telegram-adapter | discord-adapter | voice-tts | voice-stt | llm-worker | llm-operator | image-worker | clipool-worker | voice-client | turn-writer |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| `$JS.API.>` | PUB | PUB | PUB | PUB | PUB | PUB | — | PUB | PUB | — | — |
-| `$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>` | — | — | — | — | — | — | — | — | — | — | PUB |
-| `$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | PUB |
-| `$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | PUB |
-| `$JS.API.STREAM.CREATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | PUB |
-| `$JS.API.STREAM.INFO.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | PUB |
-| `$JS.API.STREAM.UPDATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | PUB |
-| `$KV.lyra-state.>` | PUB | SUB | SUB | SUB | SUB | SUB | — | SUB | SUB | — | — |
-| `_inbox.clipool-worker.>` | — | — | — | — | — | — | — | — | SUB | — | — |
-| `_inbox.discord-adapter.*.*` | — | — | SUB | — | — | — | — | — | — | — | — |
-| `_inbox.discord-adapter.>` | — | — | SUB | — | — | — | — | — | — | — | — |
-| `_inbox.hub.>` | SUB | — | — | PUB | PUB | PUB | — | PUB | PUB | — | — |
-| `_inbox.image-worker.>` | — | — | — | — | — | — | — | SUB | — | — | — |
-| `_inbox.llm-operator.>` | — | — | — | — | — | — | SUB | — | — | — | — |
-| `_inbox.llmcli-llm.>` | — | — | — | — | — | SUB | — | — | — | — | — |
-| `_inbox.telegram-adapter.*.*` | — | SUB | — | — | — | — | — | — | — | — | — |
-| `_inbox.telegram-adapter.>` | — | SUB | — | — | — | — | — | — | — | — | — |
-| `_inbox.turn-writer.>` | — | — | — | — | — | — | — | — | — | — | PUB+SUB |
-| `_inbox.voice-client.>` | — | — | — | PUB | PUB | — | — | — | — | SUB | — |
-| `_inbox.voice-stt.>` | — | — | — | — | SUB | — | — | — | — | — | — |
-| `_inbox.voice-tts.>` | — | — | — | SUB | — | — | — | — | — | — | — |
-| `lyra.audit.>` | PUB | — | — | — | — | — | — | — | — | — | — |
-| `lyra.clipool.cmd` | PUB | — | — | — | — | — | — | — | SUB | — | — |
-| `lyra.clipool.control` | PUB | — | — | — | — | — | — | — | SUB | — | — |
-| `lyra.clipool.heartbeat` | SUB | — | — | — | — | — | — | — | PUB | — | — |
-| `lyra.image.generate.request` | PUB | — | — | — | — | — | — | SUB | — | — | — |
-| `lyra.image.heartbeat` | SUB | — | — | — | — | — | — | PUB | — | — | — |
-| `lyra.inbound.discord.>` | SUB | — | PUB | — | — | — | — | — | — | — | — |
-| `lyra.inbound.telegram.>` | SUB | PUB | — | — | — | — | — | — | — | — | — |
-| `lyra.llm.generate.request` | PUB | — | — | — | — | SUB | — | — | — | — | — |
-| `lyra.llm.heartbeat` | SUB | — | — | — | — | PUB | — | — | — | — | — |
-| `lyra.llm.lifecycle.>` | — | — | — | — | — | SUB | PUB | — | — | — | — |
-| `lyra.outbound.discord.>` | PUB | — | SUB | — | — | — | — | — | — | — | — |
-| `lyra.outbound.telegram.>` | PUB | SUB | — | — | — | — | — | — | — | — | — |
-| `lyra.system.ready` | SUB | PUB | PUB | PUB | PUB | — | — | — | PUB | — | — |
-| `lyra.turns.>` | — | — | — | — | — | — | — | — | — | — | SUB |
-| `lyra.turns.write` | PUB | PUB | PUB | — | — | — | — | — | — | — | — |
-| `lyra.typing.>` | PUB | — | — | — | — | — | — | — | — | — | — |
-| `lyra.typing.discord.>` | — | — | SUB | — | — | — | — | — | — | — | — |
-| `lyra.typing.telegram.>` | — | SUB | — | — | — | — | — | — | — | — | — |
-| `lyra.voice.stt.heartbeat` | SUB | — | — | — | PUB | — | — | — | — | — | — |
-| `lyra.voice.stt.request` | — | — | — | — | SUB | — | — | — | — | PUB | — |
-| `lyra.voice.stt.request.>` | PUB | — | — | — | SUB | — | — | — | — | — | — |
-| `lyra.voice.tts.heartbeat` | SUB | — | — | PUB | — | — | — | — | — | — | — |
-| `lyra.voice.tts.request` | — | — | — | SUB | — | — | — | — | — | PUB | — |
-| `lyra.voice.tts.request.>` | PUB | — | — | SUB | — | — | — | — | — | — | — |
+| Subject | hub | telegram-adapter | discord-adapter | voice-tts | voice-stt | llm-worker | llm-operator | image-worker | clipool-worker | dashboard-reader | voice-client | turn-writer |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `$JS.API.>` | PUB | PUB | PUB | PUB | PUB | PUB | — | PUB | PUB | — | — | — |
+| `$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.STREAM.CREATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.STREAM.INFO.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.STREAM.UPDATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$KV.lyra-state.>` | PUB | SUB | SUB | SUB | SUB | SUB | — | SUB | SUB | — | — | — |
+| `_inbox.clipool-worker.>` | — | — | — | — | — | — | — | — | SUB | — | — | — |
+| `_inbox.discord-adapter.*.*` | — | — | SUB | — | — | — | — | — | — | — | — | — |
+| `_inbox.discord-adapter.>` | — | — | SUB | — | — | — | — | — | — | — | — | — |
+| `_inbox.hub.>` | SUB | — | — | PUB | PUB | PUB | — | PUB | PUB | — | — | — |
+| `_inbox.image-worker.>` | — | — | — | — | — | — | — | SUB | — | — | — | — |
+| `_inbox.llm-operator.>` | — | — | — | — | — | — | SUB | — | — | — | — | — |
+| `_inbox.llmcli-llm.>` | — | — | — | — | — | SUB | — | — | — | — | — | — |
+| `_inbox.telegram-adapter.*.*` | — | SUB | — | — | — | — | — | — | — | — | — | — |
+| `_inbox.telegram-adapter.>` | — | SUB | — | — | — | — | — | — | — | — | — | — |
+| `_inbox.turn-writer.>` | — | — | — | — | — | — | — | — | — | — | — | PUB+SUB |
+| `_inbox.voice-client.>` | — | — | — | PUB | PUB | — | — | — | — | — | SUB | — |
+| `_inbox.voice-stt.>` | — | — | — | — | SUB | — | — | — | — | — | — | — |
+| `_inbox.voice-tts.>` | — | — | — | SUB | — | — | — | — | — | — | — | — |
+| `lyra.audit.>` | PUB | — | — | — | — | — | — | — | — | — | — | — |
+| `lyra.clipool.cmd` | PUB | — | — | — | — | — | — | — | SUB | — | — | — |
+| `lyra.clipool.control` | PUB | — | — | — | — | — | — | — | SUB | — | — | — |
+| `lyra.clipool.heartbeat` | SUB | — | — | — | — | — | — | — | PUB | — | — | — |
+| `lyra.event.>` | PUB | PUB | PUB | — | — | — | — | — | PUB | SUB | — | — |
+| `lyra.image.generate.request` | PUB | — | — | — | — | — | — | SUB | — | — | — | — |
+| `lyra.image.heartbeat` | SUB | — | — | — | — | — | — | PUB | — | — | — | — |
+| `lyra.inbound.discord.>` | SUB | — | PUB | — | — | — | — | — | — | — | — | — |
+| `lyra.inbound.telegram.>` | SUB | PUB | — | — | — | — | — | — | — | — | — | — |
+| `lyra.llm.generate.request` | PUB | — | — | — | — | SUB | — | — | — | — | — | — |
+| `lyra.llm.heartbeat` | SUB | — | — | — | — | PUB | — | — | — | — | — | — |
+| `lyra.llm.lifecycle.>` | — | — | — | — | — | SUB | PUB | — | — | — | — | — |
+| `lyra.metric.>` | PUB | PUB | PUB | — | — | — | — | — | PUB | SUB | — | — |
+| `lyra.outbound.discord.>` | PUB | — | SUB | — | — | — | — | — | — | — | — | — |
+| `lyra.outbound.telegram.>` | PUB | SUB | — | — | — | — | — | — | — | — | — | — |
+| `lyra.system.ready` | SUB | PUB | PUB | PUB | PUB | — | — | — | PUB | — | — | — |
+| `lyra.turns.>` | — | — | — | — | — | — | — | — | — | — | — | SUB |
+| `lyra.turns.write` | PUB | PUB | PUB | — | — | — | — | — | — | — | — | — |
+| `lyra.typing.>` | PUB | — | — | — | — | — | — | — | — | — | — | — |
+| `lyra.typing.discord.>` | — | — | SUB | — | — | — | — | — | — | — | — | — |
+| `lyra.typing.telegram.>` | — | SUB | — | — | — | — | — | — | — | — | — | — |
+| `lyra.voice.stt.heartbeat` | SUB | — | — | — | PUB | — | — | — | — | — | — | — |
+| `lyra.voice.stt.request` | — | — | — | — | SUB | — | — | — | — | — | PUB | — |
+| `lyra.voice.stt.request.>` | PUB | — | — | — | SUB | — | — | — | — | — | — | — |
+| `lyra.voice.tts.heartbeat` | SUB | — | — | PUB | — | — | — | — | — | — | — | — |
+| `lyra.voice.tts.request` | — | — | — | SUB | — | — | — | — | — | — | PUB | — |
+| `lyra.voice.tts.request.>` | PUB | — | — | SUB | — | — | — | — | — | — | — | — |
 <!-- acl-matrix:end -->
 
 [^ready]: `lyra.system.ready` — adapters and workers publish once on startup; hub subscribes to track liveness.

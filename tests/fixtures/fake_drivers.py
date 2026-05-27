@@ -11,6 +11,7 @@ from lyra.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
 from lyra.core.ports.stt import TranscriptionResult
 from lyra.core.ports.tts import SynthesisResult
 from lyra.llm.base import LlmResult
+from roxabi_contracts import BlobRef
 
 
 @dataclass
@@ -50,6 +51,13 @@ class FakeTts:
             audio_bytes=self._audio_bytes,
             mime_type="audio/wav",
             duration_ms=100,
+            blob_ref=BlobRef(
+                store_key="test-blob",
+                content_hash="deadbeef",
+                mime="audio/wav",
+                size=len(self._audio_bytes),
+                source="test",
+            ),
         )
 
 

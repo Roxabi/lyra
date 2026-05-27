@@ -1,0 +1,12 @@
+[Unit]
+Description=Lyra Quadlet sync — pull staging and conditional install
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/projects/lyra/deploy/lyra-quadlet-sync.sh
+WorkingDirectory=%h/projects/lyra
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+StandardOutput=journal
+StandardError=journal

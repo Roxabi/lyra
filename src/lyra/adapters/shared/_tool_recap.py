@@ -80,7 +80,15 @@ class ToolRecapAccumulator:
     _in_flight: dict[str, _PartialCall] = field(default_factory=dict, init=False)
 
     def observe_start(self, ev: ToolCallStartRenderEvent) -> None:
-        """Register a new in-flight tool call."""
+        """Register a new in-flight tool call.
+
+        When the start event already carries fully-formed ``input`` (e.g.
+        non-streaming tool calls), route immediately and skip the in-flight
+        buffer so that ``observe_end`` naturally no-ops.
+        """
+        if ev.input:
+            self._route(ev.tool_call_id, ev.tool_name.lower(), ev.tool_name, ev.input)
+            return
         self._in_flight[ev.tool_call_id] = _PartialCall(tool_name=ev.tool_name)
 
     def observe_args(self, ev: ToolCallArgsRenderEvent) -> None:

@@ -1,6 +1,8 @@
 {
   "allowlist": [
     "roxabi-nats",
+    "roxabi-blobs",
+    "roxabi-contracts",
     "lyra",
     "aiohttp",
     "grandalf",

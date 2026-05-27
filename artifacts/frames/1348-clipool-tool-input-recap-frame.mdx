@@ -1,0 +1,46 @@
+---
+title: fix(streaming): propagate clipool tool input to live recap accumulator
+issue: 1348
+status: approved
+tier: F-lite
+date: 2026-05-27
+---
+
+## Problem
+
+Production smoke test 2026-05-25 (post-#1346 deploy) — tool-recap card renders as bare "🔧 Done ✅" with empty body. Tool list + count missing.
+
+Root cause: boundary-contract drift between cli_pool NATS path and v2 ToolCall* render protocol. The v2 render protocol expects streamed Anthropic-SDK `InputJsonDelta` events, but the clipool NATS contract collapses tool input into a single `tool_use` chunk. `StreamProcessor._handle_tool_use` reads `tool_id` + `tool_name` but ignores `event.input`, so `ToolRecapAccumulator` receives an empty `args_buffer` and produces an empty recap.
+
+Not a #1346 regression — verified zero-diff on relevant files.
+
+## Who
+
+- **Primary:** Telegram/Discord users receiving tool-recap cards after clipool-originated tool calls
+- **Secondary:** Developers debugging tool-call flows (recap is the primary observable output)
+
+## Constraints
+
+- Additive change only — no breaking change to `roxabi-contracts` NATS event types
+- Existing streamed-delta path (SDK driver `ClaudeCliDriver`, tests) must continue working
+- Codec round-trip must preserve new field without codec code change (`NatsRenderEventCodec` generic dataclass handling)
+- All quality gates: ruff, pyright, pytest, importlinter
+
+## Out of Scope
+
+- Per-platform args-streaming feature (Discord live arg-typing display, originally #1134)
+- `ToolDisplayConfig` wiring → Phase B (#1336)
+- Contract evolution to add `tool_use_delta` / `tool_use_end` event types
+
+## Premise Validity
+
+**Success in 6 months:** Tool recaps on Telegram/Discord show complete argument lists for clipool-originated tool calls, matching the quality of SDK-streamed tool calls.
+
+**Failure in 6 months:** Production smoke tests still show empty recap bodies for clipool tool calls, or the streamed-delta path regressed and synthetic `ToolUseDelta` tests fail.
+
+**Simplest alternative:** Fabricate `ToolCallArgs` + `ToolCallEnd` events inside `_handle_tool_use` to force the existing `args_buffer` path.
+**Why not simplest:** Invents fake events that don't correspond to actual wire protocol; brittle and obscures the real data flow. The alternative accepted in the issue models both realities natively with a first-class optional `input` field on `ToolCallStartRenderEvent`.
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (streaming/render event wiring), 5–6 files, no architectural unknowns.

@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import json as _json
-from collections.abc import AsyncIterator
-from dataclasses import dataclass as _dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -15,32 +11,85 @@ import pytest
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.cli.cli_pool import _ProcessEntry
-from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_parser import CommandParser
-from lyra.core.commands.command_router import CommandRouter
-from lyra.core.config import PoolConfig, RouterConfig
 from lyra.core.hub import Hub
 from lyra.core.messaging.message import (
-    Attachment,
-    DiscordMeta,
     InboundMessage,
-    OutboundAttachment,
-    OutboundAudio,
-    OutboundAudioChunk,
     OutboundMessage,
     Platform,
     Response,
     RoutingContext,
-    TelegramMeta,
 )
-from lyra.core.messaging.render_events import RenderEvent
 from lyra.core.pool import Pool
-from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
-from lyra.infrastructure.stores.auth_store import AuthStore
-from lyra.infrastructure.stores.pairing import PairingConfig, PairingManager
+
+# Backward-compatible re-exports from domain factories
+from tests.factories.agents import (
+    FakeSTT,
+    FastAgent,
+    MockAdapter,
+    RecordingAgent,
+    SlowAgent,
+)
+from tests.factories.messages import (
+    _PAIRING_ADMIN_ID,
+    _PAIRING_USER_ID,
+    make_debouncer_msg,
+    make_dispatcher_msg,
+    make_inbound_message,
+    make_message,
+    make_pairing_message,
+    make_routing_inbound,
+)
+from tests.factories.plugins import make_echo_plugin_dir, make_plugin, make_router
+from tests.factories.pools import _make_ctx_mock, ctx_mock, fast_pool, make_msg, pool
+from tests.factories.stores import (
+    _open_pairing_managers,
+    _open_pairing_stores,
+    agent_store,
+    auth_store,
+    json_agent_store,
+    make_agent_row,
+    make_auth_store,
+    make_circuit_registry,
+    make_pairing_auth_store,
+    make_pairing_pm,
+    make_store,
+)
+
+__all__ = [
+    "FakeSTT",
+    "FastAgent",
+    "MockAdapter",
+    "RecordingAgent",
+    "SlowAgent",
+    "_PAIRING_ADMIN_ID",
+    "_PAIRING_USER_ID",
+    "make_debouncer_msg",
+    "make_dispatcher_msg",
+    "make_inbound_message",
+    "make_message",
+    "make_pairing_message",
+    "make_routing_inbound",
+    "make_echo_plugin_dir",
+    "make_plugin",
+    "make_router",
+    "_make_ctx_mock",
+    "ctx_mock",
+    "fast_pool",
+    "make_msg",
+    "pool",
+    "_open_pairing_managers",
+    "_open_pairing_stores",
+    "agent_store",
+    "auth_store",
+    "json_agent_store",
+    "make_agent_row",
+    "make_auth_store",
+    "make_circuit_registry",
+    "make_pairing_auth_store",
+    "make_pairing_pm",
+    "make_store",
+]
 
 # ---------------------------------------------------------------------------
 # MessageManager shared constants
@@ -54,223 +103,6 @@ MESSAGES_TOML_PATH = (
     / "data"
     / "messages.toml"
 )
-
-
-def make_plugin(
-    tmp_path: Path,
-    name: str,
-    handler_name: str = "cmd_fn",
-    cmd_name: str = "cmd",
-) -> Path:
-    """Create a minimal valid plugin directory under tmp_path/name/.
-
-    Writes:
-    - plugin.toml  — minimal manifest referencing *handler_name* for *cmd_name*
-    - handlers.py  — async function *handler_name* that returns 'ok'
-    """
-    plugin_dir = tmp_path / name
-    plugin_dir.mkdir(exist_ok=True)
-    (plugin_dir / "plugin.toml").write_text(
-        f'name = "{name}"\n'
-        f"[[commands]]\n"
-        f'name = "{cmd_name}"\n'
-        f'description = "test"\n'
-        f'handler = "{handler_name}"\n'
-    )
-    (plugin_dir / "handlers.py").write_text(
-        f"async def {handler_name}(msg, pool, args): return 'ok'\n"
-    )
-    return plugin_dir
-
-
-class MockAdapter:
-    """Typed ChannelAdapter test double — implements the full protocol."""
-
-    def normalize(self, raw: Any) -> InboundMessage:
-        raise NotImplementedError
-
-    def normalize_audio(
-        self,
-        raw: Any,
-        audio_bytes: bytes,
-        mime_type: str,
-        *,
-        trust_level: TrustLevel,
-    ) -> InboundMessage:
-        raise NotImplementedError
-
-    async def send(
-        self, original_msg: InboundMessage, outbound: OutboundMessage
-    ) -> None:
-        pass
-
-    async def send_streaming(
-        self,
-        original_msg: InboundMessage,
-        events: AsyncIterator[RenderEvent],
-        outbound: OutboundMessage | None = None,
-    ) -> None:
-        pass
-
-    async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
-        pass
-
-    async def render_audio_stream(
-        self, chunks: AsyncIterator[OutboundAudioChunk], inbound: InboundMessage
-    ) -> None:
-        pass
-
-    async def render_voice_stream(
-        self, chunks: AsyncIterator[OutboundAudioChunk], inbound: InboundMessage
-    ) -> None:
-        pass
-
-    async def render_attachment(
-        self, msg: OutboundAttachment, inbound: InboundMessage
-    ) -> None:
-        pass
-
-
-def make_circuit_registry(**overrides) -> CircuitRegistry:
-    """Build a CircuitRegistry with default CBs for all services."""
-    registry = CircuitRegistry()
-    defaults = {
-        "claude-cli": CircuitBreaker(
-            "claude-cli", failure_threshold=3, recovery_timeout=60
-        ),
-        "telegram": CircuitBreaker(
-            "telegram", failure_threshold=5, recovery_timeout=30
-        ),
-        "discord": CircuitBreaker("discord", failure_threshold=5, recovery_timeout=30),
-        "hub": CircuitBreaker("hub", failure_threshold=10, recovery_timeout=60),
-    }
-    for name, cb in defaults.items():
-        if name in overrides:
-            registry.register(overrides[name])
-        else:
-            registry.register(cb)
-    return registry
-
-
-def make_message(
-    content: str = "hello",
-    platform: str = "telegram",
-    bot_id: str = "main",
-    user_id: str = "alice",
-    *,
-    is_admin: bool = False,
-) -> InboundMessage:
-    """Build a minimal InboundMessage for command router tests.
-
-    Auto-parses CommandContext and attaches it to the message, mirroring
-    what the Hub pipeline does.
-    """
-    _parser = CommandParser()
-    cmd_ctx = _parser.parse(content)
-    return InboundMessage(
-        id="msg-test-1",
-        platform=platform,
-        bot_id=bot_id,
-        scope_id="chat:42",
-        user_id=user_id,
-        user_name="Alice",
-        is_mention=False,
-        text=content,
-        text_raw=content,
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=TelegramMeta(chat_id=42),
-        trust_level=TrustLevel.TRUSTED,
-        is_admin=is_admin,
-        command=cmd_ctx,
-    )
-
-
-def make_echo_plugin_dir(tmpdir: Path) -> Path:
-    """Create a minimal echo plugin in tmpdir/echo/."""
-    plugin_dir = tmpdir / "echo"
-    plugin_dir.mkdir(exist_ok=True)
-    (plugin_dir / "plugin.toml").write_text(
-        'name = "echo"\n'
-        'description = "Echo back"\n'
-        "[[commands]]\n"
-        'name = "echo"\n'
-        'description = "Echo back the message (test command)"\n'
-        'handler = "cmd_echo"\n'
-    )
-    (plugin_dir / "handlers.py").write_text(
-        "from lyra.core.messaging.message import Response, InboundMessage\n"
-        "from lyra.core.pool import Pool\n"
-        "async def cmd_echo(\n"
-        "    msg: InboundMessage, pool: Pool, args: list[str]\n"
-        ") -> Response:\n"
-        '    return Response(content=" ".join(args))\n'
-    )
-    return tmpdir
-
-
-def make_router(
-    tmp_path: Path,
-    enabled: list[str] | None = None,
-    patterns: dict | None = None,
-) -> CommandRouter:
-    """Build a CommandRouter with the echo plugin loaded."""
-    plugins_dir = make_echo_plugin_dir(tmp_path)
-    loader = CommandLoader(plugins_dir)
-    loader.load("echo")
-    effective = enabled if enabled is not None else ["echo"]
-    _patterns = patterns if patterns is not None else {"bare_url": True}
-    router_config = RouterConfig(patterns=_patterns)
-    return CommandRouter(
-        command_loader=loader, enabled_plugins=effective, config=router_config
-    )
-
-
-def make_inbound_message(  # noqa: PLR0913
-    platform: str = "telegram",
-    bot_id: str = "main",
-    user_id: str = "alice",
-    scope_id: str | None = None,
-    platform_meta=None,
-    modality: str | None = None,
-) -> InboundMessage:
-    """Build a minimal InboundMessage for hub tests."""
-    from lyra.core.messaging.message import GenericMeta
-
-    if platform == "telegram":
-        _scope = scope_id if scope_id is not None else "chat:42"
-        _meta = platform_meta if platform_meta is not None else TelegramMeta(chat_id=42)
-    elif platform == "discord":
-        _scope = scope_id if scope_id is not None else "channel:333"
-        _meta = (
-            platform_meta
-            if platform_meta is not None
-            else DiscordMeta(
-                channel_id=333, message_id=555, guild_id=111, channel_type="text"
-            )
-        )
-    else:
-        _scope = scope_id if scope_id is not None else f"{platform}:default"
-        _meta = platform_meta if platform_meta is not None else GenericMeta()
-    kwargs: dict = dict(
-        id="msg-1",
-        platform=platform,
-        bot_id=bot_id,
-        scope_id=_scope,
-        user_id=user_id,
-        user_name="Alice",
-        is_mention=False,
-        text="hello",
-        text_raw="hello",
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=_meta,
-        trust_level=TrustLevel.TRUSTED,
-    )
-    if modality is not None:
-        kwargs["modality"] = modality
-    if modality == "voice":
-        kwargs["text"] = ""
-        kwargs["text_raw"] = ""
-    return InboundMessage(**kwargs)
 
 
 async def push_to_hub(hub: Hub, msg: InboundMessage) -> None:
@@ -395,228 +227,6 @@ ASSISTANT_INTERMEDIATE_LINE2 = _ndjson(
 
 
 # ---------------------------------------------------------------------------
-# AuthStore shared helpers (used by test_auth_store_connect, test_auth_store_check,
-# test_auth_store_upsert_seed)
-# ---------------------------------------------------------------------------
-
-
-async def make_auth_store(tmp_path: Path) -> AuthStore:
-    """Create and connect a real AuthStore backed by a tmp file DB.
-
-    Prefer the ``auth_store`` pytest fixture for new tests — it provides
-    automatic teardown via ``yield`` + ``await store.close()``.
-    """
-    store = AuthStore(db_path=str(tmp_path / "grants.db"))
-    await store.connect()
-    return store
-
-
-@pytest.fixture
-async def auth_store(tmp_path: Path):
-    """Fixture-based AuthStore with automatic teardown. Prefer over make_auth_store."""
-    store = await make_auth_store(tmp_path)
-    try:
-        yield store
-    finally:
-        await store.close()
-
-
-# ---------------------------------------------------------------------------
-# AgentStore shared helpers (used by test_agent_store_crud + test_agent_store_seed)
-# ---------------------------------------------------------------------------
-
-
-def make_agent_row(name: str = "test-agent") -> AgentRow:
-    """Return a minimal valid AgentRow for the given name."""
-    return AgentRow(
-        name=name,
-        backend="claude-cli",
-        model="claude-3-5-haiku-20241022",
-        max_turns=10,
-        tools_json="[]",
-        show_intermediate=False,
-        smart_routing_json=None,
-        plugins_json="[]",
-        memory_namespace=None,
-        cwd=None,
-        source="test",
-    )
-
-
-async def make_store(tmp_path: Path) -> AgentStore:
-    """Create and connect a real AgentStore backed by a tmp file DB."""
-    store = AgentStore(db_path=str(tmp_path / "agents.db"))
-    await store.connect()
-    return store
-
-
-@pytest.fixture
-async def agent_store(tmp_path: Path):
-    """Fixture-based AgentStore with automatic teardown."""
-    store = await make_store(tmp_path)
-    try:
-        yield store
-    finally:
-        await store.close()
-
-
-@pytest.fixture
-async def json_agent_store(tmp_path: Path):
-    """JsonAgentStore fixture backed by a tmp JSON file — no SQLite needed.
-
-    Use this in tests that exercise agent configuration logic but do not
-    specifically test the SQLite implementation.  Faster and DB-free.
-    """
-    from lyra.core.stores.json_agent_store import JsonAgentStore
-
-    store = JsonAgentStore(path=tmp_path / "agents_test.json")
-    await store.connect()
-    try:
-        yield store
-    finally:
-        await store.close()
-
-
-# ---------------------------------------------------------------------------
-# OutboundDispatcher shared helpers (used by test_outbound_dispatcher_queue,
-# test_outbound_dispatcher_media)
-# ---------------------------------------------------------------------------
-
-
-def make_dispatcher_msg() -> InboundMessage:
-    """Build a minimal InboundMessage for OutboundDispatcher tests."""
-    return InboundMessage(
-        id="msg-1",
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:123",
-        user_id="tg:user:42",
-        user_name="Alice",
-        is_mention=False,
-        text="hello",
-        text_raw="hello",
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=TelegramMeta(chat_id=123),
-        trust_level=TrustLevel.TRUSTED,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Debouncer shared helpers (used by test_debouncer_merge, test_debouncer_collect,
-# test_debouncer_pool, test_debouncer_runtime_config)
-# ---------------------------------------------------------------------------
-
-
-def make_debouncer_msg(
-    text: str = "hello",
-    msg_id: str = "msg-1",
-    is_mention: bool = False,
-    attachments: list[Attachment] | None = None,
-) -> InboundMessage:
-    """Build a minimal InboundMessage for debouncer tests.
-
-    Supports msg_id, is_mention, attachments.
-    """
-    return InboundMessage(
-        id=msg_id,
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:1",
-        user_id="tg:user:1",
-        user_name="Alice",
-        is_mention=is_mention,
-        text=text,
-        text_raw=text,
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=TelegramMeta(chat_id=1),
-        trust_level=TrustLevel.TRUSTED,
-        attachments=attachments or [],
-    )
-
-
-class RecordingAgent:
-    """Agent that records the text it receives."""
-
-    name = "test_agent"
-
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-
-    async def process(
-        self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
-    ) -> Response:
-        self.calls.append(msg.text)
-        return Response(content=f"reply:{msg.text}")
-
-
-# ---------------------------------------------------------------------------
-# Pool shared helpers (used by test_pool_tasks, test_pool_streaming,
-# test_pool_advanced)
-# ---------------------------------------------------------------------------
-
-
-def _make_ctx_mock(agents: dict | None = None) -> MagicMock:
-    """Build a minimal PoolContext mock."""
-    ctx = MagicMock()
-    _agents: dict = agents or {}
-    ctx.get_agent = MagicMock(side_effect=lambda name: _agents.get(name))
-    ctx.get_message = MagicMock(return_value=None)
-    ctx.dispatch_response = AsyncMock(return_value=None)
-    ctx.dispatch_streaming = AsyncMock(return_value=None)
-    ctx.record_circuit_success = MagicMock()
-    ctx.record_circuit_failure = MagicMock()
-    # Keep a reference so tests can mutate the agent registry
-    ctx._agents = _agents
-    return ctx
-
-
-@pytest.fixture
-def ctx_mock() -> MagicMock:
-    """Minimal PoolContext stub with the methods Pool._process_loop() touches."""
-    return _make_ctx_mock()
-
-
-@pytest.fixture
-def pool(ctx_mock: MagicMock) -> Pool:
-    """Pool with a very long timeout (not triggered in normal tests)."""
-    return Pool(
-        pool_id="test:main:chat:1",
-        agent_name="test_agent",
-        ctx=ctx_mock,
-        config=PoolConfig(turn_timeout=60.0, debounce_ms=0),
-    )
-
-
-@pytest.fixture
-def fast_pool(ctx_mock: MagicMock) -> Pool:
-    """Pool with a very short timeout for timeout tests."""
-    return Pool(
-        pool_id="test:main:chat:1",
-        agent_name="test_agent",
-        ctx=ctx_mock,
-        config=PoolConfig(turn_timeout=0.05, debounce_ms=0),
-    )
-
-
-def make_msg(text: str = "hello") -> InboundMessage:
-    """Build a minimal InboundMessage for pool tests."""
-    return InboundMessage(
-        id="msg-1",
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:1",
-        user_id="tg:user:1",
-        user_name="Alice",
-        is_mention=False,
-        text=text,
-        text_raw=text,
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=TelegramMeta(chat_id=1),
-        trust_level=TrustLevel.TRUSTED,
-    )
-
-
-# ---------------------------------------------------------------------------
 # MessagePipeline shared helpers (used by test_message_pipeline_guards +
 # test_message_pipeline_context)
 # ---------------------------------------------------------------------------
@@ -642,7 +252,7 @@ class _NullAgent(AgentBase):
     async def process(
         self,
         msg: InboundMessage,
-        pool: Pool,
+        pool: Pool,  # noqa: F811
         *,
         on_intermediate=None,
     ) -> Response:
@@ -674,67 +284,6 @@ def _make_hub(**kwargs: Any) -> Hub:
     return hub
 
 
-class SlowAgent:
-    """Agent whose process() never returns within test timeouts."""
-
-    name = "test_agent"
-
-    def __init__(self, shutdown_event: asyncio.Event | None = None) -> None:
-        self._shutdown = shutdown_event if shutdown_event else asyncio.Event()
-
-    def is_backend_alive(self, pool_id: str) -> bool:
-        return True
-
-    async def reset_backend(self, pool_id: str) -> None:
-        pass
-
-    async def process(
-        self,
-        msg: InboundMessage,
-        pool: Pool,
-        *,
-        on_intermediate=None,
-    ) -> Response:
-        await self._shutdown.wait()  # explicit: never completes in test
-        return Response(content="done")
-
-
-class FastAgent:
-    """Agent that echoes the message text immediately."""
-
-    name = "test_agent"
-
-    async def process(
-        self,
-        msg: InboundMessage,
-        pool: Pool,
-        *,
-        on_intermediate=None,
-    ) -> Response:
-        return Response(content=f"echo: {msg.text}")
-
-
-# ---------------------------------------------------------------------------
-# AudioPipeline shared helpers (used by test_audio_pipeline_constraints +
-# test_audio_pipeline_tts)
-# ---------------------------------------------------------------------------
-
-
-@_dataclass
-class FakeTranscription:
-    text: str
-    language: str = "en"
-    duration_seconds: float = 2.5
-
-
-class FakeSTT:
-    def __init__(self, text: str = "Hello world") -> None:
-        self._text = text
-
-    async def transcribe(self, audio, mime):
-        return FakeTranscription(text=self._text)
-
-
 # ---------------------------------------------------------------------------
 # RoutingContext shared constants and helpers
 # (used by test_routing_context_basics + test_routing_context_integration)
@@ -744,35 +293,9 @@ _RC_TG = RoutingContext(platform="telegram", bot_id="main", scope_id="chat:123")
 _RC_DC = RoutingContext(platform="discord", bot_id="main", scope_id="channel:456")
 
 
-def make_routing_inbound(routing: RoutingContext | None = None) -> InboundMessage:
-    """Build a minimal InboundMessage for routing context tests."""
-    return InboundMessage(
-        id="msg-1",
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:123",
-        user_id="tg:user:42",
-        user_name="Alice",
-        is_mention=False,
-        text="hello",
-        text_raw="hello",
-        timestamp=datetime.now(timezone.utc),
-        trust_level=TrustLevel.TRUSTED,
-        platform_meta=TelegramMeta(chat_id=123),
-        routing=routing,
-    )
-
-
 # ---------------------------------------------------------------------------
 # Pairing shared helpers (used by test_pairing_core + test_pairing_commands)
 # ---------------------------------------------------------------------------
-
-_PAIRING_ADMIN_ID = "admin-user-1"
-_PAIRING_USER_ID = "regular-user-1"
-
-# Track PairingManagers and AuthStores created in tests for cleanup
-_open_pairing_managers: list[PairingManager] = []
-_open_pairing_stores: list[AuthStore] = []
 
 
 @pytest.fixture(autouse=True)
@@ -789,79 +312,3 @@ async def _cleanup_pairing_state(tmp_path: Path):
     for store in _open_pairing_stores:
         await store.close()
     _open_pairing_stores.clear()
-
-
-def make_pairing_message(  # noqa: PLR0913 — test factory with optional overrides
-    content: str = "hello",
-    platform: Platform = Platform.TELEGRAM,
-    bot_id: str = "main",
-    user_id: str = _PAIRING_USER_ID,
-    is_group: bool = False,
-    guild_id: int | None = None,
-    *,
-    is_admin: bool = False,
-) -> InboundMessage:
-    """Build a minimal InboundMessage for pairing tests."""
-    if platform == Platform.DISCORD:
-        scope = "channel:1"
-        meta = DiscordMeta(
-            channel_id=1, message_id=1, guild_id=guild_id, channel_type="text"
-        )
-    else:
-        scope = "chat:42"
-        meta = TelegramMeta(chat_id=42, is_group=is_group)
-
-    return InboundMessage(
-        id="msg-test-1",
-        platform=platform.value,
-        bot_id=bot_id,
-        scope_id=scope,
-        user_id=user_id,
-        user_name="Tester",
-        is_mention=False,
-        text=content,
-        text_raw=content,
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=meta,
-        trust_level=TrustLevel.TRUSTED,
-        is_admin=is_admin,
-    )
-
-
-async def make_pairing_auth_store(db_path: str = ":memory:") -> AuthStore:
-    """Build and connect a real AuthStore for pairing tests."""
-    store = AuthStore(db_path=db_path)
-    await store.connect()
-    _open_pairing_stores.append(store)
-    return store
-
-
-async def make_pairing_pm(  # noqa: PLR0913 — test factory with optional overrides
-    enabled: bool = True,
-    max_pending: int = 3,
-    rate_limit_attempts: int = 5,
-    rate_limit_window: int = 300,
-    session_max_age_days: int = 30,
-    ttl_seconds: int = 3600,
-    auth_store: AuthStore | None = None,
-) -> PairingManager:
-    """Build and connect a PairingManager backed by an in-memory SQLite DB."""
-    if auth_store is None:
-        auth_store = await make_pairing_auth_store()
-
-    config = PairingConfig(
-        enabled=enabled,
-        max_pending=max_pending,
-        rate_limit_attempts=rate_limit_attempts,
-        rate_limit_window=rate_limit_window,
-        session_max_age_days=session_max_age_days,
-        ttl_seconds=ttl_seconds,
-    )
-    pm = PairingManager(
-        config=config,
-        db_path=":memory:",
-        auth_store=auth_store,
-    )
-    await pm.connect()
-    _open_pairing_managers.append(pm)
-    return pm

@@ -111,7 +111,9 @@ class ToolRecapAccumulator:
         if partial is not None:
             partial.args_buffer += ev.delta
 
-    def _route(self, tool_call_id: str, key: str, tool_name: str, args: dict) -> None:
+    def _route(  # noqa: C901 — branchy bucket-dispatch is the simplest shape; one elif per tool
+        self, tool_call_id: str, key: str, tool_name: str, args: dict
+    ) -> None:
         """Route a completed tool call into the appropriate accumulator bucket.
 
         Visibility rule: a key explicitly present in ``self.config.show`` with value
@@ -120,10 +122,16 @@ class ToolRecapAccumulator:
         Phase A's tracking of unknown tools (e.g. ``TodoWrite``, ``LS``) in
         ``unknown_calls``. Operators who want to suppress an unknown tool can add
         it to ``[tool_display.show]`` with ``false``.
+
+        Note on read/grep/glob: these tools have no dedicated render bucket;
+        their UX is the silent-count line ("🔍 N reads · M greps"). show=True
+        and show=absent both produce the silent-count path. show=False
+        suppresses entirely (no counter, no line). A dedicated render surface
+        for these tools is deferred — see follow-up issue.
         """
         show = self.config.show
         if key in show and not show[key]:
-            # Explicitly suppressed
+            # Explicitly suppressed (silent counters preserved for read/grep/glob)
             if key == "read":
                 self._silent_reads += 1
             elif key == "grep":
@@ -141,6 +149,12 @@ class ToolRecapAccumulator:
             self.web_searches.append(args.get("query", ""))
         elif key == "agent":
             self.agent_calls.append(args.get("description", "agent"))
+        elif key == "read":
+            self._silent_reads += 1
+        elif key == "grep":
+            self._silent_greps += 1
+        elif key == "glob":
+            self._silent_globs += 1
         else:
             self.unknown_calls[key] = self.unknown_calls.get(key, 0) + 1
 

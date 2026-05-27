@@ -19,10 +19,11 @@ __all__ = [
 ]
 
 # Canonical defaults — single SSoT for BotRow, DDL, and _merge_bots seeder.
-# "blocked" is the operator-safe default (requires explicit grant to interact).
+# Conservative: operators opt-in to convenience values via TOML.
+# "blocked" = fail-safe; auto_thread=False = opt-in; 24h = conservative.
 DEFAULT_TRUST: str = "blocked"
-DEFAULT_AUTO_THREAD: bool = True
-DEFAULT_THREAD_HOT_HOURS: int = 36
+DEFAULT_AUTO_THREAD: bool = False
+DEFAULT_THREAD_HOT_HOURS: int = 24
 
 _VALID_TRUST_LEVELS = {"owner", "trusted", "public", "blocked"}
 
@@ -91,15 +92,37 @@ class BotRow:
             log.warning("trusted_users_json is not valid JSON; resetting to []")
             parsed_trusted = []
 
+        # Validate default_trust before construction — __post_init__ raises on
+        # invalid values, so legacy DB rows must be coerced here (not raised).
+        coerced_trust = default_trust if default_trust in _VALID_TRUST_LEVELS else None
+        if coerced_trust is None:
+            log.warning(
+                "BotRow.from_db_row: invalid default_trust=%r for (%s,%s),"
+                " defaulting to %s",
+                default_trust,
+                platform,
+                bot_id,
+                DEFAULT_TRUST,
+            )
+            coerced_trust = DEFAULT_TRUST
+
+        # Explicit None check for thread_hot_hours — `or` treats 0 as falsy,
+        # which would incorrectly map a stored 0 → DEFAULT_THREAD_HOT_HOURS.
+        coerced_hours = (
+            thread_hot_hours
+            if thread_hot_hours is not None
+            else DEFAULT_THREAD_HOT_HOURS
+        )
+
         return cls(
             platform=platform,
             bot_id=bot_id,
             agent=agent,
             webhook_enabled=bool(webhook_enabled),
-            default_trust=default_trust or DEFAULT_TRUST,
+            default_trust=coerced_trust,
             owner_users=parsed_owner,
             trusted_users=parsed_trusted,
             auto_thread=bool(auto_thread),
-            thread_hot_hours=thread_hot_hours or DEFAULT_THREAD_HOT_HOURS,
+            thread_hot_hours=coerced_hours,
             updated_at=updated_at,
         )

@@ -21,7 +21,6 @@ from typing import AsyncGenerator
 
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
-from lyra.infrastructure.stores.bot_store import BotStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.message_index import MessageIndex
 from lyra.infrastructure.stores.prefs_store import PrefsStore
@@ -226,12 +225,13 @@ class StoreBundle:
     """All persistent stores needed by the multibot bootstrap.
 
     ThreadStore is NOT included — owned by the Discord adapter (#417 / S4).
+    BotStore is NOT included — wired in S3 when consumers (Authenticator, auth_seeding,
+    render_quadlet) migrate to read from BotStore (#1414 follow-up).
     Bot tokens read from /run/secrets (Podman secrets) per #1057 — no credential store.
     """
 
     auth: AuthStore
     agent: AgentStore
-    bot: BotStore | None
     turn: TurnStore
     prefs: PrefsStore
     message_index: MessageIndex
@@ -252,7 +252,6 @@ async def open_stores(vault_dir: Path) -> AsyncGenerator[StoreBundle, None]:
 
     auth_store: AuthStore | None = None
     agent_store: AgentStore | None = None
-    bot_store: BotStore | None = None
     turn_store: TurnStore | None = None
     prefs_store: PrefsStore | None = None
     message_index_store: MessageIndex | None = None
@@ -267,13 +266,11 @@ async def open_stores(vault_dir: Path) -> AsyncGenerator[StoreBundle, None]:
         agent_store = AgentStore(db_path=vault_dir / "config.db")
         await agent_store.connect()
 
-        bot_store = BotStore(db_path=vault_dir / "config.db")
-        await bot_store.connect()
-
         turn_store = TurnStore(db_path=vault_dir / "turns.db")
         await turn_store.connect()
 
         # ThreadStore is NOT opened here — owned by the Discord adapter (#417/S4)
+        # BotStore is NOT opened here — wired in S3 (#1414 follow-up)
 
         prefs_store = PrefsStore(db_path=vault_dir / "config.db")
         await prefs_store.connect()
@@ -284,7 +281,6 @@ async def open_stores(vault_dir: Path) -> AsyncGenerator[StoreBundle, None]:
         yield StoreBundle(
             auth=auth_store,
             agent=agent_store,
-            bot=bot_store,
             turn=turn_store,
             prefs=prefs_store,
             message_index=message_index_store,
@@ -294,7 +290,6 @@ async def open_stores(vault_dir: Path) -> AsyncGenerator[StoreBundle, None]:
         all_stores = (
             auth_store,
             agent_store,
-            bot_store,
             turn_store,
             prefs_store,
             message_index_store,

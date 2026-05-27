@@ -236,8 +236,94 @@ class TestBotRowConversion:
 
         # Assert — NULL scalars fall back to canonical defaults (SSoT: bot_models.py)
         assert bot.default_trust == "blocked"
-        assert bot.thread_hot_hours == 36
+        assert bot.thread_hot_hours == 24  # conservative default (R1)
         assert bot.webhook_enabled is False
         assert bot.auto_thread is False  # NULL → bool(None) → False
         assert bot.owner_users == []
         assert bot.trusted_users == []
+
+    def test_from_db_row_invalid_trust_coerced(self) -> None:
+        # Legacy DB rows with an invalid default_trust must be read gracefully.
+        # from_db_row must coerce to DEFAULT_TRUST and log a warning (not raise).
+        row = (
+            "telegram",
+            "main",
+            "agent-x",
+            1,  # webhook_enabled
+            "unknown_level",  # invalid default_trust — not in _VALID_TRUST_LEVELS
+            "[]",  # owner_users_json
+            "[]",  # trusted_users_json
+            0,  # auto_thread
+            24,  # thread_hot_hours
+            "2024-01-01T00:00:00+00:00",  # updated_at
+        )
+
+        # Act — must not raise despite invalid trust level
+        bot = BotRow.from_db_row(row)
+
+        # Assert — coerced to safe default
+        assert bot.default_trust == "blocked"
+
+    def test_from_db_row_zero_thread_hot_hours_preserved(self) -> None:
+        # Explicit 0 must NOT be mapped to DEFAULT_THREAD_HOT_HOURS
+        # (unlike `or` which treats 0 as falsy).
+        row = (
+            "telegram",
+            "main",
+            "agent-x",
+            0,  # webhook_enabled
+            "blocked",  # default_trust
+            "[]",  # owner_users_json
+            "[]",  # trusted_users_json
+            0,  # auto_thread
+            0,  # thread_hot_hours = 0 (explicit, must be preserved)
+            "2024-01-01T00:00:00+00:00",  # updated_at
+        )
+
+        bot = BotRow.from_db_row(row)
+
+        assert bot.thread_hot_hours == 0  # 0 is a valid stored value
+
+    async def test_corrupt_owner_users_json_handled_on_reconnect(
+        self, tmp_path: Path
+    ) -> None:
+        # Arrange — write a row with corrupt owner_users_json directly via aiosqlite,
+        # bypassing BotStore validation. Then reconnect and verify graceful coerce.
+        import aiosqlite
+
+        from lyra.core.agent.bot_schema import _CREATE_BOTS
+
+        db_path = tmp_path / "bots.db"
+        async with aiosqlite.connect(str(db_path)) as db:
+            await db.execute(_CREATE_BOTS)
+            await db.execute(
+                "INSERT INTO bots "
+                "(platform, bot_id, agent, webhook_enabled, default_trust, "
+                "owner_users_json, trusted_users_json, auto_thread, thread_hot_hours, "
+                "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "telegram",
+                    "corrupt-bot",
+                    "agent-x",
+                    0,
+                    "blocked",
+                    "{bad",  # invalid JSON
+                    "[]",
+                    0,
+                    24,
+                    "2024-01-01T00:00:00+00:00",
+                ),
+            )
+            await db.commit()
+
+        # Act — open a new BotStore against the same DB (warm_cache reads the row)
+        store = BotStore(db_path=str(db_path))
+        await store.connect()
+        try:
+            row = store.get("telegram", "corrupt-bot")
+
+            # Assert — row is returned with owner_users coerced to []
+            assert row is not None
+            assert row.owner_users == []
+        finally:
+            await store.close()

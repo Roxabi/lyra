@@ -10,9 +10,6 @@ log = logging.getLogger(__name__)
 
 __all__ = ["run_bot_migrations"]
 
-# _CREATE_BOTS lives in bot_store.py (passed to _open_db(ddl=[...]) at connect time).
-# This module is additive-only: future ALTER TABLE statements go here.
-
 
 async def run_bot_migrations(db: aiosqlite.Connection) -> None:
     """Run additive schema migrations for the bots table.

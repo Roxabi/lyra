@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from lyra.core.agent.bot_models import BotRow
@@ -28,3 +29,28 @@ async def make_bot_store(tmp_path: Path) -> BotStore:
     store = BotStore(db_path=str(tmp_path / "bots.db"))
     await store.connect()
     return store
+
+
+def db_get(db_path: Path, platform: str, bot_id: str) -> BotRow | None:
+    """Read a bot row from DB synchronously (for use in CLI tests)."""
+
+    async def _run() -> BotRow | None:
+        store = BotStore(db_path=str(db_path))
+        await store.connect()
+        row = store.get(platform, bot_id)
+        await store.close()
+        return row
+
+    return asyncio.run(_run())
+
+
+def db_upsert(db_path: Path, row: BotRow) -> None:
+    """Upsert a bot row into DB synchronously (for use in CLI tests)."""
+
+    async def _run() -> None:
+        store = BotStore(db_path=str(db_path))
+        await store.connect()
+        await store.upsert(row)
+        await store.close()
+
+    asyncio.run(_run())

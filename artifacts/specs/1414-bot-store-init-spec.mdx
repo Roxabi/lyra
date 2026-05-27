@@ -83,6 +83,16 @@ classDiagram
     BotConfig --> BotRow : derived from
 ```
 
+### Canonical field defaults
+
+| Field | Canonical default | Rationale |
+|---|---|---|
+| `default_trust` | `"blocked"` | Fail-safe: new bots require explicit grant |
+| `auto_thread` | `False` | Opt-in behavior; operators enable per-bot in TOML |
+| `thread_hot_hours` | `24` | Conservative default; matches dataclass and DDL |
+
+These values must be identical across: `BotRow` dataclass field defaults, DDL `DEFAULT` clauses (`'blocked'` / `0` / `24`), and the `DEFAULT_*` constants exported by `bot_models.py`.
+
 ### Consumer map
 
 ```mermaid
@@ -150,6 +160,7 @@ Solid = this issue. Dashed = future (S3 consumers, NATS wiring).
 | DB locked by another process | aiosqlite retry; if persistent, counted in errors |
 | Adapter tries to import `bot_store` | Caught by `import-linter` CI gate |
 | `bot_agent_map` staleness during S1–S2 overlap | `lyra bot init` does **not** write to `bot_agent_map`; existing `resolve_bot_agent_map()` boot-time seeding remains unchanged until S3 consumer migration |
+| `bot_id` or `platform` matches non-`[A-Za-z0-9_-]+` | Skipped with stderr error, counted in errors, exit 1 (error path) |
 
 ## SQLite DDL Notes
 
@@ -166,3 +177,4 @@ List fields (`owner_users`, `trusted_users`) are stored as `_json TEXT` columns 
 - [ ] `lyra bot init` end-to-end tests pass with fixture TOML
 - [ ] ADR-048 respected: `BotStoreProtocol` in `core/stores/`, `BotStore` in `infrastructure/stores/`
 - [ ] `import-linter` passes: zero `lyra.adapters` imports of `lyra.infrastructure.stores.bot_store`
+- [ ] `bot_id` / `platform` format validation rejects path-traversal sequences and shell metacharacters

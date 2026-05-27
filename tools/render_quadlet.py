@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Render Quadlet .container files from .tmpl + ~/.lyra/config.toml.
+"""Render Quadlet .container files from .tmpl + BotStore.
 
 Token in template: {{bot_secrets}}  →  one `Secret=` line per bot.
-Bots come from config.toml [[auth.<platform>_bots]]; sorted by bot_id.
+Bots come from BotStore (~/.lyra/config.db); sorted by bot_id.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 import re
+import sqlite3
 import sys
 import tempfile
-import tomllib
 from pathlib import Path
+
+from lyra.infrastructure.stores.bot_store import BotStore
 
 MARKER = "{{bot_secrets}}"
 _BOT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -29,34 +32,14 @@ def validate_bot_id(bot_id: str, platform: str) -> None:
         sys.exit(1)
 
 
-def load_config(path: Path) -> dict:
-    try:
-        with path.open("rb") as f:
-            return tomllib.load(f)
-    except FileNotFoundError:
-        print(
-            f"config file not found: {path}\n"
-            "Run `lyra agent init` to bootstrap config.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    except tomllib.TOMLDecodeError as exc:
-        print(
-            f"TOML parse error in {path}:\n  {exc}\n"
-            "Fix the syntax error in the config file.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+def sort_bots(bots: list) -> list:
+    return sorted(bots, key=lambda b: b.bot_id)
 
 
-def sort_bots(bots: list[dict]) -> list[dict]:
-    return sorted(bots, key=lambda b: b["bot_id"])
-
-
-def render_secrets(platform: str, bots: list[dict]) -> str:
+def render_secrets(platform: str, bots: list) -> str:
     lines: list[str] = []
-    for b in bots:
-        bot_id = b["bot_id"]
+    for bot in bots:
+        bot_id = bot.bot_id
         lines.append(
             f"Secret=lyra-bot-{platform}-{bot_id},"
             f"type=mount,"
@@ -65,7 +48,7 @@ def render_secrets(platform: str, bots: list[dict]) -> str:
             f"uid=1500,"
             f"gid=1500"
         )
-        if b.get("webhook_enabled") is True:
+        if bot.webhook_enabled is True:
             lines.append(
                 f"Secret=lyra-bot-{platform}-{bot_id}-webhook,"
                 f"type=mount,"
@@ -103,34 +86,48 @@ def atomic_write(dest: Path, content: str) -> None:
         raise
 
 
+async def _load_bots(db_path: Path, platform: str) -> list:
+    try:
+        store = BotStore(db_path=str(db_path))
+        await store.connect()
+    except (OSError, sqlite3.Error) as exc:
+        print(
+            f"Failed to open BotStore at {db_path}:\n  {exc}\n"
+            "Run `lyra bot init` to seed the bot database.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    all_bots = store.get_all()
+    platform_bots = [b for b in all_bots if b.platform == platform]
+    await store.close()
+    return platform_bots
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Render a Quadlet .container file from a template."
     )
     parser.add_argument("--platform", required=True, choices=["telegram", "discord"])
-    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--db", required=True, type=Path)
     parser.add_argument("--tmpl", required=True, type=Path)
     parser.add_argument("--dest", required=True, type=Path)
     args = parser.parse_args(argv)
 
-    config = load_config(args.config)
+    if not args.db.exists():
+        print(
+            f"bot database not found: {args.db}\n"
+            "Run `lyra bot init` to seed the bot database.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    auth = config.get("auth", {})
-    key = f"{args.platform}_bots"
-    raw_bots = auth.get(key, [])
+    bots = asyncio.run(_load_bots(args.db, args.platform))
 
-    for entry in raw_bots:
-        if not isinstance(entry, dict) or "bot_id" not in entry:
-            print(
-                f"config entry under [[auth.{key}]] missing 'bot_id' key: {entry!r}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+    for bot in bots:
+        validate_bot_id(bot.bot_id, args.platform)
 
-    for entry in raw_bots:
-        validate_bot_id(entry["bot_id"], args.platform)
-
-    bots = sort_bots(raw_bots)
+    bots = sort_bots(bots)
 
     secrets_block = render_secrets(args.platform, bots)
 

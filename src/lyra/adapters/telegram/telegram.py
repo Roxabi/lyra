@@ -50,6 +50,7 @@ from lyra.core.messaging.message import (
     OutboundMessage,
 )
 from lyra.core.messaging.messages import MessageManager
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 
 log = logging.getLogger(__name__)
 
@@ -91,8 +92,10 @@ class TelegramAdapter(OutboundAdapterBase):
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
         turn_store: "TurnStore | None" = None,
+        tool_display_config: ToolDisplayConfig | None = None,
     ) -> None:
         super().__init__()  # no-op today, future-proofs cooperative chain
+        self._tool_display_config = tool_display_config
         self._bot_id = bot_id
         self._token = token
         self._webhook_secret = webhook_secret

@@ -107,8 +107,10 @@ NATS type (Core vs JetStream), the durability contract, and the keying shape:
 | Plane | Subject prefix | NATS type | Durability | Producers | Consumers | When to use |
 |---|---|---|---|---|---|---|
 | Messages | `lyra.{inbound,outbound}.<platform>.<bot_id>` | Core | ephemeral | adapters ↔ hub | hub, adapters | bidirectional hub↔adapter routing of user content |
-| Persistence | `lyra.turns.>` | JetStream durable (stream `LYRA_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub | turn-writer | append-only state changes requiring at-least-once delivery |
+| Persistence | `lyra.turns.>` | JetStream durable (stream `LYRA_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub, telegram-adapter, discord-adapter | turn-writer | append-only state changes requiring at-least-once delivery |
 | Typing / Lifecycle | `lyra.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
+
+> Note: clipool-worker is intentionally excluded from publishing `lyra.turns.write`. It is a downstream command worker, not a user-message source — the upstream adapter records the turn before the dispatch reaches clipool. See ADR-075 and acl-matrix.json (`clipool-worker.notes`) for the full rationale.
 
 **Choosing a plane when adding a subject:**
 

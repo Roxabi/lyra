@@ -89,7 +89,9 @@ class SubmitToPoolMiddleware:
 
         try:
             status = await resolve_context(msg, pool, pool.pool_id, ctx)
-        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+        except RuntimeError:
+            # Store not connected (_require_db / _db_or_raise) — resume is
+            # best-effort; continue with active session rather than abort.
             log.warning(
                 "_resolve_context failed — continuing with active session",
                 exc_info=True,

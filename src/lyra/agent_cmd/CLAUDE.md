@@ -3,8 +3,9 @@
 ## Role
 
 CLI command implementations for `lyra agent ...` (init, list, show, edit, patch,
-validate, create, delete, assign, unassign, refine). Wired via `src/lyra/agents/`
-subdir and dispatched by the Typer CLI entrypoint.
+validate, create, delete, assign, unassign, refine) and `lyra bot ...` (init).
+Wired via `src/lyra/agent_cmd/agents/` and `src/lyra/agent_cmd/bots/` subdirs
+and dispatched by the Typer CLI entrypoint.
 
 ## Position in the architecture
 
@@ -18,20 +19,23 @@ lyra CLI entrypoint
       ↓
   lyra.agent_cmd     ← you are here
       ↓
-  lyra.core (stores, auth.db)
+  lyra.core (stores, auth.db, config.db)
 ```
 
-## Why distinct from `agents/`
+## Subdirs
 
-| `agents/` | `agent_cmd/` |
-|---|---|
-| Agent implementations (SimpleAgent, …) | CLI commands that manage agents |
-| Runtime behaviour | CRUD via SQLite store (`~/.lyra/auth.db`) |
+| Subdir | Role | Store |
+|---|---|---|
+| `agents/` | Agent implementations (SimpleAgent, …) — **not** this package | `AgentStore` (`~/.lyra/auth.db`) |
+| `agent_cmd/agents/` | CLI commands that manage agents | `AgentStore` (read/write) |
+| `agent_cmd/bots/` | CLI commands that manage bot configurations | `BotStore` (`~/.lyra/config.db`) |
 
 ## Invariants
 
 - `lyra agent init` **must** be called before the hub can use an agent.
   `~/.lyra/auth.db` is the SSoT; TOML files are seed inputs only (¬override at runtime).
-- Commands in `agent_cmd/agents/` must not bypass the store — always go through
-  `AgentStore` (read/write), never directly to the TOML file.
+- `lyra bot init` seeds bot configurations from `config.toml` into `BotStore` (`~/.lyra/config.db`);
+  idempotent by default; `--force` overwrites existing rows.
+- Commands in `agent_cmd/agents/` and `agent_cmd/bots/` must not bypass their respective
+  stores — always go through `AgentStore` / `BotStore` (read/write), never directly to the TOML file.
 - `agent_cmd` must not import from `adapters/`, `commands/`, or any plugin layer.

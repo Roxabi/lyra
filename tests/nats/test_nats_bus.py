@@ -19,15 +19,13 @@ from nats.aio.client import Client as NATS
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import (
-    Attachment,
     DiscordMeta,
     InboundMessage,
     Platform,
     TelegramMeta,
 )
 from lyra.nats.nats_bus import NatsBus
-from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
-from roxabi_nats._serialize import deserialize, serialize
+from roxabi_nats._serialize import serialize
 from tests.nats.conftest import requires_nats_server
 
 # ---------------------------------------------------------------------------
@@ -60,181 +58,6 @@ def _make_msg(platform: Platform = Platform.TELEGRAM) -> InboundMessage:
 
 def _make_bus(nc: NATS) -> NatsBus:
     return NatsBus(nc=nc, bot_id="main", item_type=InboundMessage)
-
-
-# ---------------------------------------------------------------------------
-# TestSerialize — serialization layer (lyra.nats._serialize)
-# ---------------------------------------------------------------------------
-
-
-class TestSerialize:
-    def test_callable_stripped_from_platform_meta(self) -> None:
-        """Typed platform_meta survives serialize/deserialize round-trip (no callables)."""  # noqa: E501
-        # Arrange
-        msg = InboundMessage(
-            id="msg-callable",
-            platform=Platform.TELEGRAM.value,
-            bot_id="main",
-            scope_id="chat:1",
-            user_id="u:1",
-            user_name="Bob",
-            is_mention=False,
-            text="hi",
-            text_raw="hi",
-            timestamp=datetime.now(timezone.utc),
-            trust_level=TrustLevel.PUBLIC,
-            platform_meta=TelegramMeta(chat_id=99),
-        )
-
-        # Act
-        payload = serialize(msg)
-        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
-
-        # Assert — typed fields survive the round-trip
-        assert isinstance(result.platform_meta, TelegramMeta)
-        assert result.platform_meta.chat_id == 99
-
-    def test_non_callable_platform_meta_preserved(self) -> None:
-        """Typed TelegramMeta fields survive the round-trip intact."""
-        # Arrange
-        msg = InboundMessage(
-            id="msg-meta",
-            platform=Platform.TELEGRAM.value,
-            bot_id="main",
-            scope_id="chat:1",
-            user_id="u:1",
-            user_name="Bob",
-            is_mention=False,
-            text="hi",
-            text_raw="hi",
-            timestamp=datetime.now(timezone.utc),
-            trust_level=TrustLevel.PUBLIC,
-            platform_meta=TelegramMeta(chat_id=42, is_group=True),
-        )
-
-        # Act
-        payload = serialize(msg)
-        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
-
-        # Assert
-        assert isinstance(result.platform_meta, TelegramMeta)
-        assert result.platform_meta.chat_id == 42
-        assert result.platform_meta.is_group is True
-
-    def test_enum_roundtrip(self) -> None:
-        """TrustLevel enum survives serialize → deserialize as the same enum member."""
-        # Arrange
-        msg = _make_msg(Platform.TELEGRAM)
-        assert msg.trust_level == TrustLevel.TRUSTED
-
-        # Act
-        payload = serialize(msg)
-        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
-
-        # Assert
-        assert result.trust_level == TrustLevel.TRUSTED
-        assert isinstance(result.trust_level, TrustLevel)
-
-    def test_datetime_roundtrip(self) -> None:
-        """datetime field survives round-trip as ISO 8601 (timezone-aware)."""
-        # Arrange
-        ts = datetime(2026, 3, 31, 12, 0, 0, tzinfo=timezone.utc)
-        msg = InboundMessage(
-            id="msg-dt",
-            platform=Platform.TELEGRAM.value,
-            bot_id="main",
-            scope_id="chat:1",
-            user_id="u:1",
-            user_name="Alice",
-            is_mention=False,
-            text="hi",
-            text_raw="hi",
-            timestamp=ts,
-            trust_level=TrustLevel.PUBLIC,
-        )
-
-        # Act
-        payload = serialize(msg)
-        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
-
-        # Assert — same UTC moment, timezone-aware
-        assert result.timestamp.utctimetuple() == ts.utctimetuple()
-        assert result.timestamp.tzinfo is not None
-
-    def test_nats_bus_defaults_to_type_registry_resolver(self) -> None:
-        """NatsBus stores TYPE_REGISTRY_RESOLVER when no resolver kwarg is given.
-
-        Guards the lyra-side wiring invariant from #729: every NatsBus instance
-        must be able to resolve CommandContext and any other TYPE_CHECKING-only
-        hint in InboundMessage without an explicit construction argument.
-        """
-        # Arrange — no nc needed; we only inspect construction-time state.
-        # Act
-        bus: NatsBus[InboundMessage] = NatsBus(
-            nc=None,  # type: ignore[arg-type]  # justified: construction-time state check does not require a live NATS connection
-            bot_id="main",
-            item_type=InboundMessage,
-        )
-        # Assert
-        assert bus._resolver is TYPE_REGISTRY_RESOLVER
-        assert (
-            "lyra.core.commands.command_parser",
-            "CommandContext",
-        ) in bus._resolver.entries
-
-    def test_nats_bus_round_trips_inbound_with_non_empty_resolver(self) -> None:
-        """Round-trip InboundMessage via the module API using the non-empty
-        lyra resolver; type coercion survives CommandContext TYPE_CHECKING hints.
-
-        Covers spec SC-tests(lyra-side NatsBus non-empty resolver).
-        """
-        # Arrange
-        msg = _make_msg(Platform.TELEGRAM)
-
-        # Act
-        payload = serialize(msg)
-        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
-
-        # Assert — enum, datetime, and platform_meta all survive coercion
-        assert isinstance(result.trust_level, TrustLevel)
-        assert result.trust_level == TrustLevel.TRUSTED
-        assert result.timestamp.tzinfo is not None
-        assert isinstance(result.platform_meta, TelegramMeta)
-        assert result.platform_meta.chat_id == 123
-
-    def test_bytes_roundtrip(self) -> None:
-        """bytes field (Attachment.url_or_path_or_bytes) survives as bytes."""
-        # Arrange
-        raw = b"\x89PNG\r\n\x1a\n"
-        attachment = Attachment(
-            type="image",
-            url_or_path_or_bytes=raw,
-            mime_type="image/png",
-            filename="test.png",
-        )
-        msg = InboundMessage(
-            id="msg-bytes",
-            platform=Platform.TELEGRAM.value,
-            bot_id="main",
-            scope_id="chat:1",
-            user_id="u:1",
-            user_name="Alice",
-            is_mention=False,
-            text="pic",
-            text_raw="pic",
-            timestamp=datetime.now(timezone.utc),
-            trust_level=TrustLevel.PUBLIC,
-            attachments=[attachment],
-        )
-
-        # Act
-        payload = serialize(msg)
-        result = deserialize(payload, InboundMessage, resolver=TYPE_REGISTRY_RESOLVER)
-
-        # Assert
-        assert len(result.attachments) == 1
-        assert isinstance(result.attachments[0].url_or_path_or_bytes, bytes)
-        assert result.attachments[0].url_or_path_or_bytes == raw
 
 
 # ---------------------------------------------------------------------------

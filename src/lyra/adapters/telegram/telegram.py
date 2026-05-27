@@ -6,7 +6,7 @@ import asyncio
 import hmac
 import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Coroutine
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 from lyra.adapters.telegram import telegram_audio  # noqa: I001 — DEBT:lint-residual
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.adapters.shared._shared import TypingTaskManager, resolve_msg
+from lyra.typing import make_typing_factory
 from lyra.adapters.telegram.telegram_formatting import (
     _render_buttons as _render_buttons_impl,
     _render_text as _render_text_impl,
@@ -123,6 +124,7 @@ class TelegramAdapter(OutboundAdapterBase):
         )
         self._typing = TypingTaskManager()
         self._bot: Any = None
+        self._factory_builder = make_typing_factory(self._typing_worker_bound)
         self._dp: Any = None
         from aiogram import Dispatcher, F
 
@@ -205,8 +207,12 @@ class TelegramAdapter(OutboundAdapterBase):
         """Expose the internal task dict — used by tests and outbound submodules."""
         return self._typing._tasks
 
+    def _typing_worker_bound(self, chat_id: int) -> Coroutine[Any, Any, None]:
+        """Bound worker that reads ``self.bot`` lazily (tests replace via setter)."""
+        return _typing_worker(self.bot, chat_id)
+
     def _start_typing(self, scope_id: int) -> None:
-        self._typing.start(scope_id, lambda: _typing_worker(self.bot, scope_id))
+        self._typing.start(scope_id, self._factory_builder(scope_id))
 
     def _cancel_typing(self, scope_id: int) -> None:
         self._typing.cancel(scope_id)

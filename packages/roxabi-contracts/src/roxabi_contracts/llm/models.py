@@ -2,10 +2,11 @@
 
 Pure Pydantic. No NATS imports. No transport logic.
 
-Three envelope models:
+Four envelope models:
   LlmRequest    — hub → worker (generate_request subject)
   LlmChunkEvent — worker → hub (streaming chunks, published to reply inbox)
   LlmResponse   — worker → hub (non-streaming reply, published to reply inbox)
+  LlmHeartbeat  — worker → hub (periodic heartbeat, lyra.llm.heartbeat)
 """
 
 from __future__ import annotations
@@ -65,6 +66,21 @@ class LlmResponse(ContractEnvelope):
         if self.ok and self.text is None:
             raise ValueError("LlmResponse with ok=True must carry text")
         return self
+
+
+class LlmHeartbeat(ContractEnvelope):
+    """Inbound heartbeat from an LLM worker satellite.
+
+    Canonical subject: ``lyra.llm.heartbeat``. Consumers populate a
+    worker registry keyed by ``worker_id`` and prune stale entries via
+    ``last_heartbeat_ts``.
+    """
+
+    worker_id: Annotated[str, StringConstraints(min_length=1)]
+    model_name: Annotated[str, StringConstraints(min_length=1)]
+    status: str
+    latency_ms: int
+    last_heartbeat_ts: float
 
 
 class LifecycleRequest(ContractEnvelope):

@@ -70,7 +70,14 @@ def test_event_invalid_kind() -> None:
 
 def test_event_invalid_level() -> None:
     with pytest.raises(ValidationError):
-        LyraEvent(**_ENV, service="hub", kind="startup", level="verbose")
+        LyraEvent.model_validate(
+            {
+                **_ENV,
+                "service": "hub",
+                "kind": "startup",
+                "level": "verbose",
+            }
+        )
 
 
 def test_event_extra_fields_ignored() -> None:
@@ -145,8 +152,14 @@ def test_metric_invalid_name() -> None:
 
 def test_metric_invalid_type() -> None:
     with pytest.raises(ValidationError):
-        LyraMetric(
-            **_ENV, service="hub", name="count", metric_type="summary", value=1.0
+        LyraMetric.model_validate(
+            {
+                **_ENV,
+                "service": "hub",
+                "name": "count",
+                "metric_type": "summary",
+                "value": 1.0,
+            }
         )
 
 

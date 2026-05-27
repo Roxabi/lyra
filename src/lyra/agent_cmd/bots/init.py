@@ -6,10 +6,17 @@ import asyncio
 import os
 import tomllib
 from pathlib import Path
+from typing import Any
 
 import typer
 
 from lyra.cli_bot import _connect_bot_store, bot_app
+from lyra.core.agent.bot_models import (
+    DEFAULT_AUTO_THREAD,
+    DEFAULT_THREAD_HOT_HOURS,
+    DEFAULT_TRUST,
+    BotRow,
+)
 
 
 def _find_config_toml() -> Path | None:
@@ -61,14 +68,10 @@ def init_bots(
                     seeded += 1
                     typer.echo(f"  seeded: {row.platform}/{row.bot_id}")
                 except Exception as e:  # noqa: BLE001
-                    typer.echo(
-                        f"  error: {row.platform}/{row.bot_id}: {e}", err=True
-                    )
+                    typer.echo(f"  error: {row.platform}/{row.bot_id}: {e}", err=True)
                     errors += 1
 
-            typer.echo(
-                f"\nDone: {seeded} seeded, {skipped} skipped, {errors} errors"
-            )
+            typer.echo(f"\nDone: {seeded} seeded, {skipped} skipped, {errors} errors")
             if errors:
                 raise typer.Exit(1)
         finally:
@@ -77,7 +80,7 @@ def init_bots(
     asyncio.run(_run())
 
 
-def _merge_bots(raw: dict) -> list:  # noqa: C901 — DEBT:complexity-residual — merge logic walks four config sections
+def _merge_bots(raw: dict[str, Any]) -> list[BotRow]:  # noqa: C901 — DEBT:complexity-residual — merge logic walks four config sections
     """Merge bot entries from config.toml per (platform, bot_id).
 
     Reads ``[[telegram.bots]]``, ``[[discord.bots]]``,
@@ -86,14 +89,10 @@ def _merge_bots(raw: dict) -> list:  # noqa: C901 — DEBT:complexity-residual �
     list fields (owner_users, trusted_users) are concatenated
     and deduplicated.
     """
-    from lyra.core.agent.bot_models import (  # type: ignore — DEBT:models-not-yet-landed (T1–T5)
-        BotRow,
-    )
+    merged: dict[tuple[str, str], dict[str, Any]] = {}
 
-    merged: dict[tuple[str, str], dict] = {}
-
-    def _add_entries(section_path: tuple[str, ...], platform: str) -> None:
-        section = raw
+    def _add_entries(section_path: tuple[str, ...], platform: str) -> None:  # noqa: C901
+        section: Any = raw
         for key in section_path[:-1]:
             section = section.get(key, {})
             if not isinstance(section, dict):
@@ -111,6 +110,8 @@ def _merge_bots(raw: dict) -> list:  # noqa: C901 — DEBT:complexity-residual �
                 if k == "bot_id":
                     continue
                 if k in ("owner_users", "trusted_users") and isinstance(v, list):
+                    if not all(isinstance(el, str) for el in v):
+                        continue  # reject non-string elements silently
                     existing = merged[key].get(k, [])
                     if isinstance(existing, list):
                         merged[key][k] = list(dict.fromkeys(existing + v))
@@ -132,11 +133,11 @@ def _merge_bots(raw: dict) -> list:  # noqa: C901 — DEBT:complexity-residual �
                 bot_id=bot_id,
                 agent=data.get("agent", "lyra_default"),
                 webhook_enabled=data.get("webhook_enabled", False),
-                default_trust=data.get("default_trust", "blocked"),
+                default_trust=data.get("default_trust", DEFAULT_TRUST),
                 owner_users=data.get("owner_users", []),
                 trusted_users=data.get("trusted_users", []),
-                auto_thread=data.get("auto_thread", True),
-                thread_hot_hours=data.get("thread_hot_hours", 36),
+                auto_thread=data.get("auto_thread", DEFAULT_AUTO_THREAD),
+                thread_hot_hours=data.get("thread_hot_hours", DEFAULT_THREAD_HOT_HOURS),
             )
         )
     return rows

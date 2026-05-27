@@ -231,7 +231,7 @@ class StoreBundle:
 
     auth: AuthStore
     agent: AgentStore
-    bot_store: BotStore | None
+    bot: BotStore | None
     turn: TurnStore
     prefs: PrefsStore
     message_index: MessageIndex
@@ -284,7 +284,7 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
         yield StoreBundle(
             auth=auth_store,
             agent=agent_store,
-            bot_store=bot_store,
+            bot=bot_store,
             turn=turn_store,
             prefs=prefs_store,
             message_index=message_index_store,

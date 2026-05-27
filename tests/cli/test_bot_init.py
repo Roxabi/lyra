@@ -50,9 +50,7 @@ class TestBotInitHelp:
     """`lyra bot init --help`"""
 
     def test_help_shows_force_flag(self) -> None:
-        result = runner.invoke(
-            app, ["bot", "init", "--help"], env={"COLUMNS": "80"}
-        )
+        result = runner.invoke(app, ["bot", "init", "--help"], env={"COLUMNS": "80"})
         assert result.exit_code == 0
         assert "--force" in result.output
 
@@ -92,6 +90,18 @@ class TestBotInitErrors:
         # Assert
         assert result.exit_code != 0
         assert "parse" in result.output.lower() or "Error" in result.output
+
+    def test_no_bot_sections(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Spec edge case: config.toml with no bot arrays → exit 0, 0 seeded.
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        write_bot_toml(tmp_path, "[server]\nfoo = 1\n")  # valid TOML, no bot arrays
+
+        result = runner.invoke(app, ["bot", "init"])
+
+        assert result.exit_code == 0, result.output
+        assert "0 seeded" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -180,25 +190,33 @@ class TestBotInitSeed:
     def test_merge_multi_section(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Arrange — same bot in both telegram.bots and auth.telegram_bots
+        # Exercises merge semantics: conflicting scalars (last-wins) and
+        # list deduplication across [[telegram.bots]] and [[auth.telegram_bots]].
+        # _add_entries order: telegram.bots first, auth.telegram_bots last →
+        # auth.telegram_bots scalar values win.
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
         write_bot_toml(
             tmp_path,
-            '[[telegram.bots]]\nbot_id="main"\nagent="a"\n\n'
-            '[[auth.telegram_bots]]\nbot_id="main"\nagent="a"\n',
+            "[[telegram.bots]]\n"
+            'bot_id="main"\n'
+            'agent="a"\n'
+            'owner_users=["alice", "bob"]\n\n'
+            "[[auth.telegram_bots]]\n"
+            'bot_id="main"\n'
+            'agent="b"\n'
+            'owner_users=["bob", "charlie"]\n',
         )
 
-        # Act
         result = runner.invoke(app, ["bot", "init"])
 
-        # Assert
         assert result.exit_code == 0, result.output
-        assert "1 seeded" in result.output
+        assert "1 seeded" in result.output  # single merged row
 
         db_path = tmp_path / "config.db"
         row = _db_get(db_path, "telegram", "main")
         assert row is not None
-        assert row.agent == "a"
+        assert row.agent == "b"  # auth.telegram_bots wins (last section)
+        assert set(row.owner_users) == {"alice", "bob", "charlie"}  # concat + dedup
 
     def test_default_values(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

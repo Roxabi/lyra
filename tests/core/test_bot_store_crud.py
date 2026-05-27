@@ -234,10 +234,10 @@ class TestBotRowConversion:
         # Act
         bot = BotRow.from_db_row(row)
 
-        # Assert — NULL scalars fall back to defaults
-        assert bot.default_trust == "untrusted"
-        assert bot.thread_hot_hours == 24
+        # Assert — NULL scalars fall back to canonical defaults (SSoT: bot_models.py)
+        assert bot.default_trust == "blocked"
+        assert bot.thread_hot_hours == 36
         assert bot.webhook_enabled is False
-        assert bot.auto_thread is False
+        assert bot.auto_thread is False  # NULL → bool(None) → False
         assert bot.owner_users == []
         assert bot.trusted_users == []

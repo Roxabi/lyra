@@ -22,11 +22,11 @@ CREATE TABLE IF NOT EXISTS bots (
     bot_id TEXT NOT NULL,
     agent TEXT NOT NULL,
     webhook_enabled INTEGER NOT NULL DEFAULT 0,
-    default_trust TEXT NOT NULL DEFAULT 'untrusted',
+    default_trust TEXT NOT NULL DEFAULT 'blocked',
     owner_users_json TEXT NOT NULL DEFAULT '[]',
     trusted_users_json TEXT NOT NULL DEFAULT '[]',
-    auto_thread INTEGER NOT NULL DEFAULT 0,
-    thread_hot_hours INTEGER NOT NULL DEFAULT 24,
+    auto_thread INTEGER NOT NULL DEFAULT 1,
+    thread_hot_hours INTEGER NOT NULL DEFAULT 36,
     updated_at TEXT,
     PRIMARY KEY (platform, bot_id)
 )
@@ -97,9 +97,9 @@ class BotStore(SqliteStore, BotStoreProtocol):
 
     async def close(self) -> None:
         """Close the database connection and clear caches."""
-        self._bots.clear()
         if self._db is not None:
             await super().close()
+            self._bots.clear()
             log.info("BotStore closed")
 
     # ------------------------------------------------------------------

@@ -62,11 +62,19 @@ class MyAdapter(OutboundAdapterBase):
 
 ## State + recap helpers
 
-`IntermediateTextState`, `StreamState`, `ToolRecapAccumulator`, `format_recap_lines` live
-in `lyra.adapters.shared/` (per Open Q 2 resolution in spec — moving them here would
-create a circular import with `OutboundErrorHandler.classify_stream_error`). The emitter
-imports them at module bottom (after class definitions) to break the load cycle through
-`lyra.adapters/__init__.py`.
+`IntermediateTextState`, `StreamState` → `lyra.outbound._streaming_state` (renamed from
+`_shared_streaming_state.py`). `ToolRecapAccumulator`, `format_recap_lines` →
+`lyra.outbound._tool_recap`. Both relocated into `outbound/` in #1336; the prior circular
+import via `lyra.adapters/__init__.py` is dissolved. No deferred-import block exists.
+
+## ToolDisplayConfig wiring
+
+`ToolDisplayConfig` (from `lyra.core.messaging`) is injected via
+`OutboundAdapterBase.send_streaming` — the **single WRITE site** for
+`emitter.tool_display_config` (ADR-073). Concrete `_make_emitter` overrides MUST NOT
+assign this attribute; doing so re-introduces the target-axis-trap Phase B (#1336) removed.
+Thresholds (`bash_max_len`, `group_threshold`, `names_threshold`) are config-driven inside
+`ToolRecapAccumulator`; `_route()` gates via `config.show` for visibility control.
 
 ## ADR pending — Phase 7
 

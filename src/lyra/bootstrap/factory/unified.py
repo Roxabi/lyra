@@ -63,7 +63,7 @@ async def _bootstrap_unified(
 
             _register_agents(hub, bundle, voice, clipool, raw_config, stores)
 
-            wired = await _wire_adapters(hub, bundle, nc, stores, vault_dir)
+            wired = await _wire_adapters(hub, bundle, nc, stores, vault_dir, raw_config)
 
             clipool_worker_task = await _run_clipool_worker_task(clipool.worker, nc)
 

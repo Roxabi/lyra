@@ -1,6 +1,7 @@
 # File size exemptions (≤300 lines per file)
 # Each entry must have a tracking issue.
 # Format: <path>  # <lines> lines — <issue> <description>
+tests/core/conftest.py  # 314 lines — DEBT:file-exemptions — backward-compatible re-exports after factory extraction (#1417)
 src/lyra/bootstrap/factory/wiring_helpers.py  # 410 lines — DEBT:file-exemptions — ADR-059/V10 bootstrap helper aggregator (imports + 10 focused functions)
 src/lyra/bootstrap/bootstrap_stores.py  # 307 lines — DEBT:file-exemptions — #957 idx_sql DDL validation adds allowlist guard before sqlite_master replay
 src/lyra/core/cli/cli_pool.py  # 345 lines — DEBT:file-exemptions — #1150 agent identity kwargs added to send() signature; #1278 +4 lines (ruff format line-wrap)

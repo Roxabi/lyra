@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import json
 
-from lyra.outbound._tool_recap import (
-    ToolRecapAccumulator,
-    format_recap_lines,
-)
 from lyra.core.messaging.render_events import (
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
+)
+from lyra.outbound._tool_recap import (
+    ToolRecapAccumulator,
+    format_recap_lines,
 )
 
 # ---------------------------------------------------------------------------
